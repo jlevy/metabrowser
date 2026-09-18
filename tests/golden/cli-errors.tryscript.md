@@ -192,3 +192,27 @@ $ metab ./missing --no-open 2>&1
 Error: [CWD]/missing is not a directory
 ? 1
 ```
+
+## Test: https is not acquired by --no-serve
+
+```console
+$ metab https://example.com/owner/repo.git --no-serve 2>&1
+Error: https Git sources are not acquired yet (https://example.com/owner/repo.git)
+? 1
+```
+
+## Test: ssh is not acquired by --no-serve
+
+```console
+$ metab ssh://git@example.com/owner/repo.git --no-serve 2>&1
+Error: ssh Git sources are not acquired yet (ssh://git@example.com/owner/repo.git)
+? 1
+```
+
+## Test: https --api does not acquire
+
+```console
+$ metab https://example.com/owner/repo.git --api /api/cache/layout 2>&1
+Error: https Git sources are not acquired yet (https://example.com/owner/repo.git)
+? 1
+```

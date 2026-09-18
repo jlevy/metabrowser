@@ -431,11 +431,21 @@ state and never a cache-directory listing.
 ### Acquisition without a network
 
 `acquire` clones from a local origin repository created in the same sandbox.
-This is real `git clone` through the real `run_git`, with no mocking and no forked code
+This is real `git fetch` through the real `run_git`, with no mocking and no forked code
 path, which is what the golden guidelines mean by not forking logic for tests.
 It also happens to be the honest test: the failure modes that matter — partial clone,
 interrupted publish, quarantine, reuse-on-second-open — are all filesystem behavior, not
 network behavior.
+
+A live `metab file:// --no-serve` tryscript cannot run on ubuntu-latest today: the
+runner’s Git 2.43.0 is below the acquisition floor (2.43.7 / patched tracks), and
+distro-patched Git remains refuse.
+Until CI pins Git 2.50.1 (`mb-oueh`), acquire / reuse / staging-sweep evidence is
+`tests/test_cli_cache_acquire_golden.py`: the production CLI in-process, the floor
+monkeypatched, a real pack fetch.
+Layout and future-format refusal remain `cli-api-cache.tryscript.md`. Do not add
+`<HOME>` or `<MTIME>` to `normalize.py` until a transcript emits those values; cache
+routes never report paths, and `--no-serve` does not print the home.
 
 ### What each phase’s golden proves
 
@@ -595,16 +605,22 @@ acquisition with only a warning.
 Both were reproduced on Git 2.50.1. `file://` uses the git-aware transport and packs
 rather than hardlinks, which is what makes the testing rationale true.
 
-`file://` honors `--filter` only when the origin allows it, so sandbox origins in
-acquisition goldens set `uploadpack.allowFilter=true`. Measured on Git 2.50.1, an origin
-without it sent every object with only a warning while the store still recorded itself
-as a promisor. Object-ID wants for prefetch and convergence need no further permission
-under protocol v2, Git’s default above the acquisition floor; under protocol v0 the same
-blob wants were refused with `Server does not allow request for unadvertised object`
-unless the origin also set `uploadpack.allowAnySHA1InWant`, so goldens do not force v0
+`file://` honors `--filter` only when the origin allows it, so sandbox origins that
+exercise blobless fetch set `uploadpack.allowFilter=true`. Measured on Git 2.50.1, an
+origin without it sent every object with only a warning while the store still recorded
+itself as a promisor.
+Object-ID wants for prefetch and convergence need no further permission under protocol
+v2, Git’s default above the acquisition floor; under protocol v0 the same blob wants
+were refused with `Server does not allow request for unadvertised object` unless the
+origin also set `uploadpack.allowAnySHA1InWant`, so goldens do not force v0
 ([measurements](../../../explorations/repository-cache/README.md#gitlinks-and-rejected-object-requests)).
 See
 [Safety at the boundary](plan-2026-08-11-open-repo-from-git-url.md#safety-at-the-boundary).
+
+Portable acquire goldens (`mb-3639`) use an origin that does *not* allow the filter, so
+`strategy` is `full` on every Git that can fetch at all.
+Blobless honor/ignore remains a unit-test assertion, because ubuntu-latest’s Git 2.43.0
+is below the acquisition floor.
 
 **Closed 2026-09-18: acquisition is a side effect of `metab <url>`, with `--no-serve`.**
 `--no-serve` acquires a `file://` source and prints logical identity without starting
