@@ -5,7 +5,7 @@ title: "HTML P2: capability set, --untrusted profile, and client publication"
 kind: task
 status: in_progress
 priority: 1
-version: 14
+version: 15
 spec_path: docs/project/specs/active/plan-2026-08-06-html-rendering-and-trust-model.md
 delegate: unknown@cursor
 labels:
@@ -27,7 +27,7 @@ parent_id: is-01kzcvm6cpe5b8sb9b9n3gb16g
 hold: null
 hold_until: null
 created_at: 2026-08-07T00:58:17.469Z
-updated_at: 2026-09-18T04:24:41.909Z
+updated_at: 2026-09-18T04:31:32.122Z
 started_at: 2026-09-18T04:14:57.485Z
 extensions:
   linear:
@@ -38,4 +38,4 @@ Resolve an immutable capability object before app construction. Add --no-active-
 
 ## Notes
 
-Draft https://github.com/jlevy/metabrowser/pull/153 stacked on cursor/v011-html-raw-sandbox-bd04. Capability block resolved after dotenv; published on GET /api/capabilities and CAPABILITIES. --untrusted / --no-active-content / --allow-edits wired through serve, --api, --show, --check-api. /raw drops allow-scripts when active_content is off. Bead stays open for review; do not merge.
+CI green: 7 checks on e50062f1cae451cdca7be88eb3f693f0304c0231 (draft https://github.com/jlevy/metabrowser/pull/153). Untrusted profile published. Bead stays open for review; do not merge. Next HTML slice is mb-4x15 stacked after path-shaped /raw.

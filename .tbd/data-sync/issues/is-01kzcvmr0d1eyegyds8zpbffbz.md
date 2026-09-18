@@ -3,15 +3,19 @@ type: is
 id: is-01kzcvmr0d1eyegyds8zpbffbz
 title: "HTML P4: html kind, full-page detection, and sandboxed preview"
 kind: feature
-status: open
+status: in_progress
 priority: 1
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-08-06-html-rendering-and-trust-model.md
+delegate: unknown@cursor
 labels: []
 dependencies: []
 parent_id: is-01kzcvm6cpe5b8sb9b9n3gb16g
+hold: null
+hold_until: null
 created_at: 2026-08-07T00:58:17.996Z
-updated_at: 2026-08-16T08:05:43.368Z
+updated_at: 2026-09-18T04:31:31.950Z
+started_at: 2026-09-18T04:31:31.949Z
 extensions:
   linear:
     id: 4c13f679-cdd5-48b6-9f28-d6cd16cc62de
