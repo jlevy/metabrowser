@@ -12,7 +12,10 @@ plus ``cat-file`` info; a truncated listing or missing blob omits the
 incomplete dimension. ``/api/tree`` also carries whole-tree ``extensions``,
 ``canonical_extensions``, ``type_families``, and ``type_presets`` rows plus
 ``tally_cache_status`` from that index so the type filter and truncation
-banner do not wait on a filesystem walker. File nav nodes include
+banner do not wait on a filesystem walker. A complete blob-size tally also
+fills the whole-tree ``summary`` (``files``, ``size``, ignored 0/0) so the
+nav header has honest counts; incomplete sizes omit ``summary`` rather than
+inventing 0. File nav nodes include
 ``logical_ext`` from the display suffix.
 A Git tree ``/api/file`` envelope is SPA ``folder`` chrome (``git_kind`` stays
 ``tree``) with no invented mtime or ignore. Omitted mtime leaves
@@ -510,19 +513,38 @@ def _ranked_tally_rows(counts: Mapping[str, int]) -> list[list[object]]:
     return [[key, count, 0] for key, count in ranked[:_GIT_FILTER_TALLY_LIMIT]]
 
 
+def _git_tree_summary(index: GitBlobIndex | None) -> dict[str, int] | None:
+    """Whole-tree tracked/ignored split. Omit when sizes are incomplete."""
+
+    if index is None:
+        return None
+    tally = index.tally()
+    if tally.total_size is None:
+        return None
+    return {
+        "files": tally.total_files,
+        "size": tally.total_size,
+        "ignored_files": 0,
+        "ignored_size": 0,
+    }
+
+
 def _git_tree_index_chrome(index: GitBlobIndex | None) -> dict[str, Any]:
-    """Whole-tree filter tallies. Ignore is absent, so ignored counts are 0."""
+    """Whole-tree filter tallies and summary. Ignore is absent, so ignored is 0."""
 
     truncated = index is None
     preset_rows = [[preset["id"], 0, 0] for preset in FILTER_TYPE_PRESETS]
     payload: dict[str, Any] = {
         "tally_cache_status": "truncated" if truncated else "done",
         "tally_cache_max_files": INVENTORY_MAX_FILES,
-        "extensions": [],
-        "canonical_extensions": [],
-        "type_families": [],
-        "type_presets": preset_rows,
     }
+    summary = _git_tree_summary(index)
+    if summary is not None:
+        payload["summary"] = summary
+    payload["extensions"] = []
+    payload["canonical_extensions"] = []
+    payload["type_families"] = []
+    payload["type_presets"] = preset_rows
     if index is None:
         return payload
     registry = load_file_type_registry()

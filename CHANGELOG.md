@@ -140,10 +140,11 @@ Content source:
   `/api/index/progress`, `/api/index/meta`, and `/api/capabilities` report that same
   complete-at-once index without a watcher or invented mtime; events stay off.
   `/api/tree` carries whole-tree `extensions`, `canonical_extensions`, `type_families`,
-  and `type_presets` rows (`[key, tracked, 0]`) and `tally_cache_status` from that index
-  so the type filter and truncation banner do not wait on a filesystem walker.
-  `/api/stream` still returns `unsupported_for_subject` rather than the lifespan
-  filesystem inventory.
+  and `type_presets` rows (`[key, tracked, 0]`), `tally_cache_status`, and a `summary`
+  (`files`, `size`, ignored 0/0) from that index so the type filter, truncation banner,
+  and nav header counts do not wait on a filesystem walker.
+  Incomplete blob sizes omit `summary` rather than inventing 0. `/api/stream` still
+  returns `unsupported_for_subject` rather than the lifespan filesystem inventory.
   A Git LFS pointer blob is the stored pointer bytes, with no smudge filter.
   A blob the tree names but the store lacks, including a promisor miss, is
   `object_unavailable` with `GIT_NO_LAZY_FETCH` and does not contact the remote.
