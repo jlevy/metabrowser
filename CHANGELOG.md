@@ -50,6 +50,13 @@ Repository cache:
   Sources and stores are paged with `limit` and `after`, 25 rows by default and 100 at
   most; no response reports a cache path, pack file, or Git internal.
 
+- The CLI classifies `ROOT` as a string before any path is constructed.
+  A bare local path is still served; `https`, `ssh`, and `file://` clone URLs are Git
+  sources and are refused until cache acquisition lands.
+  `file://` is the only way to ask for a local origin to be acquired — a bare
+  `/path/to/repo` is never rewritten into one — and `ext::` remote-helper syntax is
+  rejected. No command writes the cache yet.
+
 ## 0.10.0
 
 Plugin SDK:

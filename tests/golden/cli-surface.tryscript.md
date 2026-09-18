@@ -38,8 +38,10 @@ $ metab --help
  serving: --remote.
 
 ╭─ Arguments ──────────────────────────────────────────────────────────────────╮
-│   [root]      PATH  Root directory to serve, check, or walk; a file may be   │
-│                     served directly. With no ROOT and no mode, prints help.  │
+│   [root]      TEXT  Root directory to serve, check, or walk; a file may be   │
+│                     served directly. https, ssh, and file:// clone URLs are  │
+│                     Git sources, not local paths. With no ROOT and no mode,  │
+│                     prints help.                                             │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Options ────────────────────────────────────────────────────────────────────╮
 │ --version          Show the installed version and exit.                      │
