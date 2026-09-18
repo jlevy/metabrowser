@@ -25,8 +25,10 @@ and `type_presets` rows, `tally_cache_status`, and a `summary` from the same ind
 `types` and `min_size` keep ancestor trees of matching blobs and emit subtree `filtered`
 totals. Git type matching uses the same bounded compound-tail logical extension as
 filesystem inventory.
-SPA file nodes emit that tail as `ext`; `logical_ext` is only the inner extension of a
-compressed name. `include_ignored=0` is a no-op because ignore is absent.
+SPA file nodes and blob `/api/file` envelopes emit that tail as `ext`; `logical_ext` is
+only the inner extension of a compressed name on tree nodes.
+Blob file envelopes omit compressed identity because blobs are stored bytes with no gzip
+smudge. `include_ignored=0` is a no-op because ignore is absent.
 `depth` nests SPA children the way filesystem listings do (default 2) and emits a lazy
 sentinel past the cap.
 LFS pointers stay stored bytes; a promisor miss is `object_unavailable` with lazy fetch
@@ -312,8 +314,10 @@ and `type_presets` rows, `tally_cache_status`, and a `summary` from the same ind
 `types` and `min_size` keep ancestor trees of matching blobs and emit subtree `filtered`
 totals. Git type matching uses the same bounded compound-tail logical extension as
 filesystem inventory.
-SPA file nodes emit that tail as `ext`; `logical_ext` is only the inner extension of a
-compressed name. `include_ignored=0` is a no-op because ignore is absent.
+SPA file nodes and blob `/api/file` envelopes emit that tail as `ext`; `logical_ext` is
+only the inner extension of a compressed name on tree nodes.
+Blob file envelopes omit compressed identity because blobs are stored bytes with no gzip
+smudge. `include_ignored=0` is a no-op because ignore is absent.
 `depth` nests SPA children the way filesystem listings do (default 2) and emits a lazy
 sentinel past the cap.
 Markdown and wiki destinations encode authored segments as `GitPath` wires; the

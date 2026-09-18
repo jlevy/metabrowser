@@ -155,8 +155,12 @@ Content source:
   The SPA hides Modified within: recency still has no honest mtime and remains
   `unsupported_for_subject`. Git SPA file nodes emit `ext` as that compound-tail
   extension; `logical_ext` is only the inner extension of a compressed name
-  (`events.jsonl.gz` is `ext=.jsonl.gz` and `logical_ext=.jsonl`). `/api/stream` still
-  returns `unsupported_for_subject` rather than the lifespan filesystem inventory.
+  (`events.jsonl.gz` is `ext=.jsonl.gz` and `logical_ext=.jsonl`). Git `/api/file` blob
+  envelopes include that same `ext` so plugin-sdk `langForPath` and `ctx.ext` do not
+  fall back to a GitPath wire; they omit compressed identity because blobs are stored
+  bytes with no gzip smudge.
+  `/api/stream` still returns `unsupported_for_subject` rather than the lifespan
+  filesystem inventory.
   A Git LFS pointer blob is the stored pointer bytes, with no smudge filter.
   A blob the tree names but the store lacks, including a promisor miss, is
   `object_unavailable` with `GIT_NO_LAZY_FETCH` and does not contact the remote.

@@ -21,8 +21,10 @@ or invented mtime. ``/api/tree`` also carries whole-tree ``extensions``,
 that index. ``types`` and ``min_size`` keep ancestor trees of matching blobs
 and emit subtree ``filtered`` totals. Type matching uses the same bounded
 compound-tail logical extension as filesystem inventory. ``include_ignored=0`` is a
-no-op because ignore is absent. SPA file nodes emit that tail as ``ext``;
-``logical_ext`` is only the inner extension of a compressed name. ``depth`` nests SPA children the way filesystem
+no-op because ignore is absent. SPA file nodes and blob ``/api/file``
+envelopes emit that tail as ``ext``; ``logical_ext`` is only the inner
+extension of a compressed name on tree nodes. Blob file envelopes omit
+compressed identity because blobs are stored bytes with no gzip smudge. ``depth`` nests SPA children the way filesystem
 listings do (default 2) and emits a lazy sentinel past the cap. SPA path chrome decodes GitPath wires to
 display names. Blob listings
 carry ``cat-file`` info sizes so ``min_size`` can filter; trees and gitlinks
