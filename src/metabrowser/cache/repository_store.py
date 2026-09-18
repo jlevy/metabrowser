@@ -2,8 +2,9 @@
 
 A leased subject holds the store's shared maintenance lock so reclamation and
 ``gc`` wait, and a durable private ref so the pinned commit stays reachable
-after the process exits. This module does not serve content, migrate routes, or
-check out a worktree.
+after the process exits. ``maintain_store`` runs ``gc`` and ``repack`` under
+the exclusive maintenance lock, never under the store lock. This module does
+not serve content, migrate remaining routes, or check out a worktree.
 """
 
 from __future__ import annotations
@@ -12,7 +13,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, Self
 
-from metabrowser.cache.locks import CacheLock, repository_store_lock, store_lease
+from metabrowser.cache.locks import (
+    CacheLock,
+    repository_store_lock,
+    require_no_hierarchy_locks,
+    store_lease,
+    store_maintenance_lock,
+)
 from metabrowser.cache.paths import store_directory
 from metabrowser.git.process import (
     ACQUISITION_POLICY,
@@ -121,9 +128,43 @@ async def lease_revision(*, home: Path, store_key: str, commit_oid: str) -> Revi
             lock.release()
 
 
+async def maintain_store(*, home: Path, store_key: str) -> None:
+    """Run ``gc`` and ``repack`` under the exclusive maintenance lock.
+
+    The exclusive form never blocks. A live shared lease makes this busy
+    (or a same-thread ``LockOrderError``). Hierarchy locks, including the
+    store lock, are refused first. Durable subject refs stay; this does
+    not delete them or create a checkout.
+    """
+
+    require_no_hierarchy_locks("gc")
+    git_dir = home / store_directory(store_key) / "repository.git"
+    if not git_dir.is_dir():
+        raise GitUnavailableError(f"repository store is not a directory: {git_dir}")
+    maintenance = store_maintenance_lock(home, store_key)
+    try:
+        if not git_dir.is_dir():
+            raise GitUnavailableError(f"repository store is not a directory: {git_dir}")
+        target = repository_store_target(git_dir=git_dir)
+        await run_git(
+            [*_MAILMAP_ARGS, "gc", "--prune=now"],
+            target=target,
+            policy=ACQUISITION_POLICY,
+        )
+        await run_git(
+            [*_MAILMAP_ARGS, "repack", "-a", "-d"],
+            target=target,
+            policy=ACQUISITION_POLICY,
+        )
+    finally:
+        if maintenance.held:
+            maintenance.release()
+
+
 __all__ = [
     "SUBJECT_REF_PREFIX",
     "RevisionLease",
     "lease_revision",
+    "maintain_store",
     "subject_revision_ref",
 ]
