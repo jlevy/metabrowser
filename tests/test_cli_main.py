@@ -9,6 +9,7 @@ to the selected mode are usage errors (exit 2).
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import re
@@ -30,7 +31,7 @@ from typer.testing import CliRunner
 from metabrowser import __version__
 from metabrowser.build_version import display_version_line
 from metabrowser.cli.http_readiness import wait_for_http_ok_then
-from metabrowser.cli.main import _app, main
+from metabrowser.cli.main import _app, _is_plain_local_root, main
 from metabrowser.cli.serve import (
     _STOPPING_NOTICE,
     _QuietForceExitServer,
@@ -728,6 +729,16 @@ def test_cli_bare_path_routes_to_serve() -> None:
 
     assert isinstance(result.exception, CLIError)
     assert "not a directory" in str(result.exception)
+
+
+def test_plain_local_root_fast_path_matches_url_grammar_fixture() -> None:
+    """The CLI skips ``cache.urls`` only for inputs the grammar calls a local path."""
+    fixture = json.loads(
+        Path("tests/fixtures/repository-cache/url-grammar.json").read_text(encoding="utf-8")
+    )
+    for case in fixture["cases"]:
+        expected_local = case["expected"]["outcome"] == "local_path"
+        assert _is_plain_local_root(case["input"]) is expected_local, case["id"]
 
 
 def test_cli_file_url_is_a_git_source_and_is_not_served() -> None:

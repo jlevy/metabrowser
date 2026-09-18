@@ -30,7 +30,6 @@ import typer
 
 from metabrowser import __version__
 from metabrowser.build_version import display_version_line
-from metabrowser.cache.urls import GitSource, LocalPath, RejectedRoot, classify_root_argument
 from metabrowser.cli.common import PipeTrackingStream, silence_broken_pipe, validate_log_level
 from metabrowser.cli.diff_cli import run_diff
 from metabrowser.cli.plugins import doctor_plugins, list_plugins, show_plugin
@@ -221,6 +220,24 @@ def _check_option_applicability(ctx: typer.Context, mode: str, explicit: frozens
         ctx.fail(f"{labels} not valid with {_MODE_LABELS[mode]}")
 
 
+def _is_plain_local_root(value: str) -> bool:
+    """Return True when the grammar would classify *value* as a local path.
+
+    Ordinary local browsing must not import ``metabrowser.cache.urls``: the layout
+    contract pins that import set to the route table. A Git source, a named
+    rejection, or an SCP-like address still goes through classification.
+    """
+    if value == "" or value.startswith("-"):
+        return False
+    if "://" in value or "::" in value:
+        return False
+    lowered = value.lower()
+    if lowered.startswith(("https:", "ssh:", "file:", "http:", "git:")):
+        return False
+    at = value.find("@")
+    return at <= 0 or "/" in value[:at] or ":" not in value[at + 1 :]
+
+
 def _require_root(ctx: typer.Context, root: str | None, mode: str) -> Path:
     if root is None:
         hints = {
@@ -232,6 +249,10 @@ def _require_root(ctx: typer.Context, root: str | None, mode: str) -> Path:
         }
         hint = hints.get(mode, "pass the required root")
         ctx.fail(f"ROOT is required for {_MODE_LABELS[mode]}; {hint}")
+    if _is_plain_local_root(root):
+        return Path(root)
+    from metabrowser.cache.urls import GitSource, LocalPath, RejectedRoot, classify_root_argument
+
     classified = classify_root_argument(root)
     if isinstance(classified, LocalPath):
         return Path(classified.value)
