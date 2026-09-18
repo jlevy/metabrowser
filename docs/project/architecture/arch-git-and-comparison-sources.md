@@ -20,8 +20,9 @@ tally mounts treemap; `/api/rollup` answers from that index and omits mtime.
 `/api/catalog` lists those blob names as Quick File rows.
 `/api/index/progress`, `/api/index/meta`, and `/api/capabilities` report that
 complete-at-once index.
-LFS pointers stay stored bytes; a promisor miss is `object_unavailable` with lazy fetch
-disabled. Serving acquired Git remains later.
+`/api/tree` carries whole-tree `extensions` rows and `tally_cache_status` from the same
+index. LFS pointers stay stored bytes; a promisor miss is `object_unavailable` with lazy
+fetch disabled. Serving acquired Git remains later.
 See
 [Repository Sources and Provider Mirrors](arch-repository-sources-and-provider-mirrors.md).
 
@@ -282,6 +283,8 @@ container inner, and refuses a filesystem spelling.
 `/api/tree` keeps Git-native `entries` and also projects a SPA `tree` array
 (`dir`/`file`/`symlink`, `GitPath` wires, `cat-file` blob sizes, recursive dir
 `total_files`/`total_size`, no mtime/ignore); gitlinks are files and stay unsized.
+Whole-tree `extensions` rows and `tally_cache_status` come from the recursive blob
+index; ignored counts are 0 because ignore is absent.
 `min_size` filters sized blobs and keeps trees.
 A Git tree `/api/file` envelope is SPA `folder` chrome (`git_kind` stays `tree`) with
 recursive blob tallies and no mtime.
@@ -290,7 +293,8 @@ A complete blob-size tally also mounts treemap; `/api/rollup` omits mtime.
 `/api/catalog` lists those blob names as Quick File rows.
 `/api/index/progress`, `/api/index/meta`, and `/api/capabilities` report that
 complete-at-once index.
-Markdown and wiki destinations encode authored segments as `GitPath` wires; the
+`/api/tree` carries whole-tree `extensions` rows and `tally_cache_status` from the same
+index. Markdown and wiki destinations encode authored segments as `GitPath` wires; the
 known-file catalog indexes the tree node’s display name, not the `g1-` token.
 SPA path chrome and copy-path decode those wires to display names; navigation identities
 stay wires. Omitted mtime leaves tally chrome empty rather than pending.
