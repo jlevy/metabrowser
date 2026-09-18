@@ -27,7 +27,7 @@ from metabrowser.wire_models import (
 
 
 class RollupEntry(Protocol):
-    """Filesystem facts used by the pure rollup reducer."""
+    """Facts used by the pure rollup reducer. Mtime is optional on the wire."""
 
     @property
     def path(self) -> str: ...
@@ -74,6 +74,7 @@ class RollupOptions:
     remaining_top: int = ROLLUP_FILE_TYPE_REMAINING_LIMIT
     filename_top: int = ROLLUP_FILE_TYPE_FILENAME_LIMIT
     ext_rank: RollupRank = "bytes"
+    omit_mtime: bool = False
 
     def __post_init__(self) -> None:
         if (
@@ -259,28 +260,31 @@ def _aggregate_subtree(
     return aggregate
 
 
-def _file_node(entry: RollupEntry, parent_ignored: bool) -> dict[str, Any]:
-    return {
+def _file_node(entry: RollupEntry, parent_ignored: bool, options: RollupOptions) -> dict[str, Any]:
+    node: dict[str, Any] = {
         "name": entry.name,
         "path": entry.path,
         "type": "file",
         "size": entry.size,
-        "mtime": entry.mtime_ns / 1_000_000_000.0,
         "ext": entry.ext,
         "gitignored": parent_ignored or entry.gitignored,
     }
+    if not options.omit_mtime:
+        node["mtime"] = entry.mtime_ns / 1_000_000_000.0
+    return node
 
 
 def _directory_node(
     entry: RollupEntry,
     aggregate: _SubtreeAggregate,
     ignored: bool,
+    options: RollupOptions,
 ) -> dict[str, Any]:
     ranked_extensions = sorted(
         aggregate.ext_files,
         key=lambda key: (-aggregate.ext_bytes[key], -aggregate.ext_files[key], key),
     )
-    return {
+    node: dict[str, Any] = {
         "name": entry.name,
         "path": entry.path,
         "type": "dir",
@@ -289,10 +293,12 @@ def _directory_node(
         "total_size": aggregate.size_all,
         "unignored_files": aggregate.files_unignored,
         "unignored_size": aggregate.size_unignored,
-        "mtime": aggregate.newest_mtime_ns / 1_000_000_000.0,
         "gitignored": ignored,
         "dominant_ext": ranked_extensions[0] if ranked_extensions else "",
     }
+    if not options.omit_mtime:
+        node["mtime"] = aggregate.newest_mtime_ns / 1_000_000_000.0
+    return node
 
 
 def _all_weight(entry: RollupEntry, aggregates: Mapping[str, _SubtreeAggregate]) -> int:
@@ -341,7 +347,7 @@ def _emit_bounded_tree(
 ) -> dict[str, Any]:
     """Emit directory levels breadth-first under local and global budgets."""
 
-    root_node = _directory_node(root_entry, aggregates[root_entry.path], root_ignored)
+    root_node = _directory_node(root_entry, aggregates[root_entry.path], root_ignored, options)
     remaining_nodes = max(0, options.max_nodes - 1)
     pending = deque([(root_entry, root_node, 0, root_ignored)])
     while pending:
@@ -363,12 +369,12 @@ def _emit_bounded_tree(
                 continue
             child_ignored = ignored or child.gitignored
             if child.type == "dir":
-                child_node = _directory_node(child, aggregates[child.path], child_ignored)
+                child_node = _directory_node(child, aggregates[child.path], child_ignored, options)
                 emitted.append(child_node)
                 pending.append((child, child_node, level + 1, child_ignored))
                 remaining_nodes -= 1
             elif child.type == "file":
-                emitted.append(_file_node(child, ignored))
+                emitted.append(_file_node(child, ignored, options))
                 remaining_nodes -= 1
         node["children"] = emitted
         if omitted:

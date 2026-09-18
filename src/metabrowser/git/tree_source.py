@@ -10,13 +10,15 @@ JSON/YAML/frontmatter bytes, structured parsed, agent-log JSONL, and
 ``GitDiffSource.content`` honor a pinned revision. ``/view/`` accepts a
 ``GitPath`` wire on that pin. ``/api/tree`` also projects a SPA ``tree``
 array of GitPath nav nodes. A Git tree ``/api/file`` envelope is SPA
-``folder`` chrome. A direct-child README blob mounts Overview; treemap stays
-off. SPA path chrome decodes GitPath wires to display names. Blob listings
+``folder`` chrome. A direct-child README blob mounts Overview. A complete
+blob-size tally also mounts treemap; ``/api/rollup`` answers from the same
+recursive index and omits mtime. SPA path chrome decodes GitPath wires to
+display names. Blob listings
 carry ``cat-file`` info sizes so ``min_size`` can filter; trees and gitlinks
 have no blob size. Recursive ``ls-tree -r`` plus ``cat-file`` info fills
 directory ``total_files`` / ``total_size``; a truncated listing or a missing
 blob size omits the incomplete dimension. Omitted mtime still leaves age
-chrome empty rather than pending. Treemap stays off.
+chrome empty rather than pending.
 Markdown and wiki destinations encode authored segments
 as GitPath wires. An LFS pointer is the stored pointer bytes;
 a blob the tree names but the store lacks is ``object_unavailable`` with
@@ -895,6 +897,7 @@ __all__ = [
     "GIT_REVISION_CAPABILITIES",
     "MAX_BATCH_READERS_PER_STORE",
     "GitBatchProtocolError",
+    "GitBlobIndex",
     "GitBlobTooLargeError",
     "GitObjectUnavailableError",
     "GitPath",

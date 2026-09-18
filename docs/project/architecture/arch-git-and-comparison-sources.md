@@ -15,8 +15,8 @@ A Git tree folder with a README mounts Overview.
 SPA path chrome decodes GitPath wires to display names.
 Blob listings carry `cat-file` info sizes so `min_size` can filter; trees and gitlinks
 stay unsized as blobs.
-Recursive `ls-tree -r` tallies fill directory `total_files` / `total_size`. Omitted
-mtime leaves age chrome empty rather than pending.
+Recursive `ls-tree -r` tallies fill directory `total_files` / `total_size`. A complete
+tally mounts treemap; `/api/rollup` answers from that index and omits mtime.
 LFS pointers stay stored bytes; a promisor miss is `object_unavailable` with lazy fetch
 disabled. Serving acquired Git remains later.
 See
@@ -264,10 +264,11 @@ YAML, and Markdown-frontmatter mappings parsed from blob bytes.
 `/api/plugin/structured/parsed` reads one blob by that identity and keys the parse on
 the object id. `/api/file` for a `.jsonl` blob is a parsed JSONL envelope;
 `/api/plugin/agent-log/charts` reads that blob by the same identity.
-Inventory-backed routes do not answer from the lifespan folder: `/api/rollup`,
-`/api/catalog`, index progress/meta, capabilities, and JSONL `/api/stream` return
-`unsupported_for_subject`. Symlinks are not followed, gitlinks are distinct non-folder
-entries, and LFS pointers remain ordinary blobs (stored pointer bytes, no smudge).
+Inventory-backed catalog, index, capabilities, and JSONL `/api/stream` routes do not
+answer from the lifespan folder: they return `unsupported_for_subject`. `/api/rollup` on
+a pin answers from recursive blob names and sizes and omits mtime.
+Symlinks are not followed, gitlinks are distinct non-folder entries, and LFS pointers
+remain ordinary blobs (stored pointer bytes, no smudge).
 A blob the tree names but the store lacks, including a promisor miss with
 `GIT_NO_LAZY_FETCH`, is `object_unavailable` and does not contact the remote.
 `/view/` on that subject accepts a `GitPath` wire, optionally plus a patch-file
@@ -278,8 +279,8 @@ container inner, and refuses a filesystem spelling.
 `min_size` filters sized blobs and keeps trees.
 A Git tree `/api/file` envelope is SPA `folder` chrome (`git_kind` stays `tree`) with
 recursive blob tallies and no mtime.
-A direct-child README blob sets `readme_path` to its GitPath wire and mounts Overview;
-treemap stays unmounted.
+A direct-child README blob sets `readme_path` to its GitPath wire and mounts Overview.
+A complete blob-size tally also mounts treemap; `/api/rollup` omits mtime.
 Markdown and wiki destinations encode authored segments as `GitPath` wires; the
 known-file catalog indexes the tree node’s display name, not the `g1-` token.
 SPA path chrome and copy-path decode those wires to display names; navigation identities

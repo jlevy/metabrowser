@@ -113,9 +113,10 @@ Markdown-frontmatter mappings parsed from blob bytes.
 `/api/plugin/structured/parsed` reads a Git blob and uses the object id as its cache key
 rather than a filesystem mtime.
 `/api/file` for a Git `.jsonl` blob is a parsed JSONL envelope;
-`/api/plugin/agent-log/charts` reads that blob by `GitPath`. Inventory-backed routes
-(`/api/rollup`, `/api/catalog`, index progress/meta, capabilities, JSONL stream) return
+`/api/plugin/agent-log/charts` reads that blob by `GitPath`. Other inventory-backed
+routes (`/api/catalog`, index progress/meta, capabilities, JSONL stream) return
 `unsupported_for_subject` instead of the lifespan folder.
+`/api/rollup` on a pin answers from recursive blob names and sizes and omits mtime.
 A Git LFS pointer is stored pointer bytes; a tree-named missing blob, including a
 promisor miss, is `object_unavailable` with lazy fetch disabled.
 `/view/` on a pin accepts a `GitPath` wire (and a patch-file container inner) and
@@ -126,8 +127,8 @@ recursive dir `total_files`/`total_size`, no invented mtime or ignore; gitlinks 
 files and stay unsized).
 A Git tree `/api/file` envelope is SPA `folder` chrome (`git_kind` stays `tree`) with
 recursive blob tallies and no mtime.
-A direct-child README blob sets `readme_path` to its GitPath wire and mounts Overview;
-treemap stays unmounted because it needs inventory rollup.
+A direct-child README blob sets `readme_path` to its GitPath wire and mounts Overview.
+A complete blob-size tally also mounts treemap; `/api/rollup` omits mtime.
 Markdown and wiki links on that pin encode authored segments as `GitPath` wires; the
 known-file catalog uses the tree node’s display `name` as the basename, and KPress
 `source_path` is the wire rather than a display path.

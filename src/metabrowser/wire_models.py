@@ -201,14 +201,16 @@ def _validate_dir(node: dict[str, Any], *, _path: str) -> None:
 
 
 class RollupFileNode(TypedDict):
-    """A file leaf in a `/api/rollup` node tree. All keys required;
-    `mtime` is always numeric (state lives on directories)."""
+    """A file leaf in a `/api/rollup` node tree.
+
+    ``mtime`` is omitted when the source has no recency fact.
+    """
 
     name: str
     path: str
     type: Literal["file"]
     size: int
-    mtime: float
+    mtime: NotRequired[float]
     ext: str
     gitignored: bool
 
@@ -241,7 +243,7 @@ class RollupDirNode(TypedDict):
     total_size: int
     unignored_files: int
     unignored_size: int
-    mtime: float
+    mtime: NotRequired[float]
     gitignored: bool
     dominant_ext: str
     children: list[Any] | None
@@ -355,7 +357,7 @@ class RollupEnvelope(TypedDict):
 
 
 _ROLLUP_FILE_REQUIRED: frozenset[str] = frozenset(
-    {"name", "path", "type", "size", "mtime", "ext", "gitignored"}
+    {"name", "path", "type", "size", "ext", "gitignored"}
 )
 _ROLLUP_DIR_REQUIRED: frozenset[str] = frozenset(
     {
@@ -367,7 +369,6 @@ _ROLLUP_DIR_REQUIRED: frozenset[str] = frozenset(
         "total_size",
         "unignored_files",
         "unignored_size",
-        "mtime",
         "gitignored",
         "dominant_ext",
         "children",
@@ -389,7 +390,8 @@ def validate_rollup_node(node: Mapping[str, Any], *, _path: str = "") -> None:
         missing = _ROLLUP_FILE_REQUIRED - node.keys()
         assert not missing, f"rollup file at {_path!r} missing keys: {sorted(missing)}"
         assert isinstance(node["size"], int)
-        assert isinstance(node["mtime"], (int, float))
+        if "mtime" in node:
+            assert isinstance(node["mtime"], (int, float))
         assert isinstance(node["ext"], str)
         assert isinstance(node["gitignored"], bool)
         return
@@ -401,7 +403,8 @@ def validate_rollup_node(node: Mapping[str, Any], *, _path: str = "") -> None:
         assert isinstance(node[agg_key], int), f"rollup dir.{agg_key} not int at {_path!r}"
     assert node["unignored_files"] <= node["total_files"], f"unignored > total at {_path!r}"
     assert node["unignored_size"] <= node["total_size"], f"unignored > total at {_path!r}"
-    assert isinstance(node["mtime"], (int, float)), f"rollup dir.mtime not numeric at {_path!r}"
+    if "mtime" in node:
+        assert isinstance(node["mtime"], (int, float)), f"rollup dir.mtime not numeric at {_path!r}"
     assert isinstance(node["dominant_ext"], str)
     if "rest" in node:
         rest = node["rest"]

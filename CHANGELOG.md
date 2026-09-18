@@ -130,9 +130,13 @@ Content source:
   the cache key instead of a filesystem mtime.
   `/api/file` for a Git `.jsonl` blob is a parsed JSONL envelope; adapter sniffing
   claims `agent-log` when the bytes match Claude, Gemini, or Pi.
-  `/api/plugin/agent-log/charts` reads that blob by `GitPath`. Inventory-backed routes
-  (`/api/rollup`, `/api/catalog`, `/api/index/*`, `/api/capabilities`, `/api/stream`)
-  return `unsupported_for_subject` rather than the lifespan filesystem inventory.
+  `/api/plugin/agent-log/charts` reads that blob by `GitPath`. `/api/rollup` on a pin
+  answers from recursive blob names and sizes, omits mtime, and treats ignore as absent
+  so unignored equals total.
+  A missing blob size is `object_unavailable` rather than a partial sum.
+  Other inventory-backed routes (`/api/catalog`, `/api/index/*`, `/api/capabilities`,
+  `/api/stream`) still return `unsupported_for_subject` rather than the lifespan
+  filesystem inventory.
   A Git LFS pointer blob is the stored pointer bytes, with no smudge filter.
   A blob the tree names but the store lacks, including a promisor miss, is
   `object_unavailable` with `GIT_NO_LAZY_FETCH` and does not contact the remote.
@@ -148,16 +152,16 @@ Content source:
   Markdown and wiki links on that pin encode authored segments as `GitPath` wires; the
   known-file catalog uses the tree node’s display `name` as the basename, and KPress
   `source_path` is the wire rather than a display path.
-  A Git tree folder with a direct-child README blob mounts Overview (`readme_path` is
-  the GitPath wire) and omits treemap, which needs inventory rollup.
-  SPA path chrome and copy-path decode GitPath wires to display names; navigation
-  identities stay wires.
+  A Git tree folder with a complete blob-size tally mounts Overview and treemap.
+  A direct-child README blob sets `readme_path` to its GitPath wire.
+  File Overview mounts when `dir` carries `total_size`. SPA path chrome and copy-path
+  decode GitPath wires to display names; navigation identities stay wires.
   Omitted Git mtime still leaves age chrome empty rather than pulsing as a
   still-finalizing inventory walk.
   Blob listings carry `cat-file` info sizes so `min_size` can filter; trees and gitlinks
   stay unsized. Recursive `ls-tree -r` tallies fill directory `total_files` /
-  `total_size`. Inventory open, archive containers, serving acquired Git, and Git-native
-  treemap rollup are not switched yet.
+  `total_size` and the Git `/api/rollup` tree.
+  Inventory open, archive containers, and serving acquired Git are not switched yet.
 
 ## 0.10.0
 

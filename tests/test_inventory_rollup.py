@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from typing import Any, cast
 
 import pytest
@@ -13,7 +13,12 @@ from metabrowser.file_type_registry import FileTypeClassification, load_file_typ
 from metabrowser.inventory_engine.providers.python_inventory import (
     _PythonInventoryStore as PythonInventoryStore,
 )
-from metabrowser.inventory_rollup import RollupOptions, RollupRank
+from metabrowser.inventory_rollup import (
+    RollupOptions,
+    RollupRank,
+    build_rollup,
+    group_rollup_children,
+)
 
 
 def _synthetic_index(files: list[tuple[str, int, bool]]) -> PythonInventoryStore:
@@ -225,3 +230,35 @@ def test_registry_breakdown_groups_families_and_bounds_fallback_children() -> No
     assert len(remaining["extensions"]) == 20
     assert remaining["others"] is not None
     assert remaining["others"]["omitted_distinct_values"] == 1
+
+
+@dataclass(frozen=True, slots=True)
+class _RollupProbe:
+    path: str
+    parent: str
+    name: str
+    type: str
+    ext: str
+    size: int
+    mtime_ns: int
+    gitignored: bool
+    total_files: int | None
+
+
+def test_omit_mtime_drops_mtime_from_emitted_nodes() -> None:
+    entries = {
+        "": _RollupProbe("", "", "root", "dir", "", 0, 1, False, 1),
+        "a.txt": _RollupProbe("a.txt", "", "a.txt", "file", ".txt", 4, 1, False, None),
+    }
+    result = build_rollup(
+        entries,
+        group_rollup_children(entries),
+        "",
+        RollupOptions(depth=1, top=10, ext_top=10, max_nodes=10, omit_mtime=True),
+        False,
+    )
+    assert result is not None
+    assert "mtime" not in result["node"]
+    children = result["node"]["children"]
+    assert children is not None
+    assert "mtime" not in children[0]
