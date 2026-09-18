@@ -130,6 +130,8 @@ treemap stays unmounted because it needs inventory rollup.
 Markdown and wiki links on that pin encode authored segments as `GitPath` wires; the
 known-file catalog uses the tree node’s display `name` as the basename, and KPress
 `source_path` is the wire rather than a display path.
+SPA path chrome and copy-path decode GitPath wires to display names; navigation
+identities stay wires.
 Event, inventory open, archive containers, and serving acquired Git still wait on later
 slices. `resolve_path` and `served_root` remain filesystem-only plugin helpers: they
 raise `UnsupportedSourceCapabilityError` when the active subject has no folder.
