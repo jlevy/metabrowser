@@ -4,11 +4,13 @@ These honor a pinned ``GitRevisionSubject`` without a checkout, index, or
 invented filesystem fact. ``/view/`` accepts a GitPath wire, optionally plus
 a host container inner, and refuses a filesystem spelling. ``/api/tree`` keeps
 Git-native ``entries`` and also projects a SPA ``tree`` array so navigation
-can paint; Git trees lazy-load, gitlinks are files, and listings omit mtime,
-size, and ignore. File nav nodes include ``logical_ext`` from the display suffix.
+can paint; Git trees lazy-load, gitlinks are files, and listings omit mtime
+and ignore. Blob and symlink entries carry ``cat-file`` sizes; trees and
+gitlinks stay unsized, so ``min_size`` can filter without ``ls-tree -l``.
+File nav nodes include ``logical_ext`` from the display suffix.
 A Git tree ``/api/file`` envelope is SPA ``folder`` chrome (``git_kind`` stays
-``tree``) with no invented dir aggregates. Omitted size, mtime, and dir facts
-leave SPA tally chrome empty rather than pending. A direct-child README blob sets
+``tree``) with no invented dir aggregates. Omitted mtime and dir facts leave
+SPA tally chrome empty rather than pending. A direct-child README blob sets
 ``readme_path`` to its GitPath wire and mounts the Overview view; treemap stays
 unmounted because it needs inventory rollup. SPA path chrome and copy-path
 decode GitPath wires to display names; navigation identities stay wires. KPress ``source_path``
@@ -48,7 +50,6 @@ from metabrowser.settings import (
     TEXT_PREVIEW_CHUNK_BYTES,
     TEXT_PREVIEW_REQUEST_MAX_BYTES,
 )
-from metabrowser.source import UnsupportedSourceCapabilityError
 from metabrowser.tree_filter import TreeFilter
 from metabrowser.view_routes import decode_view_logical_path
 
@@ -97,7 +98,7 @@ def split_git_container_wire(wire: str) -> tuple[GitPath, str]:
 
 
 def _listing_entry(entry: GitTreeEntry) -> dict[str, Any]:
-    return {
+    payload: dict[str, Any] = {
         "path": entry.path.to_wire(),
         "display": entry.path.display(),
         "mode": entry.mode,
@@ -106,6 +107,9 @@ def _listing_entry(entry: GitTreeEntry) -> dict[str, Any]:
         "gitlink": entry.is_gitlink,
         "oid": entry.oid,
     }
+    if entry.size is not None:
+        payload["size"] = entry.size
+    return payload
 
 
 def _nav_tree_type(entry: GitTreeEntry) -> Literal["dir", "file", "symlink"]:
@@ -131,6 +135,8 @@ def _nav_tree_node(entry: GitTreeEntry) -> dict[str, Any]:
         ext = _logical_ext(entry.path)
         if ext:
             node["logical_ext"] = ext
+    if entry.size is not None:
+        node["size"] = entry.size
     return node
 
 
@@ -200,6 +206,14 @@ def _views_for_kind(kind: str) -> list[dict[str, Any]]:
     return merged_views_for_kind(kind)
 
 
+def _passes_min_size(entry: GitTreeEntry, floor: int) -> bool:
+    """Keep trees so navigation remains. Unsized blobs and gitlinks drop."""
+
+    if entry.is_tree:
+        return True
+    return entry.size is not None and entry.size >= floor
+
+
 def _matches_types(path: GitPath, types: tuple[str, ...]) -> bool:
     name = _display_basename(path).lower()
     for token in types:
@@ -246,8 +260,6 @@ async def git_revision_tree(
 ) -> JSONResponse:
     """List one Git tree. ``entries`` are Git facts; ``tree`` is the SPA nav."""
 
-    if tree_filter.min_size:
-        raise UnsupportedSourceCapabilityError("min_size")
     try:
         path = _git_path_from_query(request)
     except GitPathError:
@@ -261,6 +273,8 @@ async def git_revision_tree(
         return _json(_object_unavailable_payload(exc), status_code=404)
     if tree_filter.types:
         entries = tuple(entry for entry in entries if _matches_types(entry.path, tree_filter.types))
+    if tree_filter.min_size:
+        entries = tuple(entry for entry in entries if _passes_min_size(entry, tree_filter.min_size))
     return _json(
         {
             "subject": "git_revision",

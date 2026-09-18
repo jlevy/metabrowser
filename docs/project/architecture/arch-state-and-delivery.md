@@ -121,8 +121,8 @@ promisor miss, is `object_unavailable` with lazy fetch disabled.
 `/view/` on a pin accepts a `GitPath` wire (and a patch-file container inner) and
 refuses a filesystem spelling.
 `/api/tree` on that pin keeps Git-native `entries` and also projects a SPA `tree` array
-so navigation can paint (`dir`/`file`/`symlink`, `GitPath` wires, no invented mtime,
-size, or ignore; gitlinks are files).
+so navigation can paint (`dir`/`file`/`symlink`, `GitPath` wires, `cat-file` blob sizes,
+no invented mtime or ignore; gitlinks are files and stay unsized).
 A Git tree `/api/file` envelope is SPA `folder` chrome (`git_kind` stays `tree`) with no
 invented directory aggregates.
 A direct-child README blob sets `readme_path` to its GitPath wire and mounts Overview;

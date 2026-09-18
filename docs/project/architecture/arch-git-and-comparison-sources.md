@@ -13,7 +13,9 @@ extension plugin kinds, structured parsed, and agent-log JSONL. Markdown and wik
 on a pin resolve to `GitPath` wires.
 A Git tree folder with a README mounts Overview.
 SPA path chrome decodes GitPath wires to display names.
-Omitted size, mtime, and directory aggregates leave tally chrome empty rather than
+Blob listings carry `cat-file` info sizes so `min_size` can filter; trees and gitlinks
+stay unsized.
+Omitted mtime and directory aggregates leave tally chrome empty rather than
 pending. LFS pointers stay stored bytes; a promisor miss is `object_unavailable` with
 lazy fetch disabled.
 Serving acquired Git remains later.
@@ -249,8 +251,8 @@ enforces the declared size bound, drains the complete frame, and restarts the pr
 after cancellation or framing failure.
 Implicit promisor fetch is disabled.
 Tree entries have Git mode, kind, and object ID; blob size comes from `cat-file` info at
-read time, not from `ls-tree -l`. They do not invent filesystem mtimes, ignore state,
-ownership, or watcher events.
+listing and read time, not from `ls-tree -l`. They do not invent filesystem mtimes,
+ignore state, ownership, or watcher events.
 Their `GitPath` identity is raw byte segments with a lossless route codec and separate
 display text; it never becomes a host filesystem path.
 A patch-file container inner is that `GitPath` `g1-` prefix plus a host inner path, not
@@ -271,7 +273,9 @@ A blob the tree names but the store lacks, including a promisor miss with
 `/view/` on that subject accepts a `GitPath` wire, optionally plus a patch-file
 container inner, and refuses a filesystem spelling.
 `/api/tree` keeps Git-native `entries` and also projects a SPA `tree` array
-(`dir`/`file`/`symlink`, `GitPath` wires, no mtime/size/ignore); gitlinks are files.
+(`dir`/`file`/`symlink`, `GitPath` wires, `cat-file` blob sizes, no mtime/ignore);
+gitlinks are files and stay unsized.
+`min_size` filters sized blobs and keeps trees.
 A Git tree `/api/file` envelope is SPA `folder` chrome (`git_kind` stays `tree`) with no
 invented directory aggregates.
 A direct-child README blob sets `readme_path` to its GitPath wire and mounts Overview;

@@ -11,8 +11,10 @@ JSON/YAML/frontmatter bytes, structured parsed, agent-log JSONL, and
 ``GitPath`` wire on that pin. ``/api/tree`` also projects a SPA ``tree``
 array of GitPath nav nodes. A Git tree ``/api/file`` envelope is SPA
 ``folder`` chrome. A direct-child README blob mounts Overview; treemap stays
-off. SPA path chrome decodes GitPath wires to display names. Omitted size,
-mtime, and dir facts leave tally chrome empty rather than pending.
+off. SPA path chrome decodes GitPath wires to display names. Blob listings
+carry ``cat-file`` info sizes so ``min_size`` can filter; trees and gitlinks
+have no size. Omitted mtime and dir aggregates leave tally chrome empty
+rather than pending.
 Markdown and wiki destinations encode authored segments
 as GitPath wires. An LFS pointer is the stored pointer bytes;
 a blob the tree names but the store lacks is ``object_unavailable`` with
@@ -26,7 +28,7 @@ import base64
 import threading
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager, suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Final, Literal
 
@@ -174,6 +176,7 @@ class GitTreeEntry:
     mode: str
     kind: GitEntryKind
     oid: str
+    size: int | None = None
 
     @property
     def is_tree(self) -> bool:
@@ -223,6 +226,54 @@ class _BatchObjectReader:
         if not isinstance(result, _ObjectInfo):
             raise GitBatchProtocolError("info transaction returned a body")
         return result
+
+    async def info_many(self, oids: tuple[str, ...]) -> dict[str, _ObjectInfo | None]:
+        """One flush for many ``info`` commands. A missing object is ``None``."""
+
+        unique: list[str] = []
+        seen: set[str] = set()
+        for oid in oids:
+            require_full_oid(oid)
+            if oid not in seen:
+                seen.add(oid)
+                unique.append(oid)
+        if not unique:
+            return {}
+        try:
+            return await self._info_many_inner(tuple(unique))
+        except asyncio.CancelledError:
+            await self._poison()
+            raise
+        except (BrokenPipeError, ConnectionResetError, asyncio.IncompleteReadError) as exc:
+            await self._poison()
+            raise GitBatchProtocolError("cat-file actor framing failed") from exc
+        except GitBatchProtocolError:
+            await self._poison()
+            raise
+        except Exception:
+            await self._poison()
+            raise
+
+    async def _info_many_inner(self, oids: tuple[str, ...]) -> dict[str, _ObjectInfo | None]:
+        await self._ensure()
+        proc = self._proc
+        writer = None if proc is None else proc.stdin
+        reader = None if proc is None else proc.stdout
+        if proc is None or writer is None or reader is None:
+            raise GitBatchProtocolError("cat-file actor has no pipes")
+        for oid in oids:
+            writer.write(f"info {oid}\n".encode("ascii"))
+        writer.write(b"flush\n")
+        await writer.drain()
+        found: dict[str, _ObjectInfo | None] = {}
+        for oid in oids:
+            header = await _read_header(reader)
+            parts = header.split(b" ")
+            if len(parts) == 2 and parts[1] == b"missing":
+                found[oid] = None
+                continue
+            found[oid] = _parse_info_header(oid, header)
+        return found
 
     async def read_blob(self, oid: str, *, max_blob_bytes: int) -> bytes:
         info = await self.info(oid)
@@ -630,8 +681,31 @@ class GitTreeSource:
             policy=ACQUISITION_POLICY,
         )
         entries = _parse_ls_tree(payload, parent=parent_path)
+        entries = await self._attach_blob_sizes(entries)
         self._trees[tree_oid] = entries
         return entries
+
+    async def _attach_blob_sizes(
+        self, entries: tuple[GitTreeEntry, ...]
+    ) -> tuple[GitTreeEntry, ...]:
+        """Fill blob sizes from ``cat-file`` info. Trees and gitlinks stay unsized."""
+
+        blob_oids = tuple(entry.oid for entry in entries if entry.is_blob)
+        if not blob_oids:
+            return entries
+        async with self._pool.checkout() as reader:
+            infos = await reader.info_many(blob_oids)
+        sized: list[GitTreeEntry] = []
+        for entry in entries:
+            if not entry.is_blob:
+                sized.append(entry)
+                continue
+            info = infos.get(entry.oid)
+            if info is None or info.kind != "blob":
+                sized.append(entry)
+                continue
+            sized.append(replace(entry, size=info.size))
+        return tuple(sized)
 
 
 class GitRevisionSubject:
