@@ -5,7 +5,7 @@ title: "HTML P3: path-shaped raw route so relative references resolve"
 kind: task
 status: in_progress
 priority: 1
-version: 5
+version: 6
 spec_path: docs/project/specs/active/plan-2026-08-06-html-rendering-and-trust-model.md
 delegate: unknown@cursor
 labels: []
@@ -16,7 +16,7 @@ parent_id: is-01kzcvm6cpe5b8sb9b9n3gb16g
 hold: null
 hold_until: null
 created_at: 2026-08-07T00:58:17.732Z
-updated_at: 2026-09-18T04:30:09.201Z
+updated_at: 2026-09-18T04:42:59.595Z
 started_at: 2026-09-18T04:27:04.031Z
 extensions:
   linear:
@@ -27,4 +27,4 @@ Add GET /raw/{path:path} alongside the existing query form, sharing one resoluti
 
 ## Notes
 
-Draft https://github.com/jlevy/metabrowser/pull/154 stacked on #153. GET /raw/{path} shares the query-form handler and sandbox headers. Query form stays (inventory identities). Path form uses filesystem addresses like /view. Bead stays open for review; do not merge.
+Draft https://github.com/jlevy/metabrowser/pull/154 stacked on #153. GET /raw/{path} shares the query-form handler and sandbox headers. Query form stays (inventory identities). Path form uses filesystem addresses like /view. Route-index golden now lists /raw/{path:path} (aabdc5d5). Bead stays open for review; do not merge.
