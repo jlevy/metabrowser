@@ -26,7 +26,8 @@ envelopes emit that tail as ``ext``; ``logical_ext`` is only the inner
 extension of a compressed name on tree nodes. Blob file envelopes omit
 compressed identity because blobs are stored bytes with no gzip smudge.
 Markdown blob envelopes include parsed YAML ``frontmatter`` and
-``frontmatter_error``. ``depth`` nests SPA children the way filesystem
+``frontmatter_error``. Text blobs use the same first-window and highlight
+bound as filesystem listings. ``depth`` nests SPA children the way filesystem
 listings do (default 2) and emits a lazy sentinel past the cap. SPA path chrome decodes GitPath wires to
 display names. Blob listings
 carry ``cat-file`` info sizes so ``min_size`` can filter; trees and gitlinks

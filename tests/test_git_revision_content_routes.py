@@ -1,4 +1,4 @@
-"""File, raw, tree, KPress, patch containers, binary chunks, structured parsed, agent-log, blob kinds, SPA nav tree, folder chrome, Markdown GitPath links, Git folder Overview, listing blob sizes, Git-native rollup, catalog, index status, tree filter tallies, tree summary, filtered tree totals, logical-extension type matching, ignore-noop, tree depth, tree-ext, file-envelope ext, and markdown frontmatter honor a pin."""
+"""File, raw, tree, KPress, patch containers, binary chunks, structured parsed, agent-log, blob kinds, SPA nav tree, folder chrome, Markdown GitPath links, Git folder Overview, listing blob sizes, Git-native rollup, catalog, index status, tree filter tallies, tree summary, filtered tree totals, logical-extension type matching, ignore-noop, tree depth, tree-ext, file-envelope ext, markdown frontmatter, and text preview windows honor a pin."""
 
 from __future__ import annotations
 
@@ -28,7 +28,12 @@ from metabrowser.git.tree_source import (
     git_revision_subject,
 )
 from metabrowser.server import app
-from metabrowser.settings import INVENTORY_MAX_FILES, TEXT_PREVIEW_REQUEST_MAX_BYTES
+from metabrowser.settings import (
+    INVENTORY_MAX_FILES,
+    SYNTAX_HIGHLIGHT_MAX_BYTES,
+    TEXT_PREVIEW_CHUNK_BYTES,
+    TEXT_PREVIEW_REQUEST_MAX_BYTES,
+)
 from metabrowser.source import attach_subject, reset_source_session
 from metabrowser.wire_models import validate_rollup_node
 
@@ -298,6 +303,11 @@ def test_git_file_raw_tree_honor_gitpath_without_filesystem_facts(tmp_path: Path
             assert "size_uncompressed" not in file_body
             assert "frontmatter" not in file_body
             assert "frontmatter_error" not in file_body
+            assert file_body["bytes_read"] == 6
+            assert file_body["content_preview_limit"] == SYNTAX_HIGHLIGHT_MAX_BYTES
+            assert file_body["content_max_preview_limit"] == TEXT_PREVIEW_REQUEST_MAX_BYTES
+            assert file_body["highlight_disabled"] is False
+            assert file_body["content_truncated"] is False
             assert "mtime" not in file_body
             assert "mtime_hash" not in file_body
             assert str(store) not in file_resp.text
@@ -877,6 +887,57 @@ def test_git_file_and_kpress_surface_markdown_frontmatter(
             assert broken_render.status_code == 200
             assert seen["frontmatter"] is None
             assert seen["frontmatter_error"]
+
+    asyncio.run(_run())
+
+
+def test_git_text_preview_windows_match_filesystem_highlight_bound(tmp_path: Path) -> None:
+    work = tmp_path / "work"
+    store = tmp_path / "store.git"
+    work.mkdir()
+    _git(work, "init", "-q", "-b", "main")
+    (work / "big.md").write_text("a" * (SYNTAX_HIGHLIGHT_MAX_BYTES + 123), encoding="utf-8")
+    (work / "big.txt").write_text("a" * (TEXT_PREVIEW_CHUNK_BYTES + 123), encoding="utf-8")
+    _git(work, "add", "-A")
+    _git(work, "commit", "-qm", "preview")
+    commit = _git(work, "rev-parse", "HEAD").decode().strip()
+    _git(tmp_path, "clone", "--bare", "--template=", str(work), str(store), env_root=tmp_path)
+
+    async def _run() -> None:
+        async with _pinned_client(store, commit) as (client, _subject):
+            md = await client.get("/api/file", params={"path": _wire(b"big.md")})
+            assert md.status_code == 200
+            md_body = md.json()
+            assert md_body["type"] == "text"
+            assert md_body["content_truncated"] is True
+            assert md_body["highlight_disabled"] is False
+            assert md_body["bytes_read"] == SYNTAX_HIGHLIGHT_MAX_BYTES
+            assert len(md_body["content"]) == SYNTAX_HIGHLIGHT_MAX_BYTES
+            assert md_body["content_preview_limit"] == SYNTAX_HIGHLIGHT_MAX_BYTES
+            assert md_body["content_max_preview_limit"] == TEXT_PREVIEW_REQUEST_MAX_BYTES
+            nxt = await client.get(
+                "/api/file",
+                params={
+                    "path": _wire(b"big.md"),
+                    "offset": str(md_body["bytes_read"]),
+                    "limit": str(TEXT_PREVIEW_CHUNK_BYTES),
+                },
+            )
+            assert nxt.status_code == 200
+            nxt_body = nxt.json()
+            assert nxt_body["content_offset"] == SYNTAX_HIGHLIGHT_MAX_BYTES
+            assert nxt_body["bytes_read"] == 123
+            assert nxt_body["content_truncated"] is False
+
+            txt = await client.get("/api/file", params={"path": _wire(b"big.txt")})
+            assert txt.status_code == 200
+            txt_body = txt.json()
+            assert txt_body["content_truncated"] is True
+            assert txt_body["highlight_disabled"] is True
+            assert txt_body["bytes_read"] == TEXT_PREVIEW_CHUNK_BYTES
+            assert txt_body["content_preview_limit"] == TEXT_PREVIEW_CHUNK_BYTES
+            assert str(store) not in md.text
+            assert str(store) not in txt.text
 
     asyncio.run(_run())
 
