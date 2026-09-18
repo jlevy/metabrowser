@@ -19,6 +19,7 @@ from metabrowser.cache.acquire import (
     acquire_into_staging,
 )
 from metabrowser.cache.identity import source_identity
+from metabrowser.cache.layout import FutureLayoutFormatError
 from metabrowser.cache.locks import LockKind, held_locks
 from metabrowser.cache.reclaim import sweep_staging_and_trash
 from metabrowser.cache.urls import GitSource, classify_root_argument
@@ -29,8 +30,12 @@ from metabrowser.git.process import (
     UnsupportedGitVersionError,
     detect_git_version,
 )
+from metabrowser.home import PrivateStorageError
 
 posix_only = pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only")
+skip_as_root = pytest.mark.skipif(
+    os.geteuid() == 0, reason="root is never denied by modes, so a denial cannot be staged"
+)
 
 pytestmark = pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required")
 
@@ -66,6 +71,18 @@ def _allow_installed_git(monkeypatch: pytest.MonkeyPatch) -> tuple[int, int, int
         pytest.skip("git version is unparseable")
     monkeypatch.setattr("metabrowser.cache.acquire.require_acquisition_git", lambda: version)
     return version
+
+
+def _remove_owner_write(path: Path) -> None:
+    for root, _directories, _files in os.walk(path, topdown=False):
+        os.chmod(root, 0o500)
+    os.chmod(path, 0o500)
+
+
+def _restore_owner_write(path: Path) -> None:
+    for root, _directories, _files in os.walk(path, topdown=True):
+        os.chmod(root, 0o700)
+    os.chmod(path, 0o700)
 
 
 def _file_source(path: Path) -> GitSource:
@@ -289,3 +306,84 @@ def test_a_cache_hit_does_not_require_the_acquisition_floor(
     second = asyncio.run(acquire_file_source(source, home=home))
     assert second.store_id == first.store_id
     assert second.slug == first.slug
+
+
+@posix_only
+def test_a_cache_hit_does_not_open_the_home_for_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _allow_installed_git(monkeypatch)
+    origin = _origin(tmp_path, allow_filter=False)
+    home = tmp_path / "home"
+    source = _file_source(origin)
+    first = asyncio.run(acquire_file_source(source, home=home))
+
+    def refuse_write(home_path: Path | None = None, *, version: str | None = None) -> object:
+        raise AssertionError("a cache hit must not open the home for write")
+
+    monkeypatch.setattr(acquire_module, "open_cache", refuse_write)
+    second = asyncio.run(acquire_file_source(source, home=home))
+    assert second.store_id == first.store_id
+    assert second.slug == first.slug
+    assert second.git_dir == first.git_dir
+
+
+@posix_only
+@skip_as_root
+def test_a_cache_hit_against_a_home_without_owner_write_reuses(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _allow_installed_git(monkeypatch)
+    origin = _origin(tmp_path, allow_filter=False)
+    home = tmp_path / "home"
+    source = _file_source(origin)
+    first = asyncio.run(acquire_file_source(source, home=home))
+    _remove_owner_write(home)
+    try:
+        second = asyncio.run(acquire_file_source(source, home=home))
+        assert second.store_id == first.store_id
+        assert second.slug == first.slug
+        assert list((home / "cache" / "staging").iterdir()) == []
+    finally:
+        _restore_owner_write(home)
+
+
+@posix_only
+@skip_as_root
+def test_a_cache_miss_against_a_home_without_owner_write_does_not_fetch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _allow_installed_git(monkeypatch)
+    origin = _origin(tmp_path, allow_filter=False)
+    home = tmp_path / "home"
+    asyncio.run(acquire_file_source(_file_source(origin), home=home))
+    other = tmp_path / "other"
+    other.mkdir()
+    other_source = _file_source(_origin(other, allow_filter=False))
+    _remove_owner_write(home)
+    try:
+        with pytest.raises(PrivateStorageError):
+            asyncio.run(acquire_file_source(other_source, home=home))
+        assert list((home / "cache" / "staging").iterdir()) == []
+    finally:
+        _restore_owner_write(home)
+
+
+@posix_only
+def test_a_future_home_is_refused_before_opening_the_cache_for_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _allow_installed_git(monkeypatch)
+    origin = _origin(tmp_path, allow_filter=False)
+    home = tmp_path / "home"
+    source = _file_source(origin)
+    asyncio.run(acquire_file_source(source, home=home))
+    layout = home / "cache" / "layout.yml"
+    layout.write_text(layout.read_text(encoding="utf-8").replace("format: f01", "format: f02", 1))
+
+    def refuse_write(home_path: Path | None = None, *, version: str | None = None) -> object:
+        raise AssertionError("a future layout must not open the home for write")
+
+    monkeypatch.setattr(acquire_module, "open_cache", refuse_write)
+    with pytest.raises(FutureLayoutFormatError, match="Upgrade Metabrowser"):
+        asyncio.run(acquire_file_source(source, home=home))

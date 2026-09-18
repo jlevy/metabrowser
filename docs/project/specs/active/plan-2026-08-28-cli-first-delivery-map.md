@@ -347,7 +347,7 @@ def ensure_home(home: Path) -> Path: # creates the f01 skeleton, writes CACHEDIR
 | `reclaim.py` | Startup staging/trash sweep, trash, quarantine, store reclamation, and lease-aware object reclamation | `reclaim_staging`, `reclaim_trash`, `quarantine_entries`, `reclaim_store`, `reclaim_unreferenced_stores`, `reclaim_repository_objects` |
 | `identity.py` | Conservative source identity, provider-derived store identity, aliasing, and collision-safe slugs | `normalize_git_source`, `source_identity`, `repository_store_id`, `provider_repository_store_id`, `cache_slug` |
 | `urls.py` | Root classification, provider reducer arbitration, and terminal rejection | `classify_root_argument`, `ProviderUrlReducer`, `ReducerOutcome`, `RepositorySelection` |
-| `acquire.py` | Worktree-free staged acquisition and atomic store/alias publication | `acquire_repository`, `validate_staging_store`, `publish_store`, `publish_source_alias` |
+| `acquire.py` | Worktree-free staged acquisition and atomic store/alias publication | `acquire_file_source`, `acquire_into_staging`, `publish_from_staging` |
 | `repository_store.py` | Selected-object fetch jobs, full-OID publication, leases, convergence, and maintenance | `resolve_store`, `stage_fetch`, `publish_refs`, `lease_revision`, `converge_store`, `reclaim_objects` |
 | `selection.py` | Pure ref/path resolution and typed missing-ref requests | `resolve_selection`, `resolve_ref_path_candidates` |
 | `service.py` | One CLI/chooser orchestration result | `resolve_open_target`, `close_open_target` |
@@ -441,8 +441,8 @@ A live `metab file:// --no-serve` tryscript cannot run on ubuntu-latest today: t
 runner’s Git 2.43.0 is below the acquisition floor (2.43.7 / patched tracks), and
 distro-patched Git remains refuse.
 Until CI pins Git 2.50.1 (`mb-oueh`), acquire / reuse / staging-sweep / orphan-store
-reclaim evidence is `tests/test_cli_cache_acquire_golden.py`: the production CLI
-in-process, the floor monkeypatched, a real pack fetch.
+reclaim / read-only cache hit evidence is `tests/test_cli_cache_acquire_golden.py`: the
+production CLI in-process, the floor monkeypatched, a real pack fetch.
 Layout and future-format refusal remain `cli-api-cache.tryscript.md`. Do not add
 `<HOME>` or `<MTIME>` to `normalize.py` until a transcript emits those values; cache
 routes never report paths, and `--no-serve` does not print the home.
@@ -458,6 +458,7 @@ routes never report paths, and `--no-serve` does not print the home.
 | `cli-cache-layout.tryscript.md` | home creation, `f01` record, `CACHEDIR.TAG`, future-format refusal | Cache 1A |
 | `cli-cache-acquire.tryscript.md` | clone, publish, second open reuses with no network | Cache 1B-a |
 | `cli-cache-recover.tryscript.md` | interrupted publish quarantines; reclaim sweeps staging | Cache 1B-a |
+| `cli-cache-readonly-hit.txt` | second `--no-serve` reuses a published store against a home without owner-write | Cache 1B-a |
 | `cli-url-open.tryscript.md` | URL grammar accepts and rejects, with reasons | Cache 1B-b |
 | `cli-github-repo-open.tryscript.md` | GitHub repository URL reduces to and reuses the shared store without provider auth | Repository 2A |
 | `cli-github-branch-open.tryscript.md` | default, non-default, slash-containing, offline, and unavailable branches use immutable revision subjects without moving a checkout | Repository 2C |

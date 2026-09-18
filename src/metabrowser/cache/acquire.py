@@ -25,7 +25,7 @@ from metabrowser.cache.identity import (
     source_identity,
     store_key,
 )
-from metabrowser.cache.layout import open_cache
+from metabrowser.cache.layout import open_cache, read_config, read_layout
 from metabrowser.cache.locks import (
     CacheLock,
     LockBusyError,
@@ -64,7 +64,7 @@ from metabrowser.git.process import (
     require_acquisition_git,
     run_git,
 )
-from metabrowser.home import ensure_private_directory
+from metabrowser.home import PrivateStorageError, SharedEntryPolicy, ensure_private_directory
 
 _PROTOCOL: Final[tuple[str, ...]] = (
     "-c",
@@ -362,9 +362,13 @@ def _canonical_now() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _source_id_for_slug(home: Path, slug: str) -> str | None:
+def _source_id_for_slug(
+    home: Path, slug: str, *, shared: SharedEntryPolicy = "repair"
+) -> str | None:
     try:
-        record = read_record(home, source_record(slug, "source.yml"), REPOSITORY_SOURCE_CONTRACT_ID)
+        record = read_record(
+            home, source_record(slug, "source.yml"), REPOSITORY_SOURCE_CONTRACT_ID, shared=shared
+        )
     except FileNotFoundError:
         return None
     if not isinstance(record, RepositorySource):
@@ -589,13 +593,16 @@ def _find_published(source: GitSource, home: Path) -> PublishedSource | None:
         source.transport,
         source.normalized,
         source_id,
-        slug_owner=lambda candidate: _source_id_for_slug(home, candidate),
+        slug_owner=lambda candidate: _source_id_for_slug(home, candidate, shared="keep"),
     )
-    if _source_id_for_slug(home, slug) != source_id:
+    if _source_id_for_slug(home, slug, shared="keep") != source_id:
         return None
     try:
         alias = read_record(
-            home, source_record(slug, "store-alias.yml"), REPOSITORY_STORE_ALIAS_CONTRACT_ID
+            home,
+            source_record(slug, "store-alias.yml"),
+            REPOSITORY_STORE_ALIAS_CONTRACT_ID,
+            shared="keep",
         )
     except FileNotFoundError:
         return None
@@ -609,9 +616,11 @@ def _find_published(source: GitSource, home: Path) -> PublishedSource | None:
         raise AliasConflictError("this source already names a different store")
     key = store_key(alias.store_id)
     try:
-        store = read_record(home, store_record(key, "store.yml"), REPOSITORY_STORE_CONTRACT_ID)
+        store = read_record(
+            home, store_record(key, "store.yml"), REPOSITORY_STORE_CONTRACT_ID, shared="keep"
+        )
         state = read_record(
-            home, store_record(key, "state.yml"), REPOSITORY_STORE_STATE_CONTRACT_ID
+            home, store_record(key, "state.yml"), REPOSITORY_STORE_STATE_CONTRACT_ID, shared="keep"
         )
     except FileNotFoundError as exc:
         raise ValidationFailedError("the aliased store is missing") from exc
@@ -673,9 +682,10 @@ def publish_from_staging(staged: StagingAcquisition) -> PublishedSource:
 async def acquire_file_source(source: GitSource, *, home: Path) -> PublishedSource:
     """Return a published ``file://`` source, fetching only on a cache miss.
 
-    A hit inspects an existing home without fetching, so it does not require the
-    acquisition Git floor. A miss must pass that floor before ``open_cache``
-    creates the home.
+    A hit inspects an existing home without fetching or writing, so it does not
+    require the acquisition Git floor or owner-write on the home. A miss still
+    opens the cache (sweep, reclaim) and then fetches. A future layout is
+    refused before any write.
     """
 
     if source.transport != "file":
@@ -683,6 +693,15 @@ async def acquire_file_source(source: GitSource, *, home: Path) -> PublishedSour
             f"{source.transport} Git sources are not acquired yet ({source.normalized})"
         )
     if home.exists():
+        try:
+            layout = read_layout(home, shared="keep")
+            read_config(home, shared="keep")
+        except PrivateStorageError:
+            layout = None
+        if layout is not None:
+            found = _find_published(source, home)
+            if found is not None:
+                return found
         cache = open_cache(home)
         home = cache.home
         found = _find_published(source, home)
