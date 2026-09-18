@@ -31,8 +31,10 @@ Blob file envelopes omit compressed identity because blobs are stored bytes with
 smudge. Git markdown `/api/file` envelopes include parsed YAML `frontmatter` and
 `frontmatter_error`; KPress on a pin uses that parse rather than an empty mapping.
 Git text envelopes use the same first-window and highlight bound as filesystem listings.
-`/api/file`, `/raw`, and KPress follow in-tree relative symlink blobs; listings still
-show the symlink. `include_ignored=0` is a no-op because ignore is absent.
+`/api/file`, `/raw`, KPress, and plugin sidekicks follow in-tree relative symlink blobs;
+listings still show the symlink.
+Kind checks use the leaf path.
+`include_ignored=0` is a no-op because ignore is absent.
 `depth` nests SPA children the way filesystem listings do (default 2) and emits a lazy
 sentinel past the cap.
 LFS pointers stay stored bytes; a promisor miss is `object_unavailable` with lazy fetch
@@ -276,8 +278,9 @@ display text; it never becomes a host filesystem path.
 A patch-file container inner is that `GitPath` `g1-` prefix plus a host inner path, not
 another tree segment.
 `/api/plugin/binary/chunk` slices one blob by that identity and keys the window on the
-object id. Git blobs classify by extension, basename, sniffed adapter, and bounded JSON,
-YAML, and Markdown-frontmatter mappings parsed from blob bytes.
+object id. In-tree relative symlink blobs are followed; kind checks use the leaf path.
+Git blobs classify by extension, basename, sniffed adapter, and bounded JSON, YAML, and
+Markdown-frontmatter mappings parsed from blob bytes.
 `path_glob` stays filesystem-only.
 `/api/plugin/structured/parsed` reads one blob by that identity and keys the parse on
 the object id. `/api/file` for a `.jsonl` blob is a parsed JSONL envelope;
@@ -288,8 +291,10 @@ and is complete at once.
 `/api/index/progress`, `/api/index/meta`, and `/api/capabilities` report that same
 complete-at-once index without a watcher or invented mtime.
 `/api/rollup` on a pin answers from recursive blob names and sizes and omits mtime.
-Symlinks are not followed, gitlinks are distinct non-folder entries, and LFS pointers
-remain ordinary blobs (stored pointer bytes, no smudge).
+Listings do not follow symlinks.
+File, raw, KPress, and plugin sidekicks follow in-tree relative symlink blobs.
+Gitlinks are distinct non-folder entries, and LFS pointers remain ordinary blobs (stored
+pointer bytes, no smudge).
 A blob the tree names but the store lacks, including a promisor miss with
 `GIT_NO_LAZY_FETCH`, is `object_unavailable` and does not contact the remote.
 `/view/` on that subject accepts a `GitPath` wire, optionally plus a patch-file
@@ -324,8 +329,10 @@ Blob file envelopes omit compressed identity because blobs are stored bytes with
 smudge. Git markdown `/api/file` envelopes include parsed YAML `frontmatter` and
 `frontmatter_error`; KPress on a pin uses that parse rather than an empty mapping.
 Git text envelopes use the same first-window and highlight bound as filesystem listings.
-`/api/file`, `/raw`, and KPress follow in-tree relative symlink blobs; listings still
-show the symlink. `include_ignored=0` is a no-op because ignore is absent.
+`/api/file`, `/raw`, KPress, and plugin sidekicks follow in-tree relative symlink blobs;
+listings still show the symlink.
+Kind checks use the leaf path.
+`include_ignored=0` is a no-op because ignore is absent.
 `depth` nests SPA children the way filesystem listings do (default 2) and emits a lazy
 sentinel past the cap.
 Markdown and wiki destinations encode authored segments as `GitPath` wires; the
