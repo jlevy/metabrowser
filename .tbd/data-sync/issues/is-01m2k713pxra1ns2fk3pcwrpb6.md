@@ -5,7 +5,7 @@ title: "v0.11 repository and hosted-resource stack: land and retarget completed 
 kind: task
 status: open
 priority: 1
-version: 31
+version: 32
 spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
 delegate: claude-code@spud10.local
 labels:
@@ -24,11 +24,11 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-09-15T18:59:49.596Z
-updated_at: 2026-09-18T01:32:24.660Z
+updated_at: 2026-09-18T02:26:17.872Z
 started_at: 2026-09-16T21:24:51.532Z
 ---
 After explicit approval and after every publication bead records a green formal PR, land and retarget the v0.11 stack in dependency order: Phase 0A, 0B.1, 0B.2, 0B.3, 0C.1, 0C.2, shared repository/provider mirror design, Hosted Review 0D, repository Phase 1A, worktree-free acquisition, content-source boundary, immutable Git-tree source, untrusted-content profile, URL open, provider-job and selected-ref foundation, selected branch, provider foundation, direct PR cache, direct PR view, PR index/navigation, and anchors. Retarget each next PR to its landed base, inspect the exact new-base through HEAD diff, resolve only stacking conflicts, rerun make verify, obtain final green CI, and confirm main contains each layer. This is the sole landing owner; it never blocks constructing a later stack layer and never merges without explicit user approval.
 
 ## Notes
 
-Stack construction as of 2026-09-18: reviewed tip remains PR #140 (claude/v011-cache-format-foundation@18ec8870). Construction continues with #141 (file:// grammar, mb-dxmb) and the first mb-h51g slice (Git runner hardening) stacked on #141. Layers include #138 shared-mirror design, #139 Phase 0D, and #140 Phase 1A. Landing remains approval-gated. Trust lane mb-cun0 remains parallel and must be evaluated before mb-k900 publishes the first cache-writing acquisition layer.
+Stack construction as of 2026-09-18: reviewed tip remains PR #140 (claude/v011-cache-format-foundation@18ec8870). Construction continues with #141 (file:// grammar, mb-dxmb, CI green), #142 (Git runner, mb-h51g slice A, CI green), and #143 (file:// staging fetch, mb-kf4w). Layers include #138 shared-mirror design, #139 Phase 0D, and #140 Phase 1A. Landing remains approval-gated. Trust lane mb-cun0 remains parallel and must be evaluated before mb-k900 publishes the first cache-writing acquisition layer.

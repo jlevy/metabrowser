@@ -5,7 +5,7 @@ title: "Repository library Phase 1B-a: hardened worktree-free Git acquisition (n
 kind: task
 status: in_progress
 priority: 1
-version: 34
+version: 37
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: unknown@cursor
 labels:
@@ -27,10 +27,11 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 child_order_hints:
   - is-01m2s27ybx4dw3qde29xm6jgqn
   - is-01m2s4vpjy6j5rysn5x8ah2e03
+  - is-01m2s5c9jf071q4nbn7v8vxwxe
 hold: null
 hold_until: null
 created_at: 2026-08-11T21:19:58.653Z
-updated_at: 2026-09-18T02:17:21.758Z
+updated_at: 2026-09-18T02:26:28.834Z
 started_at: 2026-09-16T21:10:44.811Z
 extensions:
   linear:
@@ -41,4 +42,4 @@ Extend the one Git runner with core-constructed trusted command targets, version
 
 ## Notes
 
-Implementation sliced. Slice A (Git runner): PR https://github.com/jlevy/metabrowser/pull/142 HEAD bc18c718 CI green. Stacked on #141 (also green). Production version parse/admit replay git-version-gates.json; named policies; GitCommandTarget as --git-dir/--work-tree; umask 077 and stdin DEVNULL on acquisition/fetch. Distro-patched Git gate remains refuse (fixture-specified) until a later acquisition decision. mb-cun0 is not a blocker to start implementation; evaluate it before mb-k900 publishes the first cache-writing layer. Remaining slices: staging fetch+validate (file://), publish+reuse, prefetch+crash recovery, then mb-dg00 goldens + --no-serve (mb-1i98).
+Implementation sliced. Slice A (Git runner): PR https://github.com/jlevy/metabrowser/pull/142 HEAD bc18c718 CI green. Slice B (file:// staging fetch, mb-kf4w): PR https://github.com/jlevy/metabrowser/pull/143 HEAD b29447a3 stacked on #142; CI watched. Distro-patched Git gate remains refuse. mb-cun0 is not a blocker to start implementation; evaluate it before mb-k900 publishes the first cache-writing serving layer. Remaining slices: publish+reuse, prefetch+crash recovery, then mb-dg00 goldens + --no-serve (mb-1i98).
