@@ -92,11 +92,10 @@ The process serves exactly one `RepositorySubject` at a time, owned by a `Source
 advances on replacement, the content reader, navigation/index capability, and a lease
 released when the next subject attaches.
 
-Today the only subject is `AttachedFilesystemSubject`, which wraps the served folder.
-File, raw, tree, container, and event routes resolve through that subject’s
-`ContentSource`, so a later Git-tree subject can attach without those routes growing a
-second path grammar.
-`resolve_path` and `served_root` remain filesystem-only plugin helpers: they raise
+Today the attached folder is `AttachedFilesystemSubject`. A `GitRevisionSubject` can pin
+a full-OID tree over a worktree-free store; file, raw, tree, container, and event routes
+still resolve through the attached folder’s `ContentSource` until a later slice switches
+them. `resolve_path` and `served_root` remain filesystem-only plugin helpers: they raise
 `UnsupportedSourceCapabilityError` when the active subject has no folder.
 Recency, ignore, watcher, activity, and mutation are named source capabilities with the
 same typed error.

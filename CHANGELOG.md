@@ -92,7 +92,12 @@ Content source:
   filesystem-only; a non-filesystem subject raises `UnsupportedSourceCapabilityError`.
   Recency, ignore, watcher, activity, and mutation each have a typed capability gate.
   Filesystem browsing is unchanged.
-  Git revision subjects and blob reads remain later work.
+  A `GitRevisionSubject` can pin a full-OID tree over a worktree-free store: `GitPath`
+  is a lossless byte-segment identity, `GitTreeSource` lists NUL-framed trees and reads
+  size-gated blobs through exclusive `cat-file --batch-command` actors, and missing or
+  oversized objects fail before an unbounded body read.
+  File, raw, and inventory routes are not switched onto that subject yet, and acquired
+  Git is still not served.
 
 ## 0.10.0
 
