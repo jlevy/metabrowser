@@ -5,7 +5,7 @@ title: "HTML P3: path-shaped raw route so relative references resolve"
 kind: task
 status: in_progress
 priority: 1
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-08-06-html-rendering-and-trust-model.md
 delegate: unknown@cursor
 labels: []
@@ -16,7 +16,7 @@ parent_id: is-01kzcvm6cpe5b8sb9b9n3gb16g
 hold: null
 hold_until: null
 created_at: 2026-08-07T00:58:17.732Z
-updated_at: 2026-09-18T04:27:04.032Z
+updated_at: 2026-09-18T04:30:09.201Z
 started_at: 2026-09-18T04:27:04.031Z
 extensions:
   linear:
@@ -24,3 +24,7 @@ extensions:
     linked_at: 2026-08-16T08:05:43.361Z
 ---
 Add GET /raw/{path:path} alongside the existing query form, sharing one resolution and response path. Required for fidelity: with /raw?path=dir/page.html the document base is /raw, so every relative stylesheet, image, and sibling link breaks. Keep the query form (public API, live caller in the image renderer). Cover traversal, symlink escape, and percent-encoding equivalence across both routes.
+
+## Notes
+
+Draft https://github.com/jlevy/metabrowser/pull/154 stacked on #153. GET /raw/{path} shares the query-form handler and sandbox headers. Query form stays (inventory identities). Path form uses filesystem addresses like /view. Bead stays open for review; do not merge.
