@@ -22,8 +22,10 @@ tally mounts treemap; `/api/rollup` answers from that index and omits mtime.
 complete-at-once index.
 `/api/tree` carries whole-tree `extensions`, `canonical_extensions`, `type_families`,
 and `type_presets` rows, `tally_cache_status`, and a `summary` from the same index.
-LFS pointers stay stored bytes; a promisor miss is `object_unavailable` with lazy fetch
-disabled. Serving acquired Git remains later.
+`types` and `min_size` keep ancestor trees of matching blobs and emit subtree `filtered`
+totals.
+LFS pointers stay stored bytes; a promisor miss is `object_unavailable` with lazy
+fetch disabled. Serving acquired Git remains later.
 See
 [Repository Sources and Provider Mirrors](arch-repository-sources-and-provider-mirrors.md).
 
@@ -287,10 +289,10 @@ container inner, and refuses a filesystem spelling.
 Whole-tree `extensions`, `canonical_extensions`, `type_families`, and `type_presets`
 rows, `tally_cache_status`, and `summary` come from the recursive blob index; ignored
 counts are 0 because ignore is absent.
-Incomplete blob sizes omit `summary` rather than inventing 0. `min_size` filters sized
-blobs and keeps trees.
-A Git tree `/api/file` envelope is SPA `folder` chrome (`git_kind` stays `tree`) with
-recursive blob tallies and no mtime.
+Incomplete blob sizes omit `summary` rather than inventing 0. `types` and `min_size`
+keep ancestor trees of matching blobs and emit subtree `filtered` totals; empty filter
+dirs are omitted. A Git tree `/api/file` envelope is SPA `folder` chrome (`git_kind`
+stays `tree`) with recursive blob tallies and no mtime.
 A direct-child README blob sets `readme_path` to its GitPath wire and mounts Overview.
 A complete blob-size tally also mounts treemap; `/api/rollup` omits mtime.
 `/api/catalog` lists those blob names as Quick File rows.
@@ -298,7 +300,8 @@ A complete blob-size tally also mounts treemap; `/api/rollup` omits mtime.
 complete-at-once index.
 `/api/tree` carries whole-tree `extensions`, `canonical_extensions`, `type_families`,
 and `type_presets` rows, `tally_cache_status`, and a `summary` from the same index.
-Markdown and wiki destinations encode authored segments as `GitPath` wires; the
+`types` and `min_size` keep ancestor trees of matching blobs and emit subtree `filtered`
+totals. Markdown and wiki destinations encode authored segments as `GitPath` wires; the
 known-file catalog indexes the tree node’s display name, not the `g1-` token.
 SPA path chrome and copy-path decode those wires to display names; navigation identities
 stay wires. Omitted mtime leaves tally chrome empty rather than pending.

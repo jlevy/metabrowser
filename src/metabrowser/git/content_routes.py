@@ -15,7 +15,9 @@ incomplete dimension. ``/api/tree`` also carries whole-tree ``extensions``,
 banner do not wait on a filesystem walker. A complete blob-size tally also
 fills the whole-tree ``summary`` (``files``, ``size``, ignored 0/0) so the
 nav header has honest counts; incomplete sizes omit ``summary`` rather than
-inventing 0. File nav nodes include
+inventing 0. ``types`` and ``min_size`` keep ancestor trees of matching blobs
+and emit subtree ``filtered`` totals; empty filter dirs are omitted. File nav
+nodes include
 ``logical_ext`` from the display suffix.
 A Git tree ``/api/file`` envelope is SPA ``folder`` chrome (``git_kind`` stays
 ``tree``) with no invented mtime or ignore. Omitted mtime leaves
@@ -240,7 +242,7 @@ def _views_for_kind(kind: str) -> list[dict[str, Any]]:
 
 
 def _passes_min_size(entry: GitTreeEntry, floor: int) -> bool:
-    """Keep trees so navigation remains. Unsized blobs and gitlinks drop."""
+    """Unsized blobs and gitlinks drop. Trees are decided by descendants."""
 
     if entry.is_tree:
         return True
@@ -256,6 +258,98 @@ def _matches_types(path: GitPath, types: tuple[str, ...]) -> bool:
         elif name == token:
             return True
     return False
+
+
+def _blob_matches_tree_filter(
+    path: GitPath,
+    oid: str,
+    *,
+    tree_filter: TreeFilter,
+    sizes: Mapping[str, int],
+) -> bool:
+    if tree_filter.types and not _matches_types(path, tree_filter.types):
+        return False
+    if tree_filter.min_size:
+        size = sizes.get(oid)
+        if size is None or size < tree_filter.min_size:
+            return False
+    return True
+
+
+def _git_filter_active(tree_filter: TreeFilter) -> bool:
+    return bool(tree_filter.types or tree_filter.min_size)
+
+
+def _git_filtered_tally(
+    index: GitBlobIndex | None,
+    tree_filter: TreeFilter,
+    *,
+    prefix: bytes = b"",
+) -> GitTreeTally | None:
+    """Matching descendant blobs under ``prefix``. None when the index is absent."""
+
+    if index is None:
+        return None
+    files = 0
+    size = 0
+    size_known = True
+    needle = prefix + b"/" if prefix else b""
+    for name, oid in index.blobs:
+        if prefix and name != prefix and not name.startswith(needle):
+            continue
+        if not _blob_matches_tree_filter(
+            _git_path_from_relative(name),
+            oid,
+            tree_filter=tree_filter,
+            sizes=index.sizes,
+        ):
+            continue
+        files += 1
+        blob_size = index.sizes.get(oid)
+        if blob_size is None:
+            size_known = False
+        else:
+            size += blob_size
+    return GitTreeTally(files, size if size_known else None)
+
+
+def _git_entry_visible(
+    entry: GitTreeEntry,
+    tree_filter: TreeFilter,
+    index: GitBlobIndex | None,
+) -> bool:
+    """Keep trees that have a matching descendant; drop empty filter dirs."""
+
+    if not _git_filter_active(tree_filter):
+        return True
+    if entry.is_tree:
+        tally = _git_filtered_tally(index, tree_filter, prefix=entry.path.segments[-1])
+        if tally is None:
+            return True
+        return tally.total_files > 0
+    if tree_filter.types and not _matches_types(entry.path, tree_filter.types):
+        return False
+    if tree_filter.min_size:
+        return _passes_min_size(entry, tree_filter.min_size)
+    return True
+
+
+def _git_tree_filtered(
+    index: GitBlobIndex | None,
+    tree_filter: TreeFilter,
+) -> dict[str, int] | None:
+    """Subtree filter totals. Omit when sizes are incomplete."""
+
+    if not _git_filter_active(tree_filter):
+        return None
+    tally = _git_filtered_tally(index, tree_filter)
+    if tally is None or tally.total_size is None:
+        return None
+    return {
+        "files": tally.total_files,
+        "size": tally.total_size,
+        "entries": tally.total_files,
+    }
 
 
 def _query_int(request: Request, name: str, default: int) -> int:
@@ -690,34 +784,42 @@ async def git_revision_tree(
         entries = await subject.tree_source.list_tree(path)
     except GitObjectUnavailableError as exc:
         return _json(_object_unavailable_payload(exc), status_code=404)
-    if tree_filter.types:
-        entries = tuple(entry for entry in entries if _matches_types(entry.path, tree_filter.types))
-    if tree_filter.min_size:
-        entries = tuple(entry for entry in entries if _passes_min_size(entry, tree_filter.min_size))
     index = await subject.tree_source.blob_index(path)
+    if _git_filter_active(tree_filter):
+        entries = tuple(entry for entry in entries if _git_entry_visible(entry, tree_filter, index))
     root_index = index if not path.segments else await subject.tree_source.blob_index()
-    return _json(
-        {
-            "subject": "git_revision",
-            "path": path.to_wire(),
-            "display": path.display(),
-            "oid": located.oid,
-            "kind": "tree",
-            "entries": [_listing_entry(entry) for entry in entries],
-            "tree": [
-                _nav_tree_node(
-                    entry,
-                    tally=(
-                        None
-                        if index is None or not entry.is_tree
+    filtered = _git_tree_filtered(index, tree_filter)
+    payload: dict[str, Any] = {
+        "subject": "git_revision",
+        "path": path.to_wire(),
+        "display": path.display(),
+        "oid": located.oid,
+        "kind": "tree",
+        "entries": [_listing_entry(entry) for entry in entries],
+        "tree": [
+            _nav_tree_node(
+                entry,
+                tally=(
+                    None
+                    if index is None or not entry.is_tree
+                    else (
+                        _git_filtered_tally(
+                            index,
+                            tree_filter,
+                            prefix=entry.path.segments[-1],
+                        )
+                        if _git_filter_active(tree_filter)
                         else index.tally(entry.path.segments[-1])
-                    ),
-                )
-                for entry in entries
-            ],
-            **_git_tree_index_chrome(root_index),
-        }
-    )
+                    )
+                ),
+            )
+            for entry in entries
+        ],
+        **_git_tree_index_chrome(root_index),
+    }
+    if filtered is not None:
+        payload["filtered"] = filtered
+    return _json(payload)
 
 
 def _git_readme_child(
