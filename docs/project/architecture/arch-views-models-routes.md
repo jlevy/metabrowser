@@ -153,7 +153,7 @@ reservation and its invariants, is in
 
 | Route | Serves |
 | --- | --- |
-| `/api/file` | The file or folder envelope: kind, views, capability envelope, and bounded content window. A `GitRevisionSubject` uses `GitPath` wire identities and Git object facts; it does not invent mtime or ignore state |
+| `/api/file` | The file or folder envelope: kind, views, capability envelope, and bounded content window. A `GitRevisionSubject` uses `GitPath` wire identities and Git object facts; it does not invent mtime or ignore state. A patch-file container inner is a `GitPath` `g1-` prefix plus a host inner path |
 | `/api/tree` | Navigation subtrees. `types` and `min_size` work for every source that supplies them; Git tree listings have no ls-tree sizes, so `min_size` returns `unsupported_for_subject`. `recency` and `include_ignored` require those declared source capabilities and otherwise return `unsupported_for_subject` |
 | `/api/rollup` | Bounded directory rollups over the facts the active source truthfully supplies; a requested unavailable dimension returns `unsupported_for_subject` |
 | `/api/recent` | Flat newest-first matching leaves for sources with recency; unavailable for immutable Git trees rather than populated with fake mtimes |

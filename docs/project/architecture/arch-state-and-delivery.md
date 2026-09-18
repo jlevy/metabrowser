@@ -98,11 +98,13 @@ A published-store pin takes `lease_revision`, which holds the store’s shared m
 lock and a durable `refs/metabrowser/subjects/<oid>` ref.
 `maintain_store` runs `gc` and `repack` under the exclusive maintenance lock; a live
 lease makes that busy.
-Git discovery, history, refs, commit detail, file, raw, tree, diffs, and KPress honor
-that pin through `GitLocation` and `GitPath`. On a pin, `/api/plugin/diff/comparison`
-treats `HEAD` as the pinned object id.
+Git discovery, history, refs, commit detail, file, raw, tree, diffs, KPress, and
+patch-file containers honor that pin through `GitLocation` and `GitPath`. On a pin,
+`/api/plugin/diff/comparison` treats `HEAD` as the pinned object id.
 `/api/kpress/render` uses the blob object id as its cache key rather than a filesystem
-mtime. Container, event, inventory open, and serving acquired Git still wait on later
+mtime. A patch-file container inner is a `GitPath` `g1-` prefix plus a host inner path;
+the file envelope and the diff document/children hooks use that split.
+Event, inventory open, archive containers, and serving acquired Git still wait on later
 slices. `resolve_path` and `served_root` remain filesystem-only plugin helpers: they
 raise `UnsupportedSourceCapabilityError` when the active subject has no folder.
 Recency, ignore, watcher, activity, and mutation are named source capabilities with the

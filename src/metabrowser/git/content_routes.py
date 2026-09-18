@@ -1,8 +1,9 @@
 """GitPath adapters for ``/api/tree``, ``/api/file``, ``/raw``, and KPress.
 
 These honor a pinned ``GitRevisionSubject`` without a checkout, index, or
-invented filesystem fact. Serving acquired Git from the CLI remains a
-later bead.
+invented filesystem fact. Patch-file container inners use a GitPath prefix
+plus a host inner path. Serving acquired Git from the CLI remains a later
+bead.
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ from starlette.responses import JSONResponse, PlainTextResponse, Response
 from metabrowser import kpress_adapter
 from metabrowser.content_sniff import ContentClass, classify_prefix
 from metabrowser.file_extensions import BROWSER_IMAGE_EXTS, BROWSER_TEXT_EXTS
-from metabrowser.file_kinds import VIEW_REGISTRY, classify_by_ext
+from metabrowser.file_kinds import classify_by_ext
 from metabrowser.git.tree_source import (
     GitBlobTooLargeError,
     GitObjectUnavailableError,
@@ -27,15 +28,36 @@ from metabrowser.git.tree_source import (
     GitRevisionSubject,
     GitTreeEntry,
 )
+from metabrowser.plugin_api import MAX_CONTAINER_INNER_DEPTH
 from metabrowser.settings import TEXT_PREVIEW_CHUNK_BYTES, TEXT_PREVIEW_REQUEST_MAX_BYTES
 from metabrowser.source import UnsupportedSourceCapabilityError
 from metabrowser.tree_filter import TreeFilter
 
 _NOT_FOUND = {"error": "Not found"}
+_PATCH_EXTS = (".patch", ".diff")
 
 
 def _git_path_from_query(request: Request) -> GitPath:
     return GitPath.from_wire(request.query_params.get("path", ""))
+
+
+def split_git_container_wire(wire: str) -> tuple[GitPath, str]:
+    """Split a request identity into a GitPath prefix and a container inner path.
+
+    ``g1-`` tokens are the Git tree address. Anything after the last
+    contiguous ``g1-`` prefix is a virtual inner path owned by a container
+    blob, not another tree segment.
+    """
+
+    if wire == "":
+        return GitPath.root(), ""
+    parts = wire.split("/")
+    cut = 0
+    while cut < len(parts) and parts[cut].startswith("g1-"):
+        cut += 1
+    if cut == 0:
+        raise GitPathError("GitPath wire tokens must use the g1- role prefix")
+    return GitPath.from_wire("/".join(parts[:cut])), "/".join(parts[cut:])
 
 
 def _listing_entry(entry: GitTreeEntry) -> dict[str, Any]:
@@ -73,10 +95,10 @@ def _logical_ext(path: GitPath) -> str:
 
 
 def _views_for_kind(kind: str) -> list[dict[str, Any]]:
-    views = [dict(item) for item in VIEW_REGISTRY.get(kind, [])]
-    if views and not any(item.get("default") for item in views):
-        views[0] = {**views[0], "default": True}
-    return views
+    # Plugin kinds such as diff live in manifests, not VIEW_REGISTRY.
+    from metabrowser.server import _views_for_kind as merged_views_for_kind
+
+    return merged_views_for_kind(kind)
 
 
 def _matches_types(path: GitPath, types: tuple[str, ...]) -> bool:
@@ -234,13 +256,56 @@ def _blob_file_payload(entry: GitTreeEntry, body: bytes, request: Request) -> di
     return payload
 
 
+def _patch_container_payload(entry: GitTreeEntry, *, wire: str, inner: str) -> dict[str, Any]:
+    ext = _logical_ext(entry.path)
+    return {
+        "subject": "git_revision",
+        "type": "text",
+        "kind": "diff",
+        "views": _views_for_kind("diff"),
+        "path": wire,
+        "display": entry.path.display(),
+        "container": entry.path.to_wire(),
+        "container_inner": inner,
+        "ext": ext,
+        "size": 0,
+        "mode": entry.mode,
+        "git_kind": entry.kind,
+        "symlink": False,
+        "gitlink": False,
+        "oid": entry.oid,
+        "content": "",
+        "content_offset": 0,
+        "content_bytes": 0,
+        "bytes_read": 0,
+        "content_truncated": False,
+    }
+
+
 async def git_revision_file(request: Request, subject: GitRevisionSubject) -> JSONResponse:
     """File or tree envelope for one GitPath. No mtime or ignore state."""
 
+    wire = request.query_params.get("path", "")
     try:
-        path = _git_path_from_query(request)
+        path, inner = split_git_container_wire(wire)
     except GitPathError:
         return _json(_NOT_FOUND, status_code=404)
+    if inner:
+        if inner.count("/") + 1 > MAX_CONTAINER_INNER_DEPTH:
+            return _json(_NOT_FOUND, status_code=404)
+        try:
+            entry = await subject.tree_source.resolve_path(path)
+            if (
+                entry is None
+                or not entry.is_blob
+                or entry.is_symlink
+                or entry.is_gitlink
+                or _logical_ext(entry.path) not in _PATCH_EXTS
+            ):
+                return _json(_NOT_FOUND, status_code=404)
+        except GitObjectUnavailableError:
+            return _json(_NOT_FOUND, status_code=404)
+        return _json(_patch_container_payload(entry, wire=wire, inner=inner))
     try:
         entry = await subject.tree_source.resolve_path(path)
         if entry is None:
@@ -384,4 +449,5 @@ __all__ = [
     "git_revision_kpress_render",
     "git_revision_raw",
     "git_revision_tree",
+    "split_git_container_wire",
 ]
