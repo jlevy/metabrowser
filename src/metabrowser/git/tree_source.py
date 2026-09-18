@@ -5,9 +5,9 @@ does not check out, index, branch, or invent filesystem facts. Batch
 ``cat-file`` actors are pooled per store (at most
 :data:`MAX_BATCH_READERS_PER_STORE` in one process). Git discovery,
 history, refs, commit detail, file, raw, tree, diffs, KPress, patch-file
-containers, binary byte chunks, extension plugin kinds, structured parsed,
-and agent-log JSONL honor a pinned revision; serving acquired Git stays on a
-later bead.
+containers, binary byte chunks, plugin kinds from identity and bounded
+JSON/YAML/frontmatter bytes, structured parsed, and agent-log JSONL honor a
+pinned revision; serving acquired Git stays on a later bead.
 """
 
 from __future__ import annotations

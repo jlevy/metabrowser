@@ -33,6 +33,9 @@ from metabrowser.plugin_loader.classify import (
     build_classifier,
     classify_identity,
     collect_folder_markers,
+    frontmatter_from_bytes,
+    json_mapping_from_bytes,
+    yaml_mapping_from_bytes,
 )
 from metabrowser.plugin_loader.discovery import (
     LoadedPlugin,
@@ -442,7 +445,7 @@ def test_classifier_priority_wins(tmp_path: Path) -> None:
     assert classifier(_ctx(f)) == "report"
 
 
-def test_classify_identity_matches_ext_and_skips_content_predicates() -> None:
+def test_classify_identity_matches_ext_adapter_and_content_predicates() -> None:
     rules = [
         CompiledKindRule(
             rule=KindRule(
@@ -491,6 +494,24 @@ def test_classify_identity_matches_ext_and_skips_content_predicates() -> None:
         ),
         CompiledKindRule(
             rule=KindRule(
+                id="report",
+                match=KindMatch(ext=".md", frontmatter_has_key="report"),
+                priority=100,
+            ),
+            plugin_name="reports-md",
+            discovery_index=6,
+        ),
+        CompiledKindRule(
+            rule=KindRule(
+                id="spec",
+                match=KindMatch(ext=".yaml", yaml_has_key="kind"),
+                priority=100,
+            ),
+            plugin_name="specs",
+            discovery_index=7,
+        ),
+        CompiledKindRule(
+            rule=KindRule(
                 id="marker",
                 match=KindMatch(folder_marker="pyproject.toml"),
                 priority=0,
@@ -506,8 +527,46 @@ def test_classify_identity_matches_ext_and_skips_content_predicates() -> None:
         classify_identity(rules, ext=".jsonl", basename="events.jsonl", adapter="claude")
         == "agent-log"
     )
+    assert (
+        classify_identity(
+            rules,
+            ext=".json",
+            basename="resources.json",
+            json_top_level={"schema": "example.resources/v1"},
+        )
+        == "analysis-report"
+    )
+    assert (
+        classify_identity(rules, ext=".json", basename="resources.json", json_top_level={"x": 1})
+        == "structured"
+    )
+    assert (
+        classify_identity(
+            rules,
+            ext=".md",
+            basename="note.md",
+            frontmatter={"report": True},
+        )
+        == "report"
+    )
     assert classify_identity(rules, ext=".md", basename="note.md") is None
+    assert (
+        classify_identity(rules, ext=".yaml", basename="spec.yaml", yaml_top_level={"kind": "x"})
+        == "spec"
+    )
     assert classify_identity(rules, ext="", basename="pyproject.toml") == "marker"
+
+
+def test_blob_content_mappings_from_bytes() -> None:
+    assert json_mapping_from_bytes(b'{"name": "pin"}') == {"name": "pin"}
+    assert json_mapping_from_bytes(b'["not", "an", "object"]') is None
+    assert (
+        json_mapping_from_bytes(b'{"x":"' + (b"y" * _JSON_CLASSIFICATION_MAX_BYTES) + b'"}') is None
+    )
+    assert yaml_mapping_from_bytes(b"kind: spec\ncount: 1\n") == {"kind": "spec", "count": 1}
+    assert yaml_mapping_from_bytes(b"- not a mapping\n") is None
+    assert frontmatter_from_bytes(b"---\nreport: true\n---\nbody\n") == {"report": True}
+    assert frontmatter_from_bytes(b"# no frontmatter\n") is None
 
 
 def test_classifier_returns_none_when_nothing_matches(tmp_path: Path) -> None:
