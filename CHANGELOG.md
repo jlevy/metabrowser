@@ -153,8 +153,10 @@ Content source:
   `/api/tree` `depth` nests SPA children the way filesystem listings do (default 2) and
   emits a lazy sentinel past the cap; `depth=0` returns chrome without a listing.
   The SPA hides Modified within: recency still has no honest mtime and remains
-  `unsupported_for_subject`. `/api/stream` still returns `unsupported_for_subject`
-  rather than the lifespan filesystem inventory.
+  `unsupported_for_subject`. Git SPA file nodes emit `ext` as that compound-tail
+  extension; `logical_ext` is only the inner extension of a compressed name
+  (`events.jsonl.gz` is `ext=.jsonl.gz` and `logical_ext=.jsonl`). `/api/stream` still
+  returns `unsupported_for_subject` rather than the lifespan filesystem inventory.
   A Git LFS pointer blob is the stored pointer bytes, with no smudge filter.
   A blob the tree names but the store lacks, including a promisor miss, is
   `object_unavailable` with `GIT_NO_LAZY_FETCH` and does not contact the remote.

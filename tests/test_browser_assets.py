@@ -30,8 +30,8 @@ def test_hover_prefetch_skips_expensive_file_types() -> None:
     assert "FILE_PREFETCH_HOVER_DELAY_MS" in js
     assert "FILE_PREFETCH_MAX_CONCURRENT" in js
     # Logical-ext-aware JSONL skip (covers both `.jsonl` and `.jsonl.gz`
-    # once the server attaches `data-logical-ext`).
-    assert "item.dataset.logicalExt || getExt(path)" in js
+    # once the server attaches `data-logical-ext` or `data-ext`).
+    assert "item.dataset.logicalExt || item.dataset.ext || getExt(path)" in js
     assert 'ext !== ".jsonl"' in js
     assert "AbortController" in js
 
