@@ -1,4 +1,4 @@
-"""File, raw, tree, KPress, patch containers, binary chunks, structured parsed, agent-log, blob kinds, SPA nav tree, folder chrome, Markdown GitPath links, Git folder Overview, listing blob sizes, Git-native rollup, catalog, and index status honor a pin."""
+"""File, raw, tree, KPress, patch containers, binary chunks, structured parsed, agent-log, blob kinds, SPA nav tree, folder chrome, Markdown GitPath links, Git folder Overview, listing blob sizes, Git-native rollup, catalog, index status, and tree filter tallies honor a pin."""
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ from metabrowser.git.tree_source import (
     git_revision_subject,
 )
 from metabrowser.server import app
-from metabrowser.settings import TEXT_PREVIEW_REQUEST_MAX_BYTES
+from metabrowser.settings import INVENTORY_MAX_FILES, TEXT_PREVIEW_REQUEST_MAX_BYTES
 from metabrowser.source import attach_subject, reset_source_session
 from metabrowser.wire_models import validate_rollup_node
 
@@ -1007,6 +1007,36 @@ def test_git_index_status_is_complete_without_mtime_or_watcher(tmp_path: Path) -
             assert caps_body["events"]["stream"] == "off"
             assert caps_body["events"]["reason"] == "git-revision-no-watcher"
             assert str(store) not in caps.text
+
+    asyncio.run(_run())
+
+
+def test_git_tree_exposes_extension_tallies_without_ignored_or_mtime(tmp_path: Path) -> None:
+    store, commit = _build_store(tmp_path)
+
+    async def _run() -> None:
+        async with _pinned_client(store, commit) as (client, _subject):
+            tree = await client.get("/api/tree")
+            assert tree.status_code == 200
+            body = tree.json()
+            assert body["tally_cache_status"] == "done"
+            assert body["tally_cache_max_files"] == INVENTORY_MAX_FILES
+            assert "recency_tallies" not in body
+            assert "oldest_mtime_ns" not in body
+            rows = {row[0]: (row[1], row[2]) for row in body["extensions"]}
+            assert rows[".bin"] == (2, 0)
+            assert rows[".md"] == (1, 0)
+            assert rows[".json"] == (1, 0)
+            assert rows[".txt"] == (1, 0)
+            assert "" not in rows
+            assert str(store) not in tree.text
+
+            docs = await client.get("/api/tree", params={"path": _wire(b"docs")})
+            assert docs.status_code == 200
+            docs_body = docs.json()
+            assert docs_body["tally_cache_status"] == "done"
+            assert {row[0]: (row[1], row[2]) for row in docs_body["extensions"]} == rows
+            assert str(store) not in docs.text
 
     asyncio.run(_run())
 

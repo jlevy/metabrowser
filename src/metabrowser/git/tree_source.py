@@ -15,7 +15,8 @@ blob-size tally also mounts treemap; ``/api/rollup`` answers from the same
 recursive index and omits mtime. ``/api/catalog`` lists those blob names
 as Quick File rows. ``/api/index/progress``, ``/api/index/meta``, and
 ``/api/capabilities`` report that complete-at-once index without a watcher
-or invented mtime. SPA path chrome decodes GitPath wires to
+or invented mtime. ``/api/tree`` also carries whole-tree ``extensions``
+rows and ``tally_cache_status`` from that index. SPA path chrome decodes GitPath wires to
 display names. Blob listings
 carry ``cat-file`` info sizes so ``min_size`` can filter; trees and gitlinks
 have no blob size. Recursive ``ls-tree -r`` plus ``cat-file`` info fills

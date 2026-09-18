@@ -139,6 +139,9 @@ Content source:
   an empty truncated snapshot rather than a partial list.
   `/api/index/progress`, `/api/index/meta`, and `/api/capabilities` report that same
   complete-at-once index without a watcher or invented mtime; events stay off.
+  `/api/tree` carries whole-tree `extensions` rows (`[ext, tracked, 0]`) and
+  `tally_cache_status` from that index so the type filter and truncation banner do not
+  wait on a filesystem walker.
   `/api/stream` still returns `unsupported_for_subject` rather than the lifespan
   filesystem inventory.
   A Git LFS pointer blob is the stored pointer bytes, with no smudge filter.
