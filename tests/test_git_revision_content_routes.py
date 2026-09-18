@@ -383,7 +383,8 @@ def test_git_tree_projects_spa_nav_nodes(tmp_path: Path) -> None:
             assert "mtime" not in by_name["docs"]
             assert by_name["README.md"]["type"] == "file"
             assert by_name["README.md"]["path"] == _wire(b"README.md")
-            assert by_name["README.md"]["logical_ext"] == ".md"
+            assert by_name["README.md"]["ext"] == ".md"
+            assert "logical_ext" not in by_name["README.md"]
             assert by_name["README.md"]["size"] == 6
             assert by_name["link"]["type"] == "symlink"
             assert by_name["link"]["size"] == 9
@@ -680,6 +681,7 @@ def test_git_tree_matches_logical_extensions_not_name_suffix(tmp_path: Path) -> 
     (work / "README.md").write_text("hello\n", encoding="utf-8")
     (work / "notmd").write_text("nope\n", encoding="utf-8")
     (work / "bundle.min.js").write_text("x\n", encoding="utf-8")
+    (work / "events.jsonl.gz").write_bytes(b"x\n")
     _git(work, "add", "-A")
     _git(work, "commit", "-qm", "compound")
     commit = _git(work, "rev-parse", "HEAD").decode().strip()
@@ -691,8 +693,15 @@ def test_git_tree_matches_logical_extensions_not_name_suffix(tmp_path: Path) -> 
             assert tree.status_code == 200
             body = tree.json()
             by_name = {node["name"]: node for node in body["tree"]}
-            assert by_name["bundle.min.js"]["logical_ext"] == ".min.js"
+            assert by_name["bundle.min.js"]["ext"] == ".min.js"
+            assert "logical_ext" not in by_name["bundle.min.js"]
+            assert "ext" not in by_name["notmd"]
             assert "logical_ext" not in by_name["notmd"]
+            gz = by_name["events.jsonl.gz"]
+            assert gz["ext"] == ".jsonl.gz"
+            assert gz["logical_ext"] == ".jsonl"
+            assert gz["compressed"] is True
+            assert gz["compression"] == "gzip"
             rows = {row[0]: (row[1], row[2]) for row in body["extensions"]}
             assert rows[".min.js"] == (1, 0)
             assert ".js" not in rows
@@ -700,6 +709,7 @@ def test_git_tree_matches_logical_extensions_not_name_suffix(tmp_path: Path) -> 
             files = {file["n"]: file["e"] for file in catalog.json()["files"]}
             assert files["bundle.min.js"] == ".min.js"
             assert files["notmd"] == ""
+            assert files["events.jsonl.gz"] == ".jsonl.gz"
 
             typed_md = await client.get("/api/tree", params={"types": ".md"})
             assert typed_md.status_code == 200
