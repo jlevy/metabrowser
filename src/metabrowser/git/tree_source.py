@@ -3,8 +3,9 @@
 Reads go through a worktree-free ``RepositoryStoreTarget``. This module
 does not check out, index, branch, or invent filesystem facts. Batch
 ``cat-file`` actors are pooled per store (at most
-:data:`MAX_BATCH_READERS_PER_STORE` in one process). Route migration and
-serving acquired Git stay on later beads.
+:data:`MAX_BATCH_READERS_PER_STORE` in one process). Git discovery,
+history, refs, and commit detail honor a pinned revision; file, raw, and
+tree routes, and serving acquired Git, stay on later beads.
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ from typing import Final, Literal
 from metabrowser.git.process import (
     ACQUISITION_POLICY,
     BATCH_OBJECT_POLICY,
+    GIT_DISABLE_MAILMAP_ARGS,
     GitCommandTarget,
     GitError,
     RepositoryStoreTarget,
@@ -38,7 +40,7 @@ from metabrowser.source import (
 )
 
 _B64_ALPHABET = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")
-_MAILMAP_ARGS: Final[tuple[str, ...]] = ("-c", "mailmap.blob=", "-c", "mailmap.file=")
+_MAILMAP_ARGS = GIT_DISABLE_MAILMAP_ARGS
 _BATCH_ARGS: Final[tuple[str, ...]] = (
     *_MAILMAP_ARGS,
     "cat-file",
@@ -484,6 +486,10 @@ class GitTreeSource:
         self._pool_released = False
         self._trees: dict[str, tuple[GitTreeEntry, ...]] = {}
 
+    @property
+    def target(self) -> RepositoryStoreTarget:
+        return self._target
+
     def resolve(self, identity: str) -> ContentHandle | None:
         """Sync cache lookup. Walks use :meth:`resolve_path`."""
 
@@ -642,6 +648,10 @@ class GitRevisionSubject:
     @property
     def tree_source(self) -> GitTreeSource:
         return self._content
+
+    @property
+    def command_target(self) -> RepositoryStoreTarget:
+        return self._content.target
 
     async def aclose(self) -> None:
         await self._content.aclose()
