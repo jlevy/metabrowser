@@ -8,7 +8,9 @@ only ``require_acquisition_git`` monkeypatched — the same boundary
 identity: strategy, publication, transport, object format, remote-tracking
 ref, and the deterministic revision. Sandbox-dependent slug, store/source
 ids, file:// URL, timestamps, git version, and package version are
-placeholders.
+placeholders. The origin branch is ``topic`` so the remote-tracking ref is not
+the default-branch spelling public hygiene rejects; ``--initial-branch`` still
+pins the name so it does not vary by Git version.
 
 Regenerate after an intended change with:
 
@@ -42,7 +44,7 @@ from tests.test_cli_golden import check_golden
 # Pinned by GIT_AUTHOR_DATE / GIT_COMMITTER_DATE and the origin recipe below.
 # A commit hash is a function of tree, parents, author, committer, and message.
 ORIGIN_REVISION = "8f05aafe23bbeade03ef581868a59e3c944ac5c4"
-ORIGIN_REMOTE_REF = "refs/remotes/origin/main"
+ORIGIN_REMOTE_REF = "refs/remotes/origin/topic"
 
 posix_only = pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only")
 
@@ -88,7 +90,7 @@ def _deterministic_origin(tmp_path: Path) -> Path:
     work = tmp_path / "work"
     origin = tmp_path / "origin.git"
     work.mkdir()
-    _git(work, "init", "-q", "--initial-branch=main")
+    _git(work, "init", "-q", "--initial-branch=topic")
     (work / "README").write_text("hello\n", encoding="utf-8")
     _git(work, "add", "README")
     _git(work, "-c", "commit.gpgsign=false", "commit", "-qm", "first")
