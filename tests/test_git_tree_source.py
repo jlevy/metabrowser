@@ -179,6 +179,9 @@ def test_git_path_round_trips_invalid_utf8_and_newlines() -> None:
     assert GitPath.from_wire(wire) == path
     assert path.display().startswith("docs/")
     assert "\ufffd" in path.display()
+    assert "\n" not in path.display()
+    assert GitPath.from_segments(b"new\nline.txt").display() == "new\ufffdline.txt"
+    assert GitPath.from_segments(b"x\xff.txt").display() == "x\ufffd.txt"
     assert path.parent().segments == (b"docs", b"x\xff.txt", b"new\nline.txt")
     assert GitPath.root().to_wire() == ""
     assert GitPath.from_wire("") == GitPath.root()

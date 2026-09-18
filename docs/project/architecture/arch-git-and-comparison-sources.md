@@ -12,9 +12,9 @@ shared cat-file pool), KPress blob renders, patch-file containers, binary byte c
 extension plugin kinds, structured parsed, agent-log JSONL, and image preview.
 Markdown and wiki links on a pin resolve to `GitPath` wires.
 A Git tree folder with a README mounts Overview.
-SPA path chrome decodes GitPath wires to display names.
-Blob listings carry `cat-file` info sizes so `min_size` can filter; trees and gitlinks
-stay unsized as blobs.
+SPA path chrome decodes GitPath wires to display names; C0 and invalid UTF-8 become
+U+FFFD. Blob listings carry `cat-file` info sizes so `min_size` can filter; trees and
+gitlinks stay unsized as blobs.
 Recursive `ls-tree -r` tallies fill directory `total_files` / `total_size`. A complete
 tally mounts treemap; `/api/rollup` answers from that index and omits mtime.
 `/api/catalog` lists those blob names as Quick File rows.
@@ -275,9 +275,10 @@ Tree entries have Git mode, kind, and object ID; blob size comes from `cat-file`
 listing and read time, not from `ls-tree -l`. They do not invent filesystem mtimes,
 ignore state, ownership, or watcher events.
 Their `GitPath` identity is raw byte segments with a lossless route codec and separate
-display text; it never becomes a host filesystem path.
-A patch-file container inner is that `GitPath` `g1-` prefix plus a host inner path, not
-another tree segment.
+display text (C0 and invalid UTF-8 become U+FFFD); it never becomes a host filesystem
+path.
+A patch-file container inner is that `GitPath` `g1-` prefix plus a host inner path,
+not another tree segment.
 `/api/plugin/binary/chunk` slices one blob by that identity and keys the window on the
 object id. In-tree relative symlink blobs are followed; kind checks use the leaf path.
 Git blobs classify by extension, basename, sniffed adapter, and bounded JSON, YAML, and
@@ -339,8 +340,9 @@ Kind checks use the leaf path.
 sentinel past the cap.
 Markdown and wiki destinations encode authored segments as `GitPath` wires; the
 known-file catalog indexes the tree node’s display name, not the `g1-` token.
-SPA path chrome and copy-path decode those wires to display names; navigation identities
-stay wires. Omitted mtime leaves tally chrome empty rather than pending.
+SPA path chrome and copy-path decode those wires to display names (C0 and invalid UTF-8
+become U+FFFD); navigation identities stay wires.
+Omitted mtime leaves tally chrome empty rather than pending.
 KPress `source_path` on a pin is that wire.
 
 Views pin the full object ID before reading.

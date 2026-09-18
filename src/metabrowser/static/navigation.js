@@ -294,7 +294,12 @@
     if (!text || text.includes("\0") || text.includes("/")) {
       return null;
     }
-    return text;
+    let sanitized = "";
+    for (const ch of text) {
+      const code = ch.charCodeAt(0);
+      sanitized += code < 32 || code === 127 ? "\uFFFD" : ch;
+    }
+    return sanitized;
   }
 
   /** Decode a contiguous GitPath wire prefix. Null when this is not a GitPath identity.

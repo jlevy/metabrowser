@@ -1,4 +1,4 @@
-"""File, raw, tree, KPress, patch containers, binary chunks, structured parsed, agent-log, blob kinds, SPA nav tree, folder chrome, Markdown GitPath links, Git folder Overview, listing blob sizes, Git-native rollup, catalog, index status, tree filter tallies, tree summary, filtered tree totals, logical-extension type matching, ignore-noop, tree depth, tree-ext, file-envelope ext, markdown frontmatter, text preview windows, in-tree symlink follow, plugin-sidekick symlink follow, and image preview honor a pin."""
+"""File, raw, tree, KPress, patch containers, binary chunks, structured parsed, agent-log, blob kinds, SPA nav tree, folder chrome, Markdown GitPath links, Git folder Overview, listing blob sizes, Git-native rollup, catalog, index status, tree filter tallies, tree summary, filtered tree totals, logical-extension type matching, ignore-noop, tree depth, tree-ext, file-envelope ext, markdown frontmatter, text preview windows, in-tree symlink follow, plugin-sidekick symlink follow, image preview, and odd-name GitPaths honor a pin."""
 
 from __future__ import annotations
 
@@ -90,6 +90,17 @@ def _git(cwd: Path, *args: str, env_root: Path | None = None) -> bytes:
         env=_git_env(env_root or cwd),
     )
     return result.stdout
+
+
+def _hash_blob(work: Path, data: bytes) -> str:
+    result = subprocess.run(
+        ["git", "-C", str(work), "hash-object", "-w", "--stdin"],
+        check=True,
+        capture_output=True,
+        input=data,
+        env=_git_env(work),
+    )
+    return result.stdout.decode().strip()
 
 
 def _index_info(work: Path, records: bytes) -> None:
@@ -1174,6 +1185,72 @@ def test_git_image_file_and_raw_honor_gitpath_without_mtime(tmp_path: Path) -> N
 
             relative = await client.get("/api/file", params={"path": "pic.png"})
             assert relative.status_code == 404
+
+    asyncio.run(_run())
+
+
+def test_git_file_raw_tree_honor_newline_and_invalid_utf8_names(tmp_path: Path) -> None:
+    work = tmp_path / "work"
+    store = tmp_path / "store.git"
+    work.mkdir()
+    _git(work, "init", "-q", "-b", "main")
+    (work / "README.md").write_text("hello\n", encoding="utf-8")
+    _git(work, "add", "-A")
+    utf8_oid = _hash_blob(work, b"bytes\n")
+    newline_oid = _hash_blob(work, b"newline-name\n")
+    _index_info(
+        work,
+        b"100644 blob " + utf8_oid.encode() + b"\tx\xff.txt\x00"
+        b"100644 blob " + newline_oid.encode() + b"\tnew\nline.txt\x00",
+    )
+    _git(work, "commit", "-qm", "odd-names")
+    commit = _git(work, "rev-parse", "HEAD").decode().strip()
+    _git(tmp_path, "clone", "--bare", "--template=", str(work), str(store), env_root=tmp_path)
+
+    odd_wire = _wire(b"x\xff.txt")
+    newline_wire = _wire(b"new\nline.txt")
+
+    async def _run() -> None:
+        async with _pinned_client(store, commit) as (client, _subject):
+            tree = await client.get("/api/tree")
+            assert tree.status_code == 200
+            entries = tree.json()["entries"]
+            by_path = {entry["path"]: entry for entry in entries}
+            assert odd_wire in by_path
+            assert newline_wire in by_path
+            assert "\n" not in by_path[newline_wire]["display"]
+            assert "\ufffd" in by_path[odd_wire]["display"]
+            assert "\ufffd" in by_path[newline_wire]["display"]
+
+            odd_file = await client.get("/api/file", params={"path": odd_wire})
+            assert odd_file.status_code == 200
+            odd_body = odd_file.json()
+            assert odd_body["path"] == odd_wire
+            assert odd_body["content"] == "bytes\n"
+            assert odd_body["ext"] == ".txt"
+            assert "\n" not in odd_body["display"]
+            odd_raw = await client.get("/raw", params={"path": odd_wire})
+            assert odd_raw.content == b"bytes\n"
+
+            newline_file = await client.get("/api/file", params={"path": newline_wire})
+            assert newline_file.status_code == 200
+            newline_body = newline_file.json()
+            assert newline_body["path"] == newline_wire
+            assert newline_body["content"] == "newline-name\n"
+            assert newline_body["ext"] == ".txt"
+            assert "\n" not in newline_body["display"]
+            newline_raw = await client.get("/raw", params={"path": newline_wire})
+            assert newline_raw.content == b"newline-name\n"
+
+            catalog = await client.get("/api/catalog")
+            names = {row["p"]: row["n"] for row in catalog.json()["files"]}
+            assert names[odd_wire] == "x\ufffd.txt"
+            assert names[newline_wire] == "new\ufffdline.txt"
+            assert "\n" not in names[newline_wire]
+
+            view = await client.get(f"/view/{newline_wire}")
+            assert view.status_code == 200
+            assert str(store) not in tree.text
 
     asyncio.run(_run())
 
