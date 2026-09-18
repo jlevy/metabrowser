@@ -5,7 +5,7 @@ title: "Repository library Phase 1B-a: hardened worktree-free Git acquisition (n
 kind: task
 status: in_progress
 priority: 1
-version: 56
+version: 57
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: unknown@cursor
 labels:
@@ -37,7 +37,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-08-11T21:19:58.653Z
-updated_at: 2026-09-18T03:56:05.616Z
+updated_at: 2026-09-18T18:32:39.309Z
 started_at: 2026-09-16T21:10:44.811Z
 extensions:
   linear:
@@ -48,4 +48,10 @@ Extend the one Git runner with core-constructed trusted command targets, version
 
 ## Notes
 
-CI green through #150 (mb-5edg). Next slice shipped as draft #151 (mb-hodu, last_opened_at). Do not merge. Live tryscripts still wait on mb-oueh. Evaluate mb-cun0 before mb-k900 serves.
+Cache 1B-a #141–#151 measured as 11 small layers (711/491/460/526/178/503/521/95/297/261/151). Combined vs #140: 31 files, +3721/−309.
+
+Grouped into 2 phase branches at existing tip SHAs (no new commits):
+1. cursor/v011-cache-acquire-path-bd04 @ f369c4cf — #141–#145 grammar+runner+stage+publish+prefetch, 14 files +2066/−260, base #140
+2. cursor/v011-cache-cli-hygiene-bd04 @ dc4223a0 — #146–#151 --no-serve+goldens+floor+reclaim+readonly hit+last_opened, 26 files +1696/−90, base phase 1
+
+gh write failed (Resource not accessible by integration). ManagePullRequest missing in this session. Draft PRs not opened; #141–#151 not closed. Do not merge. Live tryscripts still wait on mb-oueh. Do not start mb-ew38.

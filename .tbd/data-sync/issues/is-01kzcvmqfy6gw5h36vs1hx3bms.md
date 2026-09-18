@@ -5,7 +5,7 @@ title: "HTML P2: capability set, --untrusted profile, and client publication"
 kind: task
 status: in_progress
 priority: 1
-version: 15
+version: 16
 spec_path: docs/project/specs/active/plan-2026-08-06-html-rendering-and-trust-model.md
 delegate: unknown@cursor
 labels:
@@ -27,7 +27,7 @@ parent_id: is-01kzcvm6cpe5b8sb9b9n3gb16g
 hold: null
 hold_until: null
 created_at: 2026-08-07T00:58:17.469Z
-updated_at: 2026-09-18T04:31:32.122Z
+updated_at: 2026-09-18T18:32:44.129Z
 started_at: 2026-09-18T04:14:57.485Z
 extensions:
   linear:
@@ -38,4 +38,8 @@ Resolve an immutable capability object before app construction. Add --no-active-
 
 ## Notes
 
-CI green: 7 checks on e50062f1cae451cdca7be88eb3f693f0304c0231 (draft https://github.com/jlevy/metabrowser/pull/153). Untrusted profile published. Bead stays open for review; do not merge. Next HTML slice is mb-4x15 stacked after path-shaped /raw.
+HTML #152–#155 measured 393/560/176/1037. Combined vs main: 43 files, +1993/−125 (<~4k), so one parallel phase on main — not mixed into cache/git.
+
+Branch pushed at existing tip SHA (no new commit): cursor/v011-html-trust-preview-bd04 @ 6a0fe8a8, base main, supersedes #152–#155 (sandbox /raw + same-origin /api, --untrusted, path-shaped /raw, html kind + preview).
+
+gh write failed (Resource not accessible by integration). ManagePullRequest missing in this session. Draft PR not opened; #152–#155 not closed. Bead stays open for review; do not merge. Do not start mb-d658.

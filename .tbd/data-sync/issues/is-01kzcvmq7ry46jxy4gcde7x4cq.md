@@ -5,7 +5,7 @@ title: "HTML P1: sandbox /raw responses and require same-origin proof on /api"
 kind: task
 status: in_progress
 priority: 1
-version: 12
+version: 13
 spec_path: docs/project/specs/active/plan-2026-08-06-html-rendering-and-trust-model.md
 delegate: unknown@cursor
 labels:
@@ -22,7 +22,7 @@ parent_id: is-01kzcvm6cpe5b8sb9b9n3gb16g
 hold: null
 hold_until: null
 created_at: 2026-08-07T00:58:17.207Z
-updated_at: 2026-09-18T04:15:02.773Z
+updated_at: 2026-09-18T18:32:43.950Z
 started_at: 2026-09-18T04:04:15.120Z
 extensions:
   linear:
@@ -33,4 +33,8 @@ Ship independently of any UI change; both halves of the content/API boundary lan
 
 ## Notes
 
-From the layer review: /api/cache/* (mb-k54c) are the first /api routes returning state from outside the served root. Both halves landed together on cursor/v011-html-raw-sandbox-bd04 (draft https://github.com/jlevy/metabrowser/pull/152). CI green: 7 checks on 5949106a828561568053b7ad773fcf0f77d69764. Unconditional CSP sandbox+nosniff on every raw_file branch; same-origin proof plus JSON Content-Type on /api. SECURITY.md rewritten to enforced guarantees. Bead stays open for review; do not merge. Next HTML slice is mb-vib1 stacked on this PR.
+HTML #152–#155 measured 393/560/176/1037. Combined vs main: 43 files, +1993/−125 (<~4k), so one parallel phase on main — not mixed into cache/git.
+
+Branch pushed at existing tip SHA (no new commit): cursor/v011-html-trust-preview-bd04 @ 6a0fe8a8, base main, supersedes #152–#155 (sandbox /raw + same-origin /api, --untrusted, path-shaped /raw, html kind + preview).
+
+gh write failed (Resource not accessible by integration). ManagePullRequest missing in this session. Draft PR not opened; #152–#155 not closed. Bead stays open for review; do not merge. Do not start mb-d658.
