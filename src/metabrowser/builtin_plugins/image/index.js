@@ -19,7 +19,11 @@
     const image = container.ownerDocument.createElement("img");
     image.setAttribute("class", "file-image");
     image.setAttribute("src", `/raw?path=${encodeURIComponent(ctx.path)}`);
-    image.setAttribute("alt", ctx.path);
+    // Navigation identity stays the GitPath wire; alt is the display name.
+    const route = window.MetabrowserNavigationRoute;
+    const alt =
+      route && typeof route.displayPath === "function" ? route.displayPath(ctx.path) : ctx.path;
+    image.setAttribute("alt", alt);
     container.replaceChildren(image);
 
     let disposed = false;

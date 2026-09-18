@@ -127,6 +127,7 @@ envelopes omit compressed identity because blobs are stored bytes with no gzip s
 Git markdown envelopes include parsed YAML `frontmatter` and `frontmatter_error`; KPress
 on a pin uses that parse.
 Git text envelopes use the same first-window and highlight bound as filesystem listings.
+A Git image blob is SPA `image` chrome; `/raw` serves the stored bytes.
 `/api/file`, `/raw`, KPress, and plugin sidekicks follow in-tree relative symlink blobs.
 `include_ignored=0` is a no-op because ignore is absent.
 The JSONL stream still returns `unsupported_for_subject` instead of the lifespan folder.
