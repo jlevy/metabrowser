@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 
+from metabrowser.diff.adapters.base import DiffSourceError
 from metabrowser.diff.adapters.git import GitDiffSource
 from metabrowser.diff.apply import apply_change_set
 from metabrowser.diff.format import (
@@ -190,3 +191,40 @@ def test_store_location_honors_the_pin_not_store_head(
         )
     )
     assert str(store) not in json.dumps(document)
+
+
+def test_store_location_content_reads_through_the_batch_pool(
+    repo: tuple[Path, str, str], tmp_path: Path
+) -> None:
+    root, base, target = repo
+    store = tmp_path / "store.git"
+    git(root.parent, "clone", "--bare", "--template=", str(root), str(store))
+    location = GitLocation.revision(repository_store_target(git_dir=store), target)
+    source = GitDiffSource(location)
+    worktree = GitDiffSource(root)
+
+    async def _run() -> None:
+        resolved = await source.resolve({"left": base, "right": target})
+        manifest = await source.manifest(resolved)
+        modified = _by_new_path(manifest)["a.py"]
+        assert modified.new is not None and modified.new.content.oid is not None
+        body = b"".join([chunk async for chunk in source.content(resolved, modified.id, "new")])
+        expected = git(root, "cat-file", "blob", modified.new.content.oid)
+        assert body == expected
+        wt_resolved = await worktree.resolve({"left": base, "right": target})
+        wt_manifest = await worktree.manifest(wt_resolved)
+        wt_modified = _by_new_path(wt_manifest)["a.py"]
+        wt_body = b"".join(
+            [chunk async for chunk in worktree.content(wt_resolved, wt_modified.id, "new")]
+        )
+        assert wt_body == expected
+        added = _by_new_path(manifest)["new.md"]
+        with pytest.raises(DiffSourceError):
+            async for _chunk in source.content(resolved, added.id, "old"):
+                pass
+        with pytest.raises(DiffSourceError, match="no file"):
+            async for _chunk in source.content(resolved, "missing", "new"):
+                pass
+        assert str(store) not in body.decode("utf-8", "replace")
+
+    asyncio.run(_run())

@@ -44,7 +44,19 @@ from metabrowser.diff.format import (
     SourceInfo,
     Totals,
 )
-from metabrowser.git.process import GitError, GitLocation, as_location, run_git_at
+from metabrowser.git.process import (
+    GitError,
+    GitLocation,
+    RepositoryStoreTarget,
+    as_location,
+    run_git_at,
+)
+from metabrowser.git.tree_source import (
+    GitBlobTooLargeError,
+    GitObjectUnavailableError,
+    GitPathError,
+    read_store_blob,
+)
 
 MAX_MANIFEST_FILES = 2000
 """Manifest cap. A 2000-file change set is far past reviewable; beyond it
@@ -104,6 +116,7 @@ class GitDiffSource:
     A filesystem location is a working-tree repository. A revision
     location is a worktree-free store pin. ``HEAD`` on a pin is that
     object id, not the store's ambient HEAD. Neither form checks out.
+    Store ``content`` reads go through the shared cat-file pool.
     """
 
     name = "git"
@@ -469,6 +482,12 @@ class GitDiffSource:
             ),
         )
 
+    async def _read_blob(self, oid: str) -> bytes:
+        target = self._location.target
+        if isinstance(target, RepositoryStoreTarget):
+            return await read_store_blob(target, oid)
+        return await run_git_at(["cat-file", "blob", oid], self._location)
+
     async def content(
         self, resolved: ResolvedComparison, file_id: str, side: str
     ) -> AsyncIterator[bytes]:
@@ -479,5 +498,10 @@ class GitDiffSource:
         entry = change.old if side == "old" else change.new
         if entry is None or entry.content.kind is not ContentRefKind.git_object:
             raise DiffSourceError(f"file {file_id!r} has no {side} git content")
-        blob = await run_git_at(["cat-file", "blob", str(entry.content.oid)], self._location)
+        try:
+            blob = await self._read_blob(str(entry.content.oid))
+        except GitBlobTooLargeError as exc:
+            raise DiffSourceError(str(exc)) from exc
+        except (GitObjectUnavailableError, GitPathError, GitError) as exc:
+            raise DiffSourceError(f"file {file_id!r} has no {side} git content") from exc
         yield blob
