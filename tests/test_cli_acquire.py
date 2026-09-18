@@ -17,9 +17,17 @@ from metabrowser.git.process import (
     acquisition_allowed,
     detect_git_version,
 )
-from tests.test_cache_acquire import _allow_installed_git, _origin
+from tests.test_cache_acquire import (
+    _allow_installed_git,
+    _origin,
+    _remove_owner_write,
+    _restore_owner_write,
+)
 
 posix_only = pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only")
+skip_as_root = pytest.mark.skipif(
+    os.geteuid() == 0, reason="root is never denied by modes, so a denial cannot be staged"
+)
 
 pytestmark = pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required")
 
@@ -166,3 +174,45 @@ def test_installed_git_below_the_floor_is_refused_by_no_serve(
     assert isinstance(result.exception, CLIError)
     assert "unsupported Git version" in str(result.exception)
     assert not home.exists()
+
+
+@posix_only
+@skip_as_root
+def test_no_serve_reuses_a_cache_hit_when_the_home_has_no_owner_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = _isolate_home(tmp_path, monkeypatch)
+    url = _file_url(_origin(tmp_path, allow_filter=False))
+    first = runner.invoke(_app, [url, "--no-serve"])
+    assert first.exit_code == 0, first.output
+    _remove_owner_write(home)
+    try:
+        second = runner.invoke(_app, [url, "--no-serve"])
+        assert second.exit_code == 0, second.output
+        assert second.output == first.output
+        assert list((home / STAGING).iterdir()) == []
+    finally:
+        _restore_owner_write(home)
+
+
+@posix_only
+@skip_as_root
+def test_no_serve_miss_against_a_home_without_owner_write_does_not_fetch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = _isolate_home(tmp_path, monkeypatch)
+    first_url = _file_url(_origin(tmp_path, allow_filter=False))
+    first = runner.invoke(_app, [first_url, "--no-serve"])
+    assert first.exit_code == 0, first.output
+    other = tmp_path / "other"
+    other.mkdir()
+    other_url = _file_url(_origin(other, allow_filter=False))
+    sources_before = {path.name for path in (home / SOURCES).iterdir() if path.is_dir()}
+    _remove_owner_write(home)
+    try:
+        result = runner.invoke(_app, [other_url, "--no-serve"])
+        assert isinstance(result.exception, CLIError)
+        assert list((home / STAGING).iterdir()) == []
+        assert {path.name for path in (home / SOURCES).iterdir() if path.is_dir()} == sources_before
+    finally:
+        _restore_owner_write(home)
