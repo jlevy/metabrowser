@@ -3119,9 +3119,22 @@ def _with_raw_trust_headers(response: Response) -> Response:
     return response
 
 
+def _raw_target_from_request(request: Request) -> Path | None:
+    """Resolve the file a raw request named.
+
+    The query form is the existing public API and speaks inventory identities
+    (the image renderer). The path form is a document URL, so it uses the same
+    filesystem address as ``/view``.
+    """
+
+    path_params = getattr(request, "path_params", {})
+    if "path" in path_params:
+        return _safe_path(str(path_params["path"]))
+    return _safe_path_from_identity(request.query_params.get("path", ""))
+
+
 async def raw_file(request: Request) -> Response:
-    subpath = request.query_params.get("path", "")
-    target = _safe_path_from_identity(subpath)
+    target = _raw_target_from_request(request)
     if target is None or not target.is_file():
         return _with_raw_trust_headers(PlainTextResponse("Not found", status_code=404))
 
@@ -3588,6 +3601,7 @@ routes = [
     Route("/_debug/tasks", _debug_tasks),
     Route("/_debug/inventory", _debug_inventory),
     Route("/raw", raw_file),
+    Route("/raw/{path:path}", raw_file),
     Route("/kpress-static/{path:path}", kpress_static_asset),
     Mount("/static", app=StaticFiles(directory=STATIC_DIR), name="static"),
     # Read-only git history, kept as its own collection in

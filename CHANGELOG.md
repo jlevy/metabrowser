@@ -20,6 +20,11 @@ Content trust:
   header). State-changing methods require `Content-Type: application/json`, so a
   cross-site form POST cannot reach `POST /api/kpress/export`.
 
+- `GET /raw/{path}` serves the same bytes as `GET /raw?path=…`, so relative stylesheets,
+  images, and sibling links in a browsed HTML file resolve under `/raw/`. The query form
+  stays; it is the public API the image renderer uses.
+  Both shapes share one resolver and the same sandbox headers.
+
 - `--untrusted` (`METAB_UNTRUSTED=1`) is the conservative content-trust profile: it
   disables active content and keeps mutations off.
   `--no-active-content` (`METAB_ACTIVE_CONTENT=0`) drops `allow-scripts` from the `/raw`

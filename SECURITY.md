@@ -59,7 +59,7 @@ KPress in its sanitized mode, which strips scripts, event-handler attributes, an
 Plugin discovery never treats the served root as a plugin source (see
 [plugin trust](docs/plugins.md)).
 
-Content responses through `/raw` are sandboxed on the wire.
+Content responses through `/raw` and `/raw/{path}` are sandboxed on the wire.
 Every raw response — including gzip passthrough, SVG, HTML, and error bodies — carries
 `Content-Security-Policy: sandbox allow-scripts allow-popups allow-forms allow-downloads`
 and `X-Content-Type-Options: nosniff`. The sandbox assigns an opaque origin, so script

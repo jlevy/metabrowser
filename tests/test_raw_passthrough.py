@@ -58,6 +58,7 @@ class _Headers:
 class _FakeRequest:
     def __init__(self, path: str, accept_encoding: str = "") -> None:
         self.query_params = _Params({"path": path})
+        self.path_params: dict[str, str] = {}
         self.headers = _Headers({"accept-encoding": accept_encoding})
 
 

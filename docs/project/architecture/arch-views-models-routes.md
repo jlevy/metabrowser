@@ -179,7 +179,7 @@ or kind arrives with transcript evidence or the build fails.
 | `/view` | covered | `--show PATH`, `--show /view/...` | `cli-show.tryscript.md` |
 | `/commit` | covered | `--show /commit/<rev>[/<inner>]` | `cli-api-git.tryscript.md` |
 | `/api/events` | exempt | — | streaming; the response never terminates, so there is no envelope to pin |
-| `/raw` | exempt | — | asset serving; the response is the file’s bytes and sandbox headers, covered by `tests/test_raw_passthrough.py` and `tests/test_content_trust.py` |
+| `/raw` | exempt | — | asset serving; the query form and `/raw/{path}` share one resolver and send the file’s bytes plus sandbox headers, covered by `tests/test_raw_passthrough.py`, `tests/test_content_trust.py`, and `tests/test_raw_path_route.py` |
 | `/_debug/tasks` | exempt | — | opt-in diagnostic, not a surface the browser reads |
 | `/_debug/inventory` | exempt | — | opt-in diagnostic; its work counters carry wall and CPU times, which no transcript can pin. Its payload shape is asserted by `tests/test_inventory_debug_route.py`, because the performance harness and `devtools/bench_serving.py` both parse it |
 | `/api/stream` | exempt | — | streaming; the response never terminates, so there is no envelope to pin |

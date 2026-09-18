@@ -4,8 +4,8 @@
 
 **Author:** Metabrowser maintainers
 
-**Status:** Active — `/raw` sandbox, `/api` same-origin proof, and the `--untrusted`
-capability profile have landed; preview UI remains
+**Status:** Active — `/raw` sandbox, `/api` same-origin proof, the `--untrusted`
+capability profile, and path-shaped `/raw/{path}` have landed; preview UI remains
 
 ## Overview
 
@@ -28,8 +28,8 @@ browsing a directory becomes equivalent to running its contents.
 This plan also closes two holes: `/raw` served any in-root `.html` file as `text/html`
 on the application origin with no sandbox, and `/api` accepted cross-site
 fire-and-forget requests, including one that writes beneath the served root.
-The raw sandbox, the `/api` origin check, and the `--untrusted` capability profile have
-landed; the preview UI has not.
+The raw sandbox, the `/api` origin check, the `--untrusted` capability profile, and
+path-shaped `/raw/{path}` have landed; the preview UI has not.
 
 ## Goals
 
@@ -537,8 +537,8 @@ check stops invoking.
 
 ### Phase 3: Path-shaped raw route
 
-- [ ] Add `GET /raw/{path:path}` sharing one resolution and response path with `/raw`
-- [ ] Cover traversal, symlink escape, and percent-encoding equivalence between routes
+- [x] Add `GET /raw/{path:path}` sharing one resolution and response path with `/raw`
+- [x] Cover traversal, symlink escape, and percent-encoding equivalence between routes
 
 ### Phase 4: The HTML kind and preview
 
