@@ -1,4 +1,4 @@
-"""File, raw, and tree honor GitPath on a pinned GitRevisionSubject."""
+"""File, raw, tree, KPress, and patch containers honor GitPath on a pin."""
 
 from __future__ import annotations
 
@@ -13,8 +13,15 @@ from pathlib import Path
 import pytest
 from httpx2 import ASGITransport, AsyncClient
 
+from metabrowser.diff.format import validate_document
+from metabrowser.git.content_routes import split_git_container_wire
 from metabrowser.git.process import repository_store_target
-from metabrowser.git.tree_source import GitPath, GitRevisionSubject, git_revision_subject
+from metabrowser.git.tree_source import (
+    GitPath,
+    GitPathError,
+    GitRevisionSubject,
+    git_revision_subject,
+)
 from metabrowser.server import app
 from metabrowser.settings import TEXT_PREVIEW_REQUEST_MAX_BYTES
 from metabrowser.source import attach_subject, reset_source_session
@@ -79,6 +86,21 @@ def _build_store(tmp_path: Path) -> tuple[Path, str]:
     (work / "README.md").write_text("hello\n", encoding="utf-8")
     (work / "docs").mkdir()
     (work / "docs" / "note.txt").write_text("nested\n", encoding="utf-8")
+    (work / "change.patch").write_text(
+        "diff --git a/src/app.py b/src/app.py\n"
+        "--- a/src/app.py\n"
+        "+++ b/src/app.py\n"
+        "@@ -1,1 +1,1 @@\n"
+        "-old\n"
+        "+new\n"
+        "diff --git a/gone.txt b/gone.txt\n"
+        "deleted file mode 100644\n"
+        "--- a/gone.txt\n"
+        "+++ /dev/null\n"
+        "@@ -1,1 +0,0 @@\n"
+        "-bye\n",
+        encoding="utf-8",
+    )
     (work / "100%.html").write_text("<p>ok</p>\n", encoding="utf-8")
     (work / "link").symlink_to("README.md")
     (work / "big.bin").write_bytes(b"x" * 64)
@@ -147,7 +169,15 @@ def test_git_file_raw_tree_honor_gitpath_without_filesystem_facts(tmp_path: Path
             assert "root" not in body
             assert str(store) not in tree.text
             names = {entry["display"] for entry in body["entries"]}
-            assert names >= {"README.md", "docs", "100%.html", "link", "big.bin", "vendor"}
+            assert names >= {
+                "README.md",
+                "docs",
+                "100%.html",
+                "link",
+                "big.bin",
+                "vendor",
+                "change.patch",
+            }
             for entry in body["entries"]:
                 _assert_listing_entry(entry)
             readme_entry = next(
@@ -313,5 +343,86 @@ def test_git_kpress_render_honors_gitpath_without_mtime(tmp_path: Path) -> None:
                 params={"path": _wire(b"link"), "view": "rendered"},
             )
             assert symlink.status_code == 404
+
+    asyncio.run(_run())
+
+
+def test_split_git_container_wire_keeps_g1_prefix_and_host_inner() -> None:
+    patch = GitPath.from_segments(b"docs", b"change.patch")
+    path, inner = split_git_container_wire(f"{patch.to_wire()}/src/app.py")
+    assert path == patch
+    assert inner == "src/app.py"
+    root, empty = split_git_container_wire("")
+    assert root == GitPath.root() and empty == ""
+    only, no_inner = split_git_container_wire(patch.to_wire())
+    assert only == patch and no_inner == ""
+    with pytest.raises(GitPathError):
+        split_git_container_wire("change.patch/src/app.py")
+
+
+def test_git_patch_container_honors_gitpath_prefix_and_inner(tmp_path: Path) -> None:
+    store, commit = _build_store(tmp_path)
+
+    async def _run() -> None:
+        async with _pinned_client(store, commit) as (client, _subject):
+            patch_wire = _wire(b"change.patch")
+            inner_wire = f"{patch_wire}/src/app.py"
+            envelope = await client.get("/api/file", params={"path": inner_wire})
+            assert envelope.status_code == 200
+            body = envelope.json()
+            assert body["subject"] == "git_revision"
+            assert body["kind"] == "diff"
+            assert body["container"] == patch_wire
+            assert body["container_inner"] == "src/app.py"
+            assert body["path"] == inner_wire
+            assert body["content"] == ""
+            assert "mtime" not in body
+            assert str(store) not in envelope.text
+            assert any(view["id"] == "diff" for view in body["views"])
+
+            relative = await client.get("/api/file", params={"path": "change.patch/src/app.py"})
+            assert relative.status_code == 404
+
+            not_patch = await client.get(
+                "/api/file", params={"path": f"{_wire(b'README.md')}/src/app.py"}
+            )
+            assert not_patch.status_code == 404
+
+            children = await client.get("/api/plugin/diff/children", params={"path": patch_wire})
+            assert children.status_code == 200
+            rows = children.json()["children"]
+            assert [row["path"] for row in rows] == [
+                f"{patch_wire}/src/app.py",
+                f"{patch_wire}/gone.txt",
+            ]
+            assert rows[0]["badge"] == "M" and rows[1]["badge"] == "D"
+            assert str(store) not in children.text
+
+            inner_children = await client.get(
+                "/api/plugin/diff/children", params={"path": inner_wire}
+            )
+            assert inner_children.status_code == 404
+            assert inner_children.json()["error"] == "diff_children"
+
+            document = await client.get("/api/plugin/diff/document", params={"path": inner_wire})
+            assert document.status_code == 200
+            parsed = validate_document(document.json())
+            assert parsed.manifest.totals.files == 1
+            only = parsed.manifest.files[0]
+            assert only.new is not None and only.new.path == "src/app.py"
+            assert str(store) not in document.text
+
+            missing_inner = await client.get(
+                "/api/plugin/diff/document",
+                params={"path": f"{patch_wire}/absent.py"},
+            )
+            assert missing_inner.status_code == 404
+            assert missing_inner.json()["error"] == "diff_document"
+
+            relative_doc = await client.get(
+                "/api/plugin/diff/document",
+                params={"path": "change.patch/src/app.py"},
+            )
+            assert relative_doc.status_code == 404
 
     asyncio.run(_run())

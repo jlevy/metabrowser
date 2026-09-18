@@ -115,7 +115,10 @@ Content source:
   facts rather than a cache path.
   `/api/kpress/render` reads the blob by `GitPath` and uses the object id as the render
   cache key instead of a filesystem mtime.
-  Inventory open, container, and serving acquired Git are not switched yet.
+  A patch-file container inner is a `GitPath` `g1-` prefix plus a host inner path;
+  `/api/file` returns that envelope, and the diff plugin’s document and children hooks
+  read the patch blob through the shared cat-file pool.
+  Inventory open, archive containers, and serving acquired Git are not switched yet.
 
 ## 0.10.0
 

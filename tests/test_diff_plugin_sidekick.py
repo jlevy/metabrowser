@@ -28,7 +28,7 @@ def _document(path: str) -> tuple[int, dict[str, Any]]:
     request = Mock(spec=["query_params", "headers"])
     request.query_params = _FakeQuery({"path": path})
     request.headers = {}
-    response = sidekick.document_handler(request)
+    response = asyncio.run(sidekick.document_handler(request))
     return response.status_code, json.loads(bytes(response.body))
 
 
