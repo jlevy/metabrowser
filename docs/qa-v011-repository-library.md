@@ -100,20 +100,24 @@ Do not activate `.venv` or invoke raw `python` / `pip`.
 git version
 REPO="$(pwd)"
 FILE_URL="file://${REPO}"
-QA_HOME="$(mktemp -d "${TMPDIR:-/tmp}/mb-qa-home.XXXXXX")"
+QA_HOME="${TMPDIR:-/tmp}/mb-qa-home.$$"
+# Do not mkdir. A refuse must leave this path absent.
 export METABROWSER_HOME="${QA_HOME}"
 export REPO FILE_URL
 printf 'git=%s\nrepo=%s\nfile_url=%s\nhome=%s\n' "$(git version)" "${REPO}" "${FILE_URL}" "${METABROWSER_HOME}"
+test ! -e "${METABROWSER_HOME}"
 ```
 
 `FILE_URL` must be `file://` plus an absolute POSIX path (three slashes after the scheme
 when the path is `/…`).
 
-**Pass:** `METABROWSER_HOME` is a new empty directory.
+**Pass:** `METABROWSER_HOME` is a path that does not exist yet.
 `git version` is recorded.
 The floor is **not** changed when the installed Git is `2.43.0`.
 
-**Fail:** Using `~/.metabrowser`. Rewriting a below-floor Git to “make acquire work.”
+**Fail:** Using `~/.metabrowser`. Creating the home with `mkdir` or `mktemp -d` before
+the refuse steps (that hid a write-on-refuse hole).
+Rewriting a below-floor Git to “make acquire work.”
 
 ### 0.3 Confirm the live CLI surface
 
@@ -175,10 +179,10 @@ GOLDEN_UPDATE=1 uv --config-file uv.toml run --frozen pytest tests/test_cli_git_
 ## Phase 2: Classify and Refuse (No Acquire)
 
 These steps must run even when Git is below the floor.
-After each refuse, the scratch home must still be absent or empty of a layout.
+After each refuse, the scratch home must still be absent.
 
 ```shell
-test ! -e "${METABROWSER_HOME}/CACHEDIR.TAG"
+test ! -e "${METABROWSER_HOME}"
 ```
 
 ### 2.1 https and ssh are not acquired
@@ -195,7 +199,7 @@ uv --config-file uv.toml run --frozen metab \
 **Pass:** Non-zero exit.
 stderr contains `https Git sources are not acquired yet` or
 `ssh Git sources are not acquired yet`. No `acquired:`. No `Serving`.
-`test ! -e "${METABROWSER_HOME}/CACHEDIR.TAG"` still holds.
+`test ! -e "${METABROWSER_HOME}"` still holds.
 
 **Fail:** Acquire proceeds; home is created; a 500; a wrong transport in the message
 (for example “not served” on `--no-serve`).
@@ -211,7 +215,7 @@ uv --config-file uv.toml run --frozen metab \
 
 **Pass:** Non-zero exit.
 `--show` says `https Git sources are not opened yet`. `--api /api/tree` says
-`https Git sources are not served yet`. Home still has no `CACHEDIR.TAG`.
+`https Git sources are not served yet`. `${METABROWSER_HOME}` is still absent.
 
 **Fail:** Home created; pin attached; message claims the source was acquired.
 
@@ -227,7 +231,7 @@ uv --config-file uv.toml run --frozen metab "${FILE_URL}" --check-api; echo "exi
 Serve: `file Git sources are not served yet` and the text names `--no-serve` plus “https
 and ssh stay closed.”
 Walk and `--check-api`: `file Git sources are not opened yet`. Nothing listens.
-Home still has no `CACHEDIR.TAG`.
+`${METABROWSER_HOME}` is still absent.
 
 **Fail:** A server banner, a bound port, a walk dump, a check-api pass, or a created
 home.
@@ -236,7 +240,7 @@ home.
 
 ```shell
 uv --config-file uv.toml run --frozen metab "${FILE_URL}" --no-serve; echo "exit:$?"
-test ! -e "${METABROWSER_HOME}/CACHEDIR.TAG"
+test ! -e "${METABROWSER_HOME}"
 ```
 
 On Git **2.43.7+** (or a patched newer track) this command is Phase 4, not a refuse.
@@ -245,12 +249,15 @@ On Git **2.43.0** (ubuntu default):
 **Pass:** Non-zero exit.
 stderr contains `unsupported Git version` and names the detected line plus the required
 floor (`2.43.7` / patched tracks).
-No `acquired:`. `CACHEDIR.TAG` was not created.
+No `acquired:`. The `METABROWSER_HOME` path is still absent.
 This is a **known environment limit**, not a product bug, and not a reason to lower the
 floor.
 
-**Fail:** Home created on refuse; a 500; acquire succeeds on 2.43.0; the error omits the
-version fact.
+Repeat once with an empty directory already at `METABROWSER_HOME` (the `mktemp -d`
+case). The refuse must leave that directory empty: no `cache/`, no `config.yml`.
+
+**Fail:** Home created on refuse; an empty existing directory written into an `f01`
+skeleton; a 500; acquire succeeds on 2.43.0; the error omits the version fact.
 
 ## Phase 3: Filesystem v0.10 Still Works
 
@@ -384,9 +391,10 @@ Tree has `"subject": "git_revision"` and `"kind": "tree"`. Progress has
 without a `g1-` prefix succeeding as if it were a wire (the query `path` is a wire);
 missing `--api` subject; raw cache paths in the body.
 
-## Phase 5: HTML Trust (PR #209 Worktree Only)
+## Phase 5: HTML Trust (Separate Worktree Only)
 
-#209 is based on `main`, not on #214. Use a worktree:
+The HTML-trust tip is based on `main`, not on the Git-pin tip.
+Use a worktree:
 
 ```shell
 git fetch origin cursor/v011-html-trust-preview-bd04
