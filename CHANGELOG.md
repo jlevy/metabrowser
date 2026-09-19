@@ -76,8 +76,9 @@ Repository cache:
   open. A published store no alias names is reclaimed on that same open; a live store
   lease skips it. Read routes do not reclaim.
   A `file://` acquire that the Git version floor refuses does not create the application
-  home; a cache hit still reuses a published store without fetching, including against
-  an application home the process cannot write.
+  home, including when that path already exists as an empty directory; a cache hit still
+  reuses a published store without fetching, including against an application home the
+  process cannot write.
   That hit does not open the cache or require the Git floor.
   A miss against that home fails instead of fetching.
   A future layout is still refused before any write.
