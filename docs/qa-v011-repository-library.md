@@ -27,20 +27,34 @@ or HTML follow-ons (`mb-d658`) from this runbook.
 Verify the live SHAs before a run.
 They move.
 
+The Repository Library review line is one formal GitHub stack (stack **131**) plus three
+implementation phase PRs on top of Phase 1A. Do not check out the superseded crumb
+slices (#208, #210, #211–#215).
+
 | Lane | PR | Branch | Expected tip at writing | What it adds |
 | --- | --- | --- | --- | --- |
-| Repository Library / Git pin | [#214](https://github.com/jlevy/metabrowser/pull/214) | `cursor/v011-git-revision-cli-pin-bd04` | `9ac467a8` | `file://` acquire, cache `--api`, leased default pin for `--show` and non-cache `--api` |
+| Repository Library / Git pin | phase PR on `cursor/v011-git-revision-pin-bd04` (consolidates #211–#215) | `cursor/v011-git-revision-pin-bd04` | this branch `HEAD` (confirm with `git rev-parse --short=8 HEAD`) | Complete Phase 1B-c: GitPath / leased `file://` pin for `--show` and non-cache `--api`, empty-home floor refuse, this runbook |
 | HTML trust | [#209](https://github.com/jlevy/metabrowser/pull/209) | `cursor/v011-html-trust-preview-bd04` | `8d49c73c` | `/raw` sandbox, `/api` same-origin proof, `--untrusted`, html preview kind |
 
 ```shell
-gh pr view 214 --json headRefOid,headRefName,url
+git fetch origin cursor/v011-git-revision-pin-bd04 cursor/v011-html-trust-preview-bd04
+git rev-parse --short=8 origin/cursor/v011-git-revision-pin-bd04
 gh pr view 209 --json headRefOid,headRefName,url
 ```
 
 The two tips are **not** on one stack.
-Run Repository Library steps on a checkout of #214 (or a branch based on that tip).
-Run HTML steps only from a separate worktree of #209 so the runbook branch is not
-destroyed. Do not merge #209 into the #214 line to “make HTML easier.”
+HTML trust is a parallel landable phase on `main`. It is required before **serving**
+acquired Git and is not required to browse a leased pin with `--show` / `--api`. Run
+Repository Library steps on a checkout of `cursor/v011-git-revision-pin-bd04`. Run HTML
+steps only from a separate worktree of #209 so the runbook branch is not destroyed.
+Do not merge #209 into the Git pin line to “make HTML easier.”
+
+Review stack the user walks (hosted-review named phases already in stack 131, then three
+implementation PRs):
+
+`#125 → #130 → #132 → #133 → #134 → #135 → #136 → #138 → #139 → #140 → [1B-a acquire+CLI] → #156 source → [1B-c Git pin]`
+
+Plus #209 parallel on `main`. Do not merge until `mb-n2ro`.
 
 ## Constraints That Are Part of the Product
 
@@ -81,14 +95,14 @@ destroyed. Do not merge #209 into the #214 line to “make HTML easier.”
 ### 0.1 Checkout and install
 
 ```shell
-git fetch origin cursor/v011-git-revision-cli-pin-bd04
-git checkout -B cursor/v011-qa-runbook-bd04 origin/cursor/v011-git-revision-cli-pin-bd04
+git fetch origin cursor/v011-git-revision-pin-bd04
+git checkout -B cursor/v011-git-revision-pin-bd04 origin/cursor/v011-git-revision-pin-bd04
 git rev-parse HEAD
 make install
 ```
 
-**Pass:** `HEAD` matches the live #214 SHA. `make install` uses uv only
-(`uv --config-file uv.toml sync --locked` and `npm ci` via Make).
+**Pass:** `HEAD` matches `origin/cursor/v011-git-revision-pin-bd04`. `make install` uses
+uv only (`uv --config-file uv.toml sync --locked` and `npm ci` via Make).
 Do not activate `.venv` or invoke raw `python` / `pip`.
 
 **Fail:** A different tip with no note; a second environment manager; a contaminated
