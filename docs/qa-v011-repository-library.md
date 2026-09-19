@@ -1,0 +1,513 @@
+# QA: v0.11 Repository Library and HTML Trust
+
+**Status:** Active procedure for the unreleased v0.11 Repository Library lane and the
+HTML-trust lane.
+It is not a release gate and it does not authorize serving acquired Git.
+
+This runbook is how an agent or a human QAs those two unreleased lanes: automated
+coverage first, then numbered manual checks against **this** repository, with an
+explicit pass/fail for each step and a list of what this procedure cannot prove.
+
+`metab --help` is the flag reference for the build you are running.
+The [command-line guide](command-line.md) is the other half: what each mode is for.
+Where the two disagree, believe `--help`. Test layering lives in
+[end-to-end testing](e2e-testing.md).
+Acquisition, GitPath wires, and the one-subject rule live in
+[repository sources and provider mirrors](project/architecture/arch-repository-sources-and-provider-mirrors.md).
+The HTML-trust invariant lives in
+[full-page HTML rendering and an explicit trust model](project/specs/active/plan-2026-08-06-html-rendering-and-trust-model.md)
+and [SECURITY.md](../SECURITY.md).
+
+Do not merge these lanes to `main`. Do not flatten the stack.
+Do not serve acquired Git (`mb-ew38`). Do not start archive-container work (`mb-380k`)
+or HTML follow-ons (`mb-d658`) from this runbook.
+
+## Pins
+
+Verify the live SHAs before a run.
+They move.
+
+| Lane | PR | Branch | Expected tip at writing | What it adds |
+| --- | --- | --- | --- | --- |
+| Repository Library / Git pin | [#214](https://github.com/jlevy/metabrowser/pull/214) | `cursor/v011-git-revision-cli-pin-bd04` | `9ac467a8` | `file://` acquire, cache `--api`, leased default pin for `--show` and non-cache `--api` |
+| HTML trust | [#209](https://github.com/jlevy/metabrowser/pull/209) | `cursor/v011-html-trust-preview-bd04` | `8d49c73c` | `/raw` sandbox, `/api` same-origin proof, `--untrusted`, html preview kind |
+
+```shell
+gh pr view 214 --json headRefOid,headRefName,url
+gh pr view 209 --json headRefOid,headRefName,url
+```
+
+The two tips are **not** on one stack.
+Run Repository Library steps on a checkout of #214 (or a branch based on that tip).
+Run HTML steps only from a separate worktree of #209 so the runbook branch is not
+destroyed. Do not merge #209 into the #214 line to “make HTML easier.”
+
+## Constraints That Are Part of the Product
+
+- **Isolate `METABROWSER_HOME`.** Every acquire or refuse step in this runbook uses a
+  scratch home. A refuse that creates `~/.metabrowser` is a failure.
+- **Git acquisition floor.** Acquisition requires Git **2.43.7** or a patched release on
+  a newer track (see `ACQUISITION_PATCHED_TRACKS` in `src/metabrowser/git/process.py`
+  and `tests/fixtures/repository-cache/git-version-gates.json`). Ubuntu’s
+  `git version 2.43.0` is below the floor: it must refuse acquire and **must not create
+  the application home**. Do not weaken the floor to make a local run pass.
+- **https and ssh stay closed.** They are not acquired and not opened.
+- **`file://` is the only origin this release acquires.** A bare filesystem path is
+  never rewritten into a clone URL.
+- **Nothing binds a port** on `--no-serve`, `--show`, or `--api`. “Serving” in the
+  output is a failure on those modes.
+- **Do not serve acquired Git.** `metab file://…` without `--no-serve` / `--show` /
+  `--api` must refuse.
+  Serving a **local filesystem** root (v0.10) is a different product and is in scope for
+  the regression steps below.
+- **Local overlay / `watch_backends` goldens are not the gate.**
+  `tests/test_browser_watch_backends.py` and related overlay goldens can fail on a
+  developer or agent host.
+  Do not regenerate those goldens from a local overlay.
+  CI is the gate. `make verify` remains the handoff; a local overlay miss is recorded,
+  not “fixed” by updating the pin.
+
+## Related Documentation
+
+- [Using the command line](command-line.md)
+- [End-to-end testing](e2e-testing.md)
+- [Development](development.md)
+- [Repository library and open from a Git URL](project/specs/active/plan-2026-08-11-open-repo-from-git-url.md)
+- [CLI-first delivery map](project/specs/active/plan-2026-08-28-cli-first-delivery-map.md)
+- [Views, models, and routes](project/architecture/arch-views-models-routes.md)
+
+## Phase 0: Setup
+
+### 0.1 Checkout and install
+
+```shell
+git fetch origin cursor/v011-git-revision-cli-pin-bd04
+git checkout -B cursor/v011-qa-runbook-bd04 origin/cursor/v011-git-revision-cli-pin-bd04
+git rev-parse HEAD
+make install
+```
+
+**Pass:** `HEAD` matches the live #214 SHA. `make install` uses uv only
+(`uv --config-file uv.toml sync --locked` and `npm ci` via Make).
+Do not activate `.venv` or invoke raw `python` / `pip`.
+
+**Fail:** A different tip with no note; a second environment manager; a contaminated
+`uv.lock`.
+
+### 0.2 Isolate the application home
+
+```shell
+git version
+REPO="$(pwd)"
+FILE_URL="file://${REPO}"
+QA_HOME="$(mktemp -d "${TMPDIR:-/tmp}/mb-qa-home.XXXXXX")"
+export METABROWSER_HOME="${QA_HOME}"
+export REPO FILE_URL
+printf 'git=%s\nrepo=%s\nfile_url=%s\nhome=%s\n' "$(git version)" "${REPO}" "${FILE_URL}" "${METABROWSER_HOME}"
+```
+
+`FILE_URL` must be `file://` plus an absolute POSIX path (three slashes after the scheme
+when the path is `/…`).
+
+**Pass:** `METABROWSER_HOME` is a new empty directory.
+`git version` is recorded.
+The floor is **not** changed when the installed Git is `2.43.0`.
+
+**Fail:** Using `~/.metabrowser`. Rewriting a below-floor Git to “make acquire work.”
+
+### 0.3 Confirm the live CLI surface
+
+```shell
+uv --config-file uv.toml run --frozen metab --help
+```
+
+**Pass:** Help lists `--no-serve`, `--show`, `--api`, `--walk`, and `--check-api`.
+`--no-serve` is described as acquiring a `file://` Git source without starting a server.
+
+**Fail:** Missing `--no-serve`, or help that claims https/ssh acquire or
+serve-acquired-Git.
+
+## Phase 1: Automated Tests (Repository Library Tip)
+
+These tests monkeypatch `require_acquisition_git` where a real acquire is required, so
+they can pass on ubuntu Git 2.43.0. That is deliberate.
+The manual acquire steps in Phase 4 still refuse on that Git.
+
+```shell
+uv --config-file uv.toml run --frozen pytest \
+  tests/test_cli_git_pin_golden.py \
+  tests/test_cli_acquire.py \
+  tests/test_cli_cache_acquire_golden.py \
+  tests/test_cli_no_serve_surface.py \
+  tests/test_cache_acquire.py \
+  tests/test_cache_urls.py \
+  tests/test_cache_layout.py \
+  tests/test_cache_routes.py \
+  tests/test_git_process.py \
+  tests/test_git_tree_source.py \
+  tests/test_source_session.py \
+  tests/test_cli_show_mode.py \
+  tests/test_cli_api_mode.py
+```
+
+**Pass:** Every selected test passed or was skipped for a documented reason (missing
+`git` binary; installed Git already meets the floor so the below-floor live test skips;
+non-POSIX). `tests/test_cli_git_pin_golden.py` pins `cli-git-pin.txt`: `--show README`
+on a `file://` origin, `/api/index/progress` with `"provider": "git"`, `/api/file` on
+the `g1-` wire, `/api/tree` with `"subject": "git_revision"`. Nothing in that golden
+prints `Serving`.
+
+**Fail:** A failed assertion, a 500-shaped CLI envelope, or a golden update performed
+without an intended product change.
+
+**Out of this selection on purpose:** `tests/test_browser_watch_backends.py` and overlay
+goldens.
+If you run `make verify` or `make test`, record an overlay/`watch_backends` miss
+as an environment/CI note, not as a Repository Library defect, unless the failure is a
+real assertion about acquire, pin, or refuse.
+
+Regenerate the in-process pin golden only after an intended change:
+
+```shell
+GOLDEN_UPDATE=1 uv --config-file uv.toml run --frozen pytest tests/test_cli_git_pin_golden.py
+```
+
+## Phase 2: Classify and Refuse (No Acquire)
+
+These steps must run even when Git is below the floor.
+After each refuse, the scratch home must still be absent or empty of a layout.
+
+```shell
+test ! -e "${METABROWSER_HOME}/CACHEDIR.TAG"
+```
+
+### 2.1 https and ssh are not acquired
+
+```shell
+uv --config-file uv.toml run --frozen metab \
+  'https://example.com/owner/repo.git' --no-serve; echo "exit:$?"
+uv --config-file uv.toml run --frozen metab \
+  'ssh://git@example.com/owner/repo.git' --no-serve; echo "exit:$?"
+uv --config-file uv.toml run --frozen metab \
+  'https://example.com/owner/repo.git' --api /api/cache/layout; echo "exit:$?"
+```
+
+**Pass:** Non-zero exit.
+stderr contains `https Git sources are not acquired yet` or
+`ssh Git sources are not acquired yet`. No `acquired:`. No `Serving`.
+`test ! -e "${METABROWSER_HOME}/CACHEDIR.TAG"` still holds.
+
+**Fail:** Acquire proceeds; home is created; a 500; a wrong transport in the message
+(for example “not served” on `--no-serve`).
+
+### 2.2 https and ssh are not opened as a pin
+
+```shell
+uv --config-file uv.toml run --frozen metab \
+  'https://example.com/owner/repo.git' --show README.md; echo "exit:$?"
+uv --config-file uv.toml run --frozen metab \
+  'https://example.com/owner/repo.git' --api /api/tree; echo "exit:$?"
+```
+
+**Pass:** Non-zero exit.
+`--show` says `https Git sources are not opened yet`. `--api /api/tree` says
+`https Git sources are not served yet`. Home still has no `CACHEDIR.TAG`.
+
+**Fail:** Home created; pin attached; message claims the source was acquired.
+
+### 2.3 Serve, walk, and check-api refuse Git sources
+
+```shell
+uv --config-file uv.toml run --frozen metab "${FILE_URL}" --no-open; echo "exit:$?"
+uv --config-file uv.toml run --frozen metab "${FILE_URL}" --walk; echo "exit:$?"
+uv --config-file uv.toml run --frozen metab "${FILE_URL}" --check-api; echo "exit:$?"
+```
+
+**Pass:** Non-zero exit.
+Serve: `file Git sources are not served yet` and the text names `--no-serve` plus “https
+and ssh stay closed.”
+Walk and `--check-api`: `file Git sources are not opened yet`. Nothing listens.
+Home still has no `CACHEDIR.TAG`.
+
+**Fail:** A server banner, a bound port, a walk dump, a check-api pass, or a created
+home.
+
+### 2.4 Below-floor Git refuses acquire without creating the home
+
+```shell
+uv --config-file uv.toml run --frozen metab "${FILE_URL}" --no-serve; echo "exit:$?"
+test ! -e "${METABROWSER_HOME}/CACHEDIR.TAG"
+```
+
+On Git **2.43.7+** (or a patched newer track) this command is Phase 4, not a refuse.
+On Git **2.43.0** (ubuntu default):
+
+**Pass:** Non-zero exit.
+stderr contains `unsupported Git version` and names the detected line plus the required
+floor (`2.43.7` / patched tracks).
+No `acquired:`. `CACHEDIR.TAG` was not created.
+This is a **known environment limit**, not a product bug, and not a reason to lower the
+floor.
+
+**Fail:** Home created on refuse; a 500; acquire succeeds on 2.43.0; the error omits the
+version fact.
+
+## Phase 3: Filesystem v0.10 Still Works
+
+These commands use a **local path**, not `file://`. They do not acquire.
+They may be served only if you are exercising the existing local server; this runbook
+uses data modes so nothing binds a port.
+
+```shell
+uv --config-file uv.toml run --frozen metab . --show README.md
+uv --config-file uv.toml run --frozen metab . --show AGENTS.md
+uv --config-file uv.toml run --frozen metab . --show docs/development.md
+uv --config-file uv.toml run --frozen metab . --show src/metabrowser/cli/main.py
+uv --config-file uv.toml run --frozen metab . --api /api/cache/layout
+```
+
+**Pass:**
+
+- Each `--show` prints `show:`, `route: /view/…`, a `kind`, `views`, and `model:` with
+  no `Serving`.
+- `README.md` and `AGENTS.md` are markdown (rendered + source).
+- `docs/development.md` is markdown.
+- `src/metabrowser/cli/main.py` is source.
+- `/api/cache/layout` is HTTP 200. If the scratch home was never created, the envelope
+  reports the home as `absent` and does **not** create `CACHEDIR.TAG`.
+- Exit 0 on 2xx `--api`; the body is a JSON envelope, not a traceback.
+
+**Fail:** HTTP 500; “is not a selection the browser can open”; a GitPath `g1-` wire on a
+filesystem `--show` (filesystem identity is the inventory path, not the Git wire); cache
+layout creating the home; `Serving` in the output.
+
+Optional filesystem walk (large tree; not required for the pin lane):
+
+```shell
+uv --config-file uv.toml run --frozen metab . --walk --max-depth 1
+```
+
+## Phase 4: `file://` Acquire and the Leased Pin
+
+Skip the acquire/pin commands when Phase 2.4 already refused below-floor Git.
+Record that skip.
+Still run Phase 2. Do not install a different Git to “complete” Phase 4
+on a floor-refusing host unless the operator’s job is to QA acquire itself on a patched
+Git.
+
+When the installed Git meets the floor:
+
+### 4.1 Acquire without serving
+
+```shell
+uv --config-file uv.toml run --frozen metab "${FILE_URL}" --no-serve
+uv --config-file uv.toml run --frozen metab "${FILE_URL}" --no-serve
+```
+
+**Pass:** Exit 0. Lines `acquired:`, `slug:`, `store: sha256:`, `strategy:`,
+`revision:`. No `Serving`. No cache path, pack path, or `repository.git` in the text.
+The second invocation prints the **same** identity (reuse).
+Staging is empty after publish.
+
+**Fail:** Port bind; different store on the second call without a reason; home paths in
+stdout.
+
+### 4.2 Cache `--api` after acquire
+
+```shell
+uv --config-file uv.toml run --frozen metab "${FILE_URL}" --api /api/cache/layout
+uv --config-file uv.toml run --frozen metab "${FILE_URL}" --api /api/cache/sources
+uv --config-file uv.toml run --frozen metab . --api /api/cache/sources
+```
+
+**Pass:** Each is HTTP 200. Layout `home` is `present` and `state` is `current`. Sources
+list the acquired slug as `published`. The local-root `--api` sees the same slug: cache
+routes resolve `METABROWSER_HOME`, not the served directory.
+No cache filesystem path in the envelope.
+
+**Fail:** `/api/tree` data from the origin appearing on a cache-inspect route; a 500;
+the local-root inspect missing the slug.
+
+### 4.3 `--show` on this repository’s real paths
+
+```shell
+uv --config-file uv.toml run --frozen metab "${FILE_URL}" --show README.md
+uv --config-file uv.toml run --frozen metab "${FILE_URL}" --show AGENTS.md
+uv --config-file uv.toml run --frozen metab "${FILE_URL}" --show docs/development.md
+uv --config-file uv.toml run --frozen metab "${FILE_URL}" --show src/metabrowser/cli/main.py
+```
+
+`--show` accepts a display path or an already-encoded `GitPath` wire.
+
+**Pass:** Exit 0. `show:` matches the argument.
+`route:` is `/view/` plus `g1-` tokens (unpadded base64url per segment).
+Kind/views match the blob: markdown docs, source for `main.py`. `model:` is a text
+envelope. No `Serving`. No `METABROWSER_HOME` path in stdout.
+
+**Fail:** HTTP 500; filesystem `/view/README.md` without a `g1-` wire; “not a GitPath”;
+missing subject; serve leak.
+
+### 4.4 Pin `--api` with `g1-` wires
+
+Compute the wires from the same codec the routes use:
+
+```shell
+uv --config-file uv.toml run --frozen python -c '
+from metabrowser.git.tree_source import GitPath
+for path in (
+    "README.md",
+    "AGENTS.md",
+    "docs/development.md",
+    "src/metabrowser/cli/main.py",
+):
+    print(GitPath.from_display(path).to_wire(), path)
+'
+```
+
+Then issue the routes (replace `WIRE` with each printed token):
+
+```shell
+uv --config-file uv.toml run --frozen metab "${FILE_URL}" --api "/api/file?path=WIRE"
+uv --config-file uv.toml run --frozen metab "${FILE_URL}" --api "/api/tree?depth=1"
+uv --config-file uv.toml run --frozen metab "${FILE_URL}" --api /api/index/progress
+```
+
+The README blob wire in the in-process golden (a file named `README`, not `README.md`)
+is `g1-UkVBRE1F`. That is a fixture spelling, not this repository’s `README.md`.
+
+**Pass:** HTTP 200. File envelopes have `"subject": "git_revision"`, `"path"` equal to
+the wire, a replacement-safe `"display"`, and content bytes for these text files.
+Tree has `"subject": "git_revision"` and `"kind": "tree"`. Progress has
+`"provider": "git"`, `"status": "done"`, `"complete": true`. No `Serving`.
+
+**Fail:** 500; `"subject": "filesystem"` on a pin; a display path accepted as `path=`
+without a `g1-` prefix succeeding as if it were a wire (the query `path` is a wire);
+missing `--api` subject; raw cache paths in the body.
+
+## Phase 5: HTML Trust (PR #209 Worktree Only)
+
+#209 is based on `main`, not on #214. Use a worktree:
+
+```shell
+git fetch origin cursor/v011-html-trust-preview-bd04
+git worktree add /tmp/mb-qa-html origin/cursor/v011-html-trust-preview-bd04
+cd /tmp/mb-qa-html
+git rev-parse HEAD   # expect 8d49c73c unless the live tip moved
+make install
+```
+
+Do not `git checkout` #209 inside the runbook branch.
+
+### 5.1 Automated HTML tests
+
+```shell
+uv --config-file uv.toml run --frozen pytest \
+  tests/test_html_kind.py \
+  tests/test_html_detect.py \
+  tests/test_html_preview_js.py \
+  tests/test_content_trust.py \
+  tests/test_raw_passthrough.py \
+  tests/test_raw_path_route.py \
+  tests/test_capabilities.py
+```
+
+**Pass:** All selected tests pass.
+`test_content_trust.py` pins sandbox headers on `/raw` and same-origin proof on `/api`.
+`test_html_kind.py` pins preview-vs-source defaults and `--untrusted` /
+`active_content=False` dropping preview.
+
+**Fail:** Preview registered without the html plugin; `/raw` without the opaque-origin
+sandbox; `/api` accepting a cross-site write.
+
+### 5.2 Manual filesystem HTML (not acquired Git)
+
+#209’s `--show` golden uses a throwaway `showroot`. Recreate that shape; do not serve a
+`file://` pin.
+
+```shell
+HTML_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/mb-qa-html.XXXXXX")"
+printf '<!doctype html>\n<title>Page</title>\n<p>Hello</p>\n' > "${HTML_ROOT}/page.html"
+printf '<div class="card">hello</div>\n' > "${HTML_ROOT}/card.html"
+uv --config-file uv.toml run --frozen metab "${HTML_ROOT}" --show page.html
+uv --config-file uv.toml run --frozen metab "${HTML_ROOT}" --show card.html
+uv --config-file uv.toml run --frozen metab "${HTML_ROOT}" --untrusted --show page.html
+```
+
+**Pass:** `page.html` is `kind: html`, views `preview (default), source`. `card.html` is
+`kind: html`, views `preview, source (default)`. `--untrusted` drops preview (source
+only). No `Serving` on `--show`.
+
+**Fail:** Both files default to preview; `--untrusted` still offers preview; html files
+still classified as catch-all `text`.
+
+`--untrusted` is also `METAB_UNTRUSTED=1`. `--no-active-content` /
+`METAB_ACTIVE_CONTENT=0` is the individual script switch.
+See the #209 [command-line guide](command-line.md) on that branch.
+
+### 5.3 Optional: local filesystem serve for `/raw` headers
+
+Serving **this fixture directory** is v0.10 local browse, not acquired Git.
+Skip if the environment has no way to issue HTTP. Do not point the server at a cache
+store.
+
+```shell
+# In the #209 worktree only. Stop the process when done.
+uv --config-file uv.toml run --frozen metab "${HTML_ROOT}" --no-open
+# Then GET /raw/page.html and require the opaque-origin sandbox headers
+# pinned by tests/test_content_trust.py. Do not use a browser that the
+# runbook cannot drive as a substitute for those assertions.
+```
+
+**Pass:** `/raw` carries the sandbox CSP from that test module.
+`/api` rejects cross-origin writes.
+The process is stopped.
+
+**Fail:** `text/html` on the application origin with no sandbox; `/api` invoked from the
+preview origin.
+
+A hosted UI / real-browser click-through of the preview iframe is **out of scope** for
+an agent host without a browser.
+Record it as untested, not as a pass.
+
+## Phase 6: What This Runbook Cannot Test
+
+These are documented product gaps or environment limits.
+Do **not** file beads for them unless the run shows **wrong** behavior (for example,
+https was acquired, or `file://` was served).
+
+| Item | Why it is out of scope here |
+| --- | --- |
+| https / ssh acquire | Closed until a later phase; refuse is the test |
+| Serving acquired Git | `mb-ew38`; refuse is the test |
+| Hosted-review / GitHub PR slice | Separate beads; not on these tips |
+| Archive containers | `mb-380k` |
+| Real browser HTML preview | Needs a browser; Phase 5.3 is optional and header-level |
+| Below-floor acquire success | Forbidden; ubuntu 2.43.0 must refuse |
+| Overlay / `watch_backends` local goldens | CI is the gate |
+| Landing / merging the v0.11 stack | `mb-n2ro`; this runbook does not merge |
+
+## Hunt List (File a Bead Only for a Real Defect)
+
+While executing, treat these as bugs if they happen:
+
+- Wrong refuse string (transport or mode mismatch)
+- HTTP 500 or a traceback instead of `CLIError`
+- Missing `--api` `subject` on a pin (`git_revision` expected)
+- `Serving` or a bound port on `--no-serve` / `--show` / `--api`
+- Application home created on a refuse (https, ssh, serve, walk, check-api, below-floor
+  Git)
+- Filesystem `--show` failing on this repository’s real paths
+- Pin `--show` / `--api` failing on those same paths when Git meets the floor
+- Cache inspect exposing origin objects through `/api/tree` on a cache route
+
+Honest parents: `mb-k7zy` (epic), `mb-z335` (Git-tree source / pin), `mb-3bna` (source
+session), `mb-h51g` (acquisition), `mb-cun0` (HTML `/raw` sandbox).
+Do not start `mb-ew38`, `mb-380k`, `mb-oueh` (unless the defect is exactly that bead),
+or `mb-d658`. Do not close those product beads from a QA run.
+
+Record pass/fail in the pull request or the QA bead.
+Do not rewrite this procedure into a changelog of one host’s run.
+
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
+-->
