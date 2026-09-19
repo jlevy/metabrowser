@@ -161,6 +161,25 @@ def test_no_serve_refuses_below_floor_git_without_creating_the_home(
 
 
 @posix_only
+def test_no_serve_refuses_below_floor_git_without_writing_an_empty_home(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("METABROWSER_HOME", str(home))
+
+    def refuse() -> tuple[int, int, int]:
+        raise UnsupportedGitVersionError("git version 2.39.5", "2.43.7")
+
+    monkeypatch.setattr("metabrowser.cache.acquire.require_acquisition_git", refuse)
+    url = _file_url(_origin(tmp_path, allow_filter=False))
+    result = runner.invoke(_app, [url, "--no-serve"])
+    assert isinstance(result.exception, CLIError)
+    assert "unsupported Git version" in str(result.exception)
+    assert list(home.iterdir()) == []
+
+
+@posix_only
 def test_installed_git_below_the_floor_is_refused_by_no_serve(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

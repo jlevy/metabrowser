@@ -725,8 +725,11 @@ async def acquire_file_source(source: GitSource, *, home: Path) -> PublishedSour
     A hit inspects an existing home without fetching or opening the cache, so it
     does not require the acquisition Git floor or owner-write on the home. It may
     try to record ``last_opened_at``; a failed write is dropped and the hit still
-    returns. A miss still opens the cache (sweep, reclaim) and then fetches. A
-    future layout is refused before any write.
+    returns. A miss checks the Git floor before ``open_cache``, so a below-floor
+    refuse does not create the application home or complete an empty directory
+    into an ``f01`` skeleton. A miss that is allowed to fetch then opens the
+    cache (sweep, reclaim) and fetches. A future layout is refused before any
+    write.
     """
 
     if source.transport != "file":
@@ -744,6 +747,7 @@ async def acquire_file_source(source: GitSource, *, home: Path) -> PublishedSour
             if found is not None:
                 _touch_last_opened(found)
                 return found
+        require_acquisition_git()
         cache = open_cache(home)
         home = cache.home
         found = _find_published(source, home)

@@ -351,6 +351,23 @@ def test_acquire_file_source_refuses_below_floor_git_before_creating_the_home(
 
 
 @posix_only
+def test_acquire_file_source_refuses_below_floor_git_without_writing_an_empty_home(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    origin = _origin(tmp_path, allow_filter=False)
+    home = tmp_path / "home"
+    home.mkdir()
+
+    def refuse() -> tuple[int, int, int]:
+        raise UnsupportedGitVersionError("git version 2.39.5", "2.43.7")
+
+    monkeypatch.setattr("metabrowser.cache.acquire.require_acquisition_git", refuse)
+    with pytest.raises(UnsupportedGitVersionError):
+        asyncio.run(acquire_file_source(_file_source(origin), home=home))
+    assert list(home.iterdir()) == []
+
+
+@posix_only
 def test_a_cache_hit_does_not_require_the_acquisition_floor(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
