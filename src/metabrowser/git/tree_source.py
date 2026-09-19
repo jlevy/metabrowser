@@ -40,7 +40,8 @@ chrome empty rather than pending.
 Markdown and wiki destinations encode authored segments
 as GitPath wires. An LFS pointer is the stored pointer bytes;
 a blob the tree names but the store lacks is ``object_unavailable`` with
-lazy fetch disabled. Serving acquired Git stays on a later bead.
+lazy fetch disabled. The CLI can attach a leased ``file://`` pin for ``--show`` and ``--api``.
+Serving acquired Git over a listening port stays on a later bead.
 """
 
 from __future__ import annotations
@@ -192,6 +193,30 @@ class GitPath:
             if not part.startswith("g1-"):
                 raise GitPathError("GitPath wire tokens must use the g1- role prefix")
             segments.append(_b64decode(part[3:]))
+        return cls(tuple(segments))
+
+    @classmethod
+    def from_display(cls, selection: str) -> GitPath:
+        """Slash-separated display names, or an already-encoded GitPath wire.
+
+        ``.`` and the empty string are the tree root. ``..`` is refused so a
+        CLI spelling cannot look like a host path escape. POSIX undecodable
+        bytes stay surrogate-escaped at the CLI boundary.
+        """
+
+        text = selection
+        if text in {"", ".", "/"}:
+            return cls.root()
+        parts = text.split("/")
+        if parts and all(part.startswith("g1-") for part in parts):
+            return cls.from_wire(text)
+        segments: list[bytes] = []
+        for part in parts:
+            if part in {"", ".", ".."}:
+                raise GitPathError("GitPath display segments cannot be empty, '.', or '..'")
+            if "\\" in part or "\0" in part:
+                raise GitPathError("GitPath display segments cannot contain NUL or '\\\\'")
+            segments.append(part.encode("utf-8", "surrogateescape"))
         return cls(tuple(segments))
 
     def display(self) -> str:

@@ -108,7 +108,10 @@ class InventoryRuntime:
         return version
 
     async def open_subject(self, subject: RepositorySubject) -> HostVersion:
-        """Open inventory for a navigable, indexable subject."""
+        """Open inventory for a navigable, indexable subject.
+
+        A Git pin leaves ``_root`` unset so projection invalidation stays off.
+        """
 
         version = await self.coordinator.open_subject(subject)
         root = subject.filesystem_root

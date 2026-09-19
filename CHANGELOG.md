@@ -57,9 +57,11 @@ Repository cache:
   rejected. `metab file://… --no-serve` fetches into the cache and prints slug, store
   identity, and strategy without starting a server.
   `metab file://… --api /api/cache/…` acquires as a side effect, then inspects cache
-  state against an empty throwaway root so `/api/tree` cannot expose the cache or the
-  origin. Serving, walking, and other modes refuse Git sources without acquiring, and
-  acquired content is not served.
+  state against an empty throwaway root so cache inspection cannot expose origin objects
+  through `/api/tree`. `metab file://… --show PATH` and non-cache `--api` acquire or
+  reuse the store, lease the default revision, and inspect that `GitRevisionSubject`
+  in-process. Serving, walking, and `--check-api` still refuse Git sources, and nothing
+  binds a port. https and ssh stay closed.
 
 - A classified `file://` source can be fetched into an isolated worktree-free staging
   store using Git’s pack transport (`git fetch`, not `clone --local` hardlinks).
@@ -88,9 +90,11 @@ Content source:
 - The server now has one active repository subject per process.
   An attached local folder is `AttachedFilesystemSubject`. File, raw, tree, container,
   and event routes read through its `ContentSource`, and inventory open goes through
-  `InventoryCoordinator.open_subject`. `resolve_path` and `served_root` stay
-  filesystem-only; a non-filesystem subject raises `UnsupportedSourceCapabilityError`.
-  Recency, ignore, watcher, activity, and mutation each have a typed capability gate.
+  `InventoryCoordinator.open_subject`. A Git pin is accepted there without opening a
+  filesystem walker; Git routes own the complete-at-once index.
+  `resolve_path` and `served_root` stay filesystem-only; a non-filesystem subject raises
+  `UnsupportedSourceCapabilityError`. Recency, ignore, watcher, activity, and mutation
+  each have a typed capability gate.
   Filesystem browsing is unchanged.
   A `GitRevisionSubject` can pin a full-OID tree over a worktree-free store: `GitPath`
   is a lossless byte-segment identity, `GitTreeSource` lists NUL-framed trees and reads

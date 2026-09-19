@@ -18,6 +18,7 @@ from metabrowser.plugin_api import (
     served_root,
     source_capabilities,
 )
+from metabrowser.inventory_engine.coordinator import InventoryConsistencyError
 from metabrowser.source import (
     FILESYSTEM_CAPABILITIES,
     AttachedFilesystemSubject,
@@ -178,7 +179,7 @@ def test_coordinator_open_subject_matches_filesystem_open(tmp_path: Path) -> Non
     asyncio.run(_run())
 
 
-def test_coordinator_open_subject_requires_index_and_a_filesystem_root(
+def test_coordinator_open_subject_accepts_a_git_pin_without_a_walk(
     tmp_path: Path,
 ) -> None:
     async def _run() -> None:
@@ -207,6 +208,25 @@ def test_coordinator_open_subject_requires_index_and_a_filesystem_root(
         except UnsupportedSourceCapabilityError as exc:
             assert exc.capability == "filesystem"
         assert backend.events == []
+
+        from metabrowser.git.tree_source import GIT_REVISION_CAPABILITIES
+
+        pin = _MemorySubject(
+            kind="git_revision",
+            identity="store:abc",
+            capabilities=GIT_REVISION_CAPABILITIES,
+        )
+        version = await coordinator.open_subject(pin)
+        assert version.engine.session == "git-revision:store:abc"
+        assert version.engine.semantic_fingerprint == "git_revision"
+        assert backend.events == []
+
+        await coordinator.open(tmp_path)
+        try:
+            await coordinator.open_subject(pin)
+            raise AssertionError("pin must not open over a filesystem inventory")
+        except InventoryConsistencyError as exc:
+            assert "filesystem inventory is open" in str(exc)
 
     asyncio.run(_run())
 

@@ -211,6 +211,18 @@ def test_git_path_refuses_nul_padding_and_noncanonical_atoms() -> None:
         GitPath.from_wire("g1-@@@@")
 
 
+def test_git_path_from_display_accepts_names_and_wires() -> None:
+    nested = GitPath.from_display("docs/note.txt")
+    assert nested.segments == (b"docs", b"note.txt")
+    assert GitPath.from_display(nested.to_wire()) == nested
+    assert GitPath.from_display("") == GitPath.root()
+    assert GitPath.from_display(".") == GitPath.root()
+    with pytest.raises(GitPathError):
+        GitPath.from_display("docs/../secret")
+    with pytest.raises(GitPathError):
+        GitPath.from_display("docs//note.txt")
+
+
 def test_git_revision_subject_reads_trees_and_blobs_without_a_checkout(tmp_path: Path) -> None:
     async def _run() -> None:
         store, commit = _build_store(tmp_path)
