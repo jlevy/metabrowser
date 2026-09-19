@@ -9,18 +9,18 @@
     "closed_at": null,
     "comparison": {
       "base": {
-        "availability": "present",
+        "observation": "observed",
         "oid": "0123456789abcdef0123456789abcdef01234567",
         "ref": "main",
         "repository_id": "repo-1"
       },
       "head": {
-        "availability": "present",
+        "observation": "observed",
         "oid": "89abcdef0123456789abcdef0123456789abcdef",
         "ref": "topic/provider-neutral",
         "repository_id": "repo-2"
       },
-      "merge_commit_availability": "not_requested",
+      "merge_commit_observation": "not_requested",
       "merge_commit_oid": null
     },
     "counts": {
@@ -224,12 +224,96 @@
     },
     {
       "changes": [
+        { "path": ["comparison", "head", "observation"], "value": "unavailable" },
+        { "path": ["comparison", "head", "oid"], "value": null }
+      ],
+      "expect": "valid",
+      "name": "provider-may-report-an-unavailable-head-revision"
+    },
+    {
+      "changes": [{ "path": ["comparison", "head", "oid"], "value": null }],
+      "expect": "invalid",
+      "name": "observed-revision-requires-object-id"
+    },
+    {
+      "changes": [
+        { "path": ["comparison", "head", "observation"], "value": "not_requested" }
+      ],
+      "expect": "invalid",
+      "name": "unrequested-revision-forbids-object-id"
+    },
+    {
+      "changes": [
+        { "path": ["comparison", "head", "observation"], "value": "present" }
+      ],
+      "expect": "invalid",
+      "name": "revision-observation-rejects-local-availability-state"
+    },
+    {
+      "changes": [
+        {
+          "path": ["comparison", "head"],
+          "value": {
+            "availability": "present",
+            "oid": "89abcdef0123456789abcdef0123456789abcdef",
+            "ref": "topic/provider-neutral",
+            "repository_id": "repo-2"
+          }
+        }
+      ],
+      "expect": "invalid",
+      "name": "revision-rejects-superseded-availability-field"
+    },
+    {
+      "changes": [
+        {
+          "path": ["comparison", "merge_commit_oid"],
+          "value": "abcdef0123456789abcdef0123456789abcdef01"
+        }
+      ],
+      "expect": "invalid",
+      "name": "unrequested-merge-commit-forbids-object-id"
+    },
+    {
+      "changes": [
+        { "path": ["comparison", "merge_commit_observation"], "value": "observed" }
+      ],
+      "expect": "invalid",
+      "name": "observed-merge-commit-requires-object-id"
+    },
+    {
+      "changes": [
+        {
+          "path": ["comparison"],
+          "value": {
+            "base": {
+              "observation": "observed",
+              "oid": "0123456789abcdef0123456789abcdef01234567",
+              "ref": "main",
+              "repository_id": "repo-1"
+            },
+            "head": {
+              "observation": "observed",
+              "oid": "89abcdef0123456789abcdef0123456789abcdef",
+              "ref": "topic/provider-neutral",
+              "repository_id": "repo-2"
+            },
+            "merge_commit_availability": "not_requested",
+            "merge_commit_oid": null
+          }
+        }
+      ],
+      "expect": "invalid",
+      "name": "merge-commit-rejects-superseded-availability-field"
+    },
+    {
+      "changes": [
         { "path": ["state"], "value": "merged" },
         { "path": ["closed_at"], "value": "2026-09-11T09:00:00Z" },
         { "path": ["merged_at"], "value": "2026-09-11T09:00:00.123Z" },
         {
-          "path": ["comparison", "merge_commit_availability"],
-          "value": "present"
+          "path": ["comparison", "merge_commit_observation"],
+          "value": "observed"
         },
         {
           "path": ["comparison", "merge_commit_oid"],

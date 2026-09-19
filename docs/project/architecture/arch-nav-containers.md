@@ -118,12 +118,14 @@ and refresh diagnostics visible.
 
 “Cache” does not name one interchangeable storage mechanism:
 
-1. The repository library durably owns Git objects and a pinned serving root.
-2. A provider store durably owns immutable hosted-review snapshots and current manifests
-   beside that repository.
-3. The subsystem that needs filesystem bytes owns its bounded transient projection: the
-   repository service owns detached Git worktrees and an archive plugin owns extracted
-   members, each released with the owning job or view.
+1. The repository library durably owns a shared worktree-free Git object store and
+   private refs.
+2. A provider mirror durably owns immutable hosted-review snapshots and current
+   manifests under stable provider-repository and authorization identity, independently
+   of source aliases and local checkouts.
+3. A subsystem that genuinely needs filesystem bytes owns its bounded transient
+   projection. Archive extraction is one example; immutable Git subjects read trees and
+   blobs directly and do not create a filesystem projection.
 4. Inventory pages, comparison manifests, patches, and browser projections are bounded,
    recomputable session caches.
 
@@ -133,8 +135,8 @@ are recomputable records in layer 4; neither is a materialized directory.
 Projection types share low-level safe-path or lease helpers only after two implemented
 owners prove the same contract, and each owner keeps its own admission, bounds, and
 reclamation policy. The
-[repository-library plan](../specs/active/plan-2026-08-11-open-repo-from-git-url.md)
-owns repository worktrees in layers 1 and 3; the
+[repository-source architecture](arch-repository-sources-and-provider-mirrors.md) owns
+the worktree-free store and subject boundary; the
 [hosted-review architecture](arch-hosted-review-model.md) owns layer 2 and defines how
 the four compose.
 

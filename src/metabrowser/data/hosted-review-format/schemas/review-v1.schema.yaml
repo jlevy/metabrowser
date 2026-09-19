@@ -27,8 +27,8 @@ $defs:
   GitObjectRef:
     additionalProperties: false
     properties:
-      availability:
-        $ref: '#/$defs/RevisionAvailability'
+      observation:
+        $ref: '#/$defs/RevisionObservation'
       oid:
         anyOf:
         - pattern: ^[0-9a-f]{40,64}$
@@ -42,7 +42,7 @@ $defs:
         - type: 'null'
         title: Repository Id
     required:
-    - availability
+    - observation
     - oid
     - repository_id
     title: GitObjectRef
@@ -100,12 +100,12 @@ $defs:
     - unknown
     title: ReviewDisposition
     type: string
-  RevisionAvailability:
+  RevisionObservation:
     enum:
-    - present
+    - observed
     - unavailable
     - not_requested
-    title: RevisionAvailability
+    title: RevisionObservation
     type: string
 $schema: https://json-schema.org/draft/2020-12/schema
 additionalProperties: false
@@ -156,4 +156,4 @@ title: Review
 type: object
 x-softschema:
   contract: com.github.jlevy.metabrowser.review:Review/v1
-  schema_sha256: a33bfda57f862b4409cf044526653c87ad155541453fe49c2cbf9eb2313f6410
+  schema_sha256: 0882c303b36d0480a532410ede7810beb8ef0d8933a8e9d800fb4dfa09122b67

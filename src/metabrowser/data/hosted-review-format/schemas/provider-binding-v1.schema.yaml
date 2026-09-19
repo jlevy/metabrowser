@@ -34,20 +34,20 @@ $defs:
 $schema: https://json-schema.org/draft/2020-12/schema
 additionalProperties: false
 properties:
-  entry_id:
-    $ref: '#/$defs/Sha256Digest'
   provenance:
     anyOf:
     - $ref: '#/$defs/ProviderBindingProvenance'
     - type: 'null'
   repository:
     $ref: '#/$defs/RepositoryRef'
+  source_id:
+    $ref: '#/$defs/Sha256Digest'
 required:
-- entry_id
 - provenance
 - repository
+- source_id
 title: ProviderBinding
 type: object
 x-softschema:
   contract: com.github.jlevy.metabrowser.provider:ProviderBinding/v1
-  schema_sha256: dc1a6e00dfdcabfd374d5055e9f64227701b4a46cc00bac3123736ab482d2759
+  schema_sha256: 8a83f964a7df50898c035a43aa07c583267221c703c500827514daa61f1fa366

@@ -44,7 +44,7 @@
       "revision": {
         "repository_id": "repo-2",
         "oid": "89abcdef0123456789abcdef0123456789abcdef",
-        "availability": "present"
+        "observation": "observed"
       },
       "created_at": "2026-09-10T14:00:00Z",
       "submitted_at": "2026-09-10T14:05:00Z",
@@ -73,26 +73,26 @@
             "repository_id": "repo-1",
             "ref": "main",
             "oid": "0123456789abcdef0123456789abcdef01234567",
-            "availability": "present"
+            "observation": "observed"
           },
           "head": {
             "repository_id": "repo-2",
             "ref": "topic/provider-neutral",
             "oid": "89abcdef0123456789abcdef0123456789abcdef",
-            "availability": "present"
+            "observation": "observed"
           },
           "merge_commit_oid": null,
-          "merge_commit_availability": "not_requested"
+          "merge_commit_observation": "not_requested"
         },
         "original_revision": {
           "repository_id": "repo-2",
           "oid": "89abcdef0123456789abcdef0123456789abcdef",
-          "availability": "present"
+          "observation": "observed"
         },
         "current_revision": {
           "repository_id": "repo-2",
           "oid": "89abcdef0123456789abcdef0123456789abcdef",
-          "availability": "present"
+          "observation": "observed"
         },
         "state": "current",
         "side": "head",
@@ -129,26 +129,26 @@
             "repository_id": "repo-1",
             "ref": "main",
             "oid": "0123456789abcdef0123456789abcdef01234567",
-            "availability": "present"
+            "observation": "observed"
           },
           "head": {
             "repository_id": "repo-2",
             "ref": "topic/provider-neutral",
             "oid": "89abcdef0123456789abcdef0123456789abcdef",
-            "availability": "present"
+            "observation": "observed"
           },
           "merge_commit_oid": null,
-          "merge_commit_availability": "not_requested"
+          "merge_commit_observation": "not_requested"
         },
         "original_revision": {
           "repository_id": "repo-2",
           "oid": "89abcdef0123456789abcdef0123456789abcdef",
-          "availability": "present"
+          "observation": "observed"
         },
         "current_revision": {
           "repository_id": "repo-2",
           "oid": "89abcdef0123456789abcdef0123456789abcdef",
-          "availability": "present"
+          "observation": "observed"
         },
         "state": "current"
       },
@@ -189,26 +189,26 @@
             "repository_id": "repo-1",
             "ref": "main",
             "oid": "0123456789abcdef0123456789abcdef01234567",
-            "availability": "present"
+            "observation": "observed"
           },
           "head": {
             "repository_id": "repo-2",
             "ref": "topic/provider-neutral",
             "oid": "89abcdef0123456789abcdef0123456789abcdef",
-            "availability": "present"
+            "observation": "observed"
           },
           "merge_commit_oid": null,
-          "merge_commit_availability": "not_requested"
+          "merge_commit_observation": "not_requested"
         },
         "original_revision": {
           "repository_id": "repo-2",
           "oid": "89abcdef0123456789abcdef0123456789abcdef",
-          "availability": "present"
+          "observation": "observed"
         },
         "current_revision": {
           "repository_id": "repo-2",
           "oid": "89abcdef0123456789abcdef0123456789abcdef",
-          "availability": "present"
+          "observation": "observed"
         },
         "state": "current",
         "side": "head",
@@ -246,26 +246,26 @@
             "repository_id": "repo-1",
             "ref": "main",
             "oid": "0123456789abcdef0123456789abcdef01234567",
-            "availability": "present"
+            "observation": "observed"
           },
           "head": {
             "repository_id": "repo-2",
             "ref": "topic/provider-neutral",
             "oid": "89abcdef0123456789abcdef0123456789abcdef",
-            "availability": "present"
+            "observation": "observed"
           },
           "merge_commit_oid": null,
-          "merge_commit_availability": "not_requested"
+          "merge_commit_observation": "not_requested"
         },
         "original_revision": {
           "repository_id": "repo-2",
           "oid": "89abcdef0123456789abcdef0123456789abcdef",
-          "availability": "present"
+          "observation": "observed"
         },
         "current_revision": {
           "repository_id": "repo-2",
           "oid": "89abcdef0123456789abcdef0123456789abcdef",
-          "availability": "present"
+          "observation": "observed"
         },
         "state": "current",
         "side": "head",
@@ -292,7 +292,7 @@
       "revision": {
         "repository_id": "repo-2",
         "oid": "89abcdef0123456789abcdef0123456789abcdef",
-        "availability": "present"
+        "observation": "observed"
       },
       "name": "quality",
       "status": "completed",
@@ -319,7 +319,7 @@
       "revision": {
         "repository_id": "repo-2",
         "oid": "89abcdef0123456789abcdef0123456789abcdef",
-        "availability": "present"
+        "observation": "observed"
       },
       "name": "unit tests",
       "status": "in_progress",
@@ -344,7 +344,7 @@
       "revision": {
         "repository_id": "repo-2",
         "oid": "89abcdef0123456789abcdef0123456789abcdef",
-        "availability": "present"
+        "observation": "observed"
       },
       "context": "continuous-integration/build",
       "state": "success",
@@ -360,11 +360,17 @@
     { "name": "visible-comment-allows-unavailable-author", "record": "change_request_comment", "changes": [{ "path": ["state"], "value": "visible" }, { "path": ["url"], "value": "https://code.example/teams/project/changes/17#discussion-1" }], "expect": "valid" },
     { "name": "submitted-review", "record": "review", "changes": [], "expect": "valid" },
     { "name": "submitted-review-allows-unavailable-author", "record": "review", "changes": [{ "path": ["author"], "value": null }], "expect": "valid" },
-    { "name": "review-allows-unavailable-observed-revision", "record": "review", "changes": [{ "path": ["revision", "availability"], "value": "unavailable" }, { "path": ["revision", "oid"], "value": null }], "expect": "valid" },
-    { "name": "review-revision-cannot-be-not-requested", "record": "review", "changes": [{ "path": ["revision", "availability"], "value": "not_requested" }, { "path": ["revision", "oid"], "value": null }], "expect": "invalid" },
+    { "name": "review-allows-a-requested-but-unavailable-revision", "record": "review", "changes": [{ "path": ["revision", "observation"], "value": "unavailable" }, { "path": ["revision", "oid"], "value": null }], "expect": "valid" },
+    { "name": "review-revision-cannot-be-not-requested", "record": "review", "changes": [{ "path": ["revision", "observation"], "value": "not_requested" }, { "path": ["revision", "oid"], "value": null }], "expect": "invalid" },
+    { "name": "observed-review-revision-requires-object-id", "record": "review", "changes": [{ "path": ["revision", "oid"], "value": null }], "expect": "invalid" },
+    { "name": "unavailable-review-revision-forbids-object-id", "record": "review", "changes": [{ "path": ["revision", "observation"], "value": "unavailable" }], "expect": "invalid" },
+    { "name": "git-object-observation-rejects-local-fetch-state", "record": "review", "changes": [{ "path": ["revision", "observation"], "value": "missing_fetchable" }], "expect": "invalid" },
+    { "name": "git-object-ref-rejects-superseded-availability-field", "record": "review", "changes": [{ "path": ["revision"], "value": { "repository_id": "repo-2", "oid": "89abcdef0123456789abcdef0123456789abcdef", "availability": "present" } }], "expect": "invalid" },
     { "name": "pending-review-forbids-submission", "record": "review", "changes": [{ "path": ["disposition"], "value": "pending" }], "expect": "invalid" },
     { "name": "submitted-review-requires-submission", "record": "review", "changes": [{ "path": ["submitted_at"], "value": null }], "expect": "invalid" },
     { "name": "line-anchor", "record": "review_thread", "changes": [], "expect": "valid" },
+    { "name": "current-anchor-requires-observed-current-revision", "record": "review_thread", "changes": [{ "path": ["anchor", "current_revision", "observation"], "value": "unavailable" }, { "path": ["anchor", "current_revision", "oid"], "value": null }], "expect": "invalid" },
+    { "name": "outdated-anchor-requires-observed-current-revision", "record": "review_thread", "changes": [{ "path": ["anchor", "state"], "value": "outdated" }, { "path": ["anchor", "current_revision", "observation"], "value": "unavailable" }, { "path": ["anchor", "current_revision", "oid"], "value": null }], "expect": "invalid" },
     { "name": "file-anchor", "record": "review_thread_empty", "changes": [], "expect": "valid" },
     {
       "name": "range-anchor",
@@ -374,13 +380,13 @@
         "path": "src/core.py",
         "path_b64": null,
         "comparison": {
-          "base": { "repository_id": "repo-1", "ref": "main", "oid": "0123456789abcdef0123456789abcdef01234567", "availability": "present" },
-          "head": { "repository_id": "repo-2", "ref": "topic/provider-neutral", "oid": "89abcdef0123456789abcdef0123456789abcdef", "availability": "present" },
+          "base": { "repository_id": "repo-1", "ref": "main", "oid": "0123456789abcdef0123456789abcdef01234567", "observation": "observed" },
+          "head": { "repository_id": "repo-2", "ref": "topic/provider-neutral", "oid": "89abcdef0123456789abcdef0123456789abcdef", "observation": "observed" },
           "merge_commit_oid": null,
-          "merge_commit_availability": "not_requested"
+          "merge_commit_observation": "not_requested"
         },
-        "original_revision": { "repository_id": "repo-2", "oid": "89abcdef0123456789abcdef0123456789abcdef", "availability": "present" },
-        "current_revision": { "repository_id": "repo-2", "oid": "89abcdef0123456789abcdef0123456789abcdef", "availability": "present" },
+        "original_revision": { "repository_id": "repo-2", "oid": "89abcdef0123456789abcdef0123456789abcdef", "observation": "observed" },
+        "current_revision": { "repository_id": "repo-2", "oid": "89abcdef0123456789abcdef0123456789abcdef", "observation": "observed" },
         "state": "current",
         "start": { "side": "base", "line": 18 },
         "end": { "side": "head", "line": 21 }
@@ -395,13 +401,13 @@
         "path": "src/core.py",
         "path_b64": null,
         "comparison": {
-          "base": { "repository_id": "repo-1", "ref": "main", "oid": "0123456789abcdef0123456789abcdef01234567", "availability": "present" },
-          "head": { "repository_id": "repo-2", "ref": "topic/provider-neutral", "oid": "89abcdef0123456789abcdef0123456789abcdef", "availability": "present" },
+          "base": { "repository_id": "repo-1", "ref": "main", "oid": "0123456789abcdef0123456789abcdef01234567", "observation": "observed" },
+          "head": { "repository_id": "repo-2", "ref": "topic/provider-neutral", "oid": "89abcdef0123456789abcdef0123456789abcdef", "observation": "observed" },
           "merge_commit_oid": null,
-          "merge_commit_availability": "not_requested"
+          "merge_commit_observation": "not_requested"
         },
-        "original_revision": { "repository_id": "repo-2", "oid": "89abcdef0123456789abcdef0123456789abcdef", "availability": "present" },
-        "current_revision": { "repository_id": "repo-2", "oid": "89abcdef0123456789abcdef0123456789abcdef", "availability": "present" },
+        "original_revision": { "repository_id": "repo-2", "oid": "89abcdef0123456789abcdef0123456789abcdef", "observation": "observed" },
+        "current_revision": { "repository_id": "repo-2", "oid": "89abcdef0123456789abcdef0123456789abcdef", "observation": "observed" },
         "state": "current",
         "start": { "side": "head", "line": 18 },
         "end": { "side": "head", "line": 21 }
@@ -416,13 +422,13 @@
         "path": "src/core.py",
         "path_b64": null,
         "comparison": {
-          "base": { "repository_id": "repo-1", "ref": "main", "oid": "0123456789abcdef0123456789abcdef01234567", "availability": "present" },
-          "head": { "repository_id": "repo-2", "ref": "topic/provider-neutral", "oid": "89abcdef0123456789abcdef0123456789abcdef", "availability": "present" },
+          "base": { "repository_id": "repo-1", "ref": "main", "oid": "0123456789abcdef0123456789abcdef01234567", "observation": "observed" },
+          "head": { "repository_id": "repo-2", "ref": "topic/provider-neutral", "oid": "89abcdef0123456789abcdef0123456789abcdef", "observation": "observed" },
           "merge_commit_oid": null,
-          "merge_commit_availability": "not_requested"
+          "merge_commit_observation": "not_requested"
         },
-        "original_revision": { "repository_id": "repo-2", "oid": "89abcdef0123456789abcdef0123456789abcdef", "availability": "present" },
-        "current_revision": { "repository_id": "repo-2", "oid": "89abcdef0123456789abcdef0123456789abcdef", "availability": "present" },
+        "original_revision": { "repository_id": "repo-2", "oid": "89abcdef0123456789abcdef0123456789abcdef", "observation": "observed" },
+        "current_revision": { "repository_id": "repo-2", "oid": "89abcdef0123456789abcdef0123456789abcdef", "observation": "observed" },
         "state": "current",
         "start": { "side": "head", "line": 30 },
         "end": { "side": "head", "line": 10 }
@@ -437,13 +443,13 @@
         "path": "src/core.py",
         "path_b64": null,
         "comparison": {
-          "base": { "repository_id": "repo-1", "ref": "main", "oid": "0123456789abcdef0123456789abcdef01234567", "availability": "present" },
-          "head": { "repository_id": "repo-2", "ref": "topic/provider-neutral", "oid": "89abcdef0123456789abcdef0123456789abcdef", "availability": "present" },
+          "base": { "repository_id": "repo-1", "ref": "main", "oid": "0123456789abcdef0123456789abcdef01234567", "observation": "observed" },
+          "head": { "repository_id": "repo-2", "ref": "topic/provider-neutral", "oid": "89abcdef0123456789abcdef0123456789abcdef", "observation": "observed" },
           "merge_commit_oid": null,
-          "merge_commit_availability": "not_requested"
+          "merge_commit_observation": "not_requested"
         },
-        "original_revision": { "repository_id": "repo-2", "oid": "89abcdef0123456789abcdef0123456789abcdef", "availability": "present" },
-        "current_revision": { "repository_id": "repo-2", "oid": "89abcdef0123456789abcdef0123456789abcdef", "availability": "present" },
+        "original_revision": { "repository_id": "repo-2", "oid": "89abcdef0123456789abcdef0123456789abcdef", "observation": "observed" },
+        "current_revision": { "repository_id": "repo-2", "oid": "89abcdef0123456789abcdef0123456789abcdef", "observation": "observed" },
         "state": "current",
         "start": { "side": "head", "line": 18 },
         "end": { "side": "head", "line": 18 }
@@ -467,16 +473,16 @@
       "record": "review_thread_empty",
       "changes": [
         { "path": ["anchor", "state"], "value": "unresolved" },
-        { "path": ["anchor", "current_revision", "availability"], "value": "not_requested" },
+        { "path": ["anchor", "current_revision", "observation"], "value": "not_requested" },
         { "path": ["anchor", "current_revision", "oid"], "value": null }
       ],
       "expect": "valid"
     },
     { "name": "current-anchor-preserves-older-original-revision", "record": "review_thread", "changes": [{ "path": ["anchor", "original_revision", "oid"], "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }], "expect": "valid" },
-    { "name": "original-anchor-revision-may-be-unavailable", "record": "review_thread", "changes": [{ "path": ["anchor", "original_revision", "availability"], "value": "unavailable" }, { "path": ["anchor", "original_revision", "oid"], "value": null }], "expect": "valid" },
-    { "name": "original-anchor-revision-was-observed", "record": "review_thread", "changes": [{ "path": ["anchor", "original_revision", "availability"], "value": "not_requested" }, { "path": ["anchor", "original_revision", "oid"], "value": null }], "expect": "invalid" },
+    { "name": "original-anchor-revision-may-be-unavailable", "record": "review_thread", "changes": [{ "path": ["anchor", "original_revision", "observation"], "value": "unavailable" }, { "path": ["anchor", "original_revision", "oid"], "value": null }], "expect": "valid" },
+    { "name": "original-anchor-revision-was-requested", "record": "review_thread", "changes": [{ "path": ["anchor", "original_revision", "observation"], "value": "not_requested" }, { "path": ["anchor", "original_revision", "oid"], "value": null }], "expect": "invalid" },
     { "name": "anchor-original-revision-belongs-to-head-repository", "record": "review_thread", "changes": [{ "path": ["anchor", "original_revision", "repository_id"], "value": "repo-other" }], "expect": "invalid" },
-    { "name": "unresolved-current-revision-retains-head-repository", "record": "review_thread_empty", "changes": [{ "path": ["anchor", "state"], "value": "unresolved" }, { "path": ["anchor", "current_revision", "repository_id"], "value": "repo-other" }, { "path": ["anchor", "current_revision", "availability"], "value": "not_requested" }, { "path": ["anchor", "current_revision", "oid"], "value": null }], "expect": "invalid" },
+    { "name": "unresolved-current-revision-retains-head-repository", "record": "review_thread_empty", "changes": [{ "path": ["anchor", "state"], "value": "unresolved" }, { "path": ["anchor", "current_revision", "repository_id"], "value": "repo-other" }, { "path": ["anchor", "current_revision", "observation"], "value": "not_requested" }, { "path": ["anchor", "current_revision", "oid"], "value": null }], "expect": "invalid" },
     { "name": "outdated-anchor", "record": "review_thread", "changes": [{ "path": ["anchor", "state"], "value": "outdated" }, { "path": ["anchor", "original_revision", "oid"], "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }], "expect": "valid" },
     { "name": "unmappable-anchor", "record": "review_thread_empty", "changes": [{ "path": ["anchor", "state"], "value": "unmappable" }, { "path": ["anchor", "original_revision", "oid"], "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }], "expect": "valid" },
     { "name": "path-bytes-must-match-display", "record": "review_thread_empty", "changes": [{ "path": ["anchor", "path_b64"], "value": "b3RoZXI=" }], "expect": "invalid" },
@@ -501,14 +507,15 @@
     { "name": "completed-check-run-requires-completed-at", "record": "check_run", "changes": [{ "path": ["status"], "value": "completed" }, { "path": ["conclusion"], "value": "success" }], "expect": "invalid" },
     { "name": "active-check-forbids-completed-at", "record": "check_run", "changes": [{ "path": ["completed_at"], "value": "2026-09-10T14:10:00Z" }], "expect": "invalid" },
     { "name": "check-completion-does-not-precede-start", "record": "check_suite", "changes": [{ "path": ["completed_at"], "value": "2026-09-10T14:07:59Z" }], "expect": "invalid" },
-    { "name": "check-requires-present-revision", "record": "check_suite", "changes": [{ "path": ["revision", "availability"], "value": "unavailable" }, { "path": ["revision", "oid"], "value": null }], "expect": "invalid" },
+    { "name": "check-requires-observed-revision", "record": "check_suite", "changes": [{ "path": ["revision", "observation"], "value": "unavailable" }, { "path": ["revision", "oid"], "value": null }], "expect": "invalid" },
+    { "name": "unavailable-check-revision-forbids-object-id", "record": "check_suite", "changes": [{ "path": ["revision", "observation"], "value": "unavailable" }], "expect": "invalid" },
     { "name": "unknown-check-state", "record": "check_suite", "changes": [{ "path": ["kind"], "value": "unknown" }, { "path": ["status"], "value": "unknown" }, { "path": ["conclusion"], "value": null }, { "path": ["completed_at"], "value": null }], "expect": "valid" },
     { "name": "unknown-check-conclusion", "record": "check_suite", "changes": [{ "path": ["conclusion"], "value": "unknown" }], "expect": "valid" },
     { "name": "commit-status-present-revision", "record": "commit_status", "changes": [], "expect": "valid" },
     { "name": "unknown-commit-status", "record": "commit_status", "changes": [{ "path": ["state"], "value": "unknown" }], "expect": "valid" },
     { "name": "undeclared-comment-state", "record": "change_request_comment", "changes": [{ "path": ["state"], "value": "archived" }], "expect": "invalid" },
     { "name": "comment-update-does-not-precede-creation", "record": "change_request_comment", "changes": [{ "path": ["updated_at"], "value": "2026-09-10T12:59:59Z" }], "expect": "invalid" },
-    { "name": "commit-status-requires-present-revision", "record": "commit_status", "changes": [{ "path": ["revision", "availability"], "value": "not_requested" }, { "path": ["revision", "oid"], "value": null }], "expect": "invalid" },
+    { "name": "commit-status-requires-observed-revision", "record": "commit_status", "changes": [{ "path": ["revision", "observation"], "value": "not_requested" }, { "path": ["revision", "oid"], "value": null }], "expect": "invalid" },
     { "name": "record-rejects-extra-fields", "record": "commit_status", "changes": [{ "path": ["provider_payload"], "value": {} }], "expect": "invalid" },
     { "name": "commit-status-update-does-not-precede-creation", "record": "commit_status", "changes": [{ "path": ["updated_at"], "value": "2026-09-10T14:07:59Z" }], "expect": "invalid" }
   ],
@@ -541,13 +548,13 @@
           "path": "src/other.py",
           "path_b64": null,
           "comparison": {
-            "base": { "repository_id": "repo-1", "ref": "main", "oid": "0123456789abcdef0123456789abcdef01234567", "availability": "present" },
-            "head": { "repository_id": "repo-2", "ref": "topic/provider-neutral", "oid": "89abcdef0123456789abcdef0123456789abcdef", "availability": "present" },
+            "base": { "repository_id": "repo-1", "ref": "main", "oid": "0123456789abcdef0123456789abcdef01234567", "observation": "observed" },
+            "head": { "repository_id": "repo-2", "ref": "topic/provider-neutral", "oid": "89abcdef0123456789abcdef0123456789abcdef", "observation": "observed" },
             "merge_commit_oid": null,
-            "merge_commit_availability": "not_requested"
+            "merge_commit_observation": "not_requested"
           },
-          "original_revision": { "repository_id": "repo-2", "oid": "89abcdef0123456789abcdef0123456789abcdef", "availability": "present" },
-          "current_revision": { "repository_id": "repo-2", "oid": "89abcdef0123456789abcdef0123456789abcdef", "availability": "present" },
+          "original_revision": { "repository_id": "repo-2", "oid": "89abcdef0123456789abcdef0123456789abcdef", "observation": "observed" },
+          "current_revision": { "repository_id": "repo-2", "oid": "89abcdef0123456789abcdef0123456789abcdef", "observation": "observed" },
           "state": "current"
         }}
       ],

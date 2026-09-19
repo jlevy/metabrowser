@@ -4,7 +4,7 @@
 // browser implementations are held to the same packaged conformance corpus.
 
 const CHANGE_REQUEST_STATES = new Set(["open", "closed", "merged", "unknown"]);
-const REVISION_AVAILABILITY = new Set(["present", "unavailable", "not_requested"]);
+const REVISION_OBSERVATIONS = new Set(["observed", "unavailable", "not_requested"]);
 const REVIEW_DECISIONS = new Set([
   "required",
   "approved",
@@ -369,40 +369,40 @@ function validateActorRef(raw, where) {
 /** @param {unknown} raw @param {string} where */
 function validateRevisionRef(raw, where) {
   const value = asObject(raw, where);
-  forbidExtras(value, ["repository_id", "ref", "oid", "availability"], where);
+  forbidExtras(value, ["repository_id", "ref", "oid", "observation"], where);
   require("repository_id" in value, `${where}.repository_id: required`);
   nullableString(value.repository_id, `${where}.repository_id`);
   nonemptyString(value.ref, `${where}.ref`);
   require("oid" in value, `${where}.oid: required`);
   nullableString(value.oid, `${where}.oid`);
-  const availability = nonemptyString(value.availability, `${where}.availability`);
-  require(REVISION_AVAILABILITY.has(availability), `${where}.availability: unknown value`);
+  const observation = nonemptyString(value.observation, `${where}.observation`);
+  require(REVISION_OBSERVATIONS.has(observation), `${where}.observation: unknown value`);
   if (value.oid !== null) {
     require(OID_RE.test(String(value.oid)), `${where}.oid: full lowercase Git object ID required`);
   }
   require((value.oid !== null) ===
-    (availability === "present"), `${where}: oid is present exactly when availability is present`);
+    (observation === "observed"), `${where}: oid is present exactly when the provider observed it`);
 }
 
 /** @param {unknown} raw @param {string} where */
 function validateComparisonRef(raw, where) {
   const value = asObject(raw, where);
-  forbidExtras(value, ["base", "head", "merge_commit_oid", "merge_commit_availability"], where);
+  forbidExtras(value, ["base", "head", "merge_commit_oid", "merge_commit_observation"], where);
   validateRevisionRef(value.base, `${where}.base`);
   validateRevisionRef(value.head, `${where}.head`);
   require("merge_commit_oid" in value, `${where}.merge_commit_oid: required`);
   nullableString(value.merge_commit_oid, `${where}.merge_commit_oid`);
-  const availability = nonemptyString(
-    value.merge_commit_availability,
-    `${where}.merge_commit_availability`,
+  const observation = nonemptyString(
+    value.merge_commit_observation,
+    `${where}.merge_commit_observation`,
   );
-  require(REVISION_AVAILABILITY.has(availability), `${where}: unknown merge availability`);
+  require(REVISION_OBSERVATIONS.has(observation), `${where}: unknown merge commit observation`);
   if (value.merge_commit_oid !== null) {
     require(OID_RE.test(String(value.merge_commit_oid)), `${where}: invalid merge commit oid`);
   }
   require((value.merge_commit_oid !== null) ===
-    (availability ===
-      "present"), `${where}: merge commit oid is present exactly when availability is present`);
+    (observation ===
+      "observed"), `${where}: merge commit oid is present exactly when the provider observed it`);
 }
 
 /** @param {unknown} raw @param {string} where */
@@ -490,21 +490,17 @@ function validateLifecycle(document) {
 /** @param {unknown} raw @param {string} where */
 function validateGitObjectRef(raw, where) {
   const value = asObject(raw, where);
-  forbidExtras(value, ["repository_id", "oid", "availability"], where);
+  forbidExtras(value, ["repository_id", "oid", "observation"], where);
   require("repository_id" in value, `${where}.repository_id: required`);
   nullableString(value.repository_id, `${where}.repository_id`);
   require("oid" in value, `${where}.oid: required`);
   nullableString(value.oid, `${where}.oid`);
-  const availability = enumValue(
-    value.availability,
-    REVISION_AVAILABILITY,
-    `${where}.availability`,
-  );
+  const observation = enumValue(value.observation, REVISION_OBSERVATIONS, `${where}.observation`);
   if (value.oid !== null) {
     require(OID_RE.test(String(value.oid)), `${where}.oid: full lowercase Git object ID required`);
   }
   require((value.oid !== null) ===
-    (availability === "present"), `${where}: oid is present exactly when availability is present`);
+    (observation === "observed"), `${where}: oid is present exactly when the provider observed it`);
 }
 
 /** @param {Record<string, unknown>} provider @param {Record<string, unknown>} repository @param {string} where */
@@ -532,7 +528,7 @@ function sameRevisionRef(left, right) {
     first.repository_id === second.repository_id &&
     first.ref === second.ref &&
     first.oid === second.oid &&
-    first.availability === second.availability
+    first.observation === second.observation
   );
 }
 
@@ -633,17 +629,17 @@ function validateReviewAnchor(raw, where) {
   const head = asObject(comparison.head, `${where}.comparison.head`);
   const original = asObject(value.original_revision, `${where}.original_revision`);
   const current = asObject(value.current_revision, `${where}.current_revision`);
-  require(original.availability !==
-    "not_requested", `${where}: original revision must be observed`);
+  require(original.observation !==
+    "not_requested", `${where}: original revision must be requested from the provider`);
   require(original.repository_id ===
     head.repository_id, `${where}: original revision must belong to comparison head`);
   require(current.repository_id ===
     head.repository_id, `${where}: current revision must belong to comparison head`);
-  const currentIsPresent = current.availability === "present";
+  const currentIsObserved = current.observation === "observed";
   require(state === "unresolved" ||
-    currentIsPresent, `${where}: resolved anchor states require a present current revision`);
-  if (currentIsPresent) {
-    require(head.availability === "present" &&
+    currentIsObserved, `${where}: resolved anchor states require an observed current revision`);
+  if (currentIsObserved) {
+    require(head.observation === "observed" &&
       current.repository_id === head.repository_id &&
       current.oid === head.oid, `${where}: current revision must match comparison head`);
   }
@@ -1048,7 +1044,7 @@ export function parseReview(raw) {
     const disposition = enumValue(document.disposition, REVIEW_DISPOSITIONS, "review.disposition");
     validateGitObjectRef(document.revision, "review.revision");
     const revision = asObject(document.revision, "review.revision");
-    require(revision.availability !== "not_requested", "review.revision: must be observed");
+    require(revision.observation !== "not_requested", "review.revision: must be requested");
     const created = Date.parse(timestamp(document.created_at, "review.created_at"));
     const updated = Date.parse(timestamp(document.updated_at, "review.updated_at"));
     require(updated >= created, "review.updated_at precedes created_at");
@@ -1161,7 +1157,7 @@ export function parseCheck(raw) {
     const kind = enumValue(document.kind, CHECK_KINDS, "check.kind");
     validateGitObjectRef(document.revision, "check.revision");
     const revision = asObject(document.revision, "check.revision");
-    require(revision.availability === "present", "check.revision: present revision required");
+    require(revision.observation === "observed", "check.revision: observed revision required");
     require(document.parent_check_id !== document.id, "check: cannot parent itself");
     require("name" in document, "check.name: required");
     nullableString(document.name, "check.name");
@@ -1220,7 +1216,7 @@ export function parseCommitStatus(raw) {
     validateHostedIdentity(document, "commit_status");
     validateGitObjectRef(document.revision, "commit_status.revision");
     const revision = asObject(document.revision, "commit_status.revision");
-    require(revision.availability === "present", "commit_status.revision: present required");
+    require(revision.observation === "observed", "commit_status.revision: observed required");
     nonemptyString(document.context, "commit_status.context");
     enumValue(document.state, COMMIT_STATUS_STATES, "commit_status.state");
     require("description" in document, "commit_status.description: required");
@@ -1311,7 +1307,7 @@ function validateActivityItem(raw, where) {
       "primary_revision",
       "base_revision",
       "head_revision",
-      "comparison_available",
+      "comparison_observed",
       "detail",
       "freshness",
     ],
@@ -1339,8 +1335,8 @@ function validateActivityItem(raw, where) {
   if (item.head_revision !== null) {
     validateRevisionRef(item.head_revision, `${where}.head_revision`);
   }
-  require(typeof item.comparison_available ===
-    "boolean", `${where}.comparison_available: boolean required`);
+  require(typeof item.comparison_observed ===
+    "boolean", `${where}.comparison_observed: boolean required`);
   const detail = validateActivityDetail(item.detail, `${where}.detail`);
   const freshness = validateActivityFreshness(item.freshness, `${where}.freshness`);
   const primary = asObject(item.primary_revision, `${where}.primary_revision`);
@@ -1351,14 +1347,14 @@ function validateActivityItem(raw, where) {
       freshness.kind === "immutable", `${where}: commit detail and freshness required`);
     require(item.base_revision === null &&
       item.head_revision === null, `${where}: commit comparison revisions are forbidden`);
-    require(item.comparison_available ===
-      false, `${where}: commit comparison availability is forbidden`);
+    require(item.comparison_observed ===
+      false, `${where}: commit cannot claim an observed comparison`);
     require(actors.every((actor) => actor.kind === "git"), `${where}: commit requires Git actors`);
     const detailRevision = asObject(detail.revision, `${where}.detail.revision`);
-    require(primary.availability === "present" &&
+    require(primary.observation === "observed" &&
       detailRevision.repository_id === primary.repository_id &&
       detailRevision.oid ===
-        primary.oid, `${where}: commit detail must match the primary revision`);
+        primary.oid, `${where}: commit detail must identify the observed primary revision`);
     return item;
   }
 
@@ -1379,9 +1375,9 @@ function validateActivityItem(raw, where) {
     item.primary_revision,
     item.head_revision,
   ), `${where}: primary revision must be the head revision`);
-  const revisionsPresent = base.availability === "present" && head.availability === "present";
-  require(item.comparison_available ===
-    revisionsPresent, `${where}: comparison availability disagrees with revisions`);
+  const revisionsObserved = base.observation === "observed" && head.observation === "observed";
+  require(item.comparison_observed ===
+    revisionsObserved, `${where}: comparison_observed disagrees with revision observations`);
   return item;
 }
 

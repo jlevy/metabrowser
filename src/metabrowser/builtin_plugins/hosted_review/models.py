@@ -98,8 +98,10 @@ class ChangeRequestState(StrEnum):
     unknown = "unknown"
 
 
-class RevisionAvailability(StrEnum):
-    present = "present"
+# What the provider reported about one Git object ID. Local repository-store state is the
+# separate LocalObjectAvailability vocabulary and never enters a provider record.
+class RevisionObservation(StrEnum):
+    observed = "observed"
     unavailable = "unavailable"
     not_requested = "not_requested"
 
@@ -353,12 +355,12 @@ class RevisionRef(_HostedReviewModel):
     repository_id: NonEmptyString | None
     ref: NonEmptyString
     oid: GitObjectId | None
-    availability: RevisionAvailability
+    observation: RevisionObservation
 
     @model_validator(mode="after")
-    def _oid_matches_availability(self) -> RevisionRef:
-        if (self.oid is not None) != (self.availability is RevisionAvailability.present):
-            raise ValueError("oid is present exactly when revision availability is present")
+    def _oid_matches_observation(self) -> RevisionRef:
+        if (self.oid is not None) != (self.observation is RevisionObservation.observed):
+            raise ValueError("oid is present exactly when the provider observed the revision")
         return self
 
 
@@ -366,15 +368,15 @@ class ComparisonRef(_HostedReviewModel):
     base: RevisionRef
     head: RevisionRef
     merge_commit_oid: GitObjectId | None
-    merge_commit_availability: RevisionAvailability
+    merge_commit_observation: RevisionObservation
 
     @model_validator(mode="after")
-    def _merge_oid_matches_availability(self) -> ComparisonRef:
+    def _merge_oid_matches_observation(self) -> ComparisonRef:
         if (self.merge_commit_oid is not None) != (
-            self.merge_commit_availability is RevisionAvailability.present
+            self.merge_commit_observation is RevisionObservation.observed
         ):
             raise ValueError(
-                "merge_commit_oid is present exactly when merge commit availability is present"
+                "merge_commit_oid is present exactly when the provider observed the merge commit"
             )
         return self
 
@@ -482,13 +484,60 @@ def dump_change_request(value: ChangeRequest) -> dict[str, Any]:
 class GitObjectRef(_HostedReviewModel):
     repository_id: NonEmptyString | None
     oid: GitObjectId | None
-    availability: RevisionAvailability
+    observation: RevisionObservation
 
     @model_validator(mode="after")
-    def _oid_matches_availability(self) -> GitObjectRef:
-        if (self.oid is not None) != (self.availability is RevisionAvailability.present):
-            raise ValueError("oid is present exactly when Git object availability is present")
+    def _oid_matches_observation(self) -> GitObjectRef:
+        if (self.oid is not None) != (self.observation is RevisionObservation.observed):
+            raise ValueError("oid is present exactly when the provider observed the Git object")
         return self
+
+
+class LocalObjectAvailability(StrEnum):
+    """Local repository-store state for one object, independent of provider observation."""
+
+    not_requested = "not_requested"
+    present = "present"
+    missing_fetchable = "missing_fetchable"
+    fetch_failed = "fetch_failed"
+    unavailable = "unavailable"
+    outside_bound = "outside_bound"
+
+
+class LocalGitObjectAvailability(_HostedReviewModel):
+    """Service projection of one provider-observed object's local availability.
+
+    This is not an artifact contract and never appears inside a provider record: fetching an
+    object changes this report, not the immutable provider snapshot that observed its ID.
+    """
+
+    oid: GitObjectId
+    availability: LocalObjectAvailability
+
+
+def local_git_object_availability(
+    revision: RevisionRef | GitObjectRef,
+    availability: LocalObjectAvailability,
+) -> LocalGitObjectAvailability:
+    """Report local state for a revision only when the provider observed its full object ID."""
+    if revision.observation is not RevisionObservation.observed or revision.oid is None:
+        raise ValueError("local object availability requires a provider-observed object ID")
+    return LocalGitObjectAvailability(oid=revision.oid, availability=availability)
+
+
+def local_merge_commit_availability(
+    comparison: ComparisonRef,
+    availability: LocalObjectAvailability,
+) -> LocalGitObjectAvailability:
+    """Report local state for a comparison's merge commit only when the provider observed it."""
+    if (
+        comparison.merge_commit_observation is not RevisionObservation.observed
+        or comparison.merge_commit_oid is None
+    ):
+        raise ValueError(
+            "local object availability requires a provider-observed merge commit object ID"
+        )
+    return LocalGitObjectAvailability(oid=comparison.merge_commit_oid, availability=availability)
 
 
 def _validate_comment_lifecycle(
@@ -551,8 +600,8 @@ class Review(_HostedReviewModel):
             self.repository.instance,
         ):
             raise ValueError("review and repository must use the same provider instance")
-        if self.revision.availability is RevisionAvailability.not_requested:
-            raise ValueError("review revision availability must be observed")
+        if self.revision.observation is RevisionObservation.not_requested:
+            raise ValueError("review revision must be requested from the provider")
         created_at = _parse_rfc3339(self.created_at)
         updated_at = _parse_rfc3339(self.updated_at)
         if updated_at < created_at:
@@ -599,18 +648,18 @@ class _ReviewAnchorBase(_HostedReviewModel):
     @model_validator(mode="after")
     def _path_and_revision_identity(self) -> _ReviewAnchorBase:
         _validate_review_path(self.path, self.path_b64)
-        if self.original_revision.availability is RevisionAvailability.not_requested:
-            raise ValueError("review anchor original revision must be observed")
+        if self.original_revision.observation is RevisionObservation.not_requested:
+            raise ValueError("review anchor original revision must be requested from the provider")
         if self.original_revision.repository_id != self.comparison.head.repository_id:
             raise ValueError("review anchor original revision must belong to the comparison head")
         if self.current_revision.repository_id != self.comparison.head.repository_id:
             raise ValueError("review anchor current revision must belong to the comparison head")
-        current_is_present = self.current_revision.availability is RevisionAvailability.present
-        if self.state is not ReviewAnchorState.unresolved and not current_is_present:
-            raise ValueError("resolved review anchor states require a present current revision")
+        current_is_observed = self.current_revision.observation is RevisionObservation.observed
+        if self.state is not ReviewAnchorState.unresolved and not current_is_observed:
+            raise ValueError("resolved review anchor states require an observed current revision")
         head = self.comparison.head
-        if current_is_present and (
-            head.availability is not RevisionAvailability.present
+        if current_is_observed and (
+            head.observation is not RevisionObservation.observed
             or (
                 self.current_revision.repository_id,
                 self.current_revision.oid,
@@ -730,8 +779,8 @@ class Check(_HostedReviewModel):
             self.repository.instance,
         ):
             raise ValueError("check and repository must use the same provider instance")
-        if self.revision.availability is not RevisionAvailability.present:
-            raise ValueError("checks require a present immutable revision")
+        if self.revision.observation is not RevisionObservation.observed:
+            raise ValueError("checks require an observed immutable revision")
         if self.parent_check_id == self.id:
             raise ValueError("checks cannot parent themselves")
         if self.kind is CheckKind.run and self.parent_check_id is None:
@@ -775,8 +824,8 @@ class CommitStatus(_HostedReviewModel):
             self.repository.instance,
         ):
             raise ValueError("commit status and repository must use the same provider instance")
-        if self.revision.availability is not RevisionAvailability.present:
-            raise ValueError("commit statuses require a present immutable revision")
+        if self.revision.observation is not RevisionObservation.observed:
+            raise ValueError("commit statuses require an observed immutable revision")
         if _parse_rfc3339(self.updated_at) < _parse_rfc3339(self.created_at):
             raise ValueError("commit status updated_at must not precede created_at")
         return self
@@ -1115,7 +1164,7 @@ class ProviderObjectRetrievalTarget(_HostedReviewModel):
 
 class ProviderBindingRetrievalTarget(_HostedReviewModel):
     kind: Literal["provider_binding"]
-    entry_id: Sha256Digest
+    source_id: Sha256Digest
     repository: RepositoryRef
 
 
@@ -1265,8 +1314,10 @@ class ProviderBindingProvenance(_HostedReviewModel):
     retrieval_snapshot_id: Sha256Digest
 
 
+# One conservative, credential-free repository source mapped to a stable repository. It is
+# independent of authorization, cache entries, local paths, and mutable coordinates.
 class ProviderBinding(_HostedReviewModel):
-    entry_id: Sha256Digest
+    source_id: Sha256Digest
     repository: RepositoryRef
     provenance: ProviderBindingProvenance | None
 
@@ -1284,7 +1335,7 @@ def validate_provider_binding_provenance(
     if not isinstance(retrieval.outcome, RetrievalSucceeded):
         raise ValueError("provider binding provenance requires a successful retrieval")
     if not isinstance(retrieval.target, ProviderBindingRetrievalTarget) or (
-        retrieval.target.entry_id != binding.entry_id
+        retrieval.target.source_id != binding.source_id
         or retrieval.target.repository != binding.repository
     ):
         raise ValueError("provider binding provenance identifies another binding")
@@ -1345,10 +1396,36 @@ def validate_repository_successor(
 def validate_provider_binding_successor(
     previous: ProviderBinding, successor: ProviderBinding
 ) -> ProviderBinding:
-    """Require an explicit rebind instead of silently changing an entry's repository."""
-    if previous != successor:
-        raise ValueError("provider binding is immutable; changes require an explicit rebind")
+    """Accept a republished binding only when its source and repository identity are unchanged.
+
+    Provenance is evidence rather than identity, so a successor may cite a newer establishing
+    retrieval or none; a consumer that needs evidence resolves the successor's own provenance.
+    """
+    if successor.source_id != previous.source_id:
+        raise ValueError("a binding for another source is not a provider binding successor")
+    if successor.repository != previous.repository:
+        raise ValueError(
+            "provider binding rebind conflict: a source ID cannot move to another repository"
+        )
     return successor
+
+
+def validate_provider_bindings(
+    bindings: tuple[ProviderBinding, ...],
+) -> tuple[ProviderBinding, ...]:
+    """Validate one binding set: many sources may share a repository, one source may not fork."""
+    by_source: dict[str, ProviderBinding] = {}
+    for binding in bindings:
+        existing = by_source.get(binding.source_id)
+        if existing is None:
+            by_source[binding.source_id] = binding
+            continue
+        if existing.repository != binding.repository:
+            raise ValueError(
+                "provider binding rebind conflict: one source ID names different repositories"
+            )
+        raise ValueError("provider bindings require exactly one binding per source ID")
+    return bindings
 
 
 class AllChangeRequestStates(_HostedReviewModel):
@@ -1684,7 +1761,7 @@ class ActivityItem(_HostedReviewModel):
     primary_revision: RevisionRef
     base_revision: RevisionRef | None
     head_revision: RevisionRef | None
-    comparison_available: StrictBool
+    comparison_observed: StrictBool
     detail: ActivityDetailTarget
     freshness: ActivityFreshness
 
@@ -1701,15 +1778,15 @@ class ActivityItem(_HostedReviewModel):
                 raise ValueError("commit activity requires commit detail and immutable freshness")
             if self.base_revision is not None or self.head_revision is not None:
                 raise ValueError("commit activity forbids comparison revisions")
-            if self.comparison_available:
-                raise ValueError("commit activity cannot claim comparison availability")
+            if self.comparison_observed:
+                raise ValueError("commit activity cannot claim an observed comparison")
             if any(not isinstance(actor, GitActivityActor) for actor in self.actors):
                 raise ValueError("commit activity requires Git actors")
-            if self.primary_revision.availability is not RevisionAvailability.present or (
+            if self.primary_revision.observation is not RevisionObservation.observed or (
                 self.detail.revision.repository_id,
                 self.detail.revision.oid,
             ) != (self.primary_revision.repository_id, self.primary_revision.oid):
-                raise ValueError("commit detail must identify the present primary revision")
+                raise ValueError("commit detail must identify the observed primary revision")
             return self
 
         if self.state is None:
@@ -1730,13 +1807,13 @@ class ActivityItem(_HostedReviewModel):
             )
         if self.primary_revision != self.head_revision:
             raise ValueError("change-request activity primary revision must be its head")
-        revisions_are_present = (
-            self.base_revision.availability is RevisionAvailability.present
-            and self.head_revision.availability is RevisionAvailability.present
+        revisions_are_observed = (
+            self.base_revision.observation is RevisionObservation.observed
+            and self.head_revision.observation is RevisionObservation.observed
         )
-        if self.comparison_available != revisions_are_present:
+        if self.comparison_observed != revisions_are_observed:
             raise ValueError(
-                "comparison_available is true exactly when base and head revisions are present"
+                "comparison_observed is true exactly when base and head revisions are observed"
             )
         return self
 
