@@ -9,7 +9,7 @@ ssh stay closed. Serving acquired Git stays later.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -55,7 +55,7 @@ def _require_file_source(source: GitSource, *, mode: str) -> None:
 
 
 @asynccontextmanager
-async def _leased_file_pin(source: GitSource) -> AsyncIterator[PublishedSource]:
+async def _leased_file_pin(source: GitSource) -> AsyncGenerator[PublishedSource]:
     try:
         published = await acquire_file_source(source, home=application_home())
     except _ACQUIRE_CLI_ERRORS as exc:

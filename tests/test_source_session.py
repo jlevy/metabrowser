@@ -8,6 +8,7 @@ from pathlib import Path
 
 from starlette.testclient import TestClient
 
+from metabrowser.inventory_engine.coordinator import InventoryConsistencyError
 from metabrowser.paths_safe import ROOT_DIR, _set_root_dir
 from metabrowser.plugin_api import (
     UnsupportedSourceCapabilityError,
@@ -18,7 +19,6 @@ from metabrowser.plugin_api import (
     served_root,
     source_capabilities,
 )
-from metabrowser.inventory_engine.coordinator import InventoryConsistencyError
 from metabrowser.source import (
     FILESYSTEM_CAPABILITIES,
     AttachedFilesystemSubject,
