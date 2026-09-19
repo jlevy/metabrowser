@@ -1,0 +1,126 @@
+"""Git runner policies, command targets, and the acquisition version floor."""
+
+from __future__ import annotations
+
+import asyncio
+import os
+import shutil
+import stat
+from pathlib import Path
+
+import pytest
+
+from metabrowser.git.process import (
+    ACQUISITION_POLICY,
+    BATCH_OBJECT_POLICY,
+    FETCH_POLICY,
+    READ_POLICY,
+    UnsupportedGitVersionError,
+    acquisition_allowed,
+    attached_worktree_target,
+    detect_git_version,
+    git_environment,
+    parse_git_version,
+    repository_store_target,
+    require_acquisition_git,
+    run_git,
+)
+
+pytestmark = pytest.mark.skipif(
+    shutil.which("git") is None,
+    reason="git executable is required",
+)
+
+
+def test_acquisition_policy_isolates_config_and_disables_lazy_fetch() -> None:
+    env = git_environment(ACQUISITION_POLICY)
+    assert env["GIT_CONFIG_NOSYSTEM"] == "1"
+    assert env["GIT_CONFIG_GLOBAL"] == os.devnull
+    assert env["GIT_NO_LAZY_FETCH"] == "1"
+    assert env["GIT_SSH_COMMAND"] == "ssh -oBatchMode=yes"
+    assert env["GIT_TERMINAL_PROMPT"] == "0"
+    read_env = git_environment(READ_POLICY)
+    assert "GIT_NO_LAZY_FETCH" not in read_env
+    assert "GIT_CONFIG_NOSYSTEM" not in read_env
+    assert "GIT_SSH_COMMAND" not in read_env
+
+
+def test_run_git_rejects_cwd_and_target_together(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    asyncio.run(run_git(["init", "-q", "-b", "main"], cwd=repo))
+    target = attached_worktree_target(worktree=repo, git_dir=repo / ".git")
+    with pytest.raises(TypeError, match="target or cwd"):
+        asyncio.run(run_git(["rev-parse", "HEAD"], cwd=repo, target=target))
+
+
+def test_attached_worktree_target_does_not_follow_a_poisoned_git_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    decoy = tmp_path / "decoy"
+    repo.mkdir()
+    decoy.mkdir()
+    asyncio.run(run_git(["init", "-q", "-b", "main"], cwd=repo))
+    asyncio.run(run_git(["init", "-q", "-b", "main"], cwd=decoy))
+    (repo / "file.txt").write_text("repo\n", encoding="utf-8")
+    asyncio.run(run_git(["add", "file.txt"], cwd=repo))
+    asyncio.run(
+        run_git(
+            ["-c", "user.name=T", "-c", "user.email=t@example.invalid", "commit", "-qm", "one"],
+            cwd=repo,
+        )
+    )
+    target = attached_worktree_target(worktree=repo, git_dir=repo / ".git")
+    monkeypatch.setenv("GIT_DIR", str(decoy / ".git"))
+    top = asyncio.run(run_git(["rev-parse", "--show-toplevel"], target=target))
+    assert Path(top.decode().strip()).resolve() == repo.resolve()
+
+
+def test_repository_store_target_names_the_bare_git_dir(tmp_path: Path) -> None:
+    store = tmp_path / "store.git"
+    asyncio.run(
+        run_git(["init", "--bare", "-q", str(store)], cwd=tmp_path, policy=ACQUISITION_POLICY)
+    )
+    target = repository_store_target(git_dir=store)
+    git_dir = asyncio.run(run_git(["rev-parse", "--absolute-git-dir"], target=target))
+    assert Path(git_dir.decode().strip()).resolve() == store.resolve()
+
+
+def test_acquisition_policy_creates_owner_only_store_entries(tmp_path: Path) -> None:
+    store = tmp_path / "store.git"
+    asyncio.run(
+        run_git(
+            ["init", "--bare", "--template=", str(store)], cwd=tmp_path, policy=ACQUISITION_POLICY
+        )
+    )
+    leaked = [
+        path
+        for path in [store, *store.rglob("*")]
+        if path.exists() and path.stat().st_mode & (stat.S_IRWXG | stat.S_IRWXO)
+    ]
+    assert leaked == []
+
+
+def test_run_git_accepts_bounded_stdin(tmp_path: Path) -> None:
+    digest = asyncio.run(
+        run_git(
+            ["hash-object", "--stdin"],
+            cwd=tmp_path,
+            policy=BATCH_OBJECT_POLICY,
+            stdin=b"hello\n",
+        )
+    )
+    assert len(digest.strip()) == 40
+    isolated = git_environment(FETCH_POLICY)
+    assert isolated["GIT_NO_LAZY_FETCH"] == "1"
+
+
+def test_require_acquisition_git_matches_the_installed_binary() -> None:
+    version, raw = detect_git_version()
+    if acquisition_allowed(version):
+        assert require_acquisition_git() == version
+        return
+    with pytest.raises(UnsupportedGitVersionError, match="unsupported Git version"):
+        require_acquisition_git()
+    assert parse_git_version(raw) == version

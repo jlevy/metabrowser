@@ -19,6 +19,10 @@ metab ROOT [MODE] [OPTIONS]
 ```
 
 `ROOT` is the directory to serve, or a single file to open directly.
+A clone URL (`https://…`, `ssh://…`, `git@host:path`, or `file://…`) is a Git source,
+not a local path. `file://` is acquired with `--no-serve` (or as a side effect of
+`--api /api/cache/…`); https and ssh stay closed, and acquired content is not served.
+A bare filesystem path is never treated as a clone origin.
 With no mode flag, `metab ROOT` starts the server and opens a browser, the way `open`
 opens a folder on macOS.
 
@@ -37,12 +41,15 @@ looks accepted while being ignored.
 | `--walk` | Dump the inventory walker’s result |
 | `--diff SPEC` | Show a change set between two snapshots |
 | `--check-api` | Run the navigation scenario as a pass/fail check |
+| `--no-serve` | Acquire a `file://` Git source into the cache without starting a server |
 | `--remote HOST` | Serve a remote directory over an SSH tunnel |
 | `--plugins`, `--plugin NAME` | Inspect installed browser plugins |
 | `--doctor` | Validate browser plugins and installed artifact capabilities |
 
-Every mode is read-only except `--api` when the route it names writes, which today means
-only `/api/kpress/export`.
+Most modes are read-only.
+`--no-serve` writes a cache entry for a `file://` source.
+`--api` writes only when the route it names writes, which today means
+`/api/kpress/export`.
 
 ## Serving
 
@@ -62,6 +69,31 @@ The server binds `127.0.0.1:8411` by default and walks a bounded port range if t
 is taken.
 Do not change `--host` to expose a served root to an untrusted network; see the
 [security policy](../SECURITY.md).
+
+## Acquiring a Git source: `--no-serve`
+
+`file://` is the only origin this release acquires.
+`--no-serve` fetches it into the repository cache under `METABROWSER_HOME` (default
+`~/.metabrowser`) and prints the source slug, store identity, strategy, and revision,
+without binding a port or opening a browser.
+
+```shell
+metab file:///path/to/origin.git --no-serve
+metab file:///path/to/origin.git --api /api/cache/layout
+```
+
+`--api /api/cache/…` on a `file://` URL acquires as a side effect, then issues the route
+against an empty throwaway directory so `/api/tree` cannot expose the cache or the
+origin. Serving, walking, `--show`, and `--check-api` still refuse Git sources without
+acquiring. https and ssh URLs stay closed.
+A second `--no-serve` of the same `file://` source reuses the published store.
+
+Inspect cache state from any local root after an acquire: the cache routes resolve
+`METABROWSER_HOME` independently of the served directory.
+
+```shell
+metab ./notes --api /api/cache/sources
+```
 
 ## Inspecting Data: `--api`
 

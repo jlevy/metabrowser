@@ -344,10 +344,10 @@ def ensure_home(home: Path) -> Path: # creates the f01 skeleton, writes CACHEDIR
 | `probe.py` | Application-home lock and publication probe | `probe_application_home` |
 | `contracts.py` | Packaged SoftSchema bindings and drift checks | `compile_contracts`, `cache_contract_registry`, `repository_cache_capabilities` |
 | `records.py` | Closed source/store and staged-fetch contracts | `ApplicationConfig`, `CacheLayout`, `RepositorySource`, `RepositorySourceState`, `RepositoryStoreAlias`, `RepositoryStore`, `RepositoryStoreState`, `StagedFetch` |
-| `reclaim.py` | Startup staging/trash sweep, trash, quarantine, store reclamation, and lease-aware object reclamation | `reclaim_staging`, `reclaim_trash`, `quarantine_entries`, `reclaim_store`, `reclaim_repository_objects` |
+| `reclaim.py` | Startup staging/trash sweep, trash, quarantine, store reclamation, and lease-aware object reclamation | `reclaim_staging`, `reclaim_trash`, `quarantine_entries`, `reclaim_store`, `reclaim_unreferenced_stores`, `reclaim_repository_objects` |
 | `identity.py` | Conservative source identity, provider-derived store identity, aliasing, and collision-safe slugs | `normalize_git_source`, `source_identity`, `repository_store_id`, `provider_repository_store_id`, `cache_slug` |
 | `urls.py` | Root classification, provider reducer arbitration, and terminal rejection | `classify_root_argument`, `ProviderUrlReducer`, `ReducerOutcome`, `RepositorySelection` |
-| `acquire.py` | Worktree-free staged acquisition and atomic store/alias publication | `acquire_repository`, `validate_staging_store`, `publish_store`, `publish_source_alias` |
+| `acquire.py` | Worktree-free staged acquisition and atomic store/alias publication | `acquire_file_source`, `acquire_into_staging`, `publish_from_staging` |
 | `repository_store.py` | Selected-object fetch jobs, full-OID publication, leases, convergence, and maintenance | `resolve_store`, `stage_fetch`, `publish_refs`, `lease_revision`, `converge_store`, `reclaim_objects` |
 | `selection.py` | Pure ref/path resolution and typed missing-ref requests | `resolve_selection`, `resolve_ref_path_candidates` |
 | `service.py` | One CLI/chooser orchestration result | `resolve_open_target`, `close_open_target` |
@@ -431,11 +431,22 @@ state and never a cache-directory listing.
 ### Acquisition without a network
 
 `acquire` clones from a local origin repository created in the same sandbox.
-This is real `git clone` through the real `run_git`, with no mocking and no forked code
+This is real `git fetch` through the real `run_git`, with no mocking and no forked code
 path, which is what the golden guidelines mean by not forking logic for tests.
 It also happens to be the honest test: the failure modes that matter — partial clone,
 interrupted publish, quarantine, reuse-on-second-open — are all filesystem behavior, not
 network behavior.
+
+A live `metab file:// --no-serve` tryscript cannot run on ubuntu-latest today: the
+runner’s Git 2.43.0 is below the acquisition floor (2.43.7 / patched tracks), and
+distro-patched Git remains refuse.
+Until CI pins Git 2.50.1 (`mb-oueh`), acquire / reuse / staging-sweep / orphan-store
+reclaim / read-only cache hit / last-opened-at evidence is
+`tests/test_cli_cache_acquire_golden.py`: the production CLI in-process, the floor
+monkeypatched, a real pack fetch.
+Layout and future-format refusal remain `cli-api-cache.tryscript.md`. Do not add
+`<HOME>` or `<MTIME>` to `normalize.py` until a transcript emits those values; cache
+routes never report paths, and `--no-serve` does not print the home.
 
 ### What each phase’s golden proves
 
@@ -448,6 +459,7 @@ network behavior.
 | `cli-cache-layout.tryscript.md` | home creation, `f01` record, `CACHEDIR.TAG`, future-format refusal | Cache 1A |
 | `cli-cache-acquire.tryscript.md` | clone, publish, second open reuses with no network | Cache 1B-a |
 | `cli-cache-recover.tryscript.md` | interrupted publish quarantines; reclaim sweeps staging | Cache 1B-a |
+| `cli-cache-readonly-hit.txt` | second `--no-serve` reuses a published store against a home without owner-write | Cache 1B-a |
 | `cli-url-open.tryscript.md` | URL grammar accepts and rejects, with reasons | Cache 1B-b |
 | `cli-github-repo-open.tryscript.md` | GitHub repository URL reduces to and reuses the shared store without provider auth | Repository 2A |
 | `cli-github-branch-open.tryscript.md` | default, non-default, slash-containing, offline, and unavailable branches use immutable revision subjects without moving a checkout | Repository 2C |
@@ -595,25 +607,34 @@ acquisition with only a warning.
 Both were reproduced on Git 2.50.1. `file://` uses the git-aware transport and packs
 rather than hardlinks, which is what makes the testing rationale true.
 
-`file://` honors `--filter` only when the origin allows it, so sandbox origins in
-acquisition goldens set `uploadpack.allowFilter=true`. Measured on Git 2.50.1, an origin
-without it sent every object with only a warning while the store still recorded itself
-as a promisor. Object-ID wants for prefetch and convergence need no further permission
-under protocol v2, Git’s default above the acquisition floor; under protocol v0 the same
-blob wants were refused with `Server does not allow request for unadvertised object`
-unless the origin also set `uploadpack.allowAnySHA1InWant`, so goldens do not force v0
+`file://` honors `--filter` only when the origin allows it, so sandbox origins that
+exercise blobless fetch set `uploadpack.allowFilter=true`. Measured on Git 2.50.1, an
+origin without it sent every object with only a warning while the store still recorded
+itself as a promisor.
+Object-ID wants for prefetch and convergence need no further permission under protocol
+v2, Git’s default above the acquisition floor; under protocol v0 the same blob wants
+were refused with `Server does not allow request for unadvertised object` unless the
+origin also set `uploadpack.allowAnySHA1InWant`, so goldens do not force v0
 ([measurements](../../../explorations/repository-cache/README.md#gitlinks-and-rejected-object-requests)).
 See
 [Safety at the boundary](plan-2026-08-11-open-repo-from-git-url.md#safety-at-the-boundary).
 
+Portable acquire goldens (`mb-3639`) use an origin that does *not* allow the filter, so
+`strategy` is `full` on every Git that can fetch at all.
+Blobless honor/ignore remains a unit-test assertion, because ubuntu-latest’s Git 2.43.0
+is below the acquisition floor.
+
+**Closed 2026-09-18: acquisition is a side effect of `metab <url>`, with `--no-serve`.**
+`--no-serve` acquires a `file://` source and prints logical identity without starting
+the ASGI server. `metab file://… --api /api/cache/…` acquires, then inspects cache state
+against an empty throwaway root.
+There is no `/api/cache/acquire` write route.
+Serving, walking, and other modes refuse Git sources without acquiring; https and ssh
+stay closed; acquired content is not served.
+
 Still open:
 
-1. **Where acquisition is triggered from.** Everything in `metab` is read-only today,
-   and acquisition writes.
-   Recommendation: keep it a side effect of `metab <url>`, and add `--no-serve` so a
-   golden can acquire and inspect without starting a server.
-   No `/api/cache/acquire` write route; the state clause covers reads only.
-2. **Whether `--show` recurses into containers.** Carried forward from the parity plan,
+1. **Whether `--show` recurses into containers.** Carried forward from the parity plan,
    unresolved, and not on the critical path.
 
 ## References

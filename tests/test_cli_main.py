@@ -9,6 +9,7 @@ to the selected mode are usage errors (exit 2).
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import re
@@ -30,7 +31,7 @@ from typer.testing import CliRunner
 from metabrowser import __version__
 from metabrowser.build_version import display_version_line
 from metabrowser.cli.http_readiness import wait_for_http_ok_then
-from metabrowser.cli.main import _app, main
+from metabrowser.cli.main import _app, _is_plain_local_root, main
 from metabrowser.cli.serve import (
     _STOPPING_NOTICE,
     _QuietForceExitServer,
@@ -80,8 +81,10 @@ def test_cli_help_shows_modes_and_examples() -> None:
     assert "--plugins" in output
     assert "--plugin" in output
     assert "--doctor" in output
+    assert "--no-serve" in output
     assert "--version" in output
     assert "metab ." in compact_output
+    assert "file://" in compact_output
     assert "metab --remote example-host --path /srv/shared-files" in compact_output
 
 
@@ -727,6 +730,38 @@ def test_cli_bare_path_routes_to_serve() -> None:
 
     assert isinstance(result.exception, CLIError)
     assert "not a directory" in str(result.exception)
+
+
+def test_plain_local_root_fast_path_matches_url_grammar_fixture() -> None:
+    """The CLI skips ``cache.urls`` only for inputs the grammar calls a local path."""
+    fixture = json.loads(
+        Path("tests/fixtures/repository-cache/url-grammar.json").read_text(encoding="utf-8")
+    )
+    for case in fixture["cases"]:
+        expected_local = case["expected"]["outcome"] == "local_path"
+        assert _is_plain_local_root(case["input"]) is expected_local, case["id"]
+
+
+def test_cli_file_url_is_a_git_source_and_is_not_served() -> None:
+    result = runner.invoke(_app, ["file:///srv/git/repo.git", "--no-open"])
+    assert isinstance(result.exception, CLIError)
+    message = str(result.exception)
+    assert "file Git sources are not served yet" in message
+    assert "file:///srv/git/repo.git" in message
+    assert "--no-serve" in message
+    assert "not a directory" not in message
+
+
+def test_cli_https_clone_url_is_a_git_source_and_is_not_served() -> None:
+    result = runner.invoke(_app, ["https://example.com/owner/repo.git", "--walk"])
+    assert isinstance(result.exception, CLIError)
+    assert "https Git sources are not opened yet" in str(result.exception)
+
+
+def test_cli_rejects_a_remote_helper_root() -> None:
+    result = runner.invoke(_app, ["ext::sh -c evil", "--no-open"])
+    assert isinstance(result.exception, CLIError)
+    assert "invalid ROOT (remote_helper_syntax)" in str(result.exception)
 
 
 def test_serve_expands_home_relative_root(tmp_path: Path, monkeypatch) -> None:

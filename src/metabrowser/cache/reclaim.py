@@ -22,7 +22,9 @@ observer; the fixture replay checks those reports against the frozen machines.
 - **Store reclamation** (``store_reclamation``). A store no alias names is moved to
   trash under its exclusive maintenance lock, which a live lease makes busy, and its
   store lock. Provider references are not modeled yet, so any provider binding or
-  provider repository in the home counts as a reference.
+  provider repository in the home counts as a reference. Startup lists
+  ``repository-stores`` and runs this for each published store after the staging/trash
+  sweep. Read routes do not.
 """
 
 from __future__ import annotations
@@ -40,7 +42,7 @@ from pathlib import Path
 from typing import Final
 
 from metabrowser.cache.atomic import RecordError, publish_entry, read_record
-from metabrowser.cache.identity import IDENTITY_PREFIX, is_slug
+from metabrowser.cache.identity import IDENTITY_PREFIX, is_slug, is_store_key
 from metabrowser.cache.locks import (
     CacheLock,
     LockBusyError,
@@ -56,6 +58,7 @@ from metabrowser.cache.locks import (
 from metabrowser.cache.paths import (
     PROVIDER_BINDINGS,
     PROVIDER_REPOSITORIES,
+    REPOSITORY_STORES,
     SOURCES,
     STAGING,
     STAGING_LOCKS,
@@ -386,6 +389,37 @@ def reclaim_store(
     return StoreReclamation.RECLAIMED if deleted else StoreReclamation.DELETE_FAILED
 
 
+def reclaim_unreferenced_stores(
+    home: Path, *, observer: MachineObserver | None = None
+) -> tuple[str, ...]:
+    """Reclaim published stores no alias names.
+
+    A live lease makes exclusive maintenance busy, so a concurrent publish is skipped
+    and retried on a later open. Directory names that are not store keys stay in place.
+    """
+
+    try:
+        names = sorted(entry.name for entry in os.scandir(home / REPOSITORY_STORES))
+    except FileNotFoundError:
+        return ()
+    reclaimed: list[str] = []
+    for name in names:
+        if not is_store_key(name):
+            continue
+        if store_is_referenced(home, name):
+            continue
+        try:
+            outcome = reclaim_store(home, name, observer=observer)
+        except PrivateStorageError:
+            log.warning("Skipped a repository store whose lock file is unusable", exc_info=True)
+            continue
+        if outcome is StoreReclamation.RECLAIMED:
+            reclaimed.append(name)
+        elif outcome is StoreReclamation.DELETE_FAILED:
+            log.warning("Could not delete a reclaimed store; the next sweep retries it")
+    return tuple(reclaimed)
+
+
 # ── Quarantine ─────────────────────────────────────────────────────
 
 
@@ -594,6 +628,7 @@ __all__ = [
     "reclaim_staging",
     "reclaim_store",
     "reclaim_trash",
+    "reclaim_unreferenced_stores",
     "store_is_referenced",
     "sweep_staging_and_trash",
 ]
