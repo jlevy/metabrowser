@@ -16,6 +16,7 @@ from __future__ import annotations
 import os
 import shutil
 from pathlib import Path
+from typing import Any
 
 import pytest
 from typer.testing import CliRunner
@@ -39,7 +40,7 @@ runner = CliRunner()
 README_WIRE = GitPath.from_segments(b"README").to_wire()
 
 
-def _invoke(args: list[str]) -> object:
+def _invoke(args: list[str]) -> Any:
     result = runner.invoke(_app, args)
     assert result.exit_code == 0, result.output
     return result
