@@ -97,16 +97,51 @@ def test_file_url_api_cache_layout_acquires_then_inspects(
 
 
 @posix_only
-def test_file_url_api_tree_is_refused_without_acquiring(
+def test_file_url_api_tree_attaches_the_default_pin(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     home = _isolate_home(tmp_path, monkeypatch)
     url = _file_url(_origin(tmp_path, allow_filter=False))
     result = runner.invoke(_app, [url, "--api", "/api/tree"])
+    assert result.exit_code == 0, result.output
+    assert "Serving" not in result.output
+    assert '"subject": "git_revision"' in result.output
+    assert '"kind": "tree"' in result.output
+    assert "README" in result.output
+    assert str(home) not in result.output
+    assert "repository.git" not in result.output
+
+
+@posix_only
+def test_file_url_show_reports_the_pin_blob(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _isolate_home(tmp_path, monkeypatch)
+    url = _file_url(_origin(tmp_path, allow_filter=False))
+    result = runner.invoke(_app, [url, "--show", "README"])
+    assert result.exit_code == 0, result.output
+    assert "Serving" not in result.output
+    assert "show: README" in result.output
+    assert "route: /view/" in result.output
+    assert "kind: text" in result.output
+    assert "model: text envelope" in result.output
+
+
+@posix_only
+def test_https_show_stays_closed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    home = _isolate_home(tmp_path, monkeypatch)
+    result = runner.invoke(_app, ["https://example.com/owner/repo.git", "--show", "README"])
     assert isinstance(result.exception, CLIError)
-    message = str(result.exception)
-    assert "file Git sources are not served yet" in message
-    assert "--api /api/cache/" in message
+    assert "https Git sources are not opened yet" in str(result.exception)
+    assert not home.exists()
+
+
+@posix_only
+def test_https_api_tree_stays_closed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    home = _isolate_home(tmp_path, monkeypatch)
+    result = runner.invoke(_app, ["https://example.com/owner/repo.git", "--api", "/api/tree"])
+    assert isinstance(result.exception, CLIError)
+    assert "https Git sources are not served yet" in str(result.exception)
     assert not home.exists()
 
 

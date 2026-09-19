@@ -2,8 +2,10 @@
 
 ``--no-serve`` publishes into the application home and prints logical identity.
 ``--api /api/cache/…`` acquires as a side effect, then issues the route against an
-empty throwaway root so ``/api/tree`` cannot expose the cache or the origin.
-https and ssh stay closed. Acquired content is never served.
+empty throwaway root so cache inspection cannot expose origin objects through
+``/api/tree``. Non-cache ``--api`` / ``--show`` of a ``file://`` pin is
+``git_pin_cli``. https and ssh stay closed. Acquired content is never served
+on a listening port.
 """
 
 from __future__ import annotations
@@ -35,11 +37,15 @@ _ACQUIRE_CLI_ERRORS = (
 )
 
 
-def _is_cache_inspect_route(route: str) -> bool:
+def is_cache_inspect_route(route: str) -> bool:
     """Return True when *route* is a read-only ``/api/cache/`` inspection path."""
 
     path = route.split("?", 1)[0]
     return path.startswith("/api/cache/")
+
+
+def _is_cache_inspect_route(route: str) -> bool:
+    return is_cache_inspect_route(route)
 
 
 def acquire_published_source(source: GitSource) -> PublishedSource:

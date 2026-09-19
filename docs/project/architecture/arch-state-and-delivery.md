@@ -94,8 +94,10 @@ released when the next subject attaches.
 
 Today the attached folder is `AttachedFilesystemSubject`. A `GitRevisionSubject` can pin
 a full-OID tree over a worktree-free store.
-A published-store pin takes `lease_revision`, which holds the store’s shared maintenance
-lock and a durable `refs/metabrowser/subjects/<oid>` ref.
+`InventoryCoordinator.open_subject` accepts that pin without a filesystem walk.
+`metab file://… --show` and non-cache `--api` lease it in-process; a listening server
+still does not. A published-store pin takes `lease_revision`, which holds the store’s
+shared maintenance lock and a durable `refs/metabrowser/subjects/<oid>` ref.
 `maintain_store` runs `gc` and `repack` under the exclusive maintenance lock; a live
 lease makes that busy.
 Git discovery, history, refs, commit detail, file, raw, tree, diffs, KPress, and

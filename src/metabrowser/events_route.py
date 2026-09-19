@@ -195,7 +195,11 @@ async def build_lifespan(
     active_task: asyncio.Task[None] | None = None
     bus: _EventBus | None = None
     try:
-        if isinstance(root, Path):
+        git_subject = _git_revision_subject()
+        if git_subject is not None:
+            await runtime.open_subject(git_subject)
+            LOG.debug("git revision pin attached; inventory walker idle")
+        elif isinstance(root, Path):
             await runtime.open(root)
             LOG.debug("inventory opened at %s", root)
             cursor, _version, _state = await runtime.coordinator.checkpoint()

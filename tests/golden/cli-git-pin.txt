@@ -1,0 +1,116 @@
+# metab file://<ORIGIN> --show README
+exit: 0
+--- stdout ---
+show: README
+route: /view/g1-UkVBRE1F
+kind: text
+views: source (default)
+model: text envelope; size=6 content_bytes=6 content_truncated=False
+--- stderr ---
+# metab file://<ORIGIN> --api /api/index/progress
+exit: 0
+--- stdout ---
+api: /api/index/progress
+status: 200
+{
+  "status": "done",
+  "indexed_files": 1,
+  "max_files": 500000,
+  "truncated": false,
+  "complete": true,
+  "provider": "git",
+  "contract": "git-revision",
+  "active": false
+}
+--- stderr ---
+# metab file://<ORIGIN> --api /api/file?path=g1-UkVBRE1F
+exit: 0
+--- stdout ---
+api: /api/file?path=g1-UkVBRE1F
+status: 200
+{
+  "subject": "git_revision",
+  "size": 6,
+  "path": "g1-UkVBRE1F",
+  "display": "README",
+  "mode": "100644",
+  "git_kind": "blob",
+  "symlink": false,
+  "gitlink": false,
+  "oid": "ce013625030ba8dba906f756967f9e9ca394464a",
+  "type": "text",
+  "kind": "text",
+  "views": [
+    {
+      "id": "source",
+      "label": "Source",
+      "default": true,
+      "container_class": "content-body metabrowser-source-host",
+      "printable": true,
+      "print_profile": "source",
+      "render_runtime": "client"
+    }
+  ],
+  "content": "hello\n",
+  "content_offset": 0,
+  "content_bytes": 6,
+  "bytes_read": 6,
+  "content_truncated": false,
+  "content_preview_limit": 2097152,
+  "content_max_preview_limit": 16777216,
+  "highlight_disabled": false
+}
+--- stderr ---
+# metab file://<ORIGIN> --api /api/tree?depth=0
+exit: 0
+--- stdout ---
+api: /api/tree?depth=0
+status: 200
+{
+  "subject": "git_revision",
+  "path": "",
+  "display": "",
+  "oid": "7d4a466af82cd6857c85c0296d5c23fc68cba887",
+  "kind": "tree",
+  "entries": [],
+  "tree": [],
+  "tally_cache_status": "done",
+  "tally_cache_max_files": 500000,
+  "summary": {
+    "files": 1,
+    "size": 6,
+    "ignored_files": 0,
+    "ignored_size": 0
+  },
+  "extensions": [],
+  "canonical_extensions": [],
+  "type_families": [],
+  "type_presets": [
+    [
+      "code",
+      0,
+      0
+    ],
+    [
+      "docs",
+      1,
+      0
+    ],
+    [
+      "data",
+      0,
+      0
+    ],
+    [
+      "archives",
+      0,
+      0
+    ],
+    [
+      "media",
+      0,
+      0
+    ]
+  ]
+}
+--- stderr ---

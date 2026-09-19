@@ -51,6 +51,7 @@ from metabrowser.inventory_engine.overlay import (
 )
 from metabrowser.source import (
     RepositorySubject,
+    RepositorySubjectKind,
     UnsupportedSourceCapabilityError,
 )
 
@@ -330,18 +331,36 @@ class InventoryCoordinator:
         return await self.open(root)
 
     async def open_subject(self, subject: RepositorySubject) -> HostVersion:
-        """Open the inventory for a subject that can navigate and index.
+        """Open inventory for a subject that can navigate and index.
 
-        Filesystem subjects reuse :meth:`open`. Git-tree subjects stay on
-        the later revision-source bead.
+        Filesystem subjects reuse :meth:`open`. A Git pin has those
+        capabilities without a host path: the walker stays closed and Git
+        routes own the complete-at-once index.
         """
 
         subject.capabilities.require("index")
         subject.capabilities.require("navigation")
         root = subject.filesystem_root
-        if root is None:
+        if root is not None:
+            return await self.open(root)
+        if subject.kind != RepositorySubjectKind.git_revision.value:
             raise UnsupportedSourceCapabilityError("filesystem")
-        return await self.open(root)
+        async with self._condition:
+            await self._wait_for_transition_locked()
+            self._ensure_not_closed_locked()
+            if self._handle is not None:
+                raise InventoryConsistencyError(
+                    "a Git revision pin cannot open while a filesystem inventory is open"
+                )
+            return HostVersion(
+                engine=EngineVersion(
+                    session=f"git-revision:{subject.identity}",
+                    sequence=0,
+                    scope_fingerprint=subject.identity,
+                    semantic_fingerprint=RepositorySubjectKind.git_revision.value,
+                ),
+                overlay_revision=self._overlay.snapshot().revision,
+            )
 
     async def read(
         self,

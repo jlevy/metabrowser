@@ -152,35 +152,66 @@ def _encoded_route(path: str, display_path: str) -> bytes:
         raise CLIError(f"{display_path} is not a route this grammar accepts") from exc
 
 
-def run_show(
-    root: Path,
+def _prepare_plugins(plugins_dir: list[Path] | None) -> None:
+    extra_plugin_dirs = resolve_extra_plugin_dirs(plugins_dir)
+    os.environ["METABROWSER_PLUGINS_DIRS"] = os.pathsep.join(
+        str(plugin_dir) for plugin_dir in extra_plugin_dirs
+    )
+
+
+def _emit_show(
+    *,
+    display_path: str,
+    shown_route: str,
+    kind: str,
+    views: Any,
+    model: str,
+    fmt: str,
+) -> None:
+    if fmt == "json":
+        typer.echo(
+            json.dumps(
+                {
+                    "show": display_path,
+                    "route": shown_route,
+                    "kind": kind,
+                    "views": views,
+                    "model": model,
+                },
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
+        return
+    typer.echo(f"show: {display_path}")
+    typer.echo(f"route: {shown_route}")
+    typer.echo(f"kind: {kind}")
+    typer.echo(f"views: {_describe_views(views)}")
+    typer.echo(f"model: {model}")
+
+
+async def ashow_active(
     *,
     path: str,
     fmt: str = "text",
     plugins_dir: list[Path] | None = None,
     log_level: str = "",
     index_timeout_s: float = INDEX_READY_TIMEOUT_S,
+    normalize_root: Path,
+    filesystem_root: Path | None,
 ) -> None:
-    """Report route, kind, views, and model summary for one selection."""
+    """Report one selection against the already-attached subject."""
 
     load_dotenv_chain()
     apply_log_level(log_level)
     display_path = _display_selection(path)
-    resolved = root.expanduser().resolve()
-    if not resolved.is_dir():
-        raise CLIError(f"{resolved} is not a directory")
-
-    extra_plugin_dirs = resolve_extra_plugin_dirs(plugins_dir)
-    os.environ["METABROWSER_PLUGINS_DIRS"] = os.pathsep.join(
-        str(plugin_dir) for plugin_dir in extra_plugin_dirs
-    )
+    _prepare_plugins(plugins_dir)
 
     from metabrowser import server
 
-    server._set_root_dir(resolved)
-
     commit = None
     native_selection: str | None = None
+    git_wire: str | None = None
     if path.startswith(COMMIT_ROUTE_PREFIX):
         commit = decode_safe_commit_route(_encoded_route(path, display_path))
         if commit is None:
@@ -192,6 +223,27 @@ def run_show(
         if inner:
             params["file"] = inner
         route = "/api/plugin/diff/comparison"
+        needs_index = False
+    elif filesystem_root is None:
+        from metabrowser.git.content_routes import decode_git_view_path, split_git_container_wire
+        from metabrowser.git.tree_source import GitPath, GitPathError
+
+        selection = path
+        if path.startswith(VIEW_ROUTE_PREFIX):
+            decoded = decode_git_view_path(_encoded_route(path, display_path))
+            if decoded is None:
+                raise CLIError(f"{display_path} is not a route this grammar accepts")
+            selection = decoded
+        try:
+            if selection.startswith("g1-"):
+                git_path, inner = split_git_container_wire(selection)
+                git_wire = f"{git_path.to_wire()}/{inner}" if inner else git_path.to_wire()
+            else:
+                git_wire = GitPath.from_display(selection).to_wire()
+        except GitPathError as exc:
+            raise CLIError(f"{display_path} is not a GitPath this pin accepts") from exc
+        route, params = "/api/file", {"path": git_wire}
+        needs_index = True
     else:
         native_selection = path
         if path.startswith(VIEW_ROUTE_PREFIX):
@@ -204,17 +256,14 @@ def run_show(
         # inventory, where a literal `%` is escaped as `%25` so percent-looking
         # siblings cannot alias each other.
         route, params = "/api/file", {"path": canonical_inventory_path(native_selection)}
+        needs_index = (filesystem_root / native_selection).is_dir()
 
-    # A directory's envelope carries inventory aggregates; a file's does not.
-    needs_index = native_selection is not None and (resolved / native_selection).is_dir()
-    response = asyncio.run(
-        _fetch(
-            server.app,
-            route,
-            params,
-            index_timeout_s=index_timeout_s,
-            needs_index=needs_index,
-        )
+    response = await _fetch(
+        server.app,
+        route,
+        params,
+        index_timeout_s=index_timeout_s,
+        needs_index=needs_index,
     )
 
     if response.incomplete:
@@ -231,7 +280,7 @@ def run_show(
     if not isinstance(payload, dict):
         raise CLIError(f"{display_path} returned an unexpected envelope")
 
-    ctx = NormalizeContext(root=resolved)
+    ctx = NormalizeContext(root=normalize_root)
     payload = normalize_payload(payload, ctx)
 
     if commit is not None:
@@ -242,6 +291,14 @@ def run_show(
         # registered ones rather than a second list that could drift from them.
         views: Any = server._views_for_kind("diff")
         model = _describe_comparison(payload, inner)
+    elif git_wire is not None:
+        identity = payload.get("path", git_wire)
+        if not isinstance(identity, str):
+            raise CLIError(f"{display_path} returned an unexpected path identity")
+        shown_route = f"{VIEW_ROUTE_PREFIX}{identity}" if identity else "/view/"
+        kind = str(payload.get("kind", "unknown"))
+        views = payload.get("views")
+        model = _describe_model(payload)
     else:
         identity = payload.get("path", params["path"])
         if not isinstance(identity, str):
@@ -256,24 +313,62 @@ def run_show(
         views = payload.get("views")
         model = _describe_model(payload)
 
-    if fmt == "json":
-        typer.echo(
-            json.dumps(
-                {
-                    "show": display_path,
-                    "route": shown_route,
-                    "kind": kind,
-                    "views": views,
-                    "model": model,
-                },
-                indent=2,
-                ensure_ascii=False,
-            )
-        )
-        return
+    _emit_show(
+        display_path=display_path,
+        shown_route=shown_route,
+        kind=kind,
+        views=views,
+        model=model,
+        fmt=fmt,
+    )
 
-    typer.echo(f"show: {display_path}")
-    typer.echo(f"route: {shown_route}")
-    typer.echo(f"kind: {kind}")
-    typer.echo(f"views: {_describe_views(views)}")
-    typer.echo(f"model: {model}")
+
+def run_show_active(
+    *,
+    path: str,
+    fmt: str = "text",
+    plugins_dir: list[Path] | None = None,
+    log_level: str = "",
+    index_timeout_s: float = INDEX_READY_TIMEOUT_S,
+    normalize_root: Path,
+    filesystem_root: Path | None,
+) -> None:
+    asyncio.run(
+        ashow_active(
+            path=path,
+            fmt=fmt,
+            plugins_dir=plugins_dir,
+            log_level=log_level,
+            index_timeout_s=index_timeout_s,
+            normalize_root=normalize_root,
+            filesystem_root=filesystem_root,
+        )
+    )
+
+
+def run_show(
+    root: Path,
+    *,
+    path: str,
+    fmt: str = "text",
+    plugins_dir: list[Path] | None = None,
+    log_level: str = "",
+    index_timeout_s: float = INDEX_READY_TIMEOUT_S,
+) -> None:
+    """Report route, kind, views, and model summary for one filesystem selection."""
+
+    resolved = root.expanduser().resolve()
+    if not resolved.is_dir():
+        raise CLIError(f"{resolved} is not a directory")
+    from metabrowser import server
+
+    server._set_root_dir(resolved)
+    run_show_active(
+        path=path,
+        fmt=fmt,
+        plugins_dir=plugins_dir,
+        log_level=log_level,
+        index_timeout_s=index_timeout_s,
+        normalize_root=resolved,
+        filesystem_root=resolved,
+    )

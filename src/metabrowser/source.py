@@ -3,7 +3,9 @@
 Filesystem browsing keeps its current Path helpers. Git revision subjects
 attach here; GitPath and blob batch readers stay in ``git.tree_source``.
 Git discovery, history, refs, commit detail, file, raw, tree, diffs, and KPress honor
-a pinned revision. Inventory open and serving acquired Git stay later.
+a pinned revision. ``InventoryCoordinator.open_subject`` accepts a Git pin without
+opening a filesystem walker. The CLI can ``--show`` / ``--api`` a leased ``file://``
+pin in-process. Serving acquired Git and opening https/ssh stay later.
 """
 
 from __future__ import annotations

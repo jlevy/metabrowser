@@ -203,7 +203,7 @@ plugin discovery or static asset loading.
 
 | Declaration or SDK call | Owns | Arbitration and lifecycle | Bead |
 | --- | --- | --- | --- |
-| `SourceSession` / `SourceCapabilities`; `resolve_content`, `stat_content`, `read_content_window` | One active subject generation and opaque bounded content access | Session replacement joins the old generation; legacy `Path` helpers and hooks run only with `filesystem_path`; absent semantics return typed unsupported states | `mb-3bna`, `mb-tsdc` |
+| `SourceSession` / `SourceCapabilities`; `resolve_content`, `stat_content`, `read_content_window` | One active subject generation and opaque bounded content access | Session replacement joins the old generation; legacy `Path` helpers and hooks run only with `filesystem_path`; absent semantics return typed unsupported states. `InventoryCoordinator.open_subject` accepts a `GitRevisionSubject` without a filesystem walk. `metab file://… --show` / non-cache `--api` lease that pin in-process; serving stays later | `mb-3bna`, `mb-tsdc`, `mb-z335` |
 | `RouterSpec` | Mounted HTTP prefix and trusted router factory | Reserved/duplicate prefixes fail; application lifespan awaits shutdown | `mb-xzj3` |
 | `AddressSpaceSpec` / `registerAddressSpace` | Browser prefix, parse, format, apply, preview claim, startup, popstate, root replacement, disposal | Exactly one owner per address; browser and `metab --show` share the registration | `mb-6mle` |
 | `ProviderUrlReducerSpec` | Declared schemes/hosts and `NotApplicable`/`Reduced`/terminal `Rejected` reducer | Overlapping claims fail discovery; claimed rejection never falls through | `mb-12cz` |
