@@ -1,0 +1,172 @@
+{
+  "recorded_from_public_api": true,
+  "data": {
+    "repository": {
+      "id": "MDEwOlJlcG9zaXRvcnkyMTI2MTMwNDk=",
+      "pullRequest": {
+        "id": "PR_kwDODKw3uc8AAAABDJRFDQ",
+        "number": 14430,
+        "baseRefName": "trunk",
+        "baseRefOid": "7f0590c2b8050bb04c5af52291062e6825dda9df",
+        "headRefName": "williammartin-fix-keyring-user-lookup",
+        "headRefOid": "63db15cae4f7a344e203afa30b2df5ab2d98956d",
+        "reviewDecision": "APPROVED",
+        "reviews": {
+          "totalCount": 8
+        },
+        "reviewThreads": {
+          "totalCount": 3,
+          "nodes": [
+            {
+              "id": "PRRT_kwDODKw3uc6heZxL",
+              "subjectType": "LINE",
+              "isResolved": false,
+              "isOutdated": false,
+              "path": "internal/config/migration/multi_account.go",
+              "line": 78,
+              "originalLine": 78,
+              "startLine": 74,
+              "originalStartLine": 74,
+              "diffSide": "RIGHT",
+              "startDiffSide": "RIGHT",
+              "resolvedBy": null,
+              "comments": {
+                "totalCount": 2,
+                "nodes": [
+                  {
+                    "id": "PRRC_kwDODKw3uc7tyHmF",
+                    "fullDatabaseId": "3989338501",
+                    "subjectType": "LINE",
+                    "url": "https://github.com/cli/cli/pull/14430#discussion_r3989338501",
+                    "body": "[scrubbed public body]",
+                    "createdAt": "2026-09-11T12:58:42Z",
+                    "updatedAt": "2026-09-11T12:58:43Z",
+                    "state": "SUBMITTED",
+                    "isMinimized": false,
+                    "minimizedReason": null,
+                    "path": "internal/config/migration/multi_account.go",
+                    "line": 78,
+                    "originalLine": 78,
+                    "startLine": 74,
+                    "originalStartLine": 74,
+                    "outdated": false,
+                    "author": {
+                      "__typename": "Bot",
+                      "id": "BOT_kgDOCnlnWA",
+                      "login": "copilot-pull-request-reviewer",
+                      "url": "https://github.com/apps/copilot-pull-request-reviewer"
+                    },
+                    "replyTo": null,
+                    "commit": {
+                      "oid": "63db15cae4f7a344e203afa30b2df5ab2d98956d"
+                    },
+                    "originalCommit": {
+                      "oid": "5fe0f89e1352262a2542a0e840a3c7e2a660a9da"
+                    },
+                    "pullRequestReview": {
+                      "id": "PRR_kwDODKw3uc8AAAABNK962A",
+                      "fullDatabaseId": "5178882776",
+                      "url": "https://github.com/cli/cli/pull/14430#pullrequestreview-5178882776",
+                      "body": "[scrubbed public body]",
+                      "createdAt": "2026-09-11T12:58:41Z",
+                      "state": "COMMENTED",
+                      "submittedAt": "2026-09-11T12:58:43Z",
+                      "updatedAt": "2026-09-11T12:58:43Z",
+                      "commit": {
+                        "oid": "5fe0f89e1352262a2542a0e840a3c7e2a660a9da"
+                      },
+                      "author": {
+                        "__typename": "Bot",
+                        "id": "BOT_kgDOCnlnWA",
+                        "login": "copilot-pull-request-reviewer",
+                        "url": "https://github.com/apps/copilot-pull-request-reviewer"
+                      }
+                    }
+                  },
+                  {
+                    "id": "PRRC_kwDODKw3uc7t4uEo",
+                    "fullDatabaseId": "3991068968",
+                    "subjectType": "LINE",
+                    "url": "https://github.com/cli/cli/pull/14430#discussion_r3991068968",
+                    "body": "[scrubbed public body]",
+                    "createdAt": "2026-09-11T16:06:47Z",
+                    "updatedAt": "2026-09-11T16:06:47Z",
+                    "state": "SUBMITTED",
+                    "isMinimized": false,
+                    "minimizedReason": null,
+                    "path": "internal/config/migration/multi_account.go",
+                    "line": 78,
+                    "originalLine": 78,
+                    "startLine": 74,
+                    "originalStartLine": 74,
+                    "outdated": false,
+                    "author": {
+                      "__typename": "User",
+                      "id": "MDQ6VXNlcjE2MTE1MTA=",
+                      "login": "williammartin",
+                      "url": "https://github.com/williammartin"
+                    },
+                    "replyTo": {
+                      "id": "PRRC_kwDODKw3uc7tyHmF"
+                    },
+                    "commit": {
+                      "oid": "63db15cae4f7a344e203afa30b2df5ab2d98956d"
+                    },
+                    "originalCommit": {
+                      "oid": "5fe0f89e1352262a2542a0e840a3c7e2a660a9da"
+                    },
+                    "pullRequestReview": {
+                      "id": "PRR_kwDODKw3uc8AAAABNM2e1A",
+                      "fullDatabaseId": "5180858068",
+                      "url": "https://github.com/cli/cli/pull/14430#pullrequestreview-5180858068",
+                      "body": "",
+                      "createdAt": "2026-09-11T16:06:47Z",
+                      "state": "COMMENTED",
+                      "submittedAt": "2026-09-11T16:06:47Z",
+                      "updatedAt": "2026-09-11T16:06:47Z",
+                      "commit": {
+                        "oid": "5fe0f89e1352262a2542a0e840a3c7e2a660a9da"
+                      },
+                      "author": {
+                        "__typename": "User",
+                        "id": "MDQ6VXNlcjE2MTE1MTA=",
+                        "login": "williammartin",
+                        "url": "https://github.com/williammartin"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    "commentEvidence": {
+      "id": "R_kgDOTX174Q",
+      "pullRequest": {
+        "comments": {
+          "totalCount": 1,
+          "nodes": [
+            {
+              "id": "IC_kwDOTX174c8AAAABUvFEFQ",
+              "fullDatabaseId": "5686510613",
+              "url": "https://github.com/jlevy/metabrowser/pull/130#issuecomment-5686510613",
+              "body": "[scrubbed public body]",
+              "createdAt": "2026-09-15T19:06:54Z",
+              "updatedAt": "2026-09-15T19:06:54Z",
+              "isMinimized": false,
+              "minimizedReason": null,
+              "author": {
+                "__typename": "User",
+                "id": "MDQ6VXNlcjIwNTgxNjc=",
+                "login": "jlevy",
+                "url": "https://github.com/jlevy"
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

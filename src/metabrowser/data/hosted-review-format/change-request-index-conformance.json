@@ -1,0 +1,210 @@
+{
+  "base_records": {
+    "change_request_index": {
+      "query_key": "sha256:f2b2ced437bdfdd0e2da3672083550c597bd00b094477ecb53e2eb46e54bb793",
+      "query": {
+        "repository": {
+          "provider": "forge",
+          "instance": "code.example",
+          "opaque_id": "repo-1"
+        },
+        "state_filter": {
+          "kind": "selected",
+          "states": ["open"]
+        },
+        "sort": {
+          "field": "updated_at",
+          "direction": "descending",
+          "tie_breaker": "provider_opaque_id"
+        },
+        "bounds": {
+          "max_items": 50,
+          "max_pages": 5,
+          "max_bytes": 200000,
+          "max_duration_ms": 5000
+        }
+      },
+      "rows": [
+        {
+          "provider_ref": {
+            "provider": "forge",
+            "instance": "code.example",
+            "object_kind": "merge_request",
+            "opaque_id": "change-17"
+          },
+          "repository": {
+            "provider": "forge",
+            "instance": "code.example",
+            "opaque_id": "repo-1"
+          },
+          "number": 17,
+          "url": "https://code.example/teams/project/changes/17",
+          "title": "Keep hosted changes provider neutral",
+          "state": "open",
+          "draft": false,
+          "author": {
+            "provider_opaque_id": "person-4",
+            "handle": "reviewer",
+            "url": "https://code.example/reviewer"
+          },
+          "base_label": "main",
+          "head_label": "team:topic/provider-neutral",
+          "created_at": "2026-09-10T12:00:00Z",
+          "updated_at": "2026-09-11T09:30:00Z"
+        },
+        {
+          "provider_ref": {
+            "provider": "forge",
+            "instance": "code.example",
+            "object_kind": "merge_request",
+            "opaque_id": "change-18"
+          },
+          "repository": {
+            "provider": "forge",
+            "instance": "code.example",
+            "opaque_id": "repo-1"
+          },
+          "number": 18,
+          "url": "https://code.example/teams/project/changes/18",
+          "title": "Add provider cache evidence",
+          "state": "open",
+          "draft": true,
+          "author": {
+            "provider_opaque_id": "person-5",
+            "handle": "contributor",
+            "url": "https://code.example/contributor"
+          },
+          "base_label": "main",
+          "head_label": "contributor:cache-evidence",
+          "created_at": "2026-09-09T08:00:00Z",
+          "updated_at": "2026-09-11T08:30:00Z"
+        }
+      ]
+    },
+    "empty_change_request_index": {
+      "query_key": "sha256:f2b2ced437bdfdd0e2da3672083550c597bd00b094477ecb53e2eb46e54bb793",
+      "query": {
+        "repository": {
+          "provider": "forge",
+          "instance": "code.example",
+          "opaque_id": "repo-1"
+        },
+        "state_filter": {
+          "kind": "selected",
+          "states": ["open"]
+        },
+        "sort": {
+          "field": "updated_at",
+          "direction": "descending",
+          "tie_breaker": "provider_opaque_id"
+        },
+        "bounds": {
+          "max_items": 50,
+          "max_pages": 5,
+          "max_bytes": 200000,
+          "max_duration_ms": 5000
+        }
+      },
+      "rows": []
+    },
+    "index_resource_set": {
+      "repository": {
+        "provider": "forge",
+        "instance": "code.example",
+        "opaque_id": "repo-1"
+      },
+      "authorization_context": {
+        "provider": "forge",
+        "instance": "code.example",
+        "mode": "authenticated",
+        "principal_opaque_id": "person-4",
+        "visibility_partition_digest": null
+      },
+      "target": {
+        "kind": "provider_collection",
+        "result_contract_id": "com.github.jlevy.metabrowser.review:ChangeRequestIndex/v1",
+        "query_key": "sha256:f2b2ced437bdfdd0e2da3672083550c597bd00b094477ecb53e2eb46e54bb793"
+      },
+      "profile": "com.github.jlevy.metabrowser.review:change-request-index/v1",
+      "collections": [
+        {
+          "name": "change_request_index",
+          "coverage": "complete",
+          "artifacts": [
+            {
+              "contract_id": "com.github.jlevy.metabrowser.review:ChangeRequestIndex/v1",
+              "snapshot_id": "sha256:9999999999999999999999999999999999999999999999999999999999999999"
+            }
+          ],
+          "retrieval_snapshot_ids": [
+            "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sha256:abababababababababababababababababababababababababababababababab"
+          ],
+          "pagination": {
+            "pages": [
+              {
+                "ordinal": 1,
+                "requested_with": null,
+                "next": {"kind": "opaque_cursor", "value": "cursor-2"},
+                "retrieval_snapshot_id": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "observed_provider_ids": ["change-17"],
+                "provider_exhausted": false,
+                "provider_snapshot_token": null
+              },
+              {
+                "ordinal": 2,
+                "requested_with": {"kind": "opaque_cursor", "value": "cursor-2"},
+                "next": null,
+                "retrieval_snapshot_id": "sha256:abababababababababababababababababababababababababababababababab",
+                "observed_provider_ids": ["change-18"],
+                "provider_exhausted": true,
+                "provider_snapshot_token": null
+              }
+            ],
+            "first_observed_at": "2026-09-15T12:00:00Z",
+            "last_observed_at": "2026-09-15T12:00:01Z",
+            "remote_consistency": {"kind": "best_effort_window"}
+          },
+          "truncation": null,
+          "failure_retrieval_snapshot_id": null
+        }
+      ]
+    }
+  },
+  "cases": [
+    {"record": "change_request_index", "changes": [], "expect": "valid", "name": "ordered-query-keyed-index"},
+    {"record": "change_request_index", "changes": [{"path": ["rows", 0, "author"], "value": null}], "expect": "valid", "name": "index-row-author-may-be-unavailable"},
+    {"record": "empty_change_request_index", "changes": [], "expect": "valid", "name": "empty-index-is-valid-domain-content"},
+    {"record": "change_request_index", "changes": [{"path": ["query", "bounds", "max_items"], "value": 51}], "expect": "invalid", "name": "query-change-requires-new-key"},
+    {"record": "change_request_index", "changes": [{"path": ["query", "state_filter"], "value": {"kind": "all"}}, {"path": ["query_key"], "value": "sha256:3a6660ca15e579823a95457cd9dd401b214647e3732113f0a3eb24f1a3ea0279"}], "expect": "valid", "name": "all-state-query-has-a-portable-key-vector"},
+    {"record": "change_request_index", "changes": [{"path": ["query", "state_filter", "states"], "value": ["open", "closed"]}], "expect": "invalid", "name": "selected-state-filter-is-sorted"},
+    {"record": "change_request_index", "changes": [{"path": ["query", "state_filter"], "value": {"kind": "selected", "states": []}}], "expect": "invalid", "name": "selected-state-filter-is-nonempty"},
+    {"record": "change_request_index", "changes": [{"path": ["rows", 1, "provider_ref", "opaque_id"], "value": "change-17"}], "expect": "invalid", "name": "index-rows-are-unique-by-provider-id"},
+    {"record": "change_request_index", "changes": [{"path": ["rows", 0, "updated_at"], "value": "2026-09-11T07:30:00Z"}], "expect": "invalid", "name": "index-rows-follow-declared-primary-order"},
+    {"record": "change_request_index", "changes": [{"path": ["rows", 0, "provider_ref", "opaque_id"], "value": "change-\ue000"}, {"path": ["rows", 1, "provider_ref", "opaque_id"], "value": "change-\ud800\udc00"}, {"path": ["rows", 1, "updated_at"], "value": "2026-09-11T09:30:00Z"}], "expect": "valid", "name": "equal-primary-rows-use-unsigned-utf8-provider-id-order"},
+    {"record": "change_request_index", "changes": [{"path": ["rows", 0, "provider_ref", "opaque_id"], "value": "change-\ud800\udc00"}, {"path": ["rows", 1, "provider_ref", "opaque_id"], "value": "change-\ue000"}, {"path": ["rows", 1, "updated_at"], "value": "2026-09-11T09:30:00Z"}], "expect": "invalid", "name": "utf16-order-is-not-the-provider-id-tie-breaker"},
+    {"record": "change_request_index", "changes": [{"path": ["rows", 0, "review_decision"], "value": "approved"}], "expect": "invalid", "name": "index-row-excludes-detail-summary"},
+    {"record": "change_request_index", "changes": [{"path": ["rows", 0, "repository", "opaque_id"], "value": "repo-other"}], "expect": "invalid", "name": "index-row-repository-matches-query"},
+    {"record": "change_request_index", "changes": [{"path": ["query", "bounds", "max_items"], "value": 9007199254740992}], "expect": "invalid", "name": "index-bounds-are-javascript-safe"},
+    {"record": "index_resource_set", "changes": [], "expect": "valid", "name": "complete-best-effort-pagination-is-explicit"},
+    {"record": "index_resource_set", "changes": [{"path": ["target", "result_contract_id"], "value": "example.test:ReleaseIndex/v1"}], "expect": "invalid", "name": "collection-target-result-contract-matches-installed-profile"},
+    {"record": "index_resource_set", "changes": [{"path": ["target", "query_key"], "value": null}], "expect": "invalid", "name": "provider-collection-target-requires-query-key"},
+    {"record": "index_resource_set", "changes": [{"path": ["collections", 0, "pagination"], "value": null}], "expect": "invalid", "name": "index-profile-requires-pagination-for-available-results"},
+    {"record": "index_resource_set", "changes": [{"path": ["collections", 0, "pagination", "pages", 1, "requested_with", "value"], "value": "wrong-cursor"}], "expect": "invalid", "name": "page-continuations-form-one-chain"},
+    {"record": "index_resource_set", "changes": [{"path": ["collections", 0, "pagination", "pages", 1, "retrieval_snapshot_id"], "value": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}], "expect": "invalid", "name": "pagination-pages-use-distinct-retrieval-snapshots"},
+    {"record": "index_resource_set", "changes": [{"path": ["collections", 0, "retrieval_snapshot_ids"], "value": ["sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "sha256:abababababababababababababababababababababababababababababababab", "sha256:5656565656565656565656565656565656565656565656565656565656565656"]}], "expect": "invalid", "name": "pagination-pages-cover-every-successful-retrieval"},
+    {"record": "index_resource_set", "changes": [{"path": ["collections", 0, "pagination", "pages", 1, "provider_exhausted"], "value": false}], "expect": "invalid", "name": "complete-pagination-requires-provider-exhaustion"},
+    {"record": "index_resource_set", "changes": [{"path": ["collections", 0, "pagination", "remote_consistency"], "value": {"kind": "provider_snapshot", "token": "snapshot-1"}}], "expect": "invalid", "name": "provider-snapshot-claim-requires-token-on-every-page"},
+    {"record": "index_resource_set", "changes": [{"path": ["collections", 0, "pagination", "remote_consistency"], "value": {"kind": "provider_snapshot", "token": "snapshot-1"}}, {"path": ["collections", 0, "pagination", "pages", 0, "provider_snapshot_token"], "value": "snapshot-1"}, {"path": ["collections", 0, "pagination", "pages", 1, "provider_snapshot_token"], "value": "snapshot-1"}], "expect": "valid", "name": "provider-snapshot-token-covers-every-page"},
+    {"record": "index_resource_set", "changes": [{"path": ["collections", 0, "pagination", "pages", 0, "provider_snapshot_token"], "value": "snapshot-1"}], "expect": "invalid", "name": "best-effort-window-forbids-provider-snapshot-tokens"},
+    {"record": "index_resource_set", "changes": [{"path": ["collections", 0, "coverage"], "value": "partial"}, {"path": ["collections", 0, "pagination", "pages", 1, "next"], "value": {"kind": "opaque_cursor", "value": "cursor-3"}}, {"path": ["collections", 0, "pagination", "pages", 1, "provider_exhausted"], "value": false}, {"path": ["collections", 0, "truncation"], "value": {"reason": "item_bound", "limit": 50}}], "expect": "valid", "name": "partial-index-records-bound-and-continuation"},
+    {"record": "index_resource_set", "changes": [{"path": ["collections", 0, "pagination", "pages", 0, "next"], "value": {"kind": "opaque_cursor", "value": "https://code.example/api?cursor=secret"}}], "expect": "invalid", "name": "pagination-never-persists-absolute-next-url"},
+    {"record": "index_resource_set", "changes": [{"path": ["collections", 0, "pagination", "pages", 0, "next"], "value": {"kind": "opaque_cursor", "value": "/api?cursor=secret"}}], "expect": "invalid", "name": "pagination-never-persists-relative-next-url"},
+    {"record": "index_resource_set", "changes": [{"path": ["collections", 0, "pagination", "pages", 0, "next"], "value": {"kind": "opaque_cursor", "value": "api/items?cursor=secret"}}], "expect": "invalid", "name": "pagination-never-persists-rootless-relative-next-url"},
+    {"record": "index_resource_set", "changes": [{"path": ["collections", 0, "pagination", "pages", 0, "next"], "value": {"kind": "opaque_cursor", "value": "https:secret"}}], "expect": "invalid", "name": "pagination-never-persists-scheme-form-url"},
+    {"record": "index_resource_set", "changes": [{"path": ["collections", 0, "pagination", "pages", 0, "next"], "value": {"kind": "opaque_cursor", "value": "javascript:secret"}}], "expect": "invalid", "name": "pagination-never-persists-script-scheme"},
+    {"record": "index_resource_set", "changes": [{"path": ["collections", 0, "pagination", "pages", 0, "next"], "value": {"kind": "opaque_cursor", "value": "?cursor=secret"}}], "expect": "invalid", "name": "pagination-never-persists-query-only-next-url"},
+    {"record": "index_resource_set", "changes": [{"path": ["collections", 0, "pagination", "pages", 0, "next"], "value": {"kind": "opaque_cursor", "value": " https://code.example/api"}}], "expect": "invalid", "name": "pagination-rejects-leading-whitespace-url"},
+    {"record": "index_resource_set", "changes": [{"path": ["collections", 0, "pagination", "first_observed_at"], "value": "2026-09-15T12:00:02Z"}], "expect": "invalid", "name": "pagination-observation-window-is-ordered"}
+  ]
+}

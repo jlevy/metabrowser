@@ -335,8 +335,8 @@ which space it belongs to:
 | `/commit/<rev>/<inner>` | One file’s diff inside that change set | A revision, then a path within the comparison |
 | `/compare/<base>..<head>` | An explicit comparison (`...` for merge-base) | Two revisions |
 | `/compare/<spec>/<inner>` | One file’s diff inside that comparison | A comparison spec, then a path within it |
-| `/review/<provider>/<repository-key>/<change-key>` | One hosted-review document | Provider, repository, and change-request record keys |
-| `/review/<provider>/<repository-key>/<change-key>/<inner>` | One changed file inside that review | A hosted-review address, then a path within its comparison |
+| `/hosted/<provider-kind>/<instance-key>/<repository-key>/<resource-kind>/<resource-key>` | One provider-neutral hosted resource | Provider kind plus canonical typed address atoms for instance, repository, and resource identity |
+| `/hosted/<provider-kind>/<instance-key>/<repository-key>/<resource-kind>/<resource-key>/<inner>` | One child inside that hosted resource | A hosted-resource address, then a path within its container projection |
 
 Revisions are not paths in the served tree, so they get their own route rather than a
 sigil inside `/view/`: a commit named as a `/view/` path would either collide with a
@@ -377,12 +377,18 @@ Route invariants:
 Path and fragment are implemented for `/view/`; `/commit/` is implemented for commit
 selection in the Git panel.
 `/compare/` is specified here and not yet built.
-`/review/` is proposed for v0.11.0; the hosted-review plugin owns its HTTP surface
+`/hosted/` is proposed for v0.11.0; the hosted-resource plugin owns its HTTP surface
 through the planned mounted-router SDK and its browser parse, format, apply, preview,
 popstate, replacement, and disposal lifecycle through a separate installed-plugin
 address-space registration.
 The shell arbitrates exactly one owner for an address and `metab --show` uses the same
 registration; neither core nor a mounted router hard-codes GitHub syntax.
+Provider instance, repository, and resource keys use the one reversible typed
+base64url-atom codec specified in
+[External Resources, Artifact Contracts, and Views](project/architecture/arch-external-resources-and-views.md).
+Provider web locators such as PR numbers or slash-containing release tags remain typed
+open selections until acquisition resolves their stable provider object identity; they
+are never inserted raw into this path.
 
 The query slot is currently carried verbatim and never interpreted: it exists so a query
 an author wrote, such as GitHub’s `?plain=1`, survives resolution unchanged.
