@@ -20,8 +20,10 @@ metab ROOT [MODE] [OPTIONS]
 
 `ROOT` is the directory to serve, or a single file to open directly.
 A clone URL (`https://…`, `ssh://…`, `git@host:path`, or `file://…`) is a Git source,
-not a local path. `file://` is acquired with `--no-serve` (or as a side effect of
-`--api /api/cache/…`); https and ssh stay closed, and acquired content is not served.
+not a local path. `file://` is acquired with `--no-serve`, and also as a side effect of
+`--show` or `--api`. https and ssh stay closed.
+`--show` and `--api` inspect a leased pin in-process; nothing binds a port, and acquired
+content is not served.
 A bare filesystem path is never treated as a clone origin.
 With no mode flag, `metab ROOT` starts the server and opens a browser, the way `open`
 opens a folder on macOS.
@@ -80,12 +82,18 @@ without binding a port or opening a browser.
 ```shell
 metab file:///path/to/origin.git --no-serve
 metab file:///path/to/origin.git --api /api/cache/layout
+metab file:///path/to/origin.git --show README
+metab file:///path/to/origin.git --api /api/tree
 ```
 
 `--api /api/cache/…` on a `file://` URL acquires as a side effect, then issues the route
-against an empty throwaway directory so `/api/tree` cannot expose the cache or the
-origin. Serving, walking, `--show`, and `--check-api` still refuse Git sources without
-acquiring. https and ssh URLs stay closed.
+against an empty throwaway directory so cache inspection cannot expose origin objects
+through `/api/tree`. `--show` and other `--api` routes on that URL acquire or reuse the
+store, lease the default revision, and inspect the pin in-process.
+Nothing binds a port.
+`--show` accepts a display path (`README`) or a `GitPath` wire.
+Serving, walking, and `--check-api` still refuse Git sources.
+https and ssh URLs stay closed.
 A second `--no-serve` of the same `file://` source reuses the published store.
 
 Inspect cache state from any local root after an acquire: the cache routes resolve

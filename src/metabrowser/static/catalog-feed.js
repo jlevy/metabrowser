@@ -31,7 +31,7 @@
 
   /**
    * @typedef {object} CatalogChangePayload
-   * @property {Array<{p: string, e: string}>} [upserts]
+   * @property {Array<{p: string, e: string, n?: string}>} [upserts]
    * @property {string[]} [removes]
    * @property {string[]} [remove_files]
    * @property {string[]} [non_file_paths]

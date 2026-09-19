@@ -14,6 +14,7 @@ Covers the contract in
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import gzip
 import json
@@ -45,7 +46,7 @@ def _chunk(path: str, **params: object) -> tuple[int, dict[str, Any]]:
     request = Mock(spec=["query_params", "headers"])
     request.query_params = _FakeQuery(query)
     request.headers = {}
-    response = sidekick.chunk_handler(request)
+    response = asyncio.run(sidekick.chunk_handler(request))
     return response.status_code, json.loads(bytes(response.body))
 
 

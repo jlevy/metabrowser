@@ -398,9 +398,12 @@ function resolveLogicalPath(sourcePath, preparedSource, encodedPath) {
       parentPops += 1;
       continue;
     }
-    segments.push(segment.replaceAll("%", "%25"));
+    segments.push(segment);
   }
-  const authored = segments.join("/");
+  const gitSource = isGitPathWire(sourcePath);
+  const authored = gitSource
+    ? encodeGitPathAuthored(segments)
+    : segments.map((segment) => segment.replaceAll("%", "%25")).join("/");
   let base = "";
   if (!rooted) {
     if (!preparedSource) {
@@ -418,6 +421,30 @@ function resolveLogicalPath(sourcePath, preparedSource, encodedPath) {
   }
   const path = base && authored ? `${base}/${authored}` : base || authored;
   return trailingSlash && path ? `${path}/` : path;
+}
+
+/** @param {string} path */
+function isGitPathWire(path) {
+  if (typeof path !== "string" || path === "") {
+    return false;
+  }
+  return path.split("/").every((part) => part.startsWith("g1-") && part.length > 3);
+}
+
+/** @param {string} name */
+function encodeGitPathSegment(name) {
+  const bytes = new TextEncoder().encode(name);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 1) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  const atom = btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+  return `g1-${atom}`;
+}
+
+/** @param {string[]} names */
+function encodeGitPathAuthored(names) {
+  return names.map(encodeGitPathSegment).join("/");
 }
 
 /**

@@ -9,11 +9,13 @@ everything the renderer could need.
 from __future__ import annotations
 
 import asyncio
+import json
 import shutil
 from pathlib import Path
 
 import pytest
 
+from metabrowser.diff.adapters.base import DiffSourceError
 from metabrowser.diff.adapters.git import GitDiffSource
 from metabrowser.diff.apply import apply_change_set
 from metabrowser.diff.format import (
@@ -25,6 +27,7 @@ from metabrowser.diff.format import (
     dump_document,
     validate_document,
 )
+from metabrowser.git.process import GitLocation, repository_store_target
 from tests.diff_fixture_repo import build_diff_fixture, git, materialize_tree
 
 pytestmark = pytest.mark.skipif(
@@ -152,3 +155,76 @@ def test_fixture_commit_ids_are_deterministic(repo: tuple[Path, str, str]) -> No
     probe = git(root, "log", "--format=%H", "--reverse").decode().split()
     assert probe == [base, target]
     assert base.startswith("55") or len(base) == 40  # shape only; ids asserted in goldens
+
+
+def test_store_location_honors_the_pin_not_store_head(
+    repo: tuple[Path, str, str], tmp_path: Path
+) -> None:
+    """A bare store pin diffs that OID; HEAD is not the cloned default branch."""
+    root, base, target = repo
+    store = tmp_path / "store.git"
+    git(root.parent, "clone", "--bare", "--template=", str(root), str(store))
+    location = GitLocation.revision(repository_store_target(git_dir=store), base)
+    source = GitDiffSource(location)
+    head = asyncio.run(source.resolve({"revision": "HEAD"}))
+    assert head.right.id == base
+    assert head.right.id != target
+    worktree = GitDiffSource(root)
+    expected = asyncio.run(worktree.resolve({"left": base, "right": target}))
+    actual = asyncio.run(source.resolve({"left": base, "right": target}))
+    expected_manifest = asyncio.run(worktree.manifest(expected))
+    actual_manifest = asyncio.run(source.manifest(actual))
+    assert [change.kind for change in expected_manifest.files] == [
+        change.kind for change in actual_manifest.files
+    ]
+    modified = _by_new_path(actual_manifest)["a.py"]
+    patch = asyncio.run(source.file_patch(actual, modified.id))
+    ops = [line.op.value for hunk in patch.hunks for line in hunk.lines]
+    assert "del" in ops and "add" in ops
+    document = dump_document(
+        ChangeSetDocument(
+            schema="file-diff-v1",
+            schema_version=1,
+            resolved=actual,
+            manifest=actual_manifest,
+            patches={modified.id: patch},
+        )
+    )
+    assert str(store) not in json.dumps(document)
+
+
+def test_store_location_content_reads_through_the_batch_pool(
+    repo: tuple[Path, str, str], tmp_path: Path
+) -> None:
+    root, base, target = repo
+    store = tmp_path / "store.git"
+    git(root.parent, "clone", "--bare", "--template=", str(root), str(store))
+    location = GitLocation.revision(repository_store_target(git_dir=store), target)
+    source = GitDiffSource(location)
+    worktree = GitDiffSource(root)
+
+    async def _run() -> None:
+        resolved = await source.resolve({"left": base, "right": target})
+        manifest = await source.manifest(resolved)
+        modified = _by_new_path(manifest)["a.py"]
+        assert modified.new is not None and modified.new.content.oid is not None
+        body = b"".join([chunk async for chunk in source.content(resolved, modified.id, "new")])
+        expected = git(root, "cat-file", "blob", modified.new.content.oid)
+        assert body == expected
+        wt_resolved = await worktree.resolve({"left": base, "right": target})
+        wt_manifest = await worktree.manifest(wt_resolved)
+        wt_modified = _by_new_path(wt_manifest)["a.py"]
+        wt_body = b"".join(
+            [chunk async for chunk in worktree.content(wt_resolved, wt_modified.id, "new")]
+        )
+        assert wt_body == expected
+        added = _by_new_path(manifest)["new.md"]
+        with pytest.raises(DiffSourceError):
+            async for _chunk in source.content(resolved, added.id, "old"):
+                pass
+        with pytest.raises(DiffSourceError, match="no file"):
+            async for _chunk in source.content(resolved, "missing", "new"):
+                pass
+        assert str(store) not in body.decode("utf-8", "replace")
+
+    asyncio.run(_run())

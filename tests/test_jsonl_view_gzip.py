@@ -20,7 +20,7 @@ from metabrowser import jsonl_view, server
 from metabrowser.builtin_plugins.agent_log.sidekick import charts_handler
 from metabrowser.charts import _cache_key, extract_agent_charts
 from metabrowser.gz_io import ArtifactPath
-from metabrowser.jsonl_view import _LARGE_FILE_BYTES, _parse_jsonl_file
+from metabrowser.jsonl_view import _LARGE_FILE_BYTES, _parse_jsonl_file, parse_jsonl_bytes
 
 # Repetitive Claude-format events: compresses to ~3% so we can comfortably
 # cross the 2 MiB large-file threshold while keeping the on-disk file
@@ -40,6 +40,15 @@ def _make_pair(tmp_path: Path, n_events: int) -> tuple[Path, Path]:
     with gzip.open(gz, "wb") as fh:
         fh.write(body)
     return plain, gz
+
+
+def test_parse_jsonl_bytes_matches_file_adapter_and_events(tmp_path: Path) -> None:
+    plain, _gz = _make_pair(tmp_path, n_events=4)
+    from_file = _parse_jsonl_file(plain)
+    from_bytes = parse_jsonl_bytes(plain.read_bytes())
+    assert from_bytes["summary"]["adapter"] == from_file["summary"]["adapter"]
+    assert from_bytes["summary"]["total_events"] == from_file["summary"]["total_events"]
+    assert from_bytes["events"] == from_file["events"]
 
 
 def test_parse_jsonl_file_handles_gzip_transparently(tmp_path: Path) -> None:

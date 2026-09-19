@@ -96,8 +96,17 @@ from metabrowser.file_kinds import (
 )
 from metabrowser.file_type_filters import FILTER_TYPE_PRESETS
 from metabrowser.folder_discovery import discover_folder
+from metabrowser.git.content_routes import (
+    decode_git_view_path,
+    git_revision_file,
+    git_revision_kpress_render,
+    git_revision_raw,
+    git_revision_rollup,
+    git_revision_tree,
+)
 from metabrowser.git.history import close_history_sessions
 from metabrowser.git.routes import GIT_ROUTES
+from metabrowser.git.tree_source import GitRevisionSubject
 from metabrowser.gz_io import (
     ArtifactCompressionError,
     ArtifactDecompressionLimitError,
@@ -143,7 +152,7 @@ from metabrowser.inventory_engine.tree_page_assembly import (
     TreePageQuery,
     assemble_tree_pages,
 )
-from metabrowser.inventory_rollup import RollupRank
+from metabrowser.inventory_rollup import RollupOptions, RollupRank
 from metabrowser.jsonl_view import _parse_jsonl_file
 
 # Document rendering is delegated through the KPress adapter and built-in plugin route.
@@ -154,7 +163,6 @@ from metabrowser.paths_safe import (
     _relativize,
     _resolved_root_dir,
     _safe_path,
-    _safe_path_from_identity,
     _safe_subdir,
     _set_root_dir,
 )
@@ -188,6 +196,16 @@ from metabrowser.settings import (
     TEXT_PREVIEW_CHUNK_BYTES,
     TEXT_PREVIEW_REQUEST_MAX_BYTES,
     client_settings_dict,
+)
+from metabrowser.source import (
+    UnsupportedSourceCapabilityError,
+    get_source_session,
+    require_filesystem_hooks,
+    require_filter_capabilities,
+    require_source_capability,
+    resolve_session_identity,
+    session_filesystem_root,
+    unsupported_source_payload,
 )
 from metabrowser.sse import api_stream
 from metabrowser.tree import (
@@ -937,10 +955,22 @@ PREFETCH_FALLBACK_DELAY_MS = 200
 async def index(request: Request) -> HTMLResponse:
     """Serve the SPA page with linked assets and one pre-paint state machine."""
 
-    initial_path = _initial_path_html()
-    initial_root = html_escape(_display_root_str(), quote=True)
+    subject = get_source_session().subject
+    git_pin = isinstance(subject, GitRevisionSubject)
+    if git_pin:
+        pin_oid = subject.commit_oid
+        initial_path = (
+            f'<span class="path"><span class="path-base">{html_escape(pin_oid[:12])}</span></span>'
+        )
+        initial_root = html_escape(pin_oid, quote=True)
+        repository_context = None
+    else:
+        initial_path = _initial_path_html()
+        initial_root = html_escape(_display_root_str(), quote=True)
+        repository_context = await asyncio.to_thread(
+            discover_repository_context, session_filesystem_root()
+        )
     version_line = html_escape(display_version_line("metab", __version__))
-    repository_context = await asyncio.to_thread(discover_repository_context, _resolved_root_dir())
     styles_url = _static_asset_url("styles.css")
     asset_loader_url = _static_asset_url("asset-loader.js")
     theme_state_url = _static_asset_url("theme-state.js")
@@ -986,6 +1016,7 @@ async def index(request: Request) -> HTMLResponse:
         f"<script>window.METABROWSER_CONTAINER_EXTS={_json.dumps(_container_exts())};</script>"
     )
     repository_context_json = _json.dumps(repository_context).replace("<", "\\u003c")
+    source_kind_json = _json.dumps("git_revision" if git_pin else "filesystem")
     # The tree's first rows, inlined. Without this the reader waits for a round
     # trip the server did not have to make them take: time to first row is
     # DOMContentLoaded plus the whole /api/tree request, and during a walk that
@@ -999,7 +1030,7 @@ async def index(request: Request) -> HTMLResponse:
     # would risk painting rows the reader's filter excludes; the fetch that
     # follows owns every case but this one.
     initial_tree_block = ""
-    if _INLINE_INITIAL_TREE_ROWS:
+    if _INLINE_INITIAL_TREE_ROWS and not git_pin:
         try:
             runtime = _inventory_runtime_for(request)
             initial_read = await runtime.coordinator.read(
@@ -1032,6 +1063,7 @@ async def index(request: Request) -> HTMLResponse:
                 f"<script>window.METABROWSER_INITIAL_TREE={initial_tree_json};</script>"
             )
     repository_context_block = (
+        f"<script>window.METABROWSER_SOURCE_KIND={source_kind_json};</script>"
         f"<script>window.METABROWSER_REPOSITORY_CONTEXT={repository_context_json};</script>"
     )
     # Read preferences from host-only cookies (not localStorage): cookies
@@ -1382,7 +1414,15 @@ async def view_shell(request: Request) -> Response:
     """Serve the SPA shell only for one safely encoded canonical view path."""
 
     raw_path = request.scope.get("raw_path")
-    if not isinstance(raw_path, bytes) or decode_safe_view_path(raw_path) is None:
+    if not isinstance(raw_path, bytes):
+        return PlainTextResponse("Invalid view path.", status_code=400)
+    subject = get_source_session().subject
+    decoded = (
+        decode_git_view_path(raw_path)
+        if isinstance(subject, GitRevisionSubject)
+        else decode_safe_view_path(raw_path)
+    )
+    if decoded is None:
         return PlainTextResponse("Invalid view path.", status_code=400)
     return await index(request)
 
@@ -1572,7 +1612,7 @@ async def _read_tree_from_provider(
             filtered_projection = projection
         tree_entries = projection.entries
 
-    root_dir = _resolved_root_dir()
+    root_dir = session_filesystem_root()
     tree = (
         build_inventory_tree_from_entries(
             entries=tree_entries,
@@ -1626,15 +1666,26 @@ async def _read_tree_from_provider(
 
 
 @log_async_calls()
-async def api_tree(request: Request) -> JSONResponse:
+async def api_tree(request: Request) -> Response:
     requested = request.query_params.get("path", "")
     depth_str = request.query_params.get("depth", "")
-    subpath = parse_inventory_path(requested)
-    if subpath is None or _safe_path_from_identity(subpath) is None:
-        return JSONResponse({"error": "Not found"}, status_code=404)
-
-    remaining_depth = _tree_depth_from_query(depth_str)
     tree_filter = tree_filter_from_request(request)
+    require_source_capability("navigation")
+    require_source_capability("index")
+    subject = get_source_session().subject
+    git_pin = isinstance(subject, GitRevisionSubject)
+    require_filter_capabilities(
+        recency=bool(tree_filter.recency_seconds),
+        # Ignore is absent on a pin: unignored equals total, so hiding
+        # ignored files is a no-op rather than unsupported_for_subject.
+        include_ignored=True if git_pin else tree_filter.include_ignored,
+    )
+    if git_pin:
+        return await git_revision_tree(request, subject, tree_filter)
+    subpath = parse_inventory_path(requested)
+    remaining_depth = _tree_depth_from_query(depth_str)
+    if subpath is None or resolve_session_identity(subpath) is None:
+        return JSONResponse({"error": "Not found"}, status_code=404)
 
     return await _read_tree_from_provider(
         request,
@@ -1655,13 +1706,11 @@ async def api_rollup(request: Request) -> Response:
     cover the full subtree. Depth truncation is represented by `children: null`
     without a rest bucket; node-budget truncation can retain emitted `children`
     alongside a `rest` bucket for their omitted siblings.
+    A Git pin answers from recursive blob names and sizes and omits mtime.
     """
 
-    requested = request.query_params.get("path", "")
-    subpath = parse_inventory_path(requested)
-    if subpath is None or _safe_path_from_identity(subpath) is None:
-        return JSONResponse({"error": "Not found"}, status_code=404)
-
+    require_source_capability("navigation")
+    require_source_capability("index")
     depth = _query_bounded_int(
         request, "depth", ROLLUP_DEFAULT_DEPTH, minimum=0, maximum=ROLLUP_MAX_DEPTH
     )
@@ -1696,6 +1745,29 @@ async def api_rollup(request: Request) -> Response:
     except ValueError as error:
         return JSONResponse({"error": str(error)}, status_code=400)
 
+    subject = get_source_session().subject
+    if isinstance(subject, GitRevisionSubject):
+        return await git_revision_rollup(
+            request,
+            subject,
+            RollupOptions(
+                depth=depth,
+                top=top,
+                ext_top=ext_top,
+                max_nodes=ROLLUP_MAX_NODES,
+                remaining_top=remaining_top,
+                filename_top=filename_top,
+                ext_rank=ext_rank,
+                omit_mtime=True,
+            ),
+        )
+
+    require_filesystem_hooks()
+    requested = request.query_params.get("path", "")
+    subpath = parse_inventory_path(requested)
+    if subpath is None or resolve_session_identity(subpath) is None:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+
     runtime = _inventory_runtime_for(request)
     preflight = await runtime.coordinator.read(
         ReadRequest(queries=(EntryQuery(query_id="rollup-parent", path=subpath),))
@@ -1725,7 +1797,7 @@ async def api_rollup(request: Request) -> Response:
     def etag_for(version: HostVersion) -> str:
         engine = version.engine
         return build_scoped_etag(
-            f"rollup-{_resolved_root_dir()}-{engine.session}-{engine.sequence}-"
+            f"rollup-{session_filesystem_root()}-{engine.session}-{engine.sequence}-"
             f"{engine.scope_fingerprint}-{engine.semantic_fingerprint}-{request_shape}"
         )
 
@@ -1753,7 +1825,7 @@ async def api_rollup(request: Request) -> Response:
         body = bytes(
             JSONResponse(
                 {
-                    "root": str(_resolved_root_dir()),
+                    "root": str(session_filesystem_root()),
                     "path": subpath,
                     "node": payload.get("node") if payload is not None else None,
                     "ext_tallies": (payload.get("ext_tallies", []) if payload is not None else []),
@@ -1811,6 +1883,7 @@ async def api_recent(request: Request) -> JSONResponse:
     clustering (see :mod:`metabrowser.recent`).
     """
 
+    require_source_capability("recency")
     window = request.query_params.get("window", "24h")
     if window not in RECENT_WINDOW_SECONDS:
         return JSONResponse({"error": f"Unknown window: {window!r}"}, status_code=400)
@@ -1842,6 +1915,10 @@ async def api_recent(request: Request) -> JSONResponse:
         types=types,
         min_size=requested_filter.min_size,
         include_ignored=requested_filter.include_ignored,
+    )
+    require_filter_capabilities(
+        recency=True,
+        include_ignored=recent_filter.include_ignored,
     )
     as_of_ns = time.time_ns()
     selection = _inventory_filter(recent_filter, as_of_ns=as_of_ns)
@@ -1876,7 +1953,7 @@ async def api_recent(request: Request) -> JSONResponse:
     )
     return JSONResponse(
         {
-            "root": str(_resolved_root_dir()),
+            "root": str(session_filesystem_root()),
             # Newest-first leaf list. Clustering (single-dir compaction +
             # cluster-collapse) is a rendering concern owned by the SPA;
             # see :mod:`metabrowser.recent` for the layering rationale.
@@ -1977,7 +2054,7 @@ def _compression_envelope_fields(artifact: ArtifactPath, logical_size: int) -> d
 
 def _api_file_internal_error_response(subpath: str, exc: Exception) -> JSONResponse:
     """Return a renderable file-error envelope instead of bubbling a 500."""
-    target = _safe_path_from_identity(subpath)
+    target = resolve_session_identity(subpath)
     size: int | None = None
     if target is not None:
         try:
@@ -2067,6 +2144,9 @@ async def _api_folder_envelope(
 
 @log_async_calls(if_slower_than=0.1)
 async def api_file(request: Request) -> JSONResponse | Response:
+    subject = get_source_session().subject
+    if isinstance(subject, GitRevisionSubject):
+        return await git_revision_file(request, subject)
     subpath = request.query_params.get("path", "")
     try:
         return await _api_file_impl(request)
@@ -2134,7 +2214,7 @@ def _file_unavailable_response(subpath: str, target: Path | None) -> JSONRespons
 
 async def _api_file_impl(request: Request) -> JSONResponse | Response:
     subpath = request.query_params.get("path", "")
-    target = _safe_path_from_identity(subpath)
+    target = resolve_session_identity(subpath)
     if target is None or (target.exists() and not target.is_dir() and not target.is_file()):
         # Before declaring the path unavailable: a missing path whose
         # nearest file ancestor is a container kind is that container's
@@ -2476,7 +2556,7 @@ _KPRESS_EXPORT_REQUEST_MAX_BYTES = 64 * 1024
 
 
 @log_async_calls(if_slower_than=0.1)
-async def api_kpress_render(request: Request) -> JSONResponse:
+async def api_kpress_render(request: Request) -> Response:
     """Render a safe served-root-relative file through the KPress adapter."""
 
     source_override: str | None = None
@@ -2561,7 +2641,19 @@ async def api_kpress_render(request: Request) -> JSONResponse:
             status_code=400,
         )
 
-    target = _safe_path_from_identity(subpath)
+    subject = get_source_session().subject
+    if isinstance(subject, GitRevisionSubject):
+        return await git_revision_kpress_render(
+            subject,
+            subpath=subpath,
+            view=view,
+            profile=profile,
+            source_override=source_override,
+            include_toc=include_toc,
+            max_bytes=_TEXT_PREVIEW_MAX_CHUNK_BYTES,
+        )
+
+    target = resolve_session_identity(subpath)
     if target is None or not target.is_file():
         return JSONResponse({"error": "Not found"}, status_code=404)
 
@@ -2715,6 +2807,8 @@ async def api_kpress_export(request: Request) -> JSONResponse:
     if request.method != "POST":
         return JSONResponse({"error": "Method not allowed"}, status_code=405)
 
+    require_source_capability("mutation")
+
     try:
         body = await _read_bounded_json_request(request, _KPRESS_EXPORT_REQUEST_MAX_BYTES)
     except _JsonRequestLimitError:
@@ -2800,7 +2894,7 @@ async def api_kpress_export(request: Request) -> JSONResponse:
             status_code=400,
         )
 
-    source = _safe_path_from_identity(raw_path)
+    source = resolve_session_identity(raw_path)
     if source is None or not source.is_file():
         return JSONResponse(
             {"type": "kpress_export_error", "error": "Source path not found or unsafe"},
@@ -2812,7 +2906,7 @@ async def api_kpress_export(request: Request) -> JSONResponse:
             {"type": "kpress_export_error", "error": "`destination` is required"},
             status_code=400,
         )
-    destination = _safe_path_from_identity(raw_destination)
+    destination = resolve_session_identity(raw_destination)
     if destination is None:
         return JSONResponse(
             {"type": "kpress_export_error", "error": "Destination escapes served root"},
@@ -2967,11 +3061,12 @@ async def api_activity(request: Request) -> JSONResponse:
     ``/api/events`` and reading ``entry.active`` / ``entry.labels``
     instead — that's the live-update path.
     """
+    require_source_capability("activity")
     runtime = _inventory_runtime_for(request)
     active_files = await activity_snapshot(
         runtime.coordinator,
         config=runtime.config,
-        root=_resolved_root_dir(),
+        root=session_filesystem_root(),
     )
     LOG.debug("api_activity: %d active files", len(active_files))
     return JSONResponse(
@@ -3022,8 +3117,11 @@ _RAW_STREAM_CHUNK = 64 * 1024
 
 
 async def raw_file(request: Request) -> Response:
+    subject = get_source_session().subject
+    if isinstance(subject, GitRevisionSubject):
+        return await git_revision_raw(request, subject)
     subpath = request.query_params.get("path", "")
-    target = _safe_path_from_identity(subpath)
+    target = resolve_session_identity(subpath)
     if target is None or not target.is_file():
         return PlainTextResponse("Not found", status_code=404)
 
@@ -3245,7 +3343,7 @@ def _resolve_container_child(subpath: str) -> JSONResponse | None:
         return None
     for cut in range(len(parts) - 1, 0, -1):
         prefix = "/".join(parts[:cut])
-        target = _safe_path_from_identity(prefix)
+        target = resolve_session_identity(prefix)
         if target is None:
             continue
         if target.is_dir():
@@ -3526,7 +3624,7 @@ def _inventory_root_provider() -> object:
     inventory just stays idle in that case."""
 
     try:
-        root = _resolved_root_dir()
+        root = session_filesystem_root()
     except Exception:
         return None
     return root if str(root) and root != Path() else None
@@ -3562,11 +3660,23 @@ async def _query_work_limit_response(
     )
 
 
+async def _unsupported_source_response(
+    _request: Request,
+    error: Exception,
+) -> JSONResponse:
+    if not isinstance(error, UnsupportedSourceCapabilityError):  # pragma: no cover
+        raise error
+    return JSONResponse(unsupported_source_payload(error), status_code=409)
+
+
 app = Starlette(
     routes=routes,
     middleware=middleware,
     lifespan=_lifespan,
-    exception_handlers={QueryWorkLimitError: _query_work_limit_response},
+    exception_handlers={
+        QueryWorkLimitError: _query_work_limit_response,
+        UnsupportedSourceCapabilityError: _unsupported_source_response,
+    },
 )
 add_inventory_routes(app)
 

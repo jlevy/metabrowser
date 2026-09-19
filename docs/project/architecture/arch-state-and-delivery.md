@@ -85,6 +85,85 @@ lands in one commit across all three halves, and compatibility shims between the
 forbidden. See
 [Compatibility and Legacy Code](../../development.md#compatibility-and-legacy-code).
 
+## Server: Active subject
+
+The process serves exactly one `RepositorySubject` at a time, owned by a `SourceSession`
+(`metabrowser.source`). The session holds the subject identity, a generation that
+advances on replacement, the content reader, navigation/index capability, and a lease
+released when the next subject attaches.
+
+Today the attached folder is `AttachedFilesystemSubject`. A `GitRevisionSubject` can pin
+a full-OID tree over a worktree-free store.
+`InventoryCoordinator.open_subject` accepts that pin without a filesystem walk.
+`metab file://… --show` and non-cache `--api` lease it in-process; a listening server
+still does not. A published-store pin takes `lease_revision`, which holds the store’s
+shared maintenance lock and a durable `refs/metabrowser/subjects/<oid>` ref.
+`maintain_store` runs `gc` and `repack` under the exclusive maintenance lock; a live
+lease makes that busy.
+Git discovery, history, refs, commit detail, file, raw, tree, diffs, KPress, and
+patch-file containers honor that pin through `GitLocation` and `GitPath`. On a pin,
+`/api/plugin/diff/comparison` treats `HEAD` as the pinned object id.
+`GitDiffSource.content` reads that blob through the shared cat-file pool.
+`/api/kpress/render` uses the blob object id as its cache key rather than a filesystem
+mtime. A patch-file container inner is a `GitPath` `g1-` prefix plus a host inner path;
+the file envelope and the diff document/children hooks use that split.
+`/api/plugin/binary/chunk` reads a Git blob window and uses the object id as its cache
+key rather than a filesystem mtime.
+Git blobs classify by extension, basename, sniffed adapter, and bounded JSON, YAML, and
+Markdown-frontmatter mappings parsed from blob bytes.
+`path_glob` stays filesystem-only.
+`/api/plugin/structured/parsed` reads a Git blob and uses the object id as its cache key
+rather than a filesystem mtime.
+`/api/file` for a Git `.jsonl` blob is a parsed JSONL envelope;
+`/api/plugin/agent-log/charts` reads that blob by `GitPath`. `/api/catalog` on a pin
+lists recursive blob names and is complete at once.
+`/api/index/progress`, `/api/index/meta`, and `/api/capabilities` report that same
+complete-at-once index without a watcher or invented mtime.
+`/api/tree` carries whole-tree `extensions`, `canonical_extensions`, `type_families`,
+and `type_presets` rows, `tally_cache_status`, and a `summary` from that index.
+`types` and `min_size` keep ancestor trees of matching blobs and emit subtree `filtered`
+totals. Git type matching uses the same bounded compound-tail logical extension as
+filesystem inventory.
+SPA file nodes and blob `/api/file` envelopes emit that tail as `ext`; blob file
+envelopes omit compressed identity because blobs are stored bytes with no gzip smudge.
+Git markdown envelopes include parsed YAML `frontmatter` and `frontmatter_error`; KPress
+on a pin uses that parse.
+Git text envelopes use the same first-window and highlight bound as filesystem listings.
+A Git image blob is SPA `image` chrome; `/raw` serves the stored bytes.
+`/api/file`, `/raw`, KPress, and plugin sidekicks follow in-tree relative symlink blobs.
+`include_ignored=0` is a no-op because ignore is absent.
+The JSONL stream still returns `unsupported_for_subject` instead of the lifespan folder.
+`/api/rollup` on a pin answers from recursive blob names and sizes and omits mtime.
+A Git LFS pointer is stored pointer bytes; a tree-named missing blob, including a
+promisor miss, is `object_unavailable` with lazy fetch disabled.
+`/view/` on a pin accepts a `GitPath` wire (and a patch-file container inner) and
+refuses a filesystem spelling.
+`/api/tree` on that pin keeps Git-native `entries` and also projects a SPA `tree` array
+so navigation can paint (`dir`/`file`/`symlink`, `GitPath` wires, `cat-file` blob sizes,
+recursive dir `total_files`/`total_size`, no invented mtime or ignore; gitlinks are
+files and stay unsized).
+`depth` nests SPA children the way filesystem listings do (default 2) and emits a lazy
+sentinel past the cap; `depth=0` returns chrome without a listing.
+A Git tree `/api/file` envelope is SPA `folder` chrome (`git_kind` stays `tree`) with
+recursive blob tallies and no mtime.
+A direct-child README blob sets `readme_path` to its GitPath wire and mounts Overview.
+A complete blob-size tally also mounts treemap; `/api/rollup` omits mtime.
+Markdown and wiki links on that pin encode authored segments as `GitPath` wires; the
+known-file catalog uses the tree node’s display `name` as the basename, and KPress
+`source_path` is the wire rather than a display path.
+SPA path chrome and copy-path decode GitPath wires to display names (C0 and invalid
+UTF-8 become U+FFFD); navigation identities stay wires.
+Omitted mtime leaves tally chrome empty rather than pending.
+Event, inventory open, archive containers, and serving acquired Git still wait on later
+slices. `resolve_path` and `served_root` remain filesystem-only plugin helpers: they
+raise `UnsupportedSourceCapabilityError` when the active subject has no folder.
+Recency, ignore, watcher, activity, and mutation are named source capabilities with the
+same typed error.
+
+Inventory still has one writer.
+`InventoryCoordinator.open_subject` is the only new open path; for an attached folder it
+delegates to the existing `open(root)`.
+
 ## Server: Concurrency Model
 
 **One provider writer, many readers.** The opened `InventoryHandle` owns filesystem

@@ -49,9 +49,10 @@ def test_tree_emit_uses_logical_name_for_icon_dispatch() -> None:
 
 def test_prefetch_reads_data_logical_ext() -> None:
     """`shouldPrefetchFile` keys the JSONL skip rule off `data-logical-ext`
-    when present, falling back to the path suffix otherwise."""
+    when present, then `data-ext`, then the path suffix. GitPath wires have
+    no filesystem suffix, so `data-ext` is the uncompressed JSONL signal."""
     js = _app_js()
-    assert "item.dataset.logicalExt || getExt(path)" in js
+    assert "item.dataset.logicalExt || item.dataset.ext || getExt(path)" in js
 
 
 # ── Badge rendering ───────────────────────────────────────────────

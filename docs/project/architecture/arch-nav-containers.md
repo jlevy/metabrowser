@@ -71,7 +71,10 @@ manifest load; the hook returns `{children: [{name, path, badge?, muted?}]}` for
   ancestors — bounded, through the same safe-path gate — and letting the nearest
   existing *file* ancestor of a container kind claim everything beneath it.
   A real directory ancestor means the leaf is genuinely missing, so ordinary 404s are
-  unchanged.
+  unchanged. On a `GitRevisionSubject` there is no filesystem ancestor walk: contiguous
+  `g1-` tokens are the container’s `GitPath`, and anything after that prefix is the
+  virtual inner path. Only implemented patch/diff blobs claim an inner; archives remain
+  later.
 - **The views** of that kind render the virtual path, because the envelope carries the
   same `kind` plus `container` and `container_inner`. The diff plugin’s document hook
   answers a virtual path with the change set narrowed to that file, so the renderer

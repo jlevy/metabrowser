@@ -1472,7 +1472,10 @@
   }
 
   function sizeHtml(bytes, extraClass) {
-    if (bytes === null || bytes === undefined) {
+    if (bytes === undefined) {
+      return "";
+    }
+    if (bytes === null) {
       // The provider emits null aggregates while a directory is still
       // finalizing; render as a skeleton cell so the row paints
       // with shape; the SSE fs.change patch flow replaces it in place.

@@ -61,6 +61,11 @@ def test_image_preview_session() -> None:
             "status": "mounted",
             "tagName": "IMG",
         },
+        "gitMount": {
+            "alt": "pic.png",
+            "rawUrl": "/raw?path=g1-cGljLnBuZw",
+            "status": "mounted",
+        },
         "innerHtmlWrites": 0,
         "replacement": {
             "committed": True,

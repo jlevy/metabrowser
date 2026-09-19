@@ -4,8 +4,43 @@
 `/api/git/` collection API, and the immutable-revision diff source.
 The hosted-review format and GitHub provider layer are designed only; see
 [Hosted Review Model and Provider Boundary](arch-hosted-review-model.md).
-Worktree-free repository stores and immutable revision subjects are also designed only;
-see
+Worktree-free repository stores and immutable revision subjects are implemented for tree
+reads, Git collection routes, `GitPath` file/raw/tree routes (including a SPA `tree`
+projection on `/api/tree` and SPA `folder` chrome on tree `/api/file` envelopes),
+revision comparison through `GitDiffSource` (including size-gated `content` via the
+shared cat-file pool), KPress blob renders, patch-file containers, binary byte chunks,
+extension plugin kinds, structured parsed, agent-log JSONL, and image preview.
+Markdown and wiki links on a pin resolve to `GitPath` wires.
+A Git tree folder with a README mounts Overview.
+SPA path chrome decodes GitPath wires to display names; C0 and invalid UTF-8 become
+U+FFFD. Blob listings carry `cat-file` info sizes so `min_size` can filter; trees and
+gitlinks stay unsized as blobs.
+Recursive `ls-tree -r` tallies fill directory `total_files` / `total_size`. A complete
+tally mounts treemap; `/api/rollup` answers from that index and omits mtime.
+`/api/catalog` lists those blob names as Quick File rows.
+`/api/index/progress`, `/api/index/meta`, and `/api/capabilities` report that
+complete-at-once index.
+`/api/tree` carries whole-tree `extensions`, `canonical_extensions`, `type_families`,
+and `type_presets` rows, `tally_cache_status`, and a `summary` from the same index.
+`types` and `min_size` keep ancestor trees of matching blobs and emit subtree `filtered`
+totals. Git type matching uses the same bounded compound-tail logical extension as
+filesystem inventory.
+SPA file nodes and blob `/api/file` envelopes emit that tail as `ext`; `logical_ext` is
+only the inner extension of a compressed name on tree nodes.
+Blob file envelopes omit compressed identity because blobs are stored bytes with no gzip
+smudge. Git markdown `/api/file` envelopes include parsed YAML `frontmatter` and
+`frontmatter_error`; KPress on a pin uses that parse rather than an empty mapping.
+Git text envelopes use the same first-window and highlight bound as filesystem listings.
+A Git image blob is SPA `image` chrome; `/raw` serves the stored bytes.
+`/api/file`, `/raw`, KPress, and plugin sidekicks follow in-tree relative symlink blobs;
+listings still show the symlink.
+Kind checks use the leaf path.
+`include_ignored=0` is a no-op because ignore is absent.
+`depth` nests SPA children the way filesystem listings do (default 2) and emits a lazy
+sentinel past the cap.
+LFS pointers stay stored bytes; a promisor miss is `object_unavailable` with lazy fetch
+disabled. Serving acquired Git remains later.
+See
 [Repository Sources and Provider Mirrors](arch-repository-sources-and-provider-mirrors.md).
 
 How Metabrowser talks to Git, and how anything that produces a comparison plugs into the
@@ -207,23 +242,28 @@ literal `.git` directory; anything reading per-worktree control files must resol
 through `git rev-parse --git-path` for the same reason.
 
 This exact-root gate remains correct for an attached filesystem subject.
-It is not the interface for a planned immutable revision subject.
+An immutable revision subject is not a working tree.
 That source carries a trusted repository-store identity and full object ID, enumerates a
 Git tree directly, and never claims to be a filesystem working tree.
+`GitLocation` is the command address: a resolved worktree path or a
+`RepositoryStoreTarget` plus pinned full object ID, never both.
+Discovery, history, refs, and commit detail accept that location; a pin reports a
+detached HEAD at the object ID, keeps `GitRepoInfo.root` empty, and walks that OID by
+default rather than the store’s ambient HEAD.
 
-### Planned Git command targets and revision sources
+### Git command targets and revision sources
 
-`run_git` and `spawn_git_process` currently identify a repository only through `cwd`.
-The repository-store phase adds a closed trusted `GitCommandTarget` constructed by core:
+`run_git` and `spawn_git_process` identify a repository through `cwd` or a closed
+trusted `GitCommandTarget` constructed by core.
+`GitLocation` is the caller-facing XOR of those two.
 `AttachedWorktreeTarget` names an exact worktree plus Git directory, and
 `RepositoryStoreTarget` names one Metabrowser-owned worktree-free Git directory.
 The process boundary converts that handle into fixed arguments while continuing to scrub
 ambient repository environment variables.
 Caller-supplied paths do not become `GIT_DIR`, `GIT_WORK_TREE`, or environment
-overrides. Repository discovery, routes, history, refs, commit detail, comparisons, and
-Git diff adapters all accept the target explicitly.
+overrides. Store reads disable mailmap and implicit lazy fetch.
 For a repository-store target, history and detail start from the subject’s pinned full
-object ID rather than ambient `HEAD`; refs are optional observations.
+object ID rather than ambient `HEAD`; refs remain optional observations.
 
 The immutable content source resolves a full object ID to one tree, enumerates paths
 with NUL-framed `ls-tree` output, and reads bounded blobs through owned batch `cat-file`
@@ -231,12 +271,79 @@ processes. One actor serializes each batch process, issues `info` before `conten
 enforces the declared size bound, drains the complete frame, and restarts the process
 after cancellation or framing failure.
 Implicit promisor fetch is disabled.
-Tree entries have Git mode, kind, size, and object ID; they do not invent filesystem
-mtimes, ignore state, ownership, or watcher events.
+Tree entries have Git mode, kind, and object ID; blob size comes from `cat-file` info at
+listing and read time, not from `ls-tree -l`. They do not invent filesystem mtimes,
+ignore state, ownership, or watcher events.
 Their `GitPath` identity is raw byte segments with a lossless route codec and separate
-display text; it never becomes a host filesystem path.
-Symlinks are not followed, gitlinks are distinct non-folder entries, and LFS pointers
-remain ordinary blobs.
+display text (C0 and invalid UTF-8 become U+FFFD); it never becomes a host filesystem
+path.
+A patch-file container inner is that `GitPath` `g1-` prefix plus a host inner path,
+not another tree segment.
+`/api/plugin/binary/chunk` slices one blob by that identity and keys the window on the
+object id. In-tree relative symlink blobs are followed; kind checks use the leaf path.
+Git blobs classify by extension, basename, sniffed adapter, and bounded JSON, YAML, and
+Markdown-frontmatter mappings parsed from blob bytes.
+`path_glob` stays filesystem-only.
+`/api/plugin/structured/parsed` reads one blob by that identity and keys the parse on
+the object id. `/api/file` for a `.jsonl` blob is a parsed JSONL envelope;
+`/api/plugin/agent-log/charts` reads that blob by the same identity.
+Inventory-backed JSONL `/api/stream` does not answer from the lifespan folder: it
+returns `unsupported_for_subject`. `/api/catalog` on a pin lists recursive blob names
+and is complete at once.
+`/api/index/progress`, `/api/index/meta`, and `/api/capabilities` report that same
+complete-at-once index without a watcher or invented mtime.
+`/api/rollup` on a pin answers from recursive blob names and sizes and omits mtime.
+Listings do not follow symlinks.
+File, raw, KPress, and plugin sidekicks follow in-tree relative symlink blobs.
+Gitlinks are distinct non-folder entries, and LFS pointers remain ordinary blobs (stored
+pointer bytes, no smudge).
+A blob the tree names but the store lacks, including a promisor miss with
+`GIT_NO_LAZY_FETCH`, is `object_unavailable` and does not contact the remote.
+`/view/` on that subject accepts a `GitPath` wire, optionally plus a patch-file
+container inner, and refuses a filesystem spelling.
+`/api/tree` keeps Git-native `entries` and also projects a SPA `tree` array
+(`dir`/`file`/`symlink`, `GitPath` wires, `cat-file` blob sizes, recursive dir
+`total_files`/`total_size`, no mtime/ignore); gitlinks are files and stay unsized.
+`depth` nests SPA children the way filesystem listings do (default 2) and emits a lazy
+sentinel past the cap; `depth=0` returns chrome without a listing.
+Whole-tree `extensions`, `canonical_extensions`, `type_families`, and `type_presets`
+rows, `tally_cache_status`, and `summary` come from the recursive blob index; ignored
+counts are 0 because ignore is absent.
+`include_ignored=0` is a no-op rather than `unsupported_for_subject`. The SPA hides
+Modified within because recency still has no honest mtime.
+Incomplete blob sizes omit `summary` rather than inventing 0. `types` and `min_size`
+keep ancestor trees of matching blobs and emit subtree `filtered` totals; empty filter
+dirs are omitted. A Git tree `/api/file` envelope is SPA `folder` chrome (`git_kind`
+stays `tree`) with recursive blob tallies and no mtime.
+A direct-child README blob sets `readme_path` to its GitPath wire and mounts Overview.
+A complete blob-size tally also mounts treemap; `/api/rollup` omits mtime.
+`/api/catalog` lists those blob names as Quick File rows.
+`/api/index/progress`, `/api/index/meta`, and `/api/capabilities` report that
+complete-at-once index.
+`/api/tree` carries whole-tree `extensions`, `canonical_extensions`, `type_families`,
+and `type_presets` rows, `tally_cache_status`, and a `summary` from the same index.
+`types` and `min_size` keep ancestor trees of matching blobs and emit subtree `filtered`
+totals. Git type matching uses the same bounded compound-tail logical extension as
+filesystem inventory.
+SPA file nodes and blob `/api/file` envelopes emit that tail as `ext`; `logical_ext` is
+only the inner extension of a compressed name on tree nodes.
+Blob file envelopes omit compressed identity because blobs are stored bytes with no gzip
+smudge. Git markdown `/api/file` envelopes include parsed YAML `frontmatter` and
+`frontmatter_error`; KPress on a pin uses that parse rather than an empty mapping.
+Git text envelopes use the same first-window and highlight bound as filesystem listings.
+A Git image blob is SPA `image` chrome; `/raw` serves the stored bytes.
+`/api/file`, `/raw`, KPress, and plugin sidekicks follow in-tree relative symlink blobs;
+listings still show the symlink.
+Kind checks use the leaf path.
+`include_ignored=0` is a no-op because ignore is absent.
+`depth` nests SPA children the way filesystem listings do (default 2) and emits a lazy
+sentinel past the cap.
+Markdown and wiki destinations encode authored segments as `GitPath` wires; the
+known-file catalog indexes the tree node’s display name, not the `g1-` token.
+SPA path chrome and copy-path decode those wires to display names (C0 and invalid UTF-8
+become U+FFFD); navigation identities stay wires.
+Omitted mtime leaves tally chrome empty rather than pending.
+KPress `source_path` on a pin is that wire.
 
 Views pin the full object ID before reading.
 Ref refresh may make another object current for a later selection, but cannot change an
@@ -342,6 +449,8 @@ sites — so the port, not a table, is the contract.
 
 Two sources exist today: `adapters/patch_file.py` and `adapters/git.py`, the latter
 accepting revision intents only.
+On a `RepositoryStoreTarget` pin, `GitDiffSource.content` reads the blob through the
+shared cat-file pool; a filesystem location still uses `cat-file blob`.
 
 ### Adding a source
 

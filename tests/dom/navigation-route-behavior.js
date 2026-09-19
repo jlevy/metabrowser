@@ -25,7 +25,19 @@ function equal(name, actual, expected) {
   check(name, actualJson === expectedJson, `expected ${expectedJson}, got ${actualJson}`);
 }
 
-const sandbox = { console, Object, Array, String, Error, TypeError, URIError };
+const sandbox = {
+  console,
+  Object,
+  Array,
+  String,
+  Error,
+  TypeError,
+  URIError,
+  atob,
+  btoa,
+  TextDecoder,
+  Uint8Array,
+};
 sandbox.window = sandbox;
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
@@ -137,6 +149,36 @@ equal(
   route.displayPath("a%2520%25.txt"),
   "a%20%.txt",
 );
+equal("display GitPath README wire", route.displayPath("g1-UkVBRE1FLm1k"), "README.md");
+equal(
+  "display GitPath nested wire",
+  route.displayPath("g1-ZG9jcw/g1-bm90ZS50eHQ"),
+  "docs/note.txt",
+);
+equal("display GitPath percent name", route.displayPath("g1-MTAwJS5odG1s"), "100%.html");
+equal(
+  "display GitPath nested percent name",
+  route.displayPath("g1-ZG9jcw/g1-MTAwJS5tZA"),
+  "docs/100%.md",
+);
+equal("display GitPath one crumb of a wire", route.displayPath("g1-bm90ZS50eHQ"), "note.txt");
+equal(
+  "display GitPath patch container inner",
+  route.displayPath("g1-Y2hhbmdlLnBhdGNo/src/app.py"),
+  "change.patch/src/app.py",
+);
+equal(
+  "display mixed filesystem path is not a GitPath wire",
+  route.displayPath("docs/g1-UkVBRE1FLm1k"),
+  "docs/g1-UkVBRE1FLm1k",
+);
+equal("display invalid GitPath atom stays a wire token", route.displayPath("g1-!!!"), "g1-!!!");
+equal(
+  "display GitPath newline name replaces C0",
+  route.displayPath("g1-bmV3CmxpbmUudHh0"),
+  "new\ufffdline.txt",
+);
+equal("display GitPath invalid UTF-8 name", route.displayPath("g1-eP8udHh0"), "x\ufffd.txt");
 
 sandbox.METABROWSER_PATH_ENCODING = "utf16";
 for (const [identity, url] of [
