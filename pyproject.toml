@@ -85,6 +85,7 @@ metabrowser = "metabrowser.cli.entrypoint:main"
 [project.entry-points."metabrowser.capabilities.v1"]
 provider-resources = "metabrowser.builtin_plugins.hosted_review.contracts:provider_resource_capabilities"
 hosted-review = "metabrowser.builtin_plugins.hosted_review.contracts:hosted_review_capabilities"
+repository-cache = "metabrowser.cache.contracts:repository_cache_capabilities"
 
 
 # ---- Build system ----

@@ -722,13 +722,11 @@ at all.
 Provider records are validated before publication and bounded by file, field, and
 collection limits established from fixtures and browser measurements, so a hostile or
 merely enormous response cannot become an unbounded document or an unbounded render.
-Every application-home directory containing repository or provider content is `0700` and
-every file is `0600` on POSIX; Windows uses a current-user-only ACL with the same
-intent. Metabrowser refuses remote acquisition or provider publication when any cache
-ancestor is a symlink, is owned by another principal, is group/world accessible, or
-cannot be verified and repaired.
-An explicitly configured permissive `METABROWSER_HOME` produces an actionable refusal,
-not a warning followed by a private write.
+Everything kept under the application home is owner-only, and remote acquisition or
+provider publication fails closed when that cannot be verified.
+[Owner-only storage](plan-2026-08-11-open-repo-from-git-url.md#owner-only-storage)
+states the enforced rules, including the macOS ACL checks, the Windows refusal, and why
+provider state is published by atomic replacement rather than written in place.
 Ordinary read-only browsing of a local path outside the application home remains
 available.
 

@@ -1,0 +1,19 @@
+$defs:
+  CanonicalTimestamp:
+    pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{3})?Z$
+    type: string
+$schema: https://json-schema.org/draft/2020-12/schema
+additionalProperties: false
+description: "A source's ``state.yml``: optional recency bookkeeping, never a correctness input."
+properties:
+  last_opened_at:
+    anyOf:
+    - $ref: '#/$defs/CanonicalTimestamp'
+    - type: 'null'
+required:
+- last_opened_at
+title: RepositorySourceState
+type: object
+x-softschema:
+  contract: com.github.jlevy.metabrowser.cache:RepositorySourceState/v1
+  schema_sha256: 0a2fda2f24f8f8e70fc47f90af67ac2b6352f875074962f74a050cd350cd3d6d

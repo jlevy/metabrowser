@@ -29,6 +29,27 @@ Plugin contracts:
   evidence. Distribution verification repeats the same inventory from isolated wheel and
   source distribution installs instead of maintaining a separate built-in schema list.
 
+- The repository cache’s `f01` records install as enforced contracts through a
+  `repository-cache` capability provider, so `metab --doctor` now reports three
+  capability providers and 22 contracts.
+  No command writes the cache yet: the application home and `CACHEDIR.TAG` are created
+  when opening a repository URL lands.
+
+Repository cache:
+
+- New read-only routes `/api/cache/layout`, `/api/cache/sources`,
+  `/api/cache/source/<slug>`, and `/api/cache/stores` report the cache’s layout and
+  config formats, what reclamation left in staging, trash, and quarantine, sources with
+  their alias generation and publication state, and stores with the aliases that name
+  them. Reach them with `metab <root> --api /api/cache/layout` like any other route.
+  They resolve `METABROWSER_HOME`, or `~/.metabrowser`, on each request and change
+  nothing: a missing home reports `absent` rather than being created, an entry other
+  users can reach is reported as `not_private` rather than tightened, and a home other
+  users can access, or one a newer release wrote, is refused with a typed error that
+  names the fixed cache directory to fix and no path of yours.
+  Sources and stores are paged with `limit` and `after`, 25 rows by default and 100 at
+  most; no response reports a cache path, pack file, or Git internal.
+
 ## 0.10.0
 
 Plugin SDK:

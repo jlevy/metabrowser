@@ -1,0 +1,465 @@
+{
+  "schema": "metabrowser-repository-cache-source-identity-v1",
+  "decided": "2026-09-16",
+  "source_identity": {
+    "domain": "metabrowser.repository-source.v1",
+    "material": "domain, transport, and the grammar's normalized address, joined with NUL",
+    "encoding": "sha256:<64 lowercase hex digits>",
+    "rules": [
+      "Identity is computed only from the normalized address in url-grammar.json; no provider knowledge, DNS lookup, url.<base>.insteadOf rewrite, or credential participates.",
+      "Transport is part of the material, so an https and an ssh spelling of one hosted repository are two sources until a provider binding attaches both to one store.",
+      "source.yml stores the full digest; directory names never substitute for it."
+    ]
+  },
+  "store_identity": {
+    "domain": "metabrowser.repository-store.v1",
+    "generic_material": "domain, 'source', source id, object format, joined with NUL",
+    "provider_material": "domain, 'provider', provider kind, canonical provider instance, raw stable repository opaque id, object format, joined with NUL",
+    "encoding": "sha256:<64 lowercase hex digits>",
+    "key_hex_digits": 64,
+    "rules": [
+      "A store created from a source before provider resolution derives its id from the source id and the object format observed during acquisition, so two concurrent acquisitions of one source converge on one store key and the loser discards its staging copy.",
+      "A provider-derived store is domain-separated from every generic store and contains no authorization context.",
+      "The directory key is all 64 hex digits: there is no truncation and therefore no store-key collision path to handle. A mismatch between the directory key and store.yml is corruption and quarantines the entry.",
+      "The canonical spelling of a provider instance is owned by the provider plan; the fixture values are placeholders for that spelling."
+    ]
+  },
+  "slug": {
+    "token_separator": "--",
+    "readable_max_bytes": 96,
+    "empty_readable": "source",
+    "suffix_hex_digits": [
+      12,
+      16,
+      24,
+      32,
+      64
+    ],
+    "max_bytes": 162,
+    "rules": [
+      "Tokens are the host (with a non-default port appended as '-<port>') followed by the path segments; ssh users are not tokens; file sources use 'local' and the final path segment only, so an absolute local path never becomes a directory name.",
+      "A terminal '.git' is removed from the last token only, percent-encoding is decoded, and each token is lowercased with every run of characters outside [a-z0-9] replaced by one '-' and trimmed.",
+      "Tokens join with '--'; the readable part is truncated to readable_max_bytes and trailing '-' removed; an empty readable part becomes 'source'.",
+      "The suffix is the first 12 hex digits of the source digest. If that slug is already claimed by a different source id, the suffix extends to 16, 24, 32, then 64 digits; a slug already owned by the same source id is reused.",
+      "Slugs are lowercase ASCII because the measured cache filesystem is case-insensitive and Unicode-normalization-insensitive (explorations/repository-cache/results/platform.json), so any case or normalization variant would alias another directory.",
+      "The slug is recorded in source.yml at creation and is not recomputed, so readable_max_bytes may change later without orphaning entries; the hard bound is NAME_MAX 255 minus the separator and the widest suffix (189 bytes)."
+    ]
+  },
+  "sources": [
+    {
+      "input": "https://github.com/pallets/flask",
+      "transport": "https",
+      "form": "url",
+      "normalized": "https://github.com/pallets/flask",
+      "source_id": "sha256:e7b7fe0ffe8a446772b8a863f51222c90d256e511e1a4da3daec599735962fa9",
+      "slug": "github-com--pallets--flask--e7b7fe0ffe8a",
+      "generic_stores": {
+        "sha1": {
+          "store_id": "sha256:4c2d8559cb0179baca3afa2f633e1cfd7271b82e4fb7f0c451dfa9354aa70aff",
+          "store_key": "4c2d8559cb0179baca3afa2f633e1cfd7271b82e4fb7f0c451dfa9354aa70aff"
+        },
+        "sha256": {
+          "store_id": "sha256:e93b6bfec1f9de31530258859031d8689df0a31f8a792c8e4b4ed41d02dd226f",
+          "store_key": "e93b6bfec1f9de31530258859031d8689df0a31f8a792c8e4b4ed41d02dd226f"
+        }
+      }
+    },
+    {
+      "input": "https://github.com/pallets/flask.git",
+      "transport": "https",
+      "form": "url",
+      "normalized": "https://github.com/pallets/flask.git",
+      "source_id": "sha256:8f5ee2740169ca3c766a2f46f570f1d6d6a4c591ee19866d845f281ed8652093",
+      "slug": "github-com--pallets--flask--8f5ee2740169",
+      "generic_stores": {
+        "sha1": {
+          "store_id": "sha256:c7cf531f0847180aa3a673f1454a62088b0d15439a8aed5b7b0952ec9d25a0c1",
+          "store_key": "c7cf531f0847180aa3a673f1454a62088b0d15439a8aed5b7b0952ec9d25a0c1"
+        },
+        "sha256": {
+          "store_id": "sha256:7e40974affe7d77916093cf71f5f4e1935695ee7d5431d8bd4485678f776bb7d",
+          "store_key": "7e40974affe7d77916093cf71f5f4e1935695ee7d5431d8bd4485678f776bb7d"
+        }
+      }
+    },
+    {
+      "input": "https://github.com/Pallets/Flask",
+      "transport": "https",
+      "form": "url",
+      "normalized": "https://github.com/Pallets/Flask",
+      "source_id": "sha256:8085924260d3967ae7e00c94c0ea3fb50a4e95440ec06b2e1eefb9aa64ce7ea3",
+      "slug": "github-com--pallets--flask--8085924260d3",
+      "generic_stores": {
+        "sha1": {
+          "store_id": "sha256:fb629e41e7cd709276f9e1a2034d9db470500c6fe9b238febaead3aae668fb46",
+          "store_key": "fb629e41e7cd709276f9e1a2034d9db470500c6fe9b238febaead3aae668fb46"
+        },
+        "sha256": {
+          "store_id": "sha256:74672cc106b7e1d4864037504f34ace307ba527c54bbdd86458280f60872ba91",
+          "store_key": "74672cc106b7e1d4864037504f34ace307ba527c54bbdd86458280f60872ba91"
+        }
+      }
+    },
+    {
+      "input": "https://example.com/owner/%72epo.git",
+      "transport": "https",
+      "form": "url",
+      "normalized": "https://example.com/owner/repo.git",
+      "source_id": "sha256:e8d0ea23dc8693fc36521d820e4d141aeed75c9d5de67eacda45dc340d5ac3c4",
+      "slug": "example-com--owner--repo--e8d0ea23dc86",
+      "generic_stores": {
+        "sha1": {
+          "store_id": "sha256:fce8375bab0ede9ab206ed3fa45f37bf2a408eaba8d607d77ce759eb7b5e57d6",
+          "store_key": "fce8375bab0ede9ab206ed3fa45f37bf2a408eaba8d607d77ce759eb7b5e57d6"
+        },
+        "sha256": {
+          "store_id": "sha256:4fcc7ada5031700f8c6fdf784f11569964d24ba8989a7a641d952f9241aebe8b",
+          "store_key": "4fcc7ada5031700f8c6fdf784f11569964d24ba8989a7a641d952f9241aebe8b"
+        }
+      }
+    },
+    {
+      "input": "https://git.example.org:8443/group/sub/repo.git",
+      "transport": "https",
+      "form": "url",
+      "normalized": "https://git.example.org:8443/group/sub/repo.git",
+      "source_id": "sha256:87a95c1c1faa800b253263646e2f2c6c39959b5679e252ac431bdad38144020f",
+      "slug": "git-example-org-8443--group--sub--repo--87a95c1c1faa",
+      "generic_stores": {
+        "sha1": {
+          "store_id": "sha256:8bd26566c949b6324c60ea31e62f0e0552db9f1ddc33f1441d05eb62aacbf72d",
+          "store_key": "8bd26566c949b6324c60ea31e62f0e0552db9f1ddc33f1441d05eb62aacbf72d"
+        },
+        "sha256": {
+          "store_id": "sha256:3e5bef07bfc64d1c102b67340346747a4c54927ab1afd658e5031caed12c3c8c",
+          "store_key": "3e5bef07bfc64d1c102b67340346747a4c54927ab1afd658e5031caed12c3c8c"
+        }
+      }
+    },
+    {
+      "input": "https://[2001:DB8::1]:8443/repo.git",
+      "transport": "https",
+      "form": "url",
+      "normalized": "https://[2001:db8::1]:8443/repo.git",
+      "source_id": "sha256:6e69aae9a0c06e716fb57f54f55c129109b8dfc35373b53ed636b5d46e04c3f3",
+      "slug": "2001-db8-1-8443--repo--6e69aae9a0c0",
+      "generic_stores": {
+        "sha1": {
+          "store_id": "sha256:2681a95cc793c18c29bac3b485061bd4bdc7e397462833274873dc0a4e2a727f",
+          "store_key": "2681a95cc793c18c29bac3b485061bd4bdc7e397462833274873dc0a4e2a727f"
+        },
+        "sha256": {
+          "store_id": "sha256:8123779bab425bf4443fcd5f32fc9e95aa043b9898be76e29df4c82f0eb3f457",
+          "store_key": "8123779bab425bf4443fcd5f32fc9e95aa043b9898be76e29df4c82f0eb3f457"
+        }
+      }
+    },
+    {
+      "input": "https://example.com/owner/r%c3%a9po.git",
+      "transport": "https",
+      "form": "url",
+      "normalized": "https://example.com/owner/r%C3%A9po.git",
+      "source_id": "sha256:05024f74bd0129be3da332a46f65a4864dc2980db450e17c78024b6da103a47a",
+      "slug": "example-com--owner--r-po--05024f74bd01",
+      "generic_stores": {
+        "sha1": {
+          "store_id": "sha256:7ee317d0a66a1c8ad9115eb1df75f2eb3123e9f038dc0096fcdbeb80c4392db3",
+          "store_key": "7ee317d0a66a1c8ad9115eb1df75f2eb3123e9f038dc0096fcdbeb80c4392db3"
+        },
+        "sha256": {
+          "store_id": "sha256:0fa7510eaf2540656416c47fdbe303c88f474d41366fd4b1a75a404757e78a1d",
+          "store_key": "0fa7510eaf2540656416c47fdbe303c88f474d41366fd4b1a75a404757e78a1d"
+        }
+      }
+    },
+    {
+      "input": "ssh://git@github.com/pallets/flask.git",
+      "transport": "ssh",
+      "form": "url",
+      "normalized": "ssh://git@github.com/pallets/flask.git",
+      "source_id": "sha256:5dee779606f0cbdffaf44ab8e90ef64e8f5551a7737f32c2533956854468cfc4",
+      "slug": "github-com--pallets--flask--5dee779606f0",
+      "generic_stores": {
+        "sha1": {
+          "store_id": "sha256:aba6dcf0898443983ae2a66a9e649599b72971b4e3227e82dd50982088ce0561",
+          "store_key": "aba6dcf0898443983ae2a66a9e649599b72971b4e3227e82dd50982088ce0561"
+        },
+        "sha256": {
+          "store_id": "sha256:4eb518463e357044c18e2972dff4e8c4e5841dbb77a7c3a2fb75ff638b5b93c8",
+          "store_key": "4eb518463e357044c18e2972dff4e8c4e5841dbb77a7c3a2fb75ff638b5b93c8"
+        }
+      }
+    },
+    {
+      "input": "ssh://alice@github.com/pallets/flask.git",
+      "transport": "ssh",
+      "form": "url",
+      "normalized": "ssh://alice@github.com/pallets/flask.git",
+      "source_id": "sha256:63550087f94d7cd6953b72f3fdaf01a3d58cabb8f62cd69750132265a777b0ba",
+      "slug": "github-com--pallets--flask--63550087f94d",
+      "generic_stores": {
+        "sha1": {
+          "store_id": "sha256:05743d3579a29ac2cb8ebb8484e9582e9698388257f51eba69439ccd44b23b9c",
+          "store_key": "05743d3579a29ac2cb8ebb8484e9582e9698388257f51eba69439ccd44b23b9c"
+        },
+        "sha256": {
+          "store_id": "sha256:2e119709c58f2303c662d2b622a56b1a27b45ca62790d0647e0b78c162469791",
+          "store_key": "2e119709c58f2303c662d2b622a56b1a27b45ca62790d0647e0b78c162469791"
+        }
+      }
+    },
+    {
+      "input": "ssh://git@example.com:2222/owner/repo.git",
+      "transport": "ssh",
+      "form": "url",
+      "normalized": "ssh://git@example.com:2222/owner/repo.git",
+      "source_id": "sha256:d1c4db93de268b3564235cda731e6bfd57874f830086534928621624b78e822a",
+      "slug": "example-com-2222--owner--repo--d1c4db93de26",
+      "generic_stores": {
+        "sha1": {
+          "store_id": "sha256:b5bf855b10f653fead68efc6ad254568458120fde60477d9a8c45a28a243757f",
+          "store_key": "b5bf855b10f653fead68efc6ad254568458120fde60477d9a8c45a28a243757f"
+        },
+        "sha256": {
+          "store_id": "sha256:e2c39790aec69149a857859ed0901c6b407c95b850c69d32ec97b5a7ec842b76",
+          "store_key": "e2c39790aec69149a857859ed0901c6b407c95b850c69d32ec97b5a7ec842b76"
+        }
+      }
+    },
+    {
+      "input": "git@github.com:pallets/flask.git",
+      "transport": "ssh",
+      "form": "scp",
+      "normalized": "git@github.com:pallets/flask.git",
+      "source_id": "sha256:74fe6e07e4b9e366cbfea79bdb0f6051ae58c0742e1a6748ba6c9dea86b1e231",
+      "slug": "github-com--pallets--flask--74fe6e07e4b9",
+      "generic_stores": {
+        "sha1": {
+          "store_id": "sha256:dcea75226191ed166edb474c745d8b4a4918bae94aa91d1247ebcd37b99be34c",
+          "store_key": "dcea75226191ed166edb474c745d8b4a4918bae94aa91d1247ebcd37b99be34c"
+        },
+        "sha256": {
+          "store_id": "sha256:94eae6d22844d1b1bf3d646783fc67a1cb6947cd48264c0cdce98750513177ab",
+          "store_key": "94eae6d22844d1b1bf3d646783fc67a1cb6947cd48264c0cdce98750513177ab"
+        }
+      }
+    },
+    {
+      "input": "git@example.com:/srv/git/repo.git",
+      "transport": "ssh",
+      "form": "scp",
+      "normalized": "git@example.com:/srv/git/repo.git",
+      "source_id": "sha256:cb57c38f3082249862874b9e8f6c60ca7a7de6901999d38a01c1b0b693a044f8",
+      "slug": "example-com--srv--git--repo--cb57c38f3082",
+      "generic_stores": {
+        "sha1": {
+          "store_id": "sha256:6cab9696f121036f3659b37ea730e5fd2538fa297cb379d2939952875695f169",
+          "store_key": "6cab9696f121036f3659b37ea730e5fd2538fa297cb379d2939952875695f169"
+        },
+        "sha256": {
+          "store_id": "sha256:6be9750cebe9fc77094b9ea9c034231a98865884708a4c79924ca0fa9bf4ce92",
+          "store_key": "6be9750cebe9fc77094b9ea9c034231a98865884708a4c79924ca0fa9bf4ce92"
+        }
+      }
+    },
+    {
+      "input": "file:///srv/git/repo.git",
+      "transport": "file",
+      "form": "url",
+      "normalized": "file:///srv/git/repo.git",
+      "source_id": "sha256:b1d2123433469fdfaabf9670c6ec1110708a885ce319c85dd9910f8dfe6003a1",
+      "slug": "local--repo--b1d212343346",
+      "generic_stores": {
+        "sha1": {
+          "store_id": "sha256:a1713f6d5b662849e32a277660431d6aa055a419a5dfd0e2f1a3598d5389e5ce",
+          "store_key": "a1713f6d5b662849e32a277660431d6aa055a419a5dfd0e2f1a3598d5389e5ce"
+        },
+        "sha256": {
+          "store_id": "sha256:024292d4100dda59fb6109815637947a8669bba947885f1b7f0be9b895dea1bb",
+          "store_key": "024292d4100dda59fb6109815637947a8669bba947885f1b7f0be9b895dea1bb"
+        }
+      }
+    },
+    {
+      "input": "https://example.com/owner/Build+Tools.git",
+      "transport": "https",
+      "form": "url",
+      "normalized": "https://example.com/owner/Build+Tools.git",
+      "source_id": "sha256:17a47521d046ca0580684792e3d7ce414c91e95e6b2d3fc282c595eb2e900785",
+      "slug": "example-com--owner--build-tools--17a47521d046",
+      "generic_stores": {
+        "sha1": {
+          "store_id": "sha256:2f67c90febb4f323055b3e752a374dead69c9203911004c6d78f2003014e0413",
+          "store_key": "2f67c90febb4f323055b3e752a374dead69c9203911004c6d78f2003014e0413"
+        },
+        "sha256": {
+          "store_id": "sha256:6019ec1c2ba0df154522280e7b2fab2b28d44e568b432c38ae1fe36632c8b9c6",
+          "store_key": "6019ec1c2ba0df154522280e7b2fab2b28d44e568b432c38ae1fe36632c8b9c6"
+        }
+      }
+    },
+    {
+      "input": "https://example.com/___/.git",
+      "transport": "https",
+      "form": "url",
+      "normalized": "https://example.com/___/.git",
+      "source_id": "sha256:2f3df4f3ca410041cbfbf956ab8fedeace290accc355b519e61c7746650c0b70",
+      "slug": "example-com--git--2f3df4f3ca41",
+      "generic_stores": {
+        "sha1": {
+          "store_id": "sha256:8c1164d1fabaff4ccc65282e76489f332b906c52e62b91f1827a48d3e3cdacb7",
+          "store_key": "8c1164d1fabaff4ccc65282e76489f332b906c52e62b91f1827a48d3e3cdacb7"
+        },
+        "sha256": {
+          "store_id": "sha256:9ed6b455cf01bc9aa2725beb82471dc49d7a593f86f4724e35c94967e1d6bb3b",
+          "store_key": "9ed6b455cf01bc9aa2725beb82471dc49d7a593f86f4724e35c94967e1d6bb3b"
+        }
+      }
+    },
+    {
+      "input": "https://example.com/a-very-long-group-name/a-very-long-group-name/a-very-long-group-name/a-very-long-group-name/a-very-long-group-name/a-very-long-group-name/repository.git",
+      "transport": "https",
+      "form": "url",
+      "normalized": "https://example.com/a-very-long-group-name/a-very-long-group-name/a-very-long-group-name/a-very-long-group-name/a-very-long-group-name/a-very-long-group-name/repository.git",
+      "source_id": "sha256:da5e535d44dc31c2d25770bf8f0e4681f5610f438e35f80eeb291e8376242e31",
+      "slug": "example-com--a-very-long-group-name--a-very-long-group-name--a-very-long-group-name--a-very-long--da5e535d44dc",
+      "generic_stores": {
+        "sha1": {
+          "store_id": "sha256:cf31020f15168f6cfee294c15f069226da2af93774d28325fb8c648fc255a2fe",
+          "store_key": "cf31020f15168f6cfee294c15f069226da2af93774d28325fb8c648fc255a2fe"
+        },
+        "sha256": {
+          "store_id": "sha256:d60a91b25a06e5b809db2fcf8cd6a8cb1f8a0d58690d98e17350f515c7063101",
+          "store_key": "d60a91b25a06e5b809db2fcf8cd6a8cb1f8a0d58690d98e17350f515c7063101"
+        }
+      }
+    }
+  ],
+  "equivalence": [
+    {
+      "inputs": [
+        "https://github.com/pallets/flask",
+        "HTTPS://GitHub.com:443/pallets/flask/"
+      ],
+      "same_source": true,
+      "why": "Scheme and host case, the default port, and a trailing slash are URI or transport equivalences."
+    },
+    {
+      "inputs": [
+        "https://example.com/owner/repo.git",
+        "https://example.com/owner/%72epo.git"
+      ],
+      "same_source": true,
+      "why": "Percent-encoded unreserved characters are equivalent (RFC 3986 6.2.2.2)."
+    },
+    {
+      "inputs": [
+        "file:///srv/git/repo.git",
+        "file://localhost/srv/git/repo.git/"
+      ],
+      "same_source": true,
+      "why": "localhost is the empty file authority."
+    },
+    {
+      "inputs": [
+        "https://github.com/pallets/flask",
+        "https://github.com/pallets/flask.git"
+      ],
+      "same_source": false,
+      "why": "A terminal .git is preserved for generic hosts; a provider binding may later attach both to one store."
+    },
+    {
+      "inputs": [
+        "https://github.com/pallets/flask",
+        "https://github.com/Pallets/Flask"
+      ],
+      "same_source": false,
+      "why": "Path case is preserved even where one host ignores it."
+    },
+    {
+      "inputs": [
+        "https://github.com/pallets/flask.git",
+        "ssh://git@github.com/pallets/flask.git"
+      ],
+      "same_source": false,
+      "why": "Transport is identity material."
+    },
+    {
+      "inputs": [
+        "ssh://git@github.com/pallets/flask.git",
+        "git@github.com:pallets/flask.git"
+      ],
+      "same_source": false,
+      "why": "An SCP-like path is home-relative and an ssh:// path is absolute."
+    },
+    {
+      "inputs": [
+        "ssh://git@github.com/pallets/flask.git",
+        "ssh://alice@github.com/pallets/flask.git"
+      ],
+      "same_source": false,
+      "why": "Different ssh users can see different repositories."
+    }
+  ],
+  "slug_collisions": [
+    {
+      "normalized": "https://github.com/pallets/flask",
+      "existing": {
+        "github-com--pallets--flask--e7b7fe0ffe8a": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      },
+      "expected_slug": "github-com--pallets--flask--e7b7fe0ffe8a4467",
+      "why": "A 12-digit suffix already claimed by another source extends to 16 digits."
+    },
+    {
+      "normalized": "https://github.com/pallets/flask",
+      "existing": {
+        "github-com--pallets--flask--e7b7fe0ffe8a": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "github-com--pallets--flask--e7b7fe0ffe8a4467": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      },
+      "expected_slug": "github-com--pallets--flask--e7b7fe0ffe8a446772b8a863",
+      "why": "Extension continues through the declared widths."
+    },
+    {
+      "normalized": "https://github.com/pallets/flask",
+      "existing": {
+        "github-com--pallets--flask--e7b7fe0ffe8a": "sha256:e7b7fe0ffe8a446772b8a863f51222c90d256e511e1a4da3daec599735962fa9"
+      },
+      "expected_slug": "github-com--pallets--flask--e7b7fe0ffe8a",
+      "why": "A slug already owned by the same source id is reused, so an interrupted claim is idempotent."
+    }
+  ],
+  "provider_stores": [
+    {
+      "provider_kind": "github",
+      "provider_instance": "github.com",
+      "repository_opaque_id": "R_kgDOAbCdEf",
+      "object_format": "sha1",
+      "store_id": "sha256:caaa0af9aac01c52a3f9ffa87acc2c8253230fe27dd276f6e8c9cf280bd7e693",
+      "store_key": "caaa0af9aac01c52a3f9ffa87acc2c8253230fe27dd276f6e8c9cf280bd7e693"
+    },
+    {
+      "provider_kind": "github",
+      "provider_instance": "github.com",
+      "repository_opaque_id": "R_kgDOAbCdEf",
+      "object_format": "sha256",
+      "store_id": "sha256:5e24eff150f1100cfb8b42c5e2738d80253b0cf53e265b6fc4e4588cb18e7a7e",
+      "store_key": "5e24eff150f1100cfb8b42c5e2738d80253b0cf53e265b6fc4e4588cb18e7a7e"
+    },
+    {
+      "provider_kind": "github",
+      "provider_instance": "github.example.com",
+      "repository_opaque_id": "R_kgDOAbCdEf",
+      "object_format": "sha1",
+      "store_id": "sha256:c42b739df7c0ca5111bf067e335267dad1f8114915b633ff9babdcad24546a94",
+      "store_key": "c42b739df7c0ca5111bf067e335267dad1f8114915b633ff9babdcad24546a94"
+    },
+    {
+      "provider_kind": "gitlab",
+      "provider_instance": "gitlab.example.org",
+      "repository_opaque_id": "12345",
+      "object_format": "sha1",
+      "store_id": "sha256:42dc105760226b722c3f947693a69a677ffd18c8138344b2b3d51a47d9db40d7",
+      "store_key": "42dc105760226b722c3f947693a69a677ffd18c8138344b2b3d51a47d9db40d7"
+    }
+  ]
+}

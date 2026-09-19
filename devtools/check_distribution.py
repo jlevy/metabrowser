@@ -154,6 +154,7 @@ WHEEL_SMOKE_SCRIPT = dedent(
     from metabrowser.file_type_registry import load_file_type_registry
     from metabrowser.kpress_adapter import render_kpress_view
     from metabrowser.plugin_loader.discovery import discover_plugins
+    from metabrowser.cache.contracts import check_packaged_schemas
 
 
     def _require(condition, message):
@@ -212,6 +213,10 @@ WHEEL_SMOKE_SCRIPT = dedent(
     _require(required == names, f"installed plugin set differs: expected {sorted(required)}, found {sorted(names)}")
     _require(not plugins.errors, f"installed plugin discovery failed: {plugins.errors}")
     _require("Wheel smoke" in rendered["html"], "installed KPress renderer returned unexpected HTML")
+    # The permissive config contract is outside the enforced registry the capability
+    # smoke covers, so every packaged cache schema is compiled against its model here.
+    schema_drift = check_packaged_schemas()
+    _require(not schema_drift, f"installed cache schemas drifted from their models: {schema_drift}")
     print(metabrowser.__version__)
     """
 ).strip()

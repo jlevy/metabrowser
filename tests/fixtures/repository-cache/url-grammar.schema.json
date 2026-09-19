@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://metabrowser.test/schemas/repository-cache-url-grammar-v1.json",
+  "title": "Repository cache root-argument URL grammar",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "decided", "scope", "transports", "default_ports", "check_order", "reasons", "normalization", "cases"],
+  "properties": {
+    "schema": { "const": "metabrowser-repository-cache-url-grammar-v1" },
+    "decided": { "type": "string", "format": "date" },
+    "scope": { "type": "string", "minLength": 1 },
+    "transports": { "type": "array", "items": { "enum": ["https", "ssh", "file"] }, "uniqueItems": true },
+    "default_ports": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["https", "ssh"],
+      "properties": { "https": { "type": "string" }, "ssh": { "type": "string" } }
+    },
+    "check_order": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "reasons": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z][a-z_]*$" },
+      "additionalProperties": { "type": "string", "minLength": 1 }
+    },
+    "normalization": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "input", "expected", "why"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+          "input": { "type": "string" },
+          "why": { "type": "string", "minLength": 1 },
+          "expected": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["outcome", "transport", "form", "normalized"],
+                "properties": {
+                  "outcome": { "const": "git_source" },
+                  "transport": { "enum": ["https", "ssh", "file"] },
+                  "form": { "enum": ["url", "scp"] },
+                  "normalized": { "type": "string", "minLength": 1 }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["outcome"],
+                "properties": { "outcome": { "const": "local_path" } }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["outcome", "reason"],
+                "properties": {
+                  "outcome": { "const": "rejected" },
+                  "reason": { "type": "string", "pattern": "^[a-z][a-z_]*$" }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

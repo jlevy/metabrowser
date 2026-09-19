@@ -166,6 +166,12 @@ pass.
 | Contract ID | Artifact profile | Envelope | Producers | Consumers | Corpus | Browser parser |
 | --- | --- | --- | --- | --- | --- | --- |
 | `com.github.jlevy.metabrowser.activity:RepositoryActivity/v1` | `pure-yaml` | `repository_activity` | `hosted-review-provider` | `hosted-review-service` | `repository-activity-conformance[*]` | `hosted-review-model:parseRepositoryActivity` |
+| `com.github.jlevy.metabrowser.cache:CacheLayout/v1` | `pure-yaml` | `layout` | `repository-cache` | `repository-cache` | `cache-records-conformance[layout]` | `server-only` |
+| `com.github.jlevy.metabrowser.cache:RepositorySource/v1` | `pure-yaml` | `source` | `repository-cache` | `repository-cache` | `cache-records-conformance[source,scp_source]` | `server-only` |
+| `com.github.jlevy.metabrowser.cache:RepositorySourceState/v1` | `pure-yaml` | `state` | `repository-cache` | `repository-cache` | `cache-records-conformance[source_state]` | `server-only` |
+| `com.github.jlevy.metabrowser.cache:RepositoryStore/v1` | `pure-yaml` | `store` | `repository-cache` | `repository-cache` | `cache-records-conformance[store]` | `server-only` |
+| `com.github.jlevy.metabrowser.cache:RepositoryStoreAlias/v1` | `pure-yaml` | `alias` | `repository-cache` | `repository-cache` | `cache-records-conformance[store_alias]` | `server-only` |
+| `com.github.jlevy.metabrowser.cache:RepositoryStoreState/v1` | `pure-yaml` | `state` | `repository-cache` | `repository-cache` | `cache-records-conformance[store_state,empty_store_state]` | `server-only` |
 | `com.github.jlevy.metabrowser.review:ChangeRequest/v1` | `frontmatter-md` | `change_request` | `hosted-review-provider` | `hosted-review-service` | `change-request-conformance[*]` | `hosted-review-model:parseChangeRequest` |
 | `com.github.jlevy.metabrowser.review:ChangeRequestComment/v1` | `frontmatter-md` | `change_request_comment` | `hosted-review-provider` | `hosted-review-service` | `review-records-conformance[change_request_comment]` | `hosted-review-model:parseChangeRequestComment` |
 | `com.github.jlevy.metabrowser.review:ChangeRequestIndex/v1` | `pure-yaml` | `change_request_index` | `hosted-review-provider` | `hosted-review-service` | `change-request-index-conformance[change_request_index,empty_change_request_index]` | `hosted-review-model:parseChangeRequestIndex` |

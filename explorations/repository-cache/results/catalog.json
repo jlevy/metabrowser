@@ -1,0 +1,63 @@
+{
+  "environment": {
+    "cpu": "Apple M1 Pro",
+    "git_build_options": [
+      "cpu: arm64",
+      "no commit associated with this build",
+      "sizeof-long: 8",
+      "sizeof-size_t: 8",
+      "shell-path: /bin/sh"
+    ],
+    "git_version": "git version 2.50.1",
+    "logical_cpus": 10,
+    "machine": "arm64",
+    "memory_bytes": 34359738368,
+    "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+    "python": "3.14.7"
+  },
+  "finished_at": "2026-09-17T05:42:13+00:00",
+  "parameters": {
+    "reps": 5
+  },
+  "rows": [
+    {
+      "bytes_read": 15900,
+      "entries": 100,
+      "scan_and_read": {
+        "cv": 0.105,
+        "max": 0.0023,
+        "median": 0.0019,
+        "min": 0.0018,
+        "n": 5,
+        "stdev": 0.0002
+      }
+    },
+    {
+      "bytes_read": 159000,
+      "entries": 1000,
+      "scan_and_read": {
+        "cv": 0.155,
+        "max": 0.027,
+        "median": 0.0209,
+        "min": 0.0186,
+        "n": 5,
+        "stdev": 0.0033
+      }
+    },
+    {
+      "bytes_read": 1590000,
+      "entries": 10000,
+      "scan_and_read": {
+        "cv": 0.05,
+        "max": 0.2839,
+        "median": 0.2621,
+        "min": 0.2523,
+        "n": 5,
+        "stdev": 0.0132
+      }
+    }
+  ],
+  "schema": "metabrowser-repository-cache-measurement-v1",
+  "started_at": "2026-09-17T05:42:07+00:00",
+  "suite": "catalog"
+}

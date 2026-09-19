@@ -1,0 +1,53 @@
+{
+  "environment": {
+    "cpu": "Apple M1 Pro",
+    "git_build_options": [
+      "cpu: arm64",
+      "no commit associated with this build",
+      "sizeof-long: 8",
+      "sizeof-size_t: 8",
+      "shell-path: /bin/sh"
+    ],
+    "git_version": "git version 2.50.1",
+    "logical_cpus": 10,
+    "machine": "arm64",
+    "memory_bytes": 34359738368,
+    "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+    "python": "3.14.7"
+  },
+  "finished_at": "2026-09-17T04:40:27+00:00",
+  "parameters": {},
+  "rows": [
+    {
+      "first_request": "GET /o/r.git/info/refs?service=git-upload-pack HTTP/1.1",
+      "url_path": "/o/r.git"
+    },
+    {
+      "first_request": "GET /o/r.git/info/refs?service=git-upload-pack HTTP/1.1",
+      "url_path": "/o/r.git/"
+    },
+    {
+      "first_request": "GET /o/r/info/refs?service=git-upload-pack HTTP/1.1",
+      "url_path": "/o/r"
+    },
+    {
+      "first_request": "GET /o/r/info/refs?service=git-upload-pack HTTP/1.1",
+      "url_path": "/o/r/"
+    },
+    {
+      "first_request": "GET /o/%72.git/info/refs?service=git-upload-pack HTTP/1.1",
+      "url_path": "/o/%72.git"
+    },
+    {
+      "first_request": "GET /O/R.git/info/refs?service=git-upload-pack HTTP/1.1",
+      "url_path": "/O/R.git"
+    },
+    {
+      "first_request": "GET /o//r.git/info/refs?service=git-upload-pack HTTP/1.1",
+      "url_path": "/o//r.git"
+    }
+  ],
+  "schema": "metabrowser-repository-cache-measurement-v1",
+  "started_at": "2026-09-17T04:40:26+00:00",
+  "suite": "url"
+}

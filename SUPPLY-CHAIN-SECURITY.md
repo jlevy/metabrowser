@@ -130,6 +130,21 @@ No unrelated lock versions change.
 The normal full verification gate exercises the upgraded test client and audits the
 complete lock.
 
+### Locked AnyIO Review (September 18, 2026)
+
+The locked transitive `anyio` package moves from 4.14.1 to 4.14.2 to resolve the three
+advisories reported by `uv audit`: GHSA-5p39-cfhj-2xmp, GHSA-82r6-8w77-94w6, and
+GHSA-3w57-8xmc-8v26. The
+[AnyIO version history](https://anyio.readthedocs.io/en/stable/versionhistory.html)
+describes the fixes.
+The release was published on July 12, so it satisfies the 14-day cool-off without an
+exception. Registry artifact hashes match `uv.lock`; the Python requirement remains
+`>=3.10`, compatible with this project’s supported range.
+
+Starlette and Uvicorn already depend on AnyIO; no new transitive records appear.
+No unrelated lock versions change.
+The normal full verification gate audits the complete lock.
+
 ### Automated Checks
 
 `devtools/check_supply_chain.py` checks only safeguards that span configuration files:
