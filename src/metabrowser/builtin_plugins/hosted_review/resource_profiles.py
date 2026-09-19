@@ -5,15 +5,18 @@ from __future__ import annotations
 from collections.abc import Mapping
 from types import MappingProxyType
 
+from metabrowser.provider_resources.profiles import (
+    CollectionPaginationPolicy,
+    ResourceCollectionSpec,
+    ResourceProfileSpec,
+    ResourceTargetClass,
+)
+
 from .models import (
     CHANGE_REQUEST_INDEX_CONTRACT_ID,
     CHANGE_REQUEST_INDEX_PROFILE_ID,
     HOSTED_REPOSITORY_CONTRACT_ID,
     REPOSITORY_SUMMARY_PROFILE_ID,
-    CollectionPaginationPolicy,
-    ResourceCollectionSpec,
-    ResourceProfileSpec,
-    ResourceTargetClass,
 )
 
 REPOSITORY_SUMMARY_PROFILE = ResourceProfileSpec(
@@ -58,10 +61,16 @@ HOSTED_REVIEW_RESOURCE_PROFILES: Mapping[str, ResourceProfileSpec] = MappingProx
 
 def resolve_resource_profile(
     profile_id: str,
-    profiles: Mapping[str, ResourceProfileSpec] = HOSTED_REVIEW_RESOURCE_PROFILES,
+    profiles: Mapping[str, ResourceProfileSpec] | None = None,
 ) -> ResourceProfileSpec:
     """Resolve one profile only from the trusted installed-profile catalog."""
-    profile = profiles.get(profile_id)
+    if profiles is None:
+        from metabrowser.plugin_loader.artifact_contracts import get_installed_registries
+
+        installed_profiles = get_installed_registries().resource_profiles
+    else:
+        installed_profiles = profiles
+    profile = installed_profiles.get(profile_id)
     if profile is None:
         raise ValueError("resource set names an unregistered profile")
     return profile

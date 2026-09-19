@@ -1,0 +1,322 @@
+$defs:
+  ActorRef:
+    additionalProperties: false
+    properties:
+      handle:
+        minLength: 1
+        title: Handle
+        type: string
+      provider_opaque_id:
+        minLength: 1
+        title: Provider Opaque Id
+        type: string
+      url:
+        minLength: 1
+        title: Url
+        type: string
+    required:
+    - handle
+    - provider_opaque_id
+    - url
+    title: ActorRef
+    type: object
+  ChangeRequestCounts:
+    additionalProperties: false
+    properties:
+      commits:
+        minimum: 0
+        title: Commits
+        type: integer
+      discussion_comments:
+        minimum: 0
+        title: Discussion Comments
+        type: integer
+      reviews:
+        minimum: 0
+        title: Reviews
+        type: integer
+    required:
+    - commits
+    - discussion_comments
+    - reviews
+    title: ChangeRequestCounts
+    type: object
+  ChangeRequestState:
+    enum:
+    - open
+    - closed
+    - merged
+    - unknown
+    title: ChangeRequestState
+    type: string
+  ComparisonRef:
+    additionalProperties: false
+    properties:
+      base:
+        $ref: '#/$defs/RevisionRef'
+      head:
+        $ref: '#/$defs/RevisionRef'
+      merge_commit_availability:
+        $ref: '#/$defs/RevisionAvailability'
+      merge_commit_oid:
+        anyOf:
+        - pattern: ^[0-9a-f]{40,64}$
+          type: string
+        - type: 'null'
+        title: Merge Commit Oid
+    required:
+    - base
+    - head
+    - merge_commit_availability
+    - merge_commit_oid
+    title: ComparisonRef
+    type: object
+  LabelRef:
+    additionalProperties: false
+    properties:
+      color:
+        anyOf:
+        - pattern: ^[0-9a-fA-F]{6}$
+          type: string
+        - type: 'null'
+        default: null
+        title: Color
+      name:
+        minLength: 1
+        title: Name
+        type: string
+    required:
+    - name
+    title: LabelRef
+    type: object
+  MilestoneRef:
+    additionalProperties: false
+    properties:
+      provider_opaque_id:
+        minLength: 1
+        title: Provider Opaque Id
+        type: string
+      title:
+        minLength: 1
+        title: Title
+        type: string
+      url:
+        minLength: 1
+        title: Url
+        type: string
+    required:
+    - provider_opaque_id
+    - title
+    - url
+    title: MilestoneRef
+    type: object
+  ProviderInstance:
+    type: string
+  ProviderKind:
+    type: string
+  ProviderObjectRef:
+    additionalProperties: false
+    properties:
+      instance:
+        $ref: '#/$defs/ProviderInstance'
+      object_kind:
+        minLength: 1
+        title: Object Kind
+        type: string
+      opaque_id:
+        minLength: 1
+        title: Opaque Id
+        type: string
+      provider:
+        $ref: '#/$defs/ProviderKind'
+    required:
+    - instance
+    - object_kind
+    - opaque_id
+    - provider
+    title: ProviderObjectRef
+    type: object
+  RepositoryRef:
+    additionalProperties: false
+    properties:
+      instance:
+        $ref: '#/$defs/ProviderInstance'
+      opaque_id:
+        minLength: 1
+        title: Opaque Id
+        type: string
+      provider:
+        $ref: '#/$defs/ProviderKind'
+    required:
+    - instance
+    - opaque_id
+    - provider
+    title: RepositoryRef
+    type: object
+  ReviewDecision:
+    enum:
+    - required
+    - approved
+    - changes_requested
+    - not_requested
+    - unknown
+    title: ReviewDecision
+    type: string
+  ReviewSummary:
+    additionalProperties: false
+    properties:
+      decision:
+        $ref: '#/$defs/ReviewDecision'
+      requested_people:
+        items:
+          $ref: '#/$defs/ActorRef'
+        title: Requested People
+        type: array
+      requested_teams:
+        items:
+          minLength: 1
+          type: string
+        title: Requested Teams
+        type: array
+    required:
+    - decision
+    - requested_people
+    - requested_teams
+    title: ReviewSummary
+    type: object
+  RevisionAvailability:
+    enum:
+    - present
+    - unavailable
+    - not_requested
+    title: RevisionAvailability
+    type: string
+  RevisionRef:
+    additionalProperties: false
+    properties:
+      availability:
+        $ref: '#/$defs/RevisionAvailability'
+      oid:
+        anyOf:
+        - pattern: ^[0-9a-f]{40,64}$
+          type: string
+        - type: 'null'
+        title: Oid
+      ref:
+        minLength: 1
+        title: Ref
+        type: string
+      repository_id:
+        anyOf:
+        - minLength: 1
+          type: string
+        - type: 'null'
+        title: Repository Id
+    required:
+    - availability
+    - oid
+    - ref
+    - repository_id
+    title: RevisionRef
+    type: object
+$schema: https://json-schema.org/draft/2020-12/schema
+additionalProperties: false
+properties:
+  assignees:
+    items:
+      $ref: '#/$defs/ActorRef'
+    title: Assignees
+    type: array
+  author:
+    anyOf:
+    - $ref: '#/$defs/ActorRef'
+    - type: 'null'
+  closed_at:
+    anyOf:
+    - minLength: 1
+      type: string
+    - type: 'null'
+    title: Closed At
+  comparison:
+    $ref: '#/$defs/ComparisonRef'
+  counts:
+    $ref: '#/$defs/ChangeRequestCounts'
+  created_at:
+    minLength: 1
+    title: Created At
+    type: string
+  draft:
+    title: Draft
+    type: boolean
+  id:
+    minLength: 1
+    title: Id
+    type: string
+  labels:
+    items:
+      $ref: '#/$defs/LabelRef'
+    title: Labels
+    type: array
+  locked:
+    title: Locked
+    type: boolean
+  merged_at:
+    anyOf:
+    - minLength: 1
+      type: string
+    - type: 'null'
+    title: Merged At
+  milestone:
+    anyOf:
+    - $ref: '#/$defs/MilestoneRef'
+    - type: 'null'
+  number:
+    minimum: 1
+    title: Number
+    type: integer
+  provider_ref:
+    $ref: '#/$defs/ProviderObjectRef'
+  repository:
+    $ref: '#/$defs/RepositoryRef'
+  review:
+    $ref: '#/$defs/ReviewSummary'
+  state:
+    $ref: '#/$defs/ChangeRequestState'
+  title:
+    minLength: 1
+    title: Title
+    type: string
+  updated_at:
+    minLength: 1
+    title: Updated At
+    type: string
+  url:
+    minLength: 1
+    title: Url
+    type: string
+required:
+- assignees
+- author
+- closed_at
+- comparison
+- counts
+- created_at
+- draft
+- id
+- labels
+- locked
+- merged_at
+- milestone
+- number
+- provider_ref
+- repository
+- review
+- state
+- title
+- updated_at
+- url
+title: ChangeRequest
+type: object
+x-softschema:
+  contract: com.github.jlevy.metabrowser.review:ChangeRequest/v1
+  schema_sha256: f3919c1a31985bc0df4c878590e6a9221f533624b1d40caeb72961dcc921a395

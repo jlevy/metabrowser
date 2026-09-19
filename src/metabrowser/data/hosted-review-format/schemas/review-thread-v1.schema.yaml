@@ -1,0 +1,351 @@
+$defs:
+  ActorRef:
+    additionalProperties: false
+    properties:
+      handle:
+        minLength: 1
+        title: Handle
+        type: string
+      provider_opaque_id:
+        minLength: 1
+        title: Provider Opaque Id
+        type: string
+      url:
+        minLength: 1
+        title: Url
+        type: string
+    required:
+    - handle
+    - provider_opaque_id
+    - url
+    title: ActorRef
+    type: object
+  ComparisonRef:
+    additionalProperties: false
+    properties:
+      base:
+        $ref: '#/$defs/RevisionRef'
+      head:
+        $ref: '#/$defs/RevisionRef'
+      merge_commit_availability:
+        $ref: '#/$defs/RevisionAvailability'
+      merge_commit_oid:
+        anyOf:
+        - pattern: ^[0-9a-f]{40,64}$
+          type: string
+        - type: 'null'
+        title: Merge Commit Oid
+    required:
+    - base
+    - head
+    - merge_commit_availability
+    - merge_commit_oid
+    title: ComparisonRef
+    type: object
+  FileReviewAnchor:
+    additionalProperties: false
+    properties:
+      comparison:
+        $ref: '#/$defs/ComparisonRef'
+      current_revision:
+        $ref: '#/$defs/GitObjectRef'
+      kind:
+        const: file
+        title: Kind
+        type: string
+      original_revision:
+        $ref: '#/$defs/GitObjectRef'
+      path:
+        minLength: 1
+        title: Path
+        type: string
+      path_b64:
+        anyOf:
+        - minLength: 1
+          type: string
+        - type: 'null'
+        title: Path B64
+      state:
+        $ref: '#/$defs/ReviewAnchorState'
+    required:
+    - comparison
+    - current_revision
+    - kind
+    - original_revision
+    - path
+    - path_b64
+    - state
+    title: FileReviewAnchor
+    type: object
+  GitObjectRef:
+    additionalProperties: false
+    properties:
+      availability:
+        $ref: '#/$defs/RevisionAvailability'
+      oid:
+        anyOf:
+        - pattern: ^[0-9a-f]{40,64}$
+          type: string
+        - type: 'null'
+        title: Oid
+      repository_id:
+        anyOf:
+        - minLength: 1
+          type: string
+        - type: 'null'
+        title: Repository Id
+    required:
+    - availability
+    - oid
+    - repository_id
+    title: GitObjectRef
+    type: object
+  LineReviewAnchor:
+    additionalProperties: false
+    properties:
+      comparison:
+        $ref: '#/$defs/ComparisonRef'
+      current_revision:
+        $ref: '#/$defs/GitObjectRef'
+      kind:
+        const: line
+        title: Kind
+        type: string
+      line:
+        minimum: 1
+        title: Line
+        type: integer
+      original_revision:
+        $ref: '#/$defs/GitObjectRef'
+      path:
+        minLength: 1
+        title: Path
+        type: string
+      path_b64:
+        anyOf:
+        - minLength: 1
+          type: string
+        - type: 'null'
+        title: Path B64
+      side:
+        $ref: '#/$defs/ReviewSide'
+      state:
+        $ref: '#/$defs/ReviewAnchorState'
+    required:
+    - comparison
+    - current_revision
+    - kind
+    - line
+    - original_revision
+    - path
+    - path_b64
+    - side
+    - state
+    title: LineReviewAnchor
+    type: object
+  ProviderInstance:
+    type: string
+  ProviderKind:
+    type: string
+  ProviderObjectRef:
+    additionalProperties: false
+    properties:
+      instance:
+        $ref: '#/$defs/ProviderInstance'
+      object_kind:
+        minLength: 1
+        title: Object Kind
+        type: string
+      opaque_id:
+        minLength: 1
+        title: Opaque Id
+        type: string
+      provider:
+        $ref: '#/$defs/ProviderKind'
+    required:
+    - instance
+    - object_kind
+    - opaque_id
+    - provider
+    title: ProviderObjectRef
+    type: object
+  RangeReviewAnchor:
+    additionalProperties: false
+    properties:
+      comparison:
+        $ref: '#/$defs/ComparisonRef'
+      current_revision:
+        $ref: '#/$defs/GitObjectRef'
+      end:
+        $ref: '#/$defs/ReviewRangeEndpoint'
+      kind:
+        const: range
+        title: Kind
+        type: string
+      original_revision:
+        $ref: '#/$defs/GitObjectRef'
+      path:
+        minLength: 1
+        title: Path
+        type: string
+      path_b64:
+        anyOf:
+        - minLength: 1
+          type: string
+        - type: 'null'
+        title: Path B64
+      start:
+        $ref: '#/$defs/ReviewRangeEndpoint'
+      state:
+        $ref: '#/$defs/ReviewAnchorState'
+    required:
+    - comparison
+    - current_revision
+    - end
+    - kind
+    - original_revision
+    - path
+    - path_b64
+    - start
+    - state
+    title: RangeReviewAnchor
+    type: object
+  RepositoryRef:
+    additionalProperties: false
+    properties:
+      instance:
+        $ref: '#/$defs/ProviderInstance'
+      opaque_id:
+        minLength: 1
+        title: Opaque Id
+        type: string
+      provider:
+        $ref: '#/$defs/ProviderKind'
+    required:
+    - instance
+    - opaque_id
+    - provider
+    title: RepositoryRef
+    type: object
+  ReviewAnchor:
+    discriminator:
+      mapping:
+        file: '#/$defs/FileReviewAnchor'
+        line: '#/$defs/LineReviewAnchor'
+        range: '#/$defs/RangeReviewAnchor'
+      propertyName: kind
+    oneOf:
+    - $ref: '#/$defs/FileReviewAnchor'
+    - $ref: '#/$defs/LineReviewAnchor'
+    - $ref: '#/$defs/RangeReviewAnchor'
+  ReviewAnchorState:
+    enum:
+    - current
+    - outdated
+    - unresolved
+    - unmappable
+    title: ReviewAnchorState
+    type: string
+  ReviewRangeEndpoint:
+    additionalProperties: false
+    properties:
+      line:
+        minimum: 1
+        title: Line
+        type: integer
+      side:
+        $ref: '#/$defs/ReviewSide'
+    required:
+    - line
+    - side
+    title: ReviewRangeEndpoint
+    type: object
+  ReviewSide:
+    enum:
+    - base
+    - head
+    title: ReviewSide
+    type: string
+  ReviewThreadState:
+    enum:
+    - unresolved
+    - resolved
+    - unknown
+    title: ReviewThreadState
+    type: string
+  RevisionAvailability:
+    enum:
+    - present
+    - unavailable
+    - not_requested
+    title: RevisionAvailability
+    type: string
+  RevisionRef:
+    additionalProperties: false
+    properties:
+      availability:
+        $ref: '#/$defs/RevisionAvailability'
+      oid:
+        anyOf:
+        - pattern: ^[0-9a-f]{40,64}$
+          type: string
+        - type: 'null'
+        title: Oid
+      ref:
+        minLength: 1
+        title: Ref
+        type: string
+      repository_id:
+        anyOf:
+        - minLength: 1
+          type: string
+        - type: 'null'
+        title: Repository Id
+    required:
+    - availability
+    - oid
+    - ref
+    - repository_id
+    title: RevisionRef
+    type: object
+$schema: https://json-schema.org/draft/2020-12/schema
+additionalProperties: false
+properties:
+  anchor:
+    $ref: '#/$defs/ReviewAnchor'
+  change_request_id:
+    minLength: 1
+    title: Change Request Id
+    type: string
+  comment_count:
+    minimum: 0
+    title: Comment Count
+    type: integer
+  id:
+    minLength: 1
+    title: Id
+    type: string
+  provider_ref:
+    $ref: '#/$defs/ProviderObjectRef'
+  repository:
+    $ref: '#/$defs/RepositoryRef'
+  resolved_by:
+    anyOf:
+    - $ref: '#/$defs/ActorRef'
+    - type: 'null'
+  state:
+    $ref: '#/$defs/ReviewThreadState'
+required:
+- anchor
+- change_request_id
+- comment_count
+- id
+- provider_ref
+- repository
+- resolved_by
+- state
+title: ReviewThread
+type: object
+x-softschema:
+  contract: com.github.jlevy.metabrowser.review:ReviewThread/v1
+  schema_sha256: 5ce2235eb34d03db4c5738197b312e3afaf4da847c30a42b023693d655afe510

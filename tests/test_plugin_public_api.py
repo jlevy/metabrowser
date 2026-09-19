@@ -2,16 +2,27 @@
 
 from __future__ import annotations
 
+import subprocess
+import sys
 from pathlib import Path
 
 import metabrowser
 import metabrowser.plugin_api as plugin_api
 from metabrowser import (
     ArtifactCompressionError,
+    ArtifactContractSpec,
     ArtifactDecompressionLimitError,
     ArtifactDecompressionTimeoutError,
     ArtifactPath,
+    ArtifactValidationContext,
+    BrowserParserSpec,
+    CapabilitySet,
+    CollectionPaginationPolicy,
+    ConformanceCorpusSpec,
     JsonlParseLimitError,
+    ResourceCollectionSpec,
+    ResourceProfileSpec,
+    ResourceTargetClass,
     detect_adapter,
     extract_agent_charts_cached,
     paths_safe,
@@ -23,13 +34,22 @@ from metabrowser import (
 from metabrowser.paths_safe import _set_root_dir
 
 PLUGIN_API_EXPORTS = {
+    "ArtifactContractSpec",
+    "ArtifactValidationContext",
     "ArtifactCompressionError",
     "ArtifactDecompressionLimitError",
     "ArtifactDecompressionTimeoutError",
     "ArtifactPath",
+    "BrowserParserSpec",
+    "CapabilitySet",
+    "CollectionPaginationPolicy",
+    "ConformanceCorpusSpec",
     "JsonlParseLimitError",
     "LogEvent",
     "LogParser",
+    "ResourceCollectionSpec",
+    "ResourceProfileSpec",
+    "ResourceTargetClass",
     "detect_adapter",
     "extract_agent_charts_cached",
     "register_log_adapter",
@@ -76,3 +96,57 @@ def test_sidekick_runtime_helpers_are_public() -> None:
     assert callable(detect_adapter)
     assert callable(extract_agent_charts_cached)
     assert callable(register_root_callback)
+
+
+def test_installed_capability_declaration_types_are_public() -> None:
+    assert ArtifactContractSpec.__module__ == "metabrowser.plugin_loader.capability_types"
+    assert ArtifactValidationContext.__module__ == "metabrowser.plugin_loader.capability_types"
+    assert BrowserParserSpec.__module__ == "metabrowser.plugin_loader.capability_types"
+    assert CapabilitySet.__module__ == "metabrowser.plugin_loader.capability_types"
+    assert ConformanceCorpusSpec.__module__ == "metabrowser.plugin_loader.capability_types"
+    assert CollectionPaginationPolicy.__module__ == "metabrowser.provider_resources.profiles"
+    assert ResourceCollectionSpec.__module__ == "metabrowser.provider_resources.profiles"
+    assert ResourceProfileSpec.__module__ == "metabrowser.provider_resources.profiles"
+    assert ResourceTargetClass.__module__ == "metabrowser.provider_resources.profiles"
+    assert "browser_consumed" in ArtifactContractSpec.__dataclass_fields__
+
+
+def test_public_import_does_not_load_capability_registry_dependencies() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import sys; import metabrowser; "
+                "assert 'softschema' not in sys.modules; "
+                "assert 'jsonschema' not in sys.modules; "
+                "assert 'frontmatter_format' not in sys.modules"
+            ),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_version_command_does_not_load_capability_registry_dependencies() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import sys; from metabrowser.cli.main import _app; "
+                "_app(args=['--version'], standalone_mode=False); "
+                "assert 'softschema' not in sys.modules; "
+                "assert 'jsonschema' not in sys.modules; "
+                "assert 'frontmatter_format' not in sys.modules"
+            ),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr

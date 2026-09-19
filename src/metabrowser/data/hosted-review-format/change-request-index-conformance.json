@@ -186,6 +186,7 @@
     {"record": "change_request_index", "changes": [{"path": ["rows", 0, "review_decision"], "value": "approved"}], "expect": "invalid", "name": "index-row-excludes-detail-summary"},
     {"record": "change_request_index", "changes": [{"path": ["rows", 0, "repository", "opaque_id"], "value": "repo-other"}], "expect": "invalid", "name": "index-row-repository-matches-query"},
     {"record": "change_request_index", "changes": [{"path": ["query", "bounds", "max_items"], "value": 9007199254740992}], "expect": "invalid", "name": "index-bounds-are-javascript-safe"},
+    {"record": "change_request_index", "changes": [{"path": ["query", "repository", "opaque_id"], "value": "repo-\ud800"}], "expect": "invalid", "name": "index-query-identity-rejects-lone-utf16-surrogate"},
     {"record": "index_resource_set", "changes": [], "expect": "valid", "name": "complete-best-effort-pagination-is-explicit"},
     {"record": "index_resource_set", "changes": [{"path": ["target", "result_contract_id"], "value": "example.test:ReleaseIndex/v1"}], "expect": "invalid", "name": "collection-target-result-contract-matches-installed-profile"},
     {"record": "index_resource_set", "changes": [{"path": ["target", "query_key"], "value": null}], "expect": "invalid", "name": "provider-collection-target-requires-query-key"},

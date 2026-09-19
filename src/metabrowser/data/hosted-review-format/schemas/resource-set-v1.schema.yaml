@@ -1,0 +1,398 @@
+$defs:
+  ArtifactSnapshotRef:
+    additionalProperties: false
+    properties:
+      contract_id:
+        $ref: '#/$defs/ContractId'
+      snapshot_id:
+        $ref: '#/$defs/Sha256Digest'
+    required:
+    - contract_id
+    - snapshot_id
+    title: ArtifactSnapshotRef
+    type: object
+  AuthorizationContextRef:
+    additionalProperties: false
+    properties:
+      instance:
+        $ref: '#/$defs/ProviderInstance'
+      mode:
+        $ref: '#/$defs/AuthorizationMode'
+      principal_opaque_id:
+        anyOf:
+        - minLength: 1
+          type: string
+        - type: 'null'
+        title: Principal Opaque Id
+      provider:
+        $ref: '#/$defs/ProviderKind'
+      visibility_partition_digest:
+        anyOf:
+        - $ref: '#/$defs/Sha256Digest'
+        - type: 'null'
+    required:
+    - instance
+    - mode
+    - principal_opaque_id
+    - provider
+    - visibility_partition_digest
+    title: AuthorizationContextRef
+    type: object
+  AuthorizationMode:
+    enum:
+    - anonymous
+    - authenticated
+    title: AuthorizationMode
+    type: string
+  BestEffortWindowConsistency:
+    additionalProperties: false
+    properties:
+      kind:
+        const: best_effort_window
+        title: Kind
+        type: string
+    required:
+    - kind
+    title: BestEffortWindowConsistency
+    type: object
+  CanonicalTimestamp:
+    type: string
+  CollectionCoverage:
+    enum:
+    - not_requested
+    - partial
+    - complete
+    - unavailable
+    title: CollectionCoverage
+    type: string
+  CollectionPage:
+    additionalProperties: false
+    properties:
+      next:
+        anyOf:
+        - $ref: '#/$defs/Continuation'
+        - type: 'null'
+        unevaluatedProperties: false
+      observed_provider_ids:
+        items:
+          minLength: 1
+          type: string
+        title: Observed Provider Ids
+        type: array
+      ordinal:
+        minimum: 1
+        title: Ordinal
+        type: integer
+      provider_exhausted:
+        title: Provider Exhausted
+        type: boolean
+      provider_snapshot_token:
+        anyOf:
+        - minLength: 1
+          type: string
+        - type: 'null'
+        title: Provider Snapshot Token
+      requested_with:
+        anyOf:
+        - $ref: '#/$defs/Continuation'
+        - type: 'null'
+        unevaluatedProperties: false
+      retrieval_snapshot_id:
+        $ref: '#/$defs/Sha256Digest'
+    required:
+    - next
+    - observed_provider_ids
+    - ordinal
+    - provider_exhausted
+    - provider_snapshot_token
+    - requested_with
+    - retrieval_snapshot_id
+    title: CollectionPage
+    type: object
+  Continuation:
+    discriminator:
+      mapping:
+        opaque_cursor: '#/$defs/OpaqueCursorContinuation'
+        page_number: '#/$defs/PageNumberContinuation'
+      propertyName: kind
+    oneOf:
+    - $ref: '#/$defs/OpaqueCursorContinuation'
+    - $ref: '#/$defs/PageNumberContinuation'
+  ContractId:
+    type: string
+  OpaqueCursorContinuation:
+    additionalProperties: false
+    properties:
+      kind:
+        const: opaque_cursor
+        title: Kind
+        type: string
+      value:
+        minLength: 1
+        title: Value
+        type: string
+    required:
+    - kind
+    - value
+    title: OpaqueCursorContinuation
+    type: object
+  PageNumberContinuation:
+    additionalProperties: false
+    properties:
+      kind:
+        const: page_number
+        title: Kind
+        type: string
+      value:
+        minimum: 1
+        title: Value
+        type: integer
+    required:
+    - kind
+    - value
+    title: PageNumberContinuation
+    type: object
+  PaginationEvidence:
+    additionalProperties: false
+    properties:
+      first_observed_at:
+        $ref: '#/$defs/CanonicalTimestamp'
+      last_observed_at:
+        $ref: '#/$defs/CanonicalTimestamp'
+      pages:
+        items:
+          $ref: '#/$defs/CollectionPage'
+        minItems: 1
+        title: Pages
+        type: array
+      remote_consistency:
+        $ref: '#/$defs/RemoteConsistency'
+        unevaluatedProperties: false
+    required:
+    - first_observed_at
+    - last_observed_at
+    - pages
+    - remote_consistency
+    title: PaginationEvidence
+    type: object
+  ProviderCollectionResourceTarget:
+    additionalProperties: false
+    properties:
+      kind:
+        const: provider_collection
+        title: Kind
+        type: string
+      query_key:
+        $ref: '#/$defs/Sha256Digest'
+      result_contract_id:
+        $ref: '#/$defs/ContractId'
+    required:
+    - kind
+    - query_key
+    - result_contract_id
+    title: ProviderCollectionResourceTarget
+    type: object
+  ProviderInstance:
+    type: string
+  ProviderKind:
+    type: string
+  ProviderObjectRef:
+    additionalProperties: false
+    properties:
+      instance:
+        $ref: '#/$defs/ProviderInstance'
+      object_kind:
+        minLength: 1
+        title: Object Kind
+        type: string
+      opaque_id:
+        minLength: 1
+        title: Opaque Id
+        type: string
+      provider:
+        $ref: '#/$defs/ProviderKind'
+    required:
+    - instance
+    - object_kind
+    - opaque_id
+    - provider
+    title: ProviderObjectRef
+    type: object
+  ProviderObjectResourceTarget:
+    additionalProperties: false
+    properties:
+      kind:
+        const: provider_object
+        title: Kind
+        type: string
+      target:
+        $ref: '#/$defs/ProviderObjectRef'
+    required:
+    - kind
+    - target
+    title: ProviderObjectResourceTarget
+    type: object
+  ProviderSnapshotConsistency:
+    additionalProperties: false
+    properties:
+      kind:
+        const: provider_snapshot
+        title: Kind
+        type: string
+      token:
+        minLength: 1
+        title: Token
+        type: string
+    required:
+    - kind
+    - token
+    title: ProviderSnapshotConsistency
+    type: object
+  RemoteConsistency:
+    discriminator:
+      mapping:
+        best_effort_window: '#/$defs/BestEffortWindowConsistency'
+        provider_snapshot: '#/$defs/ProviderSnapshotConsistency'
+        unknown: '#/$defs/UnknownRemoteConsistency'
+      propertyName: kind
+    oneOf:
+    - $ref: '#/$defs/ProviderSnapshotConsistency'
+    - $ref: '#/$defs/BestEffortWindowConsistency'
+    - $ref: '#/$defs/UnknownRemoteConsistency'
+  RepositoryRef:
+    additionalProperties: false
+    properties:
+      instance:
+        $ref: '#/$defs/ProviderInstance'
+      opaque_id:
+        minLength: 1
+        title: Opaque Id
+        type: string
+      provider:
+        $ref: '#/$defs/ProviderKind'
+    required:
+    - instance
+    - opaque_id
+    - provider
+    title: RepositoryRef
+    type: object
+  ResourceCollection:
+    additionalProperties: false
+    properties:
+      artifacts:
+        items:
+          $ref: '#/$defs/ArtifactSnapshotRef'
+        title: Artifacts
+        type: array
+      coverage:
+        $ref: '#/$defs/CollectionCoverage'
+      failure_retrieval_snapshot_id:
+        anyOf:
+        - $ref: '#/$defs/Sha256Digest'
+        - type: 'null'
+      name:
+        pattern: ^[a-z][a-z0-9._:-]*$
+        title: Name
+        type: string
+      pagination:
+        anyOf:
+        - $ref: '#/$defs/PaginationEvidence'
+        - type: 'null'
+      retrieval_snapshot_ids:
+        items:
+          $ref: '#/$defs/Sha256Digest'
+        title: Retrieval Snapshot Ids
+        type: array
+      truncation:
+        anyOf:
+        - $ref: '#/$defs/Truncation'
+        - type: 'null'
+    required:
+    - artifacts
+    - coverage
+    - failure_retrieval_snapshot_id
+    - name
+    - pagination
+    - retrieval_snapshot_ids
+    - truncation
+    title: ResourceCollection
+    type: object
+  ResourceProfileId:
+    type: string
+  ResourceSetTarget:
+    discriminator:
+      mapping:
+        provider_collection: '#/$defs/ProviderCollectionResourceTarget'
+        provider_object: '#/$defs/ProviderObjectResourceTarget'
+      propertyName: kind
+    oneOf:
+    - $ref: '#/$defs/ProviderObjectResourceTarget'
+    - $ref: '#/$defs/ProviderCollectionResourceTarget'
+  Sha256Digest:
+    type: string
+  Truncation:
+    additionalProperties: false
+    properties:
+      limit:
+        anyOf:
+        - minimum: 1
+          type: integer
+        - type: 'null'
+        title: Limit
+      reason:
+        $ref: '#/$defs/TruncationReason'
+    required:
+    - limit
+    - reason
+    title: Truncation
+    type: object
+  TruncationReason:
+    enum:
+    - item_bound
+    - page_bound
+    - byte_bound
+    - time_bound
+    - provider_limit
+    - provider_failure
+    - malformed_response
+    - cancelled
+    title: TruncationReason
+    type: string
+  UnknownRemoteConsistency:
+    additionalProperties: false
+    properties:
+      kind:
+        const: unknown
+        title: Kind
+        type: string
+    required:
+    - kind
+    title: UnknownRemoteConsistency
+    type: object
+$schema: https://json-schema.org/draft/2020-12/schema
+additionalProperties: false
+properties:
+  authorization_context:
+    $ref: '#/$defs/AuthorizationContextRef'
+  collections:
+    items:
+      $ref: '#/$defs/ResourceCollection'
+    title: Collections
+    type: array
+  profile:
+    $ref: '#/$defs/ResourceProfileId'
+  repository:
+    $ref: '#/$defs/RepositoryRef'
+  target:
+    $ref: '#/$defs/ResourceSetTarget'
+required:
+- authorization_context
+- collections
+- profile
+- repository
+- target
+title: ResourceSet
+type: object
+x-softschema:
+  contract: com.github.jlevy.metabrowser.provider:ResourceSet/v1
+  schema_sha256: 973df7d06426e119f950f235cc6cc20c41a38bca661d9ea379691a4be3ca8dd2

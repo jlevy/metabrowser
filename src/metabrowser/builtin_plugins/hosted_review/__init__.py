@@ -1,6 +1,7 @@
 """Provider-neutral hosted-review format helpers.
 
-This package has no plugin manifest yet, so importing it adds no runtime surface.
+Installed Python capability entry points expose the contract surface.
+The package has no browser manifest, route, kind, view, or static asset surface yet.
 """
 
 from metabrowser.builtin_plugins.hosted_review.artifacts import (

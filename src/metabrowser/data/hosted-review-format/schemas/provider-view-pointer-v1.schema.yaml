@@ -1,0 +1,121 @@
+$defs:
+  ContractId:
+    type: string
+  ProviderCollectionResourceTarget:
+    additionalProperties: false
+    properties:
+      kind:
+        const: provider_collection
+        title: Kind
+        type: string
+      query_key:
+        $ref: '#/$defs/Sha256Digest'
+      result_contract_id:
+        $ref: '#/$defs/ContractId'
+    required:
+    - kind
+    - query_key
+    - result_contract_id
+    title: ProviderCollectionResourceTarget
+    type: object
+  ProviderInstance:
+    type: string
+  ProviderKind:
+    type: string
+  ProviderObjectRef:
+    additionalProperties: false
+    properties:
+      instance:
+        $ref: '#/$defs/ProviderInstance'
+      object_kind:
+        minLength: 1
+        title: Object Kind
+        type: string
+      opaque_id:
+        minLength: 1
+        title: Opaque Id
+        type: string
+      provider:
+        $ref: '#/$defs/ProviderKind'
+    required:
+    - instance
+    - object_kind
+    - opaque_id
+    - provider
+    title: ProviderObjectRef
+    type: object
+  ProviderObjectResourceTarget:
+    additionalProperties: false
+    properties:
+      kind:
+        const: provider_object
+        title: Kind
+        type: string
+      target:
+        $ref: '#/$defs/ProviderObjectRef'
+    required:
+    - kind
+    - target
+    title: ProviderObjectResourceTarget
+    type: object
+  ProviderViewPointerRole:
+    enum:
+    - current
+    - last_complete
+    title: ProviderViewPointerRole
+    type: string
+  RepositoryRef:
+    additionalProperties: false
+    properties:
+      instance:
+        $ref: '#/$defs/ProviderInstance'
+      opaque_id:
+        minLength: 1
+        title: Opaque Id
+        type: string
+      provider:
+        $ref: '#/$defs/ProviderKind'
+    required:
+    - instance
+    - opaque_id
+    - provider
+    title: RepositoryRef
+    type: object
+  ResourceSetTarget:
+    discriminator:
+      mapping:
+        provider_collection: '#/$defs/ProviderCollectionResourceTarget'
+        provider_object: '#/$defs/ProviderObjectResourceTarget'
+      propertyName: kind
+    oneOf:
+    - $ref: '#/$defs/ProviderObjectResourceTarget'
+    - $ref: '#/$defs/ProviderCollectionResourceTarget'
+  Sha256Digest:
+    type: string
+$schema: https://json-schema.org/draft/2020-12/schema
+additionalProperties: false
+properties:
+  authorization_context_key:
+    $ref: '#/$defs/Sha256Digest'
+  manifest_snapshot_id:
+    $ref: '#/$defs/Sha256Digest'
+  repository:
+    $ref: '#/$defs/RepositoryRef'
+  resource_set_snapshot_id:
+    $ref: '#/$defs/Sha256Digest'
+  role:
+    $ref: '#/$defs/ProviderViewPointerRole'
+  target:
+    $ref: '#/$defs/ResourceSetTarget'
+required:
+- authorization_context_key
+- manifest_snapshot_id
+- repository
+- resource_set_snapshot_id
+- role
+- target
+title: ProviderViewPointer
+type: object
+x-softschema:
+  contract: com.github.jlevy.metabrowser.provider:ProviderViewPointer/v1
+  schema_sha256: ea0a1ee8767c8b374f750d7c139e1a4b6680859baa1c9aee84cabd84ceb49ac9

@@ -1,0 +1,403 @@
+$defs:
+  AuthorizationContextRef:
+    additionalProperties: false
+    properties:
+      instance:
+        $ref: '#/$defs/ProviderInstance'
+      mode:
+        $ref: '#/$defs/AuthorizationMode'
+      principal_opaque_id:
+        anyOf:
+        - minLength: 1
+          type: string
+        - type: 'null'
+        title: Principal Opaque Id
+      provider:
+        $ref: '#/$defs/ProviderKind'
+      visibility_partition_digest:
+        anyOf:
+        - $ref: '#/$defs/Sha256Digest'
+        - type: 'null'
+    required:
+    - instance
+    - mode
+    - principal_opaque_id
+    - provider
+    - visibility_partition_digest
+    title: AuthorizationContextRef
+    type: object
+  AuthorizationMode:
+    enum:
+    - anonymous
+    - authenticated
+    title: AuthorizationMode
+    type: string
+  CanonicalTimestamp:
+    type: string
+  CapabilityObservation:
+    additionalProperties: false
+    properties:
+      state:
+        $ref: '#/$defs/CapabilityObservationState'
+      values:
+        items:
+          pattern: ^[a-z][a-z0-9._:-]*$
+          type: string
+        title: Values
+        type: array
+    required:
+    - state
+    - values
+    title: CapabilityObservation
+    type: object
+  CapabilityObservationState:
+    enum:
+    - observed
+    - unavailable
+    - not_requested
+    title: CapabilityObservationState
+    type: string
+  ContractId:
+    type: string
+  ExplicitDeletionEvidenceKind:
+    enum:
+    - deletion_event
+    - deleted_marker
+    title: ExplicitDeletionEvidenceKind
+    type: string
+  HttpValidators:
+    additionalProperties: false
+    properties:
+      etag:
+        anyOf:
+        - minLength: 1
+          type: string
+        - type: 'null'
+        title: Etag
+      last_modified_at:
+        anyOf:
+        - $ref: '#/$defs/CanonicalTimestamp'
+        - type: 'null'
+    required:
+    - etag
+    - last_modified_at
+    title: HttpValidators
+    type: object
+  ProviderBindingRetrievalTarget:
+    additionalProperties: false
+    properties:
+      entry_id:
+        $ref: '#/$defs/Sha256Digest'
+      kind:
+        const: provider_binding
+        title: Kind
+        type: string
+      repository:
+        $ref: '#/$defs/RepositoryRef'
+    required:
+    - entry_id
+    - kind
+    - repository
+    title: ProviderBindingRetrievalTarget
+    type: object
+  ProviderCollectionRetrievalTarget:
+    additionalProperties: false
+    properties:
+      kind:
+        const: provider_collection
+        title: Kind
+        type: string
+      query_key:
+        $ref: '#/$defs/Sha256Digest'
+      repository:
+        $ref: '#/$defs/RepositoryRef'
+      result_contract_id:
+        $ref: '#/$defs/ContractId'
+    required:
+    - kind
+    - query_key
+    - repository
+    - result_contract_id
+    title: ProviderCollectionRetrievalTarget
+    type: object
+  ProviderInstance:
+    type: string
+  ProviderKind:
+    type: string
+  ProviderObjectRef:
+    additionalProperties: false
+    properties:
+      instance:
+        $ref: '#/$defs/ProviderInstance'
+      object_kind:
+        minLength: 1
+        title: Object Kind
+        type: string
+      opaque_id:
+        minLength: 1
+        title: Opaque Id
+        type: string
+      provider:
+        $ref: '#/$defs/ProviderKind'
+    required:
+    - instance
+    - object_kind
+    - opaque_id
+    - provider
+    title: ProviderObjectRef
+    type: object
+  ProviderObjectRetrievalTarget:
+    additionalProperties: false
+    properties:
+      kind:
+        const: provider_object
+        title: Kind
+        type: string
+      repository:
+        $ref: '#/$defs/RepositoryRef'
+      target:
+        $ref: '#/$defs/ProviderObjectRef'
+    required:
+    - kind
+    - repository
+    - target
+    title: ProviderObjectRetrievalTarget
+    type: object
+  RateLimitObservation:
+    additionalProperties: false
+    properties:
+      limit:
+        minimum: 0
+        title: Limit
+        type: integer
+      observed_at:
+        $ref: '#/$defs/CanonicalTimestamp'
+      remaining:
+        minimum: 0
+        title: Remaining
+        type: integer
+      reset_at:
+        $ref: '#/$defs/CanonicalTimestamp'
+    required:
+    - limit
+    - observed_at
+    - remaining
+    - reset_at
+    title: RateLimitObservation
+    type: object
+  RepositoryRef:
+    additionalProperties: false
+    properties:
+      instance:
+        $ref: '#/$defs/ProviderInstance'
+      opaque_id:
+        minLength: 1
+        title: Opaque Id
+        type: string
+      provider:
+        $ref: '#/$defs/ProviderKind'
+    required:
+    - instance
+    - opaque_id
+    - provider
+    title: RepositoryRef
+    type: object
+  RetrievalExplicitlyDeleted:
+    additionalProperties: false
+    properties:
+      evidence_kind:
+        $ref: '#/$defs/ExplicitDeletionEvidenceKind'
+      kind:
+        const: explicitly_deleted
+        title: Kind
+        type: string
+      provider_event_at:
+        anyOf:
+        - $ref: '#/$defs/CanonicalTimestamp'
+        - type: 'null'
+      provider_event_opaque_id:
+        anyOf:
+        - minLength: 1
+          type: string
+        - type: 'null'
+        title: Provider Event Opaque Id
+      repository:
+        $ref: '#/$defs/RepositoryRef'
+      target:
+        $ref: '#/$defs/ProviderObjectRef'
+    required:
+    - evidence_kind
+    - kind
+    - provider_event_at
+    - provider_event_opaque_id
+    - repository
+    - target
+    title: RetrievalExplicitlyDeleted
+    type: object
+  RetrievalFailed:
+    additionalProperties: false
+    properties:
+      kind:
+        const: failed
+        title: Kind
+        type: string
+      reason:
+        $ref: '#/$defs/RetrievalFailureReason'
+    required:
+    - kind
+    - reason
+    title: RetrievalFailed
+    type: object
+  RetrievalFailureReason:
+    enum:
+    - permission_denied
+    - rate_limited
+    - transport_unavailable
+    - provider_error
+    - malformed_response
+    - output_bound
+    - cancelled
+    - unknown
+    title: RetrievalFailureReason
+    type: string
+  RetrievalNotFound:
+    additionalProperties: false
+    properties:
+      kind:
+        const: not_found_under_context
+        title: Kind
+        type: string
+    required:
+    - kind
+    title: RetrievalNotFound
+    type: object
+  RetrievalNotModified:
+    additionalProperties: false
+    properties:
+      kind:
+        const: not_modified
+        title: Kind
+        type: string
+      reused_snapshot_id:
+        $ref: '#/$defs/Sha256Digest'
+    required:
+    - kind
+    - reused_snapshot_id
+    title: RetrievalNotModified
+    type: object
+  RetrievalOutcome:
+    discriminator:
+      mapping:
+        explicitly_deleted: '#/$defs/RetrievalExplicitlyDeleted'
+        failed: '#/$defs/RetrievalFailed'
+        not_found_under_context: '#/$defs/RetrievalNotFound'
+        not_modified: '#/$defs/RetrievalNotModified'
+        succeeded: '#/$defs/RetrievalSucceeded'
+      propertyName: kind
+    oneOf:
+    - $ref: '#/$defs/RetrievalSucceeded'
+    - $ref: '#/$defs/RetrievalNotModified'
+    - $ref: '#/$defs/RetrievalNotFound'
+    - $ref: '#/$defs/RetrievalExplicitlyDeleted'
+    - $ref: '#/$defs/RetrievalFailed'
+  RetrievalSucceeded:
+    additionalProperties: false
+    properties:
+      kind:
+        const: succeeded
+        title: Kind
+        type: string
+    required:
+    - kind
+    title: RetrievalSucceeded
+    type: object
+  RetrievalTarget:
+    discriminator:
+      mapping:
+        provider_binding: '#/$defs/ProviderBindingRetrievalTarget'
+        provider_collection: '#/$defs/ProviderCollectionRetrievalTarget'
+        provider_object: '#/$defs/ProviderObjectRetrievalTarget'
+      propertyName: kind
+    oneOf:
+    - $ref: '#/$defs/ProviderCollectionRetrievalTarget'
+    - $ref: '#/$defs/ProviderObjectRetrievalTarget'
+    - $ref: '#/$defs/ProviderBindingRetrievalTarget'
+  RetrievalTransport:
+    enum:
+    - provider_cli
+    - direct_http
+    - unknown
+    title: RetrievalTransport
+    type: string
+  Sha256Digest:
+    type: string
+$schema: https://json-schema.org/draft/2020-12/schema
+additionalProperties: false
+properties:
+  adapter_id:
+    pattern: ^[a-z][a-z0-9._:-]*$
+    title: Adapter Id
+    type: string
+  api_version:
+    anyOf:
+    - minLength: 1
+      type: string
+    - type: 'null'
+    title: Api Version
+  authorization_context:
+    $ref: '#/$defs/AuthorizationContextRef'
+  capabilities:
+    $ref: '#/$defs/CapabilityObservation'
+  display_login:
+    anyOf:
+    - minLength: 1
+      type: string
+    - type: 'null'
+    title: Display Login
+  finished_at:
+    $ref: '#/$defs/CanonicalTimestamp'
+  normalization_version:
+    minLength: 1
+    title: Normalization Version
+    type: string
+  operation_id:
+    pattern: ^[a-z][a-z0-9._:-]*$
+    title: Operation Id
+    type: string
+  outcome:
+    $ref: '#/$defs/RetrievalOutcome'
+  rate_limit:
+    anyOf:
+    - $ref: '#/$defs/RateLimitObservation'
+    - type: 'null'
+  request_key:
+    $ref: '#/$defs/Sha256Digest'
+  started_at:
+    $ref: '#/$defs/CanonicalTimestamp'
+  target:
+    $ref: '#/$defs/RetrievalTarget'
+  transport:
+    $ref: '#/$defs/RetrievalTransport'
+  validators:
+    $ref: '#/$defs/HttpValidators'
+required:
+- adapter_id
+- api_version
+- authorization_context
+- capabilities
+- display_login
+- finished_at
+- normalization_version
+- operation_id
+- outcome
+- rate_limit
+- request_key
+- started_at
+- target
+- transport
+- validators
+title: Retrieval
+type: object
+x-softschema:
+  contract: com.github.jlevy.metabrowser.provider:Retrieval/v1
+  schema_sha256: 84cb2891c4c0c586913d0f0a710ad46f258b6e627b9cb1eb1ce0392349f32389

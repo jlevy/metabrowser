@@ -39,7 +39,7 @@ keywords = ["browser", "jsonl", "logs", "markdown", "developer-tools"]
 
 dependencies = [
     "cachetools>=7.1.4",
-    "frontmatter-format>=0.3.0",
+    "frontmatter-format>=0.4.0",
     "funlog>=0.2.1",
     "json5>=0.15.0",
     "jsonschema>=4.26.0",
@@ -51,6 +51,7 @@ dependencies = [
     "python-dotenv>=1.2.2",
     "pyyaml>=6.0.3",
     "ruamel.yaml>=0.19.1",
+    "softschema==0.8.1",
     "starlette>=1.3.1",
     "strif>=3.1.0",
     "typer>=0.26.8",
@@ -80,6 +81,10 @@ dev = [
 [project.scripts]
 metab = "metabrowser.cli.entrypoint:main"
 metabrowser = "metabrowser.cli.entrypoint:main"
+
+[project.entry-points."metabrowser.capabilities.v1"]
+provider-resources = "metabrowser.builtin_plugins.hosted_review.contracts:provider_resource_capabilities"
+hosted-review = "metabrowser.builtin_plugins.hosted_review.contracts:hosted_review_capabilities"
 
 
 # ---- Build system ----

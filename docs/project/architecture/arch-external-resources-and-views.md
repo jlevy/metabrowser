@@ -1,8 +1,9 @@
 # External Resources, Artifact Contracts, and Views
 
-**Status:** Accepted design; the provider-storage kernel is in progress, while the
-installed contract, resource-profile, resource-kind, address, and view registries are
-planned and remain unregistered until their implementation evidence lands.
+**Status:** Accepted design; the provider-storage model, installed contract and
+resource-profile registries, and generic format inventory gate are implemented through
+Phase 0C.2. The resource store, resource-kind registry, addressing, and views remain
+planned and unregistered.
 
 Metabrowser should be able to browse a useful object from an API or external system
 without turning that provider’s response shape into a core model or building a new UI
@@ -92,12 +93,19 @@ The system uses three linked registries rather than one mega-registry.
 An installed plugin declares one entry per contract ID:
 
 - envelope and `frontmatter-md` or `pure-yaml` profile;
-- packaged compiled schema and digest;
+- packaged compiled schema, registry-verified exact byte digest, and an independently
+  recomputed compiler-compatible logical schema digest;
 - semantic model and validator;
 - parser and deterministic serializer;
 - producer and named consumers;
-- browser parser when the browser consumes the record; and
-- conformance corpus and installed-artifact evidence.
+- an explicit browser-consumption flag plus immutable self-contained browser-parser
+  module bytes and digest when the browser consumes the record; and
+- immutable conformance-corpus bytes, digest, record selectors, and installed-artifact
+  evidence.
+
+The evidence bytes make an installed declaration self-resolving without trusting a
+source-tree path. They do not register a runtime browser asset or view; that later
+binding must name the same module digest through the installed browser plugin.
 
 Duplicate contract IDs or conflicting declarations fail plugin discovery.
 Unregistered contracts fail before publication or rendering.
@@ -123,7 +131,61 @@ weaken cardinality, change a contract, or declare an optional collection complet
 
 Phase 0B.1 includes provider-neutral object and collection targets, generic collection
 pages, and trusted in-plugin profile declarations.
-Phase 0C moves their installation and inventory checks into the plugin loader.
+Phase 0C moves their installation and inventory checks into the plugin loader through
+the versioned `metabrowser.capabilities.v1` entry-point group.
+Only installed Python distributions may contribute these capability sets.
+Browser manifests and operator-supplied JavaScript plugin directories cannot register
+contracts or profiles, and the capability factories never become cache data.
+
+### Installed contract and profile inventory
+
+The tables below register the installed format surface.
+Runtime admission verifies the exact packaged schema, corpus, and browser-parser bytes
+and their declared digests; the table records stable contract semantics rather than
+filesystem paths or generated hashes.
+A browser-parser entry is installed validation evidence, not a browser plugin, static
+asset, view, kind, or runtime registration.
+`server-only` means the declaration explicitly forbids browser consumption and parser
+evidence. Browser-consumed declarations require parser evidence; consumer ID spelling
+never selects the rule.
+Parser evidence runs exact module bytes with imports and dynamic code generation
+disabled.
+The VM exposes only context-native `TextEncoder`, one-shot UTF-8 `TextDecoder`,
+`atob`, and `btoa` browser capabilities and constructs each input in that realm; no host
+object or function crosses the boundary.
+Type-sensitive JSON-domain comparison accepts complete cross-realm clones without
+accepting mutation, record loss, or primitive type changes.
+
+`devtools/check_artifact_contracts.py` compares both tables with installed capability
+declarations and runs the generic schema, semantic-validator, positive/negative corpus,
+deterministic artifact-profile round-trip, browser-parser, and profile evidence gate.
+The distribution check runs the same installed inventory against isolated wheel and
+source distribution installs, so a source-tree-only declaration or evidence file cannot
+pass.
+
+| Contract ID | Artifact profile | Envelope | Producers | Consumers | Corpus | Browser parser |
+| --- | --- | --- | --- | --- | --- | --- |
+| `com.github.jlevy.metabrowser.activity:RepositoryActivity/v1` | `pure-yaml` | `repository_activity` | `hosted-review-provider` | `hosted-review-service` | `repository-activity-conformance[*]` | `hosted-review-model:parseRepositoryActivity` |
+| `com.github.jlevy.metabrowser.review:ChangeRequest/v1` | `frontmatter-md` | `change_request` | `hosted-review-provider` | `hosted-review-service` | `change-request-conformance[*]` | `hosted-review-model:parseChangeRequest` |
+| `com.github.jlevy.metabrowser.review:ChangeRequestComment/v1` | `frontmatter-md` | `change_request_comment` | `hosted-review-provider` | `hosted-review-service` | `review-records-conformance[change_request_comment]` | `hosted-review-model:parseChangeRequestComment` |
+| `com.github.jlevy.metabrowser.review:ChangeRequestIndex/v1` | `pure-yaml` | `change_request_index` | `hosted-review-provider` | `hosted-review-service` | `change-request-index-conformance[change_request_index,empty_change_request_index]` | `hosted-review-model:parseChangeRequestIndex` |
+| `com.github.jlevy.metabrowser.review:Check/v1` | `pure-yaml` | `check` | `hosted-review-provider` | `hosted-review-service` | `review-records-conformance[check_suite,check_run]` | `hosted-review-model:parseCheck` |
+| `com.github.jlevy.metabrowser.review:CommitStatus/v1` | `pure-yaml` | `commit_status` | `hosted-review-provider` | `hosted-review-service` | `review-records-conformance[commit_status]` | `hosted-review-model:parseCommitStatus` |
+| `com.github.jlevy.metabrowser.review:Review/v1` | `frontmatter-md` | `review` | `hosted-review-provider` | `hosted-review-service` | `review-records-conformance[review]` | `hosted-review-model:parseReview` |
+| `com.github.jlevy.metabrowser.review:ReviewComment/v1` | `frontmatter-md` | `review_comment` | `hosted-review-provider` | `hosted-review-service` | `review-records-conformance[review_comment,review_comment_reply]` | `hosted-review-model:parseReviewComment` |
+| `com.github.jlevy.metabrowser.review:ReviewThread/v1` | `pure-yaml` | `review_thread` | `hosted-review-provider` | `hosted-review-service` | `review-records-conformance[review_thread,review_thread_empty]` | `hosted-review-model:parseReviewThread` |
+| `com.github.jlevy.metabrowser.provider:HostedRepository/v1` | `pure-yaml` | `hosted_repository` | `provider-adapter` | `hosted-review-service,provider-resource-store` | `hosted-repository-conformance[hosted_repository]` | `hosted-review-model:parseHostedRepository` |
+| `com.github.jlevy.metabrowser.provider:ProviderBinding/v1` | `pure-yaml` | `provider_binding` | `provider-adapter` | `provider-resource-store` | `hosted-repository-conformance[provider_binding]` | `server-only` |
+| `com.github.jlevy.metabrowser.provider:ProviderSyncManifest/v1` | `pure-yaml` | `provider_sync_manifest` | `provider-adapter` | `provider-resource-store` | `provider-storage-conformance[provider_sync_manifest]` | `server-only` |
+| `com.github.jlevy.metabrowser.provider:ProviderViewPointer/v1` | `pure-yaml` | `provider_view_pointer` | `provider-adapter` | `provider-resource-store` | `provider-storage-conformance[provider_view_pointer]` | `server-only` |
+| `com.github.jlevy.metabrowser.provider:ResourceSet/v1` | `pure-yaml` | `resource_set` | `provider-adapter` | `provider-resource-store` | `provider-storage-conformance[resource_set]` | `server-only` |
+| `com.github.jlevy.metabrowser.provider:Retrieval/v1` | `pure-yaml` | `retrieval` | `provider-adapter` | `provider-resource-store` | `provider-storage-conformance[retrieval,deletion_retrieval]` | `server-only` |
+| `com.github.jlevy.metabrowser.provider:Tombstone/v1` | `pure-yaml` | `tombstone` | `provider-adapter` | `provider-resource-store` | `provider-storage-conformance[tombstone]` | `server-only` |
+
+| Profile ID | Target kind | Result contract | Collections | Pagination | Last complete |
+| --- | --- | --- | --- | --- | --- |
+| `com.github.jlevy.metabrowser.review:change-request-index/v1` | `provider_collection` | `com.github.jlevy.metabrowser.review:ChangeRequestIndex/v1` | `change_request_index=com.github.jlevy.metabrowser.review:ChangeRequestIndex/v1[1..1]` | `change_request_index=required` | `change_request_index` |
+| `com.github.jlevy.metabrowser.provider:repository-summary/v1` | `provider_object` | — | `repository=com.github.jlevy.metabrowser.provider:HostedRepository/v1[1..1]` | `repository=forbidden` | `repository` |
 
 ### Resource-kind registry
 
@@ -316,17 +378,20 @@ mutable branch name.
 | Area | Primary files and functions | Responsibility |
 | --- | --- | --- |
 | Neutral provider resources | `provider_resources/models.py`: provider/instance scalars, identity refs, generic targets, bindings, storage records, profile types, and publication validators; `provider_resources/store.py`: `stage_snapshot`, `publish_manifest`, `read_current`, `read_last_complete`, `lease_snapshot`, `reclaim_snapshots`; `plugin_api.py`: `ProviderResourceStorePort` | Give unrelated domain and provider plugins one content-neutral, auth-scoped publication service without exposing paths or hosted-review internals; domain objects and artifact contracts stay in their owning plugins |
-| Contract installation | `plugin_loader/artifact_contracts.py`: `build_contract_registry`, `validate_artifact`, `contract_inventory` | Install trusted SoftSchema declarations and reject missing, conflicting, or incomplete contracts |
-| Resource profiles | Domain plugin `resource_profiles.py` declarations plus `plugin_loader/artifact_contracts.py`: `build_resource_profile_registry`, `resolve_resource_profile`, `validate_resource_set_against_profile` | Close collection contracts, cardinality, pagination, and completeness outside cached records; profiles belong to the domain plugin that owns their artifact contracts |
+| Capability declarations | `plugin_loader/capability_types.py`: `ArtifactContractSpec`, `ArtifactValidationContext`, `CapabilitySet` | Expose dependency-light installed declaration types without importing schema parsing, validation, or discovery on ordinary startup paths |
+| Installed capability discovery | `plugin_loader/capability_discovery.py`: `discover_capability_sets` | Load all-or-nothing `metabrowser.capabilities.v1` factories from installed distributions; reject duplicate providers and exclude operator plugin directories |
+| Contract installation | `plugin_loader/artifact_contracts.py`: `build_contract_registry`, `validate_record`, `validate_artifact`, `serialize_artifact`, `contract_inventory` | Install trusted SoftSchema declarations returned as Python objects and reject missing, conflicting, or incomplete contracts |
+| Resource profiles | Domain capability factories; `plugin_loader/artifact_contracts.py`: `build_resource_profile_registry`, `resolve_resource_profile`; staged `hosted_review/models.py`: `validate_resource_set_against_profile`, moving to `provider_resources/models.py` under `mb-s0gv` | Close collection contracts, cardinality, pagination, and completeness outside cached records; profiles belong to the domain capability that owns their artifact contracts |
 | Resource kinds | `plugin_loader/manifest.py`: `ResourceKindSpec`; installed resource registry | Bind addressed models to item/container capabilities and views without file matchers |
 | Selection host | `static/resource-context.js`, `static/view-composition.js`, and the file-specific shell extraction from `static/app.js` | Present one validated selection envelope to registered views |
 | Addressing | `plugin_loader/provider_addresses.py`: `encode_provider_address_atom`, `decode_provider_address_atom`, `parse_hosted_address`, `format_hosted_address`; provider URL reducers, `AddressSpaceSpec`, mounted routers, and `show_cli.py::run_show` | Include provider instance, use one canonical typed atom codec, and share parse/format/apply rules in browser and CLI |
 | Virtual navigation | plugin SDK nav registration and the generalized Git-history window mechanics | Page, select, restore, replace, and dispose repository-scoped collections |
-| Enforcement | `devtools/check_parity.py`, contract inventory checks, distribution smoke, and goldens | Require every registered contract, kind, route, and functional interaction to have evidence |
+| Enforcement | `devtools/check_artifact_contracts.py`, `devtools/check_parity.py`, distribution smoke, and goldens | Require every registered contract, profile, kind, route, and functional interaction to have evidence |
 
 These seams are phased.
 Phase 0B.1 freezes generic provider storage and built-in profiles without registering a
-route or view. Phase 0C installs the contract and resource-profile registries.
+route or view. Phase 0C installs the contract and resource-profile registries and checks
+their format inventory.
 Route-backed resource kinds and the generic selection host land before direct PR views.
 Release contracts, acquisition, direct views, and the Releases collection then land as
 separate formal pull requests.
