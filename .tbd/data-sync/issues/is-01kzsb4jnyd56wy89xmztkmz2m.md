@@ -3,11 +3,11 @@ type: is
 id: is-01kzsb4jnyd56wy89xmztkmz2m
 title: "Repository library Phase 1B-a: hardened worktree-free Git acquisition (no serving)"
 kind: task
-status: open
+status: in_progress
 priority: 1
-version: 28
+version: 58
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
-delegate: null
+delegate: unknown@cursor
 labels:
   - release:v0.11.0
 dependencies:
@@ -24,10 +24,21 @@ dependencies:
   - type: blocks
     target: is-01m2p1pshr699c6pf8xqeer16j
 parent_id: is-01kzs5m38dz1egphfwf30c8h7n
+child_order_hints:
+  - is-01m2s27ybx4dw3qde29xm6jgqn
+  - is-01m2s4vpjy6j5rysn5x8ah2e03
+  - is-01m2s5c9jf071q4nbn7v8vxwxe
+  - is-01m2s5wzeb3y0zb5qx03bkmp03
+  - is-01m2s7nv8hmezt4nt3z64qbvpp
+  - is-01m2s8cm123a90x0ffhp6t9jrc
+  - is-01m2s8yd0j4rksp89yhdktxjzr
+  - is-01m2s9k0ratabccfcr0ncj0ac6
+  - is-01m2sabkcgvvt9h1qdkgqb24w5
+  - is-01m2wc1fbfkfrwpwjejy5vk8g5
 hold: null
 hold_until: null
 created_at: 2026-08-11T21:19:58.653Z
-updated_at: 2026-09-17T15:00:16.288Z
+updated_at: 2026-09-19T08:20:34.286Z
 started_at: 2026-09-16T21:10:44.811Z
 extensions:
   linear:
@@ -38,6 +49,10 @@ Extend the one Git runner with core-constructed trusted command targets, version
 
 ## Notes
 
-From mb-xa0p: acquisition creates and writes the application home only through src/metabrowser/home.py (ensure_private_directory, open_private_file) before any network work, so symlinked, foreign-owned, or permissive ancestors are refused. Every Git child process runs with umask 077 (measured: core.sharedRepository=0600 alone still left group/world-accessible directories); test that no store entry has group or other permission bits.
-From mb-ire2 review (decision recorded, not made): distributions backport Git CVE fixes without changing the upstream version string (Ubuntu 24.04 patched Git reports 2.43.0; Debian 12 reports 2.39.x), so an upstream-version acquisition gate refuses those builds. Decide before shipping acquisition among: refuse with an actionable message naming the upstream floor; a user-set acknowledgement setting; or a distro-package check. Also: run the no-lazy-fetch read tests against the lowest admitted Git in CI, and measure a low-speed stall bound on a large or bitmap-less initial acquisition before bounding it.
-From mb-ire2 re-audit: record the store configuration snapshot digest after the first successful fetch and before publication; write only Metabrowser-recorded promisor remotes; never fetch by fork URL into a store.
+Cache 1B-a #141–#151 measured as 11 small layers (711/491/460/526/178/503/521/95/297/261/151). Combined vs #140: 31 files, +3721/−309.
+
+Grouped into 2 phase branches at existing tip SHAs (no new commits):
+1. cursor/v011-cache-acquire-path-bd04 @ f369c4cf — #141–#145 grammar+runner+stage+publish+prefetch, 14 files +2066/−260, base #140
+2. cursor/v011-cache-cli-hygiene-bd04 @ dc4223a0 — #146–#151 --no-serve+goldens+floor+reclaim+readonly hit+last_opened, 26 files +1696/−90, base phase 1
+
+gh write failed (Resource not accessible by integration). ManagePullRequest missing in this session. Draft PRs not opened; #141–#151 not closed. Do not merge. Live tryscripts still wait on mb-oueh. Do not start mb-ew38.

@@ -5,7 +5,7 @@ title: "Repository library Phase 1B-a review: publish worktree-free acquisition 
 kind: task
 status: open
 priority: 1
-version: 13
+version: 14
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: claude-code@spud10.local
 labels:
@@ -20,7 +20,11 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-09-16T21:24:31.927Z
-updated_at: 2026-09-17T03:04:12.408Z
+updated_at: 2026-09-18T18:32:39.490Z
 started_at: 2026-09-16T21:24:54.760Z
 ---
 Independently review GitCommandTarget, file:// local-origin sources under the untrusted profile (mb-dxmb), worktree-free acquisition, source/store alias publication, ref/object validation, crash recovery, cross-process CAS behavior, CLI parity, and acquisition goldens. Resolve every finding, run make verify, and publish one formal GitHub PR with gh stacked on the exact green Phase 1A head. Record exact stack evidence and final green CI. Do not merge.
+
+## Notes
+
+Phase 1B-a review publication is now two stacked drafts on #140 once write works: acquire-path (cursor/v011-cache-acquire-path-bd04 @ f369c4cf) then CLI+hygiene (cursor/v011-cache-cli-hygiene-bd04 @ dc4223a0). Combined 1B-a vs #140 is 31 files +3721/−309. Branches are pushed; gh pr create failed (Resource not accessible by integration). Do not merge. Do not flatten onto main.

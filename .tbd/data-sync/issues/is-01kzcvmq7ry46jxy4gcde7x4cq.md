@@ -3,10 +3,11 @@ type: is
 id: is-01kzcvmq7ry46jxy4gcde7x4cq
 title: "HTML P1: sandbox /raw responses and require same-origin proof on /api"
 kind: task
-status: open
+status: in_progress
 priority: 1
-version: 8
+version: 13
 spec_path: docs/project/specs/active/plan-2026-08-06-html-rendering-and-trust-model.md
+delegate: unknown@cursor
 labels:
   - security
   - release:v0.11.0
@@ -18,8 +19,11 @@ dependencies:
   - type: blocks
     target: is-01m2pn3sm2980e2bjnfd3b4xvp
 parent_id: is-01kzcvm6cpe5b8sb9b9n3gb16g
+hold: null
+hold_until: null
 created_at: 2026-08-07T00:58:17.207Z
-updated_at: 2026-09-17T20:35:16.781Z
+updated_at: 2026-09-18T18:32:43.950Z
+started_at: 2026-09-18T04:04:15.120Z
 extensions:
   linear:
     id: aa27e880-f003-4490-80ca-7e9c75b72c12
@@ -29,4 +33,8 @@ Ship independently of any UI change; both halves of the content/API boundary lan
 
 ## Notes
 
-From the Phase 1A layer review: /api/cache/layout, /api/cache/sources, /api/cache/source/{slug}, and /api/cache/stores (mb-k54c) are the first /api routes returning state from outside the served root. raw_file serves browsed files same-origin with no CSP or sandbox, so an HTML file inside any browsed root can fetch these routes and read every cached repository's clone_url, slug, and store identity. This is latent while the cache is empty; evaluate this gate against a populated cache before Phase 1B-a (mb-h51g) lands acquisition.
+HTML #152–#155 measured 393/560/176/1037. Combined vs main: 43 files, +1993/−125 (<~4k), so one parallel phase on main — not mixed into cache/git.
+
+Branch pushed at existing tip SHA (no new commit): cursor/v011-html-trust-preview-bd04 @ 6a0fe8a8, base main, supersedes #152–#155 (sandbox /raw + same-origin /api, --untrusted, path-shaped /raw, html kind + preview).
+
+gh write failed (Resource not accessible by integration). ManagePullRequest missing in this session. Draft PR not opened; #152–#155 not closed. Bead stays open for review; do not merge. Do not start mb-d658.

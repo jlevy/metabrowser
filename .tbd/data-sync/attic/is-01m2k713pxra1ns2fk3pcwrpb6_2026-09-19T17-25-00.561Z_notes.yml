@@ -1,0 +1,19 @@
+entity_id: is-01m2k713pxra1ns2fk3pcwrpb6
+timestamp: 2026-09-19T17:25:00.561Z
+field: notes
+lost_value: '"Landing remains approval-gated. Do not merge. Construction 2026-09-19:
+  formal stack 131 is #125→#130→#132→#133→#134→#135→#136→#138→#139→#140. Implementation
+  layers ready as branches, PRs blocked on pull_requests=write: 1B-a
+  `cursor/v011-cache-acquire-cli-bd04` @ `b09c01e0`, 1B-b #156 @ `19507616`, 1B-c
+  `cursor/v011-git-revision-pin-bd04` @ `cd33e023`. HTML #209 parallel on main. Official
+  append: `gh stack link --remote origin 131 cursor/v011-cache-acquire-cli-bd04
+  cursor/v011-source-boundary-bd04 cursor/v011-git-revision-pin-bd04`. Do not land until
+  explicit approval after each phase PR exists, CI is green, and the runbook section for
+  that phase passes."'
+winner_source: local
+loser_source: remote
+context:
+  local_version: 29
+  remote_version: 41
+  local_updated_at: 2026-09-19T17:24:56.131Z
+  remote_updated_at: 2026-09-19T16:42:28.047Z

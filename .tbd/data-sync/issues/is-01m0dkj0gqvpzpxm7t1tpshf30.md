@@ -3,11 +3,11 @@ type: is
 id: is-01m0dkj0gqvpzpxm7t1tpshf30
 title: "Repository projection: immutable Git-tree source over a shared object store"
 kind: feature
-status: open
+status: in_progress
 priority: 1
-version: 17
+version: 80
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
-delegate: null
+delegate: unknown@cursor
 labels:
   - release:v0.11.0
 dependencies:
@@ -21,7 +21,11 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-08-19T18:11:56.054Z
-updated_at: 2026-09-16T21:27:32.121Z
+updated_at: 2026-09-19T16:42:16.422Z
 started_at: 2026-09-16T21:10:44.836Z
 ---
 Implement GitRevisionSubject and GitTreeSource over a shared RepositoryStoreTarget and an opaque SourceSession. Define byte-segment GitPath identity and URL/display serialization; enumerate NUL-framed trees with stable byte ordering; read blobs through exclusive actor-style cat-file batch readers that issue info before contents, enforce size gates, drain frames, and poison/restart on cancellation or framing failure. Migrate history, repo discovery, commit detail, refs, diffs, file/raw/container/classification/KPress routes, and built-in sidekicks to exact target plus subject OID semantics. Protect live OIDs with cross-process shared maintenance locks and durable private refs; GC/repack takes the exclusive lock. Add crash/stale-lock recovery, promisor-miss, oversized-blob, invalid-UTF8/newline-name, and two-process/two-OID tests. Never create a checkout, index, branch, worktree, or fake filesystem fact.
+
+## Notes
+
+Fourth collapse: Git 1B-c is one phase branch `cursor/v011-git-revision-pin-bd04` @ `cd33e023` (51 commits / 97 files / 9837+631 vs #156). Absorbs #211 source+content, #212 view+SPA, #213 index+chrome, #214 CLI pin, #215 QA runbook + empty-home floor fix. Runbook now checks out this tip. Formal PR not opened: `gh pr create` / `gh stack link --remote origin 131 …` reach createPullRequest and 403 (`Resource not accessible by integration`; X-Accepted-Github-Permissions: pull_requests=write). ManagePullRequest is not in this session. Do not merge. Do not close. Do not start mb-ew38 / mb-380k / mb-oueh / mb-d658. Landing remains mb-n2ro.
