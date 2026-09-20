@@ -108,7 +108,9 @@ document URL, so relative stylesheets, images, scripts, and sibling links resolv
 The iframe sandbox is `allow-scripts allow-popups allow-forms allow-downloads` with
 `referrerpolicy="no-referrer"`. It never includes `allow-same-origin` or
 `allow-top-navigation`. When active content is off, Preview is omitted and Source is the
-only view.
+only view. Preview also offers **Open as full page**, an ordinary `target="_blank"` link
+to that same raw URL with `rel="noopener noreferrer"`: containment is identical there,
+because the sandbox is a header on the response rather than an attribute on the frame.
 
 Fidelity matches opening the same file in a browser: classic scripts, styles, images,
 and nested frames work.

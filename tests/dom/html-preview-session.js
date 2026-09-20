@@ -15,6 +15,7 @@ class FakeElement {
     this.children = [];
     this.attributes = new Map();
     this._innerHTML = "";
+    this._textContent = "";
   }
 
   set innerHTML(value) {
@@ -25,6 +26,15 @@ class FakeElement {
 
   get innerHTML() {
     return this._innerHTML;
+  }
+
+  set textContent(value) {
+    this._textContent = String(value);
+    this.replaceChildren();
+  }
+
+  get textContent() {
+    return this._textContent;
   }
 
   setAttribute(name, value) {
@@ -177,18 +187,30 @@ function sandboxTokens(value) {
     firstStage.disposers,
   );
   const rendererInnerHtmlWrites = innerHtmlWrites;
-  const firstFrame = firstContainer.children[0];
+  const firstBar = firstContainer.children[0];
+  const firstOpenLink = firstBar?.children[0];
+  const firstFrame = firstContainer.children[1];
   const firstSandbox = firstFrame?.getAttribute("sandbox") ?? "";
   const firstTokens = sandboxTokens(firstSandbox);
+  const inlineHandler = (element) =>
+    Array.from(element?.attributes.keys() || []).some((name) => name.startsWith("on"));
   const firstMount = {
+    barClassName: firstBar?.getAttribute("class"),
+    barTagName: firstBar?.tagName,
     childCount: firstContainer.children.length,
     className: firstFrame?.getAttribute("class"),
     committed: firstStage.commit(() => host.replaceChildren(firstContainer)),
     hasAllowSameOrigin: firstTokens.has("allow-same-origin"),
     hasAllowTopNavigation: firstTokens.has("allow-top-navigation"),
-    hasInlineHandler: Array.from(firstFrame?.attributes.keys() || []).some((name) =>
-      name.startsWith("on"),
-    ),
+    hasInlineHandler: inlineHandler(firstFrame) || inlineHandler(firstOpenLink),
+    openClassName: firstOpenLink?.getAttribute("class"),
+    openHref: firstOpenLink?.getAttribute("href"),
+    openLabel: firstOpenLink?.textContent,
+    openRel: firstOpenLink?.getAttribute("rel"),
+    openTagName: firstOpenLink?.tagName,
+    openTarget: firstOpenLink?.getAttribute("target"),
+    openTipText: firstOpenLink?.getAttribute("data-tip-text"),
+    openTracksFrameSource: firstOpenLink?.getAttribute("href") === firstFrame?.getAttribute("src"),
     rawUrl: firstFrame?.getAttribute("src"),
     referrerPolicy: firstFrame?.getAttribute("referrerpolicy"),
     sandbox: firstSandbox,
@@ -206,10 +228,13 @@ function sandboxTokens(value) {
     { kind: "html", path: secondPath },
     secondStage.disposers,
   );
-  const secondFrame = secondContainer.children[0];
+  const secondBar = secondContainer.children[0];
+  const secondFrame = secondContainer.children[1];
   const replacement = {
     committed: secondStage.commit(() => host.replaceChildren(secondContainer)),
+    firstBarDetached: firstBar.parentNode === null,
     firstDetached: firstFrame.parentNode === null,
+    secondOpenHref: secondBar?.children[0]?.getAttribute("href"),
     secondRawUrl: secondFrame?.getAttribute("src"),
     staleCommitRejected: firstStage.commit(() => host.replaceChildren(firstContainer)) === false,
     staleCommitPreservedReplacement: host.children[0] === secondContainer,
@@ -264,6 +289,7 @@ function sandboxTokens(value) {
   const disposal = {
     activeContainerCount: host.children.length,
     idempotent: secondContainer.children.length === 0,
+    secondBarDetached: secondBar.parentNode === null,
     secondDetached: secondFrame.parentNode === null,
     secondSrcCleared: secondFrame.getAttribute("src") === null,
   };
@@ -288,8 +314,23 @@ function sandboxTokens(value) {
   };
 
   assert(firstMount.tagName === "IFRAME", "renderer did not construct an iframe");
-  assert(firstMount.childCount === 1, "renderer did not replace the container contents");
+  assert(firstMount.childCount === 2, "renderer did not replace the container contents");
   assert(firstMount.className === "file-html-preview", "renderer lost its plugin style hook");
+  assert(firstMount.barTagName === "DIV", "renderer did not construct the preview toolbar");
+  assert(firstMount.openTagName === "A", "the full-page control is not a real anchor");
+  assert(firstMount.openLabel === "Open as full page", "the full-page control lost its label");
+  assert(firstMount.openTarget === "_blank", "the full-page control does not open a new tab");
+  assert(
+    firstMount.openRel === "noopener noreferrer",
+    "the full-page control leaked an opener or a referrer",
+  );
+  assert(firstMount.openTipText, "the full-page control has no tooltip");
+  // The href and the iframe src come from one raw URL, so the framed document
+  // and the full-page tab can never address different files.
+  assert(
+    firstMount.openTracksFrameSource,
+    "the full-page control does not address the framed document",
+  );
   assert(firstMount.title === hostilePath, "renderer changed the iframe title");
   assert(
     firstMount.rawUrl === "/raw/docs/%3Cunsafe%20%22quoted%22%20%26%20file%3E.html",
@@ -306,14 +347,20 @@ function sandboxTokens(value) {
   assert(!firstMount.hasInlineHandler, "renderer emitted an inline event handler");
   assert(rendererInnerHtmlWrites === 0, "html renderer constructed markup with innerHTML");
   assert(replacement.firstDetached, "replacement retained the prior iframe");
+  assert(replacement.firstBarDetached, "replacement retained the prior toolbar");
   assert(
     replacement.secondRawUrl === "/raw/docs/100%25.html",
     "percent identity was not encoded as a filesystem /raw URL",
+  );
+  assert(
+    replacement.secondOpenHref === replacement.secondRawUrl,
+    "the replacement full-page control kept the prior document",
   );
   assert(replacement.staleCommitPreservedReplacement, "stale commit removed the replacement");
   assert(cancellation.lateHandleDisposed, "cancelled async renderer leaked its late handle");
   assert(error.accessible && error.status === "error", "renderer error was not accessible");
   assert(disposal.idempotent && disposal.secondDetached, "active disposal was not idempotent");
+  assert(disposal.secondBarDetached, "disposal left the preview toolbar mounted");
   assert(disposal.secondSrcCleared, "disposal left the iframe src attached");
   assert(composition.missingRenderer, "missing registry entry was not preserved for fallback");
   assert(composition.sourceRegistered, "html source view did not register");

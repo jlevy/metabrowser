@@ -7,6 +7,35 @@
   min-height: 0;
 }
 
+/* The one piece of chrome the preview owns: a slim bar carrying the way out
+   of the frame. It is fixed height so the frame keeps the rest of the column. */
+.metabrowser-html-host .file-html-preview-bar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-height: var(--ui-row-height);
+  padding: var(--pane-header-padding-y) var(--pane-header-padding-x);
+  border-bottom: 1px solid var(--border);
+  background: var(--sidebar-bg);
+}
+
+.metabrowser-html-host .file-html-preview-open {
+  color: var(--link);
+  font-size: var(--ui-small-font-size);
+  text-decoration: none;
+}
+
+.metabrowser-html-host .file-html-preview-open:hover {
+  text-decoration: underline;
+}
+
+.metabrowser-html-host .file-html-preview-open:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 1px;
+}
+
 .metabrowser-html-host .file-html-preview {
   flex: 1;
   width: 100%;
