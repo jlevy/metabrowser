@@ -1632,6 +1632,15 @@ function deferredTreePageHtml(nodes, options) {
   );
 }
 
+// A tree node's rendered name. A Git pin sends the display basename already
+// decoded, so decoding it again would read `g1-data` as a wire token and turn
+// `50%25-off.md` into `50%-off.md`. Only a filesystem identity carries the
+// escaping `displayPath` exists to undo.
+function treeNodeDisplayName(name) {
+  var text = name || "";
+  return isGitRevisionSource() ? text : window.MetabrowserNavigationRoute.displayPath(text);
+}
+
 // `options` is a small bag of render-mode flags forwarded into
 // recursive calls. Currently:
 //   options.dirMetric — "size" (default, Files panel) renders
@@ -1709,10 +1718,10 @@ function renderTreeNodes(nodes, isRoot, options) {
         labelId: folderLabelId,
       });
       parts.push(
-        `<div class="tree-item tree-folder ${stateClass}${mutedCls}"${folderAttributes} data-action="select-dir" data-path="${esc(node.path)}" data-tip-type="dir" data-tip-name="${esc(window.MetabrowserNavigationRoute.displayPath(node.name))}"${dataTipNumberAttr("files", node.total_files)}${dataTipNumberAttr("size", node.total_size)}${dataTipNumberAttr("mtime", node.mtime)}">`,
+        `<div class="tree-item tree-folder ${stateClass}${mutedCls}"${folderAttributes} data-action="select-dir" data-path="${esc(node.path)}" data-tip-type="dir" data-tip-name="${esc(treeNodeDisplayName(node.name))}"${dataTipNumberAttr("files", node.total_files)}${dataTipNumberAttr("size", node.total_size)}${dataTipNumberAttr("mtime", node.mtime)}">`,
         `<span class="tree-toggle">${ICONS.toggle}</span>`,
         `<span class="tree-item-name" id="${folderLabelId}">`,
-        esc(window.MetabrowserNavigationRoute.displayPath(node.name)),
+        esc(treeNodeDisplayName(node.name)),
         "</span>",
         '<span class="tree-item-age-inline">',
         dirAge,
@@ -1769,12 +1778,12 @@ function renderTreeNodes(nodes, isRoot, options) {
         labelId: linkLabelId,
       });
       parts.push(
-        `<div class="tree-item tree-symlink${mutedCls}"${linkAttributes} data-action="select" data-path="${esc(node.path)}" data-tip-type="symlink" data-tip-name="${esc(window.MetabrowserNavigationRoute.displayPath(node.name))}"${dataTipNumberAttr("mtime", node.mtime)}>`,
+        `<div class="tree-item tree-symlink${mutedCls}"${linkAttributes} data-action="select" data-path="${esc(node.path)}" data-tip-type="symlink" data-tip-name="${esc(treeNodeDisplayName(node.name))}"${dataTipNumberAttr("mtime", node.mtime)}>`,
         '<span class="tree-item-icon">',
         ICONS.fileSymlink,
         "</span>",
         `<span class="tree-item-name" id="${linkLabelId}">`,
-        esc(window.MetabrowserNavigationRoute.displayPath(node.name)),
+        esc(treeNodeDisplayName(node.name)),
         "</span>",
         '<span class="tree-item-age-inline"><span class="tree-item-age">',
         linkAge,
@@ -1829,7 +1838,7 @@ function renderTreeNodes(nodes, isRoot, options) {
         });
       }
       parts.push(
-        `<div class="tree-item tree-file${container ? " tree-container collapsed" : ""}${mutedCls}"${fileAttributes} data-action="select" data-path="${esc(node.path)}"${container ? ` data-container-kind="${esc(container.kind)}" data-container-plugin="${esc(container.plugin)}" data-container-children="${esc(container.children)}"` : ""}${logicalExtAttr}${extAttr}${compressedAttr} data-tip-type="file" data-tip-name="${esc(window.MetabrowserNavigationRoute.displayPath(node.name))}"${dataTipNumberAttr("size", node.size)}${dataTipNumberAttr("mtime", node.mtime)}>`,
+        `<div class="tree-item tree-file${container ? " tree-container collapsed" : ""}${mutedCls}"${fileAttributes} data-action="select" data-path="${esc(node.path)}"${container ? ` data-container-kind="${esc(container.kind)}" data-container-plugin="${esc(container.plugin)}" data-container-children="${esc(container.children)}"` : ""}${logicalExtAttr}${extAttr}${compressedAttr} data-tip-type="file" data-tip-name="${esc(treeNodeDisplayName(node.name))}"${dataTipNumberAttr("size", node.size)}${dataTipNumberAttr("mtime", node.mtime)}>`,
         container ? `<span class="tree-toggle">${ICONS.toggle}</span>` : "",
         '<span class="',
         iconCls,
@@ -1839,7 +1848,7 @@ function renderTreeNodes(nodes, isRoot, options) {
         compressionBadge,
         "</span>",
         `<span class="tree-item-name" id="${fileLabelId}">`,
-        esc(window.MetabrowserNavigationRoute.displayPath(node.name)),
+        esc(treeNodeDisplayName(node.name)),
         "</span>",
         '<span class="tree-item-age-inline"><span class="tree-item-age">',
         fileAge,
@@ -2494,8 +2503,8 @@ function fileTooltipHtml(name, size, mtime, includeName) {
   var stamped = formatTimestamp(mtime);
   return (
     treeTooltipNameHtml(name, includeName) +
-    (size === undefined ? "" : '<div class="tip-detail">' + _tipSize(size) + "</div>") +
-    (stamped ? '<div class="tip-detail">' + stamped + "</div>" : "")
+    (size === undefined ? "" : `<div class="tip-detail">${_tipSize(size)}</div>`) +
+    (stamped ? `<div class="tip-detail">${stamped}</div>` : "")
   );
 }
 
@@ -2513,11 +2522,9 @@ function folderTooltipHtml(name, totalFiles, totalSize, mtime, includeName) {
   var stamped = formatTimestamp(mtime);
   return (
     treeTooltipNameHtml(name, includeName) +
-    (totalFiles === undefined
-      ? ""
-      : '<div class="tip-detail">' + _tipCount(totalFiles) + "</div>") +
-    (totalSize === undefined ? "" : '<div class="tip-detail">' + _tipSize(totalSize) + "</div>") +
-    (stamped ? '<div class="tip-detail">' + stamped + "</div>" : "")
+    (totalFiles === undefined ? "" : `<div class="tip-detail">${_tipCount(totalFiles)}</div>`) +
+    (totalSize === undefined ? "" : `<div class="tip-detail">${_tipSize(totalSize)}</div>`) +
+    (stamped ? `<div class="tip-detail">${stamped}</div>` : "")
   );
 }
 

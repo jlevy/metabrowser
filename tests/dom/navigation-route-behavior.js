@@ -209,6 +209,15 @@ equal(
   route.displayPath("g1-eP8udHh0", "git_revision"),
   "x\ufffd.txt",
 );
+// A pin publishes node names already decoded, so `displayPath` is a codec for
+// identities and not for names. Decoding a decoded name reads a tracked
+// `g1-data` directory as a wire token, which is the trap the tree renderer
+// steps around.
+equal(
+  "display a decoded Git name again is not idempotent",
+  route.displayPath(route.displayPath("g1-ZzEtZGF0YQ", "git_revision"), "git_revision"),
+  "u\ufffdZ",
+);
 
 sandbox.METABROWSER_PATH_ENCODING = "utf16";
 for (const [identity, url] of [
