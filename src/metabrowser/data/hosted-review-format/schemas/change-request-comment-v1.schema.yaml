@@ -3,10 +3,12 @@ $defs:
     additionalProperties: false
     properties:
       handle:
+        maxLength: 255
         minLength: 1
         title: Handle
         type: string
       provider_opaque_id:
+        maxLength: 255
         minLength: 1
         title: Provider Opaque Id
         type: string
@@ -42,10 +44,12 @@ $defs:
       instance:
         $ref: '#/$defs/ProviderInstance'
       object_kind:
+        maxLength: 255
         minLength: 1
         title: Object Kind
         type: string
       opaque_id:
+        maxLength: 255
         minLength: 1
         title: Opaque Id
         type: string
@@ -64,6 +68,7 @@ $defs:
       instance:
         $ref: '#/$defs/ProviderInstance'
       opaque_id:
+        maxLength: 255
         minLength: 1
         title: Opaque Id
         type: string
@@ -83,12 +88,14 @@ properties:
     - $ref: '#/$defs/ActorRef'
     - type: 'null'
   change_request_id:
+    maxLength: 1024
     minLength: 1
     title: Change Request Id
     type: string
   created_at:
     $ref: '#/$defs/CanonicalTimestamp'
   id:
+    maxLength: 1024
     minLength: 1
     title: Id
     type: string
@@ -118,4 +125,4 @@ title: ChangeRequestComment
 type: object
 x-softschema:
   contract: com.github.jlevy.metabrowser.review:ChangeRequestComment/v1
-  schema_sha256: 6dd4850c549d5ae33b32f23d679486d09445a7cc87627e4178054a2292f8744d
+  schema_sha256: b845f789e5d1eb0307b9e62c4c6d6de106c9e84d888f6eccb7a56d4e893bd386

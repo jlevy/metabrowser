@@ -18,6 +18,7 @@ $defs:
       instance:
         $ref: '#/$defs/ProviderInstance'
       opaque_id:
+        maxLength: 255
         minLength: 1
         title: Opaque Id
         type: string
@@ -50,4 +51,4 @@ title: ProviderBinding
 type: object
 x-softschema:
   contract: com.github.jlevy.metabrowser.provider:ProviderBinding/v1
-  schema_sha256: 8a83f964a7df50898c035a43aa07c583267221c703c500827514daa61f1fa366
+  schema_sha256: bd1bb1f37b64d768a32696cd1a9f6042cd5b4839766628bfd61c35ec9fcec240

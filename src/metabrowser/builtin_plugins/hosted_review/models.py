@@ -33,9 +33,113 @@ from metabrowser.provider_resources.profiles import (
     ResourceCollectionSpec as ResourceCollectionSpec,
 )
 
-NonEmptyString = Annotated[str, Field(min_length=1)]
-GitObjectId = Annotated[str, Field(pattern=r"^[0-9a-f]{40,64}$")]
-StableToken = Annotated[str, Field(pattern=r"^[a-z][a-z0-9._:-]*$")]
+# Strings are never coerced: Pydantic's lax mode would accept bytes (a YAML ``!!binary``
+# scalar, for one) where the browser validator requires a string.
+_StrictString = Annotated[str, Field(strict=True)]
+NonEmptyString = Annotated[_StrictString, Field(min_length=1)]
+
+# Text bounds. These models are provider neutral, so each bound is an envelope over the
+# providers it must admit rather than one provider's exact limit: a bound tighter than a
+# real record would force an adapter to drop it. Bodies are content and are not bounded
+# here. Lengths count Unicode code points in both runtimes.
+#
+# Opaque provider identifiers and tokens. The longest identifier in the recorded GitHub
+# coverage oracle is a 32-character node ID; 255 leaves roughly eight times that and keeps
+# the derived domain ID below its own bound.
+MAX_PROVIDER_ID_LENGTH = 255
+# Domain IDs embed provider identity. The longest derivable canonical change-request ID is
+# provider (63) + instance (253 + ":65535") + opaque ID (255) + ID kind (63) + number (16)
+# plus four separators, 660 characters; 1024 is the next power of two.
+MAX_DOMAIN_ID_LENGTH = 1024
+# Single-line display text: titles, names, labels, refs, status contexts and descriptions.
+# GitHub refuses a pull request title over 256 characters, a label over 50, and a status
+# description over 140, and other forges cap titles at 255; the recorded oracle's longest
+# such value is 52 characters. 1024 is four times the largest documented limit.
+MAX_LINE_TEXT_LENGTH = 1024
+# Account handles. GitHub logins are at most 39 characters plus a "[bot]" suffix (the
+# oracle's longest is 29); 255 admits forges that allow a full 255-character username.
+MAX_HANDLE_LENGTH = 255
+# Provider URLs. 8192 is the request-line size common HTTP servers accept by default, so
+# a longer URL could not have been dereferenced; the oracle's longest is 82 characters.
+MAX_URL_LENGTH = 8192
+# Entity tags are one header value. The oracle records none, so this is not measured: it
+# is an eighth of the header size above, far over a quoted digest of any current hash.
+MAX_ENTITY_TAG_LENGTH = 1024
+# Review-anchor paths. 4096 bytes is PATH_MAX on Linux, the longest path a Git checkout
+# can materialize; the base64 bound is the encoding of that many bytes.
+MAX_REVIEW_PATH_LENGTH = 4096
+MAX_REVIEW_PATH_B64_LENGTH = 5464
+# Code point ranges, inclusive. Explicit ranges rather than Unicode categories, so the
+# Python and browser validators cannot disagree across Unicode database versions.
+_CONTROL_AND_LINE_SEPARATOR_RANGES = (
+    (0x0000, 0x001F),  # C0 controls, including NUL, tab, and newline
+    (0x007F, 0x009F),  # DEL and C1 controls
+    (0x2028, 0x2029),  # line and paragraph separators
+)
+_INVISIBLE_FORMATTING_RANGES = (
+    (0x061C, 0x061C),  # Arabic letter mark
+    (0x200B, 0x200F),  # zero-width space and joiners, left-to-right and right-to-left marks
+    (0x202A, 0x202E),  # bidirectional embeddings and overrides
+    (0x2060, 0x2069),  # word joiner, invisible operators, bidirectional isolates
+    (0xFEFF, 0xFEFF),  # byte-order mark
+)
+
+
+def _contains_code_point_in(value: str, ranges: tuple[tuple[int, int], ...]) -> bool:
+    return any(low <= ord(character) <= high for character in value for low, high in ranges)
+
+
+def _require_line_text(value: str) -> str:
+    if _contains_code_point_in(value, _CONTROL_AND_LINE_SEPARATOR_RANGES):
+        raise ValueError("single-line text cannot contain control or line-separator characters")
+    return value
+
+
+def _require_identifier(value: str) -> str:
+    if _contains_code_point_in(
+        value, _CONTROL_AND_LINE_SEPARATOR_RANGES + _INVISIBLE_FORMATTING_RANGES
+    ):
+        raise ValueError(
+            "identifiers cannot contain control, line-separator, or invisible formatting characters"
+        )
+    return value
+
+
+# Identifiers are compared, hashed, sorted, and joined into derived IDs, so nothing may hide
+# in or visually reorder one: no NUL, newline, other control, zero-width, or bidirectional
+# formatting character. Other non-ASCII text stays legal because a provider's opaque ID is
+# not ours to restrict, and ordering is already defined over UTF-8 bytes.
+ProviderId = Annotated[
+    _StrictString,
+    Field(min_length=1, max_length=MAX_PROVIDER_ID_LENGTH),
+    AfterValidator(_require_identifier),
+]
+DomainId = Annotated[
+    _StrictString,
+    Field(min_length=1, max_length=MAX_DOMAIN_ID_LENGTH),
+    AfterValidator(_require_identifier),
+]
+EntityTag = Annotated[
+    _StrictString,
+    Field(min_length=1, max_length=MAX_ENTITY_TAG_LENGTH),
+    AfterValidator(_require_identifier),
+]
+# Display text keeps bidirectional marks, which right-to-left titles legitimately carry;
+# isolating them is the renderer's job.
+LineText = Annotated[
+    _StrictString,
+    Field(min_length=1, max_length=MAX_LINE_TEXT_LENGTH),
+    AfterValidator(_require_line_text),
+]
+Handle = Annotated[
+    _StrictString,
+    Field(min_length=1, max_length=MAX_HANDLE_LENGTH),
+    AfterValidator(_require_line_text),
+]
+# A full Git object name is SHA-1 (40 hex) or SHA-256 (64 hex). No object format has a
+# length in between, and the cache and Git layers accept exactly these two.
+GitObjectId = Annotated[_StrictString, Field(pattern=r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")]
+StableToken = Annotated[_StrictString, Field(pattern=r"^[a-z][a-z0-9._:-]*$")]
 MAX_SAFE_INTEGER = 9_007_199_254_740_991
 MAX_PORT = 65_535
 DEFAULT_HTTPS_PORT = 443
@@ -208,6 +312,8 @@ class _HostedReviewModel(BaseModel):
 
 
 def _require_https_url(value: str) -> str:
+    if len(value) > MAX_URL_LENGTH:
+        raise ValueError("provider URLs must be credential-free HTTPS URLs")
     match = _CANONICAL_HTTPS_RE.fullmatch(value)
     if match is None or len(match.group("host")) > MAX_DNS_HOST_LENGTH:
         raise ValueError("provider URLs must be credential-free HTTPS URLs")
@@ -302,13 +408,19 @@ def _utf8_sort_key(value: str) -> bytes:
         raise ValueError("ordered identifiers must be valid UTF-8") from exc
 
 
-type ProviderKind = Annotated[str, AfterValidator(_require_provider_kind)]
-type ProviderInstance = Annotated[str, AfterValidator(_require_provider_instance)]
-type Sha256Digest = Annotated[str, AfterValidator(_require_sha256_digest)]
-type CanonicalTimestamp = Annotated[str, AfterValidator(_require_timestamp)]
-type CanonicalHttpsUrl = Annotated[str, AfterValidator(_require_https)]
-type ResourceProfileId = Annotated[str, AfterValidator(_require_resource_profile_id)]
-type ContractId = Annotated[str, AfterValidator(_require_contract_id)]
+type ProviderKind = Annotated[_StrictString, AfterValidator(_require_provider_kind)]
+type ProviderInstance = Annotated[_StrictString, AfterValidator(_require_provider_instance)]
+type Sha256Digest = Annotated[_StrictString, AfterValidator(_require_sha256_digest)]
+# Ordering is asserted only between timestamps Metabrowser writes from its own clock:
+# retrieval start and finish, rate-limit and pagination observation, manifest, and
+# tombstone times. Provider-supplied timestamps (created, updated, closed, merged,
+# submitted, started, completed, event) are recorded as observed and never ordered against
+# each other or against our clock: providers do emit anomalous records, and a rule here
+# would force an adapter to drop or alter one.
+type CanonicalTimestamp = Annotated[_StrictString, AfterValidator(_require_timestamp)]
+type CanonicalHttpsUrl = Annotated[_StrictString, AfterValidator(_require_https)]
+type ResourceProfileId = Annotated[_StrictString, AfterValidator(_require_resource_profile_id)]
+type ContractId = Annotated[_StrictString, AfterValidator(_require_contract_id)]
 
 PROVIDER_BINDING_CONTRACT_ID = "com.github.jlevy.metabrowser.provider:ProviderBinding/v1"
 RETRIEVAL_CONTRACT_ID = "com.github.jlevy.metabrowser.provider:Retrieval/v1"
@@ -333,27 +445,27 @@ CHANGE_REQUEST_INDEX_PROFILE_ID = "com.github.jlevy.metabrowser.review:change-re
 class ProviderObjectRef(_HostedReviewModel):
     provider: ProviderKind
     instance: ProviderInstance
-    object_kind: NonEmptyString
-    opaque_id: NonEmptyString
+    object_kind: ProviderId
+    opaque_id: ProviderId
 
 
 class RepositoryRef(_HostedReviewModel):
     provider: ProviderKind
     instance: ProviderInstance
-    opaque_id: NonEmptyString
+    opaque_id: ProviderId
 
 
 class ActorRef(_HostedReviewModel):
-    provider_opaque_id: NonEmptyString
-    handle: NonEmptyString
+    provider_opaque_id: ProviderId
+    handle: Handle
     url: NonEmptyString
 
     _https_url = field_validator("url")(_require_https_url)
 
 
 class RevisionRef(_HostedReviewModel):
-    repository_id: NonEmptyString | None
-    ref: NonEmptyString
+    repository_id: ProviderId | None
+    ref: LineText
     oid: GitObjectId | None
     observation: RevisionObservation
 
@@ -382,13 +494,13 @@ class ComparisonRef(_HostedReviewModel):
 
 
 class LabelRef(_HostedReviewModel):
-    name: NonEmptyString
-    color: str | None = Field(default=None, pattern=r"^[0-9a-fA-F]{6}$")
+    name: LineText
+    color: _StrictString | None = Field(default=None, pattern=r"^[0-9a-fA-F]{6}$")
 
 
 class MilestoneRef(_HostedReviewModel):
-    provider_opaque_id: NonEmptyString
-    title: NonEmptyString
+    provider_opaque_id: ProviderId
+    title: LineText
     url: NonEmptyString
 
     _https_url = field_validator("url")(_require_https_url)
@@ -397,7 +509,7 @@ class MilestoneRef(_HostedReviewModel):
 class ReviewSummary(_HostedReviewModel):
     decision: ReviewDecision
     requested_people: tuple[ActorRef, ...]
-    requested_teams: tuple[NonEmptyString, ...]
+    requested_teams: tuple[LineText, ...]
 
 
 class ChangeRequestCounts(_HostedReviewModel):
@@ -406,13 +518,38 @@ class ChangeRequestCounts(_HostedReviewModel):
     reviews: SafeNonNegativeInteger
 
 
+def _require_canonical_change_request_id(
+    value: str, repository: RepositoryRef, number: int
+) -> None:
+    """Check ``provider:instance:repository_opaque_id:id_kind:number`` against its fields.
+
+    The ID is verified, never parsed. An instance may carry a port and an opaque ID may
+    contain the separator, so splitting the string is ambiguous; matching the prefix and
+    suffix the structured fields determine is not. The one segment no field supplies is
+    the adapter's canonical ID kind, which is a separator-free token.
+    """
+    prefix = f"{repository.provider}:{repository.instance}:{repository.opaque_id}:"
+    suffix = f":{number}"
+    id_kind = value[len(prefix) : len(value) - len(suffix)]
+    if (
+        not value.startswith(prefix)
+        or not value.endswith(suffix)
+        or len(value) <= len(prefix) + len(suffix)
+        or len(id_kind) > MAX_PROVIDER_KIND_LENGTH
+        or _PROVIDER_KIND_RE.fullmatch(id_kind) is None
+    ):
+        raise ValueError(
+            "change request id must be provider:instance:repository_opaque_id:id_kind:number"
+        )
+
+
 class ChangeRequest(_HostedReviewModel):
-    id: NonEmptyString
+    id: DomainId
     provider_ref: ProviderObjectRef
     repository: RepositoryRef
     number: SafePositiveInteger
     url: NonEmptyString
-    title: NonEmptyString
+    title: LineText
     author: ActorRef | None
     state: ChangeRequestState
     draft: StrictBool
@@ -445,19 +582,10 @@ class ChangeRequest(_HostedReviewModel):
             raise ValueError("provider object and repository must use the same provider instance")
         if self.comparison.base.repository_id != repository.opaque_id:
             raise ValueError("comparison base must belong to the change request repository")
+        _require_canonical_change_request_id(self.id, repository, self.number)
 
-        created_at = _parse_rfc3339(self.created_at)
-        updated_at = _parse_rfc3339(self.updated_at)
-        if updated_at < created_at:
-            raise ValueError("updated_at must not precede created_at")
-        for name, value in (("closed_at", self.closed_at), ("merged_at", self.merged_at)):
-            if value is None:
-                continue
-            observed_at = _parse_rfc3339(value)
-            if observed_at < created_at:
-                raise ValueError(f"{name} must not precede created_at")
-            if observed_at > updated_at:
-                raise ValueError(f"{name} must not follow updated_at")
+        # No ordering is asserted between provider-supplied timestamps; see
+        # ``CanonicalTimestamp``. Which timestamps a state carries is structural and stays.
         if self.state is ChangeRequestState.open:
             if self.closed_at is not None or self.merged_at is not None:
                 raise ValueError("open change requests have no closed or merged timestamp")
@@ -482,7 +610,7 @@ def dump_change_request(value: ChangeRequest) -> dict[str, Any]:
 
 
 class GitObjectRef(_HostedReviewModel):
-    repository_id: NonEmptyString | None
+    repository_id: ProviderId | None
     oid: GitObjectId | None
     observation: RevisionObservation
 
@@ -549,15 +677,13 @@ def _validate_comment_lifecycle(
 ) -> None:
     if state is not CommentState.deleted and url is None:
         raise ValueError("visible, minimized, and unknown comments require a URL")
-    if _parse_rfc3339(updated_at) < _parse_rfc3339(created_at):
-        raise ValueError("comment updated_at must not precede created_at")
 
 
 class ChangeRequestComment(_HostedReviewModel):
-    id: NonEmptyString
+    id: DomainId
     provider_ref: ProviderObjectRef
     repository: RepositoryRef
-    change_request_id: NonEmptyString
+    change_request_id: DomainId
     url: CanonicalHttpsUrl | None
     author: ActorRef | None
     state: CommentState
@@ -581,10 +707,10 @@ class ChangeRequestComment(_HostedReviewModel):
 
 
 class Review(_HostedReviewModel):
-    id: NonEmptyString
+    id: DomainId
     provider_ref: ProviderObjectRef
     repository: RepositoryRef
-    change_request_id: NonEmptyString
+    change_request_id: DomainId
     url: CanonicalHttpsUrl
     author: ActorRef | None
     disposition: ReviewDisposition
@@ -602,19 +728,11 @@ class Review(_HostedReviewModel):
             raise ValueError("review and repository must use the same provider instance")
         if self.revision.observation is RevisionObservation.not_requested:
             raise ValueError("review revision must be requested from the provider")
-        created_at = _parse_rfc3339(self.created_at)
-        updated_at = _parse_rfc3339(self.updated_at)
-        if updated_at < created_at:
-            raise ValueError("review updated_at must not precede created_at")
         if self.disposition is ReviewDisposition.pending:
             if self.submitted_at is not None:
                 raise ValueError("pending reviews forbid submitted_at")
         elif self.disposition is not ReviewDisposition.unknown and self.submitted_at is None:
             raise ValueError("submitted review dispositions require submitted_at")
-        if self.submitted_at is not None:
-            submitted_at = _parse_rfc3339(self.submitted_at)
-            if submitted_at < created_at or submitted_at > updated_at:
-                raise ValueError("review submitted_at must fall within its lifecycle")
         return self
 
 
@@ -638,8 +756,8 @@ def _validate_review_path(path: str, path_b64: str | None) -> None:
 
 
 class _ReviewAnchorBase(_HostedReviewModel):
-    path: NonEmptyString
-    path_b64: NonEmptyString | None
+    path: Annotated[NonEmptyString, Field(max_length=MAX_REVIEW_PATH_LENGTH)]
+    path_b64: Annotated[NonEmptyString, Field(max_length=MAX_REVIEW_PATH_B64_LENGTH)] | None
     comparison: ComparisonRef
     original_revision: GitObjectRef
     current_revision: GitObjectRef
@@ -704,10 +822,10 @@ type ReviewAnchor = Annotated[
 
 
 class ReviewThread(_HostedReviewModel):
-    id: NonEmptyString
+    id: DomainId
     provider_ref: ProviderObjectRef
     repository: RepositoryRef
-    change_request_id: NonEmptyString
+    change_request_id: DomainId
     anchor: ReviewAnchor
     state: ReviewThreadState
     resolved_by: ActorRef | None
@@ -726,13 +844,13 @@ class ReviewThread(_HostedReviewModel):
 
 
 class ReviewComment(_HostedReviewModel):
-    id: NonEmptyString
+    id: DomainId
     provider_ref: ProviderObjectRef
     repository: RepositoryRef
-    change_request_id: NonEmptyString
-    review_id: NonEmptyString | None
-    thread_id: NonEmptyString
-    in_reply_to_id: NonEmptyString | None
+    change_request_id: DomainId
+    review_id: DomainId | None
+    thread_id: DomainId
+    in_reply_to_id: DomainId | None
     url: CanonicalHttpsUrl | None
     author: ActorRef | None
     state: CommentState
@@ -759,13 +877,13 @@ class ReviewComment(_HostedReviewModel):
 
 
 class Check(_HostedReviewModel):
-    id: NonEmptyString
+    id: DomainId
     provider_ref: ProviderObjectRef
     repository: RepositoryRef
-    parent_check_id: NonEmptyString | None
+    parent_check_id: DomainId | None
     kind: CheckKind
     revision: GitObjectRef
-    name: NonEmptyString | None
+    name: LineText | None
     status: CheckStatus
     conclusion: CheckConclusion | None
     url: CanonicalHttpsUrl | None
@@ -796,23 +914,17 @@ class Check(_HostedReviewModel):
                 raise ValueError("completed check runs require completed_at")
         elif self.conclusion is not None or self.completed_at is not None:
             raise ValueError("noncompleted checks forbid conclusion and completed_at")
-        if (
-            self.started_at is not None
-            and self.completed_at is not None
-            and (_parse_rfc3339(self.completed_at) < _parse_rfc3339(self.started_at))
-        ):
-            raise ValueError("check completed_at must not precede started_at")
         return self
 
 
 class CommitStatus(_HostedReviewModel):
-    id: NonEmptyString
+    id: DomainId
     provider_ref: ProviderObjectRef
     repository: RepositoryRef
     revision: GitObjectRef
-    context: NonEmptyString
+    context: LineText
     state: CommitStatusState
-    description: NonEmptyString | None
+    description: LineText | None
     target_url: CanonicalHttpsUrl | None
     created_at: CanonicalTimestamp
     updated_at: CanonicalTimestamp
@@ -826,8 +938,6 @@ class CommitStatus(_HostedReviewModel):
             raise ValueError("commit status and repository must use the same provider instance")
         if self.revision.observation is not RevisionObservation.observed:
             raise ValueError("commit statuses require an observed immutable revision")
-        if _parse_rfc3339(self.updated_at) < _parse_rfc3339(self.created_at):
-            raise ValueError("commit status updated_at must not precede created_at")
         return self
 
 
@@ -1108,7 +1218,7 @@ class AuthorizationContextRef(_HostedReviewModel):
     provider: ProviderKind
     instance: ProviderInstance
     mode: AuthorizationMode
-    principal_opaque_id: NonEmptyString | None
+    principal_opaque_id: ProviderId | None
     visibility_partition_digest: Sha256Digest | None
 
     @model_validator(mode="after")
@@ -1194,7 +1304,7 @@ class RetrievalExplicitlyDeleted(_HostedReviewModel):
     target: ProviderObjectRef
     repository: RepositoryRef
     evidence_kind: ExplicitDeletionEvidenceKind
-    provider_event_opaque_id: NonEmptyString | None
+    provider_event_opaque_id: ProviderId | None
     provider_event_at: CanonicalTimestamp | None
 
     @model_validator(mode="after")
@@ -1225,7 +1335,7 @@ type RetrievalOutcome = Annotated[
 
 
 class HttpValidators(_HostedReviewModel):
-    etag: NonEmptyString | None
+    etag: EntityTag | None
     last_modified_at: CanonicalTimestamp | None
 
 
@@ -1264,12 +1374,12 @@ class Retrieval(_HostedReviewModel):
     request_key: Sha256Digest
     started_at: CanonicalTimestamp
     finished_at: CanonicalTimestamp
-    api_version: NonEmptyString | None
-    normalization_version: NonEmptyString
+    api_version: ProviderId | None
+    normalization_version: ProviderId
     outcome: RetrievalOutcome
     validators: HttpValidators
     rate_limit: RateLimitObservation | None
-    display_login: NonEmptyString | None
+    display_login: Handle | None
     capabilities: CapabilityObservation
 
     @model_validator(mode="after")
@@ -1303,10 +1413,8 @@ class Retrieval(_HostedReviewModel):
                 or self.target.repository != self.outcome.repository
             ):
                 raise ValueError("deletion outcome must match its provider-object request target")
-            if self.outcome.provider_event_at is not None and _parse_rfc3339(
-                self.outcome.provider_event_at
-            ) > _parse_rfc3339(self.finished_at):
-                raise ValueError("provider deletion event cannot follow its retrieval")
+            # ``provider_event_at`` is on the provider's clock and ``finished_at`` on ours, so
+            # skew alone can make a real event appear to follow its retrieval.
         return self
 
 
@@ -1344,7 +1452,7 @@ def validate_provider_binding_provenance(
 
 class DefaultBranch(_HostedReviewModel):
     availability: DefaultBranchAvailability
-    name: NonEmptyString | None
+    name: LineText | None
 
     @model_validator(mode="after")
     def _name_matches_availability(self) -> DefaultBranch:
@@ -1356,19 +1464,13 @@ class DefaultBranch(_HostedReviewModel):
 class HostedRepository(_HostedReviewModel):
     provider_ref: ProviderObjectRef
     owner: ActorRef
-    name: NonEmptyString
+    name: LineText
     url: CanonicalHttpsUrl
     clone_url: CanonicalHttpsUrl
     visibility: RepositoryVisibility
     default_branch: DefaultBranch
     created_at: CanonicalTimestamp
     updated_at: CanonicalTimestamp
-
-    @model_validator(mode="after")
-    def _repository_times_are_ordered(self) -> HostedRepository:
-        if _parse_rfc3339(self.updated_at) < _parse_rfc3339(self.created_at):
-            raise ValueError("repository updated_at must not precede created_at")
-        return self
 
 
 def hosted_repository_ref(value: HostedRepository) -> RepositoryRef:
@@ -1388,8 +1490,6 @@ def validate_repository_successor(
         raise ValueError("repository successor changes stable provider identity")
     if successor.created_at != previous.created_at:
         raise ValueError("repository successor changes provider creation time")
-    if _parse_rfc3339(successor.updated_at) < _parse_rfc3339(previous.updated_at):
-        raise ValueError("repository successor moves updated_at backwards")
     return successor
 
 
@@ -1499,12 +1599,12 @@ class ChangeRequestIndexRow(_HostedReviewModel):
     repository: RepositoryRef
     number: SafePositiveInteger
     url: CanonicalHttpsUrl
-    title: NonEmptyString
+    title: LineText
     state: ChangeRequestState
     draft: StrictBool
     author: ActorRef | None
-    base_label: NonEmptyString
-    head_label: NonEmptyString
+    base_label: LineText
+    head_label: LineText
     created_at: CanonicalTimestamp
     updated_at: CanonicalTimestamp
 
@@ -1515,8 +1615,6 @@ class ChangeRequestIndexRow(_HostedReviewModel):
             self.repository.instance,
         ):
             raise ValueError("index row provider and repository instances must match")
-        if _parse_rfc3339(self.updated_at) < _parse_rfc3339(self.created_at):
-            raise ValueError("index row updated_at must not precede created_at")
         return self
 
 
@@ -1608,7 +1706,7 @@ type Continuation = Annotated[
 
 class ProviderSnapshotConsistency(_HostedReviewModel):
     kind: Literal["provider_snapshot"]
-    token: NonEmptyString
+    token: ProviderId
 
 
 class BestEffortWindowConsistency(_HostedReviewModel):
@@ -1630,9 +1728,9 @@ class CollectionPage(_HostedReviewModel):
     requested_with: Continuation | None = Field(json_schema_extra={"unevaluatedProperties": False})
     next: Continuation | None = Field(json_schema_extra={"unevaluatedProperties": False})
     retrieval_snapshot_id: Sha256Digest
-    observed_provider_ids: tuple[NonEmptyString, ...]
+    observed_provider_ids: tuple[ProviderId, ...]
     provider_exhausted: StrictBool
-    provider_snapshot_token: NonEmptyString | None
+    provider_snapshot_token: ProviderId | None
 
 
 class PaginationEvidence(_HostedReviewModel):
@@ -1712,7 +1810,7 @@ class CommitActivityDetail(_HostedReviewModel):
 
 class ChangeRequestActivityDetail(_HostedReviewModel):
     kind: Literal["change_request"]
-    change_request_id: NonEmptyString
+    change_request_id: DomainId
     provider_ref: ProviderObjectRef
     repository: RepositoryRef
     number: SafePositiveInteger
@@ -1735,8 +1833,8 @@ type ActivityDetailTarget = Annotated[
 
 class GitActivityActor(_HostedReviewModel):
     kind: Literal["git"]
-    name: NonEmptyString
-    email: NonEmptyString | None
+    name: LineText
+    email: LineText | None
 
 
 class ProviderActivityActor(_HostedReviewModel):
@@ -1751,9 +1849,9 @@ type ActivityActor = Annotated[
 
 
 class ActivityItem(_HostedReviewModel):
-    id: NonEmptyString
+    id: DomainId
     kind: ActivityKind
-    title: NonEmptyString
+    title: LineText
     actors: tuple[ActivityActor, ...]
     event_at: CanonicalTimestamp
     updated_at: CanonicalTimestamp
@@ -1767,8 +1865,6 @@ class ActivityItem(_HostedReviewModel):
 
     @model_validator(mode="after")
     def _kind_and_relationships_are_consistent(self) -> ActivityItem:
-        if _parse_rfc3339(self.updated_at) < _parse_rfc3339(self.event_at):
-            raise ValueError("activity updated_at must not precede event_at")
         if self.kind is ActivityKind.commit:
             if self.state is not None:
                 raise ValueError("commit activity forbids change-request state")
@@ -1819,7 +1915,7 @@ class ActivityItem(_HostedReviewModel):
 
 
 class RepositoryActivity(_HostedReviewModel):
-    repository_id: NonEmptyString
+    repository_id: ProviderId
     included_kinds: tuple[ActivityKind, ...] = Field(min_length=1)
     max_items: SafePositiveInteger
     order: Literal["event_at_desc_id_asc"]
@@ -2184,7 +2280,7 @@ class ManifestFailure(_HostedReviewModel):
 
 
 class ProviderSyncManifest(_HostedReviewModel):
-    transaction_id: NonEmptyString
+    transaction_id: ProviderId
     repository: RepositoryRef
     authorization_context: AuthorizationContextRef
     state: TransactionState

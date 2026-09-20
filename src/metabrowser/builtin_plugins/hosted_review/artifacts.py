@@ -212,6 +212,16 @@ def _validate_frontmatter_artifact_identity(
     return artifact
 
 
+def _require_canonical_serialization(payload: bytes, canonical: bytes, artifact_name: str) -> None:
+    """Refuse any byte spelling of a record other than the one the serializer writes.
+
+    ``snapshot_identity`` hashes bytes, so a record that also validated with a comment,
+    alternate quoting, reordered keys, or a YAML tag would have several identities.
+    """
+    if payload != canonical:
+        raise FmFormatError(f"{artifact_name} artifact is not in its canonical serialization")
+
+
 def validate_change_request_artifact(payload: bytes) -> ChangeRequestArtifact:
     """Validate the installed ChangeRequest artifact identity and its YAML record."""
     artifact = _validate_frontmatter_artifact_identity(
@@ -220,10 +230,13 @@ def validate_change_request_artifact(payload: bytes) -> ChangeRequestArtifact:
         envelope="change_request",
         artifact_name="ChangeRequest",
     )
-    return ChangeRequestArtifact(
-        record=validate_change_request(artifact.record),
-        body=artifact.body,
+    record = validate_change_request(artifact.record)
+    _require_canonical_serialization(
+        payload,
+        serialize_change_request_artifact(record=record, body=artifact.body),
+        "ChangeRequest",
     )
+    return ChangeRequestArtifact(record=record, body=artifact.body)
 
 
 def validate_change_request_comment_artifact(
@@ -236,10 +249,13 @@ def validate_change_request_comment_artifact(
         envelope="change_request_comment",
         artifact_name="ChangeRequestComment",
     )
-    return ChangeRequestCommentArtifact(
-        record=validate_change_request_comment(artifact.record),
-        body=artifact.body,
+    record = validate_change_request_comment(artifact.record)
+    _require_canonical_serialization(
+        payload,
+        serialize_change_request_comment_artifact(record=record, body=artifact.body),
+        "ChangeRequestComment",
     )
+    return ChangeRequestCommentArtifact(record=record, body=artifact.body)
 
 
 def validate_review_artifact(payload: bytes) -> ReviewArtifact:
@@ -250,7 +266,11 @@ def validate_review_artifact(payload: bytes) -> ReviewArtifact:
         envelope="review",
         artifact_name="Review",
     )
-    return ReviewArtifact(record=validate_review(artifact.record), body=artifact.body)
+    record = validate_review(artifact.record)
+    _require_canonical_serialization(
+        payload, serialize_review_artifact(record=record, body=artifact.body), "Review"
+    )
+    return ReviewArtifact(record=record, body=artifact.body)
 
 
 def validate_review_comment_artifact(payload: bytes) -> ReviewCommentArtifact:
@@ -261,7 +281,10 @@ def validate_review_comment_artifact(payload: bytes) -> ReviewCommentArtifact:
         envelope="review_comment",
         artifact_name="ReviewComment",
     )
-    return ReviewCommentArtifact(
-        record=validate_review_comment(artifact.record),
-        body=artifact.body,
+    record = validate_review_comment(artifact.record)
+    _require_canonical_serialization(
+        payload,
+        serialize_review_comment_artifact(record=record, body=artifact.body),
+        "ReviewComment",
     )
+    return ReviewCommentArtifact(record=record, body=artifact.body)

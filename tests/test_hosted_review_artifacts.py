@@ -288,3 +288,93 @@ def test_frontmatter_serialization_is_independent_of_input_mapping_order() -> No
     )
 
     assert actual == expected
+
+
+def _canonical_change_request_payload() -> bytes:
+    return serialize_change_request_artifact(
+        record=validate_change_request(change_request_case()), body="body\n"
+    )
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        pytest.param(b"  draft: false\n", b"  draft: false # note\n", id="yaml-comment"),
+        pytest.param(b"  draft: false\n", b"  draft:   false\n", id="extra-spacing"),
+        pytest.param(b"  draft: false\n", b"  draft: False\n", id="alternate-boolean-spelling"),
+        pytest.param(b"  number: 17\n", b"  number: 0x11\n", id="alternate-integer-spelling"),
+        pytest.param(b"  number: 17\n", b"  number: 17.0\n", id="integral-float-spelling"),
+        pytest.param(b"  labels: []\n", b"  labels: [ ]\n", id="flow-collection-spacing"),
+        pytest.param(
+            b"  title: Keep hosted changes provider neutral\n",
+            b'  title: "Keep hosted changes provider neutral"\n',
+            id="alternate-string-quoting",
+        ),
+        pytest.param(
+            b"  title: Keep hosted changes provider neutral\n",
+            b"  title: !!binary S2VlcCBob3N0ZWQgY2hhbmdlcyBwcm92aWRlciBuZXV0cmFs\n",
+            id="binary-tagged-string",
+        ),
+        pytest.param(
+            b"  draft: false\n  id: forge:code.example:repo-1:merge-request:17\n",
+            b"  id: forge:code.example:repo-1:merge-request:17\n  draft: false\n",
+            id="reordered-keys",
+        ),
+        pytest.param(b"---\nchange_request:", b"---\n\nchange_request:", id="leading-blank-line"),
+    ],
+)
+def test_typed_artifact_validation_requires_the_canonical_serialization(
+    old: bytes, new: bytes
+) -> None:
+    canonical = _canonical_change_request_payload()
+    assert canonical.count(old) == 1
+    payload = canonical.replace(old, new)
+
+    with pytest.raises((FmFormatError, ValidationError)):
+        validate_change_request_artifact(payload)
+
+
+def test_one_logical_record_has_exactly_one_snapshot_identity() -> None:
+    canonical = _canonical_change_request_payload()
+    commented = canonical.replace(b"  draft: false\n", b"  draft: false # note\n")
+
+    assert snapshot_identity(commented) != snapshot_identity(canonical)
+    assert validate_change_request_artifact(canonical).body == "body\n"
+    with pytest.raises(FmFormatError, match="canonical serialization"):
+        validate_change_request_artifact(commented)
+
+
+def test_every_typed_artifact_validator_requires_the_canonical_serialization() -> None:
+    comment = serialize_change_request_comment_artifact(
+        record=validate_change_request_comment(_change_request_comment_case()), body="text\n"
+    )
+    review = serialize_review_artifact(record=validate_review(_review_case()), body="")
+    review_comment = serialize_review_comment_artifact(
+        record=validate_review_comment(_review_comment_case()), body="text\n"
+    )
+
+    for validator, payload in (
+        (validate_change_request_comment_artifact, comment),
+        (validate_review_artifact, review),
+        (validate_review_comment_artifact, review_comment),
+    ):
+        validator(payload)
+        with pytest.raises(FmFormatError, match="canonical serialization"):
+            validator(payload.replace(b"\nsoftschema:\n", b"\nsoftschema: # note\n", 1))
+
+
+def test_model_strings_are_never_coerced_from_bytes() -> None:
+    document = change_request_case()
+    document["title"] = b"bytes title"
+    with pytest.raises(ValidationError, match="title"):
+        validate_change_request(document)
+
+    document = change_request_case()
+    document["comparison"]["head"]["oid"] = b"89abcdef0123456789abcdef0123456789abcdef"
+    with pytest.raises(ValidationError, match="oid"):
+        validate_change_request(document)
+
+    document = change_request_case()
+    document["url"] = b"https://code.example/teams/project/changes/17"
+    with pytest.raises(ValidationError, match="url"):
+        validate_change_request(document)
