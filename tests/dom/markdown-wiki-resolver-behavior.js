@@ -779,37 +779,77 @@ function equal(name, actual, expected) {
   const gitWikiCases = [
     {
       id: "git-basename-note",
-      intent: { authoredTarget: "note.txt", action: "navigate", sourcePath: gitCurrent },
+      intent: {
+        authoredTarget: "note.txt",
+        action: "navigate",
+        sourceKind: "git_revision",
+        sourcePath: gitCurrent,
+      },
       expected: { status: "internal", path: gitNote },
       canonicalUrl: `/view/${gitNote}`,
     },
     {
       id: "git-relative-note",
-      intent: { authoredTarget: "./note.txt", action: "navigate", sourcePath: gitCurrent },
+      intent: {
+        authoredTarget: "./note.txt",
+        action: "navigate",
+        sourceKind: "git_revision",
+        sourcePath: gitCurrent,
+      },
       expected: { status: "internal", path: gitNote },
       canonicalUrl: `/view/${gitNote}`,
     },
     {
       id: "git-qualified-note",
-      intent: { authoredTarget: "docs/note.txt", action: "navigate", sourcePath: gitCurrent },
+      intent: {
+        authoredTarget: "docs/note.txt",
+        action: "navigate",
+        sourceKind: "git_revision",
+        sourcePath: gitCurrent,
+      },
       expected: { status: "internal", path: gitNote },
       canonicalUrl: `/view/${gitNote}`,
     },
     {
       id: "git-rooted-readme",
-      intent: { authoredTarget: "/README.md", action: "navigate", sourcePath: gitCurrent },
+      intent: {
+        authoredTarget: "/README.md",
+        action: "navigate",
+        sourceKind: "git_revision",
+        sourcePath: gitCurrent,
+      },
       expected: { status: "internal", path: gitReadme },
       canonicalUrl: `/view/${gitReadme}`,
     },
     {
       id: "git-percent-html",
-      intent: { authoredTarget: "100%.html", action: "navigate", sourcePath: gitCurrent },
+      intent: {
+        authoredTarget: "100%.html",
+        action: "navigate",
+        sourceKind: "git_revision",
+        sourcePath: gitCurrent,
+      },
       expected: { status: "internal", path: gitPercent },
       canonicalUrl: `/view/${gitPercent}`,
     },
     {
       id: "git-qualified-miss",
-      intent: { authoredTarget: "nested/note.txt", action: "navigate", sourcePath: gitCurrent },
+      intent: {
+        authoredTarget: "nested/note.txt",
+        action: "navigate",
+        sourceKind: "git_revision",
+        sourcePath: gitCurrent,
+      },
+      expected: { status: "missing", reason: "not-found" },
+    },
+    {
+      id: "filesystem-g1-looking-relative",
+      intent: {
+        authoredTarget: "./note.txt",
+        action: "navigate",
+        sourceKind: "filesystem",
+        sourcePath: gitCurrent,
+      },
       expected: { status: "missing", reason: "not-found" },
     },
   ];

@@ -149,22 +149,34 @@ equal(
   route.displayPath("a%2520%25.txt"),
   "a%20%.txt",
 );
-equal("display GitPath README wire", route.displayPath("g1-UkVBRE1FLm1k"), "README.md");
+equal(
+  "display GitPath README wire",
+  route.displayPath("g1-UkVBRE1FLm1k", "git_revision"),
+  "README.md",
+);
 equal(
   "display GitPath nested wire",
-  route.displayPath("g1-ZG9jcw/g1-bm90ZS50eHQ"),
+  route.displayPath("g1-ZG9jcw/g1-bm90ZS50eHQ", "git_revision"),
   "docs/note.txt",
 );
-equal("display GitPath percent name", route.displayPath("g1-MTAwJS5odG1s"), "100%.html");
+equal(
+  "display GitPath percent name",
+  route.displayPath("g1-MTAwJS5odG1s", "git_revision"),
+  "100%.html",
+);
 equal(
   "display GitPath nested percent name",
-  route.displayPath("g1-ZG9jcw/g1-MTAwJS5tZA"),
+  route.displayPath("g1-ZG9jcw/g1-MTAwJS5tZA", "git_revision"),
   "docs/100%.md",
 );
-equal("display GitPath one crumb of a wire", route.displayPath("g1-bm90ZS50eHQ"), "note.txt");
+equal(
+  "display GitPath one crumb of a wire",
+  route.displayPath("g1-bm90ZS50eHQ", "git_revision"),
+  "note.txt",
+);
 equal(
   "display GitPath patch container inner",
-  route.displayPath("g1-Y2hhbmdlLnBhdGNo/src/app.py"),
+  route.displayPath("g1-Y2hhbmdlLnBhdGNo/src/app.py", "git_revision"),
   "change.patch/src/app.py",
 );
 equal(
@@ -172,13 +184,31 @@ equal(
   route.displayPath("docs/g1-UkVBRE1FLm1k"),
   "docs/g1-UkVBRE1FLm1k",
 );
-equal("display invalid GitPath atom stays a wire token", route.displayPath("g1-!!!"), "g1-!!!");
+equal(
+  "display filesystem g1-looking filename literally",
+  route.displayPath("g1-UkVBRE1FLm1k"),
+  "g1-UkVBRE1FLm1k",
+);
+equal(
+  "display filesystem g1-looking filename with explicit kind",
+  route.displayPath("g1-UkVBRE1FLm1k", "filesystem"),
+  "g1-UkVBRE1FLm1k",
+);
+equal(
+  "display invalid GitPath atom stays a wire token",
+  route.displayPath("g1-!!!", "git_revision"),
+  "g1-!!!",
+);
 equal(
   "display GitPath newline name replaces C0",
-  route.displayPath("g1-bmV3CmxpbmUudHh0"),
+  route.displayPath("g1-bmV3CmxpbmUudHh0", "git_revision"),
   "new\ufffdline.txt",
 );
-equal("display GitPath invalid UTF-8 name", route.displayPath("g1-eP8udHh0"), "x\ufffd.txt");
+equal(
+  "display GitPath invalid UTF-8 name",
+  route.displayPath("g1-eP8udHh0", "git_revision"),
+  "x\ufffd.txt",
+);
 
 sandbox.METABROWSER_PATH_ENCODING = "utf16";
 for (const [identity, url] of [

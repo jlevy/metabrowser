@@ -399,13 +399,10 @@ def _git_filtered_tally(
     files = 0
     size = 0
     size_known = True
-    needle = prefix + b"/" if prefix else b""
     semantic_tokens = (
         semantic if semantic is not None else _semantic_extension_tokens(tree_filter.types)
     )
-    for name, oid in index.blobs:
-        if prefix and name != prefix and not name.startswith(needle):
-            continue
+    for name, oid in index.iter_blobs(prefix):
         if not _blob_matches_tree_filter(
             _git_path_from_relative(name),
             oid,
@@ -572,6 +569,8 @@ def _git_symlink_target(link_path: GitPath, raw: bytes) -> GitPath | None:
         if part in {b"", b"."}:
             continue
         if part == b"..":
+            if not cursor.segments:
+                return None
             cursor = cursor.parent()
             continue
         try:

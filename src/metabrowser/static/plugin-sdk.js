@@ -62,6 +62,7 @@
 //     navigation.current()               — current path/query/fragment target or null
 //     fileCatalog.snapshot()              — immutable known-file inventory snapshot
 //     fileCatalog.subscribe(listener)     — invalidate when inventory coverage changes
+//     sourceKind()                        — filesystem or git_revision served source
 //     repository                          — verified GitHub identity for the served tree
 //
 //   Formatting:
@@ -336,6 +337,10 @@
       return [];
     }
     return Array.from(bucket.keys());
+  }
+
+  function sourceKind() {
+    return global.METABROWSER_SOURCE_KIND === "git_revision" ? "git_revision" : "filesystem";
   }
 
   function render(template, data) {
@@ -1982,6 +1987,7 @@
     fileTypeIcon: fileTypeIcon,
     fileCatalog: fileCatalog,
     navigation: global.MetabrowserNavigationRoute.navigation,
+    sourceKind: sourceKind,
     repository: repository,
     fetchKpressRender: fetchKpressRender,
     renderTextTruncationWarning: renderTextTruncationWarning,

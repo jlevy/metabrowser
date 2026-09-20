@@ -10,16 +10,20 @@ import subprocess
 import time
 from collections.abc import Generator
 from contextlib import contextmanager, suppress
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
+from metabrowser.git import tree_source as tree_module
 from metabrowser.git.process import (
+    GitTimeoutError,
     GitUnavailableError,
     repository_store_target,
 )
 from metabrowser.git.tree_source import (
     GIT_REVISION_CAPABILITIES,
+    GitBlobIndex,
     GitBlobTooLargeError,
     GitObjectUnavailableError,
     GitPath,
@@ -472,6 +476,108 @@ def test_abbreviated_oid_never_enters_the_batch_protocol(tmp_path: Path) -> None
 def test_repository_store_target_rejects_a_missing_dir(tmp_path: Path) -> None:
     with pytest.raises(GitUnavailableError):
         repository_store_target(git_dir=tmp_path / "missing.git")
+
+
+def test_blob_index_tally_uses_sorted_prefix_spans() -> None:
+    sizes = {f"{index:040x}": 1 for index in range(5)}
+    oids = list(sizes)
+    index = GitBlobIndex(
+        blobs=(
+            (b"documentation/x.txt", oids[0]),
+            (b"docs!", oids[1]),
+            (b"other.txt", oids[2]),
+            (b"docs/nested/a.txt", oids[3]),
+            (b"docs/note.txt", oids[4]),
+        ),
+        sizes=sizes,
+    )
+    assert [name for name, _oid in index.blobs] == [
+        b"docs!",
+        b"docs/nested/a.txt",
+        b"docs/note.txt",
+        b"documentation/x.txt",
+        b"other.txt",
+    ]
+    assert index.tally(b"docs") == GitTreeTally(2, 2)
+    assert index.tally(b"docs/nested") == GitTreeTally(1, 1)
+    assert index.tally(b"documentation") == GitTreeTally(1, 1)
+    assert index.tally(b"docs!") == GitTreeTally(1, 1)
+    assert index.tally() == GitTreeTally(5, 5)
+    assert [name for name, _oid in index.iter_blobs(b"docs")] == [
+        b"docs/nested/a.txt",
+        b"docs/note.txt",
+    ]
+
+
+def test_identical_subtrees_resolve_under_each_parent(tmp_path: Path) -> None:
+    work = tmp_path / "work"
+    work.mkdir()
+    _git(work, "init", "-q", "-b", "main")
+    for name in ("one", "two"):
+        (work / name).mkdir()
+        (work / name / "file.txt").write_bytes(b"same content\n")
+    _git(work, "add", ".")
+    _git(work, "commit", "-qm", "identical trees")
+    commit = _git(work, "rev-parse", "HEAD").decode().strip()
+    store = tmp_path / "store.git"
+    _git(tmp_path, "clone", "--bare", "--template=", str(work), str(store))
+
+    async def run() -> None:
+        subject = await git_revision_subject(
+            target=repository_store_target(git_dir=store), commit_oid=commit
+        )
+        try:
+            roots = await subject.tree_source.list_tree()
+            assert roots[0].oid == roots[1].oid
+            for name in (b"one", b"two", b"one"):
+                path = GitPath.from_segments(name, b"file.txt")
+                assert await subject.tree_source.read_blob(path) == b"same content\n"
+                entries = await subject.tree_source.list_tree(path.parent())
+                assert [entry.path for entry in entries] == [path]
+                resolved = subject.tree_source.resolve(path.to_wire())
+                assert resolved is not None and resolved.is_file
+        finally:
+            await subject.aclose()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("many", [False, True])
+def test_batch_timeout_discards_actor_and_next_read_recovers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, many: bool
+) -> None:
+    store, commit = _build_store(tmp_path)
+
+    async def run() -> None:
+        actor = tree_module._BatchObjectReader(repository_store_target(git_dir=store))
+        await actor.info(commit)
+        original_process = actor._proc
+
+        async def stalled_header(_reader: asyncio.StreamReader) -> bytes:
+            return await asyncio.Future[bytes]()
+
+        try:
+            with monkeypatch.context() as scoped:
+                scoped.setattr(tree_module, "_read_header", stalled_header)
+                scoped.setattr(
+                    tree_module,
+                    "BATCH_OBJECT_POLICY",
+                    replace(tree_module.BATCH_OBJECT_POLICY, timeout_s=0.01),
+                )
+                with pytest.raises(GitTimeoutError):
+                    # The outer deadline makes the regression fail rather than hang.
+                    async with asyncio.timeout(2):
+                        if many:
+                            await actor.info_many((commit,))
+                        else:
+                            await actor.info(commit)
+            assert original_process is not None and original_process.returncode is not None
+            assert actor._proc is None
+            assert (await actor.info(commit)).kind == "commit"
+        finally:
+            await actor.aclose()
+
+    asyncio.run(run())
 
 
 def test_two_tree_sources_share_one_store_reader_pool(tmp_path: Path) -> None:

@@ -10,6 +10,10 @@ Plugin contracts:
   publication profiles through the new `metabrowser.capabilities.v1` entry-point group.
   Contract discovery is separate from browser plugin manifests and operator plugin
   directories, so it does not create a static asset root or change browser SDK 0.6.
+  `window.metabrowser.sourceKind()` reports whether the served tree is a filesystem root
+  or a `git_revision` pin.
+  Markdown link and wiki resolution use that kind instead of inferring GitPath encoding
+  from `g1-` filenames.
 
 - Hosted Review Format installs enforced SoftSchema contracts for its provider,
   change-request, review, check, and activity records.

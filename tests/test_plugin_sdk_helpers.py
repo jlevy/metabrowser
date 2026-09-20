@@ -63,6 +63,13 @@ def test_sdk_exports_wrap_with_copy() -> None:
     assert "_copyDelegationInstalled" in src
 
 
+def test_sdk_exports_source_kind() -> None:
+    src = _sdk_source()
+    assert "sourceKind: sourceKind" in src
+    assert "function sourceKind" in src
+    assert 'global.METABROWSER_SOURCE_KIND === "git_revision"' in src
+
+
 def test_sdk_exports_icons_proxy() -> None:
     src = _sdk_source()
     assert "icons: icons" in src

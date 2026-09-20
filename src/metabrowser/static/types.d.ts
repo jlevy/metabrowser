@@ -961,6 +961,7 @@ type MetabrowserSdk = {
   langForPath(pathOrName: string, ext?: string): string;
   loadKpressAssets(manifest: KpressAssetManifest): Promise<void>;
   navigation: MetabrowserNavigationApi;
+  sourceKind(): "filesystem" | "git_revision";
   repository: MetabrowserRepositoryContext | null;
   perf: MetabrowserPerf;
   registerView(kind: string, view: string, spec: MetabrowserViewSpec): void;

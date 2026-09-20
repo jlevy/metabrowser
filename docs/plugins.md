@@ -376,6 +376,7 @@ Useful helpers include:
 - `chart(container, type, data, options)`;
 - `ensureAsset(name)`;
 - `ensureKindAssets(kind)`;
+- `sourceKind()` for the served source (`filesystem` or `git_revision`);
 - `perf.measure` and `perf.measureAsync`.
 
 `ensureAsset(name)` loads a vendored library that the shell does not put on every page,

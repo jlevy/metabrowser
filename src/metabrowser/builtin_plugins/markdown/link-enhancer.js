@@ -36,7 +36,12 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
   const enhancementBudget = options.enhancementBudget || createMarkdownEnhancementBudget();
   const ownsWorkerClient = !options.workerClient;
   const workerClient = options.workerClient || acquireMarkdownWorkerClient();
-  const standardLinks = createTrustedStandardLinkResolutionContext(sourcePath);
+  const sourceKind = mb.sourceKind?.() === "git_revision" ? "git_revision" : "filesystem";
+  const standardLinks = createTrustedStandardLinkResolutionContext(
+    sourcePath,
+    undefined,
+    sourceKind,
+  );
   const preserveFragmentOnlyHrefs = isCurrentDocument(sourcePath, mb.navigation.current());
   /** @type {WeakMap<Element, NavigationTarget>} */
   const internalTargets = new WeakMap();

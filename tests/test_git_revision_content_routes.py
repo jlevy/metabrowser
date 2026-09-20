@@ -974,6 +974,8 @@ def test_git_file_raw_kpress_follow_in_tree_symlinks(tmp_path: Path) -> None:
     (work / "docs").mkdir()
     (work / "docs" / "note.txt").write_text("nested\n", encoding="utf-8")
     (work / "docs" / "up").symlink_to("../README.md")
+    (work / "escape").symlink_to("../README.md")
+    (work / "docs" / "escape").symlink_to("../../README.md")
     (work / "to_docs").symlink_to("docs")
     (work / "dangling").symlink_to("missing")
     (work / "abs").symlink_to("/tmp/x")
@@ -996,6 +998,10 @@ def test_git_file_raw_kpress_follow_in_tree_symlinks(tmp_path: Path) -> None:
             assert nested_body["symlink"] is False
             nested_raw = await client.get("/raw", params={"path": _wire(b"docs", b"up")})
             assert nested_raw.content == b"hello\n"
+            for escaping in (_wire(b"escape"), _wire(b"docs", b"escape")):
+                for endpoint in ("/api/file", "/raw", "/api/kpress/render"):
+                    refused = await client.get(endpoint, params={"path": escaping})
+                    assert refused.status_code == 404
 
             folder = await client.get("/api/file", params={"path": _wire(b"to_docs")})
             assert folder.status_code == 200

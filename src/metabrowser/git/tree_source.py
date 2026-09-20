@@ -49,6 +49,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import threading
+from bisect import bisect_left
 from collections.abc import AsyncGenerator, Mapping
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, replace
@@ -63,6 +64,7 @@ from metabrowser.git.process import (
     GitCommandTarget,
     GitError,
     GitOutputTooLargeError,
+    GitTimeoutError,
     RepositoryStoreTarget,
     run_git,
     spawn_git_process,
@@ -251,6 +253,18 @@ class GitTreeEntry:
         return self.mode == "120000"
 
 
+def _tree_entry_name(entry: GitTreeEntry) -> bytes:
+    return entry.path.segments[-1]
+
+
+def _reparent_tree_entries(
+    entries: tuple[GitTreeEntry, ...], parent: GitPath
+) -> tuple[GitTreeEntry, ...]:
+    """Rebuild cached names under *parent*. Tree OIDs are path-independent."""
+
+    return tuple(replace(entry, path=parent.child(_tree_entry_name(entry))) for entry in entries)
+
+
 @dataclass(frozen=True, slots=True)
 class GitTreeTally:
     """Descendant blob count and size under one tree.
@@ -269,14 +283,26 @@ class GitBlobIndex:
     blobs: tuple[tuple[bytes, str], ...]
     sizes: Mapping[str, int]
 
+    def __post_init__(self) -> None:
+        ordered = tuple(sorted(self.blobs, key=lambda item: item[0]))
+        if ordered != self.blobs:
+            object.__setattr__(self, "blobs", ordered)
+
+    def iter_blobs(self, prefix: bytes = b"") -> tuple[tuple[bytes, str], ...]:
+        """Blobs named ``prefix`` or under ``prefix/``. Shared string prefixes are excluded."""
+
+        if not prefix:
+            return self.blobs
+        ranges: list[tuple[bytes, str]] = []
+        for start, stop in self._prefix_ranges(prefix):
+            ranges.extend(self.blobs[start:stop])
+        return tuple(ranges)
+
     def tally(self, prefix: bytes = b"") -> GitTreeTally:
         files = 0
         size = 0
         size_known = True
-        needle = prefix + b"/" if prefix else b""
-        for name, oid in self.blobs:
-            if prefix and name != prefix and not name.startswith(needle):
-                continue
+        for _name, oid in self.iter_blobs(prefix):
             files += 1
             blob_size = self.sizes.get(oid)
             if blob_size is None:
@@ -284,6 +310,25 @@ class GitBlobIndex:
             else:
                 size += blob_size
         return GitTreeTally(files, size if size_known else None)
+
+    def _prefix_ranges(self, prefix: bytes) -> tuple[tuple[int, int], ...]:
+        """Sorted half-open spans for an exact blob and its ``prefix/`` children.
+
+        ``docs`` matches ``docs`` and ``docs/a`` and does not match ``docs!`` or
+        ``documentation``. The spans are adjacent slices of the sorted name list.
+        """
+
+        exact = bisect_left(self.blobs, (prefix, ""))
+        spans: list[tuple[int, int]] = []
+        if exact < len(self.blobs) and self.blobs[exact][0] == prefix:
+            spans.append((exact, exact + 1))
+        child_lo = bisect_left(self.blobs, (prefix + b"/", ""))
+        # '/' is 0x2F and '0' is the next byte, so this is the first name after
+        # every ``prefix/`` child.
+        child_hi = bisect_left(self.blobs, (prefix + b"0", ""))
+        if child_lo < child_hi:
+            spans.append((child_lo, child_hi))
+        return tuple(spans)
 
 
 GIT_REVISION_CAPABILITIES = SourceCapabilities(
@@ -331,7 +376,13 @@ class _BatchObjectReader:
         if not unique:
             return {}
         try:
-            return await self._info_many_inner(tuple(unique))
+            return await asyncio.wait_for(
+                self._info_many_inner(tuple(unique)),
+                timeout=BATCH_OBJECT_POLICY.timeout_s,
+            )
+        except TimeoutError as exc:
+            await self._poison()
+            raise GitTimeoutError() from exc
         except asyncio.CancelledError:
             await self._poison()
             raise
@@ -389,7 +440,13 @@ class _BatchObjectReader:
     ) -> _ObjectInfo | bytes:
         require_full_oid(oid)
         try:
-            return await self._transact_inner(oid, contents=contents, expected=expected)
+            return await asyncio.wait_for(
+                self._transact_inner(oid, contents=contents, expected=expected),
+                timeout=BATCH_OBJECT_POLICY.timeout_s,
+            )
+        except TimeoutError as exc:
+            await self._poison()
+            raise GitTimeoutError() from exc
         except asyncio.CancelledError:
             await self._poison()
             raise
@@ -696,7 +753,7 @@ class GitTreeSource:
             if cached is None:
                 return None
             walked = walked.child(segment)
-            entry = next((item for item in cached if item.path.segments[-1] == segment), None)
+            entry = next((item for item in cached if _tree_entry_name(item) == segment), None)
             if entry is None:
                 return ContentHandle(
                     identity=identity,
@@ -775,7 +832,7 @@ class GitTreeSource:
     ) -> tuple[GitTreeEntry, ...]:
         cached = self._trees.get(tree_oid)
         if cached is not None:
-            return cached
+            return _reparent_tree_entries(cached, parent_path)
         payload = await run_git(
             [*_MAILMAP_ARGS, "ls-tree", "-z", "--full-tree", tree_oid],
             target=self._target,

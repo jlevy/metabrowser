@@ -611,6 +611,8 @@ $ node tests/dom/navigation-route-behavior.js
     "display GitPath one crumb of a wire",
     "display GitPath patch container inner",
     "display mixed filesystem path is not a GitPath wire",
+    "display filesystem g1-looking filename literally",
+    "display filesystem g1-looking filename with explicit kind",
     "display invalid GitPath atom stays a wire token",
     "display GitPath newline name replaces C0",
     "display GitPath invalid UTF-8 name",

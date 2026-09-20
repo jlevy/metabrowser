@@ -331,12 +331,21 @@
 
   /** Display a path identity. GitPath wires decode to UTF-8 names; inventory
    * identities show literal percent signs. Undecodable platform bytes stay escaped.
+   * Git decoding requires an explicit git_revision source, not a g1- filename.
    * @param {string} path
+   * @param {string=} sourceKind
    */
-  function displayPath(path) {
-    const gitDisplay = displayGitPathWire(path);
-    if (gitDisplay !== null) {
-      return gitDisplay;
+  function displayPath(path, sourceKind) {
+    const kind =
+      sourceKind ||
+      (typeof window !== "undefined" && window.METABROWSER_SOURCE_KIND === "git_revision"
+        ? "git_revision"
+        : "filesystem");
+    if (kind === "git_revision") {
+      const gitDisplay = displayGitPathWire(path);
+      if (gitDisplay !== null) {
+        return gitDisplay;
+      }
     }
     return path.replaceAll("%25", "%");
   }
