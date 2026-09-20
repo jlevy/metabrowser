@@ -1,6 +1,16 @@
 # Repository Sources and Provider Mirrors
 
-**Status:** Proposed correction under review; implementation is planned for v0.11.0.
+**Status:** Partly implemented.
+Repository subjects, `SourceSession`, capabilities, the attached-filesystem content
+source, `GitCommandTarget`, the immutable Git tree source with `GitPath` file, raw, and
+tree routes, `file://` acquisition into a shared repository store, and revision leases
+with store maintenance are implemented; `metab` attaches a `file://` pin in-process for
+`--show` and non-cache `--api`. Serving an acquired pin over HTTP, `https` and `ssh`
+acquisition, fetch jobs, credential leases and the askpass bridge, store convergence and
+object reclamation, and the provider mirror store remain planned.
+Provider binding and local object-availability records exist today as hosted-review
+models; see [Hosted Review Model and Provider Boundary](arch-hosted-review-model.md).
+Per-seam state is in [Implementation Seams](#implementation-seams).
 
 Metabrowser must be able to show the same hosted repository through several independent
 sessions without switching a shared checkout or duplicating provider state.
@@ -115,9 +125,10 @@ unavailable for immutable trees until a truthful source-specific model is added.
 ### Plugin content boundary
 
 The Python plugin SDK gains additive, bounded operations over an opaque `ContentHandle`:
-`resolve_content`, `stat_content`, and `read_content_window`. `resolve_path`,
-`resolve_directory`, `relativize_path`, and `served_root` remain filesystem-only with
-their existing behavior.
+`resolve_content`, `stat_content`, and `read_content_window`. Those three are planned;
+the shipped interim reader API differs and is documented in [Plugins](../../plugins.md).
+`resolve_path`, `resolve_directory`, `relativize_path`, and `served_root` remain
+filesystem-only with their existing behavior.
 Plugin dispatch does not invoke a legacy path hook when the active source lacks
 `filesystem_path`; the corresponding view is absent with a capability reason.
 If implementation cannot preserve those existing semantics, it bumps
@@ -558,25 +569,46 @@ another consumer.
 
 ## Implementation Seams
 
-The first implementation phases use these file- and function-level boundaries:
+These file- and function-level boundaries are split by state.
+Neither table registers a surface, so neither carries a check; registered surfaces are
+in [Views, Models, and Routes](arch-views-models-routes.md).
 
-| Area | Files and functions | Responsibility |
+### Implemented seams
+
+| Area | Implemented at | Responsibility |
 | --- | --- | --- |
-| Subject and Git target | `source.py`: `RepositorySubject`, `AttachedFilesystemSubject`, `SourceSession`; `git/tree_source.py`: `GitRevisionSubject`; `git/process.py`: `GitCommandTarget`, `GitLocation`, `run_git`, `run_git_at`, `spawn_git_process`, askpass bridge | Separate session selection from a filesystem path. The CLI can `--show` / `--api` a leased `file://` pin in-process. Serving acquired Git remains a later phase |
-| Content source | `source.py`: `SourceCapabilities`, `ContentSource`, `ContentHandle`, `FilesystemContentSource`; `inventory_engine/coordinator.py`: `open_subject`; `cli/git_pin_cli.py`: leased `file://` pin; `git/tree_source.py`: `GitTreeSource` | Inventory open on a Git pin leaves the walker closed; the JSONL stream route refuses a Git pin. `/api/rollup` on a pin answers from recursive blob names and sizes and omits mtime. `/api/catalog` lists those blob names as Quick File rows. `/api/index/progress`, `/api/index/meta`, and `/api/capabilities` report that complete-at-once index without a watcher or invented mtime. LFS pointers stay stored bytes; a promisor miss is `object_unavailable` with lazy fetch disabled. `/api/tree` on a pin keeps Git-native `entries` and also projects a SPA `tree` array, plus whole-tree `extensions`, `canonical_extensions`, `type_families`, and `type_presets` rows, `tally_cache_status`, and `summary` from the blob index. `types` and `min_size` keep ancestor trees of matching blobs and emit subtree `filtered` totals. Git type matching uses the same bounded compound-tail logical extension as filesystem inventory. SPA file nodes and blob `/api/file` envelopes emit that tail as `ext`; blob file envelopes omit compressed identity because blobs are stored bytes with no gzip smudge. Git markdown envelopes include parsed YAML `frontmatter` and `frontmatter_error`. Git text envelopes use the same first-window and highlight bound as filesystem listings. A Git image blob is SPA `image` chrome; `/raw` serves the stored bytes. `/api/file`, `/raw`, KPress, and plugin sidekicks follow in-tree relative symlink blobs. `include_ignored=0` is a no-op because ignore is absent. `depth` nests SPA children the way filesystem listings do (default 2) and emits a lazy sentinel past the cap. A Git tree `/api/file` envelope is SPA `folder` chrome. Recursive blob tallies fill directory `total_files` / `total_size`. A complete tally mounts treemap. Markdown and wiki links resolve to `GitPath` wires. SPA path chrome decodes those wires to display names |
+| Subject and Git target | `source.py`: `RepositorySubject`, `AttachedFilesystemSubject`, `SourceSession`; `git/tree_source.py`: `GitRevisionSubject`; `git/process.py`: `GitCommandTarget`, `GitLocation`, `run_git`, `run_git_at`, `spawn_git_process` | Separate session selection from a filesystem path. `metab` can `--show` or non-cache `--api` a leased `file://` pin in-process |
+| Content source | `source.py`: `SourceCapabilities`, `ContentSource`, `ContentHandle`, `FilesystemContentSource`; `inventory_engine/coordinator.py`: `open_subject`; `cli/git_pin_cli.py`: leased `file://` pin; `git/tree_source.py`: `GitTreeSource` | One capability-gated content contract for an attached filesystem and an immutable revision, with no invented mtime, ignore state, or watcher. Inventory open on a Git pin leaves the walker closed and reports a complete-at-once index. What each route answers on a pin is in [Git and Comparison Sources](arch-git-and-comparison-sources.md) |
 | Plugin and route bridge | `plugin_api.py`: `content_source`, `open_content`, `source_capabilities`, `require_source_capability`, filesystem-only path helpers; `server.py`, `events_route.py`, `git/routes.py`, `git/content_routes.py`, `git/repo.py`, `git/history.py`; `diff/adapters/git.py`: `GitDiffSource`; `builtin_plugins/diff/sidekick.py`: comparison, document, and children hooks; `builtin_plugins/binary/sidekick.py`: chunk hook; `builtin_plugins/structured`: parsed hook; `builtin_plugins/agent_log/sidekick.py`: charts hook; `plugin_loader/classify.py`: `classify_identity` | Resolve the active content-source handle rather than assuming the global root is a `Path`; capability-gate recency, ignore, watcher, activity, mutation, and Git listing sizes; honor a pinned `GitRevisionSubject` on Git collection, file, raw, tree, rollup, catalog, index status, capabilities, tree filter tallies, tree summary, filtered tree totals, include_ignored no-op, tree depth, file envelope ext, markdown frontmatter, text preview window, in-tree symlink follow including plugin sidekicks, diff-comparison including `GitDiffSource.content`, KPress, patch-file container, binary-chunk, identity-and-content-kind, structured-parsed, and agent-log routes, and image preview; keep route, CLI, and golden parity |
-| Revision tree | `git/tree_source.py`: `GitPath`, `GitTreeSource`, `GitRevisionSubject`, `list_tree`, `read_blob`; shared per-store `cat-file --batch-command --buffer` pool (`MAX_BATCH_READERS_PER_STORE`); `git/content_routes.py`: file, raw, tree, catalog, `split_git_container_wire`, and extension plugin kinds | Enumerate NUL-framed byte-safe full-OID trees and read size-gated blobs from a `RepositoryStoreTarget` with no materialization. `/api/tree`, `/api/file`, and `/raw` accept `GitPath` wire identities. `/api/tree` keeps Git-native `entries` and also projects a SPA `tree` array (`dir`/`file`/`symlink`, `GitPath` wires, `cat-file` blob sizes, no mtime/ignore); gitlinks are files and stay unsized. Whole-tree `extensions`, `canonical_extensions`, `type_families`, and `type_presets` rows, `tally_cache_status`, and `summary` come from the recursive blob index. `types` and `min_size` keep ancestor trees of matching blobs and emit subtree `filtered` totals. Git type matching uses the same bounded compound-tail logical extension as filesystem inventory. SPA file nodes and blob `/api/file` envelopes emit that tail as `ext`; blob file envelopes omit compressed identity because blobs are stored bytes with no gzip smudge. Git markdown envelopes include parsed YAML `frontmatter` and `frontmatter_error`. Git text envelopes use the same first-window and highlight bound as filesystem listings. A Git image blob is SPA `image` chrome; `/raw` serves the stored bytes. `/api/file`, `/raw`, KPress, and plugin sidekicks follow in-tree relative symlink blobs. `include_ignored=0` is a no-op because ignore is absent. `depth` nests SPA children the way filesystem listings do (default 2) and emits a lazy sentinel past the cap. A Git tree `/api/file` envelope is SPA `folder` chrome. `/api/rollup` answers from recursive blob names and sizes and omits mtime. `/api/catalog` lists those blob names as Quick File rows. `/api/index/progress`, `/api/index/meta`, and `/api/capabilities` report that complete-at-once index without a watcher or invented mtime. A complete tally mounts Overview and treemap. Markdown and wiki destinations encode authored segments as `GitPath` wires. SPA path chrome decodes those wires to display names. Patch-file container inners are a `GitPath` `g1-` prefix plus a host inner path. Blob kinds use extension, basename, sniffed adapter, and bounded JSON/YAML/frontmatter mappings |
-| Repository store | `cache/repository_store.py`: `lease_revision`, `maintain_store`, `subject_revision_ref`; `cache/records.py`: `StagedFetch`, source aliases, and store state | `lease_revision` holds the store’s shared maintenance lock and a durable `refs/metabrowser/subjects/<oid>` ref for a live pinned commit. `maintain_store` runs `gc` and `repack` under the exclusive maintenance lock alone. `resolve_store`, `stage_fetch`, `publish_refs`, `converge_store`, and `reclaim_objects` remain later |
-| Source attachments | `provider_resources/models.py`: source binding and local-availability records; `repository_context.py`: remote candidate discovery | Map local and managed sources to stable provider repository identity without storing local paths or requiring a cache entry |
-| Provider mirror | `provider_resources/store.py`: `stage_snapshot`, `publish_manifest`, `read_current`, `read_last_complete`, `lease_snapshot`, `reclaim_snapshots` | Publish one repository-scoped, auth-scoped mirror reused by every attachment |
-| Provider ports | `provider_resources/models.py`: `AuthorizationContextRef`, `authorization_context_key`; `plugin_api.py`: opaque `GitFetchCredentialLease`, `provider_fetch_authorization_context`, `RepositoryContentPort.open_subject`, `RepositoryObjectJobPort.request_selected_refs`, `ProviderResourceStorePort.stage`, `publish`, `read`, `lease`; `cache/jobs.py`: `GitFetchCredentialLeaseRegistry`, `validate_git_fetch_credential_lease`; `provider_process.py`: `issue_git_fetch_credential_lease` | Inject narrow cancellable capabilities with typed unavailable, authorization, stale-generation, and publication failures; selected-ref requests carry a non-secret context plus an unforgeable registry handle, never tokens, unrestricted sources, core stores, or paths |
+| Revision tree | `git/tree_source.py`: `GitPath`, `GitTreeSource`, `GitRevisionSubject`, `list_tree`, `read_blob`; shared per-store `cat-file --batch-command --buffer` pool (`MAX_BATCH_READERS_PER_STORE`); `git/content_routes.py`: file, raw, tree, catalog, `split_git_container_wire`, and extension plugin kinds | Enumerate NUL-framed byte-safe full-OID trees and read size-gated blobs from a `RepositoryStoreTarget` with no materialization. `GitPath` wires are the identity on every route that accepts one, and blob kinds come from extension, basename, sniffed adapter, and bounded JSON/YAML/frontmatter mappings. The per-route projections are in [Git and Comparison Sources](arch-git-and-comparison-sources.md) |
+| Repository store | `cache/repository_store.py`: `lease_revision`, `maintain_store`, `subject_revision_ref`; `cache/records.py`: source aliases and store state; `cache/acquire.py`: `acquire_file_source` | `lease_revision` holds the store’s shared maintenance lock and a durable `refs/metabrowser/subjects/<oid>` ref for a live pinned commit. `maintain_store` runs `gc` and `repack` under the exclusive maintenance lock alone. Acquisition covers `file://` sources |
+| Remote discovery | `repository_context.py`: `discover_repository_context` | Read a checkout’s `origin` remote and `HEAD` without running Git, so a provider candidate can be recognized before any network work |
 | File and raw routes | `view_routes.py`, `server.py`, `git/content_routes.py`, `plugin_api.py`; `static/navigation.js`: `displayPath` | Resolve the active content-source handle rather than assuming the global root is a `Path`; Git subjects use `GitPath` wire identities for `/view/`, file, raw, tree, KPress, patch-file containers, identity-and-content plugin kinds, structured parsed, agent-log JSONL, and image preview; Markdown and wiki links on a pin encode authored segments as `GitPath` wires; SPA path chrome decodes those wires to display names (C0 and invalid UTF-8 become U+FFFD); retain route, CLI, and golden parity for filesystem browsing |
+
+### Planned seams
+
+Nothing below is built.
+Where a row names an existing module, the named functions are what that module still
+lacks.
+
+| Area | Planned boundary | Responsibility |
+| --- | --- | --- |
+| Plugin content reader | `resolve_content`, `stat_content`, and `read_content_window` over an opaque `ContentHandle` | Planned; the shipped interim API differs, see [Plugins](../../plugins.md) |
+| Store acquisition and convergence | `cache/repository_store.py`: `resolve_store`, `stage_fetch`, `publish_refs`, `converge_store`, `reclaim_objects`; `cache/records.py`: `StagedFetch` | Acquire `https` and `ssh` sources, publish refs under compare-and-swap, converge aliases on one store, and reclaim unreachable objects |
+| Fetch jobs and credentials | `cache/jobs.py`: `GitFetchCredentialLeaseRegistry`, `validate_git_fetch_credential_lease`; `provider_process.py`: `issue_git_fetch_credential_lease`; the askpass bridge in `git/process.py`, which today only disables prompting | Coalesce authorized fetch jobs and project a validated lease into a Git run with no token in argv, environment, records, or diagnostics |
+| Source attachments | A neutral provider-resources module for source binding and local-availability records | Map local and managed sources to stable provider repository identity without storing local paths or requiring a cache entry. `ProviderBinding`, `LocalGitObjectAvailability`, `AuthorizationContextRef`, and `authorization_context_key` live today in `builtin_plugins/hosted_review/models.py` and move under `mb-s0gv` |
+| Provider mirror | `provider_resources/store.py`: `stage_snapshot`, `publish_manifest`, `read_current`, `read_last_complete`, `lease_snapshot`, `reclaim_snapshots` | Publish one repository-scoped, auth-scoped mirror reused by every attachment. The package holds only `profiles.py` today |
+| Provider ports | `plugin_api.py`: opaque `GitFetchCredentialLease`, `provider_fetch_authorization_context`, `RepositoryContentPort.open_subject`, `RepositoryObjectJobPort.request_selected_refs`, `ProviderResourceStorePort.stage`, `publish`, `read`, `lease` | Inject narrow cancellable capabilities with typed unavailable, authorization, stale-generation, and publication failures; selected-ref requests carry a non-secret context plus an unforgeable registry handle, never tokens, unrestricted sources, core stores, or paths |
+| Serving an acquired pin | `server.py` and the `cli/main.py` root classification | `metab serve` refuses every Git source today; an acquired pin is reachable only through `--show` and non-cache `--api` |
 
 These names are the implementation plan, not registered surfaces.
 If implementation finds a smaller boundary that preserves every invariant, the
 architecture and beads are updated before code publication.
 
 ## Phased Delivery
+
+Phases 1 to 3 are implemented, to the extent the status line above states; the rest are
+planned.
 
 1. Correct the unreleased binding and storage contracts so provider repository identity
    is independent of a generic cache entry.
