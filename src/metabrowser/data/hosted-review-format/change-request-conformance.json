@@ -900,6 +900,30 @@
       "name": "id-is-not-an-arbitrary-opaque-string"
     },
     {
+      "changes": [
+        { "path": ["updated_at"], "value": "2026-09-09T00:00:00Z" }
+      ],
+      "expect": "valid",
+      "name": "provider-updated-at-may-precede-created-at"
+    },
+    {
+      "changes": [
+        { "path": ["state"], "value": "closed" },
+        { "path": ["closed_at"], "value": "2026-09-12T00:00:00Z" }
+      ],
+      "expect": "valid",
+      "name": "provider-closed-at-may-follow-updated-at"
+    },
+    {
+      "changes": [
+        { "path": ["state"], "value": "merged" },
+        { "path": ["closed_at"], "value": "2026-09-11T09:00:00Z" },
+        { "path": ["merged_at"], "value": "2026-09-01T00:00:00Z" }
+      ],
+      "expect": "valid",
+      "name": "provider-merged-at-may-precede-created-at"
+    },
+    {
       "changes": [{ "path": ["repository", "instance"], "value": "other.example" }],
       "expect": "invalid",
       "name": "provider-instance-relationship-is-enforced"

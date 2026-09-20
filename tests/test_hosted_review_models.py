@@ -28,13 +28,25 @@ def test_change_request_accepts_a_provider_neutral_merge_request() -> None:
     assert dump_change_request(parsed) == change_request_case()
 
 
-def test_change_request_rejects_lifecycle_timestamps_before_creation() -> None:
+def test_change_request_preserves_anomalous_provider_timestamps() -> None:
+    # Provider clocks are recorded as observed: no ordering is asserted between them, so an
+    # adapter never has to drop or alter a real record whose lifecycle looks impossible.
     document = change_request_case()
     document["state"] = "merged"
     document["closed_at"] = "2026-09-09T12:00:00Z"
-    document["merged_at"] = "2026-09-09T11:59:00Z"
+    document["merged_at"] = "2026-09-12T11:59:00Z"
+    document["updated_at"] = "2026-09-08T00:00:00Z"
 
-    with pytest.raises(ValidationError, match="closed_at must not precede created_at"):
+    parsed = validate_change_request(document)
+
+    assert dump_change_request(parsed) == document
+
+
+def test_change_request_lifecycle_state_still_decides_which_timestamps_exist() -> None:
+    document = change_request_case()
+    document["closed_at"] = "2026-09-11T09:00:00Z"
+
+    with pytest.raises(ValidationError, match="open change requests have no closed"):
         validate_change_request(document)
 
 

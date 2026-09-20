@@ -177,6 +177,15 @@ All persisted timestamps use a canonical RFC 3339 UTC representation with second
 `Z`. Zero milliseconds are omitted; a nonzero fraction contains exactly three digits.
 Provider adapters convert offsets to UTC and truncate finer precision toward the earlier
 millisecond before validation so Python and browser ordering have identical precision.
+The format asserts ordering only between timestamps Metabrowser writes from its own
+clock: retrieval start and finish, rate-limit and pagination observation, manifest, and
+tombstone times. Provider-supplied timestamps are recorded as observed and never ordered
+against each other or against the local clock, because providers do emit anomalous
+records and a rule would force an adapter to drop or alter one.
+Which timestamps a lifecycle state carries remains a structural rule.
+The one deliberate exception is tombstone evidence, which refuses a provider deletion
+event that predates the previous live observation: that interlock guards a destructive
+step and fails closed by keeping the live record.
 Provider links use an ASCII canonical HTTPS spelling: lowercase DNS host, no
 credentials, no default port, and uppercase hexadecimal percent escapes.
 Every structured string is bounded; only Markdown bodies are unbounded content.

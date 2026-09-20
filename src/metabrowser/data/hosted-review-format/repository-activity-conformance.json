@@ -93,6 +93,7 @@
   },
   "cases": [
     { "name": "commit-and-change-request-history", "changes": [], "expect": "valid" },
+    { "name": "activity-provider-update-may-precede-event", "changes": [{ "path": ["items", 1, "updated_at"], "value": "2026-09-01T00:00:00Z" }], "expect": "valid" },
     {
       "name": "activity-revision-rejects-41-hex-object-id",
       "changes": [

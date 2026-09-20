@@ -254,7 +254,7 @@
     {"record": "deletion_retrieval", "changes": [{"path": ["target", "target", "opaque_id"], "value": "change-other"}], "expect": "invalid", "name": "explicit-deletion-outcome-matches-the-request-target"},
     {"record": "deletion_retrieval", "changes": [{"path": ["outcome", "provider_event_opaque_id"], "value": null}], "expect": "invalid", "name": "deletion-event-requires-provider-event-identity"},
     {"record": "deletion_retrieval", "changes": [{"path": ["outcome", "provider_event_at"], "value": null}], "expect": "invalid", "name": "deletion-event-requires-provider-event-time"},
-    {"record": "deletion_retrieval", "changes": [{"path": ["outcome", "provider_event_at"], "value": "2026-09-15T12:00:00.500Z"}], "expect": "invalid", "name": "deletion-event-time-does-not-follow-its-retrieval"},
+    {"record": "deletion_retrieval", "changes": [{"path": ["outcome", "provider_event_at"], "value": "2026-09-15T12:00:00.500Z"}], "expect": "valid", "name": "deletion-event-time-is-not-ordered-against-the-local-clock"},
     {"record": "deletion_retrieval", "changes": [{"path": ["outcome", "evidence_kind"], "value": "deleted_marker"}, {"path": ["outcome", "provider_event_opaque_id"], "value": null}, {"path": ["outcome", "provider_event_at"], "value": null}], "expect": "valid", "name": "deleted-marker-uses-retrieval-observation-time"},
     {"record": "resource_set", "changes": [], "expect": "valid", "name": "complete-repository-resource-set"},
     {"record": "resource_set", "changes": [{"path": ["profile"], "value": "example.test:unknown/v1"}], "expect": "invalid", "name": "resource-profile-must-be-installed"},

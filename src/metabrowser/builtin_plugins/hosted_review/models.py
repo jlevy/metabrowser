@@ -411,6 +411,12 @@ def _utf8_sort_key(value: str) -> bytes:
 type ProviderKind = Annotated[_StrictString, AfterValidator(_require_provider_kind)]
 type ProviderInstance = Annotated[_StrictString, AfterValidator(_require_provider_instance)]
 type Sha256Digest = Annotated[_StrictString, AfterValidator(_require_sha256_digest)]
+# Ordering is asserted only between timestamps Metabrowser writes from its own clock:
+# retrieval start and finish, rate-limit and pagination observation, manifest, and
+# tombstone times. Provider-supplied timestamps (created, updated, closed, merged,
+# submitted, started, completed, event) are recorded as observed and never ordered against
+# each other or against our clock: providers do emit anomalous records, and a rule here
+# would force an adapter to drop or alter one.
 type CanonicalTimestamp = Annotated[_StrictString, AfterValidator(_require_timestamp)]
 type CanonicalHttpsUrl = Annotated[_StrictString, AfterValidator(_require_https)]
 type ResourceProfileId = Annotated[_StrictString, AfterValidator(_require_resource_profile_id)]
@@ -578,18 +584,8 @@ class ChangeRequest(_HostedReviewModel):
             raise ValueError("comparison base must belong to the change request repository")
         _require_canonical_change_request_id(self.id, repository, self.number)
 
-        created_at = _parse_rfc3339(self.created_at)
-        updated_at = _parse_rfc3339(self.updated_at)
-        if updated_at < created_at:
-            raise ValueError("updated_at must not precede created_at")
-        for name, value in (("closed_at", self.closed_at), ("merged_at", self.merged_at)):
-            if value is None:
-                continue
-            observed_at = _parse_rfc3339(value)
-            if observed_at < created_at:
-                raise ValueError(f"{name} must not precede created_at")
-            if observed_at > updated_at:
-                raise ValueError(f"{name} must not follow updated_at")
+        # No ordering is asserted between provider-supplied timestamps; see
+        # ``CanonicalTimestamp``. Which timestamps a state carries is structural and stays.
         if self.state is ChangeRequestState.open:
             if self.closed_at is not None or self.merged_at is not None:
                 raise ValueError("open change requests have no closed or merged timestamp")
@@ -681,8 +677,6 @@ def _validate_comment_lifecycle(
 ) -> None:
     if state is not CommentState.deleted and url is None:
         raise ValueError("visible, minimized, and unknown comments require a URL")
-    if _parse_rfc3339(updated_at) < _parse_rfc3339(created_at):
-        raise ValueError("comment updated_at must not precede created_at")
 
 
 class ChangeRequestComment(_HostedReviewModel):
@@ -734,19 +728,11 @@ class Review(_HostedReviewModel):
             raise ValueError("review and repository must use the same provider instance")
         if self.revision.observation is RevisionObservation.not_requested:
             raise ValueError("review revision must be requested from the provider")
-        created_at = _parse_rfc3339(self.created_at)
-        updated_at = _parse_rfc3339(self.updated_at)
-        if updated_at < created_at:
-            raise ValueError("review updated_at must not precede created_at")
         if self.disposition is ReviewDisposition.pending:
             if self.submitted_at is not None:
                 raise ValueError("pending reviews forbid submitted_at")
         elif self.disposition is not ReviewDisposition.unknown and self.submitted_at is None:
             raise ValueError("submitted review dispositions require submitted_at")
-        if self.submitted_at is not None:
-            submitted_at = _parse_rfc3339(self.submitted_at)
-            if submitted_at < created_at or submitted_at > updated_at:
-                raise ValueError("review submitted_at must fall within its lifecycle")
         return self
 
 
@@ -928,12 +914,6 @@ class Check(_HostedReviewModel):
                 raise ValueError("completed check runs require completed_at")
         elif self.conclusion is not None or self.completed_at is not None:
             raise ValueError("noncompleted checks forbid conclusion and completed_at")
-        if (
-            self.started_at is not None
-            and self.completed_at is not None
-            and (_parse_rfc3339(self.completed_at) < _parse_rfc3339(self.started_at))
-        ):
-            raise ValueError("check completed_at must not precede started_at")
         return self
 
 
@@ -958,8 +938,6 @@ class CommitStatus(_HostedReviewModel):
             raise ValueError("commit status and repository must use the same provider instance")
         if self.revision.observation is not RevisionObservation.observed:
             raise ValueError("commit statuses require an observed immutable revision")
-        if _parse_rfc3339(self.updated_at) < _parse_rfc3339(self.created_at):
-            raise ValueError("commit status updated_at must not precede created_at")
         return self
 
 
@@ -1435,10 +1413,8 @@ class Retrieval(_HostedReviewModel):
                 or self.target.repository != self.outcome.repository
             ):
                 raise ValueError("deletion outcome must match its provider-object request target")
-            if self.outcome.provider_event_at is not None and _parse_rfc3339(
-                self.outcome.provider_event_at
-            ) > _parse_rfc3339(self.finished_at):
-                raise ValueError("provider deletion event cannot follow its retrieval")
+            # ``provider_event_at`` is on the provider's clock and ``finished_at`` on ours, so
+            # skew alone can make a real event appear to follow its retrieval.
         return self
 
 
@@ -1496,12 +1472,6 @@ class HostedRepository(_HostedReviewModel):
     created_at: CanonicalTimestamp
     updated_at: CanonicalTimestamp
 
-    @model_validator(mode="after")
-    def _repository_times_are_ordered(self) -> HostedRepository:
-        if _parse_rfc3339(self.updated_at) < _parse_rfc3339(self.created_at):
-            raise ValueError("repository updated_at must not precede created_at")
-        return self
-
 
 def hosted_repository_ref(value: HostedRepository) -> RepositoryRef:
     """Project a hosted repository's sole provider-neutral repository identity."""
@@ -1520,8 +1490,6 @@ def validate_repository_successor(
         raise ValueError("repository successor changes stable provider identity")
     if successor.created_at != previous.created_at:
         raise ValueError("repository successor changes provider creation time")
-    if _parse_rfc3339(successor.updated_at) < _parse_rfc3339(previous.updated_at):
-        raise ValueError("repository successor moves updated_at backwards")
     return successor
 
 
@@ -1647,8 +1615,6 @@ class ChangeRequestIndexRow(_HostedReviewModel):
             self.repository.instance,
         ):
             raise ValueError("index row provider and repository instances must match")
-        if _parse_rfc3339(self.updated_at) < _parse_rfc3339(self.created_at):
-            raise ValueError("index row updated_at must not precede created_at")
         return self
 
 
@@ -1899,8 +1865,6 @@ class ActivityItem(_HostedReviewModel):
 
     @model_validator(mode="after")
     def _kind_and_relationships_are_consistent(self) -> ActivityItem:
-        if _parse_rfc3339(self.updated_at) < _parse_rfc3339(self.event_at):
-            raise ValueError("activity updated_at must not precede event_at")
         if self.kind is ActivityKind.commit:
             if self.state is not None:
                 raise ValueError("commit activity forbids change-request state")

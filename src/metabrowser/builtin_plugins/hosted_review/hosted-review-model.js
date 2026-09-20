@@ -528,9 +528,10 @@ function validateCounts(raw, where) {
 function validateLifecycle(document) {
   const state = nonemptyString(document.state, "change_request.state");
   require(CHANGE_REQUEST_STATES.has(state), "change_request.state: unknown value");
-  const created = Date.parse(timestamp(document.created_at, "change_request.created_at"));
-  const updated = Date.parse(timestamp(document.updated_at, "change_request.updated_at"));
-  require(updated >= created, "change_request.updated_at precedes created_at");
+  // Provider-supplied timestamps are recorded as observed and never ordered against each
+  // other; only which timestamps a state carries is checked.
+  timestamp(document.created_at, "change_request.created_at");
+  timestamp(document.updated_at, "change_request.updated_at");
   require("closed_at" in document &&
     "merged_at" in document, "change_request: lifecycle timestamps required");
   nullableString(document.closed_at, "change_request.closed_at");
@@ -540,9 +541,7 @@ function validateLifecycle(document) {
     ["merged_at", document.merged_at],
   ]) {
     if (value !== null) {
-      const observed = Date.parse(timestamp(value, `change_request.${name}`));
-      require(observed >= created &&
-        observed <= updated, `change_request.${name}: outside lifecycle`);
+      timestamp(value, `change_request.${name}`);
     }
   }
   if (state === "open") {
@@ -725,9 +724,8 @@ function validateCommentLifecycle(value, where) {
   require("url" in value, `${where}.url: required`);
   validateNullableUrl(value.url, `${where}.url`);
   require(state === "deleted" || value.url !== null, `${where}: visible comments require a URL`);
-  const created = Date.parse(timestamp(value.created_at, `${where}.created_at`));
-  const updated = Date.parse(timestamp(value.updated_at, `${where}.updated_at`));
-  require(updated >= created, `${where}.updated_at precedes created_at`);
+  timestamp(value.created_at, `${where}.created_at`);
+  timestamp(value.updated_at, `${where}.updated_at`);
 }
 
 /**
@@ -893,9 +891,8 @@ export function parseHostedRepository(raw) {
     require((defaultBranch.name !== null) ===
       (availability ===
         "present"), "hosted_repository.default_branch: name and availability disagree");
-    const created = Date.parse(timestamp(document.created_at, "hosted_repository.created_at"));
-    const updated = Date.parse(timestamp(document.updated_at, "hosted_repository.updated_at"));
-    require(updated >= created, "hosted_repository.updated_at precedes created_at");
+    timestamp(document.created_at, "hosted_repository.created_at");
+    timestamp(document.updated_at, "hosted_repository.updated_at");
   });
 }
 
@@ -1012,9 +1009,8 @@ function validateChangeRequestIndexRow(raw, where) {
   validateNullableActor(row.author, `${where}.author`);
   lineText(row.base_label, `${where}.base_label`);
   lineText(row.head_label, `${where}.head_label`);
-  const created = Date.parse(timestamp(row.created_at, `${where}.created_at`));
-  const updated = Date.parse(timestamp(row.updated_at, `${where}.updated_at`));
-  require(updated >= created, `${where}.updated_at precedes created_at`);
+  timestamp(row.created_at, `${where}.created_at`);
+  timestamp(row.updated_at, `${where}.updated_at`);
   return row;
 }
 
@@ -1133,9 +1129,8 @@ export function parseReview(raw) {
     validateGitObjectRef(document.revision, "review.revision");
     const revision = asObject(document.revision, "review.revision");
     require(revision.observation !== "not_requested", "review.revision: must be requested");
-    const created = Date.parse(timestamp(document.created_at, "review.created_at"));
-    const updated = Date.parse(timestamp(document.updated_at, "review.updated_at"));
-    require(updated >= created, "review.updated_at precedes created_at");
+    timestamp(document.created_at, "review.created_at");
+    timestamp(document.updated_at, "review.updated_at");
     require("submitted_at" in document, "review.submitted_at: required");
     validateNullableTimestamp(document.submitted_at, "review.submitted_at");
     if (disposition === "pending") {
@@ -1143,11 +1138,6 @@ export function parseReview(raw) {
     } else if (disposition !== "unknown") {
       require(document.submitted_at !==
         null, "review: submitted disposition requires submitted_at");
-    }
-    if (document.submitted_at !== null) {
-      const submitted = Date.parse(String(document.submitted_at));
-      require(submitted >= created &&
-        submitted <= updated, "review.submitted_at falls outside lifecycle");
     }
   });
 }
@@ -1283,10 +1273,6 @@ export function parseCheck(raw) {
         document.completed_at ===
           null, "noncompleted check: conclusion and completed_at forbidden");
     }
-    if (document.started_at !== null && document.completed_at !== null) {
-      require(Date.parse(String(document.completed_at)) >=
-        Date.parse(String(document.started_at)), "check.completed_at precedes started_at");
-    }
   });
 }
 
@@ -1321,9 +1307,8 @@ export function parseCommitStatus(raw) {
     }
     require("target_url" in document, "commit_status.target_url: required");
     validateNullableUrl(document.target_url, "commit_status.target_url");
-    const created = Date.parse(timestamp(document.created_at, "commit_status.created_at"));
-    const updated = Date.parse(timestamp(document.updated_at, "commit_status.updated_at"));
-    require(updated >= created, "commit_status.updated_at precedes created_at");
+    timestamp(document.created_at, "commit_status.created_at");
+    timestamp(document.updated_at, "commit_status.updated_at");
   });
 }
 
@@ -1419,9 +1404,8 @@ function validateActivityItem(raw, where) {
   const actors = asArray(item.actors, `${where}.actors`).map((actor, index) =>
     validateActivityActor(actor, `${where}.actors[${index}]`),
   );
-  const eventAt = Date.parse(timestamp(item.event_at, `${where}.event_at`));
-  const updatedAt = Date.parse(timestamp(item.updated_at, `${where}.updated_at`));
-  require(updatedAt >= eventAt, `${where}.updated_at precedes event_at`);
+  timestamp(item.event_at, `${where}.event_at`);
+  timestamp(item.updated_at, `${where}.updated_at`);
   require("state" in item, `${where}.state: required`);
   if (item.state !== null) {
     enumValue(item.state, ACTIVITY_STATES, `${where}.state`);

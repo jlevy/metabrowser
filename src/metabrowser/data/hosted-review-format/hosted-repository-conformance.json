@@ -49,7 +49,7 @@
     {"record": "hosted_repository", "changes": [{"path": ["url"], "value": "http://code.example/team/project"}], "expect": "invalid", "name": "repository-web-url-requires-canonical-https"},
     {"record": "hosted_repository", "changes": [{"path": ["default_branch", "name"], "value": null}], "expect": "invalid", "name": "present-default-branch-requires-name"},
     {"record": "hosted_repository", "changes": [{"path": ["default_branch"], "value": {"availability": "absent", "name": "main"}}], "expect": "invalid", "name": "absent-default-branch-forbids-name"},
-    {"record": "hosted_repository", "changes": [{"path": ["updated_at"], "value": "2025-12-31T23:59:59Z"}], "expect": "invalid", "name": "repository-update-does-not-precede-creation"},
+    {"record": "hosted_repository", "changes": [{"path": ["updated_at"], "value": "2025-12-31T23:59:59Z"}], "expect": "valid", "name": "repository-provider-update-may-precede-creation"},
     {"record": "hosted_repository", "changes": [{"path": ["name"], "value": "project\u0000"}], "expect": "invalid", "name": "repository-name-rejects-control-character"},
     {"record": "provider_binding", "changes": [{"path": ["repository", "opaque_id"], "value": "repo-1\n"}], "expect": "invalid", "name": "binding-repository-opaque-id-rejects-newline"},
     {"record": "provider_binding", "changes": [{"path": ["repository", "opaque_id"], "value": "rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr"}], "expect": "invalid", "name": "binding-repository-opaque-id-rejects-256-characters"},
