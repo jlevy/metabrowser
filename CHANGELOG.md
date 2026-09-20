@@ -277,6 +277,11 @@ Content source:
   Whole-tree tallies, filter totals, index status, rollup, and the catalog are derived
   once per pin instead of on every request.
 
+- Git failures on a pinned tree answer with a typed JSON envelope instead of a bare 500:
+  `git_timeout` is 504, a tree the store lacks is `object_unavailable` 404 naming the
+  missing object, and any other Git failure is `git_failed` 500. No envelope carries Git
+  output, so none carries a local path.
+
 ## 0.10.0
 
 Plugin SDK:

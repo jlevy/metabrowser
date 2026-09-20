@@ -67,9 +67,11 @@ acquired Git over a listening port remains a later bead. The CLI can
 from __future__ import annotations
 
 import asyncio
+import functools
+import logging
 import mimetypes
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -89,6 +91,7 @@ from metabrowser.file_type_filters import FILTER_TYPE_PRESETS
 from metabrowser.file_type_registry import load_file_type_registry
 from metabrowser.folder_discovery import choose_readme_name
 from metabrowser.fs_paths import derive_ext
+from metabrowser.git.process import GitError, GitTimeoutError, failure_detail
 from metabrowser.git.tree_source import (
     GitBlobIndex,
     GitBlobTallies,
@@ -116,6 +119,8 @@ from metabrowser.settings import (
 from metabrowser.tree import _tree_depth_from_query
 from metabrowser.tree_filter import TreeFilter
 from metabrowser.view_routes import decode_view_logical_path
+
+log = logging.getLogger(__name__)
 
 _NOT_FOUND = {"error": "Not found"}
 _PATCH_EXTS = (".patch", ".diff")
@@ -715,6 +720,44 @@ def _json(payload: dict[str, Any], *, status_code: int = 200) -> JSONResponse:
     return JSONResponse(payload, status_code=status_code, headers={"cache-control": "no-store"})
 
 
+def git_content_failure_response(exc: GitError) -> JSONResponse:
+    """Typed envelope for a Git failure on a pin. No git text, so no local paths.
+
+    Statuses match ``/api/git/*``: a timeout is 504 because a retry can
+    plausibly fix it, and any other failure is 500. An object the store lacks
+    and an oversized blob keep their own 404 and 413 envelopes.
+    """
+
+    if isinstance(exc, GitObjectUnavailableError):
+        return _json(_object_unavailable_payload(exc), status_code=404)
+    if isinstance(exc, GitBlobTooLargeError):
+        return _json(_blob_too_large_payload(exc), status_code=413)
+    if isinstance(exc, GitTimeoutError):
+        return _json({"error": "git command timed out", "code": "git_timeout"}, status_code=504)
+    return _json({"error": "git command failed", "code": "git_failed"}, status_code=500)
+
+
+def _typed_git_failures[**P, R: Response](
+    handler: Callable[P, Awaitable[R]],
+) -> Callable[P, Awaitable[R | JSONResponse]]:
+    """The one place a pin route turns an escaped ``GitError`` into a response.
+
+    Handlers still answer the failures they give a route-specific shape, such
+    as a plain 404 on ``/raw``. Everything else in the family lands here instead
+    of becoming a bare 500.
+    """
+
+    @functools.wraps(handler)
+    async def guarded(*args: P.args, **kwargs: P.kwargs) -> R | JSONResponse:
+        try:
+            return await handler(*args, **kwargs)
+        except GitError as exc:
+            log.warning("git pin %s failed: %s", handler.__name__, failure_detail(exc))
+            return git_content_failure_response(exc)
+
+    return guarded
+
+
 @dataclass(frozen=True, slots=True)
 class _GitRollupEntry:
     path: str
@@ -813,6 +856,7 @@ def _missing_blob_oid(index: GitBlobIndex) -> str:
     raise RuntimeError("blob index reported incomplete sizes without a missing oid")
 
 
+@_typed_git_failures
 async def git_revision_rollup(
     request: Request,
     subject: GitRevisionSubject,
@@ -915,6 +959,7 @@ def _git_catalog_body(index: GitBlobIndex, exts: tuple[str, ...]) -> bytes:
     return bytes(JSONResponse(payload).body)
 
 
+@_typed_git_failures
 async def git_revision_catalog(request: Request, subject: GitRevisionSubject) -> Response:
     """One-shot Quick File catalog from recursive blob names. No watcher."""
 
@@ -1083,6 +1128,7 @@ def _git_index_common(facts: _GitIndexFacts) -> dict[str, Any]:
     }
 
 
+@_typed_git_failures
 async def git_revision_index_progress(subject: GitRevisionSubject) -> JSONResponse:
     """Terminal crawl footer for a pin. There is no walker."""
 
@@ -1093,6 +1139,7 @@ async def git_revision_index_progress(subject: GitRevisionSubject) -> JSONRespon
     return _json({**_git_index_common(facts), "active": False})
 
 
+@_typed_git_failures
 async def git_revision_index_meta(subject: GitRevisionSubject) -> JSONResponse:
     """Index summary from blob names. No mtime or watcher facts."""
 
@@ -1109,6 +1156,7 @@ async def git_revision_index_meta(subject: GitRevisionSubject) -> JSONResponse:
     )
 
 
+@_typed_git_failures
 async def git_revision_capabilities(subject: GitRevisionSubject) -> JSONResponse:
     """Observation surface for a pin: complete, no watcher, events off."""
 
@@ -1139,6 +1187,7 @@ async def git_revision_capabilities(subject: GitRevisionSubject) -> JSONResponse
     )
 
 
+@_typed_git_failures
 async def git_revision_tree(
     request: Request,
     subject: GitRevisionSubject,
@@ -1391,6 +1440,7 @@ def _patch_container_payload(
     }
 
 
+@_typed_git_failures
 async def git_revision_file(request: Request, subject: GitRevisionSubject) -> JSONResponse:
     """File or folder envelope for one GitPath. No mtime or ignore state."""
 
@@ -1437,6 +1487,7 @@ async def git_revision_file(request: Request, subject: GitRevisionSubject) -> JS
     return _json(_with_requested_path(_blob_file_payload(entry, body, request), entry, path))
 
 
+@_typed_git_failures
 async def git_revision_kpress_render(
     subject: GitRevisionSubject,
     *,
@@ -1549,6 +1600,7 @@ async def git_revision_kpress_render(
     return JSONResponse(rendered, headers={"cache-control": "no-cache"})
 
 
+@_typed_git_failures
 async def git_revision_raw(request: Request, subject: GitRevisionSubject) -> Response:
     """Blob bytes for one GitPath. In-tree relative symlink blobs are followed."""
 
@@ -1580,6 +1632,7 @@ async def git_revision_raw(request: Request, subject: GitRevisionSubject) -> Res
 
 __all__ = [
     "decode_git_view_path",
+    "git_content_failure_response",
     "git_revision_capabilities",
     "git_revision_catalog",
     "git_revision_file",

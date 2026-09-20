@@ -48,6 +48,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import re
 import threading
 from array import array
 from bisect import bisect_left
@@ -63,6 +64,7 @@ from metabrowser.git.process import (
     ACQUISITION_POLICY,
     BATCH_OBJECT_POLICY,
     GIT_DISABLE_MAILMAP_ARGS,
+    GitCommandError,
     GitCommandTarget,
     GitError,
     GitOutputTooLargeError,
@@ -93,6 +95,7 @@ _BATCH_ARGS: Final[tuple[str, ...]] = (
 # docs/project/architecture/arch-repository-sources-and-provider-mirrors.md.
 MAX_BATCH_READERS_PER_STORE: Final[int] = 4
 _STDERR_MAX_BYTES: Final[int] = 64 * 1024
+_FULL_OID: Final = re.compile(r"\b(?:[0-9a-f]{64}|[0-9a-f]{40})\b")
 # Facts memoized per pinned source: index chrome, index facts, extensions, the
 # catalog body, and one entry per recently used filter or rollup shape. Each is
 # at most linear in INVENTORY_MAX_FILES; the largest measured, the rendered
@@ -1042,6 +1045,18 @@ class GitTreeSource:
         except GitOutputTooLargeError:
             self._indexes[tree_oid] = None
             return None
+        except GitCommandError as exc:
+            # The walk names a nested object it could not read. Only that
+            # validated OID leaves the stderr text, which can carry paths. An
+            # absent walk root is reported without one, so ask the store.
+            missing = _FULL_OID.search(exc.stderr_summary)
+            if missing is not None:
+                raise GitObjectUnavailableError(missing.group()) from exc
+            try:
+                await self.object_info(tree_oid)
+            except GitObjectUnavailableError as unavailable:
+                raise unavailable from exc
+            raise
         # Parsing and sorting a whole tree is synchronous work, so it leaves the loop.
         blobs = await asyncio.to_thread(_index_blob_records, payload)
         if blobs is None:

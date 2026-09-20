@@ -259,7 +259,14 @@ class GitCommandError(GitError):
 
 
 class GitTimeoutError(GitError):
-    """``git`` exceeded :data:`GIT_SUBPROCESS_TIMEOUT_S` and was killed."""
+    """``git`` exceeded its policy deadline and was killed.
+
+    The default message names no command and no path, so a caller that prints
+    ``str(exc)`` for a batch-actor timeout still says what happened.
+    """
+
+    def __init__(self, message: str = "git command timed out") -> None:
+        super().__init__(message)
 
 
 class GitOutputTooLargeError(GitError):
