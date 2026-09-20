@@ -107,6 +107,8 @@ Repository cache:
   `/path/to/repo` is never rewritten into one — and `ext::` remote-helper syntax is
   rejected. `metab file://… --no-serve` fetches into the cache and prints slug, store
   identity, and strategy without starting a server.
+  A Git timeout, oversized output, missing executable, or failed command during that
+  acquire is reported as its own error message without a traceback or a local path.
   `metab file://… --api /api/cache/…` acquires as a side effect, then inspects cache
   state against an empty throwaway root so `/api/tree` cannot expose the cache or the
   origin. Serving, walking, and other modes refuse Git sources without acquiring, and

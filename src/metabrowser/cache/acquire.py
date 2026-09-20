@@ -62,6 +62,7 @@ from metabrowser.git.process import (
     ACQUISITION_POLICY,
     FETCH_POLICY,
     GitCommandError,
+    GitOutputTooLargeError,
     GitProcessPolicy,
     repository_store_target,
     require_acquisition_git,
@@ -223,9 +224,34 @@ async def _configuration_digest(git_dir: Path) -> str:
     return "sha256:" + hashlib.sha256(raw).hexdigest()
 
 
-async def _filter_honored(git_dir: Path, revision: str) -> bool:
-    listing = await _run(["rev-list", "--objects", "--missing=print", revision], git_dir=git_dir)
+async def _missing_objects(git_dir: Path, *scope: str) -> bool:
+    # ``--quiet`` drops every object that is present, so the output is only the
+    # ``?<oid>`` lines and its size does not grow with the objects that were fetched.
+    listing = await _run(
+        ["rev-list", "--quiet", "--objects", "--missing=print", *scope], git_dir=git_dir
+    )
     return any(line.startswith(b"?") for line in listing.splitlines())
+
+
+async def _filter_honored(git_dir: Path, revision: str) -> bool:
+    """Return True when the fetch left objects out, so the store is blobless.
+
+    ``blob:none`` on a first fetch omits every blob, so an origin that honored it
+    shows a missing blob in the pinned commit's own tree. That answer costs one
+    tree, whatever the history holds, and it is the usual one.
+
+    A complete tip proves nothing about history: an origin can tag the tip's blobs,
+    and a wanted object is sent despite the filter. Recording ``full`` claims every
+    reachable object, so that claim alone pays for the walk over history, after a
+    fetch that already transferred and indexed all of it. Either listing holds only
+    missing objects, so overflowing the output cap means many are missing.
+    """
+    try:
+        return await _missing_objects(git_dir, "--no-walk", revision) or await _missing_objects(
+            git_dir, revision
+        )
+    except GitOutputTooLargeError:
+        return True
 
 
 async def _tree_blob_oids(git_dir: Path, revision: str) -> tuple[str, ...]:

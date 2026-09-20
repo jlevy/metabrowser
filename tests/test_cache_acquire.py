@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import os
 import shutil
 import stat
@@ -295,6 +296,68 @@ def test_a_repository_enclosing_the_cache_home_does_not_rewrite_the_origin(
     published = asyncio.run(acquire_file_source(source, home=outer / nested))
     assert published.default_remote_ref == "refs/remotes/origin/topic"
     assert published.default_revision == _rev_parse(real, "refs/heads/topic")
+
+
+def _has_object(git_dir: Path, oid: str) -> bool:
+    probe = subprocess.run(
+        ["git", "--git-dir", str(git_dir), "cat-file", "-e", oid],
+        check=False,
+        capture_output=True,
+        env=_git_env(git_dir) | {"GIT_NO_LAZY_FETCH": "1"},
+    )
+    return probe.returncode == 0
+
+
+@posix_only
+@pytest.mark.parametrize("shape", ["unfiltered", "filtered", "filtered-with-tagged-tip"])
+def test_the_filter_check_is_sound_and_does_not_buffer_the_origins_history(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, shape: str
+) -> None:
+    """``old.txt`` lives only in history, so the tip prefetch never fetches it.
+
+    A tag on the tip's blob makes the origin send it despite the filter, which leaves the
+    tip complete while history is not.
+    """
+    _allow_installed_git(monkeypatch)
+    origin = tmp_path / "long"
+    origin.mkdir()
+    _git(origin, "init", "-q", "-b", "topic")
+    (origin / "README").write_text("hello\n", encoding="utf-8")
+    (origin / "old.txt").write_text("only in history\n", encoding="utf-8")
+    _git(origin, "add", ".")
+    _git(origin, "commit", "-qm", "first")
+    old_blob = _rev_parse(origin, "HEAD:old.txt")
+    _git(origin, "rm", "-q", "old.txt")
+    for index in range(40):
+        _git(origin, "commit", "-q", "--allow-empty", "-m", f"commit {index}")
+    if shape != "unfiltered":
+        _git(origin, "config", "uploadpack.allowFilter", "true")
+        _git(origin, "config", "uploadpack.allowAnySHA1InWant", "true")
+    if shape == "filtered-with-tagged-tip":
+        _git(origin, "tag", "tip-blob", _rev_parse(origin, "HEAD:README"))
+    # Forty commit IDs alone are 1,640 bytes: a listing of every reachable object
+    # overflows this cap, and a listing of the missing ones does not.
+    capped = dataclasses.replace(acquire_module.ACQUISITION_POLICY, max_bytes=1024)
+    real_run = acquire_module._run
+
+    async def cap_rev_list(
+        args: list[str],
+        *,
+        cwd: Path | None = None,
+        git_dir: Path | None = None,
+        policy: GitProcessPolicy = acquire_module.ACQUISITION_POLICY,
+        stdin: bytes | None = None,
+    ) -> bytes:
+        if args[0] == "rev-list":
+            policy = capped
+        return await real_run(args, cwd=cwd, git_dir=git_dir, policy=policy, stdin=stdin)
+
+    monkeypatch.setattr(acquire_module, "_run", cap_rev_list)
+    with asyncio.run(acquire_into_staging(_file_source(origin), home=tmp_path / "home")) as staged:
+        honored = not _has_object(staged.git_dir, old_blob)
+        assert staged.strategy == ("blobless" if honored else "full")
+        if shape == "unfiltered":
+            assert not honored
 
 
 def _inodes(path: Path) -> set[int]:
