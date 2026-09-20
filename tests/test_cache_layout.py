@@ -426,8 +426,10 @@ def test_an_older_client_refuses_a_future_home_before_writing(
 
 
 @posix_only
+@pytest.mark.parametrize("prepare", [open_cache, migrate_layout])
 def test_a_shared_future_home_is_refused_before_its_modes_are_tightened(
     cache_home: Path,
+    prepare: Callable[..., object],
 ) -> None:
     """The future-format answer must precede every change, repairs included."""
 
@@ -437,7 +439,7 @@ def test_a_shared_future_home_is_refused_before_its_modes_are_tightened(
     before = _snapshot(cache_home)
 
     with pytest.raises(FutureLayoutFormatError, match="Upgrade Metabrowser"):
-        open_cache(cache_home, version="0.11.0")
+        prepare(cache_home, version="0.11.0")
 
     assert _snapshot(cache_home) == before
 
@@ -456,7 +458,10 @@ def test_a_shared_but_readable_home_is_still_repaired_and_then_prepared(
 
 
 @posix_only
-def test_a_future_home_that_was_never_prepared_stays_uncreated(tmp_path: Path) -> None:
+@pytest.mark.parametrize("prepare", [open_cache, migrate_layout])
+def test_a_future_home_that_was_never_prepared_stays_uncreated(
+    tmp_path: Path, prepare: Callable[..., object]
+) -> None:
     home = tmp_path / "home"
     home.mkdir(mode=0o700)
     write_private_file_atomic(
@@ -469,7 +474,7 @@ def test_a_future_home_that_was_never_prepared_stays_uncreated(tmp_path: Path) -
     before = _snapshot(home)
 
     with pytest.raises(FutureLayoutFormatError):
-        open_cache(home, version="0.11.0")
+        prepare(home, version="0.11.0")
 
     assert _snapshot(home) == before
     assert not (home / "cache").exists()
@@ -669,3 +674,27 @@ def test_open_cache_resolves_metabrowser_home_when_no_home_is_given(
 
     assert opened.home == tmp_path / "chosen"
     assert (tmp_path / "chosen/cache/layout.yml").is_file()
+
+
+@posix_only
+@pytest.mark.parametrize("prepare", [open_cache, migrate_layout])
+@pytest.mark.parametrize(
+    "directory",
+    ["sources", "repository-stores", "quarantine", "provider-bindings", "provider-repositories"],
+)
+def test_unrecognized_durable_cache_is_refused_without_any_mutation(
+    tmp_path: Path, prepare: Callable[..., object], directory: str
+) -> None:
+    home = tmp_path / "home"
+    durable = home / "cache" / directory
+    durable.mkdir(parents=True)
+    home.chmod(0o700)
+    data = durable / "unknown-record"
+    data.write_bytes(b"unrecognized durable data")
+    before = _snapshot(home)
+
+    with pytest.raises(LayoutError, match="no cache/layout.yml"):
+        prepare(home)
+
+    assert _snapshot(home) == before
+    assert data.read_bytes() == b"unrecognized durable data"

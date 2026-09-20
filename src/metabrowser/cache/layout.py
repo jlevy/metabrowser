@@ -268,11 +268,35 @@ def _has_durable_entries(home: Path) -> bool:
         PROVIDER_REPOSITORIES,
     ):
         try:
-            if any(True for _ in os.scandir(home / directory)):
-                return True
+            with os.scandir(home / directory) as entries:
+                if next(entries, None) is not None:
+                    return True
         except FileNotFoundError:
             continue
     return False
+
+
+def _refuse_unrecognized_entries(home: Path) -> None:
+    if _has_durable_entries(home):
+        raise LayoutError(
+            "the cache has entries but no cache/layout.yml, so their format is "
+            "unknown. Move the cache directory aside, or set METABROWSER_HOME to a "
+            "different directory",
+            home / LAYOUT_RECORD,
+        )
+
+
+def _preflight_layout(home: Path, *, history: Sequence[str]) -> None:
+    """Refuse unknown data before locks, skeleton creation, probes, or mode repairs."""
+
+    try:
+        layout = read_layout(home, history=history, shared="keep")
+        read_config(home, history=history, shared="keep")
+    except PrivateStorageError:
+        # The ordinary private-storage path repairs what it owns and refuses the rest.
+        return
+    if layout is None:
+        _refuse_unrecognized_entries(home)
 
 
 def _config_for(
@@ -308,17 +332,12 @@ def migrate_layout(
 
     version = metabrowser.__version__ if version is None else version
     current = history[-1]
+    _preflight_layout(home, history=history)
     with application_home_lock(home):
         layout = read_layout(home, history=history)
         config = read_config(home, history=history)
         if layout is None:
-            if _has_durable_entries(home):
-                raise LayoutError(
-                    "the cache has entries but no cache/layout.yml, so their format is "
-                    "unknown. Move the cache directory aside, or set METABROWSER_HOME to a "
-                    "different directory",
-                    home / LAYOUT_RECORD,
-                )
+            _refuse_unrecognized_entries(home)
             layout = CacheLayout(format=current, created_by=version)
             write_record_atomic(
                 home, LAYOUT_RECORD, layout, CACHE_LAYOUT_CONTRACT_ID, replace=False
@@ -362,19 +381,7 @@ def open_cache(home: Path | None = None, *, version: str | None = None) -> Cache
     """
 
     home = application_home() if home is None else home
-    # Read the layout and config before anything is created or changed, so a home a newer
-    # Metabrowser wrote is refused without a directory, a probe entry, or a lock file
-    # appearing in it, and without its modes or ACLs being tightened first. "keep" is what
-    # makes that true of a shared home as well: it reads the format without touching the
-    # entries, where "refuse" would report the sharing and never reach the format. Both
-    # return None when the home does not exist yet, and anything else this pre-read
-    # refuses falls through to the ordinary path below, which repairs what it owns and
-    # then refuses whatever the repair cannot fix.
-    try:
-        read_layout(home, shared="keep")
-        read_config(home, shared="keep")
-    except PrivateStorageError:
-        pass
+    _preflight_layout(home, history=FORMAT_HISTORY)
     ensure_home(home)
     probe = probe_application_home(home)
     outcome = migrate_layout(home, version=version)
