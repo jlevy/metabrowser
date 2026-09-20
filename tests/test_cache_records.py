@@ -9,8 +9,11 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
+from pydantic import ValidationError
 from softschema import SchemaStatus, SchemaView, compile_model
 
+from metabrowser.cache import atomic as atomic_module
+from metabrowser.cache.atomic import RecordError, parse_record
 from metabrowser.cache.contracts import (
     CACHE_CONTRACT_BY_ID,
     CACHE_CONTRACTS,
@@ -18,14 +21,21 @@ from metabrowser.cache.contracts import (
     ENFORCED_CACHE_CONTRACTS,
     FORMAT_ROOT,
     MAX_CONFIG_REASONS,
+    MAX_RECORD_REASONS,
     cache_contract_registry,
     check_packaged_schemas,
     compile_contracts,
     config_corpus,
     config_reasons,
     parse_application_config,
+    record_reasons,
     repository_cache_capabilities,
     validate_config_values,
+)
+from metabrowser.cache.identity import (
+    SOURCE_ADDRESS_MAX_BYTES,
+    slug_readable_part,
+    source_identity,
 )
 from metabrowser.cache.records import (
     CACHE_LAYOUT_CONTRACT_ID,
@@ -36,6 +46,7 @@ from metabrowser.cache.records import (
     REPOSITORY_STORE_CONTRACT_ID,
     REPOSITORY_STORE_STATE_CONTRACT_ID,
     RepositorySource,
+    RepositoryStoreState,
 )
 from metabrowser.plugin_loader.artifact_contracts import (
     InstalledRegistries,
@@ -291,6 +302,60 @@ def test_a_source_record_is_bound_to_its_identity_material() -> None:
     assert source.slug.endswith(source.id.removeprefix("sha256:")[:12])
     with pytest.raises(ValueError, match="does not match its transport"):
         RepositorySource.model_validate({**record, "clone_url": "https://github.com/pallets/Flask"})
+
+
+def test_record_reasons_name_each_rule_and_quote_none_of_the_record() -> None:
+    """These reasons reach an API response, and a record can hold what the user typed."""
+
+    secret = "ghp-examplesecrettokenvalue"
+    with pytest.raises(ValidationError) as raised:
+        RepositoryStoreState.model_validate(
+            {"configuration_digest": secret, "object_state": secret}
+        )
+
+    reasons = record_reasons(raised.value)
+
+    assert len(reasons) > MAX_RECORD_REASONS
+    assert all(reason.startswith("record.") for reason in reasons)
+    assert not any(secret in reason for reason in reasons)
+    assert not any("errors.pydantic.dev" in reason or "input_value" in reason for reason in reasons)
+
+
+def test_an_invalid_record_is_refused_with_bounded_rules_and_no_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    secret = "2026-09-01T00:00:00.000Z"
+    record = _valid_record(REPOSITORY_STORE_STATE_CONTRACT_ID)
+    record["last_fetch_at"] = secret
+    record["last_operation"]["at"] = secret
+    record["default_revision"] = None
+    payload = _artifact(REPOSITORY_STORE_STATE_CONTRACT_ID, record)
+    monkeypatch.setattr(atomic_module, "MAX_RECORD_REASONS", 1)
+
+    with pytest.raises(RecordError) as refused:
+        parse_record(payload, REPOSITORY_STORE_STATE_CONTRACT_ID, Path("/does/not/matter"))
+
+    message = str(refused.value)
+    assert REPOSITORY_STORE_STATE_CONTRACT_ID in message
+    assert "record.last_fetch_at: " in message
+    assert secret not in message
+    assert "input_value" not in message and "errors.pydantic.dev" not in message
+    # One reason is reported and the rest are counted, never rendered.
+    assert message.count(";") == 0
+    assert message.endswith(" more")
+
+
+def test_identity_refuses_every_address_a_source_record_would_refuse() -> None:
+    """An identity no record can hold is an entry that can be created but never read."""
+
+    address = "file:///" + "a" * (SOURCE_ADDRESS_MAX_BYTES - len("file:///"))
+    over = address + "a"
+
+    assert len(source_identity("file", address)) == len(f"sha256:{'0' * 64}")
+    with pytest.raises(ValueError, match="normalized source address"):
+        source_identity("file", over)
+    with pytest.raises(ValueError, match="normalized source address"):
+        slug_readable_part("file", over)
 
 
 def test_a_large_invalid_config_reports_bounded_value_free_reasons() -> None:

@@ -23,7 +23,14 @@ from metabrowser.cache.urls import GitSource
 from metabrowser.cli.asgi_client import INDEX_READY_TIMEOUT_S
 from metabrowser.cli.common import apply_log_level
 from metabrowser.errors import CLIError
-from metabrowser.git.process import UnsupportedGitVersionError
+from metabrowser.git.process import (
+    GIT_ACQUISITION_TIMEOUT_S,
+    GitError,
+    GitOutputTooLargeError,
+    GitTimeoutError,
+    GitUnavailableError,
+    UnsupportedGitVersionError,
+)
 from metabrowser.home import ApplicationHomeError, PrivateStorageError, application_home
 
 _ACQUIRE_CLI_ERRORS = (
@@ -33,8 +40,32 @@ _ACQUIRE_CLI_ERRORS = (
     LayoutError,
     LockBusyError,
     PrivateStorageError,
-    UnsupportedGitVersionError,
 )
+
+
+def _git_failure_message(exc: GitError) -> str:
+    """A path-free message for *exc*.
+
+    Only the version refusal is written for a user. Every other ``GitError`` message
+    carries the argument vector, which names the staging path, or an ``OSError`` text.
+    A Git failure always abandons staging before it reaches here, so nothing was
+    published.
+    """
+    if isinstance(exc, UnsupportedGitVersionError):
+        return str(exc)
+    if isinstance(exc, GitTimeoutError):
+        return (
+            f"Git did not finish within {GIT_ACQUISITION_TIMEOUT_S:g} s and was stopped; "
+            "nothing was published"
+        )
+    if isinstance(exc, GitOutputTooLargeError):
+        return "Git produced more output than acquisition accepts; nothing was published"
+    if isinstance(exc, GitUnavailableError):
+        return "Git could not be run; check that git is installed and on PATH"
+    return (
+        "a Git command failed during acquisition; nothing was published "
+        "(--log-level debug shows Git's own message)"
+    )
 
 
 def is_cache_inspect_route(route: str) -> bool:
@@ -55,6 +86,8 @@ def acquire_published_source(source: GitSource) -> PublishedSource:
         return asyncio.run(acquire_file_source(source, home=application_home()))
     except _ACQUIRE_CLI_ERRORS as exc:
         raise CLIError(str(exc)) from exc
+    except GitError as exc:
+        raise CLIError(_git_failure_message(exc)) from exc
 
 
 def run_no_serve(root: Path | GitSource, *, log_level: str = "") -> None:
@@ -80,6 +113,9 @@ def run_api_after_acquire(
     plugins_dir: list[Path] | None = None,
     log_level: str = "",
     index_timeout_s: float = INDEX_READY_TIMEOUT_S,
+    untrusted: bool = False,
+    no_active_content: bool = False,
+    allow_edits: bool = False,
 ) -> None:
     """Acquire *source*, then issue a cache route against an empty ASGI root."""
 
@@ -102,4 +138,7 @@ def run_api_after_acquire(
             plugins_dir=plugins_dir,
             log_level=log_level,
             index_timeout_s=index_timeout_s,
+            untrusted=untrusted,
+            no_active_content=no_active_content,
+            allow_edits=allow_edits,
         )

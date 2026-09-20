@@ -21,7 +21,7 @@ This module owns:
   ``/api/index/suffixes`` into one envelope. A Git pin omits mtime
   and watcher fields.
 * ``GET /api/capabilities`` — unified capability surface with
-  filesystem-type-driven watcher status.
+  filesystem-type-driven watcher status and the content-trust block.
   A Git pin reports a complete index and ``events.stream`` off rather than
   the lifespan folder's watcher.
 * :func:`build_lifespan` — Starlette lifespan context manager
@@ -54,6 +54,7 @@ from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
 
 from metabrowser.active_tracker import run_active_tracker
+from metabrowser.capabilities import get_capabilities
 from metabrowser.events import (
     CapabilityUpdate,
     CatalogChange,
@@ -1417,7 +1418,7 @@ async def api_index_meta(request: Request) -> Response:
 
 
 async def api_capabilities(request: Request) -> JSONResponse:
-    """Return the selected provider's reported observation capability."""
+    """Return watcher status, index summary, and the content-trust block."""
 
     subject = _git_revision_subject()
     if subject is not None:
@@ -1465,6 +1466,7 @@ async def api_capabilities(request: Request) -> JSONResponse:
             "stream": stream_status,
             "reason": stream_reason,
         },
+        "capabilities": get_capabilities().as_wire(),
     }
     return JSONResponse(payload)
 

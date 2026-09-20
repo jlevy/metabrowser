@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import os
 import shutil
 import stat
@@ -15,6 +16,7 @@ from metabrowser.cache import acquire as acquire_module
 from metabrowser.cache.acquire import (
     AcquisitionError,
     RemoteUnavailableError,
+    ValidationFailedError,
     acquire_file_source,
     acquire_into_staging,
 )
@@ -166,6 +168,226 @@ def test_racing_acquisitions_return_the_selected_stores_revision(
     assert reused == winner
     _git(reused.git_dir, "cat-file", "-e", reused.default_revision)
     assert asyncio.run(acquire_file_source(source, home=home)) == winner
+
+
+@posix_only
+def test_an_ordinary_non_bare_clone_acquires_through_its_own_head(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A clone also advertises ``refs/remotes/origin/HEAD``; only ``HEAD`` names the branch."""
+    _allow_installed_git(monkeypatch)
+    upstream = _origin(tmp_path, allow_filter=False)
+    clone = tmp_path / "clone"
+    _git(tmp_path, "clone", "-q", "--template=", "--", str(upstream), str(clone))
+    _git(clone, "checkout", "-q", "-b", "local-work")
+    advertised = subprocess.run(
+        ["git", "ls-remote", "--symref", "--", str(clone), "HEAD"],
+        check=True,
+        capture_output=True,
+        env=_git_env(clone),
+        text=True,
+    ).stdout
+    assert "ref: refs/remotes/origin/topic\trefs/remotes/origin/HEAD" in advertised
+    published = asyncio.run(acquire_file_source(_file_source(clone), home=tmp_path / "home"))
+    assert published.default_remote_ref == "refs/remotes/origin/local-work"
+    _git(published.git_dir, "cat-file", "-e", published.default_revision)
+
+
+def _rev_parse(root: Path, revision: str) -> str:
+    return subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "--verify", revision],
+        check=True,
+        capture_output=True,
+        env=_git_env(root),
+        text=True,
+    ).stdout.strip()
+
+
+@posix_only
+def test_a_hostile_symref_named_head_does_not_choose_the_published_branch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _allow_installed_git(monkeypatch)
+    hostile = tmp_path / "hostile"
+    hostile.mkdir()
+    _git(hostile, "init", "-q", "-b", "trunk")
+    (hostile / "README").write_text("trunk\n", encoding="utf-8")
+    _git(hostile, "add", "README")
+    _git(hostile, "commit", "-qm", "trunk commit")
+    _git(hostile, "checkout", "-q", "-b", "decoy")
+    (hostile / "other").write_text("decoy\n", encoding="utf-8")
+    _git(hostile, "add", "other")
+    _git(hostile, "commit", "-qm", "decoy commit")
+    _git(hostile, "checkout", "-q", "trunk")
+    _git(hostile, "symbolic-ref", "refs/heads/zz/HEAD", "refs/heads/decoy")
+    published = asyncio.run(acquire_file_source(_file_source(hostile), home=tmp_path / "home"))
+    assert published.default_remote_ref == "refs/remotes/origin/trunk"
+    assert published.default_revision == _rev_parse(hostile, "refs/heads/trunk")
+    assert _rev_parse(published.git_dir, published.default_remote_ref) == (
+        published.default_revision
+    )
+
+
+@posix_only
+def test_a_default_branch_that_does_not_resolve_to_the_observed_head_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The origin moves its branch after HEAD was observed and before the fetch."""
+    _allow_installed_git(monkeypatch)
+    origin = _origin(tmp_path, allow_filter=False)
+    work = tmp_path / "work"
+    home = tmp_path / "home"
+    real_run = acquire_module._run
+
+    async def move_branch_after_observation(
+        args: list[str],
+        *,
+        cwd: Path | None = None,
+        git_dir: Path | None = None,
+        policy: GitProcessPolicy = acquire_module.ACQUISITION_POLICY,
+        stdin: bytes | None = None,
+    ) -> bytes:
+        result = await real_run(args, cwd=cwd, git_dir=git_dir, policy=policy, stdin=stdin)
+        if "ls-remote" in args:
+            _git(work, "commit", "-q", "--allow-empty", "-m", "moved")
+            _git(work, "push", "-q", str(origin), "topic")
+        return result
+
+    monkeypatch.setattr(acquire_module, "_run", move_branch_after_observation)
+    with pytest.raises(ValidationFailedError, match="default branch"):
+        asyncio.run(acquire_file_source(_file_source(origin), home=home))
+    assert list((home / "cache" / "staging").iterdir()) == []
+    assert list((home / "cache" / "sources").iterdir()) == []
+    assert list((home / "cache" / "repository-stores").iterdir()) == []
+
+
+@posix_only
+def test_ambient_git_variables_do_not_steer_an_acquisition(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An allowlist naming only https would refuse file://; reftable would change the store."""
+    _allow_installed_git(monkeypatch)
+    origin = _origin(tmp_path, allow_filter=False)
+    monkeypatch.setenv("GIT_ALLOW_PROTOCOL", "https")
+    monkeypatch.setenv("GIT_DEFAULT_REF_FORMAT", "reftable")
+    published = asyncio.run(acquire_file_source(_file_source(origin), home=tmp_path / "home"))
+    config = (published.git_dir / "config").read_text(encoding="utf-8").lower()
+    assert "refstorage" not in config
+    assert not (published.git_dir / "reftable").exists()
+
+
+@posix_only
+@pytest.mark.parametrize("nested", ["nested-home", "."])
+def test_a_repository_enclosing_the_cache_home_does_not_rewrite_the_origin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, nested: str
+) -> None:
+    """A repository around the home, or the home itself, must not lend its config."""
+    _allow_installed_git(monkeypatch)
+    real = _origin(tmp_path, allow_filter=False)
+    decoy = tmp_path / "decoy"
+    decoy.mkdir()
+    _git(decoy, "init", "-q", "-b", "decoy-branch")
+    _git(decoy, "commit", "-q", "--allow-empty", "-m", "decoy")
+    outer = tmp_path / "outer"
+    outer.mkdir(mode=0o700)
+    _git(outer, "init", "-q", "-b", "main")
+    source = _file_source(real)
+    _git(outer, "config", f"url.file://{decoy.resolve()}.insteadOf", source.normalized)
+    published = asyncio.run(acquire_file_source(source, home=outer / nested))
+    assert published.default_remote_ref == "refs/remotes/origin/topic"
+    assert published.default_revision == _rev_parse(real, "refs/heads/topic")
+
+
+@posix_only
+def test_a_detached_head_origin_is_refused_before_anything_is_fetched(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _allow_installed_git(monkeypatch)
+    _origin(tmp_path, allow_filter=False)
+    work = tmp_path / "work"
+    _git(work, "checkout", "-q", "--detach")
+    home = tmp_path / "home"
+    commands: list[list[str]] = []
+    real_run = acquire_module._run
+
+    async def record(
+        args: list[str],
+        *,
+        cwd: Path | None = None,
+        git_dir: Path | None = None,
+        policy: GitProcessPolicy = acquire_module.ACQUISITION_POLICY,
+        stdin: bytes | None = None,
+    ) -> bytes:
+        commands.append(args)
+        return await real_run(args, cwd=cwd, git_dir=git_dir, policy=policy, stdin=stdin)
+
+    monkeypatch.setattr(acquire_module, "_run", record)
+    with pytest.raises(ValidationFailedError, match="not a branch"):
+        asyncio.run(acquire_file_source(_file_source(work), home=home))
+    assert len(commands) == 1 and "ls-remote" in commands[0]
+    assert list((home / "cache" / "staging").iterdir()) == []
+
+
+def _has_object(git_dir: Path, oid: str) -> bool:
+    probe = subprocess.run(
+        ["git", "--git-dir", str(git_dir), "cat-file", "-e", oid],
+        check=False,
+        capture_output=True,
+        env=_git_env(git_dir) | {"GIT_NO_LAZY_FETCH": "1"},
+    )
+    return probe.returncode == 0
+
+
+@posix_only
+@pytest.mark.parametrize("shape", ["unfiltered", "filtered", "filtered-with-tagged-tip"])
+def test_the_filter_check_is_sound_and_does_not_buffer_the_origins_history(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, shape: str
+) -> None:
+    """``old.txt`` lives only in history, so the tip prefetch never fetches it.
+
+    A tag on the tip's blob makes the origin send it despite the filter, which leaves the
+    tip complete while history is not.
+    """
+    _allow_installed_git(monkeypatch)
+    origin = tmp_path / "long"
+    origin.mkdir()
+    _git(origin, "init", "-q", "-b", "topic")
+    (origin / "README").write_text("hello\n", encoding="utf-8")
+    (origin / "old.txt").write_text("only in history\n", encoding="utf-8")
+    _git(origin, "add", ".")
+    _git(origin, "commit", "-qm", "first")
+    old_blob = _rev_parse(origin, "HEAD:old.txt")
+    _git(origin, "rm", "-q", "old.txt")
+    for index in range(40):
+        _git(origin, "commit", "-q", "--allow-empty", "-m", f"commit {index}")
+    if shape != "unfiltered":
+        _git(origin, "config", "uploadpack.allowFilter", "true")
+        _git(origin, "config", "uploadpack.allowAnySHA1InWant", "true")
+    if shape == "filtered-with-tagged-tip":
+        _git(origin, "tag", "tip-blob", _rev_parse(origin, "HEAD:README"))
+    # Forty commit IDs alone are 1,640 bytes: a listing of every reachable object
+    # overflows this cap, and a listing of the missing ones does not.
+    capped = dataclasses.replace(acquire_module.ACQUISITION_POLICY, max_bytes=1024)
+    real_run = acquire_module._run
+
+    async def cap_rev_list(
+        args: list[str],
+        *,
+        cwd: Path | None = None,
+        git_dir: Path | None = None,
+        policy: GitProcessPolicy = acquire_module.ACQUISITION_POLICY,
+        stdin: bytes | None = None,
+    ) -> bytes:
+        if args[0] == "rev-list":
+            policy = capped
+        return await real_run(args, cwd=cwd, git_dir=git_dir, policy=policy, stdin=stdin)
+
+    monkeypatch.setattr(acquire_module, "_run", cap_rev_list)
+    with asyncio.run(acquire_into_staging(_file_source(origin), home=tmp_path / "home")) as staged:
+        honored = not _has_object(staged.git_dir, old_blob)
+        assert staged.strategy == ("blobless" if honored else "full")
+        if shape == "unfiltered":
+            assert not honored
 
 
 def _inodes(path: Path) -> set[int]:

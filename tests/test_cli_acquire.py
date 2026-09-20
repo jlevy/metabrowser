@@ -9,10 +9,17 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+from metabrowser.cache import acquire as acquire_module
 from metabrowser.cache.paths import SOURCES, STAGING, source_record
 from metabrowser.cli.main import _app
 from metabrowser.errors import CLIError
 from metabrowser.git.process import (
+    GitCommandError,
+    GitError,
+    GitOutputTooLargeError,
+    GitProcessPolicy,
+    GitTimeoutError,
+    GitUnavailableError,
     UnsupportedGitVersionError,
     acquisition_allowed,
     detect_git_version,
@@ -94,6 +101,26 @@ def test_file_url_api_cache_layout_acquires_then_inspects(
     assert listed.exit_code == 0, listed.output
     assert slug in listed.output
     assert '"publication": "published"' in listed.output
+
+
+@posix_only
+def test_file_url_api_applies_the_content_trust_flags(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``--untrusted`` reaches the capability block on the acquire path too.
+
+    ``--api`` accepts the content-trust flags, so accepting them and then not
+    applying them on a ``file://`` source would drop the operator's decision
+    silently.
+    """
+    from metabrowser.capabilities import get_capabilities
+
+    _isolate_home(tmp_path, monkeypatch)
+    url = _file_url(_origin(tmp_path, allow_filter=False))
+    result = runner.invoke(_app, [url, "--api", "/api/cache/layout", "--untrusted"])
+    assert result.exit_code == 0, result.output
+    assert get_capabilities().active_content is False
+    assert get_capabilities().mutations is False
 
 
 @posix_only
@@ -270,3 +297,53 @@ def test_no_serve_miss_against_a_home_without_owner_write_does_not_fetch(
         assert {path.name for path in (home / SOURCES).iterdir() if path.is_dir()} == sources_before
     finally:
         _restore_owner_write(home)
+
+
+def _git_failure(kind: str, args: list[str]) -> GitError:
+    """The error ``run_git`` raises for *kind*, with its real path-bearing message."""
+    command = " ".join(args)
+    if kind == "timeout":
+        return GitTimeoutError(f"git {command} exceeded 900s and was terminated")
+    if kind == "too-large":
+        return GitOutputTooLargeError(f"git {command} produced more than 1 bytes on stdout")
+    if kind == "unavailable":
+        return GitUnavailableError(f"could not run git: [Errno 2] No such file: {args[-1]!r}")
+    return GitCommandError(args, 128, f"fatal: cannot mkdir {args[-1]}")
+
+
+@posix_only
+def test_git_failures_during_acquisition_are_distinct_path_free_cli_errors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = _isolate_home(tmp_path, monkeypatch)
+    url = _file_url(_origin(tmp_path, allow_filter=False))
+    real_run = acquire_module._run
+    messages: dict[str, str] = {}
+    for kind in ("timeout", "too-large", "unavailable", "command"):
+
+        async def fail_init(
+            args: list[str],
+            *,
+            cwd: Path | None = None,
+            git_dir: Path | None = None,
+            policy: GitProcessPolicy = acquire_module.ACQUISITION_POLICY,
+            stdin: bytes | None = None,
+            kind: str = kind,
+        ) -> bytes:
+            if args[0] == "init":
+                raise _git_failure(kind, args)
+            return await real_run(args, cwd=cwd, git_dir=git_dir, policy=policy, stdin=stdin)
+
+        monkeypatch.setattr(acquire_module, "_run", fail_init)
+        result = runner.invoke(_app, [url, "--no-serve"])
+        assert isinstance(result.exception, CLIError), (kind, result.exception)
+        assert isinstance(result.exception.__cause__, GitError)
+        message = str(result.exception)
+        assert str(tmp_path) not in message
+        assert str(tmp_path.resolve()) not in message
+        assert "repository.git" not in message
+        assert list((home / STAGING).iterdir()) == []
+        assert list((home / SOURCES).iterdir()) == []
+        messages[kind] = message
+    assert len(set(messages.values())) == len(messages)
+    assert "900" in messages["timeout"]

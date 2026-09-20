@@ -162,7 +162,14 @@ class FilesystemContentSource:
     def _resolve_native(self, identity: str, native: str) -> ContentHandle | None:
         if not native:
             return ContentHandle.from_path(identity, self._root)
-        target = (self._root / native).resolve()
+        try:
+            target = (self._root / native).resolve()
+        except ValueError:
+            # A name the platform cannot express at all -- an embedded NUL,
+            # which `/raw/a%00b` decodes to -- makes `resolve` raise before
+            # any syscall. That is the same answer as traversal: there is no
+            # such file under this root, so it is a refusal, not a crash.
+            return None
         if not _is_within(target, self._root):
             return None
         return ContentHandle.from_path(identity, target)

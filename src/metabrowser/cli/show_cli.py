@@ -199,10 +199,20 @@ async def ashow_active(
     index_timeout_s: float = INDEX_READY_TIMEOUT_S,
     normalize_root: Path,
     filesystem_root: Path | None,
+    untrusted: bool = False,
+    no_active_content: bool = False,
+    allow_edits: bool = False,
 ) -> None:
     """Report one selection against the already-attached subject."""
 
     load_dotenv_chain()
+    from metabrowser.capabilities import apply_capabilities
+
+    apply_capabilities(
+        untrusted=untrusted,
+        no_active_content=no_active_content,
+        allow_edits=allow_edits,
+    )
     apply_log_level(log_level)
     display_path = _display_selection(path)
     _prepare_plugins(plugins_dir)
@@ -332,6 +342,9 @@ def run_show_active(
     index_timeout_s: float = INDEX_READY_TIMEOUT_S,
     normalize_root: Path,
     filesystem_root: Path | None,
+    untrusted: bool = False,
+    no_active_content: bool = False,
+    allow_edits: bool = False,
 ) -> None:
     asyncio.run(
         ashow_active(
@@ -342,6 +355,9 @@ def run_show_active(
             index_timeout_s=index_timeout_s,
             normalize_root=normalize_root,
             filesystem_root=filesystem_root,
+            untrusted=untrusted,
+            no_active_content=no_active_content,
+            allow_edits=allow_edits,
         )
     )
 
@@ -354,6 +370,9 @@ def run_show(
     plugins_dir: list[Path] | None = None,
     log_level: str = "",
     index_timeout_s: float = INDEX_READY_TIMEOUT_S,
+    untrusted: bool = False,
+    no_active_content: bool = False,
+    allow_edits: bool = False,
 ) -> None:
     """Report route, kind, views, and model summary for one filesystem selection."""
 
@@ -371,4 +390,7 @@ def run_show(
         index_timeout_s=index_timeout_s,
         normalize_root=resolved,
         filesystem_root=resolved,
+        untrusted=untrusted,
+        no_active_content=no_active_content,
+        allow_edits=allow_edits,
     )

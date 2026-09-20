@@ -35,6 +35,11 @@ STORE_IDENTITY_DOMAIN: Final = "metabrowser.repository-store.v1"
 IDENTITY_PREFIX: Final = "sha256:"
 STORE_KEY_HEX_DIGITS: Final = 64
 
+# The bound the record and its packaged schema hold `display_url` and `clone_url` to.
+# Deriving an identity from an address no record could carry would publish an entry that
+# can be created and never read back, so both refuse the same addresses.
+SOURCE_ADDRESS_MAX_BYTES: Final = 2048
+
 SLUG_TOKEN_SEPARATOR: Final = "--"
 SLUG_READABLE_MAX_BYTES: Final = 96
 SLUG_EMPTY_READABLE: Final = "source"
@@ -49,7 +54,6 @@ _IDENTITY_RE: Final = re.compile(r"^sha256:[0-9a-f]{64}$")
 _STORE_KEY_RE: Final = re.compile(r"^[0-9a-f]{64}$")
 _SLUG_RE: Final = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*(?:--[a-z0-9]+(?:-[a-z0-9]+)*)*$")
 _FOLD_RE: Final = re.compile(r"[^a-z0-9]+")
-_ADDRESS_MAX_BYTES: Final = 4096
 
 
 class SlugCollisionError(RuntimeError):
@@ -64,7 +68,7 @@ def _require_address(normalized_address: str) -> None:
     if (
         not normalized_address
         or not normalized_address.isascii()
-        or len(normalized_address) > _ADDRESS_MAX_BYTES
+        or len(normalized_address) > SOURCE_ADDRESS_MAX_BYTES
         or any(ord(character) < 0x21 or ord(character) == 0x7F for character in normalized_address)
     ):
         raise ValueError(
@@ -259,6 +263,7 @@ __all__ = [
     "SLUG_READABLE_MAX_BYTES",
     "SLUG_SUFFIX_HEX_DIGITS",
     "SLUG_TOKEN_SEPARATOR",
+    "SOURCE_ADDRESS_MAX_BYTES",
     "SOURCE_IDENTITY_DOMAIN",
     "STORE_IDENTITY_DOMAIN",
     "STORE_KEY_HEX_DIGITS",

@@ -77,6 +77,16 @@ log = logging.getLogger(__name__)
 
 _ENTRY_ATTEMPTS: Final = 4
 _LOCK_SUFFIX: Final = ".lock"
+# A repair unblocks one directory, and rmtree does not revisit what it already skipped,
+# so the walk is repeated while it keeps repairing something. Each round is bounded by
+# the tree; the loop only has to outlast the nesting a crashed clone can leave.
+_REMOVE_ATTEMPTS: Final = 8
+# The rmtree calls that need owner access on the path they name rather than on the
+# directory that holds it: opening and scanning read the directory itself, while
+# unlinking, removing, and inspecting a name are permitted by its parent.
+_DIRECTORY_READS: Final[frozenset[object]] = frozenset({os.open, os.scandir})
+# Setting a mode without following a link needs lchmod, which POSIX does not require.
+_LINK_SAFE_CHMOD: Final = os.chmod in os.supports_follow_symlinks
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,17 +107,59 @@ def _emit(observer: MachineObserver | None, machine: str, event: str) -> None:
         observer(MachineEvent(machine, event, holds))
 
 
-def _remove_tree(path: Path) -> bool:
-    """Delete an entry below the home without following links; ``False`` on failure."""
+def _grant_owner_access(directory: str) -> bool:
+    """Restore owner access to *directory*; whether anything was widened.
 
-    def make_writable_and_retry(
-        function: Callable[[str], object], failed: str, error: BaseException
+    The mode is read and set through a descriptor of the directory that holds it, so
+    the repair cannot leave the entry being deleted, and an entry that is not a
+    directory any more is left alone rather than widened.
+    """
+
+    parent, _, name = directory.rpartition(os.sep)
+    parent_fd = os.open(
+        parent or os.sep, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    )
+    try:
+        status = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+        mode = stat.S_IMODE(status.st_mode)
+        if not stat.S_ISDIR(status.st_mode) or mode & stat.S_IRWXU == stat.S_IRWXU:
+            return False
+        if _LINK_SAFE_CHMOD:
+            os.chmod(name, mode | stat.S_IRWXU, dir_fd=parent_fd, follow_symlinks=False)
+        else:
+            # Only the owner can write this directory, and the entry was just seen not
+            # to be a link, so the name cannot have become one under the same lock.
+            os.chmod(name, mode | stat.S_IRWXU, dir_fd=parent_fd)
+        return True
+    finally:
+        os.close(parent_fd)
+
+
+def _remove_tree(path: Path) -> bool:
+    """Delete an entry below the home without following links; ``False`` on failure.
+
+    A crashed acquisition can leave a directory its owner cannot search or read, which
+    ``rmtree`` reports through the call that failed and then walks past. Owner access is
+    restored on what blocked that call and the walk is repeated, so the entry goes in
+    this sweep rather than in some later one. ``rmtree`` raises nothing of its own once
+    it has an ``onexc`` handler, so the handler must not raise either: anything left
+    behind is reported here, and the next sweep retries the entry.
+    """
+
+    def restore_owner_access(
+        function: Callable[..., object], failed: str, error: BaseException
     ) -> None:
         if not isinstance(error, PermissionError):
-            raise error
-        parent = os.path.dirname(failed)
-        os.chmod(parent, stat.S_IMODE(os.lstat(parent).st_mode) | stat.S_IRWXU)
-        function(failed)
+            # A directory this round walked past is reported here as "not empty", which
+            # the next round settles, so only a failure that outlives them is logged.
+            refused.append(error)
+            return
+        blocked = failed if function in _DIRECTORY_READS else os.path.dirname(failed)
+        try:
+            if _grant_owner_access(blocked):
+                repaired.append(blocked)
+        except OSError as repair_error:
+            refused.append(repair_error)
 
     try:
         status = os.lstat(path)
@@ -116,15 +168,32 @@ def _remove_tree(path: Path) -> bool:
     except OSError:
         log.warning("Could not inspect a cache entry; the next sweep retries it", exc_info=True)
         return False
-    try:
-        if stat.S_ISDIR(status.st_mode):
-            shutil.rmtree(path, onexc=make_writable_and_retry)
-        else:
+    if not stat.S_ISDIR(status.st_mode):
+        try:
             os.unlink(path)
-    except OSError:
-        log.warning("Could not remove a cache entry; the next sweep retries it", exc_info=True)
-        return False
-    return True
+        except OSError:
+            log.warning("Could not remove a cache entry; the next sweep retries it", exc_info=True)
+            return False
+        return True
+    repaired: list[str] = []
+    refused: list[BaseException] = []
+    for _ in range(_REMOVE_ATTEMPTS):
+        rounds = len(repaired)
+        refused.clear()
+        try:
+            shutil.rmtree(path, onexc=restore_owner_access)
+        except OSError as error:
+            refused.append(error)
+            break
+        if not os.path.lexists(path):
+            return True
+        if len(repaired) == rounds:
+            break
+    log.warning(
+        "Could not remove a cache entry; the next sweep retries it",
+        exc_info=refused[0] if refused else None,
+    )
+    return False
 
 
 # ── Startup sweep ──────────────────────────────────────────────────
@@ -323,23 +392,23 @@ class StoreReclamation(StrEnum):
     DELETE_FAILED = "delete_failed"
 
 
-def store_is_referenced(home: Path, store_key: str) -> bool:
-    """Whether any alias names the store, failing safe on anything it cannot read.
+def _referenced_store_ids(home: Path) -> frozenset[str] | None:
+    """The store IDs the source aliases name, or None when every store must count.
 
-    Aliases that name a store are written under that store's lease, so a caller holding
-    its exclusive maintenance lock sees a stable answer.
+    Fails safe: provider data, a source entry that is not a slug, or an alias that
+    cannot be read or validated may name any store.
     """
 
     for directory in (PROVIDER_BINDINGS, PROVIDER_REPOSITORIES):
         try:
             if any(True for _ in os.scandir(home / directory)):
-                return True
+                return None
         except FileNotFoundError:
             continue
-    store_id = f"{IDENTITY_PREFIX}{store_key}"
+    named: set[str] = set()
     for entry in os.scandir(home / SOURCES):
         if not is_slug(entry.name):
-            return True
+            return None
         try:
             alias = read_record(
                 home,
@@ -349,10 +418,22 @@ def store_is_referenced(home: Path, store_key: str) -> bool:
         except FileNotFoundError:
             continue
         except (RecordError, PrivateStorageError, OSError):
-            return True
-        if not isinstance(alias, RepositoryStoreAlias) or alias.store_id == store_id:
-            return True
-    return False
+            return None
+        if not isinstance(alias, RepositoryStoreAlias):
+            return None
+        named.add(alias.store_id)
+    return frozenset(named)
+
+
+def store_is_referenced(home: Path, store_key: str) -> bool:
+    """Whether any alias names the store, failing safe on anything it cannot read.
+
+    Aliases that name a store are written under that store's lease, so a caller holding
+    its exclusive maintenance lock sees a stable answer.
+    """
+
+    named = _referenced_store_ids(home)
+    return named is None or f"{IDENTITY_PREFIX}{store_key}" in named
 
 
 def reclaim_store(
@@ -402,11 +483,16 @@ def reclaim_unreferenced_stores(
         names = sorted(entry.name for entry in os.scandir(home / REPOSITORY_STORES))
     except FileNotFoundError:
         return ()
+    # One pass over the aliases picks the candidates, so a cache open reads each alias
+    # once instead of once per store. The pass holds no lock and decides nothing:
+    # ``reclaim_store`` checks each candidate again under its maintenance and store locks.
+    keys = [name for name in names if is_store_key(name)]
+    named = _referenced_store_ids(home) if keys else None
+    if named is None:
+        return ()
     reclaimed: list[str] = []
-    for name in names:
-        if not is_store_key(name):
-            continue
-        if store_is_referenced(home, name):
+    for name in keys:
+        if f"{IDENTITY_PREFIX}{name}" in named:
             continue
         try:
             outcome = reclaim_store(home, name, observer=observer)

@@ -28,6 +28,7 @@ from pydantic import (
 )
 
 from metabrowser.cache.identity import (
+    SOURCE_ADDRESS_MAX_BYTES,
     GitTransport,
     ObjectFormat,
     is_slug,
@@ -52,7 +53,6 @@ REPOSITORY_STORE_STATE_CONTRACT_ID: Final = (
 MAX_SAFE_INTEGER: Final = 9_007_199_254_740_991
 # A layout format is `f` and at least two decimal digits, so formats order by number.
 LAYOUT_FORMAT_PATTERN: Final = r"^f[0-9]{2,}$"
-_URL_MAX_LENGTH: Final = 2048
 _GIT_REF_MAX_LENGTH: Final = 1024
 # Portable across JSON Schema engines, so it is also the structural pattern.
 _RFC3339_UTC_PATTERN: Final = (
@@ -103,9 +103,9 @@ type MetabrowserVersion = Annotated[
     str, StringConstraints(min_length=1, max_length=128, pattern=r"^[0-9A-Za-z.+!_-]+$")
 ]
 # Printable ASCII without whitespace: the credential-free spellings the root-argument
-# grammar accepts.
+# grammar accepts, bounded exactly as identity derivation bounds them.
 type SourceAddress = Annotated[
-    str, StringConstraints(min_length=1, max_length=_URL_MAX_LENGTH, pattern=r"^[!-~]+$")
+    str, StringConstraints(min_length=1, max_length=SOURCE_ADDRESS_MAX_BYTES, pattern=r"^[!-~]+$")
 ]
 type GitRefName = Annotated[
     str,

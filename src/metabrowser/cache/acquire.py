@@ -62,6 +62,7 @@ from metabrowser.git.process import (
     ACQUISITION_POLICY,
     FETCH_POLICY,
     GitCommandError,
+    GitOutputTooLargeError,
     GitProcessPolicy,
     repository_store_target,
     require_acquisition_git,
@@ -180,15 +181,18 @@ async def _run(
 
 
 def _parse_symref_head(stdout: bytes) -> tuple[str | None, str]:
+    # The ``HEAD`` pattern also matches any ref whose last component is HEAD, such as
+    # a clone's ``refs/remotes/origin/HEAD``. Only the ref named exactly HEAD counts.
     ref: str | None = None
     oid: str | None = None
     for line in stdout.decode("ascii", errors="replace").splitlines():
-        if line.startswith("ref:"):
-            payload, _, _name = line.partition("\t")
-            ref = payload.removeprefix("ref:").strip()
+        payload, _, name = line.partition("\t")
+        if name != "HEAD":
             continue
-        if line.endswith("\tHEAD"):
-            oid = line.split("\t", 1)[0].strip()
+        if payload.startswith("ref:"):
+            ref = payload.removeprefix("ref:").strip()
+        else:
+            oid = payload.strip()
     if oid is None or not is_full_revision(oid):
         raise RemoteUnavailableError("the source did not advertise HEAD")
     return ref, oid
@@ -200,14 +204,54 @@ def _remote_tracking_ref(head_ref: str | None) -> str | None:
     return "refs/remotes/origin/" + head_ref.removeprefix("refs/heads/")
 
 
+async def _require_ref_at(git_dir: Path, ref: str, revision: str) -> None:
+    """Refuse a record whose branch is not the pinned commit in the fetched store.
+
+    The ref name came from an untrusted origin. ``show-ref --verify`` takes an exact
+    ref path, so the name is never parsed as revision syntax. *revision* is already
+    known to be a commit, so equal object IDs mean the ref resolves to that commit.
+    """
+    try:
+        shown = await _run(["show-ref", "--verify", "--", ref], git_dir=git_dir)
+    except GitCommandError as exc:
+        raise ValidationFailedError("the default branch was not fetched") from exc
+    if shown.split(b" ", 1)[0].decode("ascii", errors="replace") != revision:
+        raise ValidationFailedError("the default branch does not resolve to the observed HEAD")
+
+
 async def _configuration_digest(git_dir: Path) -> str:
     raw = await _run(["config", "--file", str(git_dir / "config"), "--list", "-z"], git_dir=git_dir)
     return "sha256:" + hashlib.sha256(raw).hexdigest()
 
 
-async def _filter_honored(git_dir: Path, revision: str) -> bool:
-    listing = await _run(["rev-list", "--objects", "--missing=print", revision], git_dir=git_dir)
+async def _missing_objects(git_dir: Path, *scope: str) -> bool:
+    # ``--quiet`` drops every object that is present, so the output is only the
+    # ``?<oid>`` lines and its size does not grow with the objects that were fetched.
+    listing = await _run(
+        ["rev-list", "--quiet", "--objects", "--missing=print", *scope], git_dir=git_dir
+    )
     return any(line.startswith(b"?") for line in listing.splitlines())
+
+
+async def _filter_honored(git_dir: Path, revision: str) -> bool:
+    """Return True when the fetch left objects out, so the store is blobless.
+
+    ``blob:none`` on a first fetch omits every blob, so an origin that honored it
+    shows a missing blob in the pinned commit's own tree. That answer costs one
+    tree, whatever the history holds, and it is the usual one.
+
+    A complete tip proves nothing about history: an origin can tag the tip's blobs,
+    and a wanted object is sent despite the filter. Recording ``full`` claims every
+    reachable object, so that claim alone pays for the walk over history, after a
+    fetch that already transferred and indexed all of it. Either listing holds only
+    missing objects, so overflowing the output cap means many are missing.
+    """
+    try:
+        return await _missing_objects(git_dir, "--no-walk", revision) or await _missing_objects(
+            git_dir, revision
+        )
+    except GitOutputTooLargeError:
+        return True
 
 
 async def _tree_blob_oids(git_dir: Path, revision: str) -> tuple[str, ...]:
@@ -278,17 +322,28 @@ async def acquire_into_staging(source: GitSource, *, home: Path) -> StagingAcqui
     cache = open_cache(home)
     home = cache.home
     entry, lock = _claim_staging(home)
-    git_dir = home / staging_entry(entry) / "repository.git"
+    # Commands that run before the store exists start in the claimed staging entry, not
+    # the home. Discovery stops at the working directory, and this one is private, new,
+    # and never a repository, so neither the home nor anything enclosing it lends config.
+    staging = home / staging_entry(entry)
+    git_dir = staging / "repository.git"
     try:
         try:
             observed = await _run(
                 [*_PROTOCOL, "ls-remote", "--symref", "--", source.normalized, "HEAD"],
-                cwd=home,
+                cwd=staging,
             )
         except GitCommandError as exc:
             raise RemoteUnavailableError("the source did not advertise HEAD") from exc
         head_ref, revision = _parse_symref_head(observed)
+        default_remote_ref = _remote_tracking_ref(head_ref)
+        if default_remote_ref is None:
+            # Publication needs a branch. Refuse here, before the fetch is paid for.
+            raise ValidationFailedError("the source HEAD is not a branch")
         advertised_format = "sha256" if len(revision) == 64 else "sha1"
+        # No ``--ref-format=files``: the flag arrived in Git 2.45 and the admitted
+        # floor is 2.43. The isolated environment drops GIT_DEFAULT_REF_FORMAT and
+        # reads no user configuration, so nothing ambient selects reftable.
         await _run(
             [
                 "init",
@@ -298,7 +353,7 @@ async def acquire_into_staging(source: GitSource, *, home: Path) -> StagingAcqui
                 "-q",
                 str(git_dir),
             ],
-            cwd=home,
+            cwd=staging,
         )
         for key, value in _STORE_CONFIG:
             await _run(["config", key, value], git_dir=git_dir)
@@ -327,6 +382,7 @@ async def acquire_into_staging(source: GitSource, *, home: Path) -> StagingAcqui
             raise ValidationFailedError("the observed HEAD did not validate") from exc
         if kind != b"commit":
             raise ValidationFailedError("the observed HEAD is not a commit")
+        await _require_ref_at(git_dir, default_remote_ref, revision)
         object_format_name = object_format_raw.decode("ascii")
         if object_format_name not in {"sha1", "sha256"}:
             raise ValidationFailedError("unsupported object format")
@@ -346,7 +402,7 @@ async def acquire_into_staging(source: GitSource, *, home: Path) -> StagingAcqui
             object_format=object_format,
             strategy=strategy,
             configuration_digest=digest,
-            default_remote_ref=_remote_tracking_ref(head_ref),
+            default_remote_ref=default_remote_ref,
             default_revision=revision,
             git_version=git_version,
             _lock=lock,

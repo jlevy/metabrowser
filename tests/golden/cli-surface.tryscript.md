@@ -81,43 +81,68 @@ $ metab --help
 │                     (--api only).                                            │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Shared by multiple modes (each option names its modes) ─────────────────────╮
-│ --path                 TEXT              Serve: relative path from ROOT to   │
-│                                          select on launch. Walk: subtree for │
-│                                          a JSON/YAML all-at-once tree        │
-│                                          envelope. Remote: remote directory  │
-│                                          to serve (required).                │
-│ --no-open                                Don't auto-open the browser (serve  │
-│                                          and remote modes).                  │
-│ --plugins-dir          PATH              Extra plugin directory; each        │
-│                                          subdirectory containing             │
-│                                          manifest.toml is loaded. May be     │
-│                                          passed multiple times. Combines     │
-│                                          additively with the                 │
-│                                          METABROWSER_PLUGINS_DIRS env var    │
-│                                          (env-var dirs first, then CLI;      │
-│                                          deduped). Applies when serving,     │
-│                                          checking APIs, issuing --api or     │
-│                                          --show, and to the plugin modes.    │
-│ --log-level            LEVEL             Log verbosity: DEBUG, INFO,         │
-│                                          WARNING, ERROR, CRITICAL. DEBUG     │
-│                                          traces the inventory walker (rewalk │
-│                                          targets + resolved paths).          │
-│                                          Overrides METABROWSER_LOG_LEVEL.    │
-│                                          Applies when serving, walking,      │
-│                                          issuing --api or --show, checking   │
-│                                          APIs, or acquiring with --no-serve. │
-│ --format               FORMAT            Output format: text (human report)  │
-│                                          | json | yaml. Walk and diff:       │
-│                                          json/yaml dump the exact data the   │
-│                                          browser consumes. Show: json        │
-│                                          reports the four layers as an       │
-│                                          object. Api: json (default) or yaml │
-│                                          renders the envelope.               │
-│                                          [default: text]                     │
-│ --index-timeout        SECONDS [x>=0.1]  Maximum time to wait for the        │
-│                                          inventory to finish. Applies to     │
-│                                          --api, --show, and --check-api.     │
-│                                          [default: 60.0]                     │
+│ --path                     TEXT              Serve: relative path from ROOT  │
+│                                              to select on launch. Walk:      │
+│                                              subtree for a JSON/YAML         │
+│                                              all-at-once tree envelope.      │
+│                                              Remote: remote directory to     │
+│                                              serve (required).               │
+│ --no-open                                    Don't auto-open the browser     │
+│                                              (serve and remote modes).       │
+│ --plugins-dir              PATH              Extra plugin directory; each    │
+│                                              subdirectory containing         │
+│                                              manifest.toml is loaded. May be │
+│                                              passed multiple times. Combines │
+│                                              additively with the             │
+│                                              METABROWSER_PLUGINS_DIRS env    │
+│                                              var (env-var dirs first, then   │
+│                                              CLI; deduped). Applies when     │
+│                                              serving, checking APIs, issuing │
+│                                              --api or --show, and to the     │
+│                                              plugin modes.                   │
+│ --log-level                LEVEL             Log verbosity: DEBUG, INFO,     │
+│                                              WARNING, ERROR, CRITICAL. DEBUG │
+│                                              traces the inventory walker     │
+│                                              (rewalk targets + resolved      │
+│                                              paths). Overrides               │
+│                                              METABROWSER_LOG_LEVEL. Applies  │
+│                                              when serving, walking, issuing  │
+│                                              --api or --show, checking APIs, │
+│                                              or acquiring with --no-serve.   │
+│ --untrusted                                  Conservative content-trust      │
+│                                              profile: disable active content │
+│                                              on /raw (drop allow-scripts)    │
+│                                              and keep mutations off.         │
+│                                              Individual flags override it.   │
+│                                              Env: METAB_UNTRUSTED=1. Applies │
+│                                              when serving and to --api,      │
+│                                              --show, and --check-api.        │
+│ --no-active-content                          Disable script execution on     │
+│                                              content surfaces: /raw omits    │
+│                                              allow-scripts from its sandbox. │
+│                                              Env: METAB_ACTIVE_CONTENT=0.    │
+│                                              Applies when serving and to     │
+│                                              --api, --show, and --check-api. │
+│ --allow-edits                                Publish the mutations           │
+│                                              capability as on. No write      │
+│                                              route consumes it yet. Env:     │
+│                                              METAB_ALLOW_EDITS=1. Overrides  │
+│                                              --untrusted for mutations.      │
+│                                              Applies when serving and to     │
+│                                              --api, --show, and --check-api. │
+│ --format                   FORMAT            Output format: text (human      │
+│                                              report) | json | yaml. Walk and │
+│                                              diff: json/yaml dump the exact  │
+│                                              data the browser consumes.      │
+│                                              Show: json reports the four     │
+│                                              layers as an object. Api: json  │
+│                                              (default) or yaml renders the   │
+│                                              envelope.                       │
+│                                              [default: text]                 │
+│ --index-timeout            SECONDS [x>=0.1]  Maximum time to wait for the    │
+│                                              inventory to finish. Applies to │
+│                                              --api, --show, and --check-api. │
+│                                              [default: 60.0]                 │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Serve ──────────────────────────────────────────────────────────────────────╮
 │ --port        INTEGER RANGE [1<=x<=65535]  Server port. [default: 8411]      │

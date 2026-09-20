@@ -688,12 +688,17 @@ example-notes = "example_plugin.contracts:capabilities"
 ```
 
 The schema is packaged trusted code.
-`schema_bytes_sha256` protects the exact installed artifact; `schema_digest` is the
-compiler-produced logical identity repeated in `x-softschema.schema_sha256`. Metabrowser
-verifies the exact byte digest and independently recomputes the documented SoftSchema
-logical digest for every installed provider.
-It also recompiles built-in schemas from their models in the test and distribution gates
-to detect model/schema drift.
+`schema_bytes_sha256` is the identity of the exact installed artifact, and the registry
+requires it to match the bytes declared beside it, so an inventory or an evidence gate
+can name one installed schema without a source-tree path.
+The declaring distribution supplies the bytes and that digest together, so it identifies
+what was installed rather than attesting that nothing altered it.
+`schema_digest` is the compiler-produced logical identity repeated in
+`x-softschema.schema_sha256`, and Metabrowser recomputes it from the schema’s own
+content for every installed provider, so a schema edited without recompiling is refused.
+Built-in schemas are checked against the models they were compiled from instead:
+`compile_contracts(check_only=True)` recompiles every one of them in the test and
+distribution gates and fails on drift.
 The semantic validator receives an `ArtifactValidationContext` bound to the same atomic
 resource-profile snapshot as the contract registry; it must not rediscover profiles or
 trust profile declarations from an artifact.
