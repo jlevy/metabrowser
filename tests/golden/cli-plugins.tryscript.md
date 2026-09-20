@@ -24,6 +24,7 @@ agent-log      builtin  agent-log   3      charts
 binary         builtin  -           1      chunk
 diff           builtin  diff        1      document,children,comparison
 folder         builtin  -           2      -
+html           builtin  html        2      -
 image          builtin  -           1      -
 markdown       builtin  markdown    2      -
 structured     builtin  structured  2      parsed
@@ -104,6 +105,23 @@ $ metab --plugins --json
       "views": [
         "overview",
         "treemap"
+      ],
+      "view_count": 2,
+      "data_hooks": [],
+      "disabled_data_hooks": []
+    },
+    {
+      "name": "html",
+      "display_name": "HTML",
+      "version": "0.0.1",
+      "source": "builtin",
+      "static_root": "[BUILTIN]/html",
+      "kinds": [
+        "html"
+      ],
+      "views": [
+        "preview",
+        "source"
       ],
       "view_count": 2,
       "data_hooks": [],
@@ -316,7 +334,7 @@ $ metab --plugin markdown --json
 
 ```console
 $ metab --doctor
-metab --doctor: 9 plugin(s) OK
+metab --doctor: 10 plugin(s) OK
 ? 0
 ```
 
@@ -326,7 +344,7 @@ metab --doctor: 9 plugin(s) OK
 $ metab --doctor --json
 {
   "ok": true,
-  "plugin_count": 9,
+  "plugin_count": 10,
   "problems": []
 }
 ? 0

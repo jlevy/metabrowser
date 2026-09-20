@@ -12,6 +12,8 @@ from metabrowser.git.process import _REPO_PINNING_GIT_VARS
 # Test discovery imports the server from several module scopes. Never let an
 # operator's shell or dotenv configuration alter collection or load external plugins.
 os.environ["METABROWSER_PLUGINS_DIRS"] = ""
+for _capability_env in ("METAB_UNTRUSTED", "METAB_ACTIVE_CONTENT", "METAB_ALLOW_EDITS"):
+    os.environ.pop(_capability_env, None)
 
 # The pre-push gate runs this suite inside a githook, and from a linked worktree git
 # exports GIT_DIR there. It outranks the working directory and `git -C`, so a fixture
@@ -22,6 +24,16 @@ os.environ["METABROWSER_PLUGINS_DIRS"] = ""
 # sets one itself. tests/test_git_hook_environment.py pins this.
 for _name in _REPO_PINNING_GIT_VARS:
     os.environ.pop(_name, None)
+
+
+@pytest.fixture(autouse=True)
+def _reset_capabilities() -> Generator[None, None, None]:  # pyright: ignore[reportUnusedFunction]
+    """Keep the process capability block isolated between tests."""
+    from metabrowser.capabilities import DEFAULT_CAPABILITIES, set_capabilities
+
+    set_capabilities(DEFAULT_CAPABILITIES)
+    yield
+    set_capabilities(DEFAULT_CAPABILITIES)
 
 
 @pytest.fixture(autouse=True)

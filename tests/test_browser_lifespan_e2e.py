@@ -129,6 +129,7 @@ def test_full_lifespan_stack_serves_all_endpoints(tmp_path: Path) -> None:
     # polling, walker done.
     assert out["cap"]["backends"][0]["mode"] in ("native", "polling")
     assert out["cap"]["index"]["complete"] is True
+    assert out["cap"]["capabilities"] == {"active_content": True, "mutations": False}
 
 
 def test_watcher_detects_new_file_after_walker_completes(tmp_path: Path) -> None:

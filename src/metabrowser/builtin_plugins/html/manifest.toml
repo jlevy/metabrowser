@@ -1,0 +1,30 @@
+[plugin]
+name = "html"
+display_name = "HTML"
+version = "0.0.1"
+sdk_version = "0.6"
+
+# Extension classification. The default tab is Preview; the server flips
+# it to Source for fragments and drops Preview when active content is off.
+
+[[kind]]
+id = "html"
+match = { exts = [".html", ".htm"] }
+priority = 0
+
+[[view]]
+kind = "html"
+id = "preview"
+label = "Preview"
+default = true
+container_class = "content-body metabrowser-html-host"
+render_runtime = "client"
+
+[[view]]
+kind = "html"
+id = "source"
+label = "Source"
+container_class = "content-body metabrowser-source-host"
+printable = true
+print_profile = "source"
+render_runtime = "client"
