@@ -10,6 +10,7 @@ against real temporary homes, with other holders and crashes in real child proce
 
 from __future__ import annotations
 
+import contextlib
 import errno
 import json
 import os
@@ -25,6 +26,7 @@ import pytest
 
 from metabrowser.cache import reclaim as reclaim_module
 from metabrowser.cache.atomic import publish_entry, write_record_atomic
+from metabrowser.cache.layout import open_cache
 from metabrowser.cache.locks import (
     held_locks,
     staging_entry_lock,
@@ -297,6 +299,65 @@ def test_the_sweep_never_touches_quarantine(home: Path) -> None:
 
     assert report.removed == ()
     assert (home / "cache/quarantine/quarantine-1/sources").is_dir()
+
+
+@pytest.fixture
+def searchable_again(home: Path) -> Generator[None]:
+    """Restore owner access below the home, so the temporary directory can be deleted."""
+
+    yield
+    for path, directories, _files in os.walk(home, topdown=False):
+        for name in directories:
+            with contextlib.suppress(OSError):
+                os.chmod(os.path.join(path, name), 0o700)
+
+
+@pytest.mark.usefixtures("searchable_again")
+def test_the_sweep_deletes_an_entry_holding_a_directory_its_owner_cannot_search(
+    home: Path,
+) -> None:
+    """A crashed clone can leave one; failing here would fail every later open_cache."""
+
+    ensure_private_directory(home, "cache/staging/dead-1/repository.git/objects/ab")
+    (home / "cache/staging/dead-1/repository.git/objects/ab/loose").write_bytes(b"x")
+    (home / "cache/staging/dead-1/repository.git/objects/ab").chmod(0o000)
+
+    report = reclaim_staging(home)
+
+    assert report.removed == ("cache/staging/dead-1",)
+    assert report.failed == ()
+    assert not (home / "cache/staging/dead-1").exists()
+
+
+@pytest.mark.usefixtures("searchable_again")
+def test_an_entry_that_stays_behind_is_reported_and_left_for_the_next_sweep(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``_remove_tree`` promises ``False`` on failure, so nothing may escape it."""
+
+    ensure_private_directory(home, "cache/staging/dead-1/objects/ab")
+    (home / "cache/staging/dead-1/objects/ab/loose").write_bytes(b"x")
+    (home / "cache/staging/dead-1/objects/ab").chmod(0o000)
+    monkeypatch.setattr(reclaim_module, "_grant_owner_access", lambda _directory: False)
+
+    report = reclaim_staging(home)
+
+    assert report.removed == ()
+    assert report.failed == ("cache/staging/dead-1",)
+    assert (home / "cache/staging/dead-1/objects/ab").is_dir()
+
+
+@pytest.mark.usefixtures("searchable_again")
+def test_opening_the_cache_survives_an_entry_it_cannot_search(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    ensure_home(home)
+    ensure_private_directory(home, "cache/staging/acquire-0123456789abcdef/objects/ab")
+    (home / "cache/staging/acquire-0123456789abcdef/objects/ab").chmod(0o000)
+
+    opened = open_cache(home, version="0.11.0")
+
+    assert opened.sweep.removed == ("cache/staging/acquire-0123456789abcdef",)
+    assert list((home / "cache/staging").iterdir()) == []
 
 
 # ── Store reclamation ──────────────────────────────────────────────
