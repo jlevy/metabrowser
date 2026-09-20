@@ -181,7 +181,7 @@ type MetabrowserPreviewPaneLifecycle = Readonly<{
 }>;
 
 type MetabrowserNavigationRouteRuntime = Readonly<{
-  displayPath(path: string): string;
+  displayPath(path: string, sourceKind?: "filesystem" | "git_revision"): string;
   attachController(controller: MetabrowserNavigationController): () => void;
   commitFreshFileResponse(options: {
     cacheFile(data: Record<string, unknown>): void;

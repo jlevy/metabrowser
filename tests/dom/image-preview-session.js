@@ -190,12 +190,14 @@ function assert(condition, message) {
   const gitWire = "g1-cGljLnBuZw";
   const gitContainer = document.createElement("section");
   const gitStage = lifecycle.begin();
+  sandbox.METABROWSER_SOURCE_KIND = "git_revision";
   const gitStatus = await compositor.mount(
     gitContainer,
     renderer,
     { kind: "image", path: gitWire },
     gitStage.disposers,
   );
+  delete sandbox.METABROWSER_SOURCE_KIND;
   const gitImage = gitContainer.children[0];
   const gitMount = {
     alt: gitImage?.getAttribute("alt"),

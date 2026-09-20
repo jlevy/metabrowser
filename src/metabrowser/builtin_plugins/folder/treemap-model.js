@@ -8,7 +8,7 @@ export function parentPath(path) {
 function identityDisplay(path) {
   const displayPath = globalThis.window?.MetabrowserNavigationRoute?.displayPath;
   if (typeof displayPath === "function") {
-    return displayPath(path);
+    return displayPath(path, globalThis.window?.METABROWSER_SOURCE_KIND);
   }
   return path;
 }

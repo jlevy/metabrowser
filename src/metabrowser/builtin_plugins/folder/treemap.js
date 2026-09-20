@@ -200,7 +200,12 @@ export function registerTreemap(mb, palette, rollupControls) {
       rows.push(cellValueText(cell, state));
     } else {
       const pathLabel =
-        window.MetabrowserNavigationRoute?.displayPath?.(cell.path || "") || cell.path || cell.name;
+        window.MetabrowserNavigationRoute?.displayPath?.(
+          cell.path || "",
+          window.METABROWSER_SOURCE_KIND,
+        ) ||
+        cell.path ||
+        cell.name;
       rows.push(`<strong>${mb.escapeHtml(pathLabel)}</strong>`);
       rows.push(`${mb.formatFileCount(cell.files || 0)} · ${mb.formatSize(cell.bytes || 0)}`);
       if (typeof cell.mtime === "number" && cell.mtime > 0) {
