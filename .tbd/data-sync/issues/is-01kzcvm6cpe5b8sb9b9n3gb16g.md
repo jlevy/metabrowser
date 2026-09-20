@@ -5,7 +5,7 @@ title: HTML rendering and an explicit content-trust model
 kind: epic
 status: open
 priority: 1
-version: 8
+version: 9
 spec_path: docs/project/specs/active/plan-2026-08-06-html-rendering-and-trust-model.md
 labels:
   - security
@@ -16,8 +16,9 @@ child_order_hints:
   - is-01kzcvmqfy6gw5h36vs1hx3bms
   - is-01kzcvmqr515dr7afbvc0e6krq
   - is-01kzcvmr0d1eyegyds8zpbffbz
+  - is-01m2zx3hf12cnhqt02pzcj2ymq
 created_at: 2026-08-07T00:57:59.957Z
-updated_at: 2026-09-20T05:50:51.397Z
+updated_at: 2026-09-20T17:16:31.071Z
 extensions:
   linear:
     id: efc46703-5aa2-49d6-8195-546330186e9c

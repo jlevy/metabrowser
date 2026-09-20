@@ -5,7 +5,7 @@ title: "S217-1: symref parse keeps the last ref line so an ordinary non-bare clo
 kind: bug
 status: in_progress
 priority: 0
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 labels:
   - release:v0.11.0
@@ -13,6 +13,10 @@ labels:
 dependencies: []
 parent_id: is-01m2yxd3tnr1s2zf0h0jat1ey2
 created_at: 2026-09-20T15:27:37.458Z
-updated_at: 2026-09-20T15:31:17.057Z
+updated_at: 2026-09-20T17:19:00.036Z
 ---
 Finding S217-1 from the v0.11 stabilization review. Owning layer: PR #217. Full evidence, path:line, and suggested fix are in the notes of mb-gacf under S217-1.
+
+## Notes
+
+Fixed on stab/s217 (pending restack integration and push to PR 217). Every new test seen failing on the unfixed code; 263 focused tests pass.

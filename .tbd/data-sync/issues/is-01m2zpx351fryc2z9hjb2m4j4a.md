@@ -5,7 +5,7 @@ title: "S209-1: a cloned repo's .env can override --untrusted through the dotenv
 kind: bug
 status: closed
 priority: 1
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 labels:
   - release:v0.11.0
@@ -13,10 +13,14 @@ labels:
 dependencies: []
 parent_id: is-01m2yxd3tnr1s2zf0h0jat1ey2
 created_at: 2026-09-20T15:28:08.350Z
-updated_at: 2026-09-20T16:48:13.051Z
+updated_at: 2026-09-20T17:04:18.249Z
 closed_at: 2026-09-20T16:48:13.045Z
 close_reason: "Fixed in f1b1c7e1 on stab/s209 (pending push to PR 209): explicit --untrusted beats environment enables, and the dotenv loader never contributes capability variables or METABROWSER_ALLOWED_HOSTS. Five regression tests, red before and green after; end-to-end check with the real console script."
 resolution: null
 duplicate_of: null
 ---
 Finding S209-1 from the v0.11 stabilization review. Owning layer: PR #209. Full evidence, path:line, and suggested fix are in the notes of mb-gacf under S209-1.
+
+## Notes
+
+Pushed to PR 209 as f1b1c7e1 (head 04534249) through the full pre-push gate.
