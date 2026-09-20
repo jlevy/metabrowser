@@ -15,6 +15,7 @@ from metabrowser.cache import acquire as acquire_module
 from metabrowser.cache.acquire import (
     AcquisitionError,
     RemoteUnavailableError,
+    ValidationFailedError,
     acquire_file_source,
     acquire_into_staging,
 )
@@ -189,6 +190,74 @@ def test_an_ordinary_non_bare_clone_acquires_through_its_own_head(
     published = asyncio.run(acquire_file_source(_file_source(clone), home=tmp_path / "home"))
     assert published.default_remote_ref == "refs/remotes/origin/local-work"
     _git(published.git_dir, "cat-file", "-e", published.default_revision)
+
+
+def _rev_parse(root: Path, revision: str) -> str:
+    return subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "--verify", revision],
+        check=True,
+        capture_output=True,
+        env=_git_env(root),
+        text=True,
+    ).stdout.strip()
+
+
+@posix_only
+def test_a_hostile_symref_named_head_does_not_choose_the_published_branch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _allow_installed_git(monkeypatch)
+    hostile = tmp_path / "hostile"
+    hostile.mkdir()
+    _git(hostile, "init", "-q", "-b", "trunk")
+    (hostile / "README").write_text("trunk\n", encoding="utf-8")
+    _git(hostile, "add", "README")
+    _git(hostile, "commit", "-qm", "trunk commit")
+    _git(hostile, "checkout", "-q", "-b", "decoy")
+    (hostile / "other").write_text("decoy\n", encoding="utf-8")
+    _git(hostile, "add", "other")
+    _git(hostile, "commit", "-qm", "decoy commit")
+    _git(hostile, "checkout", "-q", "trunk")
+    _git(hostile, "symbolic-ref", "refs/heads/zz/HEAD", "refs/heads/decoy")
+    published = asyncio.run(acquire_file_source(_file_source(hostile), home=tmp_path / "home"))
+    assert published.default_remote_ref == "refs/remotes/origin/trunk"
+    assert published.default_revision == _rev_parse(hostile, "refs/heads/trunk")
+    assert _rev_parse(published.git_dir, published.default_remote_ref) == (
+        published.default_revision
+    )
+
+
+@posix_only
+def test_a_default_branch_that_does_not_resolve_to_the_observed_head_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The origin moves its branch after HEAD was observed and before the fetch."""
+    _allow_installed_git(monkeypatch)
+    origin = _origin(tmp_path, allow_filter=False)
+    work = tmp_path / "work"
+    home = tmp_path / "home"
+    real_run = acquire_module._run
+
+    async def move_branch_after_observation(
+        args: list[str],
+        *,
+        cwd: Path | None = None,
+        git_dir: Path | None = None,
+        policy: GitProcessPolicy = acquire_module.ACQUISITION_POLICY,
+        stdin: bytes | None = None,
+    ) -> bytes:
+        result = await real_run(args, cwd=cwd, git_dir=git_dir, policy=policy, stdin=stdin)
+        if "ls-remote" in args:
+            _git(work, "commit", "-q", "--allow-empty", "-m", "moved")
+            _git(work, "push", "-q", str(origin), "topic")
+        return result
+
+    monkeypatch.setattr(acquire_module, "_run", move_branch_after_observation)
+    with pytest.raises(ValidationFailedError, match="default branch"):
+        asyncio.run(acquire_file_source(_file_source(origin), home=home))
+    assert list((home / "cache" / "staging").iterdir()) == []
+    assert list((home / "cache" / "sources").iterdir()) == []
+    assert list((home / "cache" / "repository-stores").iterdir()) == []
 
 
 def _inodes(path: Path) -> set[int]:

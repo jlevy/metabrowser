@@ -203,6 +203,21 @@ def _remote_tracking_ref(head_ref: str | None) -> str | None:
     return "refs/remotes/origin/" + head_ref.removeprefix("refs/heads/")
 
 
+async def _require_ref_at(git_dir: Path, ref: str, revision: str) -> None:
+    """Refuse a record whose branch is not the pinned commit in the fetched store.
+
+    The ref name came from an untrusted origin. ``show-ref --verify`` takes an exact
+    ref path, so the name is never parsed as revision syntax. *revision* is already
+    known to be a commit, so equal object IDs mean the ref resolves to that commit.
+    """
+    try:
+        shown = await _run(["show-ref", "--verify", "--", ref], git_dir=git_dir)
+    except GitCommandError as exc:
+        raise ValidationFailedError("the default branch was not fetched") from exc
+    if shown.split(b" ", 1)[0].decode("ascii", errors="replace") != revision:
+        raise ValidationFailedError("the default branch does not resolve to the observed HEAD")
+
+
 async def _configuration_digest(git_dir: Path) -> str:
     raw = await _run(["config", "--file", str(git_dir / "config"), "--list", "-z"], git_dir=git_dir)
     return "sha256:" + hashlib.sha256(raw).hexdigest()
@@ -330,6 +345,9 @@ async def acquire_into_staging(source: GitSource, *, home: Path) -> StagingAcqui
             raise ValidationFailedError("the observed HEAD did not validate") from exc
         if kind != b"commit":
             raise ValidationFailedError("the observed HEAD is not a commit")
+        default_remote_ref = _remote_tracking_ref(head_ref)
+        if default_remote_ref is not None:
+            await _require_ref_at(git_dir, default_remote_ref, revision)
         object_format_name = object_format_raw.decode("ascii")
         if object_format_name not in {"sha1", "sha256"}:
             raise ValidationFailedError("unsupported object format")
@@ -349,7 +367,7 @@ async def acquire_into_staging(source: GitSource, *, home: Path) -> StagingAcqui
             object_format=object_format,
             strategy=strategy,
             configuration_digest=digest,
-            default_remote_ref=_remote_tracking_ref(head_ref),
+            default_remote_ref=default_remote_ref,
             default_revision=revision,
             git_version=git_version,
             _lock=lock,
