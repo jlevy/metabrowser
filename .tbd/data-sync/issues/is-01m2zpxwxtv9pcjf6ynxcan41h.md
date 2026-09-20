@@ -3,9 +3,9 @@ type: is
 id: is-01m2zpxwxtv9pcjf6ynxcan41h
 title: "BEADS-1: apply the bead bookkeeping corrections and fix the mb-n2ro landing graph and inverted dependency edges"
 kind: chore
-status: in_progress
+status: closed
 priority: 2
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 labels:
   - release:v0.11.0
@@ -13,7 +13,11 @@ labels:
 dependencies: []
 parent_id: is-01m2yxd3tnr1s2zf0h0jat1ey2
 created_at: 2026-09-20T15:28:34.743Z
-updated_at: 2026-09-20T16:50:08.375Z
+updated_at: 2026-09-20T16:51:38.181Z
+closed_at: 2026-09-20T16:51:38.180Z
+close_reason: Bookkeeping corrections applied and synced; mb-n2ro blocker set split into mb-nhky (later phases) per user decision; inverted and vestigial dependency edges fixed; seven owner beads created (mb-pkho, mb-rati, mb-e32d, mb-d1za, mb-bi2c, mb-dbue, mb-nhky).
+resolution: null
+duplicate_of: null
 ---
 Finding BEADS-1 from the v0.11 stabilization review. Owning layer: PR #216. Full evidence, path:line, and suggested fix are in the notes of mb-gacf under BEADS-1.
 
