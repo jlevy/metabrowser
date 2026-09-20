@@ -28,11 +28,17 @@ Run 'tbd setup' to update.
 npm install -g get-tbd@latest      # Install or upgrade the CLI (same command for both)
 tbd setup --auto --prefix=<name>   # Fresh project (--prefix is REQUIRED: 2-8 alphabetic chars recommended. ALWAYS ASK THE USER FOR THE PREFIX; do not guess it)
 tbd setup --auto                   # Existing tbd project — also the upgrade step (applies any format migration; commit the diff it reports)
-tbd setup --from-beads             # Migration from .beads/ if `bd` has been used
+tbd setup --from-beads             # Uninitialized repo: import and archive .beads/
 ```
 
 If tbd refuses with “This repository requires a newer version of tbd”, run the two
 install/upgrade commands above.
+Setup installs `portable`, `agents-md`, `claude`, and `codex` project surfaces by
+default. `--surfaces=<comma-list>` narrows only those generated agent files; setup still
+performs initialization, config and format migration, and docs refresh.
+Bare `tbd setup` displays help.
+After `--from-beads`, verify the imported state; setup can continue after an import
+warning and moves only `.beads/` to `.beads-disabled/`.
 
 ## Routine Commands
 
@@ -211,9 +217,9 @@ concluding gh is unavailable.
 
 | Command | Purpose |
 | --- | --- |
-| `tbd ready` | Beads ready to work (no blockers) |
+| `tbd ready` | Beads ready to work (open; no delegate, hold, future deferral, or non-closed blocker) |
 | `tbd list --status open` | All open beads |
-| `tbd list --status in_progress` | Your active work |
+| `tbd list --status in_progress` | All in-progress work |
 | `tbd list --spec <path>` | Beads tracking a spec (filename or suffix is enough) |
 | `tbd list --sort updated --limit 10` | Recent activity; `--count` for totals |
 | `tbd show <id1> [<id2> …]` | Bead details with dependencies (bulk: delimited per issue; `--max-lines <n>` caps each) |
@@ -224,10 +230,22 @@ concluding gh is unavailable.
 | --- | --- |
 | `tbd create "title" --type=bug --priority=1` | New bead; run `tbd create --help` for all types and priorities (P0-P4, not “high/medium/low”) |
 | `tbd create "title" --parent <epic> --depends-on <id>` | Create fully wired: parent and blockers in one call (`--depends-on` is repeatable) |
-| `tbd update <id> --status in_progress` | Claim work |
+| `tbd start <id>` | Claim work |
 | `tbd close <id> [--reason "..."]` | Mark complete |
 | `tbd close <id1> <id2> <id3> --reason "..."` | Close several at once (always preferred over one-at-a-time) |
 | `tbd update <id1> <id2> <id3> --priority 1` | Bulk-update shared fields on several beads |
+
+Use `tbd start`, not a raw status update, to claim work.
+It records the acting agent in `delegate`. On an already in-progress bead, it reports a
+different visible delegate instead of overwriting that claim.
+It does not require readiness or coordinate with a stale clone.
+Before editing, run `tbd sync --pull`, re-read the bead, use `tbd start <id>`, and run
+`tbd sync` so other replicas can see the accepted claim.
+`assignee` remains the accountable person.
+The acting name resolves from `start --as`, then `TBD_AGENT`, then the machine-local
+session identity, and finally a derived `<harness>@<host>` fallback.
+Use `tbd whoami` to inspect it; setup hooks call `tbd whoami --ensure-id` idempotently
+to persist a local ID and friendly name.
 
 **IMPORTANT: if you are about to shell-loop or pipe around tbd, stop; the bulk or filter
 form exists.** `show`, `close`, `reopen`, and `update` take multiple IDs;
@@ -272,7 +290,7 @@ mutation and make one call per group.
 | `tbd integration sync --pull --external <ref...>` | Create beads from exactly named tracker items, independent of policy |
 | `tbd integration sync` | Both directions; converges to `nothing to do` |
 | `tbd integration link/unlink <bead> [ref]` | Bind or sever a bead and an existing tracker item; unlink safely cancels pending writes for that pair before clearing the link |
-| `tbd integration comment <bead> "text"` | Author a comment offline; posted on next sync |
+| `tbd integration comment <bead> "text"` | Author a provider comment offline; attempted on next `tbd integration sync` |
 
 **Setting Linear up at all — including “add my key” — is `tbd shortcut setup-linear`.**
 Run it rather than improvising; it detects which case applies and walks the user through
@@ -295,10 +313,17 @@ Link/inbound creation refuse a remote `tbd://bead/…` claim unless `--force` is
 and the old claim was verified stale.
 Configured `project` scopes both creates and automatic inbound scans; an explicit
 `--external` import bypasses that scan scope.
-Assignees sync only through `user_map`: beads retain aliases (including on initial
-import), runtime email/UUID targets never persist, unmapped local aliases are reported,
-and an unmapped provider identity leaves the local field and prior bridge base unchanged
-with a safe warning, preserving local divergence until mapping recovers.
+`identity.user_map` is an explicit assignee alias override.
+Outbound handles can also reuse a stable bridge binding or resolve by one exact Linear
+directory match; ambiguous and missing matches are skipped.
+Inbound provider identities still need the map before they become bead aliases.
+Emails and raw provider payloads never persist.
+`identity.agent_map` maps only installed Linear app agents that may receive a bead
+delegate; unmapped session delegates stay local and are reported as skipped.
+`identity.state_map` selects state names for `backlog`, `unstarted`, `started`,
+`completed`, `canceled`, and `duplicate`. Interactive `tbd integration setup` records
+ambiguous choices; non-interactive and dry-run setup leave them unresolved, and
+`tbd doctor` reports only the offline plan without persisting it.
 Linear sub-issues import parent-first and never flatten; `max_nesting` limits only new
 outbound creation. Comments are append-only and paginated; edits, deletions, reactions,
 and thread shape are not synchronized.
@@ -306,12 +331,16 @@ Linear descriptions carry a tbd-owned `⟦tbd⟧` … `⟦/tbd⟧` region.
 Human prose outside it is preserved; legacy HTML-comment delimiters are upgraded on the
 next outbound sync. Never hand-edit the managed region—change the bead and sync instead.
 
-**Direction flags mean the same thing everywhere in tbd**: bare = both directions,
-`--push` = outbound only, `--pull` = inbound only, `--status` = report only.
-Plain `tbd sync` at session end covers docs, issues, AND enabled trackers; surfaces run
-independently, so one failing (an expired key, a down remote) never stops the others,
-and every failure is reported at the end.
+Within `tbd integration sync`, bare = both directions, `--push` = outbound only, and
+`--pull` = inbound only.
+Top-level `tbd sync --push`/`--pull` operates on the issue Git surface and excludes
+trackers unless `--integrations` is also explicit.
+Plain `tbd sync` at session end covers docs, issues, and trackers according to
+`integrations.on_tbd_sync`; surfaces run independently, so one failing (an expired key,
+a down remote) never stops the others, and every failure is reported at the end.
 Narrow with `--docs`, `--issues`, or `--integrations` for a single surface.
+`tbd sync --status` reports docs and issue Git status only; use `tbd integration status`
+for tracker health.
 
 ### Documentation
 
@@ -329,8 +358,9 @@ Narrow with `--docs`, `--issues`, or `--integrations` for a single surface.
 
 - **Priority**: P0=critical, P1=high, P2=medium (default), P3=low, P4=backlog
 - **Types**: issues default to `task`; run `tbd create --help` for the valid types
-- **Status**: open, in_progress, closed
-- **JSON output**: Add `--json` to any command
+- **Status**: open, in_progress, blocked, deferred, closed
+- **JSON output**: Data-oriented commands honor `--json`; raw document commands such as
+  `readme`, `prime`, `skill`, and `closing` remain text
 
 <!-- BEGIN SHORTCUT DIRECTORY -->
 ## Available Shortcuts
@@ -370,6 +400,7 @@ Run `tbd shortcut <name>` to use any of these shortcuts:
 | revise-architecture-doc | Update an architecture document to reflect current codebase state |
 | setup-github-cli | Ensure GitHub CLI (gh) is installed and working |
 | setup-linear | Set up the Linear integration end to end—first-time configuration for a repository, or adding your own API key to a repository your team already configured |
+| stacked-prs | When to split work into a stack of dependent PRs, how stacks line up with beads, and how the PR shortcuts change when a branch is part of a stack |
 | suggest-upstream-improvements | Review local doc-fork customizations and contribute the generally useful changes back upstream |
 | sync-failure-recovery | Handle tbd sync failures by saving to workspace and recovering later |
 | update-specs-status | Reconcile active specs, the top-level work index (e.g. TODO.md), and tbd beads into one current status map |
@@ -395,6 +426,7 @@ Load the **General engineering** core, then only guidelines matching the task.
 
 | Name | Description |
 | --- | --- |
+| agent-run-operations-rules | Launching, monitoring, and diagnosing long agent and batch runs—pinned launch checkouts, one scheduler per host budget, host-first diagnosis of slowness, validating a metric before reporting it, reading the prompt before blaming a model, same-configuration baselines, delegated-agent hygiene, and partial failure shown at its real scale. Load when running or reporting on multi-agent or batch workloads. |
 | backward-compatibility-rules | Guidelines for maintaining backward compatibility only for real consumers and data from released versions |
 | ci-and-gates-rules | How to wire a quality gate that actually holds—one entry point in two modes, thin workflow and build-file orchestration backed by tested project-native programs, config-contract checks that prove the floor is live, the traps that keep a gate green while it checks nothing (pipeline exit status, self-recorded evidence, single-platform blindness, scope holes), suppression ratchets, generated-file ownership, and least-privilege workflow authority. Language-neutral; load it with the language floor document whenever wiring, debugging, or reviewing a gate. |
 | code-review-rules | The language-neutral substance of a code review—the Blocker/High/Medium/Low severity vocabulary, establishing a baseline before hunting findings, reviewing highest-risk boundaries first, writing findings that can be acted on, and investigative quick-scan questions with possible consequences. The review-code shortcuts are the procedure; this is what they apply. Load for any review, with the language-specific review document where one exists. |
@@ -407,6 +439,7 @@ Load the **General engineering** core, then only guidelines matching the task.
 | general-testing-rules | Rules for keeping test volume low while preserving broad evidence—rejecting vacuous tests, choosing portable black-box tests when they preserve coverage, keeping the inner loop fast, controlling nondeterminism, and never letting an empty or skipped selection look like a pass. |
 | golden-testing-guidelines | Guidelines for implementing golden/snapshot testing for complex systems |
 | release-engineering-rules | Language-neutral rules for turning a reviewed commit into artifacts users execute—one release identity, a pre-release gate that runs where publishing happens, least-privilege publishing authority, build-once-and-promote, packaging and checksums, smoke-testing the packaged artifact rather than the build output, multi-channel coordination, testable release logic, and incident preparation. Load for any release, alongside release-notes-guidelines and the language-specific release document. |
+| release-notes-guidelines | Rules for release notes that describe the published delta and exclude defects introduced and corrected before release from separate Fixes entries |
 | supply-chain-hardening | Strongly recommended for EVERY repo—apply it if a repo has not been hardened yet. Cross-ecosystem policy for installing dependencies safely (the 14-day cool-off, disabled install scripts, lockfile discipline, untrusted-repo handling). Use whenever a user mentions hardening, security, supply chain, or setting up a new repo; before adding/upgrading dependencies; when auditing for compromised packages; or when reviewing install/build/run commands across npm/pnpm, PyPI, Cargo, or Go. |
 
 ### TypeScript & JS ecosystem
@@ -416,7 +449,6 @@ Load the **General engineering** core, then only guidelines matching the task.
 | Name | Description |
 | --- | --- |
 | bun-monorepo-patterns | Modern patterns for Bun-based TypeScript monorepo architecture |
-| electron-app-development-patterns | Building a clean, minimal, standalone Electron app—process model, modern Vite-based build system, attaching a Node/Bun/Python backend, security baseline, packaging, code signing, and auto-update |
 | pnpm-monorepo-patterns | Modern patterns for pnpm-based TypeScript monorepo architecture |
 | typescript-cli-tool-rules | Rules for building CLI tools with Commander.js, picocolors, and TypeScript |
 | typescript-code-coverage | Best practices for code coverage in TypeScript with Vitest and v8 provider |
@@ -459,6 +491,16 @@ Load the **General engineering** core, then only guidelines matching the task.
 | convex-limits-best-practices | Comprehensive reference for Convex platform limits, workarounds, and performance best practices |
 | convex-rules | Guidelines and best practices for building Convex projects, including database schema design, queries, mutations, and real-world examples |
 
+### Desktop app frameworks
+
+*Select the document for the framework in use; do not load this whole group by default.*
+
+| Name | Description |
+| --- | --- |
+| electrobun-app-development-patterns | Building desktop apps with Electrobun—runtime and process model, typed RPC, project layout, packaging and the delta updater, plus an evidence-based maturity and security assessment |
+| electron-app-development-patterns | Building a clean, minimal, standalone Electron app—process model, modern Vite-based build system, attaching a Node/Bun/Python backend, security baseline, packaging, code signing, and auto-update |
+| tauri-app-development-patterns | Building desktop apps with Tauri 2—the Rust core and system webview model, capabilities and permissions, typed commands and IPC, attaching Rust or non-Rust backends, packaging, signing, and the signed updater |
+
 ### Docs, process & tooling
 
 | Name | Description |
@@ -466,9 +508,6 @@ Load the **General engineering** core, then only guidelines matching the task.
 | agent-session-bootstrap | When and how to make a repository install its own pinned toolchain at agent session start, for repos whose agents run in containers they do not control. Covers the fit test, the alternatives that are usually better, the install rules a bootstrap must follow, and the PATH and pin-drift traps that make one fail silently. Use when an agent session starts without the tools the repo requires, when writing or reviewing a SessionStart hook, or when deciding between a session hook and a provisioned image. |
 | cli-agent-skill-patterns | A concise decision guide for portable skills, CLI-backed skills, safe bundle installation, and agent integration |
 | common-doc-guidelines | Common cross-project standards for writing and organizing docs, code comments, and text files—how to organize, structure, write, and format documents, plus the guideline footer convention. Downstream of github.com/jlevy/practical-prose. Use whenever writing or editing any documentation, README, guideline, or design doc. |
-| electrobun-app-development-patterns | Building desktop apps with Electrobun—runtime and process model, typed RPC, project layout, packaging and the delta updater, plus an evidence-based maturity and security assessment |
-| release-notes-guidelines | Rules for release notes that describe the published delta and exclude defects introduced and corrected before release from separate Fixes entries |
-| tauri-app-development-patterns | Building desktop apps with Tauri 2—the Rust core and system webview model, capabilities and permissions, typed commands and IPC, attaching Rust or non-Rust backends, packaging, signing, and the signed updater |
 | tbd-sync-troubleshooting | Common issues and solutions for tbd sync and workspace operations |
 
 <!-- END SHORTCUT DIRECTORY -->

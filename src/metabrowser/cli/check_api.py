@@ -159,10 +159,20 @@ def run_api_check(
     plugins_dir: list[Path] | None = None,
     log_level: str = "",
     index_timeout_s: float = INDEX_READY_TIMEOUT_S,
+    untrusted: bool = False,
+    no_active_content: bool = False,
+    allow_edits: bool = False,
 ) -> None:
     """Run the browser's navigation request sequence without a browser."""
 
     load_dotenv_chain()
+    from metabrowser.capabilities import apply_capabilities
+
+    apply_capabilities(
+        untrusted=untrusted,
+        no_active_content=no_active_content,
+        allow_edits=allow_edits,
+    )
     apply_log_level(log_level)
     resolved = root.expanduser().resolve()
     if not resolved.is_dir():

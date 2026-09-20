@@ -62,6 +62,15 @@ The server binds `127.0.0.1:8411` by default and walks a bounded port range if t
 is taken.
 Do not change `--host` to expose a served root to an untrusted network; see the
 [security policy](../SECURITY.md).
+`--untrusted` (`METAB_UNTRUSTED=1`) is the conservative content-trust profile: it
+disables script execution on `/raw` and keeps mutations off.
+`--no-active-content` (`METAB_ACTIVE_CONTENT=0`) is the individual switch for scripts.
+`--allow-edits` (`METAB_ALLOW_EDITS=1`) publishes the mutations capability; no write
+route consumes it yet.
+A flag beats the environment, so `--untrusted` stays conservative whatever the `METAB_*`
+variables say and only `--untrusted --allow-edits` lifts it; those variables are read
+from the process environment only, never from a `.env` file.
+These flags also apply to `--api`, `--show`, and `--check-api`.
 
 ## Inspecting Data: `--api`
 
