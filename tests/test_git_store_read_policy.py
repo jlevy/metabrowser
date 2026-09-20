@@ -45,6 +45,31 @@ def test_store_read_policy_is_isolated_and_request_bounded() -> None:
     assert env["GIT_CONFIG_NOSYSTEM"] == "1"
 
 
+def test_store_read_policy_drops_every_ambient_git_variable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Isolation is an allowlist, and the request path inherits it.
+
+    ``isolate_user_config`` is what admits a policy to that allowlist, so a
+    store read gets exactly the variables the policy asks for. Without it an
+    ambient ``GIT_ALLOW_PROTOCOL`` would replace every ``protocol.*`` setting
+    on a request-path read of a published store.
+    """
+    monkeypatch.setenv("GIT_ALLOW_PROTOCOL", "file:ext")
+    monkeypatch.setenv("GIT_DEFAULT_REF_FORMAT", "reftable")
+    monkeypatch.setenv("GIT_TRACE", "1")
+    env = git_environment(process_module.STORE_READ_POLICY)
+    assert {name: value for name, value in env.items() if name.startswith("GIT_")} == {
+        "GIT_OPTIONAL_LOCKS": "0",
+        "GIT_TERMINAL_PROMPT": "0",
+        "GIT_ASKPASS": "",
+        "GIT_CONFIG_GLOBAL": os.devnull,
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_NO_LAZY_FETCH": "1",
+        "GIT_SSH_COMMAND": "ssh -oBatchMode=yes",
+    }
+
+
 def test_a_pinned_location_reads_under_the_store_read_policy(tmp_path: Path) -> None:
     store = tmp_path / "store.git"
     store.mkdir()
