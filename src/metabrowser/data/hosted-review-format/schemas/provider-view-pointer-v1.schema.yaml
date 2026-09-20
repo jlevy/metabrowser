@@ -28,10 +28,12 @@ $defs:
       instance:
         $ref: '#/$defs/ProviderInstance'
       object_kind:
+        maxLength: 255
         minLength: 1
         title: Object Kind
         type: string
       opaque_id:
+        maxLength: 255
         minLength: 1
         title: Opaque Id
         type: string
@@ -70,6 +72,7 @@ $defs:
       instance:
         $ref: '#/$defs/ProviderInstance'
       opaque_id:
+        maxLength: 255
         minLength: 1
         title: Opaque Id
         type: string
@@ -118,4 +121,4 @@ title: ProviderViewPointer
 type: object
 x-softschema:
   contract: com.github.jlevy.metabrowser.provider:ProviderViewPointer/v1
-  schema_sha256: ea0a1ee8767c8b374f750d7c139e1a4b6680859baa1c9aee84cabd84ceb49ac9
+  schema_sha256: e270dc3b73206d727b8b6d300ff41022afdd01030829a3f5b575f9758b7f4ed0

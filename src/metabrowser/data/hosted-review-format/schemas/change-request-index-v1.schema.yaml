@@ -3,10 +3,12 @@ $defs:
     additionalProperties: false
     properties:
       handle:
+        maxLength: 255
         minLength: 1
         title: Handle
         type: string
       provider_opaque_id:
+        maxLength: 255
         minLength: 1
         title: Provider Opaque Id
         type: string
@@ -61,6 +63,7 @@ $defs:
         - $ref: '#/$defs/ActorRef'
         - type: 'null'
       base_label:
+        maxLength: 1024
         minLength: 1
         title: Base Label
         type: string
@@ -70,6 +73,7 @@ $defs:
         title: Draft
         type: boolean
       head_label:
+        maxLength: 1024
         minLength: 1
         title: Head Label
         type: string
@@ -84,6 +88,7 @@ $defs:
       state:
         $ref: '#/$defs/ChangeRequestState'
       title:
+        maxLength: 1024
         minLength: 1
         title: Title
         type: string
@@ -182,10 +187,12 @@ $defs:
       instance:
         $ref: '#/$defs/ProviderInstance'
       object_kind:
+        maxLength: 255
         minLength: 1
         title: Object Kind
         type: string
       opaque_id:
+        maxLength: 255
         minLength: 1
         title: Opaque Id
         type: string
@@ -204,6 +211,7 @@ $defs:
       instance:
         $ref: '#/$defs/ProviderInstance'
       opaque_id:
+        maxLength: 255
         minLength: 1
         title: Opaque Id
         type: string
@@ -261,4 +269,4 @@ title: ChangeRequestIndex
 type: object
 x-softschema:
   contract: com.github.jlevy.metabrowser.review:ChangeRequestIndex/v1
-  schema_sha256: 45e9214748e19fa79d6f47d15a102d4a72732a06eb7a2a9504b90c152da91233
+  schema_sha256: d27f3da42c18fd5ff59c6da458b2d88884958f1a60d1ef157da3fc90b6988343

@@ -24,6 +24,37 @@ ALLOWED_PUBLIC_HOSTS = {
 }
 
 
+# Every allowed URL is either named exactly or lies under a prefix that ends at a path
+# boundary, so "https://github.com/cli" can never admit "https://github.com/cli-private/x".
+PUBLIC_URLS = frozenset(
+    {
+        "https://docs.github.com/graphql",
+        "https://github.com/cli",
+        "https://github.com/cli/cli",
+        "https://github.com/cli/cli.git",
+        "https://github.com/jlevy",
+        "https://github.com/jlevy/metabrowser",
+        "https://github.com/niik",
+        "https://github.com/pypa/pip",
+        "https://github.com/vilmibm",
+        "https://github.com/williammartin",
+    }
+)
+PUBLIC_URL_PREFIXES = (
+    "https://api.github.com/repos/cli/cli/",
+    "https://docs.github.com/graphql/",
+    "https://github.com/apps/",
+    "https://github.com/cli/cli/",
+    "https://github.com/jlevy/metabrowser/",
+    "https://github.com/pypa/pip/",
+    "https://results.pre-commit.ci/run/github/",
+)
+
+
+def _is_allowed_public_url(url: str) -> bool:
+    return url in PUBLIC_URLS or url.startswith(PUBLIC_URL_PREFIXES)
+
+
 def _load(name: str) -> dict[str, Any]:
     return json.loads((ORACLE / name).read_text(encoding="utf-8"))
 
@@ -993,18 +1024,6 @@ def test_activity_item_id_recipe_matches_the_portable_repository_activity_corpus
 
 def test_recorded_evidence_is_scrubbed_public_and_synthetic_inputs_stay_separate() -> None:
     manifest = _load("manifest.json")
-    public_url_prefixes = (
-        "https://api.github.com/repos/cli/cli/",
-        "https://docs.github.com/graphql",
-        "https://github.com/apps/",
-        "https://github.com/cli",
-        "https://github.com/jlevy",
-        "https://github.com/niik",
-        "https://github.com/pypa/pip",
-        "https://github.com/vilmibm",
-        "https://github.com/williammartin",
-        "https://results.pre-commit.ci/run/github/",
-    )
     private_value_patterns = (
         re.compile(r"gh[pousr]_[A-Za-z0-9_]{12,}"),
         re.compile(r"github_pat_[A-Za-z0-9_]{12,}"),
@@ -1044,7 +1063,7 @@ def test_recorded_evidence_is_scrubbed_public_and_synthetic_inputs_stay_separate
             parsed = urlsplit(url.rstrip(".,;"))
             assert parsed.scheme == "https" and parsed.hostname in ALLOWED_PUBLIC_HOSTS
             assert parsed.username is None and parsed.password is None
-            assert url.startswith(public_url_prefixes), (path.name, url)
+            assert _is_allowed_public_url(url.rstrip(".,;")), (path.name, url)
         if path.suffix == ".json":
             document = _load(path.name)
             for key, value in _walk_items(document):
@@ -1060,7 +1079,7 @@ def test_recorded_evidence_is_scrubbed_public_and_synthetic_inputs_stay_separate
                     assert parsed.scheme == "https"
                     assert parsed.hostname in ALLOWED_PUBLIC_HOSTS
                     assert parsed.username is None and parsed.password is None
-                    assert value.startswith(public_url_prefixes), (path.name, key, value)
+                    assert _is_allowed_public_url(value), (path.name, key, value)
 
     for file_name in manifest["recorded_files"]:
         document = _load(file_name)
@@ -1158,3 +1177,24 @@ def test_oracle_is_not_a_runtime_input_or_wheel_package() -> None:
     for path in other_tests:
         text = path.read_text(encoding="utf-8")
         assert all(reference not in text for reference in forbidden_references)
+
+
+def test_public_url_allowlist_stops_at_a_path_boundary() -> None:
+    assert all(prefix.endswith("/") for prefix in PUBLIC_URL_PREFIXES)
+    for allowed in (
+        "https://github.com/cli",
+        "https://github.com/cli/cli",
+        "https://github.com/cli/cli/pull/14430",
+        "https://api.github.com/repos/cli/cli/pulls/14430",
+    ):
+        assert _is_allowed_public_url(allowed), allowed
+    for refused in (
+        "https://github.com/cli-private/secret",
+        "https://github.com/cli/cli-internal",
+        "https://github.com/jlevy-private",
+        "https://github.com/jlevy/other",
+        "https://github.com/niikolas",
+        "https://github.com/pypa/pipeline",
+        "https://docs.github.com/graphql-private",
+    ):
+        assert not _is_allowed_public_url(refused), refused
