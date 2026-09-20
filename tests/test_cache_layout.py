@@ -62,13 +62,31 @@ def _mode(path: Path) -> int:
     return stat.S_IMODE(os.lstat(path).st_mode)
 
 
-def _snapshot(root: Path) -> dict[str, tuple[int, int]]:
-    """Every entry below *root* (links not followed) with its mode and inode."""
+def _content(path: Path, mode: int) -> object:
+    """What an entry holds: a link's target, a file's bytes, or nothing for a directory."""
 
-    entries = {".": (os.lstat(root).st_mode, os.lstat(root).st_ino)}
+    if stat.S_ISLNK(mode):
+        return os.readlink(path)
+    if not stat.S_ISREG(mode):
+        return None
+    try:
+        return path.read_bytes()
+    except OSError as error:
+        return type(error).__name__
+
+
+def _snapshot(root: Path) -> dict[str, tuple[int, int, object]]:
+    """Every entry below *root* (links not followed) with its mode, inode, and content."""
+
+    status = os.lstat(root)
+    entries: dict[str, tuple[int, int, object]] = {".": (status.st_mode, status.st_ino, None)}
     for path in sorted(root.rglob("*")):
         status = os.lstat(path)
-        entries[str(path.relative_to(root))] = (status.st_mode, status.st_ino)
+        entries[str(path.relative_to(root))] = (
+            status.st_mode,
+            status.st_ino,
+            _content(path, status.st_mode),
+        )
     return entries
 
 
@@ -448,13 +466,30 @@ def test_a_shared_future_home_is_refused_before_its_modes_are_tightened(
 def test_a_shared_but_readable_home_is_still_repaired_and_then_prepared(
     cache_home: Path,
 ) -> None:
-    """Only a future format precedes repair; an ordinary shared home is repaired."""
+    """Only a future format precedes repair; an ordinary shared home is repaired.
+
+    The preflight reads with ``keep``, which neither tightens nor refuses an over-shared
+    entry, so every one of them must still be repaired by the reads that follow it.
+    """
 
     (cache_home / "cache").chmod(0o755)
 
     open_cache(cache_home, version="0.11.0")
 
     assert stat.S_IMODE((cache_home / "cache").stat().st_mode) == 0o700
+
+    shared = {"cache": 0o755, "cache/layout.yml": 0o644, "config.yml": 0o644}
+    for entry, mode in shared.items():
+        (cache_home / entry).chmod(mode)
+
+    opened = open_cache(cache_home, version="0.11.0")
+
+    assert opened.layout.format == "f01"
+    assert {entry: _mode(cache_home / entry) for entry in shared} == {
+        "cache": 0o700,
+        "cache/layout.yml": 0o600,
+        "config.yml": 0o600,
+    }
 
 
 @posix_only
@@ -698,3 +733,68 @@ def test_unrecognized_durable_cache_is_refused_without_any_mutation(
 
     assert _snapshot(home) == before
     assert data.read_bytes() == b"unrecognized durable data"
+
+
+def _symlinked_config_beside_durable_entries(home: Path) -> None:
+    """A dotfiles-style ``config.yml`` link, beside entries no layout describes."""
+
+    home_module.ensure_private_directory(home, "cache/sources/some-entry")
+    target = home.parent / "dotfiles-config.yml"
+    target.write_text("softschema: {}\n")
+    (home / "config.yml").unlink(missing_ok=True)
+    os.symlink(target, home / "config.yml")
+
+
+def _hard_linked_future_layout(home: Path) -> None:
+    """A future ``cache/layout.yml`` whose bytes are reachable from outside the home."""
+
+    home_module.ensure_private_directory(home, "cache")
+    _write_layout(home, "f02")
+    os.link(home / "cache/layout.yml", home.parent / "backup-of-layout.yml")
+
+
+def _unreadable_future_layout(home: Path) -> None:
+    """A future ``cache/layout.yml`` whose own permissions deny its owner a read."""
+
+    home_module.ensure_private_directory(home, "cache")
+    _write_layout(home, "f02")
+    (home / "cache/layout.yml").chmod(0o200)
+
+
+@posix_only
+@pytest.mark.parametrize("prepare", [open_cache, migrate_layout])
+@pytest.mark.parametrize("prepared", [False, True], ids=["bare-home", "existing-skeleton"])
+@pytest.mark.parametrize(
+    "damage",
+    [
+        _symlinked_config_beside_durable_entries,
+        _hard_linked_future_layout,
+        _unreadable_future_layout,
+    ],
+    ids=["symlinked-config", "hard-linked-layout", "unreadable-layout"],
+)
+def test_a_record_that_cannot_be_verified_is_refused_without_any_mutation(
+    tmp_path: Path,
+    prepare: Callable[..., object],
+    prepared: bool,
+    damage: Callable[[Path], None],
+) -> None:
+    """A record the preflight cannot read is an answer, not a reason to carry on.
+
+    Nothing below may be created, probed, or repaired before the refusal: the home may
+    hold entries this release must not adopt, and the unreadable record is exactly what
+    would have said so.
+    """
+
+    home = tmp_path / "home"
+    home.mkdir(mode=0o700)
+    if prepared:
+        ensure_home(home)
+    damage(home)
+    before = _snapshot(home)
+
+    with pytest.raises(PrivateStorageError) as refused:
+        prepare(home, version="0.11.0")
+
+    assert str(home) not in str(refused.value)
+    assert _snapshot(home) == before

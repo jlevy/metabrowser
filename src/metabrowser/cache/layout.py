@@ -55,7 +55,6 @@ from metabrowser.cache.records import (
     CacheLayout,
 )
 from metabrowser.home import (
-    PrivateStorageError,
     SharedEntryPolicy,
     application_home,
     ensure_home,
@@ -287,14 +286,17 @@ def _refuse_unrecognized_entries(home: Path) -> None:
 
 
 def _preflight_layout(home: Path, *, history: Sequence[str]) -> None:
-    """Refuse unknown data before locks, skeleton creation, probes, or mode repairs."""
+    """Refuse unknown data before locks, skeleton creation, probes, or mode repairs.
 
-    try:
-        layout = read_layout(home, history=history, shared="keep")
-        read_config(home, history=history, shared="keep")
-    except PrivateStorageError:
-        # The ordinary private-storage path repairs what it owns and refuses the rest.
-        return
+    ``keep`` leaves a merely over-shared home to the ordinary repairing path, but a
+    record this process cannot read at all — a link, a second hard link, or permissions
+    that deny its owner — raises :class:`~metabrowser.home.PrivateStorageError` here.
+    That record is what would have said whether the home may be adopted, so answering
+    with it is the whole point of reading before anything is created or repaired.
+    """
+
+    layout = read_layout(home, history=history, shared="keep")
+    read_config(home, history=history, shared="keep")
     if layout is None:
         _refuse_unrecognized_entries(home)
 
