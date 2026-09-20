@@ -66,6 +66,9 @@ disables script execution on `/raw` and keeps mutations off.
 `--no-active-content` (`METAB_ACTIVE_CONTENT=0`) is the individual switch for scripts.
 `--allow-edits` (`METAB_ALLOW_EDITS=1`) publishes the mutations capability; no write
 route consumes it yet.
+A flag beats the environment, so `--untrusted` stays conservative whatever the `METAB_*`
+variables say and only `--untrusted --allow-edits` lifts it; those variables are read
+from the process environment only, never from a `.env` file.
 These flags also apply to `--api`, `--show`, and `--check-api`.
 
 ## Inspecting Data: `--api`

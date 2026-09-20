@@ -2,7 +2,8 @@
 
 The server is authoritative. Client settings and ``/api/capabilities``
 publish the same block as a hint. ``--untrusted`` sets every switch to
-its conservative value; individual flags override that profile.
+its conservative value; individual CLI flags override that profile, and
+nothing in the environment does.
 """
 
 from __future__ import annotations
@@ -12,6 +13,21 @@ from dataclasses import dataclass
 
 _TRUE = frozenset({"1", "true", "yes", "on"})
 _FALSE = frozenset({"0", "false", "no", "off"})
+
+ENV_UNTRUSTED = "METAB_UNTRUSTED"
+ENV_ACTIVE_CONTENT = "METAB_ACTIVE_CONTENT"
+ENV_ALLOW_EDITS = "METAB_ALLOW_EDITS"
+
+CAPABILITY_ENV_VARS: tuple[str, ...] = (
+    ENV_UNTRUSTED,
+    ENV_ACTIVE_CONTENT,
+    ENV_ALLOW_EDITS,
+)
+"""Every variable ``resolve_capabilities`` reads, named once.
+
+``metabrowser.dotenv`` refuses this set, so the resolution below is the only
+place a capability variable name is written and the refusal cannot fall behind
+a variable added here."""
 
 # Token order is the sandbox contract. Drop ``allow-scripts`` in place when
 # active content is off; do not rewrite the rest of the directive.
@@ -97,20 +113,27 @@ def resolve_capabilities(
     Defaults: ``active_content`` on, ``mutations`` off. ``--untrusted`` /
     ``METAB_UNTRUSTED=1`` sets both conservative. ``--no-active-content`` /
     ``METAB_ACTIVE_CONTENT=0`` and ``--allow-edits`` / ``METAB_ALLOW_EDITS=1``
-    then override the profile. An explicit CLI disable beats an env enable.
+    then override the profile.
+
+    A CLI flag is a decision the operator typed at the call site, so it beats
+    the environment in both directions: an explicit disable beats an env
+    enable, and an explicit ``--untrusted`` beats one too. Only another
+    explicit flag lifts the profile, which is what ``--untrusted
+    --allow-edits`` says. Within the environment alone an enable still
+    overrides ``METAB_UNTRUSTED``.
     """
 
-    profile = untrusted or bool(env_bool("METAB_UNTRUSTED"))
+    profile = untrusted or bool(env_bool(ENV_UNTRUSTED))
     active_content = not profile
     mutations = False
 
-    env_active = env_bool("METAB_ACTIVE_CONTENT")
+    env_active = env_bool(ENV_ACTIVE_CONTENT)
     if no_active_content or env_active is False:
         active_content = False
-    elif env_active is True:
+    elif env_active is True and not untrusted:
         active_content = True
 
-    if allow_edits or env_bool("METAB_ALLOW_EDITS") is True:
+    if allow_edits or (env_bool(ENV_ALLOW_EDITS) is True and not untrusted):
         mutations = True
 
     return Capabilities(active_content=active_content, mutations=mutations)

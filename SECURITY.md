@@ -38,6 +38,8 @@ Additional trusted names for reaching a wildcard bind can be listed in the
 `METABROWSER_ALLOWED_HOSTS` environment variable (comma-separated); every name added
 there extends the set of domains whose pages the browser will let read responses, so
 list only names you control.
+That variable is read from the process environment only, never from a `.env` or
+`.env.local` file.
 
 Path handling is designed to keep file access beneath the selected root.
 Reports of a path traversal, symlink escape, unsafe archive handling, cross-origin
@@ -88,6 +90,12 @@ disables active content and keeps mutations off.
 `--allow-edits` (`METAB_ALLOW_EDITS=1`) publishes `mutations: true`; no write route
 consumes that flag yet.
 Individual flags override the profile.
+A flag on the command line outranks the environment in both directions, so `--untrusted`
+stays conservative whatever the `METAB_*` variables say, and only another flag —
+`--untrusted --allow-edits` — lifts it.
+The `METAB_*` variables themselves are read from the process environment only, never
+from a `.env` or `.env.local` file, so browsing a cloned repository from inside it
+cannot let that repository choose how far it is trusted.
 The resolved block is on `window.METABROWSER_SETTINGS.CAPABILITIES` and
 `GET /api/capabilities`; the server is authoritative.
 

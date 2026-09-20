@@ -60,6 +60,23 @@ def test_cli_no_active_content_beats_env_enable(monkeypatch: pytest.MonkeyPatch)
     assert resolve_capabilities(no_active_content=True).active_content is False
 
 
+def test_cli_untrusted_beats_env_enables(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An explicit ``--untrusted`` outranks every environment enable.
+
+    The operator typed the profile at the call site for content they do not
+    trust; a variable they may not have chosen must not lift it. Only another
+    explicit flag can, which is what ``--untrusted --allow-edits`` says.
+    """
+    monkeypatch.setenv("METAB_ACTIVE_CONTENT", "1")
+    monkeypatch.setenv("METAB_ALLOW_EDITS", "1")
+    assert resolve_capabilities(untrusted=True) == Capabilities(
+        active_content=False, mutations=False
+    )
+    assert resolve_capabilities(untrusted=True, allow_edits=True) == Capabilities(
+        active_content=False, mutations=True
+    )
+
+
 def test_unknown_env_values_do_not_enable(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("METAB_UNTRUSTED", "maybe")
     monkeypatch.setenv("METAB_ALLOW_EDITS", "maybe")

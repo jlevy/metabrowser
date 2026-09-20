@@ -34,6 +34,14 @@ Content trust:
   The resolved block is on `GET /api/capabilities` and
   `window.METABROWSER_SETTINGS.CAPABILITIES`.
 
+- A flag on the command line outranks the environment in both directions: `--untrusted`
+  stays conservative whatever `METAB_ACTIVE_CONTENT` or `METAB_ALLOW_EDITS` say, and
+  only `--untrusted --allow-edits` lifts it.
+  The `METAB_*` capability variables and `METABROWSER_ALLOWED_HOSTS` are read from the
+  process environment only; a `.env` or `.env.local` file no longer contributes them, so
+  `cd cloned-repo && metab --untrusted .` cannot be talked out of the sandbox by that
+  repository’s own `.env`. Every other variable still loads from those files as before.
+
 - `.html` and `.htm` files are the `html` kind, with a sandboxed Preview tab and a
   Source tab. A 4 KiB sniff (doctype or `<html>` / `<head>` / `<body>` / `<frameset>`)
   chooses the default tab only.
