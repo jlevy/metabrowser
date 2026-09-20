@@ -60,7 +60,7 @@ $defs:
         $ref: '#/$defs/RevisionObservation'
       merge_commit_oid:
         anyOf:
-        - pattern: ^[0-9a-f]{40,64}$
+        - pattern: ^(?:[0-9a-f]{40}|[0-9a-f]{64})$
           type: string
         - type: 'null'
         title: Merge Commit Oid
@@ -198,7 +198,7 @@ $defs:
         $ref: '#/$defs/RevisionObservation'
       oid:
         anyOf:
-        - pattern: ^[0-9a-f]{40,64}$
+        - pattern: ^(?:[0-9a-f]{40}|[0-9a-f]{64})$
           type: string
         - type: 'null'
         title: Oid
@@ -319,4 +319,4 @@ title: ChangeRequest
 type: object
 x-softschema:
   contract: com.github.jlevy.metabrowser.review:ChangeRequest/v1
-  schema_sha256: 60d7f817d5493b433e07d1ba62a7a2e9c4db0cfa28ec1c5477df98f940ca86a2
+  schema_sha256: 933176fc188a93bc0a3cc321ecfb7e189397c58e360f292ed0fc7dcce9f90851

@@ -34,7 +34,9 @@ from metabrowser.provider_resources.profiles import (
 )
 
 NonEmptyString = Annotated[str, Field(min_length=1)]
-GitObjectId = Annotated[str, Field(pattern=r"^[0-9a-f]{40,64}$")]
+# A full Git object name is SHA-1 (40 hex) or SHA-256 (64 hex). No object format has a
+# length in between, and the cache and Git layers accept exactly these two.
+GitObjectId = Annotated[str, Field(pattern=r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")]
 StableToken = Annotated[str, Field(pattern=r"^[a-z][a-z0-9._:-]*$")]
 MAX_SAFE_INTEGER = 9_007_199_254_740_991
 MAX_PORT = 65_535

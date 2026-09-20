@@ -200,7 +200,7 @@ $defs:
         $ref: '#/$defs/RevisionObservation'
       oid:
         anyOf:
-        - pattern: ^[0-9a-f]{40,64}$
+        - pattern: ^(?:[0-9a-f]{40}|[0-9a-f]{64})$
           type: string
         - type: 'null'
         title: Oid
@@ -331,7 +331,7 @@ $defs:
         $ref: '#/$defs/RevisionObservation'
       oid:
         anyOf:
-        - pattern: ^[0-9a-f]{40,64}$
+        - pattern: ^(?:[0-9a-f]{40}|[0-9a-f]{64})$
           type: string
         - type: 'null'
         title: Oid
@@ -431,4 +431,4 @@ title: RepositoryActivity
 type: object
 x-softschema:
   contract: com.github.jlevy.metabrowser.activity:RepositoryActivity/v1
-  schema_sha256: 28f65ded7f1dc863d188be7c7ee8ae6ce2fabc6a24ecd61acb737ecd41827ece
+  schema_sha256: 1e3122ff73fd823bf302b8fb2977e1d6ef7074292017bc0fec6c54c75df20720

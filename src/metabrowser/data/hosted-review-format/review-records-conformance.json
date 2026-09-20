@@ -366,6 +366,8 @@
     { "name": "unavailable-review-revision-forbids-object-id", "record": "review", "changes": [{ "path": ["revision", "observation"], "value": "unavailable" }], "expect": "invalid" },
     { "name": "git-object-observation-rejects-local-fetch-state", "record": "review", "changes": [{ "path": ["revision", "observation"], "value": "missing_fetchable" }], "expect": "invalid" },
     { "name": "git-object-ref-rejects-superseded-availability-field", "record": "review", "changes": [{ "path": ["revision"], "value": { "repository_id": "repo-2", "oid": "89abcdef0123456789abcdef0123456789abcdef", "availability": "present" } }], "expect": "invalid" },
+    { "name": "review-revision-rejects-41-hex-object-id", "record": "review", "changes": [{ "path": ["revision", "oid"], "value": "0123456789abcdef0123456789abcdef012345678" }], "expect": "invalid" },
+    { "name": "review-revision-rejects-63-hex-object-id", "record": "review", "changes": [{ "path": ["revision", "oid"], "value": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde" }], "expect": "invalid" },
     { "name": "pending-review-forbids-submission", "record": "review", "changes": [{ "path": ["disposition"], "value": "pending" }], "expect": "invalid" },
     { "name": "submitted-review-requires-submission", "record": "review", "changes": [{ "path": ["submitted_at"], "value": null }], "expect": "invalid" },
     { "name": "line-anchor", "record": "review_thread", "changes": [], "expect": "valid" },

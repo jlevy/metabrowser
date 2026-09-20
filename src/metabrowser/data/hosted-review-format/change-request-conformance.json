@@ -509,6 +509,88 @@
       "name": "object-id-requires-canonical-lowercase-hex"
     },
     {
+      "changes": [
+        {
+          "path": ["comparison", "head", "oid"],
+          "value": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        }
+      ],
+      "expect": "valid",
+      "name": "object-id-allows-full-sha256"
+    },
+    {
+      "changes": [
+        {
+          "path": ["comparison", "head", "oid"],
+          "value": "0123456789abcdef0123456789abcdef0123456"
+        }
+      ],
+      "expect": "invalid",
+      "name": "object-id-rejects-39-hex"
+    },
+    {
+      "changes": [
+        {
+          "path": ["comparison", "head", "oid"],
+          "value": "0123456789abcdef0123456789abcdef012345678"
+        }
+      ],
+      "expect": "invalid",
+      "name": "object-id-rejects-41-hex-between-sha1-and-sha256"
+    },
+    {
+      "changes": [
+        {
+          "path": ["comparison", "base", "oid"],
+          "value": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde"
+        }
+      ],
+      "expect": "invalid",
+      "name": "object-id-rejects-63-hex-between-sha1-and-sha256"
+    },
+    {
+      "changes": [
+        {
+          "path": ["comparison", "head", "oid"],
+          "value": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0"
+        }
+      ],
+      "expect": "invalid",
+      "name": "object-id-rejects-65-hex"
+    },
+    {
+      "changes": [
+        {
+          "path": ["comparison", "head", "oid"],
+          "value": "0123456789abcdef0123456789abcdef01234567\n"
+        }
+      ],
+      "expect": "invalid",
+      "name": "object-id-rejects-trailing-newline"
+    },
+    {
+      "changes": [
+        { "path": ["comparison", "merge_commit_observation"], "value": "observed" },
+        {
+          "path": ["comparison", "merge_commit_oid"],
+          "value": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        }
+      ],
+      "expect": "valid",
+      "name": "merge-commit-oid-allows-full-sha256"
+    },
+    {
+      "changes": [
+        { "path": ["comparison", "merge_commit_observation"], "value": "observed" },
+        {
+          "path": ["comparison", "merge_commit_oid"],
+          "value": "0123456789abcdef0123456789abcdef012345678"
+        }
+      ],
+      "expect": "invalid",
+      "name": "merge-commit-oid-rejects-41-hex-between-sha1-and-sha256"
+    },
+    {
       "changes": [{ "path": ["repository", "instance"], "value": "other.example" }],
       "expect": "invalid",
       "name": "provider-instance-relationship-is-enforced"

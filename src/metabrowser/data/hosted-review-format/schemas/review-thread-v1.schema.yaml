@@ -31,7 +31,7 @@ $defs:
         $ref: '#/$defs/RevisionObservation'
       merge_commit_oid:
         anyOf:
-        - pattern: ^[0-9a-f]{40,64}$
+        - pattern: ^(?:[0-9a-f]{40}|[0-9a-f]{64})$
           type: string
         - type: 'null'
         title: Merge Commit Oid
@@ -84,7 +84,7 @@ $defs:
         $ref: '#/$defs/RevisionObservation'
       oid:
         anyOf:
-        - pattern: ^[0-9a-f]{40,64}$
+        - pattern: ^(?:[0-9a-f]{40}|[0-9a-f]{64})$
           type: string
         - type: 'null'
         title: Oid
@@ -287,7 +287,7 @@ $defs:
         $ref: '#/$defs/RevisionObservation'
       oid:
         anyOf:
-        - pattern: ^[0-9a-f]{40,64}$
+        - pattern: ^(?:[0-9a-f]{40}|[0-9a-f]{64})$
           type: string
         - type: 'null'
         title: Oid
@@ -348,4 +348,4 @@ title: ReviewThread
 type: object
 x-softschema:
   contract: com.github.jlevy.metabrowser.review:ReviewThread/v1
-  schema_sha256: 17d03e737ae1252ac32e8a6dbada2ab1fbe6d6fecd5521686a15a82f526446a4
+  schema_sha256: 07bb02ef6d1bb5dce2b3fc716763f54eda9701e3ac7ba15d4d874b90643ded6e

@@ -42,7 +42,7 @@ $defs:
         $ref: '#/$defs/RevisionObservation'
       oid:
         anyOf:
-        - pattern: ^[0-9a-f]{40,64}$
+        - pattern: ^(?:[0-9a-f]{40}|[0-9a-f]{64})$
           type: string
         - type: 'null'
         title: Oid
@@ -170,4 +170,4 @@ title: Check
 type: object
 x-softschema:
   contract: com.github.jlevy.metabrowser.review:Check/v1
-  schema_sha256: 99ea3a24aada3e073a258d8966a0612563ae4fe843765cbb714107fd0447d42c
+  schema_sha256: 281cdd36dc3396f70973ac865c91ee1379d394486fd51e4b994c5387f9bd455e

@@ -19,7 +19,7 @@ $defs:
         $ref: '#/$defs/RevisionObservation'
       oid:
         anyOf:
-        - pattern: ^[0-9a-f]{40,64}$
+        - pattern: ^(?:[0-9a-f]{40}|[0-9a-f]{64})$
           type: string
         - type: 'null'
         title: Oid
@@ -133,4 +133,4 @@ title: CommitStatus
 type: object
 x-softschema:
   contract: com.github.jlevy.metabrowser.review:CommitStatus/v1
-  schema_sha256: 2a4a408c454c3a587b8c688c64f6365b6f8eb49193b21ed3830c5cd46fe04100
+  schema_sha256: aed1c4b4df2b02fec4e31475b16a0cfb606203957e553684b428a408c1f4c539

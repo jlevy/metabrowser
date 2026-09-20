@@ -88,7 +88,8 @@ const MAX_OPAQUE_CURSOR_LENGTH = 4096;
 const PROVIDER_KIND_RE = /^[a-z][a-z0-9-]*$/;
 const PROVIDER_INSTANCE_RE =
   /^([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*)(?::([1-9][0-9]{0,4}))?$/;
-const OID_RE = /^[0-9a-f]{40,64}$/;
+// A full Git object name is SHA-1 (40 hex) or SHA-256 (64 hex); nothing in between.
+const OID_RE = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 const SHA256_RE = /^sha256:[0-9a-f]{64}$/;
 const OPAQUE_CURSOR_RE = /^[A-Za-z0-9._~+=:-]+$/;
 const URI_SCHEME_RE = /^[A-Za-z][A-Za-z0-9+.-]*:/;

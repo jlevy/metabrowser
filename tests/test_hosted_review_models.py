@@ -165,6 +165,30 @@ def test_local_object_availability_is_a_separate_closed_vocabulary() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    "oid",
+    [
+        "0123456789abcdef0123456789abcdef0123456",
+        "0123456789abcdef0123456789abcdef012345678",
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde",
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0",
+    ],
+)
+def test_local_object_availability_requires_a_full_git_object_name(oid: str) -> None:
+    # The local availability projection has no conformance corpus, so its object ID bound
+    # is pinned here alongside the corpus cases for the provider-record families.
+    with pytest.raises(ValidationError):
+        LocalGitObjectAvailability.model_validate({"oid": oid, "availability": "present"})
+
+    for accepted in ("0" * 40, "0" * 64):
+        assert (
+            LocalGitObjectAvailability.model_validate(
+                {"oid": accepted, "availability": "present"}
+            ).oid
+            == accepted
+        )
+
+
 @pytest.mark.parametrize("observation", ["unavailable", "not_requested"])
 def test_local_object_availability_requires_a_provider_observed_object_id(
     observation: str,
