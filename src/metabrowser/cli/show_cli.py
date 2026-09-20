@@ -379,6 +379,15 @@ def run_show(
     resolved = root.expanduser().resolve()
     if not resolved.is_dir():
         raise CLIError(f"{resolved} is not a directory")
+    # Plugin discovery runs once when `metabrowser.server` is imported, so the
+    # dotenv chain and the plugin directories have to be published first or
+    # `--plugins-dir` reaches an already-frozen registry and `--show` reports a
+    # different kind than the route `--api` issues. The pin entry point reaches
+    # `ashow_active` before any server import, so it prepares them itself.
+    load_dotenv_chain()
+    apply_log_level(log_level)
+    _prepare_plugins(plugins_dir)
+
     from metabrowser import server
 
     server._set_root_dir(resolved)
