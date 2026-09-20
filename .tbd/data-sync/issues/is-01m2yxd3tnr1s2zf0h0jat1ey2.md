@@ -5,11 +5,13 @@ title: "v0.11 stabilization review: independent full review of stack #218 and #2
 kind: task
 status: in_progress
 priority: 1
-version: 42
+version: 44
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 labels:
   - release:v0.11.0
-dependencies: []
+dependencies:
+  - type: blocks
+    target: is-01m2k713pxra1ns2fk3pcwrpb6
 parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 child_order_hints:
   - is-01m2zpvykba6wabg6ms9wawzb0
@@ -50,8 +52,9 @@ child_order_hints:
   - is-01m2zpxv9y2v992te1pdr2x52n
   - is-01m2zpxwxtv9pcjf6ynxcan41h
   - is-01m2zpxyf1qczg3r6cadfhh7sy
+  - is-01m2zvfm9pdxz0emydeqedf9gq
 created_at: 2026-09-20T08:02:30.356Z
-updated_at: 2026-09-20T15:49:57.151Z
+updated_at: 2026-09-20T16:48:27.398Z
 ---
 Follow-up to mb-rldx, which was closed at 2026-09-20T07:32Z by a fast pass while its own notes said the #216 browser/plugin, resource-lifecycle, CLI/parity, and docs review passes were unfinished. Independently verify the #140/#217/#216 fix commits (da73b878, 70091d81, bc8dd72b, de0f4f5a), complete the unreviewed areas, review #209 as the security gate for serving acquired Git, reconcile every PR review channel, and reconcile beads and spec checklists with the branches. Output: confirmed findings filed as beads on their owning layers, and an ordered stabilization plan. Read-only until the plan is agreed; do not merge (landing owner is mb-n2ro).
 

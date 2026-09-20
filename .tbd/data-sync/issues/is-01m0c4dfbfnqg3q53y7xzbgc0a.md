@@ -5,17 +5,15 @@ title: "repo_cache.py: reference clones, ref fetching, transient worktrees"
 kind: feature
 status: closed
 priority: 1
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 labels: []
 dependencies:
   - type: blocks
     target: is-01m0b71xgqp0jgz007h0wtzr3z
-  - type: blocks
-    target: is-01m10vgwqwn8gjdv8fm183vztr
 parent_id: is-01kxse0d3sm8h0p1yh1mjwgbxz
 created_at: 2026-08-19T04:28:04.334Z
-updated_at: 2026-09-14T23:27:56.647Z
+updated_at: 2026-09-20T16:45:01.978Z
 closed_at: 2026-09-14T23:27:56.646Z
 close_reason: "Superseded during the v0.11 plan reconciliation: generic clone/acquisition is owned by mb-h51g and provider job/ref fetching by mb-jlon; GitHub PR caching and presentation are owned by mb-duu7, mb-wx32, and mb-r19i. The general diff plan retains only the source-neutral Git/File Diff Format renderer boundary."
 resolution: null

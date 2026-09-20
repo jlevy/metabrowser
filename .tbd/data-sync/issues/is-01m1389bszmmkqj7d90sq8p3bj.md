@@ -5,7 +5,7 @@ title: Accept local origins as first-class Git sources under the untrusted profi
 kind: task
 status: in_progress
 priority: 1
-version: 15
+version: 17
 spec_path: docs/project/specs/active/plan-2026-08-28-cli-first-delivery-map.md
 delegate: unknown@cursor
 labels:
@@ -14,8 +14,6 @@ dependencies:
   - type: blocks
     target: is-01kzsb4jnyd56wy89xmztkmz2m
   - type: blocks
-    target: is-01m2p1pshr699c6pf8xqeer16j
-  - type: blocks
     target: is-01m2s27ybx4dw3qde29xm6jgqn
   - type: blocks
     target: is-01m2s4vpjy6j5rysn5x8ah2e03
@@ -23,7 +21,7 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-08-28T03:58:15.870Z
-updated_at: 2026-09-20T15:44:59.510Z
+updated_at: 2026-09-20T16:46:18.805Z
 started_at: 2026-09-18T01:15:32.181Z
 ---
 Treat explicit file:// URLs as first-class Git acquisition sources under the untrusted profile. A bare local path is not a Git source: metab /path/to/repo keeps its existing meaning of serving that directory, while acquisition must be requested with file://. The file transport uses Git-aware packing rather than the hardlinked object store created by the implicit --local path form. Do not claim file:// supports blob filtering: verified Git 2.50.1 origins may ignore --filter even with uploadpack.allowFilter; Phase 0 owns that measurement and the full-clone fallback. Acquisition goldens use small deterministic file:// origins and never depend on partial-clone support.
@@ -37,3 +35,7 @@ still open") is false. Verified with gh pr view: #141 is CLOSED (head ddcce4f9),
 acquire-path branch it fed became #208, also CLOSED, folded into #217. The file-URL
 grammar now rides PR #217 https://github.com/jlevy/metabrowser/pull/217 on branch
 cursor/v011-cache-acquire-cli-bd04 (head 70091d81, state OPEN).
+
+2026-09-20: removed the edge "mb-k900 blocked by mb-dxmb". It was backwards: this bead's
+own close condition is "close when the collapsed layer is reviewed", and mb-k900 is that
+review. This bead therefore closes when mb-k900 closes, not before it.

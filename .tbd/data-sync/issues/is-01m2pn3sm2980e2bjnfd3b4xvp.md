@@ -5,7 +5,7 @@ title: "Untrusted-content profile review: publish HTML trust-chain PR"
 kind: task
 status: in_progress
 priority: 1
-version: 6
+version: 7
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: claude-code@spud10.local
 labels:
@@ -16,11 +16,13 @@ dependencies:
     target: is-01m2kwk6h6pzxanejy6c339r08
   - type: blocks
     target: is-01m2k713pxra1ns2fk3pcwrpb6
+  - type: blocks
+    target: is-01kzsb4k9hwrt25jj9j6svkvaf
 parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-09-17T03:03:40.930Z
-updated_at: 2026-09-20T05:50:11.303Z
+updated_at: 2026-09-20T16:44:58.165Z
 started_at: 2026-09-20T05:45:03.788Z
 ---
 Independently review the sandboxed /raw responses and same-origin /api proof (mb-cun0) plus the immutable capability set, --untrusted profile, and client publication (mb-vib1). Their implementation may proceed in parallel with the cache layers, but they publish as one formal stack layer directly before repository URL opening, because serving fetched content requires that gate. Resolve every finding, run make verify, and publish one formal GitHub PR with gh stacked on the exact green mb-hoae immutable Git-tree head. Its green head is the integration base mb-j439 records for Phase 2A. Record exact stack evidence and final green CI. Do not merge.
