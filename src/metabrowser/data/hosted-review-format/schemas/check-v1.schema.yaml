@@ -48,7 +48,8 @@ $defs:
         title: Oid
       repository_id:
         anyOf:
-        - minLength: 1
+        - maxLength: 255
+          minLength: 1
           type: string
         - type: 'null'
         title: Repository Id
@@ -68,10 +69,12 @@ $defs:
       instance:
         $ref: '#/$defs/ProviderInstance'
       object_kind:
+        maxLength: 255
         minLength: 1
         title: Object Kind
         type: string
       opaque_id:
+        maxLength: 255
         minLength: 1
         title: Opaque Id
         type: string
@@ -90,6 +93,7 @@ $defs:
       instance:
         $ref: '#/$defs/ProviderInstance'
       opaque_id:
+        maxLength: 255
         minLength: 1
         title: Opaque Id
         type: string
@@ -120,6 +124,7 @@ properties:
     - $ref: '#/$defs/CheckConclusion'
     - type: 'null'
   id:
+    maxLength: 1024
     minLength: 1
     title: Id
     type: string
@@ -127,13 +132,15 @@ properties:
     $ref: '#/$defs/CheckKind'
   name:
     anyOf:
-    - minLength: 1
+    - maxLength: 1024
+      minLength: 1
       type: string
     - type: 'null'
     title: Name
   parent_check_id:
     anyOf:
-    - minLength: 1
+    - maxLength: 1024
+      minLength: 1
       type: string
     - type: 'null'
     title: Parent Check Id
@@ -170,4 +177,4 @@ title: Check
 type: object
 x-softschema:
   contract: com.github.jlevy.metabrowser.review:Check/v1
-  schema_sha256: 281cdd36dc3396f70973ac865c91ee1379d394486fd51e4b994c5387f9bd455e
+  schema_sha256: e1728407d9949b9aff3c0247b54780ccb5676b6fe2ba451ba57c10d9807ab355

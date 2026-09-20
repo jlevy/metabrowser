@@ -3,10 +3,12 @@ $defs:
     additionalProperties: false
     properties:
       handle:
+        maxLength: 255
         minLength: 1
         title: Handle
         type: string
       provider_opaque_id:
+        maxLength: 255
         minLength: 1
         title: Provider Opaque Id
         type: string
@@ -56,12 +58,14 @@ $defs:
       original_revision:
         $ref: '#/$defs/GitObjectRef'
       path:
+        maxLength: 4096
         minLength: 1
         title: Path
         type: string
       path_b64:
         anyOf:
-        - minLength: 1
+        - maxLength: 5464
+          minLength: 1
           type: string
         - type: 'null'
         title: Path B64
@@ -90,7 +94,8 @@ $defs:
         title: Oid
       repository_id:
         anyOf:
-        - minLength: 1
+        - maxLength: 255
+          minLength: 1
           type: string
         - type: 'null'
         title: Repository Id
@@ -118,12 +123,14 @@ $defs:
       original_revision:
         $ref: '#/$defs/GitObjectRef'
       path:
+        maxLength: 4096
         minLength: 1
         title: Path
         type: string
       path_b64:
         anyOf:
-        - minLength: 1
+        - maxLength: 5464
+          minLength: 1
           type: string
         - type: 'null'
         title: Path B64
@@ -153,10 +160,12 @@ $defs:
       instance:
         $ref: '#/$defs/ProviderInstance'
       object_kind:
+        maxLength: 255
         minLength: 1
         title: Object Kind
         type: string
       opaque_id:
+        maxLength: 255
         minLength: 1
         title: Opaque Id
         type: string
@@ -185,12 +194,14 @@ $defs:
       original_revision:
         $ref: '#/$defs/GitObjectRef'
       path:
+        maxLength: 4096
         minLength: 1
         title: Path
         type: string
       path_b64:
         anyOf:
-        - minLength: 1
+        - maxLength: 5464
+          minLength: 1
           type: string
         - type: 'null'
         title: Path B64
@@ -216,6 +227,7 @@ $defs:
       instance:
         $ref: '#/$defs/ProviderInstance'
       opaque_id:
+        maxLength: 255
         minLength: 1
         title: Opaque Id
         type: string
@@ -292,12 +304,14 @@ $defs:
         - type: 'null'
         title: Oid
       ref:
+        maxLength: 1024
         minLength: 1
         title: Ref
         type: string
       repository_id:
         anyOf:
-        - minLength: 1
+        - maxLength: 255
+          minLength: 1
           type: string
         - type: 'null'
         title: Repository Id
@@ -314,6 +328,7 @@ properties:
   anchor:
     $ref: '#/$defs/ReviewAnchor'
   change_request_id:
+    maxLength: 1024
     minLength: 1
     title: Change Request Id
     type: string
@@ -322,6 +337,7 @@ properties:
     title: Comment Count
     type: integer
   id:
+    maxLength: 1024
     minLength: 1
     title: Id
     type: string
@@ -348,4 +364,4 @@ title: ReviewThread
 type: object
 x-softschema:
   contract: com.github.jlevy.metabrowser.review:ReviewThread/v1
-  schema_sha256: 07bb02ef6d1bb5dce2b3fc716763f54eda9701e3ac7ba15d4d874b90643ded6e
+  schema_sha256: 809757690f582e4b5c1b645d862e039348825cb3ffb9945139ed992b0abbb9de

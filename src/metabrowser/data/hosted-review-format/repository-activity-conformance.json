@@ -108,6 +108,48 @@
       "expect": "invalid"
     },
     {
+      "name": "activity-repository-id-rejects-newline",
+      "changes": [{ "path": ["repository_id"], "value": "repo-1\n" }],
+      "expect": "invalid"
+    },
+    {
+      "name": "activity-item-id-rejects-zero-width-space",
+      "changes": [
+        {
+          "path": ["items", 0, "id"],
+          "value": "commit:89abcdef0123456789abcdef0123456789abcdef\u200b"
+        }
+      ],
+      "expect": "invalid"
+    },
+    {
+      "name": "activity-item-title-rejects-newline",
+      "changes": [{ "path": ["items", 0, "title"], "value": "Refine\nprovider model" }],
+      "expect": "invalid"
+    },
+    {
+      "name": "activity-git-actor-name-rejects-control-character",
+      "changes": [{ "path": ["items", 0, "actors", 0, "name"], "value": "Commit\u0007Author" }],
+      "expect": "invalid"
+    },
+    {
+      "name": "activity-git-actor-email-rejects-newline",
+      "changes": [
+        { "path": ["items", 0, "actors", 0, "email"], "value": "author@example.com\n" }
+      ],
+      "expect": "invalid"
+    },
+    {
+      "name": "activity-change-request-detail-id-rejects-bidi-override",
+      "changes": [
+        {
+          "path": ["items", 1, "detail", "change_request_id"],
+          "value": "\u202eforge:code.example:repo-1:merge-request:17"
+        }
+      ],
+      "expect": "invalid"
+    },
+    {
       "name": "index-style-unresolved-change-request-revisions",
       "changes": [
         { "path": ["items", 1, "primary_revision", "repository_id"], "value": null },

@@ -58,6 +58,7 @@ $defs:
         - $ref: '#/$defs/RevisionRef'
         - type: 'null'
       id:
+        maxLength: 1024
         minLength: 1
         title: Id
         type: string
@@ -70,6 +71,7 @@ $defs:
         - $ref: '#/$defs/ActivityState'
         - type: 'null'
       title:
+        maxLength: 1024
         minLength: 1
         title: Title
         type: string
@@ -110,10 +112,12 @@ $defs:
     additionalProperties: false
     properties:
       handle:
+        maxLength: 255
         minLength: 1
         title: Handle
         type: string
       provider_opaque_id:
+        maxLength: 255
         minLength: 1
         title: Provider Opaque Id
         type: string
@@ -133,6 +137,7 @@ $defs:
     additionalProperties: false
     properties:
       change_request_id:
+        maxLength: 1024
         minLength: 1
         title: Change Request Id
         type: string
@@ -175,7 +180,8 @@ $defs:
     properties:
       email:
         anyOf:
-        - minLength: 1
+        - maxLength: 1024
+          minLength: 1
           type: string
         - type: 'null'
         title: Email
@@ -184,6 +190,7 @@ $defs:
         title: Kind
         type: string
       name:
+        maxLength: 1024
         minLength: 1
         title: Name
         type: string
@@ -206,7 +213,8 @@ $defs:
         title: Oid
       repository_id:
         anyOf:
-        - minLength: 1
+        - maxLength: 255
+          minLength: 1
           type: string
         - type: 'null'
         title: Repository Id
@@ -284,10 +292,12 @@ $defs:
       instance:
         $ref: '#/$defs/ProviderInstance'
       object_kind:
+        maxLength: 255
         minLength: 1
         title: Object Kind
         type: string
       opaque_id:
+        maxLength: 255
         minLength: 1
         title: Opaque Id
         type: string
@@ -306,6 +316,7 @@ $defs:
       instance:
         $ref: '#/$defs/ProviderInstance'
       opaque_id:
+        maxLength: 255
         minLength: 1
         title: Opaque Id
         type: string
@@ -336,12 +347,14 @@ $defs:
         - type: 'null'
         title: Oid
       ref:
+        maxLength: 1024
         minLength: 1
         title: Ref
         type: string
       repository_id:
         anyOf:
-        - minLength: 1
+        - maxLength: 255
+          minLength: 1
           type: string
         - type: 'null'
         title: Repository Id
@@ -411,6 +424,7 @@ properties:
     title: Order
     type: string
   repository_id:
+    maxLength: 255
     minLength: 1
     title: Repository Id
     type: string
@@ -431,4 +445,4 @@ title: RepositoryActivity
 type: object
 x-softschema:
   contract: com.github.jlevy.metabrowser.activity:RepositoryActivity/v1
-  schema_sha256: 1e3122ff73fd823bf302b8fb2977e1d6ef7074292017bc0fec6c54c75df20720
+  schema_sha256: 059240e2d42ad4cad35899a9996095e809dbff8d10a71455a13e7b96e104ad05

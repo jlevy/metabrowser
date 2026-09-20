@@ -179,6 +179,16 @@ Provider adapters convert offsets to UTC and truncate finer precision toward the
 millisecond before validation so Python and browser ordering have identical precision.
 Provider links use an ASCII canonical HTTPS spelling: lowercase DNS host, no
 credentials, no default port, and uppercase hexadecimal percent escapes.
+Every structured string is bounded; only Markdown bodies are unbounded content.
+Identifiers refuse control characters, line separators, zero-width characters, and
+bidirectional formatting controls, so nothing can hide in or visually reorder a value
+that is compared, hashed, and joined into derived IDs.
+Single-line display text such as titles, names, labels, and refs refuses control
+characters and line separators but keeps bidirectional marks, which right-to-left text
+legitimately carries.
+The bounds are envelopes over the providers the neutral model must admit, not one
+provider’s exact limits; each constant in `models.py` records its basis, and lengths
+count Unicode code points in both runtimes.
 Readers accept finite integral JSON numbers, while the serializer writes integer YAML;
 all persisted integers remain within JavaScript’s exact range.
 
