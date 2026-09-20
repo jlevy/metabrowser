@@ -80,6 +80,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse, Response
 
 from metabrowser import kpress_adapter
+from metabrowser.capabilities import get_capabilities
 from metabrowser.content_sniff import ContentClass, classify_prefix
 from metabrowser.file_extensions import (
     BROWSER_IMAGE_EXTS,
@@ -1158,7 +1159,13 @@ async def git_revision_index_meta(subject: GitRevisionSubject) -> JSONResponse:
 
 @_typed_git_failures
 async def git_revision_capabilities(subject: GitRevisionSubject) -> JSONResponse:
-    """Observation surface for a pin: complete, no watcher, events off."""
+    """Observation surface for a pin: complete, no watcher, events off.
+
+    The content-trust block is the same process-wide answer the filesystem
+    route publishes. It is what the shell reads to decide whether a document
+    gets its executing view, and a pinned blob is browsed the same way, so
+    leaving it out would hide the profile exactly where it applies.
+    """
 
     try:
         facts = await _git_index_facts(subject)
@@ -1183,6 +1190,7 @@ async def git_revision_capabilities(subject: GitRevisionSubject) -> JSONResponse
                 "contract": _GIT_INDEX_CONTRACT,
             },
             "events": {"stream": "off", "reason": "git-revision-no-watcher"},
+            "capabilities": get_capabilities().as_wire(),
         }
     )
 

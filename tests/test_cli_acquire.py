@@ -124,6 +124,28 @@ def test_file_url_api_applies_the_content_trust_flags(
 
 
 @posix_only
+def test_pin_api_applies_the_content_trust_flags(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pin is a content surface, so ``--untrusted`` must reach its envelope.
+
+    The pin entry points issue against an attached subject instead of a
+    filesystem root, which is a second code path to the same capability block.
+    ``/api/capabilities`` is the wire form, so this reads the answer the
+    browser would read rather than a process global.
+    """
+    _isolate_home(tmp_path, monkeypatch)
+    url = _file_url(_origin(tmp_path, allow_filter=False))
+    default = runner.invoke(_app, [url, "--api", "/api/capabilities"])
+    assert default.exit_code == 0, default.output
+    assert '"active_content": true' in default.output
+    untrusted = runner.invoke(_app, [url, "--api", "/api/capabilities", "--untrusted"])
+    assert untrusted.exit_code == 0, untrusted.output
+    assert '"active_content": false' in untrusted.output
+    assert '"mutations": false' in untrusted.output
+
+
+@posix_only
 def test_file_url_api_tree_attaches_the_default_pin(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

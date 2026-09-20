@@ -290,6 +290,11 @@ Content source:
   `total_size` and the Git `/api/rollup` tree.
   Inventory open, archive containers, and serving acquired Git are not switched yet.
 
+- The content-trust profile applies to a Git pin.
+  `--untrusted`, `--no-active-content`, and `--allow-edits` take effect on `--show` and
+  `--api` of a `file://` pin the way they do on a directory, and `GET /api/capabilities`
+  on that pin carries the resolved block, so Preview is withdrawn there too.
+
 - `/api/tree` on a Git pin nests at most 20,000 nodes below the listed directory.
   Direct children are always listed; a directory whose children no longer fit is the
   same lazy sentinel the depth cap emits.
