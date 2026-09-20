@@ -100,6 +100,23 @@ def test_safe_path_handles_traversal_back_into_root(tmp_path: Path) -> None:
     assert target.name == "ok.txt"
 
 
+def test_safe_path_rejects_an_embedded_nul(tmp_path: Path) -> None:
+    """``/raw/a%00b`` decodes to a name no filesystem can hold.
+
+    ``Path.resolve`` raises ``ValueError`` on it rather than returning a
+    path, so without the guard the refusal arrived as a 500. There is no
+    such file under the root, which is the same answer traversal gets.
+    """
+    served, _secret = _setup_sibling_roots(tmp_path)
+    _set_root_dir(served)
+    try:
+        assert _safe_path("a\x00b") is None
+        assert _safe_path("ok.txt\x00.png") is None
+        assert _safe_subdir("sub\x00dir") is None
+    finally:
+        _set_root_dir(Path())
+
+
 def test_is_within_rejects_unrelated_path(tmp_path: Path) -> None:
     other = tmp_path / "other"
     other.mkdir()

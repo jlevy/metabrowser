@@ -31,7 +31,7 @@ def test_browser_text_and_image_sets_are_disjoint() -> None:
 def test_browser_text_includes_arbitrary_text_formats() -> None:
     """Browser support extends to common text formats.
 
-    `foo.html.gz` should open as HTML in the source view."""
+    `foo.html.gz` should open as HTML."""
     for ext in (".html", ".xml", ".sql", ".log", ".tsv", ".rst"):
         assert ext in BROWSER_TEXT_EXTS, f"{ext} should be browser-readable"
 
@@ -56,6 +56,7 @@ def test_client_settings_export_the_syntax_registry_and_bound() -> None:
     assert settings["SYNTAX_LANGUAGE_BY_EXTENSION"] == dict(SYNTAX_LANGUAGE_BY_EXTENSION)
     assert settings["SYNTAX_HIGHLIGHT_MAX_BYTES"] > 0
     assert client_settings_dict(syntax_highlight_max_bytes=7)["SYNTAX_HIGHLIGHT_MAX_BYTES"] == 7
+    assert settings["CAPABILITIES"] == {"active_content": True, "mutations": False}
 
 
 def test_browser_trackable_excludes_gz() -> None:
@@ -68,7 +69,7 @@ def test_browser_trackable_excludes_gz() -> None:
 
 
 def test_html_gz_renders_as_text_through_api_file(tmp_path: Path) -> None:
-    """A manually-gzipped HTML file should open as text in /api/file
+    """A manually-gzipped HTML file should open as the html kind in /api/file
     while preserving its logical extension."""
     html = "<html><body>" + ("<p>line</p>\n" * 50) + "</body></html>"
     gz = tmp_path / "report.html.gz"
@@ -91,6 +92,7 @@ def test_html_gz_renders_as_text_through_api_file(tmp_path: Path) -> None:
     response = asyncio.run(proc_browser.api_file(_FakeRequest()))  # pyright: ignore[reportArgumentType]
     body: dict[str, Any] = json.loads(bytes(response.body).decode())
     assert body["type"] == "text"
+    assert body["kind"] == "html"
     assert body["content"] == html
     assert body["logical_ext"] == ".html"
     assert body["compressed"] is True

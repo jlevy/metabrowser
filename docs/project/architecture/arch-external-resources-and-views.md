@@ -93,8 +93,9 @@ The system uses three linked registries rather than one mega-registry.
 An installed plugin declares one entry per contract ID:
 
 - envelope and `frontmatter-md` or `pure-yaml` profile;
-- packaged compiled schema, registry-verified exact byte digest, and an independently
-  recomputed compiler-compatible logical schema digest;
+- packaged compiled schema, an exact byte digest that identifies it rather than
+  attesting to it, and a compiler-compatible logical schema digest recomputed from the
+  schema’s own content;
 - semantic model and validator;
 - parser and deterministic serializer;
 - producer and named consumers;
@@ -396,7 +397,8 @@ mutable branch name.
 | Neutral provider resources | `provider_resources/models.py`: provider/instance scalars, identity refs, generic targets, bindings, storage records, profile types, and publication validators; `provider_resources/store.py`: `stage_snapshot`, `publish_manifest`, `read_current`, `read_last_complete`, `lease_snapshot`, `reclaim_snapshots`; `plugin_api.py`: `ProviderResourceStorePort` | Give unrelated domain and provider plugins one content-neutral, auth-scoped publication service without exposing paths or hosted-review internals; domain objects and artifact contracts stay in their owning plugins |
 | Capability declarations | `plugin_loader/capability_types.py`: `ArtifactContractSpec`, `ArtifactValidationContext`, `CapabilitySet` | Expose dependency-light installed declaration types without importing schema parsing, validation, or discovery on ordinary startup paths |
 | Installed capability discovery | `plugin_loader/capability_discovery.py`: `discover_capability_sets` | Load all-or-nothing `metabrowser.capabilities.v1` factories from installed distributions; reject duplicate providers and exclude operator plugin directories |
-| Contract installation | `plugin_loader/artifact_contracts.py`: `build_contract_registry`, `validate_record`, `validate_artifact`, `serialize_artifact`, `contract_inventory` | Install trusted SoftSchema declarations returned as Python objects and reject missing, conflicting, or incomplete contracts |
+| Contract installation | `plugin_loader/artifact_contracts.py`: `build_contract_registry`, `validate_record`, `validate_artifact`, `serialize_artifact` | Install trusted SoftSchema declarations returned as Python objects and reject missing, conflicting, or incomplete contracts |
+| Installed inventory projection | `plugin_loader/artifact_inventory.py`: `installed_artifact_inventory`, `check_installed_evidence`, `validate_installed_evidence` | Project one provider-neutral inventory of the installed registries and run the corpus evidence the format gate and distribution smoke both consume |
 | Resource profiles | Domain capability factories; `plugin_loader/artifact_contracts.py`: `build_resource_profile_registry`, `resolve_resource_profile`; staged `hosted_review/models.py`: `validate_resource_set_against_profile`, moving to `provider_resources/models.py` under `mb-s0gv` | Close collection contracts, cardinality, pagination, and completeness outside cached records; profiles belong to the domain capability that owns their artifact contracts |
 | Resource kinds | `plugin_loader/manifest.py`: `ResourceKindSpec`; installed resource registry | Bind addressed models to item/container capabilities and views without file matchers |
 | Selection host | `static/resource-context.js`, `static/view-composition.js`, and the file-specific shell extraction from `static/app.js` | Present one validated selection envelope to registered views |

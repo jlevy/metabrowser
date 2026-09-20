@@ -110,6 +110,9 @@ def run_api(
     plugins_dir: list[Path] | None = None,
     log_level: str = "",
     index_timeout_s: float = INDEX_READY_TIMEOUT_S,
+    untrusted: bool = False,
+    no_active_content: bool = False,
+    allow_edits: bool = False,
 ) -> None:
     """Issue one request through the in-process ASGI stack and print it."""
 
@@ -117,6 +120,13 @@ def run_api(
         raise CLIError(f"route must begin with /api/; got {route}")
 
     load_dotenv_chain()
+    from metabrowser.capabilities import apply_capabilities
+
+    apply_capabilities(
+        untrusted=untrusted,
+        no_active_content=no_active_content,
+        allow_edits=allow_edits,
+    )
     apply_log_level(log_level)
     resolved = root.expanduser().resolve()
     if not resolved.is_dir():
