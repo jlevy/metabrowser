@@ -1332,7 +1332,7 @@ def _gitlink_file_payload(entry: GitTreeEntry) -> dict[str, Any]:
     }
 
 
-def _blob_file_payload(entry: GitTreeEntry, body: bytes, request: Request) -> dict[str, Any]:
+async def _blob_file_payload(entry: GitTreeEntry, body: bytes, request: Request) -> dict[str, Any]:
     ext = _logical_ext(entry.path)
     payload: dict[str, Any] = {
         "subject": "git_revision",
@@ -1378,7 +1378,9 @@ def _blob_file_payload(entry: GitTreeEntry, body: bytes, request: Request) -> di
     if ext == ".jsonl":
         from metabrowser.jsonl_view import parse_jsonl_bytes
 
-        parsed = parse_jsonl_bytes(body)
+        # Off the loop, as the filesystem envelope does: a blob can be as large as
+        # the preview bound, and parsing it is synchronous.
+        parsed = await asyncio.to_thread(parse_jsonl_bytes, body)
         adapter = parsed.get("summary", {}).get("adapter")
         adapter_name = adapter if isinstance(adapter, str) else None
         kind = _plugin_kind_for_git_path(entry.path, adapter=adapter_name) or classify_by_ext(
@@ -1484,7 +1486,8 @@ async def git_revision_file(request: Request, subject: GitRevisionSubject) -> JS
         return _json(_object_unavailable_payload(exc), status_code=404)
     except GitBlobTooLargeError as exc:
         return _json(_blob_too_large_payload(exc), status_code=413)
-    return _json(_with_requested_path(_blob_file_payload(entry, body, request), entry, path))
+    payload = await _blob_file_payload(entry, body, request)
+    return _json(_with_requested_path(payload, entry, path))
 
 
 @_typed_git_failures

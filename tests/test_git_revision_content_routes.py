@@ -8,6 +8,7 @@ import os
 import shutil
 import socket
 import subprocess
+import threading
 import time
 from collections.abc import AsyncGenerator, Generator
 from contextlib import asynccontextmanager, contextmanager
@@ -17,7 +18,7 @@ from typing import Any
 import pytest
 from httpx2 import ASGITransport, AsyncClient
 
-from metabrowser import kpress_adapter
+from metabrowser import jsonl_view, kpress_adapter
 from metabrowser.diff.format import validate_document
 from metabrowser.git.content_routes import split_git_container_wire
 from metabrowser.git.process import repository_store_target
@@ -1478,6 +1479,32 @@ def test_git_structured_parsed_and_plugin_kind_by_extension(tmp_path: Path) -> N
             assert any(view["id"] == "diff" for view in patch_body["views"])
             assert "mtime" not in patch_body
             assert str(store) not in patch_file.text
+
+    asyncio.run(_run())
+
+
+def test_git_jsonl_blob_is_parsed_off_the_event_loop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A JSONL blob can be 16 MiB. Its parse must not run on the loop thread."""
+
+    store, commit = _build_store(tmp_path)
+    parse_threads: list[int] = []
+    real_parse = jsonl_view.parse_jsonl_bytes
+
+    def recording_parse(body: bytes) -> dict[str, Any]:
+        parse_threads.append(threading.get_ident())
+        return real_parse(body)
+
+    monkeypatch.setattr(jsonl_view, "parse_jsonl_bytes", recording_parse)
+
+    async def _run() -> None:
+        loop_thread = threading.get_ident()
+        async with _pinned_client(store, commit) as (client, _subject):
+            response = await client.get("/api/file", params={"path": _wire(b"session.jsonl")})
+            assert response.status_code == 200
+            assert response.json()["type"] == "jsonl"
+        assert parse_threads and loop_thread not in parse_threads
 
     asyncio.run(_run())
 
