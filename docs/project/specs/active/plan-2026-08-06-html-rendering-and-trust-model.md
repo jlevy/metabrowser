@@ -561,6 +561,9 @@ check stops invoking.
   default
 - [x] Add the preview renderer with the sandbox attribute set and a disposal path
 - [x] Suppress the preview view entirely when `active_content` is off
+- [x] Offer the orientation affordance the frame boundary costs: a plain anchor that
+  opens the frame’s own raw URL as a top-level tab, which the response headers contain
+  identically
 - [x] Document the preview, its containment envelope, and the invariant in SECURITY.md
   as shipped guarantees
 

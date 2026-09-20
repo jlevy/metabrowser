@@ -192,6 +192,8 @@ Built-in plugins provide views for:
 - JSONL streams, with timelines and chart summaries for supported event formats,
   including coding-agent logs.
 - Text, source code, images, and binary-file metadata.
+- HTML documents in a sandboxed preview, with an **Open as full page** control that
+  opens the same document as its own browser tab and a Source tab beside it.
 
 Gzip and zlib variants of supported files open transparently with bounded decompression.
 Format-specific binary stores belong in separately installed plugins, keeping native
