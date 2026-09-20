@@ -3,11 +3,11 @@ type: is
 id: is-01kzs5m38dz1egphfwf30c8h7n
 title: Repository library and hosted-review roadmap
 kind: epic
-status: open
+status: in_progress
 priority: 1
-version: 63
+version: 68
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
-delegate: null
+delegate: claude-code@spud10.local
 labels: []
 dependencies:
   - type: blocks
@@ -61,10 +61,13 @@ child_order_hints:
   - is-01m2pttd3exe4x0cjsvyssr21k
   - is-01m2xb08ytynaae0w368awg1s2
   - is-01m2wbxg2pb42nj7zacndrsvsc
+  - is-01m2ynskxv64d74tpy85555mef
+  - is-01m2ynsqxttgb6w2tyev2vcvb1
+  - is-01m2yp1cgtgy3arg3nvfd54sck
 hold: null
 hold_until: null
 created_at: 2026-08-11T19:43:35.692Z
-updated_at: 2026-09-19T17:24:59.635Z
+updated_at: 2026-09-20T05:53:46.008Z
 started_at: 2026-09-16T21:10:44.764Z
 extensions:
   linear:
@@ -75,4 +78,12 @@ Deliver the GitHub-first v0.11 vertical slice on three independent layers: sessi
 
 ## Notes
 
-Review organization 2026-09-19: do not merge; do not flatten onto main. Formal GitHub stack 131 already holds hosted-review named phases + Phase 1A: #125→#130→#132→#133→#134→#135→#136→#138→#139→#140. Cache→Git implementation collapsed to 3 phase layers on #140: (1) `cursor/v011-cache-acquire-cli-bd04` @ `b09c01e0` Phase 1B-a (supersedes #208+#210), (2) #156 source boundary @ `19507616`, (3) `cursor/v011-git-revision-pin-bd04` @ `cd33e023` Phase 1B-c (supersedes #211–#215). HTML #209 @ `8d49c73c` stays a parallel one-PR stack on main (required before serving acquired Git; not required for --show/--api). Official append command (blocked on write): `gh stack link --remote origin 131 cursor/v011-cache-acquire-cli-bd04 cursor/v011-source-boundary-bd04 cursor/v011-git-revision-pin-bd04`. Token is cursor[bot] ghs_ integration; same as git remote; 403 on pull_requests=write. Crumb PRs #208,#210,#211–#215 left open until a write-capable session can close them with “superseded by #N”.
+2026-09-19 handoff: formal GitHub stack #218 (nothing on main):
+
+#125 design → #134 Phase 0 format (folded #130 #132 #133) → #136 Phase 0C (folded #135) → #139 Phase 0D (folded #138) → #140 Phase 1A → #217 Phase 1B-a draft (folded #208 #210) → #216 Phase 1B source+pin draft (folded #156 and #211–#215).
+
+Independent of the cache stack: HTML #209 (draft, on main), PR-sizing overlay #219, dependabot #207, research #87 and #51.
+
+Superseded crumb PRs are closed. Landing is mb-n2ro only, after explicit approval.
+
+Spec status refreshed on #216 (repo library + hosted review) and #209 (HTML).

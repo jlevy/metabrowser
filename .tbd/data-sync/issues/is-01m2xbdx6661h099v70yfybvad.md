@@ -5,7 +5,7 @@ title: Upstream reviewable-unit PR rules to tbd shortcuts
 kind: task
 status: closed
 priority: 2
-version: 5
+version: 6
 refs:
   - kind: pr
     url: https://github.com/jlevy/tbd/pull/316
@@ -19,7 +19,7 @@ dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-09-19T17:29:07.525Z
-updated_at: 2026-09-19T18:28:40.821Z
+updated_at: 2026-09-20T05:50:26.424Z
 started_at: 2026-09-19T17:31:01.867Z
 closed_at: 2026-09-19T18:28:40.820Z
 close_reason: "Upstream reviewable-unit rules in tbd#316; metabrowser agents load the forked shortcuts via #219 until get-tbd ships."
@@ -30,9 +30,4 @@ tbd already has stacked-prs (opt-in, one concern per layer, prefer fewer larger 
 
 ## Notes
 
-Shipped as standalone PRs; nothing merged to main.
-
-- tbd upstream: https://github.com/jlevy/tbd/pull/316
-- metabrowser docs fork (agents load this now): https://github.com/jlevy/metabrowser/pull/219
-
-Unfork the metabrowser copies after get-tbd ships the tbd change.
+Closed. Policy lives in tbd #316 https://github.com/jlevy/tbd/pull/316 (CI green). Temporary metabrowser docs/tbd fork is #219 https://github.com/jlevy/metabrowser/pull/219 until get-tbd ships. Not in AGENTS.md. #219 lint fails on the anyio 4.14.1 audit (same advisory as dependabot #207 / HTML #209 lock bump). Unfork after tbd ships.

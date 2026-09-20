@@ -3,9 +3,9 @@ type: is
 id: is-01m2s7nv8hmezt4nt3z64qbvpp
 title: Golden-pin file:// acquire, reuse, and staging sweep without a live Git floor
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 8
+version: 9
 spec_path: docs/project/specs/active/plan-2026-08-28-cli-first-delivery-map.md
 delegate: unknown@cursor
 labels:
@@ -18,8 +18,12 @@ parent_id: is-01kzsb4jnyd56wy89xmztkmz2m
 hold: null
 hold_until: null
 created_at: 2026-09-18T03:06:35.665Z
-updated_at: 2026-09-18T03:19:01.618Z
+updated_at: 2026-09-20T05:50:31.279Z
 started_at: 2026-09-18T03:06:44.122Z
+closed_at: 2026-09-20T05:50:31.279Z
+close_reason: "Implemented on survivor draft #217 https://github.com/jlevy/metabrowser/pull/217 (file:// acquire, no serving). Review remains mb-k900. Nothing merged to main."
+resolution: null
+duplicate_of: null
 ---
 Portable pytest golden for Cache 1B-a acquire evidence. ubuntu-latest and this VM report Git 2.43.0, below the acquisition floor (2.43.7 / patched tracks); distro-patched Git remains refuse, so a live `metab file:// --no-serve` tryscript cannot run in current CI.
 

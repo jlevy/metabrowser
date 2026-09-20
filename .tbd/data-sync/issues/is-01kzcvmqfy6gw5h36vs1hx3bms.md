@@ -3,9 +3,9 @@ type: is
 id: is-01kzcvmqfy6gw5h36vs1hx3bms
 title: "HTML P2: capability set, --untrusted profile, and client publication"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 16
+version: 17
 spec_path: docs/project/specs/active/plan-2026-08-06-html-rendering-and-trust-model.md
 delegate: unknown@cursor
 labels:
@@ -27,8 +27,12 @@ parent_id: is-01kzcvm6cpe5b8sb9b9n3gb16g
 hold: null
 hold_until: null
 created_at: 2026-08-07T00:58:17.469Z
-updated_at: 2026-09-18T18:32:44.129Z
+updated_at: 2026-09-20T05:50:32.685Z
 started_at: 2026-09-18T04:14:57.485Z
+closed_at: 2026-09-20T05:50:32.685Z
+close_reason: "Implemented on survivor draft #209 https://github.com/jlevy/metabrowser/pull/209 (parallel to stack #218). Publication review remains mb-d658. Nothing merged to main."
+resolution: null
+duplicate_of: null
 extensions:
   linear:
     id: 799c6e7a-191e-4d81-86b5-0a581e9e54c1

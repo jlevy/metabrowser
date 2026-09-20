@@ -3,9 +3,9 @@ type: is
 id: is-01m2s27ybx4dw3qde29xm6jgqn
 title: "CLI: --no-serve so acquisition goldens inspect without ASGI"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 5
+version: 6
 spec_path: docs/project/specs/active/plan-2026-08-28-cli-first-delivery-map.md
 delegate: unknown@cursor
 labels:
@@ -17,8 +17,12 @@ parent_id: is-01kzsb4jnyd56wy89xmztkmz2m
 hold: null
 hold_until: null
 created_at: 2026-09-18T01:31:37.213Z
-updated_at: 2026-09-18T03:06:59.714Z
+updated_at: 2026-09-20T05:52:55.623Z
 started_at: 2026-09-18T02:44:30.720Z
+closed_at: 2026-09-20T05:52:55.615Z
+close_reason: "Implemented on survivor draft #217 https://github.com/jlevy/metabrowser/pull/217 (--no-serve acquire). Review remains mb-k900."
+resolution: null
+duplicate_of: null
 ---
 Add --no-serve so `metab <url>` can acquire and inspect cache state without starting the ASGI server. The CLI-first delivery map (Open Decisions #1) recommends this as the acquisition trigger: side effect of metab <url>, no /api/cache/acquire write route. Goldens (mb-dg00) need acquire + --api /api/cache/* against an isolated METABROWSER_HOME. Land with the acquire CLI wiring in mb-h51g, not as a standalone mode.
 

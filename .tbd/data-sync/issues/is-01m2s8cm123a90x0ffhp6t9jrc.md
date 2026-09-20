@@ -3,9 +3,9 @@ type: is
 id: is-01m2s8cm123a90x0ffhp6t9jrc
 title: Refuse a below-floor Git before creating the application home
 kind: bug
-status: in_progress
+status: closed
 priority: 1
-version: 6
+version: 7
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: unknown@cursor
 labels:
@@ -16,8 +16,12 @@ parent_id: is-01kzsb4jnyd56wy89xmztkmz2m
 hold: null
 hold_until: null
 created_at: 2026-09-18T03:19:01.921Z
-updated_at: 2026-09-18T03:28:40.630Z
+updated_at: 2026-09-20T05:50:31.168Z
 started_at: 2026-09-18T03:19:05.864Z
+closed_at: 2026-09-20T05:50:31.168Z
+close_reason: "Implemented on survivor draft #217 https://github.com/jlevy/metabrowser/pull/217 (file:// acquire, no serving). Review remains mb-k900. Nothing merged to main."
+resolution: null
+duplicate_of: null
 ---
 acquire_into_staging calls require_acquisition_git before open_cache, so a staging fetch does not create the home when Git is below the floor. acquire_file_source (the CLI --no-serve / file:// --api path) currently calls open_cache first, then acquire_into_staging. On ubuntu-latest Git 2.43.0, metab file:// --no-serve therefore creates METABROWSER_HOME and then refuses.
 

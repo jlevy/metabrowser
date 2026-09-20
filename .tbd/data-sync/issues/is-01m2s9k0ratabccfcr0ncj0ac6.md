@@ -3,9 +3,9 @@ type: is
 id: is-01m2s9k0ratabccfcr0ncj0ac6
 title: Reuse a cache hit against a home the process cannot write
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 5
+version: 6
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: unknown@cursor
 labels:
@@ -15,8 +15,12 @@ parent_id: is-01kzsb4jnyd56wy89xmztkmz2m
 hold: null
 hold_until: null
 created_at: 2026-09-18T03:40:00.138Z
-updated_at: 2026-09-18T03:53:25.537Z
+updated_at: 2026-09-20T05:50:31.236Z
 started_at: 2026-09-18T03:40:03.454Z
+closed_at: 2026-09-20T05:50:31.236Z
+close_reason: "Implemented on survivor draft #217 https://github.com/jlevy/metabrowser/pull/217 (file:// acquire, no serving). Review remains mb-k900. Nothing merged to main."
+resolution: null
+duplicate_of: null
 ---
 A published file:// cache hit must inspect without writing: no open_cache, no lock files, no Git floor, no fetch. acquire_file_source currently always open_cache when the home exists, so a 0500 home fails even when the alias is already published.
 

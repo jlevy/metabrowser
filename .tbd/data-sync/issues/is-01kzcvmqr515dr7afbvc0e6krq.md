@@ -3,9 +3,9 @@ type: is
 id: is-01kzcvmqr515dr7afbvc0e6krq
 title: "HTML P3: path-shaped raw route so relative references resolve"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 8
+version: 9
 spec_path: docs/project/specs/active/plan-2026-08-06-html-rendering-and-trust-model.md
 delegate: unknown@cursor
 labels: []
@@ -16,8 +16,12 @@ parent_id: is-01kzcvm6cpe5b8sb9b9n3gb16g
 hold: null
 hold_until: null
 created_at: 2026-08-07T00:58:17.732Z
-updated_at: 2026-09-18T18:32:44.303Z
+updated_at: 2026-09-20T05:50:32.701Z
 started_at: 2026-09-18T04:27:04.031Z
+closed_at: 2026-09-20T05:50:32.701Z
+close_reason: "Implemented on survivor draft #209 https://github.com/jlevy/metabrowser/pull/209 (parallel to stack #218). Publication review remains mb-d658. Nothing merged to main."
+resolution: null
+duplicate_of: null
 extensions:
   linear:
     id: da24fe06-1e60-44e4-bad5-fd8a93098265

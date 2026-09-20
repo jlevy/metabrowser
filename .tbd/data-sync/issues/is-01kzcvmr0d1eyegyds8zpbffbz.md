@@ -3,9 +3,9 @@ type: is
 id: is-01kzcvmr0d1eyegyds8zpbffbz
 title: "HTML P4: html kind, full-page detection, and sandboxed preview"
 kind: feature
-status: in_progress
+status: closed
 priority: 1
-version: 8
+version: 9
 spec_path: docs/project/specs/active/plan-2026-08-06-html-rendering-and-trust-model.md
 delegate: unknown@cursor
 labels: []
@@ -14,8 +14,12 @@ parent_id: is-01kzcvm6cpe5b8sb9b9n3gb16g
 hold: null
 hold_until: null
 created_at: 2026-08-07T00:58:17.996Z
-updated_at: 2026-09-18T18:32:44.479Z
+updated_at: 2026-09-20T05:50:32.722Z
 started_at: 2026-09-18T04:31:31.949Z
+closed_at: 2026-09-20T05:50:32.722Z
+close_reason: "Implemented on survivor draft #209 https://github.com/jlevy/metabrowser/pull/209 (parallel to stack #218). Publication review remains mb-d658. Nothing merged to main."
+resolution: null
+duplicate_of: null
 extensions:
   linear:
     id: 4c13f679-cdd5-48b6-9f28-d6cd16cc62de

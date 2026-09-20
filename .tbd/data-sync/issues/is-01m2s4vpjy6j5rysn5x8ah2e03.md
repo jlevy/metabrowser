@@ -3,9 +3,9 @@ type: is
 id: is-01m2s4vpjy6j5rysn5x8ah2e03
 title: Stage a file:// fetch into a worktree-free store (no publication)
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: unknown@cursor
 labels:
@@ -15,8 +15,12 @@ parent_id: is-01kzsb4jnyd56wy89xmztkmz2m
 hold: null
 hold_until: null
 created_at: 2026-09-18T02:17:21.758Z
-updated_at: 2026-09-18T02:31:17.744Z
+updated_at: 2026-09-20T05:50:31.063Z
 started_at: 2026-09-18T02:17:26.303Z
+closed_at: 2026-09-20T05:50:31.061Z
+close_reason: "Implemented on survivor draft #217 https://github.com/jlevy/metabrowser/pull/217 (file:// acquire, no serving). Review remains mb-k900. Nothing merged to main."
+resolution: null
+duplicate_of: null
 ---
 Claim a staging entry, ls-remote the credential-free file:// source, init --bare --template=, write the store config, and fetch with --filter=blob:none. Detect filter ignored vs honored from received objects, not stderr. Record the configuration snapshot digest and validate the observed HEAD and object format. Leave results in staging only: no repository-stores rename, no source alias, no serving, no --no-serve. Abandon deletes the staging entry. file:// must pack, not git clone --local hardlinks.
 
