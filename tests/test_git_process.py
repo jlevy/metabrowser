@@ -15,6 +15,8 @@ from metabrowser.git.process import (
     BATCH_OBJECT_POLICY,
     FETCH_POLICY,
     READ_POLICY,
+    GitCommandError,
+    GitProcessPolicy,
     UnsupportedGitVersionError,
     acquisition_allowed,
     attached_worktree_target,
@@ -73,6 +75,63 @@ def test_isolated_policies_ignore_environment_injected_config(
         assert b"review.injected=ambient" not in result
     ordinary = asyncio.run(run_git(["config", "--list"], cwd=tmp_path, policy=READ_POLICY))
     assert b"review.injected=ambient" in ordinary
+
+
+@pytest.mark.parametrize("policy", [ACQUISITION_POLICY, FETCH_POLICY, BATCH_OBJECT_POLICY])
+def test_isolated_policies_ignore_an_ambient_protocol_allowlist(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, policy: GitProcessPolicy
+) -> None:
+    """``GIT_ALLOW_PROTOCOL`` replaces every ``protocol.*`` setting when Git sees it."""
+    origin = tmp_path / "origin"
+    origin.mkdir()
+    asyncio.run(run_git(["init", "-q", "-b", "main"], cwd=origin))
+    monkeypatch.setenv("GIT_ALLOW_PROTOCOL", "file")
+    args = ["-c", "protocol.allow=never", "ls-remote", "--", f"file://{origin}", "HEAD"]
+    with pytest.raises(GitCommandError):
+        asyncio.run(run_git(args, cwd=tmp_path, policy=policy))
+    assert asyncio.run(run_git(args, cwd=tmp_path, policy=READ_POLICY)) == b""
+
+
+def test_isolated_policies_drop_every_ambient_git_variable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GIT_ALLOW_PROTOCOL", "file:ext")
+    monkeypatch.setenv("GIT_DEFAULT_REF_FORMAT", "reftable")
+    monkeypatch.setenv("GIT_TRACE", "1")
+    monkeypatch.setenv("GIT_SSH_COMMAND", "ssh -oProxyCommand=ambient")
+    for policy in (ACQUISITION_POLICY, FETCH_POLICY, BATCH_OBJECT_POLICY):
+        env = git_environment(policy)
+        wanted = {
+            "GIT_OPTIONAL_LOCKS": "0",
+            "GIT_TERMINAL_PROMPT": "0",
+            "GIT_ASKPASS": "",
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_NO_LAZY_FETCH": "1",
+        }
+        if policy.ssh_batch:
+            wanted["GIT_SSH_COMMAND"] = "ssh -oBatchMode=yes"
+        assert {name: value for name, value in env.items() if name.startswith("GIT_")} == wanted
+    ordinary = git_environment(READ_POLICY)
+    assert ordinary["GIT_ALLOW_PROTOCOL"] == "file:ext"
+    assert ordinary["GIT_TRACE"] == "1"
+
+
+def test_an_ambient_ref_format_does_not_reach_an_acquired_store(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Git 2.45 and newer honor ``GIT_DEFAULT_REF_FORMAT``; older admitted Gits read files."""
+    monkeypatch.setenv("GIT_DEFAULT_REF_FORMAT", "reftable")
+    store = tmp_path / "store.git"
+    asyncio.run(
+        run_git(
+            ["init", "--bare", "--template=", "-q", str(store)],
+            cwd=tmp_path,
+            policy=ACQUISITION_POLICY,
+        )
+    )
+    assert "refstorage" not in (store / "config").read_text(encoding="utf-8").lower()
+    assert not (store / "reftable").exists()
 
 
 def test_attached_worktree_target_does_not_follow_a_poisoned_git_dir(

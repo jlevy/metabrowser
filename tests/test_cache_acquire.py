@@ -260,6 +260,21 @@ def test_a_default_branch_that_does_not_resolve_to_the_observed_head_is_refused(
     assert list((home / "cache" / "repository-stores").iterdir()) == []
 
 
+@posix_only
+def test_ambient_git_variables_do_not_steer_an_acquisition(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An allowlist naming only https would refuse file://; reftable would change the store."""
+    _allow_installed_git(monkeypatch)
+    origin = _origin(tmp_path, allow_filter=False)
+    monkeypatch.setenv("GIT_ALLOW_PROTOCOL", "https")
+    monkeypatch.setenv("GIT_DEFAULT_REF_FORMAT", "reftable")
+    published = asyncio.run(acquire_file_source(_file_source(origin), home=tmp_path / "home"))
+    config = (published.git_dir / "config").read_text(encoding="utf-8").lower()
+    assert "refstorage" not in config
+    assert not (published.git_dir / "reftable").exists()
+
+
 def _inodes(path: Path) -> set[int]:
     return {entry.stat().st_ino for entry in path.rglob("*") if entry.is_file()}
 

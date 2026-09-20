@@ -272,24 +272,30 @@ def git_environment(policy: GitProcessPolicy | None = None) -> dict[str, str]:
     repository needing credentials fails fast instead of blocking the
     request on a prompt that has no terminal to appear on.
 
-    An acquisition, fetch, or batch-object policy also isolates user and
-    system Git configuration, disables implicit lazy fetch, and can force
-    SSH batch mode. Those extras are not applied to ordinary local reads.
+    An acquisition, fetch, or batch-object policy also drops every inherited
+    ``GIT_*`` variable, isolates user and system Git configuration, disables
+    implicit lazy fetch, and can force SSH batch mode. Those extras are not
+    applied to ordinary local reads, which keep honoring the caller's Git
+    environment.
     """
     env = dict(os.environ)
     for name in _REPO_PINNING_GIT_VARS:
         env.pop(name, None)
+    if policy is not None and policy.isolate_user_config:
+        # An allowlist, not a denylist. Git reads configuration, protocol policy
+        # (GIT_ALLOW_PROTOCOL replaces every protocol.* setting), the default ref
+        # format, tracing targets, and helper commands from GIT_* variables, and
+        # each release adds more. An isolated spawn inherits none of them and
+        # gets exactly the ones set below.
+        for name in tuple(env):
+            if name.startswith("GIT_"):
+                del env[name]
     env["GIT_OPTIONAL_LOCKS"] = "0"
     env["GIT_TERMINAL_PROMPT"] = "0"
     env["GIT_ASKPASS"] = ""
     env["SSH_ASKPASS"] = ""
     if policy is not None:
         if policy.isolate_user_config:
-            # Git also accepts config files and command-scope settings through the
-            # environment. Disabling global/system files alone does not isolate it.
-            for name in tuple(env):
-                if name == "GIT_CONFIG" or name.startswith("GIT_CONFIG_"):
-                    del env[name]
             env["GIT_CONFIG_GLOBAL"] = os.devnull
             env["GIT_CONFIG_NOSYSTEM"] = "1"
         if policy.no_lazy_fetch:

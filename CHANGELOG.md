@@ -121,12 +121,14 @@ Repository cache:
   already published for that identity.
   The default branch is read only from the origin’s own `HEAD`, and an acquire whose
   fetched default branch does not resolve to the observed `HEAD` commit is refused
-  before publication. After a blobless fetch, acquisition prefetches the default
-  revision’s blob-mode tree entries by object ID; a prefetch failure still publishes
-  with `object_state` converging.
-  A staging entry whose liveness lock is free is swept on the next cache open.
-  A published store no alias names is reclaimed on that same open; a live store lease
-  skips it. Read routes do not reclaim.
+  before publication. Acquisition runs Git without any inherited `GIT_*` variable, so an
+  ambient `GIT_ALLOW_PROTOCOL` or `GIT_DEFAULT_REF_FORMAT` cannot widen the protocol
+  policy or change the published store’s ref format.
+  After a blobless fetch, acquisition prefetches the default revision’s blob-mode tree
+  entries by object ID; a prefetch failure still publishes with `object_state`
+  converging. A staging entry whose liveness lock is free is swept on the next cache
+  open. A published store no alias names is reclaimed on that same open; a live store
+  lease skips it. Read routes do not reclaim.
   A `file://` acquire that the Git version floor refuses does not create the application
   home, including when that path already exists as an empty directory; a cache hit still
   reuses a published store without fetching, including against an application home the

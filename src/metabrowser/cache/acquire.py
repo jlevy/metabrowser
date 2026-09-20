@@ -307,6 +307,9 @@ async def acquire_into_staging(source: GitSource, *, home: Path) -> StagingAcqui
             raise RemoteUnavailableError("the source did not advertise HEAD") from exc
         head_ref, revision = _parse_symref_head(observed)
         advertised_format = "sha256" if len(revision) == 64 else "sha1"
+        # No ``--ref-format=files``: the flag arrived in Git 2.45 and the admitted
+        # floor is 2.43. The isolated environment drops GIT_DEFAULT_REF_FORMAT and
+        # reads no user configuration, so nothing ambient selects reftable.
         await _run(
             [
                 "init",
