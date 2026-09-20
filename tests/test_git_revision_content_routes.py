@@ -19,6 +19,7 @@ import pytest
 from httpx2 import ASGITransport, AsyncClient
 
 from metabrowser import jsonl_view, kpress_adapter
+from metabrowser.capabilities import Capabilities, set_capabilities
 from metabrowser.diff.format import validate_document
 from metabrowser.git.content_routes import split_git_container_wire
 from metabrowser.git.process import repository_store_target
@@ -1844,5 +1845,108 @@ def test_git_view_shell_honors_gitpath_and_refuses_filesystem_spelling(tmp_path:
             assert filesystem.status_code == 400
             assert filesystem.text == "Invalid view path."
             assert str(store) not in filesystem.text
+
+    asyncio.run(_run())
+
+
+def _assert_git_raw_sandbox(response: Any, *, active_content: bool) -> None:
+    """The raw trust headers, whichever layer produced the response.
+
+    ``_RawTrustHeaderMiddleware`` owns these for the whole ``/raw`` path, so a
+    pinned Git subject must carry them exactly as a filesystem subject does --
+    on a hit, on a miss, and with active content on or off.
+    """
+
+    csp = response.headers["content-security-policy"]
+    assert csp.startswith("sandbox ")
+    assert "allow-same-origin" not in csp
+    assert "frame-ancestors" not in csp
+    assert ("allow-scripts" in csp) is active_content
+    assert response.headers["x-content-type-options"] == "nosniff"
+
+
+@pytest.mark.parametrize("active_content", [True, False])
+def test_git_raw_blobs_are_sandboxed_like_filesystem_raw(
+    tmp_path: Path, active_content: bool
+) -> None:
+    """An HTML or SVG blob under a pin is opaque-origin sandboxed on the wire.
+
+    ``raw_file`` dispatches a pinned subject to ``git_revision_raw`` before it
+    reaches the filesystem branch, so trust-header evidence taken on that branch
+    is evidence for the filesystem only. SECURITY.md promises the sandbox on
+    every raw response; this asserts it against the Git bytes themselves.
+    """
+
+    store, commit = fast_import_store(
+        tmp_path,
+        {
+            b"page.html": b"<!doctype html><script>parent.postMessage(1)</script>\n",
+            b"pic.svg": b"<svg xmlns='http://www.w3.org/2000/svg'><script/></svg>\n",
+        },
+    )
+    set_capabilities(Capabilities(active_content=active_content, mutations=False))
+
+    async def _run() -> None:
+        async with _pinned_client(store, commit) as (client, _subject):
+            for name in (b"page.html", b"pic.svg"):
+                hit = await client.get("/raw", params={"path": _wire(name)})
+                assert hit.status_code == 200, name
+                _assert_git_raw_sandbox(hit, active_content=active_content)
+                assert str(store) not in hit.text
+            miss = await client.get("/raw", params={"path": _wire(b"absent.html")})
+            assert miss.status_code == 404
+            _assert_git_raw_sandbox(miss, active_content=active_content)
+            # A filesystem spelling is not a wire identity, so it is a miss
+            # too -- and a miss is still sandboxed.
+            spelled = await client.get("/raw", params={"path": "page.html"})
+            assert spelled.status_code == 404
+            _assert_git_raw_sandbox(spelled, active_content=active_content)
+
+    asyncio.run(_run())
+
+
+def test_git_raw_path_form_is_sandboxed_and_does_not_fault(tmp_path: Path) -> None:
+    """``/raw/{path}`` under a pin answers, and answers sandboxed.
+
+    Git preview through the path form is tracked separately, so a 404 here is a
+    legitimate answer today. What is not legitimate is a 500, or an answer that
+    leaves the sandbox off because the path form took a different branch.
+    """
+
+    store, commit = fast_import_store(tmp_path, {b"page.html": b"<!doctype html><p>pin</p>\n"})
+
+    async def _run() -> None:
+        async with _pinned_client(store, commit) as (client, _subject):
+            for address in ("/raw/page.html", f"/raw/{_wire(b'page.html')}"):
+                answered = await client.get(address)
+                assert answered.status_code in {200, 404}, (address, answered.status_code)
+                _assert_git_raw_sandbox(answered, active_content=True)
+                assert str(store) not in answered.text
+
+    asyncio.run(_run())
+
+
+def test_api_same_origin_proof_covers_the_git_content_routes(tmp_path: Path) -> None:
+    """The ``/api/*`` proof is path-scoped, so a pin is behind it too."""
+
+    store, commit = fast_import_store(tmp_path, {b"README.md": b"pin\n"})
+    readme = {"path": _wire(b"README.md")}
+
+    async def _run() -> None:
+        async with _pinned_client(store, commit) as (client, _subject):
+            for route in ("/api/tree", "/api/file", "/api/capabilities"):
+                params = readme if route == "/api/file" else None
+                refused = await client.get(
+                    route,
+                    params=params,
+                    headers={"origin": "https://evil.example", "sec-fetch-site": "cross-site"},
+                )
+                assert refused.status_code == 403, route
+                accepted = await client.get(
+                    route,
+                    params=params,
+                    headers={"sec-fetch-site": "same-origin"},
+                )
+                assert accepted.status_code == 200, route
 
     asyncio.run(_run())
