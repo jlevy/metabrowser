@@ -803,6 +803,18 @@ export function parseChangeRequest(raw) {
     const base = asObject(comparison.base, "change_request.comparison.base");
     require(base.repository_id ===
       repository.opaque_id, "change_request: base repository mismatch");
+    // The ID is verified against the structured fields, never parsed: an instance may carry
+    // a port and an opaque ID may contain the separator, so splitting is ambiguous. The one
+    // segment no field supplies is the adapter's separator-free canonical ID kind.
+    const id = String(document.id);
+    const prefix = `${repository.provider}:${repository.instance}:${repository.opaque_id}:`;
+    const suffix = `:${document.number}`;
+    const idKind = id.slice(prefix.length, id.length - suffix.length);
+    require(id.startsWith(prefix) &&
+      id.endsWith(suffix) &&
+      id.length > prefix.length + suffix.length &&
+      idKind.length <= MAX_PROVIDER_KIND_LENGTH &&
+      PROVIDER_KIND_RE.test(idKind), "change_request.id: does not match its structured identity");
     return { ok: true, value: document };
   } catch (error) {
     if (!(error instanceof FormatError)) {

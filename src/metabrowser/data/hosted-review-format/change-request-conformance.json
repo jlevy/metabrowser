@@ -74,6 +74,7 @@
     },
     {
       "changes": [
+        { "path": ["id"], "value": "forge:code.example:1:repo-1:merge-request:17" },
         { "path": ["provider_ref", "instance"], "value": "code.example:1" },
         { "path": ["repository", "instance"], "value": "code.example:1" },
         { "path": ["url"], "value": "https://code.example:1/teams/project/changes/17" }
@@ -83,6 +84,7 @@
     },
     {
       "changes": [
+        { "path": ["id"], "value": "forge:code.example:65535:repo-1:merge-request:17" },
         { "path": ["provider_ref", "instance"], "value": "code.example:65535" },
         { "path": ["repository", "instance"], "value": "code.example:65535" },
         { "path": ["url"], "value": "https://code.example:65535/teams/project/changes/17" }
@@ -464,12 +466,18 @@
       "name": "url-rejects-overlong-dns-host"
     },
     {
-      "changes": [{ "path": ["number"], "value": 9007199254740991 }],
+      "changes": [
+        { "path": ["id"], "value": "forge:code.example:repo-1:merge-request:9007199254740991" },
+        { "path": ["number"], "value": 9007199254740991 }
+      ],
       "expect": "valid",
       "name": "number-allows-maximum-safe-integer"
     },
     {
-      "changes": [{ "path": ["number"], "value": 1.0 }],
+      "changes": [
+        { "path": ["id"], "value": "forge:code.example:repo-1:merge-request:1" },
+        { "path": ["number"], "value": 1.0 }
+      ],
       "expect": "valid",
       "name": "number-accepts-integral-json-number"
     },
@@ -818,6 +826,78 @@
       ],
       "expect": "invalid",
       "name": "url-rejects-8193-characters"
+    },
+    {
+      "changes": [{ "path": ["id"], "value": "forge:code.example:repo-1:pull:17" }],
+      "expect": "valid",
+      "name": "id-kind-may-differ-from-provider-object-kind"
+    },
+    {
+      "changes": [
+        { "path": ["id"], "value": "forge:code.example:gid://forge/Project/1:merge-request:17" },
+        { "path": ["repository", "opaque_id"], "value": "gid://forge/Project/1" },
+        { "path": ["comparison", "base", "repository_id"], "value": "gid://forge/Project/1" }
+      ],
+      "expect": "valid",
+      "name": "id-is-unambiguous-when-an-opaque-id-contains-separators"
+    },
+    {
+      "changes": [{ "path": ["id"], "value": "other:code.example:repo-1:merge-request:17" }],
+      "expect": "invalid",
+      "name": "id-must-name-the-provider"
+    },
+    {
+      "changes": [{ "path": ["id"], "value": "forge:other.example:repo-1:merge-request:17" }],
+      "expect": "invalid",
+      "name": "id-must-name-the-provider-instance"
+    },
+    {
+      "changes": [{ "path": ["id"], "value": "forge:code.example:repo-9:merge-request:17" }],
+      "expect": "invalid",
+      "name": "id-must-name-the-repository-opaque-id"
+    },
+    {
+      "changes": [{ "path": ["id"], "value": "forge:code.example:repo-1:merge-request:18" }],
+      "expect": "invalid",
+      "name": "id-must-name-the-number"
+    },
+    {
+      "changes": [
+        { "path": ["id"], "value": "forge:code.example:repo-1:merge-request:17" },
+        { "path": ["number"], "value": 7 }
+      ],
+      "expect": "invalid",
+      "name": "id-number-is-a-whole-segment"
+    },
+    {
+      "changes": [{ "path": ["id"], "value": "forge:code.example:repo-1:merge-request:017" }],
+      "expect": "invalid",
+      "name": "id-number-uses-canonical-decimal"
+    },
+    {
+      "changes": [{ "path": ["id"], "value": "forge:code.example:repo-1:17" }],
+      "expect": "invalid",
+      "name": "id-requires-a-kind-segment"
+    },
+    {
+      "changes": [{ "path": ["id"], "value": "forge:code.example:repo-1::17" }],
+      "expect": "invalid",
+      "name": "id-kind-is-nonempty"
+    },
+    {
+      "changes": [{ "path": ["id"], "value": "forge:code.example:repo-1:merge:request:17" }],
+      "expect": "invalid",
+      "name": "id-kind-cannot-contain-a-separator"
+    },
+    {
+      "changes": [{ "path": ["id"], "value": "forge:code.example:repo-1:Merge_Request:17" }],
+      "expect": "invalid",
+      "name": "id-kind-is-a-lowercase-token"
+    },
+    {
+      "changes": [{ "path": ["id"], "value": "change-17" }],
+      "expect": "invalid",
+      "name": "id-is-not-an-arbitrary-opaque-string"
     },
     {
       "changes": [{ "path": ["repository", "instance"], "value": "other.example" }],

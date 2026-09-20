@@ -361,6 +361,12 @@ Closed enum and literal values carry the same disposition-specific evidence.
 Structured identity recipes pin the complete provider, instance, repository, canonical
 ID kind, number, and provider-object inputs used by each relationship.
 Canonical ID kinds remain distinct from provider-object kinds where the formats differ.
+`ChangeRequest/v1` verifies its `id` at construction in both runtimes: it must equal
+`provider:instance:repository_opaque_id:id_kind:number` for the record’s own
+`repository` and `number`, with a separator-free lowercase `id_kind` token.
+The ID is matched against those fields and never parsed, because an instance may carry a
+port and an opaque ID may contain the separator.
+Every other domain ID is opaque to readers, which compare it and never split it.
 For a check run, the recorded numeric `check_suite.id` must join exactly one captured
 suite database ID before the suite `node_id` becomes the normalized parent ID. The
 inventory does not claim the single recorded thread proves file or line anchors,

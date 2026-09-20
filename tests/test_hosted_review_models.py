@@ -268,3 +268,23 @@ def test_change_request_preserves_unavailable_provider_identity() -> None:
     assert parsed.author is None
     assert parsed.comparison.head.repository_id is None
     assert parsed.comparison.head.oid == document["comparison"]["head"]["oid"]
+
+
+def test_change_request_id_is_verified_against_the_structured_identity() -> None:
+    # The recorded GitHub recipe output: a base64 repository node ID and the "pull" kind.
+    document = change_request_case()
+    repository_id = "MDEwOlJlcG9zaXRvcnkyMTI2MTMwNDk="
+    for ref in (document["provider_ref"], document["repository"]):
+        ref["provider"] = "github"
+        ref["instance"] = "github.com"
+    document["repository"]["opaque_id"] = repository_id
+    document["comparison"]["base"]["repository_id"] = repository_id
+    document["number"] = 14430
+    document["url"] = "https://github.com/cli/cli/pull/14430"
+    document["id"] = f"github:github.com:{repository_id}:pull:14430"
+
+    assert validate_change_request(document).id == document["id"]
+
+    document["id"] = f"github:github.com:{repository_id}:pull:14431"
+    with pytest.raises(ValidationError, match="provider:instance:repository_opaque_id"):
+        validate_change_request(document)

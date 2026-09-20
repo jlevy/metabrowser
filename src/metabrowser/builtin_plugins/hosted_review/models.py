@@ -512,6 +512,31 @@ class ChangeRequestCounts(_HostedReviewModel):
     reviews: SafeNonNegativeInteger
 
 
+def _require_canonical_change_request_id(
+    value: str, repository: RepositoryRef, number: int
+) -> None:
+    """Check ``provider:instance:repository_opaque_id:id_kind:number`` against its fields.
+
+    The ID is verified, never parsed. An instance may carry a port and an opaque ID may
+    contain the separator, so splitting the string is ambiguous; matching the prefix and
+    suffix the structured fields determine is not. The one segment no field supplies is
+    the adapter's canonical ID kind, which is a separator-free token.
+    """
+    prefix = f"{repository.provider}:{repository.instance}:{repository.opaque_id}:"
+    suffix = f":{number}"
+    id_kind = value[len(prefix) : len(value) - len(suffix)]
+    if (
+        not value.startswith(prefix)
+        or not value.endswith(suffix)
+        or len(value) <= len(prefix) + len(suffix)
+        or len(id_kind) > MAX_PROVIDER_KIND_LENGTH
+        or _PROVIDER_KIND_RE.fullmatch(id_kind) is None
+    ):
+        raise ValueError(
+            "change request id must be provider:instance:repository_opaque_id:id_kind:number"
+        )
+
+
 class ChangeRequest(_HostedReviewModel):
     id: DomainId
     provider_ref: ProviderObjectRef
@@ -551,6 +576,7 @@ class ChangeRequest(_HostedReviewModel):
             raise ValueError("provider object and repository must use the same provider instance")
         if self.comparison.base.repository_id != repository.opaque_id:
             raise ValueError("comparison base must belong to the change request repository")
+        _require_canonical_change_request_id(self.id, repository, self.number)
 
         created_at = _parse_rfc3339(self.created_at)
         updated_at = _parse_rfc3339(self.updated_at)
