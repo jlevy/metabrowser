@@ -25,7 +25,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from metabrowser.git.log import LOG_FORMAT, parse_log_output, trunk_refs
+from metabrowser.git.log import (
+    LOG_FORMAT,
+    PUBLIC_REF_NAMESPACES,
+    parse_log_output,
+    trunk_refs,
+)
 from metabrowser.git.process import (
     GitCommandError,
     GitError,
@@ -241,13 +246,17 @@ async def _pinned_history_scope(
     material = bytearray(f"history-scope-v1\0{object_format}\0pin\0{pin}\0".encode())
     material.extend(b"HEAD-REF\0\0")
     if wants_all:
+        # A published store also holds ``refs/metabrowser/subjects/*``, one per
+        # leased pin. Those are private reachability refs: walking them would
+        # show commits no branch or tag names, and fingerprinting them would
+        # stale every open cursor whenever another pin is leased.
         refs = await _run_git(
             location,
             [
                 "for-each-ref",
                 "--format=%(refname)%00%(objecttype)%00%(objectname)%00"
                 "%(*objecttype)%00%(*objectname)",
-                "refs",
+                *PUBLIC_REF_NAMESPACES,
             ],
         )
         material.extend(refs)

@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 from starlette.testclient import TestClient
 
+from metabrowser.cache.repository_store import subject_revision_ref
 from metabrowser.git import repo as git_repo
 from metabrowser.git.history import HISTORY_SESSIONS
 from metabrowser.git.process import GitLocation, repository_store_target
@@ -197,3 +198,38 @@ def test_repo_info_location_overload_does_not_use_ambient_head(tmp_path: Path) -
     assert info["head"]["revision"] == first
     assert info["head"]["detached"] is True
     assert info["head"]["revision"] != second
+
+
+def test_pinned_all_scope_ignores_private_subject_refs(
+    pinned_first: tuple[Path, str, str],
+) -> None:
+    """Leasing another pin writes ``refs/metabrowser/subjects/*`` in the same store.
+
+    That must neither stale an open ``scope=all`` cursor nor put a commit only a
+    private ref reaches into the history.
+    """
+
+    store, first, _second = pinned_first
+    with TestClient(app) as client:
+        page_one = client.get("/api/git/log", params={"limit": "1", "scope": "all"})
+        assert page_one.status_code == 200
+        first_page = page_one.json()
+        assert first_page["has_more"] is True
+
+        tree = _git(store, "rev-parse", f"{first}^{{tree}}").decode().strip()
+        private = _git(store, "commit-tree", tree, "-m", "private pin").decode().strip()
+        for oid in (first, private):
+            _git(store, "update-ref", "--no-deref", subject_revision_ref(oid), oid)
+
+        page_two = client.get("/api/git/log", params={"limit": "1", "cursor": first_page["cursor"]})
+        assert page_two.status_code == 200, page_two.text
+        validate_git_log_page(page_two.json())
+
+        fresh = client.get("/api/git/log", params={"limit": "10", "scope": "all"})
+        assert fresh.status_code == 200
+        commits = fresh.json()["commits"]
+        assert private not in {commit["id"] for commit in commits}
+        assert "refs/metabrowser" not in fresh.text
+        assert sorted(commit["subject"] for commit in commits) == ["first", "second"]
+        all_summary = client.get("/api/git/summary", params={"scope": "all"})
+        assert all_summary.json()["commit_count"] == 2

@@ -41,6 +41,10 @@ from metabrowser.git.wire import GitAuthor, GitCommit, GitRef, is_full_revision
 # block, which git never emits itself in these fields.
 _FIELD_SEP = "\x1f"
 
+# The namespaces history shows. A published store also holds private
+# ``refs/metabrowser/subjects/*`` reachability refs, which are not history.
+PUBLIC_REF_NAMESPACES = ("refs/heads", "refs/remotes", "refs/tags")
+
 # Field order in LOG_FORMAT. The subject is last on purpose; see the
 # module docstring.
 LOG_FORMAT = _FIELD_SEP.join(
@@ -273,9 +277,7 @@ async def read_refs(
         [
             "for-each-ref",
             "--format=%(refname)\x1f%(objectname)\x1f%(*objectname)",
-            "refs/heads",
-            "refs/remotes",
-            "refs/tags",
+            *PUBLIC_REF_NAMESPACES,
         ],
         location,
     )
@@ -320,7 +322,14 @@ async def read_history_summary(
     empty scope is an unborn branch: zero commits, no first date.
     """
     location = as_location(served_root)
-    selector: tuple[str, ...] = ("--all",) if all_refs else tuple(revisions)
+    selector: tuple[str, ...] = tuple(revisions)
+    if all_refs:
+        # ``--all`` on a published store would also walk the private subject refs.
+        selector = (
+            ("--all",)
+            if location.pinned_revision is None
+            else ("--branches", "--tags", "--remotes", location.pinned_revision)
+        )
     if not selector:
         return 0, None
     raw_count = await run_git_at(["rev-list", "--count", *selector], location)
@@ -342,6 +351,7 @@ async def read_history_summary(
 
 
 __all__ = [
+    "PUBLIC_REF_NAMESPACES",
     "parse_decoration",
     "parse_epoch",
     "TRUNK_BRANCH_NAMES",
