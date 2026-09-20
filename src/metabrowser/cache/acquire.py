@@ -67,6 +67,7 @@ from metabrowser.git.process import (
     require_acquisition_git,
     run_git,
 )
+from metabrowser.git.wire import is_full_revision
 from metabrowser.home import PrivateStorageError, SharedEntryPolicy, ensure_private_directory
 
 log = logging.getLogger(__name__)
@@ -188,7 +189,7 @@ def _parse_symref_head(stdout: bytes) -> tuple[str | None, str]:
             continue
         if line.endswith("\tHEAD"):
             oid = line.split("\t", 1)[0].strip()
-    if oid is None or not oid:
+    if oid is None or not is_full_revision(oid):
         raise RemoteUnavailableError("the source did not advertise HEAD")
     return ref, oid
 
@@ -287,7 +288,18 @@ async def acquire_into_staging(source: GitSource, *, home: Path) -> StagingAcqui
         except GitCommandError as exc:
             raise RemoteUnavailableError("the source did not advertise HEAD") from exc
         head_ref, revision = _parse_symref_head(observed)
-        await _run(["init", "--bare", "--template=", "-q", str(git_dir)], cwd=home)
+        advertised_format = "sha256" if len(revision) == 64 else "sha1"
+        await _run(
+            [
+                "init",
+                "--bare",
+                "--template=",
+                f"--object-format={advertised_format}",
+                "-q",
+                str(git_dir),
+            ],
+            cwd=home,
+        )
         for key, value in _STORE_CONFIG:
             await _run(["config", key, value], git_dir=git_dir)
         await _run(["config", "remote.origin.url", source.normalized], git_dir=git_dir)
@@ -442,10 +454,11 @@ def _write_store_records(staged: StagingAcquisition, store_id: str, at: str) -> 
     )
 
 
-def _require_same_store(home: Path, key: str, store_id: str) -> None:
+def _require_same_store(home: Path, key: str, store_id: str) -> RepositoryStore:
     record = read_record(home, store_record(key, "store.yml"), REPOSITORY_STORE_CONTRACT_ID)
     if not isinstance(record, RepositoryStore) or record.id != store_id:
         raise ValidationFailedError("the published store does not match this source")
+    return record
 
 
 def _publish_or_reuse_store(staged: StagingAcquisition, key: str, store_id: str) -> None:
@@ -540,17 +553,28 @@ def _attach_or_conflict(
     store_id: str,
     key: str,
     at: str,
-    *,
-    object_format: ObjectFormat,
-    strategy: Literal["blobless", "full"],
-    default_remote_ref: str,
-    default_revision: str,
 ) -> PublishedSource:
     slug, alias_lock = _claim_source_slug(home, source, source_id)
     try:
         with alias_lock, repository_store_lock(home, key):
             if not os.path.lexists(home / store_directory(key)):
                 raise ValidationFailedError("the store vanished before its alias was published")
+            # A concurrent acquisition may have won publication with a different HEAD.
+            # Report the selected store, never metadata from the discarded staging entry.
+            store = _require_same_store(home, key, store_id)
+            state = read_record(
+                home, store_record(key, "state.yml"), REPOSITORY_STORE_STATE_CONTRACT_ID
+            )
+            if (
+                not isinstance(state, RepositoryStoreState)
+                or state.default_remote_ref is None
+                or state.default_revision is None
+            ):
+                raise ValidationFailedError("the published store has no default revision")
+            object_format = store.acquisition.object_format
+            strategy = store.acquisition.strategy
+            default_remote_ref = state.default_remote_ref
+            default_revision = state.default_revision
             source_rel = source_directory(slug)
             if os.path.lexists(home / source_rel):
                 try:
@@ -685,10 +709,6 @@ def publish_from_staging(staged: StagingAcquisition) -> PublishedSource:
             store_id,
             key,
             at,
-            object_format=staged.object_format,
-            strategy=staged.strategy,
-            default_remote_ref=staged.default_remote_ref,
-            default_revision=staged.default_revision,
         )
     except BaseException:
         if staged._lock is not None and staged._lock.held:

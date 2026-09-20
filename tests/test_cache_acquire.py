@@ -125,6 +125,49 @@ def _origin(tmp_path: Path, *, allow_filter: bool) -> Path:
     return origin
 
 
+@posix_only
+def test_sha256_source_acquires_and_reopens_without_changing_object_format(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _allow_installed_git(monkeypatch)
+    work = tmp_path / "work"
+    work.mkdir()
+    _git(work, "init", "-q", "-b", "topic", "--object-format=sha256")
+    (work / "README").write_text("SHA-256 source\n")
+    _git(work, "add", ".")
+    _git(work, "commit", "-qm", "first")
+    source = _file_source(work)
+    home = tmp_path / "home"
+    published = asyncio.run(acquire_file_source(source, home=home))
+    assert published.object_format == "sha256"
+    assert len(published.default_revision) == 64
+    _git(published.git_dir, "cat-file", "-e", published.default_revision)
+    assert asyncio.run(acquire_file_source(source, home=home)) == published
+
+
+@posix_only
+def test_racing_acquisitions_return_the_selected_stores_revision(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _allow_installed_git(monkeypatch)
+    origin = _origin(tmp_path, allow_filter=False)
+    source = _file_source(origin)
+    home = tmp_path / "home"
+    with asyncio.run(acquire_into_staging(source, home=home)) as first:
+        work = tmp_path / "work"
+        (work / "second").write_text("second revision\n")
+        _git(work, "add", ".")
+        _git(work, "commit", "-qm", "second")
+        _git(work, "push", str(origin), "topic")
+        with asyncio.run(acquire_into_staging(source, home=home)) as second:
+            assert second.default_revision != first.default_revision
+            winner = acquire_module.publish_from_staging(first)
+            reused = acquire_module.publish_from_staging(second)
+    assert reused == winner
+    _git(reused.git_dir, "cat-file", "-e", reused.default_revision)
+    assert asyncio.run(acquire_file_source(source, home=home)) == winner
+
+
 def _inodes(path: Path) -> set[int]:
     return {entry.stat().st_ino for entry in path.rglob("*") if entry.is_file()}
 

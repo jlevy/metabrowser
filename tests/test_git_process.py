@@ -54,6 +54,27 @@ def test_run_git_rejects_cwd_and_target_together(tmp_path: Path) -> None:
         asyncio.run(run_git(["rev-parse", "HEAD"], cwd=repo, target=target))
 
 
+@pytest.mark.parametrize("injection", ["count", "parameters", "file"])
+def test_isolated_policies_ignore_environment_injected_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, injection: str
+) -> None:
+    if injection == "count":
+        monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+        monkeypatch.setenv("GIT_CONFIG_KEY_0", "review.injected")
+        monkeypatch.setenv("GIT_CONFIG_VALUE_0", "ambient")
+    elif injection == "parameters":
+        monkeypatch.setenv("GIT_CONFIG_PARAMETERS", "'review.injected=ambient'")
+    else:
+        config = tmp_path / "injected.config"
+        config.write_text("[review]\n  injected = ambient\n")
+        monkeypatch.setenv("GIT_CONFIG", str(config))
+    for policy in (ACQUISITION_POLICY, FETCH_POLICY, BATCH_OBJECT_POLICY):
+        result = asyncio.run(run_git(["config", "--list"], cwd=tmp_path, policy=policy))
+        assert b"review.injected=ambient" not in result
+    ordinary = asyncio.run(run_git(["config", "--list"], cwd=tmp_path, policy=READ_POLICY))
+    assert b"review.injected=ambient" in ordinary
+
+
 def test_attached_worktree_target_does_not_follow_a_poisoned_git_dir(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

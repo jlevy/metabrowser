@@ -285,6 +285,11 @@ def git_environment(policy: GitProcessPolicy | None = None) -> dict[str, str]:
     env["SSH_ASKPASS"] = ""
     if policy is not None:
         if policy.isolate_user_config:
+            # Git also accepts config files and command-scope settings through the
+            # environment. Disabling global/system files alone does not isolate it.
+            for name in tuple(env):
+                if name == "GIT_CONFIG" or name.startswith("GIT_CONFIG_"):
+                    del env[name]
             env["GIT_CONFIG_GLOBAL"] = os.devnull
             env["GIT_CONFIG_NOSYSTEM"] = "1"
         if policy.no_lazy_fetch:
