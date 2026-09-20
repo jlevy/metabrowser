@@ -124,6 +124,9 @@ Repository cache:
   before publication. Acquisition runs Git without any inherited `GIT_*` variable, so an
   ambient `GIT_ALLOW_PROTOCOL` or `GIT_DEFAULT_REF_FORMAT` cannot widen the protocol
   policy or change the published store’s ref format.
+  It also stops repository discovery at its own staging directory, so a repository that
+  encloses the application home, such as a dotfiles checkout, does not lend its
+  `url.*.insteadOf` or other local configuration.
   After a blobless fetch, acquisition prefetches the default revision’s blob-mode tree
   entries by object ID; a prefetch failure still publishes with `object_state`
   converging. A staging entry whose liveness lock is free is swept on the next cache

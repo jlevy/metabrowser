@@ -482,6 +482,15 @@ async def spawn_git_process(
 
     argv = (exe, *GIT_COMMON_ARGS, *prefix, *args)
     child_umask = chosen.child_umask if chosen.child_umask is not None else -1
+    env = git_environment(chosen)
+    if chosen.isolate_user_config:
+        # A command with no ``--git-dir`` (``ls-remote``, ``init``) still runs
+        # repository discovery from its working directory, and a repository that
+        # encloses it would lend its local configuration, ``url.*.insteadOf``
+        # included. A ceiling is never the directory discovery starts in, so name
+        # the parent: Git looks at the working directory and no higher. Resolved,
+        # because Git compares the ceiling against its physical working directory.
+        env["GIT_CEILING_DIRECTORIES"] = str(Path(work_cwd).resolve().parent)
     try:
         return await asyncio.create_subprocess_exec(
             *argv,
@@ -489,7 +498,7 @@ async def spawn_git_process(
             stdin=_stdin_for_policy(chosen, pipe_stdin=pipe_stdin),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            env=git_environment(chosen),
+            env=env,
             umask=child_umask,
         )
     except OSError as exc:

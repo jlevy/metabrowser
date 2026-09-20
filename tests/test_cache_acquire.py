@@ -275,6 +275,28 @@ def test_ambient_git_variables_do_not_steer_an_acquisition(
     assert not (published.git_dir / "reftable").exists()
 
 
+@posix_only
+@pytest.mark.parametrize("nested", ["nested-home", "."])
+def test_a_repository_enclosing_the_cache_home_does_not_rewrite_the_origin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, nested: str
+) -> None:
+    """A repository around the home, or the home itself, must not lend its config."""
+    _allow_installed_git(monkeypatch)
+    real = _origin(tmp_path, allow_filter=False)
+    decoy = tmp_path / "decoy"
+    decoy.mkdir()
+    _git(decoy, "init", "-q", "-b", "decoy-branch")
+    _git(decoy, "commit", "-q", "--allow-empty", "-m", "decoy")
+    outer = tmp_path / "outer"
+    outer.mkdir(mode=0o700)
+    _git(outer, "init", "-q", "-b", "main")
+    source = _file_source(real)
+    _git(outer, "config", f"url.file://{decoy.resolve()}.insteadOf", source.normalized)
+    published = asyncio.run(acquire_file_source(source, home=outer / nested))
+    assert published.default_remote_ref == "refs/remotes/origin/topic"
+    assert published.default_revision == _rev_parse(real, "refs/heads/topic")
+
+
 def _inodes(path: Path) -> set[int]:
     return {entry.stat().st_ino for entry in path.rglob("*") if entry.is_file()}
 

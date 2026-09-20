@@ -296,12 +296,16 @@ async def acquire_into_staging(source: GitSource, *, home: Path) -> StagingAcqui
     cache = open_cache(home)
     home = cache.home
     entry, lock = _claim_staging(home)
-    git_dir = home / staging_entry(entry) / "repository.git"
+    # Commands that run before the store exists start in the claimed staging entry, not
+    # the home. Discovery stops at the working directory, and this one is private, new,
+    # and never a repository, so neither the home nor anything enclosing it lends config.
+    staging = home / staging_entry(entry)
+    git_dir = staging / "repository.git"
     try:
         try:
             observed = await _run(
                 [*_PROTOCOL, "ls-remote", "--symref", "--", source.normalized, "HEAD"],
-                cwd=home,
+                cwd=staging,
             )
         except GitCommandError as exc:
             raise RemoteUnavailableError("the source did not advertise HEAD") from exc
@@ -319,7 +323,7 @@ async def acquire_into_staging(source: GitSource, *, home: Path) -> StagingAcqui
                 "-q",
                 str(git_dir),
             ],
-            cwd=home,
+            cwd=staging,
         )
         for key, value in _STORE_CONFIG:
             await _run(["config", key, value], git_dir=git_dir)

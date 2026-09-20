@@ -134,6 +134,21 @@ def test_an_ambient_ref_format_does_not_reach_an_acquired_store(
     assert not (store / "reftable").exists()
 
 
+@pytest.mark.parametrize("policy", [ACQUISITION_POLICY, FETCH_POLICY, BATCH_OBJECT_POLICY])
+def test_isolated_policies_do_not_discover_an_enclosing_repository(
+    tmp_path: Path, policy: GitProcessPolicy
+) -> None:
+    outer = tmp_path / "outer"
+    nested = outer / "nested" / "home"
+    nested.mkdir(parents=True)
+    asyncio.run(run_git(["init", "-q", "-b", "main"], cwd=outer))
+    asyncio.run(run_git(["config", "review.marker", "enclosing"], cwd=outer))
+    isolated = asyncio.run(run_git(["config", "--list"], cwd=nested, policy=policy))
+    assert b"review.marker" not in isolated
+    ordinary = asyncio.run(run_git(["config", "--list"], cwd=nested, policy=READ_POLICY))
+    assert b"review.marker=enclosing" in ordinary
+
+
 def test_attached_worktree_target_does_not_follow_a_poisoned_git_dir(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
