@@ -33,11 +33,14 @@ from metabrowser.provider_resources.profiles import (
     ResourceCollectionSpec as ResourceCollectionSpec,
 )
 
-NonEmptyString = Annotated[str, Field(min_length=1)]
+# Strings are never coerced: Pydantic's lax mode would accept bytes (a YAML ``!!binary``
+# scalar, for one) where the browser validator requires a string.
+_StrictString = Annotated[str, Field(strict=True)]
+NonEmptyString = Annotated[_StrictString, Field(min_length=1)]
 # A full Git object name is SHA-1 (40 hex) or SHA-256 (64 hex). No object format has a
 # length in between, and the cache and Git layers accept exactly these two.
-GitObjectId = Annotated[str, Field(pattern=r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")]
-StableToken = Annotated[str, Field(pattern=r"^[a-z][a-z0-9._:-]*$")]
+GitObjectId = Annotated[_StrictString, Field(pattern=r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")]
+StableToken = Annotated[_StrictString, Field(pattern=r"^[a-z][a-z0-9._:-]*$")]
 MAX_SAFE_INTEGER = 9_007_199_254_740_991
 MAX_PORT = 65_535
 DEFAULT_HTTPS_PORT = 443
@@ -304,13 +307,13 @@ def _utf8_sort_key(value: str) -> bytes:
         raise ValueError("ordered identifiers must be valid UTF-8") from exc
 
 
-type ProviderKind = Annotated[str, AfterValidator(_require_provider_kind)]
-type ProviderInstance = Annotated[str, AfterValidator(_require_provider_instance)]
-type Sha256Digest = Annotated[str, AfterValidator(_require_sha256_digest)]
-type CanonicalTimestamp = Annotated[str, AfterValidator(_require_timestamp)]
-type CanonicalHttpsUrl = Annotated[str, AfterValidator(_require_https)]
-type ResourceProfileId = Annotated[str, AfterValidator(_require_resource_profile_id)]
-type ContractId = Annotated[str, AfterValidator(_require_contract_id)]
+type ProviderKind = Annotated[_StrictString, AfterValidator(_require_provider_kind)]
+type ProviderInstance = Annotated[_StrictString, AfterValidator(_require_provider_instance)]
+type Sha256Digest = Annotated[_StrictString, AfterValidator(_require_sha256_digest)]
+type CanonicalTimestamp = Annotated[_StrictString, AfterValidator(_require_timestamp)]
+type CanonicalHttpsUrl = Annotated[_StrictString, AfterValidator(_require_https)]
+type ResourceProfileId = Annotated[_StrictString, AfterValidator(_require_resource_profile_id)]
+type ContractId = Annotated[_StrictString, AfterValidator(_require_contract_id)]
 
 PROVIDER_BINDING_CONTRACT_ID = "com.github.jlevy.metabrowser.provider:ProviderBinding/v1"
 RETRIEVAL_CONTRACT_ID = "com.github.jlevy.metabrowser.provider:Retrieval/v1"
@@ -385,7 +388,7 @@ class ComparisonRef(_HostedReviewModel):
 
 class LabelRef(_HostedReviewModel):
     name: NonEmptyString
-    color: str | None = Field(default=None, pattern=r"^[0-9a-fA-F]{6}$")
+    color: _StrictString | None = Field(default=None, pattern=r"^[0-9a-fA-F]{6}$")
 
 
 class MilestoneRef(_HostedReviewModel):

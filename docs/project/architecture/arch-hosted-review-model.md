@@ -189,6 +189,11 @@ and the resolved File Diff Format around it.
 The serializer uses frontmatter-format’s YAML and fence-delimiter primitives, preserves
 the provider body as content, and computes snapshot identity from the complete
 normalized artifact.
+Because that identity hashes bytes, a typed artifact validator accepts only the exact
+bytes the serializer writes for the validated record and body.
+A YAML comment, alternate quoting or spacing, reordered keys, a tagged scalar, or an
+integral float spelling is refused rather than given a second identity, and model
+strings are never coerced from another type.
 
 Indexes, sync manifests, retrieval records, tombstones, threads, checks, and status
 records use `pure-yaml` because their entire content is structured or they only refer to
