@@ -5,13 +5,13 @@ title: "Agent handoff: v0.11 stack 2026-09-19"
 kind: task
 status: open
 priority: 2
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 labels: []
 dependencies: []
 parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 created_at: 2026-09-20T05:53:46.008Z
-updated_at: 2026-09-20T05:59:57.284Z
+updated_at: 2026-09-20T06:06:37.760Z
 ---
 Task: Finish v0.11 review organization and keep the next agent oriented across tbd and metabrowser. Do not merge anything to main unless the user asks.
 
@@ -206,8 +206,8 @@ tbd show tbd-njm1
 
 Spec-status commits are on the open PRs, not main:
 
-- #216 tip 912e720f (repo-library + hosted-review plan status)
-- #209 tip (after push) 398cedd4 (HTML plan status)
+- #216 https://github.com/jlevy/metabrowser/pull/216 tip 912e720f (repo-library + hosted-review plan status)
+- #209 https://github.com/jlevy/metabrowser/pull/209 tip 398cedd4 (HTML plan status)
 
 tbd policy: https://github.com/jlevy/tbd/pull/316
 Metabrowser stack: https://github.com/jlevy/metabrowser/stack/218
