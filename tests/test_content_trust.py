@@ -108,6 +108,11 @@ def test_api_same_origin_proof_matrix() -> None:
             {"sec-fetch-site": "same-origin"},
             {"origin": "http://testserver", "sec-fetch-site": "same-origin"},
             {"host": "localhost:8411", "origin": "http://localhost:8411"},
+            # A user-initiated navigation: a typed URL, a bookmark, a
+            # restored tab. It has no initiator document, so no page can
+            # cause a browser to send it, and there is no origin to match.
+            {"sec-fetch-site": "none"},
+            {"sec-fetch-site": "None"},
         )
         rejected = (
             {"origin": "null"},
@@ -117,6 +122,10 @@ def test_api_same_origin_proof_matrix() -> None:
             {"origin": "https://evil.example", "sec-fetch-site": "cross-site"},
             {"origin": "null", "sec-fetch-site": "same-origin"},
             {"host": "localhost:8411", "origin": "http://localhost:9999"},
+            # Accepting `none` must not widen to the other document-initiated
+            # values, and must not survive an opaque origin alongside it.
+            {"sec-fetch-site": "same-site"},
+            {"origin": "null", "sec-fetch-site": "none"},
         )
         for headers in accepted:
             resp = client.get("/api/capabilities", headers=headers)

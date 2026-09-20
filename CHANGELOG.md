@@ -15,7 +15,8 @@ Content trust:
   `frame-ancestors`.
 
 - `/api` routes require same-origin proof.
-  The server accepts `Sec-Fetch-Site: same-origin` or a matching `Origin`, refuses
+  The server accepts `Sec-Fetch-Site: same-origin`, `Sec-Fetch-Site: none` (a typed URL
+  or a bookmark, which no document initiated), or a matching `Origin`; it refuses
   `Origin: null` and foreign origins, and still serves `curl` and `metab --api` (neither
   header). State-changing methods require `Content-Type: application/json`, so a
   cross-site form POST cannot reach `POST /api/kpress/export`.
@@ -49,6 +50,10 @@ Content trust:
   `allow-scripts allow-popups allow-forms allow-downloads` with
   `referrerpolicy="no-referrer"` — never `allow-same-origin` or `allow-top-navigation`.
   `--untrusted` and `--no-active-content` omit Preview.
+
+- A path carrying an embedded NUL — `/raw/a%00b`, or the same byte in a `?path=` value —
+  is a 404 rather than a 500. No filesystem can hold that name, so it is a missing file
+  like any other unresolvable path.
 
 ## 0.10.0
 

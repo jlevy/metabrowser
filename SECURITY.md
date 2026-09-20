@@ -77,6 +77,9 @@ still renders markup and loads subresources, but executes nothing.
 `/api` routes require same-origin proof.
 The server accepts `Sec-Fetch-Site: same-origin` or an `Origin` header matching the
 application origin, and refuses `Origin: null` and foreign origins.
+`Sec-Fetch-Site: none` is accepted as well: that is a user-initiated navigation — a
+typed URL, a bookmark, a restored tab — with no initiator document, so it carries no
+attacker-controlled origin, and a hostile page cannot make a browser send it.
 Requests with neither header — `curl` and `metab --api` — still work.
 State-changing methods additionally require `Content-Type: application/json`, so a
 cross-site form or `text/plain` POST cannot reach a write path such as

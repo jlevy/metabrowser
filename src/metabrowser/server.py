@@ -692,6 +692,16 @@ def _origin_matches_request(origin: str, scheme: str, host_header: str) -> bool:
     return origin.strip().lower() == expected.lower()
 
 
+# Fetch-metadata values that are not a request from another document.
+# ``same-origin`` is the application's own page. ``none`` is a
+# user-initiated navigation — a typed URL, a bookmark, a browser restore
+# — which has no initiator document and so no attacker-controlled origin;
+# a hostile page cannot make a browser send it, because anything a
+# document initiates is labelled ``same-origin``, ``same-site``, or
+# ``cross-site``.
+_TRUSTED_FETCH_SITES = frozenset({"same-origin", "none"})
+
+
 def _has_same_origin_proof(
     *,
     scheme: str,
@@ -702,14 +712,15 @@ def _has_same_origin_proof(
     """Return whether an ``/api`` request proved it came from this app.
 
     ``Origin: null`` is always refused: that is what an opaque-origin
-    document sends. ``Sec-Fetch-Site: same-origin`` or a matching
-    ``Origin`` is accepted. A request with neither header (curl,
-    ``metab --api``) is accepted. ``/raw`` is not behind this check.
+    document sends. ``Sec-Fetch-Site: same-origin`` or ``none``, or a
+    matching ``Origin``, is accepted. A request with neither header
+    (curl, ``metab --api``) is accepted. ``/raw`` is not behind this
+    check.
     """
 
     if origin.lower() == "null":
         return False
-    if sec_fetch_site.lower() == "same-origin":
+    if sec_fetch_site.lower() in _TRUSTED_FETCH_SITES:
         return True
     if origin and _origin_matches_request(origin, scheme, host_header):
         return True
@@ -804,7 +815,8 @@ class _HostValidationMiddleware:
             ):
                 response = PlainTextResponse(
                     "This /api request did not prove it came from this application's "
-                    "own pages. Browsers send Sec-Fetch-Site: same-origin or a "
+                    "own pages. Browsers send Sec-Fetch-Site: same-origin, "
+                    "Sec-Fetch-Site: none for a typed URL or bookmark, or a "
                     "matching Origin; Origin: null is refused because that is what "
                     "an opaque-origin document sends. curl and metab --api send "
                     "neither header and still work.\n",

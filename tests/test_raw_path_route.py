@@ -119,6 +119,23 @@ def test_both_raw_shapes_reject_traversal_and_escaping_symlinks(tmp_path: Path) 
     assert b"secret" not in symlink_path.content
 
 
+def test_both_raw_shapes_reject_an_embedded_nul(tmp_path: Path) -> None:
+    """``%00`` in either shape is a missing file, not a server error."""
+
+    _write_raw_tree(tmp_path)
+    server._set_root_dir(tmp_path)
+    with TestClient(app) as client:
+        path_form = client.get("/raw/a%00b")
+        nested_path_form = client.get("/raw/docs/page.html%00.png")
+        query_form = client.get("/raw", params={"path": "a\x00b"})
+
+    assert path_form.status_code == 404
+    assert nested_path_form.status_code == 404
+    assert query_form.status_code == 404
+    _assert_raw_trust_headers(path_form)
+    _assert_raw_trust_headers(query_form)
+
+
 def test_path_form_stays_reachable_from_opaque_origin(tmp_path: Path) -> None:
     _write_raw_tree(tmp_path)
     server._set_root_dir(tmp_path)
