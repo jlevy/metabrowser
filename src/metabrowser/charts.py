@@ -17,7 +17,9 @@ small but a long session could accumulate hundreds.
 
 from __future__ import annotations
 
+import io
 import re
+from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -81,8 +83,7 @@ def extract_agent_charts(filepath: Path) -> dict[str, Any]:
             return hit
 
     with artifact.open_text(errors="replace", max_output_bytes=parse_max_bytes) as fh:
-        text = fh.read()
-    result = _charts_from_text(text)
+        result = _charts_from_lines(fh)
     if key is not None:
         _CHARTS_CACHE[key] = result
     return result
@@ -96,27 +97,54 @@ def extract_agent_charts_bytes(data: bytes) -> dict[str, Any]:
         raise jsonl_view.JsonlParseLimitError(
             f"JSONL content exceeds {parse_max_bytes} decompressed bytes"
         )
-    return _charts_from_text(data.decode("utf-8", errors="replace"))
+    # The same reader `jsonl_view.parse_jsonl_bytes` uses, so a blob and a file
+    # of the same log produce the same records.
+    return _charts_from_lines(io.StringIO(data.decode("utf-8", errors="replace")))
 
 
-def _charts_from_text(text: str) -> dict[str, Any]:
-    first_lines: list[str] = []
-    for raw_line in text.splitlines():
-        stripped = raw_line.strip()
-        if stripped:
-            first_lines.append(stripped)
-            if len(first_lines) >= 20:
-                break
+def _charts_from_lines(lines: Iterable[str]) -> dict[str, Any]:
+    """Build the chart payload from an iterable of JSONL records.
 
-    adapter = detect_adapter(first_lines)
-    parser = create_parser(adapter)
+    One pass over the reader, which is what makes a live 38 MB log cost its
+    line rather than its length. Only a newline ends a record: the reader
+    yields them, where `str.splitlines()` would also break on U+2028, U+2029,
+    and U+0085 — all of which `JSON.stringify` writes raw inside a string, so
+    one quoted paragraph break would become two unparseable fragments and the
+    Charts tab would report a different event count than the JSONL view of the
+    same file.
 
+    The adapter is detected from the first 20 records, which are buffered and
+    then replayed through the parser, exactly as `jsonl_view` does.
+    """
+
+    detection_buffer: list[str] = []
+    adapter = ""
+    parser = None
     events: list[LogEvent] = []
-    for raw_line in text.splitlines():
+
+    for raw_line in lines:
         stripped = raw_line.strip()
         if not stripped or len(stripped) > 256 * 1024:
             continue
+        if parser is None:
+            detection_buffer.append(stripped)
+            if len(detection_buffer) < 20:
+                continue
+            adapter = detect_adapter(detection_buffer)
+            parser = create_parser(adapter)
+            for buffered in detection_buffer:
+                events.extend(parser.parse_line(buffered))
+            detection_buffer = []
+            continue
         events.extend(parser.parse_line(stripped))
+
+    if parser is None:
+        # The log held fewer than 20 usable records.
+        adapter = detect_adapter(detection_buffer)
+        parser = create_parser(adapter)
+        for buffered in detection_buffer:
+            events.extend(parser.parse_line(buffered))
+
     events.extend(parser.flush())
 
     if not events:
