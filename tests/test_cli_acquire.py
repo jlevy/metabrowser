@@ -104,6 +104,26 @@ def test_file_url_api_cache_layout_acquires_then_inspects(
 
 
 @posix_only
+def test_file_url_api_applies_the_content_trust_flags(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``--untrusted`` reaches the capability block on the acquire path too.
+
+    ``--api`` accepts the content-trust flags, so accepting them and then not
+    applying them on a ``file://`` source would drop the operator's decision
+    silently.
+    """
+    from metabrowser.capabilities import get_capabilities
+
+    _isolate_home(tmp_path, monkeypatch)
+    url = _file_url(_origin(tmp_path, allow_filter=False))
+    result = runner.invoke(_app, [url, "--api", "/api/cache/layout", "--untrusted"])
+    assert result.exit_code == 0, result.output
+    assert get_capabilities().active_content is False
+    assert get_capabilities().mutations is False
+
+
+@posix_only
 def test_file_url_api_tree_is_refused_without_acquiring(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
