@@ -341,8 +341,11 @@ The server’s headers hold even if a future renderer forgets the attribute; the
 attribute holds even if a response escapes the header path; and the API’s same-origin
 check holds even if both fail.
 
-One implementation note: the headers must be applied on all three branches of
-`raw_file`, including the gzip passthrough, so a `.html.gz` is not an escape hatch.
+One implementation note: the headers are set by a path-scoped layer over `/raw` and
+`/raw/{path}`, not by the handler, so every status and every return path carries them:
+the gzip passthrough, range errors, a refused method, a handler failure, and any return
+path a later source adds.
+A `.html.gz` is not an escape hatch, and neither is a new branch of `raw_file`.
 
 `frame-ancestors` is deliberately absent, and an earlier draft of this design got it
 wrong. `frame-ancestors 'self'` looks like an obvious hardening, but the directive
@@ -397,6 +400,12 @@ conservative value. It is the answer to “I am about to browse a corpus I did n
 and it is one flag rather than a list to remember.
 Individual flags override it, so `--untrusted --allow-edits` is expressible and means
 what it says.
+A flag is a decision typed at the call site, so it beats the environment in
+both directions: no environment variable lifts an explicit `--untrusted`. The capability
+variables and `METABROWSER_ALLOWED_HOSTS` are read from the process environment only and
+never from a dotenv file, because the dotenv chain walks up from the working directory
+and browsing a cloned repository from inside it would otherwise let the browsed content
+choose its own sandbox.
 
 The defaults are deliberately asymmetric, and the asymmetry is the point rather than an
 inconsistency. `mutations` defaults off because it changes the user’s disk and no
@@ -523,7 +532,8 @@ Independently valuable and shippable without any UI change.
 Both halves of the boundary land together: the sandbox stops reading, the same-origin
 check stops invoking.
 
-- [x] Add a shared response-header builder for `raw_file` covering all three branches
+- [x] Set the raw trust headers from a path-scoped layer over `/raw` and `/raw/{path}`,
+  so no return path of `raw_file` can miss them
 - [x] Send the unconditional CSP `sandbox` header and `nosniff` on every raw response
 - [x] Require same-origin proof on `/api/*` in `_HostValidationMiddleware`, rejecting
   `Origin: null`
@@ -561,8 +571,9 @@ cheap to test directly and are the kind of property that regresses silently.
 
 - Assert the exact `sandbox` token set on the rendered iframe, and specifically assert
   that `allow-same-origin` is absent — the single most important invariant here
-- Assert the raw response headers are present and identical on all three branches,
-  including the gzip passthrough, and on both route shapes
+- Assert the raw response headers on the wire for every status the route can produce,
+  including the gzip passthrough, range errors, a refused method, and a handler failure,
+  on both route shapes, and assert that a new return path cannot miss them
 - Assert `/api` routes reject `Origin: null` and foreign origins, and accept requests
   bearing the application origin or no `Origin` at all (`curl` compatibility)
 - Simulate the CSRF shape directly: a `POST` with a form content type and `Origin: null`
