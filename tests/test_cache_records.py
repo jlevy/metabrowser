@@ -27,6 +27,11 @@ from metabrowser.cache.contracts import (
     repository_cache_capabilities,
     validate_config_values,
 )
+from metabrowser.cache.identity import (
+    SOURCE_ADDRESS_MAX_BYTES,
+    slug_readable_part,
+    source_identity,
+)
 from metabrowser.cache.records import (
     CACHE_LAYOUT_CONTRACT_ID,
     CONFIG_CONTRACT_ID,
@@ -291,6 +296,19 @@ def test_a_source_record_is_bound_to_its_identity_material() -> None:
     assert source.slug.endswith(source.id.removeprefix("sha256:")[:12])
     with pytest.raises(ValueError, match="does not match its transport"):
         RepositorySource.model_validate({**record, "clone_url": "https://github.com/pallets/Flask"})
+
+
+def test_identity_refuses_every_address_a_source_record_would_refuse() -> None:
+    """An identity no record can hold is an entry that can be created but never read."""
+
+    address = "file:///" + "a" * (SOURCE_ADDRESS_MAX_BYTES - len("file:///"))
+    over = address + "a"
+
+    assert len(source_identity("file", address)) == len(f"sha256:{'0' * 64}")
+    with pytest.raises(ValueError, match="normalized source address"):
+        source_identity("file", over)
+    with pytest.raises(ValueError, match="normalized source address"):
+        slug_readable_part("file", over)
 
 
 def test_a_large_invalid_config_reports_bounded_value_free_reasons() -> None:
