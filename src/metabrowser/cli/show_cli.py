@@ -16,8 +16,9 @@ import json
 import logging
 import os
 from collections.abc import Mapping
+from contextlib import suppress
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import typer
 
@@ -43,6 +44,9 @@ from metabrowser.view_routes import (
     format_commit_href,
     format_inventory_view_href,
 )
+
+if TYPE_CHECKING:
+    from metabrowser.git.tree_source import GitPath
 
 LOG = logging.getLogger(__name__)
 
@@ -159,6 +163,60 @@ def _prepare_plugins(plugins_dir: list[Path] | None) -> None:
     )
 
 
+def _display_git_path(selection: str) -> GitPath:
+    """Read one pinned selection strictly as slash-separated display names.
+
+    ``GitPath.from_display`` reads an all-``g1-`` spelling as the wire form.
+    That is right for a route identity and wrong for a name a human typed,
+    because a pinned tree may hold a file literally called ``g1-notes.md``.
+    """
+
+    from metabrowser.git.tree_source import GitPath, GitPathError
+
+    parts = selection.split("/")
+    if not (parts and all(part.startswith("g1-") for part in parts)):
+        return GitPath.from_display(selection)
+    path = GitPath.root()
+    for part in parts:
+        if "\\" in part or "\0" in part:
+            raise GitPathError("GitPath display segments cannot contain NUL or '\\\\'")
+        path = path.child(part.encode("utf-8", "surrogateescape"))
+    return path
+
+
+def _git_wire_candidates(selection: str, *, from_route: bool) -> list[str]:
+    """Wire identities to try for one pinned selection, best reading first.
+
+    A ``/view/`` address is already a wire identity, so it has exactly one
+    reading and a tracked file whose name happens to look like a wire token
+    cannot capture it. Anything else is a display name a human typed, so that
+    reading comes first: ``g1-notes.md`` names the tracked file of that name,
+    and ``g1-data/x.md`` would otherwise decode to an unrelated path. The wire
+    reading stays as a fallback, because ``--show`` also accepts the identity a
+    route carries and a container inner path exists only in that spelling.
+    """
+
+    from metabrowser.git.content_routes import split_git_container_wire
+    from metabrowser.git.tree_source import GitPathError
+
+    candidates: list[str] = []
+
+    def _add(wire: str) -> None:
+        if wire not in candidates:
+            candidates.append(wire)
+
+    if not from_route:
+        with suppress(GitPathError):
+            _add(_display_git_path(selection).to_wire())
+    try:
+        git_path, inner = split_git_container_wire(selection)
+    except GitPathError:
+        pass
+    else:
+        _add(f"{git_path.to_wire()}/{inner}" if inner else git_path.to_wire())
+    return candidates
+
+
 def _emit_show(
     *,
     display_path: str,
@@ -222,6 +280,7 @@ async def ashow_active(
     commit = None
     native_selection: str | None = None
     git_wire: str | None = None
+    git_candidates: list[str] = []
     if path.startswith(COMMIT_ROUTE_PREFIX):
         commit = decode_safe_commit_route(_encoded_route(path, display_path))
         if commit is None:
@@ -235,23 +294,19 @@ async def ashow_active(
         route = "/api/plugin/diff/comparison"
         needs_index = False
     elif filesystem_root is None:
-        from metabrowser.git.content_routes import decode_git_view_path, split_git_container_wire
-        from metabrowser.git.tree_source import GitPath, GitPathError
+        from metabrowser.git.content_routes import decode_git_view_path
 
         selection = path
-        if path.startswith(VIEW_ROUTE_PREFIX):
+        from_route = path.startswith(VIEW_ROUTE_PREFIX)
+        if from_route:
             decoded = decode_git_view_path(_encoded_route(path, display_path))
             if decoded is None:
                 raise CLIError(f"{display_path} is not a route this grammar accepts")
             selection = decoded
-        try:
-            if selection.startswith("g1-"):
-                git_path, inner = split_git_container_wire(selection)
-                git_wire = f"{git_path.to_wire()}/{inner}" if inner else git_path.to_wire()
-            else:
-                git_wire = GitPath.from_display(selection).to_wire()
-        except GitPathError as exc:
-            raise CLIError(f"{display_path} is not a GitPath this pin accepts") from exc
+        git_candidates = _git_wire_candidates(selection, from_route=from_route)
+        if not git_candidates:
+            raise CLIError(f"{display_path} is not a GitPath this pin accepts")
+        git_wire = git_candidates[0]
         route, params = "/api/file", {"path": git_wire}
         needs_index = True
     else:
@@ -275,6 +330,22 @@ async def ashow_active(
         index_timeout_s=index_timeout_s,
         needs_index=needs_index,
     )
+    if git_wire is not None:
+        # The display reading is what a human typed, so it answers first. A
+        # selection that also reads as a wire identity falls back to that
+        # reading only when the pin holds no such display name.
+        for fallback in git_candidates[1:]:
+            if response.status_code == 200 and not response.incomplete:
+                break
+            git_wire = fallback
+            params = {"path": git_wire}
+            response = await _fetch(
+                server.app,
+                route,
+                params,
+                index_timeout_s=index_timeout_s,
+                needs_index=needs_index,
+            )
 
     if response.incomplete:
         raise CLIError(f"{display_path} failed mid-response; the model below would be truncated")
