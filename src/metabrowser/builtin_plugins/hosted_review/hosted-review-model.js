@@ -85,10 +85,37 @@ const DEFAULT_HTTPS_PORT = 443;
 const MAX_PROVIDER_KIND_LENGTH = 63;
 const MAX_DNS_HOST_LENGTH = 253;
 const MAX_OPAQUE_CURSOR_LENGTH = 4096;
+// Text bounds mirror models.py, which records the basis for each value. Lengths count
+// Unicode code points, as Python does, not UTF-16 code units.
+const MAX_PROVIDER_ID_LENGTH = 255;
+const MAX_DOMAIN_ID_LENGTH = 1024;
+const MAX_LINE_TEXT_LENGTH = 1024;
+const MAX_HANDLE_LENGTH = 255;
+const MAX_URL_LENGTH = 8192;
+// Review-anchor paths carry a length bound only; a checkout path is not display text.
+const MAX_REVIEW_PATH_LENGTH = 4096;
+const MAX_REVIEW_PATH_B64_LENGTH = 5464;
+const FIRST_SURROGATE = 0xd800;
+const LAST_SURROGATE = 0xdfff;
+// Inclusive code point ranges; explicit so both runtimes agree across Unicode versions.
+const CONTROL_AND_LINE_SEPARATOR_RANGES = [
+  [0x0000, 0x001f],
+  [0x007f, 0x009f],
+  [0x2028, 0x2029],
+];
+const IDENTIFIER_FORBIDDEN_RANGES = [
+  ...CONTROL_AND_LINE_SEPARATOR_RANGES,
+  [0x061c, 0x061c],
+  [0x200b, 0x200f],
+  [0x202a, 0x202e],
+  [0x2060, 0x2069],
+  [0xfeff, 0xfeff],
+];
 const PROVIDER_KIND_RE = /^[a-z][a-z0-9-]*$/;
 const PROVIDER_INSTANCE_RE =
   /^([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*)(?::([1-9][0-9]{0,4}))?$/;
-const OID_RE = /^[0-9a-f]{40,64}$/;
+// A full Git object name is SHA-1 (40 hex) or SHA-256 (64 hex); nothing in between.
+const OID_RE = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 const SHA256_RE = /^sha256:[0-9a-f]{64}$/;
 const OPAQUE_CURSOR_RE = /^[A-Za-z0-9._~+=:-]+$/;
 const URI_SCHEME_RE = /^[A-Za-z][A-Za-z0-9+.-]*:/;
@@ -134,6 +161,46 @@ function nonemptyString(value, where) {
   return value;
 }
 
+/**
+ * A nonempty well-formed string of at most `maxLength` code points, none in `forbidden`.
+ * @param {unknown} value @param {number} maxLength @param {number[][]} forbidden
+ * @param {string} where @returns {string}
+ */
+function boundedText(value, maxLength, forbidden, where) {
+  const text = nonemptyString(value, where);
+  let length = 0;
+  for (const character of text) {
+    const codePoint = /** @type {number} */ (character.codePointAt(0));
+    length += 1;
+    require(codePoint < FIRST_SURROGATE || codePoint > LAST_SURROGATE, `${where}: lone surrogate`);
+    require(!forbidden.some(
+      ([low, high]) => codePoint >= low && codePoint <= high,
+    ), `${where}: forbidden control or formatting character`);
+  }
+  require(length <= maxLength, `${where}: longer than ${maxLength} characters`);
+  return text;
+}
+
+/** @param {unknown} value @param {string} where @returns {string} */
+function providerId(value, where) {
+  return boundedText(value, MAX_PROVIDER_ID_LENGTH, IDENTIFIER_FORBIDDEN_RANGES, where);
+}
+
+/** @param {unknown} value @param {string} where @returns {string} */
+function domainId(value, where) {
+  return boundedText(value, MAX_DOMAIN_ID_LENGTH, IDENTIFIER_FORBIDDEN_RANGES, where);
+}
+
+/** @param {unknown} value @param {string} where @returns {string} */
+function lineText(value, where) {
+  return boundedText(value, MAX_LINE_TEXT_LENGTH, CONTROL_AND_LINE_SEPARATOR_RANGES, where);
+}
+
+/** @param {unknown} value @param {string} where @returns {string} */
+function handle(value, where) {
+  return boundedText(value, MAX_HANDLE_LENGTH, CONTROL_AND_LINE_SEPARATOR_RANGES, where);
+}
+
 /** @param {unknown} value @param {string} where @returns {string} */
 function providerKind(value, where) {
   const text = nonemptyString(value, where);
@@ -168,6 +235,7 @@ function nullableString(value, where) {
 /** @param {unknown} value @param {string} where @returns {string} */
 function httpsUrl(value, where) {
   const text = nonemptyString(value, where);
+  require(text.length <= MAX_URL_LENGTH, `${where}: URL is too long`);
   const match = CANONICAL_HTTPS_RE.exec(text);
   require(match !== null, `${where}: credential-free canonical HTTPS URL required`);
   require(match[1].length <= MAX_DNS_HOST_LENGTH, `${where}: DNS host is too long`);
@@ -344,8 +412,8 @@ function validateProviderObjectRef(raw, where) {
   forbidExtras(value, ["provider", "instance", "object_kind", "opaque_id"], where);
   providerKind(value.provider, `${where}.provider`);
   providerInstance(value.instance, `${where}.instance`);
-  nonemptyString(value.object_kind, `${where}.object_kind`);
-  nonemptyString(value.opaque_id, `${where}.opaque_id`);
+  providerId(value.object_kind, `${where}.object_kind`);
+  providerId(value.opaque_id, `${where}.opaque_id`);
 }
 
 /** @param {unknown} raw @param {string} where */
@@ -354,15 +422,15 @@ function validateRepositoryRef(raw, where) {
   forbidExtras(value, ["provider", "instance", "opaque_id"], where);
   providerKind(value.provider, `${where}.provider`);
   providerInstance(value.instance, `${where}.instance`);
-  nonemptyString(value.opaque_id, `${where}.opaque_id`);
+  providerId(value.opaque_id, `${where}.opaque_id`);
 }
 
 /** @param {unknown} raw @param {string} where */
 function validateActorRef(raw, where) {
   const value = asObject(raw, where);
   forbidExtras(value, ["provider_opaque_id", "handle", "url"], where);
-  nonemptyString(value.provider_opaque_id, `${where}.provider_opaque_id`);
-  nonemptyString(value.handle, `${where}.handle`);
+  providerId(value.provider_opaque_id, `${where}.provider_opaque_id`);
+  handle(value.handle, `${where}.handle`);
   httpsUrl(value.url, `${where}.url`);
 }
 
@@ -371,8 +439,10 @@ function validateRevisionRef(raw, where) {
   const value = asObject(raw, where);
   forbidExtras(value, ["repository_id", "ref", "oid", "observation"], where);
   require("repository_id" in value, `${where}.repository_id: required`);
-  nullableString(value.repository_id, `${where}.repository_id`);
-  nonemptyString(value.ref, `${where}.ref`);
+  if (value.repository_id !== null) {
+    providerId(value.repository_id, `${where}.repository_id`);
+  }
+  lineText(value.ref, `${where}.ref`);
   require("oid" in value, `${where}.oid: required`);
   nullableString(value.oid, `${where}.oid`);
   const observation = nonemptyString(value.observation, `${where}.observation`);
@@ -409,7 +479,7 @@ function validateComparisonRef(raw, where) {
 function validateLabelRef(raw, where) {
   const value = asObject(raw, where);
   forbidExtras(value, ["name", "color"], where);
-  nonemptyString(value.name, `${where}.name`);
+  lineText(value.name, `${where}.name`);
   if (value.color !== undefined && value.color !== null) {
     require(typeof value.color === "string" &&
       /^[0-9a-fA-F]{6}$/.test(value.color), `${where}.color: invalid RGB color`);
@@ -420,8 +490,8 @@ function validateLabelRef(raw, where) {
 function validateMilestoneRef(raw, where) {
   const value = asObject(raw, where);
   forbidExtras(value, ["provider_opaque_id", "title", "url"], where);
-  nonemptyString(value.provider_opaque_id, `${where}.provider_opaque_id`);
-  nonemptyString(value.title, `${where}.title`);
+  providerId(value.provider_opaque_id, `${where}.provider_opaque_id`);
+  lineText(value.title, `${where}.title`);
   httpsUrl(value.url, `${where}.url`);
 }
 
@@ -441,7 +511,7 @@ function validateReviewSummary(raw, where) {
     value.requested_teams,
     `${where}.requested_teams`,
   ).entries()) {
-    nonemptyString(team, `${where}.requested_teams[${index}]`);
+    lineText(team, `${where}.requested_teams[${index}]`);
   }
 }
 
@@ -458,9 +528,10 @@ function validateCounts(raw, where) {
 function validateLifecycle(document) {
   const state = nonemptyString(document.state, "change_request.state");
   require(CHANGE_REQUEST_STATES.has(state), "change_request.state: unknown value");
-  const created = Date.parse(timestamp(document.created_at, "change_request.created_at"));
-  const updated = Date.parse(timestamp(document.updated_at, "change_request.updated_at"));
-  require(updated >= created, "change_request.updated_at precedes created_at");
+  // Provider-supplied timestamps are recorded as observed and never ordered against each
+  // other; only which timestamps a state carries is checked.
+  timestamp(document.created_at, "change_request.created_at");
+  timestamp(document.updated_at, "change_request.updated_at");
   require("closed_at" in document &&
     "merged_at" in document, "change_request: lifecycle timestamps required");
   nullableString(document.closed_at, "change_request.closed_at");
@@ -470,9 +541,7 @@ function validateLifecycle(document) {
     ["merged_at", document.merged_at],
   ]) {
     if (value !== null) {
-      const observed = Date.parse(timestamp(value, `change_request.${name}`));
-      require(observed >= created &&
-        observed <= updated, `change_request.${name}: outside lifecycle`);
+      timestamp(value, `change_request.${name}`);
     }
   }
   if (state === "open") {
@@ -492,7 +561,9 @@ function validateGitObjectRef(raw, where) {
   const value = asObject(raw, where);
   forbidExtras(value, ["repository_id", "oid", "observation"], where);
   require("repository_id" in value, `${where}.repository_id: required`);
-  nullableString(value.repository_id, `${where}.repository_id`);
+  if (value.repository_id !== null) {
+    providerId(value.repository_id, `${where}.repository_id`);
+  }
   require("oid" in value, `${where}.oid: required`);
   nullableString(value.oid, `${where}.oid`);
   const observation = enumValue(value.observation, REVISION_OBSERVATIONS, `${where}.observation`);
@@ -608,10 +679,12 @@ function validateReviewAnchor(raw, where) {
     throw new FormatError(`${where}.kind: unknown value`);
   }
 
-  const path = nonemptyString(value.path, `${where}.path`);
+  const path = boundedText(value.path, MAX_REVIEW_PATH_LENGTH, [], `${where}.path`);
   require(!path.includes("\0"), `${where}.path: NUL is forbidden`);
   require("path_b64" in value, `${where}.path_b64: required`);
-  nullableString(value.path_b64, `${where}.path_b64`);
+  if (value.path_b64 !== null) {
+    boundedText(value.path_b64, MAX_REVIEW_PATH_B64_LENGTH, [], `${where}.path_b64`);
+  }
   if (value.path_b64 === null) {
     utf8Bytes(path, `${where}.path`);
   } else {
@@ -651,9 +724,8 @@ function validateCommentLifecycle(value, where) {
   require("url" in value, `${where}.url: required`);
   validateNullableUrl(value.url, `${where}.url`);
   require(state === "deleted" || value.url !== null, `${where}: visible comments require a URL`);
-  const created = Date.parse(timestamp(value.created_at, `${where}.created_at`));
-  const updated = Date.parse(timestamp(value.updated_at, `${where}.updated_at`));
-  require(updated >= created, `${where}.updated_at precedes created_at`);
+  timestamp(value.created_at, `${where}.created_at`);
+  timestamp(value.updated_at, `${where}.updated_at`);
 }
 
 /**
@@ -690,13 +762,13 @@ export function parseChangeRequest(raw) {
       ],
       "change_request",
     );
-    nonemptyString(document.id, "change_request.id");
+    domainId(document.id, "change_request.id");
     validateProviderObjectRef(document.provider_ref, "change_request.provider_ref");
     validateRepositoryRef(document.repository, "change_request.repository");
     nonnegativeInteger(document.number, "change_request.number");
     require(Number(document.number) >= 1, "change_request.number: integer >= 1 required");
     httpsUrl(document.url, "change_request.url");
-    nonemptyString(document.title, "change_request.title");
+    lineText(document.title, "change_request.title");
     require("author" in document, "change_request.author: required");
     if (document.author !== null) {
       validateActorRef(document.author, "change_request.author");
@@ -729,6 +801,18 @@ export function parseChangeRequest(raw) {
     const base = asObject(comparison.base, "change_request.comparison.base");
     require(base.repository_id ===
       repository.opaque_id, "change_request: base repository mismatch");
+    // The ID is verified against the structured fields, never parsed: an instance may carry
+    // a port and an opaque ID may contain the separator, so splitting is ambiguous. The one
+    // segment no field supplies is the adapter's separator-free canonical ID kind.
+    const id = String(document.id);
+    const prefix = `${repository.provider}:${repository.instance}:${repository.opaque_id}:`;
+    const suffix = `:${document.number}`;
+    const idKind = id.slice(prefix.length, id.length - suffix.length);
+    require(id.startsWith(prefix) &&
+      id.endsWith(suffix) &&
+      id.length > prefix.length + suffix.length &&
+      idKind.length <= MAX_PROVIDER_KIND_LENGTH &&
+      PROVIDER_KIND_RE.test(idKind), "change_request.id: does not match its structured identity");
     return { ok: true, value: document };
   } catch (error) {
     if (!(error instanceof FormatError)) {
@@ -759,7 +843,7 @@ function parseRecord(raw, where, validate) {
 
 /** @param {Record<string, unknown>} value @param {string} where */
 function validateHostedIdentity(value, where) {
-  nonemptyString(value.id, `${where}.id`);
+  domainId(value.id, `${where}.id`);
   validateProviderObjectRef(value.provider_ref, `${where}.provider_ref`);
   validateRepositoryRef(value.repository, `${where}.repository`);
   requireSameProviderInstance(
@@ -789,7 +873,7 @@ export function parseHostedRepository(raw) {
     );
     validateProviderObjectRef(document.provider_ref, "hosted_repository.provider_ref");
     validateActorRef(document.owner, "hosted_repository.owner");
-    nonemptyString(document.name, "hosted_repository.name");
+    lineText(document.name, "hosted_repository.name");
     httpsUrl(document.url, "hosted_repository.url");
     httpsUrl(document.clone_url, "hosted_repository.clone_url");
     enumValue(document.visibility, REPOSITORY_VISIBILITIES, "hosted_repository.visibility");
@@ -801,13 +885,14 @@ export function parseHostedRepository(raw) {
       "hosted_repository.default_branch.availability",
     );
     require("name" in defaultBranch, "hosted_repository.default_branch.name: required");
-    nullableString(defaultBranch.name, "hosted_repository.default_branch.name");
+    if (defaultBranch.name !== null) {
+      lineText(defaultBranch.name, "hosted_repository.default_branch.name");
+    }
     require((defaultBranch.name !== null) ===
       (availability ===
         "present"), "hosted_repository.default_branch: name and availability disagree");
-    const created = Date.parse(timestamp(document.created_at, "hosted_repository.created_at"));
-    const updated = Date.parse(timestamp(document.updated_at, "hosted_repository.updated_at"));
-    require(updated >= created, "hosted_repository.updated_at precedes created_at");
+    timestamp(document.created_at, "hosted_repository.created_at");
+    timestamp(document.updated_at, "hosted_repository.updated_at");
   });
 }
 
@@ -917,16 +1002,15 @@ function validateChangeRequestIndexRow(raw, where) {
   );
   positiveInteger(row.number, `${where}.number`);
   httpsUrl(row.url, `${where}.url`);
-  nonemptyString(row.title, `${where}.title`);
+  lineText(row.title, `${where}.title`);
   enumValue(row.state, CHANGE_REQUEST_STATES, `${where}.state`);
   require(typeof row.draft === "boolean", `${where}.draft: boolean required`);
   require("author" in row, `${where}.author: required`);
   validateNullableActor(row.author, `${where}.author`);
-  nonemptyString(row.base_label, `${where}.base_label`);
-  nonemptyString(row.head_label, `${where}.head_label`);
-  const created = Date.parse(timestamp(row.created_at, `${where}.created_at`));
-  const updated = Date.parse(timestamp(row.updated_at, `${where}.updated_at`));
-  require(updated >= created, `${where}.updated_at precedes created_at`);
+  lineText(row.base_label, `${where}.base_label`);
+  lineText(row.head_label, `${where}.head_label`);
+  timestamp(row.created_at, `${where}.created_at`);
+  timestamp(row.updated_at, `${where}.updated_at`);
   return row;
 }
 
@@ -1009,7 +1093,7 @@ export function parseChangeRequestComment(raw) {
       "change_request_comment",
     );
     validateHostedIdentity(document, "change_request_comment");
-    nonemptyString(document.change_request_id, "change_request_comment.change_request_id");
+    domainId(document.change_request_id, "change_request_comment.change_request_id");
     require("author" in document, "change_request_comment.author: required");
     validateNullableActor(document.author, "change_request_comment.author");
     validateCommentLifecycle(document, "change_request_comment");
@@ -1037,7 +1121,7 @@ export function parseReview(raw) {
       "review",
     );
     validateHostedIdentity(document, "review");
-    nonemptyString(document.change_request_id, "review.change_request_id");
+    domainId(document.change_request_id, "review.change_request_id");
     httpsUrl(document.url, "review.url");
     require("author" in document, "review.author: required");
     validateNullableActor(document.author, "review.author");
@@ -1045,9 +1129,8 @@ export function parseReview(raw) {
     validateGitObjectRef(document.revision, "review.revision");
     const revision = asObject(document.revision, "review.revision");
     require(revision.observation !== "not_requested", "review.revision: must be requested");
-    const created = Date.parse(timestamp(document.created_at, "review.created_at"));
-    const updated = Date.parse(timestamp(document.updated_at, "review.updated_at"));
-    require(updated >= created, "review.updated_at precedes created_at");
+    timestamp(document.created_at, "review.created_at");
+    timestamp(document.updated_at, "review.updated_at");
     require("submitted_at" in document, "review.submitted_at: required");
     validateNullableTimestamp(document.submitted_at, "review.submitted_at");
     if (disposition === "pending") {
@@ -1055,11 +1138,6 @@ export function parseReview(raw) {
     } else if (disposition !== "unknown") {
       require(document.submitted_at !==
         null, "review: submitted disposition requires submitted_at");
-    }
-    if (document.submitted_at !== null) {
-      const submitted = Date.parse(String(document.submitted_at));
-      require(submitted >= created &&
-        submitted <= updated, "review.submitted_at falls outside lifecycle");
     }
   });
 }
@@ -1082,7 +1160,7 @@ export function parseReviewThread(raw) {
       "review_thread",
     );
     validateHostedIdentity(document, "review_thread");
-    nonemptyString(document.change_request_id, "review_thread.change_request_id");
+    domainId(document.change_request_id, "review_thread.change_request_id");
     validateReviewAnchor(document.anchor, "review_thread.anchor");
     const state = enumValue(document.state, REVIEW_THREAD_STATES, "review_thread.state");
     require("resolved_by" in document, "review_thread.resolved_by: required");
@@ -1116,12 +1194,16 @@ export function parseReviewComment(raw) {
       "review_comment",
     );
     validateHostedIdentity(document, "review_comment");
-    nonemptyString(document.change_request_id, "review_comment.change_request_id");
+    domainId(document.change_request_id, "review_comment.change_request_id");
     require("review_id" in document, "review_comment.review_id: required");
-    nullableString(document.review_id, "review_comment.review_id");
-    nonemptyString(document.thread_id, "review_comment.thread_id");
+    if (document.review_id !== null) {
+      domainId(document.review_id, "review_comment.review_id");
+    }
+    domainId(document.thread_id, "review_comment.thread_id");
     require("in_reply_to_id" in document, "review_comment.in_reply_to_id: required");
-    nullableString(document.in_reply_to_id, "review_comment.in_reply_to_id");
+    if (document.in_reply_to_id !== null) {
+      domainId(document.in_reply_to_id, "review_comment.in_reply_to_id");
+    }
     require(document.in_reply_to_id !== document.id, "review_comment: cannot reply to itself");
     require("author" in document, "review_comment.author: required");
     validateNullableActor(document.author, "review_comment.author");
@@ -1153,14 +1235,18 @@ export function parseCheck(raw) {
     );
     validateHostedIdentity(document, "check");
     require("parent_check_id" in document, "check.parent_check_id: required");
-    nullableString(document.parent_check_id, "check.parent_check_id");
+    if (document.parent_check_id !== null) {
+      domainId(document.parent_check_id, "check.parent_check_id");
+    }
     const kind = enumValue(document.kind, CHECK_KINDS, "check.kind");
     validateGitObjectRef(document.revision, "check.revision");
     const revision = asObject(document.revision, "check.revision");
     require(revision.observation === "observed", "check.revision: observed revision required");
     require(document.parent_check_id !== document.id, "check: cannot parent itself");
     require("name" in document, "check.name: required");
-    nullableString(document.name, "check.name");
+    if (document.name !== null) {
+      lineText(document.name, "check.name");
+    }
     if (kind === "run") {
       require(document.parent_check_id !== null, "check run: parent suite required");
       require(document.name !== null, "check run: name required");
@@ -1186,10 +1272,6 @@ export function parseCheck(raw) {
       require(document.conclusion === null &&
         document.completed_at ===
           null, "noncompleted check: conclusion and completed_at forbidden");
-    }
-    if (document.started_at !== null && document.completed_at !== null) {
-      require(Date.parse(String(document.completed_at)) >=
-        Date.parse(String(document.started_at)), "check.completed_at precedes started_at");
     }
   });
 }
@@ -1217,15 +1299,16 @@ export function parseCommitStatus(raw) {
     validateGitObjectRef(document.revision, "commit_status.revision");
     const revision = asObject(document.revision, "commit_status.revision");
     require(revision.observation === "observed", "commit_status.revision: observed required");
-    nonemptyString(document.context, "commit_status.context");
+    lineText(document.context, "commit_status.context");
     enumValue(document.state, COMMIT_STATUS_STATES, "commit_status.state");
     require("description" in document, "commit_status.description: required");
-    nullableString(document.description, "commit_status.description");
+    if (document.description !== null) {
+      lineText(document.description, "commit_status.description");
+    }
     require("target_url" in document, "commit_status.target_url: required");
     validateNullableUrl(document.target_url, "commit_status.target_url");
-    const created = Date.parse(timestamp(document.created_at, "commit_status.created_at"));
-    const updated = Date.parse(timestamp(document.updated_at, "commit_status.updated_at"));
-    require(updated >= created, "commit_status.updated_at precedes created_at");
+    timestamp(document.created_at, "commit_status.created_at");
+    timestamp(document.updated_at, "commit_status.updated_at");
   });
 }
 
@@ -1235,9 +1318,11 @@ function validateActivityActor(raw, where) {
   const kind = nonemptyString(actor.kind, `${where}.kind`);
   if (kind === "git") {
     forbidExtras(actor, ["kind", "name", "email"], where);
-    nonemptyString(actor.name, `${where}.name`);
+    lineText(actor.name, `${where}.name`);
     require("email" in actor, `${where}.email: required`);
-    nullableString(actor.email, `${where}.email`);
+    if (actor.email !== null) {
+      lineText(actor.email, `${where}.email`);
+    }
   } else if (kind === "provider") {
     forbidExtras(actor, ["kind", "actor"], where);
     validateActorRef(actor.actor, `${where}.actor`);
@@ -1260,7 +1345,7 @@ function validateActivityDetail(raw, where) {
       ["kind", "change_request_id", "provider_ref", "repository", "number"],
       where,
     );
-    nonemptyString(detail.change_request_id, `${where}.change_request_id`);
+    domainId(detail.change_request_id, `${where}.change_request_id`);
     validateProviderObjectRef(detail.provider_ref, `${where}.provider_ref`);
     validateRepositoryRef(detail.repository, `${where}.repository`);
     requireSameProviderInstance(
@@ -1313,15 +1398,14 @@ function validateActivityItem(raw, where) {
     ],
     where,
   );
-  nonemptyString(item.id, `${where}.id`);
+  domainId(item.id, `${where}.id`);
   const kind = enumValue(item.kind, ACTIVITY_KINDS, `${where}.kind`);
-  nonemptyString(item.title, `${where}.title`);
+  lineText(item.title, `${where}.title`);
   const actors = asArray(item.actors, `${where}.actors`).map((actor, index) =>
     validateActivityActor(actor, `${where}.actors[${index}]`),
   );
-  const eventAt = Date.parse(timestamp(item.event_at, `${where}.event_at`));
-  const updatedAt = Date.parse(timestamp(item.updated_at, `${where}.updated_at`));
-  require(updatedAt >= eventAt, `${where}.updated_at precedes event_at`);
+  timestamp(item.event_at, `${where}.event_at`);
+  timestamp(item.updated_at, `${where}.updated_at`);
   require("state" in item, `${where}.state: required`);
   if (item.state !== null) {
     enumValue(item.state, ACTIVITY_STATES, `${where}.state`);
@@ -1426,10 +1510,7 @@ export function parseRepositoryActivity(raw) {
       ],
       "repository_activity",
     );
-    const repositoryId = nonemptyString(
-      document.repository_id,
-      "repository_activity.repository_id",
-    );
+    const repositoryId = providerId(document.repository_id, "repository_activity.repository_id");
     const includedKinds = asArray(document.included_kinds, "repository_activity.included_kinds");
     require(includedKinds.length > 0, "repository_activity.included_kinds: nonempty required");
     let previousKind = null;

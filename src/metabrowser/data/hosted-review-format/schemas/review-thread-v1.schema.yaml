@@ -3,10 +3,12 @@ $defs:
     additionalProperties: false
     properties:
       handle:
+        maxLength: 255
         minLength: 1
         title: Handle
         type: string
       provider_opaque_id:
+        maxLength: 255
         minLength: 1
         title: Provider Opaque Id
         type: string
@@ -31,7 +33,7 @@ $defs:
         $ref: '#/$defs/RevisionObservation'
       merge_commit_oid:
         anyOf:
-        - pattern: ^[0-9a-f]{40,64}$
+        - pattern: ^(?:[0-9a-f]{40}|[0-9a-f]{64})$
           type: string
         - type: 'null'
         title: Merge Commit Oid
@@ -56,12 +58,14 @@ $defs:
       original_revision:
         $ref: '#/$defs/GitObjectRef'
       path:
+        maxLength: 4096
         minLength: 1
         title: Path
         type: string
       path_b64:
         anyOf:
-        - minLength: 1
+        - maxLength: 5464
+          minLength: 1
           type: string
         - type: 'null'
         title: Path B64
@@ -84,13 +88,14 @@ $defs:
         $ref: '#/$defs/RevisionObservation'
       oid:
         anyOf:
-        - pattern: ^[0-9a-f]{40,64}$
+        - pattern: ^(?:[0-9a-f]{40}|[0-9a-f]{64})$
           type: string
         - type: 'null'
         title: Oid
       repository_id:
         anyOf:
-        - minLength: 1
+        - maxLength: 255
+          minLength: 1
           type: string
         - type: 'null'
         title: Repository Id
@@ -118,12 +123,14 @@ $defs:
       original_revision:
         $ref: '#/$defs/GitObjectRef'
       path:
+        maxLength: 4096
         minLength: 1
         title: Path
         type: string
       path_b64:
         anyOf:
-        - minLength: 1
+        - maxLength: 5464
+          minLength: 1
           type: string
         - type: 'null'
         title: Path B64
@@ -153,10 +160,12 @@ $defs:
       instance:
         $ref: '#/$defs/ProviderInstance'
       object_kind:
+        maxLength: 255
         minLength: 1
         title: Object Kind
         type: string
       opaque_id:
+        maxLength: 255
         minLength: 1
         title: Opaque Id
         type: string
@@ -185,12 +194,14 @@ $defs:
       original_revision:
         $ref: '#/$defs/GitObjectRef'
       path:
+        maxLength: 4096
         minLength: 1
         title: Path
         type: string
       path_b64:
         anyOf:
-        - minLength: 1
+        - maxLength: 5464
+          minLength: 1
           type: string
         - type: 'null'
         title: Path B64
@@ -216,6 +227,7 @@ $defs:
       instance:
         $ref: '#/$defs/ProviderInstance'
       opaque_id:
+        maxLength: 255
         minLength: 1
         title: Opaque Id
         type: string
@@ -287,17 +299,19 @@ $defs:
         $ref: '#/$defs/RevisionObservation'
       oid:
         anyOf:
-        - pattern: ^[0-9a-f]{40,64}$
+        - pattern: ^(?:[0-9a-f]{40}|[0-9a-f]{64})$
           type: string
         - type: 'null'
         title: Oid
       ref:
+        maxLength: 1024
         minLength: 1
         title: Ref
         type: string
       repository_id:
         anyOf:
-        - minLength: 1
+        - maxLength: 255
+          minLength: 1
           type: string
         - type: 'null'
         title: Repository Id
@@ -314,6 +328,7 @@ properties:
   anchor:
     $ref: '#/$defs/ReviewAnchor'
   change_request_id:
+    maxLength: 1024
     minLength: 1
     title: Change Request Id
     type: string
@@ -322,6 +337,7 @@ properties:
     title: Comment Count
     type: integer
   id:
+    maxLength: 1024
     minLength: 1
     title: Id
     type: string
@@ -348,4 +364,4 @@ title: ReviewThread
 type: object
 x-softschema:
   contract: com.github.jlevy.metabrowser.review:ReviewThread/v1
-  schema_sha256: 17d03e737ae1252ac32e8a6dbada2ab1fbe6d6fecd5521686a15a82f526446a4
+  schema_sha256: 809757690f582e4b5c1b645d862e039348825cb3ffb9945139ed992b0abbb9de

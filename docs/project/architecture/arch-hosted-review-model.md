@@ -177,8 +177,27 @@ All persisted timestamps use a canonical RFC 3339 UTC representation with second
 `Z`. Zero milliseconds are omitted; a nonzero fraction contains exactly three digits.
 Provider adapters convert offsets to UTC and truncate finer precision toward the earlier
 millisecond before validation so Python and browser ordering have identical precision.
+The format asserts ordering only between timestamps Metabrowser writes from its own
+clock: retrieval start and finish, rate-limit and pagination observation, manifest, and
+tombstone times. Provider-supplied timestamps are recorded as observed and never ordered
+against each other or against the local clock, because providers do emit anomalous
+records and a rule would force an adapter to drop or alter one.
+Which timestamps a lifecycle state carries remains a structural rule.
+The one deliberate exception is tombstone evidence, which refuses a provider deletion
+event that predates the previous live observation: that interlock guards a destructive
+step and fails closed by keeping the live record.
 Provider links use an ASCII canonical HTTPS spelling: lowercase DNS host, no
 credentials, no default port, and uppercase hexadecimal percent escapes.
+Every structured string is bounded; only Markdown bodies are unbounded content.
+Identifiers refuse control characters, line separators, zero-width characters, and
+bidirectional formatting controls, so nothing can hide in or visually reorder a value
+that is compared, hashed, and joined into derived IDs.
+Single-line display text such as titles, names, labels, and refs refuses control
+characters and line separators but keeps bidirectional marks, which right-to-left text
+legitimately carries.
+The bounds are envelopes over the providers the neutral model must admit, not one
+provider’s exact limits; each constant in `models.py` records its basis, and lengths
+count Unicode code points in both runtimes.
 Readers accept finite integral JSON numbers, while the serializer writes integer YAML;
 all persisted integers remain within JavaScript’s exact range.
 
@@ -189,6 +208,11 @@ and the resolved File Diff Format around it.
 The serializer uses frontmatter-format’s YAML and fence-delimiter primitives, preserves
 the provider body as content, and computes snapshot identity from the complete
 normalized artifact.
+Because that identity hashes bytes, a typed artifact validator accepts only the exact
+bytes the serializer writes for the validated record and body.
+A YAML comment, alternate quoting or spacing, reordered keys, a tagged scalar, or an
+integral float spelling is refused rather than given a second identity, and model
+strings are never coerced from another type.
 
 Indexes, sync manifests, retrieval records, tombstones, threads, checks, and status
 records use `pure-yaml` because their entire content is structured or they only refer to
@@ -346,6 +370,12 @@ Closed enum and literal values carry the same disposition-specific evidence.
 Structured identity recipes pin the complete provider, instance, repository, canonical
 ID kind, number, and provider-object inputs used by each relationship.
 Canonical ID kinds remain distinct from provider-object kinds where the formats differ.
+`ChangeRequest/v1` verifies its `id` at construction in both runtimes: it must equal
+`provider:instance:repository_opaque_id:id_kind:number` for the record’s own
+`repository` and `number`, with a separator-free lowercase `id_kind` token.
+The ID is matched against those fields and never parsed, because an instance may carry a
+port and an opaque ID may contain the separator.
+Every other domain ID is opaque to readers, which compare it and never split it.
 For a check run, the recorded numeric `check_suite.id` must join exactly one captured
 suite database ID before the suite `node_id` becomes the normalized parent ID. The
 inventory does not claim the single recorded thread proves file or line anchors,

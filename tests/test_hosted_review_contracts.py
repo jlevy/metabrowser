@@ -6,6 +6,7 @@ import copy
 import hashlib
 import json
 import re
+from collections.abc import Iterator
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, cast
@@ -292,6 +293,38 @@ def test_every_embedded_corpus_selector_resolves_and_exercises_its_contract() ->
                         contract_id=contract.contract_id,
                         contracts=registries.contracts,
                     )
+
+
+def _string_schemas(
+    schema: Any, path: tuple[Any, ...] = ()
+) -> Iterator[tuple[tuple[Any, ...], Any]]:
+    """Yield every ``str`` node of a Pydantic core schema with the path that reached it."""
+    if isinstance(schema, dict):
+        if schema.get("type") == "str":
+            yield path, schema.get("strict")
+        for key, value in cast(dict[str, Any], schema).items():
+            yield from _string_schemas(value, (*path, key))
+    elif isinstance(schema, list | tuple):
+        for index, value in enumerate(cast(list[Any], schema)):
+            yield from _string_schemas(value, (*path, index))
+
+
+def test_every_contract_model_string_is_strict() -> None:
+    # Lax mode would coerce bytes (a YAML ``!!binary`` scalar) into a string the browser
+    # validator refuses, so no registered model may carry a nonstrict string.
+    registry = build_hosted_review_contract_registry()
+    total = 0
+    lax: list[tuple[str, tuple[Any, ...]]] = []
+    for contract in registry.all.values():
+        model = contract.model
+        assert model is not None, contract.id
+        for path, strict in _string_schemas(model.__pydantic_core_schema__):
+            total += 1
+            if strict is not True:
+                lax.append((contract.id, path))
+
+    assert not lax
+    assert total > 0
 
 
 def test_compiled_schemas_match_models_contract_ids_and_digests() -> None:

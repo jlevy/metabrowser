@@ -173,6 +173,17 @@ def test_repository_successor_rejects_silent_rebinding() -> None:
         hosted_review.validate_repository_successor(previous, rebound)
 
 
+def test_repository_successor_does_not_order_provider_update_times() -> None:
+    previous_document = _corpus()["base_records"]["hosted_repository"]
+    earlier_document = copy.deepcopy(previous_document)
+    earlier_document["updated_at"] = previous_document["created_at"]
+
+    previous = hosted_review.validate_hosted_repository(previous_document)
+    earlier = hosted_review.validate_hosted_repository(earlier_document)
+
+    assert hosted_review.validate_repository_successor(previous, earlier) == earlier
+
+
 def test_binding_identity_does_not_change_with_repository_coordinates() -> None:
     corpus = _corpus()["base_records"]
     binding = hosted_review.validate_provider_binding(corpus["provider_binding"])

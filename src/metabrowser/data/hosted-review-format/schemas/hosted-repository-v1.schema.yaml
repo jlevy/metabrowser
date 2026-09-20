@@ -3,10 +3,12 @@ $defs:
     additionalProperties: false
     properties:
       handle:
+        maxLength: 255
         minLength: 1
         title: Handle
         type: string
       provider_opaque_id:
+        maxLength: 255
         minLength: 1
         title: Provider Opaque Id
         type: string
@@ -31,7 +33,8 @@ $defs:
         $ref: '#/$defs/DefaultBranchAvailability'
       name:
         anyOf:
-        - minLength: 1
+        - maxLength: 1024
+          minLength: 1
           type: string
         - type: 'null'
         title: Name
@@ -58,10 +61,12 @@ $defs:
       instance:
         $ref: '#/$defs/ProviderInstance'
       object_kind:
+        maxLength: 255
         minLength: 1
         title: Object Kind
         type: string
       opaque_id:
+        maxLength: 255
         minLength: 1
         title: Opaque Id
         type: string
@@ -92,6 +97,7 @@ properties:
   default_branch:
     $ref: '#/$defs/DefaultBranch'
   name:
+    maxLength: 1024
     minLength: 1
     title: Name
     type: string
@@ -119,4 +125,4 @@ title: HostedRepository
 type: object
 x-softschema:
   contract: com.github.jlevy.metabrowser.provider:HostedRepository/v1
-  schema_sha256: ac63eac11358165c45edc2a7bdb6fcaa03fb8b89bf6c226ea67397bb1ea9e014
+  schema_sha256: e9380514ef5841f07f7ee6f6eaa44437e1638521bc60bf00539313d5072c2b11
