@@ -51,6 +51,12 @@ Content trust:
   `referrerpolicy="no-referrer"` — never `allow-same-origin` or `allow-top-navigation`.
   `--untrusted` and `--no-active-content` omit Preview.
 
+- Preview carries an **Open as full page** link to the same `/raw/{path}` document the
+  frame is showing, so a page that wants the whole window gets it.
+  It is a plain anchor, so middle-click and modifier-click behave natively, and it opens
+  with `rel="noopener noreferrer"`. The tab is contained exactly as the frame is: the
+  sandbox rides on the response headers, not on the iframe.
+
 - A path carrying an embedded NUL — `/raw/a%00b`, or the same byte in a `?path=` value —
   is a 404 rather than a 500. No filesystem can hold that name, so it is a missing file
   like any other unresolvable path.
