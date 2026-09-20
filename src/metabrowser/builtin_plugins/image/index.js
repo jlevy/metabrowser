@@ -21,10 +21,9 @@
     image.setAttribute("src", `/raw?path=${encodeURIComponent(ctx.path)}`);
     // Navigation identity stays the GitPath wire; alt is the display name.
     const route = window.MetabrowserNavigationRoute;
-    const sourceKind = mb.sourceKind?.() === "git_revision" ? "git_revision" : "filesystem";
     const alt =
       route && typeof route.displayPath === "function"
-        ? route.displayPath(ctx.path, sourceKind)
+        ? route.displayPath(ctx.path, mb.sourceKind())
         : ctx.path;
     image.setAttribute("alt", alt);
     container.replaceChildren(image);

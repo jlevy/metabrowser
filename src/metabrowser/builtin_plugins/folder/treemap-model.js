@@ -4,11 +4,14 @@ export function parentPath(path) {
   return index === -1 ? "" : path.slice(0, index);
 }
 
-/** @param {string} path */
-function identityDisplay(path) {
+/**
+ * @param {string} path
+ * @param {"filesystem" | "git_revision"=} sourceKind
+ */
+function identityDisplay(path, sourceKind) {
   const displayPath = globalThis.window?.MetabrowserNavigationRoute?.displayPath;
   if (typeof displayPath === "function") {
-    return displayPath(path, globalThis.window?.METABROWSER_SOURCE_KIND);
+    return displayPath(path, sourceKind);
   }
   return path;
 }
@@ -19,10 +22,15 @@ function identityDisplay(path) {
  * for the served root, so the target path is empty there while the
  * button still reads `/`.
  *
+ * The served source kind is an argument rather than a global read, so this
+ * model stays callable without a window and the caller keeps one answer for
+ * which subject it is rendering.
+ *
  * @param {string} path
+ * @param {"filesystem" | "git_revision"=} sourceKind
  * @returns {{path: string, label: string} | null}
  */
-export function parentNavigation(path) {
+export function parentNavigation(path, sourceKind) {
   if (!path) {
     return null;
   }
@@ -30,7 +38,7 @@ export function parentNavigation(path) {
   if (!parent) {
     return { path: "", label: "/" };
   }
-  const displayed = identityDisplay(parent);
+  const displayed = identityDisplay(parent, sourceKind);
   const segment = displayed.slice(displayed.lastIndexOf("/") + 1);
   return { path: parent, label: `${segment}/` };
 }
