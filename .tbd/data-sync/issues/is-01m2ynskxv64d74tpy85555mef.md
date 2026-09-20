@@ -5,7 +5,7 @@ title: "PR #140 Bugbot: refuse future/missing layout before any home write"
 kind: bug
 status: closed
 priority: 1
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: claude-code@spud10.local
 labels: []
@@ -14,7 +14,7 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-09-20T05:49:31.442Z
-updated_at: 2026-09-20T07:15:57.782Z
+updated_at: 2026-09-20T15:45:48.763Z
 started_at: 2026-09-20T06:53:07.679Z
 closed_at: 2026-09-20T07:15:57.781Z
 close_reason: "Fixed in da73b878: open_cache preflights unrecognized durable layouts before any home write."
@@ -28,3 +28,9 @@ Fix on `claude/v011-cache-format-foundation` (#140), then rebase the stack up. D
 ## Notes
 
 Fixed locally in da73b878 on PR 140; 53 layout tests and format/lint passed. Restacked upward. Push, full gate, CI, and thread disposition remain pending. See mb-rldx.
+
+2026-09-20: no longer pending. The fix was pushed — da73b878 is the current head of PR #140
+(gh pr view 140 --json headRefOid) — and CI is green on it (gh pr checks 140: distribution,
+lint, stack-integration, test 3.12/3.13/3.14/3.14t all pass). Both #140 Bugbot Medium
+review threads are resolved (GraphQL reviewThreads: isResolved=true for both cursor threads
+on src/metabrowser/cache/layout.py).

@@ -3,9 +3,9 @@ type: is
 id: is-01m2zpxwxtv9pcjf6ynxcan41h
 title: "BEADS-1: apply the bead bookkeeping corrections and fix the mb-n2ro landing graph and inverted dependency edges"
 kind: chore
-status: open
+status: in_progress
 priority: 2
-version: 1
+version: 3
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 labels:
   - release:v0.11.0
@@ -13,6 +13,10 @@ labels:
 dependencies: []
 parent_id: is-01m2yxd3tnr1s2zf0h0jat1ey2
 created_at: 2026-09-20T15:28:34.743Z
-updated_at: 2026-09-20T15:28:34.743Z
+updated_at: 2026-09-20T15:38:00.127Z
 ---
 Finding BEADS-1 from the v0.11 stabilization review. Owning layer: PR #216. Full evidence, path:line, and suggested fix are in the notes of mb-gacf under BEADS-1.
+
+## Notes
+
+Decision 2026-09-20 (user): split the mb-n2ro blocker set so the current seven-PR stack (#125 to #216) plus #209 can land without the Phase 2A to 4C publication beads. Bookkeeping corrections are being applied by an agent first; the split is applied after it finishes to avoid concurrent writes to mb-n2ro.

@@ -3,9 +3,9 @@ type: is
 id: is-01m1dt40nmqvb9k1dpewnyk06m
 title: "Residual: inventory walk still 28% slower than main after the perf fixes"
 kind: bug
-status: in_progress
+status: open
 priority: 1
-version: 9
+version: 10
 labels: []
 dependencies:
   - type: blocks
@@ -13,7 +13,7 @@ dependencies:
 child_order_hints:
   - is-01m2gwtgp8rs2e4x0e77f64y8f
 created_at: 2026-09-01T06:22:19.315Z
-updated_at: 2026-09-15T05:31:41.296Z
+updated_at: 2026-09-20T15:42:04.605Z
 ---
 After the two fixes in mb-0y68, the 60,000-file A/B still shows a gap:
 
@@ -76,3 +76,7 @@ is structural work, not constant tuning. exp-035 measured the constants and they
 worth about 4% between them.
 
 When this is fixed, lower the flat-stress ratchet to the new behavior.
+
+2026-09-20: status returned to open (was in_progress). Nobody is actively working this; as
+the notes above state, the residual is carried debt for v0.10.0 and the live work sits in
+the successor beads mb-qvw4, mb-qtgj and mb-zc3p. in_progress overstated it.

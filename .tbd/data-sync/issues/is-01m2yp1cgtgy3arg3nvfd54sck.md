@@ -5,13 +5,13 @@ title: "Agent handoff: v0.11 stack 2026-09-19"
 kind: task
 status: open
 priority: 2
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 labels: []
 dependencies: []
 parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 created_at: 2026-09-20T05:53:46.008Z
-updated_at: 2026-09-20T06:06:37.760Z
+updated_at: 2026-09-20T15:47:14.343Z
 ---
 Task: Finish v0.11 review organization and keep the next agent oriented across tbd and metabrowser. Do not merge anything to main unless the user asks.
 
@@ -211,3 +211,13 @@ Spec-status commits are on the open PRs, not main:
 
 tbd policy: https://github.com/jlevy/tbd/pull/316
 Metabrowser stack: https://github.com/jlevy/metabrowser/stack/218
+
+Superseded in part 2026-09-20 (all PR facts re-verified with gh on 2026-09-20):
+
+- Heads are now #140 da73b878, #217 70091d81, #216 de0f4f5a.
+- Both #140 Bugbot Medium threads are resolved (GraphQL reviewThreads isResolved=true);
+  mb-fn3h and mb-w6oa are closed.
+- tbd PR https://github.com/jlevy/tbd/pull/316 is MERGED (mergedAt 2026-09-20T06:17:47Z).
+- dependabot PR #207 is MERGED (mergedAt 2026-09-20T15:26:53Z); origin/main now locks
+  anyio 4.14.2 (uv.lock).
+- Current stabilization work is tracked in mb-gacf.

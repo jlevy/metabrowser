@@ -3,14 +3,19 @@ type: is
 id: is-01m2ned588n762bx755ernns3s
 title: Upgrade tbd 0.9.0 surfaces and restore stacked-PR discoverability
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 7
+version: 8
 labels:
   - tooling
 dependencies: []
 created_at: 2026-09-16T15:47:13.286Z
-updated_at: 2026-09-16T19:54:14.315Z
+updated_at: 2026-09-20T15:40:24.235Z
+closed_at: 2026-09-20T15:40:24.175Z
+close_reason: |
+  Closed 2026-09-20: the stated hold condition ("keep #137 draft until tbd #304 merges") is met. Verified with gh: jlevy/tbd PR #304 state MERGED, mergedAt 2026-09-16T20:19:15Z; jlevy/metabrowser PR #137 state MERGED, mergedAt 2026-09-17T02:57:33Z (head afc606aa). The tbd 0.9.0 generated surfaces are on main.
+resolution: null
+duplicate_of: null
 ---
 Upgrade the first-party get-tbd CLI to 0.9.0, run tbd setup --auto, commit the generated Metabrowser surfaces exactly as emitted, and verify that ordinary PR requests discover the stacked-prs shortcut and official gh-stack skill. The installed 0.9.0 package contains dist/docs/shortcuts/standard/stacked-prs.md and updated PR shortcuts, but tbd shortcut --list and tbd shortcut stacked-prs omit it. Audit the tbd source and open an upstream tbd PR with regression coverage and any required catalog/generator fix. Keep this tooling work separate from the hosted-review feature stack.
 

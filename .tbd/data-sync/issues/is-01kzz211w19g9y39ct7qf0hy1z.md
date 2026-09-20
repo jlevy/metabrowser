@@ -3,9 +3,9 @@ type: is
 id: is-01kzz211w19g9y39ct7qf0hy1z
 title: Evaluate post-baseline Markdown navigation adapters and knowledge features
 kind: epic
-status: in_progress
+status: open
 priority: 3
-version: 13
+version: 14
 spec_path: docs/project/specs/active/plan-2026-08-13-markdown-navigation-extensions.md
 labels: []
 dependencies: []
@@ -18,10 +18,16 @@ child_order_hints:
   - is-01kzz4ekfzfqz35v7rwrx3esfk
   - is-01kzz4eksmrezrggyrjefynntk
 created_at: 2026-08-14T02:36:12.525Z
-updated_at: 2026-08-16T08:05:43.464Z
+updated_at: 2026-09-20T15:42:05.743Z
 extensions:
   linear:
     id: 76946bce-e1af-4297-80b0-836175cbb954
     linked_at: 2026-08-16T08:05:43.464Z
 ---
 After the required GitHub and Obsidian navigation baseline is complete and measured, evaluate separate opt-in extensions: static-site source-to-output adapters, same-repository GitHub URL localization with revision identity, source-line locations, backlinks and broken-link reports, graph views, full note or section transclusion with cycle and resource budgets, frontmatter alias lookup, and mounted multi-repository or cross-vault navigation. Preserve the canonical navigation target and typed resolver contracts; do not add these extensions to the baseline without dedicated specs and evidence.
+
+## Notes
+
+2026-09-20: status returned to open (was in_progress). This is a P3 evaluation epic whose
+last recorded activity is updated_at 2026-08-16T08:05:43Z; no evaluation is in flight, so
+in_progress overstated it.

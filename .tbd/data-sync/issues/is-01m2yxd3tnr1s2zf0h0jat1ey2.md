@@ -5,7 +5,7 @@ title: "v0.11 stabilization review: independent full review of stack #218 and #2
 kind: task
 status: in_progress
 priority: 1
-version: 41
+version: 42
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 labels:
   - release:v0.11.0
@@ -51,7 +51,7 @@ child_order_hints:
   - is-01m2zpxwxtv9pcjf6ynxcan41h
   - is-01m2zpxyf1qczg3r6cadfhh7sy
 created_at: 2026-09-20T08:02:30.356Z
-updated_at: 2026-09-20T15:28:36.309Z
+updated_at: 2026-09-20T15:49:57.151Z
 ---
 Follow-up to mb-rldx, which was closed at 2026-09-20T07:32Z by a fast pass while its own notes said the #216 browser/plugin, resource-lifecycle, CLI/parity, and docs review passes were unfinished. Independently verify the #140/#217/#216 fix commits (da73b878, 70091d81, bc8dd72b, de0f4f5a), complete the unreviewed areas, review #209 as the security gate for serving acquired Git, reconcile every PR review channel, and reconcile beads and spec checklists with the branches. Output: confirmed findings filed as beads on their owning layers, and an ordered stabilization plan. Read-only until the plan is agreed; do not merge (landing owner is mb-n2ro).
 
@@ -249,6 +249,29 @@ Fix on the owning layer, then restack upward.
   rebase; `gh stack` metadata is two commits behind on #216; `feat/git-graph-view` (179
   commits) and `pr13-folder-treemap` (6) are unpushed; `claude/v011-cache-measurements` is
   already contained in #140; `.pnpm-store/` is unignored.
+
+## Resume state (paused 2026-09-20 on user request; resume about 45 minutes later)
+
+Done: #207 merged (main locks anyio 4.14.2); stale `metabrowser-v011-phase0d` worktree
+registration removed; 38 finding beads filed under this bead; user decisions recorded on
+mb-0um4 (build the bounded content reader), mb-maws (#209 lands before #217; merge still
+needs explicit approval), mb-v4dh (split the mb-n2ro blocker set). User also approved
+pushing fixes to PR branches and posting corrective PR comments.
+
+Ten fix agents were STOPPED mid-work. Their isolated worktrees persist under
+`.claude/worktrees/agent-*` with uncommitted partial edits; briefs are
+`scratchpad/fix-brief.md` plus the per-agent prompts in the session. Intended branches:
+stab/s140, stab/s217 (cherry-pick ad6e30f8 first), stab/s216-core, stab/s216-cli,
+stab/s209, stab/s209-raw, stab/s134 (+ stab/s136-format, stab/s139-format,
+stab/s139-rebind), stab/s136, stab/docs. The bead-bookkeeping agent had applied nothing.
+On resume: inspect each worktree (`git status`, `git log`), then relaunch each agent
+pointing at its existing worktree to continue, rather than starting over.
+
+Then: review diffs; integrate bottom-up (#140, #217, #216); restack onto main; add the
+multi-entry Git-pin golden (mb-3z4d); `make verify` on macOS; push; watch CI; build the
+content reader (mb-0um4); apply bookkeeping (mb-v4dh); post dispositions (mb-9ajn); ask
+for approval to merge #209, then second restack and integration (mb-gqmt, mb-99ub,
+mb-g5je, mb-rlt4).
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
