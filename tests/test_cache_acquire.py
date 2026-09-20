@@ -298,6 +298,36 @@ def test_a_repository_enclosing_the_cache_home_does_not_rewrite_the_origin(
     assert published.default_revision == _rev_parse(real, "refs/heads/topic")
 
 
+@posix_only
+def test_a_detached_head_origin_is_refused_before_anything_is_fetched(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _allow_installed_git(monkeypatch)
+    _origin(tmp_path, allow_filter=False)
+    work = tmp_path / "work"
+    _git(work, "checkout", "-q", "--detach")
+    home = tmp_path / "home"
+    commands: list[list[str]] = []
+    real_run = acquire_module._run
+
+    async def record(
+        args: list[str],
+        *,
+        cwd: Path | None = None,
+        git_dir: Path | None = None,
+        policy: GitProcessPolicy = acquire_module.ACQUISITION_POLICY,
+        stdin: bytes | None = None,
+    ) -> bytes:
+        commands.append(args)
+        return await real_run(args, cwd=cwd, git_dir=git_dir, policy=policy, stdin=stdin)
+
+    monkeypatch.setattr(acquire_module, "_run", record)
+    with pytest.raises(ValidationFailedError, match="not a branch"):
+        asyncio.run(acquire_file_source(_file_source(work), home=home))
+    assert len(commands) == 1 and "ls-remote" in commands[0]
+    assert list((home / "cache" / "staging").iterdir()) == []
+
+
 def _has_object(git_dir: Path, oid: str) -> bool:
     probe = subprocess.run(
         ["git", "--git-dir", str(git_dir), "cat-file", "-e", oid],

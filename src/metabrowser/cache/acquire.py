@@ -336,6 +336,10 @@ async def acquire_into_staging(source: GitSource, *, home: Path) -> StagingAcqui
         except GitCommandError as exc:
             raise RemoteUnavailableError("the source did not advertise HEAD") from exc
         head_ref, revision = _parse_symref_head(observed)
+        default_remote_ref = _remote_tracking_ref(head_ref)
+        if default_remote_ref is None:
+            # Publication needs a branch. Refuse here, before the fetch is paid for.
+            raise ValidationFailedError("the source HEAD is not a branch")
         advertised_format = "sha256" if len(revision) == 64 else "sha1"
         # No ``--ref-format=files``: the flag arrived in Git 2.45 and the admitted
         # floor is 2.43. The isolated environment drops GIT_DEFAULT_REF_FORMAT and
@@ -378,9 +382,7 @@ async def acquire_into_staging(source: GitSource, *, home: Path) -> StagingAcqui
             raise ValidationFailedError("the observed HEAD did not validate") from exc
         if kind != b"commit":
             raise ValidationFailedError("the observed HEAD is not a commit")
-        default_remote_ref = _remote_tracking_ref(head_ref)
-        if default_remote_ref is not None:
-            await _require_ref_at(git_dir, default_remote_ref, revision)
+        await _require_ref_at(git_dir, default_remote_ref, revision)
         object_format_name = object_format_raw.decode("ascii")
         if object_format_name not in {"sha1", "sha256"}:
             raise ValidationFailedError("unsupported object format")

@@ -392,23 +392,23 @@ class StoreReclamation(StrEnum):
     DELETE_FAILED = "delete_failed"
 
 
-def store_is_referenced(home: Path, store_key: str) -> bool:
-    """Whether any alias names the store, failing safe on anything it cannot read.
+def _referenced_store_ids(home: Path) -> frozenset[str] | None:
+    """The store IDs the source aliases name, or None when every store must count.
 
-    Aliases that name a store are written under that store's lease, so a caller holding
-    its exclusive maintenance lock sees a stable answer.
+    Fails safe: provider data, a source entry that is not a slug, or an alias that
+    cannot be read or validated may name any store.
     """
 
     for directory in (PROVIDER_BINDINGS, PROVIDER_REPOSITORIES):
         try:
             if any(True for _ in os.scandir(home / directory)):
-                return True
+                return None
         except FileNotFoundError:
             continue
-    store_id = f"{IDENTITY_PREFIX}{store_key}"
+    named: set[str] = set()
     for entry in os.scandir(home / SOURCES):
         if not is_slug(entry.name):
-            return True
+            return None
         try:
             alias = read_record(
                 home,
@@ -418,10 +418,22 @@ def store_is_referenced(home: Path, store_key: str) -> bool:
         except FileNotFoundError:
             continue
         except (RecordError, PrivateStorageError, OSError):
-            return True
-        if not isinstance(alias, RepositoryStoreAlias) or alias.store_id == store_id:
-            return True
-    return False
+            return None
+        if not isinstance(alias, RepositoryStoreAlias):
+            return None
+        named.add(alias.store_id)
+    return frozenset(named)
+
+
+def store_is_referenced(home: Path, store_key: str) -> bool:
+    """Whether any alias names the store, failing safe on anything it cannot read.
+
+    Aliases that name a store are written under that store's lease, so a caller holding
+    its exclusive maintenance lock sees a stable answer.
+    """
+
+    named = _referenced_store_ids(home)
+    return named is None or f"{IDENTITY_PREFIX}{store_key}" in named
 
 
 def reclaim_store(
@@ -471,11 +483,16 @@ def reclaim_unreferenced_stores(
         names = sorted(entry.name for entry in os.scandir(home / REPOSITORY_STORES))
     except FileNotFoundError:
         return ()
+    # One pass over the aliases picks the candidates, so a cache open reads each alias
+    # once instead of once per store. The pass holds no lock and decides nothing:
+    # ``reclaim_store`` checks each candidate again under its maintenance and store locks.
+    keys = [name for name in names if is_store_key(name)]
+    named = _referenced_store_ids(home) if keys else None
+    if named is None:
+        return ()
     reclaimed: list[str] = []
-    for name in names:
-        if not is_store_key(name):
-            continue
-        if store_is_referenced(home, name):
+    for name in keys:
+        if f"{IDENTITY_PREFIX}{name}" in named:
             continue
         try:
             outcome = reclaim_store(home, name, observer=observer)
