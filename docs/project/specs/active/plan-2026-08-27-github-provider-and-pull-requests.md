@@ -1,14 +1,15 @@
 # Feature: Hosted Review Model and GitHub Provider
 
-**Date:** 2026-08-27 (refreshed 2026-09-16)
+**Date:** 2026-08-27 (refreshed 2026-09-19)
 
 **Author:** Joshua Levy (with LLM assistance)
 
-**Status:** Phase 0C.2 is the green exact stacked base at
-`b907bb2734929cd0858207ba5d73639aee168636`; the shared repository-source and provider-
-mirror correction is the current design layer before provider storage implementation,
-and the Phase 0D source-binding and object-availability correction is implemented on
-that layer pending its publication review (`mb-9u45`)
+**Status:** Phase 0 through 0D and repository-library Phase 1A are implemented on open
+GitHub stack [#218](https://github.com/jlevy/metabrowser/stack/218), not on `main`.
+Cache Phase 1B is on draft [#217](https://github.com/jlevy/metabrowser/pull/217) and
+[#216](https://github.com/jlevy/metabrowser/pull/216). Provider URL open, `gh`
+acquisition, and hosted-review views are not started.
+Landing remains `mb-n2ro` and requires explicit approval.
 
 ## Vision
 
@@ -1013,10 +1014,14 @@ shared-mirror design head, with no compatibility layer:
 This phase is owned by the
 [repository-library plan](plan-2026-08-11-open-repo-from-git-url.md), but it is the
 first implementation prerequisite here.
+Phase 1A is on ready [#140](https://github.com/jlevy/metabrowser/pull/140). file://
+acquire is draft [#217](https://github.com/jlevy/metabrowser/pull/217). The leased
+Git-tree pin is draft [#216](https://github.com/jlevy/metabrowser/pull/216). https/ssh
+acquire, HTTP serving, and the remaining `mb-dg00` goldens are not done.
 
-- [ ] Publish the versioned application home, strict source/store records, locks, atomic
+- [x] Publish the versioned application home, strict source/store records, locks, atomic
   no-replace promotion, quarantine, trash, and deterministic inspection routes.
-- [ ] Enforce owner-only application-home permissions through `mb-xa0p`, and freeze the
+- [x] Enforce owner-only application-home permissions through `mb-xa0p`, and freeze the
   home → source alias → ordered repository stores → provider/resource lock order without
   holding any lock across network work.
 - [ ] Acquire one generic Git URL into a shared worktree-free store through the single

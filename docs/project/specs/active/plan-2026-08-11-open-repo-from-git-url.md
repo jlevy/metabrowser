@@ -1,11 +1,17 @@
 # Feature: Repository Library and Open from a Git URL
 
-**Date:** 2026-08-11 (rewritten 2026-08-26; refreshed 2026-09-16)
+**Date:** 2026-08-11 (rewritten 2026-08-26; refreshed 2026-09-19)
 
 **Author:** Joshua Levy (with LLM assistance)
 
-**Status:** Shared-store design correction under review; Phase 0 contracts frozen
-2026-09-16; v0.11.0 implementation is release-gated
+**Status:** v0.11.0 implementation is on open GitHub stack
+[#218](https://github.com/jlevy/metabrowser/stack/218), not on `main`. Phase 0 and Phase
+1A are on ready layers.
+Phase 1B-a file:// acquire is draft
+[#217](https://github.com/jlevy/metabrowser/pull/217). Phase 1B source boundary and
+leased Git pin are draft [#216](https://github.com/jlevy/metabrowser/pull/216). URL
+open, HTTP serving of acquired Git, https/ssh acquire, and later phases are not started.
+Landing remains `mb-n2ro` and requires explicit approval.
 
 ## Vision
 
@@ -1767,23 +1773,27 @@ next slice begins.
 
 #### Phase 1B-a: Acquire and reuse a shared repository store (`mb-h51g`, `mb-dg00`)
 
-- [ ] Add conservative source normalization, and claim uniquified slugs under the
+Draft [#217](https://github.com/jlevy/metabrowser/pull/217) implements file:// acquire
+without serving. https and ssh are classified and refused.
+Review and publication remain `mb-k900`. `mb-dg00` still owns missing golden sessions.
+
+- [x] Add conservative source normalization, and claim uniquified slugs under the
   source-alias lock with the identity digest, slug derivation, and collision extension
   Phase 1A added in `metabrowser.cache.identity` and `metabrowser.cache.locks`.
-- [ ] Extend `git/process.py` with version detection, `stdin=DEVNULL`, non-interactive
+- [x] Extend `git/process.py` with version detection, `stdin=DEVNULL`, non-interactive
   environment controls, and explicit acquisition/background policies.
-- [ ] Enforce the acquisition floor from [Git version gates](#git-version-gates), which
+- [x] Enforce the acquisition floor from [Git version gates](#git-version-gates), which
   is also the lazy-fetch floor; select a full fetch before publication when the remote
   ignores the filter, and return a typed `unsupported_git_version` state below the
   floor.
-- [ ] Acquire a worktree-free Git database in same-filesystem staging, resolve and pin
+- [x] Acquire a worktree-free Git database in same-filesystem staging, resolve and pin
   the default full object ID, and validate records, objects, and refs.
   Publish the immutable store first; atomically create the source alias last as the
   visibility commit. Reclaim or quarantine a completed orphan store after interruption
   between the commits.
-- [ ] Reuse a valid cache hit without network access, provider detection, or credential
+- [x] Reuse a valid cache hit without network access, provider detection, or credential
   lookup, including against an application home the process cannot write.
-- [ ] Prefetch the default revision’s tree blobs before publication, start object
+- [x] Prefetch the default revision’s tree blobs before publication, start object
   convergence only after serving, and persist honest partial, converging, complete, and
   failed states.
 - [ ] Apply the Phase 0 lazy-fetch decision on every read path, and prove a
@@ -1795,7 +1805,7 @@ next slice begins.
   is the guard.
 - [ ] Decide the distribution-backport policy recorded under
   [Git version gates](#git-version-gates).
-- [ ] Replace the test oracle for the URL grammar, version gates, object requests, and
+- [x] Replace the test oracle for the URL grammar, version gates, object requests, and
   the acquisition machine with the production functions, and replay the same fixtures.
 - [ ] Force the untrusted profile for URL-opened roots once `mb-vib1` lands; until then
   acquisition, identity, publication, and CLI inspection may ship, and serving may not.
@@ -1810,41 +1820,49 @@ replacement, repair, and purge use object, ref, record, and lease validation ins
 
 #### Phase 1B-b: Introduce the content-source boundary (`mb-3bna`, `mb-tsdc`)
 
-- [ ] Add `RepositorySubject`, `SourceSession`, `SourceCapabilities`, `ContentHandle`,
+Draft [#216](https://github.com/jlevy/metabrowser/pull/216) implements the source
+boundary. Independent review and publication remain `mb-tsdc`.
+
+- [x] Add `RepositorySubject`, `SourceSession`, `SourceCapabilities`, `ContentHandle`,
   and `ContentSource`, with one active attached-filesystem subject per server/browser
   session and generation-keyed replacement.
-- [ ] Generalize inventory coordination, file/raw/tree/container delivery,
+- [x] Generalize inventory coordination, file/raw/tree/container delivery,
   classification, KPress, events, route caches, and plugin dispatch without changing
   filesystem behavior.
-- [ ] Add bounded content-reader plugin calls.
+- [x] Add bounded content-reader plugin calls.
   Keep `resolve_path` and `served_root` filesystem-only and capability-gate legacy hooks
   on a non-filesystem subject.
-- [ ] Return typed unsupported capability results for recency, ignore state, watchers,
+- [x] Return typed unsupported capability results for recency, ignore state, watchers,
   activity, and mutation rather than fabricating values.
 - [ ] Update built-in binary, structured, agent-log, diff, image, and Markdown hooks,
   route parity, and goldens; independently review and publish through `mb-tsdc`.
 
 #### Phase 1B-c: Serve immutable Git revisions (`mb-z335`, `mb-hoae`)
 
-- [ ] Add `AttachedWorktreeTarget` and `RepositoryStoreTarget` to the one Git process
+Draft [#216](https://github.com/jlevy/metabrowser/pull/216) implements a leased
+`file://` pin for `metab --show` and non-cache `--api`. HTTP `--walk` / `--check-api` /
+serve still refuse Git sources.
+Independent review and publication remain `mb-hoae`.
+
+- [x] Add `AttachedWorktreeTarget` and `RepositoryStoreTarget` to the one Git process
   boundary, preserving fixed arguments and ambient-environment scrubbing.
-- [ ] Pass the target and exact subject OID through repository discovery, history, refs,
+- [x] Pass the target and exact subject OID through repository discovery, history, refs,
   commit detail, comparisons, and Git diff adapters; do not infer immutable content from
   ambient `HEAD`.
-- [ ] Define byte-segment `GitPath` identity and its lossless URL/display codec; use it
+- [x] Define byte-segment `GitPath` identity and its lossless URL/display codec; use it
   across tree/file routes, diffs, anchors, and provider selections without constructing
   a host `Path`.
-- [ ] Enumerate byte-safe full-OID trees and read bounded blobs through owned batch Git
+- [x] Enumerate byte-safe full-OID trees and read bounded blobs through owned batch Git
   reader actors. Preflight size, serialize requests, drain frames, and restart after
   cancellation or protocol failure; implicit promisor fetch is disabled.
-- [ ] Create or reuse a `GitRevisionSubject` keyed by repository-store identity and full
+- [x] Create or reuse a `GitRevisionSubject` keyed by repository-store identity and full
   object ID; validate tree availability before subject publication.
-- [ ] Hold a cross-process shared maintenance lock for each live subject and durable
+- [x] Hold a cross-process shared maintenance lock for each live subject and durable
   private refs for offline-promised OIDs; GC, repack, and reclamation require the
   exclusive lock.
 - [ ] Define symlink, gitlink, LFS-pointer, oversized-blob, promisor-miss,
   invalid-UTF-8, and newline-name behavior and pin each with focused tests.
-- [ ] Prove two processes share one object store while browsing different OIDs without a
+- [x] Prove two processes share one object store while browsing different OIDs without a
   checkout, index, local branch, or working-tree mutation.
 - [ ] Independently review and publish through `mb-hoae` before any URL route claims it
   can serve a repository.
