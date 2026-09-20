@@ -820,7 +820,7 @@ def _rollup_entries_from_index(
             wire = cursor.to_wire()
             last = index_part == len(parts) - 1
             if last:
-                display = segment.decode("utf-8", "replace")
+                display = display_segment(segment)
                 entries[wire] = _GitRollupEntry(
                     path=wire,
                     parent=parent_wire,
@@ -837,7 +837,7 @@ def _rollup_entries_from_index(
                 entries[wire] = _GitRollupEntry(
                     path=wire,
                     parent=parent_wire,
-                    name=segment.decode("utf-8", "replace"),
+                    name=display_segment(segment),
                     type="dir",
                     ext="",
                     size=0,

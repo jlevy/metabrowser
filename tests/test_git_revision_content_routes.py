@@ -36,6 +36,7 @@ from metabrowser.settings import (
 )
 from metabrowser.source import attach_subject, reset_source_session
 from metabrowser.wire_models import validate_rollup_node
+from tests.git_pin_harness import fast_import_store
 
 pytestmark = pytest.mark.skipif(
     shutil.which("git") is None,
@@ -584,6 +585,35 @@ def test_git_rollup_uses_blob_index_without_mtime(tmp_path: Path) -> None:
             assert empty_node["total_files"] == 0
             assert empty_node["total_size"] == 0
             assert empty_node["children"] == []
+
+    asyncio.run(_run())
+
+
+def test_git_rollup_names_use_the_tree_display_escaping(tmp_path: Path) -> None:
+    """Rollup names are chrome: C0 bytes and invalid UTF-8 become U+FFFD, as in the tree."""
+
+    store, commit = fast_import_store(
+        tmp_path,
+        {
+            b'"ctl\\001dir/new\\nline.txt"': b"a\n",
+            b'"ctl\\001dir/x\\377.txt"': b"bb\n",
+        },
+    )
+
+    async def _run() -> None:
+        async with _pinned_client(store, commit) as (client, _subject):
+            tree = (await client.get("/api/tree", params={"depth": "2"})).json()["tree"]
+            rollup = await client.get("/api/rollup", params={"depth": "2"})
+            assert rollup.status_code == 200
+            node = rollup.json()["node"]
+            validate_rollup_node(node)
+            (directory,) = node["children"]
+            (tree_directory,) = tree
+            assert directory["name"] == tree_directory["name"] == "ctl�dir"
+            assert directory["path"] == tree_directory["path"]
+            names = {child["path"]: child["name"] for child in directory["children"]}
+            assert names == {child["path"]: child["name"] for child in tree_directory["children"]}
+            assert sorted(names.values()) == ["new�line.txt", "x�.txt"]
 
     asyncio.run(_run())
 
