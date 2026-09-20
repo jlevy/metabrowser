@@ -27,18 +27,23 @@ or HTML follow-ons (`mb-d658`) from this runbook.
 Verify the live SHAs before a run.
 They move.
 
-The Repository Library review line is one formal GitHub stack (stack **131**) plus three
-implementation phase PRs on top of Phase 1A. Do not check out the superseded crumb
-slices (#208, #210, #211–#215).
+The Repository Library review line is one formal GitHub stack, stack
+[#218](https://github.com/jlevy/metabrowser/pull/218). Do not check out the superseded
+crumb slices (#208, #210, #211–#215).
 
-| Lane | PR | Branch | Expected tip at writing | What it adds |
+| Lane | PR | Branch | Tip | What it adds |
 | --- | --- | --- | --- | --- |
-| Repository Library / Git pin | phase PR on `cursor/v011-git-revision-pin-bd04` (consolidates #211–#215) | `cursor/v011-git-revision-pin-bd04` | this branch `HEAD` (confirm with `git rev-parse --short=8 HEAD`) | Complete Phase 1B-c: GitPath / leased `file://` pin for `--show` and non-cache `--api`, empty-home floor refuse, this runbook |
-| HTML trust | [#209](https://github.com/jlevy/metabrowser/pull/209) | `cursor/v011-html-trust-preview-bd04` | `8d49c73c` | `/raw` sandbox, `/api` same-origin proof, `--untrusted`, html preview kind |
+| Repository Library / Git pin | [#216](https://github.com/jlevy/metabrowser/pull/216) (consolidates #211–#215) | `cursor/v011-git-revision-pin-bd04` | the command below | Complete Phase 1B-c: GitPath / leased `file://` pin for `--show` and non-cache `--api`, empty-home floor refuse, this runbook |
+| HTML trust | [#209](https://github.com/jlevy/metabrowser/pull/209) | `cursor/v011-html-trust-preview-bd04` | the command below | `/raw` sandbox, `/api` same-origin proof, `--untrusted`, html preview kind |
+
+Every tip in this runbook is read from the live branch rather than written down, because
+a SHA copied into prose is a baseline nothing maintains and it is stale by the next
+push:
 
 ```shell
 git fetch origin cursor/v011-git-revision-pin-bd04 cursor/v011-html-trust-preview-bd04
 git rev-parse --short=8 origin/cursor/v011-git-revision-pin-bd04
+gh pr view 216 --json headRefOid,headRefName,url
 gh pr view 209 --json headRefOid,headRefName,url
 ```
 
@@ -49,10 +54,10 @@ Repository Library steps on a checkout of `cursor/v011-git-revision-pin-bd04`. R
 steps only from a separate worktree of #209 so the runbook branch is not destroyed.
 Do not merge #209 into the Git pin line to “make HTML easier.”
 
-Review stack the user walks (hosted-review named phases already in stack 131, then three
-implementation PRs):
+Layers of stack #218, bottom to top — the PRs that still exist as review units, not the
+crumb slices they folded in:
 
-`#125 → #130 → #132 → #133 → #134 → #135 → #136 → #138 → #139 → #140 → [1B-a acquire+CLI] → #156 source → [1B-c Git pin]`
+`#125 → #134 → #136 → #139 → #140 → #217 → #216`
 
 Plus #209 parallel on `main`. Do not merge until `mb-n2ro`.
 
@@ -414,7 +419,7 @@ Use a worktree:
 git fetch origin cursor/v011-html-trust-preview-bd04
 git worktree add /tmp/mb-qa-html origin/cursor/v011-html-trust-preview-bd04
 cd /tmp/mb-qa-html
-git rev-parse HEAD   # expect 8d49c73c unless the live tip moved
+git rev-parse HEAD   # compare with `gh pr view 209 --json headRefOid`
 make install
 ```
 

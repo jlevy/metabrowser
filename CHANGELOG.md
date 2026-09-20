@@ -61,10 +61,6 @@ Plugin contracts:
   publication profiles through the new `metabrowser.capabilities.v1` entry-point group.
   Contract discovery is separate from browser plugin manifests and operator plugin
   directories, so it does not create a static asset root or change browser SDK 0.6.
-  `window.metabrowser.sourceKind()` reports whether the served tree is a filesystem root
-  or a `git_revision` pin.
-  Markdown link and wiki resolution use that kind instead of inferring GitPath encoding
-  from `g1-` filenames.
 
 - Hosted Review Format installs enforced SoftSchema contracts for its provider,
   change-request, review, check, and activity records.
@@ -89,6 +85,30 @@ Plugin contracts:
   capability providers and 22 contracts.
   No command writes the cache yet: the application home and `CACHEDIR.TAG` are created
   when opening a repository URL lands.
+
+Plugin SDK:
+
+- `window.metabrowser.sourceKind()` reports whether the served tree is a filesystem root
+  or a `git_revision` pin.
+  Markdown link and wiki resolution use that kind instead of inferring GitPath encoding
+  from `g1-` filenames, so a tracked file literally named `g1-notes.md` is a name rather
+  than an identity to decode.
+  Built-in views read the kind through this accessor rather than a page global.
+  The browser SDK stays 0.6: `sourceKind()` is an addition, and a plugin that never asks
+  sees the filesystem answer it saw before.
+
+- `mb.sizeHtml(undefined)` now renders nothing instead of a pending skeleton.
+  `null` still means “this aggregate is still being computed” and keeps its skeleton
+  cell; `undefined` means the subject has no such number at all, which is what a Git pin
+  reports for a tree with no blob size, and a permanent skeleton would have read as a
+  tally that never arrives.
+
+- `metabrowser.plugin_api` exports the content-source boundary a hook needs to work on
+  more than a served folder: `source_capabilities`, `require_source_capability`,
+  `SourceCapabilities`, `UnsupportedSourceCapabilityError`, `content_source`, and
+  `open_content`. `resolve_path` and `served_root` are now explicitly filesystem-only
+  and raise `UnsupportedSourceCapabilityError` on a Git pin, so a hook that assumed a
+  host path fails where it is wrong rather than resolving against the wrong tree.
 
 Repository cache:
 
@@ -178,11 +198,10 @@ Content source:
   history walk is the pin, not the store’s ambient HEAD. `/api/tree`, `/api/file`, and
   `/raw` honor `GitPath` wire identities on that subject: tree listings carry mode,
   kind, oid, symlink, gitlink, and `cat-file` blob sizes (trees and gitlinks stay
-  unsized; no mtime or ignore); recency and `include_ignored=0` return
-  `unsupported_for_subject`; `min_size` filters blobs that have a size; blob reads are
-  size-gated through the shared cat-file pool.
-  `/api/plugin/diff/comparison` honors that pin through `GitLocation`: `HEAD` is the
-  pinned object id, not the store’s ambient HEAD, and the document names Git object
+  unsized; no mtime or ignore); recency returns `unsupported_for_subject`; `min_size`
+  filters blobs that have a size; blob reads are size-gated through the shared cat-file
+  pool. `/api/plugin/diff/comparison` honors that pin through `GitLocation`: `HEAD` is
+  the pinned object id, not the store’s ambient HEAD, and the document names Git object
   facts rather than a cache path.
   `GitDiffSource.content` on that pin reads the blob through the shared cat-file pool
   and the same size gate.
@@ -218,8 +237,8 @@ Content source:
   dirs are omitted. Git listings, catalog rows, and type filters use the same bounded
   compound-tail logical extension as filesystem inventory (`bundle.min.js` is
   `.min.js`), so a basename that merely ends in `md` is not a `.md` match.
-  `include_ignored=0` on a pin is a no-op (ignore is absent) rather than
-  `unsupported_for_subject`; the SPA hides Show ignored.
+  `include_ignored=0` on a pin is a no-op, because ignore is absent and unignored equals
+  total; the SPA hides Show ignored.
   `/api/tree` `depth` nests SPA children the way filesystem listings do (default 2) and
   emits a lazy sentinel past the cap; `depth=0` returns chrome without a listing.
   The SPA hides Modified within: recency still has no honest mtime and remains
