@@ -44,6 +44,7 @@ def test_html_preview_session() -> None:
         "disposal": {
             "activeContainerCount": 1,
             "idempotent": True,
+            "secondBarDetached": True,
             "secondDetached": True,
             "secondSrcCleared": True,
         },
@@ -54,12 +55,22 @@ def test_html_preview_session() -> None:
             "status": "error",
         },
         "firstMount": {
-            "childCount": 1,
+            "barClassName": "file-html-preview-bar",
+            "barTagName": "DIV",
+            "childCount": 2,
             "className": "file-html-preview",
             "committed": True,
             "hasAllowSameOrigin": False,
             "hasAllowTopNavigation": False,
             "hasInlineHandler": False,
+            "openClassName": "file-html-preview-open",
+            "openHref": "/raw/docs/%3Cunsafe%20%22quoted%22%20%26%20file%3E.html",
+            "openLabel": "Open as full page",
+            "openRel": "noopener noreferrer",
+            "openTagName": "A",
+            "openTarget": "_blank",
+            "openTipText": "Open this document in its own tab, still sandboxed",
+            "openTracksFrameSource": True,
             "rawUrl": "/raw/docs/%3Cunsafe%20%22quoted%22%20%26%20file%3E.html",
             "referrerPolicy": "no-referrer",
             "sandbox": "allow-scripts allow-popups allow-forms allow-downloads",
@@ -70,7 +81,9 @@ def test_html_preview_session() -> None:
         "innerHtmlWrites": 0,
         "replacement": {
             "committed": True,
+            "firstBarDetached": True,
             "firstDetached": True,
+            "secondOpenHref": "/raw/docs/100%25.html",
             "secondRawUrl": "/raw/docs/100%25.html",
             "staleCommitRejected": True,
             "staleCommitPreservedReplacement": True,
@@ -88,4 +101,6 @@ def test_html_preview_styles_and_rendering_are_plugin_owned() -> None:
     assert "file-html-preview" not in core_app
     assert "file-html-preview" not in core_css
     assert ".metabrowser-html-host .file-html-preview" in plugin_css
+    assert ".metabrowser-html-host .file-html-preview-bar" in plugin_css
+    assert ".metabrowser-html-host .file-html-preview-open" in plugin_css
     assert 'PREVIEW_SANDBOX = "allow-scripts allow-popups allow-forms allow-downloads"' in plugin_js
