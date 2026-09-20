@@ -762,7 +762,8 @@ def test_api_capabilities_shape_with_fs_type_detection(tmp_path: Path) -> None:
         return json.loads(bytes(resp.body))
 
     body = asyncio.run(_run())
-    assert set(body.keys()) == {"backends", "index", "events"}
+    assert set(body.keys()) == {"backends", "index", "events", "capabilities"}
+    assert body["capabilities"] == {"active_content": True, "mutations": False}
     assert len(body["backends"]) == 1
     assert body["backends"][0]["prefix"] == "."
     assert body["backends"][0]["mode"] in ("native", "polling")

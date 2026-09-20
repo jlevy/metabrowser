@@ -65,7 +65,19 @@ _PANEL_PLUGINS = "Plugins (--plugins / --plugin / --doctor)"
 # parameter name. Options outside every set (ROOT, --version, the mode
 # selectors) are never applicability-checked.
 _MODE_OPTIONS: dict[str, frozenset[str]] = {
-    "serve": frozenset({"path", "port", "host", "no_open", "plugins_dir", "log_level"}),
+    "serve": frozenset(
+        {
+            "path",
+            "port",
+            "host",
+            "no_open",
+            "plugins_dir",
+            "log_level",
+            "untrusted",
+            "no_active_content",
+            "allow_edits",
+        }
+    ),
     "walk": frozenset(
         {
             "fmt",
@@ -82,9 +94,39 @@ _MODE_OPTIONS: dict[str, frozenset[str]] = {
         }
     ),
     "diff": frozenset({"fmt", "diff_patch", "diff_check", "log_level"}),
-    "api": frozenset({"fmt", "data", "plugins_dir", "log_level", "index_timeout"}),
-    "show": frozenset({"fmt", "plugins_dir", "log_level", "index_timeout"}),
-    "check-api": frozenset({"plugins_dir", "log_level", "index_timeout"}),
+    "api": frozenset(
+        {
+            "fmt",
+            "data",
+            "plugins_dir",
+            "log_level",
+            "index_timeout",
+            "untrusted",
+            "no_active_content",
+            "allow_edits",
+        }
+    ),
+    "show": frozenset(
+        {
+            "fmt",
+            "plugins_dir",
+            "log_level",
+            "index_timeout",
+            "untrusted",
+            "no_active_content",
+            "allow_edits",
+        }
+    ),
+    "check-api": frozenset(
+        {
+            "plugins_dir",
+            "log_level",
+            "index_timeout",
+            "untrusted",
+            "no_active_content",
+            "allow_edits",
+        }
+    ),
     "no-serve": frozenset({"log_level"}),
     "remote": frozenset({"path", "base_port", "no_open", "ssh_options", "gcp", "zone", "project"}),
     "plugins": frozenset({"plugins_dir", "as_json"}),
@@ -132,6 +174,9 @@ _OPTION_LABELS: dict[str, str] = {
     "zone": "--zone",
     "project": "--project",
     "as_json": "--json",
+    "untrusted": "--untrusted",
+    "no_active_content": "--no-active-content",
+    "allow_edits": "--allow-edits",
 }
 
 
@@ -462,6 +507,31 @@ def _metab(
         rich_help_panel=_PANEL_SHARED,
         show_default=False,
     ),
+    untrusted: bool = typer.Option(
+        False,
+        "--untrusted",
+        help="Conservative content-trust profile: disable active content on "
+        "/raw (drop allow-scripts) and keep mutations off. Individual flags "
+        "override it. Env: METAB_UNTRUSTED=1. Applies when serving and to "
+        "--api, --show, and --check-api.",
+        rich_help_panel=_PANEL_SHARED,
+    ),
+    no_active_content: bool = typer.Option(
+        False,
+        "--no-active-content",
+        help="Disable script execution on content surfaces: /raw omits "
+        "allow-scripts from its sandbox. Env: METAB_ACTIVE_CONTENT=0. "
+        "Applies when serving and to --api, --show, and --check-api.",
+        rich_help_panel=_PANEL_SHARED,
+    ),
+    allow_edits: bool = typer.Option(
+        False,
+        "--allow-edits",
+        help="Publish the mutations capability as on. No write route consumes "
+        "it yet. Env: METAB_ALLOW_EDITS=1. Overrides --untrusted for "
+        "mutations. Applies when serving and to --api, --show, and --check-api.",
+        rich_help_panel=_PANEL_SHARED,
+    ),
     # ── Serve options ──────────────────────────────────────────────
     port: int = typer.Option(
         DEFAULT_BROWSER_PORT,
@@ -659,6 +729,9 @@ def _metab(
             no_open=no_open,
             plugins_dir=plugins_dir,
             log_level=log_level,
+            untrusted=untrusted,
+            no_active_content=no_active_content,
+            allow_edits=allow_edits,
         )
     elif mode == "walk":
         run_walk(
@@ -700,6 +773,9 @@ def _metab(
                 plugins_dir=plugins_dir,
                 log_level=log_level,
                 index_timeout_s=index_timeout,
+                untrusted=untrusted,
+                no_active_content=no_active_content,
+                allow_edits=allow_edits,
             )
         else:
             from metabrowser.cli.acquire_cli import run_api_after_acquire
@@ -712,6 +788,9 @@ def _metab(
                 plugins_dir=plugins_dir,
                 log_level=log_level,
                 index_timeout_s=index_timeout,
+                untrusted=untrusted,
+                no_active_content=no_active_content,
+                allow_edits=allow_edits,
             )
     elif mode == "no-serve":
         from metabrowser.cli.acquire_cli import run_no_serve
@@ -728,6 +807,9 @@ def _metab(
             plugins_dir=plugins_dir,
             log_level=log_level,
             index_timeout_s=index_timeout,
+            untrusted=untrusted,
+            no_active_content=no_active_content,
+            allow_edits=allow_edits,
         )
     elif mode == "check-api":
         from metabrowser.cli.check_api import run_api_check
@@ -737,6 +819,9 @@ def _metab(
             plugins_dir=plugins_dir,
             log_level=log_level,
             index_timeout_s=index_timeout,
+            untrusted=untrusted,
+            no_active_content=no_active_content,
+            allow_edits=allow_edits,
         )
     elif remote is not None:
         _reject_root(ctx, root, mode)

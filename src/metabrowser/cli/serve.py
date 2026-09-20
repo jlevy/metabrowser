@@ -171,6 +171,9 @@ def run_serve(
     no_open: bool = False,
     plugins_dir: list[Path] | None = None,
     log_level: str = "",
+    untrusted: bool = False,
+    no_active_content: bool = False,
+    allow_edits: bool = False,
 ) -> None:
     """Serve ``root`` (a directory, or a file resolved to parent + selection).
 
@@ -195,6 +198,14 @@ def run_serve(
     # log-level selection, plugin discovery, or path expansion so values such
     # as HOME affect every bootstrap step consistently with walk mode.
     _load_dotenv_chain()
+
+    from metabrowser.capabilities import apply_capabilities
+
+    apply_capabilities(
+        untrusted=untrusted,
+        no_active_content=no_active_content,
+        allow_edits=allow_edits,
+    )
 
     # Must run before ``from metabrowser import server`` below — the
     # server module configures logging at import time from the env var.

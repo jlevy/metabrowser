@@ -582,6 +582,41 @@ def test_a_shared_record_refusal_offers_the_file_remedy_without_naming_the_slug(
     assert str(home) not in problem["message"]
 
 
+def test_an_invalid_record_reports_its_rule_and_not_what_is_in_it(
+    client: TestClient, populated: tuple[Path, str]
+) -> None:
+    """A record can hold a credential-bearing URL, so no reason may quote its values."""
+
+    secret = "ghp-examplesecrettokenvalue"
+    write_private_file_atomic(
+        client_home := populated[0],
+        source_record(CLICK.slug, "source.yml"),
+        (
+            "softschema:\n"
+            "  contract: com.github.jlevy.metabrowser.cache:RepositorySource/v1\n"
+            "  envelope: source\n"
+            "  status: enforced\n"
+            "source:\n"
+            f"  id: sha256:{'0' * 64}\n"
+            f"  slug: {CLICK.slug}\n"
+            f"  display_url: https://user:{secret}@example.com/repo.git\n"
+            f"  clone_url: https://user:{secret}@example.com/repo.git\n"
+            "  transport: https\n"
+            "  created_at: 2026-09-01T00:00:00Z\n"
+        ).encode(),
+    )
+
+    row = _json(client, f"/api/cache/source/{CLICK.slug}")["source"]
+
+    (problem,) = row["problems"]
+    assert problem["code"] == "invalid"
+    assert secret not in problem["message"]
+    assert "input_value" not in problem["message"]
+    assert "errors.pydantic.dev" not in problem["message"]
+    assert str(client_home) not in problem["message"]
+    assert "does not match its transport" in problem["message"]
+
+
 def test_no_response_names_a_path_a_pack_or_a_git_internal(
     client: TestClient, populated: tuple[Path, str], tmp_path: Path
 ) -> None:

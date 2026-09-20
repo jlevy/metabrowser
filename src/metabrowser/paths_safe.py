@@ -79,7 +79,14 @@ def _safe_path(requested: str) -> Path | None:
     """
     if not requested:
         return ROOT_DIR
-    resolved = (ROOT_DIR / requested).resolve()
+    try:
+        resolved = (ROOT_DIR / requested).resolve()
+    except ValueError:
+        # A name the platform cannot express at all — an embedded NUL,
+        # which `/raw/a%00b` decodes to — makes `resolve` raise before
+        # any syscall. That is the same answer as traversal: there is no
+        # such file under the root, so it is a refusal, not a crash.
+        return None
     if not _is_within(resolved, ROOT_DIR.resolve()):
         return None
     return resolved

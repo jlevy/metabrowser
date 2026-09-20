@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
@@ -71,6 +71,9 @@ APPLICATION_CONFIG_CORPUS_ID: Final = "application-config-conformance"
 # One invalid configuration can fail once per entry, and its reasons reach an API
 # response, so the count and each reason's length are bounded.
 MAX_CONFIG_REASONS: Final = 10
+# A machine-written record is closed and small, so a handful of reasons describes any
+# damage worth reporting, and each one reaches a per-entry API problem.
+MAX_RECORD_REASONS: Final = 5
 _MAX_CONFIG_REASON_LENGTH: Final = 200
 _MAX_CONFIG_NAME_LENGTH: Final = 64
 _MAX_PATH_PARTS: Final = 8
@@ -291,14 +294,31 @@ def validate_config_values(values: Any) -> ValidationResult:
     )
 
 
-def _config_reason_location(path: object) -> str:
+def _reason_location(path: object, *, root: str) -> str:
     """Name where a reason applies, without quoting what is there."""
 
-    if not isinstance(path, list) or not path:
-        return "config"
-    parts = cast(list[object], path)
+    if not isinstance(path, list | tuple) or not path:
+        return root
+    parts = cast(Sequence[object], path)
     named = ".".join(str(part)[:_MAX_CONFIG_NAME_LENGTH] for part in parts[:_MAX_PATH_PARTS])
-    return "config." + named + ("..." if len(parts) > _MAX_PATH_PARTS else "")
+    return f"{root}." + named + ("..." if len(parts) > _MAX_PATH_PARTS else "")
+
+
+def record_reasons(error: ValidationError) -> list[str]:
+    """Return short reasons for a record that failed its model, naming none of its values.
+
+    ``str()`` of a Pydantic error renders the offending input and a documentation URL,
+    and these reasons reach an API response for a record that can hold a
+    credential-bearing URL. So a reason is built from the error's location and rule, the
+    way :func:`config_reasons` builds one, and each one is bounded. The caller reports at
+    most :data:`MAX_RECORD_REASONS` of them.
+    """
+
+    return [
+        f"{_reason_location(entry.get('loc'), root='record')}: "
+        f"{str(entry.get('msg') or entry.get('type') or 'invalid')[:_MAX_CONFIG_REASON_LENGTH]}"
+        for entry in error.errors(include_url=False, include_input=False, include_context=False)
+    ]
 
 
 def config_reasons(result: ValidationResult) -> list[str]:
@@ -315,11 +335,11 @@ def config_reasons(result: ValidationResult) -> list[str]:
     for error in result.structural.errors:
         rule = error.get("code") or error.get("validator") or "invalid"
         offending = error.get("property")
-        where = _config_reason_location(error.get("path"))
+        where = _reason_location(error.get("path"), root="config")
         named = f" ({str(offending)[:_MAX_CONFIG_NAME_LENGTH]})" if offending is not None else ""
         reasons.append(f"{where}: {rule}{named}")
     for error in result.semantic.errors:
-        where = _config_reason_location(error.get("loc"))
+        where = _reason_location(error.get("loc"), root="config")
         message = str(error.get("msg") or error.get("type") or "invalid")
         reasons.append(f"{where}: {message[:_MAX_CONFIG_REASON_LENGTH]}")
     return reasons
@@ -363,6 +383,7 @@ __all__ = [
     "ENFORCED_CACHE_CONTRACTS",
     "FORMAT_ROOT",
     "MAX_CONFIG_REASONS",
+    "MAX_RECORD_REASONS",
     "SCHEMA_ROOT",
     "CacheContract",
     "cache_contract_registry",
@@ -371,6 +392,7 @@ __all__ = [
     "config_corpus",
     "config_reasons",
     "parse_application_config",
+    "record_reasons",
     "repository_cache_capabilities",
     "validate_config_values",
 ]

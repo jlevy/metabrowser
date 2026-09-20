@@ -19,9 +19,13 @@ import os
 from pathlib import Path
 from typing import Final
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
-from metabrowser.cache.contracts import cache_contract_registry
+from metabrowser.cache.contracts import (
+    MAX_RECORD_REASONS,
+    cache_contract_registry,
+    record_reasons,
+)
 from metabrowser.cache.locks import CacheLock, LockOrderError
 from metabrowser.home import (
     SharedEntryPolicy,
@@ -83,12 +87,26 @@ def read_bytes_bounded(
 
 
 def parse_record(payload: bytes, contract_id: str, path: Path) -> BaseModel:
-    """Validate *payload* against the installed contract the caller chose."""
+    """Validate *payload* against the installed contract the caller chose.
+
+    A failure is reported as the contract and the rules the record broke. The record can
+    hold an address the user gave Metabrowser, and the reason reaches an API response,
+    so what is in the record is never quoted back.
+    """
 
     try:
         artifact = validate_artifact(
             payload, expected_contract_id=contract_id, contracts=cache_contract_registry()
         )
+    except ValidationError as error:
+        reasons = record_reasons(error)
+        hidden = len(reasons) - MAX_RECORD_REASONS
+        raise RecordError(
+            f"the record does not satisfy {contract_id}: "
+            + "; ".join(reasons[:MAX_RECORD_REASONS])
+            + (f", and {hidden} more" if hidden > 0 else ""),
+            path,
+        ) from error
     except ValueError as error:
         raise RecordError(f"the record does not satisfy {contract_id}: {error}", path) from error
     record = artifact.record

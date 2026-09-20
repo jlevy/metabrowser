@@ -8,6 +8,11 @@ Mirrors the duck-typed handler-call pattern used in ``test_api_resources``
   * ``Accept-Encoding: identity`` → StreamingResponse whose body iterator
     yields the *decompressed* bytes (no Content-Encoding header)
   * The ``_accepts_gzip`` parser handles the RFC 7231 cases we care about
+
+The opaque-origin sandbox headers are not asserted here. They belong to the
+``/raw`` transport layer rather than to any handler return value, so they are
+asserted on the wire, for every branch and every status, in
+``tests/test_content_trust.py``.
 """
 
 from __future__ import annotations
@@ -48,6 +53,7 @@ class _Headers:
 class _FakeRequest:
     def __init__(self, path: str, accept_encoding: str = "") -> None:
         self.query_params = _Params({"path": path})
+        self.path_params: dict[str, str] = {}
         self.headers = _Headers({"accept-encoding": accept_encoding})
 
 

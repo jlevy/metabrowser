@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Literal
 
 from metabrowser.home import (
     _open_directory_entry,
@@ -24,6 +25,13 @@ from metabrowser.home import (
     _without_file_names,
 )
 from metabrowser.inventory_engine.contract import require_canonical_inventory_path
+
+type UnchangingEntryPolicy = Literal["keep", "refuse"]
+"""The :data:`~metabrowser.home.SharedEntryPolicy` values that change nothing.
+
+``repair`` is not among them: this module lists without a lock, so it must not tighten
+an entry a concurrent writer is publishing.
+"""
 
 
 class ListingLimitError(Exception):
@@ -35,14 +43,20 @@ class ListingLimitError(Exception):
 
 
 @_without_file_names
-def list_private_directory(home: Path, relative_path: str, *, max_entries: int) -> tuple[str, ...]:
+def list_private_directory(
+    home: Path, relative_path: str, *, max_entries: int, shared: UnchangingEntryPolicy = "refuse"
+) -> tuple[str, ...]:
     """Return the sorted entry names of an owner-only directory below *home*.
 
     *relative_path* is a POSIX-relative path such as ``"cache/sources"``. Raises
     :class:`FileNotFoundError` when the home or the directory is missing,
     :class:`~metabrowser.home.PrivateStorageError` when any part of the path is not
-    private, including one other users can reach, and :class:`ListingLimitError` rather
-    than reading past *max_entries*. It changes nothing on any of those paths.
+    private, and :class:`ListingLimitError` rather than reading past *max_entries*.
+
+    *shared* defaults to ``refuse``, which is what a read route wants: an over-shared
+    directory is reported rather than tightened while a request is answered. A caller
+    that only reads to decide whether it may write at all, and repairs through that
+    write, passes ``keep``.
     """
 
     _require_home_argument(home)
@@ -53,7 +67,7 @@ def list_private_directory(home: Path, relative_path: str, *, max_entries: int) 
     try:
         for name in relative_path.split("/"):
             path = path / name
-            child = _open_directory_entry(fd, name, path, create=False, shared="refuse")
+            child = _open_directory_entry(fd, name, path, create=False, shared=shared)
             os.close(fd)
             fd = child
         names: list[str] = []
@@ -68,4 +82,4 @@ def list_private_directory(home: Path, relative_path: str, *, max_entries: int) 
     return tuple(sorted(names))
 
 
-__all__ = ["ListingLimitError", "list_private_directory"]
+__all__ = ["ListingLimitError", "UnchangingEntryPolicy", "list_private_directory"]

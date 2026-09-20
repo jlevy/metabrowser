@@ -38,6 +38,8 @@ Additional trusted names for reaching a wildcard bind can be listed in the
 `METABROWSER_ALLOWED_HOSTS` environment variable (comma-separated); every name added
 there extends the set of domains whose pages the browser will let read responses, so
 list only names you control.
+That variable is read from the process environment only, never from a `.env` or
+`.env.local` file.
 
 Path handling is designed to keep file access beneath the selected root.
 Reports of a path traversal, symlink escape, unsafe archive handling, cross-origin
@@ -59,25 +61,65 @@ KPress in its sanitized mode, which strips scripts, event-handler attributes, an
 Plugin discovery never treats the served root as a plugin source (see
 [plugin trust](docs/plugins.md)).
 
-Two boundaries are documented here because they are **not yet enforced**. Until they
-are, point Metabrowser only at roots whose files you trust as much as the application
-itself, exactly as the trusted-local warning above says:
+Content responses through `/raw` and `/raw/{path}` are sandboxed on the wire.
+Every raw response — including gzip passthrough, SVG, HTML, and error bodies — carries
+`Content-Security-Policy: sandbox allow-scripts allow-popups allow-forms allow-downloads`
+and `X-Content-Type-Options: nosniff`. The sandbox assigns an opaque origin, so script
+in a browsed file cannot read the application document, cookies, storage, or `/api`
+responses. `frame-ancestors` is omitted so nested iframes and framesets in a sandboxed
+page still load: the opaque ancestor origin would never match `'self'`. `/raw` is not
+behind the API origin check, because stylesheets and images must remain loadable as
+subresources; a previewed page can still probe file existence through load and error
+events, but cannot read those bytes.
+When active content is off, the sandbox omits `allow-scripts` so a direct `/raw` link
+still renders markup and loads subresources, but executes nothing.
 
-- `/raw` serves in-root files at their native media type on the application origin with
-  no sandboxing headers, so following a direct `/raw` link to an HTML or SVG file
-  executes that file’s scripts with the application’s privileges.
-- `/api` routes do not require proof that a request originated from the application’s
-  own pages. The Host allowlist stops DNS rebinding, where the attacker must read the
-  response; it does not stop fire-and-forget cross-site requests, and
-  `POST /api/kpress/export` writes rendered output beneath the served root.
+`/api` routes require same-origin proof.
+The server accepts `Sec-Fetch-Site: same-origin` or an `Origin` header matching the
+application origin, and refuses `Origin: null` and foreign origins.
+`Sec-Fetch-Site: none` is accepted as well: that is a user-initiated navigation — a
+typed URL, a bookmark, a restored tab — with no initiator document, so it carries no
+attacker-controlled origin, and a hostile page cannot make a browser send it.
+Requests with neither header — `curl` and `metab --api` — still work.
+State-changing methods additionally require `Content-Type: application/json`, so a
+cross-site form or `text/plain` POST cannot reach a write path such as
+`POST /api/kpress/export`. The Host allowlist still stops DNS rebinding; the origin
+check stops fire-and-forget invocation.
 
-The
-[HTML rendering and trust model plan](docs/project/specs/active/plan-2026-08-06-html-rendering-and-trust-model.md)
-closes both: content responses get a browser-enforced opaque origin, `/api` routes
-require same-origin proof, and an `--untrusted` profile disables active content
-entirely. The governing invariant it introduces: content viewed through Metabrowser gets
-exactly the privilege a browser would give the same file opened directly, and never
-Metabrowser’s server-side API.
+`--untrusted` (`METAB_UNTRUSTED=1`) is the conservative content-trust profile: it
+disables active content and keeps mutations off.
+`--no-active-content` (`METAB_ACTIVE_CONTENT=0`) is the individual switch that drops
+`allow-scripts` from the raw sandbox.
+`--allow-edits` (`METAB_ALLOW_EDITS=1`) publishes `mutations: true`; no write route
+consumes that flag yet.
+Individual flags override the profile.
+A flag on the command line outranks the environment in both directions, so `--untrusted`
+stays conservative whatever the `METAB_*` variables say, and only another flag —
+`--untrusted --allow-edits` — lifts it.
+The `METAB_*` variables themselves are read from the process environment only, never
+from a `.env` or `.env.local` file, so browsing a cloned repository from inside it
+cannot let that repository choose how far it is trusted.
+The resolved block is on `window.METABROWSER_SETTINGS.CAPABILITIES` and
+`GET /api/capabilities`; the server is authoritative.
+
+`.html` and `.htm` files open as the `html` kind, with Preview and Source tabs.
+Preview loads the file in an iframe whose `src` is the path-shaped `/raw/{path}`
+document URL, so relative stylesheets, images, scripts, and sibling links resolve.
+The iframe sandbox is `allow-scripts allow-popups allow-forms allow-downloads` with
+`referrerpolicy="no-referrer"`. It never includes `allow-same-origin` or
+`allow-top-navigation`. When active content is off, Preview is omitted and Source is the
+only view.
+
+Fidelity matches opening the same file in a browser: classic scripts, styles, images,
+and nested frames work.
+`localStorage`, same-document `fetch`, ES modules, and CORS webfonts do not, and `/raw`
+never sends `Access-Control-Allow-Origin` to compensate.
+
+By default, sandboxed scripts can still run, phone home, and use `/raw` as an existence
+oracle. `--untrusted` omits the preview and stops script execution on raw responses.
+
+Content viewed through Metabrowser gets exactly the privilege a browser would give the
+same file opened directly, and never Metabrowser’s server-side API.
 
 See [supply-chain security](SUPPLY-CHAIN-SECURITY.md) for dependency and build policy.
 

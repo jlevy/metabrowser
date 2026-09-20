@@ -9,7 +9,6 @@ import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from decimal import Decimal
-from functools import lru_cache
 from io import StringIO
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, cast
@@ -56,8 +55,17 @@ _JSON_SCHEMA_DRAFT = "https://json-schema.org/draft/2020-12/schema"
 _MAX_SAFE_INTEGER = 9_007_199_254_740_991
 
 
-class CapabilityRegistryError(ValueError):
-    """An installed capability set cannot produce one coherent registry."""
+class CapabilityRegistryError(RuntimeError):
+    """An installed capability set cannot produce one coherent registry.
+
+    This is a failure of the installation, never a defect of a record being
+    validated against it. Record-level validators report a defect of their input
+    by raising ``ValueError``, and their callers turn that into a semantic
+    problem attributed to the input; subclassing ``ValueError`` here let one
+    broken third-party entry point be reported as a defect of every valid
+    record instead. It shares the base of its sibling
+    ``CapabilityInventoryError`` in ``artifact_inventory``.
+    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -469,10 +477,40 @@ def build_installed_registries(
     return InstalledRegistries(contracts=bound_contracts, resource_profiles=profiles)
 
 
-@lru_cache(maxsize=1)
+# One process-wide outcome, success or failure. Building the snapshot parses,
+# digests, and compiles the enforcement graph of every installed contract
+# schema, so it costs roughly one compile per installed contract: eleven warm
+# builds of the 16 built-in contracts measured 0.9 s at the minimum and 2.0 s at
+# the median on a contended machine, so most of a second even before subtracting
+# that contention. Installed capabilities cannot change while the process runs,
+# which makes a failure as final as a success, so both are retained. Retaining
+# only the success charged that whole build, plus entry-point discovery, to
+# every record validated for the rest of a process that had one broken provider.
+_installed_snapshot: InstalledRegistries | None = None
+_installed_failure: CapabilityRegistryError | None = None
+
+
 def get_installed_registries() -> InstalledRegistries:
     """Return the process-wide immutable installed capability snapshot."""
-    return build_installed_registries()
+    global _installed_snapshot, _installed_failure
+    if _installed_failure is not None:
+        # Raise a fresh error rather than the retained one, whose traceback
+        # would otherwise grow by a frame on every call.
+        raise CapabilityRegistryError(str(_installed_failure)) from _installed_failure
+    if _installed_snapshot is None:
+        try:
+            _installed_snapshot = build_installed_registries()
+        except CapabilityRegistryError as exc:
+            _installed_failure = exc
+            raise
+    return _installed_snapshot
+
+
+def reset_installed_registries_for_tests() -> None:
+    """Discard the retained snapshot so a test can install other capabilities."""
+    global _installed_snapshot, _installed_failure
+    _installed_snapshot = None
+    _installed_failure = None
 
 
 def resolve_resource_profile(
@@ -669,38 +707,6 @@ def serialize_artifact(
     return yaml_text.encode()
 
 
-def contract_inventory(contracts: ContractRegistry) -> tuple[dict[str, object], ...]:
-    """Return stable public metadata without provider or Python-module ownership."""
-    inventory: list[dict[str, object]] = []
-    for contract_id in sorted(contracts):
-        spec = contracts[contract_id].spec
-        inventory.append(
-            {
-                "contract_id": spec.contract_id,
-                "artifact_profile": spec.artifact_profile,
-                "envelope": spec.envelope,
-                "schema_bytes_sha256": spec.schema_bytes_sha256,
-                "schema_digest": spec.schema_digest,
-                "producer_ids": spec.producer_ids,
-                "consumer_ids": spec.consumer_ids,
-                "corpus_id": spec.corpus.corpus_id,
-                "corpus_media_type": spec.corpus.media_type,
-                "corpus_payload_sha256": spec.corpus.payload_sha256,
-                "corpus_record_selectors": spec.corpus_record_selectors,
-                "browser_consumed": spec.browser_consumed,
-                "browser_parser_id": (
-                    spec.browser_parser.parser_id if spec.browser_parser is not None else None
-                ),
-                "browser_parser_module_sha256": (
-                    spec.browser_parser.module_bytes_sha256
-                    if spec.browser_parser is not None
-                    else None
-                ),
-            }
-        )
-    return tuple(inventory)
-
-
 __all__ = [
     "ArtifactContractSpec",
     "ArtifactProfile",
@@ -716,9 +722,9 @@ __all__ = [
     "build_contract_registry",
     "build_installed_registries",
     "build_resource_profile_registry",
-    "contract_inventory",
     "get_installed_registries",
     "portable_serialization_values_equal",
+    "reset_installed_registries_for_tests",
     "resolve_resource_profile",
     "serialize_artifact",
     "validate_artifact",

@@ -74,6 +74,9 @@ def run_api_after_acquire(
     plugins_dir: list[Path] | None = None,
     log_level: str = "",
     index_timeout_s: float = INDEX_READY_TIMEOUT_S,
+    untrusted: bool = False,
+    no_active_content: bool = False,
+    allow_edits: bool = False,
 ) -> None:
     """Acquire *source*, then issue a cache route against an empty ASGI root."""
 
@@ -96,4 +99,7 @@ def run_api_after_acquire(
             plugins_dir=plugins_dir,
             log_level=log_level,
             index_timeout_s=index_timeout_s,
+            untrusted=untrusted,
+            no_active_content=no_active_content,
+            allow_edits=allow_edits,
         )

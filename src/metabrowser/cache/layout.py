@@ -15,7 +15,6 @@ A config Metabrowser cannot read is refused and left as it is, never replaced.
 
 from __future__ import annotations
 
-import os
 import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -35,6 +34,7 @@ from metabrowser.cache.atomic import (
     write_record_atomic,
 )
 from metabrowser.cache.contracts import parse_application_config
+from metabrowser.cache.listing import ListingLimitError, list_private_directory
 from metabrowser.cache.locks import application_home_lock
 from metabrowser.cache.paths import (
     CONFIG_RECORD,
@@ -59,7 +59,6 @@ from metabrowser.cache.records import (
     CacheLayout,
 )
 from metabrowser.home import (
-    PrivateStorageError,
     SharedEntryPolicy,
     application_home,
     ensure_home,
@@ -75,7 +74,24 @@ type Migration = Callable[[Path], None]
 # The migration from each historical format to the next one in FORMAT_HISTORY.
 MIGRATIONS: Final[Mapping[str, Migration]] = {}
 
-_MAX_CONFIG_BYTES: Final = 256 * 1024
+# Every /api/cache/layout request reads and validates the whole config on a shared
+# thread, so this bound is a claim about that cost. Measured on macOS arm64 and Python
+# 3.14 by filling config.yml to each candidate bound and timing the route, five rounds
+# each, on a machine also running unrelated work; maxima ran about 20% above the medians
+# below:
+#
+# - Unknown settings, the most expensive shape: 25 ms at 4 KiB, 87 ms at 16 KiB, 181 ms
+#   at 32 KiB, 341 ms at 64 KiB, and 1.33 s at 256 KiB. Cost is linear in the file, about
+#   5 ms per KiB, almost all of it portable YAML parsing.
+# - Upgrade entries: 22 ms, 70 ms, 136 ms, 274 ms, and 1.06 s at those sizes.
+# - Deeply nested flow sequences are refused by the parser at about 220 ms whatever the
+#   bound is, so no bound governs that shape.
+#
+# 16 KiB puts the worst shape beside what an ordinary cache page costs, which the
+# measurements above DEFAULT_PAGE_LIMIT in projection.py record. It holds about 300
+# upgrade entries beside the 179-byte config this release writes, far more than a home
+# accumulates, and no released Metabrowser has written a larger one.
+_MAX_CONFIG_BYTES: Final = 16 * 1024
 _CONFIG_METADATA: Final = {
     "contract": CONFIG_CONTRACT_ID,
     "envelope": "config",
@@ -261,7 +277,11 @@ def _has_durable_entries(home: Path) -> bool:
     """Whether the cache holds data a layout would have to describe.
 
     Staging and trash are disposable in every format, so a crash that left them behind
-    before the first layout was published does not block creating it.
+    before the first layout was published does not block creating it. Each directory is
+    listed through the verified, no-follow path the read routes use, so a link where one
+    of them belongs is refused with a typed, path-free
+    :class:`~metabrowser.home.PrivateStorageError` instead of being followed out of the
+    home. ``keep`` leaves an over-shared directory to the repairing writes that follow.
     """
 
     for directory in (
@@ -272,11 +292,12 @@ def _has_durable_entries(home: Path) -> bool:
         PROVIDER_REPOSITORIES,
     ):
         try:
-            with os.scandir(home / directory) as entries:
-                if next(entries, None) is not None:
-                    return True
+            if list_private_directory(home, directory, max_entries=0, shared="keep"):
+                return True
         except FileNotFoundError:
             continue
+        except ListingLimitError:
+            return True
     return False
 
 
@@ -291,14 +312,17 @@ def _refuse_unrecognized_entries(home: Path) -> None:
 
 
 def _preflight_layout(home: Path, *, history: Sequence[str]) -> None:
-    """Refuse unknown data before locks, skeleton creation, probes, or mode repairs."""
+    """Refuse unknown data before locks, skeleton creation, probes, or mode repairs.
 
-    try:
-        layout = read_layout(home, history=history, shared="keep")
-        read_config(home, history=history, shared="keep")
-    except PrivateStorageError:
-        # The ordinary private-storage path repairs what it owns and refuses the rest.
-        return
+    ``keep`` leaves a merely over-shared home to the ordinary repairing path, but a
+    record this process cannot read at all — a link, a second hard link, or permissions
+    that deny its owner — raises :class:`~metabrowser.home.PrivateStorageError` here.
+    That record is what would have said whether the home may be adopted, so answering
+    with it is the whole point of reading before anything is created or repaired.
+    """
+
+    layout = read_layout(home, history=history, shared="keep")
+    read_config(home, history=history, shared="keep")
     if layout is None:
         _refuse_unrecognized_entries(home)
 

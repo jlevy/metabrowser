@@ -45,7 +45,7 @@ import logging
 import os
 import sys
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, MutableMapping
 from contextlib import asynccontextmanager
 from html import escape as html_escape
 from pathlib import Path
@@ -53,6 +53,7 @@ from typing import TYPE_CHECKING, Any, TextIO, cast
 from urllib.parse import quote
 
 from starlette.applications import Starlette
+from starlette.datastructures import MutableHeaders
 from starlette.middleware import Middleware
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.responses import (
@@ -74,7 +75,9 @@ from metabrowser import __version__, kpress_adapter
 from metabrowser.active_tracker import activity_snapshot
 from metabrowser.activity import ACTIVITY_POLL_INTERVAL_MS
 from metabrowser.build_version import display_version_line
+from metabrowser.builtin_plugins.html.detect import sniff_full_page_html
 from metabrowser.cache.routes import CACHE_ROUTES
+from metabrowser.capabilities import get_capabilities, raw_sandbox_csp
 
 # Cache invalidator: clear_charts_cache is invoked by the root-change
 # handler so chart memos don't stick across served-root swaps.
@@ -677,8 +680,56 @@ def _register_allowed_host(bind_host: str) -> None:
         _EXTRA_ALLOWED_HOSTS.add(hostname)
 
 
+_STATE_CHANGING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
+
+def _is_json_content_type(content_type: str) -> bool:
+    media = content_type.split(";", 1)[0].strip().lower()
+    return media == "application/json"
+
+
+def _origin_matches_request(origin: str, scheme: str, host_header: str) -> bool:
+    expected = f"{scheme}://{host_header.strip()}"
+    return origin.strip().lower() == expected.lower()
+
+
+# Fetch-metadata values that are not a request from another document.
+# ``same-origin`` is the application's own page. ``none`` is a
+# user-initiated navigation — a typed URL, a bookmark, a browser restore
+# — which has no initiator document and so no attacker-controlled origin;
+# a hostile page cannot make a browser send it, because anything a
+# document initiates is labelled ``same-origin``, ``same-site``, or
+# ``cross-site``.
+_TRUSTED_FETCH_SITES = frozenset({"same-origin", "none"})
+
+
+def _has_same_origin_proof(
+    *,
+    scheme: str,
+    host_header: str,
+    origin: str,
+    sec_fetch_site: str,
+) -> bool:
+    """Return whether an ``/api`` request proved it came from this app.
+
+    ``Origin: null`` is always refused: that is what an opaque-origin
+    document sends. ``Sec-Fetch-Site: same-origin`` or ``none``, or a
+    matching ``Origin``, is accepted. A request with neither header
+    (curl, ``metab --api``) is accepted. ``/raw`` is not behind this
+    check.
+    """
+
+    if origin.lower() == "null":
+        return False
+    if sec_fetch_site.lower() in _TRUSTED_FETCH_SITES:
+        return True
+    if origin and _origin_matches_request(origin, scheme, host_header):
+        return True
+    return not origin and not sec_fetch_site
+
+
 class _HostValidationMiddleware:
-    """Reject requests whose ``Host`` header is not a permitted name.
+    """Reject rebound Host values and unproven ``/api`` callers.
 
     Metabrowser binds to loopback, but loopback alone does not stop DNS
     rebinding: a malicious page on an attacker-controlled domain can point
@@ -692,6 +743,13 @@ class _HostValidationMiddleware:
     ``METABROWSER_ALLOWED_HOSTS`` environment variable, comma-separated,
     read per request so tests and embedders can adjust it without
     rebuilding the app.
+
+    ``/api/*`` additionally requires same-origin proof so sandboxed
+    content and third-party pages cannot invoke application routes,
+    including fire-and-forget writes. The Host allowlist does not stop
+    those: they send a genuine Host. State-changing methods also require
+    ``Content-Type: application/json`` because Starlette parses JSON
+    bodies without looking at that header.
     """
 
     _DEFAULT_ALLOWED: frozenset[str] = frozenset(
@@ -715,10 +773,18 @@ class _HostValidationMiddleware:
             await self.app(scope, receive, send)
             return
         host_header = ""
+        origin = ""
+        sec_fetch_site = ""
+        content_type = ""
         for name, value in scope.get("headers") or []:
             if name == b"host":
                 host_header = value.decode("latin-1")
-                break
+            elif name == b"origin":
+                origin = value.decode("latin-1")
+            elif name == b"sec-fetch-site":
+                sec_fetch_site = value.decode("latin-1")
+            elif name == b"content-type":
+                content_type = value.decode("latin-1")
         hostname = self._hostname(host_header)
         allowed = self._DEFAULT_ALLOWED | _EXTRA_ALLOWED_HOSTS
         extra = os.environ.get("METABROWSER_ALLOWED_HOSTS", "")
@@ -739,7 +805,113 @@ class _HostValidationMiddleware:
             )
             await response(scope, receive, send)
             return
+        path = str(scope.get("path") or "")
+        if path == "/api" or path.startswith("/api/"):
+            scheme = str(scope.get("scheme") or "http")
+            if not _has_same_origin_proof(
+                scheme=scheme,
+                host_header=host_header,
+                origin=origin,
+                sec_fetch_site=sec_fetch_site,
+            ):
+                response = PlainTextResponse(
+                    "This /api request did not prove it came from this application's "
+                    "own pages. Browsers send Sec-Fetch-Site: same-origin, "
+                    "Sec-Fetch-Site: none for a typed URL or bookmark, or a "
+                    "matching Origin; Origin: null is refused because that is what "
+                    "an opaque-origin document sends. curl and metab --api send "
+                    "neither header and still work.\n",
+                    status_code=403,
+                )
+                await response(scope, receive, send)
+                return
+            method = str(scope.get("method") or "GET").upper()
+            if method in _STATE_CHANGING_METHODS and not _is_json_content_type(content_type):
+                response = PlainTextResponse(
+                    "State-changing /api routes require Content-Type: application/json "
+                    "so a cross-site form POST cannot reach a write path.\n",
+                    status_code=415,
+                )
+                await response(scope, receive, send)
+                return
         await self.app(scope, receive, send)
+
+
+class _RawTrustHeaderMiddleware:
+    """Sandbox every ``/raw`` response, whichever layer produced it.
+
+    SECURITY.md promises the opaque-origin sandbox on *every* raw
+    response, and a wrapper applied per ``return`` inside ``raw_file``
+    cannot keep that promise. It misses the responses the handler never
+    builds — Starlette's 400 and 416 for a malformed or unsatisfiable
+    ``Range``, the router's 405, the error handler's 500 — and it misses
+    any return path a later change adds, including a handler that
+    delegates to another source of bytes. Setting the headers on the
+    outgoing ``http.response.start`` message makes the guarantee
+    structural instead: a response on this path is sandboxed because of
+    where it is served, not because someone remembered to wrap it.
+
+    ``allow-scripts`` is present only while ``active_content`` is on,
+    read per response so the capability block stays authoritative.
+    ``frame-ancestors`` is omitted: inside a sandboxed page the ancestor
+    origin is opaque and would never match ``'self'``, which would break
+    nested iframes and framesets.
+    """
+
+    def __init__(self, app: Any) -> None:
+        self.app = app
+
+    @staticmethod
+    def _is_raw_scope(scope: dict[str, Any]) -> bool:
+        """True for ``/raw`` and ``/raw/...``, false for ``/rawfoo``.
+
+        ``root_path`` is stripped first so the check still names the
+        route when the app is mounted under a prefix, where ``path``
+        carries that prefix.
+        """
+
+        path = str(scope.get("path") or "")
+        root_path = str(scope.get("root_path") or "")
+        if root_path and path.startswith(root_path):
+            path = path[len(root_path) :] or "/"
+        return path == "/raw" or path.startswith("/raw/")
+
+    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        if scope.get("type") != "http" or not self._is_raw_scope(scope):
+            await self.app(scope, receive, send)
+            return
+
+        started = False
+
+        # ``MutableMapping``, not ``dict``: this wrapper is handed to
+        # ``Response.__call__`` below, whose ``Send`` alias is written
+        # against the ASGI message protocol rather than a concrete dict.
+        async def send_sandboxed(message: MutableMapping[str, Any]) -> None:
+            nonlocal started
+            if message.get("type") == "http.response.start":
+                started = True
+                headers = MutableHeaders(scope=message)
+                headers["Content-Security-Policy"] = raw_sandbox_csp(
+                    active_content=get_capabilities().active_content
+                )
+                headers["X-Content-Type-Options"] = "nosniff"
+            await send(message)
+
+        try:
+            await self.app(scope, receive, send_sandboxed)
+        except Exception:
+            # Starlette builds ``ServerErrorMiddleware`` outside every
+            # application middleware, so the 500 it writes for an
+            # unhandled exception would leave this path unsandboxed.
+            # Send the same body from inside the sandbox and re-raise:
+            # that middleware records the cause and skips its own send
+            # because the response has already started, and the test
+            # client can still surface the exception.
+            if not started:
+                await PlainTextResponse("Internal Server Error", status_code=500)(
+                    scope, receive, send_sandboxed
+                )
+            raise
 
 
 class _SlowRequestLogMiddleware:
@@ -2388,8 +2560,12 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
         # share a cached result; plugin classification may consult frontmatter
         # for specialized document detection.
         ctx = FileContext(target, ext)
-        kind = await asyncio.to_thread(_classify_with_plugins, target, ext, file_ctx=ctx)
-        views = _views_for_kind(kind)
+
+        def _classify_text_views() -> tuple[str, list[dict[str, Any]]]:
+            classified = _classify_with_plugins(target, ext, file_ctx=ctx)
+            return classified, _views_for_kind(classified, target=target)
+
+        kind, views = await asyncio.to_thread(_classify_text_views)
 
         # For .md files, expose parsed frontmatter so plugin renderers can
         # use it directly via ctx.frontmatter without re-parsing client-side.
@@ -3021,9 +3197,29 @@ def _accepts_gzip(accept_encoding: str) -> bool:
 _RAW_STREAM_CHUNK = 64 * 1024
 
 
+def _raw_target_from_request(request: Request) -> Path | None:
+    """Resolve the file a raw request named.
+
+    The query form is the existing public API and speaks inventory identities
+    (the image renderer). The path form is a document URL, so it uses the same
+    filesystem address as ``/view``.
+    """
+
+    path_params = getattr(request, "path_params", {})
+    if "path" in path_params:
+        return _safe_path(str(path_params["path"]))
+    return _safe_path_from_identity(request.query_params.get("path", ""))
+
+
 async def raw_file(request: Request) -> Response:
-    subpath = request.query_params.get("path", "")
-    target = _safe_path_from_identity(subpath)
+    """Serve raw bytes for one in-root file.
+
+    Every response leaving this route is sandboxed by
+    ``_RawTrustHeaderMiddleware``, which owns the trust headers for the
+    whole ``/raw`` path rather than any one branch here.
+    """
+
+    target = _raw_target_from_request(request)
     if target is None or not target.is_file():
         return PlainTextResponse("Not found", status_code=404)
 
@@ -3287,7 +3483,7 @@ def _resolve_container_child(subpath: str) -> JSONResponse | None:
     return None
 
 
-def _views_for_kind(kind: str) -> list[dict[str, Any]]:
+def _views_for_kind(kind: str, *, target: Path | None = None) -> list[dict[str, Any]]:
     """Return the merged view list for a kind: built-in registry + plugin manifests.
 
     Plugin views are appended after built-in views; an exact (kind, id)
@@ -3295,6 +3491,11 @@ def _views_for_kind(kind: str) -> list[dict[str, Any]]:
     wins; the plugin author intentionally chose to register an existing
     id). The order in which they appear in the tab strip is built-ins
     first, then plugin order.
+
+    The html kind is the exception that still uses this merger: Preview is
+    dropped when active content is off, and a bounded sniff may move the
+    default tab to Source. *target* is the file being classified; omit it
+    only when no file is in hand.
     """
     out: list[dict[str, Any]] = []
     seen_ids: set[str] = set()
@@ -3311,9 +3512,26 @@ def _views_for_kind(kind: str) -> list[dict[str, Any]]:
         else:
             out.append(v)
             seen_ids.add(v["id"])
+    if kind == "html":
+        return _html_kind_views(out, target)
     if out and not any(v.get("default") for v in out):
         out[0] = {**out[0], "default": True}
     return out
+
+
+def _html_kind_views(views: list[dict[str, Any]], target: Path | None) -> list[dict[str, Any]]:
+    """Apply the html kind's capability gate and default-tab sniff."""
+
+    if not get_capabilities().active_content:
+        remaining = [dict(view) for view in views if view["id"] != "preview"]
+        if remaining and not any(view.get("default") for view in remaining):
+            remaining[0] = {**remaining[0], "default": True}
+        return remaining
+    if target is not None and not sniff_full_page_html(target):
+        return [{**view, "default": view["id"] == "source"} for view in views]
+    if views and not any(view.get("default") for view in views):
+        views[0] = {**views[0], "default": True}
+    return views
 
 
 def _build_plugin_asset_config_block() -> str:
@@ -3486,6 +3704,7 @@ routes = [
     Route("/_debug/tasks", _debug_tasks),
     Route("/_debug/inventory", _debug_inventory),
     Route("/raw", raw_file),
+    Route("/raw/{path:path}", raw_file),
     Route("/kpress-static/{path:path}", kpress_static_asset),
     Mount("/static", app=StaticFiles(directory=STATIC_DIR), name="static"),
     # Read-only git history, kept as its own collection in
@@ -3504,6 +3723,9 @@ routes = [
 # JSON payloads this app emits. ``FileResponse`` is excluded automatically
 # by Starlette since it sets its own headers.
 middleware = [
+    # Outermost, so a rejection written before routing — and a 500 an
+    # inner layer never got to shape — still leaves ``/raw`` sandboxed.
+    Middleware(_RawTrustHeaderMiddleware),
     Middleware(_HostValidationMiddleware),
     Middleware(_SlowRequestLogMiddleware),
     Middleware(GZipMiddleware, minimum_size=1024, compresslevel=6),
