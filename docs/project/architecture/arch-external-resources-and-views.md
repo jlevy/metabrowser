@@ -93,8 +93,9 @@ The system uses three linked registries rather than one mega-registry.
 An installed plugin declares one entry per contract ID:
 
 - envelope and `frontmatter-md` or `pure-yaml` profile;
-- packaged compiled schema, registry-verified exact byte digest, and an independently
-  recomputed compiler-compatible logical schema digest;
+- packaged compiled schema, an exact byte digest that identifies it rather than
+  attesting to it, and a compiler-compatible logical schema digest recomputed from the
+  schema’s own content;
 - semantic model and validator;
 - parser and deterministic serializer;
 - producer and named consumers;
