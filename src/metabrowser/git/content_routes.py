@@ -91,6 +91,7 @@ from metabrowser.folder_discovery import choose_readme_name
 from metabrowser.fs_paths import derive_ext
 from metabrowser.git.tree_source import (
     GitBlobIndex,
+    GitBlobTallies,
     GitBlobTooLargeError,
     GitObjectUnavailableError,
     GitPath,
@@ -99,6 +100,7 @@ from metabrowser.git.tree_source import (
     GitTreeEntry,
     GitTreeSource,
     GitTreeTally,
+    display_segment,
 )
 from metabrowser.gz_io import ArtifactPath
 from metabrowser.inventory_engine.contract import ascii_casefold
@@ -364,66 +366,100 @@ def _matches_types(
     return False
 
 
-def _blob_matches_tree_filter(
-    path: GitPath,
-    oid: str,
-    *,
-    tree_filter: TreeFilter,
-    sizes: Mapping[str, int],
-    semantic: frozenset[str] | None = None,
-) -> bool:
-    if tree_filter.types and not _matches_types(path, tree_filter.types, semantic=semantic):
-        return False
-    if tree_filter.min_size:
-        size = sizes.get(oid)
-        if size is None or size < tree_filter.min_size:
-            return False
-    return True
-
-
 def _git_filter_active(tree_filter: TreeFilter) -> bool:
     return bool(tree_filter.types or tree_filter.min_size)
 
 
-def _git_filtered_tally(
-    index: GitBlobIndex | None,
+def _blob_display_name(rel: bytes) -> str:
+    return display_segment(rel.rsplit(b"/", 1)[-1])
+
+
+def _git_blob_exts(index: GitBlobIndex) -> tuple[str, ...]:
+    """Logical extension of every blob, aligned with ``index.blobs``.
+
+    Derived once per tree: chrome tallies, index facts, and every filter read
+    it instead of decoding each name again. Equal extensions share one string.
+    """
+
+    interned: dict[str, str] = {}
+    exts: list[str] = []
+    for rel, _oid in index.blobs:
+        ext = derive_ext(_blob_display_name(rel))
+        exts.append(interned.setdefault(ext, ext))
+    return tuple(exts)
+
+
+def _git_filter_tallies(
+    index: GitBlobIndex,
+    exts: tuple[str, ...],
     tree_filter: TreeFilter,
+    semantic: frozenset[str],
+) -> GitBlobTallies:
+    """Running totals of the blobs *tree_filter* keeps. Same rules as ``_matches_types``."""
+
+    folded_types = tuple(ascii_casefold(token) for token in tree_filter.types)
+    ext_tokens = frozenset(token for token in folded_types if token.startswith("."))
+    name_tokens = frozenset(token for token in folded_types if not token.startswith("."))
+    suffix_tokens = tuple(token for token in ext_tokens if token in semantic)
+    ext_verdicts: dict[str, bool] = {}
+    floor = tree_filter.min_size
+    matches = bytearray(len(index.blobs))
+    for position, ((rel, oid), ext) in enumerate(zip(index.blobs, exts, strict=True)):
+        keep = True
+        if folded_types:
+            verdict = ext_verdicts.get(ext)
+            if verdict is None:
+                verdict = bool(ext) and (
+                    ext in ext_tokens or any(ext.endswith(token) for token in suffix_tokens)
+                )
+                ext_verdicts[ext] = verdict
+            keep = verdict or (
+                bool(name_tokens) and ascii_casefold(_blob_display_name(rel)) in name_tokens
+            )
+        if keep and floor:
+            size = index.sizes.get(oid)
+            keep = size is not None and size >= floor
+        matches[position] = keep
+    return GitBlobTallies(index.blobs, index.sizes, matches)
+
+
+@dataclass(frozen=True, slots=True)
+class _GitTallyView:
+    """Subtree totals for one request: the whole index, or one filter's matches."""
+
+    index: GitBlobIndex
+    tallies: GitBlobTallies
+
+    def tally(self, prefix: bytes = b"") -> GitTreeTally:
+        return self.tallies.tally(self.index.prefix_spans(prefix))
+
+
+async def _git_tally_view(
+    source: GitTreeSource,
+    index: GitBlobIndex | None,
     *,
-    prefix: bytes = b"",
-    semantic: frozenset[str] | None = None,
-) -> GitTreeTally | None:
-    """Matching descendant blobs under ``prefix``. None when the index is absent."""
+    tree_oid: str,
+    tree_filter: TreeFilter,
+    semantic: frozenset[str],
+) -> _GitTallyView | None:
+    """Totals for the tree at *tree_oid*. A filter's matches are memoized per filter."""
 
     if index is None:
         return None
-    files = 0
-    size = 0
-    size_known = True
-    semantic_tokens = (
-        semantic if semantic is not None else _semantic_extension_tokens(tree_filter.types)
+    if not _git_filter_active(tree_filter):
+        return _GitTallyView(index, index.tallies)
+    exts = await source.derived(("blob-exts", tree_oid), lambda: _git_blob_exts(index))
+    tallies = await source.derived(
+        ("filter-tallies", tree_oid, tree_filter.types, tree_filter.min_size),
+        lambda: _git_filter_tallies(index, exts, tree_filter, semantic),
     )
-    for name, oid in index.iter_blobs(prefix):
-        if not _blob_matches_tree_filter(
-            _git_path_from_relative(name),
-            oid,
-            tree_filter=tree_filter,
-            sizes=index.sizes,
-            semantic=semantic_tokens,
-        ):
-            continue
-        files += 1
-        blob_size = index.sizes.get(oid)
-        if blob_size is None:
-            size_known = False
-        else:
-            size += blob_size
-    return GitTreeTally(files, size if size_known else None)
+    return _GitTallyView(index, tallies)
 
 
 def _git_entry_visible(
     entry: GitTreeEntry,
     tree_filter: TreeFilter,
-    index: GitBlobIndex | None,
+    view: _GitTallyView | None,
     *,
     index_prefix: bytes = b"",
     semantic: frozenset[str] | None = None,
@@ -433,15 +469,10 @@ def _git_entry_visible(
     if not _git_filter_active(tree_filter):
         return True
     if entry.is_tree:
-        tally = _git_filtered_tally(
-            index,
-            tree_filter,
-            prefix=_join_git_prefix(index_prefix, entry.path.segments[-1]),
-            semantic=semantic,
-        )
-        if tally is None:
+        if view is None:
             return True
-        return tally.total_files > 0
+        prefix = _join_git_prefix(index_prefix, entry.path.segments[-1])
+        return view.tally(prefix).total_files > 0
     if tree_filter.types and not _matches_types(entry.path, tree_filter.types, semantic=semantic):
         return False
     if tree_filter.min_size:
@@ -449,24 +480,10 @@ def _git_entry_visible(
     return True
 
 
-def _git_dir_tally(
-    index: GitBlobIndex | None,
-    tree_filter: TreeFilter,
-    *,
-    prefix: bytes,
-    semantic: frozenset[str] | None = None,
-) -> GitTreeTally | None:
-    if index is None:
-        return None
-    if _git_filter_active(tree_filter):
-        return _git_filtered_tally(index, tree_filter, prefix=prefix, semantic=semantic)
-    return index.tally(prefix)
-
-
 def _git_visible_entries(
     entries: tuple[GitTreeEntry, ...],
     tree_filter: TreeFilter,
-    index: GitBlobIndex | None,
+    view: _GitTallyView | None,
     *,
     index_prefix: bytes,
     semantic: frozenset[str] | None,
@@ -477,9 +494,30 @@ def _git_visible_entries(
         entry
         for entry in entries
         if _git_entry_visible(
-            entry, tree_filter, index, index_prefix=index_prefix, semantic=semantic
+            entry, tree_filter, view, index_prefix=index_prefix, semantic=semantic
         )
     )
+
+
+# Nodes one ``/api/tree`` response may nest below the listed directory. ``depth``
+# is accepted up to MAX_TREE_DEPTH, so without a bound one request could
+# materialize a whole repository. Direct children are always listed; a
+# directory whose children no longer fit is emitted as the same lazy sentinel
+# the depth cap uses, and the SPA loads it on expansion.
+#
+# The filesystem tree has no cost-derived node bound to mirror: its page
+# assembly stops only at the engine's MAX_ASSEMBLED_ROWS consistency guard and
+# answers with an error. Measured on a synthetic 100,000-blob pin, on a heavily
+# loaded machine: a warm build costs about 19 us per node (8,000 nodes in
+# 149 ms), and a response at this bound took 0.4 to 0.6 s end to end for a
+# 2.4 MiB body, against about 104,000 nodes unbounded. The default ``depth=2``
+# listing of a 4,000-directory tree (8,000 nodes) stays whole.
+GIT_NAV_TREE_MAX_NODES = 20_000
+
+
+@dataclass(slots=True)
+class _NavNodeBudget:
+    remaining: int
 
 
 async def _git_nav_tree(
@@ -488,11 +526,12 @@ async def _git_nav_tree(
     *,
     remaining_depth: int,
     tree_filter: TreeFilter,
-    index: GitBlobIndex | None,
+    view: _GitTallyView | None,
     index_prefix: bytes,
     semantic: frozenset[str] | None,
+    budget: _NavNodeBudget,
 ) -> list[dict[str, Any]]:
-    """SPA ``tree`` nodes. Nest while ``remaining_depth`` allows; else a lazy sentinel."""
+    """SPA ``tree`` nodes. Nest while depth and the node budget allow; else a lazy sentinel."""
 
     if remaining_depth <= 0:
         return []
@@ -500,47 +539,43 @@ async def _git_nav_tree(
     nest = remaining_depth > 1
     for entry in entries:
         prefix = _join_git_prefix(index_prefix, entry.path.segments[-1]) if entry.is_tree else b""
-        tally = (
-            _git_dir_tally(index, tree_filter, prefix=prefix, semantic=semantic)
-            if entry.is_tree
-            else None
-        )
-        if entry.is_tree and nest:
+        tally = view.tally(prefix) if entry.is_tree and view is not None else None
+        if entry.is_tree and nest and budget.remaining > 0:
             try:
                 nested = await subject.tree_source.list_tree_entry(entry)
             except GitObjectUnavailableError:
                 nodes.append(_nav_tree_node(entry, tally=tally))
                 continue
             nested = _git_visible_entries(
-                nested, tree_filter, index, index_prefix=prefix, semantic=semantic
+                nested, tree_filter, view, index_prefix=prefix, semantic=semantic
             )
-            children = await _git_nav_tree(
-                subject,
-                nested,
-                remaining_depth=remaining_depth - 1,
-                tree_filter=tree_filter,
-                index=index,
-                index_prefix=prefix,
-                semantic=semantic,
-            )
-            nodes.append(_nav_tree_node(entry, tally=tally, children=children, loaded=True))
-            continue
+            if len(nested) <= budget.remaining:
+                budget.remaining -= len(nested)
+                children = await _git_nav_tree(
+                    subject,
+                    nested,
+                    remaining_depth=remaining_depth - 1,
+                    tree_filter=tree_filter,
+                    view=view,
+                    index_prefix=prefix,
+                    semantic=semantic,
+                    budget=budget,
+                )
+                nodes.append(_nav_tree_node(entry, tally=tally, children=children, loaded=True))
+                continue
         nodes.append(_nav_tree_node(entry, tally=tally))
     return nodes
 
 
 def _git_tree_filtered(
-    index: GitBlobIndex | None,
-    tree_filter: TreeFilter,
-    *,
-    semantic: frozenset[str] | None = None,
+    view: _GitTallyView | None, tree_filter: TreeFilter
 ) -> dict[str, int] | None:
     """Subtree filter totals. Omit when sizes are incomplete."""
 
-    if not _git_filter_active(tree_filter):
+    if view is None or not _git_filter_active(tree_filter):
         return None
-    tally = _git_filtered_tally(index, tree_filter, semantic=semantic)
-    if tally is None or tally.total_size is None:
+    tally = view.tally()
+    if tally.total_size is None:
         return None
     return {
         "files": tally.total_files,
@@ -813,17 +848,30 @@ async def git_revision_rollup(
                 "truncated": True,
             }
         )
+    # The body is capped by ``options.max_nodes``, so the memo holds a small
+    # response, not the per-blob entries it was reduced from.
+    status_code, payload = await subject.tree_source.derived(
+        ("rollup", wire, options),
+        lambda: _git_rollup_payload(index, path, children, options),
+    )
+    return _json(payload, status_code=status_code)
+
+
+def _git_rollup_payload(
+    index: GitBlobIndex,
+    path: GitPath,
+    children: tuple[GitTreeEntry, ...],
+    options: RollupOptions,
+) -> tuple[int, dict[str, Any]]:
+    wire = path.to_wire()
     entries = _rollup_entries_from_index(index, path)
     if entries is None:
         missing_oid = _missing_blob_oid(index)
-        return _json(
-            {
-                "error": f"object_unavailable: {missing_oid}",
-                "code": "object_unavailable",
-                "oid": missing_oid,
-            },
-            status_code=404,
-        )
+        return 404, {
+            "error": f"object_unavailable: {missing_oid}",
+            "code": "object_unavailable",
+            "oid": missing_oid,
+        }
     for child in children:
         if not child.is_tree:
             continue
@@ -842,39 +890,57 @@ async def git_revision_rollup(
         False,
     )
     if built is None:
-        return _json(_NOT_FOUND, status_code=404)
+        return 404, _NOT_FOUND
     node = built["node"]
-    return _json(
-        {
-            "subject": "git_revision",
-            "root": "",
-            "path": wire,
-            "node": node,
-            "ext_tallies": built["ext_tallies"],
-            "file_type_breakdown": built["file_type_breakdown"],
-            "index_status": "complete",
-            "indexed_files": node["total_files"],
-            "max_files": INVENTORY_MAX_FILES,
-            "truncated": False,
-        }
-    )
+    return 200, {
+        "subject": "git_revision",
+        "root": "",
+        "path": wire,
+        "node": node,
+        "ext_tallies": built["ext_tallies"],
+        "file_type_breakdown": built["file_type_breakdown"],
+        "index_status": "complete",
+        "indexed_files": node["total_files"],
+        "max_files": INVENTORY_MAX_FILES,
+        "truncated": False,
+    }
 
 
-async def git_revision_catalog(request: Request, subject: GitRevisionSubject) -> JSONResponse:
+def _git_catalog_body(index: GitBlobIndex, exts: tuple[str, ...]) -> bytes:
+    files: list[dict[str, str]] = []
+    for (rel, _oid), ext in zip(index.blobs, exts, strict=True):
+        path = _git_path_from_relative(rel)
+        files.append({"p": path.to_wire(), "e": ext, "n": _blob_display_name(rel)})
+    payload = {"complete": True, "truncated": False, "revision": 1, "files": files}
+    return bytes(JSONResponse(payload).body)
+
+
+async def git_revision_catalog(request: Request, subject: GitRevisionSubject) -> Response:
     """One-shot Quick File catalog from recursive blob names. No watcher."""
 
     del request
+    source = subject.tree_source
     try:
-        index = await subject.tree_source.blob_index()
+        index = await source.blob_index()
     except GitObjectUnavailableError as exc:
         return _json(_object_unavailable_payload(exc), status_code=404)
     if index is None:
         return _json({"complete": True, "truncated": True, "revision": 1, "files": []})
-    files: list[dict[str, str]] = []
-    for rel, _oid in index.blobs:
-        path = _git_path_from_relative(rel)
-        files.append({"p": path.to_wire(), "e": _logical_ext(path), "n": _display_basename(path)})
-    return _json({"complete": True, "truncated": False, "revision": 1, "files": files})
+    exts = await _git_root_blob_exts(subject, index)
+    # The rendered body is kept, not the row dicts: it is the smaller form, and
+    # a repeat request skips serialization as well as the scan.
+    body = await source.derived(
+        ("catalog-body", subject.tree_oid), lambda: _git_catalog_body(index, exts)
+    )
+    return Response(
+        content=body, media_type="application/json", headers={"cache-control": "no-store"}
+    )
+
+
+async def _git_root_blob_exts(subject: GitRevisionSubject, index: GitBlobIndex) -> tuple[str, ...]:
+    return await subject.tree_source.derived(
+        ("blob-exts", subject.tree_oid), lambda: _git_blob_exts(index)
+    )
 
 
 def _git_path_from_relative(name: bytes) -> GitPath:
@@ -893,12 +959,9 @@ class _GitIndexFacts:
     suffixes: tuple[tuple[str, int], ...]
 
 
-def _git_extension_counts(index: GitBlobIndex) -> Counter[str]:
-    counts: Counter[str] = Counter()
-    for rel, _oid in index.blobs:
-        ext = _logical_ext(_git_path_from_relative(rel))
-        if ext:
-            counts[ext] += 1
+def _git_extension_counts(exts: tuple[str, ...]) -> Counter[str]:
+    counts = Counter(exts)
+    del counts[""]
     return counts
 
 
@@ -923,8 +986,13 @@ def _git_tree_summary(index: GitBlobIndex | None) -> dict[str, int] | None:
     }
 
 
-def _git_tree_index_chrome(index: GitBlobIndex | None) -> dict[str, Any]:
-    """Whole-tree filter tallies and summary. Ignore is absent, so ignored is 0."""
+def _git_tree_index_chrome(
+    index: GitBlobIndex | None, exts: tuple[str, ...] = ()
+) -> dict[str, Any]:
+    """Whole-tree filter tallies and summary. Ignore is absent, so ignored is 0.
+
+    *exts* is ``_git_blob_exts(index)``. The caller memoizes the result per pin.
+    """
 
     truncated = index is None
     preset_rows = [[preset["id"], 0, 0] for preset in FILTER_TYPE_PRESETS]
@@ -954,10 +1022,8 @@ def _git_tree_index_chrome(index: GitBlobIndex | None) -> dict[str, Any]:
             normalized = ascii_casefold(value)
             (extensions if normalized.startswith(".") else names).add(normalized)
         normalized_presets.append((preset["id"], frozenset(extensions), frozenset(names)))
-    for rel, _oid in index.blobs:
-        path = _git_path_from_relative(rel)
-        ext = _logical_ext(path)
-        name = ascii_casefold(_display_basename(path))
+    for (rel, _oid), ext in zip(index.blobs, exts, strict=True):
+        name = ascii_casefold(_blob_display_name(rel))
         classification = registry.classify(name, ext)
         if ext:
             extension_counts[ext] += 1
@@ -987,13 +1053,20 @@ async def _git_index_facts(subject: GitRevisionSubject) -> _GitIndexFacts:
     index = await subject.tree_source.blob_index()
     if index is None:
         return _GitIndexFacts(True, 0, 0, ())
+    exts = await _git_root_blob_exts(subject, index)
+    return await subject.tree_source.derived(
+        ("index-facts", subject.tree_oid), lambda: _git_index_facts_from(index, exts)
+    )
+
+
+def _git_index_facts_from(index: GitBlobIndex, exts: tuple[str, ...]) -> _GitIndexFacts:
     dirs: set[bytes] = set()
     for rel, _oid in index.blobs:
         parts = rel.split(b"/")
         for depth in range(len(parts) - 1):
             dirs.add(b"/".join(parts[: depth + 1]))
     suffixes = tuple(
-        sorted(_git_extension_counts(index).items(), key=lambda item: (-item[1], item[0]))
+        sorted(_git_extension_counts(exts).items(), key=lambda item: (-item[1], item[0]))
     )
     return _GitIndexFacts(False, len(index.blobs), len(dirs), suffixes)
 
@@ -1082,30 +1155,36 @@ async def git_revision_tree(
         located = await subject.tree_source.resolve_path(path)
         if located is None or not located.is_tree:
             return _json(_NOT_FOUND, status_code=404)
-        index = await subject.tree_source.blob_index(path)
+        source = subject.tree_source
+        index = await source.blob_index(path)
         semantic = _semantic_extension_tokens(tree_filter.types)
+        view = await _git_tally_view(
+            source, index, tree_oid=located.oid, tree_filter=tree_filter, semantic=semantic
+        )
         if remaining_depth <= 0:
             entries: tuple[GitTreeEntry, ...] = ()
             tree_nodes: list[dict[str, Any]] = []
         else:
-            entries = await subject.tree_source.list_tree(path)
+            entries = await source.list_tree(path)
             entries = _git_visible_entries(
-                entries, tree_filter, index, index_prefix=b"", semantic=semantic
+                entries, tree_filter, view, index_prefix=b"", semantic=semantic
             )
             tree_nodes = await _git_nav_tree(
                 subject,
                 entries,
                 remaining_depth=remaining_depth,
                 tree_filter=tree_filter,
-                index=index,
+                view=view,
                 index_prefix=b"",
                 semantic=semantic,
+                budget=_NavNodeBudget(GIT_NAV_TREE_MAX_NODES - len(entries)),
             )
+        root_index = index if not path.segments else await source.blob_index()
     except GitObjectUnavailableError as exc:
         return _json(_object_unavailable_payload(exc), status_code=404)
     assert located is not None
-    root_index = index if not path.segments else await subject.tree_source.blob_index()
-    filtered = _git_tree_filtered(index, tree_filter, semantic=semantic)
+    chrome = await _git_root_index_chrome(subject, root_index)
+    filtered = _git_tree_filtered(view, tree_filter)
     payload: dict[str, Any] = {
         "subject": "git_revision",
         "path": path.to_wire(),
@@ -1114,11 +1193,22 @@ async def git_revision_tree(
         "kind": "tree",
         "entries": [_listing_entry(entry) for entry in entries],
         "tree": tree_nodes,
-        **_git_tree_index_chrome(root_index),
+        **chrome,
     }
     if filtered is not None:
         payload["filtered"] = filtered
     return _json(payload)
+
+
+async def _git_root_index_chrome(
+    subject: GitRevisionSubject, root_index: GitBlobIndex | None
+) -> dict[str, Any]:
+    if root_index is None:
+        return _git_tree_index_chrome(None)
+    exts = await _git_root_blob_exts(subject, root_index)
+    return await subject.tree_source.derived(
+        ("index-chrome", subject.tree_oid), lambda: _git_tree_index_chrome(root_index, exts)
+    )
 
 
 def _git_readme_child(

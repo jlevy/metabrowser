@@ -14,6 +14,7 @@ from typing import Any
 import pytest
 from httpx2 import ASGITransport, AsyncClient
 
+from metabrowser.git import content_routes as routes_module
 from metabrowser.git import tree_source as tree_module
 from metabrowser.git.process import repository_store_target
 from metabrowser.git.tree_source import GitPath, GitRevisionSubject, git_revision_subject
@@ -228,3 +229,145 @@ def test_raw_tree_object_parser_refuses_malformed_records() -> None:
     ):
         with pytest.raises(tree_module.GitBatchProtocolError):
             tree_module._parse_tree_object(bad, parent=GitPath.root(), oid=oid)
+
+
+def _count_per_blob_work(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Every whole-index scan derives one extension per blob, so count those."""
+
+    seen: list[str] = []
+    real_derive_ext = routes_module.derive_ext
+
+    def counting_derive_ext(name: str) -> str:
+        seen.append(name)
+        return real_derive_ext(name)
+
+    monkeypatch.setattr(routes_module, "derive_ext", counting_derive_ext)
+    return seen
+
+
+def test_whole_index_facts_are_derived_once_per_pin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    blobs = 400
+    files = {
+        f"pkg{index % 8}/sub{index % 3}/mod_{index:04d}.{'py' if index % 2 else 'md'}".encode(): (
+            b"x" * (index % 7 + 1)
+        )
+        for index in range(blobs)
+    }
+    store, commit = fast_import_store(tmp_path, files)
+    seen = _count_per_blob_work(monkeypatch)
+    urls = (
+        "/api/tree?depth=1",
+        "/api/tree?depth=2&types=.py",
+        "/api/tree?depth=2&min_size=4",
+        "/api/index/progress",
+        "/api/index/meta",
+        "/api/capabilities",
+        "/api/rollup",
+        "/api/catalog",
+    )
+
+    async def run() -> None:
+        async with pinned_client(store, commit) as (client, _subject):
+            first: dict[str, Any] = {}
+            for url in urls:
+                response = await client.get(url)
+                assert response.status_code == 200, url
+                first[url] = response.json()
+            assert first["/api/tree?depth=2&types=.py"]["filtered"]["files"] == blobs // 2
+            assert first["/api/index/meta"]["indexed_files"] == blobs
+            assert len(first["/api/catalog"]["files"]) == blobs
+            for url in urls:
+                seen.clear()
+                response = await client.get(url)
+                assert response.json() == first[url], url
+                # A pin is immutable: a repeat may touch the nodes it lists,
+                # never every blob of the index again.
+                assert len(seen) < blobs // 4, (url, len(seen))
+
+    asyncio.run(run())
+
+
+def test_nav_tree_stops_nesting_at_its_node_budget(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    files = {
+        f"d{outer}/e{inner}/f{leaf}.txt".encode(): b"x"
+        for outer in range(6)
+        for inner in range(6)
+        for leaf in range(6)
+    }
+    store, commit = fast_import_store(tmp_path, files)
+    budget = 40
+    monkeypatch.setattr(routes_module, "GIT_NAV_TREE_MAX_NODES", budget)
+
+    def walk(nodes: list[dict[str, Any]]) -> tuple[int, int]:
+        total = lazy = 0
+        for node in nodes:
+            total += 1
+            children = node.get("children")
+            if node["type"] == "dir" and children is None:
+                assert node["has_children"] is True
+                lazy += 1
+            elif children:
+                nested_total, nested_lazy = walk(children)
+                total += nested_total
+                lazy += nested_lazy
+        return total, lazy
+
+    async def run() -> None:
+        async with pinned_client(store, commit) as (client, _subject):
+            response = await client.get("/api/tree?depth=20")
+            assert response.status_code == 200
+            tree = response.json()["tree"]
+            # Every direct child is present; nesting stops once the budget is spent.
+            assert [node["name"] for node in tree] == [f"d{outer}" for outer in range(6)]
+            total, lazy = walk(tree)
+            assert total <= budget
+            assert lazy > 0
+            # Totals come from the index, so a lazy directory is not dimmed as empty.
+            assert all(node["total_files"] == 36 for node in tree)
+
+    asyncio.run(run())
+
+
+def test_derived_facts_build_once_per_key_and_stay_bounded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store, commit = fast_import_store(tmp_path, {b"a.txt": b"a\n"})
+    monkeypatch.setattr(tree_module, "MAX_DERIVED_FACTS", 3)
+    builds: list[int] = []
+
+    def build(key: int) -> int:
+        builds.append(key)
+        return key * 10
+
+    async def run() -> None:
+        subject = await git_revision_subject(
+            target=repository_store_target(git_dir=store),
+            commit_oid=commit,
+            store_identity="scaling-fixture",
+        )
+        try:
+            source = subject.tree_source
+            racing = await asyncio.gather(*(source.derived(1, lambda: build(1)) for _ in range(5)))
+            assert racing == [10] * 5
+            assert builds == [1]
+            for key in (2, 3, 4):
+                assert await source.derived(key, lambda key=key: build(key)) == key * 10
+            # Key 1 was the least recently used of four, so only it is rebuilt.
+            assert await source.derived(4, lambda: build(4)) == 40
+            assert await source.derived(1, lambda: build(1)) == 10
+            assert builds == [1, 2, 3, 4, 1]
+
+            def fail() -> int:
+                raise RuntimeError("not remembered")
+
+            with pytest.raises(RuntimeError):
+                await source.derived("bad", fail)
+            assert await source.derived("bad", lambda: 7) == 7
+        finally:
+            await subject.aclose()
+
+    asyncio.run(run())

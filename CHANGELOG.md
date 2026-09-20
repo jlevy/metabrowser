@@ -271,6 +271,12 @@ Content source:
   `total_size` and the Git `/api/rollup` tree.
   Inventory open, archive containers, and serving acquired Git are not switched yet.
 
+- `/api/tree` on a Git pin nests at most 20,000 nodes below the listed directory.
+  Direct children are always listed; a directory whose children no longer fit is the
+  same lazy sentinel the depth cap emits.
+  Whole-tree tallies, filter totals, index status, rollup, and the catalog are derived
+  once per pin instead of on every request.
+
 ## 0.10.0
 
 Plugin SDK:

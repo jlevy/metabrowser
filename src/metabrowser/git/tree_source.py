@@ -49,13 +49,15 @@ from __future__ import annotations
 import asyncio
 import base64
 import threading
+from array import array
 from bisect import bisect_left
-from collections.abc import AsyncGenerator, Mapping
+from collections import OrderedDict
+from collections.abc import AsyncGenerator, Callable, Hashable, Mapping, Sequence
 from contextlib import asynccontextmanager, suppress
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from types import MappingProxyType
-from typing import Final, Literal
+from typing import Any, Final, Literal, cast
 
 from metabrowser.git.process import (
     ACQUISITION_POLICY,
@@ -91,6 +93,13 @@ _BATCH_ARGS: Final[tuple[str, ...]] = (
 # docs/project/architecture/arch-repository-sources-and-provider-mirrors.md.
 MAX_BATCH_READERS_PER_STORE: Final[int] = 4
 _STDERR_MAX_BYTES: Final[int] = 64 * 1024
+# Facts memoized per pinned source: index chrome, index facts, extensions, the
+# catalog body, and one entry per recently used filter or rollup shape. Each is
+# at most linear in INVENTORY_MAX_FILES; the largest measured, the rendered
+# catalog body of a 100,000-blob tree, is 9.0 MB; a filter's running totals are
+# three 8-byte sums per blob. The bound keeps a client that cycles through
+# filters and rollup shapes from growing the process.
+MAX_DERIVED_FACTS: Final[int] = 32
 _POOLS_GUARD = threading.Lock()
 _POOLS: dict[Path, _StoreReaderPool] = {}
 
@@ -125,7 +134,7 @@ class GitBatchProtocolError(GitError):
     """The cat-file actor returned a truncated or unexpected frame."""
 
 
-def _display_segment(segment: bytes) -> str:
+def display_segment(segment: bytes) -> str:
     """Replacement-safe UTF-8. C0 and DEL become U+FFFD so chrome cannot wrap."""
 
     text = segment.decode("utf-8", "replace")
@@ -222,7 +231,7 @@ class GitPath:
         return cls(tuple(segments))
 
     def display(self) -> str:
-        return "/".join(_display_segment(segment) for segment in self.segments)
+        return "/".join(display_segment(segment) for segment in self.segments)
 
 
 GitEntryKind = Literal["blob", "tree", "commit"]
@@ -301,17 +310,63 @@ class GitTreeTally:
     total_size: int | None
 
 
+class GitBlobTallies:
+    """Running file and byte counts over an index's sorted blobs.
+
+    A pin is immutable, so the sums are built once. A subtree is a contiguous
+    span of the sorted names, which makes its tally two subtractions instead of
+    a walk over its blobs. *matches* keeps only the selected blobs, for a filter.
+    """
+
+    __slots__ = ("_files", "_sizes", "_unsized")
+
+    def __init__(
+        self,
+        blobs: Sequence[tuple[bytes, str]],
+        sizes: Mapping[str, int],
+        matches: Sequence[int] | None = None,
+    ) -> None:
+        files = array("q", [0])
+        total = array("q", [0])
+        unsized = array("q", [0])
+        file_count = byte_count = unsized_count = 0
+        for position, (_name, oid) in enumerate(blobs):
+            if matches is None or matches[position]:
+                file_count += 1
+                size = sizes.get(oid)
+                if size is None:
+                    unsized_count += 1
+                else:
+                    byte_count += size
+            files.append(file_count)
+            total.append(byte_count)
+            unsized.append(unsized_count)
+        self._files = files
+        self._sizes = total
+        self._unsized = unsized
+
+    def tally(self, spans: Sequence[tuple[int, int]]) -> GitTreeTally:
+        files = size = unsized = 0
+        for start, stop in spans:
+            files += self._files[stop] - self._files[start]
+            size += self._sizes[stop] - self._sizes[start]
+            unsized += self._unsized[stop] - self._unsized[start]
+        return GitTreeTally(files, None if unsized else size)
+
+
 @dataclass(frozen=True, slots=True)
 class GitBlobIndex:
     """Recursive blob names under one tree, with ``cat-file`` sizes when known."""
 
     blobs: tuple[tuple[bytes, str], ...]
     sizes: Mapping[str, int]
+    tallies: GitBlobTallies = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         ordered = tuple(sorted(self.blobs, key=lambda item: item[0]))
         if ordered != self.blobs:
             object.__setattr__(self, "blobs", ordered)
+        object.__setattr__(self, "tallies", GitBlobTallies(self.blobs, self.sizes))
 
     def iter_blobs(self, prefix: bytes = b"") -> tuple[tuple[bytes, str], ...]:
         """Blobs named ``prefix`` or under ``prefix/``. Shared string prefixes are excluded."""
@@ -319,30 +374,22 @@ class GitBlobIndex:
         if not prefix:
             return self.blobs
         ranges: list[tuple[bytes, str]] = []
-        for start, stop in self._prefix_ranges(prefix):
+        for start, stop in self.prefix_spans(prefix):
             ranges.extend(self.blobs[start:stop])
         return tuple(ranges)
 
     def tally(self, prefix: bytes = b"") -> GitTreeTally:
-        files = 0
-        size = 0
-        size_known = True
-        for _name, oid in self.iter_blobs(prefix):
-            files += 1
-            blob_size = self.sizes.get(oid)
-            if blob_size is None:
-                size_known = False
-            else:
-                size += blob_size
-        return GitTreeTally(files, size if size_known else None)
+        return self.tallies.tally(self.prefix_spans(prefix))
 
-    def _prefix_ranges(self, prefix: bytes) -> tuple[tuple[int, int], ...]:
+    def prefix_spans(self, prefix: bytes) -> tuple[tuple[int, int], ...]:
         """Sorted half-open spans for an exact blob and its ``prefix/`` children.
 
         ``docs`` matches ``docs`` and ``docs/a`` and does not match ``docs!`` or
         ``documentation``. The spans are adjacent slices of the sorted name list.
         """
 
+        if not prefix:
+            return ((0, len(self.blobs)),)
         exact = bisect_left(self.blobs, (prefix, ""))
         spans: list[tuple[int, int]] = []
         if exact < len(self.blobs) and self.blobs[exact][0] == prefix:
@@ -454,16 +501,13 @@ class _BatchObjectReader:
         return body
 
     async def read_tree(self, oid: str) -> bytes:
-        """Raw tree object bytes: one actor round trip, not an ``ls-tree`` spawn."""
+        """Raw tree object bytes: one actor round trip, not an ``ls-tree`` spawn.
 
-        info = await self.info(oid)
-        if info.kind != "tree":
-            raise GitBatchProtocolError(f"{oid} is {info.kind}, not a tree")
-        if info.size > BATCH_OBJECT_POLICY.max_bytes:
-            raise GitOutputTooLargeError(
-                f"tree {oid} is {info.size} bytes; limit is {BATCH_OBJECT_POLICY.max_bytes}"
-            )
-        body = await self._transact(oid, contents=True, expected=info)
+        The header is checked before the body is read. A refused frame leaves
+        its body in the pipe, so the actor is discarded like any framing error.
+        """
+
+        body = await self._transact(oid, contents=True, tree=True)
         if isinstance(body, _ObjectInfo):
             raise GitBatchProtocolError("contents transaction returned info")
         return body
@@ -477,11 +521,12 @@ class _BatchObjectReader:
         *,
         contents: bool,
         expected: _ObjectInfo | None = None,
+        tree: bool = False,
     ) -> _ObjectInfo | bytes:
         require_full_oid(oid)
         try:
             return await asyncio.wait_for(
-                self._transact_inner(oid, contents=contents, expected=expected),
+                self._transact_inner(oid, contents=contents, expected=expected, tree=tree),
                 timeout=BATCH_OBJECT_POLICY.timeout_s,
             )
         except TimeoutError as exc:
@@ -508,6 +553,7 @@ class _BatchObjectReader:
         *,
         contents: bool,
         expected: _ObjectInfo | None,
+        tree: bool,
     ) -> _ObjectInfo | bytes:
         await self._ensure()
         proc = self._proc
@@ -524,6 +570,13 @@ class _BatchObjectReader:
             return info
         if expected is not None and (info.oid != expected.oid or info.size != expected.size):
             raise GitBatchProtocolError("contents header does not match info")
+        if tree:
+            if info.kind != "tree":
+                raise GitBatchProtocolError(f"{oid} is {info.kind}, not a tree")
+            if info.size > BATCH_OBJECT_POLICY.max_bytes:
+                raise GitOutputTooLargeError(
+                    f"tree {oid} is {info.size} bytes; limit is {BATCH_OBJECT_POLICY.max_bytes}"
+                )
         body = await reader.readexactly(info.size)
         trailer = await reader.readexactly(1)
         if trailer != b"\n":
@@ -739,6 +792,19 @@ def _iter_ls_tree_records(payload: bytes) -> tuple[tuple[str, GitEntryKind, str,
     return tuple(records)
 
 
+def _index_blob_records(payload: bytes) -> list[tuple[bytes, str]] | None:
+    """Blob names and OIDs of one ``ls-tree -r`` frame. ``None`` past the index bound."""
+
+    blobs: list[tuple[bytes, str]] = []
+    for _mode, kind, oid, name in _iter_ls_tree_records(payload):
+        if kind != "blob":
+            continue
+        blobs.append((name, oid))
+        if len(blobs) > INVENTORY_MAX_FILES:
+            return None
+    return blobs
+
+
 def _parse_tree_object(payload: bytes, *, parent: GitPath, oid: str) -> tuple[GitTreeEntry, ...]:
     """Children of one raw tree object: ``<mode> <name>NUL<binary oid>`` records.
 
@@ -791,6 +857,8 @@ class GitTreeSource:
         self._pool_released = False
         self._trees: dict[str, _CachedTree] = {}
         self._indexes: dict[str, GitBlobIndex | None] = {}
+        self._derived: OrderedDict[Hashable, object] = OrderedDict()
+        self._deriving: dict[Hashable, asyncio.Future[Any]] = {}
 
     @property
     def target(self) -> RepositoryStoreTarget:
@@ -884,9 +952,35 @@ class GitTreeSource:
         async with self._pool.checkout() as reader:
             return await reader.info(require_full_oid(oid))
 
+    async def derived[T](self, key: Hashable, build: Callable[[], T]) -> T:
+        """Memoize a fact derived from this pin's immutable objects.
+
+        *key* names the fact and every input that varies it: a tree OID, a path,
+        a filter. *build* is pure and runs off the event loop, once per key even
+        when requests race. The least recently used facts are dropped past
+        :data:`MAX_DERIVED_FACTS`. A failed build is not remembered.
+        """
+
+        if key in self._derived:
+            self._derived.move_to_end(key)
+            return cast("T", self._derived[key])
+        pending = self._deriving.get(key)
+        if pending is None:
+            pending = asyncio.ensure_future(asyncio.to_thread(build))
+            self._deriving[key] = pending
+            pending.add_done_callback(lambda _done: self._deriving.pop(key, None))
+        value = await asyncio.shield(pending)
+        if not self._pool_released:
+            self._derived[key] = value
+            self._derived.move_to_end(key)
+            while len(self._derived) > MAX_DERIVED_FACTS:
+                self._derived.popitem(last=False)
+        return cast("T", value)
+
     async def aclose(self) -> None:
         self._trees.clear()
         self._indexes.clear()
+        self._derived.clear()
         if self._pool_released:
             return
         self._pool_released = True
@@ -948,14 +1042,11 @@ class GitTreeSource:
         except GitOutputTooLargeError:
             self._indexes[tree_oid] = None
             return None
-        blobs: list[tuple[bytes, str]] = []
-        for _mode, kind, oid, name in _iter_ls_tree_records(payload):
-            if kind != "blob":
-                continue
-            blobs.append((name, oid))
-            if len(blobs) > INVENTORY_MAX_FILES:
-                self._indexes[tree_oid] = None
-                return None
+        # Parsing and sorting a whole tree is synchronous work, so it leaves the loop.
+        blobs = await asyncio.to_thread(_index_blob_records, payload)
+        if blobs is None:
+            self._indexes[tree_oid] = None
+            return None
         blob_oids = tuple(oid for _name, oid in blobs)
         sizes: dict[str, int] = {}
         if blob_oids:
@@ -964,7 +1055,9 @@ class GitTreeSource:
             for oid, info in infos.items():
                 if info is not None and info.kind == "blob":
                     sizes[oid] = info.size
-        index = GitBlobIndex(blobs=tuple(blobs), sizes=MappingProxyType(sizes))
+        index = await asyncio.to_thread(
+            GitBlobIndex, blobs=tuple(blobs), sizes=MappingProxyType(sizes)
+        )
         self._indexes[tree_oid] = index
         return index
 
@@ -1083,6 +1176,7 @@ __all__ = [
     "MAX_BATCH_READERS_PER_STORE",
     "GitBatchProtocolError",
     "GitBlobIndex",
+    "GitBlobTallies",
     "GitBlobTooLargeError",
     "GitObjectUnavailableError",
     "GitPath",
@@ -1091,6 +1185,7 @@ __all__ = [
     "GitTreeEntry",
     "GitTreeSource",
     "GitTreeTally",
+    "display_segment",
     "git_revision_subject",
     "read_store_blob",
     "require_full_oid",
