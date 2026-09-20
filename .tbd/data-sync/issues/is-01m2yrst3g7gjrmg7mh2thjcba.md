@@ -5,7 +5,7 @@ title: Review and reconcile complete PR 216 stack
 kind: task
 status: in_progress
 priority: 1
-version: 10
+version: 11
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
@@ -20,7 +20,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-09-20T06:42:03.501Z
-updated_at: 2026-09-20T07:08:53.747Z
+updated_at: 2026-09-20T07:10:08.297Z
 started_at: 2026-09-20T06:42:30.840Z
 ---
 Review coverage and all review channels for stack PRs 125, 134, 136, 139, 140, 217, 216; publish per-layer senior reviews; use address-pr-review for every finding; fix on owning layers, restack, verify and watch CI; publish disposition comments. Preserve existing unrelated workspace changes.
@@ -36,6 +36,22 @@ review/disposition comments, and beads for all work.
 The user then requested this handoff.
 Work is unfinished: known Git/browser findings still need implementation, not just final
 checks. Do not merge the stack to main.
+
+## Last-minute shared-workspace update
+
+While this handoff was being saved, additional uncommitted implementation changes
+appeared in `git/tree_source.py`, `git/content_routes.py`, `static/navigation.js`, and
+`builtin_plugins/markdown/links.js`. They were not authored or validated by this review
+pass. They appear to begin fixing R1–R4. Inspect the live diff and coordinate with any
+other active task before editing; do not overwrite them.
+The implementation-status statements below describe the preceding snapshot, not
+verification of these new edits.
+R5 still had no visible fix at the last inspection.
+More files may change concurrently.
+
+I also corrected my new symlink regression to call the real `/api/kpress/render`
+endpoint instead of nonexistent `/api/kpress`. The earlier four-failure run predates
+that correction. Re-run focused tests against the current implementation.
 
 ## Current checkout and local work
 
@@ -147,7 +163,7 @@ No additional confirmed cache defect so far.
   Root `../README.md` and nested `../../README.md` incorrectly resolve to in-tree
   content. Reject parent traversal when already at root.
   Failing endpoint checks were added to the existing symlink test for file/raw/KPress;
-  verify the KPress endpoint spelling as well.
+  the endpoint spelling was corrected during handoff (see above).
 - R3, High, `mb-z15f`: `_BatchObjectReader.info_many` and `_transact` do not enforce
   `BATCH_OBJECT_POLICY.timeout_s`. Wrap transactions in an async deadline, poison/reap
   on timeout, and raise `GitTimeoutError`. New tests stall `_read_header`, apply a short
