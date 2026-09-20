@@ -3,9 +3,9 @@ type: is
 id: is-01m2yrst3g7gjrmg7mh2thjcba
 title: Review and reconcile complete PR 216 stack
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 11
+version: 12
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
@@ -20,8 +20,12 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-09-20T06:42:03.501Z
-updated_at: 2026-09-20T07:10:08.297Z
+updated_at: 2026-09-20T07:32:28.428Z
 started_at: 2026-09-20T06:42:30.840Z
+closed_at: 2026-09-20T07:32:28.427Z
+close_reason: "Stack #218 reviewed, findings addressed on owning layers, remotes updated, CI green on every PR. Not merged."
+resolution: null
+duplicate_of: null
 ---
 Review coverage and all review channels for stack PRs 125, 134, 136, 139, 140, 217, 216; publish per-layer senior reviews; use address-pr-review for every finding; fix on owning layers, restack, verify and watch CI; publish disposition comments. Preserve existing unrelated workspace changes.
 
