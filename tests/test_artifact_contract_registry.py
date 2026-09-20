@@ -15,7 +15,6 @@ from metabrowser.plugin_loader.artifact_contracts import (
     CapabilitySet,
     build_contract_registry,
     build_resource_profile_registry,
-    contract_inventory,
     resolve_resource_profile,
     serialize_artifact,
     validate_artifact,
@@ -734,22 +733,6 @@ def test_artifact_parsing_uses_portable_yaml_and_preserves_body_bytes() -> None:
             expected_contract_id=_CONTRACT_ID,
             contracts=pure_yaml_registry,
         )
-
-
-def test_contract_inventory_identity_does_not_depend_on_declaring_provider() -> None:
-    contract = _contract()
-    before = build_contract_registry((_provider("hosted-review", contracts=(contract,)),))
-    after = build_contract_registry((_provider("provider-resources", contracts=(contract,)),))
-
-    assert contract_inventory(before) == contract_inventory(after)
-    assert "declaring_module" not in json.dumps(contract_inventory(before))
-    assert "fixture-dist" not in json.dumps(contract_inventory(before))
-    assert contract_inventory(before)[0]["schema_bytes_sha256"] == contract.schema_bytes_sha256
-    assert contract_inventory(before)[0]["corpus_payload_sha256"] == (
-        contract.corpus.payload_sha256
-    )
-    assert contract_inventory(before)[0]["corpus_record_selectors"] == ("fixture-record",)
-    assert contract_inventory(before)[0]["browser_consumed"] is False
 
 
 def test_contract_registry_rejects_invalid_corpus_record_selectors() -> None:

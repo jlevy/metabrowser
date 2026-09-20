@@ -9,6 +9,7 @@ to the selected mode are usage errors (exit 2).
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import re
@@ -83,6 +84,9 @@ def test_cli_help_shows_modes_and_examples() -> None:
     assert "--version" in output
     assert "metab ." in compact_output
     assert "metab --remote example-host --path /srv/shared-files" in compact_output
+    assert "--untrusted" in output
+    assert "--no-active-content" in output
+    assert "--allow-edits" in output
 
 
 def test_cli_version_uses_the_shared_display_line() -> None:
@@ -126,6 +130,7 @@ def test_cli_mode_flags_are_mutually_exclusive() -> None:
 @pytest.mark.parametrize(
     ("args", "rejected", "mode"),
     [
+        ([".", "--walk", "--untrusted"], "--untrusted", "--walk"),
         ([".", "--walk", "--port", "9000"], "--port", "--walk"),
         ([".", "--walk", "--no-open"], "--no-open", "--walk"),
         ([".", "--format", "json"], "--format", "serve mode"),
@@ -629,6 +634,107 @@ def test_nonserve_api_keeps_kpress_runtime_lazy(tmp_path: Path, monkeypatch) -> 
     assert result.exit_code == 0, result.exception
     assert kpress_adapter._kpress_runtime is sentinel
     prepare.assert_not_called()
+
+
+def test_cli_untrusted_publishes_conservative_capabilities(tmp_path: Path) -> None:
+    result = runner.invoke(_app, [str(tmp_path), "--api", "/api/capabilities", "--untrusted"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output[result.output.index("{") :])
+    assert payload["capabilities"] == {"active_content": False, "mutations": False}
+
+
+def _published_capabilities(result: _ResultWithOutput) -> dict[str, bool]:
+    """The capability block an ``--api /api/capabilities`` transcript printed."""
+    output = result.output
+    return json.loads(output[output.index("{") :])["capabilities"]
+
+
+def _repo_that_enables_itself(tmp_path: Path) -> Path:
+    """A cloned repository whose own `.env` asks for both capabilities."""
+    repo = tmp_path / "cloned-repo"
+    repo.mkdir()
+    (repo / ".env").write_text(
+        "METAB_ACTIVE_CONTENT=1\nMETAB_ALLOW_EDITS=1\nORDINARY_DOTENV_VAR=kept\n",
+        encoding="utf-8",
+    )
+    (repo / "page.html").write_text(
+        "<!doctype html><script>fetch('/api/file?path=.env')</script>\n",
+        encoding="utf-8",
+    )
+    return repo
+
+
+def _forget_trust_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Clear the names the fixture repository's `.env` names, reversibly.
+
+    ``delenv`` on a name that is already absent records no undo, so a value the
+    in-process bootstrap put in ``os.environ`` would outlive the test and
+    change what later tests resolve. Setting first and then deleting registers
+    one, so the name is absent during the run and absent again afterwards.
+    """
+    for name in (
+        "METAB_UNTRUSTED",
+        "METAB_ACTIVE_CONTENT",
+        "METAB_ALLOW_EDITS",
+        "ORDINARY_DOTENV_VAR",
+    ):
+        monkeypatch.setenv(name, "")
+        monkeypatch.delenv(name)
+
+
+def test_repo_local_dotenv_cannot_lift_the_untrusted_profile(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`cd cloned-repo && metab --untrusted .` stays conservative.
+
+    The dotenv chain walks up from the working directory, so browsing a
+    repository from inside it reaches that repository's `.env`. Honoring a
+    capability enable from there would let the content being sandboxed switch
+    its own sandbox off, on the published block and on the `/raw` policy that
+    is derived from it.
+    """
+    from starlette.testclient import TestClient
+
+    from metabrowser.server import app
+
+    repo = _repo_that_enables_itself(tmp_path)
+    monkeypatch.chdir(repo)
+    _forget_trust_env(monkeypatch)
+
+    result = runner.invoke(_app, [str(repo), "--api", "/api/capabilities", "--untrusted"])
+    assert result.exit_code == 0, result.output
+    assert _published_capabilities(result) == {"active_content": False, "mutations": False}
+
+    with TestClient(app) as client:
+        raw = client.get("/raw", params={"path": "page.html"})
+    assert raw.status_code == 200
+    csp = raw.headers["content-security-policy"]
+    assert csp == "sandbox allow-popups allow-forms allow-downloads"
+    assert "allow-scripts" not in csp
+
+
+def test_repo_local_dotenv_cannot_enable_capabilities_at_all(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Trust variables are honored from the real environment only.
+
+    Without `--untrusted` the same file still cannot turn mutations on, while
+    the same variable exported in the shell still can, and the file's ordinary
+    variables keep loading.
+    """
+    repo = _repo_that_enables_itself(tmp_path)
+    monkeypatch.chdir(repo)
+    _forget_trust_env(monkeypatch)
+
+    from_file = runner.invoke(_app, [str(repo), "--api", "/api/capabilities"])
+    assert from_file.exit_code == 0, from_file.output
+    assert _published_capabilities(from_file) == {"active_content": True, "mutations": False}
+    assert os.environ.get("ORDINARY_DOTENV_VAR") == "kept"
+
+    monkeypatch.setenv("METAB_ALLOW_EDITS", "1")
+    from_shell = runner.invoke(_app, [str(repo), "--api", "/api/capabilities"])
+    assert from_shell.exit_code == 0, from_shell.output
+    assert _published_capabilities(from_shell) == {"active_content": True, "mutations": True}
 
 
 def test_serve_reports_sigint_as_exit_130(tmp_path: Path) -> None:
