@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Callable
-from dataclasses import replace
+from dataclasses import asdict, replace
 from typing import Any, cast
 
 import pytest
@@ -220,10 +220,15 @@ def _profile() -> ResourceProfileSpec:
     )
 
 
-def _registries(contract: ArtifactContractSpec | None = None):
+def _registries(
+    contract: ArtifactContractSpec | None = None,
+    *,
+    provider_id: str = "org-example-widgets",
+    source_distribution: str = "example-widgets",
+):
     provider = LoadedCapabilitySet(
-        provider_id="org-example-widgets",
-        source_distribution="example-widgets",
+        provider_id=provider_id,
+        source_distribution=source_distribution,
         capabilities=CapabilitySet(
             artifact_contracts=(contract or _contract(),),
             resource_profiles=(_profile(),),
@@ -248,6 +253,27 @@ def test_installed_inventory_executes_structural_and_semantic_corpus_evidence() 
     assert inventory.resource_profiles[0].profile_id == _PROFILE_ID
     assert inventory.resource_profiles[0].collections[0].pagination == "forbidden"
     assert inventory.resource_profiles[0].collections[0].required_for_last_complete is True
+
+
+def test_installed_inventory_identity_does_not_depend_on_the_declaring_provider() -> None:
+    contract = _contract()
+    before = installed_artifact_inventory(
+        _registries(contract, provider_id="hosted-review", source_distribution="fixture-dist")
+    )
+    after = installed_artifact_inventory(
+        _registries(contract, provider_id="provider-resources", source_distribution="other-dist")
+    )
+
+    assert before == after
+    projected = json.dumps(asdict(before))
+    assert "hosted-review" not in projected
+    assert "fixture-dist" not in projected
+    assert "declaring_module" not in projected
+    entry = before.contracts[0]
+    assert entry.schema_bytes_sha256 == contract.schema_bytes_sha256
+    assert entry.corpus_payload_sha256 == contract.corpus.payload_sha256
+    assert entry.corpus_record_selectors == ("widget",)
+    assert entry.browser_consumed is True
 
 
 def test_installed_inventory_rejects_missing_and_zero_case_selectors() -> None:

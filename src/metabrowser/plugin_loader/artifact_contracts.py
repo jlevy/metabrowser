@@ -707,38 +707,6 @@ def serialize_artifact(
     return yaml_text.encode()
 
 
-def contract_inventory(contracts: ContractRegistry) -> tuple[dict[str, object], ...]:
-    """Return stable public metadata without provider or Python-module ownership."""
-    inventory: list[dict[str, object]] = []
-    for contract_id in sorted(contracts):
-        spec = contracts[contract_id].spec
-        inventory.append(
-            {
-                "contract_id": spec.contract_id,
-                "artifact_profile": spec.artifact_profile,
-                "envelope": spec.envelope,
-                "schema_bytes_sha256": spec.schema_bytes_sha256,
-                "schema_digest": spec.schema_digest,
-                "producer_ids": spec.producer_ids,
-                "consumer_ids": spec.consumer_ids,
-                "corpus_id": spec.corpus.corpus_id,
-                "corpus_media_type": spec.corpus.media_type,
-                "corpus_payload_sha256": spec.corpus.payload_sha256,
-                "corpus_record_selectors": spec.corpus_record_selectors,
-                "browser_consumed": spec.browser_consumed,
-                "browser_parser_id": (
-                    spec.browser_parser.parser_id if spec.browser_parser is not None else None
-                ),
-                "browser_parser_module_sha256": (
-                    spec.browser_parser.module_bytes_sha256
-                    if spec.browser_parser is not None
-                    else None
-                ),
-            }
-        )
-    return tuple(inventory)
-
-
 __all__ = [
     "ArtifactContractSpec",
     "ArtifactProfile",
@@ -754,7 +722,6 @@ __all__ = [
     "build_contract_registry",
     "build_installed_registries",
     "build_resource_profile_registry",
-    "contract_inventory",
     "get_installed_registries",
     "portable_serialization_values_equal",
     "reset_installed_registries_for_tests",
