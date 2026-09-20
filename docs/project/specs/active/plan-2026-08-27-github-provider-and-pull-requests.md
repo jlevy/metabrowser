@@ -1129,6 +1129,27 @@ recorded base silently.
   files or `.git`; bind one unambiguous choice, require an explicit choice for multiple
   GitHub remotes, and reuse the same provider repository across local clones and URL
   sources.
+- [ ] Implement
+  [explicit rebind](../../architecture/arch-hosted-review-model.md#explicit-rebind)
+  before the store persists any binding (`mb-s0gv`, `mb-i3xc`), so a repository that is
+  deleted and recreated, or a name registered again after a transfer, cannot leave its
+  source failing closed forever:
+  - report `rebind_required` with the bound and observed `RepositoryRef` and the
+    observing retrieval, refuse provider refresh for that source, and keep serving its
+    previous snapshots as stale;
+  - add `ProviderBindingRebind/v1` with its schema, corpus, inventory row, and a rebind
+    validator, leaving `validate_provider_binding_successor` strict;
+  - accept a rebind only from an explicit local-user action that names the expected
+    previous and successor `RepositoryRef`, with a fresh successful successor binding
+    retrieval, a previous-identity retrieval classified `explicitly_deleted`, `moved`,
+    or `unresolved`, and the same provider kind and instance, all validated under the
+    source-alias → provider/resource lock order;
+  - move and rewrite no snapshot, keep reader leases on previous snapshots valid, fail a
+    sync staged under the previous binding at publication, and apply the per-disposition
+    retention rule, listing detached repositories with their size in cache inspection;
+  - expose binding inspection and the rebind action as routes with `metab --api` goldens
+    for `bound`, `rebind_required`, `detached`, a successful rebind, and each typed
+    refusal, and test that opening or refreshing a source never rebinds it.
 - [ ] Publish immutable provider-resource snapshots through the `mb-i3xc` store kernel
   behind `ProviderResourceStorePort`: auth-context and query-key pointers, distinct
   transaction and collection states, atomic current plus `last-complete`, reader leases,

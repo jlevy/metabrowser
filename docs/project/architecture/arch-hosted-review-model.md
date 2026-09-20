@@ -475,6 +475,9 @@ one source ID to a different `RepositoryRef` — provider kind, instance, or opa
 fails closed as an explicit rebind conflict.
 Changing a repository owner or name updates `HostedRepository/v1`; changing the opaque
 repository ID is an explicit rebind conflict.
+The conflict is a recoverable state, not a permanent refusal:
+[Explicit Rebind](#explicit-rebind) specifies the only path that moves a source to
+another `RepositoryRef`.
 
 `validate_provider_binding_successor` accepts a republished binding only when its
 `source_id` and `repository` are unchanged.
@@ -594,6 +597,105 @@ permission failure, rate limiting, cross-context evidence, and a resource never 
 Corroborated absence is deferred until a later contract introduces a profile-defined
 exhaustive collection; a pull-request discovery index is filtered and cannot provide
 that proof.
+
+#### Explicit Rebind
+
+A binding is immutable, so a source whose hosted repository is replaced would otherwise
+fail closed forever.
+A GitHub repository that is deleted and recreated, or an old name that is registered
+again after a transfer, answers at the same URL with a new opaque provider ID. The
+source ID is unchanged, the observed `RepositoryRef` differs, and
+`validate_provider_binding_successor` correctly refuses the change.
+Explicit rebind is the one path that resolves that refusal.
+It is designed here and implemented with the Phase 3A binding and store kernel; nothing
+in Phase 0 implements it.
+
+**Detection.** Binding resolution that observes a different `RepositoryRef` for a bound
+source publishes nothing and reports a typed `rebind_required` state carrying the source
+ID, the bound `RepositoryRef`, the observed `RepositoryRef`, and the observing retrieval
+snapshot ID. While a source is in that state, provider refresh for it is refused with
+the same state. Snapshots already published under the bound repository stay readable and
+are labeled stale with the reason, so the conflict never blanks a view that was working.
+
+**Who may trigger it.** Only an explicit action by the local user.
+No adapter, refresh job, URL open, plugin, or provider-supplied content may rebind,
+because a new opaque ID at an old URL is also exactly what a re-registered namespace
+under a different owner looks like.
+The format can prove that identity changed; only the user can decide that the new
+repository is the one they mean.
+
+**Evidence.** A rebind is one transaction that validates, under the provider/resource
+lock, all of the following:
+
+- a fresh `succeeded` provider-binding `Retrieval/v1` whose target carries the same
+  `source_id` and the successor `RepositoryRef`, which becomes the successor binding’s
+  provenance;
+- a retrieval addressed to the previous repository by its opaque ID, whose outcome
+  classifies the previous identity as `explicitly_deleted` (a typed deletion event or
+  marker), `moved` (it still exists and its `HostedRepository/v1` successor now names
+  other coordinates), or `unresolved` (`not_found_under_context`, which by the tombstone
+  rule is not proof of deletion);
+- the user’s confirmation naming both the expected previous and the expected successor
+  `RepositoryRef`, applied as a compare-and-swap so a stale confirmation cannot bind a
+  third identity observed later; and
+- the same provider kind and instance on both sides.
+  A source that now answers from another provider or instance is detached and bound
+  afresh rather than rebound.
+
+All three dispositions permit the rebind, because providers rarely expose a deletion
+event for a repository and a rebind destroys nothing.
+A failed, rate-limited, or unauthorized retrieval on either side permits nothing: the
+transaction fails with the retrieval’s reason and the source stays `rebind_required`.
+
+**Record.** `ProviderBinding/v1` stays immutable per source and repository.
+The transaction publishes an append-only `ProviderBindingRebind/v1` record holding the
+source ID, previous and successor `RepositoryRef`, the previous-identity disposition,
+both retrieval snapshot IDs, and the local confirmation time, then replaces the source’s
+binding file by compare-and-swap under the source-alias lock followed by the
+provider/resource lock.
+`validate_provider_binding_successor` keeps refusing a changed repository; a separate
+rebind validator accepts the change only when a resolved rebind record links exactly
+those two bindings. The new contract arrives with its schema, corpus, inventory row, and
+parity evidence like any other registered contract.
+
+**Cached state bound to the previous repository.** Provider state is keyed by hosted
+repository identity, not by source, so a rebind moves and rewrites nothing.
+
+- The previous repository’s objects, manifests, and pointers stay where they are, and
+  the successor starts empty.
+  No snapshot is re-parented: a `ChangeRequest/v1` ID embeds its repository’s opaque ID,
+  so a previous change request cannot be read as the successor’s.
+- Reader leases on previous snapshots stay valid until released.
+  A session already serving a previous bundle keeps serving it, labeled superseded, and
+  new resolution of the source uses the successor binding.
+  The rebind takes no exclusive generation lock, so it neither waits on nor breaks a
+  reader.
+- A sync transaction staged under the previous binding fails at publication, because
+  publication revalidates the source binding under lock; it moves no pointer.
+- The repository store is untouched.
+  Private refs and objects that previous snapshots reference stay reachable for as long
+  as those snapshots are retained, and selected-ref acquisition for the successor
+  verifies full object IDs as it always does.
+- Retention follows the disposition.
+  After `moved`, the previous repository is still live and any other source bound to it
+  is unaffected. After `explicitly_deleted`, a previous repository that no source still
+  binds becomes eligible for ordinary reachability reclamation once its bounded
+  diagnostic retention passes.
+  After `unresolved`, it is retained as a detached repository and reclaimed only by
+  explicit purge, because absence under one context is not deletion.
+  Cache inspection lists every detached repository with its size so that retention is
+  visible rather than silent, and archival pins hold in every case.
+
+**Command line.** The surface is routes, so `metab --api` reaches it by construction and
+each response has a golden.
+A binding inspection route lists every source binding with state `bound`,
+`rebind_required`, or `detached`, and for `rebind_required` both `RepositoryRef` values,
+the observing retrieval, and its time.
+A rebind action route takes the source ID and the expected previous and successor
+`RepositoryRef` as a `--data` body and returns the rebind record or a typed refusal:
+`no_conflict`, `expectation_mismatch`, `cross_instance_refused`, or the failed
+retrieval’s reason. The hosted-review view shows the same recovery state and invokes the
+same route; neither surface ever rebinds as a side effect of opening or refreshing.
 
 ## Activity Is a Projection, Not a Second History Authority
 
