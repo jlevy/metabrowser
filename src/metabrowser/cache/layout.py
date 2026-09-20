@@ -70,7 +70,24 @@ type Migration = Callable[[Path], None]
 # The migration from each historical format to the next one in FORMAT_HISTORY.
 MIGRATIONS: Final[Mapping[str, Migration]] = {}
 
-_MAX_CONFIG_BYTES: Final = 256 * 1024
+# Every /api/cache/layout request reads and validates the whole config on a shared
+# thread, so this bound is a claim about that cost. Measured on macOS arm64 and Python
+# 3.14 by filling config.yml to each candidate bound and timing the route, five rounds
+# each, on a machine also running unrelated work; maxima ran about 20% above the medians
+# below:
+#
+# - Unknown settings, the most expensive shape: 25 ms at 4 KiB, 87 ms at 16 KiB, 181 ms
+#   at 32 KiB, 341 ms at 64 KiB, and 1.33 s at 256 KiB. Cost is linear in the file, about
+#   5 ms per KiB, almost all of it portable YAML parsing.
+# - Upgrade entries: 22 ms, 70 ms, 136 ms, 274 ms, and 1.06 s at those sizes.
+# - Deeply nested flow sequences are refused by the parser at about 220 ms whatever the
+#   bound is, so no bound governs that shape.
+#
+# 16 KiB puts the worst shape beside what an ordinary cache page costs, which the
+# measurements above DEFAULT_PAGE_LIMIT in projection.py record. It holds about 300
+# upgrade entries beside the 179-byte config this release writes, far more than a home
+# accumulates, and no released Metabrowser has written a larger one.
+_MAX_CONFIG_BYTES: Final = 16 * 1024
 _CONFIG_METADATA: Final = {
     "contract": CONFIG_CONTRACT_ID,
     "envelope": "config",

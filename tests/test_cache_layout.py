@@ -520,19 +520,35 @@ def test_an_unreadable_config_is_refused_with_a_bounded_value_free_message(
     cache_home: Path,
 ) -> None:
     secret = "ghp-examplesecrettokenvalue"
-    upgrades = "".join(f'    - {{version: "{secret}", at: "{secret}"}}\n' for _ in range(500))
-    _write_config(
-        cache_home,
-        f'config:\n  format: f01\n  written_by: "{secret}"\n  upgrades:\n{upgrades}',
-    )
+    # Far more failures than are reported, and still inside the config bound, so this is
+    # the bounded-reasons refusal rather than the one for an oversized record.
+    upgrades = "".join(f'    - {{version: "{secret}", at: "{secret}"}}\n' for _ in range(150))
+    body = f'config:\n  format: f01\n  written_by: "{secret}"\n  upgrades:\n{upgrades}'
+    _write_config(cache_home, body)
 
     with pytest.raises(LayoutError) as refused:
         migrate_layout(cache_home, version="0.11.0")
 
     message = str(refused.value)
+    assert "does not satisfy its contract" in message
     assert len(message) <= 4096
     assert secret not in message
     assert str(cache_home) not in message
+
+
+@posix_only
+def test_a_config_past_its_bound_is_refused_rather_than_parsed(cache_home: Path) -> None:
+    """The bound is a claim about parsing cost, so it holds before the parser runs."""
+
+    settings = "".join(f"  k{index:06d}: v\n" for index in range(3000))
+    _write_config(cache_home, f"config:\n  format: f01\n  written_by: 0.11.0\n{settings}")
+    assert (cache_home / "config.yml").stat().st_size > layout_module._MAX_CONFIG_BYTES
+    before = _snapshot(cache_home)
+
+    with pytest.raises(LayoutError, match="larger than any valid record"):
+        migrate_layout(cache_home, version="0.11.0")
+
+    assert _snapshot(cache_home) == before
 
 
 @posix_only
