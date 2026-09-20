@@ -735,6 +735,55 @@ def test_unrecognized_durable_cache_is_refused_without_any_mutation(
     assert data.read_bytes() == b"unrecognized durable data"
 
 
+def _durable_directory_is_a_file(home: Path) -> None:
+    (home / "cache/sources").rmdir()
+    write_private_file_atomic(home, "cache/sources", b"not a directory")
+
+
+def _durable_directory_is_a_link(home: Path) -> None:
+    outside = home.parent / "elsewhere"
+    outside.mkdir(mode=0o700)
+    (outside / "an-entry").write_bytes(b"data from outside the home")
+    (home / "cache/sources").rmdir()
+    os.symlink(outside, home / "cache/sources")
+
+
+def _durable_directory_denies_its_owner(home: Path) -> None:
+    (home / "cache/sources").chmod(0o000)
+
+
+@posix_only
+@pytest.mark.parametrize("prepare", [open_cache, migrate_layout])
+@pytest.mark.parametrize(
+    "damage",
+    [
+        _durable_directory_is_a_file,
+        _durable_directory_is_a_link,
+        _durable_directory_denies_its_owner,
+    ],
+    ids=["regular-file", "symlink", "owner-denied"],
+)
+def test_a_durable_directory_that_is_not_one_is_refused_without_naming_a_path(
+    tmp_path: Path, prepare: Callable[..., object], damage: Callable[[Path], None]
+) -> None:
+    """Looking for entries must not follow a link out of the home or leak where it looked."""
+
+    home = tmp_path / "home"
+    home_module.ensure_private_directory(home, "cache/sources")
+    damage(home)
+    before = _snapshot(home)
+    try:
+        with pytest.raises(PrivateStorageError) as refused:
+            prepare(home, version="0.11.0")
+
+        assert str(home) not in str(refused.value)
+        assert str(tmp_path) not in str(refused.value)
+        assert _snapshot(home) == before
+    finally:
+        # Restore what pytest needs to delete the temporary directory.
+        os.chmod(home / "cache/sources", 0o700, follow_symlinks=False)
+
+
 def _symlinked_config_beside_durable_entries(home: Path) -> None:
     """A dotfiles-style ``config.yml`` link, beside entries no layout describes."""
 

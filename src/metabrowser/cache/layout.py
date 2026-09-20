@@ -15,7 +15,6 @@ A config Metabrowser cannot read is refused and left as it is, never replaced.
 
 from __future__ import annotations
 
-import os
 import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -35,6 +34,7 @@ from metabrowser.cache.atomic import (
     write_record_atomic,
 )
 from metabrowser.cache.contracts import parse_application_config
+from metabrowser.cache.listing import ListingLimitError, list_private_directory
 from metabrowser.cache.locks import application_home_lock
 from metabrowser.cache.paths import (
     CONFIG_RECORD,
@@ -256,7 +256,11 @@ def _has_durable_entries(home: Path) -> bool:
     """Whether the cache holds data a layout would have to describe.
 
     Staging and trash are disposable in every format, so a crash that left them behind
-    before the first layout was published does not block creating it.
+    before the first layout was published does not block creating it. Each directory is
+    listed through the verified, no-follow path the read routes use, so a link where one
+    of them belongs is refused with a typed, path-free
+    :class:`~metabrowser.home.PrivateStorageError` instead of being followed out of the
+    home. ``keep`` leaves an over-shared directory to the repairing writes that follow.
     """
 
     for directory in (
@@ -267,11 +271,12 @@ def _has_durable_entries(home: Path) -> bool:
         PROVIDER_REPOSITORIES,
     ):
         try:
-            with os.scandir(home / directory) as entries:
-                if next(entries, None) is not None:
-                    return True
+            if list_private_directory(home, directory, max_entries=0, shared="keep"):
+                return True
         except FileNotFoundError:
             continue
+        except ListingLimitError:
+            return True
     return False
 
 
