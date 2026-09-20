@@ -168,6 +168,29 @@ def test_racing_acquisitions_return_the_selected_stores_revision(
     assert asyncio.run(acquire_file_source(source, home=home)) == winner
 
 
+@posix_only
+def test_an_ordinary_non_bare_clone_acquires_through_its_own_head(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A clone also advertises ``refs/remotes/origin/HEAD``; only ``HEAD`` names the branch."""
+    _allow_installed_git(monkeypatch)
+    upstream = _origin(tmp_path, allow_filter=False)
+    clone = tmp_path / "clone"
+    _git(tmp_path, "clone", "-q", "--template=", "--", str(upstream), str(clone))
+    _git(clone, "checkout", "-q", "-b", "local-work")
+    advertised = subprocess.run(
+        ["git", "ls-remote", "--symref", "--", str(clone), "HEAD"],
+        check=True,
+        capture_output=True,
+        env=_git_env(clone),
+        text=True,
+    ).stdout
+    assert "ref: refs/remotes/origin/topic\trefs/remotes/origin/HEAD" in advertised
+    published = asyncio.run(acquire_file_source(_file_source(clone), home=tmp_path / "home"))
+    assert published.default_remote_ref == "refs/remotes/origin/local-work"
+    _git(published.git_dir, "cat-file", "-e", published.default_revision)
+
+
 def _inodes(path: Path) -> set[int]:
     return {entry.stat().st_ino for entry in path.rglob("*") if entry.is_file()}
 

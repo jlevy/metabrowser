@@ -180,15 +180,18 @@ async def _run(
 
 
 def _parse_symref_head(stdout: bytes) -> tuple[str | None, str]:
+    # The ``HEAD`` pattern also matches any ref whose last component is HEAD, such as
+    # a clone's ``refs/remotes/origin/HEAD``. Only the ref named exactly HEAD counts.
     ref: str | None = None
     oid: str | None = None
     for line in stdout.decode("ascii", errors="replace").splitlines():
-        if line.startswith("ref:"):
-            payload, _, _name = line.partition("\t")
-            ref = payload.removeprefix("ref:").strip()
+        payload, _, name = line.partition("\t")
+        if name != "HEAD":
             continue
-        if line.endswith("\tHEAD"):
-            oid = line.split("\t", 1)[0].strip()
+        if payload.startswith("ref:"):
+            ref = payload.removeprefix("ref:").strip()
+        else:
+            oid = payload.strip()
     if oid is None or not is_full_revision(oid):
         raise RemoteUnavailableError("the source did not advertise HEAD")
     return ref, oid
