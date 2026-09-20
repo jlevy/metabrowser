@@ -109,6 +109,10 @@ def _inspect_wheel(wheel: Path) -> None:
             "metabrowser/data/hosted-review-format/provider-storage-conformance.json",
             "metabrowser/data/hosted-review-format/repository-activity-conformance.json",
             "metabrowser/data/hosted-review-format/review-records-conformance.json",
+            "metabrowser/builtin_plugins/html/manifest.toml",
+            "metabrowser/builtin_plugins/html/detect.py",
+            "metabrowser/builtin_plugins/html/index.js",
+            "metabrowser/builtin_plugins/html/styles.css",
             "metabrowser/data/file-rollup-format/empty-file-rollup.json",
             "metabrowser/data/file-rollup-format/file-rollup-conformance.json",
             "metabrowser/data/file-rollup-format/file-rollup-conformance.schema.json",
@@ -214,8 +218,8 @@ def _smoke_install(wheel: Path) -> None:
             "registry = load_file_type_registry(); "
             "plugins = discover_plugins(); "
             "names = {plugin.name for plugin in plugins.plugins}; "
-            "required = {'agent-log', 'binary', 'diff', 'folder', 'image', 'markdown', "
-            "'structured', 'text', 'unknown-jsonl'}; "
+            "required = {'agent-log', 'binary', 'diff', 'folder', 'html', 'image', "
+            "'markdown', 'structured', 'text', 'unknown-jsonl'}; "
             "rendered = render_kpress_view(source_text='# Wheel smoke\\n', "
             "source_path='smoke.md', kind='markdown', view='rendered', ext='.md', "
             "mtime_hash='wheel-smoke', size=14); "
@@ -229,6 +233,9 @@ def _smoke_install(wheel: Path) -> None:
             "assert files('metabrowser').joinpath('builtin_plugins/diff/diff-view.js').is_file(); "
             "assert files('metabrowser').joinpath('builtin_plugins/image/index.js').is_file(); "
             "assert files('metabrowser').joinpath('builtin_plugins/image/styles.css').is_file(); "
+            "assert files('metabrowser').joinpath('builtin_plugins/html/index.js').is_file(); "
+            "assert files('metabrowser').joinpath('builtin_plugins/html/styles.css').is_file(); "
+            "assert files('metabrowser').joinpath('builtin_plugins/html/detect.py').is_file(); "
             "assert files('metabrowser').joinpath("
             "'builtin_plugins/markdown/dom-traversal.js').is_file(); "
             "assert files('metabrowser').joinpath("

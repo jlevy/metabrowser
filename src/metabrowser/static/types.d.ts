@@ -2326,6 +2326,10 @@ declare global {
     /** Container kinds by extension; see arch-nav-containers.md. */
     METABROWSER_CONTAINER_EXTS?: Record<string, { kind: string; plugin: string; children: string }>;
     METABROWSER_SETTINGS?: {
+      CAPABILITIES?: {
+        active_content: boolean;
+        mutations: boolean;
+      };
       DOC_MAX_CHARS_DEFAULT?: number;
       /** Each family's distribution key with its color on each theme. */
       DISTRIBUTION_COLORS?: Array<{ key: string; light: string; dark: string }>;

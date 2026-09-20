@@ -1,10 +1,15 @@
 # Feature: Full-Page HTML Rendering and an Explicit Trust Model
 
-**Date:** 2026-08-06
+**Date:** 2026-08-06 (refreshed 2026-09-19)
 
 **Author:** Metabrowser maintainers
 
-**Status:** Draft
+**Status:** Implemented on draft [#209](https://github.com/jlevy/metabrowser/pull/209),
+based on `main` and not part of GitHub stack
+[#218](https://github.com/jlevy/metabrowser/stack/218). `/raw` sandbox, `/api`
+same-origin proof, the `--untrusted` capability profile, path-shaped `/raw/{path}`, and
+the html preview kind are on that branch, not on `main`. Publication review remains
+`mb-d658`.
 
 ## Overview
 
@@ -24,10 +29,11 @@ rendering can default to on.
 Answer it by convenience — an iframe pointed at the existing `/raw` endpoint — and
 browsing a directory becomes equivalent to running its contents.
 
-This plan also closes two existing holes: `/raw` already serves any in-root `.html` file
-as `text/html` on the application origin with no sandbox or constraining headers, and
-`/api` accepts cross-site fire-and-forget requests, including one that writes beneath
-the served root.
+This plan also closes two holes: `/raw` served any in-root `.html` file as `text/html`
+on the application origin with no sandbox, and `/api` accepted cross-site
+fire-and-forget requests, including one that writes beneath the served root.
+The raw sandbox, the `/api` origin check, the `--untrusted` capability profile,
+path-shaped `/raw/{path}`, and the html preview kind have landed.
 
 ## Goals
 
@@ -103,10 +109,11 @@ No CSP is emitted anywhere; it was deferred deliberately because a nominal stric
 would break the shell’s remaining inline handlers.
 
 There is no per-root configuration object at all — the root is a single mutable
-module-level `ROOT_DIR` — and no capability flags.
-The mutation gate specified for trusted-local editing (`--allow-edits`,
-`METAB_ALLOW_EDITS=1`, a `CAPABILITIES` block in `client_settings_dict()`) is designed
-but not yet implemented.
+module-level `ROOT_DIR`. The content-trust capability block is resolved at startup
+(`--untrusted`, `--no-active-content`, `--allow-edits`, and their `METAB_*` environment
+variables), published through `client_settings_dict()` as `CAPABILITIES`, and reported
+by `GET /api/capabilities`. `--allow-edits` publishes `mutations: true`;
+`POST /api/mutate` does not exist yet.
 
 ### The gap
 
@@ -334,8 +341,11 @@ The server’s headers hold even if a future renderer forgets the attribute; the
 attribute holds even if a response escapes the header path; and the API’s same-origin
 check holds even if both fail.
 
-One implementation note: the headers must be applied on all three branches of
-`raw_file`, including the gzip passthrough, so a `.html.gz` is not an escape hatch.
+One implementation note: the headers are set by a path-scoped layer over `/raw` and
+`/raw/{path}`, not by the handler, so every status and every return path carries them:
+the gzip passthrough, range errors, a refused method, a handler failure, and any return
+path a later source adds.
+A `.html.gz` is not an escape hatch, and neither is a new branch of `raw_file`.
 
 `frame-ancestors` is deliberately absent, and an earlier draft of this design got it
 wrong. `frame-ancestors 'self'` looks like an obvious hardening, but the directive
@@ -390,6 +400,12 @@ conservative value. It is the answer to “I am about to browse a corpus I did n
 and it is one flag rather than a list to remember.
 Individual flags override it, so `--untrusted --allow-edits` is expressible and means
 what it says.
+A flag is a decision typed at the call site, so it beats the environment in
+both directions: no environment variable lifts an explicit `--untrusted`. The capability
+variables and `METABROWSER_ALLOWED_HOSTS` are read from the process environment only and
+never from a dotenv file, because the dotenv chain walks up from the working directory
+and browsing a cloned repository from inside it would otherwise let the browsed content
+choose its own sandbox.
 
 The defaults are deliberately asymmetric, and the asymmetry is the point rather than an
 inconsistency. `mutations` defaults off because it changes the user’s disk and no
@@ -516,35 +532,36 @@ Independently valuable and shippable without any UI change.
 Both halves of the boundary land together: the sandbox stops reading, the same-origin
 check stops invoking.
 
-- [ ] Add a shared response-header builder for `raw_file` covering all three branches
-- [ ] Send the unconditional CSP `sandbox` header and `nosniff` on every raw response
-- [ ] Require same-origin proof on `/api/*` in `_HostValidationMiddleware`, rejecting
+- [x] Set the raw trust headers from a path-scoped layer over `/raw` and `/raw/{path}`,
+  so no return path of `raw_file` can miss them
+- [x] Send the unconditional CSP `sandbox` header and `nosniff` on every raw response
+- [x] Require same-origin proof on `/api/*` in `_HostValidationMiddleware`, rejecting
   `Origin: null`
-- [ ] Add regression tests for the gzip passthrough, `.svg`, and cross-origin `/api`
+- [x] Add regression tests for the gzip passthrough, `.svg`, and cross-origin `/api`
   rejection
-- [ ] Update the SECURITY.md not-yet-enforced list to enforced guarantees
+- [x] Update the SECURITY.md not-yet-enforced list to enforced guarantees
 
 ### Phase 2: Capability plumbing
 
-- [ ] Add the capability object, resolved before application construction
-- [ ] Add `--no-active-content`, `--untrusted`, and their environment variables
-- [ ] Publish the block through `client_settings_dict()` and `/api/capabilities`
-- [ ] Drop `allow-scripts` from the raw sandbox directive when `active_content` is off
-- [ ] Document the flags in SECURITY.md and the README warning block
+- [x] Add the capability object, resolved before application construction
+- [x] Add `--no-active-content`, `--untrusted`, and their environment variables
+- [x] Publish the block through `client_settings_dict()` and `/api/capabilities`
+- [x] Drop `allow-scripts` from the raw sandbox directive when `active_content` is off
+- [x] Document the flags in SECURITY.md and the README warning block
 
 ### Phase 3: Path-shaped raw route
 
-- [ ] Add `GET /raw/{path:path}` sharing one resolution and response path with `/raw`
-- [ ] Cover traversal, symlink escape, and percent-encoding equivalence between routes
+- [x] Add `GET /raw/{path:path}` sharing one resolution and response path with `/raw`
+- [x] Cover traversal, symlink escape, and percent-encoding equivalence between routes
 
 ### Phase 4: The HTML kind and preview
 
-- [ ] Add the bounded full-page sniff with a documented byte budget
-- [ ] Add the built-in `html` kind with `preview` and `source` views and sniff-chosen
+- [x] Add the bounded full-page sniff with a documented byte budget
+- [x] Add the built-in `html` kind with `preview` and `source` views and sniff-chosen
   default
-- [ ] Add the preview renderer with the sandbox attribute set and a disposal path
-- [ ] Suppress the preview view entirely when `active_content` is off
-- [ ] Document the preview, its containment envelope, and the invariant in SECURITY.md
+- [x] Add the preview renderer with the sandbox attribute set and a disposal path
+- [x] Suppress the preview view entirely when `active_content` is off
+- [x] Document the preview, its containment envelope, and the invariant in SECURITY.md
   as shipped guarantees
 
 ## Testing Strategy
@@ -554,8 +571,9 @@ cheap to test directly and are the kind of property that regresses silently.
 
 - Assert the exact `sandbox` token set on the rendered iframe, and specifically assert
   that `allow-same-origin` is absent — the single most important invariant here
-- Assert the raw response headers are present and identical on all three branches,
-  including the gzip passthrough, and on both route shapes
+- Assert the raw response headers on the wire for every status the route can produce,
+  including the gzip passthrough, range errors, a refused method, and a handler failure,
+  on both route shapes, and assert that a new return path cannot miss them
 - Assert `/api` routes reject `Origin: null` and foreign origins, and accept requests
   bearing the application origin or no `Origin` at all (`curl` compatibility)
 - Simulate the CSRF shape directly: a `POST` with a form content type and `Origin: null`

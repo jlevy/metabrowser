@@ -54,6 +54,7 @@ Built-in kinds, as registered by the manifests in `src/metabrowser/builtin_plugi
 | --- | --- | --- | --- |
 | `folder` | Directories | Overview, Treemap | Folder envelope + [File Rollup Format](file-rollup-format/file-rollup-format.md) |
 | `markdown` | `.md` | Document, Source | File envelope; KPress render |
+| `html` | `.html`, `.htm` | Preview, Source | File envelope; sandboxed raw document |
 | `text` | Text files | Source | File envelope |
 | `structured` | `.json`, `.yaml`, `.yml` | Tree, Source | File envelope, parsed hook |
 | `diff` | `.patch`, `.diff` | Diff | [File Diff Format](file-diff-format/file-diff-format.md) |
@@ -79,11 +80,12 @@ synthetic filesystem kinds.
 
 ### Shared Source rendering
 
-`text`, `structured`, and `markdown` all expose raw source from the file envelope.
-Generic text and structured views use the SDK’s shared Source renderer; Markdown keeps
-its custom frontmatter split but follows the same language and size decisions.
-A source view never embeds another kind’s renderer, because nondefault plugins mount on
-demand and may not be loaded.
+`text`, `structured`, `markdown`, and `html` all expose raw source from the file
+envelope. Generic text and structured views use the SDK’s shared Source renderer;
+Markdown keeps its custom frontmatter split but follows the same language and size
+decisions.
+A source view never embeds another kind’s renderer, because nondefault plugins
+mount on demand and may not be loaded.
 
 The server owns the logical-extension and basename grammar maps plus the syntax byte
 bound and injects them with the file envelope settings.
@@ -235,7 +237,7 @@ or kind arrives with transcript evidence or the build fails.
 | `/view` | covered | `--show PATH`, `--show /view/...` | `cli-show.tryscript.md` |
 | `/commit` | covered | `--show /commit/<rev>[/<inner>]` | `cli-api-git.tryscript.md` |
 | `/api/events` | exempt | — | streaming; the response never terminates, so there is no envelope to pin |
-| `/raw` | exempt | — | asset serving; the response is the file’s bytes, covered by `tests/test_raw_passthrough.py` |
+| `/raw` | exempt | — | asset serving; the query form and `/raw/{path}` share one resolver and send the file’s bytes plus sandbox headers, covered by `tests/test_raw_passthrough.py`, `tests/test_content_trust.py`, and `tests/test_raw_path_route.py` |
 | `/_debug/tasks` | exempt | — | opt-in diagnostic, not a surface the browser reads |
 | `/_debug/inventory` | exempt | — | opt-in diagnostic; its work counters carry wall and CPU times, which no transcript can pin. Its payload shape is asserted by `tests/test_inventory_debug_route.py`, because the performance harness and `devtools/bench_serving.py` both parse it |
 | `/api/stream` | exempt | — | streaming; the response never terminates, so there is no envelope to pin |
@@ -340,6 +342,7 @@ SSE transport whose emitted snapshot is already owned by its data routes.
 | `markdown.transclusion-lifecycle` | interaction | `builtin_plugins/markdown/transclusion.js#createTransclusionBudget`, `builtin_plugins/markdown/transclusion.js#mountWikiTransclusion` | `/api/catalog`, `/api/file`, `/api/kpress/render` | `node tests/dom/markdown-functional-session.js` | `cli-ui-markdown-functional.tryscript.md` |
 | `markdown.aggregate-root-budget` | interaction | `builtin_plugins/markdown/reconciliation-coordinator.js#createMarkdownEnhancementBudget`, `builtin_plugins/markdown/dom-traversal.js#matchingDescendants`, `builtin_plugins/markdown/link-enhancer.js#enhanceRenderedLinks` | `/api/catalog`, `/api/kpress/render` | `node tests/dom/markdown-functional-session.js` | `cli-ui-markdown-functional.tryscript.md` |
 | `image.raw-preview` | interaction | `static/view-composition.js#createLifecycle`, `builtin_plugins/image/index.js#renderImage` | `/api/file` | `node tests/dom/image-preview-session.js` | `cli-ui-image-preview.tryscript.md` |
+| `html.sandboxed-preview` | interaction | `static/view-composition.js#createLifecycle`, `builtin_plugins/html/index.js#renderPreview` | `/api/file` | `node tests/dom/html-preview-session.js` | `cli-ui-html-preview.tryscript.md` |
 | `document.reading-width` | interaction | `static/document-width.js#apply` | `local-only` | `node tests/dom/document-width-session.js` | `cli-ui-document-width.tryscript.md` |
 | `navigation.filter-layout` | paint-exempt | `static/styles.css` | `local-only` | — | CSS geometry and disclosure motion require rendered layout; focused selectors and accessibility state are pinned in `tests/test_browser_filter_ui.py` and `tests/test_tree_keyboard_integration.py` |
 
