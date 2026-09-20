@@ -61,9 +61,9 @@ from types import MappingProxyType
 from typing import Any, Final, Literal, cast
 
 from metabrowser.git.process import (
-    ACQUISITION_POLICY,
     BATCH_OBJECT_POLICY,
     GIT_DISABLE_MAILMAP_ARGS,
+    STORE_READ_POLICY,
     GitCommandError,
     GitCommandTarget,
     GitError,
@@ -95,6 +95,14 @@ _BATCH_ARGS: Final[tuple[str, ...]] = (
 # docs/project/architecture/arch-repository-sources-and-provider-mirrors.md.
 MAX_BATCH_READERS_PER_STORE: Final[int] = 4
 _STDERR_MAX_BYTES: Final[int] = 64 * 1024
+# ``info`` commands per flush. Each chunk gets the batch deadline to itself, so
+# the deadline bounds a stalled actor rather than the size of the tree. Measured
+# over 100,000 packed blobs: 4 to 8 us per object, and chunking at this size
+# adds about 0.2 s to the whole read. The slowest rate measured in review, a
+# cold loose-object store at 160 us per object, puts one chunk at 1.6 s, a
+# ninth of the 15 s deadline. A chunk also caps the commands buffered before a
+# flush at under 0.5 MiB.
+INFO_MANY_CHUNK_OBJECTS: Final[int] = 10_000
 _FULL_OID: Final = re.compile(r"\b(?:[0-9a-f]{64}|[0-9a-f]{40})\b")
 # Facts memoized per pinned source: index chrome, index facts, extensions, the
 # catalog body, and one entry per recently used filter or rollup shape. Each is
@@ -439,7 +447,7 @@ class _BatchObjectReader:
         return result
 
     async def info_many(self, oids: tuple[str, ...]) -> dict[str, _ObjectInfo | None]:
-        """One flush for many ``info`` commands. A missing object is ``None``."""
+        """``info`` for many objects, one flush per chunk. A missing object is ``None``."""
 
         unique: list[str] = []
         seen: set[str] = set()
@@ -448,11 +456,18 @@ class _BatchObjectReader:
             if oid not in seen:
                 seen.add(oid)
                 unique.append(oid)
-        if not unique:
-            return {}
+        found: dict[str, _ObjectInfo | None] = {}
+        for start in range(0, len(unique), INFO_MANY_CHUNK_OBJECTS):
+            chunk = tuple(unique[start : start + INFO_MANY_CHUNK_OBJECTS])
+            found.update(await self._info_chunk(chunk))
+        return found
+
+    async def _info_chunk(self, oids: tuple[str, ...]) -> dict[str, _ObjectInfo | None]:
+        """One flush under one deadline, so a whole tree never shares a fixed budget."""
+
         try:
             return await asyncio.wait_for(
-                self._info_many_inner(tuple(unique)),
+                self._info_many_inner(oids),
                 timeout=BATCH_OBJECT_POLICY.timeout_s,
             )
         except TimeoutError as exc:
@@ -1040,7 +1055,7 @@ class GitTreeSource:
             payload = await run_git(
                 [*_MAILMAP_ARGS, "ls-tree", "-r", "-z", "--full-tree", tree_oid],
                 target=self._target,
-                policy=ACQUISITION_POLICY,
+                policy=STORE_READ_POLICY,
             )
         except GitOutputTooLargeError:
             self._indexes[tree_oid] = None
@@ -1169,7 +1184,7 @@ async def git_revision_subject(
     raw = await run_git(
         [*_MAILMAP_ARGS, "rev-parse", "--verify", "--end-of-options", f"{oid}^{{tree}}"],
         target=target,
-        policy=ACQUISITION_POLICY,
+        policy=STORE_READ_POLICY,
     )
     tree_oid = require_full_oid(raw.decode("ascii", errors="replace").strip())
     source = GitTreeSource(target=target, root_tree_oid=tree_oid, max_blob_bytes=max_blob_bytes)

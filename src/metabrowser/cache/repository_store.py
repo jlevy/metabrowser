@@ -23,6 +23,7 @@ from metabrowser.cache.locks import (
 from metabrowser.cache.paths import store_directory
 from metabrowser.git.process import (
     ACQUISITION_POLICY,
+    STORE_READ_POLICY,
     GitCommandError,
     GitUnavailableError,
     RepositoryStoreTarget,
@@ -73,7 +74,7 @@ async def _require_commit(target: RepositoryStoreTarget, oid: str) -> None:
             await run_git(
                 [*_MAILMAP_ARGS, "cat-file", "-t", oid],
                 target=target,
-                policy=ACQUISITION_POLICY,
+                policy=STORE_READ_POLICY,
             )
         ).strip()
     except GitCommandError as exc:

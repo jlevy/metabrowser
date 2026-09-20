@@ -282,6 +282,12 @@ Content source:
   missing object, and any other Git failure is `git_failed` 500. No envelope carries Git
   output, so none carries a local path.
 
+- Every request-path read of a published store (tree listing, history, commit detail,
+  diff) runs under one store-read policy: isolated configuration, no lazy fetch, and the
+  15-second request deadline instead of the 15-minute acquisition deadline.
+  A store target read without a named policy gets the same policy, and whole-tree blob
+  sizes are read in chunks that each get the batch deadline.
+
 ## 0.10.0
 
 Plugin SDK:

@@ -143,6 +143,21 @@ FETCH_POLICY: Final[GitProcessPolicy] = GitProcessPolicy(
     ssh_batch=True,
     extra_env={"GCM_INTERACTIVE": "never", "LC_ALL": "C"},
 )
+# Request-path reads of a published store: ``ls-tree``, ``rev-parse``, ``log``,
+# ``rev-list``, ``show``, ``diff``. The store holds untrusted content, so the
+# isolation is acquisition-grade and lazy fetch is off. The deadline is the
+# request-path one, because a request is waiting on the answer.
+STORE_READ_POLICY: Final[GitProcessPolicy] = GitProcessPolicy(
+    name="store-read",
+    timeout_s=GIT_SUBPROCESS_TIMEOUT_S,
+    max_bytes=GIT_SUBPROCESS_MAX_BYTES,
+    stdin="devnull",
+    child_umask=0o077,
+    isolate_user_config=True,
+    no_lazy_fetch=True,
+    ssh_batch=True,
+    extra_env={"GCM_INTERACTIVE": "never", "LC_ALL": "C"},
+)
 BATCH_OBJECT_POLICY: Final[GitProcessPolicy] = GitProcessPolicy(
     name="batch-object",
     timeout_s=GIT_SUBPROCESS_TIMEOUT_S,
@@ -210,7 +225,7 @@ class GitLocation:
 
     @property
     def read_policy(self) -> GitProcessPolicy:
-        return ACQUISITION_POLICY if self.target is not None else READ_POLICY
+        return STORE_READ_POLICY if self.target is not None else READ_POLICY
 
     @property
     def config_args(self) -> tuple[str, ...]:
@@ -329,6 +344,16 @@ _REPO_PINNING_GIT_VARS: tuple[str, ...] = (
 )
 
 
+def _default_policy(target: GitCommandTarget | None) -> GitProcessPolicy:
+    """The policy for a caller that named none.
+
+    A worktree-free store is never read under the ambient-configuration policy:
+    no-lazy-fetch and isolation must not depend on every caller remembering.
+    """
+
+    return STORE_READ_POLICY if isinstance(target, RepositoryStoreTarget) else READ_POLICY
+
+
 def git_environment(policy: GitProcessPolicy | None = None) -> dict[str, str]:
     """Environment for a git child process.
 
@@ -428,7 +453,7 @@ async def run_git(
     Raises :class:`GitUnavailableError`, :class:`GitTimeoutError`,
     :class:`GitOutputTooLargeError`, or :class:`GitCommandError`.
     """
-    chosen = policy if policy is not None else READ_POLICY
+    chosen = policy if policy is not None else _default_policy(target)
     proc = await spawn_git_process(
         args, cwd=cwd, target=target, policy=chosen, pipe_stdin=stdin is not None
     )
@@ -541,7 +566,7 @@ async def spawn_git_process(
     if exe is None:
         raise GitUnavailableError("git executable not found on PATH")
 
-    chosen = policy if policy is not None else READ_POLICY
+    chosen = policy if policy is not None else _default_policy(target)
     prefix: tuple[str, ...] = ()
     work_cwd = cwd
     if target is not None:
@@ -751,6 +776,7 @@ __all__ = [
     "GitTimeoutError",
     "GitUnavailableError",
     "READ_POLICY",
+    "STORE_READ_POLICY",
     "UnsupportedGitVersionError",
     "acquisition_allowed",
     "acquisition_gate_as_fixture",
