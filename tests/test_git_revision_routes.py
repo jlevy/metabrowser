@@ -94,6 +94,7 @@ def pinned_first(tmp_path: Path) -> Iterator[tuple[Path, str, str]]:
         subject = await git_revision_subject(
             target=repository_store_target(git_dir=store),
             commit_oid=first,
+            store_identity="fixture",
         )
         # Collection routes use GitLocation, not the cat-file pool. Close the
         # actor on this loop so teardown does not cross loop boundaries.

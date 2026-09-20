@@ -247,6 +247,7 @@ async def _pinned_client(
     subject = await git_revision_subject(
         target=repository_store_target(git_dir=store),
         commit_oid=commit,
+        store_identity="fixture",
         max_blob_bytes=(
             TEXT_PREVIEW_REQUEST_MAX_BYTES if max_blob_bytes is None else max_blob_bytes
         ),

@@ -23,6 +23,7 @@ from metabrowser.git.process import (
 )
 from metabrowser.git.tree_source import (
     GIT_REVISION_CAPABILITIES,
+    GitBatchProtocolError,
     GitBlobIndex,
     GitBlobTooLargeError,
     GitObjectUnavailableError,
@@ -332,6 +333,7 @@ def test_oversized_blob_is_refused_before_contents(tmp_path: Path) -> None:
         subject = await git_revision_subject(
             target=repository_store_target(git_dir=store),
             commit_oid=commit,
+            store_identity="fixture",
             max_blob_bytes=16,
         )
         source = subject.tree_source
@@ -372,6 +374,7 @@ def test_cancelled_blob_read_restarts_the_batch_reader(tmp_path: Path) -> None:
         subject = await git_revision_subject(
             target=repository_store_target(git_dir=store),
             commit_oid=commit,
+            store_identity="fixture",
         )
         source = subject.tree_source
         try:
@@ -403,6 +406,7 @@ def test_git_revision_subject_gates_filesystem_hooks(tmp_path: Path) -> None:
         subject = await git_revision_subject(
             target=repository_store_target(git_dir=store),
             commit_oid=commit,
+            store_identity="fixture",
         )
         try:
             session = attach_subject(subject)
@@ -446,7 +450,7 @@ def test_git_revision_subject_refuses_a_worktree_target(tmp_path: Path) -> None:
 
         target = attached_worktree_target(worktree=work, git_dir=work / ".git")
         try:
-            await git_revision_subject(target=target, commit_oid=commit)
+            await git_revision_subject(target=target, commit_oid=commit, store_identity="fixture")
             raise AssertionError("worktree targets must be refused")
         except GitPathError:
             pass
@@ -460,6 +464,7 @@ def test_abbreviated_oid_never_enters_the_batch_protocol(tmp_path: Path) -> None
         subject = await git_revision_subject(
             target=repository_store_target(git_dir=store),
             commit_oid=commit,
+            store_identity="fixture",
         )
         try:
             try:
@@ -524,7 +529,9 @@ def test_identical_subtrees_resolve_under_each_parent(tmp_path: Path) -> None:
 
     async def run() -> None:
         subject = await git_revision_subject(
-            target=repository_store_target(git_dir=store), commit_oid=commit
+            target=repository_store_target(git_dir=store),
+            commit_oid=commit,
+            store_identity="fixture",
         )
         try:
             roots = await subject.tree_source.list_tree()
@@ -584,8 +591,12 @@ def test_two_tree_sources_share_one_store_reader_pool(tmp_path: Path) -> None:
     async def _run() -> None:
         store, commit = _build_store(tmp_path)
         target = repository_store_target(git_dir=store)
-        first = await git_revision_subject(target=target, commit_oid=commit)
-        second = await git_revision_subject(target=target, commit_oid=commit)
+        first = await git_revision_subject(
+            target=target, commit_oid=commit, store_identity="fixture"
+        )
+        second = await git_revision_subject(
+            target=target, commit_oid=commit, store_identity="fixture"
+        )
         try:
             assert store_batch_reader_count(target) == 1
             path = GitPath.from_segments(b"README.md")
@@ -608,7 +619,9 @@ def test_read_store_blob_gates_size_without_a_live_subject(tmp_path: Path) -> No
     async def _run() -> None:
         store, commit = _build_store(tmp_path)
         target = repository_store_target(git_dir=store)
-        subject = await git_revision_subject(target=target, commit_oid=commit)
+        subject = await git_revision_subject(
+            target=target, commit_oid=commit, store_identity="fixture"
+        )
         source = subject.tree_source
         try:
             readme = next(
@@ -662,6 +675,7 @@ def test_lfs_pointer_blob_is_stored_bytes_without_smudge(tmp_path: Path) -> None
         subject = await git_revision_subject(
             target=repository_store_target(git_dir=store),
             commit_oid=commit,
+            store_identity="fixture",
         )
         source = subject.tree_source
         try:
@@ -696,6 +710,7 @@ def test_promisor_miss_is_object_unavailable_without_lazy_fetch(tmp_path: Path) 
             subject = await git_revision_subject(
                 target=repository_store_target(git_dir=store),
                 commit_oid=commit,
+                store_identity="fixture",
             )
             source = subject.tree_source
             try:
@@ -725,3 +740,72 @@ def test_promisor_miss_is_object_unavailable_without_lazy_fetch(tmp_path: Path) 
                 await subject.aclose()
 
         asyncio.run(_run())
+
+
+def test_revision_subject_identity_requires_the_real_store_id(tmp_path: Path) -> None:
+    store, commit = _build_store(tmp_path)
+    target = repository_store_target(git_dir=store)
+
+    async def _run() -> None:
+        with pytest.raises(TypeError):
+            # No default: two stores pinning one commit must not share an identity.
+            await git_revision_subject(  # pyright: ignore[reportCallIssue]
+                target=target, commit_oid=commit
+            )
+        first = await git_revision_subject(
+            target=target, commit_oid=commit, store_identity="store-a"
+        )
+        second = await git_revision_subject(
+            target=target, commit_oid=commit, store_identity="store-b"
+        )
+        try:
+            assert first.identity == f"store-a:{commit}"
+            assert first.identity != second.identity
+        finally:
+            await first.aclose()
+            await second.aclose()
+
+    asyncio.run(_run())
+
+
+def test_a_closed_reader_pool_never_respawns_an_actor(tmp_path: Path) -> None:
+    """The pool closes between ``read_blob``'s info and contents transactions.
+
+    The checked-out actor was terminated by the close. Its next transaction
+    must not spawn a fresh ``cat-file`` process that nothing owns.
+    """
+
+    store, commit = _build_store(tmp_path)
+    target = repository_store_target(git_dir=store)
+
+    async def _run() -> None:
+        subject = await git_revision_subject(
+            target=target, commit_oid=commit, store_identity="fixture"
+        )
+        source = subject.tree_source
+        captured: list[tree_module._BatchObjectReader] = []
+        original_info = tree_module._BatchObjectReader.info
+
+        async def info_then_close(
+            self: tree_module._BatchObjectReader, oid: str
+        ) -> tree_module._ObjectInfo:
+            result = await original_info(self, oid)
+            captured.append(self)
+            await subject.aclose()
+            return result
+
+        readme = await source.resolve_path(GitPath.from_segments(b"README.md"))
+        assert readme is not None
+        tree_module._BatchObjectReader.info = info_then_close  # type: ignore[method-assign]
+        try:
+            with pytest.raises(GitBatchProtocolError):
+                await source.read_blob_oid(readme.oid)
+        finally:
+            tree_module._BatchObjectReader.info = original_info  # type: ignore[method-assign]
+        assert store_batch_reader_count(target) == 0
+        assert captured and all(reader._proc is None for reader in captured)
+        with pytest.raises(GitBatchProtocolError):
+            await captured[0].info(commit)
+        assert captured[0]._proc is None
+
+    asyncio.run(_run())

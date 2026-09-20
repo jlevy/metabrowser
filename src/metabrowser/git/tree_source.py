@@ -439,6 +439,7 @@ class _BatchObjectReader:
         self._target = target
         self._proc: asyncio.subprocess.Process | None = None
         self._stderr_task: asyncio.Task[tuple[bytes, bool]] | None = None
+        self._closed = False
 
     async def info(self, oid: str) -> _ObjectInfo:
         result = await self._transact(oid, contents=False)
@@ -531,6 +532,9 @@ class _BatchObjectReader:
         return body
 
     async def aclose(self) -> None:
+        """Terminate the actor for good. A later transaction fails instead of respawning."""
+
+        self._closed = True
         await self._poison()
 
     async def _transact(
@@ -602,6 +606,10 @@ class _BatchObjectReader:
         return body
 
     async def _ensure(self) -> None:
+        if self._closed:
+            # A request can still hold this actor when its pool closes. Spawning
+            # here would start a process that no pool owns or terminates.
+            raise GitBatchProtocolError("batch reader is closed")
         proc = self._proc
         if proc is not None and proc.returncode is None:
             return
@@ -673,6 +681,7 @@ class _StoreReaderPool:
 
     async def _release(self, reader: _BatchObjectReader) -> None:
         if self._closed:
+            await reader.aclose()
             return
         await self._available.put(reader)
 
@@ -1173,7 +1182,7 @@ async def git_revision_subject(
     *,
     target: GitCommandTarget,
     commit_oid: str,
-    store_identity: str = "store",
+    store_identity: str,
     max_blob_bytes: int = TEXT_PREVIEW_REQUEST_MAX_BYTES,
 ) -> GitRevisionSubject:
     """Pin a commit's tree after proving the tree object is present."""

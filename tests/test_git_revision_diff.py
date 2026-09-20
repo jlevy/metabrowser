@@ -74,6 +74,7 @@ def pinned_base(tmp_path: Path) -> Iterator[tuple[Path, Path, str, str]]:
         subject = await git_revision_subject(
             target=repository_store_target(git_dir=store),
             commit_oid=base,
+            store_identity="fixture",
         )
         await subject.aclose()
         return subject
