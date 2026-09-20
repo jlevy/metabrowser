@@ -8,7 +8,11 @@ Mirrors the duck-typed handler-call pattern used in ``test_api_resources``
   * ``Accept-Encoding: identity`` → StreamingResponse whose body iterator
     yields the *decompressed* bytes (no Content-Encoding header)
   * The ``_accepts_gzip`` parser handles the RFC 7231 cases we care about
-  * Every branch, including errors, sends the opaque-origin sandbox headers
+
+The opaque-origin sandbox headers are not asserted here. They belong to the
+``/raw`` transport layer rather than to any handler return value, so they are
+asserted on the wire, for every branch and every status, in
+``tests/test_content_trust.py``.
 """
 
 from __future__ import annotations
@@ -27,15 +31,6 @@ from metabrowser.gz_io import ArtifactDecompressionLimitError
 from metabrowser.server import _accepts_gzip
 
 _SAMPLE_BYTES = b'{"event": "init"}\n{"event": "message", "text": "hello"}\n' * 100
-_RAW_CSP = "sandbox allow-scripts allow-popups allow-forms allow-downloads"
-
-
-def _assert_raw_trust_headers(response: Any) -> None:
-    csp = response.headers["content-security-policy"]
-    assert csp == _RAW_CSP
-    assert "allow-same-origin" not in csp
-    assert "frame-ancestors" not in csp
-    assert response.headers["x-content-type-options"] == "nosniff"
 
 
 class _Params:
@@ -113,7 +108,6 @@ def test_raw_plain_file_returns_file_response_without_content_encoding(
     assert response.headers.get("content-encoding") is None
     # FileResponse points at the on-disk file, not a temporary copy.
     assert Path(response.path) == plain
-    _assert_raw_trust_headers(response)
 
 
 # ── /raw endpoint: gzip passthrough ────────────────────────────────
@@ -128,7 +122,6 @@ def test_raw_gz_with_accept_gzip_passes_bytes_through(tmp_path: Path) -> None:
     # Crucially, the file streamed IS the .gz on disk — not a decompressed
     # copy. That's the whole point of passthrough.
     assert Path(response.path) == gz
-    _assert_raw_trust_headers(response)
 
 
 def test_raw_gz_mime_type_uses_logical_extension(tmp_path: Path) -> None:
@@ -149,7 +142,6 @@ def test_raw_gz_with_identity_streams_decompressed_bytes(tmp_path: Path) -> None
     assert isinstance(response, StreamingResponse)
     assert response.headers.get("content-encoding") is None
     assert response.headers["vary"] == "Accept-Encoding"
-    _assert_raw_trust_headers(response)
 
     # Drain the streaming body and assert it equals the original bytes.
     chunks: list[bytes] = []
@@ -171,7 +163,6 @@ def test_raw_gz_with_no_accept_encoding_streams_decompressed(tmp_path: Path) -> 
     response = _call("events.jsonl.gz", accept_encoding="")
     assert isinstance(response, StreamingResponse)
     assert response.headers.get("content-encoding") is None
-    _assert_raw_trust_headers(response)
 
 
 def test_raw_gz_identity_rejects_malformed_stream_before_response(tmp_path: Path) -> None:
@@ -183,7 +174,6 @@ def test_raw_gz_identity_rejects_malformed_stream_before_response(tmp_path: Path
 
     assert response.status_code == 400
     assert not isinstance(response, StreamingResponse)
-    _assert_raw_trust_headers(response)
 
 
 def test_raw_gz_identity_rejects_limit_before_response(
@@ -202,7 +192,6 @@ def test_raw_gz_identity_rejects_limit_before_response(
 
     assert response.status_code == 413
     assert not isinstance(response, StreamingResponse)
-    _assert_raw_trust_headers(response)
 
 
 # ── /raw endpoint: 404 path ────────────────────────────────────────
@@ -212,4 +201,3 @@ def test_raw_missing_path_returns_404(tmp_path: Path) -> None:
     _setup(tmp_path)
     response = _call("does-not-exist.jsonl")
     assert response.status_code == 404
-    _assert_raw_trust_headers(response)

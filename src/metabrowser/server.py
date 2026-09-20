@@ -45,7 +45,7 @@ import logging
 import os
 import sys
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, MutableMapping
 from contextlib import asynccontextmanager
 from html import escape as html_escape
 from pathlib import Path
@@ -53,6 +53,7 @@ from typing import TYPE_CHECKING, Any, TextIO, cast
 from urllib.parse import quote
 
 from starlette.applications import Starlette
+from starlette.datastructures import MutableHeaders
 from starlette.middleware import Middleware
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.responses import (
@@ -821,6 +822,83 @@ class _HostValidationMiddleware:
                 await response(scope, receive, send)
                 return
         await self.app(scope, receive, send)
+
+
+class _RawTrustHeaderMiddleware:
+    """Sandbox every ``/raw`` response, whichever layer produced it.
+
+    SECURITY.md promises the opaque-origin sandbox on *every* raw
+    response, and a wrapper applied per ``return`` inside ``raw_file``
+    cannot keep that promise. It misses the responses the handler never
+    builds — Starlette's 400 and 416 for a malformed or unsatisfiable
+    ``Range``, the router's 405, the error handler's 500 — and it misses
+    any return path a later change adds, including a handler that
+    delegates to another source of bytes. Setting the headers on the
+    outgoing ``http.response.start`` message makes the guarantee
+    structural instead: a response on this path is sandboxed because of
+    where it is served, not because someone remembered to wrap it.
+
+    ``allow-scripts`` is present only while ``active_content`` is on,
+    read per response so the capability block stays authoritative.
+    ``frame-ancestors`` is omitted: inside a sandboxed page the ancestor
+    origin is opaque and would never match ``'self'``, which would break
+    nested iframes and framesets.
+    """
+
+    def __init__(self, app: Any) -> None:
+        self.app = app
+
+    @staticmethod
+    def _is_raw_scope(scope: dict[str, Any]) -> bool:
+        """True for ``/raw`` and ``/raw/...``, false for ``/rawfoo``.
+
+        ``root_path`` is stripped first so the check still names the
+        route when the app is mounted under a prefix, where ``path``
+        carries that prefix.
+        """
+
+        path = str(scope.get("path") or "")
+        root_path = str(scope.get("root_path") or "")
+        if root_path and path.startswith(root_path):
+            path = path[len(root_path) :] or "/"
+        return path == "/raw" or path.startswith("/raw/")
+
+    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        if scope.get("type") != "http" or not self._is_raw_scope(scope):
+            await self.app(scope, receive, send)
+            return
+
+        started = False
+
+        # ``MutableMapping``, not ``dict``: this wrapper is handed to
+        # ``Response.__call__`` below, whose ``Send`` alias is written
+        # against the ASGI message protocol rather than a concrete dict.
+        async def send_sandboxed(message: MutableMapping[str, Any]) -> None:
+            nonlocal started
+            if message.get("type") == "http.response.start":
+                started = True
+                headers = MutableHeaders(scope=message)
+                headers["Content-Security-Policy"] = raw_sandbox_csp(
+                    active_content=get_capabilities().active_content
+                )
+                headers["X-Content-Type-Options"] = "nosniff"
+            await send(message)
+
+        try:
+            await self.app(scope, receive, send_sandboxed)
+        except Exception:
+            # Starlette builds ``ServerErrorMiddleware`` outside every
+            # application middleware, so the 500 it writes for an
+            # unhandled exception would leave this path unsandboxed.
+            # Send the same body from inside the sandbox and re-raise:
+            # that middleware records the cause and skips its own send
+            # because the response has already started, and the test
+            # client can still surface the exception.
+            if not started:
+                await PlainTextResponse("Internal Server Error", status_code=500)(
+                    scope, receive, send_sandboxed
+                )
+            raise
 
 
 class _SlowRequestLogMiddleware:
@@ -3106,24 +3184,6 @@ def _accepts_gzip(accept_encoding: str) -> bool:
 _RAW_STREAM_CHUNK = 64 * 1024
 
 
-def _with_raw_trust_headers(response: Response) -> Response:
-    """Attach the opaque-origin sandbox to every ``/raw`` response.
-
-    Applied unconditionally, including gzip passthrough and error
-    bodies, so a script-capable type list cannot miss ``.svg`` or a
-    platform MIME guess. ``frame-ancestors`` is omitted: inside a
-    sandboxed page the ancestor origin is opaque and would never match
-    ``'self'``, which would break nested iframes and framesets.
-    ``allow-scripts`` is present only while ``active_content`` is on.
-    """
-
-    response.headers["Content-Security-Policy"] = raw_sandbox_csp(
-        active_content=get_capabilities().active_content
-    )
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    return response
-
-
 def _raw_target_from_request(request: Request) -> Path | None:
     """Resolve the file a raw request named.
 
@@ -3139,9 +3199,16 @@ def _raw_target_from_request(request: Request) -> Path | None:
 
 
 async def raw_file(request: Request) -> Response:
+    """Serve raw bytes for one in-root file.
+
+    Every response leaving this route is sandboxed by
+    ``_RawTrustHeaderMiddleware``, which owns the trust headers for the
+    whole ``/raw`` path rather than any one branch here.
+    """
+
     target = _raw_target_from_request(request)
     if target is None or not target.is_file():
-        return _with_raw_trust_headers(PlainTextResponse("Not found", status_code=404))
+        return PlainTextResponse("Not found", status_code=404)
 
     artifact = ArtifactPath(target)
     media_type = artifact.mime_type
@@ -3153,7 +3220,7 @@ async def raw_file(request: Request) -> Response:
     # keeps the event loop responsive and bounds memory regardless of
     # file size. ``_safe_path`` already rejected paths outside ROOT_DIR.
     if not artifact.is_compressed:
-        return _with_raw_trust_headers(FileResponse(target, media_type=media_type))
+        return FileResponse(target, media_type=media_type)
 
     accepts_gzip = _accepts_gzip(request.headers.get("accept-encoding", ""))
 
@@ -3163,12 +3230,10 @@ async def raw_file(request: Request) -> Response:
     # skips responses with ``Content-Encoding`` already set, so we
     # don't double-wrap.
     if artifact.is_gzip and accepts_gzip:
-        return _with_raw_trust_headers(
-            FileResponse(
-                target,
-                media_type=media_type,
-                headers=artifact.passthrough_headers(),
-            )
+        return FileResponse(
+            target,
+            media_type=media_type,
+            headers=artifact.passthrough_headers(),
         )
 
     # Validate every compressed identity response before StreamingResponse sends
@@ -3177,9 +3242,9 @@ async def raw_file(request: Request) -> Response:
     try:
         await asyncio.to_thread(lambda: artifact.logical_size)
     except ArtifactDecompressionLimitError as exc:
-        return _with_raw_trust_headers(PlainTextResponse(str(exc), status_code=413))
+        return PlainTextResponse(str(exc), status_code=413)
     except ArtifactCompressionError as exc:
-        return _with_raw_trust_headers(PlainTextResponse(str(exc), status_code=400))
+        return PlainTextResponse(str(exc), status_code=400)
 
     # Identity fallback: client refuses gzip (rare, e.g. ``curl`` without
     # ``--compressed``). Stream-decompress so the client gets plain
@@ -3192,12 +3257,10 @@ async def raw_file(request: Request) -> Response:
                     break
                 yield chunk
 
-    return _with_raw_trust_headers(
-        StreamingResponse(
-            _iter_decompressed(),
-            media_type=media_type,
-            headers={"Vary": "Accept-Encoding"},
-        )
+    return StreamingResponse(
+        _iter_decompressed(),
+        media_type=media_type,
+        headers={"Vary": "Accept-Encoding"},
     )
 
 
@@ -3644,6 +3707,9 @@ routes = [
 # JSON payloads this app emits. ``FileResponse`` is excluded automatically
 # by Starlette since it sets its own headers.
 middleware = [
+    # Outermost, so a rejection written before routing — and a 500 an
+    # inner layer never got to shape — still leaves ``/raw`` sandboxed.
+    Middleware(_RawTrustHeaderMiddleware),
     Middleware(_HostValidationMiddleware),
     Middleware(_SlowRequestLogMiddleware),
     Middleware(GZipMiddleware, minimum_size=1024, compresslevel=6),

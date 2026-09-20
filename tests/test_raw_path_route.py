@@ -94,6 +94,9 @@ def test_both_raw_shapes_reject_traversal_and_escaping_symlinks(tmp_path: Path) 
 
     # httpx collapses a literal `..` segment before the request leaves the
     # client, so the handler-level path is the one that still contains it.
+    # Only the refusal is asserted here: the trust headers belong to the
+    # ``/raw`` transport layer, not to a handler return value, and they are
+    # asserted on the wire in tests/test_content_trust.py.
     handler_traversal = asyncio.run(
         server.raw_file(
             SimpleNamespace(  # pyright: ignore[reportArgumentType]
@@ -110,7 +113,6 @@ def test_both_raw_shapes_reject_traversal_and_escaping_symlinks(tmp_path: Path) 
     assert symlink_query.status_code == 404
     assert ok.status_code == 200
     _assert_raw_trust_headers(encoded_traversal)
-    _assert_raw_trust_headers(handler_traversal)
     _assert_raw_trust_headers(symlink_path)
     assert b"secret" not in encoded_traversal.content
     assert b"secret" not in handler_traversal.body
