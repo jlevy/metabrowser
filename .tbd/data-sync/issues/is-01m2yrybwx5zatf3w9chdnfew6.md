@@ -3,9 +3,9 @@ type: is
 id: is-01m2yrybwx5zatf3w9chdnfew6
 title: PR 217 senior acquisition and CLI review
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 5
+version: 6
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
@@ -17,6 +17,10 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-09-20T06:44:32.795Z
-updated_at: 2026-09-20T06:56:05.694Z
+updated_at: 2026-09-20T07:28:38.706Z
 started_at: 2026-09-20T06:53:08.318Z
+closed_at: 2026-09-20T07:28:38.705Z
+close_reason: PR 217 review findings R1-R3 addressed in 70091d81; disposition posted.
+resolution: null
+duplicate_of: null
 ---
