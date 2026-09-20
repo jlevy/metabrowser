@@ -115,6 +115,32 @@ def _parse_bytes(data: bytes) -> ChangeSetDocument:
     return parse_unified_patch(data[: MAX_PATCH_BYTES + 1])
 
 
+def _filesystem_patch_document(
+    subpath: str, error_kind: str
+) -> tuple[ChangeSetDocument, str] | JSONResponse:
+    """Resolve a real or virtual patch path and parse it. Thread-pool only.
+
+    The ancestor walk stats one entry per path level before the parser reads a
+    byte, so resolution belongs off the event loop for the same reason the
+    parse does.
+    """
+
+    resolved = _resolve_patch(subpath)
+    if resolved is None:
+        return _error(error_kind, "This file is not available.", 404, path=subpath)
+    target, inner = resolved
+    return _parse(target), inner
+
+
+def _filesystem_patch_children(subpath: str) -> ChangeSetDocument | JSONResponse:
+    """Parse one real patch file for its child rows. Thread-pool only."""
+
+    target = resolve_path(subpath)
+    if target is None or not target.is_file() or not subpath.lower().endswith(_PATCH_EXTS):
+        return _error("diff_children", "This file is not available.", 404, path=subpath)
+    return _parse(target)
+
+
 def _parse(target: Path) -> ChangeSetDocument:
     # One byte past the cap keeps the parser's own truncation reporting
     # authoritative; bounding the read itself keeps a multi-GB file from
@@ -195,11 +221,10 @@ async def document_handler(request: Request) -> JSONResponse:
         data, inner = loaded
         document = await asyncio.to_thread(_parse_bytes, data)
     else:
-        resolved = _resolve_patch(subpath)
-        if resolved is None:
-            return _error("diff_document", "This file is not available.", 404, path=subpath)
-        target, inner = resolved
-        document = await asyncio.to_thread(_parse, target)
+        opened = await asyncio.to_thread(_filesystem_patch_document, subpath, "diff_document")
+        if isinstance(opened, JSONResponse):
+            return opened
+        document, inner = opened
     if inner:
         narrowed = _narrow_to_path(document, inner)
         if narrowed is None:
@@ -343,10 +368,10 @@ async def children_handler(request: Request) -> JSONResponse:
             return _error("diff_children", "This file is not available.", 404, path=subpath)
         document = await asyncio.to_thread(_parse_bytes, data)
     else:
-        target = resolve_path(subpath)
-        if target is None or not target.is_file() or not subpath.lower().endswith(_PATCH_EXTS):
-            return _error("diff_children", "This file is not available.", 404, path=subpath)
-        document = await asyncio.to_thread(_parse, target)
+        opened = await asyncio.to_thread(_filesystem_patch_children, subpath)
+        if isinstance(opened, JSONResponse):
+            return opened
+        document = opened
     # One row per path, not per change: a patch file spells a type change
     # as delete-plus-add at the same path, and two rows sharing a virtual
     # path would be two rows that open the same thing.
