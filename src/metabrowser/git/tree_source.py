@@ -266,6 +266,31 @@ def _reparent_tree_entries(
 
 
 @dataclass(frozen=True, slots=True)
+class _CachedTree:
+    """One tree object's children, recorded under the first path that listed it.
+
+    A tree OID is path-independent, so two paths can share one record. A lookup
+    by name reparents only its hit. A listing under another path rebuilds the
+    names, which is linear in the listing it returns.
+    """
+
+    parent: GitPath
+    entries: tuple[GitTreeEntry, ...]
+    by_name: Mapping[bytes, GitTreeEntry]
+
+    def listed_under(self, parent: GitPath) -> tuple[GitTreeEntry, ...]:
+        if parent == self.parent:
+            return self.entries
+        return _reparent_tree_entries(self.entries, parent)
+
+    def child(self, path: GitPath) -> GitTreeEntry | None:
+        entry = self.by_name.get(path.segments[-1])
+        if entry is None or entry.path == path:
+            return entry
+        return replace(entry, path=path)
+
+
+@dataclass(frozen=True, slots=True)
 class GitTreeTally:
     """Descendant blob count and size under one tree.
 
@@ -423,6 +448,21 @@ class _BatchObjectReader:
             raise GitBatchProtocolError(f"{oid} is {info.kind}, not a blob")
         if info.size > max_blob_bytes:
             raise GitBlobTooLargeError(oid=oid, size=info.size, max_bytes=max_blob_bytes)
+        body = await self._transact(oid, contents=True, expected=info)
+        if isinstance(body, _ObjectInfo):
+            raise GitBatchProtocolError("contents transaction returned info")
+        return body
+
+    async def read_tree(self, oid: str) -> bytes:
+        """Raw tree object bytes: one actor round trip, not an ``ls-tree`` spawn."""
+
+        info = await self.info(oid)
+        if info.kind != "tree":
+            raise GitBatchProtocolError(f"{oid} is {info.kind}, not a tree")
+        if info.size > BATCH_OBJECT_POLICY.max_bytes:
+            raise GitOutputTooLargeError(
+                f"tree {oid} is {info.size} bytes; limit is {BATCH_OBJECT_POLICY.max_bytes}"
+            )
         body = await self._transact(oid, contents=True, expected=info)
         if isinstance(body, _ObjectInfo):
             raise GitBatchProtocolError("contents transaction returned info")
@@ -699,12 +739,38 @@ def _iter_ls_tree_records(payload: bytes) -> tuple[tuple[str, GitEntryKind, str,
     return tuple(records)
 
 
-def _parse_ls_tree(payload: bytes, *, parent: GitPath) -> tuple[GitTreeEntry, ...]:
-    entries = [
-        GitTreeEntry(path=parent.child(name), mode=mode, kind=kind, oid=oid)
-        for mode, kind, oid, name in _iter_ls_tree_records(payload)
-    ]
-    entries.sort(key=lambda entry: entry.path.segments[-1])
+def _parse_tree_object(payload: bytes, *, parent: GitPath, oid: str) -> tuple[GitTreeEntry, ...]:
+    """Children of one raw tree object: ``<mode> <name>NUL<binary oid>`` records.
+
+    The object format fixes the binary width, so it comes from the tree's own
+    hex OID. Modes are zero-padded to the six digits ``ls-tree`` prints.
+    """
+
+    oid_bytes = len(oid) // 2
+    entries: list[GitTreeEntry] = []
+    offset = 0
+    length = len(payload)
+    while offset < length:
+        space = payload.find(b" ", offset)
+        nul = -1 if space < 0 else payload.find(b"\x00", space + 1)
+        end = nul + 1 + oid_bytes
+        if space < 0 or nul < 0 or end > length:
+            raise GitBatchProtocolError("tree object record is truncated")
+        mode = payload[offset:space].decode("ascii", errors="replace").zfill(6)
+        if len(mode) != 6 or not mode.isdigit():
+            raise GitBatchProtocolError("tree object record has an invalid mode")
+        kind: GitEntryKind = (
+            "tree" if mode == "040000" else "commit" if mode == "160000" else "blob"
+        )
+        try:
+            path = parent.child(payload[space + 1 : nul])
+        except GitPathError as exc:
+            raise GitBatchProtocolError("tree object record has an invalid name") from exc
+        entries.append(
+            GitTreeEntry(path=path, mode=mode, kind=kind, oid=payload[nul + 1 : end].hex())
+        )
+        offset = end
+    entries.sort(key=_tree_entry_name)
     return tuple(entries)
 
 
@@ -723,7 +789,7 @@ class GitTreeSource:
         self._max_blob_bytes = max_blob_bytes
         self._pool = _retain_pool(target)
         self._pool_released = False
-        self._trees: dict[str, tuple[GitTreeEntry, ...]] = {}
+        self._trees: dict[str, _CachedTree] = {}
         self._indexes: dict[str, GitBlobIndex | None] = {}
 
     @property
@@ -753,7 +819,7 @@ class GitTreeSource:
             if cached is None:
                 return None
             walked = walked.child(segment)
-            entry = next((item for item in cached if _tree_entry_name(item) == segment), None)
+            entry = cached.by_name.get(segment)
             if entry is None:
                 return ContentHandle(
                     identity=identity,
@@ -781,11 +847,11 @@ class GitTreeSource:
                 kind="tree",
                 oid=self._root_tree_oid,
             )
-        parent = await self._tree_oid_for(path.parent())
+        parent_path = path.parent()
+        parent = await self._tree_oid_for(parent_path)
         if parent is None:
             return None
-        children = await self._list_tree_oid(parent, parent_path=path.parent())
-        return next((item for item in children if item.path == path), None)
+        return (await self._load_tree(parent, parent_path=parent_path)).child(path)
 
     async def list_tree(self, path: GitPath | None = None) -> tuple[GitTreeEntry, ...]:
         located = GitPath.root() if path is None else path
@@ -793,6 +859,13 @@ class GitTreeSource:
         if tree_oid is None:
             raise GitObjectUnavailableError(located.to_wire() or self._root_tree_oid)
         return await self._list_tree_oid(tree_oid, parent_path=located)
+
+    async def list_tree_entry(self, entry: GitTreeEntry) -> tuple[GitTreeEntry, ...]:
+        """List a tree a parent listing already resolved, without re-walking its path."""
+
+        if not entry.is_tree:
+            raise GitObjectUnavailableError(entry.path.to_wire() or entry.oid)
+        return await self._list_tree_oid(entry.oid, parent_path=entry.path)
 
     async def read_blob(self, path: GitPath) -> bytes:
         entry = await self.resolve_path(path)
@@ -830,18 +903,23 @@ class GitTreeSource:
     async def _list_tree_oid(
         self, tree_oid: str, *, parent_path: GitPath
     ) -> tuple[GitTreeEntry, ...]:
+        return (await self._load_tree(tree_oid, parent_path=parent_path)).listed_under(parent_path)
+
+    async def _load_tree(self, tree_oid: str, *, parent_path: GitPath) -> _CachedTree:
         cached = self._trees.get(tree_oid)
         if cached is not None:
-            return _reparent_tree_entries(cached, parent_path)
-        payload = await run_git(
-            [*_MAILMAP_ARGS, "ls-tree", "-z", "--full-tree", tree_oid],
-            target=self._target,
-            policy=ACQUISITION_POLICY,
-        )
-        entries = _parse_ls_tree(payload, parent=parent_path)
+            return cached
+        async with self._pool.checkout() as reader:
+            payload = await reader.read_tree(tree_oid)
+        entries = _parse_tree_object(payload, parent=parent_path, oid=tree_oid)
         entries = await self._attach_blob_sizes(entries)
-        self._trees[tree_oid] = entries
-        return entries
+        cached = _CachedTree(
+            parent=parent_path,
+            entries=entries,
+            by_name=MappingProxyType({_tree_entry_name(entry): entry for entry in entries}),
+        )
+        self._trees[tree_oid] = cached
+        return cached
 
     async def blob_index(self, path: GitPath | None = None) -> GitBlobIndex | None:
         """Recursive blob names and sizes under *path*. ``None`` if truncated."""

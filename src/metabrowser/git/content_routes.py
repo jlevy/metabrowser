@@ -507,7 +507,7 @@ async def _git_nav_tree(
         )
         if entry.is_tree and nest:
             try:
-                nested = await subject.tree_source.list_tree(entry.path)
+                nested = await subject.tree_source.list_tree_entry(entry)
             except GitObjectUnavailableError:
                 nodes.append(_nav_tree_node(entry, tally=tally))
                 continue
