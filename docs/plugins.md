@@ -10,7 +10,11 @@ Metabrowser discovers plugins in this order:
 
 1. built-ins shipped in `src/metabrowser/builtin_plugins/`;
 2. installed Python entry points in the `metabrowser.plugins` group;
-3. directories explicitly supplied with `--plugins-dir` or `METABROWSER_PLUGINS_DIRS`.
+3. directories explicitly supplied with `--plugins-dir` or `METABROWSER_PLUGINS_DIRS` in
+   the process environment.
+   A `.env` file never supplies that name: the chain walks up from the working
+   directory, so a repository browsed from inside itself would otherwise become an
+   automatic plugin source, which is the boundary below.
 
 Later plugins win plugin-name collisions.
 Kind classifiers use explicit priorities and stable discovery order as a tiebreaker.

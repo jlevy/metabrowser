@@ -99,8 +99,12 @@ stays conservative whatever the `METAB_*` variables say, and only another flag â
 The `METAB_*` variables themselves are read from the process environment only, never
 from a `.env` or `.env.local` file, so browsing a cloned repository from inside it
 cannot let that repository choose how far it is trusted.
-The resolved block is on `window.METABROWSER_SETTINGS.CAPABILITIES` and
-`GET /api/capabilities`; the server is authoritative.
+`METABROWSER_PLUGINS_DIRS` is refused from those files for the same reason and a sharper
+one: a directory plugin is JavaScript that runs in the application page, so a file in
+the browsed tree naming its own plugin directory would execute code there.
+Name it in the environment, or pass `--plugins-dir`. The resolved block is on
+`window.METABROWSER_SETTINGS.CAPABILITIES` and `GET /api/capabilities`; the server is
+authoritative.
 
 `.html` and `.htm` files open as the `html` kind, with Preview and Source tabs.
 Preview loads the file in an iframe whose `src` is the path-shaped `/raw/{path}`
