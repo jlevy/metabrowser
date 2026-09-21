@@ -9,6 +9,7 @@ import signal
 import subprocess
 import sys
 import textwrap
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
@@ -20,7 +21,12 @@ from metabrowser.cache.locks import (
     held_locks,
     store_maintenance_lock,
 )
-from metabrowser.cache.repository_store import lease_revision, subject_revision_ref
+from metabrowser.cache.paths import store_directory
+from metabrowser.cache.repository_store import (
+    RevisionLease,
+    lease_revision,
+    subject_revision_ref,
+)
 from metabrowser.git.process import (
     ACQUISITION_POLICY,
     GitCommandTarget,
@@ -237,6 +243,104 @@ def test_durable_ref_keeps_a_commit_that_origin_refs_no_longer_name(
     assert not (git_dir / "index").exists()
     with store_maintenance_lock(home, store_key):
         pass
+
+
+def _second_published_store(tmp_path: Path, home: Path) -> tuple[str, str]:
+    """Publish a second source into *home*; return its store key and default revision."""
+
+    other = tmp_path / "origin-2.git"
+    _git(
+        tmp_path,
+        "clone",
+        "-q",
+        "--bare",
+        "--template=",
+        "--",
+        str(tmp_path / "origin.git"),
+        str(other),
+    )
+    published = asyncio.run(acquire_file_source(_file_source(other), home=home))
+    assert published.home == home
+    return published.store_key, published.default_revision
+
+
+async def _gather_leases(
+    home: Path, requests: Sequence[tuple[str, str]]
+) -> list[RevisionLease | BaseException]:
+    """Start every lease as its own task on one loop and let them interleave."""
+
+    return list(
+        await asyncio.gather(
+            *(lease_revision(home=home, store_key=key, commit_oid=oid) for key, oid in requests),
+            return_exceptions=True,
+        )
+    )
+
+
+def _release_leases(results: Sequence[RevisionLease | BaseException]) -> None:
+    for result in results:
+        if isinstance(result, RevisionLease):
+            result.release()
+
+
+def _failures(results: Sequence[RevisionLease | BaseException]) -> list[str]:
+    return [f"{type(r).__name__}: {r}" for r in results if isinstance(r, BaseException)]
+
+
+def test_two_concurrent_leases_of_one_store_pin_both_refs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two leases of one store on one loop end where a serial pair would."""
+
+    home, store_key, git_dir, first, second = _publish(tmp_path, monkeypatch)
+    results = asyncio.run(_gather_leases(home, [(store_key, second), (store_key, first)]))
+    try:
+        assert _failures(results) == []
+        with pytest.raises(LockOrderError, match="other mode"):
+            store_maintenance_lock(home, store_key)
+    finally:
+        _release_leases(results)
+    assert held_locks() == ()
+    target = repository_store_target(git_dir=git_dir)
+    for oid in (first, second):
+        ref = subject_revision_ref(oid)
+        assert asyncio.run(_store_git(target, "rev-parse", "--verify", ref)) == oid
+    assert not (git_dir / "index").exists()
+    with store_maintenance_lock(home, store_key):
+        pass
+
+
+def test_two_concurrent_leases_of_two_stores_pin_both_refs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Leases of two stores neither queue behind each other nor break the lock order.
+
+    The tasks are ordered so the one that reaches the store lock second holds the lower
+    key: a holder identified by its thread reads that as one holder descending the rank.
+    """
+
+    home, store_key, git_dir, _first, second = _publish(tmp_path, monkeypatch)
+    other_key, other_revision = _second_published_store(tmp_path, home)
+    assert other_key != store_key
+    requests = sorted(
+        [(store_key, second), (other_key, other_revision)], key=lambda request: request[0]
+    )
+    results = asyncio.run(_gather_leases(home, list(reversed(requests))))
+    try:
+        assert _failures(results) == []
+        for key in (store_key, other_key):
+            with pytest.raises(LockOrderError, match="other mode"):
+                store_maintenance_lock(home, key)
+    finally:
+        _release_leases(results)
+    assert held_locks() == ()
+    for key, oid in requests:
+        target = repository_store_target(git_dir=home / store_directory(key) / "repository.git")
+        ref = subject_revision_ref(oid)
+        assert asyncio.run(_store_git(target, "rev-parse", "--verify", ref)) == oid
+        with store_maintenance_lock(home, key):
+            pass
+    assert not (git_dir / "index").exists()
 
 
 def test_lease_refuses_abbreviated_missing_and_absent_stores(

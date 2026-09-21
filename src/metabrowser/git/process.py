@@ -534,6 +534,58 @@ async def run_git(
     return stdout
 
 
+def run_git_blocking(
+    args: Sequence[str],
+    *,
+    target: GitCommandTarget,
+    policy: GitProcessPolicy,
+) -> None:
+    """Run a short ``git`` command that produces no stdout, blocking this thread.
+
+    The one shape :func:`run_git` cannot serve: a command that has to run inside a
+    cache lock. A hierarchy lock is owned by the thread that took it, and the
+    ``flock`` behind it blocks that thread, so the lock and the command it covers
+    belong to one thread rather than to a coroutine that spans an ``await``. Callers
+    on the event loop reach this through ``asyncio.to_thread``; see
+    :func:`metabrowser.cache.repository_store.lease_revision`.
+
+    stdin and stdout are ``DEVNULL``. A caller that needs stdout wants :func:`run_git`,
+    whose incremental drain bounds memory while the process is still running; this one
+    would have to buffer the whole stream before it could check a cap.
+    """
+
+    exe = git_executable()
+    if exe is None:
+        raise GitUnavailableError("git executable not found on PATH")
+    prefix, work_cwd = _target_prefix_and_cwd(target)
+    env = git_environment(policy)
+    if policy.isolate_user_config:
+        env["GIT_CEILING_DIRECTORIES"] = str(work_cwd.resolve().parent)
+    try:
+        completed = subprocess.run(
+            (exe, *GIT_COMMON_ARGS, *prefix, *args),
+            cwd=work_cwd,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            env=env,
+            umask=policy.child_umask if policy.child_umask is not None else -1,
+            timeout=policy.timeout_s,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        # ``subprocess.run`` kills and reaps the child before re-raising.
+        raise GitTimeoutError(
+            f"git {' '.join(args)} exceeded {policy.timeout_s:g}s and was terminated"
+        ) from exc
+    except OSError as exc:
+        raise GitUnavailableError(f"could not run git: {exc}") from exc
+    if completed.returncode != 0:
+        summary = completed.stderr[:_STDERR_MAX_BYTES].decode("utf-8", errors="replace").strip()
+        log.debug("git %s exited %s: %s", " ".join(args), completed.returncode, summary)
+        raise GitCommandError(args, completed.returncode, summary)
+
+
 def _target_prefix_and_cwd(target: GitCommandTarget) -> tuple[tuple[str, ...], Path]:
     match target:
         case AttachedWorktreeTarget(worktree=worktree, git_dir=git_dir):
@@ -803,6 +855,7 @@ __all__ = [
     "require_acquisition_git",
     "run_git",
     "run_git_at",
+    "run_git_blocking",
     "spawn_git_at",
     "spawn_git_process",
     "terminate_git_process",

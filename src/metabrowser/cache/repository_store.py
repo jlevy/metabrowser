@@ -9,6 +9,7 @@ not serve content, migrate remaining routes, or check out a worktree.
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, Self
@@ -29,6 +30,7 @@ from metabrowser.git.process import (
     RepositoryStoreTarget,
     repository_store_target,
     run_git,
+    run_git_blocking,
 )
 from metabrowser.git.tree_source import GitObjectUnavailableError, require_full_oid
 
@@ -83,16 +85,32 @@ async def _require_commit(target: RepositoryStoreTarget, oid: str) -> None:
         raise GitObjectUnavailableError(oid)
 
 
-async def _publish_subject_ref(
-    home: Path, store_key: str, target: RepositoryStoreTarget, oid: str
-) -> str:
-    ref = subject_revision_ref(oid)
+def _write_subject_ref(
+    home: Path, store_key: str, target: RepositoryStoreTarget, ref: str, oid: str
+) -> None:
+    """Write the durable subject ref under the store lock, in one thread.
+
+    The frozen ``revision_subject_lease`` machine writes this ref holding the store
+    lock and the lease. That lock belongs to the thread that took it: its ``flock``
+    blocks the thread, and the order check reads the thread's held locks. Spanning an
+    ``await`` would put two logical holders on one thread, so a second concurrent
+    ``lease_revision`` looked like the first re-entering the rank out of order, and the
+    blocking ``flock`` stalled the loop for as long as another process held it.
+    """
+
     with repository_store_lock(home, store_key):
-        await run_git(
+        run_git_blocking(
             [*_MAILMAP_ARGS, "update-ref", "--no-deref", ref, oid],
             target=target,
             policy=ACQUISITION_POLICY,
         )
+
+
+async def _publish_subject_ref(
+    home: Path, store_key: str, target: RepositoryStoreTarget, oid: str
+) -> str:
+    ref = subject_revision_ref(oid)
+    await asyncio.to_thread(_write_subject_ref, home, store_key, target, ref, oid)
     return ref
 
 

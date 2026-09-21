@@ -7,6 +7,7 @@ second process does not.
 
 from __future__ import annotations
 
+import asyncio
 import os
 import signal
 import stat
@@ -249,6 +250,33 @@ def test_the_order_is_per_thread(home: Path) -> None:
         done.set()
         thread.join(CHILD_TIMEOUT)
     assert outcome == [None]
+
+
+def test_a_worker_thread_is_its_own_holder_and_still_refuses_descending_locks(
+    home: Path,
+) -> None:
+    """A locked section moved off the event loop is not exempt from the order.
+
+    ``lease_revision`` runs its store-lock section through ``asyncio.to_thread`` so the
+    ``flock`` and the Git process it covers share one thread instead of spanning an
+    ``await``. The worker is a holder like any other: it starts with nothing held, and
+    a genuine descent within it is still refused before a descriptor is opened.
+    """
+
+    def take_then_descend() -> tuple[HeldLock, ...]:
+        assert held_locks() == ()
+        with repository_store_lock(home, STORE_B):
+            with pytest.raises(LockOrderError, match="ascending key order"):
+                repository_store_lock(home, STORE_A)
+            with pytest.raises(LockOrderError, match="narrower"):
+                source_alias_lock(home, SLUG_A)
+            return held_locks()
+
+    async def in_a_worker() -> tuple[HeldLock, ...]:
+        with source_alias_lock(home, SLUG_B):
+            return await asyncio.to_thread(take_then_descend)
+
+    assert asyncio.run(in_a_worker()) == (HeldLock(LockKind.REPOSITORY_STORE, STORE_B),)
 
 
 @pytest.mark.parametrize(
