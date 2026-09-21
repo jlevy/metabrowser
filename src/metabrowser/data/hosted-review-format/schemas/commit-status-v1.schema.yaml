@@ -15,22 +15,23 @@ $defs:
   GitObjectRef:
     additionalProperties: false
     properties:
-      availability:
-        $ref: '#/$defs/RevisionAvailability'
+      observation:
+        $ref: '#/$defs/RevisionObservation'
       oid:
         anyOf:
-        - pattern: ^[0-9a-f]{40,64}$
+        - pattern: ^(?:[0-9a-f]{40}|[0-9a-f]{64})$
           type: string
         - type: 'null'
         title: Oid
       repository_id:
         anyOf:
-        - minLength: 1
+        - maxLength: 255
+          minLength: 1
           type: string
         - type: 'null'
         title: Repository Id
     required:
-    - availability
+    - observation
     - oid
     - repository_id
     title: GitObjectRef
@@ -45,10 +46,12 @@ $defs:
       instance:
         $ref: '#/$defs/ProviderInstance'
       object_kind:
+        maxLength: 255
         minLength: 1
         title: Object Kind
         type: string
       opaque_id:
+        maxLength: 255
         minLength: 1
         title: Opaque Id
         type: string
@@ -67,6 +70,7 @@ $defs:
       instance:
         $ref: '#/$defs/ProviderInstance'
       opaque_id:
+        maxLength: 255
         minLength: 1
         title: Opaque Id
         type: string
@@ -78,17 +82,18 @@ $defs:
     - provider
     title: RepositoryRef
     type: object
-  RevisionAvailability:
+  RevisionObservation:
     enum:
-    - present
+    - observed
     - unavailable
     - not_requested
-    title: RevisionAvailability
+    title: RevisionObservation
     type: string
 $schema: https://json-schema.org/draft/2020-12/schema
 additionalProperties: false
 properties:
   context:
+    maxLength: 1024
     minLength: 1
     title: Context
     type: string
@@ -96,11 +101,13 @@ properties:
     $ref: '#/$defs/CanonicalTimestamp'
   description:
     anyOf:
-    - minLength: 1
+    - maxLength: 1024
+      minLength: 1
       type: string
     - type: 'null'
     title: Description
   id:
+    maxLength: 1024
     minLength: 1
     title: Id
     type: string
@@ -133,4 +140,4 @@ title: CommitStatus
 type: object
 x-softschema:
   contract: com.github.jlevy.metabrowser.review:CommitStatus/v1
-  schema_sha256: 53132e3349dcea5ba5722b0e186e157c7de4f4e4ca6ce98d33db38a8670f57f3
+  schema_sha256: c117a0e3626f4c81c50b7ad439e47b5caac777f2cb787826f4836fc52230f0af

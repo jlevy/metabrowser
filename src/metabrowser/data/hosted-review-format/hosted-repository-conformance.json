@@ -1,7 +1,7 @@
 {
   "base_records": {
     "provider_binding": {
-      "entry_id": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "source_id": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
       "repository": {
         "provider": "forge",
         "instance": "code.example",
@@ -36,19 +36,108 @@
     }
   },
   "cases": [
-    {"record": "provider_binding", "changes": [], "expect": "valid", "name": "binding-links-generic-entry-to-stable-repository"},
+    {"record": "provider_binding", "changes": [], "expect": "valid", "name": "binding-links-conservative-source-to-stable-repository"},
+    {"record": "provider_binding", "changes": [{"path": ["provenance"], "value": null}], "expect": "valid", "name": "binding-provenance-is-optional-evidence"},
     {"record": "provider_binding", "changes": [{"path": ["authorization_context"], "value": {"mode": "authenticated"}}], "expect": "invalid", "name": "binding-is-independent-of-authorization"},
     {"record": "provider_binding", "changes": [{"path": ["owner"], "value": "team"}], "expect": "invalid", "name": "binding-does-not-copy-mutable-coordinates"},
-    {"record": "provider_binding", "changes": [{"path": ["entry_id"], "value": "entry-1"}], "expect": "invalid", "name": "binding-entry-id-is-canonical-digest"},
+    {"record": "provider_binding", "changes": [{"path": ["source_id"], "value": "https://code.example/team/project.git"}], "expect": "invalid", "name": "binding-source-id-is-canonical-digest"},
+    {"record": "provider_binding", "changes": [{"path": ["entry_id"], "value": "sha256:1111111111111111111111111111111111111111111111111111111111111111"}], "expect": "invalid", "name": "binding-rejects-superseded-cache-entry-identity"},
+    {"record": "provider_binding", "changes": [{"path": ["checkout_path"], "value": "checkouts/project"}], "expect": "invalid", "name": "binding-does-not-record-a-local-path"},
     {"record": "hosted_repository", "changes": [], "expect": "valid", "name": "provider-native-project-kind-is-valid-repository-provenance"},
     {"record": "hosted_repository", "changes": [{"path": ["provider_ref", "provider"], "value": "Forge"}], "expect": "invalid", "name": "repository-provider-kind-is-canonical"},
     {"record": "hosted_repository", "changes": [{"path": ["provider_ref", "instance"], "value": "CODE.example"}], "expect": "invalid", "name": "repository-provider-instance-is-canonical"},
     {"record": "hosted_repository", "changes": [{"path": ["url"], "value": "http://code.example/team/project"}], "expect": "invalid", "name": "repository-web-url-requires-canonical-https"},
     {"record": "hosted_repository", "changes": [{"path": ["default_branch", "name"], "value": null}], "expect": "invalid", "name": "present-default-branch-requires-name"},
     {"record": "hosted_repository", "changes": [{"path": ["default_branch"], "value": {"availability": "absent", "name": "main"}}], "expect": "invalid", "name": "absent-default-branch-forbids-name"},
-    {"record": "hosted_repository", "changes": [{"path": ["updated_at"], "value": "2025-12-31T23:59:59Z"}], "expect": "invalid", "name": "repository-update-does-not-precede-creation"},
+    {"record": "hosted_repository", "changes": [{"path": ["visibility"], "value": 1}], "expect": "invalid", "name": "visibility-rejects-a-nonstring-scalar"},
+    {"record": "hosted_repository", "changes": [{"path": ["default_branch", "availability"], "value": true}], "expect": "invalid", "name": "default-branch-availability-rejects-a-boolean"},
+    {"record": "hosted_repository", "changes": [{"path": ["updated_at"], "value": "2025-12-31T23:59:59Z"}], "expect": "valid", "name": "repository-provider-update-may-precede-creation"},
+    {"record": "hosted_repository", "changes": [{"path": ["name"], "value": "project\u0000"}], "expect": "invalid", "name": "repository-name-rejects-control-character"},
+    {"record": "provider_binding", "changes": [{"path": ["repository", "opaque_id"], "value": "repo-1\n"}], "expect": "invalid", "name": "binding-repository-opaque-id-rejects-newline"},
+    {"record": "provider_binding", "changes": [{"path": ["repository", "opaque_id"], "value": "rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr"}], "expect": "invalid", "name": "binding-repository-opaque-id-rejects-256-characters"},
+    {"record": "hosted_repository", "changes": [{"path": ["owner", "handle"], "value": "hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh"}], "expect": "invalid", "name": "repository-owner-handle-rejects-256-characters"},
+    {"record": "hosted_repository", "changes": [{"path": ["provider_ref", "opaque_id"], "value": "repo-1\u200b"}], "expect": "invalid", "name": "repository-provider-opaque-id-rejects-zero-width-space"},
+    {"record": "hosted_repository", "changes": [{"path": ["default_branch", "name"], "value": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}], "expect": "invalid", "name": "repository-default-branch-rejects-more-than-1024-characters"},
     {"record": "hosted_repository", "changes": [{"path": ["id"], "value": "second-identity"}], "expect": "invalid", "name": "repository-has-no-second-domain-identity"},
     {"record": "hosted_repository", "changes": [{"path": ["provider_payload"], "value": {"fork_count": 12}}], "expect": "invalid", "name": "repository-rejects-provider-payload-extension"},
     {"record": "hosted_repository", "changes": [{"path": ["owner", "handle"], "value": "\ud800"}], "expect": "invalid", "name": "repository-text-rejects-lone-utf16-surrogate"}
+  ],
+  "binding_set": {
+    "provider_bindings": ["provider_binding", "provider_binding"]
+  },
+  "binding_set_cases": [
+    {"changes": [{"path": ["provider_bindings", 1, "source_id"], "value": "sha256:2222222222222222222222222222222222222222222222222222222222222222"}, {"path": ["provider_bindings", 1, "provenance"], "value": null}], "expect": "valid", "name": "many-sources-bind-one-repository"},
+    {"changes": [{"path": ["provider_bindings", 1, "source_id"], "value": "sha256:2222222222222222222222222222222222222222222222222222222222222222"}, {"path": ["provider_bindings", 1, "repository", "opaque_id"], "value": "repo-other"}], "expect": "valid", "name": "distinct-sources-bind-distinct-repositories"},
+    {"changes": [{"path": ["provider_bindings", 1, "repository", "opaque_id"], "value": "repo-other"}], "expect": "invalid", "name": "source-rebind-to-another-opaque-repository-conflicts"},
+    {"changes": [{"path": ["provider_bindings", 1, "repository", "instance"], "value": "other.example"}], "expect": "invalid", "name": "source-rebind-to-another-provider-instance-conflicts"},
+    {"changes": [{"path": ["provider_bindings", 1, "repository", "provider"], "value": "other-forge"}], "expect": "invalid", "name": "source-rebind-to-another-provider-kind-conflicts"},
+    {"changes": [], "expect": "invalid", "name": "duplicate-source-binding-is-rejected"},
+    {"changes": [{"path": ["provider_bindings", 1, "provenance"], "value": null}], "expect": "invalid", "name": "same-source-with-other-provenance-is-ambiguous"}
+  ],
+  "binding_successor": {
+    "previous": "provider_binding",
+    "successor": "provider_binding"
+  },
+  "binding_successor_cases": [
+    {"changes": [], "expect": "valid", "name": "unchanged-binding-successor-is-valid"},
+    {"changes": [{"path": ["successor", "provenance", "retrieval_snapshot_id"], "value": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}], "expect": "valid", "name": "binding-successor-may-cite-newer-provenance"},
+    {"changes": [{"path": ["successor", "provenance"], "value": null}], "expect": "valid", "name": "binding-successor-provenance-is-evidence-not-identity"},
+    {"changes": [{"path": ["successor", "repository", "opaque_id"], "value": "repo-other"}], "expect": "invalid", "name": "binding-successor-rebind-to-another-opaque-repository-conflicts"},
+    {"changes": [{"path": ["successor", "repository", "instance"], "value": "other.example"}], "expect": "invalid", "name": "binding-successor-rebind-to-another-provider-instance-conflicts"},
+    {"changes": [{"path": ["successor", "source_id"], "value": "sha256:2222222222222222222222222222222222222222222222222222222222222222"}], "expect": "invalid", "name": "binding-for-another-source-is-not-a-successor"}
+  ],
+  "binding_provenance": {
+    "provider_binding": "provider_binding",
+    "retrieval_snapshot_id": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "retrieval": {
+      "authorization_context": {
+        "provider": "forge",
+        "instance": "code.example",
+        "mode": "anonymous",
+        "principal_opaque_id": null,
+        "visibility_partition_digest": null
+      },
+      "target": {
+        "kind": "provider_binding",
+        "source_id": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "repository": {
+          "provider": "forge",
+          "instance": "code.example",
+          "opaque_id": "repo-1"
+        }
+      },
+      "adapter_id": "forge-cli:v1",
+      "transport": "provider_cli",
+      "operation_id": "repository-binding",
+      "request_key": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "started_at": "2026-09-15T12:00:00Z",
+      "finished_at": "2026-09-15T12:00:00.125Z",
+      "api_version": "2026-01-01",
+      "normalization_version": "hosted-review/v1",
+      "outcome": {
+        "kind": "succeeded"
+      },
+      "validators": {
+        "etag": null,
+        "last_modified_at": null
+      },
+      "rate_limit": null,
+      "display_login": null,
+      "capabilities": {
+        "state": "not_requested",
+        "values": []
+      }
+    }
+  },
+  "binding_provenance_cases": [
+    {"changes": [], "expect": "valid", "name": "provenance-resolves-successful-exact-source-binding"},
+    {"changes": [{"path": ["retrieval", "target", "source_id"], "value": "sha256:2222222222222222222222222222222222222222222222222222222222222222"}], "expect": "invalid", "name": "provenance-source-mismatch-is-rejected"},
+    {"changes": [{"path": ["retrieval", "target", "repository", "opaque_id"], "value": "repo-other"}], "expect": "invalid", "name": "provenance-repository-mismatch-is-rejected"},
+    {"changes": [{"path": ["retrieval", "outcome"], "value": {"kind": "failed", "reason": "provider_error"}}], "expect": "invalid", "name": "provenance-requires-a-successful-retrieval"},
+    {"changes": [{"path": ["retrieval", "outcome"], "value": {"kind": "not_found_under_context"}}], "expect": "invalid", "name": "provenance-rejects-not-found-retrieval"},
+    {"changes": [{"path": ["retrieval", "target"], "value": {"kind": "provider_object", "repository": {"provider": "forge", "instance": "code.example", "opaque_id": "repo-1"}, "target": {"provider": "forge", "instance": "code.example", "object_kind": "project", "opaque_id": "repo-1"}}}], "expect": "invalid", "name": "provenance-requires-a-provider-binding-target"},
+    {"changes": [{"path": ["retrieval", "target"], "value": {"kind": "provider_binding", "entry_id": "sha256:1111111111111111111111111111111111111111111111111111111111111111", "repository": {"provider": "forge", "instance": "code.example", "opaque_id": "repo-1"}}}], "expect": "invalid", "name": "provenance-rejects-superseded-entry-id-target"},
+    {"changes": [{"path": ["retrieval_snapshot_id"], "value": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}], "expect": "invalid", "name": "provenance-names-the-resolved-retrieval-snapshot"},
+    {"changes": [{"path": ["provider_binding", "provenance"], "value": null}], "expect": "invalid", "name": "binding-without-provenance-cannot-resolve-evidence"}
   ]
 }

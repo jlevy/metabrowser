@@ -89,6 +89,78 @@ def test_provider_storage_models_agree_with_the_portable_corpus() -> None:
                 validator(document)
 
 
+@pytest.mark.parametrize(
+    ("record", "path"),
+    [
+        ("retrieval", ("normalization_version",)),
+        ("retrieval", ("validators", "etag")),
+        ("retrieval", ("request_key",)),
+        ("resource_set", ("profile",)),
+        ("provider_sync_manifest", ("transaction_id",)),
+        ("provider_view_pointer", ("resource_set_snapshot_id",)),
+        ("tombstone", ("previous_live_snapshot_id",)),
+        ("tombstone", ("proof", "retrieval_snapshot_id")),
+        ("deletion_retrieval", ("outcome", "provider_event_opaque_id")),
+    ],
+)
+def test_provider_storage_strings_are_never_coerced_from_bytes(
+    record: str, path: tuple[str, ...]
+) -> None:
+    document = copy.deepcopy(_corpus()["base_records"][record])
+    validator, _ = _storage_api(record)
+    target: Any = document
+    for part in path[:-1]:
+        target = target[part]
+    assert isinstance(target[path[-1]], str)
+    target[path[-1]] = cast(str, target[path[-1]]).encode("utf-8")
+
+    with pytest.raises(ValueError):
+        validator(document)
+
+
+@pytest.mark.parametrize(
+    ("record", "path"),
+    [
+        ("retrieval", ("authorization_context", "mode")),
+        ("retrieval", ("transport",)),
+        ("retrieval", ("capabilities", "state")),
+        ("deletion_retrieval", ("outcome", "evidence_kind")),
+        ("resource_set", ("collections", 0, "coverage")),
+        ("provider_sync_manifest", ("state",)),
+        ("provider_view_pointer", ("role",)),
+        ("tombstone", ("authorization_context", "mode")),
+    ],
+)
+def test_provider_storage_enums_are_never_coerced_from_bytes(
+    record: str, path: tuple[str | int, ...]
+) -> None:
+    document = copy.deepcopy(_corpus()["base_records"][record])
+    validator, _ = _storage_api(record)
+    target: Any = document
+    for part in path[:-1]:
+        target = target[part]
+    assert isinstance(target[path[-1]], str)
+    target[path[-1]] = cast(str, target[path[-1]]).encode("utf-8")
+
+    with pytest.raises(ValueError):
+        validator(document)
+
+
+def test_resource_collection_name_is_a_bounded_stable_token() -> None:
+    # A resource set's collection names must also match its trusted profile, so the
+    # corpus cannot exercise this bound through validate_resource_set; the collection
+    # model carries it on its own.
+    collection = copy.deepcopy(_corpus()["base_records"]["resource_set"]["collections"][0])
+    bound = hosted_review.MAX_STABLE_TOKEN_LENGTH
+
+    collection["name"] = "n" * bound
+    assert hosted_review.ResourceCollection.model_validate(collection).name == "n" * bound
+
+    collection["name"] = "n" * (bound + 1)
+    with pytest.raises(ValueError):
+        hosted_review.ResourceCollection.model_validate(collection)
+
+
 def test_new_provider_collection_needs_only_a_trusted_profile_declaration() -> None:
     records = _corpus()["base_records"]
     release_contract_id = "example.test:ReleaseIndex/v1"

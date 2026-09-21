@@ -18,6 +18,7 @@ $defs:
       instance:
         $ref: '#/$defs/ProviderInstance'
       opaque_id:
+        maxLength: 255
         minLength: 1
         title: Opaque Id
         type: string
@@ -34,20 +35,20 @@ $defs:
 $schema: https://json-schema.org/draft/2020-12/schema
 additionalProperties: false
 properties:
-  entry_id:
-    $ref: '#/$defs/Sha256Digest'
   provenance:
     anyOf:
     - $ref: '#/$defs/ProviderBindingProvenance'
     - type: 'null'
   repository:
     $ref: '#/$defs/RepositoryRef'
+  source_id:
+    $ref: '#/$defs/Sha256Digest'
 required:
-- entry_id
 - provenance
 - repository
+- source_id
 title: ProviderBinding
 type: object
 x-softschema:
   contract: com.github.jlevy.metabrowser.provider:ProviderBinding/v1
-  schema_sha256: dc1a6e00dfdcabfd374d5055e9f64227701b4a46cc00bac3123736ab482d2759
+  schema_sha256: bd1bb1f37b64d768a32696cd1a9f6042cd5b4839766628bfd61c35ec9fcec240

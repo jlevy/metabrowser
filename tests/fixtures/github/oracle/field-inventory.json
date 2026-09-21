@@ -211,7 +211,7 @@
       "field_groups": [
         { "fields": ["ref", "oid"], "disposition": "observed", "sources": ["rest.pull_request", "graphql.review_thread"] },
         { "fields": ["repository_id"], "disposition": "optional_unavailable", "sources": ["rest.pull_request", "graphql.schema.core_nullability"], "unavailable_when": "GitHub retains headRefName and headRefOid after headRepository becomes null; the owning base repository remains available." },
-        { "fields": ["availability"], "disposition": "derived", "derivation": "present when an OID was observed; unavailable for an attempted but absent provider object; not_requested only when acquisition deliberately omitted it." }
+        { "fields": ["observation"], "disposition": "derived", "derivation": "observed when the provider supplied an OID; unavailable for an attempted but absent provider object; not_requested only when acquisition deliberately omitted it. Local repository-store availability is not a provider field." }
       ]
     },
     {
@@ -220,7 +220,7 @@
       "field_groups": [
         { "fields": ["oid"], "disposition": "observed", "sources": ["graphql.review_thread", "rest.check_runs", "rest.commit_status"] },
         { "fields": ["repository_id"], "disposition": "optional_unavailable", "sources": ["rest.pull_request", "graphql.schema.core_nullability"], "unavailable_when": "The source repository is deleted or inaccessible while GitHub still exposes the object ID." },
-        { "fields": ["availability"], "disposition": "derived", "derivation": "Normalized from whether the requested immutable object ID was supplied." }
+        { "fields": ["observation"], "disposition": "derived", "derivation": "Normalized from whether the provider supplied the requested immutable object ID." }
       ]
     },
     {
@@ -228,7 +228,7 @@
       "consumers": ["mapping.py#map_change_request", "mapping.py#map_thread", "models.py#ComparisonRef"],
       "field_groups": [
         { "fields": ["base", "head", "merge_commit_oid"], "disposition": "observed", "sources": ["rest.pull_request", "graphql.review_thread"] },
-        { "fields": ["merge_commit_availability"], "disposition": "derived", "derivation": "Normalized from request scope and merge_commit_sha presence." }
+        { "fields": ["merge_commit_observation"], "disposition": "derived", "derivation": "Normalized from request scope and merge_commit_sha presence." }
       ]
     },
     {
@@ -476,7 +476,7 @@
       "consumers": ["activity.py#project_commit", "activity.py#project_change_request", "RepositoryActivity/v1 navigation view"],
       "field_groups": [
         { "fields": ["title", "actors", "event_at", "updated_at", "state", "primary_revision", "base_revision", "head_revision", "detail"], "disposition": "derived", "derivation": "Deterministic projection from normalized Git commits or change-request index/detail records; unknown head repository identity stays null rather than being guessed." },
-        { "fields": ["id", "kind", "comparison_available", "freshness"], "disposition": "derived", "derivation": "Stable source identity, source variant, revision availability, and validated snapshot provenance deterministically define these projection fields." }
+        { "fields": ["id", "kind", "comparison_observed", "freshness"], "disposition": "derived", "derivation": "Stable source identity, source variant, provider revision observation, and validated snapshot provenance deterministically define these projection fields." }
       ]
     },
     {
@@ -521,7 +521,7 @@
     { "name": "ReviewDisposition", "values": { "pending": "optional_unavailable", "commented": "derived", "approved": "optional_unavailable", "changes_requested": "optional_unavailable", "dismissed": "optional_unavailable", "unknown": "derived" }, "sources": ["graphql.review_thread"] },
     { "name": "ReviewSide", "values": { "base": "optional_unavailable", "head": "derived" }, "sources": ["graphql.review_thread"] },
     { "name": "ReviewThreadState", "values": { "unresolved": "derived", "resolved": "optional_unavailable", "unknown": "derived" }, "sources": ["graphql.review_thread"] },
-    { "name": "RevisionAvailability", "values": { "present": "derived", "unavailable": "optional_unavailable", "not_requested": "metabrowser_owned" }, "sources": ["rest.pull_request", "graphql.schema.core_nullability"] },
+    { "name": "RevisionObservation", "values": { "observed": "derived", "unavailable": "optional_unavailable", "not_requested": "metabrowser_owned" }, "sources": ["rest.pull_request", "graphql.schema.core_nullability"] },
     { "name": "SortDirection", "values": { "ascending": "metabrowser_owned", "descending": "metabrowser_owned" } },
     { "name": "TruncationReason", "values": { "item_bound": "metabrowser_owned", "page_bound": "metabrowser_owned", "byte_bound": "metabrowser_owned", "time_bound": "metabrowser_owned", "provider_limit": "derived", "provider_failure": "derived", "malformed_response": "derived", "cancelled": "metabrowser_owned" } }
   ],
@@ -571,14 +571,14 @@
     { "targets": ["ReviewSide.head"], "disposition": "derived", "recipe": "Map GitHub RIGHT to head.", "inputs": ["graphql.review_thread#/reviewThreads/nodes/0/diffSide"] },
     { "targets": ["ReviewThreadState.unresolved"], "disposition": "derived", "recipe": "Map isResolved=false to unresolved.", "inputs": ["graphql.review_thread#/reviewThreads/nodes/0/isResolved"] },
     { "targets": ["ReviewThreadState.unknown"], "disposition": "derived", "recipe": "Retain unknown when provider thread state cannot be interpreted.", "inputs": ["graphql.review_thread#/reviewThreads/nodes/0/isResolved"] },
-    { "targets": ["RevisionAvailability.present"], "disposition": "derived", "recipe": "Map an observed immutable object ID to present.", "inputs": ["rest.pull_request#/head/sha"] },
+    { "targets": ["RevisionObservation.observed"], "disposition": "derived", "recipe": "Map a provider-supplied immutable object ID to observed.", "inputs": ["rest.pull_request#/head/sha"] },
     { "targets": ["TruncationReason.provider_limit", "TruncationReason.provider_failure", "TruncationReason.malformed_response"], "disposition": "derived", "recipe": "Map the typed provider acquisition outcome to a closed truncation reason.", "inputs": ["external:provider_acquisition.outcome", "external:provider_acquisition.failure_reason"] },
     { "targets": ["GitActivityActor.kind=git", "CommitActivityDetail.kind=commit"], "disposition": "derived", "recipe": "Select the local Git union variant for a validated commit.", "inputs": ["external:local_git_commit.oid"] },
     { "targets": ["RangeReviewAnchor.kind=range"], "disposition": "derived", "recipe": "Select range when both start and end positions are present.", "inputs": ["graphql.review_thread#/reviewThreads/nodes/0/startLine", "graphql.review_thread#/reviewThreads/nodes/0/line"] },
 
     { "targets": ["ActivityCoverage.complete", "ActivityCoverage.partial"], "disposition": "metabrowser_owned", "owner_reason": "The bounded local projection declares whether its selected source set was exhausted." },
     { "targets": ["IndexSortField.created_at", "IndexSortField.updated_at", "SortDirection.ascending", "SortDirection.descending"], "disposition": "metabrowser_owned", "owner_reason": "The normalized local query owns its sort field and direction." },
-    { "targets": ["RevisionAvailability.not_requested"], "disposition": "metabrowser_owned", "owner_reason": "The acquisition plan records that it deliberately did not request the object." },
+    { "targets": ["RevisionObservation.not_requested"], "disposition": "metabrowser_owned", "owner_reason": "The acquisition plan records that it deliberately did not request the object." },
     { "targets": ["TruncationReason.item_bound", "TruncationReason.page_bound", "TruncationReason.byte_bound", "TruncationReason.time_bound", "TruncationReason.cancelled"], "disposition": "metabrowser_owned", "owner_reason": "The local bounded acquisition layer records its own stop condition." },
     { "targets": ["AllChangeRequestStates.kind=all", "ImmutableActivityFreshness.kind=immutable", "IndexSort.tie_breaker=provider_opaque_id", "ObservedActivityFreshness.kind=observed", "OpaqueCursorContinuation.kind=opaque_cursor", "RepositoryActivity.order=event_at_desc_id_asc", "SelectedChangeRequestStates.kind=selected"], "disposition": "metabrowser_owned", "owner_reason": "The normalized local contract owns these discriminators and deterministic ordering literals." },
 
@@ -594,7 +594,7 @@
     { "targets": ["ReviewDisposition.pending", "ReviewDisposition.approved", "ReviewDisposition.changes_requested", "ReviewDisposition.dismissed"], "disposition": "optional_unavailable", "condition": "The selected reviews returned COMMENTED.", "rationale": "Other review-state variants were not captured." },
     { "targets": ["ReviewSide.base"], "disposition": "optional_unavailable", "condition": "The selected range used GitHub RIGHT for both endpoints.", "rationale": "No LEFT-side anchor was captured." },
     { "targets": ["ReviewThreadState.resolved"], "disposition": "optional_unavailable", "condition": "The selected thread was unresolved.", "rationale": "No resolved-by relationship was captured." },
-    { "targets": ["RevisionAvailability.unavailable"], "disposition": "optional_unavailable", "condition": "The selected objects were present, while schema nullability proves provider absence is possible.", "rationale": "Do not invent an unavailable concrete response." },
+    { "targets": ["RevisionObservation.unavailable"], "disposition": "optional_unavailable", "condition": "The selected objects were observed, while schema nullability proves provider absence is possible.", "rationale": "Do not invent an unavailable concrete response." },
     { "targets": ["FileReviewAnchor.kind=file", "LineReviewAnchor.kind=line"], "disposition": "optional_unavailable", "condition": "The selected evidence is a same-side range anchor.", "rationale": "File-only and single-line variants remain explicit unobserved cases." }
   ],
   "external_inputs": [
@@ -607,9 +607,9 @@
     { "model": "ProviderObjectRef", "fields": { "opaque_id": ["rest.repository#/node_id"], "provider": ["rest.repository@request#/transport"], "instance": ["rest.repository@request#/host"], "object_kind": ["rest.repository@request#/path"] } },
     { "model": "RepositoryRef", "fields": { "opaque_id": ["rest.repository#/node_id"], "provider": ["rest.repository@request#/transport"], "instance": ["rest.repository@request#/host"] } },
     { "model": "ActorRef", "fields": { "provider_opaque_id": ["rest.pull_request#/user/node_id"], "handle": ["rest.pull_request#/user/login"], "url": ["rest.pull_request#/user/html_url"] } },
-    { "model": "RevisionRef", "fields": { "repository_id": ["rest.pull_request#/head/repo/node_id", "graphql.schema.core_nullability#/pullRequest/fields/3"], "ref": ["rest.pull_request#/head/ref"], "oid": ["rest.pull_request#/head/sha"], "availability": ["rest.pull_request#/head/sha"] } },
-    { "model": "GitObjectRef", "fields": { "repository_id": ["rest.pull_request#/head/repo/node_id", "graphql.schema.core_nullability#/pullRequest/fields/3"], "oid": ["graphql.review_thread#/reviewThreads/nodes/0/comments/nodes/0/originalCommit/oid"], "availability": ["graphql.schema.core_nullability#/reviewComment/fields/2"] } },
-    { "model": "ComparisonRef", "fields": { "base": ["rest.pull_request#/base"], "head": ["rest.pull_request#/head"], "merge_commit_oid": ["rest.pull_request#/merge_commit_sha"], "merge_commit_availability": ["rest.pull_request#/merge_commit_sha"] } },
+    { "model": "RevisionRef", "fields": { "repository_id": ["rest.pull_request#/head/repo/node_id", "graphql.schema.core_nullability#/pullRequest/fields/3"], "ref": ["rest.pull_request#/head/ref"], "oid": ["rest.pull_request#/head/sha"], "observation": ["rest.pull_request#/head/sha"] } },
+    { "model": "GitObjectRef", "fields": { "repository_id": ["rest.pull_request#/head/repo/node_id", "graphql.schema.core_nullability#/pullRequest/fields/3"], "oid": ["graphql.review_thread#/reviewThreads/nodes/0/comments/nodes/0/originalCommit/oid"], "observation": ["graphql.schema.core_nullability#/reviewComment/fields/2"] } },
+    { "model": "ComparisonRef", "fields": { "base": ["rest.pull_request#/base"], "head": ["rest.pull_request#/head"], "merge_commit_oid": ["rest.pull_request#/merge_commit_sha"], "merge_commit_observation": ["rest.pull_request#/merge_commit_sha"] } },
     { "model": "DefaultBranch", "fields": { "name": ["rest.repository#/default_branch"], "availability": ["rest.repository#/default_branch"] } },
     { "model": "HostedRepository", "fields": { "provider_ref": ["rest.repository#/node_id", "rest.repository@request#/host"], "name": ["rest.repository#/name"], "owner": ["rest.repository#/owner/login"], "url": ["rest.repository#/html_url"], "clone_url": ["rest.repository#/clone_url"], "visibility": ["rest.repository#/visibility"], "default_branch": ["rest.repository#/default_branch"], "created_at": ["rest.repository#/created_at"], "updated_at": ["rest.repository#/updated_at"] } },
     { "model": "LabelRef", "fields": { "name": ["rest.pull_request#/labels"], "color": ["rest.pull_request#/labels"] } },
@@ -633,7 +633,7 @@
     { "model": "ProviderActivityActor", "fields": { "kind": ["model:ChangeRequestIndexRow.provider_ref"], "actor": ["model:ChangeRequestIndexRow.author"] } },
     { "model": "CommitActivityDetail", "fields": { "kind": ["external:local_git_commit.oid"], "revision": ["external:local_git_commit.oid"] } },
     { "model": "ChangeRequestActivityDetail", "fields": { "kind": ["model:ChangeRequestIndexRow.provider_ref"], "change_request_id": ["model:ChangeRequestIndexRow.provider_ref"], "provider_ref": ["model:ChangeRequestIndexRow.provider_ref"], "repository": ["model:ChangeRequestIndexRow.repository"], "number": ["rest.pull_request_index.first_page#/items/0/number"] } },
-    { "model": "ActivityItem", "fields": { "id": ["model:ChangeRequestIndexRow.provider_ref"], "kind": ["model:ChangeRequestIndexRow.provider_ref"], "title": ["model:ChangeRequestIndexRow.title"], "actors": ["model:ChangeRequestIndexRow.author"], "event_at": ["model:ChangeRequestIndexRow.updated_at"], "updated_at": ["model:ChangeRequestIndexRow.updated_at"], "state": ["model:ChangeRequestIndexRow.state"], "primary_revision": ["model:RevisionRef.ref"], "base_revision": ["model:RevisionRef.ref"], "head_revision": ["model:RevisionRef.ref"], "comparison_available": ["model:RevisionRef.availability"], "detail": ["model:ChangeRequestActivityDetail.provider_ref"], "freshness": ["external:validated_provider_snapshot.snapshot_id", "external:validated_provider_snapshot.observed_at"] } },
+    { "model": "ActivityItem", "fields": { "id": ["model:ChangeRequestIndexRow.provider_ref"], "kind": ["model:ChangeRequestIndexRow.provider_ref"], "title": ["model:ChangeRequestIndexRow.title"], "actors": ["model:ChangeRequestIndexRow.author"], "event_at": ["model:ChangeRequestIndexRow.updated_at"], "updated_at": ["model:ChangeRequestIndexRow.updated_at"], "state": ["model:ChangeRequestIndexRow.state"], "primary_revision": ["model:RevisionRef.ref"], "base_revision": ["model:RevisionRef.ref"], "head_revision": ["model:RevisionRef.ref"], "comparison_observed": ["model:RevisionRef.observation"], "detail": ["model:ChangeRequestActivityDetail.provider_ref"], "freshness": ["external:validated_provider_snapshot.snapshot_id", "external:validated_provider_snapshot.observed_at"] } },
     { "model": "OpaqueCursorContinuation", "fields": { "value": ["rest.pull_request_index.first_page#/link_relations/next"] } },
     { "model": "RepositoryActivity", "fields": { "items": ["model:ActivityItem.id"] } }
   ],

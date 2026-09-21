@@ -3,10 +3,12 @@ $defs:
     additionalProperties: false
     properties:
       handle:
+        maxLength: 255
         minLength: 1
         title: Handle
         type: string
       provider_opaque_id:
+        maxLength: 255
         minLength: 1
         title: Provider Opaque Id
         type: string
@@ -27,22 +29,23 @@ $defs:
   GitObjectRef:
     additionalProperties: false
     properties:
-      availability:
-        $ref: '#/$defs/RevisionAvailability'
+      observation:
+        $ref: '#/$defs/RevisionObservation'
       oid:
         anyOf:
-        - pattern: ^[0-9a-f]{40,64}$
+        - pattern: ^(?:[0-9a-f]{40}|[0-9a-f]{64})$
           type: string
         - type: 'null'
         title: Oid
       repository_id:
         anyOf:
-        - minLength: 1
+        - maxLength: 255
+          minLength: 1
           type: string
         - type: 'null'
         title: Repository Id
     required:
-    - availability
+    - observation
     - oid
     - repository_id
     title: GitObjectRef
@@ -57,10 +60,12 @@ $defs:
       instance:
         $ref: '#/$defs/ProviderInstance'
       object_kind:
+        maxLength: 255
         minLength: 1
         title: Object Kind
         type: string
       opaque_id:
+        maxLength: 255
         minLength: 1
         title: Opaque Id
         type: string
@@ -79,6 +84,7 @@ $defs:
       instance:
         $ref: '#/$defs/ProviderInstance'
       opaque_id:
+        maxLength: 255
         minLength: 1
         title: Opaque Id
         type: string
@@ -100,12 +106,12 @@ $defs:
     - unknown
     title: ReviewDisposition
     type: string
-  RevisionAvailability:
+  RevisionObservation:
     enum:
-    - present
+    - observed
     - unavailable
     - not_requested
-    title: RevisionAvailability
+    title: RevisionObservation
     type: string
 $schema: https://json-schema.org/draft/2020-12/schema
 additionalProperties: false
@@ -115,6 +121,7 @@ properties:
     - $ref: '#/$defs/ActorRef'
     - type: 'null'
   change_request_id:
+    maxLength: 1024
     minLength: 1
     title: Change Request Id
     type: string
@@ -123,6 +130,7 @@ properties:
   disposition:
     $ref: '#/$defs/ReviewDisposition'
   id:
+    maxLength: 1024
     minLength: 1
     title: Id
     type: string
@@ -156,4 +164,4 @@ title: Review
 type: object
 x-softschema:
   contract: com.github.jlevy.metabrowser.review:Review/v1
-  schema_sha256: a33bfda57f862b4409cf044526653c87ad155541453fe49c2cbf9eb2313f6410
+  schema_sha256: 97aeec24723db9678ad2e64523020f01c89918e8c9b6d4ec946d76166682f8fc

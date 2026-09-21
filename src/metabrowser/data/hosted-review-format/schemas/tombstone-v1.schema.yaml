@@ -8,7 +8,8 @@ $defs:
         $ref: '#/$defs/AuthorizationMode'
       principal_opaque_id:
         anyOf:
-        - minLength: 1
+        - maxLength: 255
+          minLength: 1
           type: string
         - type: 'null'
         title: Principal Opaque Id
@@ -58,10 +59,12 @@ $defs:
       instance:
         $ref: '#/$defs/ProviderInstance'
       object_kind:
+        maxLength: 255
         minLength: 1
         title: Object Kind
         type: string
       opaque_id:
+        maxLength: 255
         minLength: 1
         title: Opaque Id
         type: string
@@ -80,6 +83,7 @@ $defs:
       instance:
         $ref: '#/$defs/ProviderInstance'
       opaque_id:
+        maxLength: 255
         minLength: 1
         title: Opaque Id
         type: string
@@ -119,4 +123,4 @@ title: Tombstone
 type: object
 x-softschema:
   contract: com.github.jlevy.metabrowser.provider:Tombstone/v1
-  schema_sha256: 95786d5a29132b310eb2f2f9ff758167717c9c9c24fcc4713fe29b5d43bf8296
+  schema_sha256: 88ff03da592322f7450352aea72766237f0b379c5f0c83d9c795afab982ee5a9

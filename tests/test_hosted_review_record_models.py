@@ -152,7 +152,7 @@ def test_current_anchor_can_preserve_an_older_original_revision() -> None:
     assert thread.anchor.original_revision.oid != thread.anchor.current_revision.oid
 
 
-def test_anchor_records_an_observed_but_unavailable_original_revision() -> None:
+def test_anchor_records_a_requested_but_unavailable_original_revision() -> None:
     corpus = _corpus()
     case = next(
         case
@@ -166,8 +166,7 @@ def test_anchor_records_an_observed_but_unavailable_original_revision() -> None:
 
     assert thread.anchor.original_revision.oid is None
     assert (
-        thread.anchor.original_revision.availability
-        is hosted_review.RevisionAvailability.unavailable
+        thread.anchor.original_revision.observation is hosted_review.RevisionObservation.unavailable
     )
 
 

@@ -44,8 +44,8 @@ $defs:
         anyOf:
         - $ref: '#/$defs/RevisionRef'
         - type: 'null'
-      comparison_available:
-        title: Comparison Available
+      comparison_observed:
+        title: Comparison Observed
         type: boolean
       detail:
         $ref: '#/$defs/ActivityDetailTarget'
@@ -58,6 +58,7 @@ $defs:
         - $ref: '#/$defs/RevisionRef'
         - type: 'null'
       id:
+        maxLength: 1024
         minLength: 1
         title: Id
         type: string
@@ -70,6 +71,7 @@ $defs:
         - $ref: '#/$defs/ActivityState'
         - type: 'null'
       title:
+        maxLength: 1024
         minLength: 1
         title: Title
         type: string
@@ -78,7 +80,7 @@ $defs:
     required:
     - actors
     - base_revision
-    - comparison_available
+    - comparison_observed
     - detail
     - event_at
     - freshness
@@ -110,10 +112,12 @@ $defs:
     additionalProperties: false
     properties:
       handle:
+        maxLength: 255
         minLength: 1
         title: Handle
         type: string
       provider_opaque_id:
+        maxLength: 255
         minLength: 1
         title: Provider Opaque Id
         type: string
@@ -133,6 +137,7 @@ $defs:
     additionalProperties: false
     properties:
       change_request_id:
+        maxLength: 1024
         minLength: 1
         title: Change Request Id
         type: string
@@ -175,7 +180,8 @@ $defs:
     properties:
       email:
         anyOf:
-        - minLength: 1
+        - maxLength: 1024
+          minLength: 1
           type: string
         - type: 'null'
         title: Email
@@ -184,6 +190,7 @@ $defs:
         title: Kind
         type: string
       name:
+        maxLength: 1024
         minLength: 1
         title: Name
         type: string
@@ -196,22 +203,23 @@ $defs:
   GitObjectRef:
     additionalProperties: false
     properties:
-      availability:
-        $ref: '#/$defs/RevisionAvailability'
+      observation:
+        $ref: '#/$defs/RevisionObservation'
       oid:
         anyOf:
-        - pattern: ^[0-9a-f]{40,64}$
+        - pattern: ^(?:[0-9a-f]{40}|[0-9a-f]{64})$
           type: string
         - type: 'null'
         title: Oid
       repository_id:
         anyOf:
-        - minLength: 1
+        - maxLength: 255
+          minLength: 1
           type: string
         - type: 'null'
         title: Repository Id
     required:
-    - availability
+    - observation
     - oid
     - repository_id
     title: GitObjectRef
@@ -284,10 +292,12 @@ $defs:
       instance:
         $ref: '#/$defs/ProviderInstance'
       object_kind:
+        maxLength: 255
         minLength: 1
         title: Object Kind
         type: string
       opaque_id:
+        maxLength: 255
         minLength: 1
         title: Opaque Id
         type: string
@@ -306,6 +316,7 @@ $defs:
       instance:
         $ref: '#/$defs/ProviderInstance'
       opaque_id:
+        maxLength: 255
         minLength: 1
         title: Opaque Id
         type: string
@@ -317,36 +328,38 @@ $defs:
     - provider
     title: RepositoryRef
     type: object
-  RevisionAvailability:
+  RevisionObservation:
     enum:
-    - present
+    - observed
     - unavailable
     - not_requested
-    title: RevisionAvailability
+    title: RevisionObservation
     type: string
   RevisionRef:
     additionalProperties: false
     properties:
-      availability:
-        $ref: '#/$defs/RevisionAvailability'
+      observation:
+        $ref: '#/$defs/RevisionObservation'
       oid:
         anyOf:
-        - pattern: ^[0-9a-f]{40,64}$
+        - pattern: ^(?:[0-9a-f]{40}|[0-9a-f]{64})$
           type: string
         - type: 'null'
         title: Oid
       ref:
+        maxLength: 1024
         minLength: 1
         title: Ref
         type: string
       repository_id:
         anyOf:
-        - minLength: 1
+        - maxLength: 255
+          minLength: 1
           type: string
         - type: 'null'
         title: Repository Id
     required:
-    - availability
+    - observation
     - oid
     - ref
     - repository_id
@@ -411,6 +424,7 @@ properties:
     title: Order
     type: string
   repository_id:
+    maxLength: 255
     minLength: 1
     title: Repository Id
     type: string
@@ -431,4 +445,4 @@ title: RepositoryActivity
 type: object
 x-softschema:
   contract: com.github.jlevy.metabrowser.activity:RepositoryActivity/v1
-  schema_sha256: 4d9042e3c4a18c3fc7b1aed6afb425d8c0189ec5d95c232ba3d211c0d1427845
+  schema_sha256: 059240e2d42ad4cad35899a9996095e809dbff8d10a71455a13e7b96e104ad05

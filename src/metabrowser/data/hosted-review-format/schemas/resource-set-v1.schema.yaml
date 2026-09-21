@@ -20,7 +20,8 @@ $defs:
         $ref: '#/$defs/AuthorizationMode'
       principal_opaque_id:
         anyOf:
-        - minLength: 1
+        - maxLength: 255
+          minLength: 1
           type: string
         - type: 'null'
         title: Principal Opaque Id
@@ -75,6 +76,7 @@ $defs:
         unevaluatedProperties: false
       observed_provider_ids:
         items:
+          maxLength: 255
           minLength: 1
           type: string
         title: Observed Provider Ids
@@ -88,7 +90,8 @@ $defs:
         type: boolean
       provider_snapshot_token:
         anyOf:
-        - minLength: 1
+        - maxLength: 255
+          minLength: 1
           type: string
         - type: 'null'
         title: Provider Snapshot Token
@@ -202,10 +205,12 @@ $defs:
       instance:
         $ref: '#/$defs/ProviderInstance'
       object_kind:
+        maxLength: 255
         minLength: 1
         title: Object Kind
         type: string
       opaque_id:
+        maxLength: 255
         minLength: 1
         title: Opaque Id
         type: string
@@ -240,6 +245,7 @@ $defs:
         title: Kind
         type: string
       token:
+        maxLength: 255
         minLength: 1
         title: Token
         type: string
@@ -265,6 +271,7 @@ $defs:
       instance:
         $ref: '#/$defs/ProviderInstance'
       opaque_id:
+        maxLength: 255
         minLength: 1
         title: Opaque Id
         type: string
@@ -291,6 +298,7 @@ $defs:
         - $ref: '#/$defs/Sha256Digest'
         - type: 'null'
       name:
+        maxLength: 128
         pattern: ^[a-z][a-z0-9._:-]*$
         title: Name
         type: string
@@ -395,4 +403,4 @@ title: ResourceSet
 type: object
 x-softschema:
   contract: com.github.jlevy.metabrowser.provider:ResourceSet/v1
-  schema_sha256: 973df7d06426e119f950f235cc6cc20c41a38bca661d9ea379691a4be3ca8dd2
+  schema_sha256: 68e2b3e37248c9a83c61f2ff76b7c7a2f1c1ed8db454266c2eab687e4d12783d

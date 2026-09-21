@@ -1,9 +1,9 @@
 # External Resources, Artifact Contracts, and Views
 
-**Status:** Accepted design; the provider-storage model, installed contract and
-resource-profile registries, and generic format inventory gate are implemented through
-Phase 0C.2. The resource store, resource-kind registry, addressing, and views remain
-planned and unregistered.
+**Status:** Accepted design; the provider-neutral model contracts, installed contract
+and resource-profile registries, and generic format inventory gate are implemented
+through Phase 0C.2. Provider bindings and storage, the resource-kind registry,
+addressing, and views remain planned and unregistered.
 
 Metabrowser should be able to browse a useful object from an API or external system
 without turning that provider’s response shape into a core model or building a new UI
@@ -250,6 +250,22 @@ about partiality, and reusable offline.
 A collection omission never proves entity deletion; only typed deletion evidence can
 advance a tombstone.
 
+Provider storage is global to the application home and repository-scoped.
+Its logical key is provider kind, provider instance, stable repository opaque ID,
+authorization context, and logical target/profile/query.
+It is not nested under a generic repository cache entry or a user-owned checkout.
+Conservative Git source identities and ephemeral local sessions attach many-to-one to
+the stable repository identity, so two local clones and several URL spellings can reuse
+the same provider observations without sharing a working tree.
+
+The provider cache is a mirror only of enabled, validated resource profiles.
+A refresh publishes another immutable observation and atomically advances a pointer; it
+never edits an artifact in place.
+Remote consistency remains explicit because several API endpoints may describe a
+best-effort observation window rather than one provider snapshot.
+The source, Git-object, attachment, locking, and multi-client rules live in
+[Repository Sources and Provider Mirrors](arch-repository-sources-and-provider-mirrors.md).
+
 ## Views Compose Models
 
 The view host receives a generic selection envelope containing the resource kind,
@@ -351,7 +367,7 @@ initial v0.12 PR slice.
 
 `Release/v1` is a provider-neutral `frontmatter-md` artifact.
 Its YAML contains provider and repository identity, canonical URL, tag name, exact tag
-revision availability, normalized title, optional author, publication state, release
+revision observation, normalized title, optional author, publication state, release
 stage, creation time, and optional release time.
 Its body is the complete release notes.
 GitHub’s `target_commitish`, generated-notes controls, mutable “latest” status, and
@@ -388,6 +404,7 @@ mutable branch name.
 | Selection host | `static/resource-context.js`, `static/view-composition.js`, and the file-specific shell extraction from `static/app.js` | Present one validated selection envelope to registered views |
 | Addressing | `plugin_loader/provider_addresses.py`: `encode_provider_address_atom`, `decode_provider_address_atom`, `parse_hosted_address`, `format_hosted_address`; provider URL reducers, `AddressSpaceSpec`, mounted routers, and `show_cli.py::run_show` | Include provider instance, use one canonical typed atom codec, and share parse/format/apply rules in browser and CLI |
 | Virtual navigation | plugin SDK nav registration and the generalized Git-history window mechanics | Page, select, restore, replace, and dispose repository-scoped collections |
+| Repository subjects and attachments | `repository_context.py`: subject descriptors and remote discovery; `content_source.py`: source contract; `git/tree_source.py`: immutable tree/blob reads; `cache/repository_store.py`: shared object store and revision leases | Let local working trees, URL-opened repositories, branches, and hosted comparisons share cached data without a mutable checkout or entry-owned provider state |
 | Enforcement | `devtools/check_artifact_contracts.py`, `devtools/check_parity.py`, distribution smoke, and goldens | Require every registered contract, profile, kind, route, and functional interaction to have evidence |
 
 These seams are phased.
@@ -408,6 +425,10 @@ The architecture is satisfied only when:
 - every structured value consumed by software is in authoritative YAML or another
   declared domain format, never recovered from presentation text;
 - raw Source and rich views describe the same immutable artifact;
+- attached local repositories and managed URL opens bound to the same stable provider
+  repository reuse one authorization-scoped provider mirror;
+- concurrent revision views read full object IDs from a shared worktree-free Git store
+  without switching or materializing a checkout;
 - item/container behavior, routes, views, and virtual collections share one canonical
   selection identity;
 - every browser-consumed route and interaction has a `metab` equivalent and production

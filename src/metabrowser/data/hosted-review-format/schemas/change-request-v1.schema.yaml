@@ -3,10 +3,12 @@ $defs:
     additionalProperties: false
     properties:
       handle:
+        maxLength: 255
         minLength: 1
         title: Handle
         type: string
       provider_opaque_id:
+        maxLength: 255
         minLength: 1
         title: Provider Opaque Id
         type: string
@@ -56,18 +58,18 @@ $defs:
         $ref: '#/$defs/RevisionRef'
       head:
         $ref: '#/$defs/RevisionRef'
-      merge_commit_availability:
-        $ref: '#/$defs/RevisionAvailability'
+      merge_commit_observation:
+        $ref: '#/$defs/RevisionObservation'
       merge_commit_oid:
         anyOf:
-        - pattern: ^[0-9a-f]{40,64}$
+        - pattern: ^(?:[0-9a-f]{40}|[0-9a-f]{64})$
           type: string
         - type: 'null'
         title: Merge Commit Oid
     required:
     - base
     - head
-    - merge_commit_availability
+    - merge_commit_observation
     - merge_commit_oid
     title: ComparisonRef
     type: object
@@ -82,6 +84,7 @@ $defs:
         default: null
         title: Color
       name:
+        maxLength: 1024
         minLength: 1
         title: Name
         type: string
@@ -93,10 +96,12 @@ $defs:
     additionalProperties: false
     properties:
       provider_opaque_id:
+        maxLength: 255
         minLength: 1
         title: Provider Opaque Id
         type: string
       title:
+        maxLength: 1024
         minLength: 1
         title: Title
         type: string
@@ -120,10 +125,12 @@ $defs:
       instance:
         $ref: '#/$defs/ProviderInstance'
       object_kind:
+        maxLength: 255
         minLength: 1
         title: Object Kind
         type: string
       opaque_id:
+        maxLength: 255
         minLength: 1
         title: Opaque Id
         type: string
@@ -142,6 +149,7 @@ $defs:
       instance:
         $ref: '#/$defs/ProviderInstance'
       opaque_id:
+        maxLength: 255
         minLength: 1
         title: Opaque Id
         type: string
@@ -174,6 +182,7 @@ $defs:
         type: array
       requested_teams:
         items:
+          maxLength: 1024
           minLength: 1
           type: string
         title: Requested Teams
@@ -184,36 +193,38 @@ $defs:
     - requested_teams
     title: ReviewSummary
     type: object
-  RevisionAvailability:
+  RevisionObservation:
     enum:
-    - present
+    - observed
     - unavailable
     - not_requested
-    title: RevisionAvailability
+    title: RevisionObservation
     type: string
   RevisionRef:
     additionalProperties: false
     properties:
-      availability:
-        $ref: '#/$defs/RevisionAvailability'
+      observation:
+        $ref: '#/$defs/RevisionObservation'
       oid:
         anyOf:
-        - pattern: ^[0-9a-f]{40,64}$
+        - pattern: ^(?:[0-9a-f]{40}|[0-9a-f]{64})$
           type: string
         - type: 'null'
         title: Oid
       ref:
+        maxLength: 1024
         minLength: 1
         title: Ref
         type: string
       repository_id:
         anyOf:
-        - minLength: 1
+        - maxLength: 255
+          minLength: 1
           type: string
         - type: 'null'
         title: Repository Id
     required:
-    - availability
+    - observation
     - oid
     - ref
     - repository_id
@@ -249,6 +260,7 @@ properties:
     title: Draft
     type: boolean
   id:
+    maxLength: 1024
     minLength: 1
     title: Id
     type: string
@@ -283,6 +295,7 @@ properties:
   state:
     $ref: '#/$defs/ChangeRequestState'
   title:
+    maxLength: 1024
     minLength: 1
     title: Title
     type: string
@@ -319,4 +332,4 @@ title: ChangeRequest
 type: object
 x-softschema:
   contract: com.github.jlevy.metabrowser.review:ChangeRequest/v1
-  schema_sha256: f3919c1a31985bc0df4c878590e6a9221f533624b1d40caeb72961dcc921a395
+  schema_sha256: 1cf192189094f6992c707c8eff688fdd287bdf1d8fa3bc0f6619c6e005d62fe3

@@ -20,7 +20,8 @@ $defs:
         $ref: '#/$defs/AuthorizationMode'
       principal_opaque_id:
         anyOf:
-        - minLength: 1
+        - maxLength: 255
+          minLength: 1
           type: string
         - type: 'null'
         title: Principal Opaque Id
@@ -75,6 +76,7 @@ $defs:
       instance:
         $ref: '#/$defs/ProviderInstance'
       opaque_id:
+        maxLength: 255
         minLength: 1
         title: Opaque Id
         type: string
@@ -125,6 +127,7 @@ properties:
   state:
     $ref: '#/$defs/TransactionState'
   transaction_id:
+    maxLength: 255
     minLength: 1
     title: Transaction Id
     type: string
@@ -142,4 +145,4 @@ title: ProviderSyncManifest
 type: object
 x-softschema:
   contract: com.github.jlevy.metabrowser.provider:ProviderSyncManifest/v1
-  schema_sha256: a7336f0c08cfd7bf2c95ed639da0215ff4ef754ea7da7c93fe0ee2d46978f85f
+  schema_sha256: c3ca85d3a5267a90acdf66e7ae3b5931289061520ab98d2eeaac15568c42bfbb
