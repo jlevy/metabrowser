@@ -20,8 +20,11 @@ links to the document that covers each in depth.
 - [Python inventory cost](architecture/arch-python-inventory-cost.md) — what the
   reference engine’s walk spends per entry, and what is still on that path
 - [Git and comparison sources](architecture/arch-git-and-comparison-sources.md) — the
-  Git process boundary, the three-layer stack, and the rule for adding a comparison
+  Git process boundary, the four-layer stack, and the rule for adding a comparison
   source
+- [Hosted review model and provider boundary](architecture/arch-hosted-review-model.md)
+  — provider-neutral change requests, GitHub adapter, plugin views, activity projection,
+  and cache lifetimes
 - [File Diff Format v1](architecture/file-diff-format/file-diff-format.md)
 - [Diff sources, context, and anchoring](architecture/file-diff-format/diff-sources-and-anchoring.md)
 - [File Rollup Format v0.1](architecture/file-rollup-format/file-rollup-format.md)
@@ -35,18 +38,19 @@ links to the document that covers each in depth.
 - [Quick file finder and search providers](specs/active/plan-2026-07-17-scalable-file-search.md)
 - [Full-page HTML rendering and an explicit trust model](specs/active/plan-2026-08-06-html-rendering-and-trust-model.md)
 - [Menu primitives and gated file actions](specs/active/plan-2026-08-06-menu-primitives-and-file-actions.md)
+- [Git graph nav panel](specs/active/plan-2026-08-06-git-graph-view.md)
 - [Markdown navigation extensions](specs/active/plan-2026-08-13-markdown-navigation-extensions.md)
+- [General diff rendering](specs/active/plan-2026-08-17-general-diff-rendering.md)
 - [End-to-end load time, from the CLI to first paint](specs/active/plan-2026-08-21-load-time-performance.md)
-- [Git revision navigation performance](specs/active/plan-2026-08-25-git-revision-navigation-performance.md)
-- [GitHub provider: content model, acquisition, and pull requests](specs/active/plan-2026-08-27-github-provider-and-pull-requests.md)
+- [Hosted review model and GitHub provider](specs/active/plan-2026-08-27-github-provider-and-pull-requests.md)
 - [Git status and working-tree diffs](specs/active/plan-2026-08-26-git-status-and-working-tree-diffs.md)
 - [Mermaid diagram rendering](specs/active/plan-2026-08-21-mermaid-diagram-rendering.md)
 - [Repository library and open from a Git URL](specs/active/plan-2026-08-11-open-repo-from-git-url.md)
 - [Pluggable inventory engine](specs/active/plan-2026-08-23-pluggable-inventory-engine.md)
 - [Inventory provider refactor and fdu adoption](specs/active/plan-2026-08-23-inventory-provider-refactor-and-fdu-adoption.md)
-- [Unbounded logical Git history with bounded rendering](specs/active/plan-2026-08-25-unbounded-virtualized-git-history.md)
 - [CLI-first delivery: parity, Git status, and the repository cache](specs/active/plan-2026-08-28-cli-first-delivery-map.md)
 - [A machine-readable contract for the API envelopes](specs/active/plan-2026-08-30-api-schema-and-contract.md)
+- [Functional UI and CLI parity](specs/active/plan-2026-09-10-functional-ui-cli-parity.md)
 
 ## Research
 
@@ -77,6 +81,10 @@ links to the document that covers each in depth.
 ## Done Plans
 
 - [CLI parity and golden coverage](specs/done/plan-2026-08-21-cli-parity-and-golden-coverage.md)
+- [One file-type source of truth](specs/done/plan-2026-08-21-file-type-source-of-truth.md)
+- [Diff syntax highlighting and layouts](specs/done/plan-2026-08-24-diff-syntax-highlighting-and-layouts.md)
+- [Git revision navigation performance](specs/done/plan-2026-08-25-git-revision-navigation-performance.md)
+- [Unbounded logical Git history with bounded rendering](specs/done/plan-2026-08-25-unbounded-virtualized-git-history.md)
 - [Bounded binary byte preview](specs/done/plan-2026-08-11-binary-byte-preview.md)
 - [Metabrowser v0.1.0 standalone package](specs/done/plan-2026-07-14-metabrowser-v0.1.0-standalone-package.md)
 - [Flat single-command `metab` CLI](specs/done/plan-2026-07-27-metab-flat-cli.md)

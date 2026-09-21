@@ -39,7 +39,8 @@ already does.
 | --- | --- | --- | --- |
 | Directory | Files and folders | Folder Overview | The file’s views |
 | Patch / diff file | One entry per file change | The change-set summary (the whole-document diff view) | That file’s diff, as view tabs (Diff, later Before/After) |
-| GitHub PR mirror | The PR’s changed files | PR summary: title, state, totals, description | Same as patch, plus review-thread anchors later |
+| Hosted-review collection | Cached change requests | Query, freshness, completeness, and offline summary | The change-request document and views |
+| Hosted change-request bundle | The change request’s changed files | Change summary: title, state, totals, description | Same as patch, plus hosted-review state and review-thread anchors |
 | Archive (`.zip`) | The archive’s members | Listing or summary | The member file’s ordinary views, by its own kind |
 
 The inner entries are ordinary item-like objects: a file change carries the diff view
@@ -100,15 +101,42 @@ children hook groups by path and the narrowed document carries both halves.
   view. Core provides the contract; the diff plugin, an archive plugin, and a PR plugin
   provide the containers.
 
-## Materialization: transient caches, one discipline
+## Collection panels
 
-Containers whose children are not directly on disk — a PR that must be fetched, a patch
-anchoring against a base, an archive that must be unpacked — materialize into bounded,
-transient cache directories, and the ordinary serving path routes into the materialized
-tree. One mechanism with one eviction and bounds policy, shared across container kinds,
-not a per-kind cache.
-The git-specific acquisition workflow (reference clones, `refs/pull/N/head`, transient
-worktrees) is the diff plan’s instance of this.
+A folder-like container does not have to live in the Files tree.
+The planned Pull Requests nav panel exposes one virtual hosted-review collection whose
+children come from a bounded `ChangeRequestIndex/v1`. It reuses Git history’s paged
+loading, virtualization, roving selection, and restoration mechanics, while each
+selected PR uses the container behavior above to expose changed files.
+
+Counts, grouping, and folder visibility come from the complete bounded collection model,
+never from currently mounted rows.
+The collection overview makes its query, bounds, freshness, completeness, offline state,
+and refresh diagnostics visible.
+
+## Transient projections and the four cache lifetimes
+
+“Cache” does not name one interchangeable storage mechanism:
+
+1. The repository library durably owns Git objects and a pinned serving root.
+2. A provider store durably owns immutable hosted-review snapshots and current manifests
+   beside that repository.
+3. The subsystem that needs filesystem bytes owns its bounded transient projection: the
+   repository service owns detached Git worktrees and an archive plugin owns extracted
+   members, each released with the owning job or view.
+4. Inventory pages, comparison manifests, patches, and browser projections are bounded,
+   recomputable session caches.
+
+Only the third layer contains transient filesystem projections.
+Review anchors are provider-domain records in layer 2, while diff manifests and patches
+are recomputable records in layer 4; neither is a materialized directory.
+Projection types share low-level safe-path or lease helpers only after two implemented
+owners prove the same contract, and each owner keeps its own admission, bounds, and
+reclamation policy. The
+[repository-library plan](../specs/active/plan-2026-08-11-open-repo-from-git-url.md)
+owns repository worktrees in layers 1 and 3; the
+[hosted-review architecture](arch-hosted-review-model.md) owns layer 2 and defines how
+the four compose.
 
 ## Zoom
 
