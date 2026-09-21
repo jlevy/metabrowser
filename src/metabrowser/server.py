@@ -45,7 +45,7 @@ import logging
 import os
 import sys
 import time
-from collections.abc import AsyncIterator, MutableMapping
+from collections.abc import AsyncIterator, Mapping, MutableMapping
 from contextlib import asynccontextmanager
 from html import escape as html_escape
 from pathlib import Path
@@ -190,6 +190,7 @@ from metabrowser.settings import (
     SYNTAX_HIGHLIGHT_MAX_BYTES,
     TEXT_PREVIEW_CHUNK_BYTES,
     TEXT_PREVIEW_REQUEST_MAX_BYTES,
+    VALID_LOG_LEVELS,
     client_settings_dict,
 )
 from metabrowser.sse import api_stream
@@ -226,8 +227,9 @@ if TYPE_CHECKING:
     from starlette.requests import Request
 
 
-# Direct ASGI imports bypass the CLI bootstrap. Load trusted working-tree
-# configuration before logging flags and one-shot plugin discovery are read.
+# Direct ASGI imports bypass the CLI bootstrap. Load the working tree's
+# allowlisted configuration before logging flags are read. The tree is not
+# trusted -- see ``metabrowser.dotenv`` for what a file may contribute.
 load_dotenv_chain()
 
 LOG = logging.getLogger(__name__)
@@ -355,7 +357,12 @@ def _setup_perf_logging() -> None:
     # Attach to ``metabrowser`` so every child logger (server, tree,
     # activity, charts, sse, …) propagates up to this handler.
     # ``METABROWSER_LOG_LEVEL`` (DEBUG/INFO/WARNING/ERROR) overrides; default INFO.
+    # ``getattr(logging, name)`` would accept any module attribute, so a
+    # name like ``BASIC_FORMAT`` returned a format string that ``setLevel``
+    # then rejected. Check membership first: an unknown value is INFO.
     level_name = os.environ.get("METABROWSER_LOG_LEVEL", "INFO").upper()
+    if level_name not in VALID_LOG_LEVELS:
+        level_name = "INFO"
     level = getattr(logging, level_name, logging.INFO)
     for logger_name in ("metabrowser",):
         lg = logging.getLogger(logger_name)
@@ -693,6 +700,31 @@ def _origin_matches_request(origin: str, scheme: str, host_header: str) -> bool:
     return origin.strip().lower() == expected.lower()
 
 
+def _route_path(scope: Mapping[str, Any]) -> str:
+    """The scope's path with any ASGI ``root_path`` prefix removed.
+
+    Mirrors Starlette's own ``get_route_path``, which is what the router
+    matches on. A guard that derived the path differently could be
+    weaker than the router: stripping a prefix that is not a path-segment
+    boundary turned ``root_path="/"`` with ``/api/x`` into ``api/x``, and
+    the ``/api`` check then skipped a route the router still served.
+    Only a prefix that ends at a segment boundary is removed.
+
+    The two security middlewares and the slow-request log all call this,
+    so a prefix mount cannot make one of them name a different route than
+    another.
+    """
+
+    path = str(scope.get("path") or "")
+    root_path = str(scope.get("root_path") or "")
+    if not root_path or not path.startswith(root_path):
+        return path
+    rest = path[len(root_path) :]
+    if rest == "" or rest.startswith("/"):
+        return rest
+    return path
+
+
 # Fetch-metadata values that are not a request from another document.
 # ``same-origin`` is the application's own page. ``none`` is a
 # user-initiated navigation — a typed URL, a bookmark, a browser restore
@@ -805,7 +837,7 @@ class _HostValidationMiddleware:
             )
             await response(scope, receive, send)
             return
-        path = str(scope.get("path") or "")
+        path = _route_path(scope)
         if path == "/api" or path.startswith("/api/"):
             scheme = str(scope.get("scheme") or "http")
             if not _has_same_origin_proof(
@@ -865,15 +897,11 @@ class _RawTrustHeaderMiddleware:
     def _is_raw_scope(scope: dict[str, Any]) -> bool:
         """True for ``/raw`` and ``/raw/...``, false for ``/rawfoo``.
 
-        ``root_path`` is stripped first so the check still names the
-        route when the app is mounted under a prefix, where ``path``
-        carries that prefix.
+        ``_route_path`` strips any ``root_path`` first, so the check
+        still names the route when the app is mounted under a prefix.
         """
 
-        path = str(scope.get("path") or "")
-        root_path = str(scope.get("root_path") or "")
-        if root_path and path.startswith(root_path):
-            path = path[len(root_path) :] or "/"
+        path = _route_path(scope)
         return path == "/raw" or path.startswith("/raw/")
 
     async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
@@ -948,7 +976,7 @@ class _SlowRequestLogMiddleware:
             await self.app(scope, receive, send)
             return
         # Skip the timer entirely for long-lived endpoints.
-        path = str(scope.get("path") or "")
+        path = _route_path(scope)
         if any(path.startswith(prefix) for prefix in self._LONG_LIVED_PATHS):
             await self.app(scope, receive, send)
             return

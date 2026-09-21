@@ -75,8 +75,13 @@ disables script execution on `/raw` and keeps mutations off.
 `--allow-edits` (`METAB_ALLOW_EDITS=1`) publishes the mutations capability; no write
 route consumes it yet.
 A flag beats the environment, so `--untrusted` stays conservative whatever the `METAB_*`
-variables say and only `--untrusted --allow-edits` lifts it; those variables are read
-from the process environment only, never from a `.env` file.
+variables say and only `--untrusted --allow-edits` lifts it.
+Those variables are read from the process environment only: a `.env` or `.env.local`
+file contributes only `METABROWSER_LOG_LEVEL` and `METABROWSER_REQUEST_LOG`, and every
+other name — the rendering budgets, `METABROWSER_PLUGINS_DIRS`,
+`METABROWSER_GCP_PROJECT`, `HOME` — must be exported.
+Metabrowser warns when it ignores one of its own.
+See [SECURITY.md](../SECURITY.md) for why the list runs that way.
 These flags also apply to `--api`, `--show`, and `--check-api`.
 
 ## Acquiring a Git source: `--no-serve`

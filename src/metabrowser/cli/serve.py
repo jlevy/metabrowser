@@ -195,8 +195,9 @@ def run_serve(
     signal.signal(signal.SIGINT, _stop_now)
 
     # Dotenv is operator configuration for the entire command. Apply it before
-    # log-level selection, plugin discovery, or path expansion so values such
-    # as HOME affect every bootstrap step consistently with walk mode.
+    # log-level selection so a file-supplied level reaches the first log line,
+    # consistently with walk mode. Path expansion no longer depends on it:
+    # ``HOME`` is not a name a file may set.
     _load_dotenv_chain()
 
     from metabrowser.capabilities import apply_capabilities
