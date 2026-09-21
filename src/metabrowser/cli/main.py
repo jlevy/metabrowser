@@ -9,6 +9,7 @@ macOS. Every other operation is a mode flag on the same command:
 
     metab . --walk --format json       # inventory walk, no server
     metab . --check-api                # exercise navigation APIs, no browser
+    metab file:///path/to/repo.git --no-serve  # acquire into the cache, no server
     metab --remote example-host --path /srv/shared-files  # SSH-tunnel a remote host
     metab --plugins                    # what's discovered?
     metab --plugin example             # one plugin's manifest
@@ -24,7 +25,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import TextIO, cast
+from typing import TYPE_CHECKING, TextIO, cast
 
 import typer
 
@@ -46,6 +47,9 @@ from metabrowser.cli.walk_cli import (
 from metabrowser.errors import CLIError
 from metabrowser.server_utils import MAX_TCP_PORT
 from metabrowser.settings import DEFAULT_BROWSER_PORT
+
+if TYPE_CHECKING:
+    from metabrowser.cache.urls import GitSource
 
 _PANEL_MODES = "Modes (default: serve ROOT)"
 _PANEL_SHARED = "Shared by multiple modes (each option names its modes)"
@@ -123,6 +127,7 @@ _MODE_OPTIONS: dict[str, frozenset[str]] = {
             "allow_edits",
         }
     ),
+    "no-serve": frozenset({"log_level"}),
     "remote": frozenset({"path", "base_port", "no_open", "ssh_options", "gcp", "zone", "project"}),
     "plugins": frozenset({"plugins_dir", "as_json"}),
     "plugin": frozenset({"plugins_dir", "as_json"}),
@@ -136,6 +141,7 @@ _MODE_LABELS: dict[str, str] = {
     "api": "--api",
     "show": "--show",
     "check-api": "--check-api",
+    "no-serve": "--no-serve",
     "remote": "--remote",
     "plugins": "--plugins",
     "plugin": "--plugin",
@@ -206,6 +212,7 @@ def _resolve_mode(
     api: str | None,
     show: str | None,
     check_api: bool,
+    no_serve: bool,
     remote: str | None,
     plugins: bool,
     plugin: str | None,
@@ -220,6 +227,7 @@ def _resolve_mode(
             ("--api", api is not None),
             ("--show", show is not None),
             ("--check-api", check_api),
+            ("--no-serve", no_serve),
             ("--remote", remote is not None),
             ("--plugins", plugins),
             ("--plugin", plugin is not None),
@@ -265,7 +273,26 @@ def _check_option_applicability(ctx: typer.Context, mode: str, explicit: frozens
         ctx.fail(f"{labels} not valid with {_MODE_LABELS[mode]}")
 
 
-def _require_root(ctx: typer.Context, root: Path | None, mode: str) -> Path:
+def _is_plain_local_root(value: str) -> bool:
+    """Return True when the grammar would classify *value* as a local path.
+
+    Ordinary local browsing must not import ``metabrowser.cache.urls``: the layout
+    contract pins that import set to the route table. A Git source, a named
+    rejection, or an SCP-like address still goes through classification.
+    """
+    if value == "" or value.startswith("-"):
+        return False
+    if "://" in value or "::" in value:
+        return False
+    lowered = value.lower()
+    if lowered.startswith(("https:", "ssh:", "file:", "http:", "git:")):
+        return False
+    at = value.find("@")
+    return at <= 0 or "/" in value[:at] or ":" not in value[at + 1 :]
+
+
+def _classified_root(ctx: typer.Context, root: str | None, mode: str) -> Path | GitSource:
+    """Return a local path or a classified Git source, or fail the invocation."""
     if root is None:
         hints = {
             "serve": "e.g. `metab .`",
@@ -273,13 +300,45 @@ def _require_root(ctx: typer.Context, root: Path | None, mode: str) -> Path:
             "api": "e.g. `metab . --api /api/tree`",
             "show": "e.g. `metab . --show README.md`",
             "check-api": "e.g. `metab . --check-api`",
+            "no-serve": "e.g. `metab file://repo.git --no-serve`",
         }
         hint = hints.get(mode, "pass the required root")
         ctx.fail(f"ROOT is required for {_MODE_LABELS[mode]}; {hint}")
-    return root
+    assert root is not None
+    if _is_plain_local_root(root):
+        return Path(root)
+    from metabrowser.cache.urls import LocalPath, RejectedRoot, classify_root_argument
+
+    classified = classify_root_argument(root)
+    if isinstance(classified, LocalPath):
+        return Path(classified.value)
+    if isinstance(classified, RejectedRoot):
+        raise CLIError(f"invalid ROOT ({classified.reason})")
+    return classified
 
 
-def _reject_root(ctx: typer.Context, root: Path | None, mode: str) -> None:
+def _git_source_closed_message(source: GitSource, *, mode: str) -> str:
+    if mode == "serve":
+        return (
+            f"{source.transport} Git sources are not served yet "
+            f"({source.normalized}). Acquire a file:// source with --no-serve; "
+            "https and ssh stay closed."
+        )
+    return (
+        f"{source.transport} Git sources are not opened yet "
+        f"({source.normalized}). Serve a local directory, or acquire a "
+        "file:// source with --no-serve."
+    )
+
+
+def _require_root(ctx: typer.Context, root: str | None, mode: str) -> Path:
+    classified = _classified_root(ctx, root, mode)
+    if isinstance(classified, Path):
+        return classified
+    raise CLIError(_git_source_closed_message(classified, mode=mode))
+
+
+def _reject_root(ctx: typer.Context, root: str | None, mode: str) -> None:
     if root is not None:
         message = f"ROOT is not used with {_MODE_LABELS[mode]}"
         if mode == "remote":
@@ -300,6 +359,7 @@ _app = typer.Typer(add_completion=False)
         "metab . --api '/api/tree?depth=2'\n\n"
         "metab . --show README.md\n\n"
         "metab . --check-api\n\n"
+        "metab file:///path/to/repo.git --no-serve\n\n"
         "metab --remote example-host --path /srv/shared-files\n\n"
         "metab --plugins\n\n"
         "Guide: https://github.com/jlevy/metabrowser/blob/main/docs/command-line.md"
@@ -307,11 +367,12 @@ _app = typer.Typer(add_completion=False)
 )
 def _metab(
     ctx: typer.Context,
-    root: Path | None = typer.Argument(
+    root: str | None = typer.Argument(
         None,
         help=(
             "Root directory to serve, check, or walk; a file may be served directly. "
-            "With no ROOT and no mode, prints help."
+            "https, ssh, and file:// clone URLs are Git sources, not local paths. "
+            "Acquire file:// with --no-serve. With no ROOT and no mode, prints help."
         ),
         show_default=False,
     ),
@@ -371,6 +432,12 @@ def _metab(
         False,
         "--check-api",
         help="Run the navigation API scenario without a browser or listening port.",
+        rich_help_panel=_PANEL_MODES,
+    ),
+    no_serve: bool = typer.Option(
+        False,
+        "--no-serve",
+        help="Acquire a file:// Git source into the cache without starting a server.",
         rich_help_panel=_PANEL_MODES,
     ),
     remote: str | None = typer.Option(
@@ -435,7 +502,8 @@ def _metab(
         metavar="LEVEL",
         help="Log verbosity: DEBUG, INFO, WARNING, ERROR, CRITICAL. "
         "DEBUG traces the inventory walker (rewalk targets + resolved paths). "
-        "Overrides METABROWSER_LOG_LEVEL. Applies when serving, walking, issuing --api or --show, or checking APIs.",
+        "Overrides METABROWSER_LOG_LEVEL. Applies when serving, walking, issuing "
+        "--api or --show, checking APIs, or acquiring with --no-serve.",
         rich_help_panel=_PANEL_SHARED,
         show_default=False,
     ),
@@ -628,8 +696,9 @@ def _metab(
     Data modes read the same server the browser reads, without a browser or a
     listening port: --api issues one route, --show reports the four layers
     behind one selection, --walk dumps the inventory, --diff shows a change
-    set. Diagnostics: --check-api, --plugins, --plugin, --doctor. Remote
-    serving: --remote.
+    set. --no-serve acquires a file:// Git source into the cache without
+    starting a server. Diagnostics: --check-api, --plugins, --plugin, --doctor.
+    Remote serving: --remote.
     """
     mode = _resolve_mode(
         ctx,
@@ -638,6 +707,7 @@ def _metab(
         api=api,
         show=show,
         check_api=check_api,
+        no_serve=no_serve,
         remote=remote,
         plugins=plugins,
         plugin=plugin,
@@ -691,20 +761,41 @@ def _metab(
         assert api is not None
         from metabrowser.cli.api_cli import run_api
 
-        run_api(
-            _require_root(ctx, root, mode),
-            route=api,
-            # Only the unset default is reinterpreted; an explicit --format text
-            # is refused above rather than silently becoming json.
-            fmt="json" if fmt == "text" else fmt,
-            data=data,
-            plugins_dir=plugins_dir,
-            log_level=log_level,
-            index_timeout_s=index_timeout,
-            untrusted=untrusted,
-            no_active_content=no_active_content,
-            allow_edits=allow_edits,
-        )
+        classified = _classified_root(ctx, root, mode)
+        if isinstance(classified, Path):
+            run_api(
+                classified,
+                route=api,
+                # Only the unset default is reinterpreted; an explicit --format text
+                # is refused above rather than silently becoming json.
+                fmt="json" if fmt == "text" else fmt,
+                data=data,
+                plugins_dir=plugins_dir,
+                log_level=log_level,
+                index_timeout_s=index_timeout,
+                untrusted=untrusted,
+                no_active_content=no_active_content,
+                allow_edits=allow_edits,
+            )
+        else:
+            from metabrowser.cli.acquire_cli import run_api_after_acquire
+
+            run_api_after_acquire(
+                classified,
+                route=api,
+                fmt="json" if fmt == "text" else fmt,
+                data=data,
+                plugins_dir=plugins_dir,
+                log_level=log_level,
+                index_timeout_s=index_timeout,
+                untrusted=untrusted,
+                no_active_content=no_active_content,
+                allow_edits=allow_edits,
+            )
+    elif mode == "no-serve":
+        from metabrowser.cli.acquire_cli import run_no_serve
+
+        run_no_serve(_classified_root(ctx, root, mode), log_level=log_level)
     elif mode == "show":
         assert show is not None
         from metabrowser.cli.show_cli import run_show

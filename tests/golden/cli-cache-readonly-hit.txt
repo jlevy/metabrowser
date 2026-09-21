@@ -1,0 +1,18 @@
+# metab file://<ORIGIN> --no-serve
+exit: 0
+--- stdout ---
+acquired: <ORIGIN>
+slug: <SLUG>
+store: <STORE_ID>
+strategy: full
+revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
+--- stderr ---
+# metab file://<ORIGIN> --no-serve
+exit: 0
+--- stdout ---
+acquired: <ORIGIN>
+slug: <SLUG>
+store: <STORE_ID>
+strategy: full
+revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
+--- stderr ---

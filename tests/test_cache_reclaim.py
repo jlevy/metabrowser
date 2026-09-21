@@ -40,6 +40,7 @@ from metabrowser.cache.reclaim import (
     reclaim_staging,
     reclaim_store,
     reclaim_trash,
+    reclaim_unreferenced_stores,
     store_is_referenced,
     sweep_staging_and_trash,
 )
@@ -391,6 +392,73 @@ def test_reclamation_skips_a_store_with_a_live_lease(home: Path) -> None:
     assert replay.events == scenario["events"]
     assert replay.state == scenario["expected_final"]
     assert (home / f"cache/repository-stores/{STORE_KEY}").is_dir()
+
+
+def test_startup_reclaims_unreferenced_stores_and_keeps_aliased_ones(home: Path) -> None:
+    orphan = "a" * 64
+    ensure_private_directory(home, f"cache/repository-stores/{orphan}/repository.git")
+    _make_store(home)
+    _make_source_with_alias(home)
+
+    reclaimed = reclaim_unreferenced_stores(home)
+
+    assert reclaimed == (orphan,)
+    assert not (home / f"cache/repository-stores/{orphan}").exists()
+    assert (home / f"cache/repository-stores/{STORE_KEY}").is_dir()
+    assert list((home / "cache/trash").iterdir()) == []
+
+
+def test_startup_reclaim_reads_each_alias_once_plus_once_per_candidate(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One pass builds the referenced set; only a candidate is re-checked under its locks."""
+    orphan = "a" * 64
+    ensure_private_directory(home, f"cache/repository-stores/{orphan}/repository.git")
+    for filler in ("b", "c", "d"):
+        ensure_private_directory(home, f"cache/repository-stores/{filler * 64}/repository.git")
+        slug = f"example-com--owner--{filler}--{filler * 12}"
+        ensure_private_directory(home, f"cache/sources/{slug}")
+        write_record_atomic(
+            home,
+            source_record(slug, "store-alias.yml"),
+            RepositoryStoreAlias(
+                source_id=SOURCE_ID,
+                store_id=f"sha256:{filler * 64}",
+                generation=1,
+                updated_at="2026-09-17T12:00:00Z",
+            ),
+            REPOSITORY_STORE_ALIAS_CONTRACT_ID,
+        )
+    alias_reads: list[str] = []
+    real_read = reclaim_module.read_record
+
+    def counting_read(home: Path, relative: str, contract: str) -> object:
+        alias_reads.append(relative)
+        return real_read(home, relative, contract)
+
+    monkeypatch.setattr(reclaim_module, "read_record", counting_read)
+    assert reclaim_unreferenced_stores(home) == (orphan,)
+    # Three aliases in the pass, then three again for the one candidate's locked re-check.
+    assert len(alias_reads) == 6
+
+
+def test_startup_reclaim_skips_a_store_with_a_live_lease(home: Path) -> None:
+    _make_store(home)
+    subject = _Child(home, f"lease = locks.store_lease(home, {STORE_KEY!r})")
+    try:
+        reclaimed = reclaim_unreferenced_stores(home)
+    finally:
+        subject.finish()
+
+    assert reclaimed == ()
+    assert (home / f"cache/repository-stores/{STORE_KEY}").is_dir()
+
+
+def test_startup_reclaim_leaves_names_that_are_not_store_keys(home: Path) -> None:
+    ensure_private_directory(home, "cache/repository-stores/not-a-store-key")
+
+    assert reclaim_unreferenced_stores(home) == ()
+    assert (home / "cache/repository-stores/not-a-store-key").is_dir()
 
 
 def test_reclamation_skips_a_referenced_or_absent_store(home: Path) -> None:

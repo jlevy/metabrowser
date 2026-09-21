@@ -50,6 +50,50 @@ Repository cache:
   Sources and stores are paged with `limit` and `after`, 25 rows by default and 100 at
   most; no response reports a cache path, pack file, or Git internal.
 
+- The CLI classifies `ROOT` as a string before any path is constructed.
+  A bare local path is still served; `https` and `ssh` clone URLs stay closed.
+  `file://` is the only way to ask for a local origin to be acquired — a bare
+  `/path/to/repo` is never rewritten into one — and `ext::` remote-helper syntax is
+  rejected. `metab file://… --no-serve` fetches into the cache and prints slug, store
+  identity, and strategy without starting a server.
+  A Git timeout, oversized output, missing executable, or failed command during that
+  acquire is reported as its own error message without a traceback or a local path.
+  `metab file://… --api /api/cache/…` acquires as a side effect, then inspects cache
+  state against an empty throwaway root so `/api/tree` cannot expose the cache or the
+  origin. Serving, walking, and other modes refuse Git sources without acquiring, and
+  acquired content is not served.
+
+- A classified `file://` source can be fetched into an isolated worktree-free staging
+  store using Git’s pack transport (`git fetch`, not `clone --local` hardlinks).
+  The fetch is blobless when the origin honors `--filter=blob:none`, and complete when
+  the origin ignores the filter.
+  A later acquire of the same `file://` source publishes that staging entry into
+  `repository-stores` and a source alias as the visibility commit, or reuses a store
+  already published for that identity.
+  The default branch is read only from the origin’s own `HEAD`, and an acquire whose
+  fetched default branch does not resolve to the observed `HEAD` commit is refused
+  before publication. Acquisition runs Git without any inherited `GIT_*` variable, so an
+  ambient `GIT_ALLOW_PROTOCOL` or `GIT_DEFAULT_REF_FORMAT` cannot widen the protocol
+  policy or change the published store’s ref format.
+  It also stops repository discovery at its own staging directory, so a repository that
+  encloses the application home, such as a dotfiles checkout, does not lend its
+  `url.*.insteadOf` or other local configuration.
+  After a blobless fetch, acquisition prefetches the default revision’s blob-mode tree
+  entries by object ID; a prefetch failure still publishes with `object_state`
+  converging. A staging entry whose liveness lock is free is swept on the next cache
+  open. A published store no alias names is reclaimed on that same open; a live store
+  lease skips it. Read routes do not reclaim.
+  A `file://` acquire that the Git version floor refuses does not create the application
+  home, including when that path already exists as an empty directory; a cache hit still
+  reuses a published store without fetching, including against an application home the
+  process cannot write.
+  That hit does not open the cache or require the Git floor.
+  A miss against that home fails instead of fetching.
+  A future layout is still refused before any write.
+  A successful acquire or cache hit may record `last_opened_at` on the source; a
+  read-only home, full disk, or contended lock drops that write and still returns the
+  published alias.
+
 ## 0.11.0
 
 Content trust:
