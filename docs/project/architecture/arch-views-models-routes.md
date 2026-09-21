@@ -71,7 +71,7 @@ Two kinds are also **containers** — folder-like entries whose children are add
 (see [nav containers](arch-nav-containers.md)): `folder` (children are files and
 folders) and `diff` (children are the files a patch changes).
 
-The proposed v0.11 hosted-review plugin adds one route-backed kind only when its model,
+The proposed v0.12 hosted-review plugin adds one route-backed kind only when its model,
 view, address, and parity evidence land together:
 
 | Planned kind | Matches | Views (default first) | Model | Bead |
@@ -144,7 +144,7 @@ the sources that produce them.
 | `/commit/<rev>` | A commit’s change set against its first parent | Implemented |
 | `/commit/<rev>/<inner>` | One file’s diff inside that change set | Route parses; the panel restores the commit, not yet the file |
 | `/compare/<base>..<head>[/<inner>]` | An explicit comparison (`...` for merge base) | Specified, not built |
-| `/hosted/<provider-kind>/<instance-key>/<repository-key>/<resource-kind>/<resource-key>[/<inner>]` | A provider-neutral hosted resource and optional addressed child; typed atom keys encode the instance and opaque IDs canonically | Proposed for v0.11.0 in `mb-xzj3`, `mb-6mle`, `mb-83w0`, and `mb-81p5`; the first kind is `change-request` |
+| `/hosted/<provider-kind>/<instance-key>/<repository-key>/<resource-kind>/<resource-key>[/<inner>]` | A provider-neutral hosted resource and optional addressed child; typed atom keys encode the instance and opaque IDs canonically | Proposed for v0.12.0 in `mb-xzj3`, `mb-6mle`, `mb-83w0`, and `mb-81p5`; the first kind is `change-request` |
 
 The shape after the route is always `<container address>/<inner path>`, which is the
 container contract written as a URL. The full grammar, including the `_mb_` query
@@ -165,7 +165,7 @@ reservation and its invariants, is in
 | `/api/kpress/render`, `/api/kpress/export` | Document rendering and export |
 | `/api/plugin/<plugin>/<route>` | Plugin data hooks (`[[data_hook]]`) |
 | A plugin-declared mounted prefix (proposed) | Domain resource routes with path parameters and honest HTTP responses; `mb-xzj3` adds this for hosted review |
-| `/raw` | Bounded raw bytes through the active source’s content reader; oversized content is refused before an unbounded object read |
+| `/raw`, `/raw/<path>` | Bounded raw bytes through the active source’s content reader, and the document the sandboxed html Preview frames; oversized content is refused before an unbounded object read. Both shapes share one resolver and send the same sandbox headers; the path form exists so relative references inside a browsed document resolve |
 | `/kpress-static/<path>`, `/static/<path>`, `/plugin-static/<plugin>/<path>` | Shell, renderer, and plugin assets |
 | `/_debug/tasks`, `/_debug/inventory` | Opt-in local task and inventory-provider diagnostics when `METABROWSER_DEBUG=1` |
 
@@ -371,7 +371,7 @@ SSE transport whose emitted snapshot is already owned by its data routes.
 | `document.reading-width` | interaction | `static/document-width.js#apply` | `local-only` | `node tests/dom/document-width-session.js` | `cli-ui-document-width.tryscript.md` |
 | `navigation.filter-layout` | paint-exempt | `static/styles.css` | `local-only` | — | CSS geometry and disclosure motion require rendered layout; focused selectors and accessibility state are pinned in `tests/test_browser_filter_ui.py` and `tests/test_tree_keyboard_integration.py` |
 
-### Planned v0.11 hosted-review functional rows
+### Planned v0.12 hosted-review functional rows
 
 These rows move into the enforced table in the same changes that add their production
 functions. All interaction rows enter through `node tests/dom/hosted-review-session.js`

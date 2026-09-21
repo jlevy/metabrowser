@@ -10,7 +10,9 @@ import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
+from urllib.parse import urljoin, urlsplit
 
+from conftest import document_references
 from starlette.testclient import TestClient
 
 from metabrowser import server
@@ -18,6 +20,16 @@ from metabrowser.inventory_engine.contract import canonical_inventory_path
 from metabrowser.server import app
 
 _RAW_CSP = "sandbox allow-scripts allow-popups allow-forms allow-downloads"
+
+# A real one-pixel RGBA PNG (signature, IHDR, IDAT, IEND, CRCs valid), so the
+# subdirectory subresource is a genuine binary asset rather than text wearing
+# a ``.png`` name.
+_ONE_PIXEL_PNG = (
+    b"\x89PNG\r\n\x1a\n"
+    b"\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89"
+    b"\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4"
+    b"\x00\x00\x00\x00IEND\xaeB`\x82"
+)
 
 
 def _assert_raw_trust_headers(response: Any) -> None:
@@ -29,13 +41,22 @@ def _assert_raw_trust_headers(response: Any) -> None:
 
 
 def _write_raw_tree(root: Path) -> None:
+    """A small static site: a page, a sibling stylesheet and link, a nested image."""
+
     docs = root / "docs"
     docs.mkdir()
     (docs / "page.html").write_text(
-        "<!doctype html><link rel='stylesheet' href='style.css'>\n",
+        "<!doctype html>"
+        "<link rel='stylesheet' href='style.css'>"
+        "<img src='assets/logo.png' alt='logo'>"
+        "<a href='about.html'>about</a>\n",
         encoding="utf-8",
     )
     (docs / "style.css").write_text("body { color: black; }\n", encoding="utf-8")
+    (docs / "about.html").write_text("<!doctype html><p>about</p>\n", encoding="utf-8")
+    assets = docs / "assets"
+    assets.mkdir()
+    (assets / "logo.png").write_bytes(_ONE_PIXEL_PNG)
     (docs / "a b.html").write_text("<!doctype html><p>space</p>\n", encoding="utf-8")
     (docs / "100%.html").write_text("<!doctype html><p>percent</p>\n", encoding="utf-8")
 
@@ -56,6 +77,68 @@ def test_path_form_matches_query_form_and_keeps_trust_headers(tmp_path: Path) ->
     _assert_raw_trust_headers(path)
     _assert_raw_trust_headers(style)
     assert b"style.css" in path.content
+
+
+def test_relative_references_resolve_to_the_expected_raw_paths(tmp_path: Path) -> None:
+    """A sibling stylesheet, a subdirectory image, and a sibling link.
+
+    What this proves, on the server side: the URLs a browser derives from
+    the returned document — RFC 3986 resolution of each relative
+    reference against the document's own ``/raw/docs/page.html`` address —
+    are the raw paths of the intended files, every one of those files is
+    served back at its own media type, and each carries the sandbox CSP
+    and ``nosniff`` in its own right rather than only as part of the page
+    that referenced it.
+
+    What it cannot prove without a real browser: that a browser issues
+    those requests, applies the stylesheet, decodes the image, or paints
+    anything. No layout or fetch engine runs here, so the spec's
+    "renders as it does when opened directly in a browser" fidelity claim
+    is out of reach; this covers the addressing half of it, which is the
+    half the route shape decides.
+    """
+
+    _write_raw_tree(tmp_path)
+    server._set_root_dir(tmp_path)
+    with TestClient(app) as client:
+        page = client.get("/raw/docs/page.html")
+        assert page.status_code == 200
+        _assert_raw_trust_headers(page)
+
+        references = {
+            reference.value: reference
+            for reference in document_references(page.text, str(page.url))
+        }
+        assert set(references) == {"style.css", "assets/logo.png", "about.html"}
+
+        expected_paths = {
+            "style.css": "/raw/docs/style.css",
+            "assets/logo.png": "/raw/docs/assets/logo.png",
+            "about.html": "/raw/docs/about.html",
+        }
+        expected_types = {
+            "style.css": "text/css; charset=utf-8",
+            "assets/logo.png": "image/png",
+            "about.html": "text/html; charset=utf-8",
+        }
+        for value, reference in references.items():
+            resolved = urlsplit(reference.resolved)
+            assert resolved.path == expected_paths[value], reference
+            subresource = client.get(reference.resolved)
+            assert subresource.status_code == 200, reference
+            assert subresource.headers["content-type"] == expected_types[value], reference
+            _assert_raw_trust_headers(subresource)
+
+        assert client.get("/raw/docs/assets/logo.png").content == _ONE_PIXEL_PNG
+
+    # Why the path form exists at all: the same document served from the
+    # query form has ``/raw`` as its base, so a browser would resolve the
+    # sibling stylesheet to ``/style.css`` and leave the route entirely.
+    # That is URL arithmetic rather than server behavior, and it is the
+    # regression this route shape prevents.
+    assert urlsplit(urljoin("http://testserver/raw?path=docs/page.html", "style.css")).path == (
+        "/style.css"
+    )
 
 
 def test_percent_encoding_is_equivalent_across_route_shapes(tmp_path: Path) -> None:

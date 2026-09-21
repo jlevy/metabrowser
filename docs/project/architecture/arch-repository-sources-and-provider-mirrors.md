@@ -1,6 +1,6 @@
 # Repository Sources and Provider Mirrors
 
-**Status:** Proposed correction under review; implementation is planned for v0.11.0.
+**Status:** Proposed correction under review; implementation is planned for v0.12.0.
 
 Metabrowser must be able to show the same hosted repository through several independent
 sessions without switching a shared checkout or duplicating provider state.
@@ -63,7 +63,7 @@ global root mutation.
 
 The future repository switcher changes the active subject descriptor.
 It does not move files, change refs, or create a new cache.
-The v0.11 server and browser session have exactly one active subject; every route,
+The v0.12 server and browser session have exactly one active subject; every route,
 history session, plugin dispatch, cache key, and event stream is tied to that subject’s
 generation. Separate Metabrowser processes may browse different subjects from the same
 store concurrently. A later multi-subject server would require subject-qualified

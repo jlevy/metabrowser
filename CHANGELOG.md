@@ -2,64 +2,7 @@
 
 All notable changes to Metabrowser are documented here.
 
-## 0.11.0
-
-Content trust:
-
-- `/raw` responses are sandboxed unconditionally.
-  Every branch, including gzip passthrough, SVG, HTML, and error bodies, sends
-  `Content-Security-Policy: sandbox allow-scripts allow-popups allow-forms allow-downloads`
-  and `X-Content-Type-Options: nosniff`. Direct `/raw` links to HTML or SVG no longer
-  execute with the application’s privileges.
-  Nested iframes and framesets still load: the policy does not include
-  `frame-ancestors`.
-
-- `/api` routes require same-origin proof.
-  The server accepts `Sec-Fetch-Site: same-origin`, `Sec-Fetch-Site: none` (a typed URL
-  or a bookmark, which no document initiated), or a matching `Origin`; it refuses
-  `Origin: null` and foreign origins, and still serves `curl` and `metab --api` (neither
-  header). State-changing methods require `Content-Type: application/json`, so a
-  cross-site form POST cannot reach `POST /api/kpress/export`.
-
-- `GET /raw/{path}` serves the same bytes as `GET /raw?path=…`, so relative stylesheets,
-  images, and sibling links in a browsed HTML file resolve under `/raw/`. The query form
-  stays; it is the public API the image renderer uses.
-  Both shapes share one resolver and the same sandbox headers.
-
-- `--untrusted` (`METAB_UNTRUSTED=1`) is the conservative content-trust profile: it
-  disables active content and keeps mutations off.
-  `--no-active-content` (`METAB_ACTIVE_CONTENT=0`) drops `allow-scripts` from the `/raw`
-  sandbox; it does not downgrade bodies to `text/plain`. `--allow-edits`
-  (`METAB_ALLOW_EDITS=1`) publishes `mutations: true`; no write route consumes that flag
-  yet. Individual flags override the profile.
-  The resolved block is on `GET /api/capabilities` and
-  `window.METABROWSER_SETTINGS.CAPABILITIES`.
-
-- A flag on the command line outranks the environment in both directions: `--untrusted`
-  stays conservative whatever `METAB_ACTIVE_CONTENT` or `METAB_ALLOW_EDITS` say, and
-  only `--untrusted --allow-edits` lifts it.
-  The `METAB_*` capability variables and `METABROWSER_ALLOWED_HOSTS` are read from the
-  process environment only; a `.env` or `.env.local` file no longer contributes them, so
-  `cd cloned-repo && metab --untrusted .` cannot be talked out of the sandbox by that
-  repository’s own `.env`. Every other variable still loads from those files as before.
-
-- `.html` and `.htm` files are the `html` kind, with a sandboxed Preview tab and a
-  Source tab. A 4 KiB sniff (doctype or `<html>` / `<head>` / `<body>` / `<frameset>`)
-  chooses the default tab only.
-  Preview uses path-shaped `/raw/{path}` and an iframe sandbox of
-  `allow-scripts allow-popups allow-forms allow-downloads` with
-  `referrerpolicy="no-referrer"` — never `allow-same-origin` or `allow-top-navigation`.
-  `--untrusted` and `--no-active-content` omit Preview.
-
-- Preview carries an **Open as full page** link to the same `/raw/{path}` document the
-  frame is showing, so a page that wants the whole window gets it.
-  It is a plain anchor, so middle-click and modifier-click behave natively, and it opens
-  with `rel="noopener noreferrer"`. The tab is contained exactly as the frame is: the
-  sandbox rides on the response headers, not on the iframe.
-
-- A path carrying an embedded NUL — `/raw/a%00b`, or the same byte in a `?path=` value —
-  is a 404 rather than a 500. No filesystem can hold that name, so it is a missing file
-  like any other unresolvable path.
+## 0.12.0 (unreleased)
 
 Plugin contracts:
 
@@ -106,6 +49,104 @@ Repository cache:
   names the fixed cache directory to fix and no path of yours.
   Sources and stores are paged with `limit` and `after`, 25 rows by default and 100 at
   most; no response reports a cache path, pack file, or Git internal.
+
+## 0.11.0
+
+Content trust:
+
+- **A `.env` or `.env.local` file now contributes only `METABROWSER_LOG_LEVEL` and
+  `METABROWSER_REQUEST_LOG`.** Every other name is read from the process environment or
+  not at all.
+
+  This closes arbitrary code execution through a browsed repository’s `.env`. The chain
+  walks up from the working directory, so `cd cloned-repo && metab .` reaches that
+  repository’s own file and the loader cannot tell it apart from one you wrote — and the
+  environment decides which program runs.
+  `BROWSER` is honored by the standard library’s browser launcher, which `metab` calls
+  by default; `GIT_EXTERNAL_DIFF` is executed by the `git diff` the diff views spawn.
+  Neither `--untrusted` nor any other flag helped, because the browser opens before any
+  content is rendered.
+
+  The two names that remain are the two whose values cannot do anything but what the
+  knob means: one is checked against the known level names, the other is an equality
+  test. That is the membership rule — a name belongs only if no value can make the
+  program do something else.
+
+  **If you keep configuration in a `.env`, move it to the environment.** Nothing else is
+  read from a file any more, including the rendering budgets
+  (`METABROWSER_HIGHLIGHT_MAX_BYTES` and the other `*_MAX_BYTES` names,
+  `STRUCTURED_PARSE_MAX_BYTES`, `STRUCTURED_CACHE_SIZE`, `METABROWSER_SLOW_SERVER_MS`),
+  `METABROWSER_PLUGINS_DIRS`, `METABROWSER_ALLOWED_HOSTS`, `METABROWSER_DEBUG`,
+  `METABROWSER_INVENTORY_PROVIDER`, `METABROWSER_GCP_PROJECT`, and `HOME` — so
+  `metab ~/notes` expands `~` from the process environment even when a `.env` names a
+  different one. Metabrowser logs a warning naming any of its own variables it ignored,
+  so a file that stops taking effect says so.
+
+- `/raw` responses are sandboxed unconditionally.
+  Every branch, including gzip passthrough, SVG, HTML, and error bodies, sends
+  `Content-Security-Policy: sandbox allow-scripts allow-popups allow-forms allow-downloads`
+  and `X-Content-Type-Options: nosniff`. Direct `/raw` links to HTML or SVG no longer
+  execute with the application’s privileges.
+  Nested iframes and framesets still load: the policy does not include
+  `frame-ancestors`.
+
+- `/api` routes require same-origin proof.
+  The server accepts `Sec-Fetch-Site: same-origin`, `Sec-Fetch-Site: none` (a typed URL
+  or a bookmark, which no document initiated), or a matching `Origin`; it refuses
+  `Origin: null` and foreign origins, and still serves `curl` and `metab --api` (neither
+  header). State-changing methods require `Content-Type: application/json`, so a
+  cross-site form POST cannot reach `POST /api/kpress/export`. The guard derives the
+  route the same way the router does, so it holds under an ASGI prefix mount as well as
+  at the root.
+
+- `GET /raw/{path}` serves the same bytes as `GET /raw?path=…`, so relative stylesheets,
+  images, and sibling links in a browsed HTML file resolve under `/raw/`. The query form
+  stays; it is the public API the image renderer uses.
+  Both shapes share one resolver and the same sandbox headers.
+
+- `--untrusted` (`METAB_UNTRUSTED=1`) is the conservative content-trust profile: it
+  disables active content and keeps mutations off.
+  `--no-active-content` (`METAB_ACTIVE_CONTENT=0`) drops `allow-scripts` from the `/raw`
+  sandbox; it does not downgrade bodies to `text/plain`. `--allow-edits`
+  (`METAB_ALLOW_EDITS=1`) publishes `mutations: true`; no write route consumes that flag
+  yet. Individual flags override the profile.
+  The resolved block is on `GET /api/capabilities` and
+  `window.METABROWSER_SETTINGS.CAPABILITIES`.
+
+- A flag on the command line outranks the environment in both directions: `--untrusted`
+  stays conservative whatever `METAB_ACTIVE_CONTENT` or `METAB_ALLOW_EDITS` say, and
+  only `--untrusted --allow-edits` lifts it.
+  The `METAB_*` capability variables and `METABROWSER_ALLOWED_HOSTS` are read from the
+  process environment only, so `cd cloned-repo && metab --untrusted .` cannot be talked
+  out of the sandbox by that repository’s own `.env`. They are outside the dotenv
+  allowlist described above, along with every other name the loader does not list.
+
+- `.html` and `.htm` files are the `html` kind, with a sandboxed Preview tab and a
+  Source tab. A 4 KiB sniff (doctype or `<html>` / `<head>` / `<body>` / `<frameset>`)
+  chooses the default tab only.
+  Preview uses path-shaped `/raw/{path}` and an iframe sandbox of
+  `allow-scripts allow-popups allow-forms allow-downloads` with
+  `referrerpolicy="no-referrer"` — never `allow-same-origin` or `allow-top-navigation`.
+  `--untrusted` and `--no-active-content` omit Preview.
+
+- Preview carries an **Open as full page** link to the same `/raw/{path}` document the
+  frame is showing, so a page that wants the whole window gets it.
+  It is a plain anchor, so middle-click and modifier-click behave natively, and it opens
+  with `rel="noopener noreferrer"`. The tab is contained exactly as the frame is: the
+  sandbox rides on the response headers, not on the iframe.
+
+- A path carrying an embedded NUL — `/raw/a%00b`, or the same byte in a `?path=` value —
+  is a 404 rather than a 500. No filesystem can hold that name, so it is a missing file
+  like any other unresolvable path.
+
+Performance:
+
+- The catalog content identity is hashed one page at a time instead of four
+  `digest.update` calls per record.
+  At 300,000 rows the step drops from 62 ms to 41 ms.
+  The digest is byte-identical — the same bytes in the same order — so nothing
+  downstream of it changes.
+  Hashing per page rather than per catalog keeps the transient bounded by the page.
 
 ## 0.10.0
 
