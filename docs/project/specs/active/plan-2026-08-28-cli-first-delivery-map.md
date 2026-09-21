@@ -1,10 +1,10 @@
-# Plan: CLI-First Delivery — v0.10 Parity and the v0.11 Repository/Hosted-Review Slice
+# Plan: CLI-First Delivery — v0.10 Parity and the v0.12 Repository/Hosted-Review Slice
 
 **Date:** 2026-08-28 (refreshed 2026-09-16)
 
 **Author:** Joshua Levy (with LLM assistance)
 
-**Status:** v0.10.0 released and the parity foundation landed; v0.11.0 implementation is
+**Status:** v0.10.0 released and the parity foundation landed; v0.12.0 implementation is
 active
 
 ## Overview
@@ -14,7 +14,7 @@ aspect checks shipped in v0.10.0. The remaining workstreams are
 [Git status](plan-2026-08-26-git-status-and-working-tree-diffs.md), the
 [repository library](plan-2026-08-11-open-repo-from-git-url.md), and the
 [hosted-review and GitHub provider](plan-2026-08-27-github-provider-and-pull-requests.md).
-This document records the delivered foundation, sequences the v0.11.0 PR-first slice,
+This document records the delivered foundation, sequences the v0.12.0 PR-first slice,
 and states how backend work is proved end to end without a browser.
 
 The thesis is that the parity plan is not a testing chore that follows the features.
@@ -59,25 +59,25 @@ they turn the entire state machine into something a transcript can assert.
 
 Row 1 and the landed portion of row 2 are the v0.10.0 baseline; `mb-n9xg` continues the
 legacy functional-parity inventory.
-For v0.11.0, the table’s *Gated by* column is authoritative where this prose and it
+For v0.12.0, the table’s *Gated by* column is authoritative where this prose and it
 disagree; independent status, format, trust, and provider-model work can proceed in
 parallel.
 
 | # | Work | Beads | Gated by | State |
 | --- | --- | --- | --- | --- |
-| 0 | v0.11 start gate: v0.10.0 tag and release from intended `main` | `mb-i57d`, `mb-xxhi` | nothing | Complete 2026-09-15; v0.10.0 released and the implementation baseline verified |
+| 0 | v0.12 start gate: v0.10.0 tag and release from intended `main` | `mb-i57d`, `mb-xxhi` | nothing | Complete 2026-09-15; v0.10.0 released and the implementation baseline verified |
 | 1 | Parity mechanism: ASGI client, normalizer, `--api`, `--show` | `mb-8n8l`, `mb-ian3`, `mb-y5wm` | nothing | Landed on `main` for v0.10.0 |
 | 2 | Parity enforcement, persisted state, functional aspects, and codification | `mb-esht`, `mb-zodq`, `mb-n9xg` | 1 | Enforcement and codification landed for v0.10.0; `mb-n9xg` remains active for legacy functional inventory |
-| 3 | Git-status measurement gate | `mb-r5gn` | 0 | v0.11.0 |
-| 4 | Git-status backend, then panel | `mb-u4mf`, `mb-vibn`, `mb-y06t` | 0, 1, 3 | v0.11.0 foundation |
-| 5 | Measurement and source-binding correction, owner-only cache format, local-origin contract, worktree-free acquisition, content-source boundary, then immutable Git-tree source | `mb-ire2`, `mb-z2mc`, `mb-xa0p`, `mb-4gnu`, `mb-k54c`, `mb-dxmb`, `mb-h51g`, `mb-dg00`, `mb-3bna`, `mb-z335` | 0, 1 | v0.11.0 |
+| 3 | Git-status measurement gate | `mb-r5gn` | 0 | v0.12.0 |
+| 4 | Git-status backend, then panel | `mb-u4mf`, `mb-vibn`, `mb-y06t` | 0, 1, 3 | v0.12.0 foundation |
+| 5 | Measurement and source-binding correction, owner-only cache format, local-origin contract, worktree-free acquisition, content-source boundary, then immutable Git-tree source | `mb-ire2`, `mb-z2mc`, `mb-xa0p`, `mb-4gnu`, `mb-k54c`, `mb-dxmb`, `mb-h51g`, `mb-dg00`, `mb-3bna`, `mb-z335` | 0, 1 | v0.12.0 |
 | 6 | HTML trust chain | `mb-cun0`, `mb-vib1`, `mb-d658` | 0 | Gates serving fetched content; publishes as its own stack layer after row 5 |
-| 7 | Provider URL reducer, repository open, provider-selected refs, then immutable selected branch | `mb-12cz`, `mb-ew38`, `mb-jlon`, `mb-2xq7` | 5, 6 | v0.11.0 |
-| 8 | Hosted-review models | `mb-63ym` | 0 | v0.11.0 |
-| 9 | Bounded provider runner, `gh api` adapter, broker-pinned Git credential bridge, capability registry, auth-scoped store, repository summary, then direct PR bundle | `mb-y1ax`, `mb-p4sw`, `mb-s123`, `mb-ji83`, `mb-s0gv`, `mb-i3xc`, `mb-2oxp`, `mb-cbak`, `mb-h64t` | 5, 7, 8 | v0.11.0 |
-| 10 | Plugin router, address-space lifecycle, and direct PR document/diff | `mb-xzj3`, `mb-6mle`, `mb-81p5` | 6, 9 | v0.11.0 |
-| 11 | Query-keyed bounded PR index and virtual nav | `mb-lnkl`, `mb-uh6p`, `mb-iw1v` | 9, 10 | v0.11.0 |
-| 12 | Anchored review threads | `mb-rldc` | 10 | v0.11.0 |
+| 7 | Provider URL reducer, repository open, provider-selected refs, then immutable selected branch | `mb-12cz`, `mb-ew38`, `mb-jlon`, `mb-2xq7` | 5, 6 | v0.12.0 |
+| 8 | Hosted-review models | `mb-63ym` | 0 | v0.12.0 |
+| 9 | Bounded provider runner, `gh api` adapter, broker-pinned Git credential bridge, capability registry, auth-scoped store, repository summary, then direct PR bundle | `mb-y1ax`, `mb-p4sw`, `mb-s123`, `mb-ji83`, `mb-s0gv`, `mb-i3xc`, `mb-2oxp`, `mb-cbak`, `mb-h64t` | 5, 7, 8 | v0.12.0 |
+| 10 | Plugin router, address-space lifecycle, and direct PR document/diff | `mb-xzj3`, `mb-6mle`, `mb-81p5` | 6, 9 | v0.12.0 |
+| 11 | Query-keyed bounded PR index and virtual nav | `mb-lnkl`, `mb-uh6p`, `mb-iw1v` | 9, 10 | v0.12.0 |
+| 12 | Anchored review threads | `mb-rldc` | 10 | v0.12.0 |
 
 Row 6 is the
 [R1 finding](../../reviews/review-2026-08-27-delivery-order-for-status-cache-and-providers.md):
@@ -545,7 +545,7 @@ candidate:
 | 4 | `mb-esht` | `check_parity.py` fails on a missing row, a bad command, and an unpinned row; wired into `make lint-check` |
 | 5 | `mb-zodq` | The three clauses in `AGENTS.md`, the reasoning in `docs/development.md` |
 
-### What lands for the v0.11.0 PR-first slice
+### What lands for the v0.12.0 PR-first slice
 
 `mb-i57d` and `mb-xxhi` closed on 2026-09-15 after v0.10.0 was released and the intended
 `main` baseline was verified.

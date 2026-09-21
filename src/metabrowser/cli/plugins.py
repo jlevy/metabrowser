@@ -10,10 +10,11 @@ Three modes on the ``metab`` CLI (parsing lives in
 
 These modes answer the operator question 'is my plugin loaded?'
 without having to start the server. They use the same discovery
-sources serving does, including the same ``.env``/``.env.local``
-walk and ``METABROWSER_PLUGINS_DIRS`` env var, so serving and
-``--plugins`` agree by default; there is no need to repeat
-``--plugins-dir`` flags between invocations.
+sources serving does, including ``METABROWSER_PLUGINS_DIRS`` from
+the process environment, so serving and ``--plugins`` agree by
+default; there is no need to repeat ``--plugins-dir`` flags between
+invocations. A ``.env`` file cannot name a plugin directory: see
+``metabrowser.dotenv``.
 """
 
 from __future__ import annotations
