@@ -5,7 +5,7 @@ title: "v0.11 stabilization review: independent full review of stack #218 and #2
 kind: task
 status: in_progress
 priority: 1
-version: 47
+version: 48
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 labels:
   - release:v0.11.0
@@ -56,6 +56,86 @@ child_order_hints:
   - is-01m2zwj2wpj4abvhdng36mnm03
   - is-01m2zyv9gj9f0w6esn4vnsy38s
 created_at: 2026-09-20T08:02:30.356Z
-updated_at: 2026-09-21T00:32:31.930Z
+updated_at: 2026-09-21T00:40:06.706Z
 ---
 Follow-up to mb-rldx, which was closed at 2026-09-20T07:32Z by a fast pass while its own notes said the #216 browser/plugin, resource-lifecycle, CLI/parity, and docs review passes were unfinished. Independently verify the #140/#217/#216 fix commits (da73b878, 70091d81, bc8dd72b, de0f4f5a), complete the unreviewed areas, review #209 as the security gate for serving acquired Git, reconcile every PR review channel, and reconcile beads and spec checklists with the branches. Output: confirmed findings filed as beads on their owning layers, and an ordered stabilization plan. Read-only until the plan is agreed; do not merge (landing owner is mb-n2ro).
+
+## Notes
+
+# v0.11 stabilization review and fixes (2026-09-20)
+
+Independent re-review of stack #218 and PR #209 after `mb-rldx` was closed by a fast pass,
+then fixes for everything it found.
+Eleven read-only reviewers, then implementers on isolated worktrees.
+Per-finding detail lives on the child beads and in the PR disposition comments.
+
+## Landed on main
+
+- **#207** anyio 4.14.2. `main` and four stack layers failed `make audit` on three
+  advisories until it merged.
+- **#209** HTML trust model: sandboxed `/raw` from a path-scoped layer, `/api`
+  same-origin proof, `--untrusted`, path-shaped `/raw/{path}`, the `html` kind.
+  Merged as `fd65812b` after its first-ever review, its fixes, and a real-browser check
+  against a hostile fixture.
+- **#220** "Open as full page": a plain anchor to the same `/raw/<path>` the frame uses.
+  Merged as `269320b2`.
+
+## Stack #218: restacked, fixed, green, not landed
+
+All seven layers were merged forward onto the new `main` and carry their reviewed fixes.
+No commit was rewritten, so every SHA cited in a published disposition stays reachable.
+CI green on all seven; `stack-integration` green, which is the check that merges `main`
+into each head.
+Local gate on macOS at the tip: 3061 passed, 2 skipped, 145 golden transcripts.
+
+| PR | Head |
+| --- | --- |
+| #125 | `e25ec590` |
+| #134 | `5dfca8d8` |
+| #136 | `bf30d6f3` |
+| #139 | `ba1d47db` |
+| #140 | `cee52937` |
+| #217 | `6dc2617c` |
+| #216 | `842da53a` |
+
+Highest-severity fixes: an ordinary non-bare clone could not be acquired at all (#217);
+the earlier R1 fix had made nested pin listings quadratic (#216); whole-index rescans on
+every request (#216); Git `/raw` would have bypassed #209's sandbox after the merge, now
+proven otherwise by a wire test (#216); `--untrusted` was silently dropped on Git pins
+(#216, #217); two regressions that affected plain filesystem browsing (#216).
+
+## In flight when work paused
+
+`feat/content-reader` (branch clean, no commits yet; agent stopped partway, its worktree
+is `.claude/worktrees/agent-a5acb944186ec3859`).
+Bounded source-agnostic content reader through `plugin_api` (`mb-0um4`): the agent had
+derived the operation inventory and was about to move the four sidekicks.
+Restart it rather than resuming; nothing is committed.
+
+## Open, in rough order
+
+1. `mb-0um4` content reader, then `mb-3z4d` multi-entry Git-pin golden (the current one
+   is a one-file origin with an empty tree listing).
+2. `mb-x85f` **needs a decision**: a browsed repository's `.env` can set
+   `METABROWSER_PLUGINS_DIRS` and load plugin JavaScript into the application origin.
+   On `main` today, predates #209. Recommendation: refuse the key from a dotenv file
+   inside the served root, and always under `--untrusted`.
+3. `mb-5721` store lock held across an `await`; `mb-vs5q` `StableToken` unbounded and
+   enums coercing bytes; `mb-mzdj` three spec test-strategy items; `mb-lp89`
+   process-group kill; `mb-pkho`, `mb-rati`, `mb-e32d`, `mb-d1za` Phase 1B-a remainders;
+   `mb-bi2c` https/ssh acquisition; `mb-dbue` unfork #219.
+4. Landing: `mb-n2ro` (this stack plus #209, still held, needs explicit approval), then
+   `mb-nhky` for the later phases.
+
+## Notes for whoever picks this up
+
+- CI is Linux only, and this stack's cache layer is full of platform-specific
+  permission and ACL behavior. One test passed on macOS and failed on Linux
+  (`chmod(follow_symlinks=False)` on a link). Expect more of both directions.
+- The machine was at load average 348 during the final gate; a 60-second pytest timeout
+  fired on a test that passes in 215 s in isolation. Prefer CI when the machine is busy.
+- Fable ran out of monthly budget mid-session; everything after that is Opus.
+
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
+-->
