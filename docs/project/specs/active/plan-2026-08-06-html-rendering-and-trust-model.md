@@ -4,14 +4,15 @@
 
 **Author:** Metabrowser maintainers
 
-**Status:** Landed on `main` and released in 0.11.0. `/raw` sandbox, `/api` same-origin
+**Status:** Landed on `main`, slated for 0.11.0. `/raw` sandbox, `/api` same-origin
 proof, the `--untrusted` capability profile, path-shaped `/raw/{path}`, and the html
 preview kind arrived in [#209](https://github.com/jlevy/metabrowser/pull/209), the
 full-page escape in [#220](https://github.com/jlevy/metabrowser/pull/220), the relative,
 nested-frame, and dangerous-type coverage in
-[#221](https://github.com/jlevy/metabrowser/pull/221), and the dotenv refusal of
-`METABROWSER_PLUGINS_DIRS` in [#223](https://github.com/jlevy/metabrowser/pull/223).
-Publication review remains `mb-d658`.
+[#221](https://github.com/jlevy/metabrowser/pull/221), and the dotenv allowlist in
+[#223](https://github.com/jlevy/metabrowser/pull/223), generalized from a denylist to an
+allowlist in [#224](https://github.com/jlevy/metabrowser/pull/224). Publication review
+remains `mb-d658`.
 
 ## Overview
 

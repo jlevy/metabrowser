@@ -90,7 +90,9 @@ hash to the first change after the v0.10.0 tag precisely because
 down that “a change that touched a measured path … would need the captures taken again”.
 
 That change is in this release.
-So is a new pair of ASGI middlewares that run on every request.
+So is one new ASGI middleware and one extended: `_RawTrustHeaderMiddleware` is new since
+v0.10.0, and the `/api` same-origin proof went into the pre-existing
+`_HostValidationMiddleware`. Both run on every request.
 The question this round can answer is narrower than the one the checklist asks: does the
 candidate still return the same answers, and does anything on the backend path move
 enough to see?
@@ -106,14 +108,19 @@ timing was taken.
 No browser captures.
 This host has no Chromium, and `record` refuses a headless capture because the
 responsiveness gates depend on a visible tab.
+`report.md` was therefore not regenerated: `run.py report` builds it from the captures
+in `runs.jsonl`, and a round that recorded none has nothing to add.
+The second half of the checklist’s step 3 is unperformed rather than skipped, and stays
+that way until a round with a browser runs.
 That is the whole reason the verdict below is `unresolved` rather than `accepted`: the
 release metric is `project10_browser_first_row_ms` and it was not measured.
 
 ## Equivalence, which is the part that did resolve
 
-`valid: true`. The corpus fingerprint — 256,023 files across 31,561 directories — is
-identical before and after the ten runs, so nothing wrote into the tree between
-conditions. Ordered rows: zero differences.
+`valid: true`. The corpus fingerprint — 256,023 files across 31,561 directories on disk,
+of which 119,980 files in 6,850 directories are visible to the walker — is identical
+before and after the ten runs, so nothing wrote into the tree between conditions.
+Ordered rows: zero differences.
 Tallies: zero differences.
 No errors and no validation errors.
 
@@ -141,10 +148,10 @@ rather than a central statistic, which is the shape that moves most on a shared 
 its candidate range sits inside 1.1x of the control’s and the two overlap across most of
 their span.
 
-Reading a 2% improvement in one run set and a 1.6% regression in another as signal would
-be reading the noise floor.
-The honest summary is that the backend path did not move enough for five pairs on this
-host to see, in either direction.
+The largest median move in either direction is 9.1% on that max statistic, and the
+largest on a central one is 1.6%; reading either as signal would be reading the noise
+floor. The honest summary is that the backend path did not move enough for five pairs on
+this host to see, in either direction.
 
 ## What this does not say
 
@@ -154,9 +161,12 @@ about 8 ms at this corpus’s row count, against an `index_done` whose own sprea
 330 ms. This round could not resolve that change even in principle, and did not set out
 to.
 
-It does not say the new middlewares are free.
-They run on every request and were not isolated here; the whole-load cost was estimated
-by microbenchmark at under half a millisecond, and an estimate is what it remains.
+It does not say the middlewares are free.
+They run on every request and were not isolated here, and this round carries no
+measurement of them: an earlier draft cited a microbenchmark that was never committed,
+which is worth naming because an experiment record pointing at evidence nobody can open
+is worse than one that admits the measurement is missing.
+It is missing.
 
 Most of all it does not clear the release.
 A backend comparison is half of a release round by construction, and the half it omits

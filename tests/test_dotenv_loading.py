@@ -2,14 +2,15 @@
 
 Plugin discovery is operator-opt-in at the trust boundary.
 Operators name plugin parents via ``--plugins-dir`` flags or set
-``METABROWSER_PLUGINS_DIRS`` in ``.env`` / ``.env.local``.
+``METABROWSER_PLUGINS_DIRS`` in the process environment; a dotenv file
+cannot supply it.
 
 These tests exercise the dotenv loader and the CLI's interaction with
 it. We use python-dotenv under the hood; the wrapper in
-``metabrowser.dotenv`` adds the .env-then-.env.local search order, the
-``override=False`` semantics (shell-set values win over file values),
-and the allowlist that keeps a browsed repository's file from
-contributing anything but a rendering budget.
+``metabrowser.dotenv`` adds the .env-then-.env.local search order,
+``setdefault`` semantics (shell-set values win over file values), and
+the allowlist that keeps a browsed repository's file from contributing
+anything but the two log names.
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -67,14 +69,16 @@ def test_shell_export_wins_over_dotenv(tmp_path: Path, monkeypatch) -> None:
 
 # Names a browsed repository could set to choose which program runs.
 # BROWSER is honored by the standard library's browser launcher, which
-# `metab` calls by default; the GIT_* names select an external diff or
-# ssh command for the git subprocesses the diff views spawn.
+# `metab` calls by default. GIT_EXTERNAL_DIFF is executed by the
+# patch-producing `git diff` the diff views spawn, which carries no
+# --no-ext-diff; GIT_TRACE makes git write a file anywhere the value
+# names, under every vector this package uses.
 EXECUTION_SELECTING_KEYS = (
     "BROWSER",
     "GIT_EXTERNAL_DIFF",
-    "GIT_SSH",
+    "GIT_TRACE",
+    "GIT_CONFIG_COUNT",
     "GIT_SSH_COMMAND",
-    "GIT_PAGER",
     "PATH",
 )
 
@@ -106,30 +110,6 @@ def test_dotenv_contributes_nothing_outside_the_allowlist(
     assert os.environ.get("METABROWSER_LOG_LEVEL") == "DEBUG"
 
 
-def test_dotenv_never_chooses_the_program_that_runs(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """No execution-selecting name is loadable, even alongside a real one.
-
-    Regression test. `cd cloned-repo && metab .` used to run whatever
-    that repository's `.env` named in BROWSER, because the loader
-    refused a short list of trust keys and passed everything else
-    through. `--untrusted` did not help: the browser opens before any
-    content is rendered.
-    """
-    monkeypatch.chdir(tmp_path)
-    for key in EXECUTION_SELECTING_KEYS:
-        monkeypatch.setenv(key, "from-the-real-environment")
-    (tmp_path / ".env").write_text(
-        "".join(f"{key}=/tmp/attacker\n" for key in EXECUTION_SELECTING_KEYS)
-    )
-
-    load_dotenv_chain()
-
-    for key in EXECUTION_SELECTING_KEYS:
-        assert os.environ[key] == "from-the-real-environment", key
-
-
 def test_every_allowlisted_key_is_one_the_package_reads() -> None:
     """The allowlist does not drift into names nothing consults.
 
@@ -138,11 +118,37 @@ def test_every_allowlisted_key_is_one_the_package_reads() -> None:
     making on purpose.
     """
     package_dir = Path(metabrowser.__file__).parent
-    sources = list(package_dir.rglob("*.py"))
+    # The defining module is excluded on purpose. Every allowlisted name
+    # appears there as the literal inside ``ALLOWED_KEYS``, so including it
+    # would make the corpus match any name at all and this gate could never
+    # fail -- which is what it did until a review caught it.
+    sources = [p for p in package_dir.rglob("*.py") if p.name != "dotenv.py"]
     assert sources, f"no package sources under {package_dir}"
     corpus = "\n".join(path.read_text(encoding="utf-8") for path in sources)
-    unread = sorted(key for key in ALLOWED_KEYS if f'"{key}"' not in corpus)
+    # Match a read, not a mention: a name in a docstring is not a consumer.
+    unread = sorted(
+        key
+        for key in ALLOWED_KEYS
+        if not re.search(
+            rf"""os\.environ(?:\.get)?\(\s*["']{re.escape(key)}["']"""
+            rf"""|os\.environ\[\s*["']{re.escape(key)}["']\]""",
+            corpus,
+        )
+    )
     assert not unread, f"allowlisted but never read: {unread}"
+
+
+def test_the_drift_gate_can_actually_fail() -> None:
+    """The gate above must reject a name nothing reads.
+
+    Without this, the gate is unfalsifiable and silently stops testing
+    anything -- the exact failure it was introduced with.
+    """
+    package_dir = Path(metabrowser.__file__).parent
+    sources = [p for p in package_dir.rglob("*.py") if p.name != "dotenv.py"]
+    corpus = "\n".join(path.read_text(encoding="utf-8") for path in sources)
+    planted = "METABROWSER_NOBODY_READS_THIS"
+    assert not re.search(rf"""os\.environ(?:\.get)?\(\s*["']{re.escape(planted)}["']""", corpus)
 
 
 def test_dotenv_leaves_a_shell_set_trust_variable_intact(

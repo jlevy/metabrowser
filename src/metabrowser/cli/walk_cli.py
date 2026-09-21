@@ -22,7 +22,7 @@ from metabrowser.cli.common import apply_log_level, validate_contained_path
 from metabrowser.dotenv import load_dotenv_chain as _load_dotenv_chain
 from metabrowser.errors import CLIError
 from metabrowser.inventory_engine.contract import parse_inventory_path
-from metabrowser.settings import RECENT_WINDOW_SECONDS
+from metabrowser.settings import RECENT_WINDOW_SECONDS, VALID_LOG_LEVELS
 from metabrowser.tree_filter import TreeFilter, parse_recency, parse_types
 from metabrowser.walk import (
     DETAIL_LEVELS,
@@ -219,7 +219,12 @@ def _walk_logging() -> Generator[None]:
     stream.
     """
 
+    # ``getattr(logging, name)`` would accept any module attribute, so a
+    # name like ``BASIC_FORMAT`` returned a format string that ``setLevel``
+    # then rejected. Check membership first: an unknown value is INFO.
     level_name = os.environ.get("METABROWSER_LOG_LEVEL", "INFO").upper()
+    if level_name not in VALID_LOG_LEVELS:
+        level_name = "INFO"
     level = getattr(logging, level_name, logging.INFO)
     logger = logging.getLogger("metabrowser")
     previous_level = logger.level

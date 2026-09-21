@@ -261,6 +261,46 @@ def test_api_same_origin_proof_matrix() -> None:
             assert "same-origin" in resp.text.lower() or "origin" in resp.text.lower()
 
 
+def test_route_path_matches_the_router_exactly() -> None:
+    """``_route_path`` must not disagree with what Starlette routes on.
+
+    A guard weaker than the router fails open. Stripping a prefix that
+    is not a path-segment boundary did exactly that: ``root_path="/"``
+    turned ``/api/x`` into ``api/x``, which the ``/api`` check did not
+    recognize while the router served the route regardless.
+    """
+    from starlette._utils import get_route_path
+
+    scopes = [
+        {"root_path": "", "path": "/api/x"},
+        {"root_path": "/", "path": "/api/x"},
+        {"root_path": "/ap", "path": "/api/x"},
+        {"root_path": "/pre", "path": "/pre/api/x"},
+        {"root_path": "/pre/", "path": "/pre/api/x"},
+        {"root_path": "/pre", "path": "/prefix/api/x"},
+        {"root_path": "/pre", "path": "/pre"},
+        {"root_path": "/pre", "path": "/pre/"},
+        {"root_path": "", "path": "/raw/a"},
+        {"root_path": "/pre", "path": "/pre/raw/a"},
+        {"root_path": "", "path": "/rawfoo"},
+    ]
+    mismatched = [s for s in scopes if server._route_path(s) != get_route_path(s)]
+    assert not mismatched
+
+
+def test_api_guard_is_never_weaker_than_the_router() -> None:
+    """Any scope the router would route to ``/api`` reaches the guard."""
+    from starlette._utils import get_route_path
+
+    for root_path in ("", "/", "/ap", "/pre", "/pre/"):
+        scope = {"root_path": root_path, "path": "/api/capabilities"}
+        routed = get_route_path(scope)
+        if not (routed == "/api" or routed.startswith("/api/")):
+            continue
+        guarded = server._route_path(scope)
+        assert guarded == "/api" or guarded.startswith("/api/"), root_path
+
+
 def test_api_guard_survives_a_prefix_mount(tmp_path: Path) -> None:
     """A ``root_path`` prefix must not lift the ``/api`` guard.
 

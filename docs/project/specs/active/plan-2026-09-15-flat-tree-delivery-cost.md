@@ -140,8 +140,8 @@ scratch copy or `PYTHONPATH` shadowing, before its number is believed.
 ## Rollout Plan
 
 Tier 1 is patch-safe.
-It was planned for 0.10.1 and in the event shipped in 0.11.0: the catalog content hash
-landed in #129 and rode out with the content-trust work rather than on a patch of its
+It was planned for 0.10.1 and in the event ships with 0.11.0: the catalog content hash
+landed in #129 and rides out with the content-trust work rather than on a patch of its
 own. Tier 2 changes no contract but is large enough that it ships on its own measured
 round, as 0.12.0 or later depending on what the prototype costs.
 The flat-stress ratchet is lowered in the same change that earns it, never separately.

@@ -189,6 +189,7 @@ from metabrowser.settings import (
     SYNTAX_HIGHLIGHT_MAX_BYTES,
     TEXT_PREVIEW_CHUNK_BYTES,
     TEXT_PREVIEW_REQUEST_MAX_BYTES,
+    VALID_LOG_LEVELS,
     client_settings_dict,
 )
 from metabrowser.sse import api_stream
@@ -225,8 +226,9 @@ if TYPE_CHECKING:
     from starlette.requests import Request
 
 
-# Direct ASGI imports bypass the CLI bootstrap. Load trusted working-tree
-# configuration before logging flags and one-shot plugin discovery are read.
+# Direct ASGI imports bypass the CLI bootstrap. Load the working tree's
+# allowlisted configuration before logging flags are read. The tree is not
+# trusted -- see ``metabrowser.dotenv`` for what a file may contribute.
 load_dotenv_chain()
 
 LOG = logging.getLogger(__name__)
@@ -354,7 +356,12 @@ def _setup_perf_logging() -> None:
     # Attach to ``metabrowser`` so every child logger (server, tree,
     # activity, charts, sse, …) propagates up to this handler.
     # ``METABROWSER_LOG_LEVEL`` (DEBUG/INFO/WARNING/ERROR) overrides; default INFO.
+    # ``getattr(logging, name)`` would accept any module attribute, so a
+    # name like ``BASIC_FORMAT`` returned a format string that ``setLevel``
+    # then rejected. Check membership first: an unknown value is INFO.
     level_name = os.environ.get("METABROWSER_LOG_LEVEL", "INFO").upper()
+    if level_name not in VALID_LOG_LEVELS:
+        level_name = "INFO"
     level = getattr(logging, level_name, logging.INFO)
     for logger_name in ("metabrowser",):
         lg = logging.getLogger(logger_name)
@@ -695,17 +702,25 @@ def _origin_matches_request(origin: str, scheme: str, host_header: str) -> bool:
 def _route_path(scope: Mapping[str, Any]) -> str:
     """The scope's path with any ASGI ``root_path`` prefix removed.
 
-    Every middleware that decides something from the path uses this, so
-    a prefix mount cannot make one of them name a different route than
-    another. Naming it once is the point: the ``/api`` guard and the
-    ``/raw`` sandbox previously derived the path two ways, and under a
-    prefix only one of them still recognized its own route.
+    Mirrors Starlette's own ``get_route_path``, which is what the router
+    matches on. A guard that derived the path differently could be
+    weaker than the router: stripping a prefix that is not a path-segment
+    boundary turned ``root_path="/"`` with ``/api/x`` into ``api/x``, and
+    the ``/api`` check then skipped a route the router still served.
+    Only a prefix that ends at a segment boundary is removed.
+
+    The two security middlewares and the slow-request log all call this,
+    so a prefix mount cannot make one of them name a different route than
+    another.
     """
 
     path = str(scope.get("path") or "")
     root_path = str(scope.get("root_path") or "")
-    if root_path and path.startswith(root_path):
-        path = path[len(root_path) :] or "/"
+    if not root_path or not path.startswith(root_path):
+        return path
+    rest = path[len(root_path) :]
+    if rest == "" or rest.startswith("/"):
+        return rest
     return path
 
 
@@ -960,7 +975,7 @@ class _SlowRequestLogMiddleware:
             await self.app(scope, receive, send)
             return
         # Skip the timer entirely for long-lived endpoints.
-        path = str(scope.get("path") or "")
+        path = _route_path(scope)
         if any(path.startswith(prefix) for prefix in self._LONG_LIVED_PATHS):
             await self.app(scope, receive, send)
             return

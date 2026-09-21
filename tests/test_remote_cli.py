@@ -7,7 +7,6 @@ host must run the same flat-CLI Metabrowser version.
 from __future__ import annotations
 
 import contextlib
-import os
 import signal
 import subprocess
 from unittest.mock import patch
@@ -191,7 +190,14 @@ def test_remote_auto_open_uses_portable_webbrowser(monkeypatch) -> None:
     assert len(popen_calls) == 1
 
 
-def test_remote_loads_dotenv_before_resolving_gcp_project(monkeypatch) -> None:
+def test_remote_resolves_gcp_project_from_the_process_environment(monkeypatch) -> None:
+    """``METABROWSER_GCP_PROJECT`` is honored, and only from the environment.
+
+    It used to be readable from a `.env`, and this test faked the loader to
+    prove it. That name is outside the dotenv allowlist now -- it chooses
+    where a remote session connects -- so faking the loader would assert
+    something the product no longer does.
+    """
     observed: dict[str, str] = {}
 
     class _FakeProc:
@@ -206,9 +212,6 @@ def test_remote_loads_dotenv_before_resolving_gcp_project(monkeypatch) -> None:
         def send_signal(self, sig):
             pass
 
-    def _fake_load_dotenv_chain():
-        os.environ["METABROWSER_GCP_PROJECT"] = "dotenv-project"
-
     def _fake_probe(*args, **kwargs):
         observed["probe_project"] = kwargs["project"]
         return 8412
@@ -217,8 +220,7 @@ def test_remote_loads_dotenv_before_resolving_gcp_project(monkeypatch) -> None:
         observed["tunnel_project"] = kwargs["project"]
         return ["ssh"]
 
-    monkeypatch.delenv("METABROWSER_GCP_PROJECT", raising=False)
-    monkeypatch.setattr(remote, "_load_dotenv_chain", _fake_load_dotenv_chain)
+    monkeypatch.setenv("METABROWSER_GCP_PROJECT", "env-project")
     monkeypatch.setattr(remote, "_probe_remote_free_port", _fake_probe)
     monkeypatch.setattr(remote, "build_ssh_tunnel_command", _fake_tunnel)
     monkeypatch.setattr(remote, "find_available_local_port", lambda *a, **kw: 8411)
@@ -237,8 +239,8 @@ def test_remote_loads_dotenv_before_resolving_gcp_project(monkeypatch) -> None:
         )
 
     assert observed == {
-        "probe_project": "dotenv-project",
-        "tunnel_project": "dotenv-project",
+        "probe_project": "env-project",
+        "tunnel_project": "env-project",
     }
 
 

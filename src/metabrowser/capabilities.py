@@ -26,8 +26,8 @@ CAPABILITY_ENV_VARS: tuple[str, ...] = (
 """Every variable ``resolve_capabilities`` reads, named once.
 
 ``metabrowser.dotenv`` loads only its own allowlist, so a name added here is
-outside that list by construction and cannot arrive from a browsed
-repository's ``.env``. That module asserts the two sets stay disjoint."""
+outside that list and cannot arrive from a browsed repository's ``.env``.
+That module raises at import if the two sets ever overlap."""
 
 # Token order is the sandbox contract. Drop ``allow-scripts`` in place when
 # active content is off; do not rewrite the rest of the directive.

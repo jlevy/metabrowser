@@ -6,28 +6,33 @@ All notable changes to Metabrowser are documented here.
 
 Content trust:
 
-- **A `.env` or `.env.local` file now contributes only allowlisted names.** The chain
-  walks up from the working directory, so `cd cloned-repo && metab .` reaches that
-  repository’s own file, and the loader cannot tell it apart from one you wrote.
-  The allowlist is log verbosity and rendering budgets — `METABROWSER_LOG_LEVEL`,
-  `METABROWSER_REQUEST_LOG`, `METABROWSER_SLOW_SERVER_MS`, the text, binary, and
-  highlight byte limits, and the two `STRUCTURED_*` tunables.
-  Every other name is read from the process environment or not at all.
+- **A `.env` or `.env.local` file now contributes only `METABROWSER_LOG_LEVEL` and
+  `METABROWSER_REQUEST_LOG`.** Every other name is read from the process environment or
+  not at all.
 
-  This closes arbitrary code execution from a browsed repository.
-  A denylist secured only the names we had thought of, and the environment decides which
-  program runs: `BROWSER` is honored by the standard library’s browser launcher, which
-  `metab` calls by default, and the `GIT_*` variables select an external diff or ssh
-  command for the git subprocesses the diff views spawn.
-  `--untrusted` did not help, because the browser opens before any content is rendered.
-  `METABROWSER_PLUGINS_DIRS` and `METABROWSER_ALLOWED_HOSTS` are outside the allowlist,
-  as are `METABROWSER_HOST`, `METABROWSER_PORT`, `METABROWSER_DEBUG`,
-  `METABROWSER_INVENTORY_PROVIDER`, and `METABROWSER_GCP_PROJECT`: they choose what
-  loads, what is reachable, or where the server binds.
-  `HOME` is outside it too, so `metab ~/notes` expands `~` from the process environment
-  even when a `.env` names a different one — `HOME` decides where git, ssh, and the rest
-  of the toolchain look for configuration and credentials.
-  If you set any of these in a `.env`, export it instead.
+  This closes arbitrary code execution through a browsed repository’s `.env`. The chain
+  walks up from the working directory, so `cd cloned-repo && metab .` reaches that
+  repository’s own file and the loader cannot tell it apart from one you wrote — and the
+  environment decides which program runs.
+  `BROWSER` is honored by the standard library’s browser launcher, which `metab` calls
+  by default; `GIT_EXTERNAL_DIFF` is executed by the `git diff` the diff views spawn.
+  Neither `--untrusted` nor any other flag helped, because the browser opens before any
+  content is rendered.
+
+  The two names that remain are the two whose values cannot do anything but what the
+  knob means: one is checked against the known level names, the other is an equality
+  test. That is the membership rule — a name belongs only if no value can make the
+  program do something else.
+
+  **If you keep configuration in a `.env`, move it to the environment.** Nothing else is
+  read from a file any more, including the rendering budgets
+  (`METABROWSER_HIGHLIGHT_MAX_BYTES` and the other `*_MAX_BYTES` names,
+  `STRUCTURED_PARSE_MAX_BYTES`, `STRUCTURED_CACHE_SIZE`, `METABROWSER_SLOW_SERVER_MS`),
+  `METABROWSER_PLUGINS_DIRS`, `METABROWSER_ALLOWED_HOSTS`, `METABROWSER_DEBUG`,
+  `METABROWSER_INVENTORY_PROVIDER`, `METABROWSER_GCP_PROJECT`, and `HOME` — so
+  `metab ~/notes` expands `~` from the process environment even when a `.env` names a
+  different one. Metabrowser logs a warning naming any of its own variables it ignored,
+  so a file that stops taking effect says so.
 
 - `/raw` responses are sandboxed unconditionally.
   Every branch, including gzip passthrough, SVG, HTML, and error bodies, sends
@@ -42,7 +47,9 @@ Content trust:
   or a bookmark, which no document initiated), or a matching `Origin`; it refuses
   `Origin: null` and foreign origins, and still serves `curl` and `metab --api` (neither
   header). State-changing methods require `Content-Type: application/json`, so a
-  cross-site form POST cannot reach `POST /api/kpress/export`.
+  cross-site form POST cannot reach `POST /api/kpress/export`. The guard derives the
+  route the same way the router does, so it holds under an ASGI prefix mount as well as
+  at the root.
 
 - `GET /raw/{path}` serves the same bytes as `GET /raw?path=…`, so relative stylesheets,
   images, and sibling links in a browsed HTML file resolve under `/raw/`. The query form
@@ -80,11 +87,6 @@ Content trust:
   with `rel="noopener noreferrer"`. The tab is contained exactly as the frame is: the
   sandbox rides on the response headers, not on the iframe.
 
-- The `/api` same-origin guard survives a prefix mount.
-  It matched on the raw ASGI path while the `/raw` sandbox stripped `root_path` first,
-  so an app mounted under a prefix kept its sandbox and silently stopped requiring
-  same-origin proof. Both derive the route path one way now.
-
 - A path carrying an embedded NUL — `/raw/a%00b`, or the same byte in a `?path=` value —
   is a 404 rather than a 500. No filesystem can hold that name, so it is a missing file
   like any other unresolvable path.
@@ -94,8 +96,8 @@ Performance:
 - The catalog content identity is hashed one page at a time instead of four
   `digest.update` calls per record.
   At 300,000 rows the step drops from 62 ms to 41 ms.
-  The digest is byte-identical — the same bytes in the same order — so a cached catalog
-  identity computed by 0.10.0 still matches.
+  The digest is byte-identical — the same bytes in the same order — so nothing
+  downstream of it changes.
   Hashing per page rather than per catalog keeps the transient bounded by the page.
 
 ## 0.10.0
