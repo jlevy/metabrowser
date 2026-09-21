@@ -1,15 +1,17 @@
 # Feature: Full-Page HTML Rendering and an Explicit Trust Model
 
-**Date:** 2026-08-06 (refreshed 2026-09-19)
+**Date:** 2026-08-06 (refreshed 2026-09-21)
 
 **Author:** Metabrowser maintainers
 
-**Status:** Implemented on draft [#209](https://github.com/jlevy/metabrowser/pull/209),
-based on `main` and not part of GitHub stack
-[#218](https://github.com/jlevy/metabrowser/stack/218). `/raw` sandbox, `/api`
-same-origin proof, the `--untrusted` capability profile, path-shaped `/raw/{path}`, and
-the html preview kind are on that branch, not on `main`. Publication review remains
-`mb-d658`.
+**Status:** Landed on `main` and released in 0.11.0. `/raw` sandbox, `/api` same-origin
+proof, the `--untrusted` capability profile, path-shaped `/raw/{path}`, and the html
+preview kind arrived in [#209](https://github.com/jlevy/metabrowser/pull/209), the
+full-page escape in [#220](https://github.com/jlevy/metabrowser/pull/220), the relative,
+nested-frame, and dangerous-type coverage in
+[#221](https://github.com/jlevy/metabrowser/pull/221), and the dotenv refusal of
+`METABROWSER_PLUGINS_DIRS` in [#223](https://github.com/jlevy/metabrowser/pull/223).
+Publication review remains `mb-d658`.
 
 ## Overview
 

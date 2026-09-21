@@ -67,6 +67,15 @@ Content trust:
   is a 404 rather than a 500. No filesystem can hold that name, so it is a missing file
   like any other unresolvable path.
 
+Performance:
+
+- The catalog content identity is hashed one page at a time instead of four
+  `digest.update` calls per record.
+  At 300,000 rows the step drops from 62 ms to 41 ms.
+  The digest is byte-identical — the same bytes in the same order — so a cached catalog
+  identity computed by 0.10.0 still matches.
+  Hashing per page rather than per catalog keeps the transient bounded by the page.
+
 ## 0.10.0
 
 Plugin SDK:
