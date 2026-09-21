@@ -42,6 +42,7 @@ $defs:
         $ref: '#/$defs/CapabilityObservationState'
       values:
         items:
+          maxLength: 128
           pattern: ^[a-z][a-z0-9._:-]*$
           type: string
         title: Values
@@ -341,6 +342,7 @@ $schema: https://json-schema.org/draft/2020-12/schema
 additionalProperties: false
 properties:
   adapter_id:
+    maxLength: 128
     pattern: ^[a-z][a-z0-9._:-]*$
     title: Adapter Id
     type: string
@@ -370,6 +372,7 @@ properties:
     title: Normalization Version
     type: string
   operation_id:
+    maxLength: 128
     pattern: ^[a-z][a-z0-9._:-]*$
     title: Operation Id
     type: string
@@ -409,4 +412,4 @@ title: Retrieval
 type: object
 x-softschema:
   contract: com.github.jlevy.metabrowser.provider:Retrieval/v1
-  schema_sha256: c6830b915a7b3ebc2e487a29941977278cace17ca44a1d77f5ab7551f22a470f
+  schema_sha256: a4d40f9f13c0dfceaaf7f7c6a6936ae8cb0c28843d848a8edc440bce994c9ee3
