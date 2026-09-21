@@ -129,7 +129,7 @@ reservation and its invariants, is in
 | `/api/git/repo`, `/api/git/refs`, `/api/git/summary`, `/api/git/log`, `/api/git/commit/<rev>` | Read-only Git history for the Git panel; log pages use bounded, replayable server sessions, opaque page cursors, and versioned graph-boundary checkpoints. The boundary and its rules are in [Git and comparison sources](arch-git-and-comparison-sources.md) |
 | `/api/kpress/render`, `/api/kpress/export` | Document rendering and export |
 | `/api/plugin/<plugin>/<route>` | Plugin data hooks (`[[data_hook]]`) |
-| `/raw` | Bounded raw bytes for embedded media |
+| `/raw`, `/raw/<path>` | Bounded raw bytes for embedded media, and the document the sandboxed html Preview frames. Both shapes share one resolver and send the same sandbox headers; the path form exists so relative references inside a browsed document resolve |
 | `/kpress-static/<path>`, `/static/<path>`, `/plugin-static/<plugin>/<path>` | Shell, renderer, and plugin assets |
 | `/_debug/tasks`, `/_debug/inventory` | Opt-in local task and inventory-provider diagnostics when `METABROWSER_DEBUG=1` |
 

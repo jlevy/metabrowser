@@ -38,8 +38,8 @@ Additional trusted names for reaching a wildcard bind can be listed in the
 `METABROWSER_ALLOWED_HOSTS` environment variable (comma-separated); every name added
 there extends the set of domains whose pages the browser will let read responses, so
 list only names you control.
-That variable is read from the process environment only, never from a `.env` or
-`.env.local` file.
+That variable is read from the process environment only; a `.env` or `.env.local` file
+contributes only the two names named under Content Trust Model below.
 
 Path handling is designed to keep file access beneath the selected root.
 Reports of a path traversal, symlink escape, unsafe archive handling, cross-origin
@@ -99,12 +99,30 @@ stays conservative whatever the `METAB_*` variables say, and only another flag �
 The `METAB_*` variables themselves are read from the process environment only, never
 from a `.env` or `.env.local` file, so browsing a cloned repository from inside it
 cannot let that repository choose how far it is trusted.
-`METABROWSER_PLUGINS_DIRS` is refused from those files for the same reason and a sharper
+`METABROWSER_PLUGINS_DIRS` is kept from those files for the same reason and a sharper
 one: a directory plugin is JavaScript that runs in the application page, so a file in
 the browsed tree naming its own plugin directory would execute code there.
 Name it in the environment, or pass `--plugins-dir`. The resolved block is on
 `window.METABROWSER_SETTINGS.CAPABILITIES` and `GET /api/capabilities`; the server is
 authoritative.
+
+Those names are examples of a general rule rather than a list of exceptions.
+A `.env` or `.env.local` file may contribute only `METABROWSER_LOG_LEVEL` and
+`METABROWSER_REQUEST_LOG`. Every other name is read from the process environment or not
+at all, and Metabrowser logs a warning naming any of its own variables it ignored.
+
+The rule is an allowlist because the loader cannot tell a file the operator wrote from
+one in the repository being browsed, and a denylist secures only the names somebody
+thought of. The environment decides which program runs: `BROWSER`, which the standard
+library’s browser launcher honors, `GIT_EXTERNAL_DIFF`, which the `git diff` behind the
+diff views executes, and `PATH`.
+
+Membership has one test: the name must be read by a parser no value can break, so that a
+hostile file cannot make the program do anything but what the knob means.
+One of the two is checked against the known level names and the other is an equality
+test. The rendering budgets are deliberately outside it — each is parsed with `int()` at
+import and bounds a read on a request path, so a file value could stop the process from
+starting or lift a cap that keeps a large document from exhausting memory.
 
 `.html` and `.htm` files open as the `html` kind, with Preview and Source tabs.
 Preview loads the file in an iframe whose `src` is the path-shaped `/raw/{path}`

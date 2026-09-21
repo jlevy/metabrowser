@@ -274,7 +274,7 @@ Metabrowser loads plugins only from trusted sources:
 1. built-ins shipped in the Metabrowser wheel
 2. installed Python packages registered in the `metabrowser.plugins` entry-point group
 3. directories explicitly named with `--plugins-dir`, or `METABROWSER_PLUGINS_DIRS` in
-   the process environment (never from a `.env` file)
+   the process environment (a `.env` file cannot supply it)
 
 An installed Python plugin must be present in the same uv tool or uvx environment as
 Metabrowser. Operator-directory plugins are useful for local JavaScript-only extensions.
