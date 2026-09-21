@@ -833,11 +833,10 @@ and any explicit archival pin regardless of source availability; it sweeps older
 unreachable objects but never automatically removes the last validated reachable
 observation.
 
-All application-home directories containing repository or provider content are
-owner-only: `0700` directories and `0600` files on POSIX, with the equivalent
-current-user-only ACL on Windows.
-Metabrowser refuses remote acquisition when a cache ancestor is a symlink, is owned by
-another principal, is group/world accessible, or cannot be verified and repaired.
+Everything kept under the application home is owner-only, and Metabrowser refuses remote
+acquisition or provider publication when it cannot verify that;
+[owner-only storage](../specs/active/plan-2026-08-11-open-repo-from-git-url.md#owner-only-storage)
+states the enforced rules.
 This refusal does not prevent read-only browsing of an ordinary local path outside the
 application home or attaching it to a shared provider mirror without mutating it.
 

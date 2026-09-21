@@ -1,0 +1,64 @@
+{
+  "environment": {
+    "cpu": "Apple M1 Pro",
+    "git_build_options": [
+      "cpu: arm64",
+      "no commit associated with this build",
+      "sizeof-long: 8",
+      "sizeof-size_t: 8",
+      "shell-path: /bin/sh"
+    ],
+    "git_version": "git version 2.50.1",
+    "logical_cpus": 10,
+    "machine": "arm64",
+    "memory_bytes": 34359738368,
+    "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+    "python": "3.14.7"
+  },
+  "finished_at": "2026-09-17T06:31:31+00:00",
+  "parameters": {},
+  "rows": [
+    {
+      "case": "store_modes",
+      "directories": {
+        "0755": 7
+      },
+      "entries_with_group_or_other_bits": 17,
+      "files": {
+        "0444": 5,
+        "0644": 5
+      },
+      "variant": "umask_022"
+    },
+    {
+      "case": "store_modes",
+      "directories": {
+        "0700": 1,
+        "0755": 6
+      },
+      "entries_with_group_or_other_bits": 8,
+      "files": {
+        "0400": 4,
+        "0444": 1,
+        "0600": 4,
+        "0644": 1
+      },
+      "variant": "umask_022_shared_repository_0600"
+    },
+    {
+      "case": "store_modes",
+      "directories": {
+        "0700": 7
+      },
+      "entries_with_group_or_other_bits": 0,
+      "files": {
+        "0400": 5,
+        "0600": 5
+      },
+      "variant": "umask_077"
+    }
+  ],
+  "schema": "metabrowser-repository-cache-measurement-v1",
+  "started_at": "2026-09-17T06:31:28+00:00",
+  "suite": "umask"
+}

@@ -1,0 +1,200 @@
+{
+  "environment": {
+    "cpu": "Apple M1 Pro",
+    "git_build_options": [
+      "cpu: arm64",
+      "no commit associated with this build",
+      "sizeof-long: 8",
+      "sizeof-size_t: 8",
+      "shell-path: /bin/sh"
+    ],
+    "git_version": "git version 2.50.1",
+    "logical_cpus": 10,
+    "machine": "arm64",
+    "memory_bytes": 34359738368,
+    "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+    "python": "3.14.7"
+  },
+  "finished_at": "2026-09-17T05:43:39+00:00",
+  "parameters": {
+    "reps": 3,
+    "timeout_s": 300.0
+  },
+  "rows": [
+    {
+      "case": "auto_maintenance_after_fetch",
+      "maintenance_spawns": 1,
+      "returncode": 0,
+      "store_config": false
+    },
+    {
+      "case": "auto_maintenance_after_fetch",
+      "maintenance_spawns": 0,
+      "returncode": 0,
+      "store_config": true
+    },
+    {
+      "case": "lazy_fetch_auto_gc_race",
+      "entries_listed": 236,
+      "error_class": "",
+      "lazy_fetches": 230,
+      "maintenance_spawns": 242,
+      "packs_after": 31,
+      "rep": 0,
+      "returncode": 0,
+      "store_config": false,
+      "wall_s": 11.454
+    },
+    {
+      "case": "lazy_fetch_auto_gc_race",
+      "entries_listed": 236,
+      "error_class": "",
+      "lazy_fetches": 230,
+      "maintenance_spawns": 242,
+      "packs_after": 31,
+      "rep": 1,
+      "returncode": 0,
+      "store_config": false,
+      "wall_s": 11.097
+    },
+    {
+      "case": "lazy_fetch_auto_gc_race",
+      "entries_listed": 236,
+      "error_class": "",
+      "lazy_fetches": 230,
+      "maintenance_spawns": 242,
+      "packs_after": 31,
+      "rep": 2,
+      "returncode": 0,
+      "store_config": false,
+      "wall_s": 13.353
+    },
+    {
+      "case": "lazy_fetch_auto_gc_race",
+      "entries_listed": 236,
+      "error_class": "",
+      "lazy_fetches": 230,
+      "maintenance_spawns": 0,
+      "packs_after": 231,
+      "rep": 0,
+      "returncode": 0,
+      "store_config": true,
+      "wall_s": 12.481
+    },
+    {
+      "case": "lazy_fetch_auto_gc_race",
+      "entries_listed": 236,
+      "error_class": "",
+      "lazy_fetches": 230,
+      "maintenance_spawns": 0,
+      "packs_after": 231,
+      "rep": 1,
+      "returncode": 0,
+      "store_config": true,
+      "wall_s": 11.907
+    },
+    {
+      "case": "lazy_fetch_auto_gc_race",
+      "entries_listed": 236,
+      "error_class": "",
+      "lazy_fetches": 230,
+      "maintenance_spawns": 0,
+      "packs_after": 231,
+      "rep": 2,
+      "returncode": 0,
+      "store_config": true,
+      "wall_s": 11.959
+    },
+    {
+      "case": "gc_blobless_store",
+      "lazy_fetches": 0,
+      "objects_after": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 17055,
+        "packs": 1,
+        "promisor_packs": 1,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 4024
+      },
+      "objects_before": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 17055,
+        "packs": 1,
+        "promisor_packs": 1,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 4022
+      },
+      "returncode": 0,
+      "wall_s": 0.163
+    },
+    {
+      "case": "object_retention",
+      "gc": "gc",
+      "gc_returncode": 0,
+      "log_all_ref_updates": null,
+      "present_after": true,
+      "present_before": true,
+      "reflog_written": false,
+      "scenario": "private_ref_kept"
+    },
+    {
+      "case": "object_retention",
+      "gc": "gc --prune=now",
+      "gc_returncode": 0,
+      "log_all_ref_updates": null,
+      "present_after": true,
+      "present_before": true,
+      "reflog_written": false,
+      "scenario": "private_ref_kept"
+    },
+    {
+      "case": "object_retention",
+      "gc": "gc",
+      "gc_returncode": 0,
+      "log_all_ref_updates": null,
+      "present_after": true,
+      "present_before": true,
+      "reflog_written": false,
+      "scenario": "private_ref_deleted"
+    },
+    {
+      "case": "object_retention",
+      "gc": "gc --prune=now",
+      "gc_returncode": 0,
+      "log_all_ref_updates": null,
+      "present_after": false,
+      "present_before": true,
+      "reflog_written": false,
+      "scenario": "private_ref_deleted"
+    },
+    {
+      "case": "object_retention",
+      "gc": "gc",
+      "gc_returncode": 0,
+      "log_all_ref_updates": null,
+      "present_after": true,
+      "present_before": true,
+      "reflog_written": false,
+      "scenario": "fetch_head_only"
+    },
+    {
+      "case": "object_retention",
+      "gc": "gc --prune=now",
+      "gc_returncode": 0,
+      "log_all_ref_updates": null,
+      "present_after": false,
+      "present_before": true,
+      "reflog_written": false,
+      "scenario": "fetch_head_only"
+    }
+  ],
+  "schema": "metabrowser-repository-cache-measurement-v1",
+  "started_at": "2026-09-17T05:42:19+00:00",
+  "suite": "maintenance"
+}

@@ -181,6 +181,38 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/cache/layout",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/cache/source/{slug}",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/cache/sources",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/cache/stores",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/capabilities",
       "methods": [
         "GET",
@@ -457,7 +489,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 36
+  "count": 40
 }
 ? 0
 ```

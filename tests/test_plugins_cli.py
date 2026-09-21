@@ -105,7 +105,7 @@ def test_plugins_doctor_exits_zero_on_clean_install() -> None:
     result = _runner.invoke(_app, ["--doctor"])
     assert result.exit_code == 0
     assert (
-        "10 plugin(s), 2 capability provider(s), 16 contract(s), 2 profile(s) OK" in result.stdout
+        "10 plugin(s), 3 capability provider(s), 22 contract(s), 2 profile(s) OK" in result.stdout
     )
 
 
@@ -115,8 +115,8 @@ def test_plugins_doctor_json_emits_structured_result() -> None:
     payload = json.loads(result.stdout)
     assert payload["ok"] is True
     assert payload["plugin_count"] > 0
-    assert payload["capability_provider_count"] == 2
-    assert payload["artifact_contract_count"] == 16
+    assert payload["capability_provider_count"] == 3
+    assert payload["artifact_contract_count"] == 22
     assert payload["resource_profile_count"] == 2
     assert payload["problems"] == []
 

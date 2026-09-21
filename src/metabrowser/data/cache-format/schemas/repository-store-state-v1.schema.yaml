@@ -1,0 +1,86 @@
+$defs:
+  CanonicalTimestamp:
+    pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{3})?Z$
+    type: string
+  GitObjectId:
+    pattern: ^(?:[0-9a-f]{40}|[0-9a-f]{64})$
+    type: string
+  GitRefName:
+    maxLength: 1024
+    minLength: 6
+    pattern: ^refs/[!-~]+$
+    type: string
+  Sha256Identity:
+    pattern: ^sha256:[0-9a-f]{64}$
+    type: string
+  StoreOperation:
+    additionalProperties: false
+    description: The last Git operation that finished against a store.
+    properties:
+      at:
+        $ref: '#/$defs/CanonicalTimestamp'
+      kind:
+        enum:
+        - acquire
+        - refresh
+        - converge
+        title: Kind
+        type: string
+      outcome:
+        enum:
+        - succeeded
+        - failed
+        - cancelled
+        title: Outcome
+        type: string
+    required:
+    - at
+    - kind
+    - outcome
+    title: StoreOperation
+    type: object
+$schema: https://json-schema.org/draft/2020-12/schema
+additionalProperties: false
+description: |-
+  A store's ``state.yml``: mutable Git observations, replaced atomically.
+
+  ``configuration_digest`` is the store's configuration snapshot: the SHA-256 of
+  ``git config --file <store>/repository.git/config --list -z``. It is recorded after
+  the first successful fetch and before publication, every Git process on the store
+  verifies it first, and only an operation that intentionally changes the store's
+  configuration replaces it, under the store lock.
+properties:
+  configuration_digest:
+    $ref: '#/$defs/Sha256Identity'
+  default_remote_ref:
+    anyOf:
+    - $ref: '#/$defs/GitRefName'
+    - type: 'null'
+  default_revision:
+    anyOf:
+    - $ref: '#/$defs/GitObjectId'
+    - type: 'null'
+  last_fetch_at:
+    anyOf:
+    - $ref: '#/$defs/CanonicalTimestamp'
+    - type: 'null'
+  last_operation:
+    $ref: '#/$defs/StoreOperation'
+  object_state:
+    enum:
+    - complete
+    - converging
+    title: Object State
+    type: string
+required:
+- configuration_digest
+- default_remote_ref
+- default_revision
+- last_fetch_at
+- last_operation
+- object_state
+title: RepositoryStoreState
+type: object
+x-softschema:
+  contract: com.github.jlevy.metabrowser.cache:RepositoryStoreState/v1
+  schema_sha256: c6bb1277d5bafd93d40f0eb773946a59ca4206b1eb658ed56826e407a456e982

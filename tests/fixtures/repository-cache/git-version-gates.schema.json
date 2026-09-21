@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://metabrowser.test/schemas/repository-cache-git-version-gates-v1.json",
+  "title": "Repository cache Git version gates",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "decided", "parsing", "advisories_reviewed_through", "gates", "lazy_fetch_guard", "cases"],
+  "$defs": {"version": {"type": "array", "prefixItems": [{"type": "integer"}, {"type": "integer"}, {"type": "integer"}], "items": false, "minItems": 3}},
+  "properties": {
+    "schema": {"const": "metabrowser-repository-cache-git-version-gates-v1"},
+    "decided": {"type": "string", "format": "date"},
+    "parsing": {"type": "string"},
+    "advisories_reviewed_through": {"type": "string"},
+    "gates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "minimum", "below", "basis"],
+        "properties": {
+          "name": {"enum": ["acquisition"]},
+          "minimum": {"$ref": "#/$defs/version"},
+          "patched_tracks": {"type": "object", "propertyNames": {"pattern": "^\\d+\\.\\d+$"}, "additionalProperties": {"$ref": "#/$defs/version"}},
+          "newest_patched": {"$ref": "#/$defs/version"},
+          "below": {"type": "string"},
+          "basis": {"type": "string"}
+        }
+      }
+    },
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["version_output", "parsed", "expected"],
+        "properties": {
+          "version_output": {"type": "string"},
+          "parsed": {"oneOf": [{"$ref": "#/$defs/version"}, {"type": "null"}]},
+          "expected": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["acquisition", "initial_strategy_for_https"],
+            "properties": {"acquisition": {"type": "boolean"}, "initial_strategy_for_https": {"enum": ["refused", "blobless"]}}
+          }
+        }
+      }
+    },
+    "lazy_fetch_guard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["control", "source", "verified_present", "verified_absent", "verified_on", "runtime_proof"],
+      "properties": {
+        "control": {"type": "string"},
+        "source": {"type": "string"},
+        "verified_present": {"type": "array", "items": {"type": "string", "pattern": "^v\\d+\\.\\d+\\.\\d+$"}},
+        "verified_absent": {"type": "array", "items": {"type": "string", "pattern": "^v\\d+\\.\\d+\\.\\d+$"}},
+        "verified_on": {"type": "string"},
+        "runtime_proof": {"type": "string"}
+      }
+    }
+  }
+}

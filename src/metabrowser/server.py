@@ -76,6 +76,7 @@ from metabrowser.active_tracker import activity_snapshot
 from metabrowser.activity import ACTIVITY_POLL_INTERVAL_MS
 from metabrowser.build_version import display_version_line
 from metabrowser.builtin_plugins.html.detect import sniff_full_page_html
+from metabrowser.cache.routes import CACHE_ROUTES
 from metabrowser.capabilities import get_capabilities, raw_sandbox_csp
 
 # Cache invalidator: clear_charts_cache is invoked by the root-change
@@ -3738,6 +3739,9 @@ routes = [
     # ``metabrowser.git.routes``: separate wire model, separate failure
     # modes, separate resource bounds.
     *GIT_ROUTES,
+    # Read-only logical cache state for CLI parity. The table imports the cache and
+    # the application home only inside a cache request; see ``metabrowser.cache.routes``.
+    *CACHE_ROUTES,
     *build_plugin_routes(_LOADED_PLUGINS),
 ]
 

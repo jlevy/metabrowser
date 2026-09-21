@@ -161,6 +161,7 @@ reservation and its invariants, is in
 | `/api/recent` | Flat newest-first matching leaves for sources with recency; unavailable for immutable Git trees rather than populated with fake mtimes |
 | `/api/activity`, `/api/stream` | Live inventory and activity events for sources with watcher/activity capabilities; unavailable for immutable Git trees |
 | `/api/git/repo`, `/api/git/refs`, `/api/git/summary`, `/api/git/log`, `/api/git/commit/<rev>` | Read-only Git history for the Git panel; log pages use bounded, replayable server sessions, opaque page cursors, and versioned graph-boundary checkpoints. The boundary and its rules are in [Git and comparison sources](arch-git-and-comparison-sources.md) |
+| `/api/cache/layout`, `/api/cache/sources`, `/api/cache/source/<slug>`, `/api/cache/stores` | Read-only logical state of the repository cache: layout and config formats, reclamation outcomes, source identity with alias generation and publication, and store records with the aliases that name them. They resolve `METABROWSER_HOME` per request without creating it, read without locks and without repairing a shared entry, page in key order, and never report a cache path, pack file, or Git internal. Wire shapes are in `cache/wire.py` |
 | `/api/kpress/render`, `/api/kpress/export` | Document rendering and export |
 | `/api/plugin/<plugin>/<route>` | Plugin data hooks (`[[data_hook]]`) |
 | A plugin-declared mounted prefix (proposed) | Domain resource routes with path parameters and honest HTTP responses; `mb-xzj3` adds this for hosted review |
@@ -232,6 +233,10 @@ or kind arrives with transcript evidence or the build fails.
 | `/api/capabilities` | covered | `--api` | `cli-api-shell.tryscript.md` |
 | `/api/index/progress` | covered | `--api` | `cli-api-shell.tryscript.md` |
 | `/api/index/meta` | covered | `--api` | `cli-api-shell.tryscript.md` |
+| `/api/cache/layout` | covered | `--api` | `cli-api-cache.tryscript.md` |
+| `/api/cache/sources` | covered | `--api` | `cli-api-cache.tryscript.md` |
+| `/api/cache/source` | covered | `--api` | `cli-api-cache.tryscript.md` |
+| `/api/cache/stores` | covered | `--api` | `cli-api-cache.tryscript.md` |
 | `/api/git/repo` | covered | `--api` | `cli-api-git.tryscript.md` |
 | `/api/git/refs` | covered | `--api` | `cli-api-git.tryscript.md` |
 | `/api/git/summary` | covered | `--api` | `cli-api-git.tryscript.md` |
@@ -260,6 +265,14 @@ That is safe here because the export report’s paths normalize to `<ROOT>` and 
 content hash is identical across runs and across sandbox paths, so the write is
 deterministic evidence rather than a source of churn.
 The test runs last in its file so no earlier test observes the written file.
+
+The `/api/cache/` rows are the persisted-state clause of the parity rule: cache state is
+read through routes like any other model, not through an inspection command.
+Their transcript builds each application home in the sandbox with the production cache
+writers, and each command names its home with a leading `METABROWSER_HOME=$PWD/<home>`
+assignment, because tryscript frontmatter cannot name the sandbox path.
+`check_parity.py` skips leading environment assignments and nothing else, so the command
+must still be `metab`.
 
 The exempt rows are the honest boundary.
 A server-sent-event response has no terminating envelope, so `--api` bounds the request

@@ -1,0 +1,53 @@
+{
+  "environment": {
+    "cpu": "Apple M1 Pro",
+    "git_build_options": [
+      "cpu: arm64",
+      "no commit associated with this build",
+      "sizeof-long: 8",
+      "sizeof-size_t: 8",
+      "shell-path: /bin/sh"
+    ],
+    "git_version": "git version 2.50.1",
+    "logical_cpus": 10,
+    "machine": "arm64",
+    "memory_bytes": 34359738368,
+    "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+    "python": "3.14.7"
+  },
+  "finished_at": "2026-09-17T04:35:26+00:00",
+  "parameters": {},
+  "rows": [
+    {
+      "first_line": "git version 2.50.1",
+      "mentions_batch_command": false,
+      "mentions_format": false,
+      "probe": "no_lazy_fetch_option",
+      "returncode": 0
+    },
+    {
+      "first_line": "usage: git backfill [--min-batch-size=<n>] [--[no-]sparse]",
+      "mentions_batch_command": false,
+      "mentions_format": false,
+      "probe": "backfill_help",
+      "returncode": 129
+    },
+    {
+      "first_line": "usage: git cat-file <type> <object>",
+      "mentions_batch_command": true,
+      "mentions_format": false,
+      "probe": "cat_file_batch_command",
+      "returncode": 129
+    },
+    {
+      "first_line": "usage: git ls-tree [<options>] <tree-ish> [<path>...]",
+      "mentions_batch_command": false,
+      "mentions_format": true,
+      "probe": "ls_tree_format",
+      "returncode": 129
+    }
+  ],
+  "schema": "metabrowser-repository-cache-measurement-v1",
+  "started_at": "2026-09-17T04:35:26+00:00",
+  "suite": "environment"
+}
