@@ -1,0 +1,444 @@
+{
+  "base_document": {
+    "assignees": [],
+    "author": {
+      "handle": "reviewer",
+      "provider_opaque_id": "person-4",
+      "url": "https://code.example/reviewer"
+    },
+    "closed_at": null,
+    "comparison": {
+      "base": {
+        "availability": "present",
+        "oid": "0123456789abcdef0123456789abcdef01234567",
+        "ref": "main",
+        "repository_id": "repo-1"
+      },
+      "head": {
+        "availability": "present",
+        "oid": "89abcdef0123456789abcdef0123456789abcdef",
+        "ref": "topic/provider-neutral",
+        "repository_id": "repo-2"
+      },
+      "merge_commit_availability": "not_requested",
+      "merge_commit_oid": null
+    },
+    "counts": {
+      "commits": 2,
+      "discussion_comments": 1,
+      "reviews": 0
+    },
+    "created_at": "2026-09-10T12:00:00Z",
+    "draft": false,
+    "id": "forge:code.example:repo-1:merge-request:17",
+    "labels": [],
+    "locked": false,
+    "merged_at": null,
+    "milestone": null,
+    "number": 17,
+    "provider_ref": {
+      "instance": "code.example",
+      "object_kind": "merge_request",
+      "opaque_id": "change-17",
+      "provider": "forge"
+    },
+    "repository": {
+      "instance": "code.example",
+      "opaque_id": "repo-1",
+      "provider": "forge"
+    },
+    "review": {
+      "decision": "required",
+      "requested_people": [],
+      "requested_teams": []
+    },
+    "state": "open",
+    "title": "Keep hosted changes provider neutral",
+    "updated_at": "2026-09-11T09:30:00Z",
+    "url": "https://code.example/teams/project/changes/17"
+  },
+  "cases": [
+    {
+      "changes": [],
+      "expect": "valid",
+      "name": "provider-neutral-merge-request"
+    },
+    {
+      "changes": [
+        { "path": ["id"], "value": "git-forge:code.example:repo-1:merge-request:17" },
+        { "path": ["provider_ref", "provider"], "value": "git-forge" },
+        { "path": ["repository", "provider"], "value": "git-forge" }
+      ],
+      "expect": "valid",
+      "name": "provider-kind-allows-canonical-lowercase-token"
+    },
+    {
+      "changes": [
+        { "path": ["provider_ref", "instance"], "value": "code.example:1" },
+        { "path": ["repository", "instance"], "value": "code.example:1" },
+        { "path": ["url"], "value": "https://code.example:1/teams/project/changes/17" }
+      ],
+      "expect": "valid",
+      "name": "provider-instance-allows-minimum-nondefault-port"
+    },
+    {
+      "changes": [
+        { "path": ["provider_ref", "instance"], "value": "code.example:65535" },
+        { "path": ["repository", "instance"], "value": "code.example:65535" },
+        { "path": ["url"], "value": "https://code.example:65535/teams/project/changes/17" }
+      ],
+      "expect": "valid",
+      "name": "provider-instance-allows-maximum-port"
+    },
+    {
+      "changes": [{ "path": ["provider_ref", "provider"], "value": "Forge" }],
+      "expect": "invalid",
+      "name": "provider-kind-requires-lowercase"
+    },
+    {
+      "changes": [{ "path": ["repository", "provider"], "value": "1forge" }],
+      "expect": "invalid",
+      "name": "provider-kind-requires-leading-letter"
+    },
+    {
+      "changes": [{ "path": ["provider_ref", "provider"], "value": "git_forge" }],
+      "expect": "invalid",
+      "name": "provider-kind-rejects-nontoken-punctuation"
+    },
+    {
+      "changes": [{ "path": ["repository", "provider"], "value": "f\u00f6rge" }],
+      "expect": "invalid",
+      "name": "provider-kind-requires-ascii"
+    },
+    {
+      "changes": [
+        {
+          "path": ["provider_ref", "provider"],
+          "value": "forge-forge-forge-forge-forge-forge-forge-forge-forge-forge-forge"
+        }
+      ],
+      "expect": "invalid",
+      "name": "provider-kind-has-a-portable-length-bound"
+    },
+    {
+      "changes": [{ "path": ["provider_ref", "instance"], "value": "Code.Example" }],
+      "expect": "invalid",
+      "name": "provider-instance-requires-lowercase-host"
+    },
+    {
+      "changes": [{ "path": ["repository", "instance"], "value": "https://code.example" }],
+      "expect": "invalid",
+      "name": "provider-instance-rejects-scheme"
+    },
+    {
+      "changes": [{ "path": ["provider_ref", "instance"], "value": "code.example/project" }],
+      "expect": "invalid",
+      "name": "provider-instance-rejects-path"
+    },
+    {
+      "changes": [{ "path": ["repository", "instance"], "value": "user@code.example" }],
+      "expect": "invalid",
+      "name": "provider-instance-rejects-credentials"
+    },
+    {
+      "changes": [{ "path": ["provider_ref", "instance"], "value": "code.example." }],
+      "expect": "invalid",
+      "name": "provider-instance-rejects-trailing-dot"
+    },
+    {
+      "changes": [{ "path": ["repository", "instance"], "value": "code.example:443" }],
+      "expect": "invalid",
+      "name": "provider-instance-omits-default-port"
+    },
+    {
+      "changes": [{ "path": ["provider_ref", "instance"], "value": "code.example:0" }],
+      "expect": "invalid",
+      "name": "provider-instance-rejects-zero-port"
+    },
+    {
+      "changes": [{ "path": ["repository", "instance"], "value": "code.example:65536" }],
+      "expect": "invalid",
+      "name": "provider-instance-rejects-port-above-maximum"
+    },
+    {
+      "changes": [{ "path": ["provider_ref", "instance"], "value": "code.example:1\u0662\u0663" }],
+      "expect": "invalid",
+      "name": "provider-instance-requires-ascii-port-digits"
+    },
+    {
+      "changes": [{ "path": ["repository", "instance"], "value": "code.example:01" }],
+      "expect": "invalid",
+      "name": "provider-instance-rejects-leading-zero-port"
+    },
+    {
+      "changes": [{ "path": ["provider_ref", "instance"], "value": "c\u00f6de.example" }],
+      "expect": "invalid",
+      "name": "provider-instance-requires-ascii-host"
+    },
+    {
+      "changes": [{ "path": ["repository", "instance"], "value": "code_host.example" }],
+      "expect": "invalid",
+      "name": "provider-instance-requires-dns-labels"
+    },
+    {
+      "changes": [
+        {
+          "path": ["provider_ref", "instance"],
+          "value": "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijkl.example"
+        }
+      ],
+      "expect": "invalid",
+      "name": "provider-instance-bounds-dns-label-length"
+    },
+    {
+      "changes": [
+        {
+          "path": ["repository", "instance"],
+          "value": "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijk.abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijk.abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijk.abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijk"
+        }
+      ],
+      "expect": "invalid",
+      "name": "provider-instance-bounds-total-dns-host-length"
+    },
+    {
+      "changes": [{ "path": ["state"], "value": "unknown" }],
+      "expect": "valid",
+      "name": "unknown-lifecycle-state-preserves-observation"
+    },
+    {
+      "changes": [{ "path": ["draft"], "value": true }],
+      "expect": "valid",
+      "name": "open-draft-change-request"
+    },
+    {
+      "changes": [{ "path": ["author"], "value": null }],
+      "expect": "valid",
+      "name": "provider-author-may-be-unavailable"
+    },
+    {
+      "changes": [
+        { "path": ["comparison", "head", "repository_id"], "value": null }
+      ],
+      "expect": "valid",
+      "name": "deleted-head-repository-retains-ref-and-object-id"
+    },
+    {
+      "changes": [
+        { "path": ["state"], "value": "merged" },
+        { "path": ["closed_at"], "value": "2026-09-11T09:00:00Z" },
+        { "path": ["merged_at"], "value": "2026-09-11T09:00:00.123Z" },
+        {
+          "path": ["comparison", "merge_commit_availability"],
+          "value": "present"
+        },
+        {
+          "path": ["comparison", "merge_commit_oid"],
+          "value": "abcdef0123456789abcdef0123456789abcdef01"
+        }
+      ],
+      "expect": "valid",
+      "name": "merged-fork-with-canonical-millisecond-timestamp"
+    },
+    {
+      "changes": [
+        {
+          "path": ["provider_payload"],
+          "value": { "mergeable_state": "mystery" }
+        }
+      ],
+      "expect": "invalid",
+      "name": "provider-payload-extension-is-forbidden"
+    },
+    {
+      "changes": [{ "path": ["updated_at"], "value": "2026-09-11T09:30Z" }],
+      "expect": "invalid",
+      "name": "timestamp-requires-seconds"
+    },
+    {
+      "changes": [{ "path": ["updated_at"], "value": "2026-09-11T09:30:00,1Z" }],
+      "expect": "invalid",
+      "name": "timestamp-forbids-comma-fractions"
+    },
+    {
+      "changes": [{ "path": ["updated_at"], "value": "2026-09-11T09:30:00.1234Z" }],
+      "expect": "invalid",
+      "name": "timestamp-is-bounded-to-millisecond-precision"
+    },
+    {
+      "changes": [{ "path": ["updated_at"], "value": "2026-09-11T09:30:00.1Z" }],
+      "expect": "invalid",
+      "name": "timestamp-requires-exact-millisecond-spelling"
+    },
+    {
+      "changes": [{ "path": ["updated_at"], "value": "2026-09-11T09:30:00.000Z" }],
+      "expect": "invalid",
+      "name": "timestamp-omits-zero-milliseconds"
+    },
+    {
+      "changes": [{ "path": ["updated_at"], "value": "2026-09-11T02:30:00-07:00" }],
+      "expect": "invalid",
+      "name": "timestamp-requires-canonical-utc"
+    },
+    {
+      "changes": [{ "path": ["updated_at"], "value": "2026-02-30T09:30:00Z" }],
+      "expect": "invalid",
+      "name": "timestamp-rejects-impossible-calendar-date"
+    },
+    {
+      "changes": [{ "path": ["url"], "value": "https://code.example:invalid/changes/17" }],
+      "expect": "invalid",
+      "name": "url-rejects-invalid-port"
+    },
+    {
+      "changes": [{ "path": ["url"], "value": "https://code.example:1\u0662\u0663/x" }],
+      "expect": "invalid",
+      "name": "url-rejects-unicode-port-digits"
+    },
+    {
+      "changes": [
+        {
+          "path": ["url"],
+          "value": "https://user:secret@code.example/changes/17"
+        }
+      ],
+      "expect": "invalid",
+      "name": "url-rejects-credentials"
+    },
+    {
+      "changes": [{ "path": ["url"], "value": "https://code.example/changes/17 bad" }],
+      "expect": "invalid",
+      "name": "url-rejects-whitespace"
+    },
+    {
+      "changes": [{ "path": ["url"], "value": "http://code.example/changes/17" }],
+      "expect": "invalid",
+      "name": "url-requires-https"
+    },
+    {
+      "changes": [
+        {
+          "path": ["url"],
+          "value": "https://code.example:8443/changes/17?path=%2F#summary"
+        }
+      ],
+      "expect": "valid",
+      "name": "url-allows-canonical-nondefault-port-and-escape"
+    },
+    {
+      "changes": [{ "path": ["url"], "value": "https:code.example/changes/17" }],
+      "expect": "invalid",
+      "name": "url-requires-authority-slashes"
+    },
+    {
+      "changes": [{ "path": ["url"], "value": "https://code.example/changes/%zz" }],
+      "expect": "invalid",
+      "name": "url-rejects-malformed-percent-escape"
+    },
+    {
+      "changes": [{ "path": ["url"], "value": "https://code.example/changes/\u007f" }],
+      "expect": "invalid",
+      "name": "url-rejects-delete-control"
+    },
+    {
+      "changes": [{ "path": ["url"], "value": "https://code.example/changes/\u0085" }],
+      "expect": "invalid",
+      "name": "url-rejects-c1-control"
+    },
+    {
+      "changes": [{ "path": ["url"], "value": "https://code.example/changes/\ufeff" }],
+      "expect": "invalid",
+      "name": "url-rejects-byte-order-mark"
+    },
+    {
+      "changes": [
+        {
+          "path": ["url"],
+          "value": "https://evil.example\\@code.example/changes/17"
+        }
+      ],
+      "expect": "invalid",
+      "name": "url-rejects-backslash-authority-confusion"
+    },
+    {
+      "changes": [{ "path": ["url"], "value": "https://code.example:443/changes/17" }],
+      "expect": "invalid",
+      "name": "url-omits-default-port"
+    },
+    {
+      "changes": [{ "path": ["url"], "value": "https://Code.Example/changes/17" }],
+      "expect": "invalid",
+      "name": "url-requires-lowercase-host"
+    },
+    {
+      "changes": [
+        {
+          "path": ["url"],
+          "value": "https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/changes/17"
+        }
+      ],
+      "expect": "invalid",
+      "name": "url-rejects-overlong-dns-host"
+    },
+    {
+      "changes": [{ "path": ["number"], "value": 9007199254740991 }],
+      "expect": "valid",
+      "name": "number-allows-maximum-safe-integer"
+    },
+    {
+      "changes": [{ "path": ["number"], "value": 1.0 }],
+      "expect": "valid",
+      "name": "number-accepts-integral-json-number"
+    },
+    {
+      "changes": [{ "path": ["number"], "value": "17" }],
+      "expect": "invalid",
+      "name": "number-rejects-string-coercion"
+    },
+    {
+      "changes": [{ "path": ["number"], "value": 9007199254740992 }],
+      "expect": "invalid",
+      "name": "number-rejects-unsafe-integer"
+    },
+    {
+      "changes": [{ "path": ["counts", "reviews"], "value": 9007199254740992 }],
+      "expect": "invalid",
+      "name": "count-rejects-unsafe-integer"
+    },
+    {
+      "changes": [{ "path": ["counts", "reviews"], "value": 1.5 }],
+      "expect": "invalid",
+      "name": "count-rejects-fraction"
+    },
+    {
+      "changes": [{ "path": ["counts", "reviews"], "value": true }],
+      "expect": "invalid",
+      "name": "count-rejects-boolean"
+    },
+    {
+      "changes": [
+        {
+          "path": ["comparison", "head", "oid"],
+          "value": "ABCDEF0123456789ABCDEF0123456789ABCDEF01"
+        }
+      ],
+      "expect": "invalid",
+      "name": "object-id-requires-canonical-lowercase-hex"
+    },
+    {
+      "changes": [{ "path": ["repository", "instance"], "value": "other.example" }],
+      "expect": "invalid",
+      "name": "provider-instance-relationship-is-enforced"
+    },
+    {
+      "changes": [
+        {
+          "path": ["comparison", "base", "repository_id"],
+          "value": "repo-elsewhere"
+        }
+      ],
+      "expect": "invalid",
+      "name": "base-repository-relationship-is-enforced"
+    }
+  ],
+  "format": "hosted-review-change-request-conformance-v1"
+}

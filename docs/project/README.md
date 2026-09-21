@@ -22,6 +22,9 @@ links to the document that covers each in depth.
 - [Git and comparison sources](architecture/arch-git-and-comparison-sources.md) — the
   Git process boundary, the four-layer stack, and the rule for adding a comparison
   source
+- [External resources, artifact contracts, and views](architecture/arch-external-resources-and-views.md)
+  — the entity/artifact/resource vocabulary, trusted contract/profile/kind registries,
+  transparent formats, and mapping workflow for external APIs
 - [Hosted review model and provider boundary](architecture/arch-hosted-review-model.md)
   — provider-neutral change requests, GitHub adapter, plugin views, activity projection,
   and cache lifetimes

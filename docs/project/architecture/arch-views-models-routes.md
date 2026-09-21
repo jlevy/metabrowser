@@ -12,19 +12,20 @@ kind, a view, a data format, or a route.
 A selection travels the same four layers no matter what it is:
 
 ```text
-route  ──►  kind  ──►  model  ──►  view
-what kind   what the   the        how it
-of thing    thing is   validated  is drawn
-is selected            data
+address  ──►  resource kind  ──►  contract/model  ──►  view
+what is      what the thing      the validated       how it
+selected     can do              data                 is drawn
 ```
 
-- **Route** names the address space and the thing within it.
+- **Address** names the address space and the resource within it.
   Core routes are owned by the shell; installed domain plugins may own validated mounted
   sub-routes through the same route map.
   See [Browser URL Grammar](../../architecture.md#browser-url-grammar).
-- **Kind** is the classification a plugin claims, declared in its `manifest.toml`
-  `[[kind]]` block. One kind, many views.
-- **Model** is the validated data a view receives.
+- **Resource kind** is the semantic classification a plugin claims.
+  Current `[[kind]]` blocks classify filesystem resources; planned `ResourceKindSpec`
+  declarations cover route-backed resources without fabricating a file matcher.
+  One kind, many views.
+- **Contract/model** is the validated data a view receives.
   Simple kinds take the `/api/file` envelope; richer kinds have their own documented
   format with a schema and a conformance corpus.
 - **View** is a registered renderer (`[[view]]` plus `mb.registerView`), shown as a tab.
@@ -34,6 +35,11 @@ The layers are deliberately decoupled: a view never learns which source produced
 model, and a model never learns which route reached it.
 That is what lets one diff renderer serve a patch file, a commit, and later a pull
 request without knowing the difference.
+
+Artifact contracts, resource publication profiles, and resource kinds are separate
+trusted registries. Their ownership and the mapping workflow for external APIs are
+defined in
+[External Resources, Artifact Contracts, and Views](arch-external-resources-and-views.md).
 
 Filesystem-backed models reach these layers through the
 [Inventory Provider Contract](arch-inventory-provider.md).
@@ -66,7 +72,7 @@ view, address, and parity evidence land together:
 
 | Planned kind | Matches | Views (default first) | Model | Bead |
 | --- | --- | --- | --- | --- |
-| `change-request` | A selected `/review/...` resource | Review, Diff, Source | `ChangeRequest/v1` plus a selected bundle of validated companions and File Diff Format by reference | `mb-81p5` |
+| `change-request` | A selected `/hosted/.../change-request/...` resource | Review, Diff, Source | `ChangeRequest/v1` plus a selected bundle of validated companions and File Diff Format by reference | `mb-83w0`, `mb-81p5` |
 
 It is item-like as a document and folder-like as a changed-file container.
 Repository summaries and PR index rows are route models and virtual-navigation data, not
@@ -99,14 +105,21 @@ The registry-to-vendored-grammar and registry-to-text-routing checks live in
 
 ## Documented data formats
 
-Formats with a schema, a conformance corpus, and implementations bound by it.
-These are tool-neutral: nothing in a document references Metabrowser.
+Complete formats have a schema, a conformance corpus, and implementations bound by it;
+in-progress rows name the narrower authority already present.
+These formats are tool-neutral: nothing in a document references Metabrowser.
 
 | Format | Describes | Authority | Implementations |
 | --- | --- | --- | --- |
 | [File Diff Format v1](file-diff-format/file-diff-format.md) | A change set between two snapshots | `data/file-diff-format/file-diff.schema.json` | `metabrowser.diff.format` (Pydantic), `builtin_plugins/diff/diff-model.js` |
 | [File Rollup Format](file-rollup-format/file-rollup-format.md) | File classification and directory totals | `data/file-rollup-format/` | Python inventory, browser rollup projection |
-| [Hosted Review Format](arch-hosted-review-model.md) (proposed) | Provider-neutral repositories, change requests, reviews, threads, checks, status, freshness, and activity projections | v0.12.0 architecture and contract corpus planned by `mb-63ym` | Planned hosted-review plugin plus GitHub provider adapter |
+| [Hosted Review Format](arch-hosted-review-model.md) (in progress) | Provider-neutral repositories, change requests, reviews, threads, checks, status, freshness, and activity projections | Pydantic-enforced change-request, provider-storage, hosted-repository, change-request-index, review-record, and repository-activity corpora; mechanically closed scrubbed GitHub coverage oracle with exact reduced-response shapes, field/value evidence, and executable identity recipes; SoftSchema schema and registry tracked by `mb-lqae` | Dormant Python record validators and frontmatter codecs plus the existing browser ChangeRequest validator; the oracle is test-only and absent from wheel/runtime inputs; complete browser/schema parity, plugin registration, and the GitHub adapter remain planned |
+
+The registry and composition rules that let later release, issue, or other external
+contracts reuse these layers are specified in
+[External Resources, Artifact Contracts, and Views](arch-external-resources-and-views.md).
+A planned resource kind is added to the table above only when its model, route, views,
+CLI parity, and functional evidence land together.
 
 Everything else travels as an envelope on `/api/*`, versioned with the shell and the
 built-in plugins as one artifact — an internal contract, not a standard.
@@ -124,7 +137,7 @@ the sources that produce them.
 | `/commit/<rev>` | A commit’s change set against its first parent | Implemented |
 | `/commit/<rev>/<inner>` | One file’s diff inside that change set | Route parses; the panel restores the commit, not yet the file |
 | `/compare/<base>..<head>[/<inner>]` | An explicit comparison (`...` for merge base) | Specified, not built |
-| `/review/<provider>/<repository-key>/<change-key>[/<inner>]` | A hosted-review document and optional changed-file child | Proposed for v0.12.0 in `mb-xzj3` and `mb-81p5` |
+| `/hosted/<provider-kind>/<instance-key>/<repository-key>/<resource-kind>/<resource-key>[/<inner>]` | A provider-neutral hosted resource and optional addressed child; typed atom keys encode the instance and opaque IDs canonically | Proposed for v0.12.0 in `mb-xzj3`, `mb-6mle`, `mb-83w0`, and `mb-81p5`; the first kind is `change-request` |
 
 The shape after the route is always `<container address>/<inner path>`, which is the
 container contract written as a URL. The full grammar, including the `_mb_` query
@@ -156,10 +169,10 @@ address in the same implementation changes:
 
 | Planned route | Model | CLI evidence | Bead |
 | --- | --- | --- | --- |
-| `/api/hosted-review/<provider>/<repository-key>/repository` | `HostedRepository/v1` plus retrieval and manifest references | `metab --api`; `cli-github-repository.tryscript.md` | `mb-2oxp` |
-| `/api/hosted-review/<provider>/<repository-key>/change-requests?query_key=<key>` | One `ChangeRequestIndex/v1` observation | `metab --api`; `cli-github-pr-index.tryscript.md` | `mb-lnkl` |
-| `/api/hosted-review/<provider>/<repository-key>/change-requests/<change-key>` | Selected `ChangeRequest/v1` bundle, including distinct top-level and review comments | `metab --api`; `cli-github-pr-open.tryscript.md` | `mb-h64t` |
-| `/api/hosted-review/<provider>/<repository-key>/change-requests/<change-key>/comparison` | File Diff Format resolved from immutable base/head object IDs | `metab --api`; `cli-github-pr-open.tryscript.md` | `mb-81p5` |
+| `/api/hosted-review/<provider-kind>/<instance-key>/<repository-key>/repository` | `HostedRepository/v1` plus retrieval and manifest references | `metab --api`; `cli-github-repository.tryscript.md` | `mb-2oxp` |
+| `/api/hosted-review/<provider-kind>/<instance-key>/<repository-key>/change-requests?query_key=<key>` | One `ChangeRequestIndex/v1` observation | `metab --api`; `cli-github-pr-index.tryscript.md` | `mb-lnkl` |
+| `/api/hosted-review/<provider-kind>/<instance-key>/<repository-key>/change-requests/<resource-key>` | Selected `ChangeRequest/v1` bundle, including distinct top-level and review comments | `metab --api`; `cli-github-pr-open.tryscript.md` | `mb-h64t` |
+| `/api/hosted-review/<provider-kind>/<instance-key>/<repository-key>/change-requests/<resource-key>/comparison` | File Diff Format resolved from immutable base/head object IDs | `metab --api`; `cli-github-pr-open.tryscript.md` | `mb-81p5` |
 
 ### Planned plugin registration surfaces
 
@@ -175,6 +188,8 @@ manifest in one commit, with no compatibility layer.
 | `AddressSpaceSpec` / `registerAddressSpace` | Browser prefix, parse, format, apply, preview claim, startup, popstate, root replacement, disposal | Exactly one owner per address; browser and `metab --show` share the registration | `mb-6mle` |
 | `ProviderUrlReducerSpec` | Declared schemes/hosts and `NotApplicable`/`Reduced`/terminal `Rejected` reducer | Overlapping claims fail discovery; claimed rejection never falls through | `mb-12cz` |
 | `ProviderAdapterSpec` | Provider/instance capability and trusted adapter factory | Duplicate claims fail; lifespan injects neutral ports and awaits cancellation/close | `mb-ji83` |
+| `ArtifactContractSpec` / `ResourceProfileSpec` | Packaged schema, parser, corpus, producer/consumer inventory, and publication bundle shape | Duplicate or incomplete contracts/profiles fail; cached content cannot register either | `mb-52iz`, `mb-vors` |
+| `ResourceKindSpec` | Route-backed semantic kind, item/container capabilities, primary contract, and views | Duplicate kind or view claims fail; route, browser, and CLI resolve the same selection | `mb-83w0` before `mb-81p5` |
 | `registerNavPanel` | Repository-scoped bounded virtual collection | Generation-checked loading, restoration, root replacement, and disposal | `mb-uh6p` |
 
 ## CLI and functional UI parity
@@ -341,7 +356,7 @@ unit sessions may supplement but cannot replace that exact production path.
 
 | Aspect | Tier | Planned owner | Data inputs | Required production session |
 | --- | --- | --- | --- | --- |
-| `hosted-review.direct-lifecycle` | interaction | `static/plugin-address-spaces.js#parseAddress`, `static/plugin-address-spaces.js#applyAddress`, `builtin_plugins/hosted_review/hosted-review-view.js#prepareChangeRequestView`, `#mountChangeRequestView`, `#disposeChangeRequestView` | selected change-request and comparison routes above | direct `/review/...` startup, popstate, replacement, and failed-load recovery |
+| `hosted-review.direct-lifecycle` | interaction | `static/plugin-address-spaces.js#parseAddress`, `static/plugin-address-spaces.js#applyAddress`, `builtin_plugins/hosted_review/hosted-review-view.js#prepareChangeRequestView`, `#mountChangeRequestView`, `#disposeChangeRequestView` | selected change-request and comparison routes above | direct `/hosted/.../change-request/...` startup, popstate, replacement, and failed-load recovery |
 | `hosted-review.panel-window` | interaction | `builtin_plugins/hosted_review/hosted-review-panel.js#createPullRequestPanel`, `#loadIndexPage` | change-request index route | bounded page load, virtualization window shift, stale and partial indicators |
 | `hosted-review.panel-selection` | interaction | `builtin_plugins/hosted_review/hosted-review-panel.js#openChangeRequest` | index and selected change-request routes | row selection opens the same direct address and changed-file container |
 | `hosted-review.panel-restoration` | interaction | `builtin_plugins/hosted_review/hosted-review-panel.js#restorePullRequestSelection` | index route | selection and expansion restore only for the same repository and query key |
@@ -356,9 +371,13 @@ No server aggregate may bypass those record validators.
 
 ## Adding something
 
-- **A kind**: add a `[[kind]]` block with a match predicate and at least one `[[view]]`,
-  then add a representative `--show` case to the golden transcript.
-  Nothing else in core changes.
+- **A filesystem-backed kind**: add a `[[kind]]` block with a match predicate and at
+  least one `[[view]]`, then add a representative `--show` case to the golden
+  transcript.
+- **A route-backed resource kind**: add one `ResourceKindSpec` with its primary
+  contract/model, item/container capabilities, address owner, and views; add the route,
+  `--show`, `--api`, browser parser, and functional golden evidence in the same change.
+  Do not invent a file matcher.
 - **A view on an existing kind**: add a `[[view]]` block and `mb.registerView`; give it
   a disposal path, then register each new observable behavior in the functional table.
 - **A container**: add `container = { children = "<data_hook route>" }` to the kind and

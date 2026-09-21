@@ -1,0 +1,286 @@
+{
+  "base_records": {
+    "authorization_context": {
+      "provider": "forge",
+      "instance": "code.example",
+      "mode": "authenticated",
+      "principal_opaque_id": "person-4",
+      "visibility_partition_digest": null
+    },
+    "retrieval": {
+      "authorization_context": {
+        "provider": "forge",
+        "instance": "code.example",
+        "mode": "authenticated",
+        "principal_opaque_id": "person-4",
+        "visibility_partition_digest": null
+      },
+      "target": {
+        "kind": "provider_object",
+        "repository": {
+          "provider": "forge",
+          "instance": "code.example",
+          "opaque_id": "repo-1"
+        },
+        "target": {
+          "provider": "forge",
+          "instance": "code.example",
+          "object_kind": "project",
+          "opaque_id": "repo-1"
+        }
+      },
+      "adapter_id": "forge-cli:v1",
+      "transport": "provider_cli",
+      "operation_id": "repository-summary",
+      "request_key": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "started_at": "2026-09-15T12:00:00Z",
+      "finished_at": "2026-09-15T12:00:00.125Z",
+      "api_version": "2026-01-01",
+      "normalization_version": "hosted-review/v1",
+      "outcome": {"kind": "succeeded"},
+      "validators": {
+        "etag": "\"repository-v1\"",
+        "last_modified_at": null
+      },
+      "rate_limit": {
+        "limit": 5000,
+        "remaining": 4999,
+        "reset_at": "2026-09-15T13:00:00Z",
+        "observed_at": "2026-09-15T12:00:00.125Z"
+      },
+      "display_login": "reviewer",
+      "capabilities": {
+        "state": "observed",
+        "values": ["read:repository"]
+      }
+    },
+    "deletion_retrieval": {
+      "authorization_context": {
+        "provider": "forge",
+        "instance": "code.example",
+        "mode": "authenticated",
+        "principal_opaque_id": "person-4",
+        "visibility_partition_digest": null
+      },
+      "target": {
+        "kind": "provider_object",
+        "repository": {
+          "provider": "forge",
+          "instance": "code.example",
+          "opaque_id": "repo-1"
+        },
+        "target": {
+          "provider": "forge",
+          "instance": "code.example",
+          "object_kind": "merge_request",
+          "opaque_id": "change-17"
+        }
+      },
+      "adapter_id": "forge-cli:v1",
+      "transport": "provider_cli",
+      "operation_id": "change-request-deletion",
+      "request_key": "sha256:7878787878787878787878787878787878787878787878787878787878787878",
+      "started_at": "2026-09-15T12:00:00.250Z",
+      "finished_at": "2026-09-15T12:00:00.375Z",
+      "api_version": "2026-01-01",
+      "normalization_version": "hosted-review/v1",
+      "outcome": {
+        "kind": "explicitly_deleted",
+        "target": {
+          "provider": "forge",
+          "instance": "code.example",
+          "object_kind": "merge_request",
+          "opaque_id": "change-17"
+        },
+        "repository": {
+          "provider": "forge",
+          "instance": "code.example",
+          "opaque_id": "repo-1"
+        },
+        "evidence_kind": "deletion_event",
+        "provider_event_opaque_id": "event-28",
+        "provider_event_at": "2026-09-15T12:00:00.200Z"
+      },
+      "validators": {"etag": null, "last_modified_at": null},
+      "rate_limit": null,
+      "display_login": "reviewer",
+      "capabilities": {
+        "state": "observed",
+        "values": ["read:repository"]
+      }
+    },
+    "resource_set": {
+      "repository": {
+        "provider": "forge",
+        "instance": "code.example",
+        "opaque_id": "repo-1"
+      },
+      "authorization_context": {
+        "provider": "forge",
+        "instance": "code.example",
+        "mode": "authenticated",
+        "principal_opaque_id": "person-4",
+        "visibility_partition_digest": null
+      },
+      "target": {
+        "kind": "provider_object",
+        "target": {
+          "provider": "forge",
+          "instance": "code.example",
+          "object_kind": "project",
+          "opaque_id": "repo-1"
+        }
+      },
+      "profile": "com.github.jlevy.metabrowser.provider:repository-summary/v1",
+      "collections": [
+        {
+          "name": "repository",
+          "coverage": "complete",
+          "artifacts": [
+            {
+              "contract_id": "com.github.jlevy.metabrowser.provider:HostedRepository/v1",
+              "snapshot_id": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            }
+          ],
+          "retrieval_snapshot_ids": [
+            "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "pagination": null,
+          "truncation": null,
+          "failure_retrieval_snapshot_id": null
+        }
+      ]
+    },
+    "provider_sync_manifest": {
+      "transaction_id": "transaction-1",
+      "repository": {
+        "provider": "forge",
+        "instance": "code.example",
+        "opaque_id": "repo-1"
+      },
+      "authorization_context": {
+        "provider": "forge",
+        "instance": "code.example",
+        "mode": "authenticated",
+        "principal_opaque_id": "person-4",
+        "visibility_partition_digest": null
+      },
+      "state": "committed",
+      "started_at": "2026-09-15T12:00:00Z",
+      "finished_at": "2026-09-15T12:00:01Z",
+      "retrievals": [
+        {
+          "contract_id": "com.github.jlevy.metabrowser.provider:Retrieval/v1",
+          "snapshot_id": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "contract_id": "com.github.jlevy.metabrowser.provider:Retrieval/v1",
+          "snapshot_id": "sha256:9999999999999999999999999999999999999999999999999999999999999999"
+        }
+      ],
+      "resource_sets": [
+        {
+          "contract_id": "com.github.jlevy.metabrowser.provider:ResourceSet/v1",
+          "snapshot_id": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      ],
+      "failure": null
+    },
+    "provider_view_pointer": {
+      "role": "current",
+      "repository": {
+        "provider": "forge",
+        "instance": "code.example",
+        "opaque_id": "repo-1"
+      },
+      "authorization_context_key": "sha256:18cdd1541d4367b81f15c9a4be6c813924996b584b86fb608449df2556d90d5a",
+      "target": {
+        "kind": "provider_object",
+        "target": {
+          "provider": "forge",
+          "instance": "code.example",
+          "object_kind": "project",
+          "opaque_id": "repo-1"
+        }
+      },
+      "manifest_snapshot_id": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "resource_set_snapshot_id": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "tombstone": {
+      "target": {
+        "provider": "forge",
+        "instance": "code.example",
+        "object_kind": "merge_request",
+        "opaque_id": "change-17"
+      },
+      "repository": {
+        "provider": "forge",
+        "instance": "code.example",
+        "opaque_id": "repo-1"
+      },
+      "authorization_context": {
+        "provider": "forge",
+        "instance": "code.example",
+        "mode": "authenticated",
+        "principal_opaque_id": "person-4",
+        "visibility_partition_digest": null
+      },
+      "previous_live_snapshot_id": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "observed_at": "2026-09-15T12:00:01Z",
+      "proof": {
+        "kind": "explicit_provider_deletion",
+        "retrieval_snapshot_id": "sha256:9999999999999999999999999999999999999999999999999999999999999999"
+      }
+    }
+  },
+  "cases": [
+    {"record": "authorization_context", "changes": [], "expect": "valid", "name": "authenticated-context-has-stable-principal"},
+    {"record": "authorization_context", "changes": [{"path": ["principal_opaque_id"], "value": null}], "expect": "invalid", "name": "authenticated-context-requires-principal"},
+    {"record": "authorization_context", "changes": [{"path": ["mode"], "value": "anonymous"}], "expect": "invalid", "name": "anonymous-context-forbids-principal"},
+    {"record": "authorization_context", "changes": [{"path": ["visibility_partition_digest"], "value": "not-a-digest"}], "expect": "invalid", "name": "visibility-partition-is-a-canonical-digest"},
+    {"record": "retrieval", "changes": [], "expect": "valid", "name": "successful-retrieval-keeps-volatile-observations-outside-auth-identity"},
+    {"record": "retrieval", "changes": [{"path": ["target"], "value": null}], "expect": "invalid", "name": "retrieval-requires-a-typed-logical-target"},
+    {"record": "retrieval", "changes": [{"path": ["target", "repository", "instance"], "value": "other.example"}], "expect": "invalid", "name": "retrieval-target-shares-the-authorization-namespace"},
+    {"record": "retrieval", "changes": [{"path": ["outcome"], "value": {"kind": "not_modified", "reused_snapshot_id": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"}}], "expect": "valid", "name": "not-modified-retrieval-names-reused-snapshot"},
+    {"record": "retrieval", "changes": [{"path": ["outcome"], "value": {"kind": "not_modified"}}], "expect": "invalid", "name": "not-modified-retrieval-requires-reused-snapshot"},
+    {"record": "retrieval", "changes": [{"path": ["outcome"], "value": {"kind": "failed", "reason": "rate_limited"}}], "expect": "valid", "name": "failed-retrieval-has-closed-reason"},
+    {"record": "retrieval", "changes": [{"path": ["outcome"], "value": {"kind": "failed", "reason": "raw-provider-message"}}], "expect": "invalid", "name": "failed-retrieval-rejects-open-provider-reason"},
+    {"record": "retrieval", "changes": [{"path": ["finished_at"], "value": "2026-09-15T11:59:59Z"}], "expect": "invalid", "name": "retrieval-finish-does-not-precede-start"},
+    {"record": "retrieval", "changes": [{"path": ["rate_limit", "remaining"], "value": 5001}], "expect": "invalid", "name": "rate-limit-remaining-does-not-exceed-limit"},
+    {"record": "retrieval", "changes": [{"path": ["capabilities", "values"], "value": ["write:repository", "read:repository"]}], "expect": "invalid", "name": "capability-observations-are-sorted"},
+    {"record": "retrieval", "changes": [{"path": ["raw_headers"], "value": {"authorization": "secret"}}], "expect": "invalid", "name": "retrieval-rejects-secret-shaped-extra-fields"},
+    {"record": "deletion_retrieval", "changes": [], "expect": "valid", "name": "explicit-deletion-retrieval-identifies-the-provider-object"},
+    {"record": "deletion_retrieval", "changes": [{"path": ["outcome", "target", "instance"], "value": "other.example"}], "expect": "invalid", "name": "explicit-deletion-target-shares-the-retrieval-namespace"},
+    {"record": "deletion_retrieval", "changes": [{"path": ["target", "target", "opaque_id"], "value": "change-other"}], "expect": "invalid", "name": "explicit-deletion-outcome-matches-the-request-target"},
+    {"record": "deletion_retrieval", "changes": [{"path": ["outcome", "provider_event_opaque_id"], "value": null}], "expect": "invalid", "name": "deletion-event-requires-provider-event-identity"},
+    {"record": "deletion_retrieval", "changes": [{"path": ["outcome", "provider_event_at"], "value": null}], "expect": "invalid", "name": "deletion-event-requires-provider-event-time"},
+    {"record": "deletion_retrieval", "changes": [{"path": ["outcome", "provider_event_at"], "value": "2026-09-15T12:00:00.500Z"}], "expect": "invalid", "name": "deletion-event-time-does-not-follow-its-retrieval"},
+    {"record": "deletion_retrieval", "changes": [{"path": ["outcome", "evidence_kind"], "value": "deleted_marker"}, {"path": ["outcome", "provider_event_opaque_id"], "value": null}, {"path": ["outcome", "provider_event_at"], "value": null}], "expect": "valid", "name": "deleted-marker-uses-retrieval-observation-time"},
+    {"record": "resource_set", "changes": [], "expect": "valid", "name": "complete-repository-resource-set"},
+    {"record": "resource_set", "changes": [{"path": ["profile"], "value": "example.test:unknown/v1"}], "expect": "invalid", "name": "resource-profile-must-be-installed"},
+    {"record": "resource_set", "changes": [{"path": ["target"], "value": {"kind": "provider_collection", "result_contract_id": "com.github.jlevy.metabrowser.provider:HostedRepository/v1", "query_key": "sha256:1212121212121212121212121212121212121212121212121212121212121212"}}], "expect": "invalid", "name": "resource-target-class-matches-installed-profile"},
+    {"record": "resource_set", "changes": [{"path": ["target", "target", "instance"], "value": "other.example"}], "expect": "invalid", "name": "provider-object-resource-target-shares-repository-namespace"},
+    {"record": "resource_set", "changes": [{"path": ["collections", 0, "artifacts", 0, "contract_id"], "value": "not-versioned"}], "expect": "invalid", "name": "artifact-reference-contract-id-is-namespaced-and-versioned"},
+    {"record": "resource_set", "changes": [{"path": ["collections", 0, "artifacts", 0, "contract_id"], "value": "example.test:Wrong/v1"}], "expect": "invalid", "name": "resource-profile-controls-artifact-contract"},
+    {"record": "resource_set", "changes": [{"path": ["collections"], "value": []}], "expect": "invalid", "name": "resource-profile-controls-ordered-collection-slots"},
+    {"record": "resource_set", "changes": [{"path": ["collections", 0, "coverage"], "value": "unavailable"}, {"path": ["collections", 0, "artifacts"], "value": []}, {"path": ["collections", 0, "failure_retrieval_snapshot_id"], "value": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}], "expect": "valid", "name": "unavailable-collection-records-attempt-and-failure"},
+    {"record": "resource_set", "changes": [{"path": ["collections", 0, "coverage"], "value": "not_requested"}, {"path": ["collections", 0, "artifacts"], "value": []}, {"path": ["collections", 0, "retrieval_snapshot_ids"], "value": []}], "expect": "valid", "name": "not-requested-collection-has-no-acquisition-evidence"},
+    {"record": "resource_set", "changes": [{"path": ["authorization_context", "instance"], "value": "other.example"}], "expect": "invalid", "name": "resource-set-authorization-matches-repository"},
+    {"record": "resource_set", "changes": [{"path": ["collections", 0, "artifacts"], "value": []}], "expect": "invalid", "name": "complete-collection-keeps-its-typed-domain-artifact"},
+    {"record": "resource_set", "changes": [{"path": ["collections", 0, "coverage"], "value": "partial"}], "expect": "invalid", "name": "partial-collection-requires-truncation"},
+    {"record": "resource_set", "changes": [{"path": ["collections", 0, "coverage"], "value": "unavailable"}, {"path": ["collections", 0, "failure_retrieval_snapshot_id"], "value": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}], "expect": "invalid", "name": "unavailable-collection-forbids-authoritative-artifacts"},
+    {"record": "resource_set", "changes": [{"path": ["collections", 0, "coverage"], "value": "not_requested"}], "expect": "invalid", "name": "not-requested-collection-proves-no-attempt"},
+    {"record": "provider_sync_manifest", "changes": [], "expect": "valid", "name": "committed-manifest-closes-over-retrievals-and-resource-sets"},
+    {"record": "provider_sync_manifest", "changes": [{"path": ["state"], "value": "staged"}, {"path": ["finished_at"], "value": null}], "expect": "valid", "name": "staged-manifest-remains-unpublished"},
+    {"record": "provider_sync_manifest", "changes": [{"path": ["state"], "value": "failed"}, {"path": ["resource_sets"], "value": []}, {"path": ["failure"], "value": {"reason": "invalid"}}], "expect": "valid", "name": "failed-manifest-keeps-typed-diagnostics"},
+    {"record": "provider_sync_manifest", "changes": [{"path": ["retrievals"], "value": [{"contract_id": "com.github.jlevy.metabrowser.provider:Retrieval/v1", "snapshot_id": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, {"contract_id": "com.github.jlevy.metabrowser.provider:Retrieval/v1", "snapshot_id": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}], "expect": "invalid", "name": "manifest-retrieval-references-are-unique"},
+    {"record": "provider_sync_manifest", "changes": [{"path": ["state"], "value": "staged"}], "expect": "invalid", "name": "staged-manifest-has-no-finish-time"},
+    {"record": "provider_sync_manifest", "changes": [{"path": ["state"], "value": "failed"}], "expect": "invalid", "name": "failed-manifest-requires-typed-failure"},
+    {"record": "retrieval", "changes": [{"path": ["target"], "value": {"kind": "provider_collection", "repository": {"provider": "forge", "instance": "code.example", "opaque_id": "repo-1"}, "result_contract_id": "not-versioned", "query_key": "sha256:1212121212121212121212121212121212121212121212121212121212121212"}}], "expect": "invalid", "name": "collection-retrieval-result-contract-id-is-namespaced-and-versioned"},
+    {"record": "provider_view_pointer", "changes": [], "expect": "valid", "name": "current-pointer-names-immutable-set-and-manifest"},
+    {"record": "provider_view_pointer", "changes": [{"path": ["role"], "value": "recent"}], "expect": "invalid", "name": "pointer-role-is-closed"},
+    {"record": "tombstone", "changes": [], "expect": "valid", "name": "explicit-deletion-tombstone-names-prior-live-snapshot"},
+    {"record": "tombstone", "changes": [{"path": ["previous_live_snapshot_id"], "value": null}], "expect": "invalid", "name": "tombstone-cannot-delete-never-observed-object"},
+    {"record": "tombstone", "changes": [{"path": ["proof"], "value": {"kind": "not_found_under_context", "retrieval_snapshot_id": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}], "expect": "invalid", "name": "one-not-found-retrieval-is-not-deletion-proof"}
+  ]
+}

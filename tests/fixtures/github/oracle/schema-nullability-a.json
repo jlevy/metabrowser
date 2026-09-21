@@ -1,0 +1,25 @@
+{
+  "recorded_from_public_api": true,
+  "data": {
+    "pullRequest": {
+      "name": "PullRequest",
+      "fields": [
+        { "name": "author", "type": { "kind": "INTERFACE", "name": "Actor", "ofType": null } },
+        { "name": "headRefName", "type": { "kind": "NON_NULL", "name": null, "ofType": { "kind": "SCALAR", "name": "String", "ofType": null } } },
+        { "name": "headRefOid", "type": { "kind": "NON_NULL", "name": null, "ofType": { "kind": "SCALAR", "name": "GitObjectID", "ofType": null } } },
+        { "name": "headRepository", "type": { "kind": "OBJECT", "name": "Repository", "ofType": null } },
+        { "name": "reviews", "type": { "kind": "OBJECT", "name": "PullRequestReviewConnection", "ofType": null } }
+      ]
+    },
+    "reviewComment": {
+      "name": "PullRequestReviewComment",
+      "fields": [
+        { "name": "author", "type": { "kind": "INTERFACE", "name": "Actor", "ofType": null } },
+        { "name": "commit", "type": { "kind": "OBJECT", "name": "Commit", "ofType": null } },
+        { "name": "originalCommit", "type": { "kind": "OBJECT", "name": "Commit", "ofType": null } },
+        { "name": "pullRequestReview", "type": { "kind": "OBJECT", "name": "PullRequestReview", "ofType": null } },
+        { "name": "subjectType", "type": { "kind": "NON_NULL", "name": null, "ofType": { "kind": "ENUM", "name": "PullRequestReviewThreadSubjectType", "ofType": null } } }
+      ]
+    }
+  }
+}

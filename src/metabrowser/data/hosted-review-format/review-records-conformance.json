@@ -1,0 +1,561 @@
+{
+  "base_records": {
+    "change_request_comment": {
+      "id": "discussion-1",
+      "provider_ref": {
+        "provider": "forge",
+        "instance": "code.example",
+        "object_kind": "discussion_comment",
+        "opaque_id": "discussion-1"
+      },
+      "repository": {
+        "provider": "forge",
+        "instance": "code.example",
+        "opaque_id": "repo-1"
+      },
+      "change_request_id": "forge:code.example:repo-1:merge-request:17",
+      "url": null,
+      "author": null,
+      "state": "deleted",
+      "created_at": "2026-09-10T13:00:00Z",
+      "updated_at": "2026-09-11T08:00:00Z"
+    },
+    "review": {
+      "id": "review-1",
+      "provider_ref": {
+        "provider": "forge",
+        "instance": "code.example",
+        "object_kind": "review",
+        "opaque_id": "review-1"
+      },
+      "repository": {
+        "provider": "forge",
+        "instance": "code.example",
+        "opaque_id": "repo-1"
+      },
+      "change_request_id": "forge:code.example:repo-1:merge-request:17",
+      "url": "https://code.example/teams/project/changes/17/reviews/1",
+      "author": {
+        "provider_opaque_id": "person-7",
+        "handle": "maintainer",
+        "url": "https://code.example/maintainer"
+      },
+      "disposition": "approved",
+      "revision": {
+        "repository_id": "repo-2",
+        "oid": "89abcdef0123456789abcdef0123456789abcdef",
+        "availability": "present"
+      },
+      "created_at": "2026-09-10T14:00:00Z",
+      "submitted_at": "2026-09-10T14:05:00Z",
+      "updated_at": "2026-09-10T14:05:00Z"
+    },
+    "review_thread": {
+      "id": "thread-1",
+      "provider_ref": {
+        "provider": "forge",
+        "instance": "code.example",
+        "object_kind": "review_thread",
+        "opaque_id": "thread-1"
+      },
+      "repository": {
+        "provider": "forge",
+        "instance": "code.example",
+        "opaque_id": "repo-1"
+      },
+      "change_request_id": "forge:code.example:repo-1:merge-request:17",
+      "anchor": {
+        "kind": "line",
+        "path": "src/core.py",
+        "path_b64": null,
+        "comparison": {
+          "base": {
+            "repository_id": "repo-1",
+            "ref": "main",
+            "oid": "0123456789abcdef0123456789abcdef01234567",
+            "availability": "present"
+          },
+          "head": {
+            "repository_id": "repo-2",
+            "ref": "topic/provider-neutral",
+            "oid": "89abcdef0123456789abcdef0123456789abcdef",
+            "availability": "present"
+          },
+          "merge_commit_oid": null,
+          "merge_commit_availability": "not_requested"
+        },
+        "original_revision": {
+          "repository_id": "repo-2",
+          "oid": "89abcdef0123456789abcdef0123456789abcdef",
+          "availability": "present"
+        },
+        "current_revision": {
+          "repository_id": "repo-2",
+          "oid": "89abcdef0123456789abcdef0123456789abcdef",
+          "availability": "present"
+        },
+        "state": "current",
+        "side": "head",
+        "line": 18
+      },
+      "state": "resolved",
+      "resolved_by": {
+        "provider_opaque_id": "person-7",
+        "handle": "maintainer",
+        "url": "https://code.example/maintainer"
+      },
+      "comment_count": 2
+    },
+    "review_thread_empty": {
+      "id": "thread-2",
+      "provider_ref": {
+        "provider": "forge",
+        "instance": "code.example",
+        "object_kind": "review_thread",
+        "opaque_id": "thread-2"
+      },
+      "repository": {
+        "provider": "forge",
+        "instance": "code.example",
+        "opaque_id": "repo-1"
+      },
+      "change_request_id": "forge:code.example:repo-1:merge-request:17",
+      "anchor": {
+        "kind": "file",
+        "path": "src/other.py",
+        "path_b64": null,
+        "comparison": {
+          "base": {
+            "repository_id": "repo-1",
+            "ref": "main",
+            "oid": "0123456789abcdef0123456789abcdef01234567",
+            "availability": "present"
+          },
+          "head": {
+            "repository_id": "repo-2",
+            "ref": "topic/provider-neutral",
+            "oid": "89abcdef0123456789abcdef0123456789abcdef",
+            "availability": "present"
+          },
+          "merge_commit_oid": null,
+          "merge_commit_availability": "not_requested"
+        },
+        "original_revision": {
+          "repository_id": "repo-2",
+          "oid": "89abcdef0123456789abcdef0123456789abcdef",
+          "availability": "present"
+        },
+        "current_revision": {
+          "repository_id": "repo-2",
+          "oid": "89abcdef0123456789abcdef0123456789abcdef",
+          "availability": "present"
+        },
+        "state": "current"
+      },
+      "state": "unresolved",
+      "resolved_by": null,
+      "comment_count": 0
+    },
+    "review_comment": {
+      "id": "review-comment-1",
+      "provider_ref": {
+        "provider": "forge",
+        "instance": "code.example",
+        "object_kind": "review_comment",
+        "opaque_id": "review-comment-1"
+      },
+      "repository": {
+        "provider": "forge",
+        "instance": "code.example",
+        "opaque_id": "repo-1"
+      },
+      "change_request_id": "forge:code.example:repo-1:merge-request:17",
+      "review_id": "review-1",
+      "thread_id": "thread-1",
+      "in_reply_to_id": null,
+      "url": "https://code.example/teams/project/changes/17/comments/1",
+      "author": {
+        "provider_opaque_id": "person-7",
+        "handle": "maintainer",
+        "url": "https://code.example/maintainer"
+      },
+      "state": "visible",
+      "anchor": {
+        "kind": "line",
+        "path": "src/core.py",
+        "path_b64": null,
+        "comparison": {
+          "base": {
+            "repository_id": "repo-1",
+            "ref": "main",
+            "oid": "0123456789abcdef0123456789abcdef01234567",
+            "availability": "present"
+          },
+          "head": {
+            "repository_id": "repo-2",
+            "ref": "topic/provider-neutral",
+            "oid": "89abcdef0123456789abcdef0123456789abcdef",
+            "availability": "present"
+          },
+          "merge_commit_oid": null,
+          "merge_commit_availability": "not_requested"
+        },
+        "original_revision": {
+          "repository_id": "repo-2",
+          "oid": "89abcdef0123456789abcdef0123456789abcdef",
+          "availability": "present"
+        },
+        "current_revision": {
+          "repository_id": "repo-2",
+          "oid": "89abcdef0123456789abcdef0123456789abcdef",
+          "availability": "present"
+        },
+        "state": "current",
+        "side": "head",
+        "line": 18
+      },
+      "created_at": "2026-09-10T14:06:00Z",
+      "updated_at": "2026-09-10T14:06:00Z"
+    },
+    "review_comment_reply": {
+      "id": "review-comment-2",
+      "provider_ref": {
+        "provider": "forge",
+        "instance": "code.example",
+        "object_kind": "review_comment",
+        "opaque_id": "review-comment-2"
+      },
+      "repository": {
+        "provider": "forge",
+        "instance": "code.example",
+        "opaque_id": "repo-1"
+      },
+      "change_request_id": "forge:code.example:repo-1:merge-request:17",
+      "review_id": "review-1",
+      "thread_id": "thread-1",
+      "in_reply_to_id": "review-comment-1",
+      "url": null,
+      "author": null,
+      "state": "deleted",
+      "anchor": {
+        "kind": "line",
+        "path": "src/core.py",
+        "path_b64": null,
+        "comparison": {
+          "base": {
+            "repository_id": "repo-1",
+            "ref": "main",
+            "oid": "0123456789abcdef0123456789abcdef01234567",
+            "availability": "present"
+          },
+          "head": {
+            "repository_id": "repo-2",
+            "ref": "topic/provider-neutral",
+            "oid": "89abcdef0123456789abcdef0123456789abcdef",
+            "availability": "present"
+          },
+          "merge_commit_oid": null,
+          "merge_commit_availability": "not_requested"
+        },
+        "original_revision": {
+          "repository_id": "repo-2",
+          "oid": "89abcdef0123456789abcdef0123456789abcdef",
+          "availability": "present"
+        },
+        "current_revision": {
+          "repository_id": "repo-2",
+          "oid": "89abcdef0123456789abcdef0123456789abcdef",
+          "availability": "present"
+        },
+        "state": "current",
+        "side": "head",
+        "line": 18
+      },
+      "created_at": "2026-09-10T14:07:00Z",
+      "updated_at": "2026-09-11T08:00:00Z"
+    },
+    "check_suite": {
+      "id": "check-suite-1",
+      "provider_ref": {
+        "provider": "forge",
+        "instance": "code.example",
+        "object_kind": "check_suite",
+        "opaque_id": "check-suite-1"
+      },
+      "repository": {
+        "provider": "forge",
+        "instance": "code.example",
+        "opaque_id": "repo-1"
+      },
+      "parent_check_id": null,
+      "kind": "suite",
+      "revision": {
+        "repository_id": "repo-2",
+        "oid": "89abcdef0123456789abcdef0123456789abcdef",
+        "availability": "present"
+      },
+      "name": "quality",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://code.example/teams/project/checks/1",
+      "started_at": "2026-09-10T14:08:00Z",
+      "completed_at": "2026-09-10T14:10:00Z"
+    },
+    "check_run": {
+      "id": "check-run-1",
+      "provider_ref": {
+        "provider": "forge",
+        "instance": "code.example",
+        "object_kind": "check_run",
+        "opaque_id": "check-run-1"
+      },
+      "repository": {
+        "provider": "forge",
+        "instance": "code.example",
+        "opaque_id": "repo-1"
+      },
+      "parent_check_id": "check-suite-1",
+      "kind": "run",
+      "revision": {
+        "repository_id": "repo-2",
+        "oid": "89abcdef0123456789abcdef0123456789abcdef",
+        "availability": "present"
+      },
+      "name": "unit tests",
+      "status": "in_progress",
+      "conclusion": null,
+      "url": null,
+      "started_at": "2026-09-10T14:09:00Z",
+      "completed_at": null
+    },
+    "commit_status": {
+      "id": "commit-status-1",
+      "provider_ref": {
+        "provider": "forge",
+        "instance": "code.example",
+        "object_kind": "commit_status",
+        "opaque_id": "commit-status-1"
+      },
+      "repository": {
+        "provider": "forge",
+        "instance": "code.example",
+        "opaque_id": "repo-1"
+      },
+      "revision": {
+        "repository_id": "repo-2",
+        "oid": "89abcdef0123456789abcdef0123456789abcdef",
+        "availability": "present"
+      },
+      "context": "continuous-integration/build",
+      "state": "success",
+      "description": "Build completed",
+      "target_url": "https://code.example/teams/project/status/1",
+      "created_at": "2026-09-10T14:08:00Z",
+      "updated_at": "2026-09-10T14:10:00Z"
+    }
+  },
+  "cases": [
+    { "name": "deleted-discussion-comment", "record": "change_request_comment", "changes": [], "expect": "valid" },
+    { "name": "visible-comment-requires-url", "record": "change_request_comment", "changes": [{ "path": ["state"], "value": "visible" }], "expect": "invalid" },
+    { "name": "visible-comment-allows-unavailable-author", "record": "change_request_comment", "changes": [{ "path": ["state"], "value": "visible" }, { "path": ["url"], "value": "https://code.example/teams/project/changes/17#discussion-1" }], "expect": "valid" },
+    { "name": "submitted-review", "record": "review", "changes": [], "expect": "valid" },
+    { "name": "submitted-review-allows-unavailable-author", "record": "review", "changes": [{ "path": ["author"], "value": null }], "expect": "valid" },
+    { "name": "review-allows-unavailable-observed-revision", "record": "review", "changes": [{ "path": ["revision", "availability"], "value": "unavailable" }, { "path": ["revision", "oid"], "value": null }], "expect": "valid" },
+    { "name": "review-revision-cannot-be-not-requested", "record": "review", "changes": [{ "path": ["revision", "availability"], "value": "not_requested" }, { "path": ["revision", "oid"], "value": null }], "expect": "invalid" },
+    { "name": "pending-review-forbids-submission", "record": "review", "changes": [{ "path": ["disposition"], "value": "pending" }], "expect": "invalid" },
+    { "name": "submitted-review-requires-submission", "record": "review", "changes": [{ "path": ["submitted_at"], "value": null }], "expect": "invalid" },
+    { "name": "line-anchor", "record": "review_thread", "changes": [], "expect": "valid" },
+    { "name": "file-anchor", "record": "review_thread_empty", "changes": [], "expect": "valid" },
+    {
+      "name": "range-anchor",
+      "record": "review_thread",
+      "changes": [{ "path": ["anchor"], "value": {
+        "kind": "range",
+        "path": "src/core.py",
+        "path_b64": null,
+        "comparison": {
+          "base": { "repository_id": "repo-1", "ref": "main", "oid": "0123456789abcdef0123456789abcdef01234567", "availability": "present" },
+          "head": { "repository_id": "repo-2", "ref": "topic/provider-neutral", "oid": "89abcdef0123456789abcdef0123456789abcdef", "availability": "present" },
+          "merge_commit_oid": null,
+          "merge_commit_availability": "not_requested"
+        },
+        "original_revision": { "repository_id": "repo-2", "oid": "89abcdef0123456789abcdef0123456789abcdef", "availability": "present" },
+        "current_revision": { "repository_id": "repo-2", "oid": "89abcdef0123456789abcdef0123456789abcdef", "availability": "present" },
+        "state": "current",
+        "start": { "side": "base", "line": 18 },
+        "end": { "side": "head", "line": 21 }
+      }}],
+      "expect": "valid"
+    },
+    {
+      "name": "same-side-range-increases",
+      "record": "review_thread",
+      "changes": [{ "path": ["anchor"], "value": {
+        "kind": "range",
+        "path": "src/core.py",
+        "path_b64": null,
+        "comparison": {
+          "base": { "repository_id": "repo-1", "ref": "main", "oid": "0123456789abcdef0123456789abcdef01234567", "availability": "present" },
+          "head": { "repository_id": "repo-2", "ref": "topic/provider-neutral", "oid": "89abcdef0123456789abcdef0123456789abcdef", "availability": "present" },
+          "merge_commit_oid": null,
+          "merge_commit_availability": "not_requested"
+        },
+        "original_revision": { "repository_id": "repo-2", "oid": "89abcdef0123456789abcdef0123456789abcdef", "availability": "present" },
+        "current_revision": { "repository_id": "repo-2", "oid": "89abcdef0123456789abcdef0123456789abcdef", "availability": "present" },
+        "state": "current",
+        "start": { "side": "head", "line": 18 },
+        "end": { "side": "head", "line": 21 }
+      }}],
+      "expect": "valid"
+    },
+    {
+      "name": "same-side-range-is-ordered",
+      "record": "review_thread",
+      "changes": [{ "path": ["anchor"], "value": {
+        "kind": "range",
+        "path": "src/core.py",
+        "path_b64": null,
+        "comparison": {
+          "base": { "repository_id": "repo-1", "ref": "main", "oid": "0123456789abcdef0123456789abcdef01234567", "availability": "present" },
+          "head": { "repository_id": "repo-2", "ref": "topic/provider-neutral", "oid": "89abcdef0123456789abcdef0123456789abcdef", "availability": "present" },
+          "merge_commit_oid": null,
+          "merge_commit_availability": "not_requested"
+        },
+        "original_revision": { "repository_id": "repo-2", "oid": "89abcdef0123456789abcdef0123456789abcdef", "availability": "present" },
+        "current_revision": { "repository_id": "repo-2", "oid": "89abcdef0123456789abcdef0123456789abcdef", "availability": "present" },
+        "state": "current",
+        "start": { "side": "head", "line": 30 },
+        "end": { "side": "head", "line": 10 }
+      }}],
+      "expect": "invalid"
+    },
+    {
+      "name": "one-line-location-uses-line-anchor",
+      "record": "review_thread",
+      "changes": [{ "path": ["anchor"], "value": {
+        "kind": "range",
+        "path": "src/core.py",
+        "path_b64": null,
+        "comparison": {
+          "base": { "repository_id": "repo-1", "ref": "main", "oid": "0123456789abcdef0123456789abcdef01234567", "availability": "present" },
+          "head": { "repository_id": "repo-2", "ref": "topic/provider-neutral", "oid": "89abcdef0123456789abcdef0123456789abcdef", "availability": "present" },
+          "merge_commit_oid": null,
+          "merge_commit_availability": "not_requested"
+        },
+        "original_revision": { "repository_id": "repo-2", "oid": "89abcdef0123456789abcdef0123456789abcdef", "availability": "present" },
+        "current_revision": { "repository_id": "repo-2", "oid": "89abcdef0123456789abcdef0123456789abcdef", "availability": "present" },
+        "state": "current",
+        "start": { "side": "head", "line": 18 },
+        "end": { "side": "head", "line": 18 }
+      }}],
+      "expect": "invalid"
+    },
+    {
+      "name": "non-utf8-path-bytes",
+      "record": "review_thread_empty",
+      "changes": [
+        { "path": ["anchor", "path"], "value": "src/\ufffd.py" },
+        { "path": ["anchor", "path_b64"], "value": "c3JjL/8ucHk=" }
+      ],
+      "expect": "valid"
+    },
+    { "name": "malformed-path-bytes", "record": "review_thread_empty", "changes": [{ "path": ["anchor", "path_b64"], "value": "%%%" }], "expect": "invalid" },
+    { "name": "noncanonical-path-bytes", "record": "review_thread_empty", "changes": [{ "path": ["anchor", "path_b64"], "value": "c3JjLw" }], "expect": "invalid" },
+    { "name": "nul-path-bytes", "record": "review_thread_empty", "changes": [{ "path": ["anchor", "path"], "value": "src/\u0000.py" }, { "path": ["anchor", "path_b64"], "value": "c3JjLwAucHk=" }], "expect": "invalid" },
+    {
+      "name": "unresolved-anchor-may-defer-current-revision",
+      "record": "review_thread_empty",
+      "changes": [
+        { "path": ["anchor", "state"], "value": "unresolved" },
+        { "path": ["anchor", "current_revision", "availability"], "value": "not_requested" },
+        { "path": ["anchor", "current_revision", "oid"], "value": null }
+      ],
+      "expect": "valid"
+    },
+    { "name": "current-anchor-preserves-older-original-revision", "record": "review_thread", "changes": [{ "path": ["anchor", "original_revision", "oid"], "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }], "expect": "valid" },
+    { "name": "original-anchor-revision-may-be-unavailable", "record": "review_thread", "changes": [{ "path": ["anchor", "original_revision", "availability"], "value": "unavailable" }, { "path": ["anchor", "original_revision", "oid"], "value": null }], "expect": "valid" },
+    { "name": "original-anchor-revision-was-observed", "record": "review_thread", "changes": [{ "path": ["anchor", "original_revision", "availability"], "value": "not_requested" }, { "path": ["anchor", "original_revision", "oid"], "value": null }], "expect": "invalid" },
+    { "name": "anchor-original-revision-belongs-to-head-repository", "record": "review_thread", "changes": [{ "path": ["anchor", "original_revision", "repository_id"], "value": "repo-other" }], "expect": "invalid" },
+    { "name": "unresolved-current-revision-retains-head-repository", "record": "review_thread_empty", "changes": [{ "path": ["anchor", "state"], "value": "unresolved" }, { "path": ["anchor", "current_revision", "repository_id"], "value": "repo-other" }, { "path": ["anchor", "current_revision", "availability"], "value": "not_requested" }, { "path": ["anchor", "current_revision", "oid"], "value": null }], "expect": "invalid" },
+    { "name": "outdated-anchor", "record": "review_thread", "changes": [{ "path": ["anchor", "state"], "value": "outdated" }, { "path": ["anchor", "original_revision", "oid"], "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }], "expect": "valid" },
+    { "name": "unmappable-anchor", "record": "review_thread_empty", "changes": [{ "path": ["anchor", "state"], "value": "unmappable" }, { "path": ["anchor", "original_revision", "oid"], "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }], "expect": "valid" },
+    { "name": "path-bytes-must-match-display", "record": "review_thread_empty", "changes": [{ "path": ["anchor", "path_b64"], "value": "b3RoZXI=" }], "expect": "invalid" },
+    { "name": "range-anchor-rejects-line-variant-fields", "record": "review_thread", "changes": [{ "path": ["anchor", "kind"], "value": "range" }, { "path": ["anchor", "start"], "value": { "side": "head", "line": 18 } }, { "path": ["anchor", "end"], "value": { "side": "head", "line": 19 } }], "expect": "invalid" },
+    { "name": "current-anchor-matches-comparison-head", "record": "review_thread", "changes": [{ "path": ["anchor", "current_revision", "oid"], "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }], "expect": "invalid" },
+    { "name": "deleted-review-comment", "record": "review_comment_reply", "changes": [], "expect": "valid" },
+    { "name": "review-comment-allows-unavailable-author", "record": "review_comment", "changes": [{ "path": ["author"], "value": null }], "expect": "valid" },
+    { "name": "review-comment-may-have-no-review", "record": "review_comment", "changes": [{ "path": ["review_id"], "value": null }], "expect": "valid" },
+    { "name": "review-comment-cannot-reply-to-self", "record": "review_comment_reply", "changes": [{ "path": ["in_reply_to_id"], "value": "review-comment-2" }], "expect": "invalid" },
+    { "name": "unknown-comment-state", "record": "review_comment", "changes": [{ "path": ["state"], "value": "unknown" }], "expect": "valid" },
+    { "name": "unknown-review-disposition", "record": "review", "changes": [{ "path": ["disposition"], "value": "unknown" }, { "path": ["submitted_at"], "value": null }], "expect": "valid" },
+    { "name": "unknown-thread-state", "record": "review_thread_empty", "changes": [{ "path": ["state"], "value": "unknown" }], "expect": "valid" },
+    { "name": "completed-check-suite", "record": "check_suite", "changes": [], "expect": "valid" },
+    { "name": "check-suite-provider-fields-may-be-unavailable", "record": "check_suite", "changes": [{ "path": ["name"], "value": null }, { "path": ["started_at"], "value": null }, { "path": ["completed_at"], "value": null }], "expect": "valid" },
+    { "name": "active-check-run", "record": "check_run", "changes": [], "expect": "valid" },
+    { "name": "check-run-requires-name", "record": "check_run", "changes": [{ "path": ["name"], "value": null }], "expect": "invalid" },
+    { "name": "run-requires-parent", "record": "check_run", "changes": [{ "path": ["parent_check_id"], "value": null }], "expect": "invalid" },
+    { "name": "completed-check-requires-conclusion", "record": "check_suite", "changes": [{ "path": ["conclusion"], "value": null }], "expect": "invalid" },
+    { "name": "completed-check-run-requires-completed-at", "record": "check_run", "changes": [{ "path": ["status"], "value": "completed" }, { "path": ["conclusion"], "value": "success" }], "expect": "invalid" },
+    { "name": "active-check-forbids-completed-at", "record": "check_run", "changes": [{ "path": ["completed_at"], "value": "2026-09-10T14:10:00Z" }], "expect": "invalid" },
+    { "name": "check-requires-present-revision", "record": "check_suite", "changes": [{ "path": ["revision", "availability"], "value": "unavailable" }, { "path": ["revision", "oid"], "value": null }], "expect": "invalid" },
+    { "name": "unknown-check-state", "record": "check_suite", "changes": [{ "path": ["kind"], "value": "unknown" }, { "path": ["status"], "value": "unknown" }, { "path": ["conclusion"], "value": null }, { "path": ["completed_at"], "value": null }], "expect": "valid" },
+    { "name": "unknown-check-conclusion", "record": "check_suite", "changes": [{ "path": ["conclusion"], "value": "unknown" }], "expect": "valid" },
+    { "name": "commit-status-present-revision", "record": "commit_status", "changes": [], "expect": "valid" },
+    { "name": "unknown-commit-status", "record": "commit_status", "changes": [{ "path": ["state"], "value": "unknown" }], "expect": "valid" },
+    { "name": "undeclared-comment-state", "record": "change_request_comment", "changes": [{ "path": ["state"], "value": "archived" }], "expect": "invalid" },
+    { "name": "commit-status-requires-present-revision", "record": "commit_status", "changes": [{ "path": ["revision", "availability"], "value": "not_requested" }, { "path": ["revision", "oid"], "value": null }], "expect": "invalid" },
+    { "name": "record-rejects-extra-fields", "record": "commit_status", "changes": [{ "path": ["provider_payload"], "value": {} }], "expect": "invalid" }
+  ],
+  "bundle": {
+    "change_request_comments": ["change_request_comment"],
+    "reviews": ["review"],
+    "review_threads": ["review_thread", "review_thread_empty"],
+    "review_comments": ["review_comment", "review_comment_reply"],
+    "checks": ["check_suite", "check_run"],
+    "commit_statuses": ["commit_status"],
+    "review_comments_complete": true
+  },
+  "bundle_cases": [
+    { "name": "closed-review-bundle", "changes": [], "expect": "valid" },
+    { "name": "dangling-review", "changes": [{ "path": ["review_comments", 0, "review_id"], "value": "review-missing" }], "expect": "invalid" },
+    { "name": "comment-without-review", "changes": [{ "path": ["review_comments", 0, "review_id"], "value": null }], "expect": "valid" },
+    { "name": "dangling-thread", "changes": [{ "path": ["review_comments", 0, "thread_id"], "value": "thread-missing" }], "expect": "invalid" },
+    { "name": "dangling-change-request", "changes": [{ "path": ["change_request_comments", 0, "change_request_id"], "value": "change-request-missing" }], "expect": "invalid" },
+    { "name": "dangling-reply", "changes": [{ "path": ["review_comments", 1, "in_reply_to_id"], "value": "review-comment-missing" }], "expect": "invalid" },
+    { "name": "reply-cycle", "changes": [{ "path": ["review_comments", 0, "in_reply_to_id"], "value": "review-comment-2" }], "expect": "invalid" },
+    { "name": "comment-anchor-path-mismatch", "changes": [{ "path": ["review_comments", 0, "anchor", "path"], "value": "src/different.py" }], "expect": "invalid" },
+    { "name": "comment-anchor-comparison-mismatch", "changes": [{ "path": ["review_comments", 0, "anchor", "comparison", "base", "ref"], "value": "release" }], "expect": "invalid" },
+    { "name": "thread-anchor-comparison-mismatch", "changes": [{ "path": ["review_threads", 1, "anchor", "comparison", "base", "ref"], "value": "release" }], "expect": "invalid" },
+    {
+      "name": "cross-thread-reply",
+      "changes": [
+        { "path": ["review_comments", 1, "thread_id"], "value": "thread-2" },
+        { "path": ["review_comments", 1, "anchor"], "value": {
+          "kind": "file",
+          "path": "src/other.py",
+          "path_b64": null,
+          "comparison": {
+            "base": { "repository_id": "repo-1", "ref": "main", "oid": "0123456789abcdef0123456789abcdef01234567", "availability": "present" },
+            "head": { "repository_id": "repo-2", "ref": "topic/provider-neutral", "oid": "89abcdef0123456789abcdef0123456789abcdef", "availability": "present" },
+            "merge_commit_oid": null,
+            "merge_commit_availability": "not_requested"
+          },
+          "original_revision": { "repository_id": "repo-2", "oid": "89abcdef0123456789abcdef0123456789abcdef", "availability": "present" },
+          "current_revision": { "repository_id": "repo-2", "oid": "89abcdef0123456789abcdef0123456789abcdef", "availability": "present" },
+          "state": "current"
+        }}
+      ],
+      "expect": "invalid"
+    },
+    { "name": "duplicate-comment-id", "changes": [{ "path": ["review_comments", 1, "id"], "value": "review-comment-1" }], "expect": "invalid" },
+    { "name": "complete-comment-count-must-match", "changes": [{ "path": ["review_threads", 0, "comment_count"], "value": 3 }], "expect": "invalid" },
+    { "name": "partial-comment-count-is-lower-bound", "changes": [{ "path": ["review_threads", 0, "comment_count"], "value": 3 }, { "path": ["review_comments_complete"], "value": false }], "expect": "valid" },
+    { "name": "partial-comment-count-cannot-be-less-than-observed", "changes": [{ "path": ["review_threads", 0, "comment_count"], "value": 1 }, { "path": ["review_comments_complete"], "value": false }], "expect": "invalid" },
+    { "name": "dangling-check-parent", "changes": [{ "path": ["checks", 1, "parent_check_id"], "value": "suite-missing" }], "expect": "invalid" },
+    { "name": "check-parent-must-be-a-suite", "changes": [{ "path": ["checks", 0, "kind"], "value": "run" }, { "path": ["checks", 0, "parent_check_id"], "value": "check-run-1" }], "expect": "invalid" },
+    { "name": "check-run-and-suite-share-revision", "changes": [{ "path": ["checks", 1, "revision", "oid"], "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }], "expect": "invalid" },
+    { "name": "review-revision-belongs-to-head-repository", "changes": [{ "path": ["reviews", 0, "revision", "repository_id"], "value": "repo-other" }], "expect": "invalid" },
+    { "name": "cross-repository-child", "changes": [{ "path": ["commit_statuses", 0, "repository", "opaque_id"], "value": "repo-other" }], "expect": "invalid" }
+  ],
+  "format": "hosted-review-records-conformance-v1"
+}

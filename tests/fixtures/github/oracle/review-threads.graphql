@@ -1,0 +1,169 @@
+query ReviewThreadEvidence(
+  $owner: String!
+  $name: String!
+  $number: Int!
+  $threadLimit: Int!
+  $threadCommentLimit: Int!
+  $commentOwner: String!
+  $commentName: String!
+  $commentNumber: Int!
+  $issueCommentLimit: Int!
+) {
+  repository(owner: $owner, name: $name) {
+    id
+    pullRequest(number: $number) {
+      id
+      number
+      baseRefName
+      baseRefOid
+      headRefName
+      headRefOid
+      reviewDecision
+      reviews(first: 1) {
+        totalCount
+      }
+      reviewThreads(first: $threadLimit) {
+        totalCount
+        nodes {
+          id
+          subjectType
+          isResolved
+          isOutdated
+          path
+          line
+          originalLine
+          startLine
+          originalStartLine
+          diffSide
+          startDiffSide
+          resolvedBy {
+            id
+            login
+            url
+          }
+          comments(first: $threadCommentLimit) {
+            totalCount
+            nodes {
+              id
+              fullDatabaseId
+              subjectType
+              url
+              body
+              createdAt
+              updatedAt
+              state
+              isMinimized
+              minimizedReason
+              path
+              line
+              originalLine
+              startLine
+              originalStartLine
+              outdated
+              author {
+                __typename
+                login
+                url
+                ... on Bot {
+                  id
+                }
+                ... on EnterpriseUserAccount {
+                  id
+                }
+                ... on Mannequin {
+                  id
+                }
+                ... on Organization {
+                  id
+                }
+                ... on User {
+                  id
+                }
+              }
+              replyTo {
+                id
+              }
+              commit {
+                oid
+              }
+              originalCommit {
+                oid
+              }
+              pullRequestReview {
+                id
+                fullDatabaseId
+                url
+                body
+                createdAt
+                state
+                submittedAt
+                updatedAt
+                commit {
+                  oid
+                }
+                author {
+                  __typename
+                  login
+                  url
+                  ... on Bot {
+                    id
+                  }
+                  ... on EnterpriseUserAccount {
+                    id
+                  }
+                  ... on Mannequin {
+                    id
+                  }
+                  ... on Organization {
+                    id
+                  }
+                  ... on User {
+                    id
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  commentEvidence: repository(owner: $commentOwner, name: $commentName) {
+    id
+    pullRequest(number: $commentNumber) {
+      comments(first: $issueCommentLimit) {
+        totalCount
+        nodes {
+          id
+          fullDatabaseId
+          url
+          body
+          createdAt
+          updatedAt
+          isMinimized
+          minimizedReason
+          author {
+            __typename
+            login
+            url
+            ... on Bot {
+              id
+            }
+            ... on EnterpriseUserAccount {
+              id
+            }
+            ... on Mannequin {
+              id
+            }
+            ... on Organization {
+              id
+            }
+            ... on User {
+              id
+            }
+          }
+        }
+      }
+    }
+  }
+}
