@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
+from pydantic import TypeAdapter, ValidationError
 from softschema import SchemaProfile, SchemaView
 
 from metabrowser.builtin_plugins.hosted_review.contracts import (
@@ -307,6 +308,43 @@ def _string_schemas(
     elif isinstance(schema, list | tuple):
         for index, value in enumerate(cast(list[Any], schema)):
             yield from _string_schemas(value, (*path, index))
+
+
+def _enum_schemas(schema: Any, path: tuple[Any, ...] = ()) -> Iterator[tuple[tuple[Any, ...], Any]]:
+    """Yield every enum node of a Pydantic core schema with the path that reached it."""
+    if isinstance(schema, dict):
+        if schema.get("type") == "enum":
+            yield path, schema["cls"]
+        for key, value in cast(dict[str, Any], schema).items():
+            yield from _enum_schemas(value, (*path, key))
+    elif isinstance(schema, list | tuple):
+        for index, value in enumerate(cast(list[Any], schema)):
+            yield from _enum_schemas(value, (*path, index))
+
+
+def test_every_contract_model_enum_refuses_bytes() -> None:
+    # A string field is strict, but an enum field is not a string schema: lax mode would
+    # decode bytes before the member lookup and admit a value the browser validator
+    # refuses. Enum members still arrive as strings, so the rule is on the input type.
+    registry = build_hosted_review_contract_registry()
+    total = 0
+    coercing: list[tuple[str, tuple[Any, ...]]] = []
+    for contract in registry.all.values():
+        model = contract.model
+        assert model is not None, contract.id
+        for path, enum_cls in _enum_schemas(model.__pydantic_core_schema__):
+            total += 1
+            adapter: TypeAdapter[Any] = TypeAdapter(enum_cls)
+            member = next(iter(enum_cls))
+            assert adapter.validate_python(member.value) is member, (contract.id, path)
+            try:
+                adapter.validate_python(str(member.value).encode("utf-8"))
+            except ValidationError:
+                continue
+            coercing.append((contract.id, path))
+
+    assert not coercing
+    assert total > 0
 
 
 def test_every_contract_model_string_is_strict() -> None:

@@ -216,6 +216,9 @@ bytes the serializer writes for the validated record and body.
 A YAML comment, alternate quoting or spacing, reordered keys, a tagged scalar, or an
 integral float spelling is refused rather than given a second identity, and model
 strings are never coerced from another type.
+Enumerated values are spelled as strings and are not coerced either: an enum field is
+not a string schema, so the rule lives on a shared enum base rather than on each field,
+and a registry-wide test fails on an enum that does not carry it.
 
 Indexes, sync manifests, retrieval records, tombstones, threads, checks, and status
 records use `pure-yaml` because their entire content is structured or they only refer to

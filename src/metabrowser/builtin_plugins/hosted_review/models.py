@@ -19,6 +19,7 @@ from pydantic import (
     BeforeValidator,
     ConfigDict,
     Field,
+    GetCoreSchemaHandler,
     StrictBool,
     field_validator,
     model_validator,
@@ -206,7 +207,27 @@ SafePositiveInteger = Annotated[
 ]
 
 
-class ChangeRequestState(StrEnum):
+def _require_enum_text(value: Any) -> Any:
+    if not isinstance(value, str):
+        raise ValueError("enumerated values are spelled as strings and are never coerced")
+    return value
+
+
+# An enum field is not a string schema, so ``_StrictString`` does not reach it: lax mode
+# decodes bytes before looking a member up, which would admit a binary scalar the browser
+# validator refuses. Every enum in this module derives from this base, so the rule holds
+# for a new enum by construction; ``test_every_contract_model_enum_refuses_bytes`` walks
+# the registered models and fails on one that does not.
+_REFUSE_NONTEXT_ENUM_INPUT = BeforeValidator(_require_enum_text)
+
+
+class _HostedReviewEnum(StrEnum):
+    @classmethod
+    def __get_pydantic_core_schema__(cls, source_type: Any, handler: GetCoreSchemaHandler) -> Any:
+        return _REFUSE_NONTEXT_ENUM_INPUT.__get_pydantic_core_schema__(source_type, handler)
+
+
+class ChangeRequestState(_HostedReviewEnum):
     open = "open"
     closed = "closed"
     merged = "merged"
@@ -215,13 +236,13 @@ class ChangeRequestState(StrEnum):
 
 # What the provider reported about one Git object ID. Local repository-store state is the
 # separate LocalObjectAvailability vocabulary and never enters a provider record.
-class RevisionObservation(StrEnum):
+class RevisionObservation(_HostedReviewEnum):
     observed = "observed"
     unavailable = "unavailable"
     not_requested = "not_requested"
 
 
-class ReviewDecision(StrEnum):
+class ReviewDecision(_HostedReviewEnum):
     required = "required"
     approved = "approved"
     changes_requested = "changes_requested"
@@ -229,14 +250,14 @@ class ReviewDecision(StrEnum):
     unknown = "unknown"
 
 
-class CommentState(StrEnum):
+class CommentState(_HostedReviewEnum):
     visible = "visible"
     minimized = "minimized"
     deleted = "deleted"
     unknown = "unknown"
 
 
-class ReviewDisposition(StrEnum):
+class ReviewDisposition(_HostedReviewEnum):
     pending = "pending"
     commented = "commented"
     approved = "approved"
@@ -245,31 +266,31 @@ class ReviewDisposition(StrEnum):
     unknown = "unknown"
 
 
-class ReviewThreadState(StrEnum):
+class ReviewThreadState(_HostedReviewEnum):
     unresolved = "unresolved"
     resolved = "resolved"
     unknown = "unknown"
 
 
-class ReviewAnchorState(StrEnum):
+class ReviewAnchorState(_HostedReviewEnum):
     current = "current"
     outdated = "outdated"
     unresolved = "unresolved"
     unmappable = "unmappable"
 
 
-class ReviewSide(StrEnum):
+class ReviewSide(_HostedReviewEnum):
     base = "base"
     head = "head"
 
 
-class CheckKind(StrEnum):
+class CheckKind(_HostedReviewEnum):
     suite = "suite"
     run = "run"
     unknown = "unknown"
 
 
-class CheckStatus(StrEnum):
+class CheckStatus(_HostedReviewEnum):
     queued = "queued"
     in_progress = "in_progress"
     completed = "completed"
@@ -279,7 +300,7 @@ class CheckStatus(StrEnum):
     unknown = "unknown"
 
 
-class CheckConclusion(StrEnum):
+class CheckConclusion(_HostedReviewEnum):
     action_required = "action_required"
     cancelled = "cancelled"
     failure = "failure"
@@ -292,7 +313,7 @@ class CheckConclusion(StrEnum):
     unknown = "unknown"
 
 
-class CommitStatusState(StrEnum):
+class CommitStatusState(_HostedReviewEnum):
     error = "error"
     failure = "failure"
     pending = "pending"
@@ -300,12 +321,12 @@ class CommitStatusState(StrEnum):
     unknown = "unknown"
 
 
-class ActivityKind(StrEnum):
+class ActivityKind(_HostedReviewEnum):
     commit = "commit"
     change_request = "change_request"
 
 
-class ActivityState(StrEnum):
+class ActivityState(_HostedReviewEnum):
     open = "open"
     draft = "draft"
     closed = "closed"
@@ -313,7 +334,7 @@ class ActivityState(StrEnum):
     unknown = "unknown"
 
 
-class ActivityCoverage(StrEnum):
+class ActivityCoverage(_HostedReviewEnum):
     complete = "complete"
     partial = "partial"
 
@@ -632,7 +653,7 @@ class GitObjectRef(_HostedReviewModel):
         return self
 
 
-class LocalObjectAvailability(StrEnum):
+class LocalObjectAvailability(_HostedReviewEnum):
     """Local repository-store state for one object, independent of provider observation."""
 
     not_requested = "not_requested"
@@ -1132,18 +1153,18 @@ def validate_hosted_review_bundle(
             raise ValueError("check run and parent suite must share the same revision")
 
 
-class AuthorizationMode(StrEnum):
+class AuthorizationMode(_HostedReviewEnum):
     anonymous = "anonymous"
     authenticated = "authenticated"
 
 
-class RetrievalTransport(StrEnum):
+class RetrievalTransport(_HostedReviewEnum):
     provider_cli = "provider_cli"
     direct_http = "direct_http"
     unknown = "unknown"
 
 
-class RetrievalFailureReason(StrEnum):
+class RetrievalFailureReason(_HostedReviewEnum):
     permission_denied = "permission_denied"
     rate_limited = "rate_limited"
     transport_unavailable = "transport_unavailable"
@@ -1154,52 +1175,52 @@ class RetrievalFailureReason(StrEnum):
     unknown = "unknown"
 
 
-class ExplicitDeletionEvidenceKind(StrEnum):
+class ExplicitDeletionEvidenceKind(_HostedReviewEnum):
     deletion_event = "deletion_event"
     deleted_marker = "deleted_marker"
 
 
-class CapabilityObservationState(StrEnum):
+class CapabilityObservationState(_HostedReviewEnum):
     observed = "observed"
     unavailable = "unavailable"
     not_requested = "not_requested"
 
 
-class RepositoryVisibility(StrEnum):
+class RepositoryVisibility(_HostedReviewEnum):
     public = "public"
     internal = "internal"
     private = "private"
     unknown = "unknown"
 
 
-class DefaultBranchAvailability(StrEnum):
+class DefaultBranchAvailability(_HostedReviewEnum):
     present = "present"
     absent = "absent"
     unavailable = "unavailable"
     unknown = "unknown"
 
 
-class TransactionState(StrEnum):
+class TransactionState(_HostedReviewEnum):
     staged = "staged"
     committed = "committed"
     failed = "failed"
 
 
-class ManifestFailureReason(StrEnum):
+class ManifestFailureReason(_HostedReviewEnum):
     invalid = "invalid"
     interrupted = "interrupted"
     publication_failed = "publication_failed"
     unknown = "unknown"
 
 
-class CollectionCoverage(StrEnum):
+class CollectionCoverage(_HostedReviewEnum):
     not_requested = "not_requested"
     partial = "partial"
     complete = "complete"
     unavailable = "unavailable"
 
 
-class TruncationReason(StrEnum):
+class TruncationReason(_HostedReviewEnum):
     item_bound = "item_bound"
     page_bound = "page_bound"
     byte_bound = "byte_bound"
@@ -1210,17 +1231,17 @@ class TruncationReason(StrEnum):
     cancelled = "cancelled"
 
 
-class ProviderViewPointerRole(StrEnum):
+class ProviderViewPointerRole(_HostedReviewEnum):
     current = "current"
     last_complete = "last_complete"
 
 
-class IndexSortField(StrEnum):
+class IndexSortField(_HostedReviewEnum):
     created_at = "created_at"
     updated_at = "updated_at"
 
 
-class SortDirection(StrEnum):
+class SortDirection(_HostedReviewEnum):
     ascending = "ascending"
     descending = "descending"
 

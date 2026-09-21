@@ -240,6 +240,16 @@
       "expect": "invalid"
     },
     {
+      "name": "coverage-rejects-a-boolean",
+      "changes": [{ "path": ["coverage"], "value": true }],
+      "expect": "invalid"
+    },
+    {
+      "name": "activity-item-kind-rejects-a-nonstring-scalar",
+      "changes": [{ "path": ["items", 0, "kind"], "value": 1 }],
+      "expect": "invalid"
+    },
+    {
       "name": "item-bound-limit-matches-max-items",
       "changes": [
         { "path": ["max_items"], "value": 2 },

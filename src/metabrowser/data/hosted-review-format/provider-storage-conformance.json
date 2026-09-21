@@ -296,6 +296,9 @@
     {"record": "retrieval", "changes": [{"path": ["capabilities", "values"], "value": ["ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"]}], "expect": "invalid", "name": "capability-value-rejects-129-characters"},
     {"record": "provider_view_pointer", "changes": [], "expect": "valid", "name": "current-pointer-names-immutable-set-and-manifest"},
     {"record": "provider_view_pointer", "changes": [{"path": ["role"], "value": "recent"}], "expect": "invalid", "name": "pointer-role-is-closed"},
+    {"record": "provider_view_pointer", "changes": [{"path": ["role"], "value": 1}], "expect": "invalid", "name": "pointer-role-rejects-a-nonstring-scalar"},
+    {"record": "retrieval", "changes": [{"path": ["transport"], "value": true}], "expect": "invalid", "name": "retrieval-transport-rejects-a-boolean"},
+    {"record": "resource_set", "changes": [{"path": ["collections", 0, "coverage"], "value": ["complete"]}], "expect": "invalid", "name": "collection-coverage-rejects-a-list"},
     {"record": "tombstone", "changes": [], "expect": "valid", "name": "explicit-deletion-tombstone-names-prior-live-snapshot"},
     {"record": "tombstone", "changes": [{"path": ["previous_live_snapshot_id"], "value": null}], "expect": "invalid", "name": "tombstone-cannot-delete-never-observed-object"},
     {"record": "tombstone", "changes": [{"path": ["proof"], "value": {"kind": "not_found_under_context", "retrieval_snapshot_id": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}], "expect": "invalid", "name": "one-not-found-retrieval-is-not-deletion-proof"}
