@@ -28,39 +28,39 @@ experiment:
     runs_per_condition: 5
     interleaved: true
     control: the v0.10.0 wheel, built from tag c97de624 in a detached worktree
-    candidate: the 726a7858 wheel, the commit proposed for the v0.11.0 tag
+    candidate: the f7e5a71a wheel, the commit proposed for the v0.11.0 tag
     record: >-
       devtools.compare_builds over installed console scripts from two environments
       created outside every work tree, five interleaved pairs, corpus fingerprinted
       before and after
   results:
     - metric: backend_first_row_s
-      control_median: 0.013
-      candidate_median: 0.012
-      control_range: [0.011, 0.013]
-      candidate_range: [0.011, 0.015]
-      change_pct: -7.7
+      control_median: 0.018
+      candidate_median: 0.016
+      control_range: [0.016, 0.022]
+      candidate_range: [0.014, 0.022]
+      change_pct: -11.1
       overlapping: true
     - metric: index_done_s
-      control_median: 6.555
-      candidate_median: 6.663
-      control_range: [6.397, 6.724]
-      candidate_range: [6.507, 6.832]
-      change_pct: 1.6
+      control_median: 10.221
+      candidate_median: 9.936
+      control_range: [9.602, 10.432]
+      candidate_range: [9.793, 10.359]
+      change_pct: -2.8
       overlapping: true
     - metric: peak_rss_mb
-      control_median: 187.1
-      candidate_median: 187.1
-      control_range: [186.9, 187.4]
-      candidate_range: [187.0, 187.4]
-      change_pct: 0.0
+      control_median: 187.3
+      candidate_median: 187.4
+      control_range: [186.8, 188.1]
+      candidate_range: [187.1, 187.8]
+      change_pct: 0.1
       overlapping: true
     - metric: tally_overlap_progress_max_ms
-      control_median: 71.6
-      candidate_median: 78.1
-      control_range: [68.7, 77.3]
-      candidate_range: [70.9, 81.9]
-      change_pct: 9.1
+      control_median: 69.1
+      candidate_median: 66.3
+      control_range: [66.3, 89.7]
+      candidate_range: [55.8, 73.4]
+      change_pct: -4.1
       overlapping: true
   verdict:
     decision: unresolved
@@ -76,7 +76,7 @@ experiment:
       the same statement as clearing it. The obligation exp-035 created - that a change
       touching a measured path needs the captures taken again, and v0.11.0 contains one
       in _catalog_content_identity - is carried forward, not discharged.
-    commit: 726a7858
+    commit: f7e5a71a
 ---
 # exp-036: a backend-only comparison finds v0.11.0 equivalent and does not clear it for release
 
@@ -101,9 +101,15 @@ enough to see?
 
 Five interleaved pairs of `compare_builds` over installed console scripts, both built as
 wheels the way `make build` builds a release — the control from tag `c97de624` in a
-detached worktree, the candidate from `726a7858`. Environments were created outside
+detached worktree, the candidate from `f7e5a71a`. Environments were created outside
 every work tree, and each `metab --version` was asserted against its own wheel before a
 timing was taken.
+
+Only pair ratios are read.
+An earlier round on this same corpus and host recorded `index_done` medians near 6.6 s
+where this one records 9.9 s: the host was busier, which is exactly why the loop
+compares interleaved pairs rather than absolute times.
+Nothing here is compared against that earlier round either.
 
 No browser captures.
 This host has no Chromium, and `record` refuses a headless capture because the
@@ -137,28 +143,28 @@ one tree.
 
 | metric | control | candidate | change | ranges |
 | --- | --- | --- | --- | --- |
-| backend `first_row` | 0.013 s | 0.012 s | −7.7% | 0.011–0.013 vs 0.011–0.015 |
-| `index_done` | 6.555 s | 6.663 s | +1.6% | 6.397–6.724 vs 6.507–6.832 |
-| peak RSS | 187.1 MB | 187.1 MB | 0.0% | 186.9–187.4 vs 187.0–187.4 |
-| `tally_overlap_progress_max_ms` | 71.6 ms | 78.1 ms | +9.1% | 68.7–77.3 vs 70.9–81.9 |
+| backend `first_row` | 0.018 s | 0.016 s | −11.1% | 0.016–0.022 vs 0.014–0.022 |
+| `index_done` | 10.221 s | 9.936 s | −2.8% | 9.602–10.432 vs 9.793–10.359 |
+| peak RSS | 187.3 MB | 187.4 MB | +0.1% | 186.8–188.1 vs 187.1–187.8 |
+| `tally_overlap_progress_max_ms` | 69.1 ms | 66.3 ms | −4.1% | 66.3–89.7 vs 55.8–73.4 |
 
 Every range overlaps its counterpart, and every median moves less than the 1.1x careful
-tolerance. The largest mover, `tally_overlap_progress_max_ms`, is a maximum over samples
-rather than a central statistic, which is the shape that moves most on a shared host;
-its candidate range sits inside 1.1x of the control’s and the two overlap across most of
-their span.
+tolerance.
+The largest, −11.1% on backend `first_row`, is two milliseconds at millisecond
+resolution and the candidate range spans the control’s; the largest on a central
+statistic is −2.8%.
 
-The largest median move in either direction is 9.1% on that max statistic, and the
-largest on a central one is 1.6%; reading either as signal would be reading the noise
-floor. The honest summary is that the backend path did not move enough for five pairs on
-this host to see, in either direction.
+Every mover here points the candidate’s way, which is worth distrusting rather than
+claiming: with ranges this overlapped that is the shape noise takes as often as signal.
+The honest summary is that the backend path did not move enough for five pairs on this
+host to see, in either direction.
 
 ## What this does not say
 
 It does not say v0.11.0 is faster.
 The catalog hashing change was measured at 62 ms to 41 ms at 300,000 rows, which is
 about 8 ms at this corpus’s row count, against an `index_done` whose own spread here is
-330 ms. This round could not resolve that change even in principle, and did not set out
+830 ms. This round could not resolve that change even in principle, and did not set out
 to.
 
 It does not say the middlewares are free.
