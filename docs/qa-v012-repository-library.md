@@ -1,6 +1,6 @@
-# QA: v0.11 Repository Library and HTML Trust
+# QA: v0.12 Repository Library and HTML Trust
 
-**Status:** Active procedure for the unreleased v0.11 Repository Library lane and the
+**Status:** Active procedure for the unreleased v0.12 Repository Library lane and the
 HTML-trust lane.
 It is not a release gate and it does not authorize serving acquired Git.
 
@@ -511,7 +511,7 @@ https was acquired, or `file://` was served).
 | Real browser HTML preview | Needs a browser; Phase 5.3 is optional and header-level |
 | Below-floor acquire success | Forbidden; ubuntu 2.43.0 must refuse |
 | Overlay / `watch_backends` local goldens | CI is the gate |
-| Landing / merging the v0.11 stack | `mb-n2ro`; this runbook does not merge |
+| Landing / merging the v0.12 stack | `mb-n2ro`; this runbook does not merge |
 
 ## Hunt List (File a Bead Only for a Real Defect)
 

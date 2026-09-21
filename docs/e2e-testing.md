@@ -152,8 +152,8 @@ Keep consumer plugin fixtures in the consumer repository.
 The Metabrowser suite should use generic sample plugins so it cannot pass only because
 an unrelated workspace package happens to be installed.
 
-The unreleased v0.11 Repository Library and HTML-trust lanes have a separate procedure:
-[QA: v0.11 Repository Library](qa-v011-repository-library.md).
+The unreleased v0.12 Repository Library and HTML-trust lanes have a separate procedure:
+[QA: v0.12 Repository Library](qa-v012-repository-library.md).
 
 ## Manual Browser Check
 

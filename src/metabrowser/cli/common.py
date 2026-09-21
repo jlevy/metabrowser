@@ -14,8 +14,7 @@ from typing import Any, TextIO
 import typer
 
 from metabrowser.errors import CLIError
-
-VALID_LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
+from metabrowser.settings import VALID_LOG_LEVELS
 
 
 def validate_log_level(value: str | None) -> str:

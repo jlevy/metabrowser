@@ -74,8 +74,8 @@ uv --config-file uv.toml run --frozen metab ./tests/manual-fixtures --check-api
 uv --config-file uv.toml run --frozen metab ./tests/manual-fixtures --no-open
 ```
 
-Unreleased v0.11 Repository Library and HTML-trust QA is
-[QA: v0.11 Repository Library](qa-v011-repository-library.md).
+Unreleased v0.12 Repository Library and HTML-trust QA is
+[QA: v0.12 Repository Library](qa-v012-repository-library.md).
 
 The quality, test, audit, and build targets install both locked environments before
 running. Make keeps these stages ordered even when invoked with parallel jobs.

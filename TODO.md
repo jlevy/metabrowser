@@ -18,8 +18,8 @@ Checked items below are supported today; unchecked items are planned work.
 | File editing | [Opt-in trusted-local file editing](docs/project/specs/active/plan-2026-07-16-trusted-local-file-editing.md) | Draft |
 | Scan state | [Scanning state and recent directories](docs/project/specs/active/plan-2026-07-16-scanning-state-and-recent-directories.md) | Draft |
 | Git surfaces | [Git graph nav panel](docs/project/specs/active/plan-2026-08-06-git-graph-view.md), [general diff rendering](docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md), [Git status and working-tree diffs](docs/project/specs/active/plan-2026-08-26-git-status-and-working-tree-diffs.md) | Graph panel, read-only Git API, and diff rendering shipped; working-tree status and `/compare/` remain, after CLI parity |
-| Repository library | [Repository library and open from a Git URL](docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md) | v0.11.0 design reviewed; implementation is blocked by `mb-xxhi` until v0.10.0 is released from `main`. Then: owner-only generic acquisition, repository URL opening, and repository-owned detached materialization for any exposed and authorized branch. Serving also remains gated on Git status and content trust |
-| Hosted review and GitHub | [Hosted review model and GitHub provider](docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md), [architecture](docs/project/architecture/arch-hosted-review-model.md) | v0.11.0 design reviewed; after the release gate: provider-neutral SoftSchema/frontmatter records, `gh api` through a provider registry, auth-scoped snapshots, direct-PR views, then a query-keyed bounded PR index and virtual nav. Issues, GitLab, and stacked changes remain later work |
+| Repository library | [Repository library and open from a Git URL](docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md) | v0.12.0 design reviewed; the `mb-xxhi` start gate is closed — v0.10.0 shipped and v0.11.0 has since released from `main`. Then: owner-only generic acquisition, repository URL opening, and repository-owned detached materialization for any exposed and authorized branch. Serving also remains gated on Git status and content trust |
+| Hosted review and GitHub | [Hosted review model and GitHub provider](docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md), [architecture](docs/project/architecture/arch-hosted-review-model.md) | v0.12.0 design reviewed; the release gate has passed: provider-neutral SoftSchema/frontmatter records, `gh api` through a provider registry, auth-scoped snapshots, direct-PR views, then a query-keyed bounded PR index and virtual nav. Issues, GitLab, and stacked changes remain later work |
 | Editor host | [VS Code extension host](docs/project/architecture/arch-vscode-extension-host.md) | Architecture only; no plan yet |
 | Load-time performance | [End-to-end load time](docs/project/specs/active/plan-2026-08-21-load-time-performance.md) | Draft |
 | Mermaid diagrams | [Mermaid diagram rendering](docs/project/specs/active/plan-2026-08-21-mermaid-diagram-rendering.md) | Draft; depends on load-time Phase 1 |
@@ -30,15 +30,17 @@ the navigation baseline, folder Overview and file-type summaries, semantic file-
 families, the shared taxonomy, filter controls, the bounded binary byte preview, the
 flat `metab` CLI, and the v0.1.0 package.
 
-## v0.11.0 Repository and GitHub Slice
+## v0.12.0 Repository and GitHub Slice
 
 The next release starts with additive paths from a pasted GitHub URL to an offline
 repository, any exposed and authorized branch, and a cached pull-request view.
 The order follows the actual contracts rather than treating “GitHub support” as one
 component:
 
-1. `mb-i57d` cuts v0.10.0 from the intended `main`; `mb-xxhi` verifies that release and
-   fetched commit before any `release:v0.11.0` implementation branch starts from it.
+1. `mb-i57d` and `mb-xxhi` are closed: v0.10.0 was cut from the intended `main` and its
+   release and fetched commit verified.
+   v0.11.0 has since shipped, so a `release:v0.12.0` implementation branch starts from
+   that.
 2. `mb-ire2`, `mb-xa0p`, `mb-4gnu`, and `mb-h51g` freeze the released boundaries,
    establish the owner-only versioned application home, and publish a pinned generic Git
    cache entry. `mb-k54c`, `mb-dg00`, and `mb-dxmb` expose and golden-pin its state and
@@ -70,7 +72,7 @@ Full generic cache management (`mb-0ybg`), the repository chooser (`mb-vmzy`), G
 issues and timelines (`mb-9rrc`), stacked PR projections (`mb-glxc`), and measured
 very-large-repository acquisition (`mb-dqvj`) remain tracked follow-ups.
 The second named provider implementation, a GitLab adapter over the same hosted-review
-format (`mb-51uj`), is also explicitly deferred beyond v0.11.0.
+format (`mb-51uj`), is also explicitly deferred beyond v0.12.0.
 
 ## Markdown Navigation: What Is Not Done
 
@@ -147,7 +149,7 @@ Two known gaps sit outside that plan and are not regressions:
 - [ ] Add the
   [repository library](docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md):
   a versioned local cache that opens or reuses Git URLs and selected branches; add the
-  v0.11.0 direct GitHub PR snapshot/view and then the bounded PR index; follow with full
+  v0.12.0 direct GitHub PR snapshot/view and then the bounded PR index; follow with full
   cache management, a repository chooser, issues, and stacked PRs
 
 Both entered core behind written plans, with the read-only boundary and bounded-cost

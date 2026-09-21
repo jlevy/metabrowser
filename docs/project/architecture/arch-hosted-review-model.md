@@ -85,7 +85,7 @@ The serializer accepts only a closed, validated `ChangeRequest` and performs no
 filesystem write. Its enforced marker records that Pydantic boundary; durable cache
 publication remains planned behind the provider store.
 
-The v0.11.0 record set is deliberately PR-first, while the provider-storage vocabulary
+The v0.12.0 record set is deliberately PR-first, while the provider-storage vocabulary
 is content-neutral:
 
 | Record | Describes | Does not contain |
@@ -161,7 +161,7 @@ records are a sibling extension with `Release/v1` frontmatter, a structured asse
 record, and a bounded index; their separate phased epic follows the general resource
 architecture and does not widen the initial PR contracts.
 Stacked-change projections are later derived records, tracked by `mb-glxc`. They extend
-the registry with closed contracts; they do not add an `extra` object to the v0.11.0
+the registry with closed contracts; they do not add an `extra` object to the v0.12.0
 records.
 
 ### Artifact profiles
@@ -224,7 +224,7 @@ Indexes, sync manifests, retrieval records, tombstones, threads, checks, and sta
 records use `pure-yaml` because their entire content is structured or they only refer to
 a separately stored comment artifact.
 A later issue artifact may use `frontmatter-md` for the same reason as a change request;
-that decision belongs to `mb-9rrc` and does not alter the v0.11.0 PR contract.
+that decision belongs to `mb-9rrc` and does not alter the v0.12.0 PR contract.
 
 ### Review, Signal, and Activity Contracts
 
@@ -755,7 +755,7 @@ Adapters project existing sources into this format:
 - a composition service may group or interleave pages only when it can state a stable
   ordering and honest continuation rules.
 
-The initial v0.11.0 view may use separate Commit and Pull Request groups if a stable
+The initial v0.12.0 view may use separate Commit and Pull Request groups if a stable
 mixed cursor would require unbounded reads.
 Shared view mechanics do not require a fabricated global order.
 
@@ -813,7 +813,7 @@ provider-neutral repository, job, clock, and storage ports and awaits cancellati
 `close()` during root replacement and shutdown.
 No server, cache, route, or renderer imports the GitHub adapter.
 
-For v0.11.0, the provider port has one implementation: `gh api` behind the GitHub
+For v0.12.0, the provider port has one implementation: `gh api` behind the GitHub
 adapter (`mb-p4sw`). The port owns repository resolution, auth diagnosis, one bounded
 index page, selected PR acquisition, reviews/checks, and rate-limit observations.
 It does not expose command output or GitHub response dictionaries to the format or view
@@ -996,7 +996,7 @@ implementation:
 6. Durable Git objects, durable provider snapshots, local working-tree attachments, and
    recomputable session caches have different owners and retention rules; revision views
    read objects directly and never require a detached worktree.
-7. `gh api` is the only v0.11 transport, behind a provider port that can later support a
+7. `gh api` is the only v0.12 transport, behind a provider port that can later support a
    direct GitHub or GitLab adapter without changing formats or views.
 8. Provider URL reducers and mounted plugin routers are general host capabilities;
    GitHub URL syntax and hosted-review routes remain plugin-owned.

@@ -4,7 +4,7 @@
 
 **Author:** Joshua Levy (with LLM assistance)
 
-**Status:** v0.11.0 implementation is on open GitHub stack
+**Status:** v0.12.0 implementation is on open GitHub stack
 [#218](https://github.com/jlevy/metabrowser/stack/218), not on `main`. Phase 0 and Phase
 1A are on ready layers.
 Phase 1B-a file:// acquire is draft
@@ -78,9 +78,9 @@ No phase reserves an opaque extension object for work that has not been modeled.
 A later record family receives its own contract, storage path, producer, consumer, and
 invalidating tests.
 
-### v0.11.0 Milestone
+### v0.12.0 Milestone
 
-The first v0.11.0 slice ends at offline-reusable views of any authorized GitHub
+The first v0.12.0 slice ends at offline-reusable views of any authorized GitHub
 repository, any branch that repository exposes, and any directly addressed pull request,
 not at the entire repository-library roadmap.
 It includes Phase 0, Phase 1A, generic acquisition, repository URL opening, immutable
@@ -98,8 +98,8 @@ This is a milestone boundary, not a scope deletion: `mb-0ybg`, `mb-vmzy`, `mb-9r
 `mb-xxhi` is the hard implementation gate.
 It depends on the v0.10.0 release bead `mb-i57d` and closes only after the tag and
 release are cut from the intended `main` commit, that commit is fetched locally, and the
-first v0.11 implementation branch starts from it.
-Every `release:v0.11.0` implementation bead depends on this gate; design and review work
+first v0.12 implementation branch starts from it.
+Every `release:v0.12.0` implementation bead depends on this gate; design and review work
 may land before it.
 
 ## Goals
@@ -217,7 +217,7 @@ convergence through explicit object-ID fetches, not `git backfill`; see
 
 ## The Gates That Decide When This Ships
 
-The first gate controls when v0.11 implementation starts: `mb-i57d` cuts v0.10.0 from
+The first gate controls when v0.12 implementation starts: `mb-i57d` cuts v0.10.0 from
 the intended `main`, then `mb-xxhi` verifies and fetches that commit before an
 implementation branch is created from it.
 
@@ -230,7 +230,7 @@ which is `Status: Draft` with nothing implemented.
 
 ```text
 mb-i57d  release v0.10.0 from main
-   └──► mb-xxhi  verify released main and open v0.11 implementation
+   └──► mb-xxhi  verify released main and open v0.12 implementation
            ├──► cache format, acquisition, source boundary, immutable projection (mb-z335)
            └──► mb-cun0  sandbox /raw, same-origin proof on /api
                     └──► mb-vib1  capability set and --untrusted profile
@@ -581,7 +581,7 @@ Known fields still validate.
 Credentials are forbidden: a key naming a token, password, secret, credential, or API or
 private key is refused anywhere in the file.
 The config models no cache root, because `METABROWSER_HOME` is the only override, and no
-refresh policy, because v0.11 refresh is explicit; a `cache` mapping a user writes is
+refresh policy, because v0.12 refresh is explicit; a `cache` mapping a user writes is
 kept as an unknown setting and not honored.
 Metabrowser writes `config.yml` only when it creates or migrates the home, keeping every
 setting but not comments, and refuses a config it cannot read rather than replacing it.
@@ -916,7 +916,7 @@ request it could not honor.
 `/view/<path>` addresses the content source selected by the session;
 `/commit/<rev>[/<inner>]` addresses a change set.
 The current source is a filesystem root.
-The v0.11 slice adds an immutable Git-tree source rather than changing `/view` into a
+The v0.12 slice adds an immutable Git-tree source rather than changing `/view` into a
 checkout operation.
 
 After acquisition, selection resolution turns the requested ref into a full object ID
@@ -1515,7 +1515,7 @@ user-visible open path.
 
 ## Phased Implementation Plan
 
-### Phase 0: Design evidence and contract freeze — v0.11.0 entry point
+### Phase 0: Design evidence and contract freeze — v0.12.0 entry point
 
 - [x] Remeasure full, blobless, and blobless-plus-backfill acquisition against the
   v0.10.0 history session, commit detail, comparison manifest, deferred patches,
@@ -1594,7 +1594,7 @@ Evidence was insufficient to freeze the following; each names the phase that dec
 - Prune expiry, size accounting, and eviction: later cache operations.
 - Convergence batches above 53,607 object IDs and repositories larger than mypy: later
   very-large-repository work.
-- Git ref refresh age: later cache operations; v0.11 refresh is explicit.
+- Git ref refresh age: later cache operations; v0.12 refresh is explicit.
 
 ### Phase 1A: Format foundation — infrastructure PR
 
@@ -1976,7 +1976,7 @@ Independent review and publication remain `mb-hoae`.
 ### Later: Generic catalog, refresh, and cache management
 
 Phase 2B ships the provider-facing job lifecycle and selected-ref fetching needed for
-v0.11.0. The operations below build on that service but remain outside the initial
+v0.12.0. The operations below build on that service but remain outside the initial
 vertical slice.
 
 - [ ] Scan validated identity/state pairs into one provider-neutral catalog.
@@ -2016,7 +2016,7 @@ vertical slice.
 
 | Phase | Depends on | Does not depend on | User-visible result |
 | --- | --- | --- | --- |
-| v0.11 start (`mb-xxhi`) | v0.10.0 release (`mb-i57d`) | Design and review | Implementation starts from the released `main` commit |
+| v0.12 start (`mb-xxhi`) | v0.10.0 release (`mb-i57d`) | Design and review | Implementation starts from the released `main` commit |
 | 1A format foundation | Release gate, Phase 0 contract decisions | GitHub, chooser | Versioned app home and strict cache records |
 | 1B-a generic Git cache | 1A | Git-status clean predicate, GitHub, chooser, serving | Any supported clone URL publishes or reuses one shared worktree-free store |
 | 1B-b source boundary (`mb-3bna`, `mb-tsdc`) | 1B-a | GitHub, provider API, immutable Git content | Filesystem serving runs through one capability-aware source session |
@@ -2031,7 +2031,7 @@ vertical slice.
 
 Two dependencies leave this plan, and they leave in opposite directions.
 
-**Inbound:** the release gate (`mb-i57d` → `mb-xxhi`) blocks every v0.11 implementation
+**Inbound:** the release gate (`mb-i57d` → `mb-xxhi`) blocks every v0.12 implementation
 bead so work begins from released `main`. Git-status Phase 1 (`mb-u4mf`) owns local
 working-tree semantics but does not gate integrity or serving of the worktree-free
 repository store.
