@@ -42,6 +42,13 @@ DEFAULT_BROWSER_PORT = 8411
 # Routine details stay behind DEBUG without obscuring failures.
 SLOW_OPERATION_LOG_SECONDS = 2.0
 
+# The level names METABROWSER_LOG_LEVEL and --log-level accept. Membership is
+# checked before the name reaches ``getattr(logging, ...)``, which would
+# otherwise return any module attribute: ``BASIC_FORMAT`` is a format string,
+# and ``setLevel`` raises on it. Lives here rather than in ``cli.common`` so
+# the server can check it without importing the CLI, and therefore typer.
+VALID_LOG_LEVELS: tuple[str, ...] = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
+
 # ── Document reading width ──────────────────────────────────
 
 # New profiles read documents at this many logical characters per line. The

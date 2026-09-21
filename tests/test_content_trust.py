@@ -8,10 +8,13 @@ forgets the headers or the origin check.
 from __future__ import annotations
 
 import gzip
+import mimetypes
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import pytest
+from conftest import document_references
 from starlette.requests import Request
 from starlette.responses import Response
 from starlette.routing import Route, request_response
@@ -32,6 +35,13 @@ def _assert_raw_trust_headers(response: Any, *, active_content: bool = True) -> 
     assert "allow-same-origin" not in csp
     assert "frame-ancestors" not in csp
     assert response.headers["x-content-type-options"] == "nosniff"
+
+
+def _csp_directive_names(response: Any) -> set[str]:
+    """The directive names in the policy, so absence is checked by name."""
+
+    csp = str(response.headers["content-security-policy"])
+    return {part.split()[0].lower() for part in csp.split(";") if part.split()}
 
 
 def _write_html_tree(root: Path) -> None:
@@ -79,6 +89,121 @@ def test_raw_html_svg_and_gzip_share_the_sandbox_headers(tmp_path: Path) -> None
         _assert_raw_trust_headers(response)
     assert "svg" in (svg.headers.get("content-type") or "")
     assert gz.headers.get("content-encoding") == "gzip"
+
+
+# ── Dangerous types on the wire ─────────────────────────────────────
+
+# Each of these is script-capable, or sniffable into something that is,
+# when a browser navigates to it at top level. The sandbox is what denies
+# them the application origin, and the design says so explicitly: the
+# header is unconditional precisely so that no type has to be enumerated.
+#
+# ``expected_content_types`` holds every value the route may legitimately
+# send, because the media type comes from ``mimetypes.guess_type``, whose
+# table is supplied by the platform. On this machine (macOS, reading
+# ``/etc/apache2/mime.types``) the first value of each set is what was
+# measured; the alternates are what Python's built-in table alone
+# returns, which is what a container without a system table would send.
+# That spread is the spec's own argument against a dangerous-type list,
+# so it is recorded here rather than assumed away.
+_DANGEROUS_ON_THE_WIRE = [
+    pytest.param(
+        "page.xhtml",
+        b'<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml">'
+        b"<body><script>alert(1)</script></body></html>\n",
+        None,
+        frozenset({"application/xhtml+xml", "application/octet-stream"}),
+        id="xhtml",
+    ),
+    pytest.param(
+        "data.xml",
+        b'<?xml version="1.0"?><root><item/></root>\n',
+        None,
+        frozenset({"application/xml", "text/xml; charset=utf-8"}),
+        id="xml",
+    ),
+    pytest.param(
+        "doc.pdf",
+        b"%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n",
+        None,
+        frozenset({"application/pdf"}),
+        id="pdf",
+    ),
+    pytest.param(
+        "app.js",
+        b"alert(1)\n",
+        None,
+        frozenset({"text/javascript; charset=utf-8", "application/javascript"}),
+        id="js",
+    ),
+    pytest.param(
+        # No extension at all: nothing names a type, and the bytes are
+        # markup. This is the case ``nosniff`` exists for.
+        "README",
+        b"<!doctype html><script>alert(1)</script>\n",
+        None,
+        frozenset({"application/octet-stream"}),
+        id="no-extension",
+    ),
+    pytest.param(
+        # The gzip passthrough. The logical name drives the type, so the
+        # on-disk ``.gz`` ships verbatim as ``text/html``: a compressed
+        # file is not an escape hatch from the sandbox.
+        "archived.html.gz",
+        gzip.compress(b"<!doctype html><script>alert(1)</script>\n", mtime=0),
+        "gzip",
+        frozenset({"text/html; charset=utf-8"}),
+        id="html-gz-passthrough",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    ("name", "body", "expected_encoding", "expected_content_types"),
+    _DANGEROUS_ON_THE_WIRE,
+)
+def test_dangerous_types_are_sandboxed_on_the_wire(
+    tmp_path: Path,
+    name: str,
+    body: bytes,
+    expected_encoding: str | None,
+    expected_content_types: frozenset[str],
+) -> None:
+    """Every script-capable or sniffable type carries the same sandbox.
+
+    What this proves: each of these reaches the wire with the exact
+    sandbox CSP and ``nosniff``, at a media type derived from the file
+    name and from nothing else. The second assertion is the one with
+    teeth for the future — it fails if any branch of the route starts
+    special-casing a type, whether to downgrade it to ``text/plain`` or
+    to upgrade it. Together they say what the design claims: the
+    containment does not depend on getting a type list right, because no
+    type changes what is sent.
+
+    What it cannot prove without a real browser: that a browser honours
+    either header. A CSP ``sandbox`` directive only produces an opaque
+    origin, and ``nosniff`` only suppresses sniffing, because the engine
+    implements them. This is the server keeping its half of the contract.
+    """
+
+    _write_html_tree(tmp_path)
+    (tmp_path / name).write_bytes(body)
+    server._set_root_dir(tmp_path)
+    with TestClient(app) as client:
+        response = client.get(f"/raw/{name}", headers={"accept-encoding": "gzip"})
+
+    assert response.status_code == 200
+    _assert_raw_trust_headers(response)
+    assert _csp_directive_names(response) == {"sandbox"}
+
+    content_type = response.headers["content-type"]
+    assert content_type in expected_content_types, content_type
+    # The rule behind those values, asserted independently of the table:
+    # the type is whatever the logical file name guesses, with the
+    # octet-stream fallback, and no branch of the route overrides it.
+    guessed, _ = mimetypes.guess_type(name)
+    assert content_type.split(";")[0].strip() == (guessed or "application/octet-stream")
+    assert response.headers.get("content-encoding") == expected_encoding
 
 
 def test_raw_stays_reachable_from_opaque_and_foreign_origins(tmp_path: Path) -> None:
@@ -136,6 +261,71 @@ def test_api_same_origin_proof_matrix() -> None:
             assert "same-origin" in resp.text.lower() or "origin" in resp.text.lower()
 
 
+def test_route_path_matches_the_router_exactly() -> None:
+    """``_route_path`` must not disagree with what Starlette routes on.
+
+    A guard weaker than the router fails open. Stripping a prefix that
+    is not a path-segment boundary did exactly that: ``root_path="/"``
+    turned ``/api/x`` into ``api/x``, which the ``/api`` check did not
+    recognize while the router served the route regardless.
+    """
+    from starlette._utils import get_route_path
+
+    scopes = [
+        {"root_path": "", "path": "/api/x"},
+        {"root_path": "/", "path": "/api/x"},
+        {"root_path": "/ap", "path": "/api/x"},
+        {"root_path": "/pre", "path": "/pre/api/x"},
+        {"root_path": "/pre/", "path": "/pre/api/x"},
+        {"root_path": "/pre", "path": "/prefix/api/x"},
+        {"root_path": "/pre", "path": "/pre"},
+        {"root_path": "/pre", "path": "/pre/"},
+        {"root_path": "", "path": "/raw/a"},
+        {"root_path": "/pre", "path": "/pre/raw/a"},
+        {"root_path": "", "path": "/rawfoo"},
+    ]
+    mismatched = [s for s in scopes if server._route_path(s) != get_route_path(s)]
+    assert not mismatched
+
+
+def test_api_guard_is_never_weaker_than_the_router() -> None:
+    """Any scope the router would route to ``/api`` reaches the guard."""
+    from starlette._utils import get_route_path
+
+    for root_path in ("", "/", "/ap", "/pre", "/pre/"):
+        scope = {"root_path": root_path, "path": "/api/capabilities"}
+        routed = get_route_path(scope)
+        if not (routed == "/api" or routed.startswith("/api/")):
+            continue
+        guarded = server._route_path(scope)
+        assert guarded == "/api" or guarded.startswith("/api/"), root_path
+
+
+def test_api_guard_survives_a_prefix_mount(tmp_path: Path) -> None:
+    """A ``root_path`` prefix must not lift the ``/api`` guard.
+
+    Regression test. The guard tested ``scope["path"]`` directly while
+    the ``/raw`` sandbox stripped ``root_path`` first, so under a mount
+    the two middlewares named different routes: ``/raw`` stayed
+    sandboxed and ``/api`` stopped requiring same-origin proof
+    altogether. Both derive the path one way now.
+    """
+    (tmp_path / "README.md").write_text("# hi\n", encoding="utf-8")
+    server._set_root_dir(tmp_path)
+    for root_path in ("", "/pre"):
+        with TestClient(app, root_path=root_path) as client:
+            target = f"{root_path}/api/capabilities"
+            assert client.get(target).status_code == 200, root_path
+            assert client.get(target, headers={"origin": "null"}).status_code == 403, root_path
+            assert (
+                client.get(target, headers={"sec-fetch-site": "cross-site"}).status_code == 403
+            ), root_path
+            # The sandbox that already handled the prefix still does.
+            raw = client.get(f"{root_path}/raw/README.md")
+            assert raw.status_code == 200, root_path
+            assert "sandbox" in raw.headers["content-security-policy"], root_path
+
+
 def test_form_post_export_from_opaque_origin_is_rejected_before_write(
     tmp_path: Path,
 ) -> None:
@@ -190,6 +380,114 @@ def test_raw_drops_allow_scripts_when_active_content_is_off(tmp_path: Path) -> N
     assert csp == _RAW_CSP_NO_SCRIPTS
     assert "allow-scripts" not in csp
     assert resp.headers["x-content-type-options"] == "nosniff"
+
+
+# ── Frames load, which is what omitting frame-ancestors buys ────────
+
+
+def _write_nested_frame_tree(root: Path) -> None:
+    """A page whose frame is a sibling, whose frame is a level deeper."""
+
+    site = root / "site"
+    site.mkdir()
+    deep = site / "deep"
+    deep.mkdir()
+    (site / "index.html").write_text(
+        "<!doctype html><title>outer</title><iframe src='inner.html'></iframe>\n",
+        encoding="utf-8",
+    )
+    (site / "inner.html").write_text(
+        "<!doctype html><title>inner</title><iframe src='deep/leaf.html'></iframe>\n",
+        encoding="utf-8",
+    )
+    (deep / "leaf.html").write_text(
+        "<!doctype html><title>leaf</title><p>leaf</p>\n",
+        encoding="utf-8",
+    )
+    (site / "frameset.html").write_text(
+        "<!doctype html><frameset cols='50%,50%'>"
+        "<frame src='inner.html'><frame src='deep/leaf.html'></frameset>\n",
+        encoding="utf-8",
+    )
+
+
+def _load_frame_tree(client: TestClient, url: str) -> dict[str, Any]:
+    """Fetch ``url`` and every nested frame a browser would load from it."""
+
+    responses: dict[str, Any] = {}
+    pending = [url]
+    while pending:
+        current = pending.pop(0)
+        path = urlsplit(current).path
+        if path in responses:
+            continue
+        response = client.get(current)
+        responses[path] = response
+        if response.status_code != 200:
+            continue
+        pending.extend(
+            reference.resolved
+            for reference in document_references(response.text, str(response.url))
+            if reference.tag in {"frame", "iframe"}
+        )
+    return responses
+
+
+def test_nested_frames_and_a_frameset_load_without_frame_ancestors(tmp_path: Path) -> None:
+    """The regression test for the deliberately absent directive.
+
+    ``frame-ancestors 'self'`` reads like free hardening and would break
+    this feature. The directive matches every document in the ancestor
+    chain, and inside a preview that chain begins with the sandboxed
+    preview document, whose origin is opaque and can never equal
+    ``'self'``. Framesets and saved pages with iframes — the legacy
+    static HTML the preview exists to show — would stop loading.
+
+    What this proves: the policy on each of these responses contains the
+    ``sandbox`` directive and no other, so nothing in it constrains who
+    may frame the document; and the frame targets a browser derives from
+    each parent are served, at 200, with byte-identical trust headers.
+    A hardening pass that adds ``frame-ancestors`` fails this test.
+
+    What it cannot prove without a real browser: that the frames paint.
+    No engine builds a browsing context here, so this is the header
+    precondition for nesting rather than the nesting itself; the DOM
+    session in tests/dom/html-preview-session.js covers the frame the
+    application itself creates.
+    """
+
+    _write_html_tree(tmp_path)
+    _write_nested_frame_tree(tmp_path)
+    server._set_root_dir(tmp_path)
+    with TestClient(app) as client:
+        nested = _load_frame_tree(client, "/raw/site/index.html")
+        frameset = _load_frame_tree(client, "/raw/site/frameset.html")
+        flat = _load_frame_tree(client, "/raw/page.html")
+        flat_frameset = _load_frame_tree(client, "/raw/frameset.html")
+
+    # Each parent's relative frame reference resolved under /raw and was
+    # served, two levels down for the nested case.
+    assert set(nested) == {
+        "/raw/site/index.html",
+        "/raw/site/inner.html",
+        "/raw/site/deep/leaf.html",
+    }
+    assert set(frameset) == {
+        "/raw/site/frameset.html",
+        "/raw/site/inner.html",
+        "/raw/site/deep/leaf.html",
+    }
+    assert set(flat) == {"/raw/page.html", "/raw/frame.html"}
+    assert set(flat_frameset) == {"/raw/frameset.html", "/raw/frame.html"}
+
+    loaded = {**nested, **frameset, **flat, **flat_frameset}
+    for path, response in loaded.items():
+        assert response.status_code == 200, path
+        _assert_raw_trust_headers(response)
+        assert _csp_directive_names(response) == {"sandbox"}, path
+
+    policies = {response.headers["content-security-policy"] for response in loaded.values()}
+    assert policies == {_RAW_CSP}
 
 
 # ── The sandbox is a property of the path, not of one return statement ──

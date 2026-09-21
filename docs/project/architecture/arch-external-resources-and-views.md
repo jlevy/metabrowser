@@ -347,7 +347,7 @@ directly from a GitHub URL.
 ## Releases as the Next Design Case
 
 Releases prove that the architecture is broader than code review without expanding the
-initial v0.11 PR slice.
+initial v0.12 PR slice.
 
 `Release/v1` is a provider-neutral `frontmatter-md` artifact.
 Its YAML contains provider and repository identity, canonical URL, tag name, exact tag

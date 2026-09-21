@@ -56,9 +56,9 @@ planning:
 The repository-library plan keeps the generic phases: format foundation, acquisition and
 URL opening, catalog and refresh, the chooser, and large-repository support.
 
-## v0.11.0 Milestone
+## v0.12.0 Milestone
 
-The v0.11.0 milestone is one PR-first vertical slice:
+The v0.12.0 milestone is one PR-first vertical slice:
 
 - bind a cached GitHub repository and publish its repository summary;
 - open any advertised and authorized branch through the generic repository
@@ -163,7 +163,7 @@ be labeled as such deliberately rather than by omission.
 This keeps the review’s ordering (the model leads) while removing its blind spot (the
 model is unfalsifiable until Phase 3).
 
-### One provider port, one v0.11.0 transport
+### One provider port, one v0.12.0 transport
 
 The hosted-review port is provider-neutral; its first implementation is
 `GitHubGhAdapter`, backed by the installed `gh` CLI and explicit `gh api` requests.
@@ -246,7 +246,7 @@ code:
 | Top-level conversation comment | `ChangeRequestComment/v1` | Distinct from a diff discussion; keeps Markdown body and lifecycle but has no review anchor |
 | Review, review thread, review comment | `Review/v1`, `ReviewThread/v1`, `ReviewComment/v1` | Review YAML owns identity, nullable author, disposition, lifecycle, timestamps, and relationships while an optional Markdown body owns summary prose; anchors preserve provider and immutable comparison identity; an unavailable original commit stays observed rather than becoming `not_requested`; file-level, line, and range forms remain distinct; mapping failure stays unresolved |
 | Check suite, check run, commit status | `Check/v1`, `CommitStatus/v1` | Attached to immutable revision IDs; suite names and run-style timestamps remain null when the suite API does not expose them; provider-only details use a declared companion record |
-| Labels, assignees, milestone | Common bounded references | Only values consumed by discovery or detail views enter v0.11.0 |
+| Labels, assignees, milestone | Common bounded references | Only values consumed by discovery or detail views enter v0.12.0 |
 | Provider timestamps and API observations | Object timestamps plus `Retrieval/v1` | Hosted state and retrieval freshness never share one timestamp |
 
 SoftSchema maturity follows the evidence without weakening checked-in contracts:
@@ -587,7 +587,7 @@ does not expose response shape, pagination syntax, or client-library types.
 
 The provider binding resolves a generic cache entry to a stable GitHub repository ID
 without changing the cache source digest.
-The v0.11.0 adapter invokes `gh api`; credentials remain in `gh`, its operating-system
+The v0.12.0 adapter invokes `gh api`; credentials remain in `gh`, its operating-system
 credential store, or its supported token environment.
 The plugin reports authentication capability and failure state but never asks `gh` to
 show a token or reads a secret into a cache record.
@@ -969,7 +969,7 @@ prerequisite lineage while omitting another.
 | 4B PR navigation | `mb-uh6p`, `mb-iw1v` | `mb-r596` | Green Phase 3C index head |
 | 4C review anchors | `mb-rldc` | `mb-mx8q` | Green Phase 4B head |
 
-`mb-n2ro` is the sole approval-gated landing coordinator for Phase 0 and these v0.11
+`mb-n2ro` is the sole approval-gated landing coordinator for Phase 0 and these v0.12
 GitHub phases. A later branch may be constructed on the exact green PR head while an
 earlier PR waits to land, but no phase skips its publication bead or changes its
 recorded base silently.
@@ -1110,7 +1110,7 @@ recorded base silently.
 
 Releases are the next proof that the framework is a general external-resource system,
 not a PR-only stack.
-They remain outside the initial v0.11 PR slice unless the milestone is expanded
+They remain outside the initial v0.12 PR slice unless the milestone is expanded
 explicitly. Each row is one formal stacked pull request; its implementation child is
 followed by an independent review/publication child, and `mb-kk47` alone owns
 approval-gated landing, retargeting, exact-diff revalidation, and post-merge
@@ -1157,13 +1157,13 @@ The release phases are implementation-ready at these file and function seams:
   pipelines, auth, pagination, and selected refs after the GitHub-first format and views
   have shipped.
 - [ ] Add only fields observed from that adapter and only provider-specific companion
-  records with named consumers; do not widen v0.11.0 contracts speculatively.
+  records with named consumers; do not widen v0.12.0 contracts speculatively.
 
 ## Incremental Shipping Map
 
 | Slice | Depends on | Mergeable result |
 | --- | --- | --- |
-| v0.11 start (`mb-xxhi`) | v0.10.0 release `mb-i57d` | Implementation branch starts from the released `main` commit |
+| v0.12 start (`mb-xxhi`) | v0.10.0 release `mb-i57d` | Implementation branch starts from the released `main` commit |
 | Hosted Review 0A (`mb-u8n8` through `mb-c08x`) | Released v0.10.0 baseline and design PR | Dormant pre-schema ChangeRequest models, typed frontmatter codec, portable Python/browser corpus, and installed-artifact proof |
 | Hosted Review 0B (`mb-pnz5`, `mb-915y`, `mb-rla6`) | Exact head of the preceding formal phase pull request | One pull request per no-network phase for provider storage, repository, review, signal, activity records, and the scrubbed GitHub coverage oracle; each is retargeted and revalidated when its base lands |
 | Hosted Review 0C (`mb-lqae`, `mb-dhz8`) | Phase 0B and SoftSchema selection `mb-4gnu` | Compiled enforced schemas, installed host registry, complete inventory, distribution, and parity gate; closes `mb-63ym` |

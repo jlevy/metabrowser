@@ -139,10 +139,21 @@ scratch copy or `PYTHONPATH` shadowing, before its number is believed.
 
 ## Rollout Plan
 
-Tier 1 is patch-safe and ships as 0.10.1. Tier 2 changes no contract but is large enough
-that it ships on its own measured round, as 0.10.2 or 0.11.0 depending on what the
-prototype costs. The flat-stress ratchet is lowered in the same change that earns it,
-never separately.
+Tier 1 is patch-safe.
+It was planned for 0.10.1 and in the event ships with 0.11.0: the catalog content hash
+landed in #129 and rides out with the content-trust work rather than on a patch of its
+own. Tier 2 changes no contract but is large enough that it ships on its own measured
+round, as 0.12.0 or later depending on what the prototype costs.
+The flat-stress ratchet is lowered in the same change that earns it, never separately.
+
+Shipping tier 1 inside a feature release carries a cost this plan should name.
+`_catalog_content_identity` is on the path exp-034’s captures measured, and exp-035 set
+the standard that a change touching a measured path “would need the captures taken
+again”. The 300k re-measurement in step 4 above is therefore owed to 0.11.0’s evidence,
+not only to the tier-1 work, and it remains outstanding.
+[exp-036](../../../../explorations/performance-loop/experiments/exp-036-backend-only-partial-does-not-clear-v0110.md)
+is the record of shipping without it: a backend-only comparison that found the candidate
+equivalent and explicitly did not clear the release.
 
 ## Open Questions
 

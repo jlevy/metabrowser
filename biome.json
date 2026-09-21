@@ -1,7 +1,22 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.5.2/schema.json",
   "files": {
-    "includes": ["**", "!**/attic", "!**/dist", "!**/vendor", "!**/*.min.js", "!**/*.min.css"]
+    "includes": [
+      "devtools/artifact-contract-browser-check.mjs",
+      "src/metabrowser/static/**",
+      "src/metabrowser/builtin_plugins/**",
+      "tests/dom/**",
+      "explorations/**",
+      "biome.json",
+      "package.json",
+      "tsconfig.json",
+      "tsconfig.legacy.json",
+      "!**/attic",
+      "!**/dist",
+      "!**/vendor",
+      "!**/*.min.js",
+      "!**/*.min.css"
+    ]
   },
   "formatter": {
     "enabled": true,

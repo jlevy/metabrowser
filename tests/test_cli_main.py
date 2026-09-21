@@ -39,6 +39,7 @@ from metabrowser.cli.serve import (
     _shutdown_noise_filter,
     _stop_now,
 )
+from metabrowser.dotenv import load_dotenv_chain
 from metabrowser.errors import CLIError
 from metabrowser.server_utils import MAX_TCP_PORT
 
@@ -654,7 +655,7 @@ def _repo_that_enables_itself(tmp_path: Path) -> Path:
     repo = tmp_path / "cloned-repo"
     repo.mkdir()
     (repo / ".env").write_text(
-        "METAB_ACTIVE_CONTENT=1\nMETAB_ALLOW_EDITS=1\nORDINARY_DOTENV_VAR=kept\n",
+        "METAB_ACTIVE_CONTENT=1\nMETAB_ALLOW_EDITS=1\nMETABROWSER_LOG_LEVEL=WARNING\n",
         encoding="utf-8",
     )
     (repo / "page.html").write_text(
@@ -676,7 +677,7 @@ def _forget_trust_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "METAB_UNTRUSTED",
         "METAB_ACTIVE_CONTENT",
         "METAB_ALLOW_EDITS",
-        "ORDINARY_DOTENV_VAR",
+        "METABROWSER_LOG_LEVEL",
     ):
         monkeypatch.setenv(name, "")
         monkeypatch.delenv(name)
@@ -719,8 +720,8 @@ def test_repo_local_dotenv_cannot_enable_capabilities_at_all(
     """Trust variables are honored from the real environment only.
 
     Without `--untrusted` the same file still cannot turn mutations on, while
-    the same variable exported in the shell still can, and the file's ordinary
-    variables keep loading.
+    the same variable exported in the shell still can, and the file's
+    allowlisted variables keep loading.
     """
     repo = _repo_that_enables_itself(tmp_path)
     monkeypatch.chdir(repo)
@@ -729,7 +730,7 @@ def test_repo_local_dotenv_cannot_enable_capabilities_at_all(
     from_file = runner.invoke(_app, [str(repo), "--api", "/api/capabilities"])
     assert from_file.exit_code == 0, from_file.output
     assert _published_capabilities(from_file) == {"active_content": True, "mutations": False}
-    assert os.environ.get("ORDINARY_DOTENV_VAR") == "kept"
+    assert os.environ.get("METABROWSER_LOG_LEVEL") == "WARNING"
 
     monkeypatch.setenv("METAB_ALLOW_EDITS", "1")
     from_shell = runner.invoke(_app, [str(repo), "--api", "/api/capabilities"])
@@ -888,17 +889,94 @@ def test_serve_restores_uvicorn_logging_state(tmp_path: Path, failure: RuntimeEr
         uvicorn_logger.setLevel(previous_level)
 
 
-def test_serve_loads_dotenv_before_expanding_home_relative_root(
-    tmp_path: Path, monkeypatch
-) -> None:
-    home = tmp_path / "dotenv-home"
-    root = home / "artifacts"
-    root.mkdir(parents=True)
+def test_dotenv_cannot_supply_home_at_all(tmp_path: Path, monkeypatch) -> None:
+    """A `.env` cannot put ``HOME`` into the environment, set or unset.
+
+    ``HOME`` decides where git, ssh, and the rest of the toolchain look
+    for configuration and credentials, so it is outside the allowlist. The
+    variable is cleared first on purpose: with it already set,
+    ``setdefault`` would keep the real value and the assertion would hold
+    even on a loader that admitted the name, which is how an earlier
+    version of this test passed against the code it was meant to pin.
+    """
     workdir = tmp_path / "workdir"
     workdir.mkdir()
-    (workdir / ".env").write_text(f"HOME={home}\n")
+    (workdir / ".env").write_text(f"HOME={tmp_path / 'planted-home'}\n")
     monkeypatch.chdir(workdir)
     monkeypatch.delenv("HOME", raising=False)
+
+    load_dotenv_chain()
+
+    assert "HOME" not in os.environ
+
+
+def test_browsed_repo_dotenv_cannot_reach_the_git_subprocess_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The names a `.env` planted never reach a git child process.
+
+    ``git_environment`` copies ``os.environ`` and strips only the nine
+    repository-pinning names, so anything a file leaves behind is handed
+    to every git subprocess. This drives the real CLI bootstrap and then
+    asks what a git child would actually be given -- the loader unit test
+    proves the environment is clean, this proves the consumer sees that.
+
+    ``GIT_TRACE`` is the oracle: git writes to whatever path it names,
+    under every vector this package uses, with no other setup. If the
+    file exists, a browsed repository wrote to a path of its choosing.
+    """
+    from metabrowser.git.process import GIT_COMMON_ARGS, git_environment
+
+    repo = tmp_path / "cloned-repo"
+    repo.mkdir()
+    trace = tmp_path / "trace.txt"
+    planted = {
+        "BROWSER": "/tmp/attacker",
+        "GIT_EXTERNAL_DIFF": "/tmp/attacker",
+        "GIT_TRACE": str(trace),
+        "GIT_CONFIG_COUNT": "1",
+        "GIT_CONFIG_KEY_0": "core.pager",
+        "GIT_CONFIG_VALUE_0": "/tmp/attacker",
+    }
+    (repo / ".env").write_text(
+        "".join(f"{key}={value}\n" for key, value in planted.items()), encoding="utf-8"
+    )
+    (repo / "README.md").write_text("# hi\n", encoding="utf-8")
+    monkeypatch.chdir(repo)
+    for key in planted:
+        monkeypatch.setenv(key, "")
+        monkeypatch.delenv(key)
+
+    result = runner.invoke(_app, [str(repo), "--api", "/api/capabilities"])
+    assert result.exit_code == 0, result.output
+
+    child_env = git_environment()
+    assert not [key for key in planted if key in child_env]
+
+    subprocess.run(
+        ["git", *GIT_COMMON_ARGS, "status", "--porcelain"],
+        cwd=repo,
+        env=child_env,
+        capture_output=True,
+        check=False,
+        timeout=30,
+    )
+    assert not trace.exists(), "a browsed repository's .env made git write a file"
+
+
+def test_serve_expands_home_from_the_process_environment(tmp_path: Path, monkeypatch) -> None:
+    """``~`` in a served path resolves against the real ``HOME``."""
+    real_home = tmp_path / "real-home"
+    real_root = real_home / "artifacts"
+    real_root.mkdir(parents=True)
+    planted_home = tmp_path / "planted-home"
+    (planted_home / "artifacts").mkdir(parents=True)
+
+    workdir = tmp_path / "workdir"
+    workdir.mkdir()
+    (workdir / ".env").write_text(f"HOME={planted_home}\n")
+    monkeypatch.chdir(workdir)
+    monkeypatch.setenv("HOME", str(real_home))
 
     with (
         patch("metabrowser.cli.serve._QuietForceExitServer") as server_cls,
@@ -908,7 +986,36 @@ def test_serve_loads_dotenv_before_expanding_home_relative_root(
 
     assert result.exit_code == 0, result.exception
     server_cls.assert_called_once()
-    assert f"Serving {root.resolve()}" in result.output
+    assert f"Serving {real_root.resolve()}" in result.output
+    assert str(planted_home) not in result.output
+
+
+def test_serve_mode_loads_the_dotenv_chain(tmp_path: Path, monkeypatch) -> None:
+    """Serve runs the loader during bootstrap.
+
+    The test this replaced proved it only incidentally, through ``HOME``.
+    Once ``HOME`` stopped being loadable, nothing drove serve with a `.env`
+    on disk, and removing the loader call from ``serve`` broke no test.
+    An allowlisted name is the honest way to pin it.
+    """
+    root = tmp_path / "artifacts"
+    root.mkdir()
+    (tmp_path / ".env").write_text("METABROWSER_REQUEST_LOG=verbose\n")
+    monkeypatch.chdir(tmp_path)
+    # setenv-then-delenv so monkeypatch records an undo for a name that
+    # may be absent; otherwise the value outlives the test.
+    monkeypatch.setenv("METABROWSER_REQUEST_LOG", "")
+    monkeypatch.delenv("METABROWSER_REQUEST_LOG")
+
+    with (
+        patch("metabrowser.cli.serve._QuietForceExitServer") as server_cls,
+        patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
+    ):
+        result = runner.invoke(_app, [str(root), "--no-open"])
+
+    assert result.exit_code == 0, result.exception
+    server_cls.assert_called_once()
+    assert os.environ.get("METABROWSER_REQUEST_LOG") == "verbose"
 
 
 def test_serve_rejects_deep_links_outside_root(tmp_path: Path) -> None:
