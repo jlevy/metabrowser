@@ -298,6 +298,7 @@ $defs:
         - $ref: '#/$defs/Sha256Digest'
         - type: 'null'
       name:
+        maxLength: 128
         pattern: ^[a-z][a-z0-9._:-]*$
         title: Name
         type: string
@@ -402,4 +403,4 @@ title: ResourceSet
 type: object
 x-softschema:
   contract: com.github.jlevy.metabrowser.provider:ResourceSet/v1
-  schema_sha256: 6623adf073580a700a6eac8b136365bb2a1ea0f694c11a447085049224aefef3
+  schema_sha256: 68e2b3e37248c9a83c61f2ff76b7c7a2f1c1ed8db454266c2eab687e4d12783d

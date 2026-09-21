@@ -714,6 +714,21 @@
       "name": "title-rejects-delete-control"
     },
     {
+      "changes": [{ "path": ["state"], "value": 1 }],
+      "expect": "invalid",
+      "name": "state-rejects-a-nonstring-scalar"
+    },
+    {
+      "changes": [{ "path": ["comparison", "head", "observation"], "value": true }],
+      "expect": "invalid",
+      "name": "revision-observation-rejects-a-boolean"
+    },
+    {
+      "changes": [{ "path": ["review", "decision"], "value": ["approved"] }],
+      "expect": "invalid",
+      "name": "review-decision-rejects-a-list"
+    },
+    {
       "changes": [{ "path": ["title"], "value": "Keep\u0085neutral" }],
       "expect": "invalid",
       "name": "title-rejects-c1-control"
