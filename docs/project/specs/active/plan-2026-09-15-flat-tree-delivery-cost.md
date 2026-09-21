@@ -151,6 +151,9 @@ Shipping tier 1 inside a feature release carries a cost this plan should name.
 the standard that a change touching a measured path “would need the captures taken
 again”. The 300k re-measurement in step 4 above is therefore owed to 0.11.0’s evidence,
 not only to the tier-1 work, and it remains outstanding.
+[exp-036](../../../../explorations/performance-loop/experiments/exp-036-backend-only-partial-does-not-clear-v0110.md)
+is the record of shipping without it: a backend-only comparison that found the candidate
+equivalent and explicitly did not clear the release.
 
 ## Open Questions
 
