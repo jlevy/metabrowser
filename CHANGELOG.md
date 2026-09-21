@@ -111,10 +111,28 @@ Plugin SDK:
 
 - `metabrowser.plugin_api` exports the content-source boundary a hook needs to work on
   more than a served folder: `source_capabilities`, `require_source_capability`,
-  `SourceCapabilities`, `UnsupportedSourceCapabilityError`, `content_source`, and
-  `open_content`. `resolve_path` and `served_root` are now explicitly filesystem-only
+  `SourceCapabilities`, `UnsupportedSourceCapabilityError`, and `open_content`.
+  `resolve_path`, `served_root`, and `open_content` are now explicitly filesystem-only
   and raise `UnsupportedSourceCapabilityError` on a Git pin, so a hook that assumed a
   host path fails where it is wrong rather than resolving against the wrong tree.
+
+- A hook that only needs bytes reads them on either source kind through
+  `resolve_content`, `resolve_content_container`, `stat_content`, and
+  `read_content_window`, over an opaque `ContentRef` that carries the identity to echo
+  back, the logical extension to dispatch on, and a fingerprint that changes when the
+  bytes do. Every read takes a required `max_bytes` and reports whether content continues
+  past the window; there is no unbounded variant, and the bound is on bytes rather than
+  on a decoded string.
+  Failures are one catchable `ContentReadError` family carrying a stable `code` and the
+  `http_status` Metabrowser’s own routes answer with, so a hook writes one error path
+  for a missing object, an oversized blob, an unreadable compressed stream, and a
+  timeout alike. The four built-in data hooks — binary bytes, structured parse, agent-log
+  charts, and diff documents — now read this way and no longer branch on the source
+  kind. The browser SDK stays 0.6: these are additions to the Python helper surface and
+  no manifest, kind, or `window.metabrowser` call changes.
+  `content_source()`, added earlier in this unreleased series and never part of a
+  release, is gone: it handed a hook the raw active source, which is what the content
+  reader replaces.
 
 Repository cache:
 

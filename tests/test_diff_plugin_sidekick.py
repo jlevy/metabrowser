@@ -14,6 +14,7 @@ import pytest
 from metabrowser import server
 from metabrowser.builtin_plugins.diff import sidekick
 from metabrowser.diff.format import validate_document
+from metabrowser.source import ContentHandle, FilesystemContentSource
 from tests.diff_fixture_repo import build_diff_fixture
 
 
@@ -146,10 +147,10 @@ def test_comparison_hydrates_to_the_bound_and_defers_the_rest(
 
 # ── Event-loop discipline ───────────────────────────────────────
 
-# `_resolve_patch` mirrors the server's nearest-file-ancestor walk, so it stats
-# one entry per path level before anything is parsed. On a cold or networked
-# filesystem that is real latency, and the module contract says filesystem work
-# runs in the thread pool.
+# The content reader's nearest-container walk mirrors the server's
+# nearest-file-ancestor rule, so it stats one entry per path level before
+# anything is parsed. On a cold or networked filesystem that is real latency,
+# and the module contract says filesystem work runs in the thread pool.
 
 
 def _thread_of_resolve_path(
@@ -157,14 +158,14 @@ def _thread_of_resolve_path(
 ) -> tuple[int, list[int], int]:
     """Run one handler; report the loop thread, where resolution ran, and the status."""
 
-    real = sidekick.resolve_path
+    real = FilesystemContentSource.resolve
     seen: list[int] = []
 
-    def _record(requested: str) -> Path | None:
+    def _record(self: FilesystemContentSource, requested: str) -> ContentHandle | None:
         seen.append(threading.get_ident())
-        return real(requested)
+        return real(self, requested)
 
-    monkeypatch.setattr(sidekick, "resolve_path", _record)
+    monkeypatch.setattr(FilesystemContentSource, "resolve", _record)
 
     async def _run() -> tuple[int, int]:
         response = await handler(_request(path))

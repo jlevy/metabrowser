@@ -12,7 +12,6 @@ from metabrowser.inventory_engine.coordinator import InventoryConsistencyError
 from metabrowser.paths_safe import ROOT_DIR, _set_root_dir
 from metabrowser.plugin_api import (
     UnsupportedSourceCapabilityError,
-    content_source,
     open_content,
     require_source_capability,
     resolve_path,
@@ -23,6 +22,7 @@ from metabrowser.source import (
     FILESYSTEM_CAPABILITIES,
     AttachedFilesystemSubject,
     ContentHandle,
+    ContentRef,
     ContentSource,
     SourceCapabilities,
     attach_subject,
@@ -34,8 +34,18 @@ from tests.test_inventory_coordinator import _coordinator, _FakeBackend
 
 @dataclass(frozen=True, slots=True)
 class _EmptyContent:
+    """A source that resolves nothing and cannot read content at all."""
+
     def resolve(self, identity: str) -> ContentHandle | None:
         return None
+
+    async def open_ref(self, identity: str) -> ContentRef | None:
+        raise UnsupportedSourceCapabilityError("content")
+
+    async def open_container(
+        self, identity: str, *, suffixes: tuple[str, ...]
+    ) -> tuple[ContentRef, str] | None:
+        raise UnsupportedSourceCapabilityError("content")
 
 
 _MEMORY_CAPABILITIES = SourceCapabilities(
@@ -131,7 +141,7 @@ def test_one_active_subject_and_legacy_hooks_gate_non_filesystem(tmp_path: Path)
         session = attach_subject(memory)
         assert get_source_session() is session
         assert session.subject is memory
-        assert content_source() is memory.content
+        assert session.content is memory.content
         try:
             resolve_path("readme.md")
             raise AssertionError("resolve_path must refuse a non-filesystem subject")

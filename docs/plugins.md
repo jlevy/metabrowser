@@ -64,14 +64,12 @@ The browser’s navigation API converts these identities to human-facing `/view/
 
 Python sidekicks use `resolve_path()` or `resolve_directory()` to cross from an identity
 to the filesystem, and `relativize_path()` to convert a native path back to an identity.
-Those helpers stay filesystem-only.
-The additive content-reader helpers `content_source()`, `open_content()`,
-`source_capabilities()`, and `require_source_capability()` talk to the one active
-repository subject instead.
-On an attached folder they agree with `resolve_path`. On a non-filesystem subject,
-`resolve_path` and `served_root` raise `UnsupportedSourceCapabilityError` rather than
-pretending a path exists.
-Do not join an API path directly onto the served root.
+Those helpers, and `open_content()`, stay filesystem-only: on a subject with no
+filesystem root they raise `UnsupportedSourceCapabilityError` rather than pretending a
+path exists. A hook that only needs bytes uses the [content reader](#reading-content)
+instead, which answers on every source kind.
+`source_capabilities()` and `require_source_capability()` report what the active subject
+can do at all. Do not join an API path directly onto the served root.
 The [inventory contract](project/architecture/arch-inventory-provider.md) specifies the
 encoding and scope. `/commit/` comparison paths belong to Git’s separate address space.
 
@@ -265,6 +263,75 @@ Explain a refusal in the response body, not only in the status code.
 `fetchPluginData` rejects with an `Error` carrying `status` and the parsed `payload`, so
 a view can turn `413` plus a `max_preview_bytes` field into a state naming the exact
 cutoff instead of hard-coding the limit in JavaScript.
+
+#### Reading Content
+
+Metabrowser serves two kinds of source: an attached folder and an immutable Git-revision
+pin over a store with no working tree.
+A hook that reads bytes uses the content reader for both, and never asks which one is
+active:
+
+```python
+from metabrowser import (
+    ContentReadError,
+    read_content_window,
+    resolve_content,
+)
+from starlette.responses import JSONResponse
+
+MAX_BYTES = 256 * 1024  # this hook's own ceiling; say why beside the constant
+
+
+async def summary_handler(request):
+    identity = request.query_params.get("path", "")
+    try:
+        ref = await resolve_content(identity)
+        if ref is None:
+            return JSONResponse({"error": "Not found"}, status_code=404)
+        if ref.logical_ext != ".log":
+            return JSONResponse({"error": "Unsupported extension"}, status_code=400)
+        window = await read_content_window(ref, max_bytes=MAX_BYTES)
+    except ContentReadError as exc:
+        return JSONResponse({"error": str(exc), "code": exc.code}, status_code=exc.http_status)
+    return JSONResponse(
+        {
+            "path": ref.identity,
+            "fingerprint": ref.fingerprint,
+            "lines": window.data.count(b"\n"),
+            "truncated": window.has_more,
+        }
+    )
+```
+
+- Pass back the `path` the client sent.
+  It is an inventory identity under a folder and a `GitPath` wire on a pin; either way
+  it is opaque to the hook, and `ref.identity` is the canonical spelling to echo in the
+  response.
+- `ref.fingerprint` changes exactly when the bytes can have, so it is the key for a
+  hook’s own cache and for an `ETag`. A hook never needs to know whether it is an mtime
+  hash or a blob object id.
+- `max_bytes` is required, and it bounds **bytes**, not a decoded string.
+  Decode `window.data` afterwards if the content is text; decoding first would put the
+  bound on the wrong quantity.
+  `window.has_more` reports that content continues past the window, which is how to tell
+  truncation from a short file — and it is the only trustworthy answer for a compressed
+  artifact, whose declared length lives in a trailer nothing verifies until the stream
+  is decoded.
+- `stat_content(ref)` is the separate call for a validated logical size.
+  It can cost a full decode and can fail, so reach for it only when the response
+  genuinely needs a total, the way the binary plugin’s view needs one for its scrollbar.
+- `resolve_content_container(identity, suffixes=(".patch",))` resolves a
+  `<content>/<inner>` address for a container kind, scoped to the suffixes the hook
+  claims. It returns the content and the inner path, with the same bounded depth rule the
+  server’s own walk uses.
+- Every failure is a `ContentReadError`, so one `except` covers a missing object, an
+  oversized blob, an unreadable compressed stream, a timeout, and a subject that cannot
+  read content at all.
+  Each carries a stable `code` and the `http_status` Metabrowser’s own routes answer
+  with; branch on those rather than on exception classes.
+
+Reads run off the event loop on both kinds, so an `async def` handler stays responsive
+without arranging that itself.
 
 ## Browser SDK
 
@@ -805,9 +872,19 @@ from metabrowser import (
 )
 ```
 
+- `resolve_content(identity)`, `resolve_content_container(identity, suffixes=...)`,
+  `stat_content(ref)`, and `read_content_window(ref, offset=..., max_bytes=...)` are the
+  source-agnostic content reader described under [Reading Content](#reading-content),
+  returning `ContentRef`, `ContentStat`, and `ContentWindow`. Every read takes an
+  explicit byte maximum; there is no unbounded variant.
+- `ContentReadError` is the one family those calls raise, with `ContentUnavailableError`
+  for content that resolved and then could not be read.
+  Each carries a `code` and an `http_status`.
 - `resolve_path(value)` resolves a served-root-relative path and rejects traversal.
   An empty string returns the served root, and any successful result may be a file or
-  directory.
+  directory. Filesystem-only, like `resolve_directory`, `served_root`, and
+  `open_content`: a subject with no filesystem root raises
+  `UnsupportedSourceCapabilityError`.
 - `resolve_directory(value)` applies the same containment rule and requires a directory.
 - `relativize_path(value)` converts an absolute path under the served root to a client
   path.

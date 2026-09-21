@@ -60,6 +60,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Final, Literal, cast
 
+from metabrowser.content_errors import ContentUnavailableError
 from metabrowser.git.process import (
     BATCH_OBJECT_POLICY,
     GIT_DISABLE_MAILMAP_ARGS,
@@ -77,8 +78,12 @@ from metabrowser.git.process import (
 from metabrowser.git.wire import is_full_revision
 from metabrowser.settings import INVENTORY_MAX_FILES, TEXT_PREVIEW_REQUEST_MAX_BYTES
 from metabrowser.source import (
+    MAX_CONTAINER_INNER_DEPTH,
     ContentHandle,
+    ContentRef,
     ContentSource,
+    ContentStat,
+    ContentWindow,
     RepositorySubjectKind,
     SourceCapabilities,
 )
@@ -119,10 +124,11 @@ class GitPathError(ValueError):
     """A GitPath wire token or segment is not a lossless byte identity."""
 
 
-class GitObjectUnavailableError(GitError):
+class GitObjectUnavailableError(GitError, ContentUnavailableError):
     """The store does not have this object with lazy fetch disabled."""
 
     code = "object_unavailable"
+    http_status = 404
 
     def __init__(self, oid: str) -> None:
         self.oid = oid
@@ -133,6 +139,7 @@ class GitBlobTooLargeError(GitError):
     """``info`` declared a blob larger than the preview/raw bound."""
 
     code = "blob_too_large"
+    http_status = 413
 
     def __init__(self, *, oid: str, size: int, max_bytes: int) -> None:
         self.oid = oid
@@ -243,6 +250,29 @@ class GitPath:
 
     def display(self) -> str:
         return "/".join(display_segment(segment) for segment in self.segments)
+
+
+# Relative in-tree symlink hops on file/raw/KPress/sidekicks. Listings still show the link.
+_MAX_GIT_SYMLINK_FOLLOW = 8
+
+
+def split_git_container_wire(wire: str) -> tuple[GitPath, str]:
+    """Split a request identity into a GitPath prefix and a container inner path.
+
+    ``g1-`` tokens are the Git tree address. Anything after the last
+    contiguous ``g1-`` prefix is a virtual inner path owned by a container
+    blob, not another tree segment.
+    """
+
+    if wire == "":
+        return GitPath.root(), ""
+    parts = wire.split("/")
+    cut = 0
+    while cut < len(parts) and parts[cut].startswith("g1-"):
+        cut += 1
+    if cut == 0:
+        raise GitPathError("GitPath wire tokens must use the g1- role prefix")
+    return GitPath.from_wire("/".join(parts[:cut])), "/".join(parts[cut:])
 
 
 GitEntryKind = Literal["blob", "tree", "commit"]
@@ -969,6 +999,46 @@ class GitTreeSource:
         async with self._pool.checkout() as reader:
             return await reader.read_blob(entry.oid, max_blob_bytes=self._max_blob_bytes)
 
+    async def open_ref(self, identity: str) -> ContentRef | None:
+        """Resolve a GitPath wire to readable blob bytes. See `ContentSource`."""
+
+        try:
+            path = GitPath.from_wire(identity)
+        except GitPathError:
+            return None
+        return await self._open_ref_path(path)
+
+    async def open_container(
+        self, identity: str, *, suffixes: tuple[str, ...]
+    ) -> tuple[ContentRef, str] | None:
+        """Split a GitPath prefix from a container inner. See `ContentSource`."""
+
+        try:
+            path, inner = split_git_container_wire(identity)
+        except GitPathError:
+            return None
+        if inner and inner.count("/") + 1 > MAX_CONTAINER_INNER_DEPTH:
+            return None
+        ref = await self._open_ref_path(path)
+        if ref is None or ref.logical_ext not in suffixes:
+            return None
+        return ref, inner
+
+    async def _open_ref_path(self, path: GitPath) -> ContentRef | None:
+        entry = await resolve_git_blob_entry(self, path)
+        if entry is None:
+            return None
+        # The requested path stays the route identity even when a symlink was
+        # followed, matching what ``/api/file`` and ``/raw`` echo back. The
+        # extension comes from the resolved leaf, which is what a kind check
+        # has to see.
+        return ContentRef(
+            identity=path.to_wire(),
+            logical_ext=blob_logical_ext(entry.path),
+            fingerprint=entry.oid,
+            reader=_GitBlobReader(source=self, entry=entry),
+        )
+
     async def read_blob_oid(self, oid: str) -> bytes:
         async with self._pool.checkout() as reader:
             return await reader.read_blob(
@@ -1123,6 +1193,107 @@ class GitTreeSource:
         return tuple(sized)
 
 
+def _git_symlink_target(link_path: GitPath, raw: bytes) -> GitPath | None:
+    """Resolve a relative POSIX symlink body against the link's parent tree."""
+
+    if not raw or b"\x00" in raw or raw.startswith(b"/"):
+        return None
+    cursor = link_path.parent()
+    for part in raw.split(b"/"):
+        if part in {b"", b"."}:
+            continue
+        if part == b"..":
+            if not cursor.segments:
+                return None
+            cursor = cursor.parent()
+            continue
+        try:
+            cursor = cursor.child(part)
+        except GitPathError:
+            return None
+    return cursor
+
+
+async def follow_git_symlinks(source: GitTreeSource, entry: GitTreeEntry) -> GitTreeEntry | None:
+    """Follow in-tree relative symlink blobs. None when the target is unusable."""
+
+    current = entry
+    seen: set[GitPath] = set()
+    hops = 0
+    while current.is_symlink:
+        if current.path in seen or hops >= _MAX_GIT_SYMLINK_FOLLOW:
+            return None
+        seen.add(current.path)
+        hops += 1
+        raw = await source.read_blob(current.path)
+        target = _git_symlink_target(current.path, raw)
+        if target is None:
+            return None
+        nxt = await source.resolve_path(target)
+        if nxt is None:
+            return None
+        current = nxt
+    return current
+
+
+async def resolve_git_blob_entry(source: GitTreeSource, path: GitPath) -> GitTreeEntry | None:
+    """Resolve a GitPath to a blob, following in-tree relative symlink blobs.
+
+    None when missing, a tree, a gitlink, or an unusable symlink target.
+    """
+
+    entry = await source.resolve_path(path)
+    if entry is None:
+        return None
+    if entry.is_symlink:
+        entry = await follow_git_symlinks(source, entry)
+        if entry is None:
+            return None
+    if not entry.is_blob or entry.is_symlink or entry.is_gitlink:
+        return None
+    return entry
+
+
+def blob_logical_ext(path: GitPath) -> str:
+    """Lowercase suffix of a blob's display name.
+
+    A stored blob has no gzip smudge, so there is no compression suffix to
+    strip the way an on-disk artifact needs.
+    """
+
+    if not path.segments:
+        return ""
+    return Path(display_segment(path.segments[-1])).suffix.lower()
+
+
+@dataclass(frozen=True, slots=True)
+class _GitBlobReader:
+    """Bounded reads of one resolved blob, through the pooled cat-file actors."""
+
+    source: GitTreeSource
+    entry: GitTreeEntry
+
+    async def stat(self) -> ContentStat:
+        size = self.entry.size
+        if size is None:
+            # A listing that could not attach sizes, or a blob reached by
+            # following a symlink out of a listing that did.
+            size = (await self.source.object_info(self.entry.oid)).size
+        return ContentStat(size=size)
+
+    async def read_window(self, *, offset: int, max_bytes: int) -> ContentWindow:
+        # ``cat-file`` addresses objects, not byte ranges, so the store read is
+        # bounded by the pin's own blob ceiling and the window is sliced from
+        # it. The caller's bound still governs what leaves this method.
+        body = await self.source.read_blob_oid(self.entry.oid)
+        window = body[offset : offset + max_bytes]
+        return ContentWindow(
+            data=window,
+            offset=offset,
+            has_more=offset + len(window) < len(body),
+        )
+
+
 class GitRevisionSubject:
     """A pinned full-OID tree over a worktree-free store."""
 
@@ -1224,9 +1395,13 @@ __all__ = [
     "GitTreeEntry",
     "GitTreeSource",
     "GitTreeTally",
+    "blob_logical_ext",
     "display_segment",
+    "follow_git_symlinks",
     "git_revision_subject",
     "read_store_blob",
     "require_full_oid",
+    "resolve_git_blob_entry",
+    "split_git_container_wire",
     "store_batch_reader_count",
 ]

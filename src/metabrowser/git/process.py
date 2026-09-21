@@ -41,6 +41,7 @@ from functools import cache
 from pathlib import Path
 from typing import Final, Literal
 
+from metabrowser.content_errors import ContentReadError
 from metabrowser.settings import GIT_SUBPROCESS_MAX_BYTES, GIT_SUBPROCESS_TIMEOUT_S
 
 log = logging.getLogger(__name__)
@@ -240,14 +241,20 @@ def as_location(value: Path | GitLocation) -> GitLocation:
     return GitLocation.filesystem(value)
 
 
-class GitError(Exception):
+class GitError(ContentReadError):
     """Base for every failure this package reports.
 
     Route handlers catch this one type and convert it to a response.
     Subclasses exist so callers that can act on a specific failure
     (``GitUnavailableError`` in particular, which decides whether the Git
     tab appears at all) do not have to inspect messages.
+
+    It is also part of the shared content-read vocabulary, so a plugin data
+    hook reading a pinned blob catches one family for both source kinds.
     """
+
+    code = "git_failed"
+    http_status = 500
 
 
 class GitUnavailableError(GitError):
@@ -279,6 +286,9 @@ class GitTimeoutError(GitError):
     The default message names no command and no path, so a caller that prints
     ``str(exc)`` for a batch-actor timeout still says what happened.
     """
+
+    code = "git_timeout"
+    http_status = 504
 
     def __init__(self, message: str = "git command timed out") -> None:
         super().__init__(message)

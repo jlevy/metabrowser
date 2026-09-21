@@ -22,15 +22,16 @@ import pytest
 import metabrowser.builtin_plugins.structured.parser as parser_mod
 from metabrowser.builtin_plugins.structured.parser import (
     _count_nodes_and_depth,
-    parse_structured,
     parse_structured_bytes,
 )
+from metabrowser.gz_io import ArtifactPath
+from metabrowser.source import read_artifact_window
 
 
 def test_parse_small_json(tmp_path: Path) -> None:
     f = tmp_path / "a.json"
     f.write_text('{"a": 1, "b": [true, false, null]}')
-    payload = parse_structured(f, ".json", "h1")
+    payload = parse_structured_bytes(f.read_bytes(), ".json")
     assert payload.parse_error is None
     assert payload.truncated is False
     assert payload.parsed == {"a": 1, "b": [True, False, None]}
@@ -46,7 +47,7 @@ def test_parse_root_json_null_as_valid_data(tmp_path: Path) -> None:
     f = tmp_path / "null.json"
     f.write_text("null")
 
-    payload = parse_structured(f, ".json", "h-null")
+    payload = parse_structured_bytes(f.read_bytes(), ".json")
 
     assert payload.parsed is None
     assert payload.parse_error is None
@@ -71,7 +72,7 @@ def test_parse_jsonc_with_comments_and_trailing_commas(tmp_path: Path) -> None:
           },
         }"""
     )
-    payload = parse_structured(f, ".json", "h-jsonc")
+    payload = parse_structured_bytes(f.read_bytes(), ".json")
     assert payload.parse_error is None
     assert payload.parsed == {"compilerOptions": {"strict": True, "paths": {"@/*": ["./src/*"]}}}
 
@@ -79,7 +80,7 @@ def test_parse_jsonc_with_comments_and_trailing_commas(tmp_path: Path) -> None:
 def test_parse_small_yaml(tmp_path: Path) -> None:
     f = tmp_path / "a.yaml"
     f.write_text("a: 1\nb:\n  - true\n  - false\n  - null\n")
-    payload = parse_structured(f, ".yaml", "h1")
+    payload = parse_structured_bytes(f.read_bytes(), ".yaml")
     assert payload.parse_error is None
     assert payload.parsed == {"a": 1, "b": [True, False, None]}
 
@@ -91,7 +92,7 @@ def test_parse_multi_document_yaml_with_trailing_empty_doc(tmp_path: Path) -> No
     # text. A real document followed by an empty one renders as the document.
     f = tmp_path / "kb.yaml"
     f.write_text("---\nretrieval_kb:\n  count: 3\n---\n# trailing comment only\n")
-    payload = parse_structured(f, ".yaml", "h-multi")
+    payload = parse_structured_bytes(f.read_bytes(), ".yaml")
     assert payload.parse_error is None
     assert payload.parsed == {"retrieval_kb": {"count": 3}}
 
@@ -100,7 +101,7 @@ def test_parse_multi_document_yaml_multiple_real_docs(tmp_path: Path) -> None:
     # A genuine multi-document stream (e.g. k8s manifests) renders as a list.
     f = tmp_path / "multi.yaml"
     f.write_text("a: 1\n---\nb: 2\n---\nc: 3\n")
-    payload = parse_structured(f, ".yaml", "h-multi2")
+    payload = parse_structured_bytes(f.read_bytes(), ".yaml")
     assert payload.parse_error is None
     assert payload.parsed == [{"a": 1}, {"b": 2}, {"c": 3}]
 
@@ -108,7 +109,7 @@ def test_parse_multi_document_yaml_multiple_real_docs(tmp_path: Path) -> None:
 def test_parse_error_malformed_yaml(tmp_path: Path) -> None:
     f = tmp_path / "bad.yaml"
     f.write_text("a: 1\n  b: 2\nfoo: [unclosed\n")
-    payload = parse_structured(f, ".yaml", "h1")
+    payload = parse_structured_bytes(f.read_bytes(), ".yaml")
     assert payload.parse_error is not None
     assert payload.parsed is None
     assert payload.truncated is False
@@ -117,7 +118,7 @@ def test_parse_error_malformed_yaml(tmp_path: Path) -> None:
 def test_parse_error_malformed_json(tmp_path: Path) -> None:
     f = tmp_path / "bad.json"
     f.write_text('{"a": 1, "b":}')
-    payload = parse_structured(f, ".json", "h1")
+    payload = parse_structured_bytes(f.read_bytes(), ".json")
     assert payload.parse_error is not None
     assert payload.parsed is None
 
@@ -143,15 +144,10 @@ def test_parse_structured_bytes_json_malformed_and_truncated(
 
 
 def test_truncated_for_oversize(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-
     monkeypatch.setattr(parser_mod, "STRUCTURED_PARSE_MAX_BYTES", 16)
-    # Also drop the LRU cache so the patched cap is observed by the
-    # next call (parse_structured's wrapper bakes the limit into the
-    # cached function body — we re-read at call time).
-    parser_mod._parse_structured_cached.cache_clear()
     f = tmp_path / "big.json"
     f.write_text(json.dumps({"x": "y" * 1024}))
-    payload = parse_structured(f, ".json", "h-trunc")
+    payload = parse_structured_bytes(f.read_bytes(), ".json")
     assert payload.truncated is True
     assert payload.parsed is None
     assert payload.parse_error is None
@@ -160,37 +156,52 @@ def test_truncated_for_oversize(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
 def test_truncated_gzip_does_not_trust_forged_isize(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """A forged gzip trailer cannot widen the bounded read the handler makes.
+
+    The handler asks the content reader for at most the parse cap, and the read
+    stops there whatever the trailer claims. ``has_more`` is what tells it the
+    content did not fit, so the Tree view falls back to Source.
+    """
+
     monkeypatch.setattr(parser_mod, "STRUCTURED_PARSE_MAX_BYTES", 64)
-    parser_mod._parse_structured_cached.cache_clear()
     encoded = bytearray(gzip.compress(json.dumps({"value": "x" * 256}).encode()))
     encoded[-4:] = (1).to_bytes(4, "little")
     source = tmp_path / "forged.json.gz"
     source.write_bytes(encoded)
 
-    payload = parse_structured(source, ".json", "h-forged-gzip")
+    window = read_artifact_window(ArtifactPath(source), 0, 64)
 
-    assert payload.truncated is True
-    assert payload.parsed is None
-    assert payload.parse_error is None
+    assert len(window.data) == 64
+    assert window.has_more is True
+    assert parser_mod.truncated_payload().truncated is True
 
 
-def test_cache_invalidates_on_mtime_change(tmp_path: Path) -> None:
-    """Same path + different mtime_hash returns the freshly parsed payload.
+def test_payload_cache_is_keyed_on_the_content_fingerprint(tmp_path: Path) -> None:
+    """A new fingerprint misses; the old one still answers with what it stored.
 
-    The LRU is keyed on (path, mtime_hash), so a content change
-    accompanied by a new mtime_hash key bypasses the stale entry.
+    Deciding when a fingerprint changes is the source's job -- an mtime hash
+    under an attached folder, a blob object id on a pin -- so this cache only
+    has to honor the key it is given.
     """
+
     f = tmp_path / "a.json"
     f.write_text('{"v": 1}')
-    p1 = parse_structured(f, ".json", "h1")
-    assert p1.parsed == {"v": 1}
+    first = f.read_bytes()
+    parser_mod.remember_structured_payload(
+        "a.json", ".json", "h1", (parse_structured_bytes(first, ".json"), len(first))
+    )
+    assert parser_mod.lookup_structured_payload("a.json", ".json", "h2") is None
+
     f.write_text('{"v": 2}')
-    p2 = parse_structured(f, ".json", "h2")
-    assert p2.parsed == {"v": 2}
-    # And the cache returns the stale value when the same mtime_hash
-    # is passed again (the contract is the inventory's responsibility).
-    p3 = parse_structured(f, ".json", "h1")
-    assert p3.parsed == {"v": 1}
+    second = f.read_bytes()
+    parser_mod.remember_structured_payload(
+        "a.json", ".json", "h2", (parse_structured_bytes(second, ".json"), len(second))
+    )
+
+    stale = parser_mod.lookup_structured_payload("a.json", ".json", "h1")
+    fresh = parser_mod.lookup_structured_payload("a.json", ".json", "h2")
+    assert stale is not None and stale[0].parsed == {"v": 1}
+    assert fresh is not None and fresh[0].parsed == {"v": 2}
 
 
 def test_node_count_and_depth_primitive() -> None:
@@ -222,5 +233,5 @@ def test_yaml_serialization_collapses_blank_lines(tmp_path: Path) -> None:
     f = tmp_path / "a.json"
     # Crafted to potentially produce blank padding in the YAML output.
     f.write_text(json.dumps({"a": {"sub": 1}, "b": {"sub2": 2}, "c": {"sub3": 3}}))
-    payload = parse_structured(f, ".json", "h1")
+    payload = parse_structured_bytes(f.read_bytes(), ".json")
     assert "\n\n\n" not in payload.pretty_yaml

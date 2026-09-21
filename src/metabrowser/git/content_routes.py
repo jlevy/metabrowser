@@ -105,11 +105,13 @@ from metabrowser.git.tree_source import (
     GitTreeSource,
     GitTreeTally,
     display_segment,
+    follow_git_symlinks,
+    resolve_git_blob_entry,
+    split_git_container_wire,
 )
 from metabrowser.gz_io import ArtifactPath
 from metabrowser.inventory_engine.contract import ascii_casefold
 from metabrowser.inventory_rollup import RollupOptions, build_rollup, group_rollup_children
-from metabrowser.plugin_api import MAX_CONTAINER_INNER_DEPTH
 from metabrowser.settings import (
     FOLDER_DISCOVERY_MAX_ENTRIES,
     INVENTORY_MAX_FILES,
@@ -117,6 +119,7 @@ from metabrowser.settings import (
     TEXT_PREVIEW_CHUNK_BYTES,
     TEXT_PREVIEW_REQUEST_MAX_BYTES,
 )
+from metabrowser.source import MAX_CONTAINER_INNER_DEPTH
 from metabrowser.tree import _tree_depth_from_query
 from metabrowser.tree_filter import TreeFilter
 from metabrowser.view_routes import decode_view_logical_path
@@ -127,8 +130,6 @@ _NOT_FOUND = {"error": "Not found"}
 _PATCH_EXTS = (".patch", ".diff")
 # Same cap as ``PythonInventoryStore.navigation_tallies``.
 _GIT_FILTER_TALLY_LIMIT = 200
-# Relative in-tree symlink hops on file/raw/KPress/sidekicks. Listings still show the link.
-_MAX_GIT_SYMLINK_FOLLOW = 8
 
 
 def _git_path_from_query(request: Request) -> GitPath:
@@ -150,25 +151,6 @@ def decode_git_view_path(raw_path: bytes) -> str | None:
     except GitPathError:
         return None
     return logical
-
-
-def split_git_container_wire(wire: str) -> tuple[GitPath, str]:
-    """Split a request identity into a GitPath prefix and a container inner path.
-
-    ``g1-`` tokens are the Git tree address. Anything after the last
-    contiguous ``g1-`` prefix is a virtual inner path owned by a container
-    blob, not another tree segment.
-    """
-
-    if wire == "":
-        return GitPath.root(), ""
-    parts = wire.split("/")
-    cut = 0
-    while cut < len(parts) and parts[cut].startswith("g1-"):
-        cut += 1
-    if cut == 0:
-        raise GitPathError("GitPath wire tokens must use the g1- role prefix")
-    return GitPath.from_wire("/".join(parts[:cut])), "/".join(parts[cut:])
 
 
 def _listing_entry(entry: GitTreeEntry) -> dict[str, Any]:
@@ -598,67 +580,6 @@ def _query_int(request: Request, name: str, default: int) -> int:
         return int(raw)
     except ValueError:
         return default
-
-
-def _git_symlink_target(link_path: GitPath, raw: bytes) -> GitPath | None:
-    """Resolve a relative POSIX symlink body against the link's parent tree."""
-
-    if not raw or b"\x00" in raw or raw.startswith(b"/"):
-        return None
-    cursor = link_path.parent()
-    for part in raw.split(b"/"):
-        if part in {b"", b"."}:
-            continue
-        if part == b"..":
-            if not cursor.segments:
-                return None
-            cursor = cursor.parent()
-            continue
-        try:
-            cursor = cursor.child(part)
-        except GitPathError:
-            return None
-    return cursor
-
-
-async def _follow_git_symlinks(source: GitTreeSource, entry: GitTreeEntry) -> GitTreeEntry | None:
-    """Follow in-tree relative symlink blobs. None when the target is unusable."""
-
-    current = entry
-    seen: set[GitPath] = set()
-    hops = 0
-    while current.is_symlink:
-        if current.path in seen or hops >= _MAX_GIT_SYMLINK_FOLLOW:
-            return None
-        seen.add(current.path)
-        hops += 1
-        raw = await source.read_blob(current.path)
-        target = _git_symlink_target(current.path, raw)
-        if target is None:
-            return None
-        nxt = await source.resolve_path(target)
-        if nxt is None:
-            return None
-        current = nxt
-    return current
-
-
-async def resolve_git_blob_entry(source: GitTreeSource, path: GitPath) -> GitTreeEntry | None:
-    """Resolve a GitPath to a blob, following in-tree relative symlink blobs.
-
-    None when missing, a tree, a gitlink, or an unusable symlink target.
-    """
-
-    entry = await source.resolve_path(path)
-    if entry is None:
-        return None
-    if entry.is_symlink:
-        entry = await _follow_git_symlinks(source, entry)
-        if entry is None:
-            return None
-    if not entry.is_blob or entry.is_symlink or entry.is_gitlink:
-        return None
-    return entry
 
 
 def _with_requested_path(
@@ -1474,7 +1395,7 @@ async def git_revision_file(request: Request, subject: GitRevisionSubject) -> JS
         if entry is None:
             return _json(_NOT_FOUND, status_code=404)
         if entry.is_symlink:
-            followed = await _follow_git_symlinks(subject.tree_source, entry)
+            followed = await follow_git_symlinks(subject.tree_source, entry)
             if followed is None:
                 return _json(_NOT_FOUND, status_code=404)
             entry = followed
@@ -1520,7 +1441,7 @@ async def git_revision_kpress_render(
         if entry is None:
             return _json(_NOT_FOUND, status_code=404)
         if entry.is_symlink:
-            followed = await _follow_git_symlinks(subject.tree_source, entry)
+            followed = await follow_git_symlinks(subject.tree_source, entry)
             if followed is None:
                 return _json(_NOT_FOUND, status_code=404)
             entry = followed
@@ -1624,7 +1545,7 @@ async def git_revision_raw(request: Request, subject: GitRevisionSubject) -> Res
         if entry is None or not entry.is_blob:
             return PlainTextResponse("Not found", status_code=404)
         if entry.is_symlink:
-            followed = await _follow_git_symlinks(subject.tree_source, entry)
+            followed = await follow_git_symlinks(subject.tree_source, entry)
             if followed is None or not followed.is_blob or followed.is_gitlink:
                 return PlainTextResponse("Not found", status_code=404)
             entry = followed

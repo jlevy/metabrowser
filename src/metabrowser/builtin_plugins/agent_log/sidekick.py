@@ -1,90 +1,78 @@
 """Server-side data hooks for the built-in agent-log plugin.
 
-The handler is async so a pinned Git blob read stays on the event loop
-and does not deadlock the shared cat-file pool. Filesystem reads run in
-the thread pool.
+One handler for every source kind: the content reader answers an attached
+folder and a pinned revision through the same bounded calls, so nothing here
+knows which one is active.
+
+The payload is memoized on the content's fingerprint rather than on a host
+path, so the Charts tab does not re-parse an unchanged log -- the property
+:mod:`metabrowser.charts` measures -- and a pinned blob gets the same
+treatment. Resolution establishes that fingerprint, so a cache hit costs no
+read at all.
 """
 
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from metabrowser.charts import extract_agent_charts, extract_agent_charts_bytes
-from metabrowser.git.content_routes import resolve_git_blob_entry
-from metabrowser.git.tree_source import (
-    GitBlobTooLargeError,
-    GitObjectUnavailableError,
-    GitPath,
-    GitPathError,
-    GitRevisionSubject,
+from metabrowser import jsonl_view
+from metabrowser.charts import (
+    extract_agent_charts_bytes,
+    lookup_agent_charts,
+    remember_agent_charts,
 )
-from metabrowser.gz_io import ArtifactDecompressionLimitError, ArtifactPath
-from metabrowser.jsonl_view import JsonlParseLimitError
-from metabrowser.plugin_api import resolve_path
-from metabrowser.source import get_source_session
+from metabrowser.plugin_api import (
+    ContentReadError,
+    JsonlParseLimitError,
+    read_content_window,
+    resolve_content,
+)
 
 
-def _logical_ext(git_path: GitPath) -> str:
-    if not git_path.segments:
-        return ""
-    return Path(git_path.segments[-1].decode("utf-8", "replace")).suffix.lower()
-
-
-def _filesystem_charts(request: Request) -> JSONResponse:
-    subpath = request.query_params.get("path", "")
-    target = resolve_path(subpath)
-    if target is None or not target.is_file():
-        return JSONResponse({"error": "Not found"}, status_code=404)
-    if ArtifactPath(target).logical_ext != ".jsonl":
-        return JSONResponse({"error": "Not a JSONL file"}, status_code=400)
-    try:
-        payload = extract_agent_charts(target)
-    except (ArtifactDecompressionLimitError, JsonlParseLimitError) as exc:
-        return JSONResponse({"error": str(exc)}, status_code=413)
-    except (OSError, TypeError, ValueError) as exc:
-        return JSONResponse({"error": str(exc)}, status_code=500)
-    return JSONResponse(payload)
-
-
-async def _git_charts(request: Request, subject: GitRevisionSubject) -> JSONResponse:
-    raw_path = request.query_params.get("path", "")
-    try:
-        path = GitPath.from_wire(raw_path)
-    except GitPathError:
-        return JSONResponse({"error": "Not found"}, status_code=404)
-    try:
-        entry = await resolve_git_blob_entry(subject.tree_source, path)
-        if entry is None:
-            return JSONResponse({"error": "Not found"}, status_code=404)
-        if _logical_ext(entry.path) != ".jsonl":
-            return JSONResponse({"error": "Not a JSONL file"}, status_code=400)
-        data = await subject.tree_source.read_blob(entry.path)
-    except GitObjectUnavailableError:
-        return JSONResponse({"error": "Not found"}, status_code=404)
-    except GitBlobTooLargeError as exc:
-        return JSONResponse(
-            {"error": "File too large", "path": raw_path, "max_bytes": exc.max_bytes},
-            status_code=413,
-        )
-    try:
-        payload = await asyncio.to_thread(extract_agent_charts_bytes, data)
-    except JsonlParseLimitError as exc:
-        return JSONResponse({"error": str(exc)}, status_code=413)
-    except (TypeError, ValueError) as exc:
-        return JSONResponse({"error": str(exc)}, status_code=500)
-    return JSONResponse(payload)
+def _too_large() -> JSONResponse:
+    return JSONResponse(
+        {"error": f"JSONL content exceeds {jsonl_view._JSONL_PARSE_MAX_BYTES} decompressed bytes"},
+        status_code=413,
+    )
 
 
 async def charts_handler(request: Request) -> JSONResponse:
     """Return tally and chart data for a supported coding-agent JSONL log.
 
-    On a pinned revision the path is a GitPath wire identity.
+    The path is whatever identity the client holds: an inventory path under an
+    attached folder, a GitPath wire on a pinned revision.
     """
-    subject = get_source_session().subject
-    if isinstance(subject, GitRevisionSubject):
-        return await _git_charts(request, subject)
-    return await asyncio.to_thread(_filesystem_charts, request)
+
+    subpath = request.query_params.get("path", "")
+    parse_max_bytes = jsonl_view._JSONL_PARSE_MAX_BYTES
+    try:
+        ref = await resolve_content(subpath)
+        if ref is None:
+            return JSONResponse({"error": "Not found"}, status_code=404)
+        if ref.logical_ext != ".jsonl":
+            return JSONResponse({"error": "Not a JSONL file"}, status_code=400)
+        cached = lookup_agent_charts(ref.identity, ref.fingerprint)
+        if cached is not None:
+            return JSONResponse(cached)
+        window = await read_content_window(ref, max_bytes=parse_max_bytes)
+    except ContentReadError as exc:
+        if exc.http_status == 413:
+            return _too_large()
+        return JSONResponse({"error": str(exc), "code": exc.code}, status_code=exc.http_status)
+    if window.has_more:
+        # The cap is on bytes and the read is what enforces it. A compressed
+        # log declares its length in a trailer nothing verifies, so asking for
+        # the cap and seeing more remain is the only answer that cannot be
+        # forged.
+        return _too_large()
+    try:
+        payload = await asyncio.to_thread(extract_agent_charts_bytes, window.data)
+    except JsonlParseLimitError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=413)
+    except (TypeError, ValueError) as exc:
+        return JSONResponse({"error": str(exc)}, status_code=500)
+    remember_agent_charts(ref.identity, ref.fingerprint, payload)
+    return JSONResponse(payload)

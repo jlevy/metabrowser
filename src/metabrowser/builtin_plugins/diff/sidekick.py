@@ -17,9 +17,9 @@ serves the same document for a Git comparison at the active subject's
 view instead of growing a diff surface of its own. A pinned revision
 does not need a working tree.
 
-The patch handlers are async so a pinned Git blob read stays on the
-event loop and does not deadlock the shared cat-file pool. Filesystem
-reads and the bounded parser run in the thread pool. The comparison
+The patch handlers read through the content reader, which serves an attached
+folder and a pinned revision alike and keeps the blocking part off the event
+loop for both; the bounded parse runs in the thread pool. The comparison
 handler is async because ``git`` is.
 """
 
@@ -43,23 +43,17 @@ from metabrowser.diff.format import (
     Totals,
     dump_document,
 )
-from metabrowser.git.content_routes import resolve_git_blob_entry, split_git_container_wire
 from metabrowser.git.process import GitError
 from metabrowser.git.repo import repo_info
 from metabrowser.git.routes import session_git_location
-from metabrowser.git.tree_source import (
-    GitBlobTooLargeError,
-    GitObjectUnavailableError,
-    GitPathError,
-    GitRevisionSubject,
+from metabrowser.inventory_engine.contract import canonical_inventory_path
+from metabrowser.plugin_api import (
+    ContentReadError,
+    read_content_window,
+    resolve_content_container,
 )
-from metabrowser.inventory_engine.contract import canonical_inventory_path, native_inventory_path
-from metabrowser.plugin_api import MAX_CONTAINER_INNER_DEPTH, resolve_path
-from metabrowser.source import get_source_session
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from starlette.requests import Request
 
 _PATCH_EXTS = (".patch", ".diff")
@@ -76,78 +70,33 @@ def _error(kind: str, message: str, status: int, *, path: str) -> JSONResponse:
     return JSONResponse({"error": kind, "message": message, "path": path}, status_code=status)
 
 
-def _resolve_patch(subpath: str) -> tuple[Path, str] | None:
-    """Resolve a real or virtual path to (patch file, inner path).
-
-    Mirrors the server's nearest-file-ancestor rule, scoped to this
-    plugin's extensions: the walk is bounded, every prefix passes the
-    same served-root gate, and a real directory ancestor means the
-    request was an ordinary missing file, not a container child.
-    """
-    direct = resolve_path(subpath)
-    if direct is not None and direct.is_file():
-        return direct, ""
-    parts = subpath.split("/")
-    if len(parts) < 2:
-        return None
-    for cut in range(len(parts) - 1, 0, -1):
-        prefix = "/".join(parts[:cut])
-        target = resolve_path(prefix)
-        if target is None:
-            continue
-        if target.is_dir():
-            return None
-        if not target.is_file():
-            # Nothing at this depth; keep walking toward the root.
-            continue
-        if not prefix.lower().endswith(_PATCH_EXTS):
-            return None
-        if len(parts) - cut > MAX_CONTAINER_INNER_DEPTH:
-            # The bound is on the inner path, measured from the claiming
-            # file — a deeply nested container keeps its full reach.
-            return None
-        inner = native_inventory_path("/".join(parts[cut:]))
-        return (target, inner) if inner is not None else None
-    return None
-
-
 def _parse_bytes(data: bytes) -> ChangeSetDocument:
     return parse_unified_patch(data[: MAX_PATCH_BYTES + 1])
 
 
-def _filesystem_patch_document(
-    subpath: str, error_kind: str
+async def _patch_document(
+    subpath: str, *, error_kind: str
 ) -> tuple[ChangeSetDocument, str] | JSONResponse:
-    """Resolve a real or virtual patch path and parse it. Thread-pool only.
+    """Resolve a real or virtual patch identity and parse it.
 
-    The ancestor walk stats one entry per path level before the parser reads a
-    byte, so resolution belongs off the event loop for the same reason the
-    parse does.
+    The content reader performs the nearest-container walk, scoped to this
+    plugin's own extensions so one plugin cannot open another's files, and the
+    bounded read; the parse runs in the thread pool. One byte past the cap
+    keeps the parser's own truncation reporting authoritative, and bounding the
+    read keeps a multi-GB file from ever landing in memory on the request path.
     """
 
-    resolved = _resolve_patch(subpath)
-    if resolved is None:
+    try:
+        found = await resolve_content_container(subpath, suffixes=_PATCH_EXTS)
+        if found is None:
+            return _error(error_kind, "This file is not available.", 404, path=subpath)
+        ref, inner = found
+        window = await read_content_window(ref, max_bytes=MAX_PATCH_BYTES + 1)
+    except ContentReadError:
+        # Every way a patch fails to arrive is the same thing to this view:
+        # there is no change set to render at that address.
         return _error(error_kind, "This file is not available.", 404, path=subpath)
-    target, inner = resolved
-    return _parse(target), inner
-
-
-def _filesystem_patch_children(subpath: str) -> ChangeSetDocument | JSONResponse:
-    """Parse one real patch file for its child rows. Thread-pool only."""
-
-    target = resolve_path(subpath)
-    if target is None or not target.is_file() or not subpath.lower().endswith(_PATCH_EXTS):
-        return _error("diff_children", "This file is not available.", 404, path=subpath)
-    return _parse(target)
-
-
-def _parse(target: Path) -> ChangeSetDocument:
-    # One byte past the cap keeps the parser's own truncation reporting
-    # authoritative; bounding the read itself keeps a multi-GB file from
-    # ever landing in memory on the request path.
-    with target.open("rb") as handle:
-        data = handle.read(MAX_PATCH_BYTES + 1)
-    return _parse_bytes(data)
+    return await asyncio.to_thread(_parse_bytes, window.data), inner
 
 
 def _change_display_path(change: FileChange) -> str:
@@ -188,43 +137,13 @@ def _narrow_to_path(document: ChangeSetDocument, inner: str) -> ChangeSetDocumen
     return document.model_copy(update={"manifest": manifest, "patches": patches})
 
 
-async def _git_patch_bytes(subpath: str, *, error_kind: str) -> tuple[bytes, str] | JSONResponse:
-    """Read a patch blob at a GitPath prefix. Inner is the virtual child."""
-
-    try:
-        path, inner = split_git_container_wire(subpath)
-    except GitPathError:
-        return _error(error_kind, "This file is not available.", 404, path=subpath)
-    if inner and inner.count("/") + 1 > MAX_CONTAINER_INNER_DEPTH:
-        return _error(error_kind, "This file is not available.", 404, path=subpath)
-    subject = get_source_session().subject
-    if not isinstance(subject, GitRevisionSubject):
-        return _error(error_kind, "This file is not available.", 404, path=subpath)
-    try:
-        entry = await resolve_git_blob_entry(subject.tree_source, path)
-        if entry is None or not entry.path.display().lower().endswith(_PATCH_EXTS):
-            return _error(error_kind, "This file is not available.", 404, path=subpath)
-        data = await subject.tree_source.read_blob(entry.path)
-    except (GitObjectUnavailableError, GitBlobTooLargeError):
-        return _error(error_kind, "This file is not available.", 404, path=subpath)
-    return data, inner
-
-
 async def document_handler(request: Request) -> JSONResponse:
     """One patch file — or one change inside it — as a ChangeSetDocument."""
     subpath = request.query_params.get("path", "")
-    subject = get_source_session().subject
-    if isinstance(subject, GitRevisionSubject):
-        loaded = await _git_patch_bytes(subpath, error_kind="diff_document")
-        if isinstance(loaded, JSONResponse):
-            return loaded
-        data, inner = loaded
-        document = await asyncio.to_thread(_parse_bytes, data)
-    else:
-        opened = await asyncio.to_thread(_filesystem_patch_document, subpath, "diff_document")
-        if isinstance(opened, JSONResponse):
-            return opened
-        document, inner = opened
+    opened = await _patch_document(subpath, error_kind="diff_document")
+    if isinstance(opened, JSONResponse):
+        return opened
+    document, inner = opened
     if inner:
         narrowed = _narrow_to_path(document, inner)
         if narrowed is None:
@@ -358,20 +277,14 @@ def _document_from(
 async def children_handler(request: Request) -> JSONResponse:
     """The change entries of one patch file, as nav-tree child rows."""
     subpath = request.query_params.get("path", "")
-    subject = get_source_session().subject
-    if isinstance(subject, GitRevisionSubject):
-        loaded = await _git_patch_bytes(subpath, error_kind="diff_children")
-        if isinstance(loaded, JSONResponse):
-            return loaded
-        data, inner = loaded
-        if inner:
-            return _error("diff_children", "This file is not available.", 404, path=subpath)
-        document = await asyncio.to_thread(_parse_bytes, data)
-    else:
-        opened = await asyncio.to_thread(_filesystem_patch_children, subpath)
-        if isinstance(opened, JSONResponse):
-            return opened
-        document = opened
+    opened = await _patch_document(subpath, error_kind="diff_children")
+    if isinstance(opened, JSONResponse):
+        return opened
+    document, inner = opened
+    if inner:
+        # A child listing is asked of the container itself, never of one of
+        # its virtual children.
+        return _error("diff_children", "This file is not available.", 404, path=subpath)
     # One row per path, not per change: a patch file spells a type change
     # as delete-plus-add at the same path, and two rows sharing a virtual
     # path would be two rows that open the same thing.

@@ -10,15 +10,21 @@ pin in-process. Serving acquired Git and opening https/ssh stay later.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import asyncio
+from collections.abc import Generator
+from contextlib import contextmanager
+from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
-from typing import Protocol
+from typing import IO, Protocol, runtime_checkable
+
+from strif import file_mtime_hash
 
 import metabrowser.paths_safe as paths_safe
-from metabrowser.gz_io import ArtifactPath
-from metabrowser.inventory_engine.contract import native_inventory_path
-from metabrowser.paths_safe import _is_within, register_root_callback
+from metabrowser.content_errors import ContentReadError, ContentUnavailableError
+from metabrowser.gz_io import ArtifactCompressionError, ArtifactPath
+from metabrowser.inventory_engine.contract import canonical_inventory_path, native_inventory_path
+from metabrowser.paths_safe import _is_within, _relativize, register_root_callback
 
 
 class RepositorySubjectKind(StrEnum):
@@ -73,8 +79,11 @@ FILESYSTEM_CAPABILITIES = SourceCapabilities(
 )
 
 
-class UnsupportedSourceCapabilityError(Exception):
+class UnsupportedSourceCapabilityError(ContentReadError):
     """The active subject does not implement the named capability."""
+
+    code = "unsupported_for_subject"
+    http_status = 409
 
     def __init__(self, capability: str) -> None:
         self.capability = capability
@@ -122,9 +131,99 @@ class ContentHandle:
         )
 
 
+# The deepest inner path a container may expose beneath its own file, counted
+# from the container, not from the served root. One value for the server's
+# ancestor walk, the pin's wire split, and every plugin's container hook, so the
+# three implementations of this security-relevant rule cannot drift apart.
+MAX_CONTAINER_INNER_DEPTH = 16
+
+
+@dataclass(frozen=True, slots=True)
+class ContentStat:
+    """The validated logical size of one content object.
+
+    Logical: the decompressed length of a compressed artifact, the stored
+    length of a Git blob. Establishing it can cost a full decode and can fail,
+    which is why it is a call of its own rather than a field on the reference.
+
+    A caller that only needs to know whether content fits a bound should ask
+    for that many bytes instead. A compressed artifact declares its length in a
+    trailer nothing verifies until the stream is decoded, so a bounded read is
+    the answer that cannot be forged.
+    """
+
+    size: int
+
+
+@dataclass(frozen=True, slots=True)
+class ContentWindow:
+    """Exactly the bytes one bounded read returned.
+
+    ``has_more`` says whether content continues past ``offset + len(data)``.
+    It is answered by the read itself, so a caller never needs a second open
+    to find out whether it has reached the end.
+    """
+
+    data: bytes
+    offset: int
+    has_more: bool
+
+
+@runtime_checkable
+class ContentReader(Protocol):
+    """The bounded port one resolved content object hands out.
+
+    Both methods run their blocking work off the event loop: an attached
+    filesystem in the thread pool, a pin through its pooled ``cat-file``
+    actors, which are already async.
+    """
+
+    async def stat(self) -> ContentStat: ...
+
+    async def read_window(self, *, offset: int, max_bytes: int) -> ContentWindow: ...
+
+
+@dataclass(frozen=True, slots=True)
+class ContentRef:
+    """An opaque reference to one readable content object.
+
+    It carries the three facts resolution already established and a hook needs
+    before it reads anything: the identity to echo back to the client, the
+    logical extension to dispatch on, and a fingerprint that changes exactly
+    when the bytes can have, so a hook keys its own cache on it without knowing
+    whether that is an mtime hash or a blob object id. It is not a path, a
+    cache location, or a handle on the source.
+    """
+
+    identity: str
+    logical_ext: str
+    fingerprint: str
+    reader: ContentReader = field(repr=False, compare=False)
+
+
 class ContentSource(Protocol):
     def resolve(self, identity: str) -> ContentHandle | None:
         """Resolve a canonical inventory identity, or None when it escapes."""
+
+    async def open_ref(self, identity: str) -> ContentRef | None:
+        """Resolve an identity to readable content, or None when it is not.
+
+        None covers every way an identity names nothing readable: traversal out
+        of the served root, a missing name, a directory or tree, an unusable
+        symlink. A failure while reading to resolve raises a
+        :class:`~metabrowser.content_errors.ContentReadError` instead.
+        """
+
+    async def open_container(
+        self, identity: str, *, suffixes: tuple[str, ...]
+    ) -> tuple[ContentRef, str] | None:
+        """Split ``<content>/<inner>`` into readable content and its inner path.
+
+        ``suffixes`` are the logical extensions the calling container claims;
+        anything else resolves to None so one plugin cannot open another's
+        files. The inner path is empty when the identity names the content
+        itself.
+        """
 
 
 class RepositorySubject(Protocol):
@@ -144,6 +243,81 @@ class RepositorySubject(Protocol):
     def filesystem_root(self) -> Path | None: ...
 
 
+# Copying a decompressed stream forward to reach an offset. A compressed
+# artifact's stream is not seekable, so reaching offset N costs decompressing N
+# bytes; see the binary plugin's sidekick for the measurements that make that
+# acceptable at these bounds.
+_SKIP_CHUNK_BYTES = 64 * 1024
+
+
+def _skip_forward(stream: IO[bytes], offset: int) -> None:
+    """Advance a non-seekable decompressed stream to ``offset``."""
+
+    remaining = offset
+    while remaining > 0:
+        skipped = stream.read(min(_SKIP_CHUNK_BYTES, remaining))
+        if not skipped:
+            return
+        remaining -= len(skipped)
+
+
+def read_artifact_window(artifact: ArtifactPath, offset: int, max_bytes: int) -> ContentWindow:
+    """Read ``max_bytes`` logical bytes at ``offset``, plus whether more remain.
+
+    Reads one byte past the window to answer "is there more?" without a second
+    open, and clips it back off before returning. The output bound is the
+    window itself, so a compressed artifact cannot expand past what the caller
+    asked for. Blocking: callers reach it through the thread pool.
+    """
+
+    with artifact.open_binary(max_output_bytes=offset + max_bytes + 1) as stream:
+        if artifact.is_compressed:
+            _skip_forward(stream, offset)
+        else:
+            stream.seek(offset)
+        raw = stream.read(max_bytes + 1)
+    return ContentWindow(data=raw[:max_bytes], offset=offset, has_more=len(raw) > max_bytes)
+
+
+@dataclass(frozen=True, slots=True)
+class _FilesystemContentReader:
+    """Bounded reads of one file under the served root, off the event loop."""
+
+    artifact: ArtifactPath
+
+    async def stat(self) -> ContentStat:
+        return await asyncio.to_thread(self._stat)
+
+    async def read_window(self, *, offset: int, max_bytes: int) -> ContentWindow:
+        return await asyncio.to_thread(self._read_window, offset, max_bytes)
+
+    def _stat(self) -> ContentStat:
+        with _filesystem_failures(self.artifact):
+            return ContentStat(size=self.artifact.logical_size)
+
+    def _read_window(self, offset: int, max_bytes: int) -> ContentWindow:
+        with _filesystem_failures(self.artifact):
+            return read_artifact_window(self.artifact, offset, max_bytes)
+
+
+@contextmanager
+def _filesystem_failures(artifact: ArtifactPath) -> Generator[None]:
+    """Map a filesystem read failure into the shared content vocabulary.
+
+    A compression failure is already in it and keeps its own code. Everything
+    else an ``OSError`` reports here -- the file was replaced, unlinked, or is
+    no longer readable -- is content that resolved and then went away, which is
+    what a pinned store reports as a missing object.
+    """
+
+    try:
+        yield
+    except ArtifactCompressionError:
+        raise
+    except OSError as exc:
+        raise ContentUnavailableError(artifact.disk_path.name) from exc
+
+
 class FilesystemContentSource:
     """Identity and document resolution against one exact filesystem root."""
 
@@ -158,6 +332,71 @@ class FilesystemContentSource:
 
     def resolve_document(self, requested: str) -> ContentHandle | None:
         return self._resolve_native(requested, requested)
+
+    async def open_ref(self, identity: str) -> ContentRef | None:
+        return await asyncio.to_thread(self._open_ref, identity)
+
+    async def open_container(
+        self, identity: str, *, suffixes: tuple[str, ...]
+    ) -> tuple[ContentRef, str] | None:
+        return await asyncio.to_thread(self._open_container, identity, suffixes)
+
+    def _open_ref(self, identity: str) -> ContentRef | None:
+        handle = self.resolve(identity)
+        if handle is None or handle.path is None or not handle.is_file:
+            return None
+        artifact = ArtifactPath(handle.path)
+        try:
+            fingerprint = file_mtime_hash(handle.path)
+        except OSError:
+            # Unlinked or replaced between the resolve and the hash. There is
+            # nothing readable at this identity after all.
+            return None
+        return ContentRef(
+            identity=_identity_for(handle.path) or identity,
+            logical_ext=artifact.logical_ext,
+            fingerprint=fingerprint,
+            reader=_FilesystemContentReader(artifact),
+        )
+
+    def _open_container(
+        self, identity: str, suffixes: tuple[str, ...]
+    ) -> tuple[ContentRef, str] | None:
+        """Nearest-file-ancestor resolution, scoped to the caller's suffixes.
+
+        The walk is bounded, every prefix passes the same served-root gate, and
+        a real directory ancestor means the request was an ordinary missing
+        file rather than a container child.
+        """
+
+        direct = self._open_ref(identity)
+        if direct is not None:
+            return (direct, "") if direct.logical_ext in suffixes else None
+        parts = identity.split("/")
+        if len(parts) < 2:
+            return None
+        for cut in range(len(parts) - 1, 0, -1):
+            prefix = "/".join(parts[:cut])
+            handle = self.resolve(prefix)
+            if handle is None:
+                continue
+            if handle.is_dir:
+                return None
+            if not handle.is_file:
+                # Nothing at this depth; keep walking toward the root.
+                continue
+            if len(parts) - cut > MAX_CONTAINER_INNER_DEPTH:
+                # The bound is on the inner path, measured from the claiming
+                # file -- a deeply nested container keeps its full reach.
+                return None
+            inner = native_inventory_path("/".join(parts[cut:]))
+            if inner is None:
+                return None
+            ref = self._open_ref(prefix)
+            if ref is None or ref.logical_ext not in suffixes:
+                return None
+            return ref, inner
+        return None
 
     def _resolve_native(self, identity: str, native: str) -> ContentHandle | None:
         if not native:
@@ -320,18 +559,82 @@ def source_capabilities() -> SourceCapabilities:
     return get_source_session().capabilities
 
 
-def content_source() -> ContentSource:
-    return get_source_session().content
-
-
 def open_content(identity: str) -> ArtifactPath:
-    """Gzip-aware reader for an identity on the active subject."""
+    """Gzip-aware reader for an identity on the active subject.
+
+    Filesystem-only, because an :class:`ArtifactPath` is a path. A hook that
+    only needs bytes uses :func:`resolve_content` and
+    :func:`read_content_window`, which answer on every source kind.
+    """
 
     require_filesystem_hooks()
     handle = get_source_session().content.resolve(identity)
     if handle is None or handle.path is None:
         raise FileNotFoundError(identity)
     return ArtifactPath(handle.path)
+
+
+def _identity_for(target: Path) -> str | None:
+    relative = _relativize(str(target))
+    return canonical_inventory_path(relative) if relative else relative
+
+
+def _readable_content_source() -> ContentSource:
+    """The active source, or a typed refusal when it cannot read content."""
+
+    source = get_source_session().content
+    if not hasattr(source, "open_ref"):
+        raise UnsupportedSourceCapabilityError("content")
+    return source
+
+
+async def resolve_content(identity: str) -> ContentRef | None:
+    """Resolve a request identity to readable content on the active subject.
+
+    The identity is whatever the client was given: an inventory path on an
+    attached folder, a ``GitPath`` wire on a pinned revision. A hook passes it
+    through unchanged and never builds one itself.
+
+    None means the identity names nothing readable here. A failure part-way
+    through -- an unreadable object, a deadline -- raises a
+    :class:`~metabrowser.content_errors.ContentReadError`.
+    """
+
+    return await _readable_content_source().open_ref(identity)
+
+
+async def resolve_content_container(
+    identity: str, *, suffixes: tuple[str, ...]
+) -> tuple[ContentRef, str] | None:
+    """Resolve ``<content>/<inner>`` for a container kind. See `ContentSource`."""
+
+    return await _readable_content_source().open_container(identity, suffixes=suffixes)
+
+
+async def stat_content(ref: ContentRef) -> ContentStat:
+    """Logical size, change fingerprint, and logical extension for *ref*."""
+
+    return await ref.reader.stat()
+
+
+async def read_content_window(ref: ContentRef, *, offset: int = 0, max_bytes: int) -> ContentWindow:
+    """Read at most ``max_bytes`` bytes of *ref* starting at ``offset``.
+
+    ``max_bytes`` is required: there is no unbounded read, and the bound is on
+    bytes, not on a decoded string, so a caller that decodes afterwards still
+    knows what it asked the server to hold. Both arguments are byte counts and
+    must not be negative.
+
+    A pinned store hands back whole objects, so a window there is sliced from a
+    read the pin's own blob ceiling already bounds; ``max_bytes`` still governs
+    what the hook receives and returns.
+    """
+
+    if offset < 0:
+        raise ValueError("content offset cannot be negative")
+    if max_bytes < 0:
+        raise ValueError("content read bound cannot be negative")
+    return await ref.reader.read_window(offset=offset, max_bytes=max_bytes)
 
 
 def _sync_filesystem_subject() -> None:
@@ -343,9 +646,16 @@ register_root_callback(_sync_filesystem_subject)
 
 __all__ = [
     "FILESYSTEM_CAPABILITIES",
+    "MAX_CONTAINER_INNER_DEPTH",
     "AttachedFilesystemSubject",
     "ContentHandle",
+    "ContentReadError",
+    "ContentReader",
+    "ContentRef",
     "ContentSource",
+    "ContentStat",
+    "ContentUnavailableError",
+    "ContentWindow",
     "FilesystemContentSource",
     "RepositorySubject",
     "RepositorySubjectKind",
@@ -354,15 +664,19 @@ __all__ = [
     "SourceSession",
     "UnsupportedSourceCapabilityError",
     "attach_subject",
-    "content_source",
     "get_source_session",
     "open_content",
+    "read_artifact_window",
+    "read_content_window",
     "require_filesystem_hooks",
     "require_filter_capabilities",
     "require_source_capability",
     "reset_source_session",
+    "resolve_content",
+    "resolve_content_container",
     "resolve_session_identity",
     "session_filesystem_root",
     "source_capabilities",
+    "stat_content",
     "unsupported_source_payload",
 ]

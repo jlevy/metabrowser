@@ -1829,9 +1829,12 @@ boundary. Independent review and publication remain `mb-tsdc`.
 - [x] Generalize inventory coordination, file/raw/tree/container delivery,
   classification, KPress, events, route caches, and plugin dispatch without changing
   filesystem behavior.
-- [x] Add bounded content-reader plugin calls.
-  Keep `resolve_path` and `served_root` filesystem-only and capability-gate legacy hooks
-  on a non-filesystem subject.
+- [x] Add bounded content-reader plugin calls: `resolve_content`,
+  `resolve_content_container`, `stat_content`, and `read_content_window` over an opaque
+  `ContentRef`, answering an attached folder and a pinned revision alike, with an
+  explicit byte maximum on every read and one catchable failure family.
+  Keep `resolve_path`, `served_root`, and `open_content` filesystem-only and
+  capability-gate legacy hooks on a non-filesystem subject.
 - [x] Return typed unsupported capability results for recency, ignore state, watchers,
   activity, and mutation rather than fabricating values.
 - [ ] Update built-in binary, structured, agent-log, diff, image, and Markdown hooks,

@@ -37,9 +37,24 @@ from metabrowser.logutil.parsing import LogEvent, create_parser, detect_adapter
 # entries × MB-each) because chart payloads are KB-each.
 _CHARTS_CACHE_MAX = 128
 
-_CHARTS_CACHE: LRUCache[tuple[str, str, int, int], dict[str, Any]] = LRUCache(
-    maxsize=_CHARTS_CACHE_MAX
-)
+_CHARTS_CACHE: LRUCache[tuple[object, ...], dict[str, Any]] = LRUCache(maxsize=_CHARTS_CACHE_MAX)
+
+
+def lookup_agent_charts(identity: str, fingerprint: str) -> dict[str, Any] | None:
+    """A memoized payload for content that has not changed since it was stored.
+
+    Source-agnostic: *fingerprint* is whatever the content reader reports -- an
+    mtime hash under an attached folder, a blob object id on a pinned revision
+    -- and it changes exactly when the bytes can have. This is the same
+    memoization the module header measures, keyed so a caller that has not read
+    the content yet can consult it first.
+    """
+
+    return _CHARTS_CACHE.get(("agent-content", identity, fingerprint))
+
+
+def remember_agent_charts(identity: str, fingerprint: str, payload: dict[str, Any]) -> None:
+    _CHARTS_CACHE[("agent-content", identity, fingerprint)] = payload
 
 
 def _cache_key(kind: str, artifact: ArtifactPath) -> tuple[str, str, int, int] | None:
