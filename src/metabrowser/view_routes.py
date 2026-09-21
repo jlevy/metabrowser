@@ -72,14 +72,12 @@ def format_commit_href(revision: str, inner_path: str = "") -> str:
     )
 
 
-def decode_safe_view_path(raw_path: bytes) -> str | None:
-    """Decode one raw ``/view/`` path and require served-root containment.
+def decode_view_logical_path(raw_path: bytes) -> str | None:
+    """Decode one raw ``/view/`` path without filesystem containment.
 
-    ``None`` covers malformed encodings, non-canonical segments, bytes the platform
-    cannot name, and paths whose resolution (including symlinks) escapes the configured
-    served root. POSIX undecodable bytes and Windows unpaired UTF-16 units retain their
-    native spelling so the route codec is total over the inventory contract. Missing
-    paths beneath the root are safe and remain valid shell destinations.
+    The result is the slash-joined logical identity. A filesystem session still
+    has to pass :func:`decode_safe_view_path`. A Git revision session uses
+    that identity as a ``GitPath`` wire, optionally plus a container inner.
     """
 
     if not raw_path.startswith(_VIEW_ROUTE_PREFIX_BYTES):
@@ -97,8 +95,22 @@ def decode_safe_view_path(raw_path: bytes) -> str | None:
         _validate_logical_segments(decoded_segments)
     except (UnicodeDecodeError, ValueError):
         return None
+    return "/".join(decoded_segments)
 
-    logical_path = "/".join(decoded_segments)
+
+def decode_safe_view_path(raw_path: bytes) -> str | None:
+    """Decode one raw ``/view/`` path and require served-root containment.
+
+    ``None`` covers malformed encodings, non-canonical segments, bytes the platform
+    cannot name, and paths whose resolution (including symlinks) escapes the configured
+    served root. POSIX undecodable bytes and Windows unpaired UTF-16 units retain their
+    native spelling so the route codec is total over the inventory contract. Missing
+    paths beneath the root are safe and remain valid shell destinations.
+    """
+
+    logical_path = decode_view_logical_path(raw_path)
+    if logical_path is None:
+        return None
     return logical_path if _safe_path(logical_path) is not None else None
 
 

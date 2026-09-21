@@ -181,7 +181,7 @@ type MetabrowserPreviewPaneLifecycle = Readonly<{
 }>;
 
 type MetabrowserNavigationRouteRuntime = Readonly<{
-  displayPath(path: string): string;
+  displayPath(path: string, sourceKind?: "filesystem" | "git_revision"): string;
   attachController(controller: MetabrowserNavigationController): () => void;
   commitFreshFileResponse(options: {
     cacheFile(data: Record<string, unknown>): void;
@@ -961,6 +961,7 @@ type MetabrowserSdk = {
   langForPath(pathOrName: string, ext?: string): string;
   loadKpressAssets(manifest: KpressAssetManifest): Promise<void>;
   navigation: MetabrowserNavigationApi;
+  sourceKind(): "filesystem" | "git_revision";
   repository: MetabrowserRepositoryContext | null;
   perf: MetabrowserPerf;
   registerView(kind: string, view: string, spec: MetabrowserViewSpec): void;
@@ -2323,6 +2324,7 @@ declare global {
       show(html: string, anchor: Element | null): void;
     };
     METABROWSER_REPOSITORY_CONTEXT?: MetabrowserRepositoryContext | null;
+    METABROWSER_SOURCE_KIND?: "filesystem" | "git_revision";
     /** Container kinds by extension; see arch-nav-containers.md. */
     METABROWSER_CONTAINER_EXTS?: Record<string, { kind: string; plugin: string; children: string }>;
     METABROWSER_SETTINGS?: {

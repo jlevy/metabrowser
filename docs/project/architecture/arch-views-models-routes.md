@@ -22,8 +22,12 @@ selected     can do              data                 is drawn
   sub-routes through the same route map.
   See [Browser URL Grammar](../../architecture.md#browser-url-grammar).
 - **Resource kind** is the semantic classification a plugin claims.
-  Current `[[kind]]` blocks classify filesystem resources; planned `ResourceKindSpec`
-  declarations cover route-backed resources without fabricating a file matcher.
+  Filesystem `[[kind]]` blocks use `FileContext` (including content predicates).
+  Git blobs use extension, basename, sniffed adapter, and bounded JSON/YAML/frontmatter
+  mappings parsed from blob bytes.
+  `path_glob` stays filesystem-only.
+  Planned `ResourceKindSpec` declarations cover route-backed resources without
+  fabricating a file matcher.
   One kind, many views.
 - **Contract/model** is the validated data a view receives.
   Simple kinds take the `/api/file` envelope; richer kinds have their own documented
@@ -139,8 +143,8 @@ the sources that produce them.
 
 | Route | Selects | Status |
 | --- | --- | --- |
-| `/view/<path>` | Content in the active source session; `/view/` is the root | Filesystem-backed serving is implemented; immutable Git-tree subjects and `GitPath` identities are planned |
-| `/view/<container>/<inner>` | One entry inside a container file | Implemented |
+| `/view/<path>` | Content in the active source session; `/view/` is the root | Implemented. A filesystem session uses a served-root-relative path. A `GitRevisionSubject` uses a `GitPath` wire identity and refuses a filesystem spelling |
+| `/view/<container>/<inner>` | One entry inside a container file | Implemented. On a Git pin the container address is a `GitPath` prefix and the inner is a host path |
 | `/commit/<rev>` | A commit’s change set against its first parent | Implemented |
 | `/commit/<rev>/<inner>` | One file’s diff inside that change set | Route parses; the panel restores the commit, not yet the file |
 | `/compare/<base>..<head>[/<inner>]` | An explicit comparison (`...` for merge base) | Specified, not built |
@@ -155,22 +159,28 @@ reservation and its invariants, is in
 
 | Route | Serves |
 | --- | --- |
-| `/api/file` | The file or folder envelope: kind, views, capability envelope, and bounded content window |
-| `/api/tree` | Navigation subtrees. `types` and `min_size` work for every source that supplies them; `recency` and `include_ignored` require those declared source capabilities and otherwise return `unsupported_for_subject` |
-| `/api/rollup` | Bounded directory rollups over the facts the active source truthfully supplies; a requested unavailable dimension returns `unsupported_for_subject` |
+| `/api/file` | The file or folder envelope: kind, views, capability envelope, and bounded content window. A `GitRevisionSubject` uses `GitPath` wire identities and Git object facts; it does not invent mtime or ignore state. A Git tree envelope is SPA `folder` chrome (`git_kind` stays `tree`) with recursive blob `total_files` / `total_size` and no mtime. A complete blob-size tally mounts Overview and treemap; a direct-child README blob sets `readme_path` to its GitPath wire. SPA path chrome and copy-path decode GitPath wires to display names (C0 and invalid UTF-8 become U+FFFD); navigation identities stay wires. Omitted mtime leaves tally chrome empty rather than pending. File Overview mounts when `dir` carries inventory `mtime` or Git `total_size`. Blob kinds use extension, basename, sniffed adapter, and bounded JSON/YAML/frontmatter mappings. Git blob envelopes include `ext` from the same bounded compound-tail helper as filesystem inventory so plugin-sdk `langForPath` and `ctx.ext` do not fall back to a GitPath wire; they omit compressed `logical_ext` because blobs are stored bytes with no gzip smudge. Git markdown envelopes include parsed YAML `frontmatter` and `frontmatter_error`; KPress on a pin uses that parse rather than an empty mapping. Git text envelopes use the same first-window and highlight bound as filesystem listings (`bytes_read`, `content_preview_limit`, `content_max_preview_limit`, `highlight_disabled`). `/api/file`, `/raw`, KPress, and plugin sidekicks follow in-tree relative symlink blobs; the requested GitPath stays the route identity, and kind checks use the leaf path. A Git image blob is SPA `image` chrome; `/raw` serves the stored bytes. A Git `.jsonl` blob is a parsed JSONL envelope. A patch-file container inner is a `GitPath` `g1-` prefix plus a host inner path. An LFS pointer is stored pointer bytes; a missing blob is `object_unavailable`. Markdown and wiki links on that pin resolve to `GitPath` wires |
+| `/api/tree` | Navigation subtrees. `types` and `min_size` work for every source that supplies them. Git blob listings carry `cat-file` info sizes so `min_size` can filter; trees and gitlinks stay unsized as blobs. `recency` requires that declared source capability and otherwise returns `unsupported_for_subject`. The SPA hides Modified within on a Git pin because there is no honest mtime. `include_ignored=0` on a Git pin is a no-op because ignore is absent (unignored equals total), not `unsupported_for_subject`. On a Git pin the payload keeps Git-native `entries` and also projects a SPA `tree` array (`dir`/`file`/`symlink`, `GitPath` wires, blob sizes, recursive dir `total_files`/`total_size`, no mtime/ignore); gitlinks are files, not directories. `depth` nests children the way filesystem listings do (default 2) and emits a lazy sentinel past the cap; `depth=0` returns chrome without a listing. File nodes include `ext` from the same bounded compound-tail helper as filesystem inventory; `logical_ext` is only the inner extension of a compressed name. Whole-tree `extensions`, `canonical_extensions`, `type_families`, and `type_presets` rows, `tally_cache_status`, and `summary` (`files`, `size`, ignored 0/0) come from the recursive blob index; ignored counts are 0 because ignore is absent. Incomplete blob sizes omit `summary` rather than inventing 0. `types` and `min_size` keep ancestor trees of matching blobs and emit subtree `filtered` totals; empty filter dirs are omitted. Git `logical_ext` and type matching use the same bounded compound-tail helper as filesystem inventory. Omitted mtime leaves tally chrome empty rather than pending |
+| `/api/rollup` | Bounded directory rollups over the facts the active source truthfully supplies; a requested unavailable dimension returns `unsupported_for_subject`. A `GitRevisionSubject` answers from recursive blob names and sizes, omits mtime, and treats ignore as absent so unignored equals total. A missing blob size is `object_unavailable` rather than a partial sum |
+| `/api/catalog` | One-shot Quick File universe. A `GitRevisionSubject` lists recursive blob names (`p` GitPath wire, `e` logical compound-tail extension, `n` display basename) and is already complete; a truncated index is an empty truncated snapshot |
+| `/api/index/progress`, `/api/index/meta`, `/api/capabilities` | Index status. A `GitRevisionSubject` answers from recursive blob names, omits mtime and watcher facts, and reports `events.stream` off. The JSONL stream still refuses a Git pin |
 | `/api/recent` | Flat newest-first matching leaves for sources with recency; unavailable for immutable Git trees rather than populated with fake mtimes |
-| `/api/activity`, `/api/stream` | Live inventory and activity events for sources with watcher/activity capabilities; unavailable for immutable Git trees |
+| `/api/activity`, `/api/stream` | Live inventory and JSONL tail for sources with a filesystem root; unavailable for immutable Git trees rather than the lifespan folder |
 | `/api/git/repo`, `/api/git/refs`, `/api/git/summary`, `/api/git/log`, `/api/git/commit/<rev>` | Read-only Git history for the Git panel; log pages use bounded, replayable server sessions, opaque page cursors, and versioned graph-boundary checkpoints. The boundary and its rules are in [Git and comparison sources](arch-git-and-comparison-sources.md) |
 | `/api/cache/layout`, `/api/cache/sources`, `/api/cache/source/<slug>`, `/api/cache/stores` | Read-only logical state of the repository cache: layout and config formats, reclamation outcomes, source identity with alias generation and publication, and store records with the aliases that name them. They resolve `METABROWSER_HOME` per request without creating it, read without locks and without repairing a shared entry, page in key order, and never report a cache path, pack file, or Git internal. Wire shapes are in `cache/wire.py` |
-| `/api/kpress/render`, `/api/kpress/export` | Document rendering and export |
-| `/api/plugin/<plugin>/<route>` | Plugin data hooks (`[[data_hook]]`) |
+| `/api/kpress/render`, `/api/kpress/export` | Document rendering and export. On a `GitRevisionSubject`, render reads a `GitPath` blob, uses the object id as the cache key, and passes the GitPath wire as `source_path`; export stays mutation-gated and unavailable |
+| `/api/plugin/<plugin>/<route>` | Plugin data hooks (`[[data_hook]]`). On a `GitRevisionSubject`, diff document/children, binary chunk, structured parsed, and agent-log charts honor `GitPath` and follow in-tree relative symlink blobs using the leaf kind |
 | A plugin-declared mounted prefix (proposed) | Domain resource routes with path parameters and honest HTTP responses; `mb-xzj3` adds this for hosted review |
-| `/raw`, `/raw/<path>` | Bounded raw bytes through the active source’s content reader, and the document the sandboxed html Preview frames; oversized content is refused before an unbounded object read. Both shapes share one resolver and send the same sandbox headers; the path form exists so relative references inside a browsed document resolve |
+| `/raw`, `/raw/<path>` | Bounded raw bytes through the active source’s content reader, and the document the sandboxed html Preview frames; oversized content is refused before an unbounded object read. Both shapes share one resolver and send the same sandbox headers; the path form exists so relative references inside a browsed document resolve. A Git subject reads blobs by `GitPath` and follows in-tree relative symlink blobs. Image blobs use an image media type from the leaf display name. LFS pointers are stored pointer bytes; a missing blob, including a promisor miss, is 404 |
 | `/kpress-static/<path>`, `/static/<path>`, `/plugin-static/<plugin>/<path>` | Shell, renderer, and plugin assets |
 | `/_debug/tasks`, `/_debug/inventory` | Opt-in local task and inventory-provider diagnostics when `METABROWSER_DEBUG=1` |
 
 Plugin hooks currently registered: `diff/document`, `diff/children`, `diff/comparison`,
-`folder/*`, `binary/chunk`, `agent-log/charts`, `structured/parsed`.
+`folder/*`, `binary/chunk`, `agent-log/charts`, `structured/parsed`. On a
+`GitRevisionSubject`, `diff/comparison` honors the pin through `GitLocation` and
+`GitDiffSource.content` reads blobs through the shared cat-file pool; patch
+`document`/`children`, `binary/chunk`, `structured/parsed`, and `agent-log/charts` honor
+`GitPath` and follow in-tree relative symlink blobs.
 
 The hosted-review slice registers these exact proposed resource routes with the browser
 address in the same implementation changes:
@@ -195,7 +205,7 @@ plugin discovery or static asset loading.
 
 | Declaration or SDK call | Owns | Arbitration and lifecycle | Bead |
 | --- | --- | --- | --- |
-| `SourceSession` / `SourceCapabilities`; `resolve_content`, `stat_content`, `read_content_window` | One active subject generation and opaque bounded content access | Session replacement joins the old generation; legacy `Path` helpers and hooks run only with `filesystem_path`; absent semantics return typed unsupported states | `mb-3bna`, `mb-tsdc` |
+| `SourceSession` / `SourceCapabilities`; `resolve_content`, `resolve_content_container`, `stat_content`, `read_content_window` | One active subject generation and opaque bounded content access | Every read takes an explicit byte maximum and there is no unbounded variant; failures share one catchable family with a `code` and the `http_status` the pinned routes answer with. Session replacement joins the old generation; legacy `Path` helpers and hooks run only with `filesystem_path`; absent semantics return typed unsupported states. `InventoryCoordinator.open_subject` accepts a `GitRevisionSubject` without a filesystem walk. `metab file://… --show` / non-cache `--api` lease that pin in-process; serving stays later | `mb-3bna`, `mb-tsdc`, `mb-z335` |
 | `RouterSpec` | Mounted HTTP prefix and trusted router factory | Reserved/duplicate prefixes fail; application lifespan awaits shutdown | `mb-xzj3` |
 | `AddressSpaceSpec` / `registerAddressSpace` | Browser prefix, parse, format, apply, preview claim, startup, popstate, root replacement, disposal | Exactly one owner per address; browser and `metab --show` share the registration | `mb-6mle` |
 | `ProviderUrlReducerSpec` | Declared schemes/hosts and `NotApplicable`/`Reduced`/terminal `Rejected` reducer | Overlapping claims fail discovery; claimed rejection never falls through | `mb-12cz` |
@@ -349,7 +359,7 @@ SSE transport whose emitted snapshot is already owned by its data routes.
 | `navigation.preview-pane-states` | interaction | `static/navigation.js#createPreviewPaneLifecycle`, `static/navigation.js#requestFailure`, `static/navigation.js#responseBodyFailure`, `static/navigation.js#settleFileSelectionFailure`, `static/navigation.js#openFailureOutcome`, `static/navigation.js#createController` | `/api/file`, `transport-exempt:/api/events` | `node tests/dom/preview-pane-state-session.js` | `cli-ui-file-lifecycle.tryscript.md` |
 | `navigation.inventory-snapshot-replacement` | interaction | `static/navigation.js#replaceFileSnapshot` | `transport-exempt:/api/events` | `node tests/dom/file-navigation-lazy-asset-session.js` | `cli-ui-file-lifecycle.tryscript.md` |
 | `navigation.catalog-continuity` | interaction | `static/catalog-feed.js#create` | `/api/catalog`, `transport-exempt:/api/events` | `node tests/dom/catalog-feed-behavior.js` | `cli-ui-navigation.tryscript.md` |
-| `navigation.route-identity` | interaction | `static/navigation.js#href`, `static/navigation.js#parse`, `static/navigation.js#commitHref`, `static/navigation.js#parseCommit` | `/api/file`, `/api/plugin/diff/comparison` | `node tests/dom/navigation-route-behavior.js` | `cli-ui-navigation.tryscript.md` |
+| `navigation.route-identity` | interaction | `static/navigation.js#href`, `static/navigation.js#parse`, `static/navigation.js#commitHref`, `static/navigation.js#parseCommit`, `static/navigation.js#displayPath` | `/api/file`, `/api/plugin/diff/comparison` | `node tests/dom/navigation-route-behavior.js` | `cli-ui-navigation.tryscript.md` |
 | `assets.on-demand-load-recovery` | interaction | `static/asset-loader.js#ensureAsset`, `static/asset-loader.js#ensureScript` | `local-only` | `node tests/dom/asset-loader-behavior.js` | `cli-ui-navigation.tryscript.md` |
 | `source.incremental-cache-transaction` | interaction | `static/source-append.js#requestOwnsPreview`, `static/source-append.js#commitChunkCache` | `/api/file` | `node tests/dom/source-append-navigation-session.js` | `cli-ui-file-lifecycle.tryscript.md` |
 | `agent-log.chart-request-ownership` | interaction | `builtin_plugins/agent_log/index.js#renderCharts` | `/api/file`, `/api/plugin/agent-log/charts` | `node tests/dom/agent-log-plugin-behavior.js` | `cli-ui-agent-log-charts.tryscript.md` |

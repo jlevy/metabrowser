@@ -35,6 +35,48 @@ Plugin contracts:
   No command writes the cache yet: the application home and `CACHEDIR.TAG` are created
   when opening a repository URL lands.
 
+Plugin SDK:
+
+- `window.metabrowser.sourceKind()` reports whether the served tree is a filesystem root
+  or a `git_revision` pin.
+  Markdown link and wiki resolution use that kind instead of inferring GitPath encoding
+  from `g1-` filenames, so a tracked file literally named `g1-notes.md` is a name rather
+  than an identity to decode.
+  Built-in views read the kind through this accessor rather than a page global.
+  The browser SDK stays 0.6: `sourceKind()` is an addition, and a plugin that never asks
+  sees the filesystem answer it saw before.
+
+- `mb.sizeHtml(undefined)` now renders nothing instead of a pending skeleton.
+  `null` still means “this aggregate is still being computed” and keeps its skeleton
+  cell; `undefined` means the subject has no such number at all, which is what a Git pin
+  reports for a tree with no blob size, and a permanent skeleton would have read as a
+  tally that never arrives.
+
+- `metabrowser.plugin_api` exports the content-source boundary a hook needs to work on
+  more than a served folder: `source_capabilities`, `require_source_capability`,
+  `SourceCapabilities`, `UnsupportedSourceCapabilityError`, and `open_content`.
+  `resolve_path`, `served_root`, and `open_content` are now explicitly filesystem-only
+  and raise `UnsupportedSourceCapabilityError` on a Git pin, so a hook that assumed a
+  host path fails where it is wrong rather than resolving against the wrong tree.
+
+- A hook that only needs bytes reads them on either source kind through
+  `resolve_content`, `resolve_content_container`, `stat_content`, and
+  `read_content_window`, over an opaque `ContentRef` that carries the identity to echo
+  back, the logical extension to dispatch on, and a fingerprint that changes when the
+  bytes do. Every read takes a required `max_bytes` and reports whether content continues
+  past the window; there is no unbounded variant, and the bound is on bytes rather than
+  on a decoded string.
+  Failures are one catchable `ContentReadError` family carrying a stable `code` and the
+  `http_status` Metabrowser’s own routes answer with, so a hook writes one error path
+  for a missing object, an oversized blob, an unreadable compressed stream, and a
+  timeout alike. The four built-in data hooks — binary bytes, structured parse, agent-log
+  charts, and diff documents — now read this way and no longer branch on the source
+  kind. The browser SDK stays 0.6: these are additions to the Python helper surface and
+  no manifest, kind, or `window.metabrowser` call changes.
+  `content_source()`, added earlier in this unreleased series and never part of a
+  release, is gone: it handed a hook the raw active source, which is what the content
+  reader replaces.
+
 Repository cache:
 
 - New read-only routes `/api/cache/layout`, `/api/cache/sources`,
@@ -59,9 +101,11 @@ Repository cache:
   A Git timeout, oversized output, missing executable, or failed command during that
   acquire is reported as its own error message without a traceback or a local path.
   `metab file://… --api /api/cache/…` acquires as a side effect, then inspects cache
-  state against an empty throwaway root so `/api/tree` cannot expose the cache or the
-  origin. Serving, walking, and other modes refuse Git sources without acquiring, and
-  acquired content is not served.
+  state against an empty throwaway root so cache inspection cannot expose origin objects
+  through `/api/tree`. `metab file://… --show PATH` and non-cache `--api` acquire or
+  reuse the store, lease the default revision, and inspect that `GitRevisionSubject`
+  in-process. Serving, walking, and `--check-api` still refuse Git sources, and nothing
+  binds a port. https and ssh stay closed.
 
 - A classified `file://` source can be fetched into an isolated worktree-free staging
   store using Git’s pack transport (`git fetch`, not `clone --local` hardlinks).
@@ -93,6 +137,147 @@ Repository cache:
   A successful acquire or cache hit may record `last_opened_at` on the source; a
   read-only home, full disk, or contended lock drops that write and still returns the
   published alias.
+
+Content source:
+
+- The server now has one active repository subject per process.
+  An attached local folder is `AttachedFilesystemSubject`. File, raw, tree, container,
+  and event routes read through its `ContentSource`, and inventory open goes through
+  `InventoryCoordinator.open_subject`. A Git pin is accepted there without opening a
+  filesystem walker; Git routes own the complete-at-once index.
+  `resolve_path` and `served_root` stay filesystem-only; a non-filesystem subject raises
+  `UnsupportedSourceCapabilityError`. Recency, ignore, watcher, activity, and mutation
+  each have a typed capability gate.
+  Filesystem browsing is unchanged.
+  A `GitRevisionSubject` can pin a full-OID tree over a worktree-free store: `GitPath`
+  is a lossless byte-segment identity, `GitTreeSource` lists NUL-framed trees and reads
+  size-gated blobs through exclusive `cat-file --batch-command` actors, and missing or
+  oversized objects fail before an unbounded body read.
+  `lease_revision` holds that store’s shared maintenance lock for a live subject and
+  writes a durable `refs/metabrowser/subjects/<oid>` ref so the commit stays reachable
+  after the process exits; two processes can lease different OIDs in one store.
+  `maintain_store` runs `gc --prune=now` and `repack -a -d` under that store’s exclusive
+  maintenance lock, never under the store lock, and refuses while a live lease is held.
+  Batch `cat-file` actors are pooled per store, at most four in one process.
+  `/api/git/repo`, refs, summary, log, and commit detail honor a `GitRevisionSubject`
+  through `GitLocation` (a worktree path or a `RepositoryStoreTarget` plus pinned OID).
+  Discovery reports a detached HEAD at that OID and never a cache path; the default
+  history walk is the pin, not the store’s ambient HEAD. `/api/tree`, `/api/file`, and
+  `/raw` honor `GitPath` wire identities on that subject: tree listings carry mode,
+  kind, oid, symlink, gitlink, and `cat-file` blob sizes (trees and gitlinks stay
+  unsized; no mtime or ignore); recency returns `unsupported_for_subject`; `min_size`
+  filters blobs that have a size; blob reads are size-gated through the shared cat-file
+  pool. `/api/plugin/diff/comparison` honors that pin through `GitLocation`: `HEAD` is
+  the pinned object id, not the store’s ambient HEAD, and the document names Git object
+  facts rather than a cache path.
+  `GitDiffSource.content` on that pin reads the blob through the shared cat-file pool
+  and the same size gate.
+  `/api/kpress/render` reads the blob by `GitPath` and uses the object id as the render
+  cache key instead of a filesystem mtime.
+  A patch-file container inner is a `GitPath` `g1-` prefix plus a host inner path;
+  `/api/file` returns that envelope, and the diff plugin’s document and children hooks
+  read the patch blob through the shared cat-file pool.
+  `/api/plugin/binary/chunk` reads a bounded window of one Git blob by `GitPath` and
+  uses the object id as the cache key instead of a filesystem mtime.
+  Git blobs classify by extension, basename, sniffed adapter, and bounded JSON, YAML,
+  and Markdown-frontmatter mappings parsed from blob bytes (`classify_identity`).
+  `path_glob` stays filesystem-only.
+  `/api/plugin/structured/parsed` reads the blob by `GitPath` and uses the object id as
+  the cache key instead of a filesystem mtime.
+  `/api/file` for a Git `.jsonl` blob is a parsed JSONL envelope; adapter sniffing
+  claims `agent-log` when the bytes match Claude, Gemini, or Pi.
+  `/api/plugin/agent-log/charts` reads that blob by `GitPath`. `/api/rollup` on a pin
+  answers from recursive blob names and sizes, omits mtime, and treats ignore as absent
+  so unignored equals total.
+  A missing blob size is `object_unavailable` rather than a partial sum.
+  `/api/catalog` on a pin lists those blob names as Quick File rows (`p` GitPath wire,
+  `e` display suffix, `n` display basename) and is complete at once; a truncated tree is
+  an empty truncated snapshot rather than a partial list.
+  `/api/index/progress`, `/api/index/meta`, and `/api/capabilities` report that same
+  complete-at-once index without a watcher or invented mtime; events stay off.
+  `/api/tree` carries whole-tree `extensions`, `canonical_extensions`, `type_families`,
+  and `type_presets` rows (`[key, tracked, 0]`), `tally_cache_status`, and a `summary`
+  (`files`, `size`, ignored 0/0) from that index so the type filter, truncation banner,
+  and nav header counts do not wait on a filesystem walker.
+  Incomplete blob sizes omit `summary` rather than inventing 0. `types` and `min_size`
+  keep ancestor trees of matching blobs and emit subtree `filtered` totals; empty filter
+  dirs are omitted. Git listings, catalog rows, and type filters use the same bounded
+  compound-tail logical extension as filesystem inventory (`bundle.min.js` is
+  `.min.js`), so a basename that merely ends in `md` is not a `.md` match.
+  `include_ignored=0` on a pin is a no-op, because ignore is absent and unignored equals
+  total; the SPA hides Show ignored.
+  `/api/tree` `depth` nests SPA children the way filesystem listings do (default 2) and
+  emits a lazy sentinel past the cap; `depth=0` returns chrome without a listing.
+  The SPA hides Modified within: recency still has no honest mtime and remains
+  `unsupported_for_subject`. Git SPA file nodes emit `ext` as that compound-tail
+  extension; `logical_ext` is only the inner extension of a compressed name
+  (`events.jsonl.gz` is `ext=.jsonl.gz` and `logical_ext=.jsonl`). Git `/api/file` blob
+  envelopes include that same `ext` so plugin-sdk `langForPath` and `ctx.ext` do not
+  fall back to a GitPath wire; they omit compressed identity because blobs are stored
+  bytes with no gzip smudge.
+  Git `/api/file` markdown envelopes include parsed YAML `frontmatter` and
+  `frontmatter_error` the way filesystem envelopes do; KPress on a pin uses that parse
+  rather than an empty mapping.
+  Git text envelopes use the same first-window and highlight bound as filesystem
+  listings (`bytes_read`, `content_preview_limit`, `content_max_preview_limit`,
+  `highlight_disabled`) so Load more and `fetchText` can continue a truncated pin.
+  `/api/file`, `/raw`, KPress, and plugin sidekicks follow in-tree relative symlink
+  blobs to the target object; the requested GitPath stays the route identity.
+  Kind checks (JSONL, structured, patch) use the leaf path.
+  Listings still show the symlink.
+  A Git image blob is SPA `image` chrome (`ext` from the compound tail, preview view, no
+  inline content); `/raw` serves the stored bytes and the image plugin uses the display
+  name as `alt`. Newline and invalid-UTF-8 GitPath names stay lossless on the wire;
+  display chrome replaces C0 and undecodable bytes with U+FFFD. Absolute, dangling, and
+  cyclic targets 404. `/api/stream` still returns `unsupported_for_subject` rather than
+  the lifespan filesystem inventory.
+  A Git LFS pointer blob is the stored pointer bytes, with no smudge filter.
+  A blob the tree names but the store lacks, including a promisor miss, is
+  `object_unavailable` with `GIT_NO_LAZY_FETCH` and does not contact the remote.
+  `/view/` on a Git pin accepts a `GitPath` wire, optionally plus a patch-file container
+  inner, and refuses a filesystem spelling; missing Git objects remain valid shell
+  destinations. `/api/tree` on that pin keeps Git-native `entries` and also projects a
+  SPA `tree` array (`dir` / `file` / `symlink`, `GitPath` wires, depth-bounded nested
+  `children` with a lazy sentinel past the cap) with `cat-file` blob sizes on files and
+  symlinks and recursive blob `total_files` / `total_size` on directories, without mtime
+  or ignore facts. Gitlinks project as files, not directories.
+  A Git tree `/api/file` envelope is SPA `folder` chrome (`git_kind` stays `tree`) with
+  recursive blob `total_files` / `total_size` and no mtime or ignore.
+  Markdown and wiki links on that pin encode authored segments as `GitPath` wires; the
+  known-file catalog uses the tree node’s display `name` as the basename, and KPress
+  `source_path` is the wire rather than a display path.
+  A Git tree folder with a complete blob-size tally mounts Overview and treemap.
+  A direct-child README blob sets `readme_path` to its GitPath wire.
+  File Overview mounts when `dir` carries `total_size`. SPA path chrome and copy-path
+  decode GitPath wires to display names; navigation identities stay wires.
+  Omitted Git mtime still leaves age chrome empty rather than pulsing as a
+  still-finalizing inventory walk.
+  Blob listings carry `cat-file` info sizes so `min_size` can filter; trees and gitlinks
+  stay unsized. Recursive `ls-tree -r` tallies fill directory `total_files` /
+  `total_size` and the Git `/api/rollup` tree.
+  Inventory open, archive containers, and serving acquired Git are not switched yet.
+
+- The content-trust profile applies to a Git pin.
+  `--untrusted`, `--no-active-content`, and `--allow-edits` take effect on `--show` and
+  `--api` of a `file://` pin the way they do on a directory, and `GET /api/capabilities`
+  on that pin carries the resolved block, so Preview is withdrawn there too.
+
+- `/api/tree` on a Git pin nests at most 20,000 nodes below the listed directory.
+  Direct children are always listed; a directory whose children no longer fit is the
+  same lazy sentinel the depth cap emits.
+  Whole-tree tallies, filter totals, index status, rollup, and the catalog are derived
+  once per pin instead of on every request.
+
+- Git failures on a pinned tree answer with a typed JSON envelope instead of a bare 500:
+  `git_timeout` is 504, a tree the store lacks is `object_unavailable` 404 naming the
+  missing object, and any other Git failure is `git_failed` 500. No envelope carries Git
+  output, so none carries a local path.
+
+- Every request-path read of a published store (tree listing, history, commit detail,
+  diff) runs under one store-read policy: isolated configuration, no lazy fetch, and the
+  15-second request deadline instead of the 15-minute acquisition deadline.
+  A store target read without a named policy gets the same policy, and whole-tree blob
+  sizes are read in chunks that each get the batch deadline.
 
 ## 0.11.0
 

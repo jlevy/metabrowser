@@ -44,7 +44,19 @@ from metabrowser.diff.format import (
     SourceInfo,
     Totals,
 )
-from metabrowser.git.process import GitError, run_git
+from metabrowser.git.process import (
+    GitError,
+    GitLocation,
+    RepositoryStoreTarget,
+    as_location,
+    run_git_at,
+)
+from metabrowser.git.tree_source import (
+    GitBlobTooLargeError,
+    GitObjectUnavailableError,
+    GitPathError,
+    read_store_blob,
+)
 
 MAX_MANIFEST_FILES = 2000
 """Manifest cap. A 2000-file change set is far past reviewable; beyond it
@@ -99,17 +111,29 @@ def _side(path_raw: bytes, mode_text: str, oid: str) -> EntrySide:
 
 
 class GitDiffSource:
-    """The worktree-tied source; ``repo_root`` must already be a repository."""
+    """File Diff Format from two revisions at a :class:`GitLocation`.
+
+    A filesystem location is a working-tree repository. A revision
+    location is a worktree-free store pin. ``HEAD`` on a pin is that
+    object id, not the store's ambient HEAD. Neither form checks out.
+    Store ``content`` reads go through the shared cat-file pool.
+    """
 
     name = "git"
 
-    def __init__(self, repo_root: Path) -> None:
-        self._root = repo_root
+    def __init__(self, repo: Path | GitLocation) -> None:
+        self._location = as_location(repo)
         self._empty_tree_oid: str | None = None
 
     async def _rev_parse(self, revision: str) -> str:
+        pin = self._location.pinned_revision
+        if pin is not None and revision in {"HEAD", pin}:
+            return pin
         try:
-            out = await run_git(["rev-parse", "--verify", f"{revision}^{{commit}}"], cwd=self._root)
+            out = await run_git_at(
+                ["rev-parse", "--verify", "--end-of-options", f"{revision}^{{commit}}"],
+                self._location,
+            )
         except GitError as exc:
             raise DiffSourceError(f"unknown revision {revision!r}") from exc
         return out.decode("ascii").strip()
@@ -130,7 +154,7 @@ class GitDiffSource:
             left = await self._rev_parse(str(intent["left"]))
             right = await self._rev_parse(str(intent["right"]))
             if base_policy is BasePolicy.merge_base:
-                out = await run_git(["merge-base", left, right], cwd=self._root)
+                out = await run_git_at(["merge-base", left, right], self._location)
                 left = out.decode("ascii").strip()
         comparison_id = "git:" + sha256(f"{left}..{right}".encode()).hexdigest()[:16]
         return ResolvedComparison(
@@ -157,7 +181,7 @@ class GitDiffSource:
         oid fails every root-commit comparison there.
         """
         if self._empty_tree_oid is None:
-            out = await run_git(["hash-object", "-t", "tree", "/dev/null"], cwd=self._root)
+            out = await run_git_at(["hash-object", "-t", "tree", "/dev/null"], self._location)
             self._empty_tree_oid = out.decode("ascii").strip()
 
     def _endpoints(self, resolved: ResolvedComparison) -> list[str]:
@@ -174,7 +198,7 @@ class GitDiffSource:
 
     async def manifest(self, resolved: ResolvedComparison) -> ChangeSetManifest:
         endpoints = self._endpoints(resolved)
-        raw = await run_git(
+        raw = await run_git_at(
             [
                 "diff",
                 "--raw",
@@ -185,11 +209,11 @@ class GitDiffSource:
                 "--diff-merges=first-parent",
                 *endpoints,
             ],
-            cwd=self._root,
+            self._location,
         )
-        numstat = await run_git(
+        numstat = await run_git_at(
             ["diff", "--numstat", "-z", "-M50", "-C", "--diff-merges=first-parent", *endpoints],
-            cwd=self._root,
+            self._location,
         )
         counts = self._parse_numstat(numstat)
         files: list[FileChange] = []
@@ -377,9 +401,9 @@ class GitDiffSource:
         if missing:
             raise DiffSourceError(f"no file {missing[0]!r} in this comparison")
         endpoints = self._endpoints(resolved)
-        out = await run_git(
+        out = await run_git_at(
             ["diff", "-M50", "-C", "--diff-merges=first-parent", *endpoints],
-            cwd=self._root,
+            self._location,
         )
         document = parse_unified_patch(out)
 
@@ -458,6 +482,12 @@ class GitDiffSource:
             ),
         )
 
+    async def _read_blob(self, oid: str) -> bytes:
+        target = self._location.target
+        if isinstance(target, RepositoryStoreTarget):
+            return await read_store_blob(target, oid)
+        return await run_git_at(["cat-file", "blob", oid], self._location)
+
     async def content(
         self, resolved: ResolvedComparison, file_id: str, side: str
     ) -> AsyncIterator[bytes]:
@@ -468,5 +498,10 @@ class GitDiffSource:
         entry = change.old if side == "old" else change.new
         if entry is None or entry.content.kind is not ContentRefKind.git_object:
             raise DiffSourceError(f"file {file_id!r} has no {side} git content")
-        blob = await run_git(["cat-file", "blob", str(entry.content.oid)], cwd=self._root)
+        try:
+            blob = await self._read_blob(str(entry.content.oid))
+        except GitBlobTooLargeError as exc:
+            raise DiffSourceError(str(exc)) from exc
+        except (GitObjectUnavailableError, GitPathError, GitError) as exc:
+            raise DiffSourceError(f"file {file_id!r} has no {side} git content") from exc
         yield blob

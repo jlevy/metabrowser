@@ -25,13 +25,20 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from metabrowser.git.log import LOG_FORMAT, parse_log_output, trunk_refs
+from metabrowser.git.log import (
+    LOG_FORMAT,
+    PUBLIC_REF_NAMESPACES,
+    parse_log_output,
+    trunk_refs,
+)
 from metabrowser.git.process import (
     GitCommandError,
     GitError,
+    GitLocation,
     GitTimeoutError,
+    as_location,
     run_git,
-    spawn_git_process,
+    spawn_git_at,
     terminate_git_process,
 )
 from metabrowser.git.wire import (
@@ -196,11 +203,22 @@ def decode_history_cursor(raw: str) -> HistoryCursor | None:
     )
 
 
-async def _resolved_revision(root: Path, revision: str) -> str | None:
+async def _run_git(location: GitLocation, args: Sequence[str]) -> bytes:
+    return await run_git(
+        [*location.config_args, *args],
+        cwd=location.cwd,
+        target=location.target,
+        policy=location.read_policy,
+    )
+
+
+async def _resolved_revision(location: GitLocation, revision: str) -> str | None:
+    if location.pinned_revision is not None and revision == "HEAD":
+        return location.pinned_revision
     try:
-        raw = await run_git(
+        raw = await _run_git(
+            location,
             ["rev-parse", "--verify", "--quiet", f"{revision}^{{commit}}"],
-            cwd=root,
         )
     except GitCommandError:
         return None
@@ -208,39 +226,110 @@ async def _resolved_revision(root: Path, revision: str) -> str | None:
     return candidate if is_full_revision(candidate) else None
 
 
-async def _symbolic_head(root: Path) -> str | None:
+async def _symbolic_head(location: GitLocation) -> str | None:
+    if location.pinned_revision is not None:
+        return None
     try:
-        raw = await run_git(["symbolic-ref", "--quiet", "HEAD"], cwd=root)
+        raw = await _run_git(location, ["symbolic-ref", "--quiet", "HEAD"])
     except GitCommandError:
         return None
     candidate = raw.decode("utf-8", errors="replace").strip()
     return candidate if candidate.startswith("refs/") else None
 
 
-async def resolve_history_scope(root: Path, *, wants_all: bool) -> HistoryScope:
+async def _pinned_history_scope(
+    location: GitLocation, *, object_format: str, wants_all: bool
+) -> HistoryScope:
+    pin = location.pinned_revision
+    if pin is None:
+        raise TypeError("pinned history scope requires a pinned revision")
+    material = bytearray(f"history-scope-v1\0{object_format}\0pin\0{pin}\0".encode())
+    material.extend(b"HEAD-REF\0\0")
+    if wants_all:
+        # A published store also holds ``refs/metabrowser/subjects/*``, one per
+        # leased pin. Those are private reachability refs: walking them would
+        # show commits no branch or tag names, and fingerprinting them would
+        # stale every open cursor whenever another pin is leased.
+        refs = await _run_git(
+            location,
+            [
+                "for-each-ref",
+                "--format=%(refname)%00%(objecttype)%00%(objectname)%00"
+                "%(*objecttype)%00%(*objectname)",
+                *PUBLIC_REF_NAMESPACES,
+            ],
+        )
+        material.extend(refs)
+        material.extend(b"\0HEAD\0")
+        material.extend(pin.encode("ascii"))
+        targets: list[str] = []
+        seen_targets: set[str] = set()
+        for record in refs.splitlines():
+            fields = record.split(b"\0")
+            if len(fields) != 5:
+                continue
+            _ref, object_type, object_name, peeled_type, peeled_name = fields
+            target = object_name if object_type == b"commit" else peeled_name
+            target_type = object_type if object_type == b"commit" else peeled_type
+            decoded = target.decode("ascii", errors="ignore")
+            if (
+                target_type == b"commit"
+                and is_full_revision(decoded)
+                and decoded not in seen_targets
+            ):
+                targets.append(decoded)
+                seen_targets.add(decoded)
+        if pin not in seen_targets:
+            targets.append(pin)
+        arguments = tuple(targets)
+        display_refs: tuple[str, ...] = ()
+        name: HistoryScopeName = "all"
+    else:
+        material.extend(b"HEAD\0")
+        material.extend(pin.encode("ascii"))
+        material.extend(b"\0")
+        arguments = (pin,)
+        display_refs = ()
+        name = "default"
+    fingerprint = hashlib.sha256(material).hexdigest()
+    return HistoryScope(
+        name=name,
+        arguments=arguments,
+        display_refs=display_refs,
+        fingerprint=fingerprint,
+        head_revision=pin,
+        head_ref=None,
+    )
+
+
+async def resolve_history_scope(root: Path | GitLocation, *, wants_all: bool) -> HistoryScope:
     """Resolve a stable scope and fingerprint its externally mutable ref state."""
-    root = root.resolve()
+    location = as_location(root)
     object_format = (
-        (await run_git(["rev-parse", "--show-object-format"], cwd=root))
+        (await _run_git(location, ["rev-parse", "--show-object-format"]))
         .decode("ascii", errors="replace")
         .strip()
     )
+    if location.pinned_revision is not None:
+        return await _pinned_history_scope(
+            location, object_format=object_format, wants_all=wants_all
+        )
     material = bytearray(f"history-scope-v1\0{object_format}\0".encode())
-    head_revision = await _resolved_revision(root, "HEAD")
-    head_ref = await _symbolic_head(root)
+    head_revision = await _resolved_revision(location, "HEAD")
+    head_ref = await _symbolic_head(location)
     material.extend(b"HEAD-REF\0")
     material.extend((head_ref or "").encode("utf-8"))
     material.extend(b"\0")
 
     if wants_all:
-        refs = await run_git(
+        refs = await _run_git(
+            location,
             [
                 "for-each-ref",
                 "--format=%(refname)%00%(objecttype)%00%(objectname)%00"
                 "%(*objecttype)%00%(*objectname)",
                 "refs",
             ],
-            cwd=root,
         )
         material.extend(refs)
         material.extend(b"\0HEAD\0")
@@ -281,7 +370,9 @@ async def resolve_history_scope(root: Path, *, wants_all: bool) -> HistoryScope:
         resolved: list[tuple[str, str]] = []
         for candidate in ("HEAD", "@{upstream}", *trunk_refs()):
             revision = (
-                head_revision if candidate == "HEAD" else await _resolved_revision(root, candidate)
+                head_revision
+                if candidate == "HEAD"
+                else await _resolved_revision(location, candidate)
             )
             if revision is not None:
                 resolved.append((candidate, revision))
@@ -405,7 +496,7 @@ class HistorySession:
     def __init__(
         self,
         *,
-        root: Path,
+        root: Path | GitLocation,
         scope: HistoryScope,
         page_size: int,
         parser_max_bytes: int,
@@ -413,7 +504,7 @@ class HistorySession:
         clock: Callable[[], float],
     ) -> None:
         self.id = secrets.token_urlsafe(18)
-        self.root = root.resolve()
+        self.location = as_location(root)
         self.scope = scope
         self.page_size = page_size
         # The budget passed in was measured for one GIT_LOG_DEFAULT_LIMIT
@@ -445,7 +536,7 @@ class HistorySession:
     async def start(
         cls,
         *,
-        root: Path,
+        root: Path | GitLocation,
         scope: HistoryScope,
         page_size: int,
         parser_max_bytes: int,
@@ -475,9 +566,9 @@ class HistorySession:
         )
         session.command_args = args
         try:
-            session._process = await spawn_git_process(
+            session._process = await spawn_git_at(
                 args,
-                cwd=session.root,
+                session.location,
                 pipe_stdin=True,
             )
         except BaseException:
@@ -794,7 +885,7 @@ class HistorySessionRegistry:
 
     async def read_page(
         self,
-        root: Path,
+        root: Path | GitLocation,
         *,
         wants_all: bool | None,
         limit: int,
@@ -802,9 +893,10 @@ class HistorySessionRegistry:
     ) -> GitLogPage:
         """Start, advance, or replay one page of a bounded history session."""
         self._ensure_reaper()
+        location = as_location(root)
         if cursor is None:
-            scope = await resolve_history_scope(root, wants_all=bool(wants_all))
-            session = await self._create_session(root, scope=scope, page_size=limit)
+            scope = await resolve_history_scope(location, wants_all=bool(wants_all))
+            session = await self._create_session(location, scope=scope, page_size=limit)
             first = HistoryCursor(
                 session_id=session.id,
                 page=0,
@@ -829,7 +921,7 @@ class HistorySessionRegistry:
             raise InvalidHistoryCursorError("history cursor page size changed")
         if decoded.scope_fingerprint != session.scope.fingerprint:
             raise InvalidHistoryCursorError("history cursor scope fingerprint is invalid")
-        if session.root != root.resolve():
+        if session.location.identity != location.identity:
             await self._discard(session.id)
             raise StaleHistorySessionError("history cursor repository changed")
         if wants_all is not None:
@@ -838,7 +930,7 @@ class HistorySessionRegistry:
                 await self._discard(session.id)
                 raise StaleHistorySessionError("history cursor scope changed")
         current_scope = await resolve_history_scope(
-            root,
+            location,
             wants_all=session.scope.name == "all",
         )
         if current_scope.fingerprint != session.scope.fingerprint:
@@ -852,7 +944,7 @@ class HistorySessionRegistry:
 
     async def _create_session(
         self,
-        root: Path,
+        root: Path | GitLocation,
         *,
         scope: HistoryScope,
         page_size: int,

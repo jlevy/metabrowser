@@ -13,8 +13,10 @@ bounded for large logs.
 
 from __future__ import annotations
 
+import io
 import json
 import logging
+from collections.abc import Iterable
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -49,6 +51,25 @@ class JsonlParseLimitError(ValueError):
     """A JSONL artifact exceeded the parser's decompressed-input ceiling."""
 
 
+def parse_jsonl_bytes(data: bytes) -> dict[str, Any]:
+    """Parse JSONL bytes. No host path; callers key caches on object id."""
+
+    if len(data) > _JSONL_PARSE_MAX_BYTES:
+        raise JsonlParseLimitError(
+            f"JSONL content exceeds {_JSONL_PARSE_MAX_BYTES} decompressed bytes"
+        )
+    file_size = len(data)
+    large_file = file_size > _LARGE_FILE_BYTES
+    return _parse_jsonl_stream(
+        io.StringIO(data.decode("utf-8", errors="replace")),
+        file_size=file_size,
+        source="bytes",
+        is_compressed=False,
+        large_file=large_file,
+        max_raw_total=_LARGE_FILE_RAW_CAP if large_file else None,
+    )
+
+
 def _parse_jsonl_file(filepath: Path) -> dict[str, Any]:
     """Parse a JSONL log file and return structured events + summary.
 
@@ -68,7 +89,26 @@ def _parse_jsonl_file(filepath: Path) -> dict[str, Any]:
         )
     large_file = not artifact.is_compressed and file_size > _LARGE_FILE_BYTES
     max_raw_total = _LARGE_FILE_RAW_CAP if artifact.is_compressed or large_file else None
+    with artifact.open_text(errors="replace", max_output_bytes=_JSONL_PARSE_MAX_BYTES) as fh:
+        return _parse_jsonl_stream(
+            fh,
+            file_size=file_size,
+            source=str(filepath),
+            is_compressed=artifact.is_compressed,
+            large_file=large_file,
+            max_raw_total=max_raw_total,
+        )
 
+
+def _parse_jsonl_stream(
+    fh: Iterable[str],
+    *,
+    file_size: int,
+    source: str,
+    is_compressed: bool,
+    large_file: bool,
+    max_raw_total: int | None,
+) -> dict[str, Any]:
     detection_buffer: list[str] = []
     parser = None
     adapter = "unknown"
@@ -93,7 +133,7 @@ def _parse_jsonl_file(filepath: Path) -> dict[str, Any]:
             parse_errors += 1
             LOG.warning(
                 "jsonl parse error in %s line %s: %s",
-                filepath,
+                source,
                 line_number,
                 exc,
                 exc_info=True,
@@ -126,49 +166,48 @@ def _parse_jsonl_file(filepath: Path) -> dict[str, Any]:
             raw_parts.append(part)
 
     logical_bytes_read = 0
-    with artifact.open_text(errors="replace", max_output_bytes=_JSONL_PARSE_MAX_BYTES) as fh:
-        for raw_line in fh:
-            logical_bytes_read += len(raw_line.encode("utf-8", errors="replace"))
-            if logical_bytes_read > _JSONL_PARSE_MAX_BYTES:
-                raise JsonlParseLimitError(
-                    f"JSONL content exceeds {_JSONL_PARSE_MAX_BYTES} decompressed bytes"
-                )
-            lines_total += 1
-            stripped = raw_line.strip()
-            if not stripped:
-                continue
-            if len(stripped) > _MAX_LINE_LEN:
-                lines_skipped += 1
-                continue
-
-            if parser is None:
-                detection_buffer.append(stripped)
-                if len(detection_buffer) < 20:
-                    continue
-                # Adapter detection fires once we have 20 lines (or the
-                # file ends, handled below). After detection we replay
-                # the buffered lines through the parser.
-                adapter = detect_adapter(detection_buffer)
-                parser = create_parser(adapter)
-                first_buffered_line = lines_total - len(detection_buffer) + 1
-                for offset, buffered in enumerate(detection_buffer):
-                    _consume(buffered, first_buffered_line + offset)
-                detection_buffer = []
-                continue
-
-            _consume(stripped, lines_total)
+    for raw_line in fh:
+        logical_bytes_read += len(raw_line.encode("utf-8", errors="replace"))
+        if logical_bytes_read > _JSONL_PARSE_MAX_BYTES:
+            raise JsonlParseLimitError(
+                f"JSONL content exceeds {_JSONL_PARSE_MAX_BYTES} decompressed bytes"
+            )
+        lines_total += 1
+        stripped = raw_line.strip()
+        if not stripped:
+            continue
+        if len(stripped) > _MAX_LINE_LEN:
+            lines_skipped += 1
+            continue
 
         if parser is None:
-            # File had fewer than 20 valid lines.
+            detection_buffer.append(stripped)
+            if len(detection_buffer) < 20:
+                continue
+            # Adapter detection fires once we have 20 lines (or the
+            # file ends, handled below). After detection we replay
+            # the buffered lines through the parser.
             adapter = detect_adapter(detection_buffer)
             parser = create_parser(adapter)
             first_buffered_line = lines_total - len(detection_buffer) + 1
             for offset, buffered in enumerate(detection_buffer):
                 _consume(buffered, first_buffered_line + offset)
+            detection_buffer = []
+            continue
 
-        events.extend(parser.flush())
+        _consume(stripped, lines_total)
 
-    if artifact.is_compressed:
+    if parser is None:
+        # File had fewer than 20 valid lines.
+        adapter = detect_adapter(detection_buffer)
+        parser = create_parser(adapter)
+        first_buffered_line = lines_total - len(detection_buffer) + 1
+        for offset, buffered in enumerate(detection_buffer):
+            _consume(buffered, first_buffered_line + offset)
+
+    events.extend(parser.flush())
+
+    if is_compressed:
         file_size = logical_bytes_read
         large_file = file_size > _LARGE_FILE_BYTES
     max_per_event_raw = _LARGE_FILE_PER_EVENT_RAW if large_file else None

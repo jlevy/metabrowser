@@ -85,7 +85,11 @@ const sandbox = {
   Map,
   Promise,
   Set,
+  TextDecoder,
+  Uint8Array,
   URL,
+  atob,
+  btoa,
   clearInterval,
   clearTimeout,
   setInterval,
@@ -183,6 +187,25 @@ function assert(condition, message) {
     tagName: firstImage?.tagName,
   };
 
+  const gitWire = "g1-cGljLnBuZw";
+  const gitContainer = document.createElement("section");
+  const gitStage = lifecycle.begin();
+  sandbox.METABROWSER_SOURCE_KIND = "git_revision";
+  const gitStatus = await compositor.mount(
+    gitContainer,
+    renderer,
+    { kind: "image", path: gitWire },
+    gitStage.disposers,
+  );
+  delete sandbox.METABROWSER_SOURCE_KIND;
+  const gitImage = gitContainer.children[0];
+  const gitMount = {
+    alt: gitImage?.getAttribute("alt"),
+    rawUrl: gitImage?.getAttribute("src"),
+    status: gitStatus,
+  };
+  gitStage.cancel();
+
   const secondContainer = document.createElement("section");
   const secondStage = lifecycle.begin();
   const secondPath = "next/diagram #2.svg";
@@ -277,6 +300,10 @@ function assert(condition, message) {
   assert(firstMount.className === "file-image", "renderer lost its plugin style hook");
   assert(firstMount.alt === hostilePath, "renderer changed the image alternative text");
   assert(
+    gitMount.alt === "pic.png" && gitMount.rawUrl === "/raw?path=g1-cGljLnBuZw",
+    "renderer did not decode a GitPath wire for alt while fetching /raw by identity",
+  );
+  assert(
     firstMount.rawUrl === "/raw?path=images%2F%3Cunsafe%20%22quoted%22%20%26%20file%3E.png",
     "renderer did not encode the raw-file path",
   );
@@ -297,6 +324,7 @@ function assert(condition, message) {
         disposal,
         error,
         firstMount,
+        gitMount,
         innerHtmlWrites: rendererInnerHtmlWrites,
         replacement,
       },

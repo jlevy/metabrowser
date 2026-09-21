@@ -1,6 +1,16 @@
 # Repository Sources and Provider Mirrors
 
-**Status:** Proposed correction under review; implementation is planned for v0.12.0.
+**Status:** Partly implemented.
+Repository subjects, `SourceSession`, capabilities, the attached-filesystem content
+source, `GitCommandTarget`, the immutable Git tree source with `GitPath` file, raw, and
+tree routes, `file://` acquisition into a shared repository store, and revision leases
+with store maintenance are implemented; `metab` attaches a `file://` pin in-process for
+`--show` and non-cache `--api`. Serving an acquired pin over HTTP, `https` and `ssh`
+acquisition, fetch jobs, credential leases and the askpass bridge, store convergence and
+object reclamation, and the provider mirror store remain planned.
+Provider binding and local object-availability records exist today as hosted-review
+models; see [Hosted Review Model and Provider Boundary](arch-hosted-review-model.md).
+Per-seam state is in [Implementation Seams](#implementation-seams).
 
 Metabrowser must be able to show the same hosted repository through several independent
 sessions without switching a shared checkout or duplicating provider state.
@@ -114,20 +124,47 @@ unavailable for immutable trees until a truthful source-specific model is added.
 
 ### Plugin content boundary
 
-The Python plugin SDK gains additive, bounded operations over an opaque `ContentHandle`:
-`resolve_content`, `stat_content`, and `read_content_window`. `resolve_path`,
-`resolve_directory`, `relativize_path`, and `served_root` remain filesystem-only with
-their existing behavior.
+The Python plugin SDK exposes bounded operations over an opaque `ContentRef`:
+`resolve_content`, `resolve_content_container`, `stat_content`, and
+`read_content_window`, in `plugin_api.py`. A hook passes back the identity its client
+holds — an inventory path under an attached folder, a `GitPath` wire on a pinned
+revision — and never constructs one or branches on the subject kind.
+
+- `resolve_content` answers `None` for every identity that names nothing readable:
+  traversal out of the served root, a missing name, a directory or tree, an unusable
+  symlink. `resolve_content_container` is the same answer for a `<content>/<inner>`
+  address, scoped to the suffixes the calling container claims so one plugin cannot open
+  another’s files. Both return the identity to echo back, the logical extension to
+  dispatch on, and a fingerprint that changes exactly when the bytes can have, so a hook
+  keys its own cache without knowing whether that is an mtime hash or a blob object id.
+
+- `read_content_window` takes a required `max_bytes`; there is no unbounded variant, and
+  the bound is on bytes, not on a decoded string.
+  It reports whether content continues past the window, which is what settles size for a
+  compressed artifact whose declared length is a trailer nothing verifies.
+  `stat_content` is the separate call for a caller that needs a validated logical size
+  and accepts what establishing one costs.
+
+- Every failure is one catchable family, `ContentReadError`, over the typed errors those
+  layers already raise, carrying a `code` and an `http_status` a hook maps once.
+  The statuses are the ones the pinned routes answer with, which
+  `tests/test_plugin_content_reader.py` pins against `git_content_failure_response`.
+
+`resolve_path`, `resolve_directory`, `relativize_path`, `served_root`, and
+`open_content` remain filesystem-only with their existing behavior and raise
+`UnsupportedSourceCapabilityError` on a subject with no filesystem root.
 Plugin dispatch does not invoke a legacy path hook when the active source lacks
 `filesystem_path`; the corresponding view is absent with a capability reason.
-If implementation cannot preserve those existing semantics, it bumps
-`PLUGIN_SDK_VERSION` and every built-in manifest in the same commit.
+These calls are additive to the Python helper surface and leave the browser SDK contract
+alone, so `PLUGIN_SDK_VERSION` does not move for them; a change to the existing
+semantics would bump it and every built-in manifest in the same commit.
 
 The source-boundary phase updates file and raw delivery, tree and rollup assembly,
 container resolution, classification, KPress render/export, event routes, and the
 binary, structured, agent-log, diff, image, and Markdown built-in hooks.
-Built-ins use content handles where they only need bytes and explicitly require a
-filesystem path where their behavior genuinely depends on one.
+Built-ins use content references where they only need bytes and explicitly require a
+filesystem path where their behavior genuinely depends on one; the four data hooks that
+read blob or file bytes hold no Git import and no source-kind branch.
 Plugins receive leased, bounded reader ports, never unrestricted `ContentSource` objects
 or cache paths.
 
@@ -370,13 +407,19 @@ It is never converted to a host `Path`. The wire codec encodes each segment as `
 plus unpadded base64url; envelopes carry a separate replacement-safe display string.
 Tree routes, file routes, diff entries, review anchors, and provider URL reductions use
 the same identity. Parent and child operations manipulate segments, not slash-joined
-native strings.
+native strings. Markdown and wiki destinations on a pin encode authored segments with
+that same wire; the known-file catalog indexes the tree node’s display name, not the
+`g1-` token. SPA path chrome and copy-path decode those wires to display names;
+navigation identities stay wires.
+Omitted size, mtime, and directory aggregates leave tally chrome empty rather than
+pending.
 
 Tree enumeration uses NUL-framed Git output.
 Symlinks are entries whose blob bytes name the link target and are never followed.
 Gitlinks are distinct non-folder entries that carry the referenced commit OID. Git LFS
 pointer files remain ordinary blobs; no smudge filter or implicit LFS network request
-runs.
+runs. Focused tests pin that `cat-file` returns the stored pointer bytes even when a
+smudge filter is configured.
 
 Each long-lived `cat-file --batch-command` process is owned by one actor and serves one
 exclusive request at a time.
@@ -387,6 +430,8 @@ process. Only validated full OIDs enter the line protocol; byte paths are resolv
 separately through NUL-framed tree lookup.
 Promisor misses are reported as `object_unavailable` with implicit lazy fetch disabled;
 the object-job port owns any subsequent network request.
+Focused tests pin a tree-named missing blob against a hanging promisor: the miss returns
+in bounded time, and a later present blob still reads on the same batch actor.
 
 A valid repository subject opens without network access.
 Git refs and objects refresh only for an explicit refresh or when a requested ref or
@@ -550,25 +595,46 @@ another consumer.
 
 ## Implementation Seams
 
-The first implementation phases use these file- and function-level boundaries:
+These file- and function-level boundaries are split by state.
+Neither table registers a surface, so neither carries a check; registered surfaces are
+in [Views, Models, and Routes](arch-views-models-routes.md).
 
-| Area | Files and functions | Responsibility |
+### Implemented seams
+
+| Area | Implemented at | Responsibility |
 | --- | --- | --- |
-| Subject and Git target | `repository_context.py`: `RepositorySubject`, `AttachedFilesystemSubject`, `GitRevisionSubject`; `git/process.py`: `GitCommandTarget`, `run_git`, `spawn_git_process`, askpass bridge | Separate session selection from a filesystem path, allow every Git reader to target a trusted worktree or worktree-free repository without environment injection, and project validated broker credentials into provider-selected Git fetches under environment, configuration, and prompt-binding isolation without exposing them |
-| Content source | `content_source.py`: `SourceSession`, `SourceCapabilities`, `ContentSource`, `ContentHandle`, `ContentEntry`, `read_window`, `list_directory`; `inventory_engine/coordinator.py`: source-session lifecycle | Preserve the filesystem provider while adding capability-aware content sessions without fake filesystem metadata |
-| Plugin and route bridge | `plugin_api.py`: `resolve_content`, `stat_content`, `read_content_window`, filesystem-only path helpers; `server.py`, `view_routes.py`, `sse.py`, `tree.py`, `plugin_loader/classify.py`, built-in sidekicks | Move byte consumers to content handles, capability-gate filesystem-only behavior, and keep route, CLI, and golden parity |
-| Revision tree | `git/tree_source.py`: `GitPath`, `GitTreeSource`, `resolve_tree`, `list_tree`, `read_blob`; `git/process.py`: actor-owned batched object reader lifecycle | Serve full-OID trees and blobs with bounded, byte-safe, reusable Git processes and no materialization |
-| Repository store | `cache/repository_store.py`: `resolve_store`, `stage_fetch`, `publish_refs`, `lease_revision`, `converge_store`, `reclaim_objects`; `cache/records.py`: `StagedFetch`, source aliases, and store state | Own the worktree-free Git database, isolate fetch jobs in private refs, converge proven aliases, publish by generation, and retain leased objects |
-| Source attachments | `provider_resources/models.py`: source binding and local-availability records; `repository_context.py`: remote candidate discovery | Map local and managed sources to stable provider repository identity without storing local paths or requiring a cache entry |
-| Provider mirror | `provider_resources/store.py`: `stage_snapshot`, `publish_manifest`, `read_current`, `read_last_complete`, `lease_snapshot`, `reclaim_snapshots` | Publish one repository-scoped, auth-scoped mirror reused by every attachment |
-| Provider ports | `provider_resources/models.py`: `AuthorizationContextRef`, `authorization_context_key`; `plugin_api.py`: opaque `GitFetchCredentialLease`, `provider_fetch_authorization_context`, `RepositoryContentPort.open_subject`, `RepositoryObjectJobPort.request_selected_refs`, `ProviderResourceStorePort.stage`, `publish`, `read`, `lease`; `cache/jobs.py`: `GitFetchCredentialLeaseRegistry`, `validate_git_fetch_credential_lease`; `provider_process.py`: `issue_git_fetch_credential_lease` | Inject narrow cancellable capabilities with typed unavailable, authorization, stale-generation, and publication failures; selected-ref requests carry a non-secret context plus an unforgeable registry handle, never tokens, unrestricted sources, core stores, or paths |
-| File and raw routes | `view_routes.py`, `server.py`, `plugin_api.py` | Resolve the active content-source handle rather than assuming the global root is a `Path`; retain route, CLI, and golden parity |
+| Subject and Git target | `source.py`: `RepositorySubject`, `AttachedFilesystemSubject`, `SourceSession`; `git/tree_source.py`: `GitRevisionSubject`; `git/process.py`: `GitCommandTarget`, `GitLocation`, `run_git`, `run_git_at`, `spawn_git_process` | Separate session selection from a filesystem path. `metab` can `--show` or non-cache `--api` a leased `file://` pin in-process |
+| Content source | `source.py`: `SourceCapabilities`, `ContentSource`, `ContentHandle`, `FilesystemContentSource`; `inventory_engine/coordinator.py`: `open_subject`; `cli/git_pin_cli.py`: leased `file://` pin; `git/tree_source.py`: `GitTreeSource` | One capability-gated content contract for an attached filesystem and an immutable revision, with no invented mtime, ignore state, or watcher. Inventory open on a Git pin leaves the walker closed and reports a complete-at-once index. What each route answers on a pin is in [Git and Comparison Sources](arch-git-and-comparison-sources.md) |
+| Plugin content reader | `plugin_api.py`: `resolve_content`, `resolve_content_container`, `stat_content`, `read_content_window`, `ContentRef`, `ContentStat`, `ContentWindow`; `source.py`: `FilesystemContentSource.open_ref`, `read_artifact_window`; `git/tree_source.py`: `GitTreeSource.open_ref`, `blob_logical_ext`; `content_errors.py`: `ContentReadError`, `ContentUnavailableError` | One bounded, source-agnostic read for plugin data hooks over an opaque `ContentRef`, with every read taking an explicit byte maximum and no unbounded variant, filesystem work in the thread pool and pinned reads through the pooled `cat-file` actors, and one catchable failure family carrying the `code` and `http_status` the pinned routes answer with. The four built-in data hooks that read bytes hold no Git import and no source-kind branch |
+| Plugin and route bridge | `plugin_api.py`: `open_content`, `source_capabilities`, `require_source_capability`, filesystem-only path helpers; `server.py`, `events_route.py`, `git/routes.py`, `git/content_routes.py`, `git/repo.py`, `git/history.py`; `diff/adapters/git.py`: `GitDiffSource`; `builtin_plugins/diff/sidekick.py`: comparison, document, and children hooks; `builtin_plugins/binary/sidekick.py`: chunk hook; `builtin_plugins/structured`: parsed hook; `builtin_plugins/agent_log/sidekick.py`: charts hook; `plugin_loader/classify.py`: `classify_identity` | Resolve the active content-source handle rather than assuming the global root is a `Path`; capability-gate recency, ignore, watcher, activity, mutation, and Git listing sizes; honor a pinned `GitRevisionSubject` on Git collection, file, raw, tree, rollup, catalog, index status, capabilities, tree filter tallies, tree summary, filtered tree totals, include_ignored no-op, tree depth, file envelope ext, markdown frontmatter, text preview window, in-tree symlink follow including plugin sidekicks, diff-comparison including `GitDiffSource.content`, KPress, patch-file container, binary-chunk, identity-and-content-kind, structured-parsed, and agent-log routes, and image preview; keep route, CLI, and golden parity |
+| Revision tree | `git/tree_source.py`: `GitPath`, `GitTreeSource`, `GitRevisionSubject`, `list_tree`, `read_blob`; shared per-store `cat-file --batch-command --buffer` pool (`MAX_BATCH_READERS_PER_STORE`); `git/content_routes.py`: file, raw, tree, catalog, `split_git_container_wire`, and extension plugin kinds | Enumerate NUL-framed byte-safe full-OID trees and read size-gated blobs from a `RepositoryStoreTarget` with no materialization. `GitPath` wires are the identity on every route that accepts one, and blob kinds come from extension, basename, sniffed adapter, and bounded JSON/YAML/frontmatter mappings. The per-route projections are in [Git and Comparison Sources](arch-git-and-comparison-sources.md) |
+| Repository store | `cache/repository_store.py`: `lease_revision`, `maintain_store`, `subject_revision_ref`; `cache/records.py`: source aliases and store state; `cache/acquire.py`: `acquire_file_source` | `lease_revision` holds the store’s shared maintenance lock and a durable `refs/metabrowser/subjects/<oid>` ref for a live pinned commit. `maintain_store` runs `gc` and `repack` under the exclusive maintenance lock alone. Acquisition covers `file://` sources |
+| Remote discovery | `repository_context.py`: `discover_repository_context` | Read a checkout’s `origin` remote and `HEAD` without running Git, so a provider candidate can be recognized before any network work |
+| File and raw routes | `view_routes.py`, `server.py`, `git/content_routes.py`, `plugin_api.py`; `static/navigation.js`: `displayPath` | Resolve the active content-source handle rather than assuming the global root is a `Path`; Git subjects use `GitPath` wire identities for `/view/`, file, raw, tree, KPress, patch-file containers, identity-and-content plugin kinds, structured parsed, agent-log JSONL, and image preview; Markdown and wiki links on a pin encode authored segments as `GitPath` wires; SPA path chrome decodes those wires to display names (C0 and invalid UTF-8 become U+FFFD); retain route, CLI, and golden parity for filesystem browsing |
+
+### Planned seams
+
+Nothing below is built.
+Where a row names an existing module, the named functions are what that module still
+lacks.
+
+| Area | Planned boundary | Responsibility |
+| --- | --- | --- |
+| Store acquisition and convergence | `cache/repository_store.py`: `resolve_store`, `stage_fetch`, `publish_refs`, `converge_store`, `reclaim_objects`; `cache/records.py`: `StagedFetch` | Acquire `https` and `ssh` sources, publish refs under compare-and-swap, converge aliases on one store, and reclaim unreachable objects |
+| Fetch jobs and credentials | `cache/jobs.py`: `GitFetchCredentialLeaseRegistry`, `validate_git_fetch_credential_lease`; `provider_process.py`: `issue_git_fetch_credential_lease`; the askpass bridge in `git/process.py`, which today only disables prompting | Coalesce authorized fetch jobs and project a validated lease into a Git run with no token in argv, environment, records, or diagnostics |
+| Source attachments | A neutral provider-resources module for source binding and local-availability records | Map local and managed sources to stable provider repository identity without storing local paths or requiring a cache entry. `ProviderBinding`, `LocalGitObjectAvailability`, `AuthorizationContextRef`, and `authorization_context_key` live today in `builtin_plugins/hosted_review/models.py` and move under `mb-s0gv` |
+| Provider mirror | `provider_resources/store.py`: `stage_snapshot`, `publish_manifest`, `read_current`, `read_last_complete`, `lease_snapshot`, `reclaim_snapshots` | Publish one repository-scoped, auth-scoped mirror reused by every attachment. The package holds only `profiles.py` today |
+| Provider ports | `plugin_api.py`: opaque `GitFetchCredentialLease`, `provider_fetch_authorization_context`, `RepositoryContentPort.open_subject`, `RepositoryObjectJobPort.request_selected_refs`, `ProviderResourceStorePort.stage`, `publish`, `read`, `lease` | Inject narrow cancellable capabilities with typed unavailable, authorization, stale-generation, and publication failures; selected-ref requests carry a non-secret context plus an unforgeable registry handle, never tokens, unrestricted sources, core stores, or paths |
+| Serving an acquired pin | `server.py` and the `cli/main.py` root classification | `metab serve` refuses every Git source today; an acquired pin is reachable only through `--show` and non-cache `--api` |
 
 These names are the implementation plan, not registered surfaces.
 If implementation finds a smaller boundary that preserves every invariant, the
 architecture and beads are updated before code publication.
 
 ## Phased Delivery
+
+Phases 1 to 3 are implemented, to the extent the status line above states; the rest are
+planned.
 
 1. Correct the unreleased binding and storage contracts so provider repository identity
    is independent of a generic cache entry.

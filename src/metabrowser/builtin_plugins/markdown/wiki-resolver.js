@@ -40,6 +40,7 @@ const VIDEO_EXTENSIONS = new Set([".m4v", ".mov", ".mp4", ".ogv", ".webm"]);
  * @property {string} authoredTarget
  * @property {"navigate" | "embed"} action
  * @property {string=} label
+ * @property {"filesystem" | "git_revision"=} sourceKind
  */
 
 /**
@@ -65,7 +66,7 @@ const VIDEO_EXTENSIONS = new Set([".m4v", ".mov", ".mp4", ".ogv", ".webm"]);
 
 /** @typedef {Readonly<{candidateCount: number, candidates: readonly string[], overflow: boolean}>} CandidateSummary */
 /** @typedef {string | string[]} BasenameBucket */
-/** @typedef {Readonly<{completePrefix: boolean, reverseSlashes: readonly number[], sourcePath: string}>} PreparedSourcePath */
+/** @typedef {Readonly<{completePrefix: boolean, reverseSlashes: readonly number[], sourceKind: "filesystem" | "git_revision", sourcePath: string}>} PreparedSourcePath */
 /**
  * @typedef {object} SuffixQueryState
  * @property {BasenameBucket | undefined} bucket
@@ -123,11 +124,13 @@ export function resolveWikiTarget(intent, snapshot) {
  * stops after the most parent traversals any supported authored target can name.
  *
  * @param {string} sourcePath
+ * @param {"filesystem" | "git_revision"=} sourceKind
  */
-export function createTrustedWikiSourcePathContext(sourcePath) {
+export function createTrustedWikiSourcePathContext(sourcePath, sourceKind) {
   if (typeof sourcePath !== "string" || !sourcePath) {
     throw new TypeError("trusted wiki source path must be a string");
   }
+  const preparedSourceKind = sourceKind === "git_revision" ? "git_revision" : "filesystem";
   let retainedSourcePath = sourcePath;
   let cursor = sourcePath.length - 1;
   /** @type {number[]} */
@@ -166,6 +169,7 @@ export function createTrustedWikiSourcePathContext(sourcePath) {
       result = Object.freeze({
         completePrefix: cursor < 0,
         reverseSlashes: Object.freeze([...reverseSlashes]),
+        sourceKind: preparedSourceKind,
         sourcePath: retainedSourcePath,
       });
       return Object.freeze({ done: true, pathVisits, result });
@@ -234,7 +238,10 @@ export function createWikiResolutionContext(snapshot) {
   /** @param {unknown} intent */
   function begin(intent) {
     const value = validateIntentShape(intent);
-    return beginPrepared(value, completedSourcePathContext(prepareSourcePath(value.sourcePath)));
+    return beginPrepared(
+      value,
+      completedSourcePathContext(prepareSourcePath(value.sourcePath, value.sourceKind)),
+    );
   }
 
   /**
@@ -253,7 +260,7 @@ export function createWikiResolutionContext(snapshot) {
     // source-relative and fragment-only results.
     return beginPrepared(
       value,
-      sourceContext || createTrustedWikiSourcePathContext(value.sourcePath),
+      sourceContext || createTrustedWikiSourcePathContext(value.sourcePath, value.sourceKind),
     );
   }
 
@@ -746,15 +753,19 @@ function prepareWikiTarget(value, catalog, source, exactResolutionIdentity) {
     );
   }
 
-  const notePath = appendMarkdownExtension(parsed.note.replaceAll("%", "%25"));
+  const gitSource = source.sourceKind === "git_revision";
+  const notePath = appendMarkdownExtension(
+    gitSource ? parsed.note : parsed.note.replaceAll("%", "%25"),
+  );
   const mediaKind = value.action === "embed" ? mediaKindForAuthoredPath(notePath) : undefined;
   const explicitRelative = notePath.startsWith("./") || notePath.startsWith("../");
   const explicitRoot = notePath.startsWith("/");
   const qualified = notePath.includes("/");
   if (explicitRelative || explicitRoot) {
     const exactPath = normalizeWikiPath(
-      explicitRelative ? source : null,
+      source,
       explicitRoot ? notePath.slice(1) : notePath,
+      explicitRelative,
     );
     return typeof exactPath === "string"
       ? Object.freeze({
@@ -769,6 +780,19 @@ function prepareWikiTarget(value, catalog, source, exactResolutionIdentity) {
   }
 
   if (qualified) {
+    if (gitSource) {
+      const exactPath = normalizeWikiPath(source, notePath, false);
+      return typeof exactPath === "string"
+        ? Object.freeze({
+            action: value.action,
+            exactPath,
+            fragment,
+            mediaKind,
+            miss: /** @type {const} */ ("not-found"),
+            resolutionIdentity: exactResolutionIdentity,
+          })
+        : exactPath;
+    }
     const exactPath = normalizeWikiPath(null, notePath);
     const lookupKind =
       typeof exactPath === "string" && exactPath.includes("/")
@@ -1279,6 +1303,13 @@ function validateIntentShape(intent) {
   if (value.label !== undefined && typeof value.label !== "string") {
     throw new TypeError("wiki link label must be a string");
   }
+  if (
+    value.sourceKind !== undefined &&
+    value.sourceKind !== "filesystem" &&
+    value.sourceKind !== "git_revision"
+  ) {
+    throw new TypeError("wiki link sourceKind must be filesystem or git_revision");
+  }
   return /** @type {Readonly<WikiIntent>} */ (value);
 }
 
@@ -1288,9 +1319,10 @@ function validateIntentShape(intent) {
  * invariants.
  *
  * @param {string} sourcePath
+ * @param {"filesystem" | "git_revision"=} sourceKind
  * @returns {PreparedSourcePath}
  */
-function prepareSourcePath(sourcePath) {
+function prepareSourcePath(sourcePath, sourceKind) {
   if (!sourcePath || sourcePath.startsWith("/") || sourcePath.endsWith("/")) {
     throw new TypeError("wiki link source path is invalid");
   }
@@ -1334,6 +1366,7 @@ function prepareSourcePath(sourcePath) {
   return Object.freeze({
     completePrefix: cursor < 0,
     reverseSlashes: Object.freeze(reverseSlashes),
+    sourceKind: sourceKind === "git_revision" ? "git_revision" : "filesystem",
     sourcePath,
   });
 }
@@ -1413,8 +1446,28 @@ function appendMarkdownExtension(path) {
   return leaf.includes(".") ? path : `${path}.md`;
 }
 
-/** @param {PreparedSourcePath | null} source @param {string} authoredPath */
-function normalizeWikiPath(source, authoredPath) {
+/** @param {string} name */
+function encodeGitPathSegment(name) {
+  const bytes = new TextEncoder().encode(name);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 1) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  const atom = btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+  return `g1-${atom}`;
+}
+
+/** @param {string[]} names */
+function encodeGitPathAuthored(names) {
+  return names.map(encodeGitPathSegment).join("/");
+}
+
+/**
+ * @param {PreparedSourcePath | null} source
+ * @param {string} authoredPath
+ * @param {boolean} [joinFromSource]
+ */
+function normalizeWikiPath(source, authoredPath, joinFromSource = source !== null) {
   if (!authoredPath || authoredPath.endsWith("/")) {
     return unsafe("non-file-path");
   }
@@ -1432,6 +1485,9 @@ function normalizeWikiPath(source, authoredPath) {
         segments.pop();
         continue;
       }
+      if (!joinFromSource) {
+        return unsafe("path-escapes-served-root");
+      }
       if (!source) {
         return unsafe("path-escapes-served-root");
       }
@@ -1443,9 +1499,10 @@ function normalizeWikiPath(source, authoredPath) {
     }
     segments.push(segment);
   }
-  const authored = segments.join("/");
+  const gitSource = source !== null && source.sourceKind === "git_revision";
+  const authored = gitSource ? encodeGitPathAuthored(segments) : segments.join("/");
   let base = "";
-  if (source) {
+  if (joinFromSource && source) {
     if (parentPops < source.reverseSlashes.length) {
       base = source.sourcePath.slice(0, source.reverseSlashes[parentPops]);
     } else if (source.completePrefix) {

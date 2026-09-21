@@ -223,6 +223,54 @@
       "sourcePath": "README.md",
       "intent": { "syntax": "markdown", "authoredTarget": "assets/map.svg", "action": "embed" },
       "expected": { "status": "internal", "path": "assets/map.svg", "mediaKind": "image" }
+    },
+    {
+      "id": "git-relative-file",
+      "sourcePath": "g1-ZG9jcw/g1-Y3VycmVudC5tZA",
+      "sourceKind": "git_revision",
+      "canonicalUrl": "/view/g1-ZG9jcw/g1-b3RoZXIubWQ",
+      "intent": { "syntax": "markdown", "authoredTarget": "other.md", "action": "navigate" },
+      "expected": { "status": "internal", "path": "g1-ZG9jcw/g1-b3RoZXIubWQ" }
+    },
+    {
+      "id": "git-parent-file",
+      "sourcePath": "g1-ZG9jcw/g1-Y3VycmVudC5tZA",
+      "sourceKind": "git_revision",
+      "canonicalUrl": "/view/g1-UkVBRE1FLm1k",
+      "intent": { "syntax": "markdown", "authoredTarget": "../README.md", "action": "navigate" },
+      "expected": { "status": "internal", "path": "g1-UkVBRE1FLm1k" }
+    },
+    {
+      "id": "git-served-root-file",
+      "sourcePath": "g1-ZG9jcw/g1-Y3VycmVudC5tZA",
+      "sourceKind": "git_revision",
+      "canonicalUrl": "/view/g1-Q09OVFJJQlVUSU5HLm1k",
+      "intent": { "syntax": "markdown", "authoredTarget": "/CONTRIBUTING.md", "action": "navigate" },
+      "expected": { "status": "internal", "path": "g1-Q09OVFJJQlVUSU5HLm1k" }
+    },
+    {
+      "id": "git-readme-guide",
+      "sourcePath": "g1-UkVBRE1FLm1k",
+      "sourceKind": "git_revision",
+      "canonicalUrl": "/view/g1-ZG9jcw/g1-Z3VpZGUubWQ",
+      "intent": { "syntax": "markdown", "authoredTarget": "docs/guide.md", "action": "navigate" },
+      "expected": { "status": "internal", "path": "g1-ZG9jcw/g1-Z3VpZGUubWQ" }
+    },
+    {
+      "id": "git-literal-percent",
+      "sourcePath": "g1-UkVBRE1FLm1k",
+      "sourceKind": "git_revision",
+      "canonicalUrl": "/view/g1-ZG9jcw/g1-MTAwJS5tZA",
+      "intent": { "syntax": "markdown", "authoredTarget": "docs/100%25.md", "action": "navigate" },
+      "expected": { "status": "internal", "path": "g1-ZG9jcw/g1-MTAwJS5tZA" }
+    },
+    {
+      "id": "filesystem-g1-looking-filename",
+      "sourcePath": "g1-ZG9jcw/g1-Y3VycmVudC5tZA",
+      "sourceKind": "filesystem",
+      "canonicalUrl": "/view/g1-ZG9jcw/other.md",
+      "intent": { "syntax": "markdown", "authoredTarget": "other.md", "action": "navigate" },
+      "expected": { "status": "internal", "path": "g1-ZG9jcw/other.md" }
     }
   ]
 }

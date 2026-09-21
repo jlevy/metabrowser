@@ -2,8 +2,11 @@
 
 **Status:** Accepted design; the provider-neutral model contracts, installed contract
 and resource-profile registries, and generic format inventory gate are implemented
-through Phase 0C.2. Provider bindings and storage, the resource-kind registry,
-addressing, and views remain planned and unregistered.
+through Phase 0C.2. Provider binding and storage records are implemented as
+hosted-review models and are registered in the contract inventory below, which
+`devtools/check_artifact_contracts.py` checks; no provider adapter or store writes them
+yet. The neutral `provider_resources` package that is to own them, the provider store,
+the resource-kind registry, addressing, and views remain planned and unregistered.
 
 Metabrowser should be able to browse a useful object from an API or external system
 without turning that provider’s response shape into a core model or building a new UI
@@ -400,7 +403,7 @@ mutable branch name.
 
 | Area | Primary files and functions | Responsibility |
 | --- | --- | --- |
-| Neutral provider resources | `provider_resources/models.py`: provider/instance scalars, identity refs, generic targets, bindings, storage records, profile types, and publication validators; `provider_resources/store.py`: `stage_snapshot`, `publish_manifest`, `read_current`, `read_last_complete`, `lease_snapshot`, `reclaim_snapshots`; `plugin_api.py`: `ProviderResourceStorePort` | Give unrelated domain and provider plugins one content-neutral, auth-scoped publication service without exposing paths or hosted-review internals; domain objects and artifact contracts stay in their owning plugins |
+| Neutral provider resources | Planned `provider_resources/models.py`: provider/instance scalars, identity refs, generic targets, bindings, storage records, profile types, and publication validators; planned `provider_resources/store.py`: `stage_snapshot`, `publish_manifest`, `read_current`, `read_last_complete`, `lease_snapshot`, `reclaim_snapshots`; planned `plugin_api.py`: `ProviderResourceStorePort`. The package holds only `profiles.py` today, and the `provider-resources` capability set is still supplied from `builtin_plugins/hosted_review/contracts.py` | Give unrelated domain and provider plugins one content-neutral, auth-scoped publication service without exposing paths or hosted-review internals; domain objects and artifact contracts stay in their owning plugins |
 | Capability declarations | `plugin_loader/capability_types.py`: `ArtifactContractSpec`, `ArtifactValidationContext`, `CapabilitySet` | Expose dependency-light installed declaration types without importing schema parsing, validation, or discovery on ordinary startup paths |
 | Installed capability discovery | `plugin_loader/capability_discovery.py`: `discover_capability_sets` | Load all-or-nothing `metabrowser.capabilities.v1` factories from installed distributions; reject duplicate providers and exclude operator plugin directories |
 | Contract installation | `plugin_loader/artifact_contracts.py`: `build_contract_registry`, `validate_record`, `validate_artifact`, `serialize_artifact` | Install trusted SoftSchema declarations returned as Python objects and reject missing, conflicting, or incomplete contracts |
@@ -410,7 +413,7 @@ mutable branch name.
 | Selection host | `static/resource-context.js`, `static/view-composition.js`, and the file-specific shell extraction from `static/app.js` | Present one validated selection envelope to registered views |
 | Addressing | `plugin_loader/provider_addresses.py`: `encode_provider_address_atom`, `decode_provider_address_atom`, `parse_hosted_address`, `format_hosted_address`; provider URL reducers, `AddressSpaceSpec`, mounted routers, and `show_cli.py::run_show` | Include provider instance, use one canonical typed atom codec, and share parse/format/apply rules in browser and CLI |
 | Virtual navigation | plugin SDK nav registration and the generalized Git-history window mechanics | Page, select, restore, replace, and dispose repository-scoped collections |
-| Repository subjects and attachments | `repository_context.py`: subject descriptors and remote discovery; `content_source.py`: source contract; `git/tree_source.py`: immutable tree/blob reads; `cache/repository_store.py`: shared object store and revision leases | Let local working trees, URL-opened repositories, branches, and hosted comparisons share cached data without a mutable checkout or entry-owned provider state |
+| Repository subjects and attachments | Implemented at `source.py`: subject descriptors, the source contract, and `SourceSession`; `repository_context.py`: remote discovery; `git/tree_source.py`: immutable tree/blob reads; `cache/repository_store.py`: shared object store and revision leases. Provider attachment records are planned; see [Repository Sources and Provider Mirrors](arch-repository-sources-and-provider-mirrors.md) | Let local working trees, URL-opened repositories, branches, and hosted comparisons share cached data without a mutable checkout or entry-owned provider state |
 | Enforcement | `devtools/check_artifact_contracts.py`, `devtools/check_parity.py`, distribution smoke, and goldens | Require every registered contract, profile, kind, route, and functional interaction to have evidence |
 
 These seams are phased.

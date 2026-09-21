@@ -31,6 +31,72 @@ def _make_plugin(root: Path, name: str, ext: str = ".demo") -> None:
     (plug / "index.js").write_text("// stub\n")
 
 
+def _run_cli(args: list[str], env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+    """Run ``metab`` in a clean process so import-time discovery runs once."""
+
+    return subprocess.run(
+        [sys.executable, "-c", "from metabrowser.cli.entrypoint import main; main()", *args],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+
+
+def test_show_and_api_agree_on_a_plugin_dir_kind(tmp_path: Path) -> None:
+    """``--show`` classifies through the named plugin dir, exactly as ``--api`` does.
+
+    Plugin discovery runs once when ``metabrowser.server`` is imported, so a
+    mode that imports the server before publishing ``--plugins-dir`` reports
+    the built-in kind and disagrees with the route the browser would use.
+    """
+    served_root = tmp_path / "served"
+    served_root.mkdir()
+    (served_root / "doc.demo").write_text("demo\n")
+
+    cli_root = tmp_path / "cli-dir"
+    cli_root.mkdir()
+    _make_plugin(cli_root, "showplug")
+
+    env = os.environ.copy()
+    env.pop("METABROWSER_PLUGINS_DIRS", None)
+    env["METABROWSER_LOG_LEVEL"] = "ERROR"
+
+    shown = _run_cli(
+        [
+            str(served_root),
+            "--show",
+            "doc.demo",
+            "--plugins-dir",
+            str(cli_root),
+            "--format",
+            "json",
+        ],
+        env,
+    )
+    assert shown.returncode == 0, f"stdout={shown.stdout!r} stderr={shown.stderr!r}"
+    shown_kind = json.loads(shown.stdout)["kind"]
+
+    served = _run_cli(
+        [
+            str(served_root),
+            "--api",
+            "/api/file?path=doc.demo",
+            "--plugins-dir",
+            str(cli_root),
+        ],
+        env,
+    )
+    assert served.returncode == 0, f"stdout={served.stdout!r} stderr={served.stderr!r}"
+    # `--api` prints a route and status line before the envelope it fetched.
+    envelope = served.stdout[served.stdout.index("{") :]
+    api_kind = json.loads(envelope)["kind"]
+
+    assert api_kind == "demo-showplug"
+    assert shown_kind == api_kind
+
+
 def _load_plugin_names(env: dict[str, str]) -> list[str]:
     code = (
         "import json, metabrowser.server as s; "

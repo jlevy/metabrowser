@@ -8,8 +8,8 @@ env:
 
 This browserless session crosses the production compositor into the lazily loaded image
 renderer. It pins asset ordering, safe DOM construction, raw-path encoding, alternative
-text, cancellation, replacement, error fallback, and idempotent disposal without relying
-on browser paint.
+text (including a GitPath wire whose `alt` is the display name), cancellation,
+replacement, error fallback, and idempotent disposal without relying on browser paint.
 
 ```console
 $ node tests/dom/image-preview-session.js
@@ -52,6 +52,11 @@ $ node tests/dom/image-preview-session.js
     "rawUrl": "/raw?path=images%2F%3Cunsafe%20%22quoted%22%20%26%20file%3E.png",
     "status": "mounted",
     "tagName": "IMG"
+  },
+  "gitMount": {
+    "alt": "pic.png",
+    "rawUrl": "/raw?path=g1-cGljLnBuZw",
+    "status": "mounted"
   },
   "innerHtmlWrites": 0,
   "replacement": {

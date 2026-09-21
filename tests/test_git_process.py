@@ -16,9 +16,11 @@ from metabrowser.git.process import (
     FETCH_POLICY,
     READ_POLICY,
     GitCommandError,
+    GitLocation,
     GitProcessPolicy,
     UnsupportedGitVersionError,
     acquisition_allowed,
+    as_location,
     attached_worktree_target,
     detect_git_version,
     git_environment,
@@ -26,6 +28,7 @@ from metabrowser.git.process import (
     repository_store_target,
     require_acquisition_git,
     run_git,
+    run_git_at,
 )
 
 pytestmark = pytest.mark.skipif(
@@ -45,6 +48,9 @@ def test_acquisition_policy_isolates_config_and_disables_lazy_fetch() -> None:
     assert "GIT_NO_LAZY_FETCH" not in read_env
     assert "GIT_CONFIG_NOSYSTEM" not in read_env
     assert "GIT_SSH_COMMAND" not in read_env
+    batch_env = git_environment(BATCH_OBJECT_POLICY)
+    assert BATCH_OBJECT_POLICY.no_lazy_fetch is True
+    assert batch_env["GIT_NO_LAZY_FETCH"] == "1"
 
 
 def test_run_git_rejects_cwd_and_target_together(tmp_path: Path) -> None:
@@ -219,3 +225,38 @@ def test_require_acquisition_git_matches_the_installed_binary() -> None:
     with pytest.raises(UnsupportedGitVersionError, match="unsupported Git version"):
         require_acquisition_git()
     assert parse_git_version(raw) == version
+
+
+def test_git_location_requires_cwd_xor_target(tmp_path: Path) -> None:
+    with pytest.raises(TypeError, match="cwd XOR target"):
+        GitLocation(cwd=None, target=None, identity="x", pinned_revision=None)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    asyncio.run(run_git(["init", "-q", "-b", "main"], cwd=repo))
+    target = repository_store_target(git_dir=repo / ".git")
+    with pytest.raises(TypeError, match="pinned revision"):
+        GitLocation(cwd=None, target=target, identity="x", pinned_revision=None)
+    with pytest.raises(TypeError, match="cwd XOR target"):
+        GitLocation(cwd=repo, target=target, identity="x", pinned_revision="a" * 40)
+    with pytest.raises(TypeError, match="cannot pin"):
+        GitLocation(cwd=repo, target=None, identity="x", pinned_revision="a" * 40)
+    located = GitLocation.filesystem(repo)
+    assert as_location(repo).identity == located.identity
+    assert located.pinned_revision is None
+    assert located.cwd == repo.resolve()
+
+
+def test_run_git_at_reads_a_filesystem_location(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    asyncio.run(run_git(["init", "-q", "-b", "main"], cwd=repo))
+    (repo / "file.txt").write_text("ok\n", encoding="utf-8")
+    asyncio.run(run_git(["add", "file.txt"], cwd=repo))
+    asyncio.run(
+        run_git(
+            ["-c", "user.name=T", "-c", "user.email=t@example.invalid", "commit", "-qm", "one"],
+            cwd=repo,
+        )
+    )
+    oid = asyncio.run(run_git_at(["rev-parse", "HEAD"], GitLocation.filesystem(repo)))
+    assert len(oid.strip()) == 40

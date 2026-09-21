@@ -41,6 +41,7 @@ from functools import cache
 from pathlib import Path
 from typing import Final, Literal
 
+from metabrowser.content_errors import ContentReadError
 from metabrowser.settings import GIT_SUBPROCESS_MAX_BYTES, GIT_SUBPROCESS_TIMEOUT_S
 
 log = logging.getLogger(__name__)
@@ -64,6 +65,14 @@ _STDERR_MAX_BYTES = 64 * 1024
 # octal-escaping every non-ASCII byte, which would otherwise have to be
 # unescaped in each parser.
 GIT_COMMON_ARGS: tuple[str, ...] = ("--no-optional-locks", "-c", "core.quotepath=false")
+
+# Store reads must not apply the operator's mailmap to acquired objects.
+GIT_DISABLE_MAILMAP_ARGS: Final[tuple[str, ...]] = (
+    "-c",
+    "mailmap.blob=",
+    "-c",
+    "mailmap.file=",
+)
 
 # Acquisition has no measured low-speed stall bound yet.
 # This wall-clock cap is only so a forgotten child cannot live forever; user
@@ -135,6 +144,21 @@ FETCH_POLICY: Final[GitProcessPolicy] = GitProcessPolicy(
     ssh_batch=True,
     extra_env={"GCM_INTERACTIVE": "never", "LC_ALL": "C"},
 )
+# Request-path reads of a published store: ``ls-tree``, ``rev-parse``, ``log``,
+# ``rev-list``, ``show``, ``diff``. The store holds untrusted content, so the
+# isolation is acquisition-grade and lazy fetch is off. The deadline is the
+# request-path one, because a request is waiting on the answer.
+STORE_READ_POLICY: Final[GitProcessPolicy] = GitProcessPolicy(
+    name="store-read",
+    timeout_s=GIT_SUBPROCESS_TIMEOUT_S,
+    max_bytes=GIT_SUBPROCESS_MAX_BYTES,
+    stdin="devnull",
+    child_umask=0o077,
+    isolate_user_config=True,
+    no_lazy_fetch=True,
+    ssh_batch=True,
+    extra_env={"GCM_INTERACTIVE": "never", "LC_ALL": "C"},
+)
 BATCH_OBJECT_POLICY: Final[GitProcessPolicy] = GitProcessPolicy(
     name="batch-object",
     timeout_s=GIT_SUBPROCESS_TIMEOUT_S,
@@ -164,14 +188,73 @@ class RepositoryStoreTarget:
 type GitCommandTarget = AttachedWorktreeTarget | RepositoryStoreTarget
 
 
-class GitError(Exception):
+@dataclass(frozen=True, slots=True)
+class GitLocation:
+    """Where Git commands run: a worktree path or a trusted target, never both.
+
+    ``identity`` is the discovery-cache and history-session key. It is never
+    placed on the wire. A revision location always carries the pinned full
+    object id so two pins over one store do not share HEAD or history.
+    """
+
+    cwd: Path | None
+    target: GitCommandTarget | None
+    identity: str
+    pinned_revision: str | None
+
+    def __post_init__(self) -> None:
+        if (self.cwd is None) == (self.target is None):
+            raise TypeError("GitLocation requires cwd XOR target")
+        if self.target is not None and self.pinned_revision is None:
+            raise TypeError("a command-target location requires a pinned revision")
+        if self.cwd is not None and self.pinned_revision is not None:
+            raise TypeError("a filesystem location cannot pin a revision")
+
+    @classmethod
+    def filesystem(cls, root: Path) -> GitLocation:
+        resolved = root.expanduser().resolve()
+        return cls(cwd=resolved, target=None, identity=str(resolved), pinned_revision=None)
+
+    @classmethod
+    def revision(cls, target: RepositoryStoreTarget, commit_oid: str) -> GitLocation:
+        return cls(
+            cwd=None,
+            target=target,
+            identity=f"git-revision:{target.git_dir}:{commit_oid}",
+            pinned_revision=commit_oid,
+        )
+
+    @property
+    def read_policy(self) -> GitProcessPolicy:
+        return STORE_READ_POLICY if self.target is not None else READ_POLICY
+
+    @property
+    def config_args(self) -> tuple[str, ...]:
+        return GIT_DISABLE_MAILMAP_ARGS if self.target is not None else ()
+
+
+def as_location(value: Path | GitLocation) -> GitLocation:
+    """Accept the historical ``Path`` overload or an explicit location."""
+
+    if isinstance(value, GitLocation):
+        return value
+    return GitLocation.filesystem(value)
+
+
+class GitError(ContentReadError):
     """Base for every failure this package reports.
 
     Route handlers catch this one type and convert it to a response.
     Subclasses exist so callers that can act on a specific failure
     (``GitUnavailableError`` in particular, which decides whether the Git
     tab appears at all) do not have to inspect messages.
+
+    It is also part of the shared content-read vocabulary, so a plugin data
+    hook reading a pinned blob catches one family for both source kinds.
     """
+
+    code = "git_failed"
+    http_status = 500
 
 
 class GitUnavailableError(GitError):
@@ -198,7 +281,17 @@ class GitCommandError(GitError):
 
 
 class GitTimeoutError(GitError):
-    """``git`` exceeded :data:`GIT_SUBPROCESS_TIMEOUT_S` and was killed."""
+    """``git`` exceeded its policy deadline and was killed.
+
+    The default message names no command and no path, so a caller that prints
+    ``str(exc)`` for a batch-actor timeout still says what happened.
+    """
+
+    code = "git_timeout"
+    http_status = 504
+
+    def __init__(self, message: str = "git command timed out") -> None:
+        super().__init__(message)
 
 
 class GitOutputTooLargeError(GitError):
@@ -259,6 +352,16 @@ _REPO_PINNING_GIT_VARS: tuple[str, ...] = (
     "GIT_NAMESPACE",
     "GIT_CEILING_DIRECTORIES",
 )
+
+
+def _default_policy(target: GitCommandTarget | None) -> GitProcessPolicy:
+    """The policy for a caller that named none.
+
+    A worktree-free store is never read under the ambient-configuration policy:
+    no-lazy-fetch and isolation must not depend on every caller remembering.
+    """
+
+    return STORE_READ_POLICY if isinstance(target, RepositoryStoreTarget) else READ_POLICY
 
 
 def git_environment(policy: GitProcessPolicy | None = None) -> dict[str, str]:
@@ -360,7 +463,7 @@ async def run_git(
     Raises :class:`GitUnavailableError`, :class:`GitTimeoutError`,
     :class:`GitOutputTooLargeError`, or :class:`GitCommandError`.
     """
-    chosen = policy if policy is not None else READ_POLICY
+    chosen = policy if policy is not None else _default_policy(target)
     proc = await spawn_git_process(
         args, cwd=cwd, target=target, policy=chosen, pipe_stdin=stdin is not None
     )
@@ -431,6 +534,58 @@ async def run_git(
     return stdout
 
 
+def run_git_blocking(
+    args: Sequence[str],
+    *,
+    target: GitCommandTarget,
+    policy: GitProcessPolicy,
+) -> None:
+    """Run a short ``git`` command that produces no stdout, blocking this thread.
+
+    The one shape :func:`run_git` cannot serve: a command that has to run inside a
+    cache lock. A hierarchy lock is owned by the thread that took it, and the
+    ``flock`` behind it blocks that thread, so the lock and the command it covers
+    belong to one thread rather than to a coroutine that spans an ``await``. Callers
+    on the event loop reach this through ``asyncio.to_thread``; see
+    :func:`metabrowser.cache.repository_store.lease_revision`.
+
+    stdin and stdout are ``DEVNULL``. A caller that needs stdout wants :func:`run_git`,
+    whose incremental drain bounds memory while the process is still running; this one
+    would have to buffer the whole stream before it could check a cap.
+    """
+
+    exe = git_executable()
+    if exe is None:
+        raise GitUnavailableError("git executable not found on PATH")
+    prefix, work_cwd = _target_prefix_and_cwd(target)
+    env = git_environment(policy)
+    if policy.isolate_user_config:
+        env["GIT_CEILING_DIRECTORIES"] = str(work_cwd.resolve().parent)
+    try:
+        completed = subprocess.run(
+            (exe, *GIT_COMMON_ARGS, *prefix, *args),
+            cwd=work_cwd,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            env=env,
+            umask=policy.child_umask if policy.child_umask is not None else -1,
+            timeout=policy.timeout_s,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        # ``subprocess.run`` kills and reaps the child before re-raising.
+        raise GitTimeoutError(
+            f"git {' '.join(args)} exceeded {policy.timeout_s:g}s and was terminated"
+        ) from exc
+    except OSError as exc:
+        raise GitUnavailableError(f"could not run git: {exc}") from exc
+    if completed.returncode != 0:
+        summary = completed.stderr[:_STDERR_MAX_BYTES].decode("utf-8", errors="replace").strip()
+        log.debug("git %s exited %s: %s", " ".join(args), completed.returncode, summary)
+        raise GitCommandError(args, completed.returncode, summary)
+
+
 def _target_prefix_and_cwd(target: GitCommandTarget) -> tuple[tuple[str, ...], Path]:
     match target:
         case AttachedWorktreeTarget(worktree=worktree, git_dir=git_dir):
@@ -473,7 +628,7 @@ async def spawn_git_process(
     if exe is None:
         raise GitUnavailableError("git executable not found on PATH")
 
-    chosen = policy if policy is not None else READ_POLICY
+    chosen = policy if policy is not None else _default_policy(target)
     prefix: tuple[str, ...] = ()
     work_cwd = cwd
     if target is not None:
@@ -506,6 +661,46 @@ async def spawn_git_process(
         # process-table exhaustion. Nothing downstream can distinguish
         # these usefully, so they collapse into one typed failure.
         raise GitUnavailableError(f"could not run git: {exc}") from exc
+
+
+async def run_git_at(
+    args: Sequence[str],
+    location: GitLocation,
+    *,
+    policy: GitProcessPolicy | None = None,
+    timeout_s: float | None = None,
+    max_bytes: int | None = None,
+    stdin: bytes | None = None,
+) -> bytes:
+    """Run ``git`` at *location*, applying store isolation when it is a pin."""
+
+    return await run_git(
+        [*location.config_args, *args],
+        cwd=location.cwd,
+        target=location.target,
+        policy=policy if policy is not None else location.read_policy,
+        timeout_s=timeout_s,
+        max_bytes=max_bytes,
+        stdin=stdin,
+    )
+
+
+async def spawn_git_at(
+    args: Sequence[str],
+    location: GitLocation,
+    *,
+    policy: GitProcessPolicy | None = None,
+    pipe_stdin: bool = False,
+) -> asyncio.subprocess.Process:
+    """Start a Git process at *location*, applying store isolation when pinned."""
+
+    return await spawn_git_process(
+        [*location.config_args, *args],
+        cwd=location.cwd,
+        target=location.target,
+        policy=policy if policy is not None else location.read_policy,
+        pipe_stdin=pipe_stdin,
+    )
 
 
 async def terminate_git_process(proc: asyncio.subprocess.Process) -> None:
@@ -634,16 +829,20 @@ __all__ = [
     "BATCH_OBJECT_POLICY",
     "FETCH_POLICY",
     "GIT_ACQUISITION_TIMEOUT_S",
+    "GIT_DISABLE_MAILMAP_ARGS",
     "GitCommandError",
     "GitError",
+    "GitLocation",
     "GitOutputTooLargeError",
     "GitProcessPolicy",
     "GitTimeoutError",
     "GitUnavailableError",
     "READ_POLICY",
+    "STORE_READ_POLICY",
     "UnsupportedGitVersionError",
     "acquisition_allowed",
     "acquisition_gate_as_fixture",
+    "as_location",
     "attached_worktree_target",
     "detect_git_version",
     "failure_detail",
@@ -655,6 +854,9 @@ __all__ = [
     "repository_store_target",
     "require_acquisition_git",
     "run_git",
+    "run_git_at",
+    "run_git_blocking",
+    "spawn_git_at",
     "spawn_git_process",
     "terminate_git_process",
 ]

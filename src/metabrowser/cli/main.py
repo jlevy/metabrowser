@@ -778,20 +778,36 @@ def _metab(
                 allow_edits=allow_edits,
             )
         else:
-            from metabrowser.cli.acquire_cli import run_api_after_acquire
+            from metabrowser.cli.acquire_cli import is_cache_inspect_route, run_api_after_acquire
 
-            run_api_after_acquire(
-                classified,
-                route=api,
-                fmt="json" if fmt == "text" else fmt,
-                data=data,
-                plugins_dir=plugins_dir,
-                log_level=log_level,
-                index_timeout_s=index_timeout,
-                untrusted=untrusted,
-                no_active_content=no_active_content,
-                allow_edits=allow_edits,
-            )
+            if is_cache_inspect_route(api):
+                run_api_after_acquire(
+                    classified,
+                    route=api,
+                    fmt="json" if fmt == "text" else fmt,
+                    data=data,
+                    plugins_dir=plugins_dir,
+                    log_level=log_level,
+                    index_timeout_s=index_timeout,
+                    untrusted=untrusted,
+                    no_active_content=no_active_content,
+                    allow_edits=allow_edits,
+                )
+            else:
+                from metabrowser.cli.git_pin_cli import run_pin_api
+
+                run_pin_api(
+                    classified,
+                    route=api,
+                    fmt="json" if fmt == "text" else fmt,
+                    data=data,
+                    plugins_dir=plugins_dir,
+                    log_level=log_level,
+                    index_timeout_s=index_timeout,
+                    untrusted=untrusted,
+                    no_active_content=no_active_content,
+                    allow_edits=allow_edits,
+                )
     elif mode == "no-serve":
         from metabrowser.cli.acquire_cli import run_no_serve
 
@@ -800,17 +816,33 @@ def _metab(
         assert show is not None
         from metabrowser.cli.show_cli import run_show
 
-        run_show(
-            _require_root(ctx, root, mode),
-            path=show,
-            fmt=fmt,
-            plugins_dir=plugins_dir,
-            log_level=log_level,
-            index_timeout_s=index_timeout,
-            untrusted=untrusted,
-            no_active_content=no_active_content,
-            allow_edits=allow_edits,
-        )
+        classified = _classified_root(ctx, root, mode)
+        if isinstance(classified, Path):
+            run_show(
+                classified,
+                path=show,
+                fmt=fmt,
+                plugins_dir=plugins_dir,
+                log_level=log_level,
+                index_timeout_s=index_timeout,
+                untrusted=untrusted,
+                no_active_content=no_active_content,
+                allow_edits=allow_edits,
+            )
+        else:
+            from metabrowser.cli.git_pin_cli import run_show_after_acquire
+
+            run_show_after_acquire(
+                classified,
+                path=show,
+                fmt=fmt,
+                plugins_dir=plugins_dir,
+                log_level=log_level,
+                index_timeout_s=index_timeout,
+                untrusted=untrusted,
+                no_active_content=no_active_content,
+                allow_edits=allow_edits,
+            )
     elif mode == "check-api":
         from metabrowser.cli.check_api import run_api_check
 

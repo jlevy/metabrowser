@@ -493,6 +493,32 @@ async function importSource(relative) {
     "treemap parent navigation is absent at the served root",
     treemapModel.parentNavigation("") === null,
   );
+  // The model takes the served source kind rather than reading a global, so
+  // the stub answers the way the real codec does: a wire token decodes only
+  // when the caller says the subject is a pin.
+  const seenKinds = [];
+  globalThis.window = {
+    MetabrowserNavigationRoute: {
+      displayPath(path, sourceKind) {
+        seenKinds.push(sourceKind);
+        return sourceKind === "git_revision" && path === "g1-ZG9jcw" ? "docs" : path;
+      },
+    },
+  };
+  check(
+    "treemap parent navigation decodes GitPath labels and keeps the wire",
+    JSON.stringify(treemapModel.parentNavigation("g1-ZG9jcw/g1-bm90ZS50eHQ", "git_revision")) ===
+      JSON.stringify({ path: "g1-ZG9jcw", label: "docs/" }),
+  );
+  check(
+    "treemap parent navigation forwards the caller's source kind",
+    seenKinds.at(-1) === "git_revision",
+  );
+  check(
+    "treemap parent navigation leaves a filesystem name alone",
+    JSON.stringify(treemapModel.parentNavigation("g1-ZG9jcw/note.txt", "filesystem")) ===
+      JSON.stringify({ path: "g1-ZG9jcw", label: "g1-ZG9jcw/" }),
+  );
 
   // A row cap bounds how long a list gets and says nothing about whether the
   // rows in it are worth reading. These two cases pin the other half: an entry

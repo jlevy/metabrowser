@@ -17,7 +17,9 @@ small but a long session could accumulate hundreds.
 
 from __future__ import annotations
 
+import io
 import re
+from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -35,9 +37,24 @@ from metabrowser.logutil.parsing import LogEvent, create_parser, detect_adapter
 # entries × MB-each) because chart payloads are KB-each.
 _CHARTS_CACHE_MAX = 128
 
-_CHARTS_CACHE: LRUCache[tuple[str, str, int, int], dict[str, Any]] = LRUCache(
-    maxsize=_CHARTS_CACHE_MAX
-)
+_CHARTS_CACHE: LRUCache[tuple[object, ...], dict[str, Any]] = LRUCache(maxsize=_CHARTS_CACHE_MAX)
+
+
+def lookup_agent_charts(identity: str, fingerprint: str) -> dict[str, Any] | None:
+    """A memoized payload for content that has not changed since it was stored.
+
+    Source-agnostic: *fingerprint* is whatever the content reader reports -- an
+    mtime hash under an attached folder, a blob object id on a pinned revision
+    -- and it changes exactly when the bytes can have. This is the same
+    memoization the module header measures, keyed so a caller that has not read
+    the content yet can consult it first.
+    """
+
+    return _CHARTS_CACHE.get(("agent-content", identity, fingerprint))
+
+
+def remember_agent_charts(identity: str, fingerprint: str, payload: dict[str, Any]) -> None:
+    _CHARTS_CACHE[("agent-content", identity, fingerprint)] = payload
 
 
 def _cache_key(kind: str, artifact: ArtifactPath) -> tuple[str, str, int, int] | None:
@@ -80,46 +97,81 @@ def extract_agent_charts(filepath: Path) -> dict[str, Any]:
         if hit is not None:
             return hit
 
-    # Read first lines to detect adapter
-    first_lines: list[str] = []
     with artifact.open_text(errors="replace", max_output_bytes=parse_max_bytes) as fh:
-        for raw_line in fh:
-            stripped = raw_line.strip()
-            if stripped:
-                first_lines.append(stripped)
-            if len(first_lines) >= 20:
-                break
-
-    adapter = detect_adapter(first_lines)
-    parser = create_parser(adapter)
-
-    # Parse all events
-    events: list[LogEvent] = []
-    with artifact.open_text(errors="replace", max_output_bytes=parse_max_bytes) as fh:
-        for raw_line in fh:
-            stripped = raw_line.strip()
-            if not stripped or len(stripped) > 256 * 1024:
-                continue
-            events.extend(parser.parse_line(stripped))
-    events.extend(parser.flush())
-
-    if not events:
-        result: dict[str, Any] = {"summary": None, "charts": []}
-        if key is not None:
-            _CHARTS_CACHE[key] = result
-        return result
-
-    counts = _agent_taxonomy_counts(events)
-    metadata = _agent_metadata(events, adapter)
-    charts = _agent_chart_specs(events)
-
-    result = {
-        "summary": {"counts": counts, "metadata": metadata},
-        "charts": charts,
-    }
+        result = _charts_from_lines(fh)
     if key is not None:
         _CHARTS_CACHE[key] = result
     return result
+
+
+def extract_agent_charts_bytes(data: bytes) -> dict[str, Any]:
+    """Extract chart data from JSONL bytes. No host path or mtime cache."""
+
+    parse_max_bytes = jsonl_view._JSONL_PARSE_MAX_BYTES
+    if len(data) > parse_max_bytes:
+        raise jsonl_view.JsonlParseLimitError(
+            f"JSONL content exceeds {parse_max_bytes} decompressed bytes"
+        )
+    # The same reader `jsonl_view.parse_jsonl_bytes` uses, so a blob and a file
+    # of the same log produce the same records.
+    return _charts_from_lines(io.StringIO(data.decode("utf-8", errors="replace")))
+
+
+def _charts_from_lines(lines: Iterable[str]) -> dict[str, Any]:
+    """Build the chart payload from an iterable of JSONL records.
+
+    One pass over the reader, which is what makes a live 38 MB log cost its
+    line rather than its length. Only a newline ends a record: the reader
+    yields them, where `str.splitlines()` would also break on U+2028, U+2029,
+    and U+0085 — all of which `JSON.stringify` writes raw inside a string, so
+    one quoted paragraph break would become two unparseable fragments and the
+    Charts tab would report a different event count than the JSONL view of the
+    same file.
+
+    The adapter is detected from the first 20 records, which are buffered and
+    then replayed through the parser, exactly as `jsonl_view` does.
+    """
+
+    detection_buffer: list[str] = []
+    adapter = ""
+    parser = None
+    events: list[LogEvent] = []
+
+    for raw_line in lines:
+        stripped = raw_line.strip()
+        if not stripped or len(stripped) > 256 * 1024:
+            continue
+        if parser is None:
+            detection_buffer.append(stripped)
+            if len(detection_buffer) < 20:
+                continue
+            adapter = detect_adapter(detection_buffer)
+            parser = create_parser(adapter)
+            for buffered in detection_buffer:
+                events.extend(parser.parse_line(buffered))
+            detection_buffer = []
+            continue
+        events.extend(parser.parse_line(stripped))
+
+    if parser is None:
+        # The log held fewer than 20 usable records.
+        adapter = detect_adapter(detection_buffer)
+        parser = create_parser(adapter)
+        for buffered in detection_buffer:
+            events.extend(parser.parse_line(buffered))
+
+    events.extend(parser.flush())
+
+    if not events:
+        return {"summary": None, "charts": []}
+
+    return {
+        "summary": {
+            "counts": _agent_taxonomy_counts(events),
+            "metadata": _agent_metadata(events, adapter),
+        },
+        "charts": _agent_chart_specs(events),
+    }
 
 
 def _agent_taxonomy_counts(events: list[LogEvent]) -> dict[str, int]:

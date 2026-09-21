@@ -14,6 +14,7 @@ Covers the contract in
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import gzip
 import json
@@ -27,6 +28,7 @@ import pytest
 from metabrowser import server
 from metabrowser.builtin_plugins.binary import sidekick
 from metabrowser.gz_io import ArtifactPath
+from metabrowser.source import read_artifact_window
 
 ALL_BYTES = bytes(range(256))
 
@@ -45,7 +47,7 @@ def _chunk(path: str, **params: object) -> tuple[int, dict[str, Any]]:
     request = Mock(spec=["query_params", "headers"])
     request.query_params = _FakeQuery(query)
     request.headers = {}
-    response = sidekick.chunk_handler(request)
+    response = asyncio.run(sidekick.chunk_handler(request))
     return response.status_code, json.loads(bytes(response.body))
 
 
@@ -144,10 +146,10 @@ def test_read_byte_chunk_reports_more_without_returning_it(tmp_path: Path) -> No
     target = tmp_path / "a.bin"
     target.write_bytes(ALL_BYTES)
 
-    payload, has_more = sidekick.read_byte_chunk(ArtifactPath(target), 0, 10)
+    window = read_artifact_window(ArtifactPath(target), 0, 10)
 
-    assert payload == ALL_BYTES[:10]
-    assert has_more is True
+    assert window.data == ALL_BYTES[:10]
+    assert window.has_more is True
 
 
 # ── Ceilings and windows ───────────────────────────────────────────

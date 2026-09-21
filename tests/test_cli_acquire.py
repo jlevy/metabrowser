@@ -124,16 +124,73 @@ def test_file_url_api_applies_the_content_trust_flags(
 
 
 @posix_only
-def test_file_url_api_tree_is_refused_without_acquiring(
+def test_pin_api_applies_the_content_trust_flags(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pin is a content surface, so ``--untrusted`` must reach its envelope.
+
+    The pin entry points issue against an attached subject instead of a
+    filesystem root, which is a second code path to the same capability block.
+    ``/api/capabilities`` is the wire form, so this reads the answer the
+    browser would read rather than a process global.
+    """
+    _isolate_home(tmp_path, monkeypatch)
+    url = _file_url(_origin(tmp_path, allow_filter=False))
+    default = runner.invoke(_app, [url, "--api", "/api/capabilities"])
+    assert default.exit_code == 0, default.output
+    assert '"active_content": true' in default.output
+    untrusted = runner.invoke(_app, [url, "--api", "/api/capabilities", "--untrusted"])
+    assert untrusted.exit_code == 0, untrusted.output
+    assert '"active_content": false' in untrusted.output
+    assert '"mutations": false' in untrusted.output
+
+
+@posix_only
+def test_file_url_api_tree_attaches_the_default_pin(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     home = _isolate_home(tmp_path, monkeypatch)
     url = _file_url(_origin(tmp_path, allow_filter=False))
     result = runner.invoke(_app, [url, "--api", "/api/tree"])
+    assert result.exit_code == 0, result.output
+    assert "Serving" not in result.output
+    assert '"subject": "git_revision"' in result.output
+    assert '"kind": "tree"' in result.output
+    assert "README" in result.output
+    assert str(home) not in result.output
+    assert "repository.git" not in result.output
+
+
+@posix_only
+def test_file_url_show_reports_the_pin_blob(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _isolate_home(tmp_path, monkeypatch)
+    url = _file_url(_origin(tmp_path, allow_filter=False))
+    result = runner.invoke(_app, [url, "--show", "README"])
+    assert result.exit_code == 0, result.output
+    assert "Serving" not in result.output
+    assert "show: README" in result.output
+    assert "route: /view/" in result.output
+    assert "kind: text" in result.output
+    assert "model: text envelope" in result.output
+
+
+@posix_only
+def test_https_show_stays_closed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    home = _isolate_home(tmp_path, monkeypatch)
+    result = runner.invoke(_app, ["https://example.com/owner/repo.git", "--show", "README"])
     assert isinstance(result.exception, CLIError)
-    message = str(result.exception)
-    assert "file Git sources are not served yet" in message
-    assert "--api /api/cache/" in message
+    assert "https Git sources are not opened yet" in str(result.exception)
+    assert not home.exists()
+
+
+@posix_only
+def test_https_api_tree_stays_closed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    home = _isolate_home(tmp_path, monkeypatch)
+    result = runner.invoke(_app, ["https://example.com/owner/repo.git", "--api", "/api/tree"])
+    assert isinstance(result.exception, CLIError)
+    assert "https Git sources are not served yet" in str(result.exception)
     assert not home.exists()
 
 

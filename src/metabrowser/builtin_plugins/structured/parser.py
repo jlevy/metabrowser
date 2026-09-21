@@ -1,9 +1,10 @@
 """Parse + re-serialize JSON / YAML for the structured plugin.
 
-The plugin's ``/api/plugin/structured/parsed`` handler delegates here.
-We parse the file once, cache the ``(parsed, pretty_yaml)`` pair on a
-small LRU keyed by ``(disk_path, mtime_hash)``, and ship the result
-to the client which renders it as a virtualized YAML-styled tree.
+The plugin's ``/api/plugin/structured/parsed`` handler reads bounded bytes
+through the content reader and delegates the parse here. We parse once, cache
+the ``(parsed, pretty_yaml)`` pair on a small LRU keyed by the content's own
+identity and fingerprint, and ship the result to the client which renders it
+as a virtualized YAML-styled tree.
 
 Comments are dropped in v1 (lossy round-trip). The on-the-wire payload
 flags ``comments_supported = False`` so v2 can flip the flag without a
@@ -17,11 +18,9 @@ import logging
 import os
 import re
 from dataclasses import dataclass
-from functools import lru_cache
-from pathlib import Path
 from typing import Any
 
-from metabrowser.gz_io import ArtifactDecompressionLimitError, ArtifactPath
+from cachetools import LRUCache
 
 LOG = logging.getLogger(__name__)
 
@@ -183,56 +182,44 @@ def _collapse_yaml_documents(docs: list[Any]) -> Any:
     return meaningful or None
 
 
-def parse_structured(target: Path, ext: str, mtime_hash: str) -> StructuredPayload:
-    """Parse, serialize, and cache. Use this as the public entry point.
+# A payload plus the byte count that produced it, so a cache hit can answer
+# the envelope's `size` without re-reading the content.
+CachedPayload = tuple[StructuredPayload, int]
 
-    The cache is keyed by ``(disk_path, mtime_hash)``: when the file
-    changes, the inventory's mtime_hash changes, and the next call
-    rebuilds the payload. This piggybacks on the existing invalidation
-    contract instead of inventing a new one.
+_PAYLOAD_CACHE: LRUCache[tuple[str, str, str], CachedPayload] = LRUCache(
+    maxsize=STRUCTURED_CACHE_SIZE
+)
+
+
+def lookup_structured_payload(identity: str, ext: str, fingerprint: str) -> CachedPayload | None:
+    """A payload parsed earlier for content that has not changed since.
+
+    Keyed by the content reader's own fingerprint -- an mtime hash under an
+    attached folder, a blob object id on a pinned revision -- so one cache
+    serves both source kinds and a hit costs no read.
     """
-    return _parse_structured_cached(str(target), ext, mtime_hash)
+
+    return _PAYLOAD_CACHE.get((identity, ext, fingerprint))
 
 
-@lru_cache(maxsize=STRUCTURED_CACHE_SIZE)
-def _parse_structured_cached(
-    target_str: str,
-    ext: str,
-    mtime_hash: str,
-) -> StructuredPayload:
-    target = Path(target_str)
-    artifact = ArtifactPath(target)
+def remember_structured_payload(
+    identity: str, ext: str, fingerprint: str, payload: CachedPayload
+) -> None:
+    _PAYLOAD_CACHE[(identity, ext, fingerprint)] = payload
 
-    def truncated_payload() -> StructuredPayload:
-        return StructuredPayload(
-            parsed=None,
-            pretty_yaml="",
-            node_count=0,
-            max_depth=0,
-            parse_error=None,
-            truncated=True,
-        )
 
-    try:
-        # Compressed streams must reach the caller-specific bound before a
-        # malformed trailer can obscure that they exceed it.
-        if not artifact.is_compressed and artifact.logical_size > STRUCTURED_PARSE_MAX_BYTES:
-            return truncated_payload()
-        with artifact.open_text(max_output_bytes=STRUCTURED_PARSE_MAX_BYTES) as fh:
-            text = fh.read()
-        parsed = _parse_text(text, ext)
-    except ArtifactDecompressionLimitError:
-        return truncated_payload()
-    except Exception as exc:
-        return StructuredPayload(
-            parsed=None,
-            pretty_yaml="",
-            node_count=0,
-            max_depth=0,
-            parse_error=f"{type(exc).__name__}: {exc}",
-            truncated=False,
-        )
+def truncated_payload() -> StructuredPayload:
+    return StructuredPayload(
+        parsed=None,
+        pretty_yaml="",
+        node_count=0,
+        max_depth=0,
+        parse_error=None,
+        truncated=True,
+    )
 
+
+def _payload_from_parsed(parsed: Any, *, label: str) -> StructuredPayload:
     try:
         pretty_yaml = _serialize_to_yaml(parsed)
     except Exception as exc:
@@ -240,9 +227,8 @@ def _parse_structured_cached(
         # output is just structured data the YAML serializer should
         # handle), so log loudly and ship the parsed tree with an
         # empty pretty_yaml. The client still gets the tree view.
-        LOG.warning("structured: failed to serialize %s to YAML: %s", target, exc, exc_info=True)
+        LOG.warning("structured: failed to serialize %s to YAML: %s", label, exc, exc_info=True)
         pretty_yaml = ""
-
     node_count, max_depth = _count_nodes_and_depth(parsed)
     return StructuredPayload(
         parsed=parsed,
@@ -252,3 +238,27 @@ def _parse_structured_cached(
         parse_error=None,
         truncated=False,
     )
+
+
+def parse_structured_bytes(data: bytes, ext: str) -> StructuredPayload:
+    """Parse JSON/YAML bytes. The only parse entry point; bounds are the caller's.
+
+    The caller reads through the bounded content reader, so the bytes that
+    arrive here are already capped. The length check keeps that a fact rather
+    than an assumption for a caller that read from somewhere else.
+    """
+
+    if len(data) > STRUCTURED_PARSE_MAX_BYTES:
+        return truncated_payload()
+    try:
+        parsed = _parse_text(data.decode("utf-8"), ext)
+    except Exception as exc:
+        return StructuredPayload(
+            parsed=None,
+            pretty_yaml="",
+            node_count=0,
+            max_depth=0,
+            parse_error=f"{type(exc).__name__}: {exc}",
+            truncated=False,
+        )
+    return _payload_from_parsed(parsed, label="bytes")

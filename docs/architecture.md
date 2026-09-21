@@ -330,7 +330,7 @@ which space it belongs to:
 
 | Route | Selects | Path is |
 | --- | --- | --- |
-| `/view/<path>` | Content in the served tree | A served-root-relative path |
+| `/view/<path>` | Content in the served tree or a pinned Git revision | A served-root-relative path, or a `GitPath` wire when the session is a `GitRevisionSubject` |
 | `/commit/<rev>` | One commit’s change set, compared against its first parent | A revision |
 | `/commit/<rev>/<inner>` | One file’s diff inside that change set | A revision, then a path within the comparison |
 | `/compare/<base>..<head>` | An explicit comparison (`...` for merge-base) | Two revisions |
@@ -352,9 +352,9 @@ An archive or pull-request container uses the same inner-path rule in its own ad
 space.
 
 A repository branch is not another browser address space.
-Repository opening resolves a branch name to a full object ID and makes a leased
-detached materialization the served tree for that session; `/view/<path>` then addresses
-content within that immutable selection.
+Repository opening resolves a branch name to a full object ID and pins a
+`GitRevisionSubject` over a worktree-free store; `/view/<path>` then addresses content
+with a `GitPath` wire identity, not a checkout.
 Public-safe repository context retains both the requested ref and resolved object ID so
 the moving name is never presented as immutable identity.
 

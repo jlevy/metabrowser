@@ -311,10 +311,25 @@ def test_the_checkbox_exception_is_scoped_and_explained() -> None:
     assert '<input type="checkbox"' in block
     assert "data-chip-check=" in block
 
-    # Only the gitignored visibility toggle uses it.
+    # Only the gitignored visibility toggle uses it, and a Git pin omits
+    # the control because ignore is absent.
     app = _read("app.js")
     assert app.count("fc.checkHtml(") == 1
     assert '"Show ignored"' in app
+    assert (
+        "isGitRevisionSource()" in app[app.index("fc.checkHtml(") - 80 : app.index("fc.checkHtml(")]
+    )
+
+
+def test_git_pin_hides_mtime_backed_filter_controls() -> None:
+    """A pin has no mtime, so recency would 409. Omit the control rather
+    than offering a window the tree cannot answer."""
+
+    app = _read("app.js")
+    recency_at = app.index('key: "recency"', app.index("function renderNavFilterBar()"))
+    assert "isGitRevisionSource()" in app[recency_at - 160 : recency_at]
+    recent_fn = app.index("function filesPanelUsesRecentSource()")
+    assert "isGitRevisionSource()" in app[recent_fn : recent_fn + 180]
 
 
 def test_extension_tallies_come_from_the_index_not_the_catalog() -> None:

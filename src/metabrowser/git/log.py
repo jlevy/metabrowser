@@ -34,12 +34,16 @@ from __future__ import annotations
 from collections.abc import Sequence
 from pathlib import Path
 
-from metabrowser.git.process import run_git
+from metabrowser.git.process import GitLocation, as_location, run_git_at
 from metabrowser.git.wire import GitAuthor, GitCommit, GitRef, is_full_revision
 
 # Field separator inside one commit record. Chosen from the C0 separator
 # block, which git never emits itself in these fields.
 _FIELD_SEP = "\x1f"
+
+# The namespaces history shows. A published store also holds private
+# ``refs/metabrowser/subjects/*`` reachability refs, which are not history.
+PUBLIC_REF_NAMESPACES = ("refs/heads", "refs/remotes", "refs/tags")
 
 # Field order in LOG_FORMAT. The subject is last on purpose; see the
 # module docstring.
@@ -251,7 +255,9 @@ def parse_log_output(raw: bytes) -> list[GitCommit]:
     return commits
 
 
-async def read_refs(served_root: Path, *, head_ref: str | None = None) -> list[GitRef]:
+async def read_refs(
+    served_root: Path | GitLocation, *, head_ref: str | None = None
+) -> list[GitRef]:
     """List every branch, remote branch, and tag with its target commit.
 
     ``for-each-ref`` rather than ``branch``/``tag``: it emits full
@@ -263,16 +269,17 @@ async def read_refs(served_root: Path, *, head_ref: str | None = None) -> list[G
     ``head_ref`` is the symbolic ref discovered with the repository
     context. Passing it into this single ref walk avoids another process
     while still marking the checked-out branch for client lane colors.
+    A pinned revision is detached, so callers pass ``None`` and no ref
+    is marked current.
     """
-    raw = await run_git(
+    location = as_location(served_root)
+    raw = await run_git_at(
         [
             "for-each-ref",
             "--format=%(refname)\x1f%(objectname)\x1f%(*objectname)",
-            "refs/heads",
-            "refs/remotes",
-            "refs/tags",
+            *PUBLIC_REF_NAMESPACES,
         ],
-        cwd=served_root,
+        location,
     )
 
     refs: list[GitRef] = []
@@ -298,7 +305,7 @@ async def read_refs(served_root: Path, *, head_ref: str | None = None) -> list[G
 
 
 async def read_history_summary(
-    served_root: Path,
+    served_root: Path | GitLocation,
     *,
     revisions: Sequence[str],
     all_refs: bool,
@@ -314,18 +321,26 @@ async def read_history_summary(
     cost is one traversal, bounded by the shared subprocess timeout. An
     empty scope is an unborn branch: zero commits, no first date.
     """
-    selector: tuple[str, ...] = ("--all",) if all_refs else tuple(revisions)
+    location = as_location(served_root)
+    selector: tuple[str, ...] = tuple(revisions)
+    if all_refs:
+        # ``--all`` on a published store would also walk the private subject refs.
+        selector = (
+            ("--all",)
+            if location.pinned_revision is None
+            else ("--branches", "--tags", "--remotes", location.pinned_revision)
+        )
     if not selector:
         return 0, None
-    raw_count = await run_git(["rev-list", "--count", *selector], cwd=served_root)
+    raw_count = await run_git_at(["rev-list", "--count", *selector], location)
     commit_count = int(raw_count.decode("ascii", errors="replace").strip() or "0")
 
     # One "commit <sha>" line and one "%ct" line per root commit. A scope
     # can have several roots (orphan branches, grafted history); the
     # repository's age is the oldest of them.
-    raw_roots = await run_git(
+    raw_roots = await run_git_at(
         ["rev-list", "--max-parents=0", "--format=%ct", *selector],
-        cwd=served_root,
+        location,
     )
     timestamps = [
         float(line)
@@ -336,6 +351,7 @@ async def read_history_summary(
 
 
 __all__ = [
+    "PUBLIC_REF_NAMESPACES",
     "parse_decoration",
     "parse_epoch",
     "TRUNK_BRANCH_NAMES",

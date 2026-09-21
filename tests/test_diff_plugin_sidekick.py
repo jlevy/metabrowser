@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
@@ -13,6 +14,7 @@ import pytest
 from metabrowser import server
 from metabrowser.builtin_plugins.diff import sidekick
 from metabrowser.diff.format import validate_document
+from metabrowser.source import ContentHandle, FilesystemContentSource
 from tests.diff_fixture_repo import build_diff_fixture
 
 
@@ -24,11 +26,20 @@ class _FakeQuery:
         return self._params.get(key, default)
 
 
-def _document(path: str) -> tuple[int, dict[str, Any]]:
+def _request(path: str) -> Any:
     request = Mock(spec=["query_params", "headers"])
     request.query_params = _FakeQuery({"path": path})
     request.headers = {}
-    response = sidekick.document_handler(request)
+    return request
+
+
+def _document(path: str) -> tuple[int, dict[str, Any]]:
+    response = asyncio.run(sidekick.document_handler(_request(path)))
+    return response.status_code, json.loads(bytes(response.body))
+
+
+def _children(path: str) -> tuple[int, dict[str, Any]]:
+    response = asyncio.run(sidekick.children_handler(_request(path)))
     return response.status_code, json.loads(bytes(response.body))
 
 
@@ -132,3 +143,75 @@ def test_comparison_hydrates_to_the_bound_and_defers_the_rest(
     deferred = [c for c in document.manifest.files if c.availability.value == "deferred"]
     assert len(ready) == 2 and len(document.patches) == 2
     assert deferred, "files past the bound must be declared deferred, not dropped"
+
+
+# ── Event-loop discipline ───────────────────────────────────────
+
+# The content reader's nearest-container walk mirrors the server's
+# nearest-file-ancestor rule, so it stats one entry per path level before
+# anything is parsed. On a cold or networked filesystem that is real latency,
+# and the module contract says filesystem work runs in the thread pool.
+
+
+def _thread_of_resolve_path(
+    handler: Any, path: str, monkeypatch: pytest.MonkeyPatch
+) -> tuple[int, list[int], int]:
+    """Run one handler; report the loop thread, where resolution ran, and the status."""
+
+    real = FilesystemContentSource.resolve
+    seen: list[int] = []
+
+    def _record(self: FilesystemContentSource, requested: str) -> ContentHandle | None:
+        seen.append(threading.get_ident())
+        return real(self, requested)
+
+    monkeypatch.setattr(FilesystemContentSource, "resolve", _record)
+
+    async def _run() -> tuple[int, int]:
+        response = await handler(_request(path))
+        return threading.get_ident(), response.status_code
+
+    loop_ident, status = asyncio.run(_run())
+    return loop_ident, seen, status
+
+
+def test_document_hook_resolves_the_patch_off_the_event_loop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    server._set_root_dir(tmp_path)
+    (tmp_path / "change.patch").write_text(PATCH)
+    loop_ident, seen, status = _thread_of_resolve_path(
+        sidekick.document_handler, "change.patch", monkeypatch
+    )
+    assert status == 200
+    assert seen, "path resolution never ran"
+    assert loop_ident not in seen
+
+
+def test_children_hook_resolves_the_patch_off_the_event_loop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    server._set_root_dir(tmp_path)
+    (tmp_path / "change.patch").write_text(PATCH)
+    loop_ident, seen, status = _thread_of_resolve_path(
+        sidekick.children_handler, "change.patch", monkeypatch
+    )
+    assert status == 200
+    assert seen, "path resolution never ran"
+    assert loop_ident not in seen
+
+
+def test_children_hook_lists_one_row_per_changed_path(tmp_path: Path) -> None:
+    server._set_root_dir(tmp_path)
+    (tmp_path / "change.patch").write_text(PATCH)
+    status, body = _children("change.patch")
+    assert status == 200
+    assert [child["name"] for child in body["children"]] == ["a.txt"]
+
+
+def test_children_hook_reports_a_missing_file(tmp_path: Path) -> None:
+    server._set_root_dir(tmp_path)
+    status, body = _children("absent.patch")
+    assert status == 404
+    assert body["error"] == "diff_children"
+    assert str(tmp_path) not in json.dumps(body)

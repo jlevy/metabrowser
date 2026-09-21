@@ -40,6 +40,24 @@ from metabrowser.provider_resources.profiles import (
     ResourceProfileSpec,
     ResourceTargetClass,
 )
+from metabrowser.source import (
+    MAX_CONTAINER_INNER_DEPTH,
+    ContentReadError,
+    ContentRef,
+    ContentStat,
+    ContentUnavailableError,
+    ContentWindow,
+    SourceCapabilities,
+    UnsupportedSourceCapabilityError,
+    open_content,
+    read_content_window,
+    require_filesystem_hooks,
+    require_source_capability,
+    resolve_content,
+    resolve_content_container,
+    source_capabilities,
+    stat_content,
+)
 
 
 def resolve_path(requested: str) -> Path | None:
@@ -47,7 +65,10 @@ def resolve_path(requested: str) -> Path | None:
 
     An empty string returns the served root. A successful result may be a file
     or directory; use :func:`resolve_directory` when a directory is required.
+    Filesystem-only: a non-filesystem subject raises
+    :class:`UnsupportedSourceCapabilityError`.
     """
+    require_filesystem_hooks()
     return _safe_path_from_identity(requested)
 
 
@@ -63,20 +84,16 @@ def relativize_path(raw: str | None) -> str | None:
     return canonical_inventory_path(relative) if relative else relative
 
 
-# The deepest inner path a container may expose beneath its own file,
-# counted from the container, not from the served root. One value for
-# the server's ancestor walk and every plugin's, so the two
-# implementations of this security-relevant rule cannot drift.
-MAX_CONTAINER_INNER_DEPTH = 16
-
-
 def served_root() -> Path:
     """The folder this server is serving.
 
     Hooks that reason about the tree as a whole — a repository, an
     archive — need the root itself, which ``resolve_path("")`` also
     returns; this name says why the caller wants it.
+    Filesystem-only: a non-filesystem subject raises
+    :class:`UnsupportedSourceCapabilityError`.
     """
+    require_filesystem_hooks()
     root = _safe_path("")
     if root is None:  # pragma: no cover - the served root always resolves
         raise RuntimeError("served root is unavailable")
@@ -94,6 +111,11 @@ __all__ = [
     "CapabilitySet",
     "CollectionPaginationPolicy",
     "ConformanceCorpusSpec",
+    "ContentReadError",
+    "ContentRef",
+    "ContentStat",
+    "ContentUnavailableError",
+    "ContentWindow",
     "JsonlParseLimitError",
     "LogEvent",
     "LogParser",
@@ -101,12 +123,21 @@ __all__ = [
     "ResourceCollectionSpec",
     "ResourceProfileSpec",
     "ResourceTargetClass",
+    "SourceCapabilities",
+    "UnsupportedSourceCapabilityError",
     "detect_adapter",
     "extract_agent_charts_cached",
+    "open_content",
+    "read_content_window",
     "register_log_adapter",
+    "require_source_capability",
     "register_root_callback",
     "relativize_path",
+    "resolve_content",
+    "resolve_content_container",
     "resolve_directory",
     "resolve_path",
     "served_root",
+    "source_capabilities",
+    "stat_content",
 ]

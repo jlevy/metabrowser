@@ -814,6 +814,51 @@ async function loadModule() {
   );
   largeHandle.dispose();
 
+  // A pinned Git revision addresses files by GitPath wire, so a relative link
+  // in a rendered document resolves into that spelling rather than into a
+  // filesystem identity. The enhancer learns which subject it is rendering
+  // from the SDK, and this is the only place that answer is observable end to
+  // end: drop it and every link below silently resolves to a path the pin has
+  // no object for.
+  const pinnedLink = new FakeElement("a", { href: "guide.md#Install" });
+  const pinnedParentLink = new FakeElement("a", { href: "../top.md" });
+  const pinnedImage = new FakeElement("img", { src: "images/map 1.svg" });
+  const pinnedExternal = new FakeElement("a", { href: "https://example.com/docs" });
+  const pinnedContainer = new FakeContainer([
+    pinnedLink,
+    pinnedParentLink,
+    pinnedImage,
+    pinnedExternal,
+  ]);
+  const pinnedMb = { ...mb, sourceKind: () => "git_revision" };
+  const pinnedHandle = module.enhanceRenderedLinks(
+    pinnedContainer,
+    "g1-ZG9jcw/g1-cmVhZG1lLm1k",
+    pinnedMb,
+    { cancel: () => {}, eventTarget: new FakeEventTarget(), schedule: () => 0 },
+  );
+  check(
+    "pinned sibling link resolves to a GitPath wire",
+    pinnedLink.getAttribute("href") === "/view/g1-ZG9jcw/g1-Z3VpZGUubWQ#Install",
+    pinnedLink.getAttribute("href"),
+  );
+  check(
+    "pinned parent link resolves to a GitPath wire",
+    pinnedParentLink.getAttribute("href") === "/view/g1-dG9wLm1k",
+    pinnedParentLink.getAttribute("href"),
+  );
+  check(
+    "pinned image source resolves to a GitPath wire",
+    pinnedImage.getAttribute("src") === "/raw?path=g1-ZG9jcw%2Fg1-aW1hZ2Vz%2Fg1-bWFwIDEuc3Zn",
+    pinnedImage.getAttribute("src"),
+  );
+  check(
+    "pinned external href is untouched",
+    pinnedExternal.getAttribute("href") === "https://example.com/docs",
+    pinnedExternal.getAttribute("href"),
+  );
+  pinnedHandle.dispose();
+
   if (failures.length) {
     console.error(`markdown link enhancer FAILURES:\n- ${failures.join("\n- ")}`);
     process.exit(1);

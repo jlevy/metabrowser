@@ -5,23 +5,27 @@ File Diff Format and returns the hydrated document — the same shape
 ``metab --diff`` emits and the conformance corpus validates, so the
 browser model never sees a plugin-specific envelope. A virtual path
 ``<patch>/<inner>`` (the container contract) returns the same document
-narrowed to that one file change.
+narrowed to that one file change. On a pinned Git revision the patch
+address is a ``GitPath`` ``g1-`` prefix; the inner path is the remainder.
 
 ``GET /api/plugin/diff/children?path=<rel>`` lists the change entries as
 nav-tree child rows for the container affordance.
 
 ``GET /api/plugin/diff/comparison?revision=<rev>`` (or ``?left=&right=``)
-serves the same document for a Git comparison in the served repository,
-so the history view renders diffs through this plugin's view instead of
-growing a diff surface of its own.
+serves the same document for a Git comparison at the active subject's
+``GitLocation``, so the history view renders diffs through this plugin's
+view instead of growing a diff surface of its own. A pinned revision
+does not need a working tree.
 
-The patch handlers are synchronous on purpose: the data-hook dispatcher
-runs sync sidekicks in the thread pool, and the parser is a bounded pure
-function. The comparison handler is async because ``git`` is.
+The patch handlers read through the content reader, which serves an attached
+folder and a pinned revision alike and keeps the blocking part off the event
+loop for both; the bounded parse runs in the thread pool. The comparison
+handler is async because ``git`` is.
 """
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, Any
 
 from starlette.responses import JSONResponse
@@ -41,12 +45,15 @@ from metabrowser.diff.format import (
 )
 from metabrowser.git.process import GitError
 from metabrowser.git.repo import repo_info
-from metabrowser.inventory_engine.contract import canonical_inventory_path, native_inventory_path
-from metabrowser.plugin_api import MAX_CONTAINER_INNER_DEPTH, resolve_path, served_root
+from metabrowser.git.routes import session_git_location
+from metabrowser.inventory_engine.contract import canonical_inventory_path
+from metabrowser.plugin_api import (
+    ContentReadError,
+    read_content_window,
+    resolve_content_container,
+)
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from starlette.requests import Request
 
 _PATCH_EXTS = (".patch", ".diff")
@@ -63,48 +70,33 @@ def _error(kind: str, message: str, status: int, *, path: str) -> JSONResponse:
     return JSONResponse({"error": kind, "message": message, "path": path}, status_code=status)
 
 
-def _resolve_patch(subpath: str) -> tuple[Path, str] | None:
-    """Resolve a real or virtual path to (patch file, inner path).
+def _parse_bytes(data: bytes) -> ChangeSetDocument:
+    return parse_unified_patch(data[: MAX_PATCH_BYTES + 1])
 
-    Mirrors the server's nearest-file-ancestor rule, scoped to this
-    plugin's extensions: the walk is bounded, every prefix passes the
-    same served-root gate, and a real directory ancestor means the
-    request was an ordinary missing file, not a container child.
+
+async def _patch_document(
+    subpath: str, *, error_kind: str
+) -> tuple[ChangeSetDocument, str] | JSONResponse:
+    """Resolve a real or virtual patch identity and parse it.
+
+    The content reader performs the nearest-container walk, scoped to this
+    plugin's own extensions so one plugin cannot open another's files, and the
+    bounded read; the parse runs in the thread pool. One byte past the cap
+    keeps the parser's own truncation reporting authoritative, and bounding the
+    read keeps a multi-GB file from ever landing in memory on the request path.
     """
-    direct = resolve_path(subpath)
-    if direct is not None and direct.is_file():
-        return direct, ""
-    parts = subpath.split("/")
-    if len(parts) < 2:
-        return None
-    for cut in range(len(parts) - 1, 0, -1):
-        prefix = "/".join(parts[:cut])
-        target = resolve_path(prefix)
-        if target is None:
-            continue
-        if target.is_dir():
-            return None
-        if not target.is_file():
-            # Nothing at this depth; keep walking toward the root.
-            continue
-        if not prefix.lower().endswith(_PATCH_EXTS):
-            return None
-        if len(parts) - cut > MAX_CONTAINER_INNER_DEPTH:
-            # The bound is on the inner path, measured from the claiming
-            # file — a deeply nested container keeps its full reach.
-            return None
-        inner = native_inventory_path("/".join(parts[cut:]))
-        return (target, inner) if inner is not None else None
-    return None
 
-
-def _parse(target: Path) -> ChangeSetDocument:
-    # One byte past the cap keeps the parser's own truncation reporting
-    # authoritative; bounding the read itself keeps a multi-GB file from
-    # ever landing in memory on the request path.
-    with target.open("rb") as handle:
-        data = handle.read(MAX_PATCH_BYTES + 1)
-    return parse_unified_patch(data)
+    try:
+        found = await resolve_content_container(subpath, suffixes=_PATCH_EXTS)
+        if found is None:
+            return _error(error_kind, "This file is not available.", 404, path=subpath)
+        ref, inner = found
+        window = await read_content_window(ref, max_bytes=MAX_PATCH_BYTES + 1)
+    except ContentReadError:
+        # Every way a patch fails to arrive is the same thing to this view:
+        # there is no change set to render at that address.
+        return _error(error_kind, "This file is not available.", 404, path=subpath)
+    return await asyncio.to_thread(_parse_bytes, window.data), inner
 
 
 def _change_display_path(change: FileChange) -> str:
@@ -145,14 +137,13 @@ def _narrow_to_path(document: ChangeSetDocument, inner: str) -> ChangeSetDocumen
     return document.model_copy(update={"manifest": manifest, "patches": patches})
 
 
-def document_handler(request: Request) -> JSONResponse:
+async def document_handler(request: Request) -> JSONResponse:
     """One patch file — or one change inside it — as a ChangeSetDocument."""
     subpath = request.query_params.get("path", "")
-    resolved = _resolve_patch(subpath)
-    if resolved is None:
-        return _error("diff_document", "This file is not available.", 404, path=subpath)
-    target, inner = resolved
-    document = _parse(target)
+    opened = await _patch_document(subpath, error_kind="diff_document")
+    if isinstance(opened, JSONResponse):
+        return opened
+    document, inner = opened
     if inner:
         narrowed = _narrow_to_path(document, inner)
         if narrowed is None:
@@ -167,7 +158,7 @@ def document_handler(request: Request) -> JSONResponse:
 
 
 async def comparison_handler(request: Request) -> JSONResponse:
-    """A Git comparison in the served repository, as a ChangeSetDocument.
+    """A Git comparison at the active subject's location, as a ChangeSetDocument.
 
     ``?revision=<rev>`` compares a commit against its first parent — the
     same resolution ``metab --diff REV`` performs. ``?left=&right=``
@@ -175,6 +166,7 @@ async def comparison_handler(request: Request) -> JSONResponse:
     stay ``deferred``, which the renderer states rather than eliding.
     ``&file=<path>`` narrows to one change and hydrates it regardless of
     the bound — the deferred sections' on-demand loader.
+    On a pinned revision, ``HEAD`` is that object id.
     """
     revision = request.query_params.get("revision", "").strip()
     wanted_file = request.query_params.get("file", "").strip()
@@ -192,9 +184,16 @@ async def comparison_handler(request: Request) -> JSONResponse:
             path=revision or f"{left}..{right}",
         )
 
-    root = served_root()
-    context, _info = await repo_info(root)
+    location = session_git_location()
+    context, _info = await repo_info(location)
     if context is None:
+        if location.pinned_revision is not None:
+            return _error(
+                "diff_comparison",
+                "This revision is not a readable Git repository.",
+                404,
+                path=revision,
+            )
         return _error(
             "diff_comparison",
             "This folder is not the root of a Git repository.",
@@ -202,7 +201,7 @@ async def comparison_handler(request: Request) -> JSONResponse:
             path=revision,
         )
 
-    source = GitDiffSource(context.git_root)
+    source = GitDiffSource(context.command_location())
     try:
         resolved = await source.resolve(intent)
         manifest = await source.manifest(resolved)
@@ -275,13 +274,17 @@ def _document_from(
     )
 
 
-def children_handler(request: Request) -> JSONResponse:
+async def children_handler(request: Request) -> JSONResponse:
     """The change entries of one patch file, as nav-tree child rows."""
     subpath = request.query_params.get("path", "")
-    target = resolve_path(subpath)
-    if target is None or not target.is_file() or not subpath.lower().endswith(_PATCH_EXTS):
+    opened = await _patch_document(subpath, error_kind="diff_children")
+    if isinstance(opened, JSONResponse):
+        return opened
+    document, inner = opened
+    if inner:
+        # A child listing is asked of the container itself, never of one of
+        # its virtual children.
         return _error("diff_children", "This file is not available.", 404, path=subpath)
-    document = _parse(target)
     # One row per path, not per change: a patch file spells a type change
     # as delete-plus-add at the same path, and two rows sharing a virtual
     # path would be two rows that open the same thing.
