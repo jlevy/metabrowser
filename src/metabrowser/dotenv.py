@@ -35,6 +35,14 @@ REFUSED_KEYS: frozenset[str] = frozenset(
         # Every name here extends the set of domains whose pages a browser
         # will let read responses, which is the DNS-rebinding guard itself.
         "METABROWSER_ALLOWED_HOSTS",
+        # Directory plugins are JavaScript that runs in the application page,
+        # with the API that page holds. docs/plugins.md states that the served
+        # root is not an automatic plugin source, "a security boundary:
+        # browsing data must not cause its JavaScript to execute in the
+        # Metabrowser page". Reading this from the chain breaks exactly that,
+        # because `cd cloned-repo && metab .` makes the served root the
+        # directory the chain starts from. `--plugins-dir` is unaffected.
+        "METABROWSER_PLUGINS_DIRS",
     }
 )
 """Keys a dotenv file may never contribute, in either direction.

@@ -6,6 +6,12 @@ All notable changes to Metabrowser are documented here.
 
 Content trust:
 
+- A `.env` or `.env.local` file no longer supplies `METABROWSER_PLUGINS_DIRS`. The chain
+  walks up from the working directory, so browsing a repository from inside it reached
+  that repository’s own file, and a directory plugin is JavaScript that runs in the
+  application page with the API that page holds.
+  Name the directory in the process environment, or pass `--plugins-dir`.
+
 - `/raw` responses are sandboxed unconditionally.
   Every branch, including gzip passthrough, SVG, HTML, and error bodies, sends
   `Content-Security-Policy: sandbox allow-scripts allow-popups allow-forms allow-downloads`

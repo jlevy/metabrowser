@@ -100,9 +100,14 @@ def test_dotenv_leaves_a_shell_set_trust_variable_intact(
     assert os.environ["METAB_ALLOW_EDITS"] == "0"
 
 
-def test_dotenv_drives_plugin_discovery(tmp_path: Path) -> None:
-    """End-to-end: a `.env` setting METABROWSER_PLUGINS_DIRS makes that
-    directory's plugins load on direct server import.
+def test_dotenv_never_drives_plugin_discovery(tmp_path: Path) -> None:
+    """End-to-end: a `.env` setting METABROWSER_PLUGINS_DIRS loads nothing.
+
+    Directory plugins are JavaScript that runs in the application page. A
+    repository browsed from inside itself reaches its own `.env` through the
+    chain, so honoring the name there would make the served root an automatic
+    plugin source, which docs/plugins.md names as a security boundary. The
+    real environment still works; `--plugins-dir` is untouched.
 
     Uses subprocess so the python-dotenv side effects don't leak into
     other tests in the suite.
@@ -143,7 +148,26 @@ def test_dotenv_drives_plugin_discovery(tmp_path: Path) -> None:
 
     last_line = result.stdout.strip().splitlines()[-1]
     names = json.loads(last_line)
-    assert "envloaded" in names, f"`.env` should drive plugin discovery; loaded plugins: {names}"
+    assert "envloaded" not in names, (
+        f"a `.env` must not drive plugin discovery; loaded plugins: {names}"
+    )
+
+    result_env = subprocess.run(
+        [sys.executable, "-c", code],
+        env={**env, "METABROWSER_PLUGINS_DIRS": str(plugins_parent)},
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert result_env.returncode == 0, (
+        f"subprocess failed: stdout={result_env.stdout!r} stderr={result_env.stderr!r}"
+    )
+    names_env = json.loads(result_env.stdout.strip().splitlines()[-1])
+    assert "envloaded" in names_env, (
+        f"the real environment should still drive discovery; loaded plugins: {names_env}"
+    )
 
 
 def test_walk_loads_dotenv_before_configuring_logging(tmp_path: Path) -> None:
