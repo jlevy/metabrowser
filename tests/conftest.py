@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import os
 from collections.abc import Generator
+from html.parser import HTMLParser
+from typing import NamedTuple
+from urllib.parse import urljoin
 
 import pytest
 
@@ -47,6 +50,77 @@ def _reset_browser_response_caches() -> Generator[None, None, None]:  # pyright:
     except Exception:
         # Defensive: never let cleanup failure mask a test failure.
         pass
+
+
+class DocumentReference(NamedTuple):
+    """One URL a browser would fetch or follow from a served document."""
+
+    tag: str
+    attribute: str
+    value: str
+    resolved: str
+
+
+# The attributes whose value is a URL the browser resolves against the
+# document's own address. Enough for the static pages these tests serve;
+# a fixture that needs another element adds it here.
+_REFERENCE_ATTRIBUTES: dict[str, str] = {
+    "a": "href",
+    "embed": "src",
+    "frame": "src",
+    "iframe": "src",
+    "img": "src",
+    "link": "href",
+    "script": "src",
+    "source": "src",
+}
+
+
+class _ReferenceCollector(HTMLParser):
+    def __init__(self, document_url: str) -> None:
+        super().__init__(convert_charrefs=True)
+        self._document_url = document_url
+        self.references: list[DocumentReference] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        name = tag.lower()
+        if name == "base":
+            # Resolution below is relative to the document URL. A document
+            # that moves its base would make every answer here wrong, so
+            # refuse rather than report a plausible lie.
+            assert not any(key.lower() == "href" for key, _ in attrs), (
+                "document_references does not honour <base href>"
+            )
+            return
+        attribute = _REFERENCE_ATTRIBUTES.get(name)
+        if attribute is None:
+            return
+        for key, value in attrs:
+            if key.lower() == attribute and value:
+                self.references.append(
+                    DocumentReference(
+                        tag=name,
+                        attribute=attribute,
+                        value=value,
+                        resolved=urljoin(self._document_url, value),
+                    )
+                )
+
+
+def document_references(document: str, document_url: str) -> list[DocumentReference]:
+    """Resolve the URLs a browser would request from a served document.
+
+    ``urljoin`` performs the same RFC 3986 resolution a browser applies to
+    a relative reference against the document's own URL, so this answers
+    "where would the next request go" without running a browser. It says
+    nothing about whether a browser issues those requests or what it does
+    with the bytes; only the address is derived here.
+    """
+
+    collector = _ReferenceCollector(document_url)
+    collector.feed(document)
+    collector.close()
+    return collector.references
 
 
 class SyntheticIndexWriter:

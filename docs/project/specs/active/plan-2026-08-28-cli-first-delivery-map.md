@@ -1,10 +1,10 @@
-# Plan: CLI-First Delivery — v0.10 Parity and the v0.11 Repository/Hosted-Review Slice
+# Plan: CLI-First Delivery — v0.10 Parity and the v0.12 Repository/Hosted-Review Slice
 
 **Date:** 2026-08-28 (refreshed 2026-09-14)
 
 **Author:** Joshua Levy (with LLM assistance)
 
-**Status:** Parity foundation landed for the v0.10.0 release candidate; v0.11.0 is
+**Status:** Parity foundation landed for the v0.10.0 release candidate; v0.12.0 is
 release-gated
 
 ## Overview
@@ -15,7 +15,7 @@ The remaining workstreams are
 [Git status](plan-2026-08-26-git-status-and-working-tree-diffs.md), the
 [repository library](plan-2026-08-11-open-repo-from-git-url.md), and the
 [hosted-review and GitHub provider](plan-2026-08-27-github-provider-and-pull-requests.md).
-This document records the delivered foundation, sequences the v0.11.0 PR-first slice,
+This document records the delivered foundation, sequences the v0.12.0 PR-first slice,
 and states how backend work is proved end to end without a browser.
 
 The thesis is that the parity plan is not a testing chore that follows the features.
@@ -58,25 +58,25 @@ they turn the entire state machine into something a transcript can assert.
 ## Ordering
 
 Rows 1 and 2 are the v0.10.0 release-candidate baseline.
-For v0.11.0, the table’s *Gated by* column is authoritative where this prose and it
+For v0.12.0, the table’s *Gated by* column is authoritative where this prose and it
 disagree; independent status, format, trust, and provider-model work can proceed in
 parallel.
 
 | # | Work | Beads | Gated by | State |
 | --- | --- | --- | --- | --- |
-| 0 | v0.11 start gate: v0.10.0 tag and release from intended `main` | `mb-i57d`, `mb-xxhi` | nothing | Open; blocks every `release:v0.11.0` implementation bead |
+| 0 | v0.12 start gate: v0.10.0 tag and release from intended `main` | `mb-i57d`, `mb-xxhi` | nothing | Open; blocks every `release:v0.12.0` implementation bead |
 | 1 | Parity mechanism: ASGI client, normalizer, `--api`, `--show` | `mb-8n8l`, `mb-ian3`, `mb-y5wm` | nothing | Landed on `main` for v0.10.0 |
 | 2 | Parity enforcement, persisted state, functional aspects, and codification | `mb-esht`, `mb-zodq`, `mb-n9xg` | 1 | Landed on `main` for v0.10.0 |
-| 3 | Git-status measurement gate | `mb-r5gn` | 0 | v0.11.0 |
-| 4 | Git-status backend, then panel | `mb-u4mf`, `mb-vibn`, `mb-y06t` | 0, 1, 3 | v0.11.0 foundation |
-| 5 | Owner-only cache format foundation, then acquisition | `mb-ire2`, `mb-xa0p`, `mb-4gnu`, `mb-dxmb`, `mb-h51g`, `mb-k54c`, `mb-dg00` | 0, 1 | v0.11.0 |
+| 3 | Git-status measurement gate | `mb-r5gn` | 0 | v0.12.0 |
+| 4 | Git-status backend, then panel | `mb-u4mf`, `mb-vibn`, `mb-y06t` | 0, 1, 3 | v0.12.0 foundation |
+| 5 | Owner-only cache format foundation, then acquisition | `mb-ire2`, `mb-xa0p`, `mb-4gnu`, `mb-dxmb`, `mb-h51g`, `mb-k54c`, `mb-dg00` | 0, 1 | v0.12.0 |
 | 6 | HTML trust chain | `mb-cun0`, `mb-vib1` | 0 | Gates serving fetched content |
-| 7 | Provider URL reducer, repository open, then selected-branch materialization | `mb-12cz`, `mb-ew38`, `mb-jlon`, `mb-z335`, `mb-2xq7` | 4, 5, 6 | v0.11.0 |
-| 8 | Hosted-review models | `mb-63ym` | 0 | v0.11.0 |
-| 9 | Bounded provider runner, capability registry, `gh api` adapter, auth-scoped store, repository summary, then direct PR bundle | `mb-y1ax`, `mb-ji83`, `mb-p4sw`, `mb-i3xc`, `mb-duu7`, `mb-2oxp`, `mb-h64t` | 5, 7, 8 | v0.11.0 |
-| 10 | Plugin router, address-space lifecycle, and direct PR document/diff | `mb-xzj3`, `mb-6mle`, `mb-81p5` | 6, 9 | v0.11.0 |
-| 11 | Query-keyed bounded PR index and virtual nav | `mb-lnkl`, `mb-uh6p`, `mb-iw1v` | 9, 10 | v0.11.0 |
-| 12 | Anchored review threads | `mb-rldc` | 10 | v0.11.0 |
+| 7 | Provider URL reducer, repository open, then selected-branch materialization | `mb-12cz`, `mb-ew38`, `mb-jlon`, `mb-z335`, `mb-2xq7` | 4, 5, 6 | v0.12.0 |
+| 8 | Hosted-review models | `mb-63ym` | 0 | v0.12.0 |
+| 9 | Bounded provider runner, capability registry, `gh api` adapter, auth-scoped store, repository summary, then direct PR bundle | `mb-y1ax`, `mb-ji83`, `mb-p4sw`, `mb-i3xc`, `mb-duu7`, `mb-2oxp`, `mb-h64t` | 5, 7, 8 | v0.12.0 |
+| 10 | Plugin router, address-space lifecycle, and direct PR document/diff | `mb-xzj3`, `mb-6mle`, `mb-81p5` | 6, 9 | v0.12.0 |
+| 11 | Query-keyed bounded PR index and virtual nav | `mb-lnkl`, `mb-uh6p`, `mb-iw1v` | 9, 10 | v0.12.0 |
+| 12 | Anchored review threads | `mb-rldc` | 10 | v0.12.0 |
 
 Row 6 is the
 [R1 finding](../../reviews/review-2026-08-27-delivery-order-for-status-cache-and-providers.md):
@@ -543,7 +543,7 @@ candidate:
 | 5 | `mb-zodq` | The three clauses in `AGENTS.md`, the reasoning in `docs/development.md` |
 | 6 | `mb-r5gn` | Measurements recorded; the three decisions written down or the stop above triggered |
 
-### What lands for the v0.11.0 PR-first slice
+### What lands for the v0.12.0 PR-first slice
 
 After `mb-i57d` cuts v0.10.0 and `mb-xxhi` verifies and fetches the released `main`
 commit, the remaining sequence starts from a new branch at that commit:

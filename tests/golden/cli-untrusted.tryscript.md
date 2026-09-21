@@ -19,9 +19,9 @@ before: >-
 # Golden tests: the `--untrusted` content-trust profile
 
 Every other transcript in this directory runs the default profile, where active content
-is on. This one pins the conservative profile, so a change that silently stops
-`--untrusted` from reaching the capability block or the view list shows up as a diff
-here rather than as a quiet loss of containment.
+is on. This one pins the conservative profile and the two individual flags, so a change
+that silently stops one of them from reaching the capability block or the view list
+shows up as a diff here rather than as a quiet loss of containment.
 
 The three capability environment variables are cleared in the front matter.
 The profile under test is the one the flag asks for, and pinning the environment keeps
@@ -80,6 +80,65 @@ route: /view/page.html
 kind: html
 views: source (default)
 model: text envelope; size=49 content_bytes=49 content_truncated=False
+? 0
+```
+
+## Test: `--no-active-content` withdraws Preview on its own
+
+The profile is not the only way to reach the conservative view list.
+`--no-active-content` drops `allow-scripts` from the `/raw` sandbox, and a Preview whose
+frame cannot run scripts would misrepresent the document, so the flag withdraws the view
+the same way `--untrusted` does.
+Pinning it separately keeps the two paths from drifting apart, which a test that only
+ever passes the profile would not catch.
+
+```console
+$ metab trustroot --no-active-content --show page.html
+show: page.html
+route: /view/page.html
+kind: html
+views: source (default)
+model: text envelope; size=49 content_bytes=49 content_truncated=False
+? 0
+```
+
+## Test: `--untrusted --allow-edits` lifts mutations and nothing else
+
+This is the one combination that overrides the profile, so it is the one that shows the
+rule is a real precedence and not a blanket refusal.
+`--allow-edits` publishes `mutations: true` from under `--untrusted`, while
+`active_content` stays false because nothing asked for it.
+
+```console
+$ metab trustroot --untrusted --allow-edits --api /api/capabilities
+api: /api/capabilities
+status: 200
+{
+  "backends": [
+    {
+      "prefix": ".",
+      "mode": "[..]",
+      "reason": "[..]",
+      "state": "[..]"
+    }
+  ],
+  "index": {
+    "complete": true,
+    "indexed_files": 2,
+    "max_files": 500000,
+    "truncated": false,
+    "provider": "python",
+    "contract": "inventory-provider-v1"
+  },
+  "events": {
+    "stream": "live",
+    "reason": "[..]"
+  },
+  "capabilities": {
+    "active_content": false,
+    "mutations": true
+  }
+}
 ? 0
 ```
 

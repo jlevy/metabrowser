@@ -50,9 +50,9 @@ planning:
 The repository-library plan keeps the generic phases: format foundation, acquisition and
 URL opening, catalog and refresh, the chooser, and large-repository support.
 
-## v0.11.0 Milestone
+## v0.12.0 Milestone
 
-The v0.11.0 milestone is one PR-first vertical slice:
+The v0.12.0 milestone is one PR-first vertical slice:
 
 - bind a cached GitHub repository and publish its repository summary;
 - open any advertised and authorized branch through the generic repository
@@ -80,7 +80,7 @@ and virtual navigation containers are specified in
 [Hosted Review Model and Provider Boundary](../../architecture/arch-hosted-review-model.md).
 
 Implementation does not start from this design branch.
-`mb-xxhi` blocks every `release:v0.11.0` implementation bead and closes only after
+`mb-xxhi` blocks every `release:v0.12.0` implementation bead and closes only after
 `mb-i57d` cuts v0.10.0 from the intended `main` commit, that commit is fetched locally,
 and the implementation branch starts from it.
 Design review, bead refinement, and release work may proceed before that gate closes.
@@ -150,7 +150,7 @@ be labeled as such deliberately rather than by omission.
 This keeps the review’s ordering (the model leads) while removing its blind spot (the
 model is unfalsifiable until Phase 3).
 
-### One provider port, one v0.11.0 transport
+### One provider port, one v0.12.0 transport
 
 The hosted-review port is provider-neutral; its first implementation is
 `GitHubGhAdapter`, backed by the installed `gh` CLI and explicit `gh api` requests.
@@ -232,7 +232,7 @@ code:
 | Top-level conversation comment | `ChangeRequestComment/v1` | Distinct from a diff discussion; keeps Markdown body and lifecycle but has no review anchor |
 | Review, review thread, review comment | `Review/v1`, `ReviewThread/v1`, `ReviewComment/v1` | Review YAML owns identity, author, disposition, lifecycle, timestamps, and relationships while an optional Markdown body owns summary prose; anchors preserve provider and immutable comparison identity; file-level, line, and range forms remain distinct; mapping failure stays unresolved |
 | Check suite, check run, commit status | `Check/v1`, `CommitStatus/v1` | Attached to immutable revision IDs; provider-only details use a declared companion record |
-| Labels, assignees, milestone | Common bounded references | Only values consumed by discovery or detail views enter v0.11.0 |
+| Labels, assignees, milestone | Common bounded references | Only values consumed by discovery or detail views enter v0.12.0 |
 | Provider timestamps and API observations | Object timestamps plus `Retrieval/v1` | Hosted state and retrieval freshness never share one timestamp |
 
 SoftSchema maturity follows the evidence:
@@ -522,7 +522,7 @@ does not expose response shape, pagination syntax, or client-library types.
 
 The provider binding resolves a generic cache entry to a stable GitHub repository ID
 without changing the cache source digest.
-The v0.11.0 adapter invokes `gh api`; credentials remain in `gh`, its operating-system
+The v0.12.0 adapter invokes `gh api`; credentials remain in `gh`, its operating-system
 credential store, or its supported token environment.
 The plugin reports authentication capability and failure state but never asks `gh` to
 show a token or reads a secret into a cache record.
@@ -912,13 +912,13 @@ first implementation prerequisite here.
   pipelines, auth, pagination, and selected refs after the GitHub-first format and views
   have shipped.
 - [ ] Add only fields observed from that adapter and only provider-specific companion
-  records with named consumers; do not widen v0.11.0 contracts speculatively.
+  records with named consumers; do not widen v0.12.0 contracts speculatively.
 
 ## Incremental Shipping Map
 
 | Slice | Depends on | Mergeable result |
 | --- | --- | --- |
-| v0.11 start (`mb-xxhi`) | v0.10.0 release `mb-i57d` | Implementation branch starts from the released `main` commit |
+| v0.12 start (`mb-xxhi`) | v0.10.0 release `mb-i57d` | Implementation branch starts from the released `main` commit |
 | Hosted Review Format (`mb-63ym`) | Release gate and SoftSchema exact-release review | Enforced no-network records, schemas, fixtures, and browser validation |
 | Generic cache | Cache Phase 1A/1B beads | Any supported repository source is pinned and reusable offline |
 | GitHub URL reducer (`mb-12cz`, `mb-ew38`) | Generic cache | Any supported GitHub repository URL opens without the GitHub API |

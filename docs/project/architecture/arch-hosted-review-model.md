@@ -1,6 +1,6 @@
 # Hosted Review Model and Provider Boundary
 
-**Status:** Proposed for the v0.11.0 GitHub-first slice.
+**Status:** Proposed for the v0.12.0 GitHub-first slice.
 No hosted-review format, provider adapter, route, or view is implemented yet.
 
 Hosted review is a domain above Git history and File Diff Format.
@@ -68,10 +68,10 @@ inspection path, and future provider adapters share one compiled structural cont
 Contract IDs name provider-neutral payloads, schemas ship with the hosted-review plugin,
 and the host registry outranks any schema path found in cached content.
 The first corpus may move from `permissive` to `enforced` while the producer and
-consumer are developed together; v0.11.0 does not publish a contract until undeclared
+consumer are developed together; v0.12.0 does not publish a contract until undeclared
 fields fail consistently in both runtimes.
 
-The v0.11.0 record set is deliberately PR-first:
+The v0.12.0 record set is deliberately PR-first:
 
 | Record | Describes | Does not contain |
 | --- | --- | --- |
@@ -87,7 +87,7 @@ The v0.11.0 record set is deliberately PR-first:
 
 Issue and timeline records are the next domain extension, tracked by `mb-9rrc`.
 Stacked-change projections are later derived records, tracked by `mb-glxc`. They extend
-the registry with closed contracts; they do not add an `extra` object to the v0.11.0
+the registry with closed contracts; they do not add an `extra` object to the v0.12.0
 records.
 
 ### Artifact profiles
@@ -111,7 +111,7 @@ Indexes, sync manifests, retrieval records, tombstones, threads, checks, and sta
 records use `pure-yaml` because their entire content is structured or they only refer to
 a separately stored comment artifact.
 A later issue artifact may use `frontmatter-md` for the same reason as a change request;
-that decision belongs to `mb-9rrc` and does not alter the v0.11.0 PR contract.
+that decision belongs to `mb-9rrc` and does not alter the v0.12.0 PR contract.
 
 ## Provider Identity Without Provider-Shaped Views
 
@@ -175,7 +175,7 @@ Adapters project existing sources into this format:
 - a composition service may group or interleave pages only when it can state a stable
   ordering and honest continuation rules.
 
-The initial v0.11.0 view may use separate Commit and Pull Request groups if a stable
+The initial v0.12.0 view may use separate Commit and Pull Request groups if a stable
 mixed cursor would require unbounded reads.
 Shared view mechanics do not require a fabricated global order.
 
@@ -233,7 +233,7 @@ provider-neutral repository, job, clock, and storage ports and awaits cancellati
 `close()` during root replacement and shutdown.
 No server, cache, route, or renderer imports the GitHub adapter.
 
-For v0.11.0, the provider port has one implementation: `gh api` behind the GitHub
+For v0.12.0, the provider port has one implementation: `gh api` behind the GitHub
 adapter (`mb-p4sw`). The port owns repository resolution, auth diagnosis, one bounded
 index page, selected PR acquisition, reviews/checks, and rate-limit observations.
 It does not expose command output or GitHub response dictionaries to the format or view
@@ -390,7 +390,7 @@ implementation:
    cached index; a selected PR is also a folder-like change container.
 6. Durable Git objects, durable provider snapshots, transient materialization, and
    recomputable session caches have different owners and retention rules.
-7. `gh api` is the only v0.11 transport, behind a provider port that can later support a
+7. `gh api` is the only v0.12 transport, behind a provider port that can later support a
    direct GitHub or GitLab adapter without changing formats or views.
 8. Provider URL reducers and mounted plugin routers are general host capabilities;
    GitHub URL syntax and hosted-review routes remain plugin-owned.

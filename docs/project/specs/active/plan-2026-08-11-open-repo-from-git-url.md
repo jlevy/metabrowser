@@ -4,7 +4,7 @@
 
 **Author:** Joshua Levy (with LLM assistance)
 
-**Status:** Design review addressed; v0.11.0 implementation is release-gated
+**Status:** Design review addressed; v0.12.0 implementation is release-gated
 
 ## Vision
 
@@ -67,9 +67,9 @@ No phase reserves an opaque extension object for work that has not been modeled.
 A later record family receives its own contract, storage path, producer, consumer, and
 invalidating tests.
 
-### v0.11.0 Milestone
+### v0.12.0 Milestone
 
-The first v0.11.0 slice ends at offline-reusable views of any authorized GitHub
+The first v0.12.0 slice ends at offline-reusable views of any authorized GitHub
 repository, any branch that repository exposes, and any directly addressed pull request,
 not at the entire repository-library roadmap.
 It includes Phase 0, Phase 1A, generic acquisition, repository URL opening, detached
@@ -87,8 +87,8 @@ This is a milestone boundary, not a scope deletion: `mb-0ybg`, `mb-vmzy`, `mb-9r
 `mb-xxhi` is the hard implementation gate.
 It depends on the v0.10.0 release bead `mb-i57d` and closes only after the tag and
 release are cut from the intended `main` commit, that commit is fetched locally, and the
-first v0.11 implementation branch starts from it.
-Every `release:v0.11.0` implementation bead depends on this gate; design and review work
+first v0.12 implementation branch starts from it.
+Every `release:v0.12.0` implementation bead depends on this gate; design and review work
 may land before it.
 
 ## Goals
@@ -206,7 +206,7 @@ selecting a threshold between full and blobless acquisition.
 
 ## The Gates That Decide When This Ships
 
-The first gate controls when v0.11 implementation starts: `mb-i57d` cuts v0.10.0 from
+The first gate controls when v0.12 implementation starts: `mb-i57d` cuts v0.10.0 from
 the intended `main`, then `mb-xxhi` verifies and fetches that commit before an
 implementation branch is created from it.
 
@@ -219,7 +219,7 @@ which is `Status: Draft` with nothing implemented.
 
 ```text
 mb-i57d  release v0.10.0 from main
-   └──► mb-xxhi  verify released main and open v0.11 implementation
+   └──► mb-xxhi  verify released main and open v0.12 implementation
            ├──► cache format and acquisition
            └──► mb-cun0  sandbox /raw, same-origin proof on /api
                     └──► mb-vib1  capability set and --untrusted profile
@@ -678,7 +678,7 @@ request it could not honor.
 
 `/view/<path>` addresses the tree currently owned by the inventory lifecycle;
 `/commit/<rev>[/<inner>]` addresses a change set.
-The v0.11 branch slice keeps that grammar and changes which immutable tree the session
+The v0.12 branch slice keeps that grammar and changes which immutable tree the session
 serves.
 
 After acquisition, selection resolution turns the requested ref into a full object ID.
@@ -1091,7 +1091,7 @@ user-visible open path.
 
 ## Phased Implementation Plan
 
-### Phase 0: Design evidence and contract freeze — v0.11.0 entry point
+### Phase 0: Design evidence and contract freeze — v0.12.0 entry point
 
 - [ ] Remeasure full, blobless, and blobless-plus-backfill acquisition against the
   v0.10.0 history session, commit detail, comparison manifest, deferred patches,
@@ -1256,7 +1256,7 @@ data.
 ### Phase 2: Generic catalog, refresh, and cache management
 
 `mb-jlon` extracts the provider-facing job lifecycle and selected-ref fetching from this
-phase for v0.11.0. It may land before the catalog and management operations below.
+phase for v0.12.0. It may land before the catalog and management operations below.
 `selection.py` stays pure and resolves candidates; `jobs.py` owns `fetch_selected_ref`,
 the bounded Git network request, cancellation, and outcome.
 The job uses the same entry locks, state records, Git process boundary, and parity
@@ -1297,7 +1297,7 @@ routes, and holds no lock while the network process runs.
 
 | Phase | Depends on | Does not depend on | User-visible result |
 | --- | --- | --- | --- |
-| v0.11 start (`mb-xxhi`) | v0.10.0 release (`mb-i57d`) | Design and review | Implementation starts from the released `main` commit |
+| v0.12 start (`mb-xxhi`) | v0.10.0 release (`mb-i57d`) | Design and review | Implementation starts from the released `main` commit |
 | 1A format foundation | Release gate, Phase 0 contract decisions | GitHub, chooser | Versioned app home and strict cache records |
 | 1B-a generic Git cache | 1A | Git-status clean predicate, GitHub, chooser, serving | Any supported clone URL publishes or reuses one pinned read-only entry |
 | 1B-b repository URL open | 1B-a, provider URL-reducer SDK (`mb-12cz`), Git-status Phase 1 (`mb-u4mf`), untrusted-profile gate | Provider API or schemas | Any supported repository URL opens the pinned tree |
@@ -1309,7 +1309,7 @@ routes, and holds no lock while the network process runs.
 
 Two dependencies leave this plan, and they leave in opposite directions.
 
-**Inbound:** the release gate (`mb-i57d` → `mb-xxhi`) blocks every v0.11 implementation
+**Inbound:** the release gate (`mb-i57d` → `mb-xxhi`) blocks every v0.12 implementation
 bead so work begins from released `main`. Git-status Phase 1 (`mb-u4mf`) owns the
 `is_clean` predicate and blocks serving, replacement, repair, and purge, but not
 acquisition staging and publication in 1B-a. The content-trust chain (`mb-cun0` →

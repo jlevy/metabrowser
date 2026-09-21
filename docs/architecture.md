@@ -377,7 +377,7 @@ Route invariants:
 Path and fragment are implemented for `/view/`; `/commit/` is implemented for commit
 selection in the Git panel.
 `/compare/` is specified here and not yet built.
-`/review/` is proposed for v0.11.0; the hosted-review plugin owns its HTTP surface
+`/review/` is proposed for v0.12.0; the hosted-review plugin owns its HTTP surface
 through the planned mounted-router SDK and its browser parse, format, apply, preview,
 popstate, replacement, and disposal lifecycle through a separate installed-plugin
 address-space registration.
