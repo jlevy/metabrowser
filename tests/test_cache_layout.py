@@ -796,8 +796,13 @@ def test_a_durable_directory_that_is_not_one_is_refused_without_naming_a_path(
         assert str(tmp_path) not in str(refused.value)
         assert _snapshot(home) == before
     finally:
-        # Restore what pytest needs to delete the temporary directory.
-        os.chmod(home / "cache/sources", 0o700, follow_symlinks=False)
+        # Restore what pytest needs to delete the temporary directory. A link's
+        # own mode never blocks deleting it, and Linux refuses to change it:
+        # fchmodat rejects AT_SYMLINK_NOFOLLOW, which reaches Python as a
+        # NotImplementedError. So repair only an entry that is not a link.
+        entry = home / "cache/sources"
+        if not entry.is_symlink():
+            entry.chmod(0o700)
 
 
 def _symlinked_config_beside_durable_entries(home: Path) -> None:
