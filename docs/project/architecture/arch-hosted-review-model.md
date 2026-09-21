@@ -198,6 +198,9 @@ legitimately carries.
 The bounds are envelopes over the providers the neutral model must admit, not one
 provider’s exact limits; each constant in `models.py` records its basis, and lengths
 count Unicode code points in both runtimes.
+The exception is the stable tokens we name ourselves rather than admit from a provider —
+adapter and operation IDs, resource-collection names, and capability tokens — whose
+tighter bound is an envelope over our own naming.
 Readers accept finite integral JSON numbers, while the serializer writes integer YAML;
 all persisted integers remain within JavaScript’s exact range.
 
@@ -213,6 +216,9 @@ bytes the serializer writes for the validated record and body.
 A YAML comment, alternate quoting or spacing, reordered keys, a tagged scalar, or an
 integral float spelling is refused rather than given a second identity, and model
 strings are never coerced from another type.
+Enumerated values are spelled as strings and are not coerced either: an enum field is
+not a string schema, so the rule lives on a shared enum base rather than on each field,
+and a registry-wide test fails on an enum that does not carry it.
 
 Indexes, sync manifests, retrieval records, tombstones, threads, checks, and status
 records use `pure-yaml` because their entire content is structured or they only refer to
