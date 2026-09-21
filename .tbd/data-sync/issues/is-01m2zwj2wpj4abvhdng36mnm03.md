@@ -3,9 +3,9 @@ type: is
 id: is-01m2zwj2wpj4abvhdng36mnm03
 title: "S209-8: PR 209 has never been validated in a real browser, and three spec test-strategy items are unexercised"
 kind: task
-status: open
+status: in_progress
 priority: 1
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 labels:
   - release:v0.11.0
@@ -13,7 +13,7 @@ labels:
 dependencies: []
 parent_id: is-01m2yxd3tnr1s2zf0h0jat1ey2
 created_at: 2026-09-20T17:06:59.092Z
-updated_at: 2026-09-21T00:40:34.867Z
+updated_at: 2026-09-21T02:06:21.382Z
 ---
 All evidence for PR 209's containment is header assertions on the wire plus a browserless DOM session against the production plugin JS. No one has loaded a hostile page in a real browser and observed the sandbox hold. Spec testing-strategy items with no test: (1) relative references end to end, a page with a sibling stylesheet AND a subdirectory image fetched from the expected /raw/ paths; (2) a nested same-directory iframe and a frameset page actually loading (regression test for the deliberately absent frame-ancestors); (3) dangerous types on the wire beyond html and svg: xhtml, xml, pdf, js, extensionless. Do a scripted real-browser pass using the manual plan recorded in the PR 209 disposition, record results on the PR, and add the three missing tests.
 
