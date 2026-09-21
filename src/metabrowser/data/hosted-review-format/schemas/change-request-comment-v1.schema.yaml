@@ -1,0 +1,121 @@
+$defs:
+  ActorRef:
+    additionalProperties: false
+    properties:
+      handle:
+        minLength: 1
+        title: Handle
+        type: string
+      provider_opaque_id:
+        minLength: 1
+        title: Provider Opaque Id
+        type: string
+      url:
+        minLength: 1
+        title: Url
+        type: string
+    required:
+    - handle
+    - provider_opaque_id
+    - url
+    title: ActorRef
+    type: object
+  CanonicalHttpsUrl:
+    type: string
+  CanonicalTimestamp:
+    type: string
+  CommentState:
+    enum:
+    - visible
+    - minimized
+    - deleted
+    - unknown
+    title: CommentState
+    type: string
+  ProviderInstance:
+    type: string
+  ProviderKind:
+    type: string
+  ProviderObjectRef:
+    additionalProperties: false
+    properties:
+      instance:
+        $ref: '#/$defs/ProviderInstance'
+      object_kind:
+        minLength: 1
+        title: Object Kind
+        type: string
+      opaque_id:
+        minLength: 1
+        title: Opaque Id
+        type: string
+      provider:
+        $ref: '#/$defs/ProviderKind'
+    required:
+    - instance
+    - object_kind
+    - opaque_id
+    - provider
+    title: ProviderObjectRef
+    type: object
+  RepositoryRef:
+    additionalProperties: false
+    properties:
+      instance:
+        $ref: '#/$defs/ProviderInstance'
+      opaque_id:
+        minLength: 1
+        title: Opaque Id
+        type: string
+      provider:
+        $ref: '#/$defs/ProviderKind'
+    required:
+    - instance
+    - opaque_id
+    - provider
+    title: RepositoryRef
+    type: object
+$schema: https://json-schema.org/draft/2020-12/schema
+additionalProperties: false
+properties:
+  author:
+    anyOf:
+    - $ref: '#/$defs/ActorRef'
+    - type: 'null'
+  change_request_id:
+    minLength: 1
+    title: Change Request Id
+    type: string
+  created_at:
+    $ref: '#/$defs/CanonicalTimestamp'
+  id:
+    minLength: 1
+    title: Id
+    type: string
+  provider_ref:
+    $ref: '#/$defs/ProviderObjectRef'
+  repository:
+    $ref: '#/$defs/RepositoryRef'
+  state:
+    $ref: '#/$defs/CommentState'
+  updated_at:
+    $ref: '#/$defs/CanonicalTimestamp'
+  url:
+    anyOf:
+    - $ref: '#/$defs/CanonicalHttpsUrl'
+    - type: 'null'
+required:
+- author
+- change_request_id
+- created_at
+- id
+- provider_ref
+- repository
+- state
+- updated_at
+- url
+title: ChangeRequestComment
+type: object
+x-softschema:
+  contract: com.github.jlevy.metabrowser.review:ChangeRequestComment/v1
+  schema_sha256: 6dd4850c549d5ae33b32f23d679486d09445a7cc87627e4178054a2292f8744d

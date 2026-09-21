@@ -12,7 +12,7 @@ macOS. Every other operation is a mode flag on the same command:
     metab --remote example-host --path /srv/shared-files  # SSH-tunnel a remote host
     metab --plugins                    # what's discovered?
     metab --plugin example             # one plugin's manifest
-    metab --doctor                     # validate all plugins
+    metab --doctor                     # validate plugins and artifact capabilities
 
 Exactly one mode applies per invocation. Options that do not apply to
 the selected mode are rejected with a usage error, using Click's
@@ -399,7 +399,7 @@ def _metab(
     doctor: bool = typer.Option(
         False,
         "--doctor",
-        help="Validate every discovered plugin; exit non-zero on any problem.",
+        help="Validate browser plugins and installed artifact capabilities.",
         rich_help_panel=_PANEL_MODES,
     ),
     # ── Shared options ─────────────────────────────────────────────

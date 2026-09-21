@@ -1,9 +1,9 @@
 # Hosted Review Model and Provider Boundary
 
-**Status:** Accepted design; the no-network ChangeRequest, provider-publication, review,
-signal, and activity record families and the scrubbed GitHub coverage oracle are
-implemented. Schema and registry work is next; no provider adapter, cache, route, kind,
-or view is implemented yet.
+**Status:** Accepted design; the no-network record families, scrubbed GitHub coverage
+oracle, installed enforced contracts and resource profiles, and generic format inventory
+gate are implemented.
+No provider adapter, cache, route, kind, or view is implemented yet.
 
 Hosted review is a domain above Git history and File Diff Format.
 A pull request or merge request has Git endpoints and can produce a comparison, but it
@@ -76,11 +76,10 @@ Contract IDs name provider-neutral payloads, schemas ship with the hosted-review
 and the host registry outranks any schema path found in cached content.
 Exploratory notes may use permissive schemas, but every checked-in conformance artifact
 is enforced from its first machine-checked version.
-v0.12.0 does not publish a contract until undeclared fields fail consistently in both
-runtimes. The Phase 0A serializer accepts only a closed, validated `ChangeRequest` and
-performs no filesystem write.
-Its enforced marker records that Pydantic boundary; durable cache publication remains
-blocked on the compiled SoftSchema registry in Phase 0C.
+Undeclared fields fail consistently in Python and each declared browser parser.
+The serializer accepts only a closed, validated `ChangeRequest` and performs no
+filesystem write. Its enforced marker records that Pydantic boundary; durable cache
+publication remains planned behind the provider store.
 
 The v0.12.0 record set is deliberately PR-first, while the provider-storage vocabulary
 is content-neutral:
@@ -372,8 +371,10 @@ measured.
 ### Phase 0B.1 storage record contracts
 
 Phase 0B.1 freezes a no-network record kernel.
-These records are closed, frozen Pydantic models and portable JSON fixtures, but remain
-dormant until Phase 0C packages their compiled SoftSchema contracts and browser parsers.
+These records are closed, frozen Pydantic models with portable JSON fixtures, compiled
+SoftSchema contracts, and browser parsers for browser-consumed records.
+They remain dormant because no provider adapter, store, route, kind, or view is
+registered.
 
 `AuthorizationContextRef` contains exactly `provider`, `instance`, `mode`,
 `principal_opaque_id`, and `visibility_partition_digest`. Authenticated contexts require

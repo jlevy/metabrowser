@@ -1,0 +1,173 @@
+$defs:
+  CanonicalHttpsUrl:
+    type: string
+  CanonicalTimestamp:
+    type: string
+  CheckConclusion:
+    enum:
+    - action_required
+    - cancelled
+    - failure
+    - neutral
+    - skipped
+    - stale
+    - startup_failure
+    - success
+    - timed_out
+    - unknown
+    title: CheckConclusion
+    type: string
+  CheckKind:
+    enum:
+    - suite
+    - run
+    - unknown
+    title: CheckKind
+    type: string
+  CheckStatus:
+    enum:
+    - queued
+    - in_progress
+    - completed
+    - waiting
+    - requested
+    - pending
+    - unknown
+    title: CheckStatus
+    type: string
+  GitObjectRef:
+    additionalProperties: false
+    properties:
+      availability:
+        $ref: '#/$defs/RevisionAvailability'
+      oid:
+        anyOf:
+        - pattern: ^[0-9a-f]{40,64}$
+          type: string
+        - type: 'null'
+        title: Oid
+      repository_id:
+        anyOf:
+        - minLength: 1
+          type: string
+        - type: 'null'
+        title: Repository Id
+    required:
+    - availability
+    - oid
+    - repository_id
+    title: GitObjectRef
+    type: object
+  ProviderInstance:
+    type: string
+  ProviderKind:
+    type: string
+  ProviderObjectRef:
+    additionalProperties: false
+    properties:
+      instance:
+        $ref: '#/$defs/ProviderInstance'
+      object_kind:
+        minLength: 1
+        title: Object Kind
+        type: string
+      opaque_id:
+        minLength: 1
+        title: Opaque Id
+        type: string
+      provider:
+        $ref: '#/$defs/ProviderKind'
+    required:
+    - instance
+    - object_kind
+    - opaque_id
+    - provider
+    title: ProviderObjectRef
+    type: object
+  RepositoryRef:
+    additionalProperties: false
+    properties:
+      instance:
+        $ref: '#/$defs/ProviderInstance'
+      opaque_id:
+        minLength: 1
+        title: Opaque Id
+        type: string
+      provider:
+        $ref: '#/$defs/ProviderKind'
+    required:
+    - instance
+    - opaque_id
+    - provider
+    title: RepositoryRef
+    type: object
+  RevisionAvailability:
+    enum:
+    - present
+    - unavailable
+    - not_requested
+    title: RevisionAvailability
+    type: string
+$schema: https://json-schema.org/draft/2020-12/schema
+additionalProperties: false
+properties:
+  completed_at:
+    anyOf:
+    - $ref: '#/$defs/CanonicalTimestamp'
+    - type: 'null'
+  conclusion:
+    anyOf:
+    - $ref: '#/$defs/CheckConclusion'
+    - type: 'null'
+  id:
+    minLength: 1
+    title: Id
+    type: string
+  kind:
+    $ref: '#/$defs/CheckKind'
+  name:
+    anyOf:
+    - minLength: 1
+      type: string
+    - type: 'null'
+    title: Name
+  parent_check_id:
+    anyOf:
+    - minLength: 1
+      type: string
+    - type: 'null'
+    title: Parent Check Id
+  provider_ref:
+    $ref: '#/$defs/ProviderObjectRef'
+  repository:
+    $ref: '#/$defs/RepositoryRef'
+  revision:
+    $ref: '#/$defs/GitObjectRef'
+  started_at:
+    anyOf:
+    - $ref: '#/$defs/CanonicalTimestamp'
+    - type: 'null'
+  status:
+    $ref: '#/$defs/CheckStatus'
+  url:
+    anyOf:
+    - $ref: '#/$defs/CanonicalHttpsUrl'
+    - type: 'null'
+required:
+- completed_at
+- conclusion
+- id
+- kind
+- name
+- parent_check_id
+- provider_ref
+- repository
+- revision
+- started_at
+- status
+- url
+title: Check
+type: object
+x-softschema:
+  contract: com.github.jlevy.metabrowser.review:Check/v1
+  schema_sha256: 98708c527ad0e3a8bc10717e217b18d6ed6def2442f266bd9c2a238d5443fc34

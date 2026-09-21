@@ -1,0 +1,145 @@
+$defs:
+  ArtifactSnapshotRef:
+    additionalProperties: false
+    properties:
+      contract_id:
+        $ref: '#/$defs/ContractId'
+      snapshot_id:
+        $ref: '#/$defs/Sha256Digest'
+    required:
+    - contract_id
+    - snapshot_id
+    title: ArtifactSnapshotRef
+    type: object
+  AuthorizationContextRef:
+    additionalProperties: false
+    properties:
+      instance:
+        $ref: '#/$defs/ProviderInstance'
+      mode:
+        $ref: '#/$defs/AuthorizationMode'
+      principal_opaque_id:
+        anyOf:
+        - minLength: 1
+          type: string
+        - type: 'null'
+        title: Principal Opaque Id
+      provider:
+        $ref: '#/$defs/ProviderKind'
+      visibility_partition_digest:
+        anyOf:
+        - $ref: '#/$defs/Sha256Digest'
+        - type: 'null'
+    required:
+    - instance
+    - mode
+    - principal_opaque_id
+    - provider
+    - visibility_partition_digest
+    title: AuthorizationContextRef
+    type: object
+  AuthorizationMode:
+    enum:
+    - anonymous
+    - authenticated
+    title: AuthorizationMode
+    type: string
+  CanonicalTimestamp:
+    type: string
+  ContractId:
+    type: string
+  ManifestFailure:
+    additionalProperties: false
+    properties:
+      reason:
+        $ref: '#/$defs/ManifestFailureReason'
+    required:
+    - reason
+    title: ManifestFailure
+    type: object
+  ManifestFailureReason:
+    enum:
+    - invalid
+    - interrupted
+    - publication_failed
+    - unknown
+    title: ManifestFailureReason
+    type: string
+  ProviderInstance:
+    type: string
+  ProviderKind:
+    type: string
+  RepositoryRef:
+    additionalProperties: false
+    properties:
+      instance:
+        $ref: '#/$defs/ProviderInstance'
+      opaque_id:
+        minLength: 1
+        title: Opaque Id
+        type: string
+      provider:
+        $ref: '#/$defs/ProviderKind'
+    required:
+    - instance
+    - opaque_id
+    - provider
+    title: RepositoryRef
+    type: object
+  Sha256Digest:
+    type: string
+  TransactionState:
+    enum:
+    - staged
+    - committed
+    - failed
+    title: TransactionState
+    type: string
+$schema: https://json-schema.org/draft/2020-12/schema
+additionalProperties: false
+properties:
+  authorization_context:
+    $ref: '#/$defs/AuthorizationContextRef'
+  failure:
+    anyOf:
+    - $ref: '#/$defs/ManifestFailure'
+    - type: 'null'
+  finished_at:
+    anyOf:
+    - $ref: '#/$defs/CanonicalTimestamp'
+    - type: 'null'
+  repository:
+    $ref: '#/$defs/RepositoryRef'
+  resource_sets:
+    items:
+      $ref: '#/$defs/ArtifactSnapshotRef'
+    title: Resource Sets
+    type: array
+  retrievals:
+    items:
+      $ref: '#/$defs/ArtifactSnapshotRef'
+    title: Retrievals
+    type: array
+  started_at:
+    $ref: '#/$defs/CanonicalTimestamp'
+  state:
+    $ref: '#/$defs/TransactionState'
+  transaction_id:
+    minLength: 1
+    title: Transaction Id
+    type: string
+required:
+- authorization_context
+- failure
+- finished_at
+- repository
+- resource_sets
+- retrievals
+- started_at
+- state
+- transaction_id
+title: ProviderSyncManifest
+type: object
+x-softschema:
+  contract: com.github.jlevy.metabrowser.provider:ProviderSyncManifest/v1
+  schema_sha256: a7336f0c08cfd7bf2c95ed639da0215ff4ef754ea7da7c93fe0ee2d46978f85f

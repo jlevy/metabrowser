@@ -1,0 +1,136 @@
+$defs:
+  CanonicalHttpsUrl:
+    type: string
+  CanonicalTimestamp:
+    type: string
+  CommitStatusState:
+    enum:
+    - error
+    - failure
+    - pending
+    - success
+    - unknown
+    title: CommitStatusState
+    type: string
+  GitObjectRef:
+    additionalProperties: false
+    properties:
+      availability:
+        $ref: '#/$defs/RevisionAvailability'
+      oid:
+        anyOf:
+        - pattern: ^[0-9a-f]{40,64}$
+          type: string
+        - type: 'null'
+        title: Oid
+      repository_id:
+        anyOf:
+        - minLength: 1
+          type: string
+        - type: 'null'
+        title: Repository Id
+    required:
+    - availability
+    - oid
+    - repository_id
+    title: GitObjectRef
+    type: object
+  ProviderInstance:
+    type: string
+  ProviderKind:
+    type: string
+  ProviderObjectRef:
+    additionalProperties: false
+    properties:
+      instance:
+        $ref: '#/$defs/ProviderInstance'
+      object_kind:
+        minLength: 1
+        title: Object Kind
+        type: string
+      opaque_id:
+        minLength: 1
+        title: Opaque Id
+        type: string
+      provider:
+        $ref: '#/$defs/ProviderKind'
+    required:
+    - instance
+    - object_kind
+    - opaque_id
+    - provider
+    title: ProviderObjectRef
+    type: object
+  RepositoryRef:
+    additionalProperties: false
+    properties:
+      instance:
+        $ref: '#/$defs/ProviderInstance'
+      opaque_id:
+        minLength: 1
+        title: Opaque Id
+        type: string
+      provider:
+        $ref: '#/$defs/ProviderKind'
+    required:
+    - instance
+    - opaque_id
+    - provider
+    title: RepositoryRef
+    type: object
+  RevisionAvailability:
+    enum:
+    - present
+    - unavailable
+    - not_requested
+    title: RevisionAvailability
+    type: string
+$schema: https://json-schema.org/draft/2020-12/schema
+additionalProperties: false
+properties:
+  context:
+    minLength: 1
+    title: Context
+    type: string
+  created_at:
+    $ref: '#/$defs/CanonicalTimestamp'
+  description:
+    anyOf:
+    - minLength: 1
+      type: string
+    - type: 'null'
+    title: Description
+  id:
+    minLength: 1
+    title: Id
+    type: string
+  provider_ref:
+    $ref: '#/$defs/ProviderObjectRef'
+  repository:
+    $ref: '#/$defs/RepositoryRef'
+  revision:
+    $ref: '#/$defs/GitObjectRef'
+  state:
+    $ref: '#/$defs/CommitStatusState'
+  target_url:
+    anyOf:
+    - $ref: '#/$defs/CanonicalHttpsUrl'
+    - type: 'null'
+  updated_at:
+    $ref: '#/$defs/CanonicalTimestamp'
+required:
+- context
+- created_at
+- description
+- id
+- provider_ref
+- repository
+- revision
+- state
+- target_url
+- updated_at
+title: CommitStatus
+type: object
+x-softschema:
+  contract: com.github.jlevy.metabrowser.review:CommitStatus/v1
+  schema_sha256: 53132e3349dcea5ba5722b0e186e157c7de4f4e4ca6ce98d33db38a8670f57f3

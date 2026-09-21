@@ -58,12 +58,14 @@ lint:
 	$(UV_RUN) python -m devtools.check_file_type_colors --quiet
 	$(UV_RUN) python -m devtools.check_tooltips
 	$(UV_RUN) python -m devtools.check_supply_chain
+	$(UV_RUN) python -m devtools.check_artifact_contracts
 	$(UV_RUN) python -m devtools.check_parity
 
 format:
 	$(MAKE) format-markdown
 	$(UV_RUN) ruff format src tests devtools explorations
 	npx --no-install biome format --write \
+		devtools/artifact-contract-browser-check.mjs \
 		src/metabrowser/static src/metabrowser/builtin_plugins tests/dom explorations \
 		biome.json package.json tsconfig.json tsconfig.legacy.json
 
@@ -83,6 +85,7 @@ lint-check:
 	$(UV_RUN) python -m devtools.check_file_type_colors --quiet
 	$(UV_RUN) python -m devtools.check_tooltips
 	$(UV_RUN) python -m devtools.check_supply_chain
+	$(UV_RUN) python -m devtools.check_artifact_contracts
 	$(UV_RUN) python -m devtools.check_parity
 	$(FLOWMARK) --auto --check .
 

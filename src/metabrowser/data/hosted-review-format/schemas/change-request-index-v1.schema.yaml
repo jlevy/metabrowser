@@ -1,0 +1,264 @@
+$defs:
+  ActorRef:
+    additionalProperties: false
+    properties:
+      handle:
+        minLength: 1
+        title: Handle
+        type: string
+      provider_opaque_id:
+        minLength: 1
+        title: Provider Opaque Id
+        type: string
+      url:
+        minLength: 1
+        title: Url
+        type: string
+    required:
+    - handle
+    - provider_opaque_id
+    - url
+    title: ActorRef
+    type: object
+  AllChangeRequestStates:
+    additionalProperties: false
+    properties:
+      kind:
+        const: all
+        title: Kind
+        type: string
+    required:
+    - kind
+    title: AllChangeRequestStates
+    type: object
+  CanonicalHttpsUrl:
+    type: string
+  CanonicalTimestamp:
+    type: string
+  ChangeRequestIndexQuery:
+    additionalProperties: false
+    properties:
+      bounds:
+        $ref: '#/$defs/IndexBounds'
+      repository:
+        $ref: '#/$defs/RepositoryRef'
+      sort:
+        $ref: '#/$defs/IndexSort'
+      state_filter:
+        $ref: '#/$defs/ChangeRequestStateFilter'
+    required:
+    - bounds
+    - repository
+    - sort
+    - state_filter
+    title: ChangeRequestIndexQuery
+    type: object
+  ChangeRequestIndexRow:
+    additionalProperties: false
+    properties:
+      author:
+        anyOf:
+        - $ref: '#/$defs/ActorRef'
+        - type: 'null'
+      base_label:
+        minLength: 1
+        title: Base Label
+        type: string
+      created_at:
+        $ref: '#/$defs/CanonicalTimestamp'
+      draft:
+        title: Draft
+        type: boolean
+      head_label:
+        minLength: 1
+        title: Head Label
+        type: string
+      number:
+        minimum: 1
+        title: Number
+        type: integer
+      provider_ref:
+        $ref: '#/$defs/ProviderObjectRef'
+      repository:
+        $ref: '#/$defs/RepositoryRef'
+      state:
+        $ref: '#/$defs/ChangeRequestState'
+      title:
+        minLength: 1
+        title: Title
+        type: string
+      updated_at:
+        $ref: '#/$defs/CanonicalTimestamp'
+      url:
+        $ref: '#/$defs/CanonicalHttpsUrl'
+    required:
+    - author
+    - base_label
+    - created_at
+    - draft
+    - head_label
+    - number
+    - provider_ref
+    - repository
+    - state
+    - title
+    - updated_at
+    - url
+    title: ChangeRequestIndexRow
+    type: object
+  ChangeRequestState:
+    enum:
+    - open
+    - closed
+    - merged
+    - unknown
+    title: ChangeRequestState
+    type: string
+  ChangeRequestStateFilter:
+    discriminator:
+      mapping:
+        all: '#/$defs/AllChangeRequestStates'
+        selected: '#/$defs/SelectedChangeRequestStates'
+      propertyName: kind
+    oneOf:
+    - $ref: '#/$defs/AllChangeRequestStates'
+    - $ref: '#/$defs/SelectedChangeRequestStates'
+  IndexBounds:
+    additionalProperties: false
+    properties:
+      max_bytes:
+        minimum: 1
+        title: Max Bytes
+        type: integer
+      max_duration_ms:
+        minimum: 1
+        title: Max Duration Ms
+        type: integer
+      max_items:
+        minimum: 1
+        title: Max Items
+        type: integer
+      max_pages:
+        minimum: 1
+        title: Max Pages
+        type: integer
+    required:
+    - max_bytes
+    - max_duration_ms
+    - max_items
+    - max_pages
+    title: IndexBounds
+    type: object
+  IndexSort:
+    additionalProperties: false
+    properties:
+      direction:
+        $ref: '#/$defs/SortDirection'
+      field:
+        $ref: '#/$defs/IndexSortField'
+      tie_breaker:
+        const: provider_opaque_id
+        title: Tie Breaker
+        type: string
+    required:
+    - direction
+    - field
+    - tie_breaker
+    title: IndexSort
+    type: object
+  IndexSortField:
+    enum:
+    - created_at
+    - updated_at
+    title: IndexSortField
+    type: string
+  ProviderInstance:
+    type: string
+  ProviderKind:
+    type: string
+  ProviderObjectRef:
+    additionalProperties: false
+    properties:
+      instance:
+        $ref: '#/$defs/ProviderInstance'
+      object_kind:
+        minLength: 1
+        title: Object Kind
+        type: string
+      opaque_id:
+        minLength: 1
+        title: Opaque Id
+        type: string
+      provider:
+        $ref: '#/$defs/ProviderKind'
+    required:
+    - instance
+    - object_kind
+    - opaque_id
+    - provider
+    title: ProviderObjectRef
+    type: object
+  RepositoryRef:
+    additionalProperties: false
+    properties:
+      instance:
+        $ref: '#/$defs/ProviderInstance'
+      opaque_id:
+        minLength: 1
+        title: Opaque Id
+        type: string
+      provider:
+        $ref: '#/$defs/ProviderKind'
+    required:
+    - instance
+    - opaque_id
+    - provider
+    title: RepositoryRef
+    type: object
+  SelectedChangeRequestStates:
+    additionalProperties: false
+    properties:
+      kind:
+        const: selected
+        title: Kind
+        type: string
+      states:
+        items:
+          $ref: '#/$defs/ChangeRequestState'
+        minItems: 1
+        title: States
+        type: array
+    required:
+    - kind
+    - states
+    title: SelectedChangeRequestStates
+    type: object
+  Sha256Digest:
+    type: string
+  SortDirection:
+    enum:
+    - ascending
+    - descending
+    title: SortDirection
+    type: string
+$schema: https://json-schema.org/draft/2020-12/schema
+additionalProperties: false
+properties:
+  query:
+    $ref: '#/$defs/ChangeRequestIndexQuery'
+  query_key:
+    $ref: '#/$defs/Sha256Digest'
+  rows:
+    items:
+      $ref: '#/$defs/ChangeRequestIndexRow'
+    title: Rows
+    type: array
+required:
+- query
+- query_key
+- rows
+title: ChangeRequestIndex
+type: object
+x-softschema:
+  contract: com.github.jlevy.metabrowser.review:ChangeRequestIndex/v1
+  schema_sha256: 45e9214748e19fa79d6f47d15a102d4a72732a06eb7a2a9504b90c152da91233
