@@ -654,7 +654,7 @@ def _repo_that_enables_itself(tmp_path: Path) -> Path:
     repo = tmp_path / "cloned-repo"
     repo.mkdir()
     (repo / ".env").write_text(
-        "METAB_ACTIVE_CONTENT=1\nMETAB_ALLOW_EDITS=1\nORDINARY_DOTENV_VAR=kept\n",
+        "METAB_ACTIVE_CONTENT=1\nMETAB_ALLOW_EDITS=1\nMETABROWSER_LOG_LEVEL=WARNING\n",
         encoding="utf-8",
     )
     (repo / "page.html").write_text(
@@ -676,7 +676,7 @@ def _forget_trust_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "METAB_UNTRUSTED",
         "METAB_ACTIVE_CONTENT",
         "METAB_ALLOW_EDITS",
-        "ORDINARY_DOTENV_VAR",
+        "METABROWSER_LOG_LEVEL",
     ):
         monkeypatch.setenv(name, "")
         monkeypatch.delenv(name)
@@ -719,8 +719,8 @@ def test_repo_local_dotenv_cannot_enable_capabilities_at_all(
     """Trust variables are honored from the real environment only.
 
     Without `--untrusted` the same file still cannot turn mutations on, while
-    the same variable exported in the shell still can, and the file's ordinary
-    variables keep loading.
+    the same variable exported in the shell still can, and the file's
+    allowlisted variables keep loading.
     """
     repo = _repo_that_enables_itself(tmp_path)
     monkeypatch.chdir(repo)
@@ -729,7 +729,7 @@ def test_repo_local_dotenv_cannot_enable_capabilities_at_all(
     from_file = runner.invoke(_app, [str(repo), "--api", "/api/capabilities"])
     assert from_file.exit_code == 0, from_file.output
     assert _published_capabilities(from_file) == {"active_content": True, "mutations": False}
-    assert os.environ.get("ORDINARY_DOTENV_VAR") == "kept"
+    assert os.environ.get("METABROWSER_LOG_LEVEL") == "WARNING"
 
     monkeypatch.setenv("METAB_ALLOW_EDITS", "1")
     from_shell = runner.invoke(_app, [str(repo), "--api", "/api/capabilities"])
@@ -888,17 +888,27 @@ def test_serve_restores_uvicorn_logging_state(tmp_path: Path, failure: RuntimeEr
         uvicorn_logger.setLevel(previous_level)
 
 
-def test_serve_loads_dotenv_before_expanding_home_relative_root(
+def test_dotenv_cannot_move_home_out_from_under_a_relative_root(
     tmp_path: Path, monkeypatch
 ) -> None:
-    home = tmp_path / "dotenv-home"
-    root = home / "artifacts"
-    root.mkdir(parents=True)
+    """``~`` expands from the process environment, never from a `.env`.
+
+    ``HOME`` is outside the dotenv allowlist because it decides where git,
+    ssh, and the rest of the toolchain look for configuration and
+    credentials. A repository browsed from inside itself would otherwise
+    redirect all of that by shipping one line in its own `.env`.
+    """
+    real_home = tmp_path / "real-home"
+    real_root = real_home / "artifacts"
+    real_root.mkdir(parents=True)
+    planted_home = tmp_path / "planted-home"
+    (planted_home / "artifacts").mkdir(parents=True)
+
     workdir = tmp_path / "workdir"
     workdir.mkdir()
-    (workdir / ".env").write_text(f"HOME={home}\n")
+    (workdir / ".env").write_text(f"HOME={planted_home}\n")
     monkeypatch.chdir(workdir)
-    monkeypatch.delenv("HOME", raising=False)
+    monkeypatch.setenv("HOME", str(real_home))
 
     with (
         patch("metabrowser.cli.serve._QuietForceExitServer") as server_cls,
@@ -908,7 +918,8 @@ def test_serve_loads_dotenv_before_expanding_home_relative_root(
 
     assert result.exit_code == 0, result.exception
     server_cls.assert_called_once()
-    assert f"Serving {root.resolve()}" in result.output
+    assert f"Serving {real_root.resolve()}" in result.output
+    assert str(planted_home) not in result.output
 
 
 def test_serve_rejects_deep_links_outside_root(tmp_path: Path) -> None:

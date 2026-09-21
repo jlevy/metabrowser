@@ -99,12 +99,23 @@ stays conservative whatever the `METAB_*` variables say, and only another flag �
 The `METAB_*` variables themselves are read from the process environment only, never
 from a `.env` or `.env.local` file, so browsing a cloned repository from inside it
 cannot let that repository choose how far it is trusted.
-`METABROWSER_PLUGINS_DIRS` is refused from those files for the same reason and a sharper
+`METABROWSER_PLUGINS_DIRS` is kept from those files for the same reason and a sharper
 one: a directory plugin is JavaScript that runs in the application page, so a file in
 the browsed tree naming its own plugin directory would execute code there.
 Name it in the environment, or pass `--plugins-dir`. The resolved block is on
 `window.METABROWSER_SETTINGS.CAPABILITIES` and `GET /api/capabilities`; the server is
 authoritative.
+
+Those names are examples of a general rule rather than a list of exceptions.
+A `.env` or `.env.local` file may contribute only the names allowlisted in
+`metabrowser/dotenv.py`, which are log verbosity and rendering budgets — values whose
+worst case is a noisier terminal or a larger preview.
+Every other name is read from the process environment or not at all.
+The rule is an allowlist because the loader cannot tell a file the operator wrote from
+one in the repository being browsed, and a denylist secures only the names somebody
+thought of. The environment also decides which program runs: `BROWSER`, which the
+standard library’s browser launcher honors, the `GIT_*` variables that select an
+external diff or ssh command, and `PATH`.
 
 `.html` and `.htm` files open as the `html` kind, with Preview and Source tabs.
 Preview loads the file in an iframe whose `src` is the path-shaped `/raw/{path}`

@@ -261,6 +261,31 @@ def test_api_same_origin_proof_matrix() -> None:
             assert "same-origin" in resp.text.lower() or "origin" in resp.text.lower()
 
 
+def test_api_guard_survives_a_prefix_mount(tmp_path: Path) -> None:
+    """A ``root_path`` prefix must not lift the ``/api`` guard.
+
+    Regression test. The guard tested ``scope["path"]`` directly while
+    the ``/raw`` sandbox stripped ``root_path`` first, so under a mount
+    the two middlewares named different routes: ``/raw`` stayed
+    sandboxed and ``/api`` stopped requiring same-origin proof
+    altogether. Both derive the path one way now.
+    """
+    (tmp_path / "README.md").write_text("# hi\n", encoding="utf-8")
+    server._set_root_dir(tmp_path)
+    for root_path in ("", "/pre"):
+        with TestClient(app, root_path=root_path) as client:
+            target = f"{root_path}/api/capabilities"
+            assert client.get(target).status_code == 200, root_path
+            assert client.get(target, headers={"origin": "null"}).status_code == 403, root_path
+            assert (
+                client.get(target, headers={"sec-fetch-site": "cross-site"}).status_code == 403
+            ), root_path
+            # The sandbox that already handled the prefix still does.
+            raw = client.get(f"{root_path}/raw/README.md")
+            assert raw.status_code == 200, root_path
+            assert "sandbox" in raw.headers["content-security-policy"], root_path
+
+
 def test_form_post_export_from_opaque_origin_is_rejected_before_write(
     tmp_path: Path,
 ) -> None:

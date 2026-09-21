@@ -6,11 +6,28 @@ All notable changes to Metabrowser are documented here.
 
 Content trust:
 
-- A `.env` or `.env.local` file no longer supplies `METABROWSER_PLUGINS_DIRS`. The chain
-  walks up from the working directory, so browsing a repository from inside it reached
-  that repository’s own file, and a directory plugin is JavaScript that runs in the
-  application page with the API that page holds.
-  Name the directory in the process environment, or pass `--plugins-dir`.
+- **A `.env` or `.env.local` file now contributes only allowlisted names.** The chain
+  walks up from the working directory, so `cd cloned-repo && metab .` reaches that
+  repository’s own file, and the loader cannot tell it apart from one you wrote.
+  The allowlist is log verbosity and rendering budgets — `METABROWSER_LOG_LEVEL`,
+  `METABROWSER_REQUEST_LOG`, `METABROWSER_SLOW_SERVER_MS`, the text, binary, and
+  highlight byte limits, and the two `STRUCTURED_*` tunables.
+  Every other name is read from the process environment or not at all.
+
+  This closes arbitrary code execution from a browsed repository.
+  A denylist secured only the names we had thought of, and the environment decides which
+  program runs: `BROWSER` is honored by the standard library’s browser launcher, which
+  `metab` calls by default, and the `GIT_*` variables select an external diff or ssh
+  command for the git subprocesses the diff views spawn.
+  `--untrusted` did not help, because the browser opens before any content is rendered.
+  `METABROWSER_PLUGINS_DIRS` and `METABROWSER_ALLOWED_HOSTS` are outside the allowlist,
+  as are `METABROWSER_HOST`, `METABROWSER_PORT`, `METABROWSER_DEBUG`,
+  `METABROWSER_INVENTORY_PROVIDER`, and `METABROWSER_GCP_PROJECT`: they choose what
+  loads, what is reachable, or where the server binds.
+  `HOME` is outside it too, so `metab ~/notes` expands `~` from the process environment
+  even when a `.env` names a different one — `HOME` decides where git, ssh, and the rest
+  of the toolchain look for configuration and credentials.
+  If you set any of these in a `.env`, export it instead.
 
 - `/raw` responses are sandboxed unconditionally.
   Every branch, including gzip passthrough, SVG, HTML, and error bodies, sends
@@ -45,9 +62,9 @@ Content trust:
   stays conservative whatever `METAB_ACTIVE_CONTENT` or `METAB_ALLOW_EDITS` say, and
   only `--untrusted --allow-edits` lifts it.
   The `METAB_*` capability variables and `METABROWSER_ALLOWED_HOSTS` are read from the
-  process environment only; a `.env` or `.env.local` file no longer contributes them, so
-  `cd cloned-repo && metab --untrusted .` cannot be talked out of the sandbox by that
-  repository’s own `.env`. Every other variable still loads from those files as before.
+  process environment only, so `cd cloned-repo && metab --untrusted .` cannot be talked
+  out of the sandbox by that repository’s own `.env`. They are outside the dotenv
+  allowlist described above, along with every other name the loader does not list.
 
 - `.html` and `.htm` files are the `html` kind, with a sandboxed Preview tab and a
   Source tab. A 4 KiB sniff (doctype or `<html>` / `<head>` / `<body>` / `<frameset>`)
@@ -62,6 +79,11 @@ Content trust:
   It is a plain anchor, so middle-click and modifier-click behave natively, and it opens
   with `rel="noopener noreferrer"`. The tab is contained exactly as the frame is: the
   sandbox rides on the response headers, not on the iframe.
+
+- The `/api` same-origin guard survives a prefix mount.
+  It matched on the raw ASGI path while the `/raw` sandbox stripped `root_path` first,
+  so an app mounted under a prefix kept its sandbox and silently stopped requiring
+  same-origin proof. Both derive the route path one way now.
 
 - A path carrying an embedded NUL — `/raw/a%00b`, or the same byte in a `?path=` value —
   is a 404 rather than a 500. No filesystem can hold that name, so it is a missing file

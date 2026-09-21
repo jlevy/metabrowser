@@ -45,7 +45,7 @@ import logging
 import os
 import sys
 import time
-from collections.abc import AsyncIterator, MutableMapping
+from collections.abc import AsyncIterator, Mapping, MutableMapping
 from contextlib import asynccontextmanager
 from html import escape as html_escape
 from pathlib import Path
@@ -692,6 +692,23 @@ def _origin_matches_request(origin: str, scheme: str, host_header: str) -> bool:
     return origin.strip().lower() == expected.lower()
 
 
+def _route_path(scope: Mapping[str, Any]) -> str:
+    """The scope's path with any ASGI ``root_path`` prefix removed.
+
+    Every middleware that decides something from the path uses this, so
+    a prefix mount cannot make one of them name a different route than
+    another. Naming it once is the point: the ``/api`` guard and the
+    ``/raw`` sandbox previously derived the path two ways, and under a
+    prefix only one of them still recognized its own route.
+    """
+
+    path = str(scope.get("path") or "")
+    root_path = str(scope.get("root_path") or "")
+    if root_path and path.startswith(root_path):
+        path = path[len(root_path) :] or "/"
+    return path
+
+
 # Fetch-metadata values that are not a request from another document.
 # ``same-origin`` is the application's own page. ``none`` is a
 # user-initiated navigation — a typed URL, a bookmark, a browser restore
@@ -804,7 +821,7 @@ class _HostValidationMiddleware:
             )
             await response(scope, receive, send)
             return
-        path = str(scope.get("path") or "")
+        path = _route_path(scope)
         if path == "/api" or path.startswith("/api/"):
             scheme = str(scope.get("scheme") or "http")
             if not _has_same_origin_proof(
@@ -864,15 +881,11 @@ class _RawTrustHeaderMiddleware:
     def _is_raw_scope(scope: dict[str, Any]) -> bool:
         """True for ``/raw`` and ``/raw/...``, false for ``/rawfoo``.
 
-        ``root_path`` is stripped first so the check still names the
-        route when the app is mounted under a prefix, where ``path``
-        carries that prefix.
+        ``_route_path`` strips any ``root_path`` first, so the check
+        still names the route when the app is mounted under a prefix.
         """
 
-        path = str(scope.get("path") or "")
-        root_path = str(scope.get("root_path") or "")
-        if root_path and path.startswith(root_path):
-            path = path[len(root_path) :] or "/"
+        path = _route_path(scope)
         return path == "/raw" or path.startswith("/raw/")
 
     async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
