@@ -198,6 +198,9 @@ legitimately carries.
 The bounds are envelopes over the providers the neutral model must admit, not one
 provider’s exact limits; each constant in `models.py` records its basis, and lengths
 count Unicode code points in both runtimes.
+The exception is the stable tokens we name ourselves rather than admit from a provider —
+adapter and operation IDs, resource-collection names, and capability tokens — whose
+tighter bound is an envelope over our own naming.
 Readers accept finite integral JSON numbers, while the serializer writes integer YAML;
 all persisted integers remain within JavaScript’s exact range.
 

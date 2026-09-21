@@ -118,6 +118,21 @@ def test_provider_storage_strings_are_never_coerced_from_bytes(
         validator(document)
 
 
+def test_resource_collection_name_is_a_bounded_stable_token() -> None:
+    # A resource set's collection names must also match its trusted profile, so the
+    # corpus cannot exercise this bound through validate_resource_set; the collection
+    # model carries it on its own.
+    collection = copy.deepcopy(_corpus()["base_records"]["resource_set"]["collections"][0])
+    bound = hosted_review.MAX_STABLE_TOKEN_LENGTH
+
+    collection["name"] = "n" * bound
+    assert hosted_review.ResourceCollection.model_validate(collection).name == "n" * bound
+
+    collection["name"] = "n" * (bound + 1)
+    with pytest.raises(ValueError):
+        hosted_review.ResourceCollection.model_validate(collection)
+
+
 def test_new_provider_collection_needs_only_a_trusted_profile_declaration() -> None:
     records = _corpus()["base_records"]
     release_contract_id = "example.test:ReleaseIndex/v1"

@@ -69,6 +69,14 @@ MAX_ENTITY_TAG_LENGTH = 1024
 # can materialize; the base64 bound is the encoding of that many bytes.
 MAX_REVIEW_PATH_LENGTH = 4096
 MAX_REVIEW_PATH_B64_LENGTH = 5464
+# Stable tokens are the only identifiers here that we choose ourselves rather than admit
+# from a provider: adapter and operation IDs, resource-collection names, and capability
+# tokens. The basis is therefore what our own naming needs, not a provider limit. The
+# longest such value anywhere in the tree is the 23-character "change-request-deletion"
+# operation ID (the longest declared collection name is "change_request_index", 20), and
+# 128 leaves more than five times that while staying well inside the opaque provider ID
+# bound above, which admits data we do not name.
+MAX_STABLE_TOKEN_LENGTH = 128
 # Code point ranges, inclusive. Explicit ranges rather than Unicode categories, so the
 # Python and browser validators cannot disagree across Unicode database versions.
 _CONTROL_AND_LINE_SEPARATOR_RANGES = (
@@ -139,7 +147,10 @@ Handle = Annotated[
 # A full Git object name is SHA-1 (40 hex) or SHA-256 (64 hex). No object format has a
 # length in between, and the cache and Git layers accept exactly these two.
 GitObjectId = Annotated[_StrictString, Field(pattern=r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")]
-StableToken = Annotated[_StrictString, Field(pattern=r"^[a-z][a-z0-9._:-]*$")]
+StableToken = Annotated[
+    _StrictString,
+    Field(max_length=MAX_STABLE_TOKEN_LENGTH, pattern=r"^[a-z][a-z0-9._:-]*$"),
+]
 MAX_SAFE_INTEGER = 9_007_199_254_740_991
 MAX_PORT = 65_535
 DEFAULT_HTTPS_PORT = 443
