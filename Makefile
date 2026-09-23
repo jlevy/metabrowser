@@ -107,6 +107,9 @@ ADMITTED_GIT_TESTS := \
 	tests/test_cli_git_pin_golden.py \
 	tests/test_cli_git_pin_show_selection.py \
 	tests/test_serve_pin.py \
+	tests/test_cache_update.py \
+	tests/test_source_refresh.py \
+	tests/test_cli_git_refresh_golden.py \
 	tests/test_git_revision_open.py \
 	tests/test_git_store_read_policy.py \
 	tests/test_git_tree_source.py \
@@ -119,9 +122,10 @@ test-admitted-git:
 # Regenerate the CLI console goldens after an intended surface change.
 # tryscript rewrites changed blocks with literal output, golden_fixup.py
 # restores the elision patterns, and the pytest goldens (serve banners,
-# file:// acquire and recovery, file:// pin and its serve banner, live acquire)
-# are rewritten in place. The served source-kind fixture is recorded first
-# because a tryscript session reads it. Review the diff before committing.
+# file:// acquire and recovery, file:// pin and its serve banner, refresh and pin
+# switching, live acquire) are rewritten in place. The served source-kind fixture is
+# recorded first because a tryscript session reads it. Review the diff before
+# committing.
 golden-update:
 	GOLDEN_UPDATE=1 $(UV_RUN) pytest tests/test_source_kind_session.py
 	npx --no-install tryscript run --update 'tests/golden/*.tryscript.md' || true
@@ -129,7 +133,8 @@ golden-update:
 	npx --no-install tryscript run 'tests/golden/*.tryscript.md'
 	GOLDEN_UPDATE=1 $(UV_RUN) pytest tests/test_cli_golden.py tests/test_cli_cache_acquire_golden.py \
 		tests/test_cli_cache_recovery_golden.py tests/test_cli_git_pin_golden.py \
-		tests/test_cli_live_acquire_golden.py tests/test_serve_pin.py
+		tests/test_cli_git_refresh_golden.py tests/test_cli_live_acquire_golden.py \
+		tests/test_serve_pin.py
 
 audit:
 	bash devtools/npm_audit.sh

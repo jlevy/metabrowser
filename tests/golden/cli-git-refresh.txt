@@ -1,0 +1,214 @@
+# metab file://<ORIGIN> --api /api/source/status
+exit: 0
+--- stdout ---
+api: /api/source/status
+status: 200
+{
+  "subject": "git_revision",
+  "generation": 1,
+  "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+  "ref": "refs/remotes/origin/topic",
+  "ref_name": "topic",
+  "refreshable": true,
+  "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+  "last_fetch_at": "<TIME>",
+  "last_outcome": {
+    "operation": "acquire",
+    "outcome": "succeeded",
+    "at": "<TIME>"
+  },
+  "refreshing": false,
+  "stale": false
+}
+--- stderr ---
+# metab file://<ORIGIN> --api /api/source/refresh --data refresh.json
+exit: 0
+--- stdout ---
+api: /api/source/refresh
+status: 202
+{
+  "refresh": "started",
+  "status": {
+    "subject": "git_revision",
+    "generation": 1,
+    "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "refreshable": true,
+    "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "last_fetch_at": "<TIME>",
+    "last_outcome": {
+      "operation": "acquire",
+      "outcome": "succeeded",
+      "at": "<TIME>"
+    },
+    "refreshing": true,
+    "stale": false
+  }
+}
+--- stderr ---
+# metab file://<ORIGIN> --api /api/source/status
+exit: 0
+--- stdout ---
+api: /api/source/status
+status: 200
+{
+  "subject": "git_revision",
+  "generation": 1,
+  "pin": "79c734ab2c794b6aa3ea3186ef7d8a6578981721",
+  "ref": "refs/remotes/origin/topic",
+  "ref_name": "topic",
+  "refreshable": true,
+  "latest": "79c734ab2c794b6aa3ea3186ef7d8a6578981721",
+  "last_fetch_at": "<TIME>",
+  "last_outcome": {
+    "operation": "refresh",
+    "outcome": "succeeded",
+    "at": "<TIME>"
+  },
+  "refreshing": false,
+  "stale": false
+}
+--- stderr ---
+# metab file://<ORIGIN> --api /api/source/pin --data pin-second.json
+exit: 0
+--- stdout ---
+api: /api/source/pin
+status: 200
+{
+  "changed": true,
+  "status": {
+    "subject": "git_revision",
+    "generation": 2,
+    "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "ref": null,
+    "ref_name": null,
+    "refreshable": true,
+    "latest": null,
+    "last_fetch_at": "<TIME>",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "succeeded",
+      "at": "<TIME>"
+    },
+    "refreshing": false,
+    "stale": false
+  }
+}
+--- stderr ---
+# metab file://<ORIGIN> --api /api/source/pin --data pin-v2.json
+exit: 0
+--- stdout ---
+api: /api/source/pin
+status: 200
+{
+  "changed": true,
+  "status": {
+    "subject": "git_revision",
+    "generation": 2,
+    "pin": "79c734ab2c794b6aa3ea3186ef7d8a6578981721",
+    "ref": "refs/tags/v2",
+    "ref_name": "v2",
+    "refreshable": true,
+    "latest": "79c734ab2c794b6aa3ea3186ef7d8a6578981721",
+    "last_fetch_at": "<TIME>",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "succeeded",
+      "at": "<TIME>"
+    },
+    "refreshing": false,
+    "stale": false
+  }
+}
+--- stderr ---
+# metab file://<ORIGIN> --api /api/source/pin --data pin-feature.json
+exit: 1
+--- stdout ---
+api: /api/source/pin
+status: 404
+{
+  "error": "no branch or tag with that name is in the mirror",
+  "code": "selection_not_found"
+}
+--- stderr ---
+Error: /api/source/pin returned HTTP 404
+# metab file://<ORIGIN> --api /api/source/pin --data pin-feature-oid.json
+exit: 0
+--- stdout ---
+api: /api/source/pin
+status: 200
+{
+  "changed": true,
+  "status": {
+    "subject": "git_revision",
+    "generation": 2,
+    "pin": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+    "ref": null,
+    "ref_name": null,
+    "refreshable": true,
+    "latest": null,
+    "last_fetch_at": "<TIME>",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "succeeded",
+      "at": "<TIME>"
+    },
+    "refreshing": false,
+    "stale": false
+  }
+}
+--- stderr ---
+# metab file://<ORIGIN> --api /api/source/refresh --data refresh.json
+exit: 0
+--- stdout ---
+api: /api/source/refresh
+status: 202
+{
+  "refresh": "started",
+  "status": {
+    "subject": "git_revision",
+    "generation": 1,
+    "pin": "79c734ab2c794b6aa3ea3186ef7d8a6578981721",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "refreshable": true,
+    "latest": "79c734ab2c794b6aa3ea3186ef7d8a6578981721",
+    "last_fetch_at": "<TIME>",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "succeeded",
+      "at": "<TIME>"
+    },
+    "refreshing": true,
+    "stale": false
+  }
+}
+--- stderr ---
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+# metab file://<ORIGIN> --api /api/source/status
+exit: 0
+--- stdout ---
+api: /api/source/status
+status: 200
+{
+  "subject": "git_revision",
+  "generation": 1,
+  "pin": "79c734ab2c794b6aa3ea3186ef7d8a6578981721",
+  "ref": "refs/remotes/origin/topic",
+  "ref_name": "topic",
+  "refreshable": true,
+  "latest": "79c734ab2c794b6aa3ea3186ef7d8a6578981721",
+  "last_fetch_at": "<TIME>",
+  "last_outcome": {
+    "operation": "refresh",
+    "outcome": "failed",
+    "at": "<TIME>"
+  },
+  "refreshing": false,
+  "stale": false
+}
+--- stderr ---

@@ -1,0 +1,242 @@
+---
+sandbox: true
+path:
+  - ../../.venv/bin
+env:
+  TERM: "dumb"
+  TZ: "UTC"
+  METABROWSER_PLUGINS_DIRS: ""
+  METABROWSER_LOG_LEVEL: "ERROR"
+before: >-
+  unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX GIT_NAMESPACE GIT_CEILING_DIRECTORIES &&
+  uv --config-file "$TRYSCRIPT_TEST_DIR/../../uv.toml" run --frozen --no-sync
+  --project "$TRYSCRIPT_TEST_DIR/../.." python "$TRYSCRIPT_TEST_DIR/../source_mirror_fixture.py" .
+  > fixture.log 2>&1
+---
+# Golden tests: a served mirror’s status, refresh, and pin through `--api`
+
+`tests/source_mirror_fixture.py` writes a bare `origin.git` with `git fast-import`, so
+every identity and date is fixed and each commit ID below is the same on every machine:
+`topic`, the default branch, is `first` (`fcb9d63c3…`) then `second` (`42382ea…`);
+`feature` (`c7ae2a3…`) branches from `first`; `v1` is an annotated tag of `first`. The
+fixture acquires that origin into `home` and records its last fetch at a fixed time, so
+each command here opens the cached store as a mirror and serves the default branch.
+
+A one-shot `--api` serves the mirror but never refreshes it on its own, which is why the
+old fetch still reads `stale` here.
+Each command is its own process, so a pin switch lasts for that command only.
+
+## Test: status reports the pin and the mirror’s freshness
+
+`latest` is the commit the pinned ref names in the mirror now; it equals the pin until a
+refresh moves the ref.
+
+```console
+$ METABROWSER_HOME=$PWD/home metab file://$PWD/origin.git --api /api/source/status
+api: /api/source/status
+status: 200
+{
+  "subject": "git_revision",
+  "generation": 1,
+  "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+  "ref": "refs/remotes/origin/topic",
+  "ref_name": "topic",
+  "refreshable": true,
+  "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+  "last_fetch_at": "2026-09-17T12:00:05Z",
+  "last_outcome": {
+    "operation": "acquire",
+    "outcome": "succeeded",
+    "at": "2026-09-17T12:00:05Z"
+  },
+  "refreshing": false,
+  "stale": true
+}
+? 0
+```
+
+## Test: pinning a branch
+
+The branch resolves in the mirror, the served subject is replaced, and the generation
+moves.
+
+```console
+$ METABROWSER_HOME=$PWD/home metab file://$PWD/origin.git --api /api/source/pin --data pin-feature.json
+api: /api/source/pin
+status: 200
+{
+  "changed": true,
+  "status": {
+    "subject": "git_revision",
+    "generation": 2,
+    "pin": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+    "ref": "refs/remotes/origin/feature",
+    "ref_name": "feature",
+    "refreshable": true,
+    "latest": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+    "last_fetch_at": "2026-09-17T12:00:05Z",
+    "last_outcome": {
+      "operation": "acquire",
+      "outcome": "succeeded",
+      "at": "2026-09-17T12:00:05Z"
+    },
+    "refreshing": false,
+    "stale": true
+  }
+}
+? 0
+```
+
+## Test: pinning an annotated tag serves the commit it names
+
+```console
+$ METABROWSER_HOME=$PWD/home metab file://$PWD/origin.git --api /api/source/pin --data pin-tag.json
+api: /api/source/pin
+status: 200
+{
+  "changed": true,
+  "status": {
+    "subject": "git_revision",
+    "generation": 2,
+    "pin": "fcb9d63c3c8533d1b929861f451a066e6d4f2d9e",
+    "ref": "refs/tags/v1",
+    "ref_name": "v1",
+    "refreshable": true,
+    "latest": "fcb9d63c3c8533d1b929861f451a066e6d4f2d9e",
+    "last_fetch_at": "2026-09-17T12:00:05Z",
+    "last_outcome": {
+      "operation": "acquire",
+      "outcome": "succeeded",
+      "at": "2026-09-17T12:00:05Z"
+    },
+    "refreshing": false,
+    "stale": true
+  }
+}
+? 0
+```
+
+## Test: pinning an abbreviated commit ID
+
+A commit pinned by ID has no ref, so there is no `latest` to compare with.
+
+```console
+$ METABROWSER_HOME=$PWD/home metab file://$PWD/origin.git --api /api/source/pin --data pin-oid.json
+api: /api/source/pin
+status: 200
+{
+  "changed": true,
+  "status": {
+    "subject": "git_revision",
+    "generation": 2,
+    "pin": "fcb9d63c3c8533d1b929861f451a066e6d4f2d9e",
+    "ref": null,
+    "ref_name": null,
+    "refreshable": true,
+    "latest": null,
+    "last_fetch_at": "2026-09-17T12:00:05Z",
+    "last_outcome": {
+      "operation": "acquire",
+      "outcome": "succeeded",
+      "at": "2026-09-17T12:00:05Z"
+    },
+    "refreshing": false,
+    "stale": true
+  }
+}
+? 0
+```
+
+## Test: pinning what is already served changes nothing
+
+```console
+$ METABROWSER_HOME=$PWD/home metab file://$PWD/origin.git --api /api/source/pin --data pin-same.json
+api: /api/source/pin
+status: 200
+{
+  "changed": false,
+  "status": {
+    "subject": "git_revision",
+    "generation": 1,
+    "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "refreshable": true,
+    "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "last_fetch_at": "2026-09-17T12:00:05Z",
+    "last_outcome": {
+      "operation": "acquire",
+      "outcome": "succeeded",
+      "at": "2026-09-17T12:00:05Z"
+    },
+    "refreshing": false,
+    "stale": true
+  }
+}
+? 0
+```
+
+## Test: a name the mirror does not have is not found
+
+```console
+$ METABROWSER_HOME=$PWD/home metab file://$PWD/origin.git --api /api/source/pin --data pin-missing.json
+api: /api/source/pin
+status: 404
+{
+  "error": "no branch or tag with that name is in the mirror",
+  "code": "selection_not_found"
+}
+Error: /api/source/pin returned HTTP 404
+? 1
+```
+
+## Test: revision syntax is refused before any lookup
+
+`:/first` would be a commit-message search to `rev-parse`; it is not a valid ref name,
+and not a commit ID, so it never reaches Git.
+
+```console
+$ METABROWSER_HOME=$PWD/home metab file://$PWD/origin.git --api /api/source/pin --data pin-syntax.json
+api: /api/source/pin
+status: 400
+{
+  "error": "the ref is not a valid Git ref name",
+  "code": "invalid_selection"
+}
+Error: /api/source/pin returned HTTP 400
+? 1
+```
+
+## Test: a refresh starts in the background and the request returns at once
+
+The answer is the envelope as the refresh starts.
+The command then waits for the refresh it asked for before it exits; what that refresh
+did is recorded in the in-process transcript `cli-git-refresh.txt`, because CI’s Git is
+below the floor a fetch requires.
+
+```console
+$ METABROWSER_HOME=$PWD/home metab file://$PWD/origin.git --api /api/source/refresh --data refresh.json
+api: /api/source/refresh
+status: 202
+{
+  "refresh": "started",
+  "status": {
+    "subject": "git_revision",
+    "generation": 1,
+    "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "refreshable": true,
+    "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "last_fetch_at": "2026-09-17T12:00:05Z",
+    "last_outcome": {
+      "operation": "acquire",
+      "outcome": "succeeded",
+      "at": "2026-09-17T12:00:05Z"
+    },
+    "refreshing": true,
+    "stale": true
+  }
+}
+? 0
+```

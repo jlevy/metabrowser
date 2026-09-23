@@ -15,6 +15,8 @@ before: >-
   printf '{"path": "README.md", "view": "rendered", "destination": "out.html"}\n'
   > shellroot/export.json &&
   printf '{"reason": "golden", "pending": []}\n' > shellroot/diag.json &&
+  printf '{}\n' > refresh.json &&
+  printf '{"ref": "topic"}\n' > pin.json &&
   touch -t 202311142213.20 shellroot/README.md shellroot/render.json
   shellroot/export.json shellroot/diag.json shellroot
 ---
@@ -99,9 +101,10 @@ status: 200
 
 ## Test: what the server serves
 
-A served folder has no pin, so the commit and ref fields are null.
-A `file://` source is served pinned to a commit; its envelope is in `cli-git-pin.txt`,
-recorded in-process because acquisition refuses CI’s Git.
+A served folder has no pin, so the commit and ref fields are null, and it is no mirror,
+so nothing about it is `refreshable`. A `file://` source is served pinned to a commit of
+a mirror; its envelope, refresh, and pin switching are in `cli-api-source.tryscript.md`
+and, where a fetch runs, `cli-git-refresh.txt`.
 
 ```console
 $ metab shellroot --api /api/source/status
@@ -112,9 +115,68 @@ status: 200
   "generation": 1,
   "pin": null,
   "ref": null,
-  "ref_name": null
+  "ref_name": null,
+  "refreshable": false,
+  "latest": null,
+  "last_fetch_at": null,
+  "last_outcome": null,
+  "refreshing": false,
+  "stale": false
 }
 ? 0
+```
+
+## Test: a folder has no mirror to refresh or pin
+
+Both routes answer a typed `unsupported_for_subject` naming what the folder lacks.
+
+```console
+$ metab shellroot --api /api/source/refresh --data refresh.json
+api: /api/source/refresh
+status: 409
+{
+  "error": "source does not support refresh",
+  "code": "unsupported_for_subject",
+  "capability": "refresh"
+}
+Error: /api/source/refresh returned HTTP 409
+? 1
+```
+
+```console
+$ metab shellroot --api /api/source/pin --data pin.json
+api: /api/source/pin
+status: 409
+{
+  "error": "source does not support pin",
+  "code": "unsupported_for_subject",
+  "capability": "pin"
+}
+Error: /api/source/pin returned HTTP 409
+? 1
+```
+
+## Test: a GET cannot start a refresh or switch the pin
+
+Starting network work and changing the pin are POST routes with a JSON body, so a link
+or an image inside untrusted content cannot reach them.
+
+```console
+$ metab shellroot --api /api/source/refresh
+api: /api/source/refresh
+status: 405
+Method Not Allowed
+Error: /api/source/refresh returned HTTP 405
+? 1
+```
+
+```console
+$ metab shellroot --api /api/source/pin
+api: /api/source/pin
+status: 405
+Method Not Allowed
+Error: /api/source/pin returned HTTP 405
+? 1
 ```
 
 ## Test: crawl progress
@@ -416,6 +478,20 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/source/pin",
+      "methods": [
+        "POST"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/source/refresh",
+      "methods": [
+        "POST"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/source/status",
       "methods": [
         "GET",
@@ -517,7 +593,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 41
+  "count": 43
 }
 ? 0
 ```
