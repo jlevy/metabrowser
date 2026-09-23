@@ -23,11 +23,7 @@ status: 200
     "upgrades": []
   },
   "reclamation": {
-    "staging_entries": 1,
-    "trash_entries": 0,
-    "quarantine_entries": 0,
-    "quarantine": [],
-    "quarantine_truncated": false
+    "staging_entries": 1
   }
 }
 --- stderr ---
@@ -112,11 +108,7 @@ status: 200
     "upgrades": []
   },
   "reclamation": {
-    "staging_entries": 0,
-    "trash_entries": 0,
-    "quarantine_entries": 0,
-    "quarantine": [],
-    "quarantine_truncated": false
+    "staging_entries": 0
   }
 }
 --- stderr ---

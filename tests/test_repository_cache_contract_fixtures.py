@@ -3,18 +3,19 @@
 The fixtures under ``tests/fixtures/repository-cache/`` are the contract the
 format-foundation and acquisition implementations consume: the root-argument URL grammar,
 source and repository-store identity, slug derivation, Git version gates,
-and the lock, publication, trash, and quarantine state machines.
+and the lock, publication, and staging-sweep state machines.
 
 Rules with a production implementation replay the fixtures through it:
 source and store identity, store keys, and slugs through
 ``metabrowser.cache.identity``, the root-argument URL grammar through
 ``metabrowser.cache.urls``, the Git version gates through
 ``metabrowser.git.process``, and the lock hierarchy, lock-file placement, and lock
-sequences through ``metabrowser.cache.locks``. The sweep, trash, and quarantine machines
-replay against ``metabrowser.cache.reclaim`` in ``tests/test_cache_reclaim.py``.
+sequences through ``metabrowser.cache.locks``. The sweep machine replays against
+``metabrowser.cache.reclaim`` in ``tests/test_cache_reclaim.py``, and
+``tests/test_cache_publish.py`` checks the locks the real acquisition holds against the
+acquisition machine.
 
-The state-machine well-formedness checks and the exhaustive interleaving exploration
-verify the design itself.
+The state-machine well-formedness checks verify the design itself.
 """
 
 from __future__ import annotations
@@ -360,7 +361,6 @@ def test_lock_files_are_where_the_fixture_places_them(tmp_path: Path) -> None:
             {"<store-key>": store},
         ),
         "staging_entry": (lambda: locks.staging_entry_lock(home, "e1"), {"<entry>": "e1"}),
-        "trash_entry": (lambda: locks.trash_entry_lock(home, "e1"), {"<entry>": "e1"}),
     }
     for name, (acquire, placeholders) in acquisitions.items():
         expected = templates[name]
@@ -462,163 +462,6 @@ def test_every_machine_has_a_crash_scenario_or_is_crash_free() -> None:
     for machine in document["machines"]:
         recoveries = {
             state.get("on_crash") for state in machine["states"] if not state["terminal"]
-        } - {"nothing_to_recover", "sweep_restarts", "maintenance_rerun"}
+        } - {"nothing_to_recover", "sweep_restarts"}
         if recoveries:
             assert machine["name"] in crashing, machine["name"]
-
-
-# ----------------------------------------------------------------------------
-# Exhaustive interleaving of acquisition, purge, and quarantine
-
-
-def _condition(atom: str, shared: dict[str, Any]) -> bool:
-    return {
-        "store_absent": shared["store"] == "absent",
-        "store_present": shared["store"] == "present",
-        "alias_absent": shared["alias"] is None,
-        "alias_is_store": shared["alias"] == "K",
-    }[atom]
-
-
-def _explore(document: dict[str, Any], model: dict[str, Any]) -> dict[str, Any]:
-    """Breadth-first search over every interleaving of the model's processes.
-
-    A global state is the shared records, every lock holder, and each process's
-    program counter, machine state, and held locks. Returns the violations found,
-    the events executed, and the number of states visited.
-    """
-    hierarchy = {lock["name"]: lock for lock in document["locks"]["hierarchy"]}
-    machines = {machine["name"]: machine for machine in document["machines"]}
-    interleaving = document["interleaving"]
-    programs = [interleaving["programs"][name] for name in model["processes"]]
-    labels = [{step["label"]: step for step in program["steps"]} for program in programs]
-
-    def freeze(shared: dict[str, Any], owners: dict[str, int], procs: list[Any]) -> Any:
-        return (tuple(sorted(shared.items())), tuple(sorted(owners.items())), tuple(procs))
-
-    crashes = {(crash["program"], crash["before"]): crash for crash in model.get("crashes", [])}
-    start: tuple[dict[str, Any], dict[str, int], list[Any]] = (
-        dict(model.get("initial", interleaving["initial"])),
-        {},
-        [(program["steps"][0]["label"], program["start"], frozenset()) for program in programs],
-    )
-    seen = {freeze(*start)}
-    queue = deque([start])
-    violations: set[str] = set()
-    events: set[str] = set()
-
-    def visit(state: tuple[dict[str, Any], dict[str, int], list[Any]]) -> None:
-        key = freeze(*state)
-        if key not in seen:
-            seen.add(key)
-            queue.append(state)
-
-    while queue:
-        shared, owners, procs = queue.popleft()
-        if shared["alias"] == "K" and shared["store"] != "present":
-            violations.add("alias_names_absent_store")
-        enabled = False
-        live = False
-        for index, (label, state, held) in enumerate(procs):
-            if label in ("end", "crashed"):
-                continue
-            live = True
-            program = programs[index]
-            crash = crashes.get((model["processes"][index], label))
-            if crash is not None:
-                events.add(f"crash:{model['processes'][index]}:{label}")
-                if program["machine"] is not None:
-                    machine_states = {
-                        entry["name"]: entry for entry in machines[program["machine"]]["states"]
-                    }
-                    if machine_states[state].get("on_crash") != crash["recovery"]:
-                        violations.add(f"crash_recovery_mismatch:{state}")
-                crashed_procs = list(procs)
-                crashed_procs[index] = ("crashed", state, frozenset())
-                visit(
-                    (
-                        dict(shared),
-                        {name: owner for name, owner in owners.items() if name not in held},
-                        crashed_procs,
-                    )
-                )
-            step = labels[index][label]
-            new_owners = dict(owners)
-            new_held = set(held)
-            blocked = False
-            for item in step["acquire"]:
-                name = f"{item['lock']}:{item['key']}"
-                rank = hierarchy[item["lock"]]["rank"]
-                for other in new_held:
-                    other_lock, _, other_key = other.partition(":")
-                    other_rank = hierarchy[other_lock]["rank"]
-                    ordered = other_rank < rank or (
-                        other_rank == rank
-                        and hierarchy[item["lock"]]["multiple"]
-                        and other_key < item["key"]
-                    )
-                    if not ordered:
-                        violations.add("hierarchy_order")
-                if new_owners.get(name, index) != index:
-                    blocked = True
-                    break
-                new_owners[name] = index
-                new_held.add(name)
-            if blocked:
-                continue
-            enabled = True
-            candidates = [
-                b for b in step["branches"] if all(_condition(a, shared) for a in b["when"])
-            ]
-            if not candidates:
-                violations.add(f"no_branch:{label}")
-                continue
-            branch = candidates[0]
-            events.add(branch["event"])
-            next_state = state
-            if program["machine"] is not None:
-                matches = [
-                    t
-                    for t in machines[program["machine"]]["transitions"]
-                    if t["from"] == state and t["event"] == branch["event"]
-                ]
-                if len(matches) != 1:
-                    violations.add(f"unknown_transition:{state}:{branch['event']}")
-                    continue
-                contended = {lock for lock in matches[0]["holds"] if lock in hierarchy}
-                if contended != {h.split(":")[0] for h in new_held}:
-                    violations.add(f"holds_mismatch:{branch['event']}")
-                next_state = matches[0]["to"]
-            new_shared = dict(shared)
-            new_shared.update(branch["effects"])
-            releases = branch["release"]
-            if "all" in releases:
-                releases = sorted({h.split(":")[0] for h in new_held})
-            for release in releases:
-                for name in [h for h in new_held if h.split(":")[0] == release]:
-                    new_held.discard(name)
-                    del new_owners[name]
-            if branch["next"] == "end" and new_held:
-                violations.add(f"locks_held_at_end:{branch['event']}")
-            new_procs = list(procs)
-            new_procs[index] = (branch["next"], next_state, frozenset(new_held))
-            visit((new_shared, new_owners, new_procs))
-        if live and not enabled:
-            violations.add("deadlock")
-    return {"violations": violations, "events": events, "states": len(seen)}
-
-
-def test_interleavings_never_strand_an_alias_or_violate_lock_order() -> None:
-    document = _load("state-machines.json")
-    for model in document["interleaving"]["models"]:
-        result = _explore(document, model)
-        if model["expect"] == "safe":
-            assert result["violations"] == set(), (model["id"], result["violations"])
-        else:
-            assert model["expect"] in result["violations"], (model["id"], result["violations"])
-        assert set(model["unreachable_events"]).isdisjoint(result["events"]), model["id"]
-        assert set(model["reachable_events"]) <= result["events"], (
-            model["id"],
-            set(model["reachable_events"]) - result["events"],
-        )
-        assert result["states"] > 1, model["id"]

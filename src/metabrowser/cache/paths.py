@@ -16,14 +16,11 @@ CONFIG_RECORD: Final = "config.yml"
 CACHE_ROOT: Final = "cache"
 LAYOUT_RECORD: Final = "cache/layout.yml"
 STAGING: Final = "cache/staging"
-TRASH: Final = "cache/trash"
-QUARANTINE: Final = "cache/quarantine"
 SOURCES: Final = "cache/sources"
 REPOSITORY_STORES: Final = "cache/repository-stores"
 PROVIDER_BINDINGS: Final = "cache/provider-bindings"
 PROVIDER_REPOSITORIES: Final = "cache/provider-repositories"
 STAGING_LOCKS: Final = "cache/locks/staging"
-TRASH_LOCKS: Final = "cache/locks/trash"
 
 type SourceRecordName = Literal["source.yml", "state.yml", "store-alias.yml"]
 type StoreRecordName = Literal["store.yml", "state.yml"]
@@ -65,40 +62,19 @@ def staging_entry(entry: str) -> str:
     return f"{STAGING}/{entry}"
 
 
-def trash_entry(entry: str) -> str:
-    """Return ``cache/trash/<entry>``."""
-
-    if not is_entry_name(entry):
-        raise ValueError("invalid trash entry name")
-    return f"{TRASH}/{entry}"
-
-
-def quarantine_entry(entry: str) -> str:
-    """Return ``cache/quarantine/<entry>``."""
-
-    if not is_entry_name(entry):
-        raise ValueError("invalid quarantine entry name")
-    return f"{QUARANTINE}/{entry}"
-
-
 __all__ = [
     "CACHE_ROOT",
     "CONFIG_RECORD",
     "LAYOUT_RECORD",
     "PROVIDER_BINDINGS",
     "PROVIDER_REPOSITORIES",
-    "QUARANTINE",
     "REPOSITORY_STORES",
     "SOURCES",
     "STAGING",
     "STAGING_LOCKS",
-    "TRASH",
-    "TRASH_LOCKS",
-    "quarantine_entry",
     "source_directory",
     "source_record",
     "staging_entry",
     "store_directory",
     "store_record",
-    "trash_entry",
 ]

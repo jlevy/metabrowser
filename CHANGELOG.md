@@ -85,9 +85,9 @@ Repository cache:
 
 - New read-only routes `/api/cache/layout`, `/api/cache/sources`,
   `/api/cache/source/<slug>`, and `/api/cache/stores` report the cache’s layout and
-  config formats, what reclamation left in staging, trash, and quarantine, sources with
-  their alias generation and publication state, and stores with the aliases that name
-  them. Reach them with `metab <root> --api /api/cache/layout` like any other route.
+  config formats, abandoned staging entries the next sweep removes, sources with their
+  alias generation and publication state, and stores with the aliases that name them.
+  Reach them with `metab <root> --api /api/cache/layout` like any other route.
   They resolve `METABROWSER_HOME`, or `~/.metabrowser`, on each request and change
   nothing: a missing home reports `absent` rather than being created, an entry other
   users can reach is reported as `not_private` rather than tightened, and a home other

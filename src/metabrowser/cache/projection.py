@@ -5,7 +5,7 @@ missing home is the ``absent`` state, not an error. Nothing here changes the hom
 reads take no lock, because a lock is a file write and a cache hit must be readable from a
 home the process cannot write, and they ask for ``shared="refuse"`` so an entry other
 users can reach is reported rather than tightened while a request is answered. A
-concurrent publication, quarantine, or reclamation can therefore show an entry mid-move,
+concurrent publication or staging sweep can therefore show an entry mid-move,
 and an entry that disappears between listing and reading is left out rather than
 reported damaged. Records are read only through :func:`~metabrowser.cache.atomic.read_record`,
 :func:`~metabrowser.cache.layout.read_layout`, and :func:`~metabrowser.cache.layout.read_config`,
@@ -52,12 +52,9 @@ from metabrowser.cache.paths import (
     LAYOUT_RECORD,
     PROVIDER_BINDINGS,
     PROVIDER_REPOSITORIES,
-    QUARANTINE,
     REPOSITORY_STORES,
     SOURCES,
     STAGING,
-    TRASH,
-    quarantine_entry,
     source_directory,
     source_record,
     store_directory,
@@ -85,7 +82,6 @@ from metabrowser.cache.wire import (
     CacheStoresResponse,
     ConfigRecord,
     LayoutState,
-    QuarantineEntry,
     Reclamation,
     RecordName,
     RecordProblem,
@@ -148,13 +144,6 @@ _STORE_ROW_RECORDS: Final = 2
 # Past this a listing is refused rather than truncated, because a partial listing cannot
 # produce a correctly ordered page.
 MAX_DIRECTORY_ENTRIES: Final = 10_000
-# Each reported quarantine entry costs up to three verified listings.
-MAX_QUARANTINE_ENTRIES: Final = 100
-# Names reported per quarantine entry, per kind. Quarantine moves one store and the
-# sources resolved through it, so this is far above what it creates, and it bounds the
-# response: the two lists of a full page of entries are at most
-# MAX_QUARANTINE_ENTRIES * 2 * MAX_QUARANTINE_NAMES names.
-MAX_QUARANTINE_NAMES: Final = 50
 
 type CacheAnswer[T] = tuple[int, T | CacheError]
 
@@ -164,7 +153,7 @@ type CacheAnswer[T] = tuple[int, T | CacheError]
 _READ_ONLY: Final[SharedEntryPolicy] = "refuse"
 
 # The locations a refusal may name: fixed f01 spellings, none of which carries a slug, a
-# store key, or a quarantine entry name.
+# store key, or a staging entry name.
 _FIXED_LAYOUT_PATHS: Final[frozenset[str]] = frozenset(
     {
         CACHE_ROOT,
@@ -173,8 +162,6 @@ _FIXED_LAYOUT_PATHS: Final[frozenset[str]] = frozenset(
         SOURCES,
         REPOSITORY_STORES,
         STAGING,
-        TRASH,
-        QUARANTINE,
         PROVIDER_BINDINGS,
         PROVIDER_REPOSITORIES,
     }
@@ -185,7 +172,6 @@ _UNREADABLE_MESSAGE: Final = "The record could not be read."
 _DURABLE_DIRECTORIES: Final = (
     SOURCES,
     REPOSITORY_STORES,
-    QUARANTINE,
     PROVIDER_BINDINGS,
     PROVIDER_REPOSITORIES,
 )
@@ -471,48 +457,8 @@ def _config(config: ApplicationConfig) -> ConfigRecord:
 # ── Reclamation ────────────────────────────────────────────────────
 
 
-def _retained_name(relative_path: str) -> str:
-    """The name a cache directory keeps inside a trash or quarantine entry."""
-
-    return relative_path.removeprefix(f"{CACHE_ROOT}/")
-
-
 def _reclamation(home: Path) -> Reclamation:
-    quarantined = [name for name in _names(home, QUARANTINE) if is_entry_name(name)]
-    entries: list[QuarantineEntry] = []
-    for name in quarantined[:MAX_QUARANTINE_ENTRIES]:
-        entry = _quarantine_entry(home, name)
-        if entry is not None:
-            entries.append(entry)
-    return {
-        "staging_entries": sum(is_entry_name(name) for name in _names(home, STAGING)),
-        "trash_entries": sum(is_entry_name(name) for name in _names(home, TRASH)),
-        "quarantine_entries": len(quarantined),
-        "quarantine": entries,
-        "quarantine_truncated": len(quarantined) > MAX_QUARANTINE_ENTRIES,
-    }
-
-
-def _quarantine_entry(home: Path, name: str) -> QuarantineEntry | None:
-    """The logical entries one quarantine retains; ``None`` if it was purged meanwhile."""
-
-    base = quarantine_entry(name)
-    try:
-        contents = list_private_directory(home, base, max_entries=MAX_DIRECTORY_ENTRIES)
-    except FileNotFoundError:
-        return None
-    sources_name = _retained_name(SOURCES)
-    stores_name = _retained_name(REPOSITORY_STORES)
-    sources = _names(home, f"{base}/{sources_name}") if sources_name in contents else ()
-    stores = _names(home, f"{base}/{stores_name}") if stores_name in contents else ()
-    slugs = [slug for slug in sources if is_slug(slug)]
-    keys = [key for key in stores if is_store_key(key)]
-    return {
-        "entry": name,
-        "sources": slugs[:MAX_QUARANTINE_NAMES],
-        "stores": [f"{IDENTITY_PREFIX}{key}" for key in keys[:MAX_QUARANTINE_NAMES]],
-        "truncated": max(len(slugs), len(keys)) > MAX_QUARANTINE_NAMES,
-    }
+    return {"staging_entries": sum(is_entry_name(name) for name in _names(home, STAGING))}
 
 
 # ── Records ────────────────────────────────────────────────────────
@@ -921,7 +867,6 @@ __all__ = [
     "DEFAULT_PAGE_LIMIT",
     "MAX_DIRECTORY_ENTRIES",
     "MAX_PAGE_LIMIT",
-    "MAX_QUARANTINE_ENTRIES",
     "MAX_RECORDS_PER_REQUEST",
     "CacheAnswer",
     "layout_response",

@@ -38,7 +38,6 @@ from metabrowser.cache.locks import (
     require_no_hierarchy_locks,
     source_alias_lock,
     staging_entry_lock,
-    trash_entry_lock,
 )
 from metabrowser.home import (
     PrivateStorageError,
@@ -332,21 +331,13 @@ def test_a_waiter_on_a_replaced_lock_file_retries_on_the_new_file(
         second.release()
 
 
-@pytest.mark.parametrize(
-    "call",
-    [
-        lambda home: staging_entry_lock(home, "acquire-1"),
-        lambda home: trash_entry_lock(home, "purge-1"),
-    ],
-    ids=["staging", "trash"],
-)
-def test_entry_liveness_locks_never_block(home: Path, call: Callable[[Path], CacheLock]) -> None:
-    holder_lock = call(home)
+def test_a_staging_liveness_lock_never_blocks(home: Path) -> None:
+    holder_lock = staging_entry_lock(home, "acquire-1")
     outcome: list[BaseException | None] = []
 
     def other_thread() -> None:
         try:
-            call(home).release()
+            staging_entry_lock(home, "acquire-1").release()
             outcome.append(None)
         except BaseException as error:
             outcome.append(error)
@@ -397,11 +388,8 @@ def test_lock_files_live_only_under_cache_locks(home: Path) -> None:
         repository_store_lock(home, STORE_A) as store,
     ):
         paths = [home_lock.relative_path, alias.relative_path, store.relative_path]
-    with (
-        trash_entry_lock(home, "purge-1") as trash,
-        staging_entry_lock(home, "acquire-1") as staging,
-    ):
-        paths += [trash.relative_path, staging.relative_path]
+    with staging_entry_lock(home, "acquire-1") as staging:
+        paths.append(staging.relative_path)
     assert all(path.startswith("cache/locks/") for path in paths)
     assert all(_mode(home / path) == 0o600 for path in paths)
 
@@ -554,7 +542,6 @@ def test_locks_module_exports_every_side_lock() -> None:
         "repository_store",
         "provider_resource",
         "staging_entry",
-        "trash_entry",
     }
     assert locks.HIERARCHY_RANKS == {
         LockKind.HOME: 1,

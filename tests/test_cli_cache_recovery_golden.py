@@ -344,7 +344,6 @@ def test_golden_interrupted_between_store_and_alias_publication(
     assert orphan.stat().st_ino == orphan_inode
     layout = session.inspect("/api/cache/layout")
     assert '"staging_entries": 0' in layout
-    assert '"trash_entries": 0' in layout
     stores = session.inspect("/api/cache/stores")
     assert '"reference_state": "unreferenced"' not in stores
     assert stores.count('"publication": "published"') == 1

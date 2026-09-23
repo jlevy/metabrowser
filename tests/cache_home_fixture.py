@@ -2,11 +2,9 @@
 
 Every home is written by the production writers: ``ensure_home`` and ``migrate_layout``
 create the skeleton and layout, stores and sources are staged and published with
-``publish_entry`` under the locks that own them, aliases are written under the
-source-alias lock and the store lock, and quarantine runs through
-``quarantine_entries``. Addresses, versions, and timestamps are
-fixed, so identities, slugs, and records are identical on every machine; only the
-quarantine entry name is random, because ``quarantine_entries`` chooses it.
+``publish_entry`` under the locks that own them, and aliases are written under the
+source-alias lock and the store lock. Addresses, versions, and timestamps are fixed, so
+identities, slugs, and records are identical on every machine.
 
 Run as a script, it builds every home the golden uses below one directory::
 
@@ -43,7 +41,6 @@ from metabrowser.cache.paths import (
     staging_entry,
     store_directory,
 )
-from metabrowser.cache.reclaim import quarantine_entries
 from metabrowser.cache.records import (
     CACHE_LAYOUT_CONTRACT_ID,
     REPOSITORY_SOURCE_CONTRACT_ID,
@@ -69,7 +66,6 @@ ALIASED_AT: Final = "2026-09-17T12:00:06Z"
 REPOINTED_AT: Final = "2026-09-17T12:10:00Z"
 OPENED_AT: Final = "2026-09-17T12:30:00Z"
 FLASK_REVISION: Final = "5f4c1a2e8b0d9c7e6a5f4b3c2d1e0f9a8b7c6d5e"
-# A digest of the store's Git configuration; the routes never report it.
 LEFTOVER_STAGING_ENTRY: Final = "acquire-interrupted"
 
 
@@ -95,13 +91,11 @@ class FixtureSource:
 FLASK_HTTPS: Final = FixtureSource("https", "https://github.com/pallets/flask")
 FLASK_SSH: Final = FixtureSource("ssh", "git@github.com:pallets/flask.git")
 CLICK: Final = FixtureSource("https", "https://github.com/pallets/click")
-JINJA: Final = FixtureSource("https", "https://github.com/pallets/jinja")
 WERKZEUG: Final = FixtureSource("https", "https://github.com/pallets/werkzeug")
 # Both flask spellings share the store the HTTPS source acquired.
 FLASK_STORE_KEY: Final = FLASK_HTTPS.store_key()
 # An acquisition interrupted after publishing its store and before its alias.
 ORPHAN_STORE_KEY: Final = CLICK.store_key()
-QUARANTINED_STORE_KEY: Final = JINJA.store_key()
 # A store nothing publishes, for an alias that dangles.
 MISSING_STORE_KEY: Final = WERKZEUG.store_key()
 
@@ -196,14 +190,13 @@ def build_empty_home(home: Path) -> None:
     migrate_layout(home, version=FIXTURE_VERSION)
 
 
-def build_populated_home(home: Path) -> str:
-    """Publish, alias, and quarantine entries; return the quarantine entry name.
+def build_populated_home(home: Path) -> None:
+    """Publish and alias entries, and leave one abandoned staging entry.
 
     - flask over HTTPS and over SSH are two sources aliasing one store; the SSH alias
       was repointed once, so it is at generation 2.
     - click's acquisition published its store and its source but not its alias, so the
       source is unattached and the store is unreferenced.
-    - jinja's store failed revalidation and was quarantined with its alias.
     - an interrupted acquisition left one staging entry for the next sweep.
     """
 
@@ -218,20 +211,7 @@ def build_populated_home(home: Path) -> str:
     _stage_and_publish_store(home, ORPHAN_STORE_KEY, with_revision=False)
     _stage_and_publish_source(home, CLICK, opened=False)
 
-    _stage_and_publish_store(home, QUARANTINED_STORE_KEY, with_revision=False)
-    _stage_and_publish_source(home, JINJA, opened=False)
-    _attach(home, JINJA, QUARANTINED_STORE_KEY, generation=1, at=ALIASED_AT)
-    quarantined = quarantine_entries(
-        home,
-        source_slugs=[JINJA.slug],
-        store_keys=[QUARANTINED_STORE_KEY],
-        revalidate=lambda: False,
-    )
-    if quarantined.state != "quarantined" or quarantined.entry is None:
-        raise RuntimeError(f"quarantine did not happen: {quarantined.state}")
-
     ensure_private_directory(home, f"{staging_entry(LEFTOVER_STAGING_ENTRY)}/repository.git")
-    return quarantined.entry
 
 
 def build_future_home(home: Path) -> None:

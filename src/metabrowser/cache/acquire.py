@@ -689,7 +689,7 @@ async def acquire_file_source(source: GitSource, *, home: Path) -> PublishedSour
     returns. A miss checks the Git floor before ``open_cache``, so a below-floor
     refuse does not create the application home or complete an empty directory
     into an ``f01`` skeleton. A miss that is allowed to fetch then opens the
-    cache (and sweeps staging and trash) and fetches. A future layout is refused before any
+    cache (and sweeps staging) and fetches. A future layout is refused before any
     write.
     """
 

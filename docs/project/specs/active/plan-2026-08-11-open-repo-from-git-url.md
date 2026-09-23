@@ -1796,6 +1796,12 @@ Revision leases, `refs/metabrowser/subjects/*` refs, maintenance locks, and
 Nothing reclaims a store no alias names: acquisition holds the alias and store locks
 from the store’s publication through its alias, and the next acquisition of the source
 reuses a store an interruption left behind.
+Quarantine, recoverable trash, their machines, and the interleaving check that proved
+them safe against acquisition were removed too, because nothing in v0.12 moves or
+deletes a published store; only the startup sweep of abandoned staging deletes anything,
+and the Phase 1A text below about trash and quarantine is superseded.
+A home written by an earlier v0.12 development build does not validate against these
+records and must be discarded.
 
 #### Phase 1B-a: Acquire and reuse a shared repository store (`mb-h51g`, `mb-dg00`)
 

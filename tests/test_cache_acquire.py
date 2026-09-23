@@ -24,7 +24,7 @@ from metabrowser.cache.identity import source_identity
 from metabrowser.cache.layout import FutureLayoutFormatError
 from metabrowser.cache.locks import LockBusyError, LockKind, held_locks
 from metabrowser.cache.paths import source_record
-from metabrowser.cache.reclaim import sweep_staging_and_trash
+from metabrowser.cache.reclaim import sweep_staging
 from metabrowser.cache.records import REPOSITORY_SOURCE_STATE_CONTRACT_ID, RepositorySourceState
 from metabrowser.cache.urls import GitSource, classify_root_argument
 from metabrowser.git.process import (
@@ -420,7 +420,7 @@ def test_a_live_staging_entry_survives_the_startup_sweep_then_abandon_deletes_it
     staged = asyncio.run(acquire_into_staging(_file_source(origin), home=home))
     entry = staged.entry
     with staged:
-        report = sweep_staging_and_trash(home)
+        report = sweep_staging(home)
         assert f"cache/staging/{entry}" in report.live
         assert staged.git_dir.is_dir()
     staging = home / "cache" / "staging"
@@ -451,7 +451,7 @@ def test_a_crashed_staging_holder_is_swept(tmp_path: Path, monkeypatch: pytest.M
     assert lock is not None
     lock.release()
     staged._lock = None
-    report = sweep_staging_and_trash(home)
+    report = sweep_staging(home)
     assert f"cache/staging/{staged.entry}" in report.removed
     assert not staged.git_dir.exists()
 

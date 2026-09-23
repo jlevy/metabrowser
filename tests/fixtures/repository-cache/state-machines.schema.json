@@ -1,10 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://metabrowser.test/schemas/repository-cache-state-machines-v1.json",
-  "title": "Repository cache lock, publication, trash, and quarantine state machines",
+  "title": "Repository cache lock, publication, and staging sweep state machines",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "decided", "visibility", "locks", "publication", "crash_recovery", "machines", "scenarios", "interleaving"],
+  "required": ["schema", "decided", "visibility", "locks", "publication", "crash_recovery", "machines", "scenarios"],
   "$defs": {"name": {"type": "string", "pattern": "^[a-z][a-z_]*$"}},
   "properties": {
     "schema": {"const": "metabrowser-repository-cache-state-machines-v1"},
@@ -131,108 +131,6 @@
       "additionalProperties": false,
       "required": ["rule", "defense_in_depth", "basis"],
       "properties": {"rule": {"type": "string"}, "defense_in_depth": {"type": "string"}, "basis": {"type": "string"}}
-    },
-    "interleaving": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["purpose", "initial", "conditions", "invariants", "programs", "models"],
-      "properties": {
-        "purpose": {"type": "string"},
-        "initial": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["store", "alias"],
-          "properties": {"store": {"enum": ["absent", "present"]}, "alias": {"enum": ["K", null]}}
-        },
-        "conditions": {"type": "array", "items": {"type": "string"}},
-        "invariants": {"type": "array", "items": {"type": "string"}},
-        "programs": {
-          "type": "object",
-          "additionalProperties": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["machine", "start", "steps"],
-            "properties": {
-              "machine": {"oneOf": [{"$ref": "#/$defs/name"}, {"type": "null"}]},
-              "start": {"$ref": "#/$defs/name"},
-              "note": {"type": "string"},
-              "steps": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "required": ["label", "acquire", "branches"],
-                  "properties": {
-                    "label": {"type": "string"},
-                    "acquire": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "required": ["lock"],
-                        "properties": {
-                          "lock": {"enum": ["home", "source_alias", "repository_store", "provider_resource"]},
-                          "key": {"type": "string"}
-                        }
-                      }
-                    },
-                    "branches": {
-                      "type": "array",
-                      "minItems": 1,
-                      "items": {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "required": ["when", "event", "effects", "release", "next"],
-                        "properties": {
-                          "when": {"type": "array", "items": {"enum": ["store_absent", "store_present", "alias_absent", "alias_is_store"]}},
-                          "event": {"$ref": "#/$defs/name"},
-                          "effects": {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "properties": {"store": {"enum": ["absent", "present"]}, "alias": {"enum": ["K", null]}}
-                          },
-                          "release": {"type": "array", "items": {"type": "string"}},
-                          "next": {"type": "string"}
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        },
-        "models": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["id", "processes", "expect", "reachable_events", "unreachable_events"],
-            "properties": {
-              "id": {"type": "string"},
-              "processes": {"type": "array", "minItems": 2, "items": {"type": "string"}},
-              "expect": {"enum": ["safe", "alias_names_absent_store"]},
-              "reachable_events": {"type": "array", "items": {"type": "string", "pattern": "^([a-z][a-z_]*|crash:[a-z][a-z_]*:[a-z][a-z_]*)$"}},
-              "unreachable_events": {"type": "array", "items": {"type": "string", "pattern": "^([a-z][a-z_]*|crash:[a-z][a-z_]*:[a-z][a-z_]*)$"}},
-              "initial": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": ["store", "alias"],
-                "properties": {"store": {"enum": ["absent", "present"]}, "alias": {"enum": ["K", null]}}
-              },
-              "crashes": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "required": ["program", "before", "recovery"],
-                  "properties": {"program": {"type": "string"}, "before": {"type": "string"}, "recovery": {"oneOf": [{"$ref": "#/$defs/name"}, {"type": "null"}]}}
-                }
-              }
-            }
-          }
-        }
-      }
     }
   }
 }
