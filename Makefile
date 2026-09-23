@@ -30,7 +30,7 @@ unexport NPM_CONFIG_MINIMUM_RELEASE_AGE
 # npm 11. Repository installs must use the reviewed .npmrc policy instead.
 unexport NPM_CONFIG_BEFORE
 
-.PHONY: default install hooks-install biome-fix browser-types format format-markdown lint lint-check test audit lock upgrade build verify clean
+.PHONY: default install hooks-install biome-fix browser-types format format-markdown lint lint-check test test-admitted-git audit lock upgrade build verify clean
 
 default: install format lint test
 
@@ -50,7 +50,7 @@ browser-types:
 	npx --no-install tsc --noEmit -p tsconfig.json
 	npx --no-install tsc --noEmit -p tsconfig.legacy.json
 
-format lint lint-check test audit build: | install
+format lint lint-check test test-admitted-git audit build: | install
 
 lint:
 	$(UV_RUN) python -m devtools.lint
@@ -93,15 +93,37 @@ test:
 	$(UV_RUN) pytest
 	npx --no-install tryscript run 'tests/golden/*.tryscript.md'
 
+# Acquisition and store-read tests on a real Git the acquisition floor admits,
+# with nothing patched. They skip on a Git below the floor. The CI admitted-git
+# job builds each admitted release and sets METABROWSER_REQUIRE_ADMITTED_GIT, which
+# turns that skip into a failure; see tests/admitted_git.py.
+ADMITTED_GIT_TESTS := \
+	tests/test_git_lazy_fetch_acceptance.py \
+	tests/test_cli_live_acquire_golden.py \
+	tests/test_cache_acquire.py \
+	tests/test_cache_publish.py \
+	tests/test_cli_acquire.py \
+	tests/test_cli_cache_acquire_golden.py \
+	tests/test_cli_git_pin_golden.py \
+	tests/test_cli_git_pin_show_selection.py \
+	tests/test_git_revision_lease.py \
+	tests/test_git_store_read_policy.py \
+	tests/test_git_tree_source.py \
+	tests/test_git_revision_content_routes.py \
+	tests/test_git_revision_diff.py
+
+test-admitted-git:
+	$(UV_RUN) pytest -rs $(ADMITTED_GIT_TESTS)
+
 # Regenerate the CLI console goldens after an intended surface change.
 # tryscript rewrites changed blocks with literal output, golden_fixup.py
 # restores the elision patterns, and the pytest goldens (serve banners,
-# file:// acquire, file:// pin) are rewritten in place. Review the diff before committing.
+# file:// acquire, file:// pin, live acquire) are rewritten in place. Review the diff before committing.
 golden-update:
 	npx --no-install tryscript run --update 'tests/golden/*.tryscript.md' || true
 	$(UV_RUN) python devtools/golden_fixup.py
 	npx --no-install tryscript run 'tests/golden/*.tryscript.md'
-	GOLDEN_UPDATE=1 $(UV_RUN) pytest tests/test_cli_golden.py tests/test_cli_cache_acquire_golden.py tests/test_cli_git_pin_golden.py
+	GOLDEN_UPDATE=1 $(UV_RUN) pytest tests/test_cli_golden.py tests/test_cli_cache_acquire_golden.py tests/test_cli_git_pin_golden.py tests/test_cli_live_acquire_golden.py
 
 audit:
 	bash devtools/npm_audit.sh

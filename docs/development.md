@@ -63,6 +63,10 @@ make audit
 # Run a targeted test.
 uv --config-file uv.toml run --frozen pytest tests/test_plugin_loader.py::test_classifier_priority_wins
 
+# Run acquisition and no-lazy-fetch acceptance tests on the installed Git, with the
+# acquisition floor unpatched. They skip when that floor refuses the installed Git.
+make test-admitted-git
+
 # Regenerate the CLI console goldens (tests/golden/) after an intended
 # surface change, then review the diff.
 make golden-update
