@@ -13,13 +13,13 @@ revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
 exit: 1
 --- stdout ---
 --- stderr ---
-Error: the source did not advertise HEAD
+Error: the source could not be read as a Git repository; nothing was published
 ## Source PLAIN, a directory that is not a repository, fails without publishing anything.
 # metab <ORIGIN-PLAIN> --no-serve
 exit: 1
 --- stdout ---
 --- stderr ---
-Error: the source did not advertise HEAD
+Error: the source could not be read as a Git repository; nothing was published
 ## Source EMPTY, a repository with no commits, fails without publishing anything.
 # metab <ORIGIN-EMPTY> --no-serve
 exit: 1
@@ -37,7 +37,7 @@ Error: the source HEAD is not a branch
 exit: 1
 --- stdout ---
 --- stderr ---
-Error: the source did not advertise HEAD
+Error: the source could not be read as a Git repository; nothing was published
 ## Only A is published, its alias generation is unchanged, and staging is empty.
 # metab <ROOT> --api /api/cache/layout
 exit: 0

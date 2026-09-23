@@ -377,7 +377,11 @@ async def acquire_into_staging(source: GitSource, *, home: Path) -> StagingAcqui
                 cwd=staging,
             )
         except GitCommandError as exc:
-            raise RemoteUnavailableError("the source did not advertise HEAD") from exc
+            # ls-remote itself failed: the path is missing, is not a repository, or
+            # cannot be read. A readable source without HEAD is refused below.
+            raise RemoteUnavailableError(
+                "the source could not be read as a Git repository; nothing was published"
+            ) from exc
         head_ref, revision = _parse_symref_head(observed)
         default_remote_ref = _remote_tracking_ref(head_ref)
         if default_remote_ref is None:
