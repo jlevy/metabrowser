@@ -261,7 +261,8 @@ class GitPath:
         return "/".join(display_segment(segment) for segment in self.segments)
 
 
-# Relative in-tree symlink hops on file/raw/KPress/sidekicks. Listings still show the link.
+# Relative in-tree symlink hops per resolution on file/raw/KPress/sidekicks, counting
+# links met partway through a target. Listings still show the link.
 _MAX_GIT_SYMLINK_FOLLOW = 8
 
 
@@ -1250,47 +1251,70 @@ class GitTreeSource:
         return tuple(sized)
 
 
-def _git_symlink_target(link_path: GitPath, raw: bytes) -> GitPath | None:
-    """Resolve a relative POSIX symlink body against the link's parent tree."""
+@dataclass(slots=True)
+class _SymlinkBudget:
+    """Hops left for one resolution, shared by every link it meets."""
 
-    if not raw or b"\x00" in raw or raw.startswith(b"/"):
-        return None
-    cursor = link_path.parent()
-    for part in raw.split(b"/"):
-        if part in {b"", b"."}:
-            continue
-        if part == b"..":
-            if not cursor.segments:
-                return None
-            cursor = cursor.parent()
-            continue
-        try:
-            cursor = cursor.child(part)
-        except GitPathError:
-            return None
-    return cursor
+    hops: int = _MAX_GIT_SYMLINK_FOLLOW
+
+    def spend(self) -> bool:
+        self.hops -= 1
+        return self.hops >= 0
 
 
 async def follow_git_symlinks(source: GitTreeSource, entry: GitTreeEntry) -> GitTreeEntry | None:
-    """Follow in-tree relative symlink blobs. None when the target is unusable."""
+    """Follow in-tree relative symlink blobs the way the operating system would.
 
-    current = entry
-    seen: set[GitPath] = set()
-    hops = 0
-    while current.is_symlink:
-        if current.path in seen or hops >= _MAX_GIT_SYMLINK_FOLLOW:
-            return None
-        seen.add(current.path)
-        hops += 1
-        raw = await source.read_blob(current.path)
-        target = _git_symlink_target(current.path, raw)
-        if target is None:
-            return None
-        nxt = await source.resolve_path(target)
-        if nxt is None:
-            return None
-        current = nxt
+    A link body resolves one component at a time from the link's own directory. A
+    link met partway through is followed before the walk goes on, so a ``..`` after
+    it climbs from where that link led, and a component that is missing or is not a
+    directory stops the walk, as it would for a checkout on disk. Normalizing the
+    body as text first would answer ``dir-link/..`` with the link's own directory and
+    turn ``file/..`` or ``missing/..`` into a hit. None when the target is absolute,
+    climbs out of the tree, cannot be resolved, or takes more than
+    ``_MAX_GIT_SYMLINK_FOLLOW`` hops in all.
+    """
+
+    budget = _SymlinkBudget()
+    current: GitTreeEntry | None = entry
+    while current is not None and current.is_symlink:
+        current = await _resolve_git_symlink(source, current, budget)
     return current
+
+
+async def _resolve_git_symlink(
+    source: GitTreeSource, link: GitTreeEntry, budget: _SymlinkBudget
+) -> GitTreeEntry | None:
+    """The entry one link names, itself possibly a link; see :func:`follow_git_symlinks`."""
+
+    if not budget.spend():
+        return None
+    raw = await source.read_blob(link.path)
+    if not raw or b"\x00" in raw or raw.startswith(b"/"):
+        return None
+    parts = [part for part in raw.split(b"/") if part not in {b"", b"."}]
+    directory = link.path.parent()
+    for index, part in enumerate(parts):
+        if part == b"..":
+            if not directory.segments:
+                return None
+            directory = directory.parent()
+            continue
+        try:
+            entry = await source.resolve_path(directory.child(part))
+        except GitPathError:
+            return None
+        if entry is None:
+            return None
+        if index == len(parts) - 1:
+            return entry
+        while entry is not None and entry.is_symlink:
+            entry = await _resolve_git_symlink(source, entry, budget)
+        if entry is None or not entry.is_tree:
+            return None
+        directory = entry.path
+    # The body ended on ``..`` or named the link's own directory.
+    return await source.resolve_path(directory)
 
 
 async def resolve_git_blob_entry(source: GitTreeSource, path: GitPath) -> GitTreeEntry | None:

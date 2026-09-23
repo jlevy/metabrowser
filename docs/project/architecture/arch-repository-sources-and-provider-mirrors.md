@@ -418,7 +418,11 @@ Omitted size, mtime, and directory aggregates leave tally chrome empty rather th
 pending.
 
 Tree enumeration uses NUL-framed Git output.
-Symlinks are entries whose blob bytes name the link target and are never followed.
+Symlinks are entries whose blob bytes name the link target, and enumeration never
+follows them.
+File, raw, KPress, and plugin content reads follow an in-tree relative link
+one component at a time, as a checkout on disk resolves it, and refuse one that is
+absolute, climbs out of the tree, or does not end within `_MAX_GIT_SYMLINK_FOLLOW` hops.
 Gitlinks are distinct non-folder entries that carry the referenced commit OID. Git LFS
 pointer files remain ordinary blobs; no smudge filter or implicit LFS network request
 runs. Focused tests pin that `cat-file` returns the stored pointer bytes even when a
