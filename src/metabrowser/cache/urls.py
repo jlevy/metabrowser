@@ -7,8 +7,10 @@ explicit ``https``, ``ssh``, or ``file://`` Git source. ``file://`` is the pack
 transport; a bare path is never rewritten into one.
 
 Installed provider reducers run first. This module arbitrates their claims and then
-applies the generic grammar to every input no reducer reduced. No GitHub reducer ships
-here; overlapping claims fail discovery rather than guessing.
+applies the generic grammar to every input no reducer reduced. No provider reducer
+ships here; the built-in ones are listed in ``cache/providers.py``. Overlapping claims
+fail discovery rather than guessing, and a claimed refusal never falls through to the
+generic grammar.
 """
 
 from __future__ import annotations
@@ -16,7 +18,7 @@ from __future__ import annotations
 import re
 import string
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from typing import Final, Literal, Protocol
 
 from metabrowser.cache.identity import GitTransport
@@ -50,38 +52,84 @@ class ReducerArbitrationError(RuntimeError):
 
 
 @dataclass(frozen=True, slots=True)
-class RepositorySelection:
-    """Inert path or line a provider reducer may attach.
+class LineSelection:
+    """A line or inclusive line range a web URL anchors, 1-based, with optional columns."""
 
-    Empty until URL-open consumes it. The generic grammar never invents a selection.
+    start: int
+    end: int
+    start_column: int | None = None
+    end_column: int | None = None
+
+    def fragment(self) -> str:
+        """The ``L10``, ``L10-L20``, or ``L10C5-L20C8`` spelling of this selection."""
+
+        first = f"L{self.start}" + (f"C{self.start_column}" if self.start_column else "")
+        if self.end == self.start and self.end_column is None:
+            return first
+        return f"{first}-L{self.end}" + (f"C{self.end_column}" if self.end_column else "")
+
+
+type SelectionKind = Literal["repository", "tree", "blob", "commit", "pull_request"]
+
+
+@dataclass(frozen=True, slots=True)
+class RepositorySelection:
+    """What a provider web URL points at inside its repository.
+
+    ``ref_and_path`` stays unsplit, as percent-decoded byte segments, because only the
+    mirror knows where a ref name that contains ``/`` ends; ``cache/resolve.py`` splits
+    it. ``commit`` is a validated lowercase hexadecimal object ID, possibly abbreviated.
+    The generic grammar never invents a selection.
     """
 
-    path: str | None = None
-    line: str | None = None
+    kind: SelectionKind = "repository"
+    ref_and_path: tuple[bytes, ...] = ()
+    commit: str | None = None
+    pull_request: int | None = None
+    lines: LineSelection | None = None
+    plain: bool = False
 
 
 @dataclass(frozen=True, slots=True)
 class ReducerOutcome:
-    """A provider reducer's claim: a clone URL plus an optional selection."""
+    """A provider reducer's claim: a clone URL plus what the URL selects."""
 
     clone_url: str
     selection: RepositorySelection = RepositorySelection()
 
 
+@dataclass(frozen=True, slots=True)
+class ReducerRejection:
+    """A provider reducer's terminal refusal of a URL it recognized.
+
+    ``detail`` is written for the user. It names the URL shape and may offer the
+    repository URL rebuilt from validated parts; it never repeats the argument, so a
+    token in a refused URL does not reach the terminal.
+    """
+
+    reason: str
+    detail: str
+
+
 class ProviderUrlReducer(Protocol):
     """Installed classifier that recognizes one provider's web URL spellings."""
 
-    def reduce(self, value: str) -> ReducerOutcome | None:
-        """Return a claim, or ``None`` when this reducer does not recognize *value*."""
+    def reduce(self, value: str) -> ReducerOutcome | ReducerRejection | None:
+        """Return a claim or a refusal, or ``None`` when *value* is not this provider's."""
 
 
 @dataclass(frozen=True, slots=True)
 class GitSource:
-    """A credential-free Git acquisition source."""
+    """A credential-free Git acquisition source.
+
+    ``selection`` is what a provider web URL pointed at. It is not part of the source's
+    identity, so two URLs into one repository compare equal.
+    """
 
     transport: GitTransport
     form: Literal["url", "scp"]
     normalized: str
+    selection: RepositorySelection | None = field(default=None, compare=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,9 +141,13 @@ class LocalPath:
 
 @dataclass(frozen=True, slots=True)
 class RejectedRoot:
-    """A root argument the grammar refuses, named by the fixture's closed reason set."""
+    """A root argument the grammar refuses, named by the fixture's closed reason set.
+
+    A provider reducer's refusal adds its own reason and a ``detail`` for the user.
+    """
 
     reason: str
+    detail: str | None = None
 
 
 type RootClassification = GitSource | LocalPath | RejectedRoot
@@ -296,13 +348,20 @@ def classify_root_argument(
     """Classify *value* as a Git source, a local path, or a named rejection.
 
     Reducers that claim *value* run first. Exactly one claim replaces the input with
-    that clone URL before the generic grammar runs. Two claims are a discovery error,
-    not a user-facing rejection.
+    that clone URL before the generic grammar runs, and the source carries the claim's
+    selection; a claimed refusal is final. Two claims are a discovery error, not a
+    user-facing rejection.
     """
     ports = DEFAULT_PORTS if defaults is None else defaults
     claims = [outcome for reducer in reducers if (outcome := reducer.reduce(value)) is not None]
     if len(claims) > 1:
         raise ReducerArbitrationError(f"{len(claims)} provider URL reducers claimed {value!r}")
     if len(claims) == 1:
-        return _classify_grammar(claims[0].clone_url, ports)
+        claim = claims[0]
+        if isinstance(claim, ReducerRejection):
+            return RejectedRoot(claim.reason, claim.detail)
+        classified = _classify_grammar(claim.clone_url, ports)
+        if isinstance(classified, GitSource):
+            return replace(classified, selection=claim.selection)
+        return classified
     return _classify_grammar(value, ports)
