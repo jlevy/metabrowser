@@ -21,9 +21,10 @@ metab ROOT [MODE] [OPTIONS]
 `ROOT` is the directory to serve, or a single file to open directly.
 A clone URL (`https://…`, `ssh://…`, `git@host:path`, or `file://…`) is a Git source,
 not a local path. `file://` is acquired with `--no-serve`, and also as a side effect of
-`--show` or `--api`. https and ssh stay closed.
-`--show` and `--api` inspect a pinned revision in-process; nothing binds a port, and
-acquired content is not served.
+serving it, `--show`, `--api`, or `--check-api`. https and ssh stay closed.
+`metab file://…` serves the default branch’s commit, pinned; `--show`, `--api`, and
+`--check-api` inspect that pin in-process without binding a port.
+Acquired content always runs under the untrusted profile.
 A bare filesystem path is never treated as a clone origin.
 With no mode flag, `metab ROOT` starts the server and opens a browser, the way `open`
 opens a folder on macOS.
@@ -86,6 +87,29 @@ Metabrowser warns when it ignores one of its own.
 See [SECURITY.md](../SECURITY.md) for why the list runs that way.
 These flags also apply to `--api`, `--show`, and `--check-api`.
 
+### Serving a Git source
+
+```shell
+metab file:///path/to/origin.git
+metab file:///path/to/origin.git --path docs/guide.md --no-open
+```
+
+Serving a `file://` source acquires it, or reuses the cached store, and serves the
+commit its default branch named at that moment.
+The banner prints the source and a `Revision:` line with the full commit and the branch;
+the navigation heading shows the branch and short commit, and hovering it shows the full
+commit. `--path` takes a path within that commit.
+Everything reads from the store, so the origin can be gone and no network is used.
+The pin does not move while the server runs.
+
+A served pin always runs under the untrusted profile: `--untrusted` is implied, the
+`METAB_*` enables are ignored, and `--allow-edits` is an error.
+HTML files offer only their source.
+`/api/cache/…` answers `unsupported_for_subject` on a served pin, so nothing about other
+cached sources is served beside it; inspect the cache with
+`metab <url> --api /api/cache/…` instead.
+`/api/source/status` reports the pinned commit and ref.
+
 ## Acquiring a Git source: `--no-serve`
 
 `file://` is the only origin this release acquires.
@@ -107,7 +131,10 @@ through `/api/tree`. `--show` and other `--api` routes on that URL acquire or re
 store, pin the default revision, and inspect the pin in-process.
 Nothing binds a port.
 `--show` accepts a display path (`README`) or a `GitPath` wire.
-Serving, walking, and `--check-api` still refuse Git sources.
+`--check-api` runs the navigation scenario on the pin, where Recent’s
+`unsupported_for_subject` is the expected answer.
+`--walk` refuses a Git source: the walker reads a filesystem, and
+`--api '/api/tree?depth=N'` lists a pinned tree.
 https and ssh URLs stay closed.
 A second `--no-serve` of the same `file://` source reuses the published store.
 That cache hit reads only the application home: it runs no Git, does not need the

@@ -108,8 +108,11 @@ Repository cache:
   state against an empty throwaway root so cache inspection cannot expose origin objects
   through `/api/tree`. `metab file://… --show PATH` and non-cache `--api` acquire or
   reuse the store, pin the default revision, and inspect that `GitRevisionSubject`
-  in-process. Serving, walking, and `--check-api` still refuse Git sources, and nothing
-  binds a port. https and ssh stay closed.
+  in-process, and `--check-api` runs its navigation scenario on that pin, where the live
+  filter’s `unsupported_for_subject` answer is the pass.
+  `--walk` refuses a Git source: the walker reads a filesystem, and a pin’s complete
+  listing is `/api/tree`. None of these binds a port.
+  https and ssh stay closed.
   Those pin modes report acquisition failures with the same messages as `--no-serve`,
   and a Git failure while opening the pin is also path-free.
   A pin’s `/api/tree` lists directories before files, as a folder listing does.
@@ -121,6 +124,27 @@ Repository cache:
   No store read fetches from the origin.
   A pin always runs under the untrusted profile: `METAB_ACTIVE_CONTENT=1` and
   `METAB_ALLOW_EDITS=1` do not lift it, and `--allow-edits` on a pin is an error.
+
+- `metab file://…` serves the acquired source in the browser, pinned to its default
+  branch’s commit, until Ctrl-C, with no network.
+  The banner names the source and prints a `Revision:` line with the full commit and
+  branch, and `--path` deep-links a path within the pin.
+  The tree, file views, Markdown and its images, JSON, images, history, commit detail,
+  and diffs all read from the store.
+  The navigation heading shows the branch and short commit; its tooltip and the file
+  header show the full commit.
+  A served pin always runs under the untrusted profile, exactly as `--show` and `--api`
+  do, and HTML offers only its source.
+  Its `/api/cache/…` routes answer `unsupported_for_subject`, so nothing about other
+  cached sources is served beside acquired content.
+  The `/raw/<path>` form answers the same way, because its only consumer is the HTML
+  preview a pin never offers; Markdown images resolve within the pin through
+  `/raw?path=`. A served `file://` pin has no `repository_context`.
+
+- New `GET /api/source/status` reports what the server serves: the subject kind, the
+  session generation, and on a Git pin its full commit (`pin`), the store ref it was
+  resolved from (`ref`), and that ref’s branch or tag name (`ref_name`). Reach it with
+  `metab <root> --api /api/source/status`.
 
 - A timed-out or cancelled acquisition kills Git’s whole process group, including the
   helpers it forks, rather than only the `git` process.
@@ -273,7 +297,7 @@ Content source:
   Blob listings carry `cat-file` info sizes so `min_size` can filter; trees and gitlinks
   stay unsized. Recursive `ls-tree -r` tallies fill directory `total_files` /
   `total_size` and the Git `/api/rollup` tree.
-  Inventory open, archive containers, and serving acquired Git are not switched yet.
+  Inventory open and archive containers are not switched yet.
 
 - The content-trust profile applies to a Git pin.
   `--untrusted`, `--no-active-content`, and `--allow-edits` take effect on `--show` and
