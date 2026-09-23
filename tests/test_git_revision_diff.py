@@ -133,3 +133,28 @@ def test_comparison_head_is_the_pin_not_store_head(
         assert later_body["resolved"]["right"]["id"] == target
         assert "new.md" in _paths(later_body)
         assert str(store) not in later.text
+
+
+def test_comparison_base_policy_passes_through_and_refuses_what_it_cannot_honor(
+    pinned_base: tuple[Path, Path, str, str],
+) -> None:
+    _work, _store, base, target = pinned_base
+    with TestClient(app) as client:
+        for policy in ("direct", "merge_base"):
+            answered = client.get(
+                "/api/plugin/diff/comparison",
+                params={"left": target, "right": base, "base_policy": policy},
+            )
+            assert answered.status_code == 200
+            document = validate_document(answered.json())
+            assert document.resolved.base_policy.value == policy
+        # base is an ancestor of target, so their merge base is base itself.
+        assert document.resolved.left.id == base
+        for params in (
+            {"left": base, "right": target, "base_policy": "first_parent"},
+            {"left": base, "right": target, "base_policy": "sideways"},
+            {"revision": target, "base_policy": "merge_base"},
+        ):
+            refused = client.get("/api/plugin/diff/comparison", params=params)
+            assert refused.status_code == 400
+            assert refused.json()["error"] == "diff_comparison"
