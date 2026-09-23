@@ -854,7 +854,7 @@ independently replaceable:
   sources from that registry before job lookup.
   A provider-principal request fails closed rather than falling back to ambient Git
   auth; the isolation rules are in
-  [Repository Sources and Provider Mirrors](arch-repository-sources-and-provider-mirrors.md#fetch-jobs-authorization-and-credentials).
+  [Repository Sources and Provider Mirrors](arch-repository-sources-and-provider-mirrors.md#fetch-and-credentials).
 
 The common hosted-resource address is
 `/hosted/<provider-kind>/<instance-key>/<repository-key>/<resource-kind>/<resource-key>[/<inner>]`

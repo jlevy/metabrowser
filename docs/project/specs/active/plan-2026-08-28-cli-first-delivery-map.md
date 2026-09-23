@@ -343,15 +343,15 @@ def ensure_home(home: Path) -> Path: # creates the f01 skeleton, writes CACHEDIR
 | --- | --- | --- |
 | `layout.py` | Format record, fail-closed future formats, ordered migrations, home preparation | `read_layout`, `read_config`, `migrate_layout`, `open_cache`, `LAYOUT_FORMAT` |
 | `atomic.py` | Same-filesystem owner-only record publication | `read_record`, `write_record_atomic`, `publish_entry` |
-| `locks.py` | Fixed lock hierarchy, leases, and liveness locks | `application_home_lock`, `source_alias_lock`, `repository_store_lock`, `provider_resource_lock`, `store_lease`, `store_maintenance_lock` |
+| `locks.py` | Fixed lock hierarchy and liveness locks | `application_home_lock`, `source_alias_lock`, `repository_store_lock`, `provider_resource_lock`, `staging_entry_lock`, `trash_entry_lock` |
 | `probe.py` | Application-home lock and publication probe | `probe_application_home` |
 | `contracts.py` | Packaged SoftSchema bindings and drift checks | `compile_contracts`, `cache_contract_registry`, `repository_cache_capabilities` |
-| `records.py` | Closed source/store and staged-fetch contracts | `ApplicationConfig`, `CacheLayout`, `RepositorySource`, `RepositorySourceState`, `RepositoryStoreAlias`, `RepositoryStore`, `RepositoryStoreState`, `StagedFetch` |
-| `reclaim.py` | Startup staging/trash sweep, trash, quarantine, store reclamation, and lease-aware object reclamation | `reclaim_staging`, `reclaim_trash`, `quarantine_entries`, `reclaim_store`, `reclaim_unreferenced_stores`, `reclaim_repository_objects` |
+| `records.py` | Closed source and store contracts | `ApplicationConfig`, `CacheLayout`, `RepositorySource`, `RepositorySourceState`, `RepositoryStoreAlias`, `RepositoryStore`, `RepositoryStoreState` |
+| `reclaim.py` | Startup staging/trash sweep, trash, and quarantine; nothing deletes a published store | `reclaim_staging`, `reclaim_trash`, `quarantine_entries`, `purge_quarantined` |
 | `identity.py` | Conservative source identity, provider-derived store identity, aliasing, and collision-safe slugs | `normalize_git_source`, `source_identity`, `repository_store_id`, `provider_repository_store_id`, `cache_slug` |
 | `urls.py` | Root classification, provider reducer arbitration, and terminal rejection | `classify_root_argument`, `ProviderUrlReducer`, `ReducerOutcome`, `RepositorySelection` |
 | `acquire.py` | Worktree-free staged acquisition and atomic store/alias publication | `acquire_file_source`, `acquire_into_staging`, `publish_from_staging` |
-| `repository_store.py` | Selected-object fetch jobs, full-OID publication, leases, convergence, and maintenance | `resolve_store`, `stage_fetch`, `publish_refs`, `lease_revision`, `converge_store`, `reclaim_objects` |
+| `repository_store.py` | Open a pinned commit in a published store, with no lock and no write | `open_revision` |
 | `selection.py` | Pure ref/path resolution and typed missing-ref requests | `resolve_selection`, `resolve_ref_path_candidates` |
 | `service.py` | One CLI/chooser orchestration result | `resolve_open_target`, `close_open_target` |
 | `jobs.py` | Provider-neutral selected-ref jobs, the credential-lease registry and per-request validation, and stage outcomes | `RepositoryJob`, `RepositoryJobRegistry`, `fetch_selected_ref`, `request_ref_fetch`, `GitFetchCredentialLeaseRegistry`, `validate_git_fetch_credential_lease`, `close_all` |
@@ -444,7 +444,7 @@ A live `metab file:// --no-serve` tryscript cannot run on ubuntu-latest today: t
 runner’s Git 2.43.0 is below the acquisition floor (2.43.7 / patched tracks), and
 distro-patched Git remains refuse.
 Until CI pins Git 2.50.1 (`mb-oueh`), acquire / reuse / staging-sweep / orphan-store
-reclaim / read-only cache hit / last-opened-at evidence is
+reuse / read-only cache hit / last-opened-at evidence is
 `tests/test_cli_cache_acquire_golden.py`: the production CLI in-process, the floor
 monkeypatched, a real pack fetch.
 `tests/test_cli_cache_recovery_golden.py` adds the interrupted, failed, and refused
@@ -470,11 +470,11 @@ values; cache routes never report paths, and `--no-serve` does not print the hom
 | `cli-cache-layout.tryscript.md` | home creation, `f01` record, `CACHEDIR.TAG`, future-format refusal | Cache 1A |
 | `cli-cache-acquire.txt` | clone, publish, second open reuses with no network | Cache 1B-a |
 | `cli-cache-recover.txt` | the next acquisition sweeps a lock-free staging entry | Cache 1B-a |
-| `cli-cache-orphan-reclaim.txt` | the next acquisition reclaims a store no alias names | Cache 1B-a |
+| `cli-cache-orphan-kept.txt` | the next acquisition of another source keeps a store no alias names | Cache 1B-a |
 | `cli-cache-readonly-hit.txt` | second `--no-serve` reuses a published store against a home without owner-write | Cache 1B-a |
 | `cli-cache-readonly-miss.txt` | a home without owner-write refuses a new source and stays unchanged | Cache 1B-a |
 | `cli-cache-interrupt-store.txt` | a process killed before store publication leaves only staging, which the next acquisition sweeps | Cache 1B-a |
-| `cli-cache-interrupt-alias.txt` | a process killed between store and alias publication leaves an unreferenced store and no visible source; the next acquisition reclaims it and publishes both | Cache 1B-a |
+| `cli-cache-interrupt-alias.txt` | a process killed between store and alias publication leaves an unreferenced store and no visible source; the next acquisition reuses the store and publishes the alias | Cache 1B-a |
 | `cli-cache-fetch-failures.txt` | missing, non-repository, empty, and detached-HEAD origins fail without touching another source; a folded spelling reuses the same source | Cache 1B-a |
 | `cli-cache-unsupported-git.txt` | below-floor Git refuses a miss without creating or changing the home, and still reuses a hit without Git | Cache 1B-a |
 | `cli-cache-repair-guidance.txt` | invalid `METABROWSER_HOME`, a shared home, and a future format each name their repair, which then works | Cache 1B-a |

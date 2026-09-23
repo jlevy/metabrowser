@@ -689,7 +689,7 @@ Git credentials, SSH agents, or a newly active `gh` account.
 the token never enters argv, the child environment, files, ref names, cache records, or
 diagnostics. The run’s environment, configuration, and prompt-binding isolation is
 defined in
-[Repository Sources and Provider Mirrors](../../architecture/arch-repository-sources-and-provider-mirrors.md#fetch-jobs-authorization-and-credentials).
+[Repository Sources and Provider Mirrors](../../architecture/arch-repository-sources-and-provider-mirrors.md#fetch-and-credentials).
 Provider-observed object identity is stored independently from local object
 availability. The selected-ref service reports `not_requested`, `present`,
 `missing_fetchable`, `fetch_failed`, `unavailable`, or `outside_bound` without rewriting
@@ -1127,7 +1127,7 @@ recorded base silently.
 - [ ] Measure and implement the cross-platform askpass bridge through the sole
   `git/process.py` runner (`mb-s123`) under the environment, configuration, and
   prompt-binding isolation in
-  [Repository Sources and Provider Mirrors](../../architecture/arch-repository-sources-and-provider-mirrors.md#fetch-jobs-authorization-and-credentials):
+  [Repository Sources and Provider Mirrors](../../architecture/arch-repository-sources-and-provider-mirrors.md#fetch-and-credentials):
   an allowlisted environment with no `.netrc`, SSH agent, injected configuration, or
   trace variables; a temporary empty-template repository with no system or global
   configuration, credential helpers, hooks, or non-HTTPS protocols; and disabled

@@ -89,17 +89,16 @@ forbidden. See
 
 The process serves exactly one `RepositorySubject` at a time, owned by a `SourceSession`
 (`metabrowser.source`). The session holds the subject identity, a generation that
-advances on replacement, the content reader, navigation/index capability, and a lease
-released when the next subject attaches.
+advances on replacement, the content reader, navigation/index capability, and a
+generation lease released when the next subject attaches.
 
 Today the attached folder is `AttachedFilesystemSubject`. A `GitRevisionSubject` can pin
 a full-OID tree over a worktree-free store.
 `InventoryCoordinator.open_subject` accepts that pin without a filesystem walk.
-`metab file://… --show` and non-cache `--api` lease it in-process; a listening server
-still does not. A published-store pin takes `lease_revision`, which holds the store’s
-shared maintenance lock and a durable `refs/metabrowser/subjects/<oid>` ref.
-`maintain_store` runs `gc` and `repack` under the exclusive maintenance lock; a live
-lease makes that busy.
+`metab file://… --show` and non-cache `--api` open it in-process; a listening server
+still does not. A published-store pin comes from `open_revision`, which checks that the
+commit is in the store and holds no lock and writes no ref: a store is a read-only full
+clone that nothing prunes.
 Git discovery, history, refs, commit detail, file, raw, tree, diffs, KPress, and
 patch-file containers honor that pin through `GitLocation` and `GitPath`. On a pin,
 `/api/plugin/diff/comparison` treats `HEAD` as the pinned object id.
@@ -134,10 +133,9 @@ A Git image blob is SPA `image` chrome; `/raw` serves the stored bytes.
 `include_ignored=0` is a no-op because ignore is absent.
 The JSONL stream still returns `unsupported_for_subject` instead of the lifespan folder.
 `/api/rollup` on a pin answers from recursive blob names and sizes and omits mtime.
-A Git LFS pointer is stored pointer bytes; a tree-named missing blob, including a
-promisor miss, is `object_unavailable` with lazy fetch disabled.
-`/view/` on a pin accepts a `GitPath` wire (and a patch-file container inner) and
-refuses a filesystem spelling.
+A Git LFS pointer is stored pointer bytes; a tree-named missing blob is
+`object_unavailable`. `/view/` on a pin accepts a `GitPath` wire (and a patch-file
+container inner) and refuses a filesystem spelling.
 `/api/tree` on that pin keeps Git-native `entries` and also projects a SPA `tree` array
 so navigation can paint (`dir`/`file`/`symlink`, `GitPath` wires, `cat-file` blob sizes,
 recursive dir `total_files`/`total_size`, no invented mtime or ignore; gitlinks are

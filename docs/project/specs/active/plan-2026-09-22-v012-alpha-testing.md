@@ -39,12 +39,12 @@ The owning specs retain the detailed checklists.
 | Local browsing and Git history/diffs | Released baseline | Filesystem Markdown, structured data, images, binary content, Git history/detail and diff infrastructure remain available | T0 browser regression |
 | HTML trust foundation | Built on `main` | Sandboxed raw responses, same-origin API proof and `--untrusted` exist; every new acquired-content entry point must apply them | T0 regression; T1 acquired-content isolation |
 | Repository design and hosted-review records / 0–0D | Built on stack | Identity, source binding, repository/PR/comment/review/thread/check records, schemas, validators, corpora and installed contract discovery exist; there is no GitHub acquisition or PR UI yet | Automated contract and oracle tests |
-| Private cache format / 1A | Built on stack | Owner-only POSIX home, `f01` records, locks, safe publication, quarantine/trash/reclamation and cache-inspection routes exist; Windows storage fails closed pending ACL support | T0 cache and recovery tests |
-| Local Git acquisition / 1B-a | Partial | `file://` acquisition publishes a worktree-free store, pins the default OID, prefetches its tree and reuses the cache offline; error, cancellation, minimum-Git and golden acceptance remain | T0 real CLI |
+| Private cache format / 1A | Built on stack | Owner-only POSIX home, `f01` records, locks, safe publication, quarantine, staging and trash sweeps, and cache-inspection routes exist; nothing deletes a published store; Windows storage fails closed pending ACL support | T0 cache and recovery tests |
+| Local Git acquisition / 1B-a | Partial | `file://` acquisition publishes a complete, read-only worktree-free store (a full clone), pins the default OID, and reuses the cache offline; error, cancellation, minimum-Git and golden acceptance remain | T0 real CLI |
 | HTTPS and SSH acquisition / 1B-a and 2A | Planned | Sources are recognized but refused; ordinary GitHub URL browsing needs HTTPS transport, and SSH has its own transport/prompt-suppression obligations | T1 HTTPS; separate SSH lane |
-| Background object convergence / 2B | Planned | Default-tree prefetch and complete/converging state recording exist; `mb-bgn8` owns the worker after serving/job support, without blocking 1B-a publication | T1 object availability and offline cases |
+| Background object convergence / 2B | Retired | Stores are full clones, so no object is missing; the Simplify PR removed the prefetch and the convergence state | None |
 | Source sessions and content readers / 1B-b | Partial | Attached filesystem and immutable Git subjects share capability-aware routes and bounded plugin content ports; integrated acceptance remains | T0 CLI/API and local browser regression |
-| Immutable Git revisions / 1B-c | Partial | Byte-safe paths, full-OID trees, batch readers, leases and content-kind handling work through `--show` and `--api`; acquired-Git HTTP startup, `--walk` and `--check-api` still refuse | T0 pin/content/lease tests |
+| Immutable Git revisions / 1B-c | Partial | Byte-safe paths, full-OID trees, batch readers, a lock-free pin open, and content-kind handling work through `--show` and `--api`; acquired-Git HTTP startup, `--walk` and `--check-api` still refuse | T0 pin and content tests |
 | GitHub URL reduction and serving / 2A | Planned | String-preserving CLI classification and the reducer protocol exist; registered reducers, URL selection, HTTPS opening, HTTP serving and enforced trust still need implementation | T1 repository/tree/blob/commit/raw URLs |
 | Selected-ref jobs / 2B | Planned | Git process/store primitives exist; bounded jobs, cancellation/coalescing, credential leases, selected-ref fetching and publication do not | T1 missing refs, cancellation and races |
 | Branch/tag/commit/path selection / 2C | Planned | Internal subjects can name an OID; URL ref/path disambiguation, slash-containing refs and branch-opening integration remain | T1 concurrent revisions and navigation |
@@ -152,10 +152,9 @@ The next agent should reuse these implementation boundaries:
 - `cache/acquire.py` currently refuses remote transports; retain its safe publication
   and cache-hit path when adding HTTPS.
 - `cli/git_pin_cli.py`, `source.py`, `git/tree_source.py` and
-  `cache/repository_store.py` provide the existing acquisition, lease, subject and
-  content lifecycle. `cli/acquire_cli.py` owns the current Git-error normalization.
-- `git/process.py` owns Git execution and no-lazy-fetch policy.
-  Phase 2B adds jobs and neutral provider resource models; selection remains
+  `cache/repository_store.py` provide the existing acquisition, pin, subject and content
+  lifecycle. `cli/acquire_cli.py` owns the current Git-error normalization.
+- `git/process.py` owns Git execution and its isolated environment; selection remains
   network-free.
 
 These paths are relative to `src/metabrowser/`. Keep GitHub API/auth/mirrors and PR
@@ -300,11 +299,11 @@ uv --config-file uv.toml run --frozen metab "$QA_ROOT/origin-offline" --show REA
 
 **Pass:** The first two commands reuse the original store/revision without the origin;
 the third opens an ordinary filesystem selection.
-This proves local-origin reuse, not GitHub transport or every promisor-blob offline
-case.
+The store is a full clone, so every read works with the origin gone; this proves
+local-origin reuse, not GitHub transport.
 
-For refusal, read-only-home, lease, recovery, and HTML regression procedures, continue
-with the [foundation QA runbook](../../../qa-v012-repository-library.md).
+For refusal, read-only-home, recovery, and HTML regression procedures, continue with the
+[foundation QA runbook](../../../qa-v012-repository-library.md).
 At T0, `metab "$QA_URL" --no-open`, HTTPS/SSH acquisition, Git `--walk`, and Git
 `--check-api` must still refuse.
 Change those expectations only in the implementation PR that adds the capability and its
@@ -329,7 +328,8 @@ uv --config-file uv.toml run --frozen pytest \
   tests/test_cache_acquire.py \
   tests/test_git_tree_source.py \
   tests/test_git_revision_content_routes.py \
-  tests/test_git_revision_lease.py \
+  tests/test_git_revision_open.py \
+  tests/test_git_full_clone_acceptance.py \
   tests/test_source_session.py \
   tests/test_content_trust.py
 ```
@@ -350,10 +350,9 @@ harnesses; do not introduce a second test framework merely for the alpha.
 | --- | --- | --- |
 | Foundation stabilization | Multi-entry CLI pin golden: nested directories, distinct kinds, nonempty filtered trees, history and comparison | Actual membership, ordering, counts, selections, typed unsupported states, and content; the current one-file, depth-zero golden is insufficient by itself (`mb-3z4d`) |
 | Foundation stabilization | Same injected acquisition failure through `--no-serve`, cache API, pin API, and `--show` | Consistent sanitized user error and exit status; no traceback or staging-path disclosure |
-| Foundation stabilization | Two processes leasing distinct OIDs while maintenance/recovery runs | Immutable reads survive; no shared checkout/index; cancellation releases resources; lock contention cannot stall a serving event loop (`mb-677z`) |
+| Foundation stabilization | Two processes reading distinct OIDs while an acquisition publishes or recovers | Immutable reads survive; no shared checkout/index; cancellation releases resources; lock contention cannot stall a serving event loop (`mb-677z`) |
 | 2A URL open | Installed CLI subprocess → URL reducer → acquisition → server → request | Correct selected object/path, mandatory untrusted profile, real lifecycle teardown, typed cold-cache errors |
 | 2B/2C selected refs | Slash-containing branch, encoded path, branch advancement and two simultaneous subjects | Exact full OID per subject, no ambient `HEAD` substitution, no checkout mutation, no silent branch fallback |
-| 2B convergence | Start serving a partially populated store, converge through a bounded job, interrupt/restart, and repeat with unavailable network | Serving starts before convergence; available content remains usable; progress/completion/failure are honest; content reads never trigger implicit fetches |
 | 3A provider foundation | Deterministic fake `gh` process → adapter → auth-scoped mirror → CLI model | Bounded bytes/pages/time; missing login/scope, 403/404, rate limit, partial GraphQL data, cancellation, and invalid payloads remain distinct |
 | 3A credential bridge | Controlled credential session and Git transport with conflicting ambient configuration | One principal across API and Git; account switch, expired lease, redirect, and cancellation cannot supply another principal or disclose a credential |
 | 3A binding and explicit rebind | Attached checkout changes its remote or a source observes a different provider repository; exercise rejection and the explicit user operation | No silent identity reassignment; rebind proof and disposition are validated, old snapshots become honestly stale/detached, and private state cannot cross bindings |

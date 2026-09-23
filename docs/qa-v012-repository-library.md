@@ -336,7 +336,7 @@ Optional filesystem walk (large tree; not required for the pin lane):
 uv --config-file uv.toml run --frozen metab . --walk --max-depth 1
 ```
 
-## Phase 4: `file://` Acquire and the Leased Pin
+## Phase 4: `file://` Acquire and the Pin
 
 Skip the acquire/pin commands when Phase 2.4 already refused below-floor Git.
 Record that skip.
@@ -353,8 +353,8 @@ uv --config-file uv.toml run --frozen metab "${FILE_URL}" --no-serve
 uv --config-file uv.toml run --frozen metab "${FILE_URL}" --no-serve
 ```
 
-**Pass:** Exit 0. Lines `acquired:`, `slug:`, `store: sha256:`, `strategy:`,
-`revision:`. No `Serving`. No cache path, pack path, or `repository.git` in the text.
+**Pass:** Exit 0. Lines `acquired:`, `slug:`, `store: sha256:`, and `revision:`. No
+`Serving`. No cache path, pack path, or `repository.git` in the text.
 The second invocation prints the **same** identity (reuse).
 Staging is empty after publish.
 
