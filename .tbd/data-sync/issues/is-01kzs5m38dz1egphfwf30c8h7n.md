@@ -5,7 +5,7 @@ title: Repository library and hosted-review roadmap
 kind: epic
 status: in_progress
 priority: 1
-version: 80
+version: 81
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: claude-code@spud10.local
 labels:
@@ -76,7 +76,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-08-11T19:43:35.692Z
-updated_at: 2026-09-23T02:21:55.164Z
+updated_at: 2026-09-23T02:45:45.306Z
 started_at: 2026-09-16T21:10:44.764Z
 extensions:
   linear:
@@ -87,6 +87,13 @@ Deliver the GitHub-first v0.12 vertical slice on three independent layers: sessi
 
 ## Notes
 
+2026-09-22 planning-only handoff complete. PR #225 https://github.com/jlevy/metabrowser/pull/225 is at 7a3bd1de04589c38ccc203e79d78a1856ca0a90d, on codex/v012-alpha-test-plan above unchanged #216 b3c001a96eed64eb77961c2b7165b103af98b77c. Fresh CI passed all seven jobs: https://github.com/jlevy/metabrowser/actions/runs/35811262120 . Local make verify passed (3112 pytest tests, two skips; 147 CLI transcripts; audits and installed-distribution checks), final lint and pre-push passed. Working tree is clean; only four planning documents changed.
+
+The user explicitly requested no implementation yet. No runtime code, feature branch, implementation PR, or feature claim was started. Current feature statuses/delegates were preserved. The durable handoff is docs/project/specs/active/plan-2026-09-22-v012-alpha-testing.md#next-prs-and-agent-handoff, linked from TODO.md. Next agent starts with a new foundation-stabilization PR on the live Stack 218 tip, resolves existing findings and review obligations through mb-k900/mb-tsdc/mb-hoae, and records mb-j439 acceptance. Foundation evidence uses current CLI/content routes; acquired HTTP/browser acceptance starts in 2A.
+
+Then publish one new PR per phase: 2A reducers mb-12cz, HTTPS mb-s1lt and URL/serving mb-ew38 -> mb-innz; 2B jobs mb-jlon and convergence mb-bgn8 -> mb-bf94; 2C selection mb-2xq7 -> mb-9aku on the exact green 2B head. HTTPS gates 2A publication. Parent mb-bi2c retains SSH and gates final mb-n2ro landing without blocking the first HTTPS test milestone. No tbd release or cleanup is a prerequisite. Astra checked scope/dependency boundaries and Sol checked live stack, links, statuses and dependency ordering. Keep the whole stack for stabilization and explicit landing approval; no merge or release occurred.
+
+Earlier status history:
 2026-09-22 final follow-up: PR #225 is updated to ef334432dde5449d29a7f097a8dc2084fdb08f20 over unchanged #216 b3c001a96eed64eb77961c2b7165b103af98b77c. All eight Stack 218 PRs are OPEN, non-draft, contiguous, MERGEABLE/CLEAN, with seven successful checks each. Current main 6c278f3f is an ancestor of the integration tip. Fresh CI: https://github.com/jlevy/metabrowser/actions/runs/35808364944 . Final evidence and walkthrough: https://github.com/jlevy/metabrowser/pull/225#issuecomment-5787687825 . Full review ledger: https://github.com/jlevy/metabrowser/pull/216#issuecomment-5786877244 .
 
 The expanded feature map distinguishes built, partial and planned scope and later work, with T0 available now, the first default-branch URL browser checkpoint after 2A, full T1 after selected-ref/branch integration, direct PR T2 and discovery/navigation/anchors T3. The explicit Phase 2B background worker is mb-bgn8; M10b covers provider rebind. Local make verify and the pre-push gate passed (3112 pytest tests, two skips; 147 CLI transcript checks; audits and installed-wheel/distribution checks). The real CLI cold/warm/origin-absent T0 smoke passed; fixture-server startup/HTTP was checked, without claiming full manual visual acceptance or GitHub URL/PR E2E support. Astra checked feature/design boundaries and Sol verified fresh CI, ancestry, mergeability and documentation consistency.

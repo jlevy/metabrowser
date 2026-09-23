@@ -5,7 +5,7 @@ title: "v0.12 repository and hosted-resource stack: coordinate stabilized landin
 kind: task
 status: in_progress
 priority: 1
-version: 59
+version: 60
 spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
 refs:
   - kind: other
@@ -47,13 +47,20 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: blocked
 hold_until: null
 created_at: 2026-09-15T18:59:49.596Z
-updated_at: 2026-09-23T02:29:26.331Z
+updated_at: 2026-09-23T02:45:45.608Z
 started_at: 2026-09-16T21:24:51.532Z
 ---
 Coordinate the whole v0.12 repository/GitHub Stack 218, beginning with #125 -> #134 -> #136 -> #139 -> #140 -> #217 -> #216 and extending with alpha-testing, stabilization, and later feature PRs. Keep exact base/head relationships, current per-layer review dispositions and green CI, top integration evidence against current main, and aligned specs/beads. mb-nhky coordinates later Phase 2A-4C publications within this same stack. Hold all layers until the agreed acceptance milestone is stabilized and the user explicitly approves landing; then land and retarget coherently. Do not treat published draft PRs or passing unit/model tests as completed GitHub alpha acceptance.
 
 ## Notes
 
+2026-09-22 planning-only handoff complete. PR #225 https://github.com/jlevy/metabrowser/pull/225 is at 7a3bd1de04589c38ccc203e79d78a1856ca0a90d, on codex/v012-alpha-test-plan above unchanged #216 b3c001a96eed64eb77961c2b7165b103af98b77c. Fresh CI passed all seven jobs: https://github.com/jlevy/metabrowser/actions/runs/35811262120 . Local make verify passed (3112 pytest tests, two skips; 147 CLI transcripts; audits and installed-distribution checks), final lint and pre-push passed. Working tree is clean; only four planning documents changed.
+
+The user explicitly requested no implementation yet. No runtime code, feature branch, implementation PR, or feature claim was started. Current feature statuses/delegates were preserved. The durable handoff is docs/project/specs/active/plan-2026-09-22-v012-alpha-testing.md#next-prs-and-agent-handoff, linked from TODO.md. Next agent starts with a new foundation-stabilization PR on the live Stack 218 tip, resolves existing findings and review obligations through mb-k900/mb-tsdc/mb-hoae, and records mb-j439 acceptance. Foundation evidence uses current CLI/content routes; acquired HTTP/browser acceptance starts in 2A.
+
+Then publish one new PR per phase: 2A reducers mb-12cz, HTTPS mb-s1lt and URL/serving mb-ew38 -> mb-innz; 2B jobs mb-jlon and convergence mb-bgn8 -> mb-bf94; 2C selection mb-2xq7 -> mb-9aku on the exact green 2B head. HTTPS gates 2A publication. Parent mb-bi2c retains SSH and gates final mb-n2ro landing without blocking the first HTTPS test milestone. No tbd release or cleanup is a prerequisite. Astra checked scope/dependency boundaries and Sol checked live stack, links, statuses and dependency ordering. Keep the whole stack for stabilization and explicit landing approval; no merge or release occurred.
+
+Earlier status history:
 Planning handoff: the complete v0.12 transport scope includes SSH under mb-bi2c; this final landing coordinator now depends on that aggregate. HTTPS acquisition is the separate mb-s1lt child in Phase 2A. SSH does not block the first HTTPS repository/browser milestone, but passing T1/T2 or only the T3 browser rows does not complete the wider transport promise. No feature implementation or claims changed in this planning task.
 
 2026-09-22 final follow-up: PR #225 is updated to ef334432dde5449d29a7f097a8dc2084fdb08f20 over unchanged #216 b3c001a96eed64eb77961c2b7165b103af98b77c. All eight Stack 218 PRs are OPEN, non-draft, contiguous, MERGEABLE/CLEAN, with seven successful checks each. Current main 6c278f3f is an ancestor of the integration tip. Fresh CI: https://github.com/jlevy/metabrowser/actions/runs/35808364944 . Final evidence and walkthrough: https://github.com/jlevy/metabrowser/pull/225#issuecomment-5787687825 . Full review ledger: https://github.com/jlevy/metabrowser/pull/216#issuecomment-5786877244 .
