@@ -81,6 +81,44 @@ Plugin SDK:
   release, is gone: it handed a hook the raw active source, which is what the content
   reader replaces.
 
+GitHub URLs and HTTPS:
+
+- A GitHub URL copied from the browser opens the repository it names:
+  `metab https://github.com/owner/repo --no-serve` clones it into the cache, and
+  `--show` and `--api` inspect it in-process.
+  `/tree/…`, `/blob/…` (with `#L10`, `#L10-L20`, or `#L10C5-L20C8` and `?plain=1`),
+  `/commit/<id>`, `/pull/<n>/commits/<id>`, and `raw.githubusercontent.com` file URLs
+  pin the commit they point at; the mirror decides where a branch name containing `/`
+  ends, preferring a branch, then a tag, then a full or abbreviated commit ID.
+  `--no-serve` prints the selection after the identity lines, and `--show` and `--api`
+  print it on stderr. A `/pull/<n>` URL opens the default branch and reports the number
+  until pull-request data arrives.
+  Every spelling of a repository — `.git`, a trailing slash, `www.`, letter case, and
+  `git@github.com:owner/repo.git` — is one source, `https://github.com/owner/repo`.
+  Other github.com pages, `http://`, and GitHub’s own top-level pages are refused with a
+  typed reason and a message that offers the repository URL; tracking parameters are
+  dropped and never echoed.
+  A ref, commit, or path the mirror does not have is reported as `ref_not_found`,
+  `commit_not_found`, or `path_not_found`; these modes read the mirror as it is and do
+  not fetch.
+
+- `https://` sources are acquired, anonymously for a public repository.
+  When `gh` is installed it is Git’s credential helper for `https://github.com` only,
+  after every configured helper is cleared, so `gh auth login` opens a private
+  repository and no other host is offered a GitHub token.
+  A failed https acquisition names its cause: `not_found_or_private`,
+  `network_unreachable`, `tls_failed`, `timed_out`, or `too_large`, the last when `gh`
+  reports a repository too large to clone within the acquisition deadline.
+  A transfer slower than 1000 bytes per second for 30 seconds is treated as stalled, and
+  an origin that does not answer the first request within 30 seconds times out rather
+  than waiting for curl’s five-minute connect timeout.
+  On a terminal, a first clone reports its phases and elapsed time.
+
+- A terminal hangup now cancels an acquisition the way Ctrl-C does: Git and every helper
+  it started are stopped, staging is removed, and `metab` exits with status 129. A
+  cancellation that arrives while Git is still starting also stops the helpers it
+  already forked, rather than only `git` itself.
+
 Repository cache:
 
 - New read-only routes `/api/cache/layout`, `/api/cache/sources`,
@@ -97,7 +135,7 @@ Repository cache:
   most; no response reports a cache path, pack file, or Git internal.
 
 - The CLI classifies `ROOT` as a string before any path is constructed.
-  A bare local path is still served; `https` and `ssh` clone URLs stay closed.
+  A bare local path is still served; `ssh` clone URLs stay closed.
   `file://` is the only way to ask for a local origin to be acquired — a bare
   `/path/to/repo` is never rewritten into one — and `ext::` remote-helper syntax is
   rejected. `metab file://… --no-serve` fetches into the cache and prints slug, store
@@ -109,7 +147,7 @@ Repository cache:
   through `/api/tree`. `metab file://… --show PATH` and non-cache `--api` acquire or
   reuse the store, pin the default revision, and inspect that `GitRevisionSubject`
   in-process. Serving, walking, and `--check-api` still refuse Git sources, and nothing
-  binds a port. https and ssh stay closed.
+  binds a port. ssh stays closed.
   Those pin modes report acquisition failures with the same messages as `--no-serve`,
   and a Git failure while opening the pin is also path-free.
   A pin’s `/api/tree` lists directories before files, as a folder listing does.

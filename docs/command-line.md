@@ -19,9 +19,10 @@ metab ROOT [MODE] [OPTIONS]
 ```
 
 `ROOT` is the directory to serve, or a single file to open directly.
-A clone URL (`https://…`, `ssh://…`, `git@host:path`, or `file://…`) is a Git source,
-not a local path. `file://` is acquired with `--no-serve`, and also as a side effect of
-`--show` or `--api`. https and ssh stay closed.
+A clone URL (`https://…`, `ssh://…`, `git@host:path`, or `file://…`) or a GitHub web URL
+is a Git source, not a local path.
+`https://` and `file://` sources are acquired with `--no-serve`, and also as a side
+effect of `--show` or `--api`; ssh stays closed.
 `--show` and `--api` inspect a pinned revision in-process; nothing binds a port, and
 acquired content is not served.
 A bare filesystem path is never treated as a clone origin.
@@ -88,11 +89,11 @@ These flags also apply to `--api`, `--show`, and `--check-api`.
 
 ## Acquiring a Git source: `--no-serve`
 
-`file://` is the only origin this release acquires.
-`--no-serve` fetches every object of it into the repository cache under
-`METABROWSER_HOME` (default `~/.metabrowser`) and prints the source slug, store
-identity, and revision, without binding a port or opening a browser.
+`--no-serve` fetches every object of an `https://` or `file://` source into the
+repository cache under `METABROWSER_HOME` (default `~/.metabrowser`) and prints the
+source slug, store identity, and revision, without binding a port or opening a browser.
 The store is a complete, read-only clone, so later reads never need the origin.
+ssh stays closed.
 
 ```shell
 metab file:///path/to/origin.git --no-serve
@@ -101,6 +102,46 @@ metab file:///path/to/origin.git --show README
 metab file:///path/to/origin.git --api /api/tree
 ```
 
+### GitHub URLs
+
+A GitHub URL copied from the browser opens the repository it names, pinned where it
+points:
+
+```shell
+metab https://github.com/owner/repo --no-serve
+metab 'https://github.com/owner/repo/blob/release/v1/docs/guide.md#L10-L20' --no-serve
+metab https://github.com/owner/repo/tree/v1.0 --api /api/tree
+metab https://github.com/owner/repo/commit/1a2b3c4 --show README.md
+```
+
+Every spelling of one repository — `.git`, a trailing slash, `www.`, any letter case,
+`git@github.com:owner/repo.git`, and `raw.githubusercontent.com` file URLs — is one
+source, `https://github.com/owner/repo`, and one store.
+A `/tree/` or `/blob/` URL may name a branch whose name contains `/`; the mirror decides
+where the ref ends, preferring a branch, then a tag, then a commit ID. `--no-serve`
+prints what the URL selected after the identity lines (`selection`, `pin`, `path`, and
+`lines` for a `#L10`, `#L10-L20`, or `#L10C5-L20C8` anchor), and `--show` and `--api`
+print the same lines on stderr and pin that commit.
+A `/pull/<n>` URL opens the default branch for now and reports the number; pull-request
+data arrives in a later release.
+Query parameters other than `?plain=1` are dropped.
+Any other github.com page, `http://`, and GitHub’s own top-level pages are refused with
+a message that names the shape and offers the repository URL.
+
+These modes read the mirror as it is.
+A ref or commit that is not in it is reported as `ref_not_found` or `commit_not_found`
+rather than fetched; a path that is not at the pinned commit is `path_not_found`. Each
+exits with status 1, but the acquisition before it succeeded, so the source stays
+published.
+
+Public repositories are cloned anonymously.
+When `gh` is installed, it is Git’s credential helper for `https://github.com` and for
+nothing else, so a private repository opens once `gh auth login` has signed in an
+account that can read it; Metabrowser never reads or stores a token.
+With `gh` installed, a first clone is also refused before it starts when GitHub reports
+the repository too large to finish within the acquisition deadline.
+On a terminal, a first clone reports each phase and the time elapsed.
+
 `--api /api/cache/…` on a `file://` URL acquires as a side effect, then issues the route
 against an empty throwaway directory so cache inspection cannot expose origin objects
 through `/api/tree`. `--show` and other `--api` routes on that URL acquire or reuse the
@@ -108,7 +149,7 @@ store, pin the default revision, and inspect the pin in-process.
 Nothing binds a port.
 `--show` accepts a display path (`README`) or a `GitPath` wire.
 Serving, walking, and `--check-api` still refuse Git sources.
-https and ssh URLs stay closed.
+ssh URLs stay closed.
 A second `--no-serve` of the same `file://` source reuses the published store.
 That cache hit reads only the application home: it runs no Git, does not need the
 origin, and works against a home the current user cannot write.
@@ -136,11 +177,15 @@ source, and none changes another source already in the cache.
   Upgrade Git; a source already in the cache is still reused.
 - **A source that cannot be fetched** — a missing path, a directory that is not a
   repository, a repository with no commits, or one whose `HEAD` is not a branch —
-  publishes nothing.
-- **An acquisition that is interrupted** leaves nothing visible, because the source is
+  publishes nothing. An https origin names why, in parentheses: `not_found_or_private`,
+  `network_unreachable`, `tls_failed`, `timed_out` (an origin that stops answering; a
+  transfer below 1000 bytes per second for 30 seconds counts as stopped), or
+  `too_large`.
+- **An acquisition that is interrupted**, by Ctrl-C or by the terminal hanging up, stops
+  Git and every helper it started, and leaves nothing visible, because the source is
   published last, after its store.
-  The next acquisition removes the abandoned staging entry, fetches again, and reuses a
-  store that was already published.
+  A hangup exits with status 129. The next acquisition removes the abandoned staging
+  entry, fetches again, and reuses a store that was already published.
   Nothing deletes a published store.
 
 Refusals that concern the application home say how to repair it:

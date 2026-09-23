@@ -74,9 +74,10 @@ Landing is tracked by `mb-n2ro`.
   and `tests/fixtures/repository-cache/git-version-gates.json`). Ubuntu’s
   `git version 2.43.0` is below the floor: it must refuse acquire and **must not create
   the application home**. Do not weaken the floor to make a local run pass.
-- **https and ssh stay closed.** They are not acquired and not opened.
-- **`file://` is the only origin the current foundation acquires.** A bare filesystem
-  path is never rewritten into a clone URL.
+- **ssh stays closed.** It is not acquired and not opened.
+- **`file://` and `https://` are the origins acquired**, including GitHub web URLs,
+  which the GitHub reducer rewrites to `https://github.com/<owner>/<repo>`. A bare
+  filesystem path is never rewritten into a clone URL. Only Phase 4.7 uses the network.
 - **Nothing binds a port** on `--no-serve`, `--show`, or `--api`. “Serving” in the
   output is a failure on those modes.
 - **Do not serve acquired Git.** `metab file://…` without `--no-serve` / `--show` /
@@ -152,10 +153,10 @@ uv --config-file uv.toml run --frozen metab --help
 ```
 
 **Pass:** Help lists `--no-serve`, `--show`, `--api`, `--walk`, and `--check-api`.
-`--no-serve` is described as acquiring a `file://` Git source without starting a server.
+`--no-serve` is described as acquiring a `file://` or `https://` Git source, or a GitHub
+web URL, without starting a server.
 
-**Fail:** Missing `--no-serve`, or help that claims https/ssh acquire or
-serve-acquired-Git.
+**Fail:** Missing `--no-serve`, or help that claims ssh acquire or serve-acquired-Git.
 
 ## Phase 1: Automated Tests (Repository Library Tip)
 
@@ -170,6 +171,13 @@ uv --config-file uv.toml run --frozen pytest \
   tests/test_cli_cache_acquire_golden.py \
   tests/test_cli_cache_recovery_golden.py \
   tests/test_cli_no_serve_surface.py \
+  tests/test_cli_github_url_golden.py \
+  tests/test_github_url_reducer.py \
+  tests/test_github_credentials.py \
+  tests/test_github_provider.py \
+  tests/test_cache_resolve.py \
+  tests/test_cache_remote.py \
+  tests/test_acquire_stall_and_hangup.py \
   tests/test_cache_acquire.py \
   tests/test_cache_urls.py \
   tests/test_cache_layout.py \
@@ -215,39 +223,58 @@ After each refuse, the scratch home must still be absent.
 test ! -e "${METABROWSER_HOME}"
 ```
 
-### 2.1 https and ssh are not acquired
+### 2.1 ssh is not acquired
 
 ```shell
 uv --config-file uv.toml run --frozen metab \
-  'https://example.com/owner/repo.git' --no-serve; echo "exit:$?"
-uv --config-file uv.toml run --frozen metab \
   'ssh://git@example.com/owner/repo.git' --no-serve; echo "exit:$?"
 uv --config-file uv.toml run --frozen metab \
-  'https://example.com/owner/repo.git' --api /api/cache/layout; echo "exit:$?"
+  'ssh://git@example.com/owner/repo.git' --api /api/cache/layout; echo "exit:$?"
 ```
 
 **Pass:** Non-zero exit.
-stderr contains `https Git sources are not acquired yet` or
-`ssh Git sources are not acquired yet`. No `acquired:`. No `Serving`.
+stderr contains `ssh Git sources are not acquired yet`. No `acquired:`. No `Serving`.
 `test ! -e "${METABROWSER_HOME}"` still holds.
 
 **Fail:** Acquire proceeds; home is created; a 500; a wrong transport in the message
 (for example “not served” on `--no-serve`).
 
-### 2.2 https and ssh are not opened as a pin
+### 2.2 ssh is not opened as a pin
 
 ```shell
 uv --config-file uv.toml run --frozen metab \
-  'https://example.com/owner/repo.git' --show README.md; echo "exit:$?"
+  'ssh://git@example.com/owner/repo.git' --show README.md; echo "exit:$?"
 uv --config-file uv.toml run --frozen metab \
-  'https://example.com/owner/repo.git' --api /api/tree; echo "exit:$?"
+  'ssh://git@example.com/owner/repo.git' --api /api/tree; echo "exit:$?"
 ```
 
 **Pass:** Non-zero exit.
-`--show` says `https Git sources are not opened yet`. `--api /api/tree` says
-`https Git sources are not served yet`. `${METABROWSER_HOME}` is still absent.
+`--show` says `ssh Git sources are not opened yet`. `--api /api/tree` says
+`ssh Git sources are not served yet`. `${METABROWSER_HOME}` is still absent.
 
 **Fail:** Home created; pin attached; message claims the source was acquired.
+
+### 2.2a GitHub URL shapes that are refused
+
+```shell
+for url in \
+  'https://github.com/octo/demo/issues/5' \
+  'http://github.com/octo/demo' \
+  'https://github.com/settings/profile' \
+  'https://ghp_example@github.com/octo/demo' \
+  'https://github.com/octo/demo/pull/0'; do
+  uv --config-file uv.toml run --frozen metab "$url" --no-serve; echo "exit:$?"
+done
+test ! -e "${METABROWSER_HOME}"
+```
+
+**Pass:** Each exits 1 with `invalid ROOT (<reason>): <message>`:
+`unsupported_github_url` offering `https://github.com/octo/demo`, `insecure_http`,
+`reserved_owner`, `credentials_in_url`, and `invalid_pull_request`. No message repeats
+`ghp_example`. The home is still absent.
+`tests/golden/cli-github-urls.tryscript.md` pins the full set.
+
+**Fail:** A refused URL reaches Git or the network; a token echoed; the home created.
 
 ### 2.3 Serve, walk, and check-api refuse Git sources
 
@@ -258,10 +285,9 @@ uv --config-file uv.toml run --frozen metab "${FILE_URL}" --check-api; echo "exi
 ```
 
 **Pass:** Non-zero exit.
-Serve: `file Git sources are not served yet` and the text names `--no-serve` plus “https
-and ssh stay closed.”
-Walk and `--check-api`: `file Git sources are not opened yet`. Nothing listens.
-`${METABROWSER_HOME}` is still absent.
+Serve: `file Git sources are not served yet` and the text names `--no-serve` plus “ssh
+stays closed.” Walk and `--check-api`: `file Git sources are not opened yet`. Nothing
+listens. `${METABROWSER_HOME}` is still absent.
 
 **Fail:** A server banner, a bound port, a walk dump, a check-api pass, or a created
 home.
@@ -452,6 +478,65 @@ uv --config-file uv.toml run --frozen metab "${FILE_URL}" --show README.md --all
 **Fail:** `"active_content": true` on a pin; `--allow-edits` accepted or silently
 ignored.
 
+### 4.6 GitHub URLs without the network
+
+`tests/test_cli_github_url_golden.py` opens every accepted GitHub URL shape end to end
+with a local origin standing in for `https://github.com/octo/demo`, and pins the result
+in `tests/golden/cli-github-url-open.txt`. Read the transcript rather than rerunning it:
+every spelling of the repository prints one slug and store; `/tree/release/v1/docs` pins
+the `release/v1` branch; `/blob/…?plain=1#L3-L4` reports `lines` and `plain`; a branch
+named `523f` wins over the commit whose ID starts with those digits; `/pull/7` pins the
+default branch and reports `pull_request: 7`; and a missing ref, commit, or path is
+`ref_not_found`, `commit_not_found`, or `path_not_found`.
+
+```shell
+uv --config-file uv.toml run --frozen pytest tests/test_cli_github_url_golden.py \
+  tests/test_github_credentials.py tests/test_acquire_stall_and_hangup.py -rs
+```
+
+**Pass:** All pass; the credential test shows `gh` answering only for
+`https://github.com` and the user’s own helper cleared; the stall test fails a stalled
+origin as `timed_out`; the hangup tests exit 129 with no Git helper left running (the
+last one skips below the Git floor).
+
+**Fail:** Any failure; a golden regenerated without an intended change.
+
+### 4.7 GitHub URLs over HTTPS (network, opt-in)
+
+Skip on a floor-refusing Git and record the skip.
+Read-only: nothing here writes to GitHub.
+
+```shell
+METABROWSER_LIVE_GITHUB=1 uv --config-file uv.toml run --frozen pytest -rs \
+  tests/test_github_live_smoke.py
+uv --config-file uv.toml run --frozen metab \
+  'https://github.com/octocat/Hello-World/blob/master/README#L1' --no-serve
+uv --config-file uv.toml run --frozen metab \
+  https://github.com/octocat/Hello-World --api /api/git/repo
+```
+
+**Pass:** The smoke test passes.
+The first command prints `acquired: https://github.com/octocat/hello-world`, then
+`selection: blob`, a `pin:` on `branch master`, `path: README`, and `lines: L1`. The
+second answers from the cache with the same revision and no clone.
+On a terminal, the first clone reports its phases and elapsed time on stderr.
+A signed-in `gh` is used only for github.com, and a public repository needs none.
+
+**Fail:** A token prompt; a message containing Git’s own error text or a local path; a
+second clone on the cache hit.
+
+### 4.8 A terminal hangup cancels a first clone
+
+Start a first clone of a large public repository in a terminal you can close, then close
+the terminal while it reports `fetching every object`.
+
+**Pass:** No `git` or `git-remote-https` process for that URL remains
+(`ps -A -o pid,args | grep remote-https`), and the scratch home’s `cache/staging` is
+empty after the next `metab` command.
+`tests/test_acquire_stall_and_hangup.py` asserts the same without a terminal.
+
+**Fail:** An orphaned Git process still fetching; a staging entry left behind.
+
 ## Phase 5: HTML Trust on the Integration Tip
 
 The selected integration tip must include the merged HTML trust implementation:
@@ -536,12 +621,14 @@ Record it as untested, not as a pass.
 ## Phase 6: What This Runbook Cannot Test
 
 These are documented product gaps or environment limits.
-Do **not** file beads for them unless the run shows **wrong** behavior (for example,
-https was acquired, or `file://` was served).
+Do **not** file beads for them unless the run shows **wrong** behavior (for example, ssh
+was acquired, or `file://` was served).
 
 | Item | Why it is out of scope here |
 | --- | --- |
-| https / ssh acquire | Closed until a later phase; refuse is the test |
+| ssh acquire | Closed; refuse is the test |
+| Refresh, pin switching, and a missing ref fetched in the background | Arrive with the refresh coordinator; these modes read the mirror as it is |
+| Pull-request data and page | Later steps; a `/pull/<n>` URL opens the default branch |
 | Serving acquired Git | `mb-ew38`; refuse is the test |
 | Hosted-review / GitHub PR slice | Separate beads; not on these tips |
 | Archive containers | `mb-380k` |
@@ -558,8 +645,11 @@ While executing, treat these as bugs if they happen:
 - HTTP 500 or a traceback instead of `CLIError`
 - Missing `--api` `subject` on a pin (`git_revision` expected)
 - `Serving` or a bound port on `--no-serve` / `--show` / `--api`
-- Application home created on a refuse (https, ssh, serve, walk, check-api, below-floor
-  Git)
+- Application home created on a refuse (ssh, a refused GitHub URL, serve, walk,
+  check-api, below-floor Git)
+- A GitHub token offered to a host other than github.com, or a token or query string
+  echoed in an error
+- An orphaned Git process after Ctrl-C or a terminal hangup
 - Filesystem `--show` failing on this repository’s real paths
 - Pin `--show` / `--api` failing on those same paths when Git meets the floor
 - Cache inspect exposing origin objects through `/api/tree` on a cache route

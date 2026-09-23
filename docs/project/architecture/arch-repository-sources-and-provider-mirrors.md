@@ -9,10 +9,10 @@ code and from this document.
 **Status:** Partly implemented.
 Repository subjects, `SourceSession`, capabilities, the attached-filesystem content
 source, `GitCommandTarget`, the immutable Git tree source with `GitPath` file, raw, and
-tree routes, and `file://` acquisition of full clones into a shared, read-only
-repository store are implemented; `metab` opens a `file://` pin in-process for `--show`
-and non-cache `--api`. Serving an acquired pin over HTTP, `https` acquisition, refresh,
-and pull-request data remain planned, and
+tree routes, `file://` and `https://` acquisition of full clones into a shared,
+read-only repository store, and the GitHub URL reducer are implemented; `metab` opens a
+pin in-process for `--show` and non-cache `--api`, at the commit a GitHub URL selects.
+Serving an acquired pin over HTTP, refresh, and pull-request data remain planned, and
 [Thin Mirror for Git and GitHub Browsing](../specs/active/plan-2026-09-23-v012-thin-mirror.md)
 replaces the planned parts of this document wherever they disagree.
 It retired blobless clones and convergence, private subject refs, revision leases,
@@ -245,13 +245,21 @@ exact OIDs.
 
 ### Fetch and credentials
 
-Only `file://` acquisition is built.
-The thin-mirror plan owns HTTPS acquisition and refresh: a plain `git fetch` into the
-store under one lock per mirror, with `gh` as the only credential helper for a private
-fetch.
+`file://` and `https://` acquisition is built; refresh belongs to the thin-mirror plan.
+Every command against an origin gets `cache/remote.py`’s `remote_git_args`: a protocol
+allowlist of `file` and `https`, a low-speed stall bound measured beside its constant,
+and whatever a provider adds for that URL. The GitHub provider adds `gh` as the only
+credential helper, scoped to `https://github.com` after every configured helper is
+cleared, so Git asks it only after a server challenge and public repositories stay
+anonymous. The first command against an origin has its own deadline, because curl’s
+low-speed bound does not cover a TLS handshake that never completes.
+Failures read as typed states (`not_found_or_private`, `network_unreachable`,
+`tls_failed`, `timed_out`, `too_large`) and never as Git’s own text.
 Every fetch runs in the isolated Git environment of `git/process.py`, the only Git
 subprocess boundary: no inherited `GIT_*` variable, no system or global configuration,
 terminal prompting disabled, and hooks off.
+Git runs in its own process group, so a timeout, Ctrl-C, or a terminal hangup kills the
+helpers it forks as well.
 Acquisition never inherits an attached checkout’s remote or credential helper.
 
 ### Git path and blob semantics
@@ -448,8 +456,10 @@ in [Views, Models, and Routes](arch-views-models-routes.md).
 | Plugin content reader | `plugin_api.py`: `resolve_content`, `resolve_content_container`, `stat_content`, `read_content_window`, `ContentRef`, `ContentStat`, `ContentWindow`; `source.py`: `FilesystemContentSource.open_ref`, `read_artifact_window`; `git/tree_source.py`: `GitTreeSource.open_ref`, `blob_logical_ext`; `content_errors.py`: `ContentReadError`, `ContentUnavailableError` | One bounded, source-agnostic read for plugin data hooks over an opaque `ContentRef`, with every read taking an explicit byte maximum and no unbounded variant, filesystem work in the thread pool and pinned reads through the pooled `cat-file` actors, and one catchable failure family carrying the `code` and `http_status` the pinned routes answer with. The four built-in data hooks that read bytes hold no Git import and no source-kind branch |
 | Plugin and route bridge | `plugin_api.py`: `open_content`, `source_capabilities`, `require_source_capability`, filesystem-only path helpers; `server.py`, `events_route.py`, `git/routes.py`, `git/content_routes.py`, `git/repo.py`, `git/history.py`; `diff/adapters/git.py`: `GitDiffSource`; `builtin_plugins/diff/sidekick.py`: comparison, document, and children hooks; `builtin_plugins/binary/sidekick.py`: chunk hook; `builtin_plugins/structured`: parsed hook; `builtin_plugins/agent_log/sidekick.py`: charts hook; `plugin_loader/classify.py`: `classify_identity` | Resolve the active content-source handle rather than assuming the global root is a `Path`; capability-gate recency, ignore, watcher, activity, mutation, and Git listing sizes; honor a pinned `GitRevisionSubject` on Git collection, file, raw, tree, rollup, catalog, index status, capabilities, tree filter tallies, tree summary, filtered tree totals, include_ignored no-op, tree depth, file envelope ext, markdown frontmatter, text preview window, in-tree symlink follow including plugin sidekicks, diff-comparison including `GitDiffSource.content`, KPress, patch-file container, binary-chunk, identity-and-content-kind, structured-parsed, and agent-log routes, and image preview; keep route, CLI, and golden parity |
 | Revision tree | `git/tree_source.py`: `GitPath`, `GitTreeSource`, `GitRevisionSubject`, `list_tree`, `read_blob`; shared per-store `cat-file --batch-command --buffer` pool (`MAX_BATCH_READERS_PER_STORE`); `git/content_routes.py`: file, raw, tree, catalog, `split_git_container_wire`, and extension plugin kinds | Enumerate NUL-framed byte-safe full-OID trees and read size-gated blobs from a `RepositoryStoreTarget` with no materialization. `GitPath` wires are the identity on every route that accepts one, and blob kinds come from extension, basename, sniffed adapter, and bounded JSON/YAML/frontmatter mappings. The per-route projections are in [Git and Comparison Sources](arch-git-and-comparison-sources.md) |
-| Repository store | `cache/repository_store.py`: `open_revision`; `cache/records.py`: source aliases and store state; `cache/acquire.py`: `acquire_file_source`; `cache/reclaim.py`: staging and trash sweep, quarantine | `open_revision` checks that a commit is in the published store and returns its `GitRevisionSubject`, writing nothing and holding no lock. Acquisition fetches every object of a `file://` source and publishes the store and its alias under the alias and store locks. Nothing deletes a published store |
+| Repository store | `cache/repository_store.py`: `open_revision`; `cache/records.py`: source aliases and store state; `cache/acquire.py`: `acquire_source`; `cache/reclaim.py`: staging and trash sweep, quarantine | `open_revision` checks that a commit is in the published store and returns its `GitRevisionSubject`, writing nothing and holding no lock. Acquisition fetches every object of a `file://` source and publishes the store and its alias under the alias and store locks. Nothing deletes a published store |
 | Remote discovery | `repository_context.py`: `discover_repository_context` | Read a checkout’s `origin` remote and `HEAD` without running Git, so a provider candidate can be recognized before any network work |
+| Providers and GitHub URLs | `cache/providers.py`: `RepositoryProvider`, `url_reducers`, `provider_git_config`, `check_first_clone`, `repository_context_for`; `builtin_plugins/github/`: `GithubUrlReducer`, `GithubProvider`, `run_gh`; `cache/urls.py`: `RepositorySelection`, `ReducerRejection` | Core names no provider. The GitHub reducer turns web, raw, and SSH URLs into the canonical source plus a selection, or a typed refusal; the provider supplies the `gh` credential helper, the first-clone size check, and a mirror’s `repository_context` |
+| Ref and path resolution | `cache/resolve.py`: `ref_candidates`, `resolve_ref_and_path`, `resolve_commit_id`, `resolve_selection` | Split a URL’s ref-and-path by what the mirror has, with `show-ref --verify` per candidate and no user text in `rev-parse` revision syntax; report whether one fetch could change a miss |
 | File and raw routes | `view_routes.py`, `server.py`, `git/content_routes.py`, `plugin_api.py`; `static/navigation.js`: `displayPath` | Resolve the active content-source handle rather than assuming the global root is a `Path`; Git subjects use `GitPath` wire identities for `/view/`, file, raw, tree, KPress, patch-file containers, identity-and-content plugin kinds, structured parsed, agent-log JSONL, and image preview; Markdown and wiki links on a pin encode authored segments as `GitPath` wires; SPA path chrome decodes those wires to display names (C0 and invalid UTF-8 become U+FFFD); retain route, CLI, and golden parity for filesystem browsing |
 
 ### Planned seams
@@ -460,7 +470,7 @@ lacks.
 
 | Area | Planned boundary | Responsibility |
 | --- | --- | --- |
-| HTTPS acquisition and refresh | `cache/acquire.py` | Clone `https` sources and refresh a store with `git fetch` under one lock per mirror, with `gh` as the credential helper for a private fetch; the [thin-mirror plan](../specs/active/plan-2026-09-23-v012-thin-mirror.md) owns the design |
+| Refresh | `cache/acquire.py` | Refresh a store with `git fetch` under one lock per mirror, passing `remote_git_args`, and resolve a missing ref again after one background fetch; the [thin-mirror plan](../specs/active/plan-2026-09-23-v012-thin-mirror.md) owns the design |
 | Source attachments | A neutral provider-resources module for source binding and local-availability records | Map local and managed sources to stable provider repository identity without storing local paths or requiring a cache entry. `ProviderBinding`, `LocalGitObjectAvailability`, `AuthorizationContextRef`, and `authorization_context_key` live today in `builtin_plugins/hosted_review/models.py` and move under `mb-s0gv` |
 | Provider mirror | `provider_resources/store.py`: `stage_snapshot`, `publish_manifest`, `read_current`, `read_last_complete`, `lease_snapshot`, `reclaim_snapshots` | Publish one repository-scoped, auth-scoped mirror reused by every attachment. The package holds only `profiles.py` today |
 | Provider ports | `plugin_api.py`: opaque `GitFetchCredentialLease`, `provider_fetch_authorization_context`, `RepositoryContentPort.open_subject`, `RepositoryObjectJobPort.request_selected_refs`, `ProviderResourceStorePort.stage`, `publish`, `read`, `lease` | Inject narrow cancellable capabilities with typed unavailable, authorization, stale-generation, and publication failures; selected-ref requests carry a non-secret context plus an unforgeable registry handle, never tokens, unrestricted sources, core stores, or paths |
@@ -580,10 +590,13 @@ Still open, with owners:
   defers until after the alpha;
 - lock, rename, and case semantics beyond macOS: CI runs only on Linux, so Phase 1A adds
   a runtime probe at application-home setup that refuses a home whose locks or
-  no-replace publication do not behave as frozen;
-- the initial-acquisition stall bound (Phase 1B-a); and
+  no-replace publication do not behave as frozen; and
 - whether distribution Git builds that backport the security fixes under an older
   version string are admitted (Phase 1B-a).
+
+The initial-acquisition stall bound, the first-request deadline, and the first-clone
+size limit were measured on 2026-09-23; each measurement is recorded beside its constant
+in `cache/remote.py` and `builtin_plugins/github/provider.py`.
 
 These choices may tune cost.
 They may not introduce shared working-tree state, make a local checkout cache authority,
