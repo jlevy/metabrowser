@@ -1040,7 +1040,7 @@ and the remaining `mb-dg00` goldens are not done.
   offline reuse, concurrent distinct revisions, interruption recovery, and future-format
   refusal in goldens.
 
-### Phase 2: GitHub URLs, selected refs, and branches (`mb-12cz`, `mb-ew38`, `mb-jlon`, `mb-bf94`, `mb-2xq7`)
+### Phase 2: GitHub URLs, selected refs, and branches (`mb-12cz`, `mb-s1lt`, `mb-ew38`, `mb-jlon`, `mb-bf94`, `mb-2xq7`)
 
 The GitHub implementation after Phase 0 also uses one formal stacked pull request per
 phase. Every publication bead requires independent review, the review shortcut,
@@ -1064,7 +1064,7 @@ choose one prerequisite lineage while omitting another.
 | 1B-a worktree-free acquisition | `mb-dxmb`, `mb-h51g`, `mb-dg00` | `mb-k900` | Green Phase 1A head |
 | 1B-b and 1B-c source boundary and immutable Git-tree source | `mb-3bna`, `mb-z335` | `mb-tsdc`, `mb-hoae` | Ready-for-review #216 over the green acquisition head; both reviews cover the consolidated PR |
 | Untrusted-content profile | `mb-cun0`, `mb-vib1` | `mb-d658` | Landed through #209 on `main`; verify its commits in the Phase 2A integration base |
-| 2A repository URL open | `mb-12cz`, `mb-ew38` | `mb-innz` | Exact green source/pin head plus the landed trust commits, recorded by `mb-j439` |
+| 2A repository URL open | `mb-12cz`, `mb-s1lt`, `mb-ew38` | `mb-innz` | Exact green current stack tip recorded by `mb-j439`, including reviewed source/pin and landed trust commits |
 | 2B provider jobs, selected refs, and background convergence | `mb-jlon`, `mb-bgn8` | `mb-bf94` | Green Phase 2A head |
 | 2C selected-branch integration | `mb-2xq7` | `mb-9aku` | Green Phase 2B head |
 | 3A provider foundation | `mb-y1ax`, `mb-p4sw`, `mb-s123`, `mb-ji83`, `mb-s0gv`, `mb-i3xc`, `mb-2oxp`, `mb-cbak` | `mb-k7lc` | Green Phase 2C head |
@@ -1340,7 +1340,7 @@ The release phases are implementation-ready at these file and function seams:
 | Content-source boundary (`mb-3bna`, `mb-tsdc`) | Green generic-store PR | Existing filesystem serving runs through one generation- and capability-aware source session |
 | Immutable revision source (`mb-z335`, `mb-hoae`) | Green content-source PR | Concurrent full-OID trees and blobs are browseable without a checkout or shared index |
 | Untrusted-content profile (`mb-cun0`, `mb-vib1`, `mb-d658`) | Landed on `main` through #209 and inherited by stack #218 | Fetched content is served only through sandboxed raw responses, same-origin API proof, and the capability-gated untrusted profile |
-| GitHub URL reducer (`mb-12cz`, `mb-ew38`) | Green source/pin PR and verified trust integration | Any supported GitHub repository URL opens without the GitHub API |
+| GitHub URL opening (`mb-12cz`, `mb-s1lt`, `mb-ew38`) | Green source/pin PR and verified trust integration | Any supported GitHub repository URL opens without the GitHub API |
 | Provider jobs and selected refs (`mb-jlon`, `mb-bf94`) | Green worktree-free acquisition and repository URL-open PRs | Bounded, cancellable, full-OID-verified selected-ref acquisition is independently reviewed before any branch or PR view uses it |
 | Selected branch (`mb-2xq7`, `mb-9aku`) | Green provider-job and selected-ref PR | Any exposed and authorized branch opens as another immutable subject |
 | GitHub transport and repository summary (`mb-y1ax`, `mb-p4sw`, `mb-s123`, `mb-ji83`, `mb-i3xc`, `mb-2oxp`, `mb-cbak`) | Format, generic jobs, owner-only cache | Auth, adapter lifecycle, broker-pinned Git credential projection, shared snapshot kernel, and one offline repository summary for managed or attached sources |

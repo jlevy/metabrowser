@@ -88,6 +88,74 @@ work above. A guarded foundation build can be mechanically mergeable while T1–
 unimplemented. Keep outstanding product findings in their beads and preserve the agreed
 whole-stack landing decision independently of those GitHub flags.
 
+## Next PRs and Agent Handoff
+
+The next implementation task begins with foundation stabilization, then advances through
+one new stacked PR per phase.
+All new PRs extend the current tip of Stack 218; review and test each phase before using
+its exact green head as the next base.
+Keep the whole stack together for the final landing decision.
+No tbd release or process cleanup is a prerequisite.
+
+| New PR | Implementation and acceptance owners | Testable checkpoint |
+| --- | --- | --- |
+| Foundation stabilization | Findings under `mb-gacf`; acquisition/source/pin acceptance `mb-k900`, `mb-tsdc`, `mb-hoae`; integration-base gate `mb-j439` | Complete the remaining T0 evidence and record one reviewed, green foundation head |
+| Phase 2A: repository URL opening | Reducers `mb-12cz`, HTTPS acquisition `mb-s1lt`, opening/serving `mb-ew38`; review/publication `mb-innz` | Cold public HTTPS repository URL opens the default immutable revision in the browser and CLI; warm/offline reuse and forced trust pass |
+| Phase 2B: object jobs and convergence | Selected-ref jobs `mb-jlon`, background convergence `mb-bgn8`; review/publication `mb-bf94` | Bounded fetch, cancellation, identity isolation, publication races and post-serving convergence are testable through CLI/models |
+| Phase 2C: selected revisions | Selection `mb-2xq7`; review/publication `mb-9aku` | Branch/tag/OID/path resolution, missing-ref acquisition, concurrent subjects and offline navigation complete T1 |
+
+The existing `mb-j439` gate remains open until the foundation acceptance is complete.
+The next agent should make a focused stabilization PR above the live stack tip and
+record the corrected findings there, preserving the earlier PR review history.
+Do not reopen the acquired-HTTP acceptance cycle: foundation checks exercise the
+existing CLI and content routes; the new server/browser path is proved in Phase 2A.
+
+For foundation stabilization, use the existing finding beads rather than inventing a
+second checklist of completion claims:
+
+- `mb-sumg`: share acquisition-error mapping across CLI entry points and prove safe
+  below-floor refusal.
+- `mb-3z4d`, `mb-dg00`: nontrivial pin and acquisition/recovery goldens.
+- `mb-pkho`, `mb-d1za`, `mb-oueh`: missing-object behavior and actual supported/minimum
+  Git execution evidence.
+- `mb-rati`, `mb-e32d`, `mb-lp89`: measured stall bounds, distribution-backport policy
+  and child-process cancellation disposition.
+- `mb-677z`, `mb-t7qs`: resolve async-path lock blocking and establish the measured
+  large-blob/read-cost policy before extending serving.
+
+Re-read the current findings and acceptance owners before changing their status.
+The
+[top-level review](https://github.com/jlevy/metabrowser/pull/216#issuecomment-5786877244)
+contains the evidence and design assessment.
+A green CI result or a ready-for-review flag does not close these obligations.
+
+Phase 2A includes real HTTPS Git acquisition; URL parsing alone cannot satisfy its
+cold-open checkpoint.
+`mb-s1lt` owns that transport within the Phase 2A PR and blocks its publication.
+Parent `mb-bi2c` retains the complete HTTPS/SSH transport scope and stays open until SSH
+acceptance is also complete.
+Final landing through `mb-n2ro` depends on this parent, so the separate SSH lane remains
+in the full v0.12 scope without blocking the first HTTPS browser checkpoint.
+Public repository browsing does not require the GitHub API.
+
+The next agent should reuse these implementation boundaries:
+
+- `cli/main.py` preserves root strings; connect installed reducers there.
+- `cache/urls.py` owns generic classification; add declared ownership and terminal
+  rejection without putting GitHub syntax in cache identity.
+- `cache/acquire.py` currently refuses remote transports; retain its safe publication
+  and cache-hit path when adding HTTPS.
+- `cli/git_pin_cli.py`, `source.py`, `git/tree_source.py` and
+  `cache/repository_store.py` provide the existing acquisition, lease, subject and
+  content lifecycle. `cli/acquire_cli.py` owns the current Git-error normalization.
+- `git/process.py` owns Git execution and no-lazy-fetch policy.
+  Phase 2B adds jobs and neutral provider resource models; selection remains
+  network-free.
+
+These paths are relative to `src/metabrowser/`. Keep GitHub API/auth/mirrors and PR
+hydration/views for Phases 3A onward; full catalog, chooser, working-tree status and
+materialized checkouts are outside this batch.
+
 ## Testing Milestones
 
 | Milestone | Entry condition | User-visible acceptance | Current availability |
@@ -95,7 +163,7 @@ whole-stack landing decision independently of those GitHub flags.
 | T0: local Git foundation | Current integration tip, supported Git, isolated application home | Acquire a `file://` origin, reopen its default full OID, inspect files/tree through `--show` and `--api`, and preserve local browsing | Runnable now; use the quick start below and the [foundation QA runbook](../../../qa-v012-repository-library.md) |
 | T1: repository URL alpha | URL open and serving, selected-ref jobs, selected-branch integration, trust integration | Open repository/tree/blob/commit/raw URLs; view content, history, and diffs; preserve slash-containing refs and path/line intent; reopen cached content offline | Pending repository Phases 2A–2C |
 | T2: direct PR alpha | T1 plus provider transport/auth/mirror, direct PR bundle, and direct PR view | Paste a PR URL absent from every index; read its description, review/check state, changed files, and pinned comparison; reload and reopen offline | Pending GitHub Phases 3A, 3B, and 4A |
-| T3: full v0.12 acceptance | T2 plus discovery/navigation and planned review anchors | Bounded paginated PR navigation with honest counts/partiality, direct selection outside that index, and explicit outdated/unmappable anchors | Pending Phases 3C, 4B, and 4C |
+| T3: full v0.12 acceptance | T2 plus discovery/navigation, planned review anchors and separate SSH transport acceptance | Bounded paginated PR navigation with honest counts/partiality, direct selection outside that index, and explicit outdated/unmappable anchors | Pending Phases 3C, 4B, and 4C |
 
 T2 is the proposed first preliminary GitHub PR alpha.
 T3 remains the full planned release scope.

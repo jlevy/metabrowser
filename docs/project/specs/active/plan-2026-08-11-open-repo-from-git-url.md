@@ -1752,9 +1752,15 @@ detail.
 
 ### Phase 1B: Generic Git cache and repository URL open
 
-This phase lands in five additive slices.
-Each can merge with its own records, routes, goldens, and recovery behavior before the
-next slice begins.
+The foundation has acquisition, content-source and immutable-revision slices; #216
+consolidates the latter two.
+Complete their remaining acceptance before the URL-open phase.
+Subsequent phases each get a new PR above the current stack tip, with records, routes,
+goldens and recovery evidence appropriate to that phase.
+Review and publish each phase before starting its dependents; land the stabilized stack
+together. The
+[next-PR sequence](plan-2026-09-22-v012-alpha-testing.md#next-prs-and-agent-handoff)
+names the acceptance owners and testing checkpoints.
 
 #### Phase 1B-a: Acquire and reuse a shared repository store (`mb-h51g`, `mb-dg00`)
 
@@ -1868,7 +1874,7 @@ Independent review and publication remain `mb-hoae`.
 - [ ] Independently review and publish through `mb-hoae` before any URL route claims it
   can serve a repository.
 
-#### Phase 2A: Open repository and hosted web URLs (`mb-12cz`, `mb-ew38`, `mb-innz`)
+#### Phase 2A: Open repository and hosted web URLs (`mb-12cz`, `mb-s1lt`, `mb-ew38`, `mb-innz`)
 
 - [ ] Add the trusted installed-plugin `ProviderUrlReducer` registration point; keep
   operator-directory plugins JavaScript-only and keep provider syntax out of cache
@@ -1882,13 +1888,18 @@ Independent review and publication remain `mb-hoae`.
 - [ ] Reduce provider web URLs to a clone URL plus a selection record: the shapes in the
   variants table, line and column anchors, `?plain=1`, dropped tracking and display
   parameters, reserved-namespace refusal, and configurable Enterprise hosts.
+- [ ] Implement credential-free HTTPS Git acquisition through `mb-s1lt`, preserving the
+  existing source/store publication, bounded execution, prompt suppression and cache-hit
+  behavior. Prove a cold public repository URL as well as warm and offline reuse.
+  Parent `mb-bi2c` retains separately tested SSH acquisition; it is not closed by the
+  HTTPS subtask.
 - [ ] Open a repository-root URL through `resolve_open_target`, reuse the repository
   store without a network or provider credential lookup, and pass one immutable subject
   to server and inspection paths.
 - [ ] Preserve a pull-request number as an optional provider target even before a
   provider adapter can hydrate it.
 - [ ] Independently review and publish the URL-open slice through `mb-innz` on the exact
-  green immutable-source head.
+  green integration head recorded by `mb-j439` at the current stack tip.
 
 #### Phase 2B: Provider jobs, selected refs, and convergence (`mb-jlon`, `mb-bgn8`, `mb-bf94`)
 
@@ -2028,7 +2039,7 @@ vertical slice.
 | 1B-b source boundary (`mb-3bna`, `mb-tsdc`) | 1B-a | GitHub, provider API, immutable Git content | Filesystem serving runs through one capability-aware source session |
 | 1B-c immutable source (`mb-z335`, `mb-hoae`) | 1B-b | GitHub, provider API, chooser | Concurrent full-OID trees and blobs open without a checkout or shared index |
 | Untrusted-content profile (`mb-cun0`, `mb-vib1`, `mb-d658`) | Landed on `main` through #209 | Cache, GitHub, provider API | Sandboxed raw responses, same-origin API proof, and the untrusted capability profile are available to the Git source |
-| 2A repository URL open (`mb-12cz`, `mb-ew38`, `mb-innz`) | Verified trust integration, immutable source, provider URL-reducer SDK | Provider API or schemas | Any supported repository URL opens an immutable revision subject |
+| 2A repository URL open (`mb-12cz`, `mb-s1lt`, `mb-ew38`, `mb-innz`) | Verified trust integration, immutable source, provider URL-reducer SDK | Provider API or schemas | Any supported repository URL opens an immutable revision subject |
 | 2B provider-job and convergence foundation (`mb-jlon`, `mb-bgn8`, `mb-bf94`) | Green 1B-a acquisition and 2A URL-open PRs | Full catalog, chooser, purge | Independently reviewed provider jobs and selected-ref fetching for branches and GitHub |
 | 2C selected branch (`mb-2xq7`, `mb-9aku`) | Green 2B provider-job PR | Provider API or schemas | Any exposed and authorized branch opens at its resolved immutable revision |
 | Later cache operations | Phase 2B jobs | Provider support | Generic list, inspect, refresh, and purge |

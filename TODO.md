@@ -39,8 +39,8 @@ component:
 
 1. `mb-i57d` and `mb-xxhi` are closed: v0.10.0 was cut from the intended `main` and its
    release and fetched commit verified.
-   v0.11.0 has since shipped, so a `release:v0.12.0` implementation branch starts from
-   that.
+   v0.11.0 has since shipped; new `release:v0.12.0` implementation PRs extend the
+   current Stack 218 tip.
 2. `mb-ire2`, `mb-xa0p`, `mb-4gnu`, and `mb-h51g` establish the owner-only versioned
    application home and publish a pinned generic Git cache entry.
    `mb-k54c`, `mb-dg00`, and `mb-dxmb` expose and golden-pin its state and URL grammar.
@@ -51,10 +51,14 @@ component:
 3. The untrusted-content profile (`mb-cun0`, `mb-vib1`) landed on `main` through #209.
    `mb-r5gn` and `mb-u4mf` provide Git working-tree status for attached filesystem
    subjects; they do not gate serving a worktree-free Git revision.
-4. `mb-12cz` and `mb-ew38` open or reuse repository and GitHub web URLs through a
+4. After foundation stabilization through `mb-j439`, `mb-12cz`, `mb-s1lt` and `mb-ew38`
+   add HTTPS acquisition and open or reuse repository and GitHub web URLs through a
    provider-neutral reducer and the canonical path-identity codec; `mb-jlon`, `mb-z335`,
    and `mb-2xq7` resolve any selected branch to an immutable object ID and read its Git
    tree through the leased repository subject.
+   The
+   [next-PR handoff](docs/project/specs/active/plan-2026-09-22-v012-alpha-testing.md#next-prs-and-agent-handoff)
+   specifies one new PR each for stabilization, 2A, 2B and 2C.
 5. `mb-63ym` defines provider-neutral hosted-review contracts and the plugin boundary,
    using a frontmatter artifact whose Markdown body is the PR description, while
    `mb-jlon` adds only the generic provider jobs and selected-ref fetching they need.
