@@ -5,7 +5,7 @@ title: Repository library and hosted-review roadmap
 kind: epic
 status: in_progress
 priority: 1
-version: 78
+version: 79
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: claude-code@spud10.local
 labels:
@@ -75,7 +75,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-08-11T19:43:35.692Z
-updated_at: 2026-09-23T01:39:46.073Z
+updated_at: 2026-09-23T02:04:05.172Z
 started_at: 2026-09-16T21:10:44.764Z
 extensions:
   linear:
@@ -86,6 +86,13 @@ Deliver the GitHub-first v0.12 vertical slice on three independent layers: sessi
 
 ## Notes
 
+2026-09-22 final follow-up: PR #225 is updated to ef334432dde5449d29a7f097a8dc2084fdb08f20 over unchanged #216 b3c001a96eed64eb77961c2b7165b103af98b77c. All eight Stack 218 PRs are OPEN, non-draft, contiguous, MERGEABLE/CLEAN, with seven successful checks each. Current main 6c278f3f is an ancestor of the integration tip. Fresh CI: https://github.com/jlevy/metabrowser/actions/runs/35808364944 . Final evidence and walkthrough: https://github.com/jlevy/metabrowser/pull/225#issuecomment-5787687825 . Full review ledger: https://github.com/jlevy/metabrowser/pull/216#issuecomment-5786877244 .
+
+The expanded feature map distinguishes built, partial and planned scope and later work, with T0 available now, the first default-branch URL browser checkpoint after 2A, full T1 after selected-ref/branch integration, direct PR T2 and discovery/navigation/anchors T3. The explicit Phase 2B background worker is mb-bgn8; M10b covers provider rebind. Local make verify and the pre-push gate passed (3112 pytest tests, two skips; 147 CLI transcript checks; audits and installed-wheel/distribution checks). The real CLI cold/warm/origin-absent T0 smoke passed; fixture-server startup/HTTP was checked, without claiming full manual visual acceptance or GitHub URL/PR E2E support. Astra checked feature/design boundaries and Sol verified fresh CI, ancestry, mergeability and documentation consistency.
+
+No tbd release, upgrade or shortcut cleanup is a prerequisite for product implementation, testing, landing or release. mb-dbue/#219 are independent optional maintenance. This supersedes historical notes mentioning an upstream tbd release wait. Product acceptance findings including mb-sumg remain open; mb-gnr9 owns future installed/browser acceptance. Future work extends this same stack, and whole-stack landing awaits product stabilization and explicit user approval. No merge or release was performed.
+
+Earlier history (superseded where noted):
 2026-09-22 follow-up: no work is held on tbd. All eight current stack PRs are ready for review; #217/#216 draft flags were removed at the user’s request after live ancestry, mergeability and green-CI checks. This changes mechanical mergeability, not feature completion or landing authorization. The expanded alpha plan on #225 maps all repository/GitHub features to built, partial or planned, lists deferred scope, and supplies a testing walkthrough from local browser/Git foundation through default URL smoke, selected branches, direct PRs and discovery/anchors. Optional shortcut cleanup mb-dbue has no upstream-release dependency and is not a product gate.
 
 Earlier history:
