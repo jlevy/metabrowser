@@ -75,9 +75,10 @@ async def _require_listed_blobs(location: GitLocation, args: Sequence[str]) -> N
 async def require_commit_blobs(location: GitLocation, revision: str) -> None:
     """Check the blobs ``show -M -C --diff-merges=first-parent`` would read."""
 
+    # Peeled, so an annotated tag's own header never precedes the raw records.
     await _require_listed_blobs(
         location,
-        ["show", *_RAW_ARGS, "--diff-merges=first-parent", "--format=", revision],
+        ["show", *_RAW_ARGS, "--diff-merges=first-parent", "--format=", f"{revision}^{{commit}}"],
     )
 
 
