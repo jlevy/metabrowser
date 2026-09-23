@@ -3764,6 +3764,9 @@ async def _debug_inventory(request: Request) -> JSONResponse:
 
     if os.environ.get("METABROWSER_DEBUG", "").strip() not in ("1", "true", "yes"):
         return JSONResponse({"error": "set METABROWSER_DEBUG=1 to enable"}, status_code=404)
+    # A pin's index is its store's blob listing, not a provider the runtime opened, so
+    # there are no provider counters to report: a typed refusal, not a 500.
+    require_filesystem_hooks()
     runtime = _inventory_runtime_for(request)
     coordinated = await runtime.coordinator.read(
         ReadRequest(queries=(DiagnosticsQuery(query_id="debug-inventory"),))

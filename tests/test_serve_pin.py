@@ -551,14 +551,25 @@ def _second_source(tmp_path: Path) -> _Origin:
     return _Origin(path=origin, first=commit, second=commit)
 
 
-def _probe_urls(route: Route, probes: tuple[str, ...], other_commit: str) -> list[str]:
-    """Every GET route, with each probe identity in its path parameter or ``path`` query."""
+def _probe_urls(
+    route: Route, probes: tuple[str, ...], other_commit: str, pin_commit: str
+) -> list[str]:
+    """Every GET route, with each probe identity in its path parameter or query.
+
+    A route without a path parameter gets the probe as ``path``, and also as every
+    other identity a registered route reads from its query: the comparison
+    hook's ``revision``, ``left``, ``right``, and ``file``.
+    """
 
     path = route.path
     urls: list[str] = []
     for probe in probes:
         if "{" not in path:
             urls.append(f"{path}?path={probe}")
+            urls.append(f"{path}?revision={other_commit}&file={probe}")
+            urls.append(f"{path}?revision={pin_commit}&file={probe}")
+            urls.append(f"{path}?left={other_commit}&right={pin_commit}&file={probe}")
+            urls.append(f"{path}?left={pin_commit}&right={other_commit}")
             continue
         filled = re.sub(r"\{revision\}|\{rest:path\}", other_commit, path)
         filled = re.sub(r"\{[^}]+\}", probe, filled)
@@ -579,6 +590,8 @@ def test_a_served_pin_reads_nothing_outside_its_own_store(
     """
 
     home = _home(tmp_path, monkeypatch)
+    # The diagnostic routes answer only when enabled, so enable them for the sweep.
+    monkeypatch.setenv("METABROWSER_DEBUG", "1")
     other = _second_source(tmp_path)
     asyncio.run(acquire_file_source(_file_source(other.path), home=home))
     cwd = tmp_path / "cwd"
@@ -597,22 +610,40 @@ def test_a_served_pin_reads_nothing_outside_its_own_store(
         for route in server.app.routes
         if isinstance(route, Route)
         and "GET" in (route.methods or set())
-        and route.path.startswith(("/api/", "/raw", "/view", "/commit"))
+        and route.path.startswith(("/api/", "/raw", "/view", "/commit", "/_debug"))
     ]
-    probed = [url for route in routes for url in _probe_urls(route, probes, other.first)]
-    expected = {"/api/file", "/raw", "/raw/{path:path}", "/api/tree", "/api/git/commit/{revision}"}
+    probed = [
+        url for route in routes for url in _probe_urls(route, probes, other.first, origin.second)
+    ]
+    expected = {
+        "/api/file",
+        "/raw",
+        "/raw/{path:path}",
+        "/api/tree",
+        "/api/git/commit/{revision}",
+        "/api/plugin/diff/comparison",
+        "/_debug/inventory",
+    }
     assert expected <= {route.path for route in routes}
     with TestClient(server.app) as client:
         # The probe can see a leak: the pin's own content does come back.
         own = client.get("/api/file", params={"path": _wire("README.md")})
         assert "Second revision." in own.json()["content"]
         assert client.get(f"/api/git/commit/{other.first}").status_code == 404
+        # The provider diagnostic has no provider to report on a pin.
+        assert client.get("/_debug/inventory").json()["capability"] == "filesystem"
         for url in probed:
             response = client.get(url)
             assert _OTHER_SOURCE_CANARY not in response.text, url
             assert _WORKING_DIRECTORY_CANARY not in response.text, url
             assert str(home) not in response.text, url
             assert str(other.path) not in response.text, url
+        # The one POST that reads content: KPress rendering, by path and by source.
+        for probe in probes:
+            rendered = client.post("/api/kpress/render", json={"path": probe, "view": "document"})
+            assert _OTHER_SOURCE_CANARY not in rendered.text, probe
+            assert _WORKING_DIRECTORY_CANARY not in rendered.text, probe
+            assert str(home) not in rendered.text, probe
 
         for route in ("/api/cache/layout", "/api/cache/sources", "/api/cache/stores"):
             refused = client.get(route)
