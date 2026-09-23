@@ -812,8 +812,12 @@ def test_navigation_heading_shows_only_the_root_name() -> None:
     fn_block = js[fn_start : fn_start + 500]
     assert 'class="path-base"' in fn_block
     assert "path-dir" not in fn_block
-    # loadTree refreshes the label, and reads the root rather than rewriting it.
-    tree_start = js.index("pathEl.innerHTML = pathBaseHtml(data.root)")
+    # loadTree refreshes the label, and reads the root rather than rewriting it. A pin
+    # keeps the ref and commit the server rendered; tests/dom/source-kind-session.js
+    # runs both branches.
+    heading_start = js.index("function renderServedRootHeading(pathEl, root)")
+    assert "pathEl.innerHTML = pathBaseHtml(root)" in js[heading_start : heading_start + 400]
+    tree_start = js.index("renderServedRootHeading(pathEl, data.root)")
     assert "setServedRoot" not in js
     assert (
         "pathEl.dataset.tipName = pathEl.dataset.servedRoot" in js[tree_start : tree_start + 2600]

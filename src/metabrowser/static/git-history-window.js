@@ -360,7 +360,36 @@
     });
   }
 
+  /**
+   * What a failed history page request means for the panel.
+   *
+   * `stale`: the server's `history_stale` answer. The refs the walk was
+   * fingerprinted by moved -- a mirror refresh, or another tab switching the
+   * served pin -- so the rows on screen describe history as it was. Replaying a
+   * different walk under them would move the reader silently; the panel says the
+   * history changed and offers to reload it.
+   * `recover`: the server session expired or no longer matches the cursor, with
+   * nothing changed, so rebuilding the walk restores the same rows.
+   * `failed`: anything else, and any failure of the first page, retried in place.
+   *
+   * @param {{status: number, code: string | null, initial: boolean}} failure
+   * @returns {"stale" | "recover" | "failed"}
+   */
+  function classifyPageFailure(failure) {
+    if (failure.initial) {
+      return "failed";
+    }
+    if (failure.status === 409 && failure.code === "history_stale") {
+      return "stale";
+    }
+    if (failure.status === 400 || failure.status === 409 || failure.status === 410) {
+      return "recover";
+    }
+    return "failed";
+  }
+
   window.MetabrowserGitHistoryWindow = Object.freeze({
+    classifyPageFailure,
     createPageCache,
     createVirtualWindow,
   });

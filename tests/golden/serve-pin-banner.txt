@@ -1,0 +1,7 @@
+# metab file://<ROOT>/origin.git --no-open
+exit: 0
+--- stdout ---
+Serving file://<ROOT>/origin.git at http://127.0.0.1:8411/view/  [dev build: <STATE>]
+Revision: <REVISION> (topic)
+Plugins: agent-log, binary, diff, folder, html, image, markdown, structured, text, unknown-jsonl
+--- stderr ---

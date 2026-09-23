@@ -22,9 +22,10 @@ metab ROOT [MODE] [OPTIONS]
 A clone URL (`https://…`, `ssh://…`, `git@host:path`, or `file://…`) or a GitHub web URL
 is a Git source, not a local path.
 `https://` and `file://` sources are acquired with `--no-serve`, and also as a side
-effect of `--show` or `--api`; ssh stays closed.
-`--show` and `--api` inspect a pinned revision in-process; nothing binds a port, and
-acquired content is not served.
+effect of serving them, `--show`, `--api`, or `--check-api`; ssh stays closed.
+`metab <source>` serves the commit its URL selects, or its default branch’s, pinned;
+`--show`, `--api`, and `--check-api` inspect that pin in-process without binding a port.
+Acquired content always runs under the untrusted profile.
 A bare filesystem path is never treated as a clone origin.
 With no mode flag, `metab ROOT` starts the server and opens a browser, the way `open`
 opens a folder on macOS.
@@ -87,6 +88,69 @@ Metabrowser warns when it ignores one of its own.
 See [SECURITY.md](../SECURITY.md) for why the list runs that way.
 These flags also apply to `--api`, `--show`, and `--check-api`.
 
+### Serving a Git source
+
+```shell
+metab file:///path/to/origin.git
+metab file:///path/to/origin.git --path docs/guide.md --no-open
+```
+
+Serving a `file://` source acquires it, or reuses the cached store, and serves the
+commit its default branch names in the store: the commit it named at the last fetch.
+The banner prints the source and a `Revision:` line with the full commit and the branch;
+the navigation heading shows the branch and short commit, and hovering it shows the full
+commit.
+`--path` takes a path within that commit, spelled as `--show` accepts it (`docs`,
+`docs/`, `./docs`, or a `GitPath` wire), and the banner prints a directory’s address
+with a trailing slash.
+If the pin cannot be opened again when the server starts, the command prints the same
+error as `--show` and exits 1. Every page reads from the store, so the origin can be
+gone and the pinned revision still serves.
+
+The store is a mirror that refreshes in the background.
+When the server starts on a mirror last fetched more than a minute ago it runs one
+`git fetch` from the origin, and a page asks for one when it opens or becomes visible on
+a stale mirror; nothing a page shows waits for either.
+The foot of the navigation pane says when the mirror was last fetched; click it to
+refresh now. A refresh never moves the page under a reader: when it moves the pinned
+branch, the row offers the commit the branch now names, and **Switch** serves that
+commit and reloads the view.
+A switch lasts until the server stops; the next `metab file://…` serves the default
+branch again, as its banner says.
+A branch or tag deleted upstream leaves the mirror, but no commit does, so an older pin
+stays readable after a force-push.
+If the origin is gone the row says the refresh failed and the pin keeps serving.
+
+A served pin always runs under the untrusted profile: `--untrusted` is implied, the
+`METAB_*` enables are ignored, and `--allow-edits` is an error.
+HTML files offer only their source.
+`/api/cache/…` answers `unsupported_for_subject` on a served pin, so nothing about other
+cached sources is served beside it; inspect the cache with
+`metab <url> --api /api/cache/…` instead.
+
+`/api/source/status` reports the pinned commit and ref and the mirror’s freshness.
+`POST /api/source/refresh` starts a refresh, or joins the running one, and answers at
+once. `POST /api/source/pin` switches the served commit to a branch, a tag, or a commit
+ID in the mirror, with a JSON body such as `{"ref": "feature"}` or `{"oid": "3f2a9c1"}`.
+In a server, one the mirror lacks answers `202` with `selection_pending` and fetches
+once; asked again after that fetch, it switches or answers `404`. `--api` never fetches
+for it and answers `404` at once.
+Each is a POST with a JSON body behind the same-origin guard, so a link inside a served
+page cannot start one.
+The same routes work in-process:
+
+```shell
+echo '{}' > refresh.json
+echo '{"ref": "feature"}' > pin.json
+metab file:///path/to/origin.git --api /api/source/status
+metab file:///path/to/origin.git --api /api/source/refresh --data refresh.json
+metab file:///path/to/origin.git --api /api/source/pin --data pin.json
+```
+
+The refresh command waits for the fetch it asked for before it exits; no other one-shot
+command fetches. A pin switch through `--api` lasts for that one command, because each
+command is its own server; the next one serves the default branch again.
+
 ## Acquiring a Git source: `--no-serve`
 
 `--no-serve` fetches every object of an `https://` or `file://` source into the
@@ -108,6 +172,7 @@ A GitHub URL copied from the browser opens the repository it names, pinned where
 points:
 
 ```shell
+metab https://github.com/owner/repo
 metab https://github.com/owner/repo --no-serve
 metab 'https://github.com/owner/repo/blob/release/v1/docs/guide.md#L10-L20' --no-serve
 metab https://github.com/owner/repo/tree/v1.0 --api /api/tree
@@ -129,11 +194,15 @@ Query parameters other than `?plain=1` are dropped.
 Any other github.com page, `http://`, and GitHub’s own top-level pages are refused with
 a message that names the shape and offers the repository URL.
 
-These modes read the mirror as it is.
-A ref or commit that is not in it is reported as `ref_not_found` or `commit_not_found`
-rather than fetched; a path that is not at the pinned commit is `path_not_found`. Each
-exits with status 1, but the acquisition before it succeeded, so the source stays
-published.
+With no mode flag the source is served, and the browser opens at the file or folder the
+URL names, with a `#L10-L20` anchor kept in the address.
+`--no-serve`, `--show`, and `--api` read the mirror as it is: a ref or commit that is
+not in it is reported as `ref_not_found` or `commit_not_found` rather than fetched, and
+a path that is not at the pinned commit is `path_not_found`. Each exits with status 1,
+but the acquisition before it succeeded, so the source stays published.
+A server instead serves the default branch, fetches once in the background, and switches
+to the selection if that fetch brings it; `/api/source/status` reports `selection_state`
+as `pending`, then `found` or `not_found`.
 
 Public repositories are cloned anonymously.
 When `gh` is installed, it is Git’s credential helper for `https://github.com` and for
@@ -151,7 +220,10 @@ through `/api/tree`. `--show` and other `--api` routes on that URL acquire or re
 store, pin the default revision, and inspect the pin in-process.
 Nothing binds a port.
 `--show` accepts a display path (`README`) or a `GitPath` wire.
-Serving, walking, and `--check-api` still refuse Git sources.
+`--check-api` runs the navigation scenario on the pin, where Recent’s
+`unsupported_for_subject` is the expected answer.
+`--walk` refuses a Git source: the walker reads a filesystem, and
+`--api '/api/tree?depth=N'` lists a pinned tree.
 ssh URLs stay closed.
 A second `--no-serve` of the same `file://` source reuses the published store.
 That cache hit reads only the application home: it runs no Git, does not need the

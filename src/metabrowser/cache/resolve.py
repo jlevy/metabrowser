@@ -1,4 +1,8 @@
-"""Split a web URL's ref-and-path against a mirror and resolve it to one commit.
+"""Resolve what a reader selects -- a URL's ref-and-path, a ref, a commit ID -- in a mirror.
+
+This is the one resolver: URL opening (:func:`resolve_selection`), the pin route
+(:func:`resolve_pin`), and the refresh and status reads (:func:`ref_tip`) all look refs
+up the same way.
 
 A URL such as ``…/tree/release/v1/docs`` cannot be split by reading it: the ref may be
 ``release``, ``release/v1``, or ``release/v1/docs``. Only the mirror knows, so each
@@ -18,7 +22,8 @@ typed with ``cat-file -t``.
 
 An unresolved answer says whether one fetch could change it. Serving turns that into one
 background refresh and a typed pending state; the one-shot CLI reads the mirror as it
-is and reports it not found.
+is and reports it not found. The pin route's answers are
+:class:`~metabrowser.mirror_refresh.SelectionError` subclasses.
 """
 
 from __future__ import annotations
@@ -30,6 +35,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Final, Literal
 
+from metabrowser.cache.origin import BRANCH_MIRROR_PREFIX, TAG_PREFIX
+from metabrowser.cache.repository_store import object_type
 from metabrowser.cache.urls import RepositorySelection
 from metabrowser.git.process import (
     STORE_READ_POLICY,
@@ -37,7 +44,13 @@ from metabrowser.git.process import (
     RepositoryStoreTarget,
     run_git,
 )
+from metabrowser.git.tree_source import display_segment
 from metabrowser.git.wire import is_full_revision
+from metabrowser.mirror_refresh import (
+    AmbiguousSelectionError,
+    InvalidSelectionError,
+    SelectionNotFoundError,
+)
 
 # Candidates tried per URL, one per leading path segment, all in one ``for-each-ref``.
 # The cap bounds the patterns and the refs they list, not spawns. Git bounds no ref
@@ -45,15 +58,16 @@ from metabrowser.git.wire import is_full_revision
 # needs to open.
 MAX_REF_CANDIDATES: Final[int] = 12
 
-# An abbreviated ID that matches more objects than this is reported ambiguous rather
-# than typed one ``cat-file -t`` spawn at a time. Four hexadecimal digits match about
-# 150 objects in a ten-million-object repository; the seven GitHub shows match one.
-MAX_DISAMBIGUATION_OBJECTS: Final[int] = 8
+# An abbreviated ID that names more objects than this is reported as ambiguous
+# without checking each one's type, one ``cat-file -t`` spawn at a time.
+MAX_DISAMBIGUATION_OBJECTS: Final[int] = 16
+# Git's own bound on a ref name is the file system's; this is the record bound for one.
+_REF_NAME_MAX_BYTES: Final = 1024
 
-BRANCH_REF_PREFIX: Final = "refs/remotes/origin/"
 _REF_FORMAT: Final = "%(refname)%00%(objectname)%00%(objecttype)%00%(*objectname)%00%(*objecttype)"
-TAG_REF_PREFIX: Final = "refs/tags/"
-_COMMIT_ID = re.compile(r"^[0-9a-f]{4,64}$")
+# Seven hexadecimal digits is the shortest commit ID Git abbreviates to by default and
+# the shortest a GitHub URL shows; anything shorter matches too much to mean one commit.
+_COMMIT_ID = re.compile(r"^[0-9a-f]{7,64}$")
 _REF_FORBIDDEN = frozenset(" ~^:?*[\\\x7f")
 
 type ResolvedVia = Literal["default", "branch", "tag", "commit"]
@@ -98,13 +112,20 @@ type SelectionResolution = ResolvedSelection | UnresolvedSelection
 
 
 def is_valid_ref_name(name: str) -> bool:
-    """Git's ``check-ref-format`` rules for a short branch or tag name.
+    """Git's ``check-ref-format`` rules, for a short name or a full one under ``refs/``.
 
     No empty component, none that begins with ``.`` or ends with ``.lock``; no ``..``,
-    ``@{``, control character, space, ``~ ^ : ? * [ \\``; not ``@`` alone; and no ``.``
-    or ``/`` at the end.
+    ``@{``, control character, space, ``~ ^ : ? * [ \\``; not ``@`` alone; no ``.`` or
+    ``/`` at the end; encodable as UTF-8 and at most 1024 bytes. Checked here rather
+    than by running Git, so a name is refused before any process sees it.
     """
 
+    try:
+        encoded = name.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    if len(encoded) > _REF_NAME_MAX_BYTES:
+        return False
     if not name or name == "@" or name.endswith((".", "/")) or name.startswith("/"):
         return False
     if ".." in name or "@{" in name:
@@ -147,6 +168,33 @@ def case_colliding_refs(names: Iterable[str]) -> tuple[str, ...]:
                     if not lower.startswith(upper + "/"):
                         colliding |= {upper, lower}
     return tuple(sorted(colliding))
+
+
+def describe_case_collision(colliding: tuple[str, ...]) -> str:
+    """What a case collision is, naming a few of the refs, for a user message."""
+
+    shown = ", ".join(
+        display_segment(name.encode("utf-8", "surrogateescape")) for name in colliding[:4]
+    )
+    more = f" and {len(colliding) - 4} more" if len(colliding) > 4 else ""
+    return (
+        f"has branches or tags whose names differ only in letter case ({shown}{more}), "
+        "which this filesystem cannot keep apart (ref_case_collision)"
+    )
+
+
+async def store_ignores_case(target: RepositoryStoreTarget) -> bool:
+    """Whether Git found the store's filesystem case-insensitive when it created it."""
+
+    try:
+        value = await run_git(
+            ["config", "--get", "--bool", "core.ignorecase"],
+            target=target,
+            policy=STORE_READ_POLICY,
+        )
+    except GitCommandError:
+        return False
+    return value.strip() == b"true"
 
 
 def ref_candidates(
@@ -225,16 +273,7 @@ async def _peeled_commit(target: RepositoryStoreTarget, ref: _RefObject) -> str 
     except GitCommandError:
         return None
     oid = out.decode("ascii", "replace").strip()
-    return oid if is_full_revision(oid) and await _object_type(target, oid) == "commit" else None
-
-
-async def _object_type(target: RepositoryStoreTarget, oid: str) -> str | None:
-    """The type of a full object ID the store has, or ``None``."""
-
-    try:
-        return (await _git(target, ["cat-file", "-t", oid])).decode("ascii", "replace").strip()
-    except GitCommandError:
-        return None
+    return oid if is_full_revision(oid) and await object_type(target, oid) == "commit" else None
 
 
 async def resolve_commit_id(
@@ -254,12 +293,91 @@ async def resolve_commit_id(
     )
     if len(oids) > MAX_DISAMBIGUATION_OBJECTS:
         return UnresolvedSelection("commit_ambiguous")
-    commits = [oid for oid in oids if await _object_type(target, oid) == "commit"]
+    commits = [oid for oid in oids if await object_type(target, oid) == "commit"]
     if len(commits) > 1:
         return UnresolvedSelection("commit_ambiguous")
     if not commits:
         return UnresolvedSelection("not_a_commit" if oids else "commit_not_found")
     return ResolvedSelection(via="commit", name=None, ref=None, commit=commits[0])
+
+
+async def ref_tip(target: RepositoryStoreTarget, ref: str) -> str | None:
+    """The commit the full ref *ref* names, peeling annotated tags; ``None`` otherwise.
+
+    ``None`` when the ref does not exist under exactly that name -- never fetched, or
+    pruned after the origin deleted it -- or names something other than a commit.
+    """
+
+    if not ref.startswith("refs/") or not is_valid_ref_name(ref):
+        return None
+    found = (await _exact_refs(target, [ref])).get(ref)
+    return None if found is None else await _peeled_commit(target, found)
+
+
+@dataclass(frozen=True, slots=True)
+class ResolvedPin:
+    """The commit a pin request names, and the mirror ref it was found through, if any."""
+
+    commit_oid: str
+    ref: str | None
+
+
+async def _pin_commit_id(target: RepositoryStoreTarget, text: str) -> str:
+    resolved = await resolve_commit_id(target, text)
+    if isinstance(resolved, ResolvedSelection):
+        return resolved.commit
+    if resolved.reason == "invalid_ref":
+        raise InvalidSelectionError(
+            "a commit ID is 7 to 64 hexadecimal digits; a ref name follows Git's ref-name rules"
+        )
+    if resolved.reason == "commit_ambiguous":
+        raise AmbiguousSelectionError("that abbreviated commit ID matches several commits")
+    raise SelectionNotFoundError("no commit with that ID is in the mirror")
+
+
+async def resolve_pin(
+    target: RepositoryStoreTarget, *, ref: str | None = None, oid: str | None = None
+) -> ResolvedPin:
+    """The commit a pin request names in the mirror, and the ref it came through.
+
+    Exactly one of *ref* and *oid* is given. A short ref name is tried as a branch,
+    then as a tag, and then, when it is hexadecimal, as a commit ID; a full name must
+    be under ``refs/remotes/origin/`` or ``refs/tags/``, the only refs a mirror holds.
+    *oid* is only a commit ID, full or abbreviated to at least seven digits. A commit
+    pinned by ID has no ref. Raises a
+    :class:`~metabrowser.mirror_refresh.SelectionError`; Git failures other than "not
+    there" propagate as :class:`~metabrowser.git.process.GitError`.
+    """
+
+    if (ref is None) == (oid is None):
+        raise InvalidSelectionError('give exactly one of "ref" and "oid"')
+    if oid is not None:
+        return ResolvedPin(commit_oid=await _pin_commit_id(target, oid), ref=None)
+    assert ref is not None
+    if not ref:
+        raise InvalidSelectionError("the ref is empty")
+    if ref.startswith("refs/"):
+        if not ref.startswith((BRANCH_MIRROR_PREFIX, TAG_PREFIX)):
+            raise InvalidSelectionError(
+                "only the origin's branches (refs/remotes/origin/…) and tags (refs/tags/…) "
+                "can be pinned"
+            )
+        candidates: tuple[str, ...] = (ref,)
+    else:
+        candidates = (BRANCH_MIRROR_PREFIX + ref, TAG_PREFIX + ref)
+    is_hex = _COMMIT_ID.match(ref.lower()) is not None
+    if all(is_valid_ref_name(candidate) for candidate in candidates):
+        exact = await _exact_refs(target, list(candidates))
+        for candidate in candidates:
+            found = exact.get(candidate)
+            commit = None if found is None else await _peeled_commit(target, found)
+            if commit is not None:
+                return ResolvedPin(commit_oid=commit, ref=candidate)
+    elif not is_hex:
+        raise InvalidSelectionError("the ref is not a valid Git ref name")
+    if is_hex:
+        return ResolvedPin(commit_oid=await _pin_commit_id(target, ref), ref=None)
+    raise SelectionNotFoundError("no branch or tag with that name is in the mirror")
 
 
 async def resolve_ref_and_path(
@@ -272,8 +390,8 @@ async def resolve_ref_and_path(
     """
 
     namespaces: tuple[tuple[ResolvedVia, str], ...] = (
-        ("branch", BRANCH_REF_PREFIX),
-        ("tag", TAG_REF_PREFIX),
+        ("branch", BRANCH_MIRROR_PREFIX),
+        ("tag", TAG_PREFIX),
     )
     rest = segments
     explicit = segments[:2]
@@ -331,7 +449,7 @@ async def resolve_selection(
     ``needs_fetch`` and resolve again once it finishes.
     """
 
-    name = default_ref.removeprefix(BRANCH_REF_PREFIX)
+    name = default_ref.removeprefix(BRANCH_MIRROR_PREFIX)
     if selection.kind in {"tree", "blob"}:
         if selection.ref_and_path[:1] == (b"HEAD",):
             return ResolvedSelection(
@@ -348,18 +466,21 @@ async def resolve_selection(
 
 
 __all__ = [
-    "BRANCH_REF_PREFIX",
     "MAX_DISAMBIGUATION_OBJECTS",
     "MAX_REF_CANDIDATES",
-    "TAG_REF_PREFIX",
     "RefCandidate",
+    "ResolvedPin",
     "ResolvedSelection",
     "SelectionResolution",
     "UnresolvedSelection",
     "case_colliding_refs",
+    "describe_case_collision",
     "is_valid_ref_name",
     "ref_candidates",
+    "ref_tip",
     "resolve_commit_id",
+    "resolve_pin",
     "resolve_ref_and_path",
     "resolve_selection",
+    "store_ignores_case",
 ]

@@ -9,6 +9,7 @@ macOS. Every other operation is a mode flag on the same command:
 
     metab . --walk --format json       # inventory walk, no server
     metab . --check-api                # exercise navigation APIs, no browser
+    metab file:///path/to/repo.git            # serve a Git source, pinned, untrusted
     metab file:///path/to/repo.git --no-serve  # acquire into the cache, no server
     metab https://github.com/owner/repo/blob/main/README.md --show README.md
     metab --remote example-host --path /srv/shared-files  # SSH-tunnel a remote host
@@ -321,16 +322,19 @@ def _classified_root(ctx: typer.Context, root: str | None, mode: str) -> Path | 
 
 
 def _git_source_closed_message(source: GitSource, *, mode: str) -> str:
-    if mode == "serve":
+    if mode == "walk":
+        # The walker reads a filesystem: mtimes, ignore rules, and a record stream
+        # a watcher extends. A pinned tree has none of them, and its listing is
+        # already complete, so the pin's equivalent is the tree route itself.
         return (
-            f"{source.transport} Git sources are not served yet "
-            f"({source.normalized}). Acquire one with --no-serve, or inspect it "
-            "with --show or --api; ssh stays closed."
+            f"--walk runs the filesystem inventory walker, and a Git source has no "
+            f"filesystem to walk ({source.normalized}). Read a pinned tree with "
+            "--api '/api/tree?depth=N', or --walk a local directory."
         )
     return (
         f"{source.transport} Git sources are not opened yet "
-        f"({source.normalized}). Serve a local directory, or acquire a "
-        "file:// or https:// source with --no-serve."
+        f"({source.normalized}) by {_MODE_LABELS[mode]}. Serve, --show, or --api a "
+        "file:// or https:// source, or acquire one with --no-serve; ssh stays closed."
     )
 
 
@@ -362,6 +366,7 @@ _app = typer.Typer(add_completion=False)
         "metab . --api '/api/tree?depth=2'\n\n"
         "metab . --show README.md\n\n"
         "metab . --check-api\n\n"
+        "metab file:///path/to/repo.git\n\n"
         "metab file:///path/to/repo.git --no-serve\n\n"
         "metab --remote example-host --path /srv/shared-files\n\n"
         "metab --plugins\n\n"
@@ -375,8 +380,10 @@ def _metab(
         help=(
             "Root directory to serve, check, or walk; a file may be served directly. "
             "https, ssh, and file:// clone URLs and GitHub web URLs are Git sources, "
-            "not local paths. --no-serve, --show, and --api acquire https:// and "
-            "file:// sources; ssh stays closed. With no ROOT and no mode, prints help."
+            "not local paths. An https:// or file:// source is acquired into the cache "
+            "and opened at the commit its URL selects, or its default branch's, always "
+            "untrusted; --no-serve only acquires it; ssh stays closed. "
+            "With no ROOT and no mode, prints help."
         ),
         show_default=False,
     ),
@@ -700,8 +707,10 @@ def _metab(
     Data modes read the same server the browser reads, without a browser or a
     listening port: --api issues one route, --show reports the four layers
     behind one selection, --walk dumps the inventory, --diff shows a change
-    set. --no-serve acquires a file:// or https:// Git source, or a GitHub web
-    URL, into the cache without starting a server. Diagnostics: --check-api, --plugins, --plugin, --doctor.
+    set. A file:// or https:// Git source, or a GitHub web URL, is served, shown,
+    or checked at the commit it selects under the untrusted profile; --no-serve
+    only acquires it into the cache. Diagnostics: --check-api, --plugins,
+    --plugin, --doctor.
     Remote serving: --remote.
     """
     mode = _resolve_mode(
@@ -725,18 +734,34 @@ def _metab(
         if root is None and not explicit:
             typer.echo(ctx.get_help())
             raise typer.Exit()
-        run_serve(
-            _require_root(ctx, root, mode),
-            path=path,
-            port=port,
-            host=host,
-            no_open=no_open,
-            plugins_dir=plugins_dir,
-            log_level=log_level,
-            untrusted=untrusted,
-            no_active_content=no_active_content,
-            allow_edits=allow_edits,
-        )
+        classified = _classified_root(ctx, root, mode)
+        if isinstance(classified, Path):
+            run_serve(
+                classified,
+                path=path,
+                port=port,
+                host=host,
+                no_open=no_open,
+                plugins_dir=plugins_dir,
+                log_level=log_level,
+                untrusted=untrusted,
+                no_active_content=no_active_content,
+                allow_edits=allow_edits,
+            )
+        else:
+            from metabrowser.cli.git_pin_cli import run_serve_pin
+
+            run_serve_pin(
+                classified,
+                path=path,
+                port=port,
+                host=host,
+                no_open=no_open,
+                plugins_dir=plugins_dir,
+                log_level=log_level,
+                no_active_content=no_active_content,
+                allow_edits=allow_edits,
+            )
     elif mode == "walk":
         run_walk(
             _require_root(ctx, root, mode),
@@ -846,17 +871,30 @@ def _metab(
                 allow_edits=allow_edits,
             )
     elif mode == "check-api":
-        from metabrowser.cli.check_api import run_api_check
+        classified = _classified_root(ctx, root, mode)
+        if isinstance(classified, Path):
+            from metabrowser.cli.check_api import run_api_check
 
-        run_api_check(
-            _require_root(ctx, root, mode),
-            plugins_dir=plugins_dir,
-            log_level=log_level,
-            index_timeout_s=index_timeout,
-            untrusted=untrusted,
-            no_active_content=no_active_content,
-            allow_edits=allow_edits,
-        )
+            run_api_check(
+                classified,
+                plugins_dir=plugins_dir,
+                log_level=log_level,
+                index_timeout_s=index_timeout,
+                untrusted=untrusted,
+                no_active_content=no_active_content,
+                allow_edits=allow_edits,
+            )
+        else:
+            from metabrowser.cli.git_pin_cli import run_pin_api_check
+
+            run_pin_api_check(
+                classified,
+                plugins_dir=plugins_dir,
+                log_level=log_level,
+                index_timeout_s=index_timeout,
+                no_active_content=no_active_content,
+                allow_edits=allow_edits,
+            )
     elif remote is not None:
         _reject_root(ctx, root, mode)
         if not path:

@@ -27,8 +27,16 @@ def git_env(root: Path) -> dict[str, str]:
     return env
 
 
-def fast_import_store(tmp_path: Path, files: Mapping[bytes, bytes]) -> tuple[Path, str]:
-    """A bare store with one commit. Names are plain ASCII, so no quoting."""
+def fast_import_store(
+    tmp_path: Path,
+    files: Mapping[bytes, bytes],
+    *,
+    symlinks: Mapping[bytes, bytes] | None = None,
+) -> tuple[Path, str]:
+    """A bare store with one commit. Names are plain ASCII, so no quoting.
+
+    *symlinks* maps a link's name to its target, stored as a mode 120000 blob.
+    """
 
     store = tmp_path / "store.git"
     env = git_env(tmp_path)
@@ -46,6 +54,9 @@ def fast_import_store(tmp_path: Path, files: Mapping[bytes, bytes]) -> tuple[Pat
     for name, body in files.items():
         stream += b"M 100644 inline " + name + b"\ndata " + str(len(body)).encode() + b"\n"
         stream += body + b"\n"
+    for name, target in (symlinks or {}).items():
+        stream += b"M 120000 inline " + name + b"\ndata " + str(len(target)).encode() + b"\n"
+        stream += target + b"\n"
     stream += b"\ndone\n"
     subprocess.run(
         ["git", "--git-dir", str(store), "fast-import", "--quiet", "--done"],
@@ -65,12 +76,13 @@ def fast_import_store(tmp_path: Path, files: Mapping[bytes, bytes]) -> tuple[Pat
 
 @asynccontextmanager
 async def pinned_client(
-    store: Path, commit: str, *, raise_app_exceptions: bool = True
+    store: Path, commit: str, *, raise_app_exceptions: bool = True, ref: str | None = None
 ) -> AsyncGenerator[tuple[AsyncClient, GitRevisionSubject], None]:
     subject = await git_revision_subject(
         target=repository_store_target(git_dir=store),
         commit_oid=commit,
         store_identity="pin-fixture",
+        ref=ref,
     )
     attach_subject(subject)
     try:

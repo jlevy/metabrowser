@@ -1,10 +1,17 @@
-"""What every Git command that talks to an origin is given, and how its failures read.
+"""How a store talks to its origin: the ``ls-remote`` and ``fetch`` commands, and their failures.
 
-Acquisition today, and the refresh path later, pass :func:`remote_git_args` to each
-``ls-remote`` and ``fetch``: the protocol allowlist, the measured low-speed stall bound,
-and whatever an installed provider adds for that URL (the GitHub provider's ``gh``
-credential helper). :func:`classify_remote_failure` turns Git's own error text, which is
-only ever logged, into a typed state a user can act on.
+Acquisition and refresh run the same two network commands, so their arguments are
+built here and nowhere else: first ``ls-remote --symref`` to observe which branch the
+origin's HEAD names, then one fetch of every branch and tag with explicit refspecs.
+Branches land under ``refs/remotes/origin/`` and tags under ``refs/tags/``; Metabrowser
+writes no ref of its own, and pruning those refspecs never touches any other namespace.
+
+Both commands name the origin by URL and get :func:`origin_git_args` for it: the
+protocol allowlist (``file`` and ``https``), the measured low-speed stall bound, and
+whatever an installed provider adds for that URL, which is the ``gh`` credential helper
+for github.com. They run under the acquisition policy, whose ``HOME=/dev/null`` keeps
+curl from reading ``.netrc``. :func:`classify_remote_failure` turns Git's own error
+text, which is only ever logged, into a typed state a user can act on.
 """
 
 from __future__ import annotations
@@ -13,6 +20,21 @@ import re
 from typing import Final, Literal
 
 from metabrowser.cache.providers import provider_credential_hint, provider_git_config
+from metabrowser.git.wire import is_full_revision
+
+# Every refspec a store fetches. A branch is mirrored under the remote-tracking
+# namespace so no local branch is invented; a tag keeps its own name.
+MIRROR_REFSPECS: Final[tuple[str, ...]] = (
+    "+refs/heads/*:refs/remotes/origin/*",
+    "+refs/tags/*:refs/tags/*",
+)
+BRANCH_MIRROR_PREFIX: Final = "refs/remotes/origin/"
+TAG_PREFIX: Final = "refs/tags/"
+
+
+class OriginHeadError(Exception):
+    """The origin did not advertise a usable HEAD."""
+
 
 # Git refuses every transport but these two. ``protocol.allow=never`` also covers the
 # redirect protocols curl may follow, so an https origin cannot redirect to http.
@@ -182,15 +204,86 @@ _STATE_TEXT: Final[dict[RemoteFailureState, str]] = {
 }
 
 
-def remote_git_args(remote_url: str) -> tuple[str, ...]:
-    """``-c`` options for a Git command that talks to *remote_url*.
-
-    The integration point for every network Git command: acquisition's ``ls-remote``
-    and ``fetch`` now, and the refresh path's ``ls-remote --symref`` and
-    ``fetch --prune --atomic`` when it lands.
-    """
+def origin_git_args(remote_url: str) -> tuple[str, ...]:
+    """``-c`` options for a Git command that talks to the origin at *remote_url*."""
 
     return (*PROTOCOL_ARGS, *_STALL_ARGS, *provider_git_config(remote_url))
+
+
+def ls_remote_head_args(remote_url: str) -> list[str]:
+    """``ls-remote --symref`` for the origin's HEAD, naming *remote_url* after ``--``."""
+
+    return [*origin_git_args(remote_url), "ls-remote", "--symref", "--", remote_url, "HEAD"]
+
+
+def mirror_fetch_args(remote_url: str, *, prune: bool) -> list[str]:
+    """One fetch of every branch and tag from *remote_url* into the mirror namespaces.
+
+    The origin is named by URL, the same URL that chose the credential helper, rather
+    than by the store's configured remote. ``--porcelain`` (Git 2.41) lists every ref
+    the fetch wrote, which :func:`fetched_ref_names` reads. Acquisition fetches into an
+    empty staging store and needs neither flag below. A refresh passes ``prune`` for
+    ``--prune --atomic``: a branch or tag deleted upstream leaves the mirror, and every
+    ref updates together or none does, so a killed or failed fetch never leaves some
+    refs moved and others not. Objects written before a failure stay, which is
+    harmless because nothing references them yet.
+    """
+
+    flags = ["--prune", "--atomic"] if prune else []
+    return [
+        *origin_git_args(remote_url),
+        "fetch",
+        "--porcelain",
+        *flags,
+        "--no-write-fetch-head",
+        remote_url,
+        *MIRROR_REFSPECS,
+    ]
+
+
+def fetched_ref_names(porcelain: bytes) -> tuple[str, ...]:
+    """The refs a ``fetch --porcelain`` left in the store, from its output.
+
+    Each line is ``<flag> <old-oid> <new-oid> <local-ref>``, and the flag may itself be
+    a space. A pruned ref, whose new object ID is all zeros, is gone and not listed.
+    """
+
+    names: list[str] = []
+    for line in porcelain.split(b"\n"):
+        fields = line[2:].split(b" ")
+        if len(line) > 2 and len(fields) == 3 and fields[1].strip(b"0"):
+            names.append(fields[2].decode("utf-8", "surrogateescape"))
+    return tuple(names)
+
+
+def parse_symref_head(stdout: bytes) -> tuple[str | None, str]:
+    """The ref the origin's HEAD names, if any, and the object ID it resolves to.
+
+    The ``HEAD`` pattern also matches any ref whose last component is HEAD, such as a
+    clone's ``refs/remotes/origin/HEAD``. Only the ref named exactly HEAD counts.
+    """
+
+    ref: str | None = None
+    oid: str | None = None
+    for line in stdout.decode("ascii", errors="replace").splitlines():
+        payload, _, name = line.partition("\t")
+        if name != "HEAD":
+            continue
+        if payload.startswith("ref:"):
+            ref = payload.removeprefix("ref:").strip()
+        else:
+            oid = payload.strip()
+    if oid is None or not is_full_revision(oid):
+        raise OriginHeadError("the source did not advertise HEAD")
+    return ref, oid
+
+
+def remote_tracking_ref(head_ref: str | None) -> str | None:
+    """The mirror ref for the origin branch *head_ref*, or ``None`` when HEAD is no branch."""
+
+    if head_ref is None or not head_ref.startswith("refs/heads/"):
+        return None
+    return BRANCH_MIRROR_PREFIX + head_ref.removeprefix("refs/heads/")
 
 
 def classify_remote_failure(stderr_summary: str) -> RemoteFailureState | None:
@@ -222,12 +315,21 @@ def describe_remote_failure(state: RemoteFailureState, source_url: str, *, detai
 
 
 __all__ = [
+    "BRANCH_MIRROR_PREFIX",
     "HTTP_LOW_SPEED_LIMIT_BYTES",
     "HTTP_LOW_SPEED_TIME_S",
+    "MIRROR_REFSPECS",
     "PROTOCOL_ARGS",
     "REMOTE_PROBE_TIMEOUT_S",
+    "TAG_PREFIX",
+    "OriginHeadError",
     "RemoteFailureState",
     "classify_remote_failure",
     "describe_remote_failure",
-    "remote_git_args",
+    "fetched_ref_names",
+    "ls_remote_head_args",
+    "mirror_fetch_args",
+    "origin_git_args",
+    "parse_symref_head",
+    "remote_tracking_ref",
 ]

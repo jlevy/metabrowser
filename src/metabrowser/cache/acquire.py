@@ -4,8 +4,9 @@ A ``file://`` or ``https://`` URL is fetched into staging, every object and not 
 partial clone, then published as a complete store and a source alias. Nothing later
 removes objects from a store. This module does not serve content. The CLI acquires
 through ``--no-serve``, ``--api``, and ``--show``; ssh stays closed. A bare path never
-reaches here. Every command against the origin gets :func:`remote_git_args`: the
-protocol allowlist, the measured stall bound, and a provider's credential helper.
+reaches here. Both commands against the origin are built by
+:mod:`metabrowser.cache.origin`: the protocol allowlist, the measured stall bound, and a
+provider's credential helper.
 """
 
 from __future__ import annotations
@@ -20,7 +21,6 @@ import secrets
 import shutil
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final, Self
 
@@ -44,6 +44,18 @@ from metabrowser.cache.locks import (
     source_alias_lock,
     staging_entry_lock,
 )
+from metabrowser.cache.origin import (
+    REMOTE_PROBE_TIMEOUT_S,
+    OriginHeadError,
+    RemoteFailureState,
+    classify_remote_failure,
+    describe_remote_failure,
+    fetched_ref_names,
+    ls_remote_head_args,
+    mirror_fetch_args,
+    parse_symref_head,
+    remote_tracking_ref,
+)
 from metabrowser.cache.paths import (
     source_directory,
     source_record,
@@ -65,15 +77,13 @@ from metabrowser.cache.records import (
     RepositoryStoreState,
     StoreAcquisition,
     StoreOperation,
+    canonical_now,
 )
-from metabrowser.cache.remote import (
-    REMOTE_PROBE_TIMEOUT_S,
-    RemoteFailureState,
-    classify_remote_failure,
-    describe_remote_failure,
-    remote_git_args,
+from metabrowser.cache.resolve import (
+    case_colliding_refs,
+    describe_case_collision,
+    store_ignores_case,
 )
-from metabrowser.cache.resolve import case_colliding_refs
 from metabrowser.cache.urls import GitSource
 from metabrowser.git.process import (
     ACQUISITION_POLICY,
@@ -83,8 +93,6 @@ from metabrowser.git.process import (
     require_acquisition_git,
     run_git,
 )
-from metabrowser.git.tree_source import display_segment
-from metabrowser.git.wire import is_full_revision
 from metabrowser.home import PrivateStorageError, SharedEntryPolicy, ensure_private_directory
 
 log = logging.getLogger(__name__)
@@ -177,52 +185,20 @@ class RefCaseCollisionError(ValidationFailedError):
     state: Final = "ref_case_collision"
 
 
-def fetched_ref_names(porcelain: bytes) -> tuple[str, ...]:
-    """The local ref names in ``git fetch --porcelain`` output.
-
-    Each line is ``<flag> <old-oid> <new-oid> <local-ref>``, and the flag may itself be
-    a space. The refresh path reads its own fetch the same way.
-    """
-
-    names: list[str] = []
-    for line in porcelain.split(b"\n"):
-        fields = line[2:].split(b" ")
-        if len(line) > 2 and len(fields) == 3:
-            names.append(fields[2].decode("utf-8", "surrogateescape"))
-    return tuple(names)
-
-
-async def store_ignores_case(git_dir: Path) -> bool:
-    """Whether Git found the store's filesystem case-insensitive when it created it."""
-
-    try:
-        value = await _run(["config", "--get", "--bool", "core.ignorecase"], git_dir=git_dir)
-    except GitCommandError:
-        return False
-    return value.strip() == b"true"
-
-
 async def _refuse_case_collisions(git_dir: Path, names: tuple[str, ...]) -> None:
     """Refuse a store whose refs a case-insensitive filesystem folded together.
 
     On such a filesystem ``refs/remotes/origin/Feature`` and ``…/feature`` are one loose
     file: a non-atomic fetch keeps whichever it wrote last under the first name, and the
     other name resolves to it too, so a URL could pin the wrong commit. Nothing is
-    published; the refresh path runs the same check on its own fetch.
+    published; a refresh reports the same state for its own fetch.
     """
 
     colliding = case_colliding_refs(names)
-    if not colliding or not await store_ignores_case(git_dir):
-        return
-    shown = ", ".join(
-        display_segment(name.encode("utf-8", "surrogateescape")) for name in colliding[:4]
-    )
-    more = f" and {len(colliding) - 4} more" if len(colliding) > 4 else ""
-    raise RefCaseCollisionError(
-        f"the source has branches or tags whose names differ only in letter case "
-        f"({shown}{more}), which this filesystem cannot keep apart (ref_case_collision); "
-        "nothing was published"
-    )
+    if colliding and await store_ignores_case(repository_store_target(git_dir=git_dir)):
+        raise RefCaseCollisionError(
+            f"the source {describe_case_collision(colliding)}; nothing was published"
+        )
 
 
 def _report(on_phase: PhaseReporter | None, phase: str) -> None:
@@ -335,30 +311,6 @@ async def _run(
     return await run_git(args, cwd=cwd, policy=ACQUISITION_POLICY, timeout_s=timeout_s)
 
 
-def _parse_symref_head(stdout: bytes) -> tuple[str | None, str]:
-    # The ``HEAD`` pattern also matches any ref whose last component is HEAD, such as
-    # a clone's ``refs/remotes/origin/HEAD``. Only the ref named exactly HEAD counts.
-    ref: str | None = None
-    oid: str | None = None
-    for line in stdout.decode("ascii", errors="replace").splitlines():
-        payload, _, name = line.partition("\t")
-        if name != "HEAD":
-            continue
-        if payload.startswith("ref:"):
-            ref = payload.removeprefix("ref:").strip()
-        else:
-            oid = payload.strip()
-    if oid is None or not is_full_revision(oid):
-        raise RemoteUnavailableError("the source did not advertise HEAD")
-    return ref, oid
-
-
-def _remote_tracking_ref(head_ref: str | None) -> str | None:
-    if head_ref is None or not head_ref.startswith("refs/heads/"):
-        return None
-    return "refs/remotes/origin/" + head_ref.removeprefix("refs/heads/")
-
-
 async def _require_ref_at(git_dir: Path, ref: str, revision: str) -> None:
     """Refuse a record whose branch is not the pinned commit in the fetched store.
 
@@ -388,7 +340,6 @@ async def acquire_into_staging(
             f"{source.transport} Git sources are not acquired yet ({source.normalized})"
         )
     remote_url = remote_url_for(source)
-    network = list(remote_git_args(remote_url))
     # Only https has a first-request deadline: curl's stall bound does not cover a TLS
     # handshake that never completes. A local origin keeps the acquisition deadline.
     probe_timeout_s = REMOTE_PROBE_TIMEOUT_S if source.transport == "https" else None
@@ -406,7 +357,7 @@ async def acquire_into_staging(
         _report(on_phase, "reading the default branch")
         try:
             observed = await _run(
-                [*network, "ls-remote", "--symref", "--", remote_url, "HEAD"],
+                ls_remote_head_args(remote_url),
                 cwd=staging,
                 timeout_s=probe_timeout_s,
             )
@@ -424,8 +375,11 @@ async def acquire_into_staging(
             raise _classified(source, exc) or RemoteUnavailableError(
                 "the source could not be read as a Git repository; nothing was published"
             ) from exc
-        head_ref, revision = _parse_symref_head(observed)
-        default_remote_ref = _remote_tracking_ref(head_ref)
+        try:
+            head_ref, revision = parse_symref_head(observed)
+        except OriginHeadError as exc:
+            raise RemoteUnavailableError(str(exc)) from exc
+        default_remote_ref = remote_tracking_ref(head_ref)
         if default_remote_ref is None:
             # Publication needs a branch. Refuse here, before the fetch is paid for.
             raise ValidationFailedError("the source HEAD is not a branch")
@@ -451,19 +405,7 @@ async def acquire_into_staging(
         try:
             # Every object: a published store is complete, so no read ever needs the
             # origin again, and an origin that would honor a filter is not asked to.
-            # ``--porcelain`` (Git 2.41) lists every ref the fetch wrote, one per line.
-            updated = await _run(
-                [
-                    *network,
-                    "fetch",
-                    "--porcelain",
-                    "--no-write-fetch-head",
-                    "origin",
-                    "+refs/heads/*:refs/remotes/origin/*",
-                    "+refs/tags/*:refs/tags/*",
-                ],
-                git_dir=git_dir,
-            )
+            updated = await _run(mirror_fetch_args(remote_url, prune=False), git_dir=git_dir)
         except GitCommandError as exc:
             if _PARTIAL_CLONE_SOURCE.search(exc.stderr_summary):
                 raise PartialCloneSourceError(
@@ -525,10 +467,6 @@ class PublishedSource:
     default_revision: str
 
 
-def _canonical_now() -> str:
-    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
 def _touch_last_opened(published: PublishedSource) -> None:
     """Best-effort recency. A failed write must not fail the open."""
 
@@ -537,7 +475,7 @@ def _touch_last_opened(published: PublishedSource) -> None:
             write_record_atomic(
                 published.home,
                 source_record(published.slug, "state.yml"),
-                RepositorySourceState(last_opened_at=_canonical_now()),
+                RepositorySourceState(last_opened_at=canonical_now()),
                 REPOSITORY_SOURCE_STATE_CONTRACT_ID,
             )
     except (LockBusyError, PrivateStorageError, OSError):
@@ -827,7 +765,7 @@ def publish_from_staging(staged: StagingAcquisition) -> PublishedSource:
         raise ValidationFailedError("the source HEAD is not a branch")
     store_id = repository_store_id(staged.source_id, staged.object_format)
     key = store_key(store_id)
-    at = _canonical_now()
+    at = canonical_now()
     try:
         _write_store_records(staged, store_id, at)
         return _publish_store_and_alias(staged, store_id, key, at)
@@ -930,8 +868,6 @@ __all__ = [
     "ValidationFailedError",
     "acquire_into_staging",
     "acquire_source",
-    "fetched_ref_names",
     "publish_from_staging",
     "remote_url_for",
-    "store_ignores_case",
 ]

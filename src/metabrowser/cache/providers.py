@@ -94,9 +94,8 @@ def repository_context_for(
 ) -> RepositoryContext | None:
     """The ``repository_context`` of a pin of *source_url*, or ``None``.
 
-    The integration point for serving a pin: the shell's pre-paint context comes from
-    here for a Git revision subject, as :func:`discover_repository_context` supplies it
-    for a served checkout.
+    A served mirror answers the shell's pre-paint context from here for a Git revision
+    subject, as :func:`discover_repository_context` does for a served checkout.
     """
 
     for provider in installed_providers():

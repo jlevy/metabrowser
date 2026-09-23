@@ -15,6 +15,7 @@ import os
 import signal
 import threading
 import webbrowser
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from types import FrameType
 from typing import NoReturn, override
@@ -26,10 +27,11 @@ from metabrowser.build_version import build_state
 from metabrowser.cli.common import apply_log_level, validate_contained_path
 from metabrowser.cli.exit_codes import INTERRUPTED_EXIT_CODE
 from metabrowser.cli.http_readiness import wait_for_http_ok_then
-from metabrowser.cli.plugin_paths import resolve_extra_plugin_dirs
+from metabrowser.cli.plugin_paths import apply_extra_plugin_dirs
 from metabrowser.dotenv import load_dotenv_chain as _load_dotenv_chain
 from metabrowser.errors import CLIError
 from metabrowser.server_utils import find_available_local_port, port_search_range
+from metabrowser.source import subject_open_failure
 from metabrowser.view_routes import format_view_href
 
 
@@ -73,6 +75,17 @@ def _shutdown_noise_filter(record: logging.LogRecord) -> bool:
     if record.exc_info is not None and isinstance(record.exc_info[1], asyncio.CancelledError):
         return False
     return "timeout graceful shutdown exceeded" not in record.getMessage()
+
+
+def _subject_open_failure_filter(_record: logging.LogRecord) -> bool:
+    """Hold back Uvicorn's report of a served subject that did not open.
+
+    Starlette formats the lifespan's exception into a traceback, and Uvicorn logs
+    it and "Application startup failed". The failure already carries a message fit
+    to print, which the command reports once the server has stopped, so while it
+    stands nothing else from Uvicorn is worth a reader's attention.
+    """
+    return subject_open_failure() is None
 
 
 # Acknowledgement for the first Ctrl-C, so the interrupt is visibly
@@ -227,15 +240,60 @@ def run_serve(
     if not resolved.is_dir():
         raise CLIError(f"{resolved} is not a directory")
 
-    # Normalize env/CLI plugin directories before the discovery layer first
-    # runs at server-module import. This is the same path resolution and
-    # validation used by the plugin modes.
-    extra_plugin_dirs = resolve_extra_plugin_dirs(plugins_dir)
-    os.environ["METABROWSER_PLUGINS_DIRS"] = os.pathsep.join(
-        str(plugin_dir) for plugin_dir in extra_plugin_dirs
-    )
+    apply_extra_plugin_dirs(plugins_dir)
 
     selected_path = validate_contained_path(resolved, path) if path else None
+
+    # Always print a canonical `/view/` URL. The bare origin only redirects
+    # there, so emitting it would hand out a second spelling of the root.
+    logical_path = ""
+    if selected_path is not None:
+        logical_path = selected_path.relative_to(resolved).as_posix()
+        if selected_path.is_dir() and logical_path:
+            logical_path += "/"
+
+    def attach_root() -> None:
+        from metabrowser import server
+
+        server._set_root_dir(resolved)
+
+    serve_until_interrupted(
+        served=str(resolved),
+        view_href=format_view_href(logical_path),
+        host=host,
+        port=port,
+        no_open=no_open,
+        attach=attach_root,
+    )
+
+
+def stop_on_interrupt() -> None:
+    """From here to process exit, one Ctrl-C stops the process; see ``_stop_now``.
+
+    For a mode that does work of its own before serving, such as acquiring a Git
+    source, and installs the handler once that work is done.
+    """
+
+    signal.signal(signal.SIGINT, _stop_now)
+
+
+def serve_until_interrupted(
+    *,
+    served: str,
+    view_href: str,
+    host: str,
+    port: int,
+    no_open: bool,
+    attach: Callable[[], None],
+    banner: Sequence[str] = (),
+) -> None:
+    """Print the banner and serve until the process is stopped.
+
+    The caller has installed the interrupt handler and applied dotenv, the
+    capability block, the log level, and plugin directories. *attach* selects
+    what the server serves once its module is loaded; *served* names it in the
+    banner, followed by any *banner* lines.
+    """
 
     # Server import performs logging setup and plugin discovery. Keep it after
     # dotenv loading, CLI log-level application, and plugin-dir merging so all
@@ -255,7 +313,7 @@ def run_serve(
     except RuntimeError as exc:
         raise CLIError(str(exc)) from exc
 
-    server._set_root_dir(resolved)
+    attach()
 
     # A concrete --host is a trusted name the operator chose; permit it at
     # the Host-validation boundary. Wildcard binds accept every interface,
@@ -264,21 +322,15 @@ def run_serve(
     # 0.0.0.0-style name.
     server._register_allowed_host(host)
     display_host = "127.0.0.1" if host in server._WILDCARD_BIND_HOSTS else host
-
-    # Always print a canonical `/view/` URL. The bare origin only redirects
-    # there, so emitting it would hand out a second spelling of the root.
-    logical_path = ""
-    if selected_path is not None:
-        logical_path = selected_path.relative_to(resolved).as_posix()
-        if selected_path.is_dir() and logical_path:
-            logical_path += "/"
-    url = f"http://{display_host}:{actual_port}{format_view_href(logical_path)}"
+    url = f"http://{display_host}:{actual_port}{view_href}"
 
     # A checkout says so here too. This is the line someone reads while
     # deciding which build they are looking at — during a side-by-side
     # comparison it is the only line on screen that can say.
     state = build_state()
-    typer.echo(f"Serving {resolved} at {url}" + (f"  [dev build: {state}]" if state else ""))
+    typer.echo(f"Serving {served} at {url}" + (f"  [dev build: {state}]" if state else ""))
+    for line in banner:
+        typer.echo(line)
     if server._LOADED_PLUGINS:
         names = ", ".join(p.name for p in server._LOADED_PLUGINS)
         typer.echo(f"Plugins: {names}")
@@ -299,6 +351,7 @@ def run_serve(
     uvicorn_logger = logging.getLogger("uvicorn.error")
     original_uvicorn_log_level = uvicorn_logger.level
     uvicorn_logger.addFilter(_shutdown_noise_filter)
+    uvicorn_logger.addFilter(_subject_open_failure_filter)
     try:
         uvicorn_server = _QuietForceExitServer(
             uvicorn.Config(
@@ -311,6 +364,16 @@ def run_serve(
         )
         if _run_until_interrupted(uvicorn_server):
             raise typer.Exit(code=INTERRUPTED_EXIT_CODE)
+        # Uvicorn returns normally when the application's startup fails, so an
+        # unchecked return would report success for a server that never listened.
+        if uvicorn_server.started is False:
+            failure = subject_open_failure()
+            raise CLIError(
+                str(failure)
+                if failure is not None
+                else "the server did not start; the log above says why"
+            )
     finally:
         uvicorn_logger.removeFilter(_shutdown_noise_filter)
+        uvicorn_logger.removeFilter(_subject_open_failure_filter)
         uvicorn_logger.setLevel(original_uvicorn_log_level)

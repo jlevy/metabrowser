@@ -164,6 +164,31 @@ status: 200
   }
 }
 --- stderr ---
+# metab file://<ORIGIN> --api /api/source/status
+exit: 0
+--- stdout ---
+api: /api/source/status
+status: 200
+{
+  "subject": "git_revision",
+  "generation": 1,
+  "pin": "8653ceb4d5ca69e2e7e3b39d04645b3820233854",
+  "ref": "refs/remotes/origin/topic",
+  "ref_name": "topic",
+  "refreshable": true,
+  "latest": "8653ceb4d5ca69e2e7e3b39d04645b3820233854",
+  "last_fetch_at": "<TIME>",
+  "last_outcome": {
+    "operation": "acquire",
+    "outcome": "succeeded",
+    "at": "<TIME>"
+  },
+  "refreshing": false,
+  "stale": false,
+  "pull_request": null,
+  "selection_state": null
+}
+--- stderr ---
 # metab file://<ORIGIN> --api /api/tree?depth=0
 exit: 0
 --- stdout ---
@@ -2392,3 +2417,16 @@ status: 416
 }
 --- stderr ---
 Error: /api/file?path=g1-Ymlu/g1-b3ZlcnNpemUuYmlu&offset=16777217 returned HTTP 416
+# metab file://<ORIGIN> --check-api
+exit: 0
+--- stdout ---
+api check: <ORIGIN>
+scenario: nav-live-clear-filter
+initial tree: 200; response=tree
+live filter: 409; unsupported_for_subject
+cleared filter: 200; response=tree
+index: done
+final nav: 200; rows=11; files=16; size=16777474; index=done
+filtered nav: 200; rows=3; files=3; size=56; empty_dirs=0
+result: pass
+--- stderr ---

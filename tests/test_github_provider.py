@@ -18,8 +18,8 @@ import pytest
 from metabrowser.builtin_plugins.github.gh import GhError, gh_executable, run_gh
 from metabrowser.builtin_plugins.github.provider import MAX_FIRST_CLONE_KB, GithubProvider
 from metabrowser.cache.acquire import RepositoryTooLargeError
+from metabrowser.cache.origin import describe_remote_failure
 from metabrowser.cache.providers import installed_providers, repository_context_for
-from metabrowser.cache.remote import describe_remote_failure
 from metabrowser.cache.urls import GitSource
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="the fake gh is a POSIX shell script")

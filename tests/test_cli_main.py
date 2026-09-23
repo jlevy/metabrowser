@@ -848,20 +848,31 @@ def test_plain_local_root_fast_path_matches_url_grammar_fixture() -> None:
         assert _is_plain_local_root(case["input"]) is expected_local, case["id"]
 
 
-def test_cli_file_url_is_a_git_source_and_is_not_served() -> None:
-    result = runner.invoke(_app, ["file:///srv/git/repo.git", "--no-open"])
+def test_cli_file_url_is_a_git_source_and_is_not_walked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A `file://` ROOT is a Git source, so it is never walked as a directory."""
+
+    home = tmp_path / "home"
+    monkeypatch.setenv("METABROWSER_HOME", str(home))
+    result = runner.invoke(_app, ["file:///srv/git/repo.git", "--walk"])
     assert isinstance(result.exception, CLIError)
     message = str(result.exception)
-    assert "file Git sources are not served yet" in message
+    assert "--walk runs the filesystem inventory walker" in message
     assert "file:///srv/git/repo.git" in message
-    assert "--no-serve" in message
     assert "not a directory" not in message
+    assert not home.exists()
 
 
-def test_cli_https_clone_url_is_a_git_source_and_is_not_served() -> None:
-    result = runner.invoke(_app, ["https://example.com/owner/repo.git", "--walk"])
+def test_cli_ssh_clone_url_is_a_git_source_and_is_not_served(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "home"
+    monkeypatch.setenv("METABROWSER_HOME", str(home))
+    result = runner.invoke(_app, ["ssh://git@example.com/owner/repo.git", "--no-open"])
     assert isinstance(result.exception, CLIError)
-    assert "https Git sources are not opened yet" in str(result.exception)
+    assert "ssh Git sources are not served yet" in str(result.exception)
+    assert not home.exists()
 
 
 def test_cli_rejects_a_remote_helper_root() -> None:

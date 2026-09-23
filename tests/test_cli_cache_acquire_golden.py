@@ -40,7 +40,6 @@ from metabrowser.home import ensure_home, ensure_private_directory
 from tests.cache_home_fixture import (
     FIXTURE_VERSION,
     LEFTOVER_STAGING_ENTRY,
-    ORPHAN_STORE_KEY,
     _stage_and_publish_store,
 )
 from tests.test_cache_acquire import (
@@ -283,20 +282,26 @@ def test_golden_lock_free_staging_is_swept_on_acquire(
     check_golden("cli-cache-recover.txt", rendered)
 
 
+FIRST_ORPHAN_KEY = "0" * 64
+
+
 @posix_only
 def test_golden_unreferenced_store_is_kept_by_the_next_acquire(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     home = _isolate(tmp_path, monkeypatch)
+    # The acquired store's key hashes a URL under tmp_path, so /api/cache/stores lists
+    # the two stores in a different order from run to run unless the orphan's key
+    # sorts first whatever that hash is.
     ensure_home(home)
     migrate_layout(home, version=FIXTURE_VERSION)
-    _stage_and_publish_store(home, ORPHAN_STORE_KEY, with_revision=False)
+    _stage_and_publish_store(home, FIRST_ORPHAN_KEY, with_revision=False)
     empty = tmp_path / "root"
     empty.mkdir()
 
     before = _invoke([str(empty), "--api", "/api/cache/stores"])
     assert '"reference_state": "unreferenced"' in before.stdout
-    assert f"sha256:{ORPHAN_STORE_KEY}" in before.stdout
+    assert f"sha256:{FIRST_ORPHAN_KEY}" in before.stdout
 
     origin = _deterministic_origin(tmp_path)
     acquired = _invoke([_file_url(origin), "--no-serve"])
@@ -304,7 +309,7 @@ def test_golden_unreferenced_store_is_kept_by_the_next_acquire(
     after = _invoke([str(empty), "--api", "/api/cache/stores"])
     assert '"reference_state": "unreferenced"' in after.stdout
     assert '"reference_state": "referenced"' in after.stdout
-    assert f"sha256:{ORPHAN_STORE_KEY}" in after.stdout
+    assert f"sha256:{FIRST_ORPHAN_KEY}" in after.stdout
     assert ORIGIN_REVISION in after.stdout
     assert list((home / "cache" / "repository-stores").iterdir()) != []
 

@@ -14,17 +14,17 @@ from typing import ClassVar
 
 import pytest
 
-from metabrowser.cache.remote import (
+from metabrowser.cache.origin import (
     HTTP_LOW_SPEED_LIMIT_BYTES,
     HTTP_LOW_SPEED_TIME_S,
     PROTOCOL_ARGS,
     classify_remote_failure,
     describe_remote_failure,
-    remote_git_args,
+    origin_git_args,
 )
 from metabrowser.git.process import ACQUISITION_POLICY, git_environment
 
-# Captured 2026-09-23 from Git 2.50.1 with LC_ALL=C; see cache/remote.py.
+# Captured 2026-09-23 from Git 2.50.1 with LC_ALL=C; see cache/origin.py.
 CAPTURED = {
     "fatal: could not read Username for 'https://github.com': terminal prompts disabled": (
         "not_found_or_private"
@@ -110,7 +110,7 @@ def test_messages_name_the_source_and_state_and_nothing_else() -> None:
 
 
 def test_every_network_command_gets_the_allowlist_and_the_stall_bound() -> None:
-    args = remote_git_args("https://example.com/o/r.git")
+    args = origin_git_args("https://example.com/o/r.git")
     assert args[: len(PROTOCOL_ARGS)] == PROTOCOL_ARGS
     assert "protocol.allow=never" in args
     assert "protocol.https.allow=always" in args and "protocol.file.allow=always" in args

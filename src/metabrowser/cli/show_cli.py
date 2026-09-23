@@ -163,7 +163,7 @@ def _prepare_plugins(plugins_dir: list[Path] | None) -> None:
     )
 
 
-def _display_git_path(selection: str) -> GitPath:
+def display_git_path(selection: str) -> GitPath:
     """Read one pinned selection strictly as slash-separated display names.
 
     ``GitPath.from_display`` reads an all-``g1-`` spelling as the wire form.
@@ -184,8 +184,12 @@ def _display_git_path(selection: str) -> GitPath:
     return path
 
 
-def _git_wire_candidates(selection: str, *, from_route: bool) -> list[str]:
+def git_wire_candidates(selection: str, *, from_route: bool) -> list[str]:
     """Wire identities to try for one pinned selection, best reading first.
+
+    A typed selection is a path inside the pinned tree, so a leading `/` or `./`, a
+    `.` segment, and a trailing `/` name the same entry they would under a served
+    folder, and are dropped before either reading.
 
     A ``/view/`` address is already a wire identity, so it has exactly one
     reading and a tracked file whose name happens to look like a wire token
@@ -206,8 +210,9 @@ def _git_wire_candidates(selection: str, *, from_route: bool) -> list[str]:
             candidates.append(wire)
 
     if not from_route:
+        selection = "/".join(part for part in selection.split("/") if part not in ("", "."))
         with suppress(GitPathError):
-            _add(_display_git_path(selection).to_wire())
+            _add(display_git_path(selection).to_wire())
     try:
         git_path, inner = split_git_container_wire(selection)
     except GitPathError:
@@ -303,7 +308,7 @@ async def ashow_active(
             if decoded is None:
                 raise CLIError(f"{display_path} is not a route this grammar accepts")
             selection = decoded
-        git_candidates = _git_wire_candidates(selection, from_route=from_route)
+        git_candidates = git_wire_candidates(selection, from_route=from_route)
         if not git_candidates:
             raise CLIError(f"{display_path} is not a GitPath this pin accepts")
         git_wire = git_candidates[0]

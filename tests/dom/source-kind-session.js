@@ -23,7 +23,13 @@
 //   payload's `name` and `path`;
 // - whether Recent answers the Files panel, index progress polls, and the live
 //   event stream opens, or the one-shot catalog starts instead;
-// - which nav filter controls render. A pin has no mtime and no ignore state.
+// - which nav filter controls render. A pin has no mtime and no ignore state;
+// - the navigation heading as served and after the tree loads. A folder's
+//   heading becomes the tree root's name; a pin keeps the ref and short commit
+//   the server rendered, since its tree root is the empty GitPath;
+// - the heading tooltip's file count and size from the top-level rows, which
+//   must equal the server's own whole-tree summary. A top-level symlink is where
+//   they differ: a pin counts it as a blob, and a folder does not follow it.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -51,7 +57,11 @@ const PRODUCTION_MODULES = [
 
 // Gates and helpers lifted verbatim from app.js.
 const LIFTED = [
+  "esc",
+  "pathBaseHtml",
   "isGitRevisionSource",
+  "renderServedRootHeading",
+  "rootTallyFromTopLevel",
   "treeNodeDisplayName",
   "filesPanelUsesRecentSource",
   "startIndexProgressPolling",
@@ -203,7 +213,7 @@ function chipKeys(html) {
 }
 
 function observe(kind) {
-  const { shell, tree } = served[kind];
+  const { shell, heading: servedHeading, root, tree, summary } = served[kind];
   const { sandbox, probe, navFilterBar } = createContext();
 
   // The served block runs first, exactly as the page's inline scripts do.
@@ -228,6 +238,17 @@ function observe(kind) {
     expected: [...parents, node].map((entry) => sandbox.treeNodeDisplayName(entry.name)).join("/"),
   }));
 
+  const { files, size } = sandbox.rootTallyFromTopLevel(tree);
+  const headingTally = { files, size };
+  assert(
+    files === summary.files && size === summary.size,
+    `${kind}: the heading counts ${files} files, ${size} bytes; the server ${summary.files}, ${summary.size}`,
+  );
+
+  // The tree's first load settles the heading, as the shell does.
+  const heading = { innerHTML: servedHeading };
+  sandbox.renderServedRootHeading(heading, root);
+
   sandbox.renderNavFilterBar();
   const navFilterControls = chipKeys(navFilterBar.innerHTML);
   sandbox.filterState.set({ recency: "24h" });
@@ -247,6 +268,8 @@ function observe(kind) {
     sourceKind: sandbox.metabrowser.sourceKind(),
     shell,
     rows: rows.map(({ expected: _expected, ...row }) => row),
+    heading: { served: servedHeading, afterTreeLoad: heading.innerHTML },
+    tally: { heading: headingTally, server: summary },
     gates: {
       filesPanelUsesRecentSource,
       indexProgress: { refreshes: probe.progressRefreshes, intervals: probe.intervals },
@@ -284,6 +307,15 @@ assert(
     pin.gates.inventoryEvents.eventSourcesOpened === 0 &&
     pin.gates.inventoryEvents.catalogFeedStarts === 1,
   "a pin must start the one-shot catalog instead of the live stream",
+);
+assert(
+  folder.heading.afterTreeLoad.includes(">folder<"),
+  "a folder's heading must become the served root's name",
+);
+assert(
+  pin.heading.afterTreeLoad === pin.heading.served &&
+    pin.heading.served.includes("header-revision"),
+  "a pin's heading must keep the ref and commit the server rendered",
 );
 for (const key of ["recency", "showIgnored"]) {
   assert(folder.gates.navFilterControls.includes(key), `a folder lost the ${key} control`);

@@ -19,7 +19,7 @@ import pytest
 
 from metabrowser.builtin_plugins.github import provider as github_provider
 from metabrowser.builtin_plugins.github.provider import GithubProvider, credential_helper_args
-from metabrowser.cache.remote import remote_git_args
+from metabrowser.cache.origin import origin_git_args
 from metabrowser.git.process import ACQUISITION_POLICY, git_environment
 
 pytestmark = [
@@ -143,10 +143,10 @@ def test_the_provider_adds_the_helper_only_for_github_remotes(
         f"HOME='/srv/o'\"'\"'neil' {quoted} auth git-credential",
     )
     # Every network command gets it, after the protocol allowlist and stall bound.
-    args = remote_git_args("https://github.com/octo/demo")
+    args = origin_git_args("https://github.com/octo/demo")
     assert args[-len(helper) :] == helper
     assert "protocol.allow=never" in args and "http.lowSpeedLimit=1000" in args
-    assert remote_git_args("https://example.com/octo/demo.git")[-1] == "http.lowSpeedTime=30"
+    assert origin_git_args("https://example.com/octo/demo.git")[-1] == "http.lowSpeedTime=30"
     monkeypatch.setattr(github_provider, "gh_executable", lambda: None)
     assert provider.git_config("https://github.com/octo/demo") == ()
 
@@ -181,13 +181,13 @@ def test_the_acquisition_environment_asks_gh_the_same_way(
             timeout=30,
         )
 
-    github = fill(remote_git_args("https://github.com/octo/demo"), "github.com")
+    github = fill(origin_git_args("https://github.com/octo/demo"), "github.com")
     assert f"password={GH_SENTINEL}".encode() in github.stdout
     seen = _gh_env(tmp_path)
     assert seen["HOME"] == str(real_home)
     assert seen["GH_PROMPT_DISABLED"] == "1" and seen["GH_NO_UPDATE_NOTIFIER"] == "1"
     assert not {"GH_DEBUG", "GH_HOST", "GH_REPO", "GH_PAGER"} & seen.keys()
-    other = fill(remote_git_args("https://example.com/octo/demo.git"), "example.com")
+    other = fill(origin_git_args("https://example.com/octo/demo.git"), "example.com")
     assert other.returncode != 0
     assert GH_SENTINEL.encode() not in other.stdout
     assert USER_SENTINEL.encode() not in other.stdout

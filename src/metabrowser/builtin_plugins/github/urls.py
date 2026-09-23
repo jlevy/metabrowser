@@ -47,8 +47,9 @@ _SCP = re.compile(r"^(?P<user>[^@/:]+)@(?P<host>[^/:]+):(?P<path>.*)$", re.DOTAL
 OWNER = re.compile(r"^[A-Za-z0-9-]{1,39}$")
 REPOSITORY = re.compile(r"^[A-Za-z0-9._-]{1,100}$")
 _PULL_REQUEST = re.compile(r"^[1-9][0-9]{0,9}$")
-# Git abbreviates an object ID to at least four hexadecimal digits.
-_COMMIT_ID = re.compile(r"^[0-9A-Fa-f]{4,64}$")
+# The resolver's own bound: seven hexadecimal digits is the shortest commit ID Git
+# abbreviates to by default and the shortest GitHub shows.
+_COMMIT_ID = re.compile(r"^[0-9A-Fa-f]{7,64}$")
 _LINE_ANCHOR = re.compile(
     r"^L([1-9][0-9]{0,8})(?:C([1-9][0-9]{0,8}))?(?:-L([1-9][0-9]{0,8})(?:C([1-9][0-9]{0,8}))?)?$"
 )
@@ -334,7 +335,8 @@ def _commit_id(text: str, repo_url: str) -> str:
     if not _COMMIT_ID.match(text):
         raise _Refuse(
             "invalid_commit_id",
-            f"a commit URL names a hexadecimal commit ID; open the repository at {repo_url}",
+            "a commit URL names a commit ID of 7 to 64 hexadecimal digits; "
+            f"open the repository at {repo_url}",
         )
     return text.lower()
 

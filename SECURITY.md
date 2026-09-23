@@ -142,6 +142,15 @@ never sends `Access-Control-Allow-Origin` to compensate.
 By default, sandboxed scripts can still run, phone home, and use `/raw` as an existence
 oracle. `--untrusted` omits the preview and stops script execution on raw responses.
 
+A Git source acquired from a `file://` URL is third-party content, and every mode that
+opens it, serving included, runs it under the untrusted profile: `--untrusted` is
+implied, the `METAB_*` enables are ignored, and `--allow-edits` is refused.
+A server serving such a pin reads only that pin’s store.
+It answers `/api/cache/…` with `unsupported_for_subject`, so the records that name every
+other cached source are never served beside acquired content, and it answers the
+path-shaped `/raw/{path}` the same way, because the preview that is that form’s only
+consumer is never offered there.
+
 Content viewed through Metabrowser gets exactly the privilege a browser would give the
 same file opened directly, and never Metabrowser’s server-side API.
 

@@ -274,9 +274,9 @@ Each step is one stacked pull request, implemented and reviewed by separate agen
 | --- | --- | --- |
 | 1. Design | This plan, bead changes, superseded notes | Plan agreed |
 | 2. Simplify | Full clones; remove convergence, subject refs, leases, maintenance locks, and store reclamation; edit the unreleased records and fixtures in place | T0 still passes, with less code |
-| 3. Serve a pin | Browser serving of a `file://` pin, forced untrusted profile, `repository_context`, served `/raw` decision | Open a `file://` source in the browser and browse it; no network |
+| 3. Serve a pin | Browser serving of a `file://` pin, forced untrusted profile, served `/raw` decision; `repository_context` moved to step 5, since only a GitHub mirror has one | Open a `file://` source in the browser and browse it; no network |
 | 4. Refresh and pin switching | Coordinator, status, refresh and pin routes, browser stale label and newer-revision offer, stale history cursors, fetch side lock and stale-lock cleanup | Push to a `file://` origin, see the offer, switch; no network |
-| 5. GitHub URL open | Reducer plugin with network-free goldens for every URL shape, HTTPS with the `gh` helper, error classification, measured stall bound, ref and path split, line anchors, SIGHUP handling | Opt-in live smoke on a public repository |
+| 5. GitHub URL open | Reducer plugin with network-free goldens for every URL shape, HTTPS with the `gh` helper, error classification, measured stall bound, ref and path split, line anchors, SIGHUP handling, `repository_context` for GitHub mirrors | Opt-in live smoke on a public repository |
 | 6. PR data | `gh` runner and account checks, PR records, `refs/pull/<n>/head`, comparison endpoints, CLI inspection | `metab <pr-url> --api …` shows the pull request, including offline |
 | 7. PR view | Pull-request page: conversation, reviews, review comments, checks, Files changed | Paste a PR URL and read it in the browser; reload and reopen offline |
 
@@ -327,6 +327,11 @@ Settled by measurement during implementation, each with a documented default:
   packs without deleting objects if lookups slow down.
 - Bounds on pull-request records.
 - The minimum `gh` version for `auth status --json`.
+
+Step 4 set the freshness window and the browser’s polling intervals over `file://`; each
+default and its measurement sits beside its constant, `FRESHNESS_WINDOW_S` in
+`mirror_refresh.py` and `FAST_POLL_MS` and `SLOW_POLL_MS` in
+`static/source-freshness.js`. HTTPS may tune them in step 5.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

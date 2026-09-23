@@ -4,16 +4,21 @@
       "window.METABROWSER_SOURCE_KIND=\"filesystem\";",
       "window.METABROWSER_REPOSITORY_CONTEXT=null;"
     ],
+    "heading": "<span class=\"path\"><span class=\"path-base\">folder</span></span>",
+    "root": "folder",
     "tree": [
       {
         "name": "docs",
         "path": "docs",
         "type": "dir",
+        "total_files": 1,
+        "total_size": 8,
         "children": [
           {
             "name": "guide.md",
             "path": "docs/guide.md",
-            "type": "file"
+            "type": "file",
+            "size": 8
           }
         ]
       },
@@ -21,41 +26,61 @@
         "name": "g1-data",
         "path": "g1-data",
         "type": "dir",
+        "total_files": 1,
+        "total_size": 11,
         "children": [
           {
             "name": "note.txt",
             "path": "g1-data/note.txt",
-            "type": "file"
+            "type": "file",
+            "size": 11
           }
         ]
       },
       {
         "name": "50%25-off.md",
         "path": "50%25-off.md",
-        "type": "file"
+        "type": "file",
+        "size": 5
       },
       {
         "name": "README.md",
         "path": "README.md",
-        "type": "file"
+        "type": "file",
+        "size": 15
+      },
+      {
+        "name": "guide-link.md",
+        "path": "guide-link.md",
+        "type": "symlink",
+        "size": 13
       }
-    ]
+    ],
+    "summary": {
+      "files": 4,
+      "size": 39
+    }
   },
   "git_revision": {
     "shell": [
       "window.METABROWSER_SOURCE_KIND=\"git_revision\";",
       "window.METABROWSER_REPOSITORY_CONTEXT=null;"
     ],
+    "heading": "<span class=\"path\"><span class=\"path-base\">topic</span></span><span class=\"header-revision\">232207c214b3</span>",
+    "root": null,
     "tree": [
       {
         "name": "docs",
         "path": "g1-ZG9jcw",
         "type": "dir",
+        "total_files": 1,
+        "total_size": 8,
         "children": [
           {
             "name": "guide.md",
             "path": "g1-ZG9jcw/g1-Z3VpZGUubWQ",
-            "type": "file"
+            "type": "file",
+            "size": 8
           }
         ]
       },
@@ -63,24 +88,39 @@
         "name": "g1-data",
         "path": "g1-ZzEtZGF0YQ",
         "type": "dir",
+        "total_files": 1,
+        "total_size": 11,
         "children": [
           {
             "name": "note.txt",
             "path": "g1-ZzEtZGF0YQ/g1-bm90ZS50eHQ",
-            "type": "file"
+            "type": "file",
+            "size": 11
           }
         ]
       },
       {
         "name": "50%-off.md",
         "path": "g1-NTAlLW9mZi5tZA",
-        "type": "file"
+        "type": "file",
+        "size": 5
       },
       {
         "name": "README.md",
         "path": "g1-UkVBRE1FLm1k",
-        "type": "file"
+        "type": "file",
+        "size": 15
+      },
+      {
+        "name": "guide-link.md",
+        "path": "g1-Z3VpZGUtbGluay5tZA",
+        "type": "symlink",
+        "size": 13
       }
-    ]
+    ],
+    "summary": {
+      "files": 5,
+      "size": 52
+    }
   }
 }
