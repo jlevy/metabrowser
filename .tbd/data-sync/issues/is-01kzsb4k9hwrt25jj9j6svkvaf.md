@@ -3,9 +3,9 @@ type: is
 id: is-01kzsb4k9hwrt25jj9j6svkvaf
 title: "Repository Phase 2A: URL reduction, HTTPS opening and immutable serving"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 19
+version: 20
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: null
 labels:
@@ -25,8 +25,12 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-08-11T21:19:59.280Z
-updated_at: 2026-09-23T02:26:01.362Z
+updated_at: 2026-09-23T07:37:09.585Z
 started_at: 2026-09-16T21:10:44.828Z
+closed_at: 2026-09-23T07:37:09.584Z
+close_reason: "Superseded 2026-09-23 by the thin-mirror plan (docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md, PR #227; epic mb-hall), per the user's decisions. Replacement: mb-bgs7 (URL open: HTTPS mirror, internal GitHub resolver, ref/path split, serving), with no public reducer SDK."
+resolution: null
+duplicate_of: null
 extensions:
   linear:
     id: 04c1dc4d-0602-449f-95a5-09481c36a843

@@ -3,9 +3,9 @@ type: is
 id: is-01m2h9jka5t3kw909ae7xefx8d
 title: "Provider SDK: capability registry, injection, and async lifecycle"
 kind: feature
-status: open
+status: closed
 priority: 1
-version: 8
+version: 9
 spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
 delegate: null
 labels:
@@ -21,7 +21,11 @@ parent_id: is-01m10xd666fefs5z7ft5m58zj0
 hold: null
 hold_until: null
 created_at: 2026-09-15T01:05:50.914Z
-updated_at: 2026-09-23T00:21:41.301Z
+updated_at: 2026-09-23T07:37:13.657Z
 started_at: 2026-09-16T22:38:02.389Z
+closed_at: 2026-09-23T07:37:13.654Z
+close_reason: "Superseded 2026-09-23 by the thin-mirror plan (docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md, PR #227; epic mb-hall), per the user's decisions. Replacement: mb-nkmq (PR data via gh runner and JSON records); the token broker, askpass bridge, provider snapshot store, adapter registry, binding and rebind are retired."
+resolution: null
+duplicate_of: null
 ---
 Add a closed ProviderAdapterSpec/capability registry for trusted installed provider plugins. Validate provider and instance claims plus callable imports, reject duplicate claims, construct adapters in application lifespan, inject only provider-neutral ports, and await cancellation/close on shutdown and root replacement. RepositoryObjectJobPort accepts a non-secret authorization context plus an opaque process-local GitFetchCredentialLease; a plugin may pass that capability but cannot inspect, serialize, log, or persist it. Hosted-review services discover adapters through this registry; server, cache, routes, and renderers never import GitHub.

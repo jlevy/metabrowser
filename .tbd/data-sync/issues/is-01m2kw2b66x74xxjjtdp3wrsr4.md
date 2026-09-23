@@ -3,9 +3,9 @@ type: is
 id: is-01m2kw2b66x74xxjjtdp3wrsr4
 title: "GitHub Phase 2A review: publish repository URL-open PR"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 17
+version: 18
 spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
 delegate: null
 labels:
@@ -28,7 +28,11 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-09-16T01:07:30.107Z
-updated_at: 2026-09-23T02:26:01.687Z
+updated_at: 2026-09-23T07:37:10.340Z
 started_at: 2026-09-16T21:12:28.687Z
+closed_at: 2026-09-23T07:37:10.338Z
+close_reason: "Superseded 2026-09-23 by the thin-mirror plan (docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md, PR #227; epic mb-hall), per the user's decisions. Replacement: mb-bgs7 (URL open: HTTPS mirror, internal GitHub resolver, ref/path split, serving), with no public reducer SDK."
+resolution: null
+duplicate_of: null
 ---
 Independently review installed reducer ownership/rejection, HTTPS acquisition mb-s1lt, and URL-open/serving mb-ew38 over the reviewed shared store and immutable source. Publish one new Phase 2A PR above the exact green foundation convergence head recorded by mb-j439. Prove cold public HTTPS repository URL -> leased default full-OID subject -> browser and inspection, as well as warm/read-only/offline reuse with no network or provider credential lookup, selection retention, populated-cache trust isolation and cleanup. Resolve findings, pass make verify and CI, and record exact PR/base/head, review and stack evidence with mb-n2ro. The new PR extends Stack 218; do not merge.

@@ -3,9 +3,9 @@ type: is
 id: is-01m2kw2c5sak3agfksaqecefa5
 title: "GitHub Phase 3B review: publish direct PR cache PR"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 17
+version: 18
 spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
 delegate: null
 labels:
@@ -28,7 +28,11 @@ parent_id: is-01m10xd666fefs5z7ft5m58zj0
 hold: null
 hold_until: null
 created_at: 2026-09-16T01:07:31.128Z
-updated_at: 2026-09-23T00:21:41.790Z
+updated_at: 2026-09-23T07:37:16.846Z
 started_at: 2026-09-16T21:10:44.943Z
+closed_at: 2026-09-23T07:37:16.845Z
+close_reason: "Superseded 2026-09-23 by the thin-mirror plan (docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md, PR #227; epic mb-hall), per the user's decisions. Replacement: mb-nkmq (PR data via gh runner and JSON records); the token broker, askpass bridge, provider snapshot store, adapter registry, binding and rebind are retired."
+resolution: null
+duplicate_of: null
 ---
 Independently review the directly addressed PR bundle, shared provider mirror reuse, selected Git OIDs, provider and Git consistency, offline reuse, partiality, and publication. Resolve findings through the review shortcut, run make verify, and publish one formal GitHub PR with gh stacked on the exact green provider-foundation head. Record exact PR, base, head, OIDs, formal stack view, review, final green CI, and mb-n2ro registration. Do not merge.

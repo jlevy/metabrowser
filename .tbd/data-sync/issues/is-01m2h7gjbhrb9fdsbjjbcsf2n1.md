@@ -3,9 +3,9 @@ type: is
 id: is-01m2h7gjbhrb9fdsbjjbcsf2n1
 title: "GitHub Phase 3A: provider binding and repository summary snapshot"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 10
+version: 11
 spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
 delegate: null
 labels:
@@ -21,7 +21,11 @@ parent_id: is-01m10xd666fefs5z7ft5m58zj0
 hold: null
 hold_until: null
 created_at: 2026-09-15T00:29:47.247Z
-updated_at: 2026-09-23T00:21:40.995Z
+updated_at: 2026-09-23T07:37:15.211Z
 started_at: 2026-09-16T21:10:44.888Z
+closed_at: 2026-09-23T07:37:15.208Z
+close_reason: "Superseded 2026-09-23 by the thin-mirror plan (docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md, PR #227; epic mb-hall), per the user's decisions. Replacement: mb-nkmq (PR data via gh runner and JSON records); the token broker, askpass bridge, provider snapshot store, adapter registry, binding and rebind are retired."
+resolution: null
+duplicate_of: null
 ---
 Bind a conservative credential-free source identity to a stable GitHub RepositoryRef without requiring a managed cache entry or persisting a local path. Discover GitHub through mb-ji83 and publish HostedRepository, Retrieval, and committed repository-summary manifests through the shared provider store. Permit many source IDs to map to one repository; reject conflicting rebinds; isolate auth-scoped pointers and validators; and revalidate source, repository, and auth identity after lock-free acquisition. Expose summary routes and CLI parity without raw responses or credentials.

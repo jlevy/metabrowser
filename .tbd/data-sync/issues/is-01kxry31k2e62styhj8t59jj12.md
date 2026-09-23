@@ -3,9 +3,9 @@ type: is
 id: is-01kxry31k2e62styhj8t59jj12
 title: "Platform: bounded subprocess runner for provider adapters"
 kind: feature
-status: open
+status: closed
 priority: 1
-version: 21
+version: 22
 spec_path: docs/project/architecture/arch-hosted-review-model.md
 delegate: claude-code@spud10.local
 labels:
@@ -23,8 +23,12 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-07-17T21:00:33.250Z
-updated_at: 2026-09-23T00:21:40.519Z
+updated_at: 2026-09-23T07:37:12.127Z
 started_at: 2026-09-16T22:03:41.555Z
+closed_at: 2026-09-23T07:37:12.126Z
+close_reason: "Superseded 2026-09-23 by the thin-mirror plan (docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md, PR #227; epic mb-hall), per the user's decisions. Replacement: mb-nkmq (PR data via gh runner and JSON records); the token broker, askpass bridge, provider snapshot store, adapter registry, binding and rebind are retired."
+resolution: null
+duplicate_of: null
 extensions:
   linear:
     id: b2c972be-cc9e-4692-b3ca-d041777ec425

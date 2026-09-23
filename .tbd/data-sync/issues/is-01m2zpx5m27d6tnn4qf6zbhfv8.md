@@ -5,7 +5,7 @@ title: Apply a forced untrusted profile to every acquired-source entrypoint
 kind: feature
 status: in_progress
 priority: 1
-version: 6
+version: 7
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: claude-code@spud10
 labels:
@@ -14,11 +14,13 @@ labels:
 dependencies:
   - type: blocks
     target: is-01m35tapm6wjnn235hr3s669b7
+  - type: blocks
+    target: is-01m36k3xm77y33seww2jbwwb69
 parent_id: is-01m2yxd3tnr1s2zf0h0jat1ey2
 hold: null
 hold_until: null
 created_at: 2026-09-20T15:28:10.881Z
-updated_at: 2026-09-23T03:55:24.090Z
+updated_at: 2026-09-23T07:37:25.745Z
 started_at: 2026-09-23T03:31:09.257Z
 ---
 Finding S209-3 from the v0.11 stabilization review. Owning layer: PR #209. Full evidence, path:line, and suggested fix are in the notes of mb-gacf under S209-3.
