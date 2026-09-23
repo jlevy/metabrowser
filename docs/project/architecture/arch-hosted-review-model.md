@@ -1,5 +1,10 @@
 # Hosted Review Model and Provider Boundary
 
+**Superseded in part (2026-09-23):** pull-request data for the v0.12 alpha is stored as
+plain validated JSON records per
+[Thin Mirror for Git and GitHub Browsing](../specs/active/plan-2026-09-23-v012-thin-mirror.md);
+the provider boundary and snapshot store below are not built for the alpha.
+
 **Status:** Accepted design; the no-network record families, source-based provider
 bindings, provider revision observations, the non-persisted local object-availability
 report, scrubbed GitHub coverage oracle, installed enforced contracts and resource
