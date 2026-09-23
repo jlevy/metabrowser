@@ -32,8 +32,8 @@ Plugin contracts:
 - The repository cache’s `f01` records install as enforced contracts through a
   `repository-cache` capability provider, so `metab --doctor` now reports three
   capability providers and 22 contracts.
-  No command writes the cache yet: the application home and `CACHEDIR.TAG` are created
-  when opening a repository URL lands.
+  The application home and `CACHEDIR.TAG` are created by the first `file://`
+  acquisition.
 
 - A collection name declared in a resource publication profile is limited to the same
   128 characters as the collection name in a resource-set record, so a longer
