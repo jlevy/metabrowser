@@ -50,7 +50,18 @@ GITHUB_API_VERSION: Final = "2022-11-28"
 _READ_CHUNK_BYTES: Final[int] = 64 * 1024
 _STDERR_MAX_BYTES: Final[int] = 16 * 1024
 _ACCOUNT_MAX_BYTES: Final[int] = 64 * 1024
-_DROPPED_ENV: Final[tuple[str, ...]] = ("GH_DEBUG", "GH_HOST", "GH_REPO", "GH_PAGER", "DEBUG")
+# Dropped from the inherited environment. CLICOLOR_FORCE and GH_FORCE_TTY, both common in
+# dotfiles, make gh colorize --include headers and JSON even with NO_COLOR set, and
+# escape codes in a status line or a body make every read unparseable.
+_DROPPED_ENV: Final[tuple[str, ...]] = (
+    "GH_DEBUG",
+    "GH_HOST",
+    "GH_REPO",
+    "GH_PAGER",
+    "GH_FORCE_TTY",
+    "CLICOLOR_FORCE",
+    "DEBUG",
+)
 # gh's documented exit status when a command needs authentication.
 _GH_EXIT_AUTH: Final = 4
 _API_PATH = re.compile(r"^repos/[A-Za-z0-9._/-]+(?:\?[A-Za-z0-9_=&.-]*)?$")
@@ -102,6 +113,10 @@ class GhUnavailableError(GhError):
 
     def __init__(self, message: str = "GitHub CLI (gh) is not on PATH") -> None:
         super().__init__(message, state="gh_missing")
+
+
+class GhOutputTooLargeError(GhError):
+    """``gh`` wrote more than the output cap; a caller may ask for less."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -208,7 +223,7 @@ async def _run(args: Sequence[str], *, timeout_s: float, max_bytes: int) -> _Com
         await terminate_git_process(proc)
         raise
     if overflowed:
-        raise GhError(f"gh wrote more than {max_bytes} bytes")
+        raise GhOutputTooLargeError(f"gh wrote more than {max_bytes} bytes")
     if returncode != 0:
         log.debug("gh %s exited %s: %s", args[0] if args else "", returncode, stderr[:512])
     return _Completed(returncode, stdout, stderr)
@@ -280,9 +295,25 @@ def rate_limit_reset(response: GhResponse, *, now: datetime) -> str | None:
     if response.headers.get("x-ratelimit-remaining") == "0":
         reset = response.headers.get("x-ratelimit-reset", "")
         return _epoch_text(int(reset)) if reset.isdigit() else "unknown"
-    if response.status == 429:
+    if response.status == 429 or _mentions_rate_limit(response.body):
         return "unknown"
     return None
+
+
+def _mentions_rate_limit(body: bytes) -> bool:
+    """Whether a refusal's message names a rate limit, as a secondary limit's does.
+
+    A secondary limit can answer 403 with requests still remaining and no
+    ``Retry-After``; its message ("You have exceeded a secondary rate limit") is then
+    the only sign. The message is matched, never shown.
+    """
+
+    try:
+        payload = json.loads(body[:_STDERR_MAX_BYTES])
+    except ValueError:
+        return False
+    message = payload.get("message") if isinstance(payload, dict) else None
+    return isinstance(message, str) and "rate limit" in message.lower()
 
 
 def _refusal(response: GhResponse, *, now: datetime) -> GhError | None:
@@ -292,7 +323,7 @@ def _refusal(response: GhResponse, *, now: datetime) -> GhError | None:
         return None
     reset = rate_limit_reset(response, now=now)
     if reset is not None:
-        when = "" if reset == "unknown" else f" until {reset}"
+        when = "; try again in a few minutes" if reset == "unknown" else f" until {reset}"
         return GhError(
             f"GitHub's API rate limit is exhausted{when}",
             state="rate_limited",

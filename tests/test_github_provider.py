@@ -67,6 +67,8 @@ def test_a_repository_over_the_limit_is_refused_before_cloning(
     assert f"{MAX_FIRST_CLONE_KB + 1:,} KB" in message and "(too_large)" in message
     assert (fake_gh.parent / "gh-log.args").read_text().split() == [
         "api",
+        "--hostname",
+        "github.com",
         "repos/octo/demo",
         "--jq",
         ".size",

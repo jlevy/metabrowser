@@ -109,7 +109,7 @@ class GithubProvider:
         owner, repository = parsed
         try:
             out = await run_gh(
-                ["api", f"repos/{owner}/{repository}", "--jq", ".size"],
+                ["api", "--hostname", "github.com", f"repos/{owner}/{repository}", "--jq", ".size"],
                 max_bytes=_SIZE_OUTPUT_MAX_BYTES,
             )
         except GhError as exc:
