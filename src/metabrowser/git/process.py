@@ -177,6 +177,8 @@ BATCH_OBJECT_POLICY: Final[GitProcessPolicy] = GitProcessPolicy(
     child_umask=0o077,
     isolate_user_config=True,
     no_lazy_fetch=True,
+    # Untranslated stderr: an older Git's refused lazy fetch is read from it.
+    extra_env={"LC_ALL": "C"},
 )
 
 

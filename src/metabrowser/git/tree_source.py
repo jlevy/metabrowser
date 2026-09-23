@@ -144,6 +144,19 @@ class GitObjectUnavailableError(GitError, ContentUnavailableError):
         super().__init__(f"object_unavailable: {oid}")
 
 
+class _LazyFetchRefusedError(GitObjectUnavailableError):
+    """An older Git died instead of answering ``missing`` for this object."""
+
+
+# ``git_environment`` runs the batch actor under ``LC_ALL=C``, so this is Git's own
+# untranslated text (promisor-remote.c ``promisor_remote_get_direct``).
+_LAZY_FETCH_REFUSED_RE: Final = re.compile(
+    rb"could not fetch ([0-9a-f]{40}|[0-9a-f]{64}) from promisor remote"
+)
+# A dead actor's stderr is at EOF already; this only bounds a pathological pipe.
+_DEAD_ACTOR_STDERR_WAIT_S: Final = 2.0
+
+
 class GitBlobTooLargeError(GitError):
     """``info`` declared a blob larger than the preview/raw bound."""
 
@@ -509,19 +522,32 @@ class _BatchObjectReader:
         return await self._within_deadline(self._info_many_inner(oids))
 
     async def _info_many_inner(self, oids: tuple[str, ...]) -> dict[str, _ObjectInfo | None]:
-        reader, writer = await self._pipes()
-        for oid in oids:
-            writer.write(f"info {oid}\n".encode("ascii"))
-        writer.write(b"flush\n")
-        await writer.drain()
         found: dict[str, _ObjectInfo | None] = {}
-        for oid in oids:
-            header = await _read_header(reader)
-            parts = header.split(b" ")
-            if len(parts) == 2 and parts[1] == b"missing":
-                found[oid] = None
+        pending = list(oids)
+        # Each pass answers at least one object, so this ends. A pass ends early only
+        # when an older Git dies refusing a lazy fetch; that object is missing, and the
+        # rest are asked again of a new actor.
+        while pending:
+            reader, writer = await self._pipes()
+            for oid in pending:
+                writer.write(f"info {oid}\n".encode("ascii"))
+            writer.write(b"flush\n")
+            await writer.drain()
+            answered = 0
+            try:
+                for oid in pending:
+                    header = await self._header(reader, pending[answered:])
+                    parts = header.split(b" ")
+                    if len(parts) == 2 and parts[1] == b"missing":
+                        found[oid] = None
+                    else:
+                        found[oid] = _parse_info_header(oid, header)
+                    answered += 1
+            except _LazyFetchRefusedError as exc:
+                found[exc.oid] = None
+                pending = [oid for oid in pending[answered:] if oid != exc.oid]
                 continue
-            found[oid] = _parse_info_header(oid, header)
+            pending = []
         return found
 
     async def read_blob(self, oid: str, *, max_blob_bytes: int) -> bytes:
@@ -556,7 +582,7 @@ class _BatchObjectReader:
         reader, writer = await self._pipes()
         writer.write(f"contents {oid}\nflush\n".encode("ascii"))
         await writer.drain()
-        info = _parse_info_header(oid, await _read_header(reader))
+        info = _parse_info_header(oid, await self._header(reader, (oid,)))
         if info.kind != "blob":
             # Its body is still in the pipe, so the actor is discarded.
             raise GitBatchProtocolError(f"{oid} is {info.kind}, not a blob")
@@ -649,7 +675,7 @@ class _BatchObjectReader:
         command = "contents" if contents else "info"
         writer.write(f"{command} {oid}\nflush\n".encode("ascii"))
         await writer.drain()
-        header = await _read_header(reader)
+        header = await self._header(reader, (oid,))
         info = _parse_info_header(oid, header)
         if not contents:
             return info
@@ -667,6 +693,42 @@ class _BatchObjectReader:
         if trailer != b"\n":
             raise GitBatchProtocolError("contents frame is missing the trailing newline")
         return body
+
+    async def _header(self, reader: asyncio.StreamReader, asked: Sequence[str]) -> bytes:
+        """The next header line, or the object an older Git died refusing to fetch.
+
+        With ``GIT_NO_LAZY_FETCH`` set, Git 2.43 (observed on 2.43.7, the lowest
+        admitted release) dies with ``could not fetch <oid> from promisor remote``
+        for a promised object the store lacks, where later releases answer
+        ``missing``. Only a death naming an object this transaction asked about is
+        read that way; anything else is still a framing failure.
+        """
+
+        try:
+            return await _read_header(reader)
+        except GitBatchProtocolError:
+            if not reader.at_eof():
+                raise
+            refused = await self._refused_lazy_fetch()
+            if refused is None or refused not in asked:
+                raise
+            raise _LazyFetchRefusedError(refused) from None
+
+    async def _refused_lazy_fetch(self) -> str | None:
+        """The object a dead actor's stderr says it could not fetch; the actor is reaped."""
+
+        task = self._stderr_task
+        stderr = b""
+        if task is not None:
+            try:
+                stderr, _overflowed = await asyncio.wait_for(
+                    asyncio.shield(task), timeout=_DEAD_ACTOR_STDERR_WAIT_S
+                )
+            except (TimeoutError, OSError):
+                stderr = b""
+        await self._poison()
+        match = _LAZY_FETCH_REFUSED_RE.search(stderr)
+        return None if match is None else match.group(1).decode("ascii")
 
     async def _ensure(self) -> None:
         if self._closed:
