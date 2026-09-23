@@ -118,10 +118,11 @@ Every spelling of one repository — `.git`, a trailing slash, `www.`, any lette
 `git@github.com:owner/repo.git`, and `raw.githubusercontent.com` file URLs — is one
 source, `https://github.com/owner/repo`, and one store.
 A `/tree/` or `/blob/` URL may name a branch whose name contains `/`; the mirror decides
-where the ref ends, preferring a branch, then a tag, then a commit ID. `--no-serve`
-prints what the URL selected after the identity lines (`selection`, `pin`, `path`, and
-`lines` for a `#L10`, `#L10-L20`, or `#L10C5-L20C8` anchor), and `--show` and `--api`
-print the same lines on stderr and pin that commit.
+where the ref ends, preferring a branch, then a tag, then a commit ID. Ref names match
+exactly, including letter case, and `HEAD` names the default branch.
+`--no-serve` prints what the URL selected after the identity lines (`selection`, `pin`,
+`path`, and `lines` for a `#L10`, `#L10-L20`, or `#L10C5-L20C8` anchor), and `--show`
+and `--api` print the same lines on stderr and pin that commit.
 A `/pull/<n>` URL opens the default branch for now and reports the number; pull-request
 data arrives in a later release.
 Query parameters other than `?plain=1` are dropped.
@@ -138,8 +139,10 @@ Public repositories are cloned anonymously.
 When `gh` is installed, it is Git’s credential helper for `https://github.com` and for
 nothing else, so a private repository opens once `gh auth login` has signed in an
 account that can read it; Metabrowser never reads or stores a token.
-With `gh` installed, a first clone is also refused before it starts when GitHub reports
-the repository too large to finish within the acquisition deadline.
+No other credential source applies: your Git credential helpers are cleared, and Git
+runs with `HOME=/dev/null`, so curl does not read `~/.netrc`. With `gh` installed, a
+first clone is also refused before it starts when GitHub reports the repository too
+large to finish within the acquisition deadline.
 On a terminal, a first clone reports each phase and the time elapsed.
 
 `--api /api/cache/…` on a `file://` URL acquires as a side effect, then issues the route
@@ -180,14 +183,21 @@ source, and none changes another source already in the cache.
   publishes nothing. A source that is itself a partial clone missing objects says so;
   clone it fully first.
   An https origin names why, in parentheses: `not_found_or_private`,
-  `network_unreachable`, `tls_failed`, `timed_out` (an origin that stops answering; a
-  transfer below 1000 bytes per second for 30 seconds counts as stopped), or
-  `too_large`.
-- **An acquisition that is interrupted**, by Ctrl-C or by the terminal hanging up, stops
-  Git and every helper it started, and leaves nothing visible, because the source is
-  published last, after its store.
-  A hangup exits with status 129. The next acquisition removes the abandoned staging
-  entry, fetches again, and reuses a store that was already published.
+  `network_unreachable`, `connection_interrupted`, `tls_failed`, `timed_out`,
+  `server_error`, `rate_limited`, `proxy_auth_required`, or `too_large`. `timed_out`
+  means the origin gave no answer to its first request within 30 seconds, or a transfer
+  moved less than 1000 bytes per second for 30 seconds; a clone that keeps making
+  progress is never stopped for taking long, only at the 900-second acquisition
+  deadline.
+- **A repository whose branch or tag names differ only in letter case** (`Feature` and
+  `feature`) is refused as `ref_case_collision` on a case-insensitive filesystem, such
+  as macOS’s default, which cannot hold both.
+- **An acquisition that is interrupted**, by Ctrl-C, by the terminal hanging up, or by
+  `SIGTERM`, stops Git and every helper it started, and leaves nothing visible, because
+  the source is published last, after its store.
+  A hangup exits with status 129 and `SIGTERM` with 143; under `nohup`, a hangup is
+  ignored as it asks. The next acquisition removes the abandoned staging entry, fetches
+  again, and reuses a store that was already published.
   Nothing deletes a published store.
 
 Refusals that concern the application home say how to repair it:

@@ -93,11 +93,16 @@ GitHub URLs and HTTPS:
   `--no-serve` prints the selection after the identity lines, and `--show` and `--api`
   print it on stderr. A `/pull/<n>` URL opens the default branch and reports the number
   until pull-request data arrives.
-  Every spelling of a repository — `.git`, a trailing slash, `www.`, letter case, and
-  `git@github.com:owner/repo.git` — is one source, `https://github.com/owner/repo`.
-  Other github.com pages, `http://`, and GitHub’s own top-level pages are refused with a
-  typed reason and a message that offers the repository URL; tracking parameters are
-  dropped and never echoed.
+  Ref names match exactly, including letter case, and `HEAD` names the default branch;
+  on a case-insensitive filesystem, a repository whose branch or tag names differ only
+  in case is refused as `ref_case_collision` rather than risk pinning the wrong commit.
+  Every spelling of a repository — one trailing `.git`, a trailing slash, `www.`, letter
+  case, and `git@github.com:owner/repo.git` — is one source,
+  `https://github.com/owner/repo`. Other github.com pages, `http://`, and GitHub’s own
+  top-level pages are refused with a typed reason and a message that offers the
+  repository URL; tracking parameters are dropped and never echoed.
+  A C1 control character in a path, such as `%C2%9B`, is shown as U+FFFD like C0, so an
+  error message cannot send a terminal an escape sequence.
   A ref, commit, or path the mirror does not have is reported as `ref_not_found`,
   `commit_not_found`, or `path_not_found`; these modes read the mirror as it is and do
   not fetch.
@@ -107,16 +112,21 @@ GitHub URLs and HTTPS:
   after every configured helper is cleared, so `gh auth login` opens a private
   repository and no other host is offered a GitHub token.
   A failed https acquisition names its cause: `not_found_or_private`,
-  `network_unreachable`, `tls_failed`, `timed_out`, or `too_large`, the last when `gh`
-  reports a repository too large to clone within the acquisition deadline.
-  A transfer slower than 1000 bytes per second for 30 seconds is treated as stalled, and
-  an origin that does not answer the first request within 30 seconds times out rather
-  than waiting for curl’s five-minute connect timeout.
+  `network_unreachable`, `connection_interrupted`, `tls_failed`, `timed_out`,
+  `server_error`, `rate_limited`, `proxy_auth_required`, or `too_large`, the last when
+  `gh` reports a repository too large to clone within the acquisition deadline.
+  The size check asks github.com only, whatever host `GH_HOST` names.
+  Git runs with `HOME=/dev/null` while it acquires, so curl reads no `~/.netrc`; `gh`
+  alone is given the real home, without `GH_DEBUG`, `GH_HOST`, or `GH_REPO`. A transfer
+  slower than 1000 bytes per second for 30 seconds is treated as stalled, and an origin
+  that does not answer the first request within 30 seconds times out rather than waiting
+  for curl’s five-minute connect timeout.
   On a terminal, a first clone reports its phases and elapsed time.
 
-- A terminal hangup now cancels an acquisition the way Ctrl-C does: Git and every helper
-  it started are stopped, staging is removed, and `metab` exits with status 129. A
-  cancellation that arrives while Git is still starting also stops the helpers it
+- A terminal hangup or `SIGTERM` now cancels an acquisition the way Ctrl-C does: Git and
+  every helper it started are stopped, staging is removed, and `metab` exits with status
+  129 or 143. A hangup that was already ignored, as under `nohup`, stays ignored.
+  A cancellation that arrives while Git is still starting also stops the helpers it
   already forked, rather than only `git` itself.
 
 Repository cache:

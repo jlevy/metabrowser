@@ -5,14 +5,17 @@ Run it with::
 
     METABROWSER_LIVE_GITHUB=1 uv --config-file uv.toml run --frozen pytest -rs tests/test_github_live_smoke.py
 
-Everything is read-only: anonymous clones of small public repositories, ``ls-remote``,
-and, when ``gh`` is installed, the read-only ``repos/<o>/<r>`` size check. Nothing is
-ever written to GitHub. Each command is a separate installed ``metab`` process with a
-fresh application home, as a user would run it.
+Everything is read-only. Clones are anonymous: each ``metab`` process has a fake ``gh``
+first on ``PATH`` that answers nothing, so Git's credential helper never returns a real
+credential. The real ``gh``, when it is installed and signed in, is used for one thing,
+the provider's ``gh api --hostname github.com repos/<o>/<r>`` size check, a GET that
+prints only a number. Nothing is ever written to GitHub. Each command is a separate
+installed ``metab`` process with a fresh application home, as a user would run it.
 """
 
 from __future__ import annotations
 
+import asyncio
 import os
 import shutil
 import stat
@@ -23,6 +26,10 @@ from pathlib import Path
 
 import pytest
 
+from metabrowser.builtin_plugins.github.gh import GhError, gh_executable, run_gh
+from metabrowser.builtin_plugins.github.provider import GithubProvider
+from metabrowser.cache.acquire import RepositoryTooLargeError
+from metabrowser.cache.urls import GitSource
 from metabrowser.git.process import _REPO_PINNING_GIT_VARS
 from tests.admitted_git import require_admitted_git
 
@@ -148,3 +155,35 @@ def test_live_missing_repository_is_a_typed_state(tmp_path: Path) -> None:
     assert result.exit_code == 1
     assert "(not_found_or_private)" in result.stderr
     assert "nothing was published" in result.stderr
+
+
+def test_live_size_check_with_the_real_gh() -> None:
+    """The provider's own read-only size query; no clone, and no credential command."""
+
+    if gh_executable() is None:
+        pytest.skip("gh is not installed")
+    try:
+        asyncio.run(
+            run_gh(
+                [
+                    "api",
+                    "--hostname",
+                    "github.com",
+                    "--method",
+                    "GET",
+                    "repos/octocat/Hello-World",
+                    "--jq",
+                    ".size",
+                ]
+            )
+        )
+    except GhError:
+        pytest.skip("gh cannot read the GitHub API here (signed out or offline)")
+    provider = GithubProvider()
+    small = GitSource(
+        transport="https", form="url", normalized="https://github.com/octocat/hello-world"
+    )
+    asyncio.run(provider.check_first_clone(small))
+    large = GitSource(transport="https", form="url", normalized="https://github.com/torvalds/linux")
+    with pytest.raises(RepositoryTooLargeError, match=r"\(too_large\)"):
+        asyncio.run(provider.check_first_clone(large))

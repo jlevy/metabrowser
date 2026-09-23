@@ -499,8 +499,9 @@ uv --config-file uv.toml run --frozen pytest tests/test_cli_github_url_golden.py
 
 **Pass:** All pass; the credential test shows `gh` answering only for
 `https://github.com` and the user’s own helper cleared; the stall test fails a stalled
-origin as `timed_out`; the hangup tests exit 129 with no Git helper left running (the
-last one skips below the Git floor).
+origin as `timed_out`; the hangup and SIGTERM tests exit 129 and 143 with no Git helper
+left running, an ignored hangup stays ignored, and the installed-CLI hangup test skips
+below the Git floor.
 
 **Fail:** Any failure; a golden regenerated without an intended change.
 
@@ -524,6 +525,8 @@ The first command prints `acquired: https://github.com/octocat/hello-world`, the
 second answers from the cache with the same revision and no clone.
 On a terminal, the first clone reports its phases and elapsed time on stderr.
 A signed-in `gh` is used only for github.com, and a public repository needs none.
+The smoke test calls the real `gh` only for the read-only size check; its clones run
+with a fake `gh` that answers nothing.
 
 **Fail:** A token prompt; a message containing Git’s own error text or a local path; a
 second clone on the cache hit.
@@ -536,7 +539,9 @@ the terminal while it reports `fetching every object`.
 **Pass:** No `git` or `git-remote-https` process for that URL remains
 (`ps -A -o pid,args | grep remote-https`), and the scratch home’s `cache/staging` is
 empty after the next `metab` command.
-`tests/test_acquire_stall_and_hangup.py` asserts the same without a terminal.
+`kill <pid>` (SIGTERM) behaves the same and exits 143; under `nohup`, closing the
+terminal does not stop the clone.
+`tests/test_acquire_stall_and_hangup.py` asserts all three without a terminal.
 
 **Fail:** An orphaned Git process still fetching; a staging entry left behind.
 

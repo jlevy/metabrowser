@@ -251,16 +251,26 @@ allowlist of `file` and `https`, a low-speed stall bound measured beside its con
 and whatever a provider adds for that URL. The GitHub provider adds `gh` as the only
 credential helper, scoped to `https://github.com` after every configured helper is
 cleared, so Git asks it only after a server challenge and public repositories stay
-anonymous. The first command against an origin has its own deadline, because curl’s
-low-speed bound does not cover a TLS handshake that never completes.
+anonymous. Acquisition Git runs with `HOME=/dev/null`, because curl reads `$HOME/.netrc`
+and Git cannot turn that off; `gh` alone is given the real home in its helper command,
+and the `GH_*` variables that would redirect or log it are cleared there.
+The first command against an origin has its own deadline, because curl’s low-speed bound
+does not cover a TLS handshake that never completes; the fetch has none, so a clone that
+is making progress is stopped only at the acquisition deadline.
 Failures read as typed states (`not_found_or_private`, `network_unreachable`,
-`tls_failed`, `timed_out`, `too_large`) and never as Git’s own text.
+`connection_interrupted`, `tls_failed`, `timed_out`, `server_error`, `rate_limited`,
+`proxy_auth_required`, `too_large`) and never as Git’s own text.
+Ref names resolve by exact, case-sensitive match against the names the store holds.
+On a case-insensitive filesystem two origin refs that differ only in case are one loose
+file, so acquisition refuses such an origin as `ref_case_collision` rather than publish
+a ref that names the other’s commit.
 Every fetch runs in the isolated Git environment of `git/process.py`, the only Git
 subprocess boundary: no inherited `GIT_*` variable, no system or global configuration,
 terminal prompting disabled, and hooks off.
-Git runs in its own process group, so a timeout, Ctrl-C, or a terminal hangup kills the
-helpers it forks as well.
-Acquisition never inherits an attached checkout’s remote or credential helper.
+Git runs in its own process group, so a timeout, Ctrl-C, a terminal hangup, or `SIGTERM`
+kills the helpers it forks as well, including a cancellation that arrives while Git is
+still starting. Acquisition never inherits an attached checkout’s remote or credential
+helper.
 
 ### Git path and blob semantics
 
