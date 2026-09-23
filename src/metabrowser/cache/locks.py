@@ -20,6 +20,16 @@ liveness and is only ever tried without blocking. The store lease is the
 ``<store-key>.maintenance.lock`` file: its shared form may block only while the thread
 holds no hierarchy lock, and its exclusive form never blocks.
 
+Which thread owns a lock follows from how long it is kept. A lock taken and released
+inside one synchronous section belongs to the thread running that section. A lock that
+async code keeps across ``await`` (a revision lease, a staging entry) belongs to the
+thread that keeps it, the event-loop thread, even when a worker thread performs its
+``open()`` and ``flock`` and records it in that thread's order. A pooled worker never
+records a lock it hands back, so it cannot carry one into the unrelated work it runs
+next. No lock blocks a thread that is running an event loop: :func:`_acquire` refuses it,
+blocking sections run in worker threads, and :func:`acquire_store_lease` waits for a
+lease by retrying.
+
 Every acquisition is its own ``open()`` of the lock file and returns a
 :class:`CacheLock` that owns that descriptor. Descriptors are never shared or
 duplicated, even within one process: ``flock`` state belongs to the open file
@@ -32,7 +42,9 @@ the old file's lock, taken without blocking; if that lock is busy the lock is re
 
 from __future__ import annotations
 
+import asyncio
 import errno
+import functools
 import os
 import re
 import threading
@@ -43,6 +55,7 @@ from types import TracebackType
 from typing import Final, Self
 
 from metabrowser.cache.identity import is_slug, is_store_key
+from metabrowser.cancellable_thread import run_acquiring_thread
 from metabrowser.home import (
     PrivateStorageError,
     PrivateStorageLocation,
@@ -62,6 +75,16 @@ HOME_LOCK_PATH: Final = "cache/locks/home.lock"
 _ENTRY_NAME_RE: Final = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 _RESOURCE_KEY_RE: Final = re.compile(r"^[a-z0-9][a-z0-9_-]{0,127}$")
 _IDENTITY_ATTEMPTS: Final = 8
+# How often acquire_store_lease retries a busy lease. A busy lease means a maintenance
+# holder: gc and repack of a full store of this repository held the exclusive lock for
+# 1.2 to 1.6 s, while one busy attempt through a worker thread cost a median 2.4 ms (p90
+# 9 ms) on a machine at load average 23. Doubling from 5 ms to a 100 ms cap adds about
+# one cap to a wait that already lasted over a second (40 to 146 ms measured from
+# release to lease) and spends one attempt per 100 ms per waiter. Waiting in a blocked
+# worker instead would wake at once, but it holds a default-executor thread for the
+# whole gc and cannot be cancelled.
+LEASE_RETRY_FIRST_S: Final = 0.005
+LEASE_RETRY_MAX_S: Final = 0.1
 _UNSUPPORTED_LOCK_ERRNOS: Final = frozenset(
     {errno.ENOLCK, errno.EOPNOTSUPP, errno.ENOTSUP, errno.EINVAL, errno.ENOSYS}
 )
@@ -357,6 +380,25 @@ def _open_lock_file(home: Path, relative_path: str) -> int:
     raise _unverifiable(home / relative_path, _LOCK_CHANGED)
 
 
+def _refuse_blocking_on_event_loop(kind: LockKind) -> None:
+    """Refuse a blocking ``flock`` on a thread that is running an event loop.
+
+    The wait would stall every coroutine on that loop for as long as another process
+    holds the lock, and a holder in this process that needs the loop to finish would
+    never get it. Blocking acquisition belongs in a worker thread, as one synchronous
+    section with the work it covers; a lease that async code keeps goes through
+    :func:`acquire_store_lease`.
+    """
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    raise LockOrderError(
+        f"blocking on the {kind.value} lock would stall the event loop; take it in a worker thread"
+    )
+
+
 def _acquire(
     home: Path,
     kind: LockKind,
@@ -365,8 +407,11 @@ def _acquire(
     *,
     shared: bool,
     blocking: bool,
+    order: LockOrder | None = None,
 ) -> CacheLock:
-    order = lock_order()
+    if blocking:
+        _refuse_blocking_on_event_loop(kind)
+    order = lock_order() if order is None else order
     order.check(kind, key, blocking=blocking)
     if fcntl is None:
         raise _unverifiable(home / relative_path, _LOCKS_UNSUPPORTED)
@@ -451,10 +496,56 @@ def store_lease(home: Path, store_key: str, *, blocking: bool = True) -> CacheLo
         home,
         LockKind.MAINTENANCE_SHARED,
         store_key,
-        f"{LOCKS_DIRECTORY}/stores/{store_key}.maintenance.lock",
+        _store_lease_path(store_key),
         shared=True,
         blocking=blocking,
     )
+
+
+def _store_lease_path(store_key: str) -> str:
+    return f"{LOCKS_DIRECTORY}/stores/{store_key}.maintenance.lock"
+
+
+async def acquire_store_lease(home: Path, store_key: str) -> CacheLock:
+    """Take a store lease for async code, waiting without blocking the event loop.
+
+    **Ownership.** The lease belongs to the calling thread's :class:`LockOrder`, exactly
+    as :func:`store_lease` called on that thread would record it. For a coroutine that
+    thread is the event-loop thread, where the lease's holder runs and releases it, so
+    :func:`held_locks` there reports the lease, and a store maintenance attempt there
+    is still refused as the other mode of a lock this thread holds rather than reported
+    busy. Only the wait moves: each attempt is one non-blocking open-and-``flock`` in a
+    worker thread, recorded into the caller's order, and between attempts the
+    coroutine sleeps. The worker's own thread-local order is never touched, so a pooled
+    thread cannot carry a lease into the unrelated work it runs next, and no executor
+    thread is held while a maintenance holder runs ``gc`` in another process.
+
+    The wait is logically still a blocking one, so it is checked as one first: it is
+    refused while the caller holds a hierarchy lock or this store's exclusive
+    maintenance lock.
+    """
+
+    _require(is_store_key(store_key), "store key")
+    order = lock_order()
+    order.check(LockKind.MAINTENANCE_SHARED, store_key, blocking=True)
+    attempt = functools.partial(
+        _acquire,
+        home,
+        LockKind.MAINTENANCE_SHARED,
+        store_key,
+        _store_lease_path(store_key),
+        shared=True,
+        blocking=False,
+        order=order,
+    )
+    delay = LEASE_RETRY_FIRST_S
+    while True:
+        try:
+            return await run_acquiring_thread(attempt, release=CacheLock.release)
+        except LockBusyError:
+            pass
+        await asyncio.sleep(delay)
+        delay = min(delay * 2, LEASE_RETRY_MAX_S)
 
 
 def store_maintenance_lock(home: Path, store_key: str) -> CacheLock:
@@ -465,13 +556,20 @@ def store_maintenance_lock(home: Path, store_key: str) -> CacheLock:
         home,
         LockKind.MAINTENANCE_EXCLUSIVE,
         store_key,
-        f"{LOCKS_DIRECTORY}/stores/{store_key}.maintenance.lock",
+        _store_lease_path(store_key),
         shared=False,
         blocking=False,
     )
 
 
-def _entry_lock(home: Path, kind: LockKind, directory: str, entry: str) -> CacheLock:
+def _entry_lock(
+    home: Path,
+    kind: LockKind,
+    directory: str,
+    entry: str,
+    *,
+    order: LockOrder | None = None,
+) -> CacheLock:
     _require(_ENTRY_NAME_RE.fullmatch(entry) is not None, f"{kind.value} name")
     return _acquire(
         home,
@@ -480,13 +578,19 @@ def _entry_lock(home: Path, kind: LockKind, directory: str, entry: str) -> Cache
         f"{LOCKS_DIRECTORY}/{directory}/{entry}.lock",
         shared=False,
         blocking=False,
+        order=order,
     )
 
 
-def staging_entry_lock(home: Path, entry: str) -> CacheLock:
-    """Try the liveness lock of one staging entry without blocking."""
+def staging_entry_lock(home: Path, entry: str, *, order: LockOrder | None = None) -> CacheLock:
+    """Try the liveness lock of one staging entry without blocking.
 
-    return _entry_lock(home, LockKind.STAGING_ENTRY, "staging", entry)
+    *order* records the lock for a holder other than the calling thread: a worker
+    thread that claims an entry for a coroutine passes the coroutine's thread's order,
+    because that thread keeps the entry after the worker returns.
+    """
+
+    return _entry_lock(home, LockKind.STAGING_ENTRY, "staging", entry, order=order)
 
 
 def trash_entry_lock(home: Path, entry: str) -> CacheLock:
@@ -511,12 +615,15 @@ __all__ = [
     "HIERARCHY_RANKS",
     "HOME_LOCK_PATH",
     "LOCKS_DIRECTORY",
+    "LEASE_RETRY_FIRST_S",
+    "LEASE_RETRY_MAX_S",
     "CacheLock",
     "HeldLock",
     "LockBusyError",
     "LockKind",
     "LockOrder",
     "LockOrderError",
+    "acquire_store_lease",
     "application_home_lock",
     "held_locks",
     "is_entry_name",

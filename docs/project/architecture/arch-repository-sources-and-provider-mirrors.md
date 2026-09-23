@@ -567,6 +567,14 @@ shared, blocking only while holding no ordered lock.
 lock; reclamation, purge, and quarantine take the exclusive form before their ordered
 locks. The exclusive form never blocks, so a lease defers maintenance and refuses purge.
 Process exit releases the shared lock, including after a crash.
+No cache lock blocks the event loop, and `_acquire` in `cache/locks.py` refuses a
+blocking lock on a thread that runs one.
+Opening the cache, publication, and the subject-ref write each run as one synchronous
+section in a worker thread and release their locks before returning.
+A lease or staging entry that async code keeps across `await` is recorded for the
+event-loop thread that keeps it, although a worker thread opens and locks it, so a
+pooled worker never carries a lock into unrelated work; a lease waits for a maintenance
+holder by retrying rather than by blocking a thread.
 Automatic Git maintenance is disabled in every store’s configuration, so maintenance
 runs only under that lock.
 Because an acquisition holds the lease until its alias exists, reclamation cannot trash

@@ -16,9 +16,9 @@ from typing import Final, Self
 
 from metabrowser.cache.locks import (
     CacheLock,
+    acquire_store_lease,
     repository_store_lock,
     require_no_hierarchy_locks,
-    store_lease,
     store_maintenance_lock,
 )
 from metabrowser.cache.paths import store_directory
@@ -119,13 +119,18 @@ async def lease_revision(*, home: Path, store_key: str, commit_oid: str) -> Revi
 
     The flock is released on :meth:`RevisionLease.release`. The ref remains so
     Git can still reach the commit when no process is running.
+
+    The lease belongs to the calling thread, which for a coroutine is the event-loop
+    thread that keeps and releases it; see :func:`acquire_store_lease`. Only its wait
+    leaves the loop, so a maintenance holder in another process running ``gc`` or
+    ``repack`` delays this coroutine without stalling the others on the loop.
     """
 
     oid = require_full_oid(commit_oid)
     git_dir = home / store_directory(store_key) / "repository.git"
     if not git_dir.is_dir():
         raise GitUnavailableError(f"repository store is not a directory: {git_dir}")
-    lock = store_lease(home, store_key)
+    lock = await acquire_store_lease(home, store_key)
     try:
         if not git_dir.is_dir():
             raise GitUnavailableError(f"repository store is not a directory: {git_dir}")
