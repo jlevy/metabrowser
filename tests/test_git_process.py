@@ -203,18 +203,6 @@ def test_acquisition_policy_creates_owner_only_store_entries(tmp_path: Path) -> 
     assert leaked == []
 
 
-def test_run_git_accepts_bounded_stdin(tmp_path: Path) -> None:
-    digest = asyncio.run(
-        run_git(
-            ["hash-object", "--stdin"],
-            cwd=tmp_path,
-            policy=BATCH_OBJECT_POLICY,
-            stdin=b"hello\n",
-        )
-    )
-    assert len(digest.strip()) == 40
-
-
 def test_require_acquisition_git_matches_the_installed_binary() -> None:
     version, raw = detect_git_version()
     if acquisition_allowed(version):

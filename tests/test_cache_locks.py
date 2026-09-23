@@ -496,7 +496,7 @@ def test_record_locks_that_survive_every_close_are_still_refused_in_process(
     with pytest.raises(PrivateStorageError, match="separate descriptor"):
         probe.probe_application_home(home, force=True)
 
-    assert asked == ["ex sh=busy busy"]
+    assert asked == ["try=busy"]
 
 
 def test_a_home_whose_locks_do_not_exclude_another_process_is_refused(
