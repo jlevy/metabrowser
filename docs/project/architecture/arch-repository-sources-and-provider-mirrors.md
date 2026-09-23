@@ -386,32 +386,32 @@ If a provider ref moves between API observation and Git fetch, publication verif
 fetched ref still matches `X`; otherwise it reacquires or reports the stale/unavailable
 state. It never combines metadata for one object with content from another.
 
-## Locks and Reclamation
+## Locks and Deletion
 
 The fixed lock order is:
 
 1. application-home lock for layout migration and global enumeration;
 2. source-alias lock for alias creation;
 3. one or more repository-store locks in ascending `RepositoryStoreId` order for store
-   directory publication and removal, and store records; and
+   directory publication and store records; and
 4. provider-resource lock, whose use belongs to the provider plan.
 
 Network work and long-running Git processes hold none of these locks, and a local
 checkout is never a lock target.
 Acquisition takes the alias lock and then the store lock and holds both from the store’s
-rename through the alias commit, so every alias that names a store is written or moved
-under that store’s lock, and a holder of the store lock sees a stable set of aliases
-naming it. Quarantine decides under those locks: it moves every alias naming a store
-before the store, so a crash between the moves leaves an ordinary unreferenced store
-rather than an alias naming nothing, and a store no alias was seen to name is
-quarantined under its store lock alone once no alias is found naming it there.
+rename through the alias commit, so every alias that names a store is written under that
+store’s lock. `tests/test_cache_publish.py` checks that the real acquisition holds both
+at the store rename, the alias write, and the source rename.
 
-Readers take no lock.
-A reader reaches a store only through its alias, nothing removes objects from a store,
-and nothing deletes a published store automatically: a store no alias names stays until
-the next acquisition of its source reuses it, and only quarantine or a future explicit
-purge moves one. A process already reading a store that quarantine moved fails its next
-Git read with a typed error.
+Nothing deletes or moves a published store or source.
+A reader reaches a store only through its alias and takes no lock, and nothing removes
+objects from a store.
+A store no alias names, which a crash between the two renames leaves, stays until the
+next acquisition of its source reuses it.
+The only deletion is the startup sweep: a staging entry carries a liveness lock that is
+only tried without blocking, and the sweep deletes an entry whose lock is free.
+Quarantine, trash, and automatic store reclamation were removed with the thin-mirror
+Simplify step; a purge command for stores is deferred until after the alpha.
 
 Every lock attempt uses its own `open()` of the lock file, and descriptors are never
 shared or duplicated between holders, even in one process: `flock` belongs to the open
@@ -421,16 +421,7 @@ No cache lock blocks the event loop, and `_acquire` in `cache/locks.py` refuses 
 blocking lock on a thread that runs one.
 Opening the cache and publication each run as one synchronous section in a worker thread
 and release their locks before returning.
-Staging and trash entries carry liveness locks that are only tried without blocking; the
-startup sweep deletes an entry whose lock is free.
-
-An exhaustive interleaving check in `tests/test_repository_cache_contract_fixtures.py`
-proves from an empty cache and from an existing alias and store, with crashes allowed,
-that no alias ever names an absent store.
-It finds that failure in mutants that release the store lock before the alias commit,
-move a store before its aliases, or quarantine a store without checking for an alias
-under its lock. It gives each process its own locks, which is sound only because of the
-per-`open()` rule. The lock order and state machines are
+The lock order and state machines are
 `tests/fixtures/repository-cache/state-machines.json`.
 
 ## Implementation Seams
@@ -448,7 +439,7 @@ in [Views, Models, and Routes](arch-views-models-routes.md).
 | Plugin content reader | `plugin_api.py`: `resolve_content`, `resolve_content_container`, `stat_content`, `read_content_window`, `ContentRef`, `ContentStat`, `ContentWindow`; `source.py`: `FilesystemContentSource.open_ref`, `read_artifact_window`; `git/tree_source.py`: `GitTreeSource.open_ref`, `blob_logical_ext`; `content_errors.py`: `ContentReadError`, `ContentUnavailableError` | One bounded, source-agnostic read for plugin data hooks over an opaque `ContentRef`, with every read taking an explicit byte maximum and no unbounded variant, filesystem work in the thread pool and pinned reads through the pooled `cat-file` actors, and one catchable failure family carrying the `code` and `http_status` the pinned routes answer with. The four built-in data hooks that read bytes hold no Git import and no source-kind branch |
 | Plugin and route bridge | `plugin_api.py`: `open_content`, `source_capabilities`, `require_source_capability`, filesystem-only path helpers; `server.py`, `events_route.py`, `git/routes.py`, `git/content_routes.py`, `git/repo.py`, `git/history.py`; `diff/adapters/git.py`: `GitDiffSource`; `builtin_plugins/diff/sidekick.py`: comparison, document, and children hooks; `builtin_plugins/binary/sidekick.py`: chunk hook; `builtin_plugins/structured`: parsed hook; `builtin_plugins/agent_log/sidekick.py`: charts hook; `plugin_loader/classify.py`: `classify_identity` | Resolve the active content-source handle rather than assuming the global root is a `Path`; capability-gate recency, ignore, watcher, activity, mutation, and Git listing sizes; honor a pinned `GitRevisionSubject` on Git collection, file, raw, tree, rollup, catalog, index status, capabilities, tree filter tallies, tree summary, filtered tree totals, include_ignored no-op, tree depth, file envelope ext, markdown frontmatter, text preview window, in-tree symlink follow including plugin sidekicks, diff-comparison including `GitDiffSource.content`, KPress, patch-file container, binary-chunk, identity-and-content-kind, structured-parsed, and agent-log routes, and image preview; keep route, CLI, and golden parity |
 | Revision tree | `git/tree_source.py`: `GitPath`, `GitTreeSource`, `GitRevisionSubject`, `list_tree`, `read_blob`; shared per-store `cat-file --batch-command --buffer` pool (`MAX_BATCH_READERS_PER_STORE`); `git/content_routes.py`: file, raw, tree, catalog, `split_git_container_wire`, and extension plugin kinds | Enumerate NUL-framed byte-safe full-OID trees and read size-gated blobs from a `RepositoryStoreTarget` with no materialization. `GitPath` wires are the identity on every route that accepts one, and blob kinds come from extension, basename, sniffed adapter, and bounded JSON/YAML/frontmatter mappings. The per-route projections are in [Git and Comparison Sources](arch-git-and-comparison-sources.md) |
-| Repository store | `cache/repository_store.py`: `open_revision`; `cache/records.py`: source aliases and store state; `cache/acquire.py`: `acquire_file_source`; `cache/reclaim.py`: staging and trash sweep, quarantine | `open_revision` checks that a commit is in the published store and returns its `GitRevisionSubject`, writing nothing and holding no lock. Acquisition fetches every object of a `file://` source and publishes the store and its alias under the alias and store locks. Nothing deletes a published store |
+| Repository store | `cache/repository_store.py`: `open_revision`; `cache/records.py`: source aliases and store state; `cache/acquire.py`: `acquire_file_source`; `cache/reclaim.py`: staging sweep | `open_revision` checks that a commit is in the published store and returns its `GitRevisionSubject`, writing nothing and holding no lock. Acquisition fetches every object of a `file://` source and publishes the store and its alias under the alias and store locks. Nothing deletes a published store |
 | Serving a pin | `source.py`: `serve_subject_opener`, `lifespan_subject`, `detach_session`; `server.py`: `_lifespan`, `_pin_label_html`; `cli/git_pin_cli.py`: `run_serve_pin`; `source_routes.py`: `source_status` | Serve mode acquires, proves the default pin opens, and hands the server an opener, because a pin’s batch readers belong to the event loop that started them. The application lifespan opens the pin in the serving loop before the inventory reads the subject, attaches it, and closes it at shutdown; each start opens a fresh pin. `/api/source/status` and the navigation heading report the pin and the ref it was resolved from. On a served pin the cache routes and the `/raw/<path>` form answer `unsupported_for_subject`, and the untrusted profile is forced |
 | Remote discovery | `repository_context.py`: `discover_repository_context` | Read a checkout’s `origin` remote and `HEAD` without running Git, so a provider candidate can be recognized before any network work |
 | File and raw routes | `view_routes.py`, `server.py`, `git/content_routes.py`, `plugin_api.py`; `static/navigation.js`: `displayPath` | Resolve the active content-source handle rather than assuming the global root is a `Path`; Git subjects use `GitPath` wire identities for `/view/`, file, raw, tree, KPress, patch-file containers, identity-and-content plugin kinds, structured parsed, agent-log JSONL, and image preview; Markdown and wiki links on a pin encode authored segments as `GitPath` wires; SPA path chrome decodes those wires to display names (C0 and invalid UTF-8 become U+FFFD); retain route, CLI, and golden parity for filesystem browsing |

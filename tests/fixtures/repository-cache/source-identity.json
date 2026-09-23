@@ -20,7 +20,7 @@
     "rules": [
       "A store created from a source before provider resolution derives its id from the source id and the object format observed during acquisition, so two concurrent acquisitions of one source converge on one store key and the loser discards its staging copy.",
       "A provider-derived store is domain-separated from every generic store and contains no authorization context.",
-      "The directory key is all 64 hex digits: there is no truncation and therefore no store-key collision path to handle. A mismatch between the directory key and store.yml is corruption and quarantines the entry.",
+      "The directory key is all 64 hex digits: there is no truncation and therefore no store-key collision path to handle. A mismatch between the directory key and store.yml is corruption and refuses the entry.",
       "The canonical spelling of a provider instance is owned by the provider plan; the fixture values are placeholders for that spelling."
     ]
   },

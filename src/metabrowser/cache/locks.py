@@ -4,8 +4,7 @@ Locks are BSD ``flock`` on lock files under ``cache/locks/``, never POSIX record
 which vanish when a process closes any descriptor for the file. The hierarchy, frozen in
 ``tests/fixtures/repository-cache/state-machines.json``, is:
 
-1. the application-home lock, for layout migration, brief global enumeration, and
-   moving quarantined entries to trash;
+1. the application-home lock, for layout migration and brief global enumeration;
 2. source-alias locks, several in ascending slug order;
 3. repository-store locks, several in ascending store-key order; and
 4. provider/resource locks, several in ascending key order.
@@ -15,8 +14,8 @@ and never re-acquires one it holds; :class:`LockOrder` refuses anything else bef
 descriptor is opened. Network work and long-running Git processes call
 :func:`require_no_hierarchy_locks` first.
 
-Side locks sit outside the order. A staging or trash entry lock marks one owner's
-liveness and is only ever tried without blocking.
+Side locks sit outside the order. A staging entry lock marks one owner's liveness and is
+only ever tried without blocking.
 
 No lock protects a reader. A published store is never changed in place: nothing runs
 ``gc``, ``prune``, or ``repack`` on it, and a reader reaches it only through a source
@@ -110,7 +109,6 @@ class LockKind(StrEnum):
     REPOSITORY_STORE = "repository_store"
     PROVIDER_RESOURCE = "provider_resource"
     STAGING_ENTRY = "staging_entry"
-    TRASH_ENTRY = "trash_entry"
 
 
 HIERARCHY_RANKS: Final[dict[LockKind, int]] = {
@@ -587,14 +585,8 @@ def staging_entry_lock(home: Path, entry: str, *, order: LockOrder | None = None
     return _entry_lock(home, LockKind.STAGING_ENTRY, "staging", entry, order=order)
 
 
-def trash_entry_lock(home: Path, entry: str) -> CacheLock:
-    """Try the liveness lock of one trash entry without blocking."""
-
-    return _entry_lock(home, LockKind.TRASH_ENTRY, "trash", entry)
-
-
 def is_entry_name(value: str) -> bool:
-    """Whether *value* is a valid staging, trash, or quarantine entry name."""
+    """Whether *value* is a valid staging entry name."""
 
     return _ENTRY_NAME_RE.fullmatch(value) is not None
 
@@ -620,5 +612,4 @@ __all__ = [
     "require_no_hierarchy_locks",
     "source_alias_lock",
     "staging_entry_lock",
-    "trash_entry_lock",
 ]

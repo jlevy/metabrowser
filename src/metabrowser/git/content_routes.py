@@ -61,7 +61,7 @@ Patch-file container inners use a GitPath prefix plus a host inner path. Blob
 kinds use extension, basename, sniffed adapter, and JSON/YAML/frontmatter
 mappings parsed from blob bytes. ``path_glob`` stays filesystem-only. Serving
 acquired Git over a listening port remains a later bead. The CLI can
-``--show`` / ``--api`` a leased ``file://`` pin in-process.
+``--show`` / ``--api`` a ``file://`` pin in-process.
 """
 
 from __future__ import annotations

@@ -44,7 +44,7 @@ That covers read models.
 It does not cover **durable state**, which is most of what the cache is.
 
 The cache writes an application home, layout and source/store identity and state
-records, locks, staging directories, quarantine, and trash.
+records, locks, and staging directories.
 None of that appears in a response envelope, so a `--api` transcript proves nothing
 about it. The principle needs a second clause:
 
@@ -343,11 +343,11 @@ def ensure_home(home: Path) -> Path: # creates the f01 skeleton, writes CACHEDIR
 | --- | --- | --- |
 | `layout.py` | Format record, fail-closed future formats, ordered migrations, home preparation | `read_layout`, `read_config`, `migrate_layout`, `open_cache`, `LAYOUT_FORMAT` |
 | `atomic.py` | Same-filesystem owner-only record publication | `read_record`, `write_record_atomic`, `publish_entry` |
-| `locks.py` | Fixed lock hierarchy and liveness locks | `application_home_lock`, `source_alias_lock`, `repository_store_lock`, `provider_resource_lock`, `staging_entry_lock`, `trash_entry_lock` |
+| `locks.py` | Fixed lock hierarchy and liveness locks | `application_home_lock`, `source_alias_lock`, `repository_store_lock`, `provider_resource_lock`, `staging_entry_lock` |
 | `probe.py` | Application-home lock and publication probe | `probe_application_home` |
 | `contracts.py` | Packaged SoftSchema bindings and drift checks | `compile_contracts`, `cache_contract_registry`, `repository_cache_capabilities` |
 | `records.py` | Closed source and store contracts | `ApplicationConfig`, `CacheLayout`, `RepositorySource`, `RepositorySourceState`, `RepositoryStoreAlias`, `RepositoryStore`, `RepositoryStoreState` |
-| `reclaim.py` | Startup staging/trash sweep, trash, and quarantine; nothing deletes a published store | `reclaim_staging`, `reclaim_trash`, `quarantine_entries`, `purge_quarantined` |
+| `reclaim.py` | Startup sweep of abandoned staging; nothing deletes a published store | `sweep_staging` |
 | `identity.py` | Conservative source identity, provider-derived store identity, aliasing, and collision-safe slugs | `normalize_git_source`, `source_identity`, `repository_store_id`, `provider_repository_store_id`, `cache_slug` |
 | `urls.py` | Root classification, provider reducer arbitration, and terminal rejection | `classify_root_argument`, `ProviderUrlReducer`, `ReducerOutcome`, `RepositorySelection` |
 | `acquire.py` | Worktree-free staged acquisition and atomic store/alias publication | `acquire_file_source`, `acquire_into_staging`, `publish_from_staging` |
@@ -436,8 +436,8 @@ state and never a cache-directory listing.
 `acquire` clones from a local origin repository created in the same sandbox.
 This is real `git fetch` through the real `run_git`, with no mocking and no forked code
 path, which is what the golden guidelines mean by not forking logic for tests.
-It also happens to be the honest test: the failure modes that matter — partial clone,
-interrupted publish, quarantine, reuse-on-second-open — are all filesystem behavior, not
+It also happens to be the honest test: the failure modes that matter — a partial-clone
+origin, interrupted publish, reuse-on-second-open — are all filesystem behavior, not
 network behavior.
 
 A live `metab file:// --no-serve` tryscript cannot run on ubuntu-latest today: the

@@ -5,12 +5,11 @@ Linux. A network file system can emulate ``flock`` with record locks, which vani
 a process closes any descriptor for the file, and a file system can ignore a no-replace
 rename flag. So before the cache uses a home, this probe checks on that home that:
 
-- a second process cannot take an exclusive or shared lock this process holds
-  exclusively, can share a shared lock but not take it exclusively, and gets the lock
-  once it is released;
+- a second process cannot take a lock this process holds, and gets it once it is
+  released;
 - closing an unrelated descriptor for the lock file does not release the lock;
-- an exclusive attempt through a separate ``open()`` in this process contends with a
-  shared lock this process holds, instead of coexisting with it; and
+- an attempt through a separate ``open()`` in this process contends with a lock this
+  process holds, instead of sharing it; and
 - the platform no-replace rename refuses an existing directory and file, and
   publication under a held lock refuses an existing target while moving a staged entry
   to an absent one.
@@ -56,16 +55,15 @@ _REPLY_TIMEOUT_SECONDS: Final = 10.0
 _CHILD_SCRIPT: Final = """
 import fcntl, os, sys
 fd = os.open(sys.argv[1], os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
-modes = {"ex": fcntl.LOCK_EX, "sh": fcntl.LOCK_SH}
-def attempt(name):
+def attempt():
     try:
-        fcntl.flock(fd, modes[name] | fcntl.LOCK_NB)
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
         return "busy"
     fcntl.flock(fd, fcntl.LOCK_UN)
     return "acquired"
 for line in sys.stdin:
-    sys.stdout.write(" ".join(attempt(name) for name in line.split()) + "\\n")
+    sys.stdout.write(attempt() + "\\n")
     sys.stdout.flush()
 """
 
@@ -129,43 +127,37 @@ def _probe_locks(home: Path, relative_path: str) -> None:
     if fcntl is None or not sys.executable:
         raise _ProbeFailed("a second process could not be started to verify its file locks")
     path = home / relative_path
-    exclusive = open_private_file(home, relative_path, os.O_RDWR | os.O_CREAT)
-    shared = open_private_file(home, relative_path, os.O_RDWR)
+    held = open_private_file(home, relative_path, os.O_RDWR | os.O_CREAT)
     try:
         try:
-            fcntl.flock(exclusive, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError as error:
             raise _ProbeFailed("its file system refused a file lock") from error
         unrelated = open_private_file(home, relative_path, os.O_RDONLY)
         os.close(unrelated)
         with _Child(path) as child:
-            if child.ask("ex sh") != "busy busy":
+            if child.ask("try") != "busy":
                 raise _ProbeFailed(
                     "a second process took a lock this process held, or the lock did not "
                     "survive closing an unrelated descriptor for its file"
                 )
-            fcntl.flock(exclusive, fcntl.LOCK_UN)
-            fcntl.flock(shared, fcntl.LOCK_SH | fcntl.LOCK_NB)
             _probe_separate_open(home, relative_path)
-            if child.ask("sh ex") != "acquired busy":
-                raise _ProbeFailed("its file locks did not keep shared and exclusive holders apart")
-            fcntl.flock(shared, fcntl.LOCK_UN)
-            if child.ask("ex") != "acquired":
+            fcntl.flock(held, fcntl.LOCK_UN)
+            if child.ask("try") != "acquired":
                 raise _ProbeFailed("a released file lock stayed held")
     finally:
-        os.close(exclusive)
-        os.close(shared)
+        os.close(held)
         with contextlib.suppress(OSError):
             os.unlink(path)
 
 
 def _probe_separate_open(home: Path, relative_path: str) -> None:
-    """An exclusive attempt through its own ``open()`` must contend with a held lock.
+    """An attempt through its own ``open()`` must contend with a lock this process holds.
 
-    The caller holds a shared lock on the file through another descriptor. Were the new
-    attempt to succeed, two holders in one process, such as a staging entry's owner and
-    the sweep that tries its lock, could both hold it, as they do through a ``dup()`` or
-    under record locks.
+    The caller holds the lock through another descriptor. Were the new attempt to
+    succeed, two holders in one process, such as a staging entry's owner and the sweep
+    that tries its lock, could both hold it, as they do through a ``dup()`` or under
+    record locks.
     """
 
     assert fcntl is not None
@@ -176,8 +168,8 @@ def _probe_separate_open(home: Path, relative_path: str) -> None:
         except BlockingIOError:
             return
         raise _ProbeFailed(
-            "an exclusive lock through a separate descriptor in this process did not "
-            "contend with a shared lock this process held"
+            "a lock through a separate descriptor in this process did not contend with a "
+            "lock this process held"
         )
     finally:
         os.close(other)

@@ -15,16 +15,15 @@ before: >-
 # Golden tests: repository cache state through `--api`
 
 The `/api/cache/` routes are how persisted cache state is asserted: layout and config
-formats, source and store identity, alias generations, publication state, and what
-reclamation left. They report logical state only, never a cache path, a pack file, a Git
-internal, or the application home itself.
+formats, source and store identity, alias generations, publication state, and abandoned
+staging.
+They report logical state only, never a cache path, a pack file, a Git internal,
+or the application home itself.
 
 `tests/cache_home_fixture.py` builds every home below the sandbox with the production
-writers: `ensure_home` and `migrate_layout`, staged publication under the owning locks,
-`quarantine_entries`, and `reclaim_store`. Addresses, versions, and timestamps are
-fixed, so identities, slugs, and records are asserted literally.
-The one random value is the quarantine entry name, which `quarantine_entries` chooses,
-so it is elided.
+writers: `ensure_home` and `migrate_layout`, and staged publication under the owning
+locks. Addresses, versions, and timestamps are fixed, so identities, slugs, and records
+are asserted literally.
 
 Each command names its home with `METABROWSER_HOME`, because the routes resolve the home
 per request. `root` is an empty directory to serve; the cache routes do not read it.
@@ -81,11 +80,7 @@ status: 200
     "upgrades": []
   },
   "reclamation": {
-    "staging_entries": 0,
-    "trash_entries": 0,
-    "quarantine_entries": 0,
-    "quarantine": [],
-    "quarantine_truncated": false
+    "staging_entries": 0
   }
 }
 ? 0
@@ -106,13 +101,11 @@ status: 200
 ? 0
 ```
 
-## Test: reclamation outcomes on a populated cache
+## Test: abandoned staging on a populated cache
 
 The populated home has two flask sources, one over HTTPS and one over SSH, aliasing one
 store; the SSH alias was repointed once, so it is at generation 2. click’s acquisition
 published its store and source but not its alias.
-jinja’s store failed revalidation and was quarantined with its alias, and werkzeug’s
-unreferenced store was reclaimed, so it appears nowhere.
 An interrupted acquisition left one staging entry for the next sweep.
 
 ```console
@@ -133,22 +126,7 @@ status: 200
     "upgrades": []
   },
   "reclamation": {
-    "staging_entries": 1,
-    "trash_entries": 0,
-    "quarantine_entries": 1,
-    "quarantine": [
-      {
-        "entry": "quarantine-[..]",
-        "sources": [
-          "github-com--pallets--jinja--1b7f05892a34"
-        ],
-        "stores": [
-          "sha256:f68db9d30e59b33c3db7869b2f860dda22207fddaf4ce29f8782c44710f1c142"
-        ],
-        "truncated": false
-      }
-    ],
-    "quarantine_truncated": false
+    "staging_entries": 1
   }
 }
 ? 0
@@ -405,20 +383,6 @@ status: 200
   "next_after": "github-com--pallets--flask--74fe6e07e4b9"
 }
 ? 0
-```
-
-## Test: a quarantined source is no longer a source
-
-```console
-$ METABROWSER_HOME=$PWD/populated metab root --api /api/cache/source/github-com--pallets--jinja--1b7f05892a34
-api: /api/cache/source/github-com--pallets--jinja--1b7f05892a34
-status: 404
-{
-  "error": "No source has this slug.",
-  "code": "source_not_found"
-}
-Error: /api/cache/source/github-com--pallets--jinja--1b7f05892a34 returned HTTP 404
-? 1
 ```
 
 ## Test: a newer home is refused before any entry is read

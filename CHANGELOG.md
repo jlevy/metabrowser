@@ -85,9 +85,9 @@ Repository cache:
 
 - New read-only routes `/api/cache/layout`, `/api/cache/sources`,
   `/api/cache/source/<slug>`, and `/api/cache/stores` report the cache’s layout and
-  config formats, what reclamation left in staging, trash, and quarantine, sources with
-  their alias generation and publication state, and stores with the aliases that name
-  them. Reach them with `metab <root> --api /api/cache/layout` like any other route.
+  config formats, abandoned staging entries the next sweep removes, sources with their
+  alias generation and publication state, and stores with the aliases that name them.
+  Reach them with `metab <root> --api /api/cache/layout` like any other route.
   They resolve `METABROWSER_HOME`, or `~/.metabrowser`, on each request and change
   nothing: a missing home reports `absent` rather than being created, an entry other
   users can reach is reported as `not_private` rather than tightened, and a home other
@@ -155,9 +155,10 @@ Repository cache:
   store using Git’s pack transport (`git fetch`, not `clone --local` hardlinks).
   The fetch is a full clone, every object reachable from the origin’s branches and tags,
   so a published store never needs its origin again.
-  A later acquire of the same `file://` source publishes that staging entry into
-  `repository-stores` and a source alias as the visibility commit, or reuses a store
-  already published for that identity.
+  An origin that is itself a partial clone missing objects is refused with a message
+  that says so. A later acquire of the same `file://` source publishes that staging entry
+  into `repository-stores` and a source alias as the visibility commit, or reuses a
+  store already published for that identity.
   The default branch is read only from the origin’s own `HEAD`, and an acquire whose
   fetched default branch does not resolve to the observed `HEAD` commit is refused
   before publication. Acquisition runs Git without any inherited `GIT_*` variable, so an
@@ -170,6 +171,9 @@ Repository cache:
   Nothing deletes a published store: one that an interrupted acquisition left without
   its alias is reused by the next acquisition of that source.
   Read routes do not sweep.
+  A cache that an earlier v0.12 development build wrote is not migrated: every `file://`
+  mode refuses it with one message, without a traceback or a path, saying to move the
+  cache directory aside or set `METABROWSER_HOME` to a different directory.
   A `file://` acquire that the Git version floor refuses does not create the application
   home, including when that path already exists as an empty directory; a cache hit still
   reuses a published store without fetching, including against an application home the

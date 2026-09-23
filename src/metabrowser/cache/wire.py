@@ -1,7 +1,7 @@
 """Wire shapes for the read-only ``/api/cache/`` routes.
 
 The routes project logical ``f01`` state: the layout and config formats, source and store
-identity, alias generations, publication state, and reclamation outcomes. Nothing here
+identity, alias generations, publication state, and abandoned staging. Nothing here
 names a cache path, a pack file, a Git internal, or a count that changes with ``gc``, and
 nothing names the application home itself.
 
@@ -96,7 +96,7 @@ class CacheError(TypedDict):
     violation: NotRequired[str]
     # home_not_private: the fixed f01 location that failed, such as `cache/sources`, so
     # the user knows what to fix. Absent for anything else, and never a slug, a store
-    # key, or a quarantine entry name.
+    # key, or a staging entry name.
     path: NotRequired[str]
     # future_format: the format found and the newest one this release reads.
     found: NotRequired[str]
@@ -132,26 +132,10 @@ class ConfigRecord(TypedDict):
     upgrades: list[ConfigUpgrade]
 
 
-class QuarantineEntry(TypedDict):
-    """One quarantine outcome and the logical entries it retains.
-
-    ``truncated`` is true when either list was cut at the per-entry name bound.
-    """
-
-    entry: str
-    sources: list[str]
-    stores: list[str]
-    truncated: bool
-
-
 class Reclamation(TypedDict):
-    """What reclamation left: sweepable leftovers and retained quarantine."""
+    """What the next startup sweep may remove: abandoned staging entries."""
 
     staging_entries: int
-    trash_entries: int
-    quarantine_entries: int
-    quarantine: list[QuarantineEntry]
-    quarantine_truncated: bool
 
 
 class CacheLayoutResponse(TypedDict):
@@ -280,7 +264,6 @@ __all__ = [
     "HomePresence",
     "LayoutRecord",
     "LayoutState",
-    "QuarantineEntry",
     "Reclamation",
     "RecordName",
     "RecordProblem",

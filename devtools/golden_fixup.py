@@ -18,8 +18,6 @@ restores them so `make golden-update` is a single reviewable step:
   available, and how far selection had got when the request landed -- and the
   engine sequence in the pending-tally diagnostic, which counts internal change
   batches
-* the quarantine entry name in the cache transcript, which `quarantine_entries`
-  draws at random
 
 It also strips trailing whitespace, which `tryscript run --update` preserves
 from Rich's padded terminal output but `git diff --check` rejects; tryscript
@@ -85,9 +83,6 @@ FIXUPS: list[tuple[str, str]] = [
         r'(^    "contract": "inventory-provider-v1",\n    "version": )\d+',
         r"\1[..]",
     ),
-    # A quarantine entry is named by secrets.token_hex when quarantine_entries runs, so
-    # no fixture can pin it. The slugs and store identities it retains stay literal.
-    (r'"entry": "quarantine-[0-9a-f]{16}"', '"entry": "quarantine-[..]"'),
 ]
 
 
