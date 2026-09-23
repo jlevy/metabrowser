@@ -1,4 +1,4 @@
-"""CLI --no-serve and file:// --api cache inspection. No serving."""
+"""CLI --no-serve, file:// cache inspection, and the pin modes. Nothing binds a port."""
 
 from __future__ import annotations
 
@@ -263,15 +263,67 @@ def test_https_api_tree_stays_closed(tmp_path: Path, monkeypatch: pytest.MonkeyP
 
 
 @posix_only
-def test_serve_file_url_does_not_create_the_application_home(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize(
+    "url", ["https://example.com/owner/repo.git", "ssh://git@example.com/o/r.git"]
+)
+def test_serve_stays_closed_to_https_and_ssh_without_creating_the_home(
+    url: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     home = tmp_path / "home"
     monkeypatch.setenv("METABROWSER_HOME", str(home))
-    result = runner.invoke(_app, ["file:///srv/git/repo.git", "--no-open"])
+    result = runner.invoke(_app, [url, "--no-open"])
     assert isinstance(result.exception, CLIError)
-    assert "file Git sources are not served yet" in str(result.exception)
+    assert "Git sources are not served yet" in str(result.exception)
+    assert "https and ssh stay closed" in str(result.exception)
     assert not home.exists()
+
+
+@posix_only
+@pytest.mark.parametrize("mode", [["--no-open"], ["--check-api"]])
+def test_serve_and_check_api_refuse_allow_edits_before_acquiring(
+    mode: list[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = _isolate_home(tmp_path, monkeypatch)
+    url = _file_url(_origin(tmp_path, allow_filter=False))
+    result = runner.invoke(_app, [url, *mode, "--allow-edits"])
+    assert isinstance(result.exception, CLIError)
+    assert "--allow-edits is not available on an acquired Git source" in str(result.exception)
+    assert not home.exists()
+
+
+@posix_only
+def test_walk_refuses_a_git_source_and_names_the_tree_route(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The walker reads a filesystem; a pin's complete listing is ``/api/tree``."""
+
+    home = _isolate_home(tmp_path, monkeypatch)
+    url = _file_url(_origin(tmp_path, allow_filter=False))
+    result = runner.invoke(_app, [url, "--walk"])
+    assert isinstance(result.exception, CLIError)
+    assert "--walk runs the filesystem inventory walker" in str(result.exception)
+    assert "--api '/api/tree?depth=N'" in str(result.exception)
+    assert not home.exists()
+
+
+@posix_only
+def test_check_api_runs_the_navigation_scenario_on_the_pin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The live filter's typed refusal is the pin's pass, not a failure."""
+
+    from metabrowser.capabilities import get_capabilities
+
+    _isolate_home(tmp_path, monkeypatch)
+    monkeypatch.setenv("METAB_ACTIVE_CONTENT", "1")
+    url = _file_url(_origin(tmp_path, allow_filter=False))
+    result = runner.invoke(_app, [url, "--check-api"])
+    assert result.exit_code == 0, result.output
+    assert f"api check: {url}" in result.output
+    assert "live filter: 409; unsupported_for_subject" in result.output
+    assert "final nav: 200; rows=1; files=1; size=6; index=done" in result.output
+    assert "result: pass" in result.output
+    assert get_capabilities().active_content is False
 
 
 @posix_only

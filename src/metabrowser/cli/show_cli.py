@@ -163,7 +163,7 @@ def _prepare_plugins(plugins_dir: list[Path] | None) -> None:
     )
 
 
-def _display_git_path(selection: str) -> GitPath:
+def display_git_path(selection: str) -> GitPath:
     """Read one pinned selection strictly as slash-separated display names.
 
     ``GitPath.from_display`` reads an all-``g1-`` spelling as the wire form.
@@ -207,7 +207,7 @@ def _git_wire_candidates(selection: str, *, from_route: bool) -> list[str]:
 
     if not from_route:
         with suppress(GitPathError):
-            _add(_display_git_path(selection).to_wire())
+            _add(display_git_path(selection).to_wire())
     try:
         git_path, inner = split_git_container_wire(selection)
     except GitPathError:

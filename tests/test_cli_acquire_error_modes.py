@@ -1,9 +1,9 @@
 """Every CLI mode that acquires maps Git failures to the same path-free ``CLIError``.
 
 ``--no-serve`` and cache ``--api`` acquire through ``acquire_cli``; the Git-pin
-``--show`` and non-cache ``--api`` modes acquire through ``git_pin_cli``. A raw
-``GitError`` escaping any of them tracebacks at the real entry point and prints the
-argument vector, which names the staging path (mb-sumg).
+``--show``, non-cache ``--api``, ``--check-api``, and serve modes acquire through
+``git_pin_cli``. A raw ``GitError`` escaping any of them tracebacks at the real entry
+point and prints the argument vector, which names the staging path (mb-sumg).
 """
 
 from __future__ import annotations
@@ -45,9 +45,25 @@ MODES: dict[str, list[str]] = {
     "cache-api": ["--api", "/api/cache/sources"],
     "pin-show": ["--show", "README"],
     "pin-api": ["--api", f"/api/file?path={README_WIRE}"],
+    "pin-check-api": ["--check-api"],
+    "pin-serve": ["--no-open"],
 }
+PIN_MODES = ("pin-show", "pin-api", "pin-check-api", "pin-serve")
 
 KINDS = ("timeout", "too-large", "unavailable", "command")
+
+
+@pytest.fixture(autouse=True)
+def _never_serve(monkeypatch: pytest.MonkeyPatch) -> None:  # pyright: ignore[reportUnusedFunction]
+    """Every case here fails before serving; if one did not, it must not bind or block."""
+
+    monkeypatch.setattr("metabrowser.cli.serve._QuietForceExitServer", _UnexpectedServe)
+    monkeypatch.setattr("metabrowser.cli.git_pin_cli.stop_on_interrupt", lambda: None)
+
+
+class _UnexpectedServe:
+    def __init__(self, *_args: object, **_kwargs: object) -> None:
+        raise AssertionError("a refused acquisition reached the server")
 
 
 def _assert_path_free(message: str, *paths: Path) -> None:
@@ -145,7 +161,7 @@ def test_below_floor_git_is_refused_in_every_mode_without_writing_the_home(
         assert not home.exists()
 
 
-@pytest.mark.parametrize("mode", ["pin-show", "pin-api"])
+@pytest.mark.parametrize("mode", PIN_MODES)
 def test_a_path_bearing_git_error_while_opening_the_pin_is_path_free(
     mode: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -181,7 +197,7 @@ def test_log_level_debug_prints_gits_own_failure_text(
     assert "does not appear to be a git repository" in result.output
 
 
-@pytest.mark.parametrize("mode", ["pin-show", "pin-api"])
+@pytest.mark.parametrize("mode", PIN_MODES)
 def test_log_level_debug_prints_a_pin_open_failure(
     mode: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

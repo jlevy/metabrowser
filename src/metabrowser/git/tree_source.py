@@ -40,8 +40,8 @@ chrome empty rather than pending.
 Markdown and wiki destinations encode authored segments
 as GitPath wires. An LFS pointer is the stored pointer bytes;
 a blob the tree names but the store lacks is ``object_unavailable``.
-The CLI can attach a ``file://`` pin for ``--show`` and ``--api``.
-Serving acquired Git over a listening port stays on a later bead.
+The CLI attaches a ``file://`` pin for ``--show``, ``--api``, and ``--check-api``,
+and serve mode opens one through the application lifespan.
 """
 
 from __future__ import annotations

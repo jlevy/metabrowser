@@ -22,10 +22,9 @@ refusal reason, through the acquisition modes.
 No command reaches Git or the network, so this runs as a subprocess on any Git version.
 A refused input stops at classification.
 An accepted https or ssh source is normalized and then refused by acquisition before Git
-runs.
-An accepted `file://` source is shown through serve mode, which refuses Git sources
-before acquisition; acquiring one needs a Git at or above the floor, so those sessions
-are in `tests/test_cli_cache_acquire_golden.py` and
+runs. An accepted `file://` source is shown through `--walk`, which refuses Git sources
+before acquisition; serving or acquiring one needs a Git at or above the floor, so those
+sessions are in `tests/test_cli_cache_acquire_golden.py` and
 `tests/test_cli_cache_recovery_golden.py`.
 
 A refusal names its reason and never repeats the argument, so a credential or query in a
@@ -99,8 +98,8 @@ Error: ssh Git sources are not acquired yet (git@example.com:owner/repo.git)
 `localhost` folds to the empty authority, and a trailing slash is dropped.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab FILE://LocalHost/srv/git/repo.git/
-Error: file Git sources are not served yet (file:///srv/git/repo.git). Acquire a file:// source with --no-serve; https and ssh stay closed.
+$ METABROWSER_HOME=$PWD/home metab FILE://LocalHost/srv/git/repo.git/ --walk
+Error: --walk runs the filesystem inventory walker, and a Git source has no filesystem to walk (file:///srv/git/repo.git). Read a pinned tree with --api '/api/tree?depth=N', or --walk a local directory.
 ? 1
 ```
 
