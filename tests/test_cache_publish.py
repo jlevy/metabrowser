@@ -43,7 +43,6 @@ def test_publish_makes_the_source_visible_and_clears_staging(
     assert (home / store_directory(published.store_key) / "store.yml").is_file()
     assert list((home / STAGING).iterdir()) == []
     assert published.default_revision
-    assert published.strategy == "full"
 
 
 @posix_only

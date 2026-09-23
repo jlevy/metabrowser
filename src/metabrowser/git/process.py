@@ -142,18 +142,6 @@ ACQUISITION_POLICY: Final[GitProcessPolicy] = GitProcessPolicy(
     extra_env={"GCM_INTERACTIVE": "never", "LC_ALL": "C"},
     own_process_group=True,
 )
-FETCH_POLICY: Final[GitProcessPolicy] = GitProcessPolicy(
-    name="fetch",
-    timeout_s=GIT_ACQUISITION_TIMEOUT_S,
-    max_bytes=GIT_SUBPROCESS_MAX_BYTES,
-    stdin="devnull",
-    child_umask=0o077,
-    isolate_user_config=True,
-    no_lazy_fetch=True,
-    ssh_batch=True,
-    extra_env={"GCM_INTERACTIVE": "never", "LC_ALL": "C"},
-    own_process_group=True,
-)
 # Request-path reads of a published store: ``ls-tree``, ``rev-parse``, ``log``,
 # ``rev-list``, ``show``, ``diff``. The store holds untrusted content, so the
 # isolation is acquisition-grade and lazy fetch is off. The deadline is the
@@ -814,18 +802,9 @@ def acquisition_allowed(version: tuple[int, int, int] | None) -> bool:
     return version >= ACQUISITION_NEWEST_PATCHED
 
 
-def initial_https_strategy(version: tuple[int, int, int] | None) -> Literal["blobless", "refused"]:
-    """Blobless is the initial HTTPS strategy above the acquisition floor."""
-    return "blobless" if acquisition_allowed(version) else "refused"
-
-
-def acquisition_gate_as_fixture(version_output: str) -> dict[str, bool | str]:
+def acquisition_gate_as_fixture(version_output: str) -> dict[str, bool]:
     """Project a version string into the git-version-gates fixture expected object."""
-    version = parse_git_version(version_output)
-    return {
-        "acquisition": acquisition_allowed(version),
-        "initial_strategy_for_https": initial_https_strategy(version),
-    }
+    return {"acquisition": acquisition_allowed(parse_git_version(version_output))}
 
 
 def parsed_git_version_as_fixture(version_output: str) -> list[int] | None:
@@ -875,7 +854,6 @@ __all__ = [
     "ACQUISITION_PATCHED_TRACKS",
     "ACQUISITION_POLICY",
     "BATCH_OBJECT_POLICY",
-    "FETCH_POLICY",
     "GIT_ACQUISITION_TIMEOUT_S",
     "GIT_DISABLE_MAILMAP_ARGS",
     "GitCommandError",
@@ -896,7 +874,6 @@ __all__ = [
     "failure_detail",
     "git_environment",
     "git_executable",
-    "initial_https_strategy",
     "parse_git_version",
     "parsed_git_version_as_fixture",
     "repository_store_target",

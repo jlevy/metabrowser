@@ -17,22 +17,15 @@ $defs:
     type: string
   StoreAcquisition:
     additionalProperties: false
-    description: How a store's Git database was first populated.
+    description: "How a store's Git database was first populated: a fetch of every object."
     properties:
       git_version:
         $ref: '#/$defs/GitVersion'
       object_format:
         $ref: '#/$defs/ObjectFormat'
-      strategy:
-        enum:
-        - blobless
-        - full
-        title: Strategy
-        type: string
     required:
     - git_version
     - object_format
-    - strategy
     title: StoreAcquisition
     type: object
 $schema: https://json-schema.org/draft/2020-12/schema
@@ -53,4 +46,4 @@ title: RepositoryStore
 type: object
 x-softschema:
   contract: com.github.jlevy.metabrowser.cache:RepositoryStore/v1
-  schema_sha256: 69d361b6b92a70e88bee2271b1a35f8ea442d3fdf0887b7f213ce8dc386c7b65
+  schema_sha256: 2568046fdd61eb4797412f1b04417d806dc4df437a5bb47bad366496aed45ee8

@@ -1,7 +1,8 @@
 """Acquire a classified Git source into an isolated worktree-free store.
 
-A ``file://`` URL is fetched through Git's pack transport into staging, then
-published as an immutable store and a source alias. This module does not serve
+A ``file://`` URL is fetched through Git's pack transport into staging, every
+object and not a partial clone, then published as a complete store and a source
+alias. Nothing later removes objects from a store. This module does not serve
 content. The CLI acquires through ``--no-serve`` and ``--api /api/cache/…``;
 https and ssh stay closed. A bare path never reaches here.
 """
@@ -10,7 +11,6 @@ from __future__ import annotations
 
 import asyncio
 import functools
-import hashlib
 import logging
 import os
 import secrets
@@ -18,7 +18,7 @@ import shutil
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Final, Literal, Self
+from typing import Final, Self
 
 from metabrowser.cache.atomic import publish_entry, read_record, write_record_atomic
 from metabrowser.cache.identity import (
@@ -65,10 +65,7 @@ from metabrowser.cache.records import (
 from metabrowser.cache.urls import GitSource
 from metabrowser.git.process import (
     ACQUISITION_POLICY,
-    FETCH_POLICY,
     GitCommandError,
-    GitOutputTooLargeError,
-    GitProcessPolicy,
     repository_store_target,
     require_acquisition_git,
     run_git,
@@ -91,7 +88,6 @@ _STORE_CONFIG: Final[tuple[tuple[str, str], ...]] = (
     ("transfer.bundleURI", "false"),
     ("core.hooksPath", "/dev/null"),
 )
-_BLOB_MODES: Final[frozenset[bytes]] = frozenset({b"100644", b"100755", b"120000"})
 _ENTRY_ATTEMPTS: Final = 8
 
 
@@ -104,7 +100,7 @@ class RemoteUnavailableError(AcquisitionError):
 
 
 class FetchFailedError(AcquisitionError):
-    """The blobless fetch into staging failed after HEAD was observed."""
+    """The fetch into staging failed after HEAD was observed."""
 
 
 class ValidationFailedError(AcquisitionError):
@@ -125,8 +121,6 @@ class StagingAcquisition:
     source: GitSource
     source_id: str
     object_format: ObjectFormat
-    strategy: Literal["blobless", "full"]
-    configuration_digest: str
     default_remote_ref: str | None
     default_revision: str
     git_version: str
@@ -202,25 +196,15 @@ async def _abandon_off_loop(claim: _StagingClaim) -> None:
     await asyncio.shield(asyncio.ensure_future(asyncio.to_thread(claim.abandon)))
 
 
-async def _run(
-    args: list[str],
-    *,
-    cwd: Path | None = None,
-    git_dir: Path | None = None,
-    policy: GitProcessPolicy = ACQUISITION_POLICY,
-    stdin: bytes | None = None,
-) -> bytes:
+async def _run(args: list[str], *, cwd: Path | None = None, git_dir: Path | None = None) -> bytes:
     require_no_hierarchy_locks("git")
     if git_dir is not None:
         return await run_git(
-            args,
-            target=repository_store_target(git_dir=git_dir),
-            policy=policy,
-            stdin=stdin,
+            args, target=repository_store_target(git_dir=git_dir), policy=ACQUISITION_POLICY
         )
     if cwd is None:
         raise TypeError("cwd or git_dir is required")
-    return await run_git(args, cwd=cwd, policy=policy, stdin=stdin)
+    return await run_git(args, cwd=cwd, policy=ACQUISITION_POLICY)
 
 
 def _parse_symref_head(stdout: bytes) -> tuple[str | None, str]:
@@ -260,94 +244,6 @@ async def _require_ref_at(git_dir: Path, ref: str, revision: str) -> None:
         raise ValidationFailedError("the default branch was not fetched") from exc
     if shown.split(b" ", 1)[0].decode("ascii", errors="replace") != revision:
         raise ValidationFailedError("the default branch does not resolve to the observed HEAD")
-
-
-async def _configuration_digest(git_dir: Path) -> str:
-    raw = await _run(["config", "--file", str(git_dir / "config"), "--list", "-z"], git_dir=git_dir)
-    return "sha256:" + hashlib.sha256(raw).hexdigest()
-
-
-async def _missing_objects(git_dir: Path, *scope: str) -> bool:
-    # ``--quiet`` drops every object that is present, so the output is only the
-    # ``?<oid>`` lines and its size does not grow with the objects that were fetched.
-    listing = await _run(
-        ["rev-list", "--quiet", "--objects", "--missing=print", *scope], git_dir=git_dir
-    )
-    return any(line.startswith(b"?") for line in listing.splitlines())
-
-
-async def _filter_honored(git_dir: Path, revision: str) -> bool:
-    """Return True when the fetch left objects out, so the store is blobless.
-
-    ``blob:none`` on a first fetch omits every blob, so an origin that honored it
-    shows a missing blob in the pinned commit's own tree. That answer costs one
-    tree, whatever the history holds, and it is the usual one.
-
-    A complete tip proves nothing about history: an origin can tag the tip's blobs,
-    and a wanted object is sent despite the filter. Recording ``full`` claims every
-    reachable object, so that claim alone pays for the walk over history, after a
-    fetch that already transferred and indexed all of it. Either listing holds only
-    missing objects, so overflowing the output cap means many are missing.
-    """
-    try:
-        return await _missing_objects(git_dir, "--no-walk", revision) or await _missing_objects(
-            git_dir, revision
-        )
-    except GitOutputTooLargeError:
-        return True
-
-
-async def _tree_blob_oids(git_dir: Path, revision: str) -> tuple[str, ...]:
-    raw = await _run(["ls-tree", "-r", "-z", "--full-tree", revision], git_dir=git_dir)
-    oids: list[str] = []
-    seen: set[str] = set()
-    for record in raw.split(b"\0"):
-        if not record:
-            continue
-        meta, _, _path = record.partition(b"\t")
-        parts = meta.split(b" ")
-        if len(parts) != 3:
-            continue
-        mode, kind, oid_raw = parts
-        if kind != b"blob" or mode not in _BLOB_MODES:
-            continue
-        oid = oid_raw.decode("ascii")
-        if oid not in seen:
-            seen.add(oid)
-            oids.append(oid)
-    return tuple(oids)
-
-
-async def _prefetch_default_tree(git_dir: Path, revision: str) -> None:
-    """Fetch HEAD tree blobs by object ID. A transport failure defers them."""
-
-    oids = await _tree_blob_oids(git_dir, revision)
-    if not oids:
-        return
-    try:
-        await _run(
-            [
-                *_PROTOCOL,
-                "-c",
-                "fetch.negotiationAlgorithm=noop",
-                "-c",
-                "http.lowSpeedLimit=1000",
-                "-c",
-                "http.lowSpeedTime=30",
-                "fetch",
-                "--no-tags",
-                "--no-write-fetch-head",
-                "--recurse-submodules=no",
-                "--filter=blob:none",
-                "--stdin",
-                "origin",
-            ],
-            git_dir=git_dir,
-            policy=FETCH_POLICY,
-            stdin=("\n".join(oids) + "\n").encode("ascii"),
-        )
-    except GitCommandError:
-        return
 
 
 async def acquire_into_staging(source: GitSource, *, home: Path) -> StagingAcquisition:
@@ -406,12 +302,13 @@ async def acquire_into_staging(source: GitSource, *, home: Path) -> StagingAcqui
             await _run(["config", key, value], git_dir=git_dir)
         await _run(["config", "remote.origin.url", source.normalized], git_dir=git_dir)
         try:
+            # Every object: a published store is complete, so no read ever needs the
+            # origin again, and an origin that would honor a filter is not asked to.
             await _run(
                 [
                     *_PROTOCOL,
                     "fetch",
                     "--no-write-fetch-head",
-                    "--filter=blob:none",
                     "origin",
                     "+refs/heads/*:refs/remotes/origin/*",
                     "+refs/tags/*:refs/tags/*",
@@ -419,7 +316,7 @@ async def acquire_into_staging(source: GitSource, *, home: Path) -> StagingAcqui
                 git_dir=git_dir,
             )
         except GitCommandError as exc:
-            raise FetchFailedError("the blobless fetch into staging failed") from exc
+            raise FetchFailedError("the fetch into staging failed") from exc
         try:
             kind = (await _run(["cat-file", "-t", revision], git_dir=git_dir)).strip()
             object_format_raw = (
@@ -434,12 +331,6 @@ async def acquire_into_staging(source: GitSource, *, home: Path) -> StagingAcqui
         if object_format_name not in {"sha1", "sha256"}:
             raise ValidationFailedError("unsupported object format")
         object_format: ObjectFormat = "sha1" if object_format_name == "sha1" else "sha256"
-        strategy: Literal["blobless", "full"] = (
-            "blobless" if await _filter_honored(git_dir, revision) else "full"
-        )
-        if strategy == "blobless":
-            await _prefetch_default_tree(git_dir, revision)
-        digest = await _configuration_digest(git_dir)
         return StagingAcquisition(
             home=home,
             entry=entry,
@@ -447,8 +338,6 @@ async def acquire_into_staging(source: GitSource, *, home: Path) -> StagingAcqui
             source=source,
             source_id=source_identity(source.transport, source.normalized),
             object_format=object_format,
-            strategy=strategy,
-            configuration_digest=digest,
             default_remote_ref=default_remote_ref,
             default_revision=revision,
             git_version=git_version,
@@ -475,7 +364,6 @@ class PublishedSource:
     source_id: str
     store_id: str
     object_format: ObjectFormat
-    strategy: Literal["blobless", "full"]
     default_remote_ref: str
     default_revision: str
 
@@ -537,7 +425,6 @@ def _write_store_records(staged: StagingAcquisition, store_id: str, at: str) -> 
             id=store_id,
             created_at=at,
             acquisition=StoreAcquisition(
-                strategy=staged.strategy,
                 git_version=staged.git_version,
                 object_format=staged.object_format,
             ),
@@ -548,10 +435,8 @@ def _write_store_records(staged: StagingAcquisition, store_id: str, at: str) -> 
         staged.home,
         f"{prefix}/state.yml",
         RepositoryStoreState(
-            configuration_digest=staged.configuration_digest,
             default_remote_ref=staged.default_remote_ref,
             default_revision=staged.default_revision,
-            object_state="complete" if staged.strategy == "full" else "converging",
             last_fetch_at=at,
             last_operation=StoreOperation(kind="acquire", outcome="succeeded", at=at),
         ),
@@ -632,7 +517,6 @@ def _published(
     source_id: str,
     store_id: str,
     object_format: ObjectFormat,
-    strategy: Literal["blobless", "full"],
     default_remote_ref: str,
     default_revision: str,
 ) -> PublishedSource:
@@ -645,7 +529,6 @@ def _published(
         source_id=source_id,
         store_id=store_id,
         object_format=object_format,
-        strategy=strategy,
         default_remote_ref=default_remote_ref,
         default_revision=default_revision,
     )
@@ -677,7 +560,6 @@ def _attach_or_conflict(
             ):
                 raise ValidationFailedError("the published store has no default revision")
             object_format = store.acquisition.object_format
-            strategy = store.acquisition.strategy
             default_remote_ref = state.default_remote_ref
             default_revision = state.default_revision
             source_rel = source_directory(slug)
@@ -714,7 +596,6 @@ def _attach_or_conflict(
                     source_id,
                     store_id,
                     object_format,
-                    strategy,
                     default_remote_ref,
                     default_revision,
                 )
@@ -727,7 +608,6 @@ def _attach_or_conflict(
                 source_id,
                 store_id,
                 object_format,
-                strategy,
                 default_remote_ref,
                 default_revision,
             )
@@ -785,7 +665,6 @@ def _find_published(source: GitSource, home: Path) -> PublishedSource | None:
         source_id,
         alias.store_id,
         store.acquisition.object_format,
-        store.acquisition.strategy,
         state.default_remote_ref,
         state.default_revision,
     )

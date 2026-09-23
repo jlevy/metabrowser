@@ -71,7 +71,6 @@ REPOINTED_AT: Final = "2026-09-17T12:10:00Z"
 OPENED_AT: Final = "2026-09-17T12:30:00Z"
 FLASK_REVISION: Final = "5f4c1a2e8b0d9c7e6a5f4b3c2d1e0f9a8b7c6d5e"
 # A digest of the store's Git configuration; the routes never report it.
-CONFIGURATION_DIGEST: Final = "sha256:" + "0f" * 32
 LEFTOVER_STAGING_ENTRY: Final = "acquire-interrupted"
 
 
@@ -122,9 +121,7 @@ def _stage_and_publish_store(home: Path, key: str, *, with_revision: bool) -> No
             RepositoryStore(
                 id=f"sha256:{key}",
                 created_at=CREATED_AT,
-                acquisition=StoreAcquisition(
-                    strategy="blobless", git_version="2.50.1", object_format="sha1"
-                ),
+                acquisition=StoreAcquisition(git_version="2.50.1", object_format="sha1"),
             ),
             REPOSITORY_STORE_CONTRACT_ID,
         )
@@ -132,10 +129,8 @@ def _stage_and_publish_store(home: Path, key: str, *, with_revision: bool) -> No
             home,
             f"{staged}/state.yml",
             RepositoryStoreState(
-                configuration_digest=CONFIGURATION_DIGEST,
                 default_remote_ref="refs/remotes/origin/trunk" if with_revision else None,
                 default_revision=FLASK_REVISION if with_revision else None,
-                object_state="converging" if with_revision else "complete",
                 last_fetch_at=FETCHED_AT,
                 last_operation=StoreOperation(kind="acquire", outcome="succeeded", at=FETCHED_AT),
             ),

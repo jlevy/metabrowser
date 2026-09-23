@@ -17,7 +17,6 @@ from metabrowser.git.process import (
     GitCommandError,
     GitError,
     GitOutputTooLargeError,
-    GitProcessPolicy,
     GitTimeoutError,
     GitUnavailableError,
     UnsupportedGitVersionError,
@@ -66,7 +65,6 @@ def test_no_serve_acquires_a_file_source_and_prints_logical_identity(
     assert "acquired: " in result.output
     assert "slug: " in result.output
     assert "store: sha256:" in result.output
-    assert "strategy: full" in result.output
     assert "revision: " in result.output
     assert list((home / STAGING).iterdir()) == []
     assert any((home / SOURCES).iterdir())
@@ -418,13 +416,11 @@ def test_git_failures_during_acquisition_are_distinct_path_free_cli_errors(
             *,
             cwd: Path | None = None,
             git_dir: Path | None = None,
-            policy: GitProcessPolicy = acquire_module.ACQUISITION_POLICY,
-            stdin: bytes | None = None,
             kind: str = kind,
         ) -> bytes:
             if args[0] == "init":
                 raise _git_failure(kind, args)
-            return await real_run(args, cwd=cwd, git_dir=git_dir, policy=policy, stdin=stdin)
+            return await real_run(args, cwd=cwd, git_dir=git_dir)
 
         monkeypatch.setattr(acquire_module, "_run", fail_init)
         result = runner.invoke(_app, [url, "--no-serve"])

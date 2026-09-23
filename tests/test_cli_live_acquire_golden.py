@@ -3,15 +3,15 @@
 The other acquisition goldens run the CLI in process with the Git floor patched,
 because the ordinary CI runner's Git is below it. This one patches nothing: each
 command is a separate ``metab`` process that detects the Git on ``PATH``, applies
-the production floor, acquires blobless into a fresh home, and reads the result.
-It skips where no admitted Git is installed and cannot skip in the CI
+the production floor, acquires every object into a fresh home, and reads the
+result. It skips where no admitted Git is installed and cannot skip in the CI
 ``admitted-git`` job, which runs it on the lowest admitted Git release and the
 newest patched one (see ``tests/admitted_git.py``).
 
-The origin allows filters, so the store is published ``converging`` with only the
-default revision's blobs present. The transcript pins first open, the cache hit,
-a read of a prefetched blob, and the typed ``object_unavailable`` answer for the
-commit that needs a blob the prefetch skipped.
+The origin allows filters, and the store is still complete. The transcript pins
+first open, the cache hit, a nested read, and the commit whose diff reads a blob
+that only history holds; then the origin is moved away and the cache hit and that
+commit are read again from the store alone.
 
 Regenerate after an intended change with:
 
@@ -130,24 +130,31 @@ def _run(home: Path, *args: str) -> _Result:
     return _Result(completed.returncode, completed.stdout, completed.stderr)
 
 
-def test_golden_live_blobless_acquire_and_unconverged_read(tmp_path: Path) -> None:
+def test_golden_live_full_acquire_and_offline_read(tmp_path: Path) -> None:
     require_admitted_git()
     home = tmp_path / "home"
-    url = _file_url(_two_commit_origin(tmp_path))
+    origin = _two_commit_origin(tmp_path)
+    url = _file_url(origin)
 
     first = _run(home, url, "--no-serve")
     again = _run(home, url, "--no-serve")
     shown = _run(home, url, "--show", "notes/old.txt")
     current = _run(home, url, "--api", f"/api/file?path={OLD_WIRE}")
-    unconverged = _run(home, url, "--api", f"/api/git/commit/{SECOND_REVISION}")
+    commit = _run(home, url, "--api", f"/api/git/commit/{SECOND_REVISION}")
+    origin.rename(origin.with_name("moved.git"))
+    offline = _run(home, url, "--no-serve")
+    offline_commit = _run(home, url, "--api", f"/api/git/commit/{SECOND_REVISION}")
 
     assert first.exit_code == 0, first
-    assert "strategy: blobless" in first.stdout
-    assert first.stdout == again.stdout
+    assert "revision: " + SECOND_REVISION in first.stdout
+    assert first.stdout == again.stdout == offline.stdout
     assert shown.exit_code == 0, shown
     assert '"content": "second draft\\n"' in current.stdout
-    assert '"code": "object_unavailable"' in unconverged.stdout
+    assert commit.exit_code == 0, commit
+    assert '"deletions": 1' in commit.stdout, "numstat read the blob only history holds"
+    assert offline_commit.stdout == commit.stdout
 
+    commit_label = f"file://<ORIGIN> --api /api/git/commit/{SECOND_REVISION}"
     rendered = "".join(
         [
             _block("file://<ORIGIN> --no-serve", first, origin_url=url, api=False),
@@ -159,12 +166,10 @@ def test_golden_live_blobless_acquire_and_unconverged_read(tmp_path: Path) -> No
                 origin_url=url,
                 api=False,
             ),
-            _block(
-                f"file://<ORIGIN> --api /api/git/commit/{SECOND_REVISION}",
-                unconverged,
-                origin_url=url,
-                api=False,
-            ),
+            _block(commit_label, commit, origin_url=url, api=False),
+            "# (the origin is moved away)\n",
+            _block("file://<ORIGIN> --no-serve", offline, origin_url=url, api=False),
+            _block(commit_label, offline_commit, origin_url=url, api=False),
         ]
     )
     assert str(tmp_path) not in rendered

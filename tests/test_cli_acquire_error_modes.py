@@ -22,7 +22,6 @@ from metabrowser.cli.main import _app
 from metabrowser.errors import CLIError
 from metabrowser.git.process import (
     GitError,
-    GitProcessPolicy,
     GitUnavailableError,
     UnsupportedGitVersionError,
 )
@@ -74,13 +73,11 @@ def test_git_failures_during_acquisition_are_the_same_cli_error_in_every_mode(
             *,
             cwd: Path | None = None,
             git_dir: Path | None = None,
-            policy: GitProcessPolicy = acquire_module.ACQUISITION_POLICY,
-            stdin: bytes | None = None,
             kind: str = kind,
         ) -> bytes:
             if args[0] == "init":
                 raise _git_failure(kind, args)
-            return await real_run(args, cwd=cwd, git_dir=git_dir, policy=policy, stdin=stdin)
+            return await real_run(args, cwd=cwd, git_dir=git_dir)
 
         monkeypatch.setattr(acquire_module, "_run", fail_init)
         result = runner.invoke(_app, [url, *MODES[mode]])
@@ -110,12 +107,10 @@ def test_every_mode_reports_one_message_per_failure_kind(
         *,
         cwd: Path | None = None,
         git_dir: Path | None = None,
-        policy: GitProcessPolicy = acquire_module.ACQUISITION_POLICY,
-        stdin: bytes | None = None,
     ) -> bytes:
         if args[0] == "init":
             raise _git_failure("timeout", args)
-        return await real_run(args, cwd=cwd, git_dir=git_dir, policy=policy, stdin=stdin)
+        return await real_run(args, cwd=cwd, git_dir=git_dir)
 
     monkeypatch.setattr(acquire_module, "_run", time_out_init)
     messages = {

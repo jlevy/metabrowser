@@ -104,7 +104,7 @@ def acquire_published_source(source: GitSource) -> PublishedSource:
 
 
 def run_no_serve(root: Path | GitSource, *, log_level: str = "") -> None:
-    """Acquire a ``file://`` Git source and print slug, store, and strategy."""
+    """Acquire a ``file://`` Git source and print its slug, store, and revision."""
 
     apply_log_level(log_level)
     if isinstance(root, Path):
@@ -113,7 +113,6 @@ def run_no_serve(root: Path | GitSource, *, log_level: str = "") -> None:
     typer.echo(f"acquired: {published.source.normalized}")
     typer.echo(f"slug: {published.slug}")
     typer.echo(f"store: {published.store_id}")
-    typer.echo(f"strategy: {published.strategy}")
     typer.echo(f"revision: {published.default_revision}")
 
 

@@ -5,7 +5,7 @@ on ubuntu-latest: Git 2.43.0 is below the acquisition floor (2.43.7 / patched
 tracks), by design. These goldens invoke the production CLI in-process with
 only ``require_acquisition_git`` monkeypatched — the same boundary
 ``tests/test_cache_acquire.py`` uses to exercise fetch — and pin logical
-identity: strategy, publication, transport, object format, remote-tracking
+identity: publication, transport, object format, remote-tracking
 ref, and the deterministic revision. Sandbox-dependent slug, store/source
 ids, file:// URL, timestamps, git version, and package version are
 placeholders. The origin branch is ``topic`` so the remote-tracking ref is not
@@ -221,7 +221,6 @@ def test_golden_file_url_acquire_and_reuse(tmp_path: Path, monkeypatch: pytest.M
     second = _invoke([url, "--no-serve"])
     assert first.stdout == second.stdout
     assert ORIGIN_REVISION in first.stdout
-    assert "strategy: full" in first.stdout
     assert str(home) not in first.stdout
     assert "Serving" not in first.stdout
 
@@ -230,7 +229,7 @@ def test_golden_file_url_acquire_and_reuse(tmp_path: Path, monkeypatch: pytest.M
     stores = _invoke([str(empty), "--api", "/api/cache/stores"])
     assert ORIGIN_REVISION in stores.stdout
     assert ORIGIN_REMOTE_REF in stores.stdout
-    assert '"strategy": "full"' in stores.stdout
+    assert '"object_format": "sha1"' in stores.stdout
     assert '"transport": "file"' in sources.stdout
     assert '"publication": "published"' in sources.stdout
 

@@ -14,18 +14,13 @@ sequences through ``metabrowser.cache.locks``. The sweep, trash, quarantine, and
 reclamation machines replay against ``metabrowser.cache.reclaim`` in
 ``tests/test_cache_reclaim.py``.
 
-Rules whose implementation lands later keep a small reference oracle written from the
-fixture's own prose: object requests, which arrive with the object-job port. Each oracle
-proves its frozen rules are complete and consistent, and is replaced by the production
-function when that lands; it is a specification aid, not a second implementation to
-keep. The state-machine well-formedness checks and the exhaustive interleaving
-exploration verify the design itself and stay.
+The state-machine well-formedness checks and the exhaustive interleaving exploration
+verify the design itself.
 """
 
 from __future__ import annotations
 
 import json
-import math
 from collections import deque
 from pathlib import Path
 from typing import Any, cast
@@ -52,7 +47,6 @@ def _load(name: str) -> dict[str, Any]:
         ("source-identity.json", "source-identity.schema.json"),
         ("git-version-gates.json", "git-version-gates.schema.json"),
         ("state-machines.json", "state-machines.schema.json"),
-        ("object-requests.json", "object-requests.schema.json"),
     ],
 )
 def test_fixture_matches_its_schema(fixture: str, schema_name: str) -> None:
@@ -250,164 +244,6 @@ def test_git_version_gates_decide_every_case() -> None:
         assert (
             git_process.acquisition_gate_as_fixture(case["version_output"]) == case["expected"]
         ), case["version_output"]
-
-
-def test_every_admitted_git_carries_the_lazy_fetch_guard() -> None:
-    gates = _load("git-version-gates.json")
-    (acquisition,) = gates["gates"]
-    guard = gates["lazy_fetch_guard"]
-
-    def tag(value: str) -> tuple[int, int, int]:
-        parsed = git_process.parse_git_version(f"git version {value.removeprefix('v')}")
-        assert parsed is not None
-        return parsed
-
-    present = [tag(value) for value in guard["verified_present"]]
-    absent = [tag(value) for value in guard["verified_absent"]]
-    newest_unguarded_track = max((version[0], version[1]) for version in absent)
-    for track, floor in acquisition["patched_tracks"].items():
-        major, minor = (int(part) for part in track.split("."))
-        floor_version = (floor[0], floor[1], floor[2])
-        assert not any(version == floor_version for version in absent), track
-        guarded_on_track = [
-            version for version in present if (version[0], version[1]) == (major, minor)
-        ]
-        if guarded_on_track:
-            assert min(guarded_on_track) <= floor_version, track
-        else:
-            assert (major, minor) > newest_unguarded_track, track
-
-
-# ----------------------------------------------------------------------------
-# Object requests: change-set classification and rejection splitting
-
-
-def classify_change_set(
-    spec: dict[str, Any], entries: list[dict[str, str]]
-) -> dict[str, list[str]]:
-    kinds = cast(dict[str, str], spec["change_set"]["modes"])
-    result: dict[str, list[str]] = {"request": [], "submodules": [], "unsupported": []}
-    for entry in entries:
-        oid = entry["oid"]
-        if set(oid) == {"0"}:
-            continue
-        kind = kinds.get(entry["mode"])
-        bucket = {"blob": "request", "submodule": "submodules"}.get(kind or "", "unsupported")
-        if kind == "tree":
-            continue
-        if oid not in result[bucket]:
-            result[bucket].append(oid)
-    return result
-
-
-class JobFailed(Exception):
-    pass
-
-
-def split_request(
-    spec: dict[str, Any], wants: list[str], rejected_by_server: set[str], failure_class: str
-) -> dict[str, Any]:
-    cap = cast(int, spec["request"]["rejected_leaf_cap"])
-    sizes: list[int] = []
-    accepted: list[str] = []
-    rejected: list[str] = []
-    deferred: list[str] = []
-
-    def attempt(oids: list[str]) -> None:
-        if len(rejected) >= cap:
-            deferred.extend(oids)
-            return
-        sizes.append(len(oids))
-        if not rejected_by_server.intersection(oids):
-            accepted.extend(oids)
-            return
-        if failure_class not in spec["request"]["per_object_rejections"]:
-            raise JobFailed(failure_class)
-        if len(oids) == 1:
-            rejected.extend(oids)
-            return
-        middle = (len(oids) + 1) // 2
-        attempt(oids[:middle])
-        attempt(oids[middle:])
-
-    try:
-        attempt(wants)
-    except JobFailed:
-        return {
-            "outcome": "job_failed",
-            "accepted": [],
-            "rejected": [],
-            "deferred": [],
-            "request_sizes": sizes,
-        }
-    outcome = "partial" if rejected or deferred else "complete"
-    return {
-        "outcome": outcome,
-        "accepted": accepted,
-        "rejected": rejected,
-        "deferred": deferred,
-        "request_sizes": sizes,
-    }
-
-
-def job_source_outcome(case: dict[str, Any]) -> str:
-    """The frozen fetch-job source rule."""
-    remotes = cast(dict[str, dict[str, bool]], case["store"]["remotes"])
-    remote = remotes.get(case["job"]["remote"])
-    if remote is None:
-        return "not_a_recorded_remote"
-    if case["store"]["partial"] and not remote["promisor"]:
-        return "not_a_promisor_remote"
-    _source, _, destination = cast(str, case["job"]["refspec"]).lstrip("+").partition(":")
-    if not destination.startswith("refs/metabrowser/jobs/<job-id>/"):
-        return "destination_not_job_private"
-    return "accepted"
-
-
-def test_change_sets_request_only_blob_modes() -> None:
-    spec = _load("object-requests.json")
-    assert {mode for mode, kind in spec["change_set"]["modes"].items() if kind == "blob"} == {
-        "100644",
-        "100755",
-        "120000",
-    }
-    for case in spec["classification_cases"]:
-        assert classify_change_set(spec, case["entries"]) == case["expected"], case["id"]
-
-
-def test_rejected_requests_split_to_single_object_ids() -> None:
-    spec = _load("object-requests.json")
-    classes = set(spec["request"]["per_object_rejections"]) | set(
-        spec["request"]["terminal_failures"]
-    )
-    cap = spec["request"]["rejected_leaf_cap"]
-    for case in spec["request_cases"]:
-        assert case["failure_class"] in classes, case["id"]
-        result = split_request(
-            spec, case["wants"], set(case["rejected_by_server"]), case["failure_class"]
-        )
-        assert result == case["expected"], case["id"]
-        assert sorted(result["accepted"] + result["rejected"] + result["deferred"]) == (
-            sorted(case["wants"]) if result["outcome"] != "job_failed" else []
-        ), case["id"]
-        assert len(result["rejected"]) <= cap, case["id"]
-        rejected = len(case["rejected_by_server"]) if result["outcome"] != "job_failed" else 0
-        depth = max(1, math.ceil(math.log2(max(len(case["wants"]), 1))))
-        assert len(result["request_sizes"]) <= 1 + 2 * min(rejected, cap) * depth, case["id"]
-    assert 1 + 2 * cap * math.ceil(math.log2(50_000)) == 257
-
-
-def test_fetch_jobs_use_only_recorded_promisor_remotes() -> None:
-    spec = _load("object-requests.json")["job_sources"]
-    outcomes = {job_source_outcome(case) for case in spec["cases"]}
-    assert outcomes == {
-        "accepted",
-        "not_a_recorded_remote",
-        "not_a_promisor_remote",
-        "destination_not_job_private",
-    }
-    for case in spec["cases"]:
-        assert job_source_outcome(case) == case["expected"], case["id"]
 
 
 # ----------------------------------------------------------------------------

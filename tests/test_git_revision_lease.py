@@ -81,7 +81,6 @@ def _publish(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, str
     origin, first, second = _two_commit_origin(tmp_path)
     home = tmp_path / "home"
     published = asyncio.run(acquire_file_source(_file_source(origin), home=home))
-    assert published.strategy == "full"
     assert published.default_revision == second
     return published.home, published.store_key, published.git_dir, first, second
 

@@ -392,13 +392,11 @@ def test_stores_report_references_and_what_reclamation_would_keep(
         "identity": {
             "created_at": "2026-09-17T12:00:00Z",
             "acquisition": {
-                "strategy": "blobless",
                 "git_version": "2.50.1",
                 "object_format": "sha1",
             },
         },
         "state": {
-            "object_state": "converging",
             "default_remote_ref": "refs/remotes/origin/trunk",
             "default_revision": FLASK_REVISION,
             "last_fetch_at": "2026-09-17T12:00:05Z",

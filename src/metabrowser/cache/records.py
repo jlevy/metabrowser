@@ -222,9 +222,8 @@ class RepositoryStoreAlias(_MachineRecord):
 
 
 class StoreAcquisition(_MachineRecord):
-    """How a store's Git database was first populated."""
+    """How a store's Git database was first populated: a fetch of every object."""
 
-    strategy: Literal["blobless", "full"]
     git_version: GitVersion
     object_format: ObjectFormat
 
@@ -240,25 +239,16 @@ class RepositoryStore(_MachineRecord):
 class StoreOperation(_MachineRecord):
     """The last Git operation that finished against a store."""
 
-    kind: Literal["acquire", "refresh", "converge"]
+    kind: Literal["acquire", "refresh"]
     outcome: Literal["succeeded", "failed", "cancelled"]
     at: CanonicalTimestamp
 
 
 class RepositoryStoreState(_MachineRecord):
-    """A store's ``state.yml``: mutable Git observations, replaced atomically.
+    """A store's ``state.yml``: mutable Git observations, replaced atomically."""
 
-    ``configuration_digest`` is the store's configuration snapshot: the SHA-256 of
-    ``git config --file <store>/repository.git/config --list -z``. It is recorded after
-    the first successful fetch and before publication, every Git process on the store
-    verifies it first, and only an operation that intentionally changes the store's
-    configuration replaces it, under the store lock.
-    """
-
-    configuration_digest: Sha256Identity
     default_remote_ref: GitRefName | None
     default_revision: GitObjectId | None
-    object_state: Literal["complete", "converging"]
     last_fetch_at: CanonicalTimestamp | None
     last_operation: StoreOperation
 

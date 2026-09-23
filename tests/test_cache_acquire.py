@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import dataclasses
 import os
 import shutil
 import stat
@@ -30,8 +29,6 @@ from metabrowser.cache.records import REPOSITORY_SOURCE_STATE_CONTRACT_ID, Repos
 from metabrowser.cache.urls import GitSource, classify_root_argument
 from metabrowser.git.process import (
     _REPO_PINNING_GIT_VARS,
-    GitCommandError,
-    GitProcessPolicy,
     UnsupportedGitVersionError,
     detect_git_version,
 )
@@ -251,10 +248,8 @@ def test_a_default_branch_that_does_not_resolve_to_the_observed_head_is_refused(
         *,
         cwd: Path | None = None,
         git_dir: Path | None = None,
-        policy: GitProcessPolicy = acquire_module.ACQUISITION_POLICY,
-        stdin: bytes | None = None,
     ) -> bytes:
-        result = await real_run(args, cwd=cwd, git_dir=git_dir, policy=policy, stdin=stdin)
+        result = await real_run(args, cwd=cwd, git_dir=git_dir)
         if "ls-remote" in args:
             _git(work, "commit", "-q", "--allow-empty", "-m", "moved")
             _git(work, "push", "-q", str(origin), "topic")
@@ -322,11 +317,9 @@ def test_a_detached_head_origin_is_refused_before_anything_is_fetched(
         *,
         cwd: Path | None = None,
         git_dir: Path | None = None,
-        policy: GitProcessPolicy = acquire_module.ACQUISITION_POLICY,
-        stdin: bytes | None = None,
     ) -> bytes:
         commands.append(args)
-        return await real_run(args, cwd=cwd, git_dir=git_dir, policy=policy, stdin=stdin)
+        return await real_run(args, cwd=cwd, git_dir=git_dir)
 
     monkeypatch.setattr(acquire_module, "_run", record)
     with pytest.raises(ValidationFailedError, match="not a branch"):
@@ -345,16 +338,22 @@ def _has_object(git_dir: Path, oid: str) -> bool:
     return probe.returncode == 0
 
 
-@posix_only
-@pytest.mark.parametrize("shape", ["unfiltered", "filtered", "filtered-with-tagged-tip"])
-def test_the_filter_check_is_sound_and_does_not_buffer_the_origins_history(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, shape: str
-) -> None:
-    """``old.txt`` lives only in history, so the tip prefetch never fetches it.
+def _missing_objects(git_dir: Path) -> list[str]:
+    listing = subprocess.run(
+        ["git", "--git-dir", str(git_dir), "rev-list", "--objects", "--missing=print", "--all"],
+        check=True,
+        capture_output=True,
+        env=_git_env(git_dir) | {"GIT_NO_LAZY_FETCH": "1"},
+        text=True,
+    ).stdout
+    return [line for line in listing.splitlines() if line.startswith("?")]
 
-    A tag on the tip's blob makes the origin send it despite the filter, which leaves the
-    tip complete while history is not.
-    """
+
+@posix_only
+def test_an_origin_that_allows_filters_is_still_acquired_complete(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``old.txt`` lives only in history; a blobless clone of this origin would lack it."""
     _allow_installed_git(monkeypatch)
     origin = tmp_path / "long"
     origin.mkdir()
@@ -365,36 +364,15 @@ def test_the_filter_check_is_sound_and_does_not_buffer_the_origins_history(
     _git(origin, "commit", "-qm", "first")
     old_blob = _rev_parse(origin, "HEAD:old.txt")
     _git(origin, "rm", "-q", "old.txt")
-    for index in range(40):
-        _git(origin, "commit", "-q", "--allow-empty", "-m", f"commit {index}")
-    if shape != "unfiltered":
-        _git(origin, "config", "uploadpack.allowFilter", "true")
-        _git(origin, "config", "uploadpack.allowAnySHA1InWant", "true")
-    if shape == "filtered-with-tagged-tip":
-        _git(origin, "tag", "tip-blob", _rev_parse(origin, "HEAD:README"))
-    # Forty commit IDs alone are 1,640 bytes: a listing of every reachable object
-    # overflows this cap, and a listing of the missing ones does not.
-    capped = dataclasses.replace(acquire_module.ACQUISITION_POLICY, max_bytes=1024)
-    real_run = acquire_module._run
-
-    async def cap_rev_list(
-        args: list[str],
-        *,
-        cwd: Path | None = None,
-        git_dir: Path | None = None,
-        policy: GitProcessPolicy = acquire_module.ACQUISITION_POLICY,
-        stdin: bytes | None = None,
-    ) -> bytes:
-        if args[0] == "rev-list":
-            policy = capped
-        return await real_run(args, cwd=cwd, git_dir=git_dir, policy=policy, stdin=stdin)
-
-    monkeypatch.setattr(acquire_module, "_run", cap_rev_list)
+    _git(origin, "commit", "-qm", "second")
+    _git(origin, "config", "uploadpack.allowFilter", "true")
+    _git(origin, "config", "uploadpack.allowAnySHA1InWant", "true")
     with asyncio.run(acquire_into_staging(_file_source(origin), home=tmp_path / "home")) as staged:
-        honored = not _has_object(staged.git_dir, old_blob)
-        assert staged.strategy == ("blobless" if honored else "full")
-        if shape == "unfiltered":
-            assert not honored
+        assert _has_object(staged.git_dir, old_blob)
+        assert _missing_objects(staged.git_dir) == []
+        config = (staged.git_dir / "config").read_text(encoding="utf-8")
+        assert "promisor" not in config
+        assert "partialclonefilter" not in config.lower()
 
 
 def _inodes(path: Path) -> set[int]:
@@ -410,13 +388,12 @@ def test_file_origin_without_filter_support_fetches_a_complete_staging_store(
     home = tmp_path / "home"
     staged = asyncio.run(acquire_into_staging(_file_source(origin), home=home))
     with staged:
-        assert staged.strategy == "full"
+        assert _missing_objects(staged.git_dir) == []
         assert staged.object_format == "sha1"
         assert len(staged.default_revision) == 40
         assert staged.default_remote_ref == "refs/remotes/origin/topic"
         assert staged.git_dir.is_dir()
         assert (staged.git_dir / "config").is_file()
-        assert staged.configuration_digest.startswith("sha256:")
         assert staged.source_id == source_identity("file", staged.source.normalized)
         assert any(
             lock.kind is LockKind.STAGING_ENTRY and lock.key == staged.entry
@@ -431,20 +408,6 @@ def test_file_origin_without_filter_support_fetches_a_complete_staging_store(
             if path.exists() and path.stat().st_mode & (stat.S_IRWXG | stat.S_IRWXO)
         ]
         assert leaked == []
-
-
-@posix_only
-def test_file_origin_that_allows_filter_still_validates_the_observed_head(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _allow_installed_git(monkeypatch)
-    origin = _origin(tmp_path, allow_filter=True)
-    home = tmp_path / "home"
-    staged = asyncio.run(acquire_into_staging(_file_source(origin), home=home))
-    with staged:
-        assert staged.strategy in {"blobless", "full"}
-        assert staged.default_revision
-        assert staged.git_dir.is_dir()
 
 
 @posix_only
@@ -491,51 +454,6 @@ def test_a_crashed_staging_holder_is_swept(tmp_path: Path, monkeypatch: pytest.M
     report = sweep_staging_and_trash(home)
     assert f"cache/staging/{staged.entry}" in report.removed
     assert not staged.git_dir.exists()
-
-
-@posix_only
-def test_prefetch_failure_still_leaves_a_validated_staging_store(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _allow_installed_git(monkeypatch)
-    origin = _origin(tmp_path, allow_filter=True)
-    home = tmp_path / "home"
-    real_run = acquire_module._run
-
-    async def fail_object_fetch(
-        args: list[str],
-        *,
-        cwd: Path | None = None,
-        git_dir: Path | None = None,
-        policy: GitProcessPolicy = acquire_module.ACQUISITION_POLICY,
-        stdin: bytes | None = None,
-    ) -> bytes:
-        if "--stdin" in args:
-            raise GitCommandError(args, 1, "prefetch failed")
-        return await real_run(args, cwd=cwd, git_dir=git_dir, policy=policy, stdin=stdin)
-
-    monkeypatch.setattr(acquire_module, "_run", fail_object_fetch)
-    staged = asyncio.run(acquire_into_staging(_file_source(origin), home=home))
-    with staged:
-        assert staged.git_dir.is_dir()
-        assert staged.default_revision
-
-
-@posix_only
-def test_blobless_prefetch_makes_head_tree_blobs_present(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _allow_installed_git(monkeypatch)
-    origin = _origin(tmp_path, allow_filter=True)
-    home = tmp_path / "home"
-    staged = asyncio.run(acquire_into_staging(_file_source(origin), home=home))
-    with staged:
-        if staged.strategy != "blobless":
-            pytest.skip("this Git ignored blob:none over file://")
-        oids = asyncio.run(acquire_module._tree_blob_oids(staged.git_dir, staged.default_revision))
-        assert oids
-        kind = asyncio.run(acquire_module._run(["cat-file", "-t", oids[0]], git_dir=staged.git_dir))
-        assert kind.strip() == b"blob"
 
 
 def test_https_sources_are_out_of_scope_for_staging_fetch() -> None:

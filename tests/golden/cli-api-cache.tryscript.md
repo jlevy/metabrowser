@@ -243,13 +243,11 @@ status: 200
       "identity": {
         "created_at": "2026-09-17T12:00:00Z",
         "acquisition": {
-          "strategy": "blobless",
           "git_version": "2.50.1",
           "object_format": "sha1"
         }
       },
       "state": {
-        "object_state": "converging",
         "default_remote_ref": "refs/remotes/origin/trunk",
         "default_revision": "5f4c1a2e8b0d9c7e6a5f4b3c2d1e0f9a8b7c6d5e",
         "last_fetch_at": "2026-09-17T12:00:05Z",
@@ -278,13 +276,11 @@ status: 200
       "identity": {
         "created_at": "2026-09-17T12:00:00Z",
         "acquisition": {
-          "strategy": "blobless",
           "git_version": "2.50.1",
           "object_format": "sha1"
         }
       },
       "state": {
-        "object_state": "complete",
         "default_remote_ref": null,
         "default_revision": null,
         "last_fetch_at": "2026-09-17T12:00:05Z",
@@ -340,13 +336,11 @@ status: 200
       "identity": {
         "created_at": "2026-09-17T12:00:00Z",
         "acquisition": {
-          "strategy": "blobless",
           "git_version": "2.50.1",
           "object_format": "sha1"
         }
       },
       "state": {
-        "object_state": "converging",
         "default_remote_ref": "refs/remotes/origin/trunk",
         "default_revision": "5f4c1a2e8b0d9c7e6a5f4b3c2d1e0f9a8b7c6d5e",
         "last_fetch_at": "2026-09-17T12:00:05Z",

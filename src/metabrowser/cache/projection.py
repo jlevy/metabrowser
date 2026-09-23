@@ -747,7 +747,6 @@ def _store_identity(store: RepositoryStore) -> StoreIdentity:
     return {
         "created_at": store.created_at,
         "acquisition": {
-            "strategy": acquisition.strategy,
             "git_version": acquisition.git_version,
             "object_format": acquisition.object_format,
         },
@@ -757,7 +756,6 @@ def _store_identity(store: RepositoryStore) -> StoreIdentity:
 def _store_state(state: RepositoryStoreState) -> StoreState:
     operation = state.last_operation
     return {
-        "object_state": state.object_state,
         "default_remote_ref": state.default_remote_ref,
         "default_revision": state.default_revision,
         "last_fetch_at": state.last_fetch_at,

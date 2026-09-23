@@ -3,9 +3,7 @@
 The routes project logical ``f01`` state: the layout and config formats, source and store
 identity, alias generations, publication state, and reclamation outcomes. Nothing here
 names a cache path, a pack file, a Git internal, or a count that changes with ``gc``, and
-nothing names the application home itself. The store's ``configuration_digest`` is left
-out on purpose: it is an integrity snapshot every Git process verifies, and it changes
-with the Git version that wrote the configuration, not with anything a reader decides.
+nothing names the application home itself.
 
 Conventions follow :mod:`metabrowser.git.wire`: required keys are required to the type
 checker, conditional keys are ``NotRequired``, and a record that could not be read is
@@ -211,7 +209,6 @@ class CacheSourcesResponse(TypedDict):
 
 
 class StoreAcquisition(TypedDict):
-    strategy: str
     git_version: str
     object_format: str
 
@@ -228,7 +225,6 @@ class StoreOperation(TypedDict):
 
 
 class StoreState(TypedDict):
-    object_state: str
     default_remote_ref: str | None
     default_revision: str | None
     last_fetch_at: str | None
