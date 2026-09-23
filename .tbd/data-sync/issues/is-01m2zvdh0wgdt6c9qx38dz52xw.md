@@ -1,17 +1,19 @@
 ---
 type: is
 id: is-01m2zvdh0wgdt6c9qx38dz52xw
-title: Acquire https and ssh Git URLs into the shared store (no bead owned this; mb-h51g is file:// only, mb-ew38 is URL open)
+title: Acquire HTTPS and SSH Git URLs into the shared store
 kind: task
 status: open
 priority: 1
-version: 2
+version: 4
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 labels:
   - release:v0.12.0
 dependencies: []
 parent_id: is-01kzs5m38dz1egphfwf30c8h7n
+child_order_hints:
+  - is-01m3617625k6h6qq4dq2hyxytb
 created_at: 2026-09-20T16:47:01.143Z
-updated_at: 2026-09-23T00:21:42.589Z
+updated_at: 2026-09-23T02:26:01.029Z
 ---
-Phase 1B-a of docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md (heading at line 1774) records that draft #217 implements file:// acquire only and that https and ssh are classified and refused, but no bead owns lifting that refusal: mb-h51g is scoped to file://, and mb-ew38 is URL open and serving. This bead owns acquiring https and ssh Git URLs into the shared repository store.
+Track complete HTTPS and SSH acquisition into the shared worktree-free Git store. Current #217 supports file:// only and remote transports remain refused. Child mb-s1lt owns HTTPS acquisition within the Phase 2A PR and gates repository URL opening/publication. This parent retains SSH transport, prompt suppression, safe diagnostics, identity/credential isolation and its separate live/automated acceptance; it stays open after HTTPS is complete until SSH is also accepted. No implementation started in the planning handoff.

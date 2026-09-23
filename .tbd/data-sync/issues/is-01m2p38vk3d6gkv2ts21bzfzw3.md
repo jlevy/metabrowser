@@ -5,7 +5,7 @@ title: "Repository Phase 2B review: publish provider-job and selected-ref founda
 kind: task
 status: open
 priority: 1
-version: 18
+version: 19
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: claude-code@spud10.local
 labels:
@@ -20,10 +20,10 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-09-16T21:51:52.418Z
-updated_at: 2026-09-23T01:40:44.610Z
+updated_at: 2026-09-23T02:26:02.030Z
 started_at: 2026-09-16T21:54:38.858Z
 ---
-Independently review and publish one formal provider-job and selected-ref foundation pull request after the repository URL-open PR is green. Base it on the exact green mb-innz head; review the exact diff for job-key isolation, no network under locks, staged fetch validation, full-OID verification, cancellation, attached-checkout non-mutation, the AuthorizationContextRef move into provider_resources, and the separate registry-backed GitFetchCredentialLease boundary. Prove forged or unregistered handles, context/lease mismatch, expiry, revocation, cancellation, and source mismatch for starting and joining requests produce typed secret-free failures, and provider-principal requests fail with git_credentials_unavailable before Git starts until Phase 3A. Run make verify, synchronize beads, use gh stack submit, watch every required check to final green, and register the PR and immutable head with mb-n2ro. Do not merge.
+Independently review and publish one formal provider-job and selected-ref foundation pull request after the repository URL-open PR is green. Base it on the exact green mb-innz head; review the exact diff for job-key isolation, no network under locks, staged fetch validation, full-OID verification, cancellation, attached-checkout non-mutation, the AuthorizationContextRef move into provider_resources, and the separate registry-backed GitFetchCredentialLease boundary. Prove forged or unregistered handles, context/lease mismatch, expiry, revocation, cancellation, and source mismatch for starting and joining requests produce typed secret-free failures, and provider-principal requests fail with git_credentials_unavailable before Git starts until Phase 3A. Also review mb-bgn8 bounded background object convergence after serving begins, including startup/completion, cancellation/failure/restart, preservation of cached content, honest partial/converging/complete/failed state, and no implicit network on reads. Run make verify, synchronize beads, use gh stack submit, watch every required check to final green, and register the PR and immutable head with mb-n2ro. Do not merge.
 
 ## Notes
 

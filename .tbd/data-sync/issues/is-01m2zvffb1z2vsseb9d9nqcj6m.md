@@ -5,7 +5,7 @@ title: "v0.12 later phases: extend stack 218 through Phase 2A to 4C"
 kind: task
 status: open
 priority: 1
-version: 8
+version: 9
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: null
 labels:
@@ -17,12 +17,14 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-09-20T16:48:04.959Z
-updated_at: 2026-09-23T00:45:26.686Z
+updated_at: 2026-09-23T02:26:03.319Z
 started_at: 2026-09-23T00:45:05.330Z
 ---
 Coordinate publication and retargeting of the remaining v0.12 Phase 2A-4C PRs as extensions to existing Stack 218. Each phase follows the prerequisite implementation and independent review/publication beads, preserves exact parent/head evidence, and passes make verify and CI. Use docs/project/specs/active/plan-2026-09-22-v012-alpha-testing.md for incremental repository-URL and direct-PR acceptance. The direct-PR alpha does not remove bounded discovery/navigation or anchors from the full milestone. Work with mb-n2ro to hold and land the entire stabilized stack together after explicit approval, rather than creating an independent landing batch.
 
 ## Notes
+
+Planning handoff: one new stacked PR per phase, beginning with foundation stabilization and mb-j439 acceptance, then 2A (mb-12cz, HTTPS mb-s1lt, mb-ew38 -> mb-innz), 2B (mb-jlon, mb-bgn8 -> mb-bf94), and 2C (mb-2xq7 -> mb-9aku). Each uses the exact reviewed green prior head and includes automated/CLI evidence plus the browser checkpoint where available. Parent mb-bi2c retains SSH scope; its HTTPS child blocks 2A publication. Preserve the whole-stack landing decision and no tbd prerequisite. The user requested planning only; no phase implementation, feature branch or feature PR has begun in this handoff.
 
 2026-09-22 user direction: additional Phase 2A-4C implementation/testing PRs stay on existing Stack 218 and the whole stack remains held for stabilization. This bead coordinates later phase publication and retargeting with mb-n2ro, not a separate early landing batch. T2/direct PR view is an incremental alpha test milestone; bounded index/navigation and planned anchors remain in the full v0.12 milestone. See docs/project/specs/active/plan-2026-09-22-v012-alpha-testing.md.
 

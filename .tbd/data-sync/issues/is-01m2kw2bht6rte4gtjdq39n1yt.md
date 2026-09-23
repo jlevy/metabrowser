@@ -5,7 +5,7 @@ title: "GitHub Phase 2C review: publish selected-branch revision-subject PR"
 kind: task
 status: open
 priority: 1
-version: 16
+version: 17
 spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
 delegate: null
 labels:
@@ -32,7 +32,7 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-09-16T01:07:30.490Z
-updated_at: 2026-09-23T00:23:32.865Z
+updated_at: 2026-09-23T02:26:02.398Z
 started_at: 2026-09-16T21:10:44.928Z
 ---
-Independently review selected-branch integration over the already published immutable Git-tree source. Resolve findings through the review shortcut, run make verify, and publish one formal GitHub PR with gh stacked on the exact green repository URL-open head. Prove full-OID selection, bounded missing-ref fetch, concurrent revision subjects, offline and unavailable states, and no checkout, index, or worktree mutation. Record exact PR, base, head, OIDs, formal stack view, review, final green CI, and mb-n2ro registration. Do not merge.
+Independently review selected-branch integration over the already published immutable Git-tree source. Resolve findings through the review shortcut, run make verify, and publish one formal GitHub PR with gh stacked on the exact green Phase 2B provider-job/convergence publication head recorded by mb-bf94. Prove full-OID selection, bounded missing-ref fetch, concurrent revision subjects, offline and unavailable states, and no checkout, index, or worktree mutation. Record exact PR, base, head, OIDs, formal stack view, review, final green CI, and mb-n2ro registration. Do not merge.

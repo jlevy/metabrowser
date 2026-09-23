@@ -5,7 +5,7 @@ title: "GitHub Phase 2A review: publish repository URL-open PR"
 kind: task
 status: open
 priority: 1
-version: 16
+version: 17
 spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
 delegate: null
 labels:
@@ -28,7 +28,7 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-09-16T01:07:30.107Z
-updated_at: 2026-09-23T01:39:46.073Z
+updated_at: 2026-09-23T02:26:01.687Z
 started_at: 2026-09-16T21:12:28.687Z
 ---
-Independently review the repository URL reducer and URL-open slice over the reviewed shared repository store and immutable Git-tree source. Resolve findings through the review shortcut, run make verify, and publish one formal GitHub PR with gh based on the exact named convergence head recorded by mb-j439. Prove a repository-root URL opens a full-OID subject with no checkout or network on a valid hit. Record PR URL, base/head branches and OIDs, formal stack view, review evidence, final green CI, and mb-n2ro registration. Do not merge.
+Independently review installed reducer ownership/rejection, HTTPS acquisition mb-s1lt, and URL-open/serving mb-ew38 over the reviewed shared store and immutable source. Publish one new Phase 2A PR above the exact green foundation convergence head recorded by mb-j439. Prove cold public HTTPS repository URL -> leased default full-OID subject -> browser and inspection, as well as warm/read-only/offline reuse with no network or provider credential lookup, selection retention, populated-cache trust isolation and cleanup. Resolve findings, pass make verify and CI, and record exact PR/base/head, review and stack evidence with mb-n2ro. The new PR extends Stack 218; do not merge.
