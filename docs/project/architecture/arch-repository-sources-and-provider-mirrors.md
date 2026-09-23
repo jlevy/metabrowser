@@ -10,9 +10,10 @@ code and from this document.
 Repository subjects, `SourceSession`, capabilities, the attached-filesystem content
 source, `GitCommandTarget`, the immutable Git tree source with `GitPath` file, raw, and
 tree routes, `file://` and `https://` acquisition of full clones into a shared,
-read-only repository store, and the GitHub URL reducer are implemented; `metab` opens a
-pin in-process for `--show` and non-cache `--api`, at the commit a GitHub URL selects.
-Serving an acquired pin over HTTP, refresh, and pull-request data remain planned, and
+read-only repository store, the GitHub URL reducer, and pull-request records are
+implemented; `metab` opens a pin in-process for `--show` and non-cache `--api`, at the
+commit a GitHub URL selects, a pull request’s head included.
+Serving an acquired pin over HTTP and background refresh remain planned, and
 [Thin Mirror for Git and GitHub Browsing](../specs/active/plan-2026-09-23-v012-thin-mirror.md)
 replaces the planned parts of this document wherever they disagree.
 It retired blobless clones and convergence, private subject refs, revision leases,
@@ -191,8 +192,9 @@ These invariants hold for every store:
 
 - there is no shared index or checked-out branch;
 - no view operation runs `checkout`, `switch`, `reset`, or `worktree add`;
-- its refs are the origin’s branches under `refs/remotes/origin/` and its tags;
-  Metabrowser writes no ref of its own;
+- its refs are the origin’s branches under `refs/remotes/origin/`, its tags, and the
+  `refs/pull/<n>/head` of each pull request opened from it; Metabrowser writes no ref of
+  its own;
 - repository content is self-contained: every object is present, and nothing depends on
   alternates into a user-owned checkout or on the origin after acquisition;
 - tree enumeration and blob reads are bounded and cancellation-aware; and
@@ -261,6 +263,38 @@ terminal prompting disabled, and hooks off.
 Git runs in its own process group, so a timeout, Ctrl-C, or a terminal hangup kills the
 helpers it forks as well.
 Acquisition never inherits an attached checkout’s remote or credential helper.
+
+### Pull-request records
+
+A GitHub pull request is two things kept apart: its commits, which Git fetches into the
+store, and its data, which `gh api` reads into one JSON record under its source.
+`cache/pull_refs.py` fetches `+refs/pull/<n>/head:refs/pull/<n>/head`, the one ref a
+store holds beyond the origin’s branches and tags, through `remote_git_args` under the
+acquisition policy and Git floor; a fork’s commits arrive through it.
+An open pull request’s base branch is fetched in the same command into the
+`refs/remotes/origin/<base>` the mirror update writes, so its merge base is taken
+against the base branch as it is now.
+A closed or merged pull request compares from the API’s `base.sha`, fetched by ID when
+no mirrored ref reaches it.
+The fetched head must be the head the API reported; one full re-read covers a push
+between the two, and a second mismatch is `head_mismatch`.
+
+The record lives at `cache/sources/<slug>/pulls/<n>.json`
+(`cache/paths.py: source_pull_record`), written by the home’s private atomic file write
+and read with a size bound.
+The source directory is enumerated by nothing, so the layout, probe, sweep, and
+`/api/cache/*` projections leave it alone.
+`builtin_plugins/github/pull_record.py` holds its Pydantic models and every bound, with
+the measurements beside the constants; a record whose `schema_version` differs is
+refetched, not migrated.
+It names its reader, always `gh:<login>`, because `gh api` refuses requests while signed
+out, and the account is read before and after the API reads so a record read across an
+account switch is discarded.
+Requests carry the previous record’s ETags when the same reader wrote it, and a `304`
+reuses that part. `GET /api/plugin/github/pull` reads the record for the served pull
+request and never fetches; the one-shot CLI fetches a missing record once, and
+`--no-serve` refreshes it.
+In serving, the refresh coordinator is the planned caller; see Planned seams.
 
 ### Git path and blob semantics
 
@@ -449,7 +483,8 @@ in [Views, Models, and Routes](arch-views-models-routes.md).
 | Revision tree | `git/tree_source.py`: `GitPath`, `GitTreeSource`, `GitRevisionSubject`, `list_tree`, `read_blob`; shared per-store `cat-file --batch-command --buffer` pool (`MAX_BATCH_READERS_PER_STORE`); `git/content_routes.py`: file, raw, tree, catalog, `split_git_container_wire`, and extension plugin kinds | Enumerate NUL-framed byte-safe full-OID trees and read size-gated blobs from a `RepositoryStoreTarget` with no materialization. `GitPath` wires are the identity on every route that accepts one, and blob kinds come from extension, basename, sniffed adapter, and bounded JSON/YAML/frontmatter mappings. The per-route projections are in [Git and Comparison Sources](arch-git-and-comparison-sources.md) |
 | Repository store | `cache/repository_store.py`: `open_revision`; `cache/records.py`: source aliases and store state; `cache/acquire.py`: `acquire_source`; `cache/reclaim.py`: staging sweep | `open_revision` checks that a commit is in the published store and returns its `GitRevisionSubject`, writing nothing and holding no lock. Acquisition fetches every object of a `file://` or `https://` source and publishes the store and its alias under the alias and store locks. Nothing deletes a published store |
 | Remote discovery | `repository_context.py`: `discover_repository_context` | Read a checkout’s `origin` remote and `HEAD` without running Git, so a provider candidate can be recognized before any network work |
-| Providers and GitHub URLs | `cache/providers.py`: `RepositoryProvider`, `url_reducers`, `provider_git_config`, `check_first_clone`, `repository_context_for`; `builtin_plugins/github/`: `GithubUrlReducer`, `GithubProvider`, `run_gh`; `cache/urls.py`: `RepositorySelection`, `ReducerRejection` | Core names no provider. The GitHub reducer turns web, raw, and SSH URLs into the canonical source plus a selection, or a typed refusal; the provider supplies the `gh` credential helper, the first-clone size check, and a mirror’s `repository_context` |
+| Providers and GitHub URLs | `cache/providers.py`: `RepositoryProvider`, `url_reducers`, `provider_git_config`, `check_first_clone`, `repository_context_for`, `open_pull_request`; `builtin_plugins/github/`: `GithubUrlReducer`, `GithubProvider`, `run_gh`; `cache/urls.py`: `RepositorySelection`, `ReducerRejection` | Core names no provider. The GitHub reducer turns web, raw, and SSH URLs into the canonical source plus a selection, or a typed refusal; the provider supplies the `gh` credential helper, the first-clone size check, a mirror’s `repository_context`, and the head a pull-request URL pins |
+| Pull-request records | `builtin_plugins/github/gh.py`: `gh_api`, `gh_account`; `builtin_plugins/github/pulls.py`: `refresh_pull_request`, `open_pull_request`; `builtin_plugins/github/pull_record.py`: `PullRecord`, `read_pull_record`, `write_pull_record`; `builtin_plugins/github/sidekick.py`: `pull_handler`; `builtin_plugins/github/pull_route.py`: `served_pull_envelope`; `cache/pull_refs.py`: `fetch_pull_head`, `comparison_endpoints`; `source.py`: `SourceSession.published` | Read a pull request with bounded, conditional `gh api` pages, fetch `refs/pull/<n>/head`, compute the merge-base endpoints, and keep one record per pull request; serve it from the cache alone. See [Pull-request records](#pull-request-records) |
 | Ref and path resolution | `cache/resolve.py`: `ref_candidates`, `resolve_ref_and_path`, `resolve_commit_id`, `resolve_selection` | Split a URL’s ref-and-path by what the mirror has, with `show-ref --verify` per candidate and no user text in `rev-parse` revision syntax; report whether one fetch could change a miss |
 | File and raw routes | `view_routes.py`, `server.py`, `git/content_routes.py`, `plugin_api.py`; `static/navigation.js`: `displayPath` | Resolve the active content-source handle rather than assuming the global root is a `Path`; Git subjects use `GitPath` wire identities for `/view/`, file, raw, tree, KPress, patch-file containers, identity-and-content plugin kinds, structured parsed, agent-log JSONL, and image preview; Markdown and wiki links on a pin encode authored segments as `GitPath` wires; SPA path chrome decodes those wires to display names (C0 and invalid UTF-8 become U+FFFD); retain route, CLI, and golden parity for filesystem browsing |
 
@@ -461,7 +496,7 @@ lacks.
 
 | Area | Planned boundary | Responsibility |
 | --- | --- | --- |
-| Refresh | `cache/acquire.py` | Refresh a store with `git fetch` under one lock per mirror, passing `remote_git_args`, and resolve a missing ref again after one background fetch; the [thin-mirror plan](../specs/active/plan-2026-09-23-v012-thin-mirror.md) owns the design |
+| Refresh | `cache/acquire.py` | Refresh a store with `git fetch` under one lock per mirror, passing `remote_git_args`, and resolve a missing ref again after one background fetch; run `refresh_pull_request` as the job keyed by the store and pull-request number, behind a `POST` route that starts or joins it, report `pending` through the pull route, and take the fetch side lock around `cache/pull_refs.py`’s fetches too; the [thin-mirror plan](../specs/active/plan-2026-09-23-v012-thin-mirror.md) owns the design |
 | Source attachments | A neutral provider-resources module for source binding and local-availability records | Map local and managed sources to stable provider repository identity without storing local paths or requiring a cache entry. `ProviderBinding`, `LocalGitObjectAvailability`, `AuthorizationContextRef`, and `authorization_context_key` live today in `builtin_plugins/hosted_review/models.py` and move under `mb-s0gv` |
 | Provider mirror | `provider_resources/store.py`: `stage_snapshot`, `publish_manifest`, `read_current`, `read_last_complete`, `lease_snapshot`, `reclaim_snapshots` | Publish one repository-scoped, auth-scoped mirror reused by every attachment. The package holds only `profiles.py` today |
 | Provider ports | `plugin_api.py`: opaque `GitFetchCredentialLease`, `provider_fetch_authorization_context`, `RepositoryContentPort.open_subject`, `RepositoryObjectJobPort.request_selected_refs`, `ProviderResourceStorePort.stage`, `publish`, `read`, `lease` | Inject narrow cancellable capabilities with typed unavailable, authorization, stale-generation, and publication failures; selected-ref requests carry a non-secret context plus an unforgeable registry handle, never tokens, unrestricted sources, core stores, or paths |

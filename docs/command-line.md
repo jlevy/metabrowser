@@ -122,8 +122,6 @@ where the ref ends, preferring a branch, then a tag, then a commit ID. `--no-ser
 prints what the URL selected after the identity lines (`selection`, `pin`, `path`, and
 `lines` for a `#L10`, `#L10-L20`, or `#L10C5-L20C8` anchor), and `--show` and `--api`
 print the same lines on stderr and pin that commit.
-A `/pull/<n>` URL opens the default branch for now and reports the number; pull-request
-data arrives in a later release.
 Query parameters other than `?plain=1` are dropped.
 Any other github.com page, `http://`, and GitHub’s own top-level pages are refused with
 a message that names the shape and offers the repository URL.
@@ -141,6 +139,37 @@ account that can read it; Metabrowser never reads or stores a token.
 With `gh` installed, a first clone is also refused before it starts when GitHub reports
 the repository too large to finish within the acquisition deadline.
 On a terminal, a first clone reports each phase and the time elapsed.
+
+### Pull requests
+
+A pull-request URL pins the pull request’s head commit and reads its data:
+
+```shell
+metab https://github.com/owner/repo/pull/123 --api /api/plugin/github/pull
+metab https://github.com/owner/repo/pull/123/files --show README.md
+metab https://github.com/owner/repo/pull/123 --no-serve
+```
+
+The first `--show` or `--api` of a pull request reads it with `gh api` (the description,
+conversation, reviews, review comments, check runs, and statuses), fetches its commits
+through GitHub’s `refs/pull/<n>/head`, a fork’s included, and caches the record.
+Later ones answer from that cache without running `gh` or reaching the network, so they
+work offline. `--no-serve` refreshes the record, sending the ETags it holds so an
+unchanged part costs GitHub nothing against the rate limit.
+A `/pull/<n>/commits/<id>` URL pins that commit, which can be a fork’s.
+
+`/api/plugin/github/pull` reports the record with a state: `current` within a minute of
+its fetch, `stale` after, or `absent` with a reason.
+Its `comparison_route` is Files changed, the merge base of the base branch and the head
+to the head, as GitHub shows it; issue it with `--api` to get the diff.
+
+Reading pull requests needs `gh` 2.81.0 or newer, signed in with `gh auth login`,
+because `gh api` refuses requests while signed out.
+A failure exits with status 1 and names its cause: `gh_missing`, `gh_too_old`,
+`not_logged_in`, `rate_limited` with the time the limit resets, `not_found_or_private`,
+`network_error`, `account_changed` when the active account changed during the read, or
+`head_mismatch` when the pull request kept moving.
+A record already cached is kept.
 
 `--api /api/cache/…` on a `file://` URL acquires as a side effect, then issues the route
 against an empty throwaway directory so cache inspection cannot expose origin objects

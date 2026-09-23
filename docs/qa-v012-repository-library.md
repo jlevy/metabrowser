@@ -80,7 +80,8 @@ Landing is tracked by `mb-n2ro`.
 - **ssh stays closed.** It is not acquired and not opened.
 - **`file://` and `https://` are the origins acquired**, including GitHub web URLs,
   which the GitHub reducer rewrites to `https://github.com/<owner>/<repo>`. A bare
-  filesystem path is never rewritten into a clone URL. Only Phase 4.7 uses the network.
+  filesystem path is never rewritten into a clone URL. Only Phase 4.7 and the live half
+  of 4.9 use the network.
 - **Nothing binds a port** on `--no-serve`, `--show`, or `--api`. “Serving” in the
   output is a failure on those modes.
 - **Do not serve acquired Git.** `metab file://…` without `--no-serve` / `--show` /
@@ -488,9 +489,9 @@ with a local origin standing in for `https://github.com/octo/demo`, and pins the
 in `tests/golden/cli-github-url-open.txt`. Read the transcript rather than rerunning it:
 every spelling of the repository prints one slug and store; `/tree/release/v1/docs` pins
 the `release/v1` branch; `/blob/…?plain=1#L3-L4` reports `lines` and `plain`; a branch
-named `523f` wins over the commit whose ID starts with those digits; `/pull/7` pins the
-default branch and reports `pull_request: 7`; and a missing ref, commit, or path is
-`ref_not_found`, `commit_not_found`, or `path_not_found`.
+named `523f` wins over the commit whose ID starts with those digits; and a missing ref,
+commit, or path is `ref_not_found`, `commit_not_found`, or `path_not_found`.
+Pull-request URLs are 4.9.
 
 ```shell
 uv --config-file uv.toml run --frozen pytest tests/test_cli_github_url_golden.py \
@@ -539,6 +540,45 @@ empty after the next `metab` command.
 `tests/test_acquire_stall_and_hangup.py` asserts the same without a terminal.
 
 **Fail:** An orphaned Git process still fetching; a staging entry left behind.
+
+### 4.9 Pull-request data
+
+Without the network, read the two transcripts rather than rerunning them:
+`tests/golden/cli-github-pull.tryscript.md` reads four cached pull requests (open from a
+fork, merged, closed with its fork deleted, and a draft) with no `gh` at all, and
+`tests/golden/cli-github-pull-refresh.txt` fetches, refreshes, and refuses them through
+a fake `gh`, listing every `gh` call after each command.
+
+```shell
+uv --config-file uv.toml run --frozen pytest tests/test_github_pulls.py \
+  tests/test_cli_github_pull_golden.py
+npx --no-install tryscript run tests/golden/cli-github-pull.tryscript.md
+```
+
+**Pass:** All pass. In the refresh transcript, the first open of `/pull/7` runs
+`gh auth status`, six `gh api` reads, and `gh auth status` again; `--no-serve` sends
+`If-None-Match` on all six; a cached read runs no `gh`; and each refusal ends in its
+typed state (`not_found_or_private`, `not_logged_in`, `gh_too_old`, `rate_limited` with
+its reset time, `network_error`, `account_changed`, `head_mismatch`, `gh_missing`).
+
+With the network, a signed-in `gh` 2.81.0 or newer, and a Git the floor admits
+(read-only; nothing is written to GitHub):
+
+```shell
+METABROWSER_LIVE_GITHUB=1 uv --config-file uv.toml run --frozen pytest -rs \
+  tests/test_github_pull_live_smoke.py
+uv --config-file uv.toml run --frozen metab \
+  https://github.com/pallets/markupsafe/pull/507 --api /api/plugin/github/pull
+```
+
+**Pass:** The smoke test’s Files changed matches GitHub’s file list for merged fork pull
+request 507 and for an open pull request.
+The command prints `pin: <head> (pull request 507 head)` and
+`pull_request: 507 (merged; fetched … by gh:<login>)` on stderr, then a `current` record
+whose `comparison.base_from` is `base_sha`. Run again, it answers from the cache.
+
+**Fail:** A `gh` call on a cached read; a token, scope, or `gh` output in a message; a
+record whose Files changed differs from GitHub’s; a refusal without its typed state.
 
 ## Phase 5: HTML Trust on the Integration Tip
 
@@ -631,7 +671,7 @@ was acquired, or `file://` was served).
 | --- | --- |
 | ssh acquire | Closed; refuse is the test |
 | Refresh, pin switching, and a missing ref fetched in the background | Arrive with the refresh coordinator; these modes read the mirror as it is |
-| Pull-request data and page | Later steps; a `/pull/<n>` URL opens the default branch |
+| Pull-request page, and refreshing pull-request data in the background | Later steps; pull-request data is read through `--api` (4.9) |
 | Serving acquired Git | `mb-ew38`; refuse is the test |
 | Hosted-review / GitHub PR slice | Separate beads; not on these tips |
 | Archive containers | `mb-380k` |

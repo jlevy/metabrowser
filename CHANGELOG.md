@@ -91,8 +91,7 @@ GitHub URLs and HTTPS:
   pin the commit they point at; the mirror decides where a branch name containing `/`
   ends, preferring a branch, then a tag, then a full or abbreviated commit ID.
   `--no-serve` prints the selection after the identity lines, and `--show` and `--api`
-  print it on stderr. A `/pull/<n>` URL opens the default branch and reports the number
-  until pull-request data arrives.
+  print it on stderr. A `/pull/<n>` URL pins the pull request’s head; see below.
   Every spelling of a repository — `.git`, a trailing slash, `www.`, letter case, and
   `git@github.com:owner/repo.git` — is one source, `https://github.com/owner/repo`.
   Other github.com pages, `http://`, and GitHub’s own top-level pages are refused with a
@@ -113,6 +112,25 @@ GitHub URLs and HTTPS:
   an origin that does not answer the first request within 30 seconds times out rather
   than waiting for curl’s five-minute connect timeout.
   On a terminal, a first clone reports its phases and elapsed time.
+
+- Pull-request data:
+  `metab https://github.com/owner/repo/pull/<n> --api /api/plugin/github/pull` reads the
+  pull request with `gh api` (its description, labels, state, merge status,
+  conversation, reviews, review comments, check runs, and statuses), fetches its commits
+  through GitHub’s `refs/pull/<n>/head`, a fork’s included, pins the head commit, and
+  prints the record. The record is cached as one JSON file per pull request, so later
+  `--show` and `--api` answer from the cache without running `gh` or reaching the
+  network; `--no-serve` refreshes it, with conditional requests that GitHub does not
+  count against the rate limit when nothing changed.
+  The record names Files changed as two pinned commits, the merge base and the head, as
+  GitHub computes it, and `/api/plugin/diff/comparison` now honors
+  `base_policy=merge_base` for such a comparison.
+  Reading pull requests needs `gh` 2.81.0 or newer signed in to github.com, because
+  `gh api` refuses unauthenticated requests; a failure names its cause (`gh_missing`,
+  `gh_too_old`, `not_logged_in`, `rate_limited` with the reset time,
+  `not_found_or_private`, `network_error`, `account_changed`, or `head_mismatch`) and
+  keeps any record already cached.
+  Lists and text are bounded per pull request, and a cut is reported, never silent.
 
 - A terminal hangup now cancels an acquisition the way Ctrl-C does: Git and every helper
   it started are stopped, staging is removed, and `metab` exits with status 129. A

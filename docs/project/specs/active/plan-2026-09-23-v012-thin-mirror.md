@@ -325,8 +325,11 @@ Settled by measurement during implementation, each with a documented default:
 - First-clone time and size limits for large repositories.
 - Disk growth with no object deletion; `repack -a -d --keep-unreachable` consolidates
   packs without deleting objects if lookups slow down.
-- Bounds on pull-request records.
-- The minimum `gh` version for `auth status --json`.
+- Bounds on pull-request records: settled in `builtin_plugins/github/pull_record.py`,
+  measured on ten public pull requests.
+- The minimum `gh` version for `auth status --json`: 2.81.0, the release that added it.
+  The reader is never `anonymous` in practice, because `gh api` refuses requests while
+  signed out (checked with gh 2.98.0).
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
