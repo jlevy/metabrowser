@@ -170,6 +170,7 @@ WHEEL_SMOKE_SCRIPT = dedent(
         "binary",
         "diff",
         "folder",
+        "github",
         "html",
         "image",
         "markdown",
