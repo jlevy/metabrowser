@@ -96,9 +96,11 @@ test:
 # Regenerate the CLI console goldens after an intended surface change.
 # tryscript rewrites changed blocks with literal output, golden_fixup.py
 # restores the elision patterns, and the pytest goldens (serve banners,
-# file:// acquire and recovery, file:// pin) are rewritten in place. Review the
-# diff before committing.
+# file:// acquire and recovery, file:// pin) are rewritten in place. The served
+# source-kind fixture is recorded first because a tryscript session reads it.
+# Review the diff before committing.
 golden-update:
+	GOLDEN_UPDATE=1 $(UV_RUN) pytest tests/test_source_kind_session.py
 	npx --no-install tryscript run --update 'tests/golden/*.tryscript.md' || true
 	$(UV_RUN) python devtools/golden_fixup.py
 	npx --no-install tryscript run 'tests/golden/*.tryscript.md'
