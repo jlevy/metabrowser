@@ -1,12 +1,14 @@
 # Plan: v0.12 Thin Mirror for Git and GitHub Browsing
 
-**Status:** Active design, decided 2026-09-23. It supersedes the remaining v0.12 phases
-in [Open Repositories from Git URLs](plan-2026-08-11-open-repo-from-git-url.md) (2A
-onward) and
+**Status:** Active design, decided 2026-09-23 and revised the same day after an
+independent design review.
+It supersedes the remaining v0.12 phases in
+[Open Repositories from Git URLs](plan-2026-08-11-open-repo-from-git-url.md) (2A onward)
+and
 [GitHub Provider and Pull Requests](plan-2026-08-27-github-provider-and-pull-requests.md)
 wherever they disagree.
 Those documents stay as background, and their built foundation (Phases 0–1B) stays as
-built until the simplification PR below changes it.
+built until the Simplify pull request below changes it.
 
 ## Goal
 
@@ -24,152 +26,217 @@ fresh without making anyone wait, and renders it.
 ## Principles
 
 - **Git and `gh` do the work.** Metabrowser runs `git` and `gh` with fixed arguments and
-  an isolated environment, and never reimplements what they already do: transport,
-  authentication, ref updates, object storage.
-- **The cache is a mirror, nothing more.** One bare clone per repository, updated with
-  plain `git fetch`. Metabrowser invents no branches and no private refs; the only refs
-  it adds are GitHub’s own `refs/pull/<n>/head`, fetched on demand.
+  an isolated environment, and does not reimplement transport, authentication, ref
+  updates, or object storage.
+- **The cache is a mirror.** One bare repository per source, updated with `git fetch`.
+  Metabrowser invents no branches and no private refs; the only refs beyond branches and
+  tags are GitHub’s own `refs/pull/<n>/head`, fetched on demand.
 - **Read-only.** There are no working trees and no local changes.
   Every view is pinned to a full commit ID, so a moving branch never changes a page
   under a reader.
-- **Nothing is deleted in v1.** Garbage collection and pruning of objects stay off, so a
-  commit that was ever shown stays readable, even after a force-push upstream.
-- **Seamless caching.** A cached page opens from the mirror without touching the
-  network. If its data is older than a short freshness window, one background refresh
-  runs, and the page updates when it finishes.
-  Only a first visit waits.
-- **`gh` owns GitHub authentication.** Public repositories need no credentials.
-  A private fetch runs with `gh` as the only credential helper for that one command, and
-  API data comes from `gh api`. No token ever enters a Metabrowser process.
-- **Internal extension points, no public SDK yet.** A small host interface lets GitHub
-  support live in one module and another host follow later.
-  Core code does not branch on GitHub.
-- **Acquired content is untrusted.** The forced untrusted profile from the foundation
-  applies to every mirrored page.
+- **No Git object is deleted in v1.** Garbage collection, pruning, and automatic store
+  reclamation stay off, so a commit that was ever shown stays readable, even after a
+  force-push upstream.
+  Staging directories left by a crash are still swept.
+- **Seamless caching, never blocking a request.** A cached page opens from the mirror.
+  Network work runs only in background jobs: a server request starts or joins one and
+  returns at once. Only a first visit, which has nothing to show yet, waits for its
+  clone.
+- **`gh` owns GitHub authentication.** Metabrowser never reads, stores, or logs a token.
+- **Thin plugin boundary.** GitHub support lives in a built-in plugin, reached through
+  the existing reducer hook and plugin routes; core code does not branch on GitHub.
+  No new public SDK surface is added for the alpha.
+- **Acquired content is untrusted.** The forced untrusted profile applies to every
+  mirrored page, and pull-request text renders through the existing sanitizer.
 
 ## Architecture
 
 ```
-URL ──> host resolver ──> Target(repo, rev?, path?, line?, pr?)
-                               │
-          ┌────────────────────┴───────────────────┐
-          v                                        v
-   Git mirror (git)                       Hosted records (gh api)
-   clone / fetch / refs/pull/<n>          PR, reviews, comments, checks
-          │                                        │
-          └──────────> pinned views <──────────────┘
+URL ──> GitHub reducer (plugin) ──> Target(source, rev?, path?, lines?, pr?)
+                                        │
+          ┌─────────────────────────────┴──────────────────┐
+          v                                                 v
+   Git mirror (core, git)                          PR records (plugin, gh api)
+   init/fetch, refs/pull/<n>/head                  one JSON file per pull request
+          │                                                 │
+          └────> pinned subject + background refresh <──────┘
                  existing routes, renderers, CLI parity
 ```
 
-| Layer | Owns | Built on |
+| Layer | Owns | Where |
 | --- | --- | --- |
-| Host resolver | URL grammar, clone URL, what a URL points at | One module per host; GitHub first |
-| Git mirror | Clone, fetch, ref and path resolution, freshness | `git`, the existing process boundary |
-| Hosted records | Pull-request data as validated JSON records | `gh api`, Pydantic models |
-| Views | Code, history, commits, diffs, PR pages | Existing routes, `GitRevisionSubject`, renderers |
+| URL reducer | GitHub URL grammar, canonical source, what a URL points at | `builtin_plugins/github/`, through `classify_root_argument(reducers=)` |
+| Git mirror | Store, fetch, ref and path resolution, freshness | `cache/`, `git/` |
+| Refresh coordinator | Background jobs, single flight, status | Core, one small module |
+| Pin switching | Replace the served subject within one repository | `source.py` session lifecycle |
+| PR records | Pull-request data as validated JSON | `builtin_plugins/github/` |
+| Views | Code, history, commits, diffs, PR pages | Existing routes and renderers; the PR page in the GitHub plugin |
 
-### Host resolver
+### URL reducer
 
-`resolve_url(url) -> Target | Refusal` is an internal function backed by a small `Host`
-interface: `claims(url)`, `parse(url)`, `clone_url(target)`, and
-`fetch_pull_request(target)`. GitHub (github.com only for the alpha) is the one built-in
-host. A plain `https://` or `file://` Git URL needs no host module and opens its default
-branch.
-
-GitHub URL shapes, reduced to a `Target`:
+The GitHub plugin supplies a reducer through the existing
+`classify_root_argument(reducers=)` hook in `cache/urls.py`. It runs before generic
+source classification, so it repeats that classifier’s checks for control characters and
+credentials in URLs.
+It claims only `github.com` and `raw.githubusercontent.com`.
 
 | URL | Target |
 | --- | --- |
-| `github.com/<o>/<r>` (and `.git`) | repository, default branch |
+| `github.com/<o>/<r>` (with or without `.git`, trailing slash, `www.`) | repository, default branch |
 | `…/tree/<ref-and-path>` | ref and directory |
-| `…/blob/<ref-and-path>[#L10-L20]` | ref, file, and line range (`?plain=1` kept) |
-| `…/commit/<oid>` | commit |
+| `…/blob/<ref-and-path>[#L10][#L10-L20][#L10C5-L20C8]` | ref, file, and lines (`?plain=1` kept) |
+| `…/commit/<oid>`, `…/pull/<n>/commits/<oid>` | commit |
 | `…/pull/<n>[/files\|/commits]` | pull request |
-| `raw.githubusercontent.com/<o>/<r>/<ref>/<path>` | ref and file |
+| `raw.githubusercontent.com/<o>/<r>/<ref>/<path>` (and `refs/heads/<ref>/…`) | ref and file |
+| `git@github.com:<o>/<r>.git` | rewritten to the HTTPS repository URL |
 
-Any other github.com path is refused with a typed error that names the shape and offers
-the repository URL (decided 2026-09-23). Tracking and display query parameters are
-dropped. A `<ref-and-path>` is split after the mirror exists, against its branches and
-tags, longest match first, so a branch with slashes resolves correctly.
+- Any other github.com path, `http://github.com`, and reserved owners are refused with a
+  typed error that names the shape and offers the repository URL.
+- Owner matches `[A-Za-z0-9-]{1,39}`; repository matches `[A-Za-z0-9._-]{1,100}` and is
+  never `.` or `..`; a pull-request number matches `^[1-9][0-9]{0,9}$`.
+- The canonical source is `https://github.com/<owner>/<repo>` with owner and repository
+  lowercased and `.git` removed, so URL variants share one mirror.
+- Tracking and display query parameters are dropped.
+- Other `https://` and `file://` Git URLs need no reducer, clone anonymously, and open
+  their default branch.
 
 ### Git mirror
 
-- **Layout.** The source-alias and repository-store records built in Phase 1B-a stay: a
-  source alias names one bare repository store, which lets several URLs for the same
-  repository share it.
-  Each record gains the last fetch time and the `gh` account, if any.
-  Collapsing this into one directory per repository is a later cleanup, not part of the
-  alpha.
-- **Clone.** `git clone --bare` with full objects into a staging directory, then an
-  atomic rename into place.
-  A crash leaves only staging, which the next open sweeps.
-- **Refs mirrored.** Branches and tags.
-  For a pull request, fetch `refs/pull/<n>/head` into the same name.
-  Fork commits arrive through it, so forks need no mirror of their own.
-- **Update.** `git fetch --prune` of branches and tags, under one lock per mirror, so
-  concurrent opens share one fetch.
-  Git writes objects before it moves refs, so readers never see a ref without its
-  objects.
-- **Resolve.** A ref, tag, or abbreviated ID resolves to a full commit ID locally.
-  If it is missing, one fetch runs and the lookup is retried; then it is a typed
-  not-found.
+- **Layout.** The source-alias and repository-store records built in Phase 1B-a stay.
+  A source alias names one bare store; the store identity derives from the canonical
+  source. The existing `last_fetch_at` records the last successful fetch.
+- **Create.** Keep the built acquisition: `git init --bare --template=` in staging with
+  the store configuration (`gc.auto=0`, `maintenance.auto=false`, no submodule
+  recursion, no bundle URI, no hooks), fetch, validate, publish, then the alias.
+  Full objects only.
+- **Update.** `ls-remote --symref -- origin HEAD` to track the default branch, then
+  `fetch --prune --atomic --no-write-fetch-head origin +refs/heads/*:refs/remotes/origin/* +refs/tags/*:refs/tags/*`.
+  Pruning these refspecs never touches `refs/pull/*`. Protocols: `protocol.allow=never`,
+  with HTTPS and `file` allowed.
+- **Pull-request refs.** `fetch origin +refs/pull/<n>/head:refs/pull/<n>/head` with the
+  validated number. Fork commits arrive through it.
+- **Locks.** Network work holds no hierarchy lock.
+  A fetch takes a side lock, `<store-key>.fetch.lock`, tried without blocking; if
+  another process holds it, the job reports “refreshing elsewhere”.
+  Within a process, one job per store runs at a time and later requests join it.
+  Only rewriting the store record takes the short store lock.
+- **Interrupted fetches.** A killed Git can leave `packed-refs.lock` or `refs/**.lock`.
+  Under the fetch side lock, stale lock files are removed before the next fetch.
+- **Resolve.** Split `<ref-and-path>` into one candidate per path segment, up to a
+  segment cap, and check each candidate with `show-ref --verify` after validating Git
+  ref-name rules. Precedence: branch, then tag, then full or abbreviated commit ID. User
+  text is never passed to `rev-parse`, which would evaluate `:/text`, `@{…}`, or
+  `^{/…}`. A missing ref or commit ID starts one background fetch; until it finishes the
+  page answers a typed pending state, then found or not-found.
 - **Offline.** Every read works from the mirror alone.
-  A failed refresh leaves the page as it was and marks it stale.
+  A failed refresh leaves the page as it was and reports the failure in its status.
+- **Large repositories.** A full clone is slower than a blobless one.
+  The earlier measurement (mypy: 5.8–5.9 s to serve the default tree blobless, 8.8–17.8
+  s full;
+  [architecture](../../architecture/arch-repository-sources-and-provider-mirrors.md)) is
+  the baseline. When `gh` is available, the repository size from `repos/<o>/<r>` is
+  checked first, and a clone that cannot finish inside the acquisition deadline is
+  refused with a typed state rather than killed partway.
+  The first clone reports its phase and elapsed time; a full progress parser can follow.
 
-### Seamless caching
+### Serving and pin switching
 
-| Situation | Behavior |
-| --- | --- |
-| First visit | Clone (or first `gh api` read), with progress; the page opens when ready |
-| Cached, fresh | Open from the mirror; no network |
-| Cached, stale | Open from the mirror at once; one background refresh; the page updates in place when it lands |
-| Offline or refresh failed | Open from the mirror; a quiet stale label with the last refresh time |
-| Explicit refresh | Always fetches, with the same in-place update |
+- A server serves one repository at a time, as today.
+  Opening another repository is a new `metab <url>` run.
+- Within that repository, `POST /api/source/pin` with a ref or commit ID re-attaches the
+  subject: it closes the old tree source, opens the new one, bumps the session
+  generation, and the browser reloads the view.
+  Branch and tag selection and “newer revision available” both use it.
+- History cursors over all branches are fingerprinted by the public refs, so a refresh
+  that moves a ref turns an open cursor into a typed stale state with a reload action.
+- `repository_context` is supplied for GitHub mirrors, so github.com links inside a
+  rendered README open locally.
 
-Freshness windows are engineering defaults to tune by measurement: about one minute for
-Git refs and pull-request data on an open page.
-Only one refresh per mirror or pull request runs at a time; later requests join it.
-The browser learns about updated data through the existing server events.
-A view pinned to a commit ID never changes under the reader.
-Only the “latest” pointers (a branch, a pull request’s head) move, and the page offers
-the newer revision rather than swapping it silently.
+### Background refresh
 
-### Hosted records (pull requests)
+- **Coordinator.** A dictionary of background tasks on the application state, keyed by
+  store key or by store key and pull-request number, so requests join a running refresh;
+  a global semaphore of two bounds concurrent network jobs.
+- **Routes.**
+  - `GET /api/source/status` (with an ETag): pin, ref, latest commit ID for that ref,
+    generation, last fetch time, last outcome, whether a refresh is running, and the
+    pull request if any.
+  - `POST /api/source/refresh`: start or join a refresh; returns at once.
+  - `POST /api/source/pin`: see above.
+- **Browser.** While the page is visible, poll the status route: quickly while a refresh
+  runs, slowly otherwise.
+  Show a quiet stale label and, when the ref moved, an offer to switch to the newer
+  revision. Pull-request conversation and checks update in place; code and diff views
+  keep their pin and offer the newer revision.
+  No server-sent events are added for the alpha.
+- **Freshness.** A refresh starts on open when the data is older than a window (default
+  about one minute, tuned by measurement), and only while a page is visible.
+- **CLI.** One-shot `--show` and `--api` read the cache as it is; only the explicit
+  refresh route touches the network.
+  This keeps goldens deterministic.
+- **Route safety.** Every route that starts network work or changes the pin is a POST
+  with a JSON body behind the existing same-origin guard, so content inside an untrusted
+  page cannot trigger it with a plain link or image.
 
-Pull-request data is fetched with `gh api` and stored per pull request as JSON records:
-the pull request itself, issue comments, reviews, review comments, check runs and
-statuses, and the changed-file list.
-Each record keeps its fetch time and the `gh` account that read it.
-Pydantic models validate the records on write and parse them on read; there is no
-separate artifact-format or resource-profile layer.
-A record set is replaced as a whole with an atomic rename, so a reader sees either the
-old set or the new one.
+### Pull-request records
 
-The changed-files comparison is `merge-base(base, head)..head`, which matches GitHub’s
-“Files changed” (decided 2026-09-23). Git computes it from the mirror once
-`refs/pull/<n>/head` and the base branch are present.
+- One JSON file per pull request under its source,
+  `cache/sources/<slug>/pulls/<n>.json`, written with the existing private atomic file
+  write, with a schema integer (a mismatch refetches; there is no migration) and a
+  bounded read. Cache layout checks learn the path.
 
-### Authentication
+- Contents: the pull request, issue comments, reviews, review comments, check runs, and
+  statuses, each read with `gh api`, with the fetch time and the reader (`anonymous` or
+  `gh:<login>`).
 
-- Public repositories: anonymous HTTPS, with no credential helper at all.
-- Private repositories: the fetch runs with
-  `-c credential.helper= -c credential.https://github.com.helper=!gh auth git-credential`,
-  so Git asks `gh` directly and nothing else.
-  The user’s own global helpers stay out.
-- API data: `gh api --hostname github.com …` with `gh`’s own login.
-- Account: `gh auth status --active --json` is read before an operation, and the account
-  is recorded with its results.
-  If the active account changed by the end, the results are discarded with a typed
-  error.
-- `gh` missing or logged out: public content still works; private content and pull
-  request data answer a typed state with the command that fixes it.
+- Pydantic models validate on write and parse on read; there is no separate
+  artifact-format or resource-profile layer.
+
+- Bounds: comment, review, check, and body sizes are capped per record, measured on real
+  pull requests, with truncation reported.
+
+- The changed-file list comes from Git, not the API. Comparison endpoints are pinned
+  commit IDs stored in the record:
+  - open pull request: `merge-base(<base branch in the mirror>, head.sha)..head.sha`;
+  - closed or merged: `merge-base(base.sha, head.sha)..head.sha`.
+
+  Both match GitHub’s “Files changed” (decided 2026-09-23); the merged case is checked
+  in the live smoke test.
+  The existing comparison route passes its base policy through.
+
+- `mergeable: null` is shown as unknown.
+  A review comment on an older commit shows the API’s `diff_hunk`.
+
+### Authentication and `gh`
+
+- **Git.** When `gh` is on `PATH`, every GitHub fetch and `ls-remote` runs with
+  `-c credential.helper= -c credential.https://github.com.helper=!'<abs-gh>' auth git-credential`.
+  Git asks the helper only after a server challenge, so public repositories stay
+  anonymous without knowing their visibility first.
+  The empty `credential.helper=` clears the user’s global helpers; the helper answers
+  only `https://github.com`. Other hosts get no helper.
+- **Account.** `gh auth status --active --hostname github.com --json hosts` gives
+  `login`, `state`, and `active`; a non-success state is not treated as logged out,
+  because offline also reports an error, and it is never called before an offline read.
+  A pull-request record is discarded if the active account changed while it was read; a
+  Git fetch cannot be rolled back and is not.
+  Cached private content stays viewable after a logout or account switch.
+- **Running `gh`.** Fixed arguments, no stdin, an environment with
+  `GH_PROMPT_DISABLED=1`, `GH_NO_UPDATE_NOTIFIER=1`, and `NO_COLOR=1` and without
+  `GH_DEBUG`, `GH_HOST`, or `GH_REPO`; a deadline, an output cap, and process-group
+  kill; stdout is never logged.
+  No `--paginate` and no `--cache`: pages are requested explicitly with `per_page=100`
+  and a page cap, with `--include` for status, ETag, and rate-limit headers.
+  A `gh` too old for `auth status --json` is a typed state.
+- **Rate limits.** Requests send `If-None-Match`, honor `Retry-After` and
+  `x-ratelimit-reset`, and stay under the global job cap.
 
 ## Capability Map
 
 | GitHub web | Alpha | Later |
 | --- | --- | --- |
 | Code tree and file view, with line links | Yes |  |
-| Branch and tag selection | Yes |  |
+| Branch, tag, and commit selection | Yes (pin switching) |  |
 | Commit history and commit detail with diff | Yes (existing Git views) |  |
 | Raw file | Yes (sandboxed) |  |
 | Pull request: description, labels, state, merge status | Yes |  |
@@ -182,46 +249,50 @@ The changed-files comparison is `merge-base(base, head)..head`, which matches Gi
 
 ## Retired From Earlier Plans
 
-These pieces answered concerns a read-only, single-user mirror does not have.
-Their beads are closed as superseded or rescoped when this plan lands.
-
 | Earlier design | Why it is not needed |
 | --- | --- |
-| Blobless clones, lazy-fetch policy, convergence states, background convergence | Full clones; every object is present after the first clone |
-| Private subject refs, revision leases, maintenance locks | No garbage collection in v1, so nothing can remove a shown commit |
-| Job refs, staged fetch records, compare-and-swap publication, job coalescing keys | `git fetch` already writes objects before refs; one lock per mirror |
-| Authorization contexts, principals, visibility partitions | One user; the recorded `gh` account is enough |
+| Blobless clones, default-tree prefetch, convergence states and jobs | Full clones; every object is present after the first fetch |
+| Private subject refs, revision leases, maintenance locks, automatic store reclamation | No Git object is deleted in v1 |
+| Job refs, staged fetch records, compare-and-swap publication, coalescing keys | `fetch --atomic` writes objects before refs; a fetch side lock and in-process single flight |
+| Authorization contexts, principals, visibility partitions | One user; the recorded reader is enough |
 | Token broker, credential leases, askpass bridge | `gh` is the credential helper |
-| Provider snapshot store, manifests, resource profiles for PR data | JSON records per pull request, replaced atomically |
-| Binding and rebind state machine | Records are keyed by GitHub’s node ID and refetched |
-| Public URL-reducer, router, address-space and nav-panel SDKs | Internal host interface; the SDK comes later |
-| Attaching user checkouts to the mirror | Deferred |
-| Fork mirrors | `refs/pull/<n>/head` carries fork commits |
+| Provider snapshot store, manifests, resource profiles for pull-request data | One JSON file per pull request |
+| Binding and rebind state machine | Records are refetched; canonical sources are stable |
+| New public URL-reducer, router, address-space, and nav-panel SDKs | Existing reducer hook and plugin routes |
+| Attaching user checkouts; fork mirrors | Deferred; `refs/pull/<n>/head` carries fork commits |
 
-The Hosted Review Format work already in the stack stays in place, but new code does not
-build on it for the alpha.
+`GIT_NO_LAZY_FETCH` and the store-spawn guard stay as defensive settings.
+The Hosted Review Format and `provider_resources` code already in the stack stays for
+now; whether to remove it is a separate decision.
 
 ## Delivery
 
-Each step is one stacked pull request, implemented and then reviewed by separate agents,
-with `make verify` and green CI before the next step starts from its head.
+Each step is one stacked pull request, implemented and reviewed by separate agents, with
+`make verify` and green CI before the next step starts from its head.
 
 | PR | Scope | Checkpoint |
 | --- | --- | --- |
-| Design | This plan, bead changes, notes in the superseded specs | Plan agreed |
-| Simplify | Full clones; remove lazy-fetch, convergence, subject refs, leases, and maintenance locks; keep the pinned subject and batch readers | T0 still passes; less code |
-| URL open (2A+2C) | HTTPS clone and fetch, GitHub resolver, ref and path splitting, line anchors, seamless refresh, browser serving of a pinned revision | Paste a repository, tree, blob, or commit URL; browse it in the browser and CLI; reopen offline |
-| PR data | `gh` runner and auth checks, PR records, `refs/pull/<n>/head` fetch, merge-base comparison, CLI inspection | `metab <pr-url> --api …` shows the PR, reviews, checks, and files, including offline |
-| PR view | Pull-request page: conversation, reviews, review comments, checks, and Files changed | Paste a PR URL and read it in the browser; reload and reopen offline |
+| 1. Design | This plan, bead changes, superseded notes | Plan agreed |
+| 2. Simplify | Full clones; remove convergence, subject refs, leases, maintenance locks, and store reclamation; edit the unreleased records and fixtures in place | T0 still passes, with less code |
+| 3. Serve a pin | Browser serving of a `file://` pin, forced untrusted profile, `repository_context`, served `/raw` decision | Open a `file://` source in the browser and browse it; no network |
+| 4. Refresh and pin switching | Coordinator, status, refresh and pin routes, browser stale label and newer-revision offer, stale history cursors, fetch side lock and stale-lock cleanup | Push to a `file://` origin, see the offer, switch; no network |
+| 5. GitHub URL open | Reducer plugin with network-free goldens for every URL shape, HTTPS with the `gh` helper, error classification, measured stall bound, ref and path split, line anchors, SIGHUP handling | Opt-in live smoke on a public repository |
+| 6. PR data | `gh` runner and account checks, PR records, `refs/pull/<n>/head`, comparison endpoints, CLI inspection | `metab <pr-url> --api …` shows the pull request, including offline |
+| 7. PR view | Pull-request page: conversation, reviews, review comments, checks, Files changed | Paste a PR URL and read it in the browser; reload and reopen offline |
 
 Later: pull-request list, inline review anchoring, SSH, Enterprise hosts, issues.
 
 ## Testing
 
-- **Hermetic first.** `file://` origins, a local smart-HTTP Git server for the HTTPS
-  path, and a fake `gh` executable with recorded responses for pull-request data.
-- **Parity.** Every new route and state has a `metab --api` or `--show` golden, per
-  [AGENTS.md](../../../../AGENTS.md).
+- **Network-free first.** URL-to-target goldens need no network.
+  Mirror behavior uses `file://` origins.
+  The credential arguments are tested with a `git credential fill` test.
+  Pull-request data uses a fake `gh` on `PATH` with recorded responses.
+- **Real HTTPS** is covered by the opt-in live smoke test, because trusting a local test
+  certificate would need an escape hatch the environment allowlist rightly removes.
+- **Parity.** Every new route and state has a `metab --api` or `--show` golden, and the
+  browser freshness and pin-switching behavior has a functional-aspect row and a
+  browserless session, per [AGENTS.md](../../../../AGENTS.md).
 - **Live smoke, opt-in.** Outside `make verify`: anonymous clones of small public
   repositories and read-only `gh api` reads of public data.
   Nothing is ever written to GitHub.
@@ -230,14 +301,14 @@ Later: pull-request list, inline review anchoring, SSH, Enterprise hosts, issues
 
 ## Decisions (2026-09-23, by the user)
 
-- The cache is a plain mirror: full clones, `git fetch`, no invented refs, garbage
-  collection off, views pinned by commit ID, read-only.
+- The cache is a plain mirror: full objects, `git fetch`, no invented refs, no Git
+  object deletion, views pinned by commit ID, read-only.
 - Authentication is external: `gh` is the credential helper and the API client.
 - An unrecognized github.com URL shape is refused with a typed error.
 - github.com only for the alpha.
-- Pull-request comparison is `merge-base..head`.
-- GitHub support is internal; no public SDK for it yet.
-- Plain Pydantic records for pull-request data, and merged phases.
+- Pull-request comparison uses the merge base, as GitHub does.
+- GitHub support is internal; no new public SDK for it yet.
+- Plain Pydantic records for pull-request data, and fewer, merged phases.
 - Deferred: SSH, the pull-request index and panel, inline thread anchoring, checkout
   attachment, rebind.
 - Browsing should feel like the GitHub web interface, served from a seamless cache:
@@ -248,13 +319,14 @@ Later: pull-request list, inline review anchoring, SSH, Enterprise hosts, issues
 
 ## Open Engineering Choices
 
-These have documented defaults and are settled by measurement during implementation:
+Settled by measurement during implementation, each with a documented default:
 
-- Freshness windows for refs and pull-request data (default about one minute).
-- First-clone time for large repositories; blobless clones return only if a measurement
-  shows a full clone is too slow for common repositories.
-- Disk growth with garbage collection off; a purge command can follow the alpha.
-- Bounds on pull-request records: comment, review, and file counts, and body sizes.
+- Freshness windows and polling intervals.
+- First-clone time and size limits for large repositories.
+- Disk growth with no object deletion; `repack -a -d --keep-unreachable` consolidates
+  packs without deleting objects if lookups slow down.
+- Bounds on pull-request records.
+- The minimum `gh` version for `auth status --json`.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
