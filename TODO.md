@@ -13,13 +13,13 @@ Checked items below are supported today; unchecked items are planned work.
 | --- | --- | --- |
 | Markdown navigation | [Navigation extensions](docs/project/specs/active/plan-2026-08-13-markdown-navigation-extensions.md) | Baseline shipped; three items remain — see below |
 | File search | [Quick File finder and search providers](docs/project/specs/active/plan-2026-07-17-scalable-file-search.md) | Client finder shipped; server providers planned |
-| HTML trust model | [Full-page HTML rendering and trust model](docs/project/specs/active/plan-2026-08-06-html-rendering-and-trust-model.md) | Draft |
+| HTML trust model | [Full-page HTML rendering and trust model](docs/project/specs/active/plan-2026-08-06-html-rendering-and-trust-model.md) | Sandboxed `/raw`, same-origin `/api` proof, and `--untrusted` landed through #209; remaining plan work is tracked separately |
 | File actions | [Menu primitives and gated file actions](docs/project/specs/active/plan-2026-08-06-menu-primitives-and-file-actions.md) | Draft |
 | File editing | [Opt-in trusted-local file editing](docs/project/specs/active/plan-2026-07-16-trusted-local-file-editing.md) | Draft |
 | Scan state | [Scanning state and recent directories](docs/project/specs/active/plan-2026-07-16-scanning-state-and-recent-directories.md) | Draft |
 | Git surfaces | [Git graph nav panel](docs/project/specs/active/plan-2026-08-06-git-graph-view.md), [general diff rendering](docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md), [Git status and working-tree diffs](docs/project/specs/active/plan-2026-08-26-git-status-and-working-tree-diffs.md) | Graph panel, read-only Git API, and diff rendering shipped; working-tree status and `/compare/` remain, after CLI parity |
-| Repository library | [Repository library and open from a Git URL](docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md) | v0.12.0 design reviewed; the `mb-xxhi` start gate is closed — v0.10.0 shipped and v0.11.0 has since released from `main`. Then: owner-only generic acquisition, repository URL opening, and repository-owned detached materialization for any exposed and authorized branch. Serving also remains gated on Git status and content trust |
-| Hosted review and GitHub | [Hosted review model and GitHub provider](docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md), [architecture](docs/project/architecture/arch-hosted-review-model.md) | v0.12.0 design reviewed; the release gate has passed: provider-neutral SoftSchema/frontmatter records, `gh api` through a provider registry, auth-scoped snapshots, direct-PR views, then a query-keyed bounded PR index and virtual nav. Issues, GitLab, and stacked changes remain later work |
+| Repository library | [Repository library and open from a Git URL](docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md) | v0.11.0 released. Stack [#218](https://github.com/jlevy/metabrowser/stack/218) holds the owner-only cache, draft `file://` acquisition, and draft leased Git-tree pin. Repository URL opening, https/ssh acquisition, and HTTP serving remain; immutable Git trees are read without a checkout or detached worktree |
+| Hosted review and GitHub | [Hosted review model and GitHub provider](docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md), [architecture](docs/project/architecture/arch-hosted-review-model.md) | Provider-neutral records and installed contract gates are on stack [#218](https://github.com/jlevy/metabrowser/stack/218). The `gh api` adapter, auth-scoped snapshots, direct-PR views, bounded PR index, and virtual nav remain planned. [Alpha testing](docs/project/specs/active/plan-2026-09-22-v012-alpha-testing.md) covers incremental readiness through the direct PR view; the full v0.12 milestone continues through the index and nav |
 | Editor host | [VS Code extension host](docs/project/architecture/arch-vscode-extension-host.md) | Architecture only; no plan yet |
 | Load-time performance | [End-to-end load time](docs/project/specs/active/plan-2026-08-21-load-time-performance.md) | Draft |
 | Mermaid diagrams | [Mermaid diagram rendering](docs/project/specs/active/plan-2026-08-21-mermaid-diagram-rendering.md) | Draft; depends on load-time Phase 1 |
@@ -41,18 +41,19 @@ component:
    release and fetched commit verified.
    v0.11.0 has since shipped, so a `release:v0.12.0` implementation branch starts from
    that.
-2. `mb-ire2`, `mb-xa0p`, `mb-4gnu`, and `mb-h51g` freeze the released boundaries,
-   establish the owner-only versioned application home, and publish a pinned generic Git
-   cache entry. `mb-k54c`, `mb-dg00`, and `mb-dxmb` expose and golden-pin its state and
-   URL grammar.
-3. `mb-cun0` and `mb-vib1` establish the untrusted-content profile, while `mb-r5gn` and
-   `mb-u4mf` provide the shared Git clean predicate.
-   Both tracks can proceed alongside the cache foundation; they gate serving, not
-   acquisition.
+2. `mb-ire2`, `mb-xa0p`, `mb-4gnu`, and `mb-h51g` establish the owner-only versioned
+   application home and publish a pinned generic Git cache entry.
+   `mb-k54c`, `mb-dg00`, and `mb-dxmb` expose and golden-pin its state and URL grammar.
+   The first seven stack layers through draft #216 carry this foundation; remaining
+   acceptance work is tracked in the
+   [repository plan](docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md).
+3. The untrusted-content profile (`mb-cun0`, `mb-vib1`) landed on `main` through #209.
+   `mb-r5gn` and `mb-u4mf` provide Git working-tree status for attached filesystem
+   subjects; they do not gate serving a worktree-free Git revision.
 4. `mb-12cz` and `mb-ew38` open or reuse repository and GitHub web URLs through a
    provider-neutral reducer and the canonical path-identity codec; `mb-jlon`, `mb-z335`,
-   and `mb-2xq7` resolve any selected branch to an immutable object ID and serve a
-   detached materialization without moving the pinned root.
+   and `mb-2xq7` resolve any selected branch to an immutable object ID and read its Git
+   tree through the leased repository subject.
 5. `mb-63ym` defines provider-neutral hosted-review contracts and the plugin boundary,
    using a frontmatter artifact whose Markdown body is the PR description, while
    `mb-jlon` adds only the generic provider jobs and selected-ref fetching they need.
@@ -233,7 +234,8 @@ They are not part of the v0.1.0 core contract.
 
 - [ ] Settle the
   [HTML rendering and content-trust model](docs/project/specs/active/plan-2026-08-06-html-rendering-and-trust-model.md),
-  including sandboxed `/raw` responses and same-origin proof on `/api`
+  building on the sandboxed `/raw` responses, same-origin proof on `/api`, and
+  `--untrusted` profile that landed through #209
 - [ ] Enforce a strict Content Security Policy after replacing or nonce-enabling the
   remaining inline shell and plugin handlers
 
