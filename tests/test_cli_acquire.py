@@ -439,3 +439,22 @@ def test_git_failures_during_acquisition_are_distinct_path_free_cli_errors(
         messages[kind] = message
     assert len(set(messages.values())) == len(messages)
     assert "900" in messages["timeout"]
+
+
+@posix_only
+def test_pin_html_offers_only_source_under_the_forced_profile(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pin never offers HTML preview, so it cannot 404 on a relative reference (mb-g5je)."""
+    _isolate_home(tmp_path, monkeypatch)
+    origin = _origin(tmp_path, allow_filter=False)
+    work = tmp_path / "work"
+    (work / "page.html").write_text('<img src="logo.png"><a href="b.html">b</a>\n')
+    _git(work, "add", "page.html")
+    _git(work, "commit", "-qm", "page")
+    _git(work, "push", "-q", str(origin), "HEAD:topic")
+    result = runner.invoke(_app, [_file_url(origin), "--show", "page.html"])
+    assert result.exit_code == 0, result.output
+    assert "kind: html" in result.output
+    assert "views: source (default)" in result.output
+    assert "preview" not in result.output
