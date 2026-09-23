@@ -94,9 +94,12 @@ tags, longest match first, so a branch with slashes resolves correctly.
 
 ### Git mirror
 
-- **Layout.** One directory per repository under the application home, holding a bare
-  repository and a small record (source URL, last fetch time, `gh` account if any).
-  The existing source slug is the directory name.
+- **Layout.** The source-alias and repository-store records built in Phase 1B-a stay: a
+  source alias names one bare repository store, which lets several URLs for the same
+  repository share it.
+  Each record gains the last fetch time and the `gh` account, if any.
+  Collapsing this into one directory per repository is a later cleanup, not part of the
+  alpha.
 - **Clone.** `git clone --bare` with full objects into a staging directory, then an
   atomic rename into place.
   A crash leaves only staging, which the next open sweeps.
