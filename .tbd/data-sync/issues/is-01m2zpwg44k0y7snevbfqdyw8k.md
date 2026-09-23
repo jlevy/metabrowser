@@ -5,15 +5,15 @@ title: "S217-7: acquisition Lows: stores-by-sources reclaim scan, late detached-
 kind: bug
 status: in_progress
 priority: 2
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 labels:
-  - release:v0.11.0
   - stack:pr217
+  - release:v0.12.0
 dependencies: []
 parent_id: is-01m2yxd3tnr1s2zf0h0jat1ey2
 created_at: 2026-09-20T15:27:48.863Z
-updated_at: 2026-09-20T17:19:02.404Z
+updated_at: 2026-09-23T00:21:42.634Z
 ---
 Finding S217-7 from the v0.11 stabilization review. Owning layer: PR #217. Full evidence, path:line, and suggested fix are in the notes of mb-gacf under S217-7.
 

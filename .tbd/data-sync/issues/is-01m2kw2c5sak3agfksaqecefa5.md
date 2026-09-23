@@ -5,12 +5,12 @@ title: "GitHub Phase 3B review: publish direct PR cache PR"
 kind: task
 status: open
 priority: 1
-version: 16
+version: 17
 spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
 delegate: null
 labels:
-  - release:v0.11.0
   - stack:publication
+  - release:v0.12.0
 dependencies:
   - type: blocks
     target: is-01m2kw2cra83fyszkrptvhfead
@@ -28,7 +28,7 @@ parent_id: is-01m10xd666fefs5z7ft5m58zj0
 hold: null
 hold_until: null
 created_at: 2026-09-16T01:07:31.128Z
-updated_at: 2026-09-20T16:48:25.336Z
+updated_at: 2026-09-23T00:21:41.790Z
 started_at: 2026-09-16T21:10:44.943Z
 ---
 Independently review the directly addressed PR bundle, shared provider mirror reuse, selected Git OIDs, provider and Git consistency, offline reuse, partiality, and publication. Resolve findings through the review shortcut, run make verify, and publish one formal GitHub PR with gh stacked on the exact green provider-foundation head. Record exact PR, base, head, OIDs, formal stack view, review, final green CI, and mb-n2ro registration. Do not merge.

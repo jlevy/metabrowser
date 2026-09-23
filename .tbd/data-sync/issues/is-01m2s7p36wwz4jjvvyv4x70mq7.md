@@ -5,14 +5,14 @@ title: Pin Git 2.50.1 in CI so live acquire tryscripts can run
 kind: task
 status: open
 priority: 2
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-08-28-cli-first-delivery-map.md
 labels:
-  - release:v0.11.0
+  - release:v0.12.0
 dependencies: []
 parent_id: is-01m1389rewn2mkj8emj3wxwpr7
 created_at: 2026-09-18T03:06:43.804Z
-updated_at: 2026-09-18T03:06:43.804Z
+updated_at: 2026-09-23T00:21:42.616Z
 ---
 ubuntu-latest ships Git 2.43.0, which production require_acquisition_git refuses (floor 2.43.7 / patched tracks; distro backports remain refuse). Portable acquire evidence therefore lives in pytest (mb-3639) with the floor monkeypatched.
 

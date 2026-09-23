@@ -5,12 +5,12 @@ title: "Provider resources: neutral artifact publication and cache port"
 kind: feature
 status: open
 priority: 1
-version: 11
+version: 12
 spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
 delegate: claude-code@spud10.local
 labels:
-  - release:v0.11.0
   - provider-resources
+  - release:v0.12.0
 dependencies:
   - type: blocks
     target: is-01m2ktnwpapx26rybv4w3pbshk
@@ -22,7 +22,7 @@ parent_id: is-01m10xd666fefs5z7ft5m58zj0
 hold: null
 hold_until: null
 created_at: 2026-09-16T00:56:44.789Z
-updated_at: 2026-09-17T01:36:53.284Z
+updated_at: 2026-09-23T00:21:41.415Z
 started_at: 2026-09-16T21:10:44.871Z
 ---
 Before provider storage becomes durable, move the remaining content-neutral provider identity and publication ownership from hosted_review into provider_resources; AuthorizationContextRef and authorization_context_key already moved there in mb-jlon. Incorporate the reviewed Phase 0D source-based ProviderBinding and separate local Git object availability. Define ProviderResourceStorePort with repository-scoped stage, publish, current/last-complete, lease, and reclaim methods; inject it through trusted lifecycle registration without exposing paths. Keep domain records and views in domain plugins. Prove unrelated plugin families and multiple source attachments reuse one stable provider repository.

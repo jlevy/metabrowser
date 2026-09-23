@@ -5,10 +5,10 @@ title: "Plugin SDK: repository-scoped nav panels and virtual collections"
 kind: feature
 status: open
 priority: 1
-version: 8
+version: 9
 spec_path: docs/project/architecture/arch-hosted-review-model.md
 labels:
-  - release:v0.11.0
+  - release:v0.12.0
 dependencies:
   - type: blocks
     target: is-01kxse0vt4cyng7mvtr3hk2rct
@@ -18,7 +18,7 @@ dependencies:
     target: is-01m2kw2d2arc9hn25pfsc4me50
 parent_id: is-01m10vgwqwn8gjdv8fm183vztr
 created_at: 2026-07-17T21:00:33.500Z
-updated_at: 2026-09-16T01:07:32.041Z
+updated_at: 2026-09-23T00:21:40.534Z
 extensions:
   linear:
     id: 28ee38a5-1006-44dd-a6a0-814e434a8190

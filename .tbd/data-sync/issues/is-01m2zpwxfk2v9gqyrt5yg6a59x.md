@@ -5,15 +5,17 @@ title: "S216-10: add a multi-entry Git-pin golden, real browser source-kind test
 kind: task
 status: open
 priority: 1
-version: 2
+version: 4
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 labels:
-  - release:v0.11.0
   - stack:pr216
-dependencies: []
+  - release:v0.12.0
+dependencies:
+  - type: blocks
+    target: is-01m35tapm6wjnn235hr3s669b7
 parent_id: is-01m2yxd3tnr1s2zf0h0jat1ey2
 created_at: 2026-09-20T15:28:02.544Z
-updated_at: 2026-09-21T07:16:19.535Z
+updated_at: 2026-09-23T00:23:26.596Z
 ---
 Finding S216-10 from the v0.11 stabilization review. Owning layer: PR #216. Full evidence, path:line, and suggested fix are in the notes of mb-gacf under S216-10.
 

@@ -5,12 +5,12 @@ title: "Immutable Git-tree review: publish revision-source PR"
 kind: task
 status: in_progress
 priority: 1
-version: 14
+version: 16
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: claude-code@spud10.local
 labels:
-  - release:v0.11.0
   - stack:publication
+  - release:v0.12.0
 dependencies:
   - type: blocks
     target: is-01kzsb4k9hwrt25jj9j6svkvaf
@@ -26,7 +26,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-09-16T20:43:08.685Z
-updated_at: 2026-09-20T15:45:16.072Z
+updated_at: 2026-09-23T00:23:24.421Z
 started_at: 2026-09-16T21:12:28.728Z
 ---
 Independently review GitRevisionSubject, GitTreeSource, GitPath, RepositoryStoreTarget migration across every Git consumer and content route, batch framing/cancellation/large-blob behavior, process-safe maintenance locks and durable reachability refs, plugin capability behavior, and two-process concurrent subjects. Resolve findings, run make verify, and publish one formal GitHub PR with gh stacked on exact green mb-tsdc content-source head. Record exact stack/review/CI evidence. Do not merge.
@@ -43,3 +43,5 @@ tests/test_git_revision_content_routes.py — symlinks (:968, :1032), LFS pointe
 promisor miss (:1707), gitlink (:388-395); tests/test_git_tree_source.py — oversized blob
 (:329), LFS pointer (:638), promisor miss (:677), gitlink (:286-297). The remaining work
 for PR #216 is tracked under mb-gacf.
+
+2026-09-22 state reconciliation: draft #216 b3c001a96eed64eb77961c2b7165b103af98b77c is the published integration tip, with all seven checks green. Known edge tests already exist; remaining acceptance is not an absent-PR problem. Track mb-3z4d (nontrivial multi-entry golden and browser evidence), mb-677z (blocking locks on async paths), mb-t7qs (large-blob classification and repeated reads), and new mb-sumg (pin CLI acquisition error mapping). Real CLI/Git 2.50.1 cold/warm/origin-absent file:// smoke passed. Acquired HTTP serving and GitHub URLs/PRs remain future implementation.

@@ -5,10 +5,10 @@ title: "GitHub Phase 3: gh adapter, binding, and provider snapshots"
 kind: feature
 status: open
 priority: 1
-version: 19
+version: 20
 spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
 labels:
-  - release:v0.11.0
+  - release:v0.12.0
 dependencies:
   - type: blocks
     target: is-01m10vgwqwn8gjdv8fm183vztr
@@ -28,6 +28,6 @@ child_order_hints:
   - is-01m2kw2c5sak3agfksaqecefa5
   - is-01m2kw2cf1gxnanj6e1wyh6frw
 created_at: 2026-08-27T06:09:37.988Z
-updated_at: 2026-09-16T01:07:31.424Z
+updated_at: 2026-09-23T00:21:40.818Z
 ---
 Implement the GitHub provider lane through three explicit foundations: bounded provider_process work, the mb-ji83 ProviderAdapterSpec capability/lifecycle registry, and the mb-i3xc auth-scoped provider-store kernel. The only v0.11 transport is hardened gh api with explicit host/auth outcomes. Bind repositories without changing generic identity and publish provider-neutral immutable records with distinct transaction/coverage state, current plus last-complete pointers, leases, and bounded reclamation. Depend on mb-63ym and mb-jlon, not full cache management; never persist raw responses or credentials.

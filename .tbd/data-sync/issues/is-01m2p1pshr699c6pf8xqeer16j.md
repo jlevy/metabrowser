@@ -5,12 +5,12 @@ title: "Repository library Phase 1B-a review: publish worktree-free acquisition 
 kind: task
 status: in_progress
 priority: 1
-version: 17
+version: 19
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: claude-code@spud10.local
 labels:
-  - release:v0.11.0
   - stack:publication
+  - release:v0.12.0
 dependencies:
   - type: blocks
     target: is-01m2k713pxra1ns2fk3pcwrpb6
@@ -20,7 +20,7 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-09-16T21:24:31.927Z
-updated_at: 2026-09-20T15:45:00.923Z
+updated_at: 2026-09-23T00:23:21.470Z
 started_at: 2026-09-16T21:24:54.760Z
 ---
 Independently review GitCommandTarget, file:// local-origin sources under the untrusted profile (mb-dxmb), worktree-free acquisition, source/store alias publication, ref/object validation, crash recovery, cross-process CAS behavior, CLI parity, and acquisition goldens. Resolve every finding, run make verify, and publish one formal GitHub PR with gh stacked on the exact green Phase 1A head. Record exact stack evidence and final green CI. Do not merge.
@@ -36,3 +36,5 @@ Folds #208 and #210. CI green. Still draft. Do not merge. Review this layer, the
 (gh pr view 217 --json headRefOid), CI green on that head (gh pr checks 217: distribution,
 lint, stack-integration and test 3.12/3.13/3.14/3.14t all pass). Further stabilization
 fixes for this layer are in progress under mb-gacf.
+
+2026-09-22 state reconciliation: published #217 head is 4d25dc9a1c18a757d6dda03d06fc19343364db09, based on #140 93f19061, draft and seven checks green. Prior substantive review/disposition through 6dc2617c; later commits are propagated merges. Do not close while Phase 1B-a acceptance remains: converging online/offline reads mb-pkho, minimum admitted Git CI mb-d1za (supported live runner mb-oueh), stalled-acquisition bound mb-rati, distribution-backport policy mb-e32d, remaining golden work mb-dg00 and cancellation decision mb-lp89. HTTPS/SSH acquisition is mb-bi2c and is not delivered by this PR.

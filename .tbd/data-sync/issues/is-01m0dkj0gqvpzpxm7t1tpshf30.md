@@ -5,11 +5,11 @@ title: "Repository projection: immutable Git-tree source over a shared object st
 kind: feature
 status: in_progress
 priority: 1
-version: 83
+version: 84
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: unknown@cursor
 labels:
-  - release:v0.11.0
+  - release:v0.12.0
 dependencies:
   - type: blocks
     target: is-01m2h7gjc36fqv8cv38qd9zynr
@@ -23,7 +23,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-08-19T18:11:56.054Z
-updated_at: 2026-09-20T16:46:48.091Z
+updated_at: 2026-09-23T00:21:40.677Z
 started_at: 2026-09-16T21:10:44.836Z
 ---
 Implement GitRevisionSubject and GitTreeSource over a shared RepositoryStoreTarget and an opaque SourceSession. Define byte-segment GitPath identity and URL/display serialization; enumerate NUL-framed trees with stable byte ordering; read blobs through exclusive actor-style cat-file batch readers that issue info before contents, enforce size gates, drain frames, and poison/restart on cancellation or framing failure. Migrate history, repo discovery, commit detail, refs, diffs, file/raw/container/classification/KPress routes, and built-in sidekicks to exact target plus subject OID semantics. Protect live OIDs with cross-process shared maintenance locks and durable private refs; GC/repack takes the exclusive lock. Add crash/stale-lock recovery, promisor-miss, oversized-blob, invalid-UTF8/newline-name, and two-process/two-OID tests. Never create a checkout, index, branch, worktree, or fake filesystem fact.
