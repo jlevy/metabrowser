@@ -105,6 +105,7 @@ or want help → run `tbd shortcut welcome-user`
 | “Review this PR” | `tbd shortcut review-github-pr` |
 | “Commit this” / “Use the commit shortcut” | `tbd shortcut code-review-and-commit` |
 | “Create a PR” / “File a PR” | `tbd shortcut create-or-update-pr-simple` |
+| “Create a stacked PR” / “Stack this” / “Create dependent PRs” | `tbd shortcut stacked-prs` |
 | “Merge main into my branch” | `tbd shortcut merge-upstream` |
 | **Guidelines & Knowledge** |  |
 | *(any engineering work)* | Load the **General engineering** group first (see below) |
@@ -136,6 +137,9 @@ or want help → run `tbd shortcut welcome-user`
 | “Hand off to another agent” | `tbd shortcut agent-handoff` |
 | “Check out this library’s source” | `tbd shortcut checkout-third-party-repo` |
 | *(your choice whenever appropriate)* | `tbd list`, `tbd dep add`, `tbd close`, `tbd sync`, etc. |
+
+If the branch is based on another feature branch (not the trunk), run
+`tbd shortcut stacked-prs` before creating the PR.
 
 **Loading guidelines for engineering work:** three layers, in this order.
 
@@ -414,7 +418,8 @@ Load the **General engineering** core, then only guidelines matching the task.
 
 ### General engineering
 
-*Read this core before writing or reviewing code. Everything else is routed by what the change touches.*
+*Read this core before writing or reviewing code.
+Everything else is routed by what the change touches.*
 
 | Name | Description |
 | --- | --- |
@@ -444,7 +449,8 @@ Load the **General engineering** core, then only guidelines matching the task.
 
 ### TypeScript & JS ecosystem
 
-*Select the documents that match the TypeScript or JavaScript surface; do not load this whole group by default.*
+*Select the documents that match the TypeScript or JavaScript surface; do not load this
+whole group by default.*
 
 | Name | Description |
 | --- | --- |
@@ -459,7 +465,8 @@ Load the **General engineering** core, then only guidelines matching the task.
 
 ### Python
 
-*Select the documents that match the Python surface; do not load this whole group by default.*
+*Select the documents that match the Python surface; do not load this whole group by
+default.*
 
 | Name | Description |
 | --- | --- |
@@ -469,7 +476,8 @@ Load the **General engineering** core, then only guidelines matching the task.
 
 ### Rust
 
-*Select the documents that match the Rust surface; do not load this whole group by default.*
+*Select the documents that match the Rust surface; do not load this whole group by
+default.*
 
 | Name | Description |
 | --- | --- |
@@ -484,7 +492,8 @@ Load the **General engineering** core, then only guidelines matching the task.
 
 ### Convex
 
-*Select the documents that match the Convex surface; do not load this whole group by default.*
+*Select the documents that match the Convex surface; do not load this whole group by
+default.*
 
 | Name | Description |
 | --- | --- |
