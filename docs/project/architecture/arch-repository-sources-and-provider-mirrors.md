@@ -12,7 +12,9 @@ source, `GitCommandTarget`, the immutable Git tree source with `GitPath` file, r
 tree routes, and `file://` acquisition of full clones into a shared, read-only
 repository store are implemented; `metab` opens a `file://` pin in-process for `--show`,
 non-cache `--api`, and `--check-api`, and serves it over HTTP under the forced untrusted
-profile. `https` acquisition, refresh, and pull-request data remain planned, and
+profile. A served store refreshes from its `file://` origin in the background, and a
+server can switch its pin to another branch, tag, or commit of the same store.
+`https` acquisition and pull-request data remain planned, and
 [Thin Mirror for Git and GitHub Browsing](../specs/active/plan-2026-09-23-v012-thin-mirror.md)
 replaces the planned parts of this document wherever they disagree.
 It retired blobless clones and convergence, private subject refs, revision leases,
@@ -85,9 +87,11 @@ The future repository switcher changes the active subject descriptor.
 It does not move files, change refs, or create a new cache.
 The v0.12 server and browser session have exactly one active subject; every route,
 history session, plugin dispatch, cache key, and event stream is tied to that subject’s
-generation. Separate Metabrowser processes may browse different subjects from the same
-store concurrently. A later multi-subject server would require subject-qualified
-addresses and per-request leases; this design does not imply that unsupported routing.
+generation. Switching the pin within one repository is such a change: the new subject is
+attached under a new generation and the one it replaced is closed.
+Separate Metabrowser processes may browse different subjects from the same store
+concurrently. A later multi-subject server would require subject-qualified addresses and
+per-request leases; this design does not imply that unsupported routing.
 
 ### Source session and content contract
 
@@ -245,10 +249,13 @@ exact OIDs.
 
 ### Fetch and credentials
 
-Only `file://` acquisition is built.
-The thin-mirror plan owns HTTPS acquisition and refresh: a plain `git fetch` into the
-store under one lock per mirror, with `gh` as the only credential helper for a private
-fetch.
+Only `file://` is fetched: acquisition, and refresh of a published store.
+A refresh is `ls-remote --symref -- origin HEAD` for the default branch, then
+`fetch --prune --atomic --no-write-fetch-head` of every branch and tag, so every ref
+moves together or none does and a branch or tag deleted upstream leaves the mirror while
+its commits stay. `cache/origin.py` builds both commands’ arguments for acquisition and
+refresh alike; the thin-mirror plan adds HTTPS there, with `gh` as the only credential
+helper for a private fetch.
 Every fetch runs in the isolated Git environment of `git/process.py`, the only Git
 subprocess boundary: no inherited `GIT_*` variable, no system or global configuration,
 terminal prompting disabled, and hooks off.
@@ -293,7 +300,10 @@ actor.
 
 A valid repository subject opens without network access, and every read answers from the
 store alone, with the origin reachable or not.
-Refresh and its freshness window belong to the thin-mirror plan.
+A refresh runs only as a background job a request starts or joins, never inside a read;
+a failed one leaves the served revision as it was and reports a typed outcome in
+`/api/source/status`. The freshness window and its measurement are beside
+`FRESHNESS_WINDOW_S` in `mirror_refresh.py`.
 
 ## Shared Provider Mirror
 
@@ -398,10 +408,17 @@ The fixed lock order is:
 
 Network work and long-running Git processes hold none of these locks, and a local
 checkout is never a lock target.
-Acquisition takes the alias lock and then the store lock and holds both from the store’s
-rename through the alias commit, so every alias that names a store is written under that
-store’s lock. `tests/test_cache_publish.py` checks that the real acquisition holds both
-at the store rename, the alias write, and the source rename.
+A refresh instead holds its store’s fetch side lock,
+`cache/locks/stores/<store-key>.fetch.lock`, across the fetch.
+It is only tried without blocking: a refresh that finds it busy reports that another
+process is refreshing the store and does not wait.
+Every writer of a published store holds it, so lock files and temporary packs a killed
+fetch left in the store are removed under it before the next fetch.
+The refresh takes the store lock only to rewrite `state.yml`. Acquisition takes the
+alias lock and then the store lock and holds both from the store’s rename through the
+alias commit, so every alias that names a store is written under that store’s lock.
+`tests/test_cache_publish.py` checks that the real acquisition holds both at the store
+rename, the alias write, and the source rename.
 
 Nothing deletes or moves a published store or source.
 A reader reaches a store only through its alias and takes no lock, and nothing removes
@@ -440,7 +457,8 @@ in [Views, Models, and Routes](arch-views-models-routes.md).
 | Plugin and route bridge | `plugin_api.py`: `open_content`, `source_capabilities`, `require_source_capability`, filesystem-only path helpers; `server.py`, `events_route.py`, `git/routes.py`, `git/content_routes.py`, `git/repo.py`, `git/history.py`; `diff/adapters/git.py`: `GitDiffSource`; `builtin_plugins/diff/sidekick.py`: comparison, document, and children hooks; `builtin_plugins/binary/sidekick.py`: chunk hook; `builtin_plugins/structured`: parsed hook; `builtin_plugins/agent_log/sidekick.py`: charts hook; `plugin_loader/classify.py`: `classify_identity` | Resolve the active content-source handle rather than assuming the global root is a `Path`; capability-gate recency, ignore, watcher, activity, mutation, and Git listing sizes; honor a pinned `GitRevisionSubject` on Git collection, file, raw, tree, rollup, catalog, index status, capabilities, tree filter tallies, tree summary, filtered tree totals, include_ignored no-op, tree depth, file envelope ext, markdown frontmatter, text preview window, in-tree symlink follow including plugin sidekicks, diff-comparison including `GitDiffSource.content`, KPress, patch-file container, binary-chunk, identity-and-content-kind, structured-parsed, and agent-log routes, and image preview; keep route, CLI, and golden parity |
 | Revision tree | `git/tree_source.py`: `GitPath`, `GitTreeSource`, `GitRevisionSubject`, `list_tree`, `read_blob`; shared per-store `cat-file --batch-command --buffer` pool (`MAX_BATCH_READERS_PER_STORE`); `git/content_routes.py`: file, raw, tree, catalog, `split_git_container_wire`, and extension plugin kinds | Enumerate NUL-framed byte-safe full-OID trees and read size-gated blobs from a `RepositoryStoreTarget` with no materialization. `GitPath` wires are the identity on every route that accepts one, and blob kinds come from extension, basename, sniffed adapter, and bounded JSON/YAML/frontmatter mappings. The per-route projections are in [Git and Comparison Sources](arch-git-and-comparison-sources.md) |
 | Repository store | `cache/repository_store.py`: `open_revision`; `cache/records.py`: source aliases and store state; `cache/acquire.py`: `acquire_file_source`; `cache/reclaim.py`: staging sweep | `open_revision` checks that a commit is in the published store and returns its `GitRevisionSubject`, writing nothing and holding no lock. Acquisition fetches every object of a `file://` source and publishes the store and its alias under the alias and store locks. Nothing deletes a published store |
-| Serving a pin | `source.py`: `serve_subject_opener`, `lifespan_subject`, `detach_session`; `server.py`: `_lifespan`, `_pin_label_html`; `cli/git_pin_cli.py`: `run_serve_pin`; `source_routes.py`: `source_status` | Serve mode acquires, proves the default pin opens, and hands the server an opener, because a pin’s batch readers belong to the event loop that started them. The application lifespan opens the pin in the serving loop before the inventory reads the subject, attaches it, and closes it at shutdown; each start opens a fresh pin. `/api/source/status` and the navigation heading report the pin and the ref it was resolved from. On a served pin the cache routes and the `/raw/<path>` form answer `unsupported_for_subject`, and the untrusted profile is forced |
+| Serving a pin | `source.py`: `serve_subject_opener`, `lifespan_subject`, `attach_owned_subject`, `close_owned_subject`; `server.py`: `_lifespan`, `_pin_label_html`; `cli/git_pin_cli.py`: `run_serve_pin`; `source_routes.py`: `source_status` | Serve mode acquires, proves the default pin opens, and hands the server an opener, because a pin’s batch readers belong to the event loop that started them. The application lifespan opens the pin in the serving loop before the inventory reads the subject, attaches it, and closes whichever pin is served at shutdown; each start opens a fresh pin. `/api/source/status` and the navigation heading report the pin and the ref it was resolved from. On a served pin the cache routes and the `/raw/<path>` form answer `unsupported_for_subject`, and the untrusted profile is forced |
+| Refresh and pin switching | `cache/origin.py`: `ls_remote_head_args`, `mirror_fetch_args`; `cache/update.py`: `update_store`, `remove_interrupted_fetch_leftovers`; `cache/locks.py`: `store_fetch_lock`; `cache/repository_store.py`: `resolve_pin`, `ref_tip`; `cache/served_mirror.py`: `StoreMirror`; `mirror_refresh.py`: `RefreshCoordinator`, `MirrorSession`, `serve_mirror`, `lifespan_refresh`; `source.py`: `replace_owned_subject`; `source_routes.py`: `api_source_refresh`, `api_source_pin`; `static/source-freshness.js` | One fetch per refresh under the store’s fetch side lock, with typed outcomes. The coordinator keeps background jobs on the application state keyed by store key, joins concurrent requests, runs at most two at once, and cancels them at shutdown. Status freshness is answered from memory. A selection resolves in the mirror alone through `show-ref --verify` candidates (branch, then tag, then commit ID) and replaces the served subject under a new generation. Serve mode refreshes a stale mirror once at startup; one-shot modes never fetch unless asked |
 | Remote discovery | `repository_context.py`: `discover_repository_context` | Read a checkout’s `origin` remote and `HEAD` without running Git, so a provider candidate can be recognized before any network work |
 | File and raw routes | `view_routes.py`, `server.py`, `git/content_routes.py`, `plugin_api.py`; `static/navigation.js`: `displayPath` | Resolve the active content-source handle rather than assuming the global root is a `Path`; Git subjects use `GitPath` wire identities for `/view/`, file, raw, tree, KPress, patch-file containers, identity-and-content plugin kinds, structured parsed, agent-log JSONL, and image preview; Markdown and wiki links on a pin encode authored segments as `GitPath` wires; SPA path chrome decodes those wires to display names (C0 and invalid UTF-8 become U+FFFD); retain route, CLI, and golden parity for filesystem browsing |
 
@@ -452,7 +470,7 @@ lacks.
 
 | Area | Planned boundary | Responsibility |
 | --- | --- | --- |
-| HTTPS acquisition and refresh | `cache/acquire.py` | Clone `https` sources and refresh a store with `git fetch` under one lock per mirror, with `gh` as the credential helper for a private fetch; the [thin-mirror plan](../specs/active/plan-2026-09-23-v012-thin-mirror.md) owns the design |
+| HTTPS acquisition and refresh | `cache/origin.py`: the transport allowlist and credential arguments; `cache/acquire.py` | Clone `https` sources and refresh them through the `file://` refresh path, with `gh` as the credential helper for a private fetch; the [thin-mirror plan](../specs/active/plan-2026-09-23-v012-thin-mirror.md) owns the design |
 | Source attachments | A neutral provider-resources module for source binding and local-availability records | Map local and managed sources to stable provider repository identity without storing local paths or requiring a cache entry. `ProviderBinding`, `LocalGitObjectAvailability`, `AuthorizationContextRef`, and `authorization_context_key` live today in `builtin_plugins/hosted_review/models.py` and move under `mb-s0gv` |
 | Provider mirror | `provider_resources/store.py`: `stage_snapshot`, `publish_manifest`, `read_current`, `read_last_complete`, `lease_snapshot`, `reclaim_snapshots` | Publish one repository-scoped, auth-scoped mirror reused by every attachment. The package holds only `profiles.py` today |
 | Provider ports | `plugin_api.py`: opaque `GitFetchCredentialLease`, `provider_fetch_authorization_context`, `RepositoryContentPort.open_subject`, `RepositoryObjectJobPort.request_selected_refs`, `ProviderResourceStorePort.stage`, `publish`, `read`, `lease` | Inject narrow cancellable capabilities with typed unavailable, authorization, stale-generation, and publication failures; selected-ref requests carry a non-secret context plus an unforgeable registry handle, never tokens, unrestricted sources, core stores, or paths |
@@ -566,7 +584,9 @@ Still open, with owners:
 
 - tree-index and immutable directory-index bounds, which need browser measurements
   (Phase 1B-c);
-- refresh age and cross-process retry and contention bounds (the thin-mirror plan);
+- the refresh age over HTTPS: the one-minute window is measured over `file://` only (the
+  thin-mirror plan). Contention between processes is reported as `refreshing_elsewhere`,
+  never waited on or retried;
 - size accounting and a purge command for repository stores, which the thin-mirror plan
   defers until after the alpha;
 - lock, rename, and case semantics beyond macOS: CI runs only on Linux, so Phase 1A adds

@@ -41,9 +41,12 @@ log = logging.getLogger(__name__)
 # How old the last fetch may be before a served mirror counts as stale: the server
 # starts one refresh when it opens a stale mirror, and the browser asks for one when
 # a stale page becomes visible. A refresh with nothing new is one ls-remote and one
-# fetch that transfers no objects; a minute keeps a reader who moves between pages of
-# one session from paying that on every open, while a reader who comes back later
-# still sees a push from minutes ago without asking.
+# fetch that transfers no objects: 135-170 ms over file:// for a three-commit origin
+# and for this repository (210 refs), measured on macOS with Git 2.50.1 on 2026-09-23.
+# HTTPS adds its round trips and is measured with the transport in step 5 of the
+# thin-mirror plan. A minute keeps a reader who moves between pages of one session
+# from paying that on every open, while one who comes back later still sees a push
+# from minutes ago without asking.
 FRESHNESS_WINDOW_S: Final = 60.0
 # Background network jobs running at once in one server, across every key. Two lets a
 # pull request's refresh proceed beside its repository's without letting a burst of

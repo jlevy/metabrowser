@@ -144,7 +144,52 @@ Repository cache:
 - New `GET /api/source/status` reports what the server serves: the subject kind, the
   session generation, and on a Git pin its full commit (`pin`), the store ref it was
   resolved from (`ref`), and that ref’s branch or tag name (`ref_name`). Reach it with
-  `metab <root> --api /api/source/status`.
+  `metab <root> --api /api/source/status`. On a served mirror it also reports freshness:
+  the commit the pinned ref names in the mirror now (`latest`), `last_fetch_at`, the
+  last operation and its typed outcome (`last_outcome`), `refreshing`, and `stale`, all
+  from server memory so polling runs no Git.
+  It sends an ETag and answers an unchanged `If-None-Match` with 304.
+
+- A served `file://` mirror refreshes in the background and never makes a page wait.
+  `metab file://…` starts one refresh when the mirror’s last fetch is older than a
+  minute. New `POST /api/source/refresh` starts a refresh, or joins the one running, and
+  answers 202 at once.
+  A refresh is one `git fetch --prune --atomic` of every branch and tag: every ref moves
+  together or none does, a branch or tag deleted upstream leaves the mirror, and no
+  object is removed, so a commit that was pinned stays readable after a force-push or a
+  deleted branch. A refresh another process is running is reported as
+  `refreshing_elsewhere` instead of waited on, lock files a killed fetch left behind are
+  removed before the next one, and a missing origin or a failed fetch is a typed outcome
+  in the status while the pinned revision keeps serving.
+  Reach it with `metab file://… --api /api/source/refresh --data <file with {}>`; that
+  one command waits for the refresh it asked for before exiting, and no other one-shot
+  command fetches.
+
+- New `POST /api/source/pin` switches what a server serves to another branch, tag, or
+  commit of the same mirror: `{"ref": "feature"}`, `{"ref": "v1"}`, or
+  `{"oid": "<full or at least 7-digit commit ID>"}`. A name is tried as a branch, then a
+  tag, then a commit ID, and is looked up in the mirror alone; revision syntax such as
+  `:/text`, `@{…}`, and `^{/…}` is refused rather than evaluated.
+  The old revision’s readers are released, the new one is served under a new session
+  generation, and the answer carries the new status.
+  Both new routes are POST routes with a JSON body behind the existing same-origin
+  guard, so content in a served page cannot reach them with a link, an image, or a form;
+  on a folder they answer `unsupported_for_subject`.
+
+- A page on a served mirror shows when the mirror was last fetched at the foot of the
+  navigation pane, polls quietly while it is visible, and asks for one refresh when it
+  opens or becomes visible on a stale mirror.
+  When a refresh moves the pinned branch it offers the commit the branch now names,
+  usually a newer one, and accepting switches the pin and reloads the view.
+  When another tab switched the pin, it offers a reload.
+  A failed refresh reads as a warning there, not as an error in the page.
+
+- The Git panel no longer rebuilds a different history under the rows on screen when the
+  refs its walk was fingerprinted by moved, as a refresh, a pin switched in another tab,
+  or a commit in a served checkout does.
+  It keeps the rows, stops paging, and says “History changed since this list loaded”
+  with a Reload history action.
+  An expired history session still rebuilds silently, because nothing changed.
 
 - A timed-out or cancelled acquisition kills Git’s whole process group, including the
   helpers it forks, rather than only the `git` process.

@@ -83,7 +83,7 @@ $ node tests/dom/source-freshness-session.js
         "label": "Fetched 5 min ago",
         "tone": "quiet",
         "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": "Newer commit on topic [Switch] → refs/remotes/origin/topic",
+        "offer": "topic is now at 66f65bf1e89d [Switch] → refs/remotes/origin/topic",
         "error": null
       }
     },
@@ -96,7 +96,7 @@ $ node tests/dom/source-freshness-session.js
         "label": "Fetched 5 min ago",
         "tone": "quiet",
         "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": "Newer commit on topic [Switch] → refs/remotes/origin/topic",
+        "offer": "topic is now at 66f65bf1e89d [Switch] → refs/remotes/origin/topic",
         "error": null
       }
     },
@@ -111,7 +111,7 @@ $ node tests/dom/source-freshness-session.js
         "label": "Fetched 5 min ago",
         "tone": "quiet",
         "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": "Newer commit on topic [Switch] → refs/remotes/origin/topic",
+        "offer": "topic is now at 66f65bf1e89d [Switch] → refs/remotes/origin/topic",
         "error": null
       }
     },
@@ -126,7 +126,7 @@ $ node tests/dom/source-freshness-session.js
         "label": "Fetched 5 min ago",
         "tone": "quiet",
         "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": "Newer commit on topic [Switch] → refs/remotes/origin/topic",
+        "offer": "topic is now at 66f65bf1e89d [Switch] → refs/remotes/origin/topic",
         "error": null
       }
     },
@@ -184,7 +184,7 @@ $ node tests/dom/source-freshness-session.js
         "label": "Fetched 5 min ago",
         "tone": "quiet",
         "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": "Newer commit on topic [Switch] → refs/remotes/origin/topic",
+        "offer": "topic is now at 66f65bf1e89d [Switch] → refs/remotes/origin/topic",
         "error": "Could not switch (selection_not_found)"
       }
     },
@@ -200,7 +200,7 @@ $ node tests/dom/source-freshness-session.js
         "label": "Refreshing…",
         "tone": "refreshing",
         "detail": "Fetching from the origin. The mirror was last fetched 6 d ago.",
-        "offer": "Newer commit on topic [Switch] → refs/remotes/origin/topic",
+        "offer": "topic is now at 66f65bf1e89d [Switch] → refs/remotes/origin/topic",
         "error": null
       }
     },
@@ -216,7 +216,7 @@ $ node tests/dom/source-freshness-session.js
         "label": "Refresh failed · fetched 6 d ago",
         "tone": "warning",
         "detail": "The origin could not be read. The pinned revision is still served from the mirror.",
-        "offer": "Newer commit on topic [Switch] → refs/remotes/origin/topic",
+        "offer": "topic is now at 66f65bf1e89d [Switch] → refs/remotes/origin/topic",
         "error": null
       }
     },
@@ -232,7 +232,7 @@ $ node tests/dom/source-freshness-session.js
         "label": "Refreshing…",
         "tone": "refreshing",
         "detail": "Fetching from the origin. The mirror was last fetched 6 d ago.",
-        "offer": "Newer commit on topic [Switch] → refs/remotes/origin/topic",
+        "offer": "topic is now at 66f65bf1e89d [Switch] → refs/remotes/origin/topic",
         "error": null
       }
     }

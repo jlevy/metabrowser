@@ -117,7 +117,8 @@
         kind: "switch",
         ref: status.ref,
         latest: status.latest,
-        text: `Newer commit on ${status.ref_name ?? status.ref}`,
+        // "Now at", not "newer": a force-push can move a branch back.
+        text: `${status.ref_name ?? status.ref} is now at ${status.latest.slice(0, 12)}`,
         button: "Switch",
       };
     } else if (status.ref !== null && status.latest === null && !status.refreshing) {

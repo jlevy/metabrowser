@@ -3,7 +3,9 @@
 **Status:** Active foundation procedure for the unreleased v0.12 Repository Library
 stack. HTML trust is included through released `main`. Acquired `file://` Git is
 inspectable through data modes and served in the browser as an immutable pin under the
-forced untrusted profile; https and ssh stay closed.
+forced untrusted profile.
+The served mirror refreshes from its `file://` origin in the background, and the pin can
+switch to another branch, tag, or commit of the same mirror; https and ssh stay closed.
 
 The [v0.12 alpha test plan](project/specs/active/plan-2026-09-22-v012-alpha-testing.md)
 defines the later repository-URL and direct-PR milestones, manual browser matrix, and
@@ -87,6 +89,9 @@ Landing is tracked by `mb-n2ro`.
   flag acquires or reuses the store and serves the default branch’s commit; https and
   ssh refuse. Serving a **local filesystem** root (v0.10) is a different product and is
   in scope for the regression steps below.
+- **Only a server, or an explicit refresh request, fetches.** A served mirror refreshes
+  from its `file://` origin in the background; `--show`, `--api`, and `--check-api`
+  never fetch unless the command is `--api /api/source/refresh`.
 - **Investigate every test failure.** Watch-backend and overlay-dependent failures
   require a recorded cause and comparable CI evidence.
   Do not regenerate goldens to conceal a host difference or count a failed local
@@ -183,6 +188,10 @@ uv --config-file uv.toml run --frozen pytest \
   tests/test_cli_show_mode.py \
   tests/test_cli_api_mode.py \
   tests/test_serve_pin.py \
+  tests/test_cache_update.py \
+  tests/test_source_refresh.py \
+  tests/test_cli_git_refresh_golden.py \
+  tests/test_source_freshness_session.py \
   tests/test_source_kind_session.py
 ```
 
@@ -201,6 +210,15 @@ application lifespan and routes over HTTP: the banner golden `serve-pin-banner.t
 forced profile, a fresh pin per start and a clean close at shutdown, tree, file, raw and
 its sandbox headers, history, commit detail and comparison, and a populated-cache
 isolation sweep over every registered GET route.
+`tests/test_cache_update.py` refreshes real stores from real origins: new commits, a
+force-push that keeps the old commit readable, a deleted branch pruned by name and
+readable by ID, a fetch lock another process holds, stale lock files, a fetch cancelled
+mid-transfer, and a removed origin.
+`tests/test_source_refresh.py` drives the served routes over HTTP, including the
+newer-revision offer and switch, joined refreshes, refresh on open, shutdown
+cancellation, and the cross-origin, form, and GET refusals.
+`cli-git-refresh.txt` and `cli-ui-source-freshness.tryscript.md` pin the refresh and
+switch transcripts and the browser’s freshness session.
 
 **Fail:** A failed assertion, a 500-shaped CLI envelope, or a golden update performed
 without an intended product change.
@@ -485,7 +503,8 @@ It covers the rows of the
 [alpha manual matrix](project/specs/active/plan-2026-09-22-v012-alpha-testing.md) that a
 `file://` pin can run without GitHub: M03 (links, reload, and history within one
 revision), M05 (reopen with the origin gone), and M06 (hostile content with a populated
-cache). Branch selection and a second concurrent revision wait for pin switching.
+cache), plus refresh and pin switching (5.6), and the part of M04 one server can show:
+switching branches within one repository.
 Stop every server you start with Ctrl-C.
 
 ### 5.1 Start the server
@@ -597,6 +616,83 @@ stays unchanged.
 
 **Fail:** Any script runs; a Preview tab; the cache listing reaches the page.
 
+### 5.6 Refresh and switch the pin (no network)
+
+Serve a throwaway origin you can push to, then change it while the page is open.
+
+```shell
+QA_WORK="$(mktemp -d "${TMPDIR:-/tmp}/mb-qa-work.XXXXXX")"
+git clone -q "${REPO}" "${QA_WORK}/work"
+git clone -q --bare "${QA_WORK}/work" "${QA_WORK}/origin.git"
+uv --config-file uv.toml run --frozen metab "file://${QA_WORK}/origin.git" --no-open --port 8474
+```
+
+Open `http://127.0.0.1:8474/view/` and keep it open.
+
+1. The foot of the navigation pane reads `Fetched just now`. Hovering it explains the
+   fetch; clicking it shows `Refreshing…` and then `Fetched just now` again.
+
+2. From a second terminal, commit and push to the origin:
+
+   ```shell
+   git -C "${QA_WORK}/work" commit -q --allow-empty -m "QA newer commit"
+   git -C "${QA_WORK}/work" push -q "${QA_WORK}/origin.git" HEAD
+   ```
+
+   Click the fetched label.
+   Within a few seconds the row offers `<branch> is now at <short commit>` with
+   **Switch**; the page itself has not changed.
+
+3. Click **Switch**. The page reloads, the heading shows the new short commit, and the
+   Git tab lists `QA newer commit` first.
+
+4. From the second terminal, check the routes and their guard:
+
+   ```shell
+   BASE=http://127.0.0.1:8474
+   curl -s -D - -o /dev/null "$BASE/api/source/status" | grep -i etag
+   curl -s -o /dev/null -w '%{http_code}\n' "$BASE/api/source/refresh"
+   curl -s -o /dev/null -w '%{http_code}\n' -X POST -H 'Origin: https://attacker.example' \
+     -H 'Content-Type: application/json' -d '{}' "$BASE/api/source/refresh"
+   curl -s -o /dev/null -w '%{http_code}\n' -X POST -H 'Content-Type: text/plain' \
+     -d '{}' "$BASE/api/source/refresh"
+   curl -s -X POST -H 'Content-Type: application/json' -d '{"ref": ":/QA"}' \
+     "$BASE/api/source/pin"; echo
+   curl -s -X POST -H 'Content-Type: application/json' -d '{"oid": "HEAD~1"}' \
+     "$BASE/api/source/pin"; echo
+   ```
+
+   **Pass:** an `etag` header; `405` for the GET, `403` for the foreign origin, `415`
+   for the form content type; both pin requests answer `invalid_selection` and nothing
+   changes in the page.
+
+5. Force-push the branch back one commit, then refresh from the page:
+
+   ```shell
+   git -C "${QA_WORK}/work" push -q --force "${QA_WORK}/origin.git" HEAD~1:"$(git -C "${QA_WORK}/work" branch --show-current)"
+   ```
+
+   The row offers the branch’s commit again, now the older one, because the branch moved
+   back; the page you are reading still serves the commit you switched to.
+   `curl -s -X POST -H 'Content-Type: application/json' -d '{"ref": "<that branch>"}' "$BASE/api/source/pin"`
+   serves the force-pushed tip, and pinning the commit it replaced by ID still works.
+
+6. Move the origin away (`mv "${QA_WORK}/origin.git" "${QA_WORK}/origin.moved"`) and
+   click the fetched label.
+   The row reads `Refresh failed · fetched …` as a warning; the tree, files, and history
+   keep serving.
+
+7. Restart the server after more than a minute with the origin back in place.
+   The banner’s `Revision:` is the default branch as last fetched, and the row shows the
+   startup refresh without the page waiting for it.
+
+**Pass:** every step as described; the page never changes without **Switch** or a
+reload; no console errors; no request leaves `127.0.0.1`.
+
+**Fail:** the page moves to a newer commit on its own; a refresh blocks a page load; a
+cross-origin or form POST is accepted; a failed refresh breaks the page; a force-pushed
+commit becomes unreadable.
+
 ## Phase 6: HTML Trust on the Integration Tip
 
 The selected integration tip must include the merged HTML trust implementation:
@@ -687,7 +783,8 @@ https was acquired or served, or a served pin ran a script).
 | Item | Why it is out of scope here |
 | --- | --- |
 | https / ssh acquire | Closed until a later phase; refuse is the test |
-| Serving https or ssh sources, and pin switching | Later thin-mirror steps; https and ssh refuse, and a served pin never moves |
+| Serving https or ssh sources | Later thin-mirror steps; https and ssh refuse |
+| A branch and tag selector in the browser | Not built; pin by name through `POST /api/source/pin` (5.6) |
 | A `repository_context` for a served pin | Supplied for GitHub mirrors by the GitHub plugin in a later step; a `file://` pin has none |
 | Hosted-review / GitHub PR slice | Separate beads; not on these tips |
 | Archive containers | `mb-380k` |
@@ -706,6 +803,8 @@ While executing, treat these as bugs if they happen:
 - `Serving` or a bound port on `--no-serve` / `--show` / `--api` / `--check-api`
 - A served pin whose heading is blank, whose `/api/cache/…` answers 200, whose `/raw`
   lacks the sandbox or carries `allow-scripts`, or whose pages request another host
+- A refresh that moves the page without **Switch**, blocks a request, or leaves a ref
+  half-updated; a commit a reader pinned that becomes unreadable after a refresh
 - Application home created on a refuse (https, ssh, walk, `--allow-edits`, below-floor
   Git)
 - Filesystem `--show` failing on this repository’s real paths

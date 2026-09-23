@@ -95,12 +95,24 @@ metab file:///path/to/origin.git --path docs/guide.md --no-open
 ```
 
 Serving a `file://` source acquires it, or reuses the cached store, and serves the
-commit its default branch named at that moment.
+commit its default branch names in the store.
 The banner prints the source and a `Revision:` line with the full commit and the branch;
 the navigation heading shows the branch and short commit, and hovering it shows the full
 commit. `--path` takes a path within that commit.
-Everything reads from the store, so the origin can be gone and no network is used.
-The pin does not move while the server runs.
+Every page reads from the store, so the origin can be gone and the pinned revision still
+serves.
+
+The store is a mirror that refreshes in the background.
+When the server starts on a mirror last fetched more than a minute ago it runs one
+`git fetch` from the origin, and a page asks for one when it opens or becomes visible on
+a stale mirror; nothing a page shows waits for either.
+The foot of the navigation pane says when the mirror was last fetched; click it to
+refresh now. A refresh never moves the page under a reader: when it moves the pinned
+branch, the row offers the commit the branch now names, and **Switch** serves that
+commit and reloads the view.
+A branch or tag deleted upstream leaves the mirror, but no commit does, so an older pin
+stays readable after a force-push.
+If the origin is gone the row says the refresh failed and the pin keeps serving.
 
 A served pin always runs under the untrusted profile: `--untrusted` is implied, the
 `METAB_*` enables are ignored, and `--allow-edits` is an error.
@@ -108,7 +120,26 @@ HTML files offer only their source.
 `/api/cache/…` answers `unsupported_for_subject` on a served pin, so nothing about other
 cached sources is served beside it; inspect the cache with
 `metab <url> --api /api/cache/…` instead.
-`/api/source/status` reports the pinned commit and ref.
+
+`/api/source/status` reports the pinned commit and ref and the mirror’s freshness.
+`POST /api/source/refresh` starts a refresh, or joins the running one, and answers at
+once. `POST /api/source/pin` switches the served commit to a branch, a tag, or a commit
+ID in the mirror, with a JSON body such as `{"ref": "feature"}` or `{"oid": "3f2a9c1"}`.
+Each is a POST with a JSON body behind the same-origin guard, so a link inside a served
+page cannot start one.
+The same routes work in-process:
+
+```shell
+echo '{}' > refresh.json
+echo '{"ref": "feature"}' > pin.json
+metab file:///path/to/origin.git --api /api/source/status
+metab file:///path/to/origin.git --api /api/source/refresh --data refresh.json
+metab file:///path/to/origin.git --api /api/source/pin --data pin.json
+```
+
+The refresh command waits for the fetch it asked for before it exits; no other one-shot
+command fetches. A pin switch through `--api` lasts for that one command, because each
+command is its own server; the next one serves the default branch again.
 
 ## Acquiring a Git source: `--no-serve`
 
