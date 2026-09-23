@@ -5,7 +5,7 @@ title: "v0.12 GitHub Phase 2A base: verify the integrated format, source, store,
 kind: task
 status: open
 priority: 1
-version: 12
+version: 13
 spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
 delegate: claude-code@spud10.local
 labels:
@@ -22,10 +22,10 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-09-16T01:16:42.405Z
-updated_at: 2026-09-23T00:23:26.090Z
+updated_at: 2026-09-23T00:25:10.902Z
 started_at: 2026-09-16T21:12:28.672Z
 ---
-After Phase 0C.2, the reviewed Phase 0D source-binding correction, repository-store acquisition and goldens, immutable Git-tree source, and untrusted-profile evidence are green, use the exact green untrusted-content profile layer head published by mb-d658, which the linear stack places directly after the immutable Git-tree source, as the one named integration head containing every exact prerequisite commit. Record branch and immutable OID, verify each prerequisite OID as an ancestor, run make verify, and verify the formal stack. This bead never merges a PR; it supplies the one exact base for repository URL opening and prevents either-or ancestry choices. Git-status is not an integrity prerequisite for a worktree-free store.
+Before Phase 2A starts, record one exact green integration head containing the reviewed shared-mirror design, Phase 0D binding contracts, cache format/acquisition, consolidated source and immutable Git-pin implementation, cache goldens, and content-trust commits inherited from main (#209 and later hardening). Verify every required OID as an ancestor and run make verify. The trust foundation is already landed; no separate unmerged trust layer is required. New URL and pin entrypoints must apply and prove the forced untrusted profile with a populated cache. Add subsequent phase PRs above the current Stack 218 tip; do not merge or release from this gate.
 
 ## Notes
 

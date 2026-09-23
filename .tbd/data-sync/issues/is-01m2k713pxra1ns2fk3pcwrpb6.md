@@ -5,7 +5,7 @@ title: "v0.12 repository and hosted-resource stack: coordinate stabilized landin
 kind: task
 status: in_progress
 priority: 1
-version: 52
+version: 53
 spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
 refs:
   - kind: other
@@ -49,10 +49,10 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: blocked
 hold_until: null
 created_at: 2026-09-15T18:59:49.596Z
-updated_at: 2026-09-23T00:23:17.655Z
+updated_at: 2026-09-23T00:25:12.158Z
 started_at: 2026-09-16T21:24:51.532Z
 ---
-After explicit approval and after every publication bead records a green formal PR, land and retarget the v0.11 stack in dependency order: Phase 0A, 0B.1, 0B.2, 0B.3, 0C.1, 0C.2, shared repository/provider mirror design, Hosted Review 0D, repository Phase 1A, worktree-free acquisition, content-source boundary, immutable Git-tree source, untrusted-content profile, URL open, provider-job and selected-ref foundation, selected branch, provider foundation, direct PR cache, direct PR view, PR index/navigation, and anchors. Retarget each next PR to its landed base, inspect the exact new-base through HEAD diff, resolve only stacking conflicts, rerun make verify, obtain final green CI, and confirm main contains each layer. This is the sole landing owner; it never blocks constructing a later stack layer and never merges without explicit user approval.
+Coordinate the whole v0.12 repository/GitHub Stack 218, beginning with #125 -> #134 -> #136 -> #139 -> #140 -> #217 -> #216 and extending with alpha-testing, stabilization, and later feature PRs. Keep exact base/head relationships, current per-layer review dispositions and green CI, top integration evidence against current main, and aligned specs/beads. mb-nhky coordinates later Phase 2A-4C publications within this same stack. Hold all layers until the agreed acceptance milestone is stabilized and the user explicitly approves landing; then land and retarget coherently. Do not treat published draft PRs or passing unit/model tests as completed GitHub alpha acceptance.
 
 ## Notes
 
