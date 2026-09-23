@@ -22,7 +22,7 @@ from metabrowser.cache.urls import RepositorySelection
 from metabrowser.cli.common import maybe_cli_logging
 from metabrowser.errors import CLIError
 from metabrowser.git.process import GitError, repository_store_target
-from metabrowser.git.tree_source import GitPath, GitRevisionSubject
+from metabrowser.git.tree_source import GitPath, GitRevisionSubject, display_segment
 
 LOG = logging.getLogger(__name__)
 
@@ -84,7 +84,7 @@ async def require_selected_path(
         return
     path = GitPath(resolved.path)
     if await subject.tree_source.resolve_path(path) is None:
-        where = resolved.name or resolved.commit[:12]
+        where = _shown(resolved.name) if resolved.name else resolved.commit[:12]
         raise CLIError(f"{path.display()} is not in {source_url} at {where} (path_not_found)")
 
 
@@ -116,12 +116,19 @@ async def resolve_and_check_for_cli(
     return resolved
 
 
+def _shown(name: str) -> str:
+    """A ref name from the origin, with control characters a terminal would act on replaced."""
+
+    return display_segment(name.encode("utf-8", "surrogateescape"))
+
+
 def _pin_label(resolved: ResolvedSelection) -> str:
+    name = _shown(resolved.name or "")
     if resolved.via == "default":
-        return f"default branch {resolved.name}"
+        return f"default branch {name}"
     if resolved.via == "commit":
         return "commit"
-    return f"{resolved.via} {resolved.name}"
+    return f"{resolved.via} {name}"
 
 
 def selection_lines(selection: RepositorySelection, resolved: ResolvedSelection) -> list[str]:

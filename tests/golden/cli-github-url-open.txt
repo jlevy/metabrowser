@@ -293,6 +293,17 @@ status: 200
 selection: pull_request
 pin: 523f476bbcbde731f18dec9d6875df8fe8db13f3 (default branch topic)
 pull_request: 7 (pull-request data is not fetched yet; the pin is the default branch)
+# metab https://github.com/octo/demo/blob/HEAD/docs/guide.md --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
+selection: blob
+pin: 523f476bbcbde731f18dec9d6875df8fe8db13f3 (default branch topic)
+path: docs/guide.md
+--- stderr ---
 # metab https://github.com/octo/demo/tree/nope/docs --no-serve
 exit: 1
 --- stdout ---
@@ -330,3 +341,21 @@ exit: 1
 --- stdout ---
 --- stderr ---
 Error: the mirror of https://github.com/octo/demo has no commit abcdef0 (commit_not_found)
+# metab https://github.com/octo/demo/tree/TOPIC --no-serve
+exit: 1
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
+--- stderr ---
+Error: the mirror of https://github.com/octo/demo has no branch, tag, or commit that begins the URL's path (ref_not_found)
+# metab https://github.com/octo/demo/blob/topic/docs/%C2%9B2J.md --no-serve
+exit: 1
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
+--- stderr ---
+Error: docs/�2J.md is not in https://github.com/octo/demo at topic (path_not_found)

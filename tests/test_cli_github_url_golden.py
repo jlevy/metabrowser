@@ -86,6 +86,7 @@ OPENED: list[list[str]] = [
     [f"{REPO}/tree/release/v1", "--api", "/api/git/repo"],
     [f"{REPO}/tree/v1.0", "--api", "/api/tree?depth=1"],
     [f"{REPO}/pull/7", "--api", "/api/git/repo"],
+    [f"{REPO}/blob/HEAD/docs/guide.md", "--no-serve"],
 ]
 REFUSED: list[list[str]] = [
     [f"{REPO}/tree/nope/docs", "--no-serve"],
@@ -93,6 +94,10 @@ REFUSED: list[list[str]] = [
     [f"{REPO}/commit/0000000", "--no-serve"],
     [f"{REPO}/tree/tree-tag", "--no-serve"],
     [f"{REPO}/pull/7/commits/abcdef0", "--api", "/api/git/repo"],
+    # GitHub refs are case-sensitive, whatever this filesystem is.
+    [f"{REPO}/tree/TOPIC", "--no-serve"],
+    # U+009B, a one-character CSI, reaches the message as U+FFFD.
+    [f"{REPO}/blob/topic/docs/%C2%9B2J.md", "--no-serve"],
 ]
 
 
@@ -128,6 +133,10 @@ def test_golden_github_urls_open_through_a_local_stand_in(
     assert "pull_request: 7" in pull.stderr and FIRST_COMMIT in pull.stdout
     pinned = by_command[f"{REPO}/tree/release/v1 --api /api/git/repo"]
     assert f'"revision": "{SECOND_COMMIT}"' in pinned.stdout
+
+    head = by_command[f"{REPO}/blob/HEAD/docs/guide.md --no-serve"].stdout
+    assert f"pin: {FIRST_COMMIT} (default branch topic)\npath: docs/guide.md\n" in head
+    assert "\u009b" not in refused[-1][1].stderr and "\ufffd2J.md" in refused[-1][1].stderr
 
     rendered = "".join(_block(args, result) for args, result in [*opened, *refused])
     assert str(tmp_path) not in rendered and str(home) not in rendered

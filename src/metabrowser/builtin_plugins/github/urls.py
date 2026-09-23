@@ -13,10 +13,11 @@ It claims only ``github.com`` (with or without ``www.``) and
 | ``…/commit/<oid>``, ``…/pull/<n>/commits/<oid>`` | commit |
 | ``…/pull/<n>[/files|/commits]`` | pull request |
 | ``raw.githubusercontent.com/<o>/<r>/<ref-and-path>`` | blob |
-| ``git@github.com:<o>/<r>.git``, ``ssh://git@github.com/<o>/<r>.git`` | repository |
+| ``git@github.com:<o>/<r>.git``, ``ssh://git@github.com/<o>/<r>.git`` (``www.``) | repository |
 
 Every other ``github.com`` path, ``http://``, and a reserved owner is refused with a
-reason and a message that names the shape and offers the repository URL. The generic
+reason and a message that names the shape and offers the repository URL. Exactly one
+trailing ``.git`` is removed from the repository name. The generic
 grammar never sees a claimed URL, so this module repeats its control-character,
 non-ASCII, backslash, and credentials checks before anything else. Query parameters
 other than ``plain=1`` and fragments other than a line anchor are dropped, and no
@@ -182,14 +183,14 @@ def _split_url(value: str) -> _Claimed | None:
         host = host.lower()
         owned = host in _WEB_HOSTS or host == _RAW_HOST
         if scheme == "ssh":
-            owned = host == CANONICAL_HOST
+            owned = host in _WEB_HOSTS
         if not owned or scheme not in {"https", "http", "ssh"}:
             return None
         before_fragment, _, fragment = tail.partition("#")
         path, _, query = before_fragment.partition("?")
         return _Claimed(scheme, userinfo, host, port if separator else None, path, query, fragment)
     scp = _SCP.match(value)
-    if scp is None or scp.group("host").lower() != CANONICAL_HOST:
+    if scp is None or scp.group("host").lower() not in _WEB_HOSTS:
         return None
     return _Claimed("scp", scp.group("user"), CANONICAL_HOST, None, scp.group("path"), "", "")
 
@@ -216,14 +217,24 @@ def _segments(path: str) -> list[str]:
     return parts
 
 
-def _owner_and_repository(parts: list[str]) -> tuple[str, str]:
-    """Validate the first two segments; the caller has checked there are two."""
+def _reserved(owner: str, host: str) -> _Refuse:
+    if host == _RAW_HOST:
+        return _Refuse("reserved_owner", f"{owner.lower()} is a GitHub page name, not an account")
+    return _Refuse(
+        "reserved_owner", f"github.com/{owner.lower()} is a GitHub page, not a repository"
+    )
+
+
+def _owner_and_repository(parts: list[str], *, host: str = CANONICAL_HOST) -> tuple[str, str]:
+    """Validate the first two segments; the caller has checked there are two.
+
+    Exactly one trailing ``.git`` is removed, in any letter case, because Git clients
+    append one to a repository URL; the repository ``demo.git.git`` is ``demo.git``.
+    """
 
     owner, repository = parts[0], parts[1]
     if owner.lower() in RESERVED_OWNERS:
-        raise _Refuse(
-            "reserved_owner", f"github.com/{owner.lower()} is a GitHub page, not a repository"
-        )
+        raise _reserved(owner, host)
     if not OWNER.match(owner):
         raise _Refuse("invalid_owner", "the owner is not a GitHub account name")
     if repository.lower().endswith(".git"):
@@ -270,6 +281,8 @@ def _lines(fragment: str) -> LineSelection | None:
     end_column = int(match.group(4)) if match.group(4) else None
     if end < start:
         start, end, start_column, end_column = end, start, end_column, start_column
+    elif end == start and start_column and end_column and end_column < start_column:
+        start_column, end_column = end_column, start_column
     return LineSelection(start=start, end=end, start_column=start_column, end_column=end_column)
 
 
@@ -367,8 +380,11 @@ def _reduce_claimed(value: str, claimed: _Claimed) -> ReducerOutcome:
     if len(parts) == 1:
         owner = parts[0]
         if owner.lower() in RESERVED_OWNERS:
+            raise _reserved(owner, claimed.host)
+        if claimed.host == _RAW_HOST:
             raise _Refuse(
-                "reserved_owner", f"github.com/{owner.lower()} is a GitHub page, not a repository"
+                "unsupported_github_url",
+                "a raw URL names an owner, a repository, a ref, and a file",
             )
         if OWNER.match(owner):
             raise _Refuse(
@@ -377,7 +393,7 @@ def _reduce_claimed(value: str, claimed: _Claimed) -> ReducerOutcome:
             )
         raise _Refuse("invalid_owner", "the owner is not a GitHub account name")
     raw = claimed.host == _RAW_HOST
-    owner, repository = _owner_and_repository(parts)
+    owner, repository = _owner_and_repository(parts, host=claimed.host)
     repo_url = repository_url(owner, repository)
     standard_port = "22" if claimed.scheme == "ssh" else "443"
     if claimed.port not in {None, "", standard_port}:

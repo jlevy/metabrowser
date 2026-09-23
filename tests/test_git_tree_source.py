@@ -28,6 +28,7 @@ from metabrowser.git.tree_source import (
     GitPathError,
     GitRevisionSubject,
     GitTreeTally,
+    display_segment,
     git_revision_subject,
     read_store_blob,
     store_batch_reader_count,
@@ -783,3 +784,13 @@ def test_a_closed_reader_pool_never_respawns_an_actor(tmp_path: Path) -> None:
         assert captured[0]._proc is None
 
     asyncio.run(_run())
+
+
+def test_display_replaces_every_control_character_a_terminal_acts_on() -> None:
+    """C0, DEL, and C1, including U+009B, the one-character CSI."""
+
+    assert display_segment(b"a\x1b[2Jb") == "a\ufffd[2Jb"
+    assert display_segment(b"a\x7fb") == "a\ufffdb"
+    assert display_segment("a\u009b2Jb\u0085c".encode()) == "a\ufffd2Jb\ufffdc"
+    # Printable text outside ASCII, including a no-break space, is kept.
+    assert display_segment("\u65e5\u672c \u00a0x".encode()) == "\u65e5\u672c \u00a0x"

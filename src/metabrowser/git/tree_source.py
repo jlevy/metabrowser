@@ -161,10 +161,14 @@ class GitBatchProtocolError(GitError):
 
 
 def display_segment(segment: bytes) -> str:
-    """Replacement-safe UTF-8. C0 and DEL become U+FFFD so chrome cannot wrap."""
+    """Replacement-safe UTF-8. C0, DEL, and C1 become U+FFFD.
+
+    Chrome cannot wrap on them, and a terminal cannot be sent an escape sequence: C1
+    includes U+009B, a one-character CSI, which a URL can spell as ``%C2%9B``.
+    """
 
     text = segment.decode("utf-8", "replace")
-    return "".join("\ufffd" if ord(ch) < 32 or ch == "\x7f" else ch for ch in text)
+    return "".join("\ufffd" if ord(ch) < 0x20 or 0x7F <= ord(ch) <= 0x9F else ch for ch in text)
 
 
 def _b64encode(raw: bytes) -> str:
