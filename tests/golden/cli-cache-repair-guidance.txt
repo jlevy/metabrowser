@@ -1,0 +1,67 @@
+## METABROWSER_HOME must name an absolute path; nothing is created otherwise.
+# METABROWSER_HOME= metab <ORIGIN-A> --no-serve
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: METABROWSER_HOME is set but empty. Unset it to use ~/.metabrowser, or set it to the absolute path of a private directory.
+# METABROWSER_HOME=relative/home metab <ORIGIN-A> --no-serve
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: METABROWSER_HOME must be an absolute path without '..' components.
+## A is acquired into a private home.
+# metab <ORIGIN-A> --no-serve
+exit: 0
+--- stdout ---
+acquired: <ORIGIN-A>
+slug: <SLUG-A>
+store: <STORE-A>
+strategy: full
+revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
+--- stderr ---
+## A home other users can read refuses both a cache hit and a new acquisition, says how to fix it, and is not changed.
+# metab <ORIGIN-A> --no-serve
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: The Metabrowser application home is accessible to other users (mode 0755). Run chmod 700 on it, or set METABROWSER_HOME to a private directory you own.
+# metab <ORIGIN-B> --no-serve
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: The Metabrowser application home is accessible to other users (mode 0755). Run chmod 700 on it, or set METABROWSER_HOME to a private directory you own.
+## After chmod 700, A is reused and B is acquired.
+# metab <ORIGIN-A> --no-serve
+exit: 0
+--- stdout ---
+acquired: <ORIGIN-A>
+slug: <SLUG-A>
+store: <STORE-A>
+strategy: full
+revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
+--- stderr ---
+# metab <ORIGIN-B> --no-serve
+exit: 0
+--- stdout ---
+acquired: <ORIGIN-B>
+slug: <SLUG-B>
+store: <STORE-B>
+strategy: full
+revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
+--- stderr ---
+## A home written by a newer release is refused before anything is written.
+# metab <ORIGIN-A> --no-serve
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: This Metabrowser application home uses format f02, and this release reads formats up to f01. Upgrade Metabrowser, or set METABROWSER_HOME to a different directory.
+## Another METABROWSER_HOME, as the message suggests, acquires independently.
+# metab <ORIGIN-A> --no-serve
+exit: 0
+--- stdout ---
+acquired: <ORIGIN-A>
+slug: <SLUG-A>
+store: <STORE-A>
+strategy: full
+revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
+--- stderr ---

@@ -1,0 +1,179 @@
+## A child is killed at the rename that would publish the store.
+# metab <ORIGIN-A> --no-serve
+exit: SIGKILL
+--- stdout ---
+--- stderr ---
+## Nothing is published: one abandoned staging entry, no store, no source.
+# metab <ROOT> --api /api/cache/layout
+exit: 0
+--- stdout ---
+api: /api/cache/layout
+status: 200
+{
+  "home": "present",
+  "supported_format": "f01",
+  "state": "current",
+  "layout": {
+    "format": "f01",
+    "created_by": "<VERSION>"
+  },
+  "config": {
+    "format": "f01",
+    "written_by": "<VERSION>",
+    "upgrades": []
+  },
+  "reclamation": {
+    "staging_entries": 1,
+    "trash_entries": 0,
+    "quarantine_entries": 0,
+    "quarantine": [],
+    "quarantine_truncated": false
+  }
+}
+--- stderr ---
+# metab <ROOT> --api /api/cache/stores
+exit: 0
+--- stdout ---
+api: /api/cache/stores
+status: 200
+{
+  "home": "present",
+  "layout_format": "f01",
+  "stores": [],
+  "unrecognized_entries": 0,
+  "limit": 25,
+  "next_after": null
+}
+--- stderr ---
+# metab <ROOT> --api /api/cache/sources
+exit: 0
+--- stdout ---
+api: /api/cache/sources
+status: 200
+{
+  "home": "present",
+  "layout_format": "f01",
+  "sources": [],
+  "unrecognized_entries": 0,
+  "limit": 25,
+  "next_after": null
+}
+--- stderr ---
+## The next acquisition sweeps the entry, fetches again, and publishes.
+# metab <ORIGIN-A> --no-serve
+exit: 0
+--- stdout ---
+acquired: <ORIGIN-A>
+slug: <SLUG-A>
+store: <STORE-A>
+strategy: full
+revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
+--- stderr ---
+# metab <ROOT> --api /api/cache/layout
+exit: 0
+--- stdout ---
+api: /api/cache/layout
+status: 200
+{
+  "home": "present",
+  "supported_format": "f01",
+  "state": "current",
+  "layout": {
+    "format": "f01",
+    "created_by": "<VERSION>"
+  },
+  "config": {
+    "format": "f01",
+    "written_by": "<VERSION>",
+    "upgrades": []
+  },
+  "reclamation": {
+    "staging_entries": 0,
+    "trash_entries": 0,
+    "quarantine_entries": 0,
+    "quarantine": [],
+    "quarantine_truncated": false
+  }
+}
+--- stderr ---
+# metab <ROOT> --api /api/cache/stores
+exit: 0
+--- stdout ---
+api: /api/cache/stores
+status: 200
+{
+  "home": "present",
+  "layout_format": "f01",
+  "stores": [
+    {
+      "id": "<STORE-A>",
+      "publication": "published",
+      "identity": {
+        "created_at": "<TIME>",
+        "acquisition": {
+          "strategy": "full",
+          "git_version": "<GIT_VERSION>",
+          "object_format": "sha1"
+        }
+      },
+      "state": {
+        "object_state": "complete",
+        "default_remote_ref": "refs/remotes/origin/topic",
+        "default_revision": "8f05aafe23bbeade03ef581868a59e3c944ac5c4",
+        "last_fetch_at": "<TIME>",
+        "last_operation": {
+          "kind": "acquire",
+          "outcome": "succeeded",
+          "at": "<TIME>"
+        }
+      },
+      "problems": [],
+      "referenced_by": [
+        {
+          "slug": "<SLUG-A>",
+          "generation": 1
+        }
+      ],
+      "reference_state": "referenced"
+    }
+  ],
+  "unrecognized_entries": 0,
+  "limit": 25,
+  "next_after": null
+}
+--- stderr ---
+# metab <ROOT> --api /api/cache/sources
+exit: 0
+--- stdout ---
+api: /api/cache/sources
+status: 200
+{
+  "home": "present",
+  "layout_format": "f01",
+  "sources": [
+    {
+      "slug": "<SLUG-A>",
+      "publication": "published",
+      "identity": {
+        "id": "<SOURCE-A>",
+        "display_url": "<ORIGIN-A>",
+        "clone_url": "<ORIGIN-A>",
+        "transport": "file",
+        "created_at": "<TIME>"
+      },
+      "alias": {
+        "store_id": "<STORE-A>",
+        "generation": 1,
+        "updated_at": "<TIME>"
+      },
+      "state": {
+        "last_opened_at": "<TIME>"
+      },
+      "problems": []
+    }
+  ],
+  "unrecognized_entries": 0,
+  "limit": 25,
+  "next_after": null
+}
+--- stderr ---

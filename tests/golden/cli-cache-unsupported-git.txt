@@ -1,0 +1,91 @@
+## Git 2.43.0 is below the acquisition floor. The first acquisition is refused and the application home is not created.
+# metab <ORIGIN-A> --no-serve
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: unsupported Git version (git version 2.43.0); acquisition requires 2.43.7 or a patched release at least 2.50.1 on a newer track
+# metab <ORIGIN-A> --api /api/cache/layout
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: unsupported Git version (git version 2.43.0); acquisition requires 2.43.7 or a patched release at least 2.50.1 on a newer track
+# metab <ROOT> --api /api/cache/layout
+exit: 0
+--- stdout ---
+api: /api/cache/layout
+status: 200
+{
+  "home": "absent",
+  "supported_format": "f01",
+  "state": "absent",
+  "layout": null,
+  "config": null,
+  "reclamation": null
+}
+--- stderr ---
+## An empty directory named as the home is left empty.
+# metab <ORIGIN-A> --no-serve
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: unsupported Git version (git version 2.43.0); acquisition requires 2.43.7 or a patched release at least 2.50.1 on a newer track
+## With a Git at or above the floor, A is acquired.
+# metab <ORIGIN-A> --no-serve
+exit: 0
+--- stdout ---
+acquired: <ORIGIN-A>
+slug: <SLUG-A>
+store: <STORE-A>
+strategy: full
+revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
+--- stderr ---
+## Below the floor again, with origin A moved away, A is reused without Git, and a new source B is refused without changing the home.
+# metab <ORIGIN-A> --no-serve
+exit: 0
+--- stdout ---
+acquired: <ORIGIN-A>
+slug: <SLUG-A>
+store: <STORE-A>
+strategy: full
+revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
+--- stderr ---
+# metab <ORIGIN-B> --no-serve
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: unsupported Git version (git version 2.43.0); acquisition requires 2.43.7 or a patched release at least 2.50.1 on a newer track
+# metab <ROOT> --api /api/cache/sources
+exit: 0
+--- stdout ---
+api: /api/cache/sources
+status: 200
+{
+  "home": "present",
+  "layout_format": "f01",
+  "sources": [
+    {
+      "slug": "<SLUG-A>",
+      "publication": "published",
+      "identity": {
+        "id": "<SOURCE-A>",
+        "display_url": "<ORIGIN-A>",
+        "clone_url": "<ORIGIN-A>",
+        "transport": "file",
+        "created_at": "<TIME>"
+      },
+      "alias": {
+        "store_id": "<STORE-A>",
+        "generation": 1,
+        "updated_at": "<TIME>"
+      },
+      "state": {
+        "last_opened_at": "<TIME>"
+      },
+      "problems": []
+    }
+  ],
+  "unrecognized_entries": 0,
+  "limit": 25,
+  "next_after": null
+}
+--- stderr ---
