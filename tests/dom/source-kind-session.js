@@ -26,7 +26,10 @@
 // - which nav filter controls render. A pin has no mtime and no ignore state;
 // - the navigation heading as served and after the tree loads. A folder's
 //   heading becomes the tree root's name; a pin keeps the ref and short commit
-//   the server rendered, since its tree root is the empty GitPath.
+//   the server rendered, since its tree root is the empty GitPath;
+// - the heading tooltip's file count and size from the top-level rows, which
+//   must equal the server's own whole-tree summary. A top-level symlink is where
+//   they differ: a pin counts it as a blob, and a folder does not follow it.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -58,6 +61,7 @@ const LIFTED = [
   "pathBaseHtml",
   "isGitRevisionSource",
   "renderServedRootHeading",
+  "rootTallyFromTopLevel",
   "treeNodeDisplayName",
   "filesPanelUsesRecentSource",
   "startIndexProgressPolling",
@@ -209,7 +213,7 @@ function chipKeys(html) {
 }
 
 function observe(kind) {
-  const { shell, heading: servedHeading, root, tree } = served[kind];
+  const { shell, heading: servedHeading, root, tree, summary } = served[kind];
   const { sandbox, probe, navFilterBar } = createContext();
 
   // The served block runs first, exactly as the page's inline scripts do.
@@ -233,6 +237,13 @@ function observe(kind) {
     location: route.displayPath(node.path),
     expected: [...parents, node].map((entry) => sandbox.treeNodeDisplayName(entry.name)).join("/"),
   }));
+
+  const { files, size } = sandbox.rootTallyFromTopLevel(tree);
+  const headingTally = { files, size };
+  assert(
+    files === summary.files && size === summary.size,
+    `${kind}: the heading counts ${files} files, ${size} bytes; the server ${summary.files}, ${summary.size}`,
+  );
 
   // The tree's first load settles the heading, as the shell does.
   const heading = { innerHTML: servedHeading };
@@ -258,6 +269,7 @@ function observe(kind) {
     shell,
     rows: rows.map(({ expected: _expected, ...row }) => row),
     heading: { served: servedHeading, afterTreeLoad: heading.innerHTML },
+    tally: { heading: headingTally, server: summary },
     gates: {
       filesPanelUsesRecentSource,
       indexProgress: { refreshes: probe.progressRefreshes, intervals: probe.intervals },

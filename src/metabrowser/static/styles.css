@@ -1318,9 +1318,22 @@ body {
    commit, muted. The full commit is the served root, shown in the heading's
    tooltip and the file header's prefix. */
 .header-revision {
+  flex: none;
   margin-left: 6px;
   color: var(--muted);
   font-weight: var(--weight-normal);
+}
+/* The commit is the identity and must stay visible, so on a narrow column the
+   branch name is what gives way. Its own rule: an engine without :has() drops
+   a whole selector list, and then the heading simply truncates as before. */
+.header-path:has(> .header-revision) {
+  display: flex;
+  align-items: baseline;
+}
+.header-path:has(> .header-revision) > .path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 /* ── Text buttons — shared labelled action primitive ─────────────
    A compact action with a persistent surface and border. Use-site

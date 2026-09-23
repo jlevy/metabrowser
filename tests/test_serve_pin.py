@@ -15,10 +15,12 @@ CI job.
 from __future__ import annotations
 
 import asyncio
+import io
 import os
 import re
 import shutil
-from collections.abc import Awaitable, Callable, Iterator
+from collections.abc import AsyncGenerator, Awaitable, Callable, Iterator
+from contextlib import asynccontextmanager, redirect_stderr, redirect_stdout
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -33,8 +35,9 @@ from metabrowser import server
 from metabrowser.cache.acquire import PublishedSource, acquire_file_source
 from metabrowser.cache.repository_store import open_revision
 from metabrowser.capabilities import get_capabilities
-from metabrowser.cli.main import _app
+from metabrowser.cli.main import _app, _run_cli
 from metabrowser.errors import CLIError
+from metabrowser.git.process import GitUnavailableError
 from metabrowser.git.tree_source import (
     GitObjectUnavailableError,
     GitPath,
@@ -42,6 +45,7 @@ from metabrowser.git.tree_source import (
     store_batch_reader_count,
 )
 from metabrowser.source import (
+    SubjectNotOpenError,
     get_source_session,
     reset_source_session,
     serve_subject_opener,
@@ -207,16 +211,36 @@ def test_serve_pin_refuses_allow_edits_before_acquiring(
     assert not home.exists()
 
 
-def test_serve_pin_path_deep_links_a_wire_and_refuses_a_missing_path(
+@pytest.mark.parametrize(
+    ("selection", "address"),
+    [
+        ("images/logo.png", f"/view/{_wire('images/logo.png')}"),
+        ("./README.md", f"/view/{_wire('README.md')}"),
+        ("/README.md", f"/view/{_wire('README.md')}"),
+        (_wire("images/logo.png"), f"/view/{_wire('images/logo.png')}"),
+        ("images", f"/view/{_wire('images')}/"),
+        ("images/", f"/view/{_wire('images')}/"),
+        ("/", "/view/"),
+    ],
+)
+def test_serve_pin_path_prints_the_canonical_address(
+    selection: str, address: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Spellings `--show` accepts deep-link, and a directory gets a trailing slash."""
+
+    _home(tmp_path, monkeypatch)
+    result = _serve(_origin(tmp_path).url, "--path", selection)
+    assert result.exit_code == 0, result.output
+    printed = re.search(r" at http://127\.0\.0\.1:8411(\S+)", result.stdout)
+    assert printed is not None, result.stdout
+    assert printed.group(1) == address
+
+
+def test_serve_pin_path_refuses_a_missing_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _home(tmp_path, monkeypatch)
     origin = _origin(tmp_path)
-    found = _serve(origin.url, "--path", "images/logo.png")
-    assert found.exit_code == 0, found.output
-    assert f"/view/{_wire('images/logo.png')}" in found.stdout
-    directory = _serve(origin.url, "--path", "images")
-    assert f"/view/{_wire('images')} " in directory.stdout
     missing = _serve(origin.url, "--path", "nope.txt")
     assert isinstance(missing.exception, CLIError)
     assert "--path target is not in the pinned revision: nope.txt" in str(missing.exception)
@@ -237,6 +261,75 @@ def test_a_pin_that_cannot_open_is_refused_before_the_banner(
     assert isinstance(result.exception, CLIError)
     assert "Serving" not in result.output
     assert str(home) not in str(result.exception)
+
+
+def _run_serve(args: list[str]) -> tuple[int, str, str]:
+    """Run the console entry point with the real uvicorn server, as `metab` does."""
+
+    out = io.StringIO()
+    err = io.StringIO()
+    code = 0
+    with redirect_stdout(out), redirect_stderr(err):
+        try:
+            _run_cli(args)
+        except SystemExit as exc:
+            code = 0 if exc.code is None else int(exc.code)
+    return code, out.getvalue(), err.getvalue()
+
+
+def test_a_pin_that_fails_to_reopen_in_the_server_exits_without_a_traceback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The lifespan's own open fails after the banner: a path-free error and exit 1.
+
+    Only the second open fails, the one the application lifespan makes in the
+    serving loop, so uvicorn really starts and its startup really fails. Nothing
+    binds a port, because uvicorn binds only after a successful startup.
+    """
+
+    home = _home(tmp_path, monkeypatch)
+    origin = _origin(tmp_path)
+    calls: list[str] = []
+
+    async def second_open_fails(**kwargs: Any) -> GitRevisionSubject:
+        calls.append(kwargs["commit_oid"])
+        if len(calls) == 1:
+            return await open_revision(**kwargs)
+        raise GitUnavailableError(f"repository store is not a directory: {home}/cache/x")
+
+    monkeypatch.setattr("metabrowser.cli.git_pin_cli.open_revision", second_open_fails)
+    code, stdout, stderr = _run_serve([origin.url, "--no-open"])
+
+    assert len(calls) == 2
+    assert code == 1, (stdout, stderr)
+    assert "Serving" in stdout
+    assert stderr.strip().endswith(
+        "Error: Git could not open the cached repository store; see --log-level debug"
+    ), stderr
+    for text in (stdout, stderr):
+        assert "Traceback" not in text
+        assert "Application startup failed" not in text
+        assert str(home) not in text
+    # The banner names the origin; nothing after it names a local path.
+    assert str(tmp_path) not in stderr
+
+
+def test_a_folder_whose_startup_fails_exits_non_zero(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Uvicorn returns normally from a failed startup; the command must not report success."""
+
+    @asynccontextmanager
+    async def failing_subject() -> AsyncGenerator[None]:
+        raise RuntimeError("startup failed on purpose")
+        yield
+
+    monkeypatch.setattr(server, "lifespan_subject", failing_subject)
+    folder = tmp_path / "folder"
+    folder.mkdir()
+    code, _stdout, stderr = _run_serve([str(folder), "--no-open"])
+    assert code == 1
+    assert "Error: the server did not start; the log above says why" in stderr
 
 
 # ── The lifespan ─────────────────────────────────────────────────────
@@ -294,6 +387,12 @@ def test_each_start_opens_a_fresh_pin_and_shutdown_closes_it(
         assert store_batch_reader_count(subject.command_target) == 0
     assert opened[0] is not opened[1]
     assert generations[1] > generations[0]
+    # With the opener still configured and nothing attached, a request made outside
+    # the lifespan is refused rather than served from the working directory.
+    with pytest.raises(SubjectNotOpenError):
+        get_source_session()
+    with pytest.raises(SubjectNotOpenError):
+        TestClient(server.app).get("/api/file", params={"path": "README.md"})
 
 
 def test_a_pin_that_fails_to_open_fails_startup_and_attaches_nothing(
@@ -452,14 +551,25 @@ def _second_source(tmp_path: Path) -> _Origin:
     return _Origin(path=origin, first=commit, second=commit)
 
 
-def _probe_urls(route: Route, probes: tuple[str, ...], other_commit: str) -> list[str]:
-    """Every GET route, with each probe identity in its path parameter or ``path`` query."""
+def _probe_urls(
+    route: Route, probes: tuple[str, ...], other_commit: str, pin_commit: str
+) -> list[str]:
+    """Every GET route, with each probe identity in its path parameter or query.
+
+    A route without a path parameter gets the probe as ``path``, and also as every
+    other identity a registered route reads from its query: the comparison
+    hook's ``revision``, ``left``, ``right``, and ``file``.
+    """
 
     path = route.path
     urls: list[str] = []
     for probe in probes:
         if "{" not in path:
             urls.append(f"{path}?path={probe}")
+            urls.append(f"{path}?revision={other_commit}&file={probe}")
+            urls.append(f"{path}?revision={pin_commit}&file={probe}")
+            urls.append(f"{path}?left={other_commit}&right={pin_commit}&file={probe}")
+            urls.append(f"{path}?left={pin_commit}&right={other_commit}")
             continue
         filled = re.sub(r"\{revision\}|\{rest:path\}", other_commit, path)
         filled = re.sub(r"\{[^}]+\}", probe, filled)
@@ -480,6 +590,8 @@ def test_a_served_pin_reads_nothing_outside_its_own_store(
     """
 
     home = _home(tmp_path, monkeypatch)
+    # The diagnostic routes answer only when enabled, so enable them for the sweep.
+    monkeypatch.setenv("METABROWSER_DEBUG", "1")
     other = _second_source(tmp_path)
     asyncio.run(acquire_file_source(_file_source(other.path), home=home))
     cwd = tmp_path / "cwd"
@@ -498,22 +610,40 @@ def test_a_served_pin_reads_nothing_outside_its_own_store(
         for route in server.app.routes
         if isinstance(route, Route)
         and "GET" in (route.methods or set())
-        and route.path.startswith(("/api/", "/raw", "/view", "/commit"))
+        and route.path.startswith(("/api/", "/raw", "/view", "/commit", "/_debug"))
     ]
-    probed = [url for route in routes for url in _probe_urls(route, probes, other.first)]
-    expected = {"/api/file", "/raw", "/raw/{path:path}", "/api/tree", "/api/git/commit/{revision}"}
+    probed = [
+        url for route in routes for url in _probe_urls(route, probes, other.first, origin.second)
+    ]
+    expected = {
+        "/api/file",
+        "/raw",
+        "/raw/{path:path}",
+        "/api/tree",
+        "/api/git/commit/{revision}",
+        "/api/plugin/diff/comparison",
+        "/_debug/inventory",
+    }
     assert expected <= {route.path for route in routes}
     with TestClient(server.app) as client:
         # The probe can see a leak: the pin's own content does come back.
         own = client.get("/api/file", params={"path": _wire("README.md")})
         assert "Second revision." in own.json()["content"]
         assert client.get(f"/api/git/commit/{other.first}").status_code == 404
+        # The provider diagnostic has no provider to report on a pin.
+        assert client.get("/_debug/inventory").json()["capability"] == "filesystem"
         for url in probed:
             response = client.get(url)
             assert _OTHER_SOURCE_CANARY not in response.text, url
             assert _WORKING_DIRECTORY_CANARY not in response.text, url
             assert str(home) not in response.text, url
             assert str(other.path) not in response.text, url
+        # The one POST that reads content: KPress rendering, by path and by source.
+        for probe in probes:
+            rendered = client.post("/api/kpress/render", json={"path": probe, "view": "document"})
+            assert _OTHER_SOURCE_CANARY not in rendered.text, probe
+            assert _WORKING_DIRECTORY_CANARY not in rendered.text, probe
+            assert str(home) not in rendered.text, probe
 
         for route in ("/api/cache/layout", "/api/cache/sources", "/api/cache/stores"):
             refused = client.get(route)

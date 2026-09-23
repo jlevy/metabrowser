@@ -22,8 +22,8 @@ metab ROOT [MODE] [OPTIONS]
 A clone URL (`https://…`, `ssh://…`, `git@host:path`, or `file://…`) is a Git source,
 not a local path. `file://` is acquired with `--no-serve`, and also as a side effect of
 serving it, `--show`, `--api`, or `--check-api`. https and ssh stay closed.
-`metab file://…` serves the default branch’s commit, pinned; `--show`, `--api`, and
-`--check-api` inspect that pin in-process without binding a port.
+`metab file://…` serves the default branch’s commit as first acquired, pinned; `--show`,
+`--api`, and `--check-api` inspect that pin in-process without binding a port.
 Acquired content always runs under the untrusted profile.
 A bare filesystem path is never treated as a clone origin.
 With no mode flag, `metab ROOT` starts the server and opens a browser, the way `open`
@@ -95,12 +95,16 @@ metab file:///path/to/origin.git --path docs/guide.md --no-open
 ```
 
 Serving a `file://` source acquires it, or reuses the cached store, and serves the
-commit its default branch names in the store.
+commit its default branch names in the store: the commit it named at the last fetch.
 The banner prints the source and a `Revision:` line with the full commit and the branch;
 the navigation heading shows the branch and short commit, and hovering it shows the full
-commit. `--path` takes a path within that commit.
-Every page reads from the store, so the origin can be gone and the pinned revision still
-serves.
+commit.
+`--path` takes a path within that commit, spelled as `--show` accepts it (`docs`,
+`docs/`, `./docs`, or a `GitPath` wire), and the banner prints a directory’s address
+with a trailing slash.
+If the pin cannot be opened again when the server starts, the command prints the same
+error as `--show` and exits 1. Every page reads from the store, so the origin can be
+gone and the pinned revision still serves.
 
 The store is a mirror that refreshes in the background.
 When the server starts on a mirror last fetched more than a minute ago it runs one
@@ -110,6 +114,8 @@ The foot of the navigation pane says when the mirror was last fetched; click it 
 refresh now. A refresh never moves the page under a reader: when it moves the pinned
 branch, the row offers the commit the branch now names, and **Switch** serves that
 commit and reloads the view.
+A switch lasts until the server stops; the next `metab file://…` serves the default
+branch again, as its banner says.
 A branch or tag deleted upstream leaves the mirror, but no commit does, so an older pin
 stays readable after a force-push.
 If the origin is gone the row says the refresh failed and the pin keeps serving.
