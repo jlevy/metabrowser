@@ -49,6 +49,7 @@ from metabrowser.git.routes import session_git_location
 from metabrowser.inventory_engine.contract import canonical_inventory_path
 from metabrowser.plugin_api import (
     ContentReadError,
+    ContentUnavailableError,
     read_content_window,
     resolve_content_container,
 )
@@ -234,6 +235,14 @@ async def comparison_handler(request: Request) -> JSONResponse:
         # The source's own refusals carry user-facing messages: unknown
         # revision, no such file in the comparison.
         return _error("diff_comparison", str(exc), 404, path=revision)
+    except ContentUnavailableError as exc:
+        # A blob the pinned store lacks, found before any diff read it. Typed, so a
+        # client can tell it from a failure; the message names only the object id.
+        body: dict[str, str] = {"error": exc.code, "message": str(exc), "path": revision}
+        oid = getattr(exc, "oid", None)
+        if isinstance(oid, str):
+            body["oid"] = oid
+        return JSONResponse(body, status_code=404, headers={"cache-control": "no-store"})
     except GitError as exc:
         return _error("diff_comparison", str(exc), 502, path=revision)
 

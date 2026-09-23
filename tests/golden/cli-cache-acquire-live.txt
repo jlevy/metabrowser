@@ -1,0 +1,78 @@
+# metab file://<ORIGIN> --no-serve
+exit: 0
+--- stdout ---
+acquired: <ORIGIN>
+slug: <SLUG>
+store: <STORE_ID>
+strategy: blobless
+revision: cf318083ef13511a14c0532985bdb24bd59d2787
+--- stderr ---
+# metab file://<ORIGIN> --no-serve
+exit: 0
+--- stdout ---
+acquired: <ORIGIN>
+slug: <SLUG>
+store: <STORE_ID>
+strategy: blobless
+revision: cf318083ef13511a14c0532985bdb24bd59d2787
+--- stderr ---
+# metab file://<ORIGIN> --show notes/old.txt
+exit: 0
+--- stdout ---
+show: notes/old.txt
+route: /view/g1-bm90ZXM/g1-b2xkLnR4dA
+kind: text
+views: source (default)
+model: text envelope; size=13 content_bytes=13 content_truncated=False
+--- stderr ---
+# metab file://<ORIGIN> --api /api/file?path=g1-bm90ZXM/g1-b2xkLnR4dA
+exit: 0
+--- stdout ---
+api: /api/file?path=g1-bm90ZXM/g1-b2xkLnR4dA
+status: 200
+{
+  "subject": "git_revision",
+  "size": 13,
+  "path": "g1-bm90ZXM/g1-b2xkLnR4dA",
+  "display": "notes/old.txt",
+  "mode": "100644",
+  "git_kind": "blob",
+  "symlink": false,
+  "gitlink": false,
+  "oid": "e7f97616de773dff5acf5bc9fa5777c6b1cacf43",
+  "ext": ".txt",
+  "type": "text",
+  "kind": "text",
+  "views": [
+    {
+      "id": "source",
+      "label": "Source",
+      "default": true,
+      "container_class": "content-body metabrowser-source-host",
+      "printable": true,
+      "print_profile": "source",
+      "render_runtime": "client"
+    }
+  ],
+  "content": "second draft\n",
+  "content_offset": 0,
+  "content_bytes": 13,
+  "bytes_read": 13,
+  "content_truncated": false,
+  "content_preview_limit": 2097152,
+  "content_max_preview_limit": 16777216,
+  "highlight_disabled": false
+}
+--- stderr ---
+# metab file://<ORIGIN> --api /api/git/commit/cf318083ef13511a14c0532985bdb24bd59d2787
+exit: 1
+--- stdout ---
+api: /api/git/commit/cf318083ef13511a14c0532985bdb24bd59d2787
+status: 404
+{
+  "error": "object_unavailable: 42293fde779e36a65af4896dd9fa13f00a042c3c",
+  "code": "object_unavailable",
+  "oid": "42293fde779e36a65af4896dd9fa13f00a042c3c"
+}
+--- stderr ---
+Error: /api/git/commit/cf318083ef13511a14c0532985bdb24bd59d2787 returned HTTP 404

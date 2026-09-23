@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import re
 
+from metabrowser.git.change_set import require_commit_blobs
 from metabrowser.git.log import parse_decoration, parse_epoch
 from metabrowser.git.process import GitCommandError, run_git_at
 from metabrowser.git.repo import RepoContext
@@ -359,9 +360,16 @@ async def read_commit_detail(
     *,
     max_files: int = GIT_COMMIT_MAX_FILES,
 ) -> GitCommitDetail | None:
-    """Read one commit's detail. ``None`` when the revision is unknown."""
+    """Read one commit's detail. ``None`` when the revision is unknown.
+
+    On a repository store a blob the change set needs but the store lacks raises
+    :class:`~metabrowser.git.tree_source.GitObjectUnavailableError` before the
+    blob-reading ``show`` runs; see :mod:`metabrowser.git.change_set`.
+    """
+    location = context.command_location()
     try:
-        raw = await run_git_at(_show_args(revision), context.command_location())
+        await require_commit_blobs(location, revision)
+        raw = await run_git_at(_show_args(revision), location)
     except GitCommandError as exc:
         if any(marker in exc.stderr_summary.lower() for marker in _UNKNOWN_REVISION_MARKERS):
             return None

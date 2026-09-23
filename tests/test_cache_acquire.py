@@ -36,6 +36,7 @@ from metabrowser.git.process import (
     detect_git_version,
 )
 from metabrowser.home import PrivateStorageError
+from tests.admitted_git import require_admitted_git, required_admitted_git
 
 
 def _last_opened_at(home: Path, slug: str) -> str | None:
@@ -85,7 +86,13 @@ def _git(root: Path, *args: str) -> None:
 
 
 def _allow_installed_git(monkeypatch: pytest.MonkeyPatch) -> tuple[int, int, int]:
-    """Exercise fetch on the runner's Git without admitting it for URL opening."""
+    """Exercise fetch on the runner's Git without admitting it for URL opening.
+
+    When the run names an admitted release (the CI ``admitted-git`` job), nothing
+    is patched: the production floor itself must admit the Git on ``PATH``.
+    """
+    if required_admitted_git() is not None:
+        return require_admitted_git()
     version, _raw = detect_git_version()
     if version is None:
         pytest.skip("git version is unparseable")
