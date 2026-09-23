@@ -12,10 +12,11 @@
 //
 // The production modules load whole, the way the shell links them:
 // static/source-freshness.js owns polling, visibility, the label, the offer, and the
-// two POST actions; static/git-history-window.js owns what a failed history page
-// means. Timers, the clock, visibility, and paint are injected; each step prints the
-// requests the page made, the timer it left, what it would paint, and whether it
-// reloaded.
+// two POST actions; static/source-generation.js names the page's generation on its
+// data requests and reports a pin_changed refusal; static/git-history-window.js owns
+// what a failed history page means. Timers, the clock, visibility, and paint are
+// injected; each step prints the requests the page made, the timer it left, how many
+// times it painted, what it would paint, and whether it reloaded.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -37,10 +38,22 @@ function assert(condition, message) {
 }
 
 function loadProductionModules() {
-  const context = { window: {}, console, Date, JSON, Math, Number, Object, Promise };
+  const context = {
+    window: {},
+    console,
+    Date,
+    Headers,
+    JSON,
+    Math,
+    Number,
+    Object,
+    Promise,
+    Request,
+    URL,
+  };
   context.window.window = context.window;
   vm.createContext(context);
-  for (const name of ["source-freshness.js", "git-history-window.js"]) {
+  for (const name of ["source-freshness.js", "source-generation.js", "git-history-window.js"]) {
     const file = path.join(staticDir, name);
     vm.runInContext(fs.readFileSync(file, "utf8"), context, { filename: file });
   }
@@ -49,8 +62,12 @@ function loadProductionModules() {
 
 const runtime = loadProductionModules();
 const freshness = runtime.MetabrowserSourceFreshness;
+const generationGuard = runtime.MetabrowserSourceGeneration;
 const historyWindow = runtime.MetabrowserGitHistoryWindow;
-assert(freshness && historyWindow, "the production modules did not install their runtimes");
+assert(
+  freshness && generationGuard && historyWindow,
+  "the production modules did not install their runtimes",
+);
 
 /**
  * A scripted server and injected browser facilities for one page.
@@ -64,6 +81,7 @@ function createPage() {
   let nextTimer = 1;
   let visible = true;
   let reloads = 0;
+  let renders = 0;
   let model = null;
   const postAnswers = { "/api/source/refresh": [], "/api/source/pin": [] };
   let currentStatus = null;
@@ -104,6 +122,7 @@ function createPage() {
     isVisible: () => visible,
     render(next) {
       model = next;
+      renders += 1;
     },
     reload() {
       reloads += 1;
@@ -137,7 +156,16 @@ function createPage() {
             : pending[0].delayMs === freshness.SLOW_POLL_MS
               ? "slow"
               : String(pending[0].delayMs);
-      return { step, requests: log.splice(0), timer, reloads, paint: paintOf(model) };
+      const painted = renders;
+      renders = 0;
+      return {
+        step,
+        requests: log.splice(0),
+        timer,
+        reloads,
+        repaints: painted,
+        paint: paintOf(model),
+      };
     },
   };
 }
@@ -226,6 +254,19 @@ async function run() {
     controller.dispose();
   }
 
+  // A page whose pin was switched before its first poll: the server wrote the page's
+  // generation into it, so the first status it reads already differs.
+  {
+    const page = createPage();
+    const controller = freshness.createController(page.deps, {
+      generation: recorded.refreshed.generation,
+    });
+    page.setStatus(recorded.after_switch);
+    await controller.start();
+    steps.push(page.observe("switched before the first poll"));
+    controller.dispose();
+  }
+
   // A refresh that failed.
   {
     const page = createPage();
@@ -273,6 +314,42 @@ async function run() {
     controller.dispose();
   }
 
+  // What a page's data requests say about the pin it shows, and a refusal for a pin the
+  // server no longer serves, as the server answered it after the switch.
+  const sent = [];
+  const reported = [];
+  const guardedFetch = generationGuard.guardFetch(
+    async (input, init) => {
+      const url = typeof input === "string" ? input : input.url;
+      sent.push({
+        url,
+        generation: new Headers(init?.headers).get(generationGuard.GENERATION_HEADER),
+      });
+      if (url.startsWith("/api/tree")) {
+        return new Response(JSON.stringify(recorded.pin_changed.body), {
+          status: recorded.pin_changed.status,
+          headers: recorded.pin_changed.headers,
+        });
+      }
+      return new Response("{}", { status: 200 });
+    },
+    recorded.refreshed.generation,
+    () => "http://127.0.0.1:8471/view/",
+    (served) => {
+      reported.push(served);
+    },
+  );
+  const answered = [];
+  for (const url of [
+    "/api/file?path=g1-UkVBRE1FLm1k",
+    "/api/source/status",
+    "http://elsewhere.example/api/file",
+    "/api/tree?depth=1",
+  ]) {
+    answered.push((await guardedFetch(url)).status);
+  }
+  const generation = { page: recorded.refreshed.generation, sent, answered, reported };
+
   // What a failed history page means for the Git panel.
   const failures = [
     { name: "a refresh moved the refs", ...recorded.history_stale, initial: false },
@@ -294,7 +371,7 @@ async function run() {
     }),
   }));
 
-  return { steps, history };
+  return { steps, generation, history };
 }
 
 run()

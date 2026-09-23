@@ -390,4 +390,4 @@ def _serve_published(published: PublishedSource) -> None:
     """Hand the server the pin to open and the mirror to keep fresh."""
 
     serve_subject_opener(_serving_opener(published))
-    serve_mirror(StoreMirror.from_published(published), refresh_when_stale=True)
+    serve_mirror(StoreMirror.from_published(published), serving=True)

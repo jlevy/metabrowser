@@ -77,6 +77,13 @@ _INDEX_DEPENDENT: tuple[str, ...] = (
 )
 
 
+# A one-shot refresh reports how the refresh it asked for ended, after it has, and exits
+# non-zero unless the fetch ran or another process's refresh is running.
+_REFRESH_ROUTE = "/api/source/refresh"
+_STATUS_ROUTE = "/api/source/status"
+_REFRESH_ENDED_WELL = frozenset({"succeeded", "default_branch_unknown", "refreshing_elsewhere"})
+
+
 def _render(payload: Any, fmt: str) -> str:
     if fmt == "yaml":
         return yaml.safe_dump(
@@ -94,8 +101,11 @@ async def _issue(
     *,
     body: bytes,
     index_timeout_s: float,
-) -> tuple[ApiResponse, str]:
-    """Return the response and the index state it was produced under."""
+) -> tuple[ApiResponse, str, ApiResponse | None]:
+    """Return the response, the index state it was produced under, and any follow-up.
+
+    The follow-up is the status after a refresh this request started has ended.
+    """
 
     index_detail = "skipped"
     async with InProcessClient(app, label="api", logger=LOG) as client:
@@ -110,7 +120,10 @@ async def _issue(
         # The only background work a one-shot command has is a refresh its own request
         # asked for, and that is the work the command exists to do, so let it finish.
         await drain_refreshes(app, timeout_s=GIT_ACQUISITION_TIMEOUT_S)
-        return response, index_detail
+        after: ApiResponse | None = None
+        if body and route.split("?", 1)[0] == _REFRESH_ROUTE and response.status_code == 202:
+            after = await client.get(_STATUS_ROUTE)
+        return response, index_detail, after
 
 
 def _request_body(data: Path | None) -> bytes:
@@ -127,16 +140,10 @@ def _request_body(data: Path | None) -> bytes:
     return body
 
 
-def _emit_api_response(
-    route: str,
-    response: ApiResponse,
-    index_detail: str,
-    *,
-    fmt: str,
-    normalize_root: Path,
+def _echo_envelope(
+    label: str, route: str, response: ApiResponse, ctx: NormalizeContext, fmt: str
 ) -> None:
-    ctx = NormalizeContext(root=normalize_root)
-    typer.echo(f"api: {route}")
+    typer.echo(f"{label}: {route}")
     typer.echo(f"status: {response.status_code}")
     try:
         payload = response.json()
@@ -144,6 +151,32 @@ def _emit_api_response(
         typer.echo(normalize_text(response.text(), ctx))
     else:
         typer.echo(_render(normalize_payload(payload, ctx), fmt))
+
+
+def _refresh_outcome(after: ApiResponse) -> str | None:
+    """The outcome of the refresh a one-shot command waited for, from the final status."""
+
+    try:
+        outcome = after.json().get("last_outcome")
+    except (ValueError, AttributeError):
+        return None
+    if isinstance(outcome, dict) and outcome.get("operation") == "refresh":
+        value = outcome.get("outcome")
+        return value if isinstance(value, str) else None
+    return None
+
+
+def _emit_api_response(
+    route: str,
+    response: ApiResponse,
+    index_detail: str,
+    *,
+    fmt: str,
+    normalize_root: Path,
+    after: ApiResponse | None = None,
+) -> None:
+    ctx = NormalizeContext(root=normalize_root)
+    _echo_envelope("api", route, response, ctx, fmt)
 
     # An envelope built from an index that never finished is not the envelope
     # the browser would have drawn, so say so rather than letting it read clean.
@@ -156,6 +189,11 @@ def _emit_api_response(
         )
     if not 200 <= response.status_code < 300:
         raise CLIError(f"{route} returned HTTP {response.status_code}")
+    if after is not None:
+        _echo_envelope("after", _STATUS_ROUTE, after, ctx, fmt)
+        outcome = _refresh_outcome(after)
+        if outcome is not None and outcome not in _REFRESH_ENDED_WELL:
+            raise CLIError(f"the refresh ended with {outcome}")
 
 
 async def aissue_on_active_session(
@@ -191,10 +229,12 @@ async def aissue_on_active_session(
     )
     from metabrowser import server
 
-    response, index_detail = await _issue(
+    response, index_detail, after = await _issue(
         server.app, route, body=_request_body(data), index_timeout_s=index_timeout_s
     )
-    _emit_api_response(route, response, index_detail, fmt=fmt, normalize_root=normalize_root)
+    _emit_api_response(
+        route, response, index_detail, fmt=fmt, normalize_root=normalize_root, after=after
+    )
 
 
 def run_api_on_active_session(
@@ -259,7 +299,7 @@ def run_api(
     from metabrowser import server
 
     server._set_root_dir(resolved)
-    response, index_detail = asyncio.run(
+    response, index_detail, after = asyncio.run(
         _issue(server.app, route, body=_request_body(data), index_timeout_s=index_timeout_s)
     )
-    _emit_api_response(route, response, index_detail, fmt=fmt, normalize_root=resolved)
+    _emit_api_response(route, response, index_detail, fmt=fmt, normalize_root=resolved, after=after)

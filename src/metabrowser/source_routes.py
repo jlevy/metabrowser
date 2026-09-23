@@ -38,6 +38,7 @@ from metabrowser.mirror_refresh import (
     mirror_session,
 )
 from metabrowser.source import (
+    SubjectNotOpenError,
     UnsupportedSourceCapabilityError,
     get_source_session,
     unsupported_source_payload,
@@ -68,6 +69,7 @@ class SourceStatus(TypedDict):
     ref_name: str | None
     refreshable: bool
     latest: str | None
+    ref_on_origin: bool | None
     last_fetch_at: str | None
     last_outcome: LastOutcome | None
     refreshing: bool
@@ -221,6 +223,69 @@ async def api_source_pin(request: Request) -> JSONResponse:
     return JSONResponse({"changed": changed, "status": dict(source_status(mirror))})
 
 
+# A page on a pin names the session generation it was rendered for on every data
+# request (static/source-generation.js). A request that names an older generation is
+# from a page showing a pin the server no longer serves, and is refused rather than
+# answered from the new pin, which would mix two revisions on one page.
+GENERATION_HEADER: Final = "x-metabrowser-generation"
+PIN_CHANGED_HEADER: Final = "x-metabrowser-pin-changed"
+_GENERATION_EXEMPT_PREFIX: Final = "/api/source/"
+
+
+class SourceGenerationGuard:
+    """Refuse an ``/api`` request made for a generation the server no longer serves.
+
+    Only a request that names a generation is checked, so ``curl``, ``metab --api``,
+    and a folder page, which send none, are unaffected. The ``/api/source/`` routes are
+    exempt: a page learns the new generation from the status route and switches through
+    the pin route. The refusal is ``409 pin_changed`` with the current generation in
+    :data:`PIN_CHANGED_HEADER`, which the page reads without consuming the body.
+    """
+
+    def __init__(self, app: Any) -> None:
+        self.app = app
+
+    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        if scope.get("type") == "http" and _guarded(scope):
+            claimed = _header(scope, GENERATION_HEADER.encode())
+            current = _current_generation()
+            if claimed is not None and current is not None and claimed != str(current):
+                response = JSONResponse(
+                    {
+                        "error": "the server now serves another revision; reload the page",
+                        "code": "pin_changed",
+                        "generation": current,
+                    },
+                    status_code=409,
+                    headers={PIN_CHANGED_HEADER: str(current), "cache-control": "no-store"},
+                )
+                await response(scope, receive, send)
+                return
+        await self.app(scope, receive, send)
+
+
+def _guarded(scope: dict[str, Any]) -> bool:
+    path = str(scope.get("path") or "")
+    root_path = str(scope.get("root_path") or "")
+    if root_path and path.startswith(root_path):
+        path = path[len(root_path) :]
+    return path.startswith("/api/") and not path.startswith(_GENERATION_EXEMPT_PREFIX)
+
+
+def _header(scope: dict[str, Any], name: bytes) -> str | None:
+    for key, value in scope.get("headers") or []:
+        if key == name:
+            return bytes(value).decode("latin-1").strip()
+    return None
+
+
+def _current_generation() -> int | None:
+    try:
+        return get_source_session().generation
+    except SubjectNotOpenError:
+        return None
+
+
 SOURCE_ROUTES = [
     Route("/api/source/status", api_source_status),
     Route("/api/source/refresh", api_source_refresh, methods=["POST"]),
@@ -229,8 +294,11 @@ SOURCE_ROUTES = [
 
 
 __all__ = [
+    "GENERATION_HEADER",
     "MAX_SOURCE_REQUEST_BYTES",
+    "PIN_CHANGED_HEADER",
     "SOURCE_ROUTES",
+    "SourceGenerationGuard",
     "SourceStatus",
     "api_source_pin",
     "api_source_refresh",

@@ -2115,6 +2115,7 @@ declare global {
     ref_name: string | null;
     refreshable: boolean;
     latest: string | null;
+    ref_on_origin: boolean | null;
     last_fetch_at: string | null;
     last_outcome: { operation: string; outcome: string; at: string } | null;
     refreshing: boolean;
@@ -2173,6 +2174,7 @@ declare global {
     SLOW_POLL_MS: number;
     createController(
       deps: MetabrowserSourceFreshnessDependencies,
+      options?: { generation?: number | null },
     ): MetabrowserSourceFreshnessController;
     describe(
       status: MetabrowserSourceStatus | null,
@@ -2398,6 +2400,19 @@ declare global {
     MetabrowserTreeKeyboardNavigation: MetabrowserTreeKeyboardRuntime;
     MetabrowserSourceAppend: MetabrowserSourceAppendRuntime;
     MetabrowserSourceFreshness?: MetabrowserSourceFreshnessRuntime;
+    MetabrowserSourceGeneration?: Readonly<{
+      GENERATION_HEADER: string;
+      PIN_CHANGED_HEADER: string;
+      guardFetch(
+        fetchImpl: typeof fetch,
+        generation: number,
+        base: () => string,
+        onPinChanged: (served: number) => void,
+      ): typeof fetch;
+      guardedRequest(url: string, base: string): boolean;
+    }>;
+    /** The session generation a pin's page was rendered for; absent on a folder. */
+    METABROWSER_SOURCE_GENERATION?: number;
     MetabrowserViewState: MetabrowserViewStateRuntime;
     MetabrowserViewComposition: MetabrowserViewCompositionRuntime;
     MetabrowserTreemapLayout: MetabrowserTreemapLayoutApi;

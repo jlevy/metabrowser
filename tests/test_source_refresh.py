@@ -11,7 +11,9 @@ alone in the admitted-Git CI job.
 from __future__ import annotations
 
 import asyncio
+import os
 import shutil
+import subprocess
 import threading
 import time
 from collections.abc import Iterator
@@ -24,7 +26,7 @@ from typer.testing import CliRunner
 
 from metabrowser import server
 from metabrowser.cache.atomic import write_record_atomic
-from metabrowser.cache.locks import repository_store_lock
+from metabrowser.cache.locks import repository_store_lock, store_fetch_lock
 from metabrowser.cache.paths import store_record
 from metabrowser.cache.records import (
     REPOSITORY_STORE_STATE_CONTRACT_ID,
@@ -64,6 +66,8 @@ runner = CliRunner()
 
 _JSON = {"content-type": "application/json"}
 _STALE_AT = "2020-01-01T00:00:00Z"
+# Later than any real record, so a faked refresh is the newest outcome the status knows.
+_FUTURE = "2099-01-01T00:00:00Z"
 
 
 def _wire(display: str) -> str:
@@ -259,7 +263,7 @@ def test_concurrent_refresh_requests_join_one_fetch(
     async def held_update(home: Path, store_key: str) -> StoreUpdate:
         calls.append(store_key)
         await asyncio.to_thread(release.wait, 30)
-        return StoreUpdate(RefreshOutcome.succeeded, "2026-09-23T12:00:00Z")
+        return StoreUpdate(RefreshOutcome.succeeded, _FUTURE)
 
     monkeypatch.setattr("metabrowser.cache.served_mirror.update_store", held_update)
     answers = [_post(served, "/api/source/refresh").json()["refresh"] for _ in range(3)]
@@ -268,11 +272,7 @@ def test_concurrent_refresh_requests_join_one_fetch(
     release.set()
     status = _settle(served)
     assert len(calls) == 1
-    assert status["last_outcome"] == {
-        "operation": "refresh",
-        "outcome": "succeeded",
-        "at": "2026-09-23T12:00:00Z",
-    }
+    assert status["last_outcome"] == {"operation": "refresh", "outcome": "succeeded", "at": _FUTURE}
     assert _post(served, "/api/source/refresh").json()["refresh"] == "started"
     _settle(served)
     assert len(calls) == 2
@@ -307,7 +307,7 @@ def test_the_shutdown_cancels_a_running_refresh(
         except asyncio.CancelledError:
             ended.append("cancelled")
             raise
-        return StoreUpdate(RefreshOutcome.succeeded, "2026-09-23T12:00:00Z")
+        return StoreUpdate(RefreshOutcome.succeeded, _FUTURE)
 
     monkeypatch.setattr("metabrowser.cache.served_mirror.update_store", endless_update)
     assert _serve(origin.url).exit_code == 0
@@ -529,7 +529,7 @@ def test_a_pin_shell_has_a_freshness_row_loaded_on_demand(
     served: TestClient, tmp_path: Path
 ) -> None:
     shell = served.get("/view/").text
-    assert '<div class="source-freshness" id="source-freshness" role="status"' in shell
+    assert '<div class="source-freshness" id="source-freshness" hidden></div>' in shell
     bundles = shell[shell.index("window.METABROWSER_ASSET_BUNDLES=") :]
     bundles = bundles[: bundles.index("</script>")]
     assert '"source-freshness": [{"src": "/static/source-freshness.js' in bundles
@@ -596,3 +596,129 @@ def test_a_switch_attaches_the_new_pin_before_it_closes_the_old() -> None:
         assert observed[-1] == "close second while serving nothing"
     finally:
         reset_source_session()
+
+
+# ── Review fixes ─────────────────────────────────────────────────────
+
+
+def test_a_page_for_an_older_generation_is_refused_as_pin_changed(
+    served: TestClient, origin: _Origin
+) -> None:
+    """A tab still showing the old pin never reads the new pin's files into its page."""
+
+    shell = served.get("/view/").text
+    generation = served.get("/api/source/status").json()["generation"]
+    assert f"window.METABROWSER_SOURCE_GENERATION={generation};" in shell
+    assert "window.MetabrowserSourceGeneration = Object.freeze(" in shell
+    tree = {"depth": "1"}
+    assert served.get("/api/tree", params=tree, headers=_generation(generation)).status_code == 200
+
+    assert _post(served, "/api/source/pin", {"oid": origin.first}).json()["changed"]
+    refused = served.get("/api/tree", params=tree, headers=_generation(generation))
+    assert refused.status_code == 409
+    assert refused.json()["code"] == "pin_changed"
+    assert refused.json()["generation"] == generation + 1
+    assert refused.headers["x-metabrowser-pin-changed"] == str(generation + 1)
+    # The source routes are how a page finds the new generation, so they answer.
+    exempt = served.get("/api/source/status", headers=_generation(generation))
+    assert exempt.status_code == 200
+    # A request that names no generation, as curl and metab --api send, is served.
+    assert served.get("/api/tree", params=tree).status_code == 200
+    assert (
+        served.get("/api/tree", params=tree, headers=_generation(generation + 1)).status_code == 200
+    )
+
+
+def _generation(value: int) -> dict[str, str]:
+    return {"x-metabrowser-generation": str(value)}
+
+
+def test_a_folder_page_names_no_generation(tmp_path: Path) -> None:
+    server._set_root_dir(tmp_path)
+    with TestClient(server.app) as client:
+        shell = client.get("/view/").text
+    assert "METABROWSER_SOURCE_GENERATION" not in shell
+    assert "MetabrowserSourceGeneration" not in shell
+
+
+def test_latest_tells_a_deleted_ref_from_an_unobserved_one(
+    tmp_path: Path, origin: _Origin, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert _serve(origin.url).exit_code == 0
+    with TestClient(server.app) as client:
+        assert client.get("/api/source/status").json()["ref_on_origin"] is True
+        _git(_work(origin), "branch", "gone", origin.first)
+        _git(_work(origin), "push", "-q", str(origin.path), "gone")
+        assert _post(client, "/api/source/refresh").status_code == 202
+        _settle(client)
+        assert _post(client, "/api/source/pin", {"ref": "gone"}).status_code == 200
+        _git(_work(origin), "push", "-q", str(origin.path), "--delete", "gone")
+        assert _post(client, "/api/source/refresh").status_code == 202
+        gone = _settle(client)
+        by_id = _post(client, "/api/source/pin", {"oid": origin.first}).json()["status"]
+    assert gone["ref_name"] == "gone"
+    assert gone["latest"] is None and gone["ref_on_origin"] is False
+    assert by_id["ref"] is None and by_id["ref_on_origin"] is None
+
+    # A mirror whose freshness cannot be read at startup knows nothing about the ref.
+    async def unreadable(_self: object) -> object:
+        raise OSError("state.yml could not be read")
+
+    monkeypatch.setattr(
+        "metabrowser.cache.served_mirror.StoreMirror.recorded_freshness", unreadable
+    )
+    assert _serve(origin.url).exit_code == 0
+    with TestClient(server.app) as client:
+        unknown = client.get("/api/source/status").json()
+    assert unknown["latest"] is None and unknown["ref_on_origin"] is None
+    assert unknown["refreshable"] is True
+
+
+def test_a_server_follows_a_refresh_another_process_is_running(
+    served: TestClient, origin: _Origin, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Busy elsewhere: this server reports it, then observes the store once that ends."""
+
+    monkeypatch.setattr("metabrowser.mirror_refresh.ELSEWHERE_POLL_S", 0.05)
+    published = _published(tmp_path, origin)
+    newer = _push_commit(origin, "NEW.md", "# New\n", "third")
+    with store_fetch_lock(published.home, published.store_key):
+        assert _post(served, "/api/source/refresh").status_code == 202
+        deadline = time.monotonic() + 10
+        while True:
+            status = served.get("/api/source/status").json()
+            if status["last_outcome"]["outcome"] == "refreshing_elsewhere":
+                break
+            assert time.monotonic() < deadline
+            time.sleep(0.02)
+        # Still following the other refresh, so the page keeps polling quickly.
+        assert status["refreshing"] is True
+        assert status["latest"] == origin.second
+        # The other process's fetch, run here while its lock is held.
+        subprocess.run(
+            [
+                "git",
+                "--git-dir",
+                str(published.git_dir),
+                "fetch",
+                "-q",
+                "--no-write-fetch-head",
+                "origin",
+                "+refs/heads/*:refs/remotes/origin/*",
+            ],
+            check=True,
+            env={name: value for name, value in os.environ.items() if not name.startswith("GIT_")},
+        )
+    followed = _settle(served)
+    assert followed["latest"] == newer
+    assert followed["refreshing"] is False
+
+
+def test_a_detached_origin_head_is_a_quiet_outcome(served: TestClient, origin: _Origin) -> None:
+    _git(origin.path, "update-ref", "--no-deref", "HEAD", origin.first)
+    assert _post(served, "/api/source/refresh").status_code == 202
+    status = _settle(served)
+    assert status["last_outcome"]["outcome"] == "default_branch_unknown"
+    assert status["ref"] == "refs/remotes/origin/topic"
+    assert status["latest"] == origin.second
+    assert status["stale"] is False

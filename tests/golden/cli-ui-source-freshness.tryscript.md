@@ -12,15 +12,19 @@ newer commit when a refresh moved the pinned ref, and switches the pin with
 `POST /api/source/pin`. The Git panel turns a history cursor a refresh invalidated into
 a typed stale state with a reload action.
 
-This browserless session loads the production `static/source-freshness.js` and
-`static/git-history-window.js` and plays the server’s side from
-`tests/fixtures/source-freshness-responses.json`: what the in-process application
-answered while a real mirror went stale, refreshed, gained a newer commit, switched its
-pin, lost its origin, and invalidated an open all-branch history cursor.
+A page on a pin also names the generation it was rendered for on its data requests, and
+a request refused as `pin_changed` makes the row ask the status route at once.
+
+This browserless session loads the production `static/source-freshness.js`,
+`static/source-generation.js`, and `static/git-history-window.js` and plays the server’s
+side from `tests/fixtures/source-freshness-responses.json`: what the in-process
+application answered while a real mirror went stale, refreshed, gained a newer commit,
+switched its pin, lost its origin, and invalidated an open all-branch history cursor.
 `tests/test_source_freshness_session.py` replays that story and fails when the recording
 drifts. Timers, the clock, visibility, and paint are injected; each step records the
 requests the page made, the poll it scheduled (`fast` while a refresh runs, `slow`
-otherwise), whether it reloaded, and what it would paint.
+otherwise), how many times it repainted (never for an unchanged status, so the row’s
+announcement and focus stay put), whether it reloaded, and what it would paint.
 
 ```console
 $ node tests/dom/source-freshness-session.js
@@ -34,6 +38,7 @@ $ node tests/dom/source-freshness-session.js
       ],
       "timer": "fast",
       "reloads": 0,
+      "repaints": 1,
       "paint": {
         "label": "Refreshing…",
         "tone": "refreshing",
@@ -49,6 +54,7 @@ $ node tests/dom/source-freshness-session.js
       ],
       "timer": "fast",
       "reloads": 0,
+      "repaints": 0,
       "paint": {
         "label": "Refreshing…",
         "tone": "refreshing",
@@ -64,6 +70,7 @@ $ node tests/dom/source-freshness-session.js
       ],
       "timer": "fast",
       "reloads": 0,
+      "repaints": 0,
       "paint": {
         "label": "Refreshing…",
         "tone": "refreshing",
@@ -79,6 +86,7 @@ $ node tests/dom/source-freshness-session.js
       ],
       "timer": "slow",
       "reloads": 0,
+      "repaints": 1,
       "paint": {
         "label": "Fetched 5 min ago",
         "tone": "quiet",
@@ -92,6 +100,7 @@ $ node tests/dom/source-freshness-session.js
       "requests": [],
       "timer": null,
       "reloads": 0,
+      "repaints": 0,
       "paint": {
         "label": "Fetched 5 min ago",
         "tone": "quiet",
@@ -107,6 +116,7 @@ $ node tests/dom/source-freshness-session.js
       ],
       "timer": "slow",
       "reloads": 0,
+      "repaints": 0,
       "paint": {
         "label": "Fetched 5 min ago",
         "tone": "quiet",
@@ -122,6 +132,7 @@ $ node tests/dom/source-freshness-session.js
       ],
       "timer": "slow",
       "reloads": 1,
+      "repaints": 0,
       "paint": {
         "label": "Fetched 5 min ago",
         "tone": "quiet",
@@ -137,6 +148,7 @@ $ node tests/dom/source-freshness-session.js
       ],
       "timer": "slow",
       "reloads": 0,
+      "repaints": 1,
       "paint": {
         "label": "Fetched 5 min ago",
         "tone": "quiet",
@@ -150,6 +162,23 @@ $ node tests/dom/source-freshness-session.js
       "requests": [],
       "timer": "slow",
       "reloads": 1,
+      "repaints": 0,
+      "paint": {
+        "label": "Fetched 5 min ago",
+        "tone": "quiet",
+        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "offer": "The server now serves another revision [Reload]",
+        "error": null
+      }
+    },
+    {
+      "step": "switched before the first poll",
+      "requests": [
+        "GET /api/source/status"
+      ],
+      "timer": "slow",
+      "reloads": 0,
+      "repaints": 1,
       "paint": {
         "label": "Fetched 5 min ago",
         "tone": "quiet",
@@ -165,6 +194,7 @@ $ node tests/dom/source-freshness-session.js
       ],
       "timer": "slow",
       "reloads": 0,
+      "repaints": 1,
       "paint": {
         "label": "Refresh failed · fetched 5 min ago",
         "tone": "warning",
@@ -180,6 +210,7 @@ $ node tests/dom/source-freshness-session.js
       ],
       "timer": "slow",
       "reloads": 0,
+      "repaints": 1,
       "paint": {
         "label": "Fetched 5 min ago",
         "tone": "quiet",
@@ -196,6 +227,7 @@ $ node tests/dom/source-freshness-session.js
       ],
       "timer": "fast",
       "reloads": 0,
+      "repaints": 1,
       "paint": {
         "label": "Refreshing…",
         "tone": "refreshing",
@@ -212,6 +244,7 @@ $ node tests/dom/source-freshness-session.js
       ],
       "timer": "slow",
       "reloads": 0,
+      "repaints": 1,
       "paint": {
         "label": "Refresh failed · fetched 6 d ago",
         "tone": "warning",
@@ -228,6 +261,7 @@ $ node tests/dom/source-freshness-session.js
       ],
       "timer": "fast",
       "reloads": 0,
+      "repaints": 1,
       "paint": {
         "label": "Refreshing…",
         "tone": "refreshing",
@@ -237,6 +271,36 @@ $ node tests/dom/source-freshness-session.js
       }
     }
   ],
+  "generation": {
+    "page": 1,
+    "sent": [
+      {
+        "url": "/api/file?path=g1-UkVBRE1FLm1k",
+        "generation": "1"
+      },
+      {
+        "url": "/api/source/status",
+        "generation": null
+      },
+      {
+        "url": "http://elsewhere.example/api/file",
+        "generation": null
+      },
+      {
+        "url": "/api/tree?depth=1",
+        "generation": "1"
+      }
+    ],
+    "answered": [
+      200,
+      200,
+      200,
+      409
+    ],
+    "reported": [
+      2
+    ]
+  },
   "history": [
     {
       "failure": "a refresh moved the refs",

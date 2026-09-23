@@ -15,11 +15,12 @@ the origin moves the way a busy upstream does:
 - ``feature`` is deleted;
 - ``v2`` tags ``rewritten``.
 
-The transcript then shows the refresh starting, the next command pinning the new default
-revision, the force-pushed-away commit and the deleted branch's commit still readable by
-ID, the deleted branch gone by name, and a refresh against a removed origin recorded as a
-failure while the mirror keeps serving. Fetch times are wall-clock values no fixture can
-pin, so they read ``<TIME>``.
+The transcript then shows the refresh starting and, once it has ended, the status after
+it; the next command pinning the new default revision; the force-pushed-away commit and
+the deleted branch's commit still readable by ID; the deleted branch gone by name; and a
+refresh against a removed origin recorded as ``origin_unavailable``, which exits 1 while
+the mirror keeps serving. Fetch times are wall-clock values no fixture can pin, so they
+read ``<TIME>``.
 
 Regenerate after an intended change with:
 
@@ -30,15 +31,17 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from tests.source_mirror_fixture import build_origin
-from tests.test_cli_cache_acquire_golden import _block, _file_url, _isolate
-from tests.test_cli_git_pin_golden import _Invocation, _ok, _payload, _refused
+from tests.test_cli_cache_acquire_golden import _elide_payload, _file_url, _isolate, _strip_logs
+from tests.test_cli_git_pin_golden import _Invocation, _ok, _refused
 from tests.test_cli_golden import check_golden
 
 posix_only = pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only")
@@ -98,8 +101,37 @@ def _body(directory: Path, name: str, body: dict[str, str]) -> str:
     return str(path)
 
 
+def _sections(stdout: str) -> list[tuple[str, Any]]:
+    """Each ``api:`` or ``after:`` header with the envelope that follows it."""
+
+    sections: list[tuple[str, Any]] = []
+    for chunk in re.split(r"(?m)^(?=(?:api|after): )", stdout):
+        if not chunk.strip():
+            continue
+        start = chunk.index("{")
+        sections.append((chunk[:start], json.loads(chunk[start:])))
+    return sections
+
+
+def _payload(result: _Invocation) -> Any:
+    return _sections(result.stdout)[0][1]
+
+
+def _after(result: _Invocation) -> Any:
+    return _sections(result.stdout)[1][1]
+
+
 def _record(command: str, result: _Invocation) -> str:
-    return _block(command, result, origin_url=None, api=True)
+    stdout = "".join(
+        header + json.dumps(_elide_payload(payload), indent=2, ensure_ascii=False) + "\n"
+        for header, payload in _sections(_strip_logs(result.stdout))
+    )
+    return (
+        f"# metab {command}\n"
+        f"exit: {result.exit_code}\n"
+        f"--- stdout ---\n{stdout}"
+        f"--- stderr ---\n{_strip_logs(result.stderr)}"
+    )
 
 
 @posix_only
@@ -127,9 +159,15 @@ def test_golden_refresh_and_pin_switching(tmp_path: Path, monkeypatch: pytest.Mo
 
     rewritten = _move_origin(origin)
 
-    started = _payload(api("/api/source/refresh", data=refresh))
+    refreshed = api("/api/source/refresh", data=refresh)
+    started = _payload(refreshed)
     assert started["refresh"] == "started"
     assert started["status"]["refreshing"] is True
+    # The command waits for the refresh it asked for, then reports how it ended.
+    ended = _after(refreshed)
+    assert ended["refreshing"] is False
+    assert ended["last_outcome"]["outcome"] == "succeeded"
+    assert ended["latest"] == rewritten and ended["pin"] == SECOND
 
     after = _payload(api("/api/source/status"))
     assert after["pin"] == rewritten
@@ -151,11 +189,14 @@ def test_golden_refresh_and_pin_switching(tmp_path: Path, monkeypatch: pytest.Mo
     assert kept["status"]["pin"] == FEATURE
 
     shutil.rmtree(origin)
-    api("/api/source/refresh", data=refresh)
+    unreachable = api("/api/source/refresh", data=refresh, refused=True)
+    assert "the refresh ended with origin_unavailable" in unreachable.stderr
+    assert _after(unreachable)["last_outcome"]["outcome"] == "origin_unavailable"
+    # The record keeps the outcome by name, so the next command reports it too.
     failed = _payload(api("/api/source/status"))
     assert failed["pin"] == rewritten
     assert failed["last_outcome"]["operation"] == "refresh"
-    assert failed["last_outcome"]["outcome"] == "failed"
+    assert failed["last_outcome"]["outcome"] == "origin_unavailable"
     # The last successful fetch is kept; only the outcome records the failure.
     assert failed["last_fetch_at"] == after["last_fetch_at"]
 

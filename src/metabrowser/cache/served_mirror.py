@@ -14,6 +14,7 @@ from pathlib import Path
 
 from metabrowser.cache.acquire import PublishedSource
 from metabrowser.cache.atomic import read_record
+from metabrowser.cache.locks import LockBusyError, store_fetch_lock
 from metabrowser.cache.paths import store_directory, store_record
 from metabrowser.cache.records import REPOSITORY_STORE_STATE_CONTRACT_ID, RepositoryStoreState
 from metabrowser.cache.repository_store import open_revision, ref_tip, resolve_pin
@@ -82,6 +83,18 @@ class StoreMirror:
 
     async def ref_tip(self, ref: str) -> str | None:
         return await ref_tip(self._target(), ref)
+
+    async def refresh_running_elsewhere(self) -> bool:
+        return await asyncio.to_thread(self._fetch_lock_busy)
+
+    def _fetch_lock_busy(self) -> bool:
+        # Taken and dropped at once: a refresh that starts in that instant elsewhere
+        # reports this process as refreshing, which is harmless and rare.
+        try:
+            with store_fetch_lock(self.home, self.store_key):
+                return False
+        except LockBusyError:
+            return True
 
 
 __all__ = ["StoreMirror"]

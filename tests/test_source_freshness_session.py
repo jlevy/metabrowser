@@ -166,7 +166,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     serve_subject_opener(opener)
     # Serve mode would refresh this stale mirror on its own; the recording starts where
     # the page opens it, so the page's own request is the one that starts the refresh.
-    serve_mirror(StoreMirror.from_published(published), refresh_when_stale=False)
+    serve_mirror(StoreMirror.from_published(published))
     recorded: dict[str, Any] = {}
     try:
         with TestClient(server.app) as client:
@@ -190,6 +190,20 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             assert switched.status_code == 200
             recorded["switched"] = switched.json()
             recorded["after_switch"] = client.get("/api/source/status").json()
+            # A data request from a page still showing the pin before the switch.
+            refused_read = client.get(
+                "/api/tree",
+                params={"depth": "1"},
+                headers={"x-metabrowser-generation": str(recorded["refreshed"]["generation"])},
+            )
+            assert refused_read.status_code == 409
+            recorded["pin_changed"] = {
+                "status": refused_read.status_code,
+                "headers": {
+                    "x-metabrowser-pin-changed": refused_read.headers["x-metabrowser-pin-changed"]
+                },
+                "body": refused_read.json(),
+            }
             refused = client.post("/api/source/pin", json={"ref": "gone"}, headers=_JSON)
             recorded["pin_refused"] = {"status": refused.status_code, "body": refused.json()}
             shutil.rmtree(origin)
@@ -198,7 +212,8 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         # A later start on a mirror last fetched long ago whose origin is gone: every
         # refresh the page asks for fails, so the page stays stale.
         _write_state(
-            published, operation=StoreOperation(kind="refresh", outcome="failed", at=FETCHED_AT)
+            published,
+            operation=StoreOperation(kind="refresh", outcome="origin_unavailable", at=FETCHED_AT),
         )
         with TestClient(server.app) as client:
             recorded["unreachable"] = client.get("/api/source/status").json()
@@ -255,5 +270,17 @@ def test_the_session_runs_on_the_recording() -> None:
     assert by_name["a refused switch says why and does not reload"]["reloads"] == 0
     polls = by_name["a stale page whose refresh fails asks once"]["requests"]
     assert len(polls) == 2 and all(request.startswith("GET ") for request in polls)
-    history = {row["failure"]: row["means"] for row in json.loads(result.stdout)["history"]}
+    transcript = json.loads(result.stdout)
+    history = {row["failure"]: row["means"] for row in transcript["history"]}
     assert history["a refresh moved the refs"] == "stale"
+    assert by_name["an unchanged status is a 304"]["repaints"] == 0
+    assert by_name["switched before the first poll"]["paint"]["offer"].endswith("[Reload]")
+    generation = transcript["generation"]
+    assert [row["generation"] for row in generation["sent"]] == [
+        str(generation["page"]),
+        None,
+        None,
+        str(generation["page"]),
+    ]
+    assert generation["answered"][-1] == 409
+    assert generation["reported"] == [generation["page"] + 1]
