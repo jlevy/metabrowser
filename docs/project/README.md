@@ -39,6 +39,9 @@ links to the document that covers each in depth.
 
 ## Active Feature Plans
 
+- [v0.12 alpha testing and stack acceptance](specs/active/plan-2026-09-22-v012-alpha-testing.md)
+  — executable foundation quick start, manual end-to-end matrix, automated coverage, and
+  gates for repository URL and direct PR testing
 - [Opt-in trusted-local file editing](specs/active/plan-2026-07-16-trusted-local-file-editing.md)
 - [Scanning state and recent directories](specs/active/plan-2026-07-16-scanning-state-and-recent-directories.md)
 - [Quick file finder and search providers](specs/active/plan-2026-07-17-scalable-file-search.md)

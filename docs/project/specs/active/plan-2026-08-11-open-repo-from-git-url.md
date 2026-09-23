@@ -1,17 +1,21 @@
 # Feature: Repository Library and Open from a Git URL
 
-**Date:** 2026-08-11 (rewritten 2026-08-26; refreshed 2026-09-19)
+**Date:** 2026-08-11 (rewritten 2026-08-26; refreshed 2026-09-22)
 
 **Author:** Joshua Levy (with LLM assistance)
 
 **Status:** v0.12.0 implementation is on open GitHub stack
-[#218](https://github.com/jlevy/metabrowser/stack/218), not on `main`. Phase 0 and Phase
-1A are on ready layers.
-Phase 1B-a file:// acquire is draft
-[#217](https://github.com/jlevy/metabrowser/pull/217). Phase 1B source boundary and
-leased Git pin are draft [#216](https://github.com/jlevy/metabrowser/pull/216). URL
-open, HTTP serving of acquired Git, https/ssh acquire, and later phases are not started.
-Landing remains `mb-n2ro` and requires explicit approval.
+[#218](https://github.com/jlevy/metabrowser/stack/218), above the released v0.11.0
+`main`. Phase 0 and Phase 1A are on nondraft PRs with green CI; final stack review
+remains open. Phase 1B-a file:// acquire
+[#217](https://github.com/jlevy/metabrowser/pull/217) and Phase 1B source boundary and
+leased Git pin [#216](https://github.com/jlevy/metabrowser/pull/216) are ready for
+review; their remaining acceptance and publication obligations are listed below.
+URL open, HTTP serving of acquired Git, https/ssh acquire, and later phases are not
+started. The content-trust foundation from #209 is on `main`; #224 and its ancestors are
+in the stack base. Landing remains `mb-n2ro` and requires explicit approval.
+The [alpha test plan](plan-2026-09-22-v012-alpha-testing.md) adds an incremental
+readiness gate without changing the full v0.12 milestone.
 
 ## Vision
 
@@ -189,25 +193,17 @@ The v0.10.0 release candidate establishes the implementation baseline for this p
   Every cache and provider route, record projection, and interaction controller added
   here needs its architecture-map row and exact production-path golden in the same
   change.
-- URL-opened roots remain gated on the untrusted capability profile tracked by
-  `mb-vib1`. Cache storage and clone components may land before that gate; serving
-  fetched content may not.
-  That gate is larger than one bead and is sequenced explicitly below — see
+- URL-opened roots must apply the landed untrusted capability profile (`mb-vib1`).
+  Serving fetched content remains gated on proving that integration at each new entry
+  point — see
   [The gate that decides when this ships](#the-gate-that-decides-when-this-ships).
-- Metabrowser already depends on Pydantic, JSON Schema, ruamel.yaml, PyYAML, and
-  frontmatter-format. SoftSchema remains a proposed first-party package over the same
-  boundary, but Phase 1A selects an exact release from current metadata rather than
-  carrying the plan’s former v0.7.0 pin forward.
-  SoftSchema v0.8.1 was published on 2026-09-11 and fixes serialization of semantic
-  `model_validator` failures, which cache validation must report as data rather than
-  turn into a second exception.
-  The project owner has confirmed that packages published from the `jlevy` first-party
-  namespace are exempt from the 14-day delay.
-  Phase 1A may therefore adopt v0.8.1 without waiting until 2026-09-25, but it must
-  still review that exact release against v0.8.0, add the SoftSchema row to
-  [`SUPPLY-CHAIN-SECURITY.md`](../../../../SUPPLY-CHAIN-SECURITY.md), verify released
-  metadata and artifact hashes, update `uv.lock`, and run the full supply-chain and
-  distribution gates.
+- The stack uses SoftSchema 0.8.1 alongside Pydantic, JSON Schema, ruamel.yaml, PyYAML,
+  and frontmatter-format.
+  Its release review, first-party exception, and artifact hashes are recorded in
+  [`SUPPLY-CHAIN-SECURITY.md`](../../../../SUPPLY-CHAIN-SECURITY.md), and `uv.lock`
+  fixes the installed graph.
+  The supply-chain and installed-distribution gates verify that boundary; changing the
+  selection requires a new review.
 
 The v0.10.0 revision and PR-facing comparison path needs blobs.
 Phase 0 remeasured every route against full, blobless, and converged stores and chose
@@ -223,38 +219,27 @@ implementation branch is created from it.
 
 The second gate controls when acquired content may be served.
 A fetched repository is third-party content, so serving one requires the untrusted
-capability profile. That profile is `mb-vib1`, which is blocked by `mb-cun0` — sandboxed
-`/raw` responses and same-origin proof on `/api`. Both are open `P1` tasks belonging to
-[the HTML rendering and content-trust plan](plan-2026-08-06-html-rendering-and-trust-model.md),
-which is `Status: Draft` with nothing implemented.
+capability profile, sandboxed `/raw` responses, and same-origin proof on `/api`. The
+foundation (`mb-cun0`, `mb-vib1`, and review `mb-d658`) landed on `main` through #209.
+The Git pin and URL-serving paths must still prove that they apply it.
 
 ```text
 mb-i57d  release v0.10.0 from main
    └──► mb-xxhi  verify released main and open v0.12 implementation
-           ├──► cache format, acquisition, source boundary, immutable projection (mb-z335)
-           └──► mb-cun0  sandbox /raw, same-origin proof on /api
-                    └──► mb-vib1  capability set and --untrusted profile
-                              └──► mb-d658  reviewed trust-chain PR, stacked after mb-z335
-                                       └──► mb-j439  integration base for repository URL open
-                                                └──► mb-ew38  repository URL open
-                                                         └──► mb-innz  reviewed URL-open PR
-                                                                  └──► mb-jlon  selected-ref jobs
-                                                                           └──► mb-bf94  reviewed job PR
-                                                                                    └──► mb-2xq7  selected branch
+           └──► cache format, acquisition, source boundary, immutable projection (mb-z335)
+                    └──► mb-j439  verify the integration base includes #209 from main
+                             └──► mb-ew38  repository URL open
+                                      └──► mb-innz  reviewed URL-open PR
+                                               └──► mb-jlon  selected-ref jobs
+                                                        └──► mb-bf94  reviewed job PR
+                                                                 └──► mb-2xq7  selected branch
 ```
 
-Two consequences, both worth stating plainly rather than discovering during
-implementation:
-
-- **Every estimate for this feature must include that chain.** The cache work alone does
-  not produce a user-visible result; the first thing anyone can actually open is gated
-  on a security workstream in another document.
-- **After the release gate, the trust and cache lanes are independent.** `mb-cun0` and
-  `mb-vib1` have no dependency on the cache or Git status beyond their own order, so
-  they can proceed in parallel with Phase 0 through 1B-c. Sequencing them alongside
-  rather than after keeps the serving gate off the post-release critical path.
-  Because the formal stack is linear, their reviewed PR (`mb-d658`) publishes directly
-  after the immutable Git-tree source and becomes the base for repository URL opening.
+The cache work alone does not produce URL serving.
+The Phase 2A branch must include the landed trust commits and verify the untrusted
+profile on acquired content.
+Git working tree status is a separate path for attached filesystem subjects; it does not
+gate a worktree-free repository store.
 
 This plan does not absorb that work or restate its design.
 It records the dependency, names the beads, and treats “serving is gated” as a
@@ -1311,7 +1296,7 @@ with the parsing rule and version-string cases.
 | Gate | Floor | Below the floor |
 | --- | --- | --- |
 | Acquisition, including blobless acquisition | **Patched release:** 2.43.7, 2.44.4, 2.45.4, 2.46.4, 2.47.3, 2.48.2, 2.49.1, 2.50.1, or any newer release | URL opening is refused with a typed `unsupported_git_version` state naming the detected and required upstream versions. Local-path browsing is unaffected |
-| Cache integrity (`is_clean`) | **2.36** | Reported unavailable, never inferred clean — see the [Git-status plan](plan-2026-08-26-git-status-and-working-tree-diffs.md) |
+| Attached working-tree status (`is_clean`) | **2.36** | Reported unavailable, never inferred clean; this is not a worktree-free cache gate — see the [Git-status plan](plan-2026-08-26-git-status-and-working-tree-diffs.md) |
 
 The acquisition floor is a security floor, decided 2026-09-16 from upstream release
 notes.
@@ -1767,14 +1752,21 @@ detail.
 
 ### Phase 1B: Generic Git cache and repository URL open
 
-This phase lands in five additive slices.
-Each can merge with its own records, routes, goldens, and recovery behavior before the
-next slice begins.
+The foundation has acquisition, content-source and immutable-revision slices; #216
+consolidates the latter two.
+Complete their remaining acceptance before the URL-open phase.
+Subsequent phases each get a new PR above the current stack tip, with records, routes,
+goldens and recovery evidence appropriate to that phase.
+Review and publish each phase before starting its dependents; land the stabilized stack
+together. The
+[next-PR sequence](plan-2026-09-22-v012-alpha-testing.md#next-prs-and-agent-handoff)
+names the acceptance owners and testing checkpoints.
 
 #### Phase 1B-a: Acquire and reuse a shared repository store (`mb-h51g`, `mb-dg00`)
 
-Draft [#217](https://github.com/jlevy/metabrowser/pull/217) implements file:// acquire
-without serving. https and ssh are classified and refused.
+[#217](https://github.com/jlevy/metabrowser/pull/217) is ready for review and implements
+file:// acquire without serving.
+https and ssh are classified and refused.
 Review and publication remain `mb-k900`. `mb-dg00` still owns missing golden sessions.
 
 - [x] Add conservative source normalization, and claim uniquified slugs under the
@@ -1793,9 +1785,11 @@ Review and publication remain `mb-k900`. `mb-dg00` still owns missing golden ses
   between the commits.
 - [x] Reuse a valid cache hit without network access, provider detection, or credential
   lookup, including against an application home the process cannot write.
-- [x] Prefetch the default revision’s tree blobs before publication, start object
-  convergence only after serving, and persist honest partial, converging, complete, and
-  failed states.
+- [x] Prefetch the default revision’s tree blobs before publication and record the
+  acquired store as `complete` for a full fetch or `converging` for a blobless fetch.
+  These records do not start a background convergence worker.
+  Post-serving background convergence belongs to Phase 2B (`mb-bgn8`), so it does not
+  block publication of this acquisition-only slice.
 - [ ] Apply the Phase 0 lazy-fetch decision on every read path, and prove a
   not-yet-converged blob read behaves as decided both online and offline.
 - [ ] Run those no-lazy-fetch acceptance tests against the lowest admitted Git release
@@ -1807,8 +1801,8 @@ Review and publication remain `mb-k900`. `mb-dg00` still owns missing golden ses
   [Git version gates](#git-version-gates).
 - [x] Replace the test oracle for the URL grammar, version gates, object requests, and
   the acquisition machine with the production functions, and replay the same fixtures.
-- [ ] Force the untrusted profile for URL-opened roots once `mb-vib1` lands; until then
-  acquisition, identity, publication, and CLI inspection may ship, and serving may not.
+- [ ] Verify the landed untrusted profile on every URL-opened root and pin entry point;
+  acquisition, identity, publication, and CLI inspection may ship before URL serving.
 - [ ] Add CLI goldens and docs for first open, cache hit, offline reuse, unsafe input,
   interrupted clone, read-only application home, unsupported Git version, and repair
   guidance.
@@ -1820,8 +1814,9 @@ replacement, repair, and purge use object, ref, record, and lease validation ins
 
 #### Phase 1B-b: Introduce the content-source boundary (`mb-3bna`, `mb-tsdc`)
 
-Draft [#216](https://github.com/jlevy/metabrowser/pull/216) implements the source
-boundary. Independent review and publication remain `mb-tsdc`.
+[#216](https://github.com/jlevy/metabrowser/pull/216) is ready for review and implements
+the source boundary.
+Remaining acceptance, independent review, and publication are tracked by `mb-tsdc`.
 
 - [x] Add `RepositorySubject`, `SourceSession`, `SourceCapabilities`, `ContentHandle`,
   and `ContentSource`, with one active attached-filesystem subject per server/browser
@@ -1833,18 +1828,23 @@ boundary. Independent review and publication remain `mb-tsdc`.
   `resolve_content_container`, `stat_content`, and `read_content_window` over an opaque
   `ContentRef`, answering an attached folder and a pinned revision alike, with an
   explicit byte maximum on every read and one catchable failure family.
-  Keep `resolve_path`, `served_root`, and `open_content` filesystem-only and
-  capability-gate legacy hooks on a non-filesystem subject.
+  Keep `resolve_path` and `served_root` filesystem-only, remove the unreleased
+  unrestricted `open_content` hook, and capability-gate legacy hooks on a non-filesystem
+  subject.
 - [x] Return typed unsupported capability results for recency, ignore state, watchers,
   activity, and mutation rather than fabricating values.
-- [ ] Update built-in binary, structured, agent-log, diff, image, and Markdown hooks,
-  route parity, and goldens; independently review and publish through `mb-tsdc`.
+- [x] Adapt binary, structured, agent-log, and diff hooks to bounded content ports, and
+  image and Markdown delivery to the Git content source.
+  Focused route tests cover these consumers in
+  `tests/test_git_revision_content_routes.py`.
+- [ ] Complete the source-boundary acceptance and CLI golden coverage, then
+  independently review and publish through `mb-tsdc`.
 
 #### Phase 1B-c: Serve immutable Git revisions (`mb-z335`, `mb-hoae`)
 
-Draft [#216](https://github.com/jlevy/metabrowser/pull/216) implements a leased
-`file://` pin for `metab --show` and non-cache `--api`. HTTP `--walk` / `--check-api` /
-serve still refuse Git sources.
+[#216](https://github.com/jlevy/metabrowser/pull/216) is ready for review and implements
+a leased `file://` pin for `metab --show` and non-cache `--api`. HTTP `--walk` /
+`--check-api` / serve still refuse Git sources.
 Independent review and publication remain `mb-hoae`.
 
 - [x] Add `AttachedWorktreeTarget` and `RepositoryStoreTarget` to the one Git process
@@ -1863,34 +1863,45 @@ Independent review and publication remain `mb-hoae`.
 - [x] Hold a cross-process shared maintenance lock for each live subject and durable
   private refs for offline-promised OIDs; GC, repack, and reclamation require the
   exclusive lock.
-- [ ] Define symlink, gitlink, LFS-pointer, oversized-blob, promisor-miss,
-  invalid-UTF-8, and newline-name behavior and pin each with focused tests.
+- [x] Define symlink, gitlink, LFS-pointer, oversized-blob, promisor-miss,
+  invalid-UTF-8, and newline-name behavior with focused source and route tests in
+  `tests/test_git_tree_source.py` and `tests/test_git_revision_content_routes.py`.
+- [ ] Complete installed-CLI acceptance for immutable Git content, including the
+  minimum-Git evidence in the [alpha test plan](plan-2026-09-22-v012-alpha-testing.md).
+  URL-serving browser acceptance belongs to Phase 2A.
 - [x] Prove two processes share one object store while browsing different OIDs without a
   checkout, index, local branch, or working-tree mutation.
 - [ ] Independently review and publish through `mb-hoae` before any URL route claims it
   can serve a repository.
 
-#### Phase 2A: Open repository and hosted web URLs (`mb-12cz`, `mb-ew38`, `mb-innz`)
+#### Phase 2A: Open repository and hosted web URLs (`mb-12cz`, `mb-s1lt`, `mb-ew38`, `mb-innz`)
 
 - [ ] Add the trusted installed-plugin `ProviderUrlReducer` registration point; keep
   operator-directory plugins JavaScript-only and keep provider syntax out of cache
   identity and records.
 - [ ] Require declared scheme/host claims plus `NotApplicable`, `Reduced`, and terminal
   `Rejected` outcomes; refuse duplicate or overlapping claims before startup.
-- [ ] Change the CLI root boundary from `Path | None` to `str | None`; preserve URL
-  bytes until classification and keep path-only modes receiving resolved paths.
+- [x] Preserve the CLI root as `str | None` until generic source classification and keep
+  path-only modes receiving resolved paths in `cli/main.py`.
+- [ ] Connect installed provider URL reduction to that root boundary and preserve the
+  reduced selection through acquired-Git serving.
 - [ ] Reduce provider web URLs to a clone URL plus a selection record: the shapes in the
   variants table, line and column anchors, `?plain=1`, dropped tracking and display
   parameters, reserved-namespace refusal, and configurable Enterprise hosts.
+- [ ] Implement credential-free HTTPS Git acquisition through `mb-s1lt`, preserving the
+  existing source/store publication, bounded execution, prompt suppression and cache-hit
+  behavior. Prove a cold public repository URL as well as warm and offline reuse.
+  Parent `mb-bi2c` retains separately tested SSH acquisition; it is not closed by the
+  HTTPS subtask.
 - [ ] Open a repository-root URL through `resolve_open_target`, reuse the repository
   store without a network or provider credential lookup, and pass one immutable subject
   to server and inspection paths.
 - [ ] Preserve a pull-request number as an optional provider target even before a
   provider adapter can hydrate it.
 - [ ] Independently review and publish the URL-open slice through `mb-innz` on the exact
-  green immutable-source head.
+  green integration head recorded by `mb-j439` at the current stack tip.
 
-#### Phase 2B: Provider jobs and selected refs (`mb-jlon`, `mb-bf94`)
+#### Phase 2B: Provider jobs, selected refs, and convergence (`mb-jlon`, `mb-bgn8`, `mb-bf94`)
 
 - [ ] Keep `selection.py` pure.
   Put `fetch_selected_ref`, `request_ref_fetch`, progress, cancellation, and typed stage
@@ -1943,6 +1954,12 @@ Independent review and publication remain `mb-hoae`.
 - [ ] Keep provider schemas, `gh`, auth, catalog, chooser, purge, and automatic eviction
   out of this phase. Never mutate an attached checkout or treat its remote as shared
   authority.
+- [ ] Add bounded background object convergence (`mb-bgn8`) after acquired-Git serving
+  and the job foundation exist.
+  Start only after serving begins, preserve cached content across cancellation or
+  failure, and report honest partial, converging, complete, and failed states.
+  Prove startup, completion, interruption/restart, and no implicit network on reads.
+  This follow-up does not block Phase 1B-a acquisition publication.
 - [ ] Prove cancellation, same-key coalescing, unknown-principal non-coalescing,
   force-push/no-regression races, fork-source isolation, attached-checkout non-mutation,
   forged or unregistered handles, context/lease mismatch, expiry, revocation, and
@@ -2021,9 +2038,9 @@ vertical slice.
 | 1B-a generic Git cache | 1A | Git-status clean predicate, GitHub, chooser, serving | Any supported clone URL publishes or reuses one shared worktree-free store |
 | 1B-b source boundary (`mb-3bna`, `mb-tsdc`) | 1B-a | GitHub, provider API, immutable Git content | Filesystem serving runs through one capability-aware source session |
 | 1B-c immutable source (`mb-z335`, `mb-hoae`) | 1B-b | GitHub, provider API, chooser | Concurrent full-OID trees and blobs open without a checkout or shared index |
-| Untrusted-content profile (`mb-cun0`, `mb-vib1`, `mb-d658`) | 1B-c for publication; implementation is independent | Cache, GitHub, provider API | Fetched content is served only under the sandboxed untrusted profile |
-| 2A repository URL open (`mb-12cz`, `mb-ew38`, `mb-innz`) | Untrusted-content profile layer, provider URL-reducer SDK | Provider API or schemas | Any supported repository URL opens an immutable revision subject |
-| 2B provider-job foundation (`mb-jlon`, `mb-bf94`) | Green 1B-a acquisition and 2A URL-open PRs | Full catalog, chooser, purge | Independently reviewed provider jobs and selected-ref fetching for branches and GitHub |
+| Untrusted-content profile (`mb-cun0`, `mb-vib1`, `mb-d658`) | Landed on `main` through #209 | Cache, GitHub, provider API | Sandboxed raw responses, same-origin API proof, and the untrusted capability profile are available to the Git source |
+| 2A repository URL open (`mb-12cz`, `mb-s1lt`, `mb-ew38`, `mb-innz`) | Verified trust integration, immutable source, provider URL-reducer SDK | Provider API or schemas | Any supported repository URL opens an immutable revision subject |
+| 2B provider-job and convergence foundation (`mb-jlon`, `mb-bgn8`, `mb-bf94`) | Green 1B-a acquisition and 2A URL-open PRs | Full catalog, chooser, purge | Independently reviewed provider jobs and selected-ref fetching for branches and GitHub |
 | 2C selected branch (`mb-2xq7`, `mb-9aku`) | Green 2B provider-job PR | Provider API or schemas | Any exposed and authorized branch opens at its resolved immutable revision |
 | Later cache operations | Phase 2B jobs | Provider support | Generic list, inspect, refresh, and purge |
 | Later chooser | Generic catalog | GitHub | Instant switching among cached repositories |
@@ -2034,10 +2051,9 @@ Two dependencies leave this plan, and they leave in opposite directions.
 **Inbound:** the release gate (`mb-i57d` → `mb-xxhi`) blocks every v0.12 implementation
 bead so work begins from released `main`. Git-status Phase 1 (`mb-u4mf`) owns local
 working-tree semantics but does not gate integrity or serving of the worktree-free
-repository store.
-The content-trust chain (`mb-cun0` → `mb-vib1`, published by `mb-d658`)
-blocks URL serving in 2A and 2C, but not format, acquisition, or immutable-source tests.
-Those tracks can proceed independently after the release gate.
+repository store. The content-trust chain (`mb-cun0` → `mb-vib1`, reviewed by `mb-d658`)
+is on `main`. URL serving in 2A and 2C must verify it on the new entry points; format,
+acquisition, and immutable-source tests can proceed independently.
 
 **Outbound, depending on the extracted Phase 2B selected-ref foundation:**
 [the GitHub provider plan](plan-2026-08-27-github-provider-and-pull-requests.md) needs a
@@ -2133,9 +2149,11 @@ suite exercises the same acquisition path a user gets.
 
 ## Rollout and Compatibility
 
-Phase 1A and acquisition internals may land while the untrusted-profile dependency is
-open. The URL-to-serve route remains disabled until a remote root is forced into that
-profile. Local-path behavior does not change.
+The trust foundation is inherited from `main`. The URL-to-serve route remains disabled
+until each acquired root is forced into that profile and its integration is verified.
+Local-path behavior does not change.
+Keep the v0.12 implementation and testing PRs on one stack until stabilization and
+approved landing.
 
 `f01` and every listed v1 contract are unreleased at the time of this plan.
 There is no legacy cache reader to preserve yet.

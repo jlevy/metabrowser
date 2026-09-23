@@ -1,12 +1,17 @@
 # QA: v0.12 Repository Library and HTML Trust
 
-**Status:** Active procedure for the unreleased v0.12 Repository Library lane and the
-HTML-trust lane.
-It is not a release gate and it does not authorize serving acquired Git.
+**Status:** Active foundation procedure for the unreleased v0.12 Repository Library
+stack. HTML trust is included through released `main`. Acquired Git is inspectable
+through data modes; HTTP serving is not implemented at this stage.
 
-This runbook is how an agent or a human QAs those two unreleased lanes: automated
-coverage first, then numbered manual checks against **this** repository, with an
-explicit pass/fail for each step and a list of what this procedure cannot prove.
+The [v0.12 alpha test plan](project/specs/active/plan-2026-09-22-v012-alpha-testing.md)
+defines the later repository-URL and direct-PR milestones, manual browser matrix, and
+automated acceptance work.
+Use this runbook for the foundation that is executable now.
+
+This runbook tests the Git foundation and inherited HTML behavior: automated coverage
+first, then numbered manual checks against **this** repository, with an explicit
+pass/fail for each step and a list of what this procedure cannot prove.
 
 `metab --help` is the flag reference for the build you are running.
 The [command-line guide](command-line.md) is the other half: what each mode is for.
@@ -18,48 +23,47 @@ The HTML-trust invariant lives in
 [full-page HTML rendering and an explicit trust model](project/specs/active/plan-2026-08-06-html-rendering-and-trust-model.md)
 and [SECURITY.md](../SECURITY.md).
 
-Do not merge these lanes to `main`. Do not flatten the stack.
-Do not serve acquired Git (`mb-ew38`). Do not start archive-container work (`mb-380k`)
-or HTML follow-ons (`mb-d658`) from this runbook.
+Keep additional work on the existing stack until the stack is stabilized and approved
+for landing. This procedure tests the current foundation; it does not implement URL
+serving (`mb-ew38`) or archive containers (`mb-380k`).
 
 ## Pins
 
 Verify the live SHAs before a run.
 They move.
 
-The Repository Library review line is one formal GitHub stack, stack
-[#218](https://github.com/jlevy/metabrowser/pull/218). Do not check out the superseded
+The Repository Library review line is one formal GitHub stack,
+[#218](https://github.com/jlevy/metabrowser/stack/218). Do not check out the superseded
 crumb slices (#208, #210, #211–#215).
 
 | Lane | PR | Branch | Tip | What it adds |
 | --- | --- | --- | --- | --- |
-| Repository Library / Git pin | [#216](https://github.com/jlevy/metabrowser/pull/216) (consolidates #211–#215) | `cursor/v011-git-revision-pin-bd04` | the command below | Complete Phase 1B-c: GitPath / leased `file://` pin for `--show` and non-cache `--api`, empty-home floor refuse, this runbook |
-| HTML trust | [#209](https://github.com/jlevy/metabrowser/pull/209) | `cursor/v011-html-trust-preview-bd04` | the command below | `/raw` sandbox, `/api` same-origin proof, `--untrusted`, html preview kind |
+| Repository Library / Git pin | [#216](https://github.com/jlevy/metabrowser/pull/216) (consolidates #211–#215) | `cursor/v011-git-revision-pin-bd04` | the command below | GitPath / leased `file://` pin for `--show` and non-cache `--api`; review and acceptance work remains |
+| HTML trust | [#209](https://github.com/jlevy/metabrowser/pull/209), merged to `main` | Included in the integration tip | verify ancestry below | `/raw` sandbox, `/api` same-origin proof, `--untrusted`, HTML preview kind, plus subsequent mainline hardening |
 
 Every tip in this runbook is read from the live branch rather than written down, because
 a SHA copied into prose is a baseline nothing maintains and it is stale by the next
 push:
 
 ```shell
-git fetch origin cursor/v011-git-revision-pin-bd04 cursor/v011-html-trust-preview-bd04
-git rev-parse --short=8 origin/cursor/v011-git-revision-pin-bd04
-gh pr view 216 --json headRefOid,headRefName,url
-gh pr view 209 --json headRefOid,headRefName,url
+gh pr view 216 --repo jlevy/metabrowser --json headRefOid,headRefName,url
+gh pr view 209 --repo jlevy/metabrowser --json state,mergeCommit,url
+git merge-base --is-ancestor fd65812ba911e7fa0f6b5967d9240556c8c01c54 HEAD
 ```
 
-The two tips are **not** on one stack.
-HTML trust is a parallel landable phase on `main`. It is required before **serving**
-acquired Git and is not required to browse a leased pin with `--show` / `--api`. Run
-Repository Library steps on a checkout of `cursor/v011-git-revision-pin-bd04`. Run HTML
-steps only from a separate worktree of #209 so the runbook branch is not destroyed.
-Do not merge #209 into the Git pin line to “make HTML easier.”
+Run both the Repository Library and HTML regression steps on the same selected
+integration tip. HTML trust has landed and is inherited through `main`; no separate
+checkout of the merged HTML branch is needed.
+Serving acquired content still requires the URL-opening implementation to apply that
+trust profile and prove it against a populated cache.
 
 Layers of stack #218, bottom to top — the PRs that still exist as review units, not the
 crumb slices they folded in:
 
-`#125 → #134 → #136 → #139 → #140 → #217 → #216`
+`#125 → #134 → #136 → #139 → #140 → #217 → #216 → #225`
 
-Plus #209 parallel on `main`. Do not merge until `mb-n2ro`.
+New testing, stabilization, and feature PRs extend this chain.
+Landing is tracked by `mb-n2ro`.
 
 ## Constraints That Are Part of the Product
 
@@ -71,20 +75,18 @@ Plus #209 parallel on `main`. Do not merge until `mb-n2ro`.
   `git version 2.43.0` is below the floor: it must refuse acquire and **must not create
   the application home**. Do not weaken the floor to make a local run pass.
 - **https and ssh stay closed.** They are not acquired and not opened.
-- **`file://` is the only origin this release acquires.** A bare filesystem path is
-  never rewritten into a clone URL.
+- **`file://` is the only origin the current foundation acquires.** A bare filesystem
+  path is never rewritten into a clone URL.
 - **Nothing binds a port** on `--no-serve`, `--show`, or `--api`. “Serving” in the
   output is a failure on those modes.
 - **Do not serve acquired Git.** `metab file://…` without `--no-serve` / `--show` /
   `--api` must refuse.
   Serving a **local filesystem** root (v0.10) is a different product and is in scope for
   the regression steps below.
-- **Local overlay / `watch_backends` goldens are not the gate.**
-  `tests/test_browser_watch_backends.py` and related overlay goldens can fail on a
-  developer or agent host.
-  Do not regenerate those goldens from a local overlay.
-  CI is the gate. `make verify` remains the handoff; a local overlay miss is recorded,
-  not “fixed” by updating the pin.
+- **Investigate every test failure.** Watch-backend and overlay-dependent failures
+  require a recorded cause and comparable CI evidence.
+  Do not regenerate goldens to conceal a host difference or count a failed local
+  `make verify` as passed.
 
 ## Related Documentation
 
@@ -100,14 +102,19 @@ Plus #209 parallel on `main`. Do not merge until `mb-n2ro`.
 ### 0.1 Checkout and install
 
 ```shell
-git fetch origin cursor/v011-git-revision-pin-bd04
-git checkout -B cursor/v011-git-revision-pin-bd04 origin/cursor/v011-git-revision-pin-bd04
+# Use the current top PR, including later stabilization/testing layers.
+: "${ALPHA_PR:?Set ALPHA_PR to the current integration PR number}"
+QA_HEAD="$(gh pr view "$ALPHA_PR" --repo jlevy/metabrowser --json headRefOid --jq .headRefOid)"
+QA_CHECKOUT_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/mb-qa-checkout.XXXXXX")"
+git fetch origin "$QA_HEAD"
+git worktree add --detach "$QA_CHECKOUT_ROOT/checkout" "$QA_HEAD"
+cd "$QA_CHECKOUT_ROOT/checkout"
 git rev-parse HEAD
 make install
 ```
 
-**Pass:** `HEAD` matches `origin/cursor/v011-git-revision-pin-bd04`. `make install` uses
-uv only (`uv --config-file uv.toml sync --locked` and `npm ci` via Make).
+**Pass:** `HEAD` matches `QA_HEAD`. `make install` uses the locked uv Python environment
+and npm toolchain (`uv --config-file uv.toml sync --locked` and `npm ci` via Make).
 Do not activate `.venv` or invoke raw `python` / `pip`.
 
 **Fail:** A different tip with no note; a second environment manager; a contaminated
@@ -183,11 +190,10 @@ prints `Serving`.
 **Fail:** A failed assertion, a 500-shaped CLI envelope, or a golden update performed
 without an intended product change.
 
-**Out of this selection on purpose:** `tests/test_browser_watch_backends.py` and overlay
-goldens.
-If you run `make verify` or `make test`, record an overlay/`watch_backends` miss
-as an environment/CI note, not as a Repository Library defect, unless the failure is a
-real assertion about acquire, pin, or refuse.
+This selection does not cover watcher/overlay behavior.
+The complete `make verify` gate still applies.
+Diagnose any failure before attributing it to the environment and record unresolved
+failures as failures.
 
 Regenerate the in-process pin golden only after an intended change:
 
@@ -410,20 +416,15 @@ Tree has `"subject": "git_revision"` and `"kind": "tree"`. Progress has
 without a `g1-` prefix succeeding as if it were a wire (the query `path` is a wire);
 missing `--api` subject; raw cache paths in the body.
 
-## Phase 5: HTML Trust (Separate Worktree Only)
+## Phase 5: HTML Trust on the Integration Tip
 
-The HTML-trust tip is based on `main`, not on the Git-pin tip.
-Use a worktree:
+The selected integration tip must include the merged HTML trust implementation:
 
 ```shell
-git fetch origin cursor/v011-html-trust-preview-bd04
-git worktree add /tmp/mb-qa-html origin/cursor/v011-html-trust-preview-bd04
-cd /tmp/mb-qa-html
-git rev-parse HEAD   # compare with `gh pr view 209 --json headRefOid`
-make install
+git merge-base --is-ancestor fd65812ba911e7fa0f6b5967d9240556c8c01c54 HEAD
 ```
 
-Do not `git checkout` #209 inside the runbook branch.
+Keep running from that tip so these checks exercise the actual combined build.
 
 ### 5.1 Automated HTML tests
 
@@ -448,8 +449,8 @@ sandbox; `/api` accepting a cross-site write.
 
 ### 5.2 Manual filesystem HTML (not acquired Git)
 
-#209’s `--show` golden uses a throwaway `showroot`. Recreate that shape; do not serve a
-`file://` pin.
+The HTML `--show` golden uses a throwaway `showroot`. Recreate that shape; do not serve
+a `file://` pin.
 
 ```shell
 HTML_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/mb-qa-html.XXXXXX")"
@@ -469,7 +470,7 @@ still classified as catch-all `text`.
 
 `--untrusted` is also `METAB_UNTRUSTED=1`. `--no-active-content` /
 `METAB_ACTIVE_CONTENT=0` is the individual script switch.
-See the #209 [command-line guide](command-line.md) on that branch.
+See the [command-line guide](command-line.md).
 
 ### 5.3 Optional: local filesystem serve for `/raw` headers
 
@@ -478,7 +479,7 @@ Skip if the environment has no way to issue HTTP. Do not point the server at a c
 store.
 
 ```shell
-# In the #209 worktree only. Stop the process when done.
+# On the selected integration tip. Stop the process when done.
 uv --config-file uv.toml run --frozen metab "${HTML_ROOT}" --no-open
 # Then GET /raw/page.html and require the opaque-origin sandbox headers
 # pinned by tests/test_content_trust.py. Do not use a browser that the
@@ -510,7 +511,7 @@ https was acquired, or `file://` was served).
 | Archive containers | `mb-380k` |
 | Real browser HTML preview | Needs a browser; Phase 5.3 is optional and header-level |
 | Below-floor acquire success | Forbidden; ubuntu 2.43.0 must refuse |
-| Overlay / `watch_backends` local goldens | CI is the gate |
+| Overlay / `watch_backends` host differences | Investigate separately; record any unresolved failure |
 | Landing / merging the v0.12 stack | `mb-n2ro`; this runbook does not merge |
 
 ## Hunt List (File a Bead Only for a Real Defect)
@@ -530,7 +531,8 @@ While executing, treat these as bugs if they happen:
 Honest parents: `mb-k7zy` (epic), `mb-z335` (Git-tree source / pin), `mb-3bna` (source
 session), `mb-h51g` (acquisition), `mb-cun0` (HTML `/raw` sandbox).
 Do not start `mb-ew38`, `mb-380k`, `mb-oueh` (unless the defect is exactly that bead),
-or `mb-d658`. Do not close those product beads from a QA run.
+or reopen the completed HTML publication bead `mb-d658`. Do not close unfinished product
+beads from a QA run.
 
 Record pass/fail in the pull request or the QA bead.
 Do not rewrite this procedure into a changelog of one host’s run.

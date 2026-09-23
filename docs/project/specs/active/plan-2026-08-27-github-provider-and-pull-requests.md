@@ -1,15 +1,22 @@
 # Feature: Hosted Review Model and GitHub Provider
 
-**Date:** 2026-08-27 (refreshed 2026-09-19)
+**Date:** 2026-08-27 (refreshed 2026-09-22)
 
 **Author:** Joshua Levy (with LLM assistance)
 
 **Status:** Phase 0 through 0D and repository-library Phase 1A are implemented on open
-GitHub stack [#218](https://github.com/jlevy/metabrowser/stack/218), not on `main`.
-Cache Phase 1B is on draft [#217](https://github.com/jlevy/metabrowser/pull/217) and
-[#216](https://github.com/jlevy/metabrowser/pull/216). Provider URL open, `gh`
-acquisition, and hosted-review views are not started.
+GitHub stack [#218](https://github.com/jlevy/metabrowser/stack/218), above the released
+v0.11.0 `main`. Cache Phase 1B is on ready-for-review
+[#217](https://github.com/jlevy/metabrowser/pull/217) and
+[#216](https://github.com/jlevy/metabrowser/pull/216); #216 combines the source boundary
+and leased Git pin. The alpha test plan is on
+[#225](https://github.com/jlevy/metabrowser/pull/225) above #216. The #209 content-trust
+foundation is on `main`, including in the stack base through #224. Provider URL open,
+`gh` acquisition, and hosted-review views are not started.
 Landing remains `mb-n2ro` and requires explicit approval.
+The [alpha test plan](plan-2026-09-22-v012-alpha-testing.md) tests incremental readiness
+through direct PR viewing before the full milestone reaches the bounded PR index and
+virtual navigation.
 
 ## Vision
 
@@ -1014,10 +1021,13 @@ shared-mirror design head, with no compatibility layer:
 This phase is owned by the
 [repository-library plan](plan-2026-08-11-open-repo-from-git-url.md), but it is the
 first implementation prerequisite here.
-Phase 1A is on ready [#140](https://github.com/jlevy/metabrowser/pull/140). file://
-acquire is draft [#217](https://github.com/jlevy/metabrowser/pull/217). The leased
-Git-tree pin is draft [#216](https://github.com/jlevy/metabrowser/pull/216). https/ssh
-acquire, HTTP serving, and the remaining `mb-dg00` goldens are not done.
+Phase 1A is on nondraft [#140](https://github.com/jlevy/metabrowser/pull/140) with green
+CI; final stack review remains open.
+file:// acquire is ready for review on
+[#217](https://github.com/jlevy/metabrowser/pull/217). The source boundary and leased
+Git-tree pin share ready-for-review
+[#216](https://github.com/jlevy/metabrowser/pull/216). https/ssh acquire, HTTP serving,
+and the remaining `mb-dg00` goldens are not done.
 
 - [x] Publish the versioned application home, strict source/store records, locks, atomic
   no-replace promotion, quarantine, trash, and deterministic inspection routes.
@@ -1030,7 +1040,7 @@ acquire, HTTP serving, and the remaining `mb-dg00` goldens are not done.
   offline reuse, concurrent distinct revisions, interruption recovery, and future-format
   refusal in goldens.
 
-### Phase 2: GitHub URLs, selected refs, and branches (`mb-12cz`, `mb-ew38`, `mb-jlon`, `mb-bf94`, `mb-2xq7`)
+### Phase 2: GitHub URLs, selected refs, and branches (`mb-12cz`, `mb-s1lt`, `mb-ew38`, `mb-jlon`, `mb-bf94`, `mb-2xq7`)
 
 The GitHub implementation after Phase 0 also uses one formal stacked pull request per
 phase. Every publication bead requires independent review, the review shortcut,
@@ -1038,13 +1048,11 @@ phase. Every publication bead requires independent review, the review shortcut,
 OIDs, final green CI, and registration with `mb-n2ro`; it never merges the PR. The next
 implementation depends on the preceding green publication bead.
 The stack is linear.
-The content-trust chain (`mb-cun0` → `mb-vib1`) may be implemented in parallel with the
-cache layers, but it publishes as its own layer directly after the immutable Git-tree
-source, because serving fetched content requires it.
-Before Phase 2A begins, `mb-j439` records that layer’s green head and immutable OID as
-the one integration head containing the exact shared-mirror design, Phase 0D
-source-binding correction, generic repository store, cache goldens, immutable Git-tree
-source, and untrusted-profile commits.
+The content-trust chain (`mb-cun0` → `mb-vib1`) was reviewed in `mb-d658` and landed
+through #209 on `main`. It requires no separate layer atop the current stack.
+Before Phase 2A begins, `mb-j439` records one integration head containing the exact
+shared-mirror design, Phase 0D source-binding correction, generic repository store,
+cache goldens, immutable Git-tree source, and the landed untrusted-profile commits.
 It verifies every recorded OID as an ancestor and runs `make verify`; Phase 2A cannot
 choose one prerequisite lineage while omitting another.
 
@@ -1054,11 +1062,10 @@ choose one prerequisite lineage while omitting another.
 | 0D source-binding correction | `mb-z2mc` | `mb-9u45` | Green shared-mirror design head |
 | 1A cache format foundation | `mb-ire2`, `mb-xa0p`, `mb-4gnu`, `mb-k54c` | `mb-lm5m` | Green Phase 0D head |
 | 1B-a worktree-free acquisition | `mb-dxmb`, `mb-h51g`, `mb-dg00` | `mb-k900` | Green Phase 1A head |
-| 1B-b content-source boundary | `mb-3bna` | `mb-tsdc` | Green worktree-free acquisition head |
-| 1B-c immutable Git-tree source | `mb-z335` | `mb-hoae` | Green content-source boundary head |
-| Untrusted-content profile | `mb-cun0`, `mb-vib1` | `mb-d658` | Green Phase 1B-c head |
-| 2A repository URL open | `mb-12cz`, `mb-ew38` | `mb-innz` | Exact green untrusted-content profile head and OID recorded by `mb-j439`, containing every format, store, source, and trust prerequisite |
-| 2B provider-job and selected-ref foundation | `mb-jlon` | `mb-bf94` | Green Phase 2A head |
+| 1B-b and 1B-c source boundary and immutable Git-tree source | `mb-3bna`, `mb-z335` | `mb-tsdc`, `mb-hoae` | Ready-for-review #216 over the green acquisition head; both reviews cover the consolidated PR |
+| Untrusted-content profile | `mb-cun0`, `mb-vib1` | `mb-d658` | Landed through #209 on `main`; verify its commits in the Phase 2A integration base |
+| 2A repository URL open | `mb-12cz`, `mb-s1lt`, `mb-ew38` | `mb-innz` | Exact green current stack tip recorded by `mb-j439`, including reviewed source/pin and landed trust commits |
+| 2B provider jobs, selected refs, and background convergence | `mb-jlon`, `mb-bgn8` | `mb-bf94` | Green Phase 2A head |
 | 2C selected-branch integration | `mb-2xq7` | `mb-9aku` | Green Phase 2B head |
 | 3A provider foundation | `mb-y1ax`, `mb-p4sw`, `mb-s123`, `mb-ji83`, `mb-s0gv`, `mb-i3xc`, `mb-2oxp`, `mb-cbak` | `mb-k7lc` | Green Phase 2C head |
 | 3B direct PR cache | `mb-h64t` | `mb-cpco` | Green Phase 3A head |
@@ -1332,8 +1339,8 @@ The release phases are implementation-ready at these file and function seams:
 | Generic store (`mb-dxmb`, `mb-h51g`, `mb-dg00`, `mb-k900`) | Green cache-format PR | Any supported Git source resolves to one worktree-free store reusable offline |
 | Content-source boundary (`mb-3bna`, `mb-tsdc`) | Green generic-store PR | Existing filesystem serving runs through one generation- and capability-aware source session |
 | Immutable revision source (`mb-z335`, `mb-hoae`) | Green content-source PR | Concurrent full-OID trees and blobs are browseable without a checkout or shared index |
-| Untrusted-content profile (`mb-cun0`, `mb-vib1`, `mb-d658`) | Green immutable-revision-source PR | Fetched content is served only through sandboxed raw responses, same-origin API proof, and the capability-gated untrusted profile |
-| GitHub URL reducer (`mb-12cz`, `mb-ew38`) | Green untrusted-content profile PR | Any supported GitHub repository URL opens without the GitHub API |
+| Untrusted-content profile (`mb-cun0`, `mb-vib1`, `mb-d658`) | Landed on `main` through #209 and inherited by stack #218 | Fetched content is served only through sandboxed raw responses, same-origin API proof, and the capability-gated untrusted profile |
+| GitHub URL opening (`mb-12cz`, `mb-s1lt`, `mb-ew38`) | Green source/pin PR and verified trust integration | Any supported GitHub repository URL opens without the GitHub API |
 | Provider jobs and selected refs (`mb-jlon`, `mb-bf94`) | Green worktree-free acquisition and repository URL-open PRs | Bounded, cancellable, full-OID-verified selected-ref acquisition is independently reviewed before any branch or PR view uses it |
 | Selected branch (`mb-2xq7`, `mb-9aku`) | Green provider-job and selected-ref PR | Any exposed and authorized branch opens as another immutable subject |
 | GitHub transport and repository summary (`mb-y1ax`, `mb-p4sw`, `mb-s123`, `mb-ji83`, `mb-i3xc`, `mb-2oxp`, `mb-cbak`) | Format, generic jobs, owner-only cache | Auth, adapter lifecycle, broker-pinned Git credential projection, shared snapshot kernel, and one offline repository summary for managed or attached sources |

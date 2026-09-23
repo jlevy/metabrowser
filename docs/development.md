@@ -74,7 +74,10 @@ uv --config-file uv.toml run --frozen metab ./tests/manual-fixtures --check-api
 uv --config-file uv.toml run --frozen metab ./tests/manual-fixtures --no-open
 ```
 
-Unreleased v0.12 Repository Library and HTML-trust QA is
+Start v0.12 testing with the
+[alpha test plan](project/specs/active/plan-2026-09-22-v012-alpha-testing.md), which
+separates executable foundation checks from future GitHub URL and PR acceptance.
+Detailed foundation and HTML regression steps are in
 [QA: v0.12 Repository Library](qa-v012-repository-library.md).
 
 The quality, test, audit, and build targets install both locked environments before
