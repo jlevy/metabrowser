@@ -242,11 +242,26 @@ class RepositoryStore(_MachineRecord):
     acquisition: StoreAcquisition
 
 
+type RecordedOutcome = Literal[
+    "succeeded",
+    "default_branch_unknown",
+    "origin_unavailable",
+    "fetch_failed",
+    "validation_failed",
+]
+
+
 class StoreOperation(_MachineRecord):
-    """The last Git operation that finished against a store."""
+    """The last Git operation that finished against a store, and how, by name.
+
+    A refresh records its typed outcome, so a later start reports what happened rather
+    than a bare failure. ``default_branch_unknown`` fetched everything but found no
+    branch at the origin's HEAD. An outcome that says why no fetch ran in one process,
+    such as another process refreshing the store, is not recorded.
+    """
 
     kind: Literal["acquire", "refresh"]
-    outcome: Literal["succeeded", "failed", "cancelled"]
+    outcome: RecordedOutcome
     at: CanonicalTimestamp
 
 
@@ -278,6 +293,7 @@ __all__ = [
     "ApplicationConfig",
     "CacheLayout",
     "ConfigUpgrade",
+    "RecordedOutcome",
     "RepositorySource",
     "RepositorySourceState",
     "RepositoryStore",

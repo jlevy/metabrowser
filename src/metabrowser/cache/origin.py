@@ -73,6 +73,19 @@ def mirror_fetch_args(*, remote: str = "origin", prune: bool) -> list[str]:
     ]
 
 
+def mirror_prune_args(*, remote: str = "origin") -> list[str]:
+    """Delete the mirror refs whose branch or tag the origin no longer has, and nothing else.
+
+    ``remote prune`` maps the origin's refs through the same refspecs a fetch uses,
+    passed as configuration because the store configures none. It only deletes, so a
+    refresh runs it before the atomic fetch when one transaction cannot both delete
+    ``side`` and create ``side/x``.
+    """
+
+    refspecs = [arg for spec in MIRROR_REFSPECS for arg in ("-c", f"remote.{remote}.fetch={spec}")]
+    return [*origin_protocol_args(), *refspecs, "remote", "prune", remote]
+
+
 def parse_symref_head(stdout: bytes) -> tuple[str | None, str]:
     """The ref the origin's HEAD names, if any, and the object ID it resolves to.
 
@@ -110,6 +123,7 @@ __all__ = [
     "OriginHeadError",
     "ls_remote_head_args",
     "mirror_fetch_args",
+    "mirror_prune_args",
     "origin_protocol_args",
     "parse_symref_head",
     "remote_tracking_ref",

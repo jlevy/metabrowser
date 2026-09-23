@@ -214,6 +214,105 @@ def test_a_branch_deleted_upstream_is_pruned_and_its_commits_stay_readable(
         asyncio.run(resolve_pin(mirror.target, ref="doomed"))
 
 
+def test_a_branch_replaced_by_a_directory_of_branches_does_not_wedge_the_mirror(
+    mirror: _Mirror, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``side`` deleted and ``side/x`` pushed: one transaction cannot do both.
+
+    Git refuses the atomic fetch with a ref-lock conflict, the stale ref is pruned on
+    its own, and the fetch runs again; every later refresh works too.
+    """
+
+    _git(mirror.work, "branch", "side")
+    mirror.push("side")
+    assert _update(mirror) is RefreshOutcome.succeeded
+    assert "refs/remotes/origin/side" in _refs(mirror.published.git_dir)
+    mirror.push("--delete", "side")
+    _git(mirror.work, "branch", "-D", "side")
+    _git(mirror.work, "switch", "-q", "-c", "side/x")
+    nested = mirror.commit("x.txt", "nested\n", "nested branch")
+    mirror.push("side/x")
+    import metabrowser.cache.update as update_module
+
+    real_run_git = update_module.run_git
+    commands: list[str] = []
+
+    async def observed(args: list[str], **kwargs: Any) -> bytes:
+        commands.append(" ".join(arg for arg in args if not arg.startswith(("-c", "protocol."))))
+        return await real_run_git(args, **kwargs)
+
+    monkeypatch.setattr(update_module, "run_git", observed)
+
+    assert _update(mirror) is RefreshOutcome.succeeded
+
+    # The atomic fetch refused, the prune ran on its own, and the fetch ran again.
+    fetches = [command for command in commands if " fetch " in f" {command} "]
+    assert len(fetches) == 2
+    assert any("remote prune origin" in command for command in commands)
+    monkeypatch.setattr(update_module, "run_git", real_run_git)
+    refs = _refs(mirror.published.git_dir)
+    assert "refs/remotes/origin/side" not in refs
+    assert refs["refs/remotes/origin/side/x"] == nested
+    assert mirror.state().last_operation.outcome == "succeeded"
+    assert _update(mirror) is RefreshOutcome.succeeded
+
+
+def _case_insensitive(directory: Path) -> bool:
+    probe = directory / "Case-Probe"
+    probe.write_text("", encoding="utf-8")
+    try:
+        return (directory / "case-probe").exists()
+    finally:
+        probe.unlink()
+
+
+def test_a_case_only_branch_rename_does_not_wedge_the_mirror(mirror: _Mirror) -> None:
+    """``Topic2`` renamed ``topic2``: on a case-insensitive file system one ref file."""
+
+    if not _case_insensitive(mirror.published.git_dir):
+        pytest.skip("the file system is case-sensitive, so a case-only rename cannot clash")
+    _git(mirror.work, "branch", "Topic2")
+    mirror.push("Topic2")
+    assert _update(mirror) is RefreshOutcome.succeeded
+    tip = _rev_parse(mirror.work, "Topic2")
+    _git(mirror.origin, "update-ref", "-d", "refs/heads/Topic2")
+    _git(mirror.origin, "update-ref", "refs/heads/topic2", tip)
+
+    assert _update(mirror) is RefreshOutcome.succeeded
+
+    refs = _refs(mirror.published.git_dir)
+    assert "refs/remotes/origin/topic2" in refs
+    assert "refs/remotes/origin/Topic2" not in refs
+
+
+def test_a_detached_origin_head_still_fetches_and_keeps_the_default_branch(
+    mirror: _Mirror,
+) -> None:
+    newer = mirror.commit("b.txt", "second\n", "second")
+    mirror.push("topic")
+    detached = subprocess.run(
+        ["git", "--git-dir", str(mirror.origin), "rev-parse", "refs/heads/topic~1"],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=_git_env(mirror.work),
+    ).stdout.strip()
+    _git(mirror.origin, "update-ref", "--no-deref", "HEAD", detached)
+    before = mirror.state()
+
+    update = asyncio.run(update_store(mirror.published.home, mirror.published.store_key))
+
+    assert update.outcome is RefreshOutcome.default_branch_unknown
+    state = mirror.state()
+    # Fetched, so the fetch time moves; the branch recorded before stays the default,
+    # at the commit it names now.
+    assert state.last_operation.outcome == "default_branch_unknown"
+    assert state.last_fetch_at == update.at
+    assert before.last_fetch_at is not None and update.at >= before.last_fetch_at
+    assert state.default_remote_ref == "refs/remotes/origin/topic"
+    assert state.default_revision == newer
+
+
 def test_an_unchanged_origin_refreshes_to_the_same_revision(mirror: _Mirror) -> None:
     revision = mirror.published.default_revision
     assert _update(mirror) is RefreshOutcome.succeeded
@@ -232,7 +331,8 @@ def test_a_removed_origin_is_a_typed_failure_that_keeps_the_last_fetch(
     assert update.outcome is RefreshOutcome.origin_unavailable
     state = mirror.state()
     assert state.last_operation.kind == "refresh"
-    assert state.last_operation.outcome == "failed"
+    # Recorded by name, so a later start reports what happened.
+    assert state.last_operation.outcome == "origin_unavailable"
     assert state.last_fetch_at == before.last_fetch_at
     assert state.default_revision == before.default_revision
     assert _refs(mirror.published.git_dir) == refs
@@ -329,13 +429,24 @@ def test_leftover_removal_touches_only_leftovers(tmp_path: Path) -> None:
     (git_dir / "refs" / "heads" / "stale.lock").write_text("", encoding="utf-8")
     (git_dir / "objects" / "pack" / "pack-1.pack").write_bytes(b"P")
     (git_dir / "objects" / "pack" / "tmp_idx_1").write_bytes(b"I")
+    (git_dir / "objects" / "ab").mkdir()
+    (git_dir / "objects" / "ab" / "cdef").write_bytes(b"loose")
+    (git_dir / "objects" / "ab" / "tmp_obj_XYZ").write_bytes(b"partial")
+    (git_dir / "objects" / "info").mkdir()
+    (git_dir / "objects" / "info" / "tmp_obj_not_loose").write_bytes(b"kept")
     (git_dir / "config.lock").write_text("", encoding="utf-8")
 
     removed = remove_interrupted_fetch_leftovers(git_dir)
 
-    assert removed == ("objects/pack/tmp_idx_1", "refs/heads/stale.lock")
+    assert removed == (
+        "objects/ab/tmp_obj_XYZ",
+        "objects/pack/tmp_idx_1",
+        "refs/heads/stale.lock",
+    )
     assert (git_dir / "refs" / "heads" / "keep").exists()
     assert (git_dir / "objects" / "pack" / "pack-1.pack").exists()
+    assert (git_dir / "objects" / "ab" / "cdef").exists()
+    assert (git_dir / "objects" / "info" / "tmp_obj_not_loose").exists()
     assert (git_dir / "config.lock").exists()
 
 

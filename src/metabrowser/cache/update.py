@@ -4,16 +4,21 @@ A store is a read-only mirror, so updating it is what ``git fetch`` already does
 observe which branch the origin's HEAD names, then fetch every branch and tag with
 ``--prune --atomic``. Every ref moves together or none does, a branch or tag deleted
 upstream leaves the mirror, and no object is ever removed, so a commit a reader has
-pinned stays readable after a force-push or a deleted branch.
+pinned stays readable after a force-push or a deleted branch. One atomic transaction
+cannot delete ``side`` and create ``side/x``, or on a case-insensitive file system
+rename ``Topic`` to ``topic``; when Git reports that ref-lock conflict, the stale refs
+are pruned on their own and the atomic fetch is tried once more.
 
 Locks follow ``tests/fixtures/repository-cache/state-machines.json`` (``store_refresh``):
 
 - the network work holds no hierarchy lock;
 - the store's fetch side lock, ``cache/locks/stores/<store-key>.fetch.lock``, is tried
-  without blocking and held across the fetch. Busy means another process is refreshing
-  the store now, which is an outcome rather than a wait;
-- under that side lock, lock files and temporary packs a killed Git left in the store
-  are removed before fetching, because every writer of the store holds the side lock;
+  without blocking and held across the fetch. The Git processes that write the store
+  inherit its descriptor, so the lock stays held for as long as any of them runs, even
+  if this process dies first. Busy therefore means a live refresh, here or elsewhere,
+  which is an outcome rather than a wait;
+- under that side lock, lock files and temporary objects a killed Git left in the store
+  are removed before fetching, because no live writer can own them;
 - only rewriting ``state.yml`` takes the store lock, briefly, in a worker thread.
 
 Every failure is a typed :class:`RefreshOutcome`; nothing here raises into a caller for
@@ -24,9 +29,11 @@ arrive through :mod:`metabrowser.cache.origin`, the one place fetch arguments ar
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import functools
 import logging
 import os
+import re
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -48,12 +55,14 @@ from metabrowser.cache.origin import (
     OriginHeadError,
     ls_remote_head_args,
     mirror_fetch_args,
+    mirror_prune_args,
     parse_symref_head,
     remote_tracking_ref,
 )
 from metabrowser.cache.paths import store_directory, store_record
 from metabrowser.cache.records import (
     REPOSITORY_STORE_STATE_CONTRACT_ID,
+    RecordedOutcome,
     RepositoryStoreState,
     StoreOperation,
     canonical_now,
@@ -61,6 +70,7 @@ from metabrowser.cache.records import (
 from metabrowser.cache.repository_store import ref_tip
 from metabrowser.git.process import (
     ACQUISITION_POLICY,
+    GitCommandError,
     GitError,
     GitUnavailableError,
     RepositoryStoreTarget,
@@ -77,23 +87,33 @@ log = logging.getLogger(__name__)
 # What a killed Git can leave in a store it was fetching into. Ref transactions lock
 # with ``<ref>.lock`` beside each loose ref and ``packed-refs.lock``; ``index-pack``
 # streams into ``objects/pack/tmp_pack_*`` and ``tmp_idx_*`` before it renames them.
-# Neither kind of file is part of the repository: a lock file only blocks the next
-# fetch, and a temporary pack holds no object Git can see.
+# ``unpack-objects`` writes a small fetch as loose ``objects/??/tmp_obj_*`` files first.
+# None of these files is part of the repository: a lock file only blocks the next
+# fetch, and a temporary object or pack holds nothing Git can see.
 _STALE_REF_LOCK_SUFFIX: Final = ".lock"
 _TEMPORARY_PACK_PREFIXES: Final = ("tmp_pack_", "tmp_idx_", "tmp_rev_")
+_TEMPORARY_OBJECT_PREFIX: Final = "tmp_obj_"
+_LOOSE_OBJECT_DIRECTORY: Final = re.compile(r"[0-9a-f]{2}")
+# How Git refuses a ref transaction whose lock it cannot take: a directory/file
+# conflict (``side`` and ``side/x``) or a case-only rename on a case-insensitive file
+# system. Git runs under LC_ALL=C, so this is its own untranslated text.
+_REF_LOCK_CONFLICT: Final = re.compile(r"cannot lock ref")
 
 
 class RefreshOutcome(StrEnum):
     """How one refresh of a store ended."""
 
     succeeded = "succeeded"
+    # The fetch succeeded, but the origin's HEAD names no branch, so the default
+    # branch recorded before is kept.
+    default_branch_unknown = "default_branch_unknown"
     # Another holder has the store's fetch lock; it is refreshing the store now.
     refreshing_elsewhere = "refreshing_elsewhere"
     # ls-remote could not read the origin: moved, deleted, or unreachable.
     origin_unavailable = "origin_unavailable"
     # The fetch itself failed or was stopped at its deadline. No ref moved.
     fetch_failed = "fetch_failed"
-    # The origin's HEAD is not a branch, or its branch did not arrive as a commit.
+    # The origin's default branch did not arrive as a commit.
     validation_failed = "validation_failed"
     # The installed Git is below the acquisition floor, so nothing was fetched.
     unsupported_git = "unsupported_git"
@@ -105,15 +125,17 @@ class RefreshOutcome(StrEnum):
     failed = "failed"
 
 
-# Outcomes a refresh records in ``state.yml``. The others describe why no fetch ran
-# here, which is a fact about this process, not about the store.
-_RECORDED_FAILURES: Final = frozenset(
-    {
-        RefreshOutcome.origin_unavailable,
-        RefreshOutcome.fetch_failed,
-        RefreshOutcome.validation_failed,
-    }
-)
+# Outcomes a refresh records in ``state.yml``, by name, so a later start reports the
+# same outcome. The others describe why no fetch ran here, which is a fact about this
+# process, not about the store.
+_FETCHED: Final = frozenset({RefreshOutcome.succeeded, RefreshOutcome.default_branch_unknown})
+_RECORDED: Final[dict[RefreshOutcome, RecordedOutcome]] = {
+    RefreshOutcome.succeeded: "succeeded",
+    RefreshOutcome.default_branch_unknown: "default_branch_unknown",
+    RefreshOutcome.origin_unavailable: "origin_unavailable",
+    RefreshOutcome.fetch_failed: "fetch_failed",
+    RefreshOutcome.validation_failed: "validation_failed",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,7 +143,7 @@ class StoreUpdate:
     """One refresh's outcome, when it ended, and the default branch it observed.
 
     ``default_remote_ref`` and ``default_revision`` are set only when the refresh
-    succeeded; ``at`` is also the new last-fetch time then.
+    fetched; ``at`` is also the new last-fetch time then.
     """
 
     outcome: RefreshOutcome
@@ -153,15 +175,25 @@ def remove_interrupted_fetch_leftovers(git_dir: Path) -> tuple[str, ...]:
         for name in files:
             if name.endswith(_STALE_REF_LOCK_SUFFIX):
                 remove(Path(directory) / name)
-    pack_directory = git_dir / "objects" / "pack"
-    try:
-        entries = list(os.scandir(pack_directory))
-    except FileNotFoundError:
-        entries = []
-    for entry in entries:
+    for entry in _entries(git_dir / "objects" / "pack"):
         if entry.name.startswith(_TEMPORARY_PACK_PREFIXES) and entry.is_file(follow_symlinks=False):
             remove(Path(entry.path))
+    for directory in _entries(git_dir / "objects"):
+        if not _LOOSE_OBJECT_DIRECTORY.fullmatch(directory.name):
+            continue
+        for entry in _entries(Path(directory.path)):
+            if entry.name.startswith(_TEMPORARY_OBJECT_PREFIX) and entry.is_file(
+                follow_symlinks=False
+            ):
+                remove(Path(entry.path))
     return tuple(sorted(removed))
+
+
+def _entries(directory: Path) -> list[os.DirEntry[str]]:
+    try:
+        return list(os.scandir(directory))
+    except (FileNotFoundError, NotADirectoryError):
+        return []
 
 
 def _claim_fetch_lock(home: Path, store_key: str, owner: LockOrder) -> CacheLock:
@@ -174,8 +206,34 @@ def _release(lock: CacheLock) -> None:
     lock.release()
 
 
-async def _fetch(target: RepositoryStoreTarget) -> StoreUpdate:
-    """Observe the origin's HEAD, fetch, and read the default branch back from the mirror."""
+async def _fetch_atomically(target: RepositoryStoreTarget, lock_fd: int) -> None:
+    """Fetch every branch and tag in one transaction, pruning separately on a ref clash.
+
+    Raises :class:`GitError` when the fetch fails, including after the one retry.
+    """
+
+    fetch = mirror_fetch_args(prune=True)
+    try:
+        await run_git(fetch, target=target, policy=ACQUISITION_POLICY, pass_fds=(lock_fd,))
+    except GitCommandError as exc:
+        if _REF_LOCK_CONFLICT.search(exc.stderr_summary) is None:
+            raise
+        log.debug("a stale ref blocks the atomic fetch; pruning it first: %s", failure_detail(exc))
+        # Deletions only, so nothing in it can clash; then the transaction runs again.
+        await run_git(
+            mirror_prune_args(), target=target, policy=ACQUISITION_POLICY, pass_fds=(lock_fd,)
+        )
+        await run_git(fetch, target=target, policy=ACQUISITION_POLICY, pass_fds=(lock_fd,))
+
+
+async def _fetch(
+    target: RepositoryStoreTarget, *, lock_fd: int, previous_ref: str | None
+) -> StoreUpdate:
+    """Observe the origin's HEAD, fetch, and read the default branch back from the mirror.
+
+    Git's own messages can carry the origin's local path and span several lines, so
+    they are logged at debug only.
+    """
 
     require_no_hierarchy_locks("a store refresh")
     try:
@@ -184,25 +242,32 @@ async def _fetch(target: RepositoryStoreTarget) -> StoreUpdate:
         )
         head_ref, _advertised = parse_symref_head(observed)
     except (GitError, OriginHeadError) as exc:
-        log.info("refresh could not read the origin: %s", _detail(exc))
+        log.debug("refresh could not read the origin: %s", _detail(exc))
         return StoreUpdate(RefreshOutcome.origin_unavailable, canonical_now())
-    default_remote_ref = remote_tracking_ref(head_ref)
-    if default_remote_ref is None:
-        log.info("refresh refused an origin whose HEAD is not a branch")
-        return StoreUpdate(RefreshOutcome.validation_failed, canonical_now())
     try:
-        await run_git(mirror_fetch_args(prune=True), target=target, policy=ACQUISITION_POLICY)
+        await _fetch_atomically(target, lock_fd)
     except GitError as exc:
-        log.info("refresh fetch failed: %s", failure_detail(exc))
+        log.debug("refresh fetch failed: %s", failure_detail(exc))
         return StoreUpdate(RefreshOutcome.fetch_failed, canonical_now())
+    default_remote_ref = remote_tracking_ref(head_ref)
+    outcome = RefreshOutcome.succeeded
+    if default_remote_ref is None:
+        # A detached HEAD names no branch. Everything was fetched; the default branch
+        # stays the one recorded before, at the commit that branch names now.
+        outcome = RefreshOutcome.default_branch_unknown
+        default_remote_ref = previous_ref
+        if default_remote_ref is None:
+            return StoreUpdate(outcome, canonical_now())
     # The fetched ref, not the advertised object ID: the origin may have moved between
     # the two commands, and the mirror now holds whatever the fetch saw.
     revision = await ref_tip(target, default_remote_ref)
     if revision is None:
-        log.info("refresh did not find the origin's default branch as a commit")
+        if outcome is RefreshOutcome.default_branch_unknown:
+            return StoreUpdate(outcome, canonical_now())
+        log.debug("refresh did not find the origin's default branch as a commit")
         return StoreUpdate(RefreshOutcome.validation_failed, canonical_now())
     return StoreUpdate(
-        RefreshOutcome.succeeded,
+        outcome,
         canonical_now(),
         default_remote_ref=default_remote_ref,
         default_revision=revision,
@@ -216,8 +281,9 @@ def _detail(exc: Exception) -> str:
 def _record(home: Path, store_key: str, update: StoreUpdate) -> None:
     """Rewrite ``state.yml`` under the store lock; synchronous and blocking.
 
-    A success records the default branch, its commit, and the fetch time. A recorded
-    failure keeps all three and replaces only the last operation.
+    A fetch records the fetch time and, when it observed one, the default branch and
+    its commit. A recorded failure keeps all three. Either way the outcome is recorded
+    by name, so a later start reports it as this one did.
     """
 
     relative = store_record(store_key, "state.yml")
@@ -225,41 +291,50 @@ def _record(home: Path, store_key: str, update: StoreUpdate) -> None:
         previous = read_record(home, relative, REPOSITORY_STORE_STATE_CONTRACT_ID)
         if not isinstance(previous, RepositoryStoreState):
             raise RecordError("state.yml did not validate", home / relative)
-        succeeded = update.outcome is RefreshOutcome.succeeded
-        operation = StoreOperation(
-            kind="refresh", outcome="succeeded" if succeeded else "failed", at=update.at
-        )
+        fetched = update.outcome in _FETCHED
+        observed = fetched and update.default_remote_ref is not None
         state = RepositoryStoreState(
             default_remote_ref=(
-                update.default_remote_ref if succeeded else previous.default_remote_ref
+                update.default_remote_ref if observed else previous.default_remote_ref
             ),
-            default_revision=update.default_revision if succeeded else previous.default_revision,
-            last_fetch_at=update.at if succeeded else previous.last_fetch_at,
-            last_operation=operation,
+            default_revision=update.default_revision if observed else previous.default_revision,
+            last_fetch_at=update.at if fetched else previous.last_fetch_at,
+            last_operation=StoreOperation(
+                kind="refresh", outcome=_RECORDED[update.outcome], at=update.at
+            ),
         )
         write_record_atomic(home, relative, state, REPOSITORY_STORE_STATE_CONTRACT_ID)
+
+
+def _previous_default_ref(home: Path, store_key: str) -> str | None:
+    """The default branch the store recorded before this refresh, if it can be read."""
+
+    try:
+        state = read_record(
+            home, store_record(store_key, "state.yml"), REPOSITORY_STORE_STATE_CONTRACT_ID
+        )
+    except (FileNotFoundError, PrivateStorageError, RecordError, OSError):
+        return None
+    return state.default_remote_ref if isinstance(state, RepositoryStoreState) else None
 
 
 async def update_store(home: Path, store_key: str) -> StoreUpdate:
     """Refresh the published store *store_key* under *home* from its origin.
 
     Returns a :class:`StoreUpdate` for every outcome the origin, the network, the
-    installed Git, or another process can cause. Cancellation propagates after Git's
-    process group is killed and the fetch lock is released; the atomic fetch leaves
-    every ref as it was or wholly updated, and ``state.yml`` untouched.
+    installed Git, or another process can cause. The fetch lock is tried before the
+    Git floor is checked, so a refresh another process is running is reported as such
+    whatever Git this process has. Cancellation propagates after Git's process group
+    is killed and the fetch lock is released; the atomic fetch leaves every ref as it
+    was or wholly updated, and ``state.yml`` untouched.
     """
 
-    try:
-        require_acquisition_git()
-    except UnsupportedGitVersionError as exc:
-        log.info("refresh skipped: %s", exc)
-        return StoreUpdate(RefreshOutcome.unsupported_git, canonical_now())
     try:
         target = repository_store_target(
             git_dir=home / store_directory(store_key) / "repository.git"
         )
     except GitUnavailableError as exc:
-        log.info("refresh skipped: %s", exc)
+        log.debug("refresh skipped: %s", exc)
         return StoreUpdate(RefreshOutcome.store_unavailable, canonical_now())
     try:
         fetch_lock = await run_lock_section(
@@ -272,11 +347,26 @@ async def update_store(home: Path, store_key: str) -> StoreUpdate:
         log.warning("refresh could not take the store's fetch lock: %s", exc)
         return StoreUpdate(RefreshOutcome.store_unavailable, canonical_now())
     try:
-        removed = await asyncio.to_thread(remove_interrupted_fetch_leftovers, target.git_dir)
+        try:
+            require_acquisition_git()
+        except UnsupportedGitVersionError as exc:
+            log.info("refresh skipped: %s", exc)
+            return StoreUpdate(RefreshOutcome.unsupported_git, canonical_now())
+        cleanup = asyncio.ensure_future(
+            asyncio.to_thread(remove_interrupted_fetch_leftovers, target.git_dir)
+        )
+        try:
+            removed = await asyncio.shield(cleanup)
+        except asyncio.CancelledError:
+            # The lock is released on the way out, so the removal must finish first.
+            with contextlib.suppress(asyncio.CancelledError):
+                await cleanup
+            raise
         if removed:
-            log.info("removed files an interrupted fetch left in a store: %s", ", ".join(removed))
-        update = await _fetch(target)
-        if update.outcome is RefreshOutcome.succeeded or update.outcome in _RECORDED_FAILURES:
+            log.debug("removed files an interrupted fetch left in a store: %s", removed)
+        previous_ref = await asyncio.to_thread(_previous_default_ref, home, store_key)
+        update = await _fetch(target, lock_fd=fetch_lock.descriptor, previous_ref=previous_ref)
+        if update.outcome in _RECORDED:
             try:
                 await run_lock_section(functools.partial(_record, home, store_key, update))
             except (PrivateStorageError, RecordError, OSError, LockWaitAbandonedError) as exc:

@@ -17,8 +17,10 @@ descriptor is opened. Network work and long-running Git processes call
 Side locks sit outside the order and are only ever tried without blocking. A staging
 entry lock marks one owner's liveness. A store's fetch lock marks the one refresh that may
 fetch into that published store; it is held across network work, which is why it cannot be
-a hierarchy lock, and a second refresh that finds it busy reports that another process is
-refreshing rather than waiting.
+a hierarchy lock. The Git processes that write the store inherit its descriptor, so it
+stays held for as long as any of them runs, even after the process that took it has
+died, and a second refresh that finds it busy reports that another refresh is running
+rather than waiting.
 
 No lock protects a reader. A published store is never changed in place: nothing runs
 ``gc``, ``prune``, or ``repack`` on it, and a reader reaches it only through a source
@@ -265,6 +267,18 @@ class CacheLock:
     @property
     def path(self) -> Path:
         return self.home / self.relative_path
+
+    @property
+    def descriptor(self) -> int:
+        """The descriptor the ``flock`` lives on, to hand to a child that must hold it.
+
+        A child that inherits it holds the same lock for as long as it keeps the
+        descriptor open, even after this process releases or dies.
+        """
+
+        if self._fd is None:
+            raise LockOrderError(f"the {self.kind.value} lock is not held")
+        return self._fd
 
     def release(self) -> None:
         """Release the lock; releasing twice is a no-op."""

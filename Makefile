@@ -110,6 +110,7 @@ ADMITTED_GIT_TESTS := \
 	tests/test_cache_update.py \
 	tests/test_source_refresh.py \
 	tests/test_cli_git_refresh_golden.py \
+	tests/test_refresh_signals.py \
 	tests/test_git_revision_open.py \
 	tests/test_git_store_read_policy.py \
 	tests/test_git_tree_source.py \

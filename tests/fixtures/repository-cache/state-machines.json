@@ -50,7 +50,7 @@
         "name": "store_fetch",
         "mode": "exclusive",
         "path": "cache/locks/stores/<store-key>.fetch.lock",
-        "acquisition": "tried without blocking by a refresh of a published store and held through its network work, stale-lock cleanup, and the record rewrite; a refresh that finds it busy reports that another process is refreshing the store and does not wait",
+        "acquisition": "tried without blocking by a refresh of a published store and held through its network work, stale-lock cleanup, and the record rewrite; the Git processes that write the store inherit its descriptor, so it stays held while any of them runs, even after the process that took it has died; a refresh that finds it busy reports that another process is refreshing the store and does not wait",
         "why_outside_the_hierarchy": "It is held across network work, which no hierarchy lock may be, and nobody waits on it. The store lock is still taken under it, briefly, to rewrite state.yml."
       }
     ],
@@ -66,7 +66,7 @@
       "Lock files live under cache/locks/ and are never inside a directory that publication or the sweep renames or deletes.",
       "After acquiring any lock, the holder compares the locked descriptor's fstat with the path's lstat (device and inode) and releases and retries on a mismatch, because a sweep may have removed and recreated the lock file.",
       "Liveness is decided by trying the entry's lock, not by age: a crashed holder releases within milliseconds, while no age can distinguish a slow clone from a dead one.",
-      "A refresh fetches into a published store only while it holds that store's fetch lock, so stale packed-refs.lock and refs/**.lock files and temporary packs a killed Git left behind are removed under it before the next fetch. Its fetch updates every ref atomically or none, and only the record rewrite that follows takes the store lock."
+      "A refresh fetches into a published store only while it holds that store's fetch lock, and the Git processes that write the store inherit that lock, so it is held for exactly as long as a writer lives. Stale packed-refs.lock and refs/**.lock files and temporary objects and packs a killed Git left behind are therefore removed under it before the next fetch. Its fetch updates every ref atomically or none, a stale ref that clashes with that transaction is pruned in a separate deleting step first, and only the record rewrite that follows takes the store lock."
     ],
     "sequences": [
       {
@@ -186,7 +186,11 @@
     },
     "fetch_interrupted": {
       "visible_after": "unchanged",
-      "action": "The atomic fetch moved every ref or none, and objects it wrote stay unreferenced. A killed Git can leave packed-refs.lock, refs/**.lock, or a temporary pack; the next refresh removes them under the store's fetch lock before it fetches. state.yml still records the previous fetch."
+      "action": "The atomic fetch moved every ref or none, and objects it wrote stay unreferenced. A killed Git can leave packed-refs.lock, refs/**.lock, a temporary loose object, or a temporary pack; the next refresh removes them under the store's fetch lock before it fetches, which it can take only once no Git from the interrupted refresh is alive. state.yml still records the previous fetch."
+    },
+    "prune_interrupted": {
+      "visible_after": "unchanged",
+      "action": "Some refs whose branch or tag the origin deleted are gone and others are not; each deletion is whole, and no commit is removed. The next refresh prunes the rest."
     },
     "record_behind": {
       "visible_after": "unchanged",
@@ -467,6 +471,7 @@
           "on_crash": "nothing_to_recover"
         },
         { "name": "fetching", "visible": true, "terminal": false, "on_crash": "fetch_interrupted" },
+        { "name": "pruning", "visible": true, "terminal": false, "on_crash": "prune_interrupted" },
         { "name": "fetched", "visible": true, "terminal": false, "on_crash": "record_behind" },
         { "name": "recorded", "visible": true, "terminal": true },
         { "name": "failure_recorded", "visible": true, "terminal": true },
@@ -496,7 +501,7 @@
           "to": "locks_cleaned",
           "holds": ["store_fetch"],
           "network": false,
-          "effect": "Remove packed-refs.lock, refs/**.lock, and temporary packs a killed Git left in the store. Every writer of the store holds this lock, so none of them is live."
+          "effect": "Remove packed-refs.lock, refs/**.lock, temporary loose objects, and temporary packs a killed Git left in the store. Every writer of the store holds this lock, through the descriptor it inherited, so none of them is live."
         },
         {
           "from": "locks_cleaned",
@@ -520,7 +525,23 @@
           "to": "fetching",
           "holds": ["store_fetch"],
           "network": true,
-          "effect": "git fetch --prune --atomic --no-write-fetch-head origin with the branch and tag refspecs, in Git's own process group."
+          "effect": "git fetch --prune --atomic --no-write-fetch-head origin with the branch and tag refspecs, in Git's own process group, holding the inherited fetch lock."
+        },
+        {
+          "from": "fetching",
+          "event": "ref_lock_conflict",
+          "to": "pruning",
+          "holds": ["store_fetch"],
+          "network": false,
+          "effect": "One transaction cannot delete side and create side/x, or rename Topic to topic on a case-insensitive file system; Git refuses it and no ref moves."
+        },
+        {
+          "from": "pruning",
+          "event": "stale_refs_pruned",
+          "to": "fetching",
+          "holds": ["store_fetch"],
+          "network": true,
+          "effect": "git remote prune with the mirror refspecs deletes the refs whose branch or tag the origin no longer has, and nothing else; the atomic fetch then runs once more."
         },
         {
           "from": "fetching",
@@ -536,7 +557,7 @@
           "to": "cancelled",
           "holds": ["store_fetch"],
           "network": false,
-          "effect": "Git's process group is killed; the atomic fetch moved every ref or none, and the record is left as it was."
+          "effect": "Git's process group is killed, by the lifespan's cancellation or by the command's immediate exit; the atomic fetch moved every ref or none, and the record is left as it was."
         },
         {
           "from": "fetching",
@@ -691,6 +712,22 @@
         "cancelled"
       ],
       "expected_final": "cancelled",
+      "expected_visible": true
+    },
+    {
+      "id": "refresh-prunes-a-clashing-ref",
+      "machine": "store_refresh",
+      "events": [
+        "take_fetch_lock",
+        "remove_stale_locks",
+        "lookup_remote_head",
+        "fetch_started",
+        "ref_lock_conflict",
+        "stale_refs_pruned",
+        "fetch_succeeded",
+        "record_written"
+      ],
+      "expected_final": "recorded",
       "expected_visible": true
     }
   ]

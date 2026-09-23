@@ -336,13 +336,22 @@
       "expect": "invalid"
     },
     {
-      "name": "store-state-records-a-failed-refresh",
+      "name": "store-state-records-a-refresh-failure-by-name",
+      "record": "store_state",
+      "changes": [
+        { "path": ["last_operation", "kind"], "value": "refresh" },
+        { "path": ["last_operation", "outcome"], "value": "origin_unavailable" }
+      ],
+      "expect": "valid"
+    },
+    {
+      "name": "store-state-rejects-an-unnamed-failure",
       "record": "store_state",
       "changes": [
         { "path": ["last_operation", "kind"], "value": "refresh" },
         { "path": ["last_operation", "outcome"], "value": "failed" }
       ],
-      "expect": "valid"
+      "expect": "invalid"
     },
     {
       "name": "store-state-empty-remote",
