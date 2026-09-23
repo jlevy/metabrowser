@@ -108,6 +108,7 @@ Repository cache:
   binds a port. https and ssh stay closed.
   Those pin modes report acquisition failures with the same messages as `--no-serve`,
   and a Git failure while opening the pin is also path-free.
+  A pin’s `/api/tree` lists directories before files, as a folder listing does.
   A pin always runs under the untrusted profile: `METAB_ACTIVE_CONTENT=1` and
   `METAB_ALLOW_EDITS=1` do not lift it, and `--allow-edits` on a pin is an error.
 

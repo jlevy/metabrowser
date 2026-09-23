@@ -525,7 +525,9 @@ async def _git_nav_tree(
         return []
     nodes: list[dict[str, Any]] = []
     nest = remaining_depth > 1
-    for entry in entries:
+    # Directories first, matching the filesystem tree contract the SPA renders in
+    # server order; ``sorted`` is stable, so names keep the source's byte order.
+    for entry in sorted(entries, key=lambda item: not item.is_tree):
         prefix = _join_git_prefix(index_prefix, entry.path.segments[-1]) if entry.is_tree else b""
         tally = view.tally(prefix) if entry.is_tree and view is not None else None
         if entry.is_tree and nest and budget.remaining > 0:

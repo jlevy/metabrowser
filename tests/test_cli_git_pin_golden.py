@@ -329,29 +329,17 @@ def test_golden_multi_entry_pin_show_and_api(
     assert chrome["summary"]["size"] == sum(len(body) for _mode, _path, body in PIN_ORIGIN_BLOBS)
 
     listing = _payload(answered["/api/tree?depth=2"])
-    # Today's pin order: name bytes, directories interleaved. A folder listing
-    # puts directories first (tree.py) and the shell renders server order, so
-    # the two sources order the same names differently.
-    assert [node["name"] for node in listing["tree"]] == [
-        "README.md",
-        "a",
-        "a-b",
-        "a.txt",
-        "ab",
-        "bin",
-        "data",
-        "links",
-        "odd",
-        "tools",
-        "vendor",
-    ]
-    assert [name for name, _type in _flatten(listing["tree"])][1:6] == [
-        "a",
-        "deep",
-        "one.py",
-        "a-b",
-        "a.txt",
-    ]
+    # Directories first, then name bytes: the order a folder listing uses
+    # (tree.py), since the shell renders server order.
+    names = [node["name"] for node in listing["tree"]]
+    kinds = [node.get("type") for node in listing["tree"]]
+    first_file = next(index for index, kind in enumerate(kinds) if kind != "dir")
+    assert all(kind != "dir" for kind in kinds[first_file:]), kinds
+    assert names[:first_file] == sorted(names[:first_file], key=str.encode)
+    assert names[first_file:] == sorted(names[first_file:], key=str.encode)
+    assert names[0] == "a" and "README.md" in names[first_file:]
+    # Nested listings are directories-first too: a/deep/ precedes a/one.py.
+    assert [name for name, _type in _flatten(listing["tree"])][:3] == ["a", "deep", "one.py"]
     # depth=2 nests a/'s children; a/deep/ is past the cap, so it is lazy.
     by_name = {node["name"]: node for node in listing["tree"]}
     deep = by_name["a"]["children"][0]

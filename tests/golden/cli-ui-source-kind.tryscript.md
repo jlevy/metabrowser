@@ -97,18 +97,6 @@ $ node tests/dom/source-kind-session.js
     ],
     "rows": [
       {
-        "path": "g1-NTAlLW9mZi5tZA",
-        "name": "50%-off.md",
-        "row": "50%-off.md",
-        "location": "50%-off.md"
-      },
-      {
-        "path": "g1-UkVBRE1FLm1k",
-        "name": "README.md",
-        "row": "README.md",
-        "location": "README.md"
-      },
-      {
         "path": "g1-ZG9jcw",
         "name": "docs",
         "row": "docs",
@@ -131,6 +119,18 @@ $ node tests/dom/source-kind-session.js
         "name": "note.txt",
         "row": "note.txt",
         "location": "g1-data/note.txt"
+      },
+      {
+        "path": "g1-NTAlLW9mZi5tZA",
+        "name": "50%-off.md",
+        "row": "50%-off.md",
+        "location": "50%-off.md"
+      },
+      {
+        "path": "g1-UkVBRE1FLm1k",
+        "name": "README.md",
+        "row": "README.md",
+        "location": "README.md"
       }
     ],
     "gates": {

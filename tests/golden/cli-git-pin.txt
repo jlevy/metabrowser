@@ -453,13 +453,6 @@ status: 200
   ],
   "tree": [
     {
-      "name": "README.md",
-      "path": "g1-UkVBRE1FLm1k",
-      "type": "file",
-      "ext": ".md",
-      "size": 17
-    },
-    {
       "name": "a",
       "path": "g1-YQ",
       "type": "dir",
@@ -484,25 +477,6 @@ status: 200
       "has_children": true,
       "total_files": 3,
       "total_size": 58
-    },
-    {
-      "name": "a-b",
-      "path": "g1-YS1i",
-      "type": "file",
-      "size": 5
-    },
-    {
-      "name": "a.txt",
-      "path": "g1-YS50eHQ",
-      "type": "file",
-      "ext": ".txt",
-      "size": 9
-    },
-    {
-      "name": "ab",
-      "path": "g1-YWI",
-      "type": "file",
-      "size": 6
     },
     {
       "name": "bin",
@@ -615,6 +589,32 @@ status: 200
       "has_children": true,
       "total_files": 1,
       "total_size": 22
+    },
+    {
+      "name": "README.md",
+      "path": "g1-UkVBRE1FLm1k",
+      "type": "file",
+      "ext": ".md",
+      "size": 17
+    },
+    {
+      "name": "a-b",
+      "path": "g1-YS1i",
+      "type": "file",
+      "size": 5
+    },
+    {
+      "name": "a.txt",
+      "path": "g1-YS50eHQ",
+      "type": "file",
+      "ext": ".txt",
+      "size": 9
+    },
+    {
+      "name": "ab",
+      "path": "g1-YWI",
+      "type": "file",
+      "size": 6
     },
     {
       "name": "vendor",
@@ -1031,13 +1031,6 @@ status: 200
   ],
   "tree": [
     {
-      "name": "README.md",
-      "path": "g1-UkVBRE1FLm1k",
-      "type": "file",
-      "ext": ".md",
-      "size": 17
-    },
-    {
       "name": "a",
       "path": "g1-YQ",
       "type": "dir",
@@ -1054,6 +1047,13 @@ status: 200
       "has_children": true,
       "total_files": 1,
       "total_size": 12
+    },
+    {
+      "name": "README.md",
+      "path": "g1-UkVBRE1FLm1k",
+      "type": "file",
+      "ext": ".md",
+      "size": 17
     }
   ],
   "tally_cache_status": "done",
