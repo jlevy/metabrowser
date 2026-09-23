@@ -29,9 +29,17 @@ from metabrowser.git.tree_source import (
 
 
 async def open_revision(
-    *, home: Path, store_key: str, commit_oid: str, store_identity: str
+    *,
+    home: Path,
+    store_key: str,
+    commit_oid: str,
+    store_identity: str,
+    ref: str | None = None,
 ) -> GitRevisionSubject:
     """Pin *commit_oid* in the published store *store_key* under *home*.
+
+    *ref* is the store ref the commit was resolved from, recorded on the subject as
+    its label; the pin itself is the commit.
 
     Raises :class:`~metabrowser.git.tree_source.GitPathError` for an abbreviated
     object ID, :class:`~metabrowser.git.process.GitUnavailableError` when the store
@@ -51,7 +59,9 @@ async def open_revision(
         raise GitObjectUnavailableError(oid) from exc
     if kind.strip() != b"commit":
         raise GitObjectUnavailableError(oid)
-    return await git_revision_subject(target=target, commit_oid=oid, store_identity=store_identity)
+    return await git_revision_subject(
+        target=target, commit_oid=oid, store_identity=store_identity, ref=ref
+    )
 
 
 __all__ = ["open_revision"]

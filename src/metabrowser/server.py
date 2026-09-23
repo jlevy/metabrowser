@@ -204,6 +204,7 @@ from metabrowser.settings import (
 from metabrowser.source import (
     UnsupportedSourceCapabilityError,
     get_source_session,
+    lifespan_subject,
     require_filesystem_hooks,
     require_filter_capabilities,
     require_source_capability,
@@ -3884,7 +3885,12 @@ def _inventory_root_provider() -> object:
 
 @asynccontextmanager  # pyright: ignore[reportDeprecated]
 async def _lifespan(app: Starlette) -> AsyncIterator[None]:
-    async with build_lifespan(app=app, root_provider=_inventory_root_provider):
+    # A served pin attaches before the inventory opens, which reads the active
+    # subject, and closes after it, so nothing still reads its Git processes.
+    async with (
+        lifespan_subject(),
+        build_lifespan(app=app, root_provider=_inventory_root_provider),
+    ):
         try:
             yield
         finally:
