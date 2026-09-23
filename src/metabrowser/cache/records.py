@@ -15,7 +15,7 @@ to a store; each ``state.yml`` holds what changes.
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated, Any, Final, Literal, Self, cast
 
 from pydantic import (
@@ -65,6 +65,18 @@ _CREDENTIAL_KEY_RE: Final = re.compile(
     r"api[_-]?key|private[_-]?key|access[_-]?key)$",
     re.IGNORECASE,
 )
+
+
+def canonical_now() -> str:
+    """The current time in the canonical RFC 3339 UTC spelling every record uses."""
+
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def parse_canonical_timestamp(value: str) -> datetime:
+    """The UTC moment a canonical record timestamp names."""
+
+    return datetime.fromisoformat(value.removesuffix("Z") + "+00:00")
 
 
 def _require_timestamp(value: str) -> str:
@@ -279,4 +291,6 @@ __all__ = [
     "RepositoryStoreState",
     "StoreAcquisition",
     "StoreOperation",
+    "canonical_now",
+    "parse_canonical_timestamp",
 ]
