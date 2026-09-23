@@ -4,6 +4,11 @@
 
 **Author:** Joshua Levy (with LLM assistance)
 
+**Superseded in part (2026-09-23):** the remaining v0.12 phases follow
+[Thin Mirror for Git and GitHub Browsing](plan-2026-09-23-v012-thin-mirror.md), which
+replaces this plan wherever they disagree.
+The built foundation and its record below stay as background.
+
 **Status:** Phase 0 through 0D and repository-library Phase 1A are implemented on open
 GitHub stack [#218](https://github.com/jlevy/metabrowser/stack/218), above the released
 v0.11.0 `main`. Cache Phase 1B is on ready-for-review

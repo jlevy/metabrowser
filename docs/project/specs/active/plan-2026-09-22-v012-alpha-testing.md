@@ -90,6 +90,12 @@ whole-stack landing decision independently of those GitHub flags.
 
 ## Next PRs and Agent Handoff
 
+**Updated 2026-09-23:** the phases after foundation stabilization now follow
+[Thin Mirror for Git and GitHub Browsing](plan-2026-09-23-v012-thin-mirror.md): Design,
+Simplify, URL open, PR data, and PR view.
+The table below records the earlier plan; the milestones and manual matrix still apply
+where the new plan keeps the capability.
+
 The next implementation task begins with foundation stabilization, then advances through
 one new stacked PR per phase.
 All new PRs extend the current tip of Stack 218; review and test each phase before using
