@@ -9,34 +9,52 @@ ssh stay closed. Serving acquired Git stays later.
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from metabrowser.cache.acquire import PublishedSource, acquire_file_source
+from metabrowser.cache.acquire import PublishedSource
 from metabrowser.cache.repository_store import RevisionLease, lease_revision
 from metabrowser.cache.urls import GitSource
-from metabrowser.cli.acquire_cli import _ACQUIRE_CLI_ERRORS
+from metabrowser.cli.acquire_cli import _ACQUIRE_CLI_ERRORS, acquire_for_cli
 from metabrowser.cli.asgi_client import INDEX_READY_TIMEOUT_S
 from metabrowser.cli.common import apply_log_level
 from metabrowser.errors import CLIError
-from metabrowser.git.process import GitError, GitUnavailableError
+from metabrowser.git.process import GitError, GitTimeoutError, GitUnavailableError
 from metabrowser.git.tree_source import (
     GitObjectUnavailableError,
     GitPathError,
     GitRevisionSubject,
     git_revision_subject,
 )
-from metabrowser.home import application_home
 from metabrowser.source import attach_subject, reset_source_session
+
+LOG = logging.getLogger(__name__)
 
 _PIN_CLI_ERRORS = (
     *_ACQUIRE_CLI_ERRORS,
     GitError,
-    GitObjectUnavailableError,
     GitPathError,
-    GitUnavailableError,
 )
+
+
+def _pin_failure_message(exc: Exception) -> str:
+    """A path-free message for a failure after acquisition, while opening the pin.
+
+    Most ``GitError`` messages carry the argument vector or the store's Git
+    directory, so only types whose text is path-free by construction pass through.
+    """
+    if isinstance(exc, GitObjectUnavailableError | GitPathError) or not isinstance(exc, GitError):
+        return str(exc)
+    if isinstance(exc, GitTimeoutError):
+        return "Git did not finish opening the pinned revision in time and was stopped"
+    if isinstance(exc, GitUnavailableError):
+        return "Git could not open the cached repository store; see --log-level debug"
+    return (
+        "a Git command failed while opening the pinned revision "
+        "(--log-level debug shows Git's own message)"
+    )
 
 
 def _require_file_source(source: GitSource, *, mode: str) -> None:
@@ -56,10 +74,7 @@ def _require_file_source(source: GitSource, *, mode: str) -> None:
 
 @asynccontextmanager
 async def _leased_file_pin(source: GitSource) -> AsyncGenerator[PublishedSource]:
-    try:
-        published = await acquire_file_source(source, home=application_home())
-    except _ACQUIRE_CLI_ERRORS as exc:
-        raise CLIError(str(exc)) from exc
+    published = await acquire_for_cli(source)
     lease: RevisionLease | None = None
     subject: GitRevisionSubject | None = None
     try:
@@ -75,7 +90,8 @@ async def _leased_file_pin(source: GitSource) -> AsyncGenerator[PublishedSource]
                 store_identity=published.store_id,
             )
         except _PIN_CLI_ERRORS as exc:
-            raise CLIError(str(exc)) from exc
+            LOG.debug("opening the pinned revision failed: %s", exc)
+            raise CLIError(_pin_failure_message(exc)) from exc
         attach_subject(subject)
         yield published
     finally:

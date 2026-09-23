@@ -79,15 +79,25 @@ def _is_cache_inspect_route(route: str) -> bool:
     return is_cache_inspect_route(route)
 
 
-def acquire_published_source(source: GitSource) -> PublishedSource:
-    """Publish *source* into ``METABROWSER_HOME`` and return the alias."""
+async def acquire_for_cli(source: GitSource) -> PublishedSource:
+    """Publish *source* into ``METABROWSER_HOME``, mapping failures to ``CLIError``.
 
+    Every CLI entry point that acquires goes through here — ``--no-serve``, cache
+    ``--api``, and the Git-pin ``--show`` / ``--api`` modes — so none of them lets a
+    raw ``GitError`` reach the user with its argument vector or staging path.
+    """
     try:
-        return asyncio.run(acquire_file_source(source, home=application_home()))
+        return await acquire_file_source(source, home=application_home())
     except _ACQUIRE_CLI_ERRORS as exc:
         raise CLIError(str(exc)) from exc
     except GitError as exc:
         raise CLIError(_git_failure_message(exc)) from exc
+
+
+def acquire_published_source(source: GitSource) -> PublishedSource:
+    """Publish *source* into ``METABROWSER_HOME`` and return the alias."""
+
+    return asyncio.run(acquire_for_cli(source))
 
 
 def run_no_serve(root: Path | GitSource, *, log_level: str = "") -> None:
