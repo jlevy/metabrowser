@@ -159,7 +159,7 @@ status: 200
     "reason": "git-revision-no-watcher"
   },
   "capabilities": {
-    "active_content": true,
+    "active_content": false,
     "mutations": false
   }
 }
