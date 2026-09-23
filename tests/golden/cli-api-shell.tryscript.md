@@ -97,6 +97,26 @@ status: 200
 ? 0
 ```
 
+## Test: what the server serves
+
+A served folder has no pin, so the commit and ref fields are null.
+A `file://` source is served pinned to a commit; its envelope is in `cli-git-pin.txt`,
+recorded in-process because acquisition refuses CI’s Git.
+
+```console
+$ metab shellroot --api /api/source/status
+api: /api/source/status
+status: 200
+{
+  "subject": "attached_filesystem",
+  "generation": 1,
+  "pin": null,
+  "ref": null,
+  "ref_name": null
+}
+? 0
+```
+
 ## Test: crawl progress
 
 `--api` waits for the scan before requesting this route, so the transcript records the
@@ -396,6 +416,14 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/source/status",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/stream",
       "methods": [
         "GET",
@@ -489,7 +517,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 40
+  "count": 41
 }
 ? 0
 ```

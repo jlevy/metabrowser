@@ -34,15 +34,18 @@ $ metab --help
  Data modes read the same server the browser reads, without a browser or a
  listening port: --api issues one route, --show reports the four layers
  behind one selection, --walk dumps the inventory, --diff shows a change
- set. --no-serve acquires a file:// Git source into the cache without
- starting a server. Diagnostics: --check-api, --plugins, --plugin, --doctor.
+ set. A file:// Git source is served, shown, or checked at its default
+ branch's commit under the untrusted profile; --no-serve only acquires it
+ into the cache. Diagnostics: --check-api, --plugins, --plugin, --doctor.
  Remote serving: --remote.
 
 ╭─ Arguments ──────────────────────────────────────────────────────────────────╮
 │   [root]      TEXT  Root directory to serve, check, or walk; a file may be   │
 │                     served directly. https, ssh, and file:// clone URLs are  │
-│                     Git sources, not local paths. Acquire file:// with       │
-│                     --no-serve. With no ROOT and no mode, prints help.       │
+│                     Git sources, not local paths. A file:// source is        │
+│                     acquired into the cache and opened at its default        │
+│                     branch's commit, always untrusted; --no-serve only       │
+│                     acquires it. With no ROOT and no mode, prints help.      │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Options ────────────────────────────────────────────────────────────────────╮
 │ --version          Show the installed version and exit.                      │
@@ -223,6 +226,7 @@ $ metab --help
  metab . --api '/api/tree?depth=2'
  metab . --show README.md
  metab . --check-api
+ metab file:///path/to/repo.git
  metab file:///path/to/repo.git --no-serve
  metab --remote example-host --path /srv/shared-files
  metab --plugins

@@ -152,9 +152,10 @@ known-file catalog uses the tree node’s display `name` as the basename, and KP
 SPA path chrome and copy-path decode GitPath wires to display names (C0 and invalid
 UTF-8 become U+FFFD); navigation identities stay wires.
 Omitted mtime leaves tally chrome empty rather than pending.
-Event, inventory open, archive containers, and serving acquired Git still wait on later
-slices. `resolve_path` and `served_root` remain filesystem-only plugin helpers: they
-raise `UnsupportedSourceCapabilityError` when the active subject has no folder.
+Event, inventory open, and archive containers still wait on later slices; a `file://`
+pin is served over HTTP, opened by the application lifespan in the serving event loop.
+`resolve_path` and `served_root` remain filesystem-only plugin helpers: they raise
+`UnsupportedSourceCapabilityError` when the active subject has no folder.
 Recency, ignore, watcher, activity, and mutation are named source capabilities with the
 same typed error.
 

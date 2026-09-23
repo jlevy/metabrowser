@@ -276,6 +276,7 @@ def test_golden_multi_entry_pin_show_and_api(
         "/api/index/progress",
         "/api/index/meta",
         "/api/capabilities",
+        "/api/source/status",
         "/api/tree?depth=0",
         "/api/tree?depth=2",
         f"/api/tree?path={DIR_A_WIRE}&depth=1",
@@ -307,6 +308,7 @@ def test_golden_multi_entry_pin_show_and_api(
     answered = {route: _ok([url, "--api", route]) for route in routes}
     shown_refused = {selection: _refused([url, "--show", selection]) for selection in show_refusals}
     refused = {route: _refused([url, "--api", route]) for route in api_refusals}
+    checked = _ok([url, "--check-api"])
 
     # The transcript is the contract. These assertions name what a reader
     # should take from it, so a careless regeneration cannot quietly drop them.
@@ -318,6 +320,15 @@ def test_golden_multi_entry_pin_show_and_api(
     assert "kind: markdown" in shown["links/to-readme.md"].stdout
     assert "kind: image" in shown["bin/glyph.png"].stdout
     assert "kind: binary" in shown["bin/sample.bin"].stdout
+
+    status = _payload(answered["/api/source/status"])
+    assert status["subject"] == "git_revision"
+    assert status["pin"] == PIN_ORIGIN_REVISION
+    assert status["ref"] == f"refs/remotes/origin/{PIN_ORIGIN_BRANCH}"
+    assert status["ref_name"] == PIN_ORIGIN_BRANCH
+    # The live filter's typed refusal is the pin's honest answer, so the check passes.
+    assert "live filter: 409; unsupported_for_subject" in checked.stdout
+    assert "result: pass" in checked.stdout
 
     progress = _payload(answered["/api/index/progress"])
     blob_count = len(PIN_ORIGIN_BLOBS)
@@ -428,6 +439,7 @@ def test_golden_multi_entry_pin_show_and_api(
                 )
                 for route in api_refusals
             ),
+            _block("file://<ORIGIN> --check-api", checked, origin_url=url, api=False),
         ]
     )
     assert str(tmp_path) not in rendered

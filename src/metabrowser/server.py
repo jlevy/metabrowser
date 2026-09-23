@@ -204,6 +204,7 @@ from metabrowser.settings import (
 from metabrowser.source import (
     UnsupportedSourceCapabilityError,
     get_source_session,
+    lifespan_subject,
     require_filesystem_hooks,
     require_filter_capabilities,
     require_source_capability,
@@ -211,6 +212,7 @@ from metabrowser.source import (
     session_filesystem_root,
     unsupported_source_payload,
 )
+from metabrowser.source_routes import SOURCE_ROUTES, SourceStatus, source_status
 from metabrowser.sse import api_stream
 from metabrowser.tree import (
     _IGNORE_CACHE,
@@ -1084,6 +1086,26 @@ def _initial_path_html() -> str:
     return f'<span class="path"><span class="path-base">{html_escape(label)}</span></span>'
 
 
+def _pin_label_html(status: SourceStatus) -> str:
+    """The navigation heading for a pinned revision: its ref, then its short commit.
+
+    It stands where a folder's name stands, so it uses the same `.path-base`
+    emphasis for the name a reader chose, and the commit follows it muted. The full
+    commit is the served root: the file header's prefix and this heading's tooltip
+    both read it from `data-served-root`. Without a known ref the short commit is
+    the name.
+    """
+
+    short = html_escape((status["pin"] or "")[:12])
+    ref_name = status["ref_name"]
+    if ref_name is None:
+        return f'<span class="path"><span class="path-base">{short}</span></span>'
+    return (
+        f'<span class="path"><span class="path-base">{html_escape(ref_name)}</span></span>'
+        f'<span class="header-revision">{short}</span>'
+    )
+
+
 def _served_root_str() -> str:
     """The served root, absolute. What the API reports and paths resolve against."""
     return str(_paths_safe.ROOT_DIR.resolve())
@@ -1159,10 +1181,11 @@ async def index(request: Request) -> HTMLResponse:
     git_pin = isinstance(subject, GitRevisionSubject)
     if git_pin:
         pin_oid = subject.commit_oid
-        initial_path = (
-            f'<span class="path"><span class="path-base">{html_escape(pin_oid[:12])}</span></span>'
-        )
+        initial_path = _pin_label_html(source_status())
         initial_root = html_escape(pin_oid, quote=True)
+        # A file:// mirror names no hosted repository, and core holds no provider
+        # URL grammar. GitHub mirrors get theirs from the GitHub plugin, planned for
+        # step 5 of the thin-mirror plan; until then a pin has none.
         repository_context = None
     else:
         initial_path = _initial_path_html()
@@ -3741,6 +3764,9 @@ async def _debug_inventory(request: Request) -> JSONResponse:
 
     if os.environ.get("METABROWSER_DEBUG", "").strip() not in ("1", "true", "yes"):
         return JSONResponse({"error": "set METABROWSER_DEBUG=1 to enable"}, status_code=404)
+    # A pin's index is its store's blob listing, not a provider the runtime opened, so
+    # there are no provider counters to report: a typed refusal, not a 500.
+    require_filesystem_hooks()
     runtime = _inventory_runtime_for(request)
     coordinated = await runtime.coordinator.read(
         ReadRequest(queries=(DiagnosticsQuery(query_id="debug-inventory"),))
@@ -3842,6 +3868,8 @@ routes = [
     # Read-only logical cache state for CLI parity. The table imports the cache and
     # the application home only inside a cache request; see ``metabrowser.cache.routes``.
     *CACHE_ROUTES,
+    # What this server serves: the subject and, on a pin, its commit and ref.
+    *SOURCE_ROUTES,
     *build_plugin_routes(_LOADED_PLUGINS),
 ]
 
@@ -3884,7 +3912,12 @@ def _inventory_root_provider() -> object:
 
 @asynccontextmanager  # pyright: ignore[reportDeprecated]
 async def _lifespan(app: Starlette) -> AsyncIterator[None]:
-    async with build_lifespan(app=app, root_provider=_inventory_root_provider):
+    # A served pin attaches before the inventory opens, which reads the active
+    # subject, and closes after it, so nothing still reads its Git processes.
+    async with (
+        lifespan_subject(),
+        build_lifespan(app=app, root_provider=_inventory_root_provider),
+    ):
         try:
             yield
         finally:

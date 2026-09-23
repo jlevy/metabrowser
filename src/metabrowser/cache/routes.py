@@ -14,6 +14,12 @@ synchronous file-system work, so they run in a worker thread.
 Numeric parameters are clamped, not rejected, as in :mod:`metabrowser.git.routes`; a
 malformed page key is a 400, because silently restarting a page sequence would repeat
 rows.
+
+A server serving a pinned Git revision answers every one of these with
+``unsupported_for_subject``. Its content was acquired from elsewhere and is
+untrusted, and the home's records name every other cached source, so nothing
+about them is served beside it. ``metab <url> --api /api/cache/...`` inspects
+the cache from an empty filesystem root instead.
 """
 
 from __future__ import annotations
@@ -24,10 +30,22 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
+from metabrowser.source import (
+    RepositorySubjectKind,
+    UnsupportedSourceCapabilityError,
+    get_source_session,
+)
+
+
+def _refuse_beside_acquired_content() -> None:
+    if get_source_session().subject.kind == RepositorySubjectKind.git_revision.value:
+        raise UnsupportedSourceCapabilityError("cache_inspection")
+
 
 async def api_cache_layout(_request: Request) -> JSONResponse:
     """``GET /api/cache/layout`` — the home's format state and reclamation outcomes."""
 
+    _refuse_beside_acquired_content()
     from metabrowser.cache.projection import layout_response
 
     status, body = await asyncio.to_thread(layout_response)
@@ -41,6 +59,7 @@ async def api_cache_sources(request: Request) -> JSONResponse:
     slug of the previous page).
     """
 
+    _refuse_beside_acquired_content()
     from metabrowser.cache.projection import page_limit, sources_response
 
     limit = page_limit(request.query_params.get("limit"))
@@ -52,6 +71,7 @@ async def api_cache_sources(request: Request) -> JSONResponse:
 async def api_cache_source(request: Request) -> JSONResponse:
     """``GET /api/cache/source/{slug}`` — one source, its recency, and its store's head."""
 
+    _refuse_beside_acquired_content()
     from metabrowser.cache.projection import source_response
 
     slug = str(request.path_params["slug"])
@@ -66,6 +86,7 @@ async def api_cache_stores(request: Request) -> JSONResponse:
     store identity of the previous page).
     """
 
+    _refuse_beside_acquired_content()
     from metabrowser.cache.projection import page_limit, stores_response
 
     limit = page_limit(request.query_params.get("limit"))

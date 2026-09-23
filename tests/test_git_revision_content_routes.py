@@ -1935,12 +1935,13 @@ def test_git_raw_blobs_are_sandboxed_like_filesystem_raw(
     asyncio.run(_run())
 
 
-def test_git_raw_path_form_is_sandboxed_and_does_not_fault(tmp_path: Path) -> None:
-    """``/raw/{path}`` under a pin answers, and answers sandboxed.
+def test_git_raw_path_form_is_a_sandboxed_capability_refusal(tmp_path: Path) -> None:
+    """``/raw/{path}`` under a pin answers ``unsupported_for_subject``, sandboxed.
 
-    Git preview through the path form is tracked separately, so a 404 here is a
-    legitimate answer today. What is not legitimate is a 500, or an answer that
-    leaves the sandbox off because the path form took a different branch.
+    The path form exists so relative references in a previewed document resolve,
+    and a pin never offers that preview (mb-g5je). The refusal is typed rather than a
+    404 that would misreport a present file, and it still carries the sandbox, so an
+    answer on this branch cannot leave the application origin unprotected.
     """
 
     store, commit = fast_import_store(tmp_path, {b"page.html": b"<!doctype html><p>pin</p>\n"})
@@ -1949,7 +1950,8 @@ def test_git_raw_path_form_is_sandboxed_and_does_not_fault(tmp_path: Path) -> No
         async with _pinned_client(store, commit) as (client, _subject):
             for address in ("/raw/page.html", f"/raw/{_wire(b'page.html')}"):
                 answered = await client.get(address)
-                assert answered.status_code in {200, 404}, (address, answered.status_code)
+                assert answered.status_code == 409, (address, answered.status_code)
+                assert answered.json()["capability"] == "raw_document_path"
                 _assert_git_raw_sandbox(answered, active_content=True)
                 assert str(store) not in answered.text
 

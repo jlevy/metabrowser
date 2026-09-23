@@ -25,3 +25,15 @@ def resolve_extra_plugin_dirs(plugins_dir: list[Path] | None) -> list[Path]:
         return normalize_plugin_dirs([*env_paths, *cli_paths])
     except ValueError as exc:
         raise CLIError(str(exc)) from exc
+
+
+def apply_extra_plugin_dirs(plugins_dir: list[Path] | None) -> None:
+    """Publish the resolved plugin directories for the server module's discovery.
+
+    Discovery runs when the server module is first imported, so this must precede
+    that import.
+    """
+
+    os.environ["METABROWSER_PLUGINS_DIRS"] = os.pathsep.join(
+        str(plugin_dir) for plugin_dir in resolve_extra_plugin_dirs(plugins_dir)
+    )

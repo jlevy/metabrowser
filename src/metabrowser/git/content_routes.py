@@ -119,7 +119,7 @@ from metabrowser.settings import (
     TEXT_PREVIEW_CHUNK_BYTES,
     TEXT_PREVIEW_REQUEST_MAX_BYTES,
 )
-from metabrowser.source import MAX_CONTAINER_INNER_DEPTH
+from metabrowser.source import MAX_CONTAINER_INNER_DEPTH, UnsupportedSourceCapabilityError
 from metabrowser.tree import _tree_depth_from_query
 from metabrowser.tree_filter import TreeFilter
 from metabrowser.view_routes import decode_view_logical_path
@@ -1665,8 +1665,19 @@ async def git_revision_kpress_render(
 
 @_typed_git_failures
 async def git_revision_raw(request: Request, subject: GitRevisionSubject) -> Response:
-    """Blob bytes for one GitPath. In-tree relative symlink blobs are followed."""
+    """Blob bytes for one GitPath. In-tree relative symlink blobs are followed.
 
+    Only the query form answers. The path form, `/raw/<path>`, is the address of a
+    document whose relative references resolve beside it, and its one consumer is
+    the HTML preview frame, which a pin never offers: acquired content always runs
+    under the untrusted profile. A reference inside a raw pinned document therefore
+    reaches `unsupported_for_subject` rather than a 404 that would misreport a
+    present file as missing. Markdown images need no path form: the link enhancer
+    resolves them to GitPath wires in the pinned tree and requests the query form.
+    """
+
+    if "path" in getattr(request, "path_params", {}):
+        raise UnsupportedSourceCapabilityError("raw_document_path")
     try:
         path = _git_path_from_query(request)
     except GitPathError:
