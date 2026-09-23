@@ -5,7 +5,7 @@ title: "v0.12 stabilization review: stack 218 against specs, tests, and beads"
 kind: task
 status: in_progress
 priority: 1
-version: 58
+version: 59
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 labels:
   - release:v0.12.0
@@ -64,12 +64,15 @@ child_order_hints:
   - is-01m367kbxqy7gbm5a76qjsappk
   - is-01m36aq07n0kr6hv53ycx6pb6e
 created_at: 2026-09-20T08:02:30.356Z
-updated_at: 2026-09-23T05:09:46.868Z
+updated_at: 2026-09-23T06:38:42.044Z
 ---
 Follow-up to mb-rldx, which was closed at 2026-09-20T07:32Z by a fast pass while its own notes said the #216 browser/plugin, resource-lifecycle, CLI/parity, and docs review passes were unfinished. Independently verify the #140/#217/#216 fix commits (da73b878, 70091d81, bc8dd72b, de0f4f5a), complete the unreviewed areas, review #209 as the security gate for serving acquired Git, reconcile every PR review channel, and reconcile beads and spec checklists with the branches. Output: confirmed findings filed as beads on their owning layers, and an ordered stabilization plan. Read-only until the plan is agreed; do not merge (landing owner is mb-n2ro).
 
 ## Notes
 
+2026-09-22 (PR #226, head 4002c608): foundation stabilization is complete. Closed: mb-sumg, mb-3z4d, mb-677z, mb-t7qs, mb-66oi, mb-4tw1, mb-lp89 and new mb-2k9c, plus acceptance gates mb-k900, mb-tsdc, mb-hoae, mb-j439. Still open under this umbrella, none of them foundation blockers: mb-99ub and mb-g5je (URL-opened roots and served /raw, Phase 2A), mb-163x (SIGHUP and the acquisition process group; mb-s1lt depends on it), mb-cds1 (workspace hygiene; .pnpm-store done), mb-ghko (bench shebang). Keep this bead open until those close or are re-homed.
+
+Earlier notes:
 # v0.11 stabilization review and fixes (2026-09-20)
 
 Independent re-review of stack #218 and PR #209 after `mb-rldx` was closed by a fast pass,

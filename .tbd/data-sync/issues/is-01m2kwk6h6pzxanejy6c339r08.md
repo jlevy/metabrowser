@@ -3,9 +3,9 @@ type: is
 id: is-01m2kwk6h6pzxanejy6c339r08
 title: "v0.12 GitHub Phase 2A base: verify the integrated format, source, store, and trust prerequisites"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 15
+version: 16
 spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
 delegate: claude-code@spud10.local
 labels:
@@ -24,8 +24,12 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-09-16T01:16:42.405Z
-updated_at: 2026-09-23T02:26:03.000Z
+updated_at: 2026-09-23T06:38:41.401Z
 started_at: 2026-09-16T21:12:28.672Z
+closed_at: 2026-09-23T06:38:41.399Z
+close_reason: "Integration head recorded 2026-09-22: 4002c6082057ed1fbac2af8fb8520c07e5abf498, the tip of PR #226 (codex/v012-foundation-stabilization) above #225 at 7a3bd1de. Required ancestors verified with git merge-base --is-ancestor: 93f19061 (#140 cache format, Phase 0D and design below it), 4d25dc9a (#217 acquisition), b3c001a9 (#216 source and Git pin), 7a3bd1de (#225), fd65812b (#209 trust merged on main), 6c278f3f (main through #224). CI all nine checks green, including admitted-git on real Git 2.43.7 and 2.50.1: https://github.com/jlevy/metabrowser/actions/runs/35827236719. make verify: install, lint-check, test (3206 passed, 2 skipped), audit (no vulnerabilities), goldens (192), and build and distribution with wheel smoke, run at f68c3045 with build rerun after the .pnpm-store ignore fix in 4002c608. Pin entry points force the untrusted profile, and a pin in a populated cache sees only its own tree (tests/test_cli_acquire.py). Two independent reviews: every finding fixed or filed (mb-163x). Phase 2A starts from this head. Not merged or released."
+resolution: null
+duplicate_of: null
 ---
 Before Phase 2A starts, record one exact green integration head containing the reviewed shared-mirror design, Phase 0D binding contracts, cache format/acquisition, consolidated source and immutable Git-pin implementation, cache goldens, and content-trust commits inherited from main (#209 and later hardening). Verify every required OID as an ancestor and run make verify. The trust foundation is already landed; no separate unmerged trust layer is required. New URL and pin entrypoints must apply and prove the forced untrusted profile with a populated cache. Add subsequent phase PRs above the current Stack 218 tip; do not merge or release from this gate.
 
