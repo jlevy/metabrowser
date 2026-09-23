@@ -3,9 +3,9 @@ type: is
 id: is-01m2p1pshr699c6pf8xqeer16j
 title: "Repository library Phase 1B-a review: publish worktree-free acquisition PR"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 20
+version: 21
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: claude-code@spud10.local
 labels:
@@ -20,8 +20,12 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-09-16T21:24:31.927Z
-updated_at: 2026-09-23T01:38:17.232Z
+updated_at: 2026-09-23T06:18:32.044Z
 started_at: 2026-09-16T21:24:54.760Z
+closed_at: 2026-09-23T06:18:32.043Z
+close_reason: "Review and acceptance obligations are met. #217 was reviewed in the stabilization pass (S217-1..8 closed), and its remaining acceptance landed in PR #226 (codex/v012-foundation-stabilization, head f68c3045f40ee28aa3eb37b010511cf8923ccc0d, all nine checks green: https://github.com/jlevy/metabrowser/actions/runs/35825617023): mb-sumg, mb-pkho, mb-d1za, mb-oueh, mb-dg00, mb-lp89, mb-e32d, with mb-rati moved to 2A. #226 had two independent reviews, all findings fixed or filed (mb-163x). #217 is published and ready for review; not merged."
+resolution: null
+duplicate_of: null
 ---
 Independently review GitCommandTarget, file:// local-origin sources under the untrusted profile (mb-dxmb), worktree-free acquisition, source/store alias publication, ref/object validation, crash recovery, cross-process CAS behavior, CLI parity, and acquisition goldens. Resolve every finding, run make verify, and publish one formal GitHub PR with gh stacked on the exact green Phase 1A head. Record exact stack evidence and final green CI. Do not merge.
 

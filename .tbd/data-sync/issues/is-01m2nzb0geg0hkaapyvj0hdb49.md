@@ -3,9 +3,9 @@ type: is
 id: is-01m2nzb0geg0hkaapyvj0hdb49
 title: "Immutable Git-tree review: publish revision-source PR"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 17
+version: 18
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: claude-code@spud10.local
 labels:
@@ -26,8 +26,12 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-09-16T20:43:08.685Z
-updated_at: 2026-09-23T01:38:17.827Z
+updated_at: 2026-09-23T06:18:33.231Z
 started_at: 2026-09-16T21:12:28.728Z
+closed_at: 2026-09-23T06:18:33.230Z
+close_reason: "Immutable Git-tree review and publication are complete (both spec boxes ticked). #216 was reviewed in the stabilization pass; mb-sumg and the remaining acceptance landed in PR #226 (codex/v012-foundation-stabilization, head f68c3045f40ee28aa3eb37b010511cf8923ccc0d, all nine checks green: https://github.com/jlevy/metabrowser/actions/runs/35825617023), which had two independent reviews with every finding fixed or filed. Published in stack 218; not merged. No URL route claims to serve a repository until Phase 2A."
+resolution: null
+duplicate_of: null
 ---
 Independently review GitRevisionSubject, GitTreeSource, GitPath, RepositoryStoreTarget migration across every Git consumer and content route, batch framing/cancellation/large-blob behavior, process-safe maintenance locks and durable reachability refs, plugin capability behavior, and two-process concurrent subjects. Resolve findings, run make verify, and publish one formal GitHub PR with gh stacked on exact green mb-tsdc content-source head. Record exact stack/review/CI evidence. Do not merge.
 

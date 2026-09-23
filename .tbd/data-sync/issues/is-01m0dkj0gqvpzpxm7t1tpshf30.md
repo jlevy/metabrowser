@@ -3,9 +3,9 @@ type: is
 id: is-01m0dkj0gqvpzpxm7t1tpshf30
 title: "Repository projection: immutable Git-tree source over a shared object store"
 kind: feature
-status: in_progress
+status: closed
 priority: 1
-version: 85
+version: 86
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: unknown@cursor
 labels:
@@ -23,8 +23,12 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-08-19T18:11:56.054Z
-updated_at: 2026-09-23T01:38:16.935Z
+updated_at: 2026-09-23T06:18:32.931Z
 started_at: 2026-09-16T21:10:44.836Z
+closed_at: 2026-09-23T06:18:32.930Z
+close_reason: "The immutable Git-tree source is implemented in #216. Its remaining acceptance is in PR #226 (codex/v012-foundation-stabilization, head f68c3045f40ee28aa3eb37b010511cf8923ccc0d, all nine checks green: https://github.com/jlevy/metabrowser/actions/runs/35825617023): installed-CLI T0 walkthrough, multi-entry golden, R5 and memo regressions, windowed large-blob reads (mb-t7qs), async-lock fixes (mb-677z), lazy-fetch acceptance on real admitted Git, the Git 2.43 refused-fetch handling, symlink bounds, and stale ref-lock recovery (mb-2k9c). HTTP serving is Phase 2A (mb-ew38)."
+resolution: null
+duplicate_of: null
 ---
 Implement GitRevisionSubject and GitTreeSource over a shared RepositoryStoreTarget and an opaque SourceSession. Define byte-segment GitPath identity and URL/display serialization; enumerate NUL-framed trees with stable byte ordering; read blobs through exclusive actor-style cat-file batch readers that issue info before contents, enforce size gates, drain frames, and poison/restart on cancellation or framing failure. Migrate history, repo discovery, commit detail, refs, diffs, file/raw/container/classification/KPress routes, and built-in sidekicks to exact target plus subject OID semantics. Protect live OIDs with cross-process shared maintenance locks and durable private refs; GC/repack takes the exclusive lock. Add crash/stale-lock recovery, promisor-miss, oversized-blob, invalid-UTF8/newline-name, and two-process/two-OID tests. Never create a checkout, index, branch, worktree, or fake filesystem fact.
 

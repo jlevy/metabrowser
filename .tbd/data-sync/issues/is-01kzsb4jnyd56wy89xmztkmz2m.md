@@ -3,9 +3,9 @@ type: is
 id: is-01kzsb4jnyd56wy89xmztkmz2m
 title: "Repository library Phase 1B-a: hardened worktree-free Git acquisition (no serving)"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 65
+version: 66
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: unknown@cursor
 labels:
@@ -43,8 +43,12 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-08-11T21:19:58.653Z
-updated_at: 2026-09-23T02:26:04.282Z
+updated_at: 2026-09-23T06:18:31.721Z
 started_at: 2026-09-16T21:10:44.811Z
+closed_at: 2026-09-23T06:18:31.720Z
+close_reason: "Phase 1B-a acceptance is complete: every checklist item is ticked, with evidence in the spec. Lazy-fetch policy on every read path (mb-pkho), runtime proof on real Git 2.43.7 and 2.50.1 (mb-d1za, mb-oueh), backport decision (mb-e32d), process-group kill (mb-lp89), goldens (mb-dg00). The stall bound moved to Phase 2A (mb-rati under mb-s1lt). HTTPS and SSH stay mb-bi2c. PR #226 (codex/v012-foundation-stabilization, head f68c3045f40ee28aa3eb37b010511cf8923ccc0d, all nine checks green: https://github.com/jlevy/metabrowser/actions/runs/35825617023)"
+resolution: null
+duplicate_of: null
 extensions:
   linear:
     id: 0ffb0ef8-e09f-4e96-8736-01e0592ab450

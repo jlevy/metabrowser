@@ -3,9 +3,9 @@ type: is
 id: is-01m2p1pszq015wyj1b3admbt8r
 title: "Repository source boundary review: publish content-source PR"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 12
+version: 13
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: claude-code@spud10.local
 labels:
@@ -22,8 +22,12 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-09-16T21:24:32.374Z
-updated_at: 2026-09-23T01:38:17.522Z
+updated_at: 2026-09-23T06:18:32.635Z
 started_at: 2026-09-16T21:24:54.997Z
+closed_at: 2026-09-23T06:18:32.634Z
+close_reason: "Source-boundary acceptance, CLI golden coverage and independent review are complete (spec box ticked). #216 was reviewed in the stabilization pass; the remaining acceptance and two further independent reviews are in PR #226 (codex/v012-foundation-stabilization, head f68c3045f40ee28aa3eb37b010511cf8923ccc0d, all nine checks green: https://github.com/jlevy/metabrowser/actions/runs/35825617023). Published as #216 and #226 in stack 218; not merged."
+resolution: null
+duplicate_of: null
 ---
 Independently review RepositorySubject, ContentSource, AttachedFilesystemSubject, source capabilities, one-active-subject lifecycle, filesystem-only plugin API gating, route/inventory generalization, exact-root containment, CLI parity, and goldens. Resolve every finding, run make verify, and publish one formal GitHub PR with gh stacked on the exact green acquisition head. Record exact stack evidence and final green CI. Do not merge.
 
