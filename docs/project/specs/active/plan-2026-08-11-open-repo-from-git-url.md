@@ -7,12 +7,13 @@
 **Status:** v0.12.0 implementation is on open GitHub stack
 [#218](https://github.com/jlevy/metabrowser/stack/218), above the released v0.11.0
 `main`. Phase 0 and Phase 1A are on nondraft PRs with green CI; final stack review
-remains open. Phase 1B-a file:// acquire is draft
-[#217](https://github.com/jlevy/metabrowser/pull/217). Phase 1B source boundary and
-leased Git pin are draft [#216](https://github.com/jlevy/metabrowser/pull/216). URL
-open, HTTP serving of acquired Git, https/ssh acquire, and later phases are not started.
-The content-trust foundation from #209 is on `main`; #224 and its ancestors are in the
-stack base. Landing remains `mb-n2ro` and requires explicit approval.
+remains open. Phase 1B-a file:// acquire
+[#217](https://github.com/jlevy/metabrowser/pull/217) and Phase 1B source boundary and
+leased Git pin [#216](https://github.com/jlevy/metabrowser/pull/216) are ready for
+review; their remaining acceptance and publication obligations are listed below.
+URL open, HTTP serving of acquired Git, https/ssh acquire, and later phases are not
+started. The content-trust foundation from #209 is on `main`; #224 and its ancestors are
+in the stack base. Landing remains `mb-n2ro` and requires explicit approval.
 The [alpha test plan](plan-2026-09-22-v012-alpha-testing.md) adds an incremental
 readiness gate without changing the full v0.12 milestone.
 
@@ -1757,8 +1758,9 @@ next slice begins.
 
 #### Phase 1B-a: Acquire and reuse a shared repository store (`mb-h51g`, `mb-dg00`)
 
-Draft [#217](https://github.com/jlevy/metabrowser/pull/217) implements file:// acquire
-without serving. https and ssh are classified and refused.
+[#217](https://github.com/jlevy/metabrowser/pull/217) is ready for review and implements
+file:// acquire without serving.
+https and ssh are classified and refused.
 Review and publication remain `mb-k900`. `mb-dg00` still owns missing golden sessions.
 
 - [x] Add conservative source normalization, and claim uniquified slugs under the
@@ -1777,9 +1779,11 @@ Review and publication remain `mb-k900`. `mb-dg00` still owns missing golden ses
   between the commits.
 - [x] Reuse a valid cache hit without network access, provider detection, or credential
   lookup, including against an application home the process cannot write.
-- [x] Prefetch the default revision’s tree blobs before publication, start object
-  convergence only after serving, and persist honest partial, converging, complete, and
-  failed states.
+- [x] Prefetch the default revision’s tree blobs before publication and record the
+  acquired store as `complete` for a full fetch or `converging` for a blobless fetch.
+  These records do not start a background convergence worker.
+  Post-serving background convergence belongs to Phase 2B (`mb-bgn8`), so it does not
+  block publication of this acquisition-only slice.
 - [ ] Apply the Phase 0 lazy-fetch decision on every read path, and prove a
   not-yet-converged blob read behaves as decided both online and offline.
 - [ ] Run those no-lazy-fetch acceptance tests against the lowest admitted Git release
@@ -1804,8 +1808,9 @@ replacement, repair, and purge use object, ref, record, and lease validation ins
 
 #### Phase 1B-b: Introduce the content-source boundary (`mb-3bna`, `mb-tsdc`)
 
-Draft [#216](https://github.com/jlevy/metabrowser/pull/216) implements the source
-boundary. Independent review and publication remain `mb-tsdc`.
+[#216](https://github.com/jlevy/metabrowser/pull/216) is ready for review and implements
+the source boundary.
+Remaining acceptance, independent review, and publication are tracked by `mb-tsdc`.
 
 - [x] Add `RepositorySubject`, `SourceSession`, `SourceCapabilities`, `ContentHandle`,
   and `ContentSource`, with one active attached-filesystem subject per server/browser
@@ -1822,14 +1827,18 @@ boundary. Independent review and publication remain `mb-tsdc`.
   subject.
 - [x] Return typed unsupported capability results for recency, ignore state, watchers,
   activity, and mutation rather than fabricating values.
-- [ ] Update built-in binary, structured, agent-log, diff, image, and Markdown hooks,
-  route parity, and goldens; independently review and publish through `mb-tsdc`.
+- [x] Adapt binary, structured, agent-log, and diff hooks to bounded content ports, and
+  image and Markdown delivery to the Git content source.
+  Focused route tests cover these consumers in
+  `tests/test_git_revision_content_routes.py`.
+- [ ] Complete the source-boundary acceptance and CLI golden coverage, then
+  independently review and publish through `mb-tsdc`.
 
 #### Phase 1B-c: Serve immutable Git revisions (`mb-z335`, `mb-hoae`)
 
-Draft [#216](https://github.com/jlevy/metabrowser/pull/216) implements a leased
-`file://` pin for `metab --show` and non-cache `--api`. HTTP `--walk` / `--check-api` /
-serve still refuse Git sources.
+[#216](https://github.com/jlevy/metabrowser/pull/216) is ready for review and implements
+a leased `file://` pin for `metab --show` and non-cache `--api`. HTTP `--walk` /
+`--check-api` / serve still refuse Git sources.
 Independent review and publication remain `mb-hoae`.
 
 - [x] Add `AttachedWorktreeTarget` and `RepositoryStoreTarget` to the one Git process
@@ -1848,8 +1857,12 @@ Independent review and publication remain `mb-hoae`.
 - [x] Hold a cross-process shared maintenance lock for each live subject and durable
   private refs for offline-promised OIDs; GC, repack, and reclamation require the
   exclusive lock.
-- [ ] Define symlink, gitlink, LFS-pointer, oversized-blob, promisor-miss,
-  invalid-UTF-8, and newline-name behavior and pin each with focused tests.
+- [x] Define symlink, gitlink, LFS-pointer, oversized-blob, promisor-miss,
+  invalid-UTF-8, and newline-name behavior with focused source and route tests in
+  `tests/test_git_tree_source.py` and `tests/test_git_revision_content_routes.py`.
+- [ ] Complete installed-CLI acceptance for immutable Git content, including the
+  minimum-Git evidence in the [alpha test plan](plan-2026-09-22-v012-alpha-testing.md).
+  URL-serving browser acceptance belongs to Phase 2A.
 - [x] Prove two processes share one object store while browsing different OIDs without a
   checkout, index, local branch, or working-tree mutation.
 - [ ] Independently review and publish through `mb-hoae` before any URL route claims it
@@ -1862,8 +1875,10 @@ Independent review and publication remain `mb-hoae`.
   identity and records.
 - [ ] Require declared scheme/host claims plus `NotApplicable`, `Reduced`, and terminal
   `Rejected` outcomes; refuse duplicate or overlapping claims before startup.
-- [ ] Change the CLI root boundary from `Path | None` to `str | None`; preserve URL
-  bytes until classification and keep path-only modes receiving resolved paths.
+- [x] Preserve the CLI root as `str | None` until generic source classification and keep
+  path-only modes receiving resolved paths in `cli/main.py`.
+- [ ] Connect installed provider URL reduction to that root boundary and preserve the
+  reduced selection through acquired-Git serving.
 - [ ] Reduce provider web URLs to a clone URL plus a selection record: the shapes in the
   variants table, line and column anchors, `?plain=1`, dropped tracking and display
   parameters, reserved-namespace refusal, and configurable Enterprise hosts.
@@ -1875,7 +1890,7 @@ Independent review and publication remain `mb-hoae`.
 - [ ] Independently review and publish the URL-open slice through `mb-innz` on the exact
   green immutable-source head.
 
-#### Phase 2B: Provider jobs and selected refs (`mb-jlon`, `mb-bf94`)
+#### Phase 2B: Provider jobs, selected refs, and convergence (`mb-jlon`, `mb-bgn8`, `mb-bf94`)
 
 - [ ] Keep `selection.py` pure.
   Put `fetch_selected_ref`, `request_ref_fetch`, progress, cancellation, and typed stage
@@ -1928,6 +1943,12 @@ Independent review and publication remain `mb-hoae`.
 - [ ] Keep provider schemas, `gh`, auth, catalog, chooser, purge, and automatic eviction
   out of this phase. Never mutate an attached checkout or treat its remote as shared
   authority.
+- [ ] Add bounded background object convergence (`mb-bgn8`) after acquired-Git serving
+  and the job foundation exist.
+  Start only after serving begins, preserve cached content across cancellation or
+  failure, and report honest partial, converging, complete, and failed states.
+  Prove startup, completion, interruption/restart, and no implicit network on reads.
+  This follow-up does not block Phase 1B-a acquisition publication.
 - [ ] Prove cancellation, same-key coalescing, unknown-principal non-coalescing,
   force-push/no-regression races, fork-source isolation, attached-checkout non-mutation,
   forged or unregistered handles, context/lease mismatch, expiry, revocation, and
@@ -2008,7 +2029,7 @@ vertical slice.
 | 1B-c immutable source (`mb-z335`, `mb-hoae`) | 1B-b | GitHub, provider API, chooser | Concurrent full-OID trees and blobs open without a checkout or shared index |
 | Untrusted-content profile (`mb-cun0`, `mb-vib1`, `mb-d658`) | Landed on `main` through #209 | Cache, GitHub, provider API | Sandboxed raw responses, same-origin API proof, and the untrusted capability profile are available to the Git source |
 | 2A repository URL open (`mb-12cz`, `mb-ew38`, `mb-innz`) | Verified trust integration, immutable source, provider URL-reducer SDK | Provider API or schemas | Any supported repository URL opens an immutable revision subject |
-| 2B provider-job foundation (`mb-jlon`, `mb-bf94`) | Green 1B-a acquisition and 2A URL-open PRs | Full catalog, chooser, purge | Independently reviewed provider jobs and selected-ref fetching for branches and GitHub |
+| 2B provider-job and convergence foundation (`mb-jlon`, `mb-bgn8`, `mb-bf94`) | Green 1B-a acquisition and 2A URL-open PRs | Full catalog, chooser, purge | Independently reviewed provider jobs and selected-ref fetching for branches and GitHub |
 | 2C selected branch (`mb-2xq7`, `mb-9aku`) | Green 2B provider-job PR | Provider API or schemas | Any exposed and authorized branch opens at its resolved immutable revision |
 | Later cache operations | Phase 2B jobs | Provider support | Generic list, inspect, refresh, and purge |
 | Later chooser | Generic catalog | GitHub | Instant switching among cached repositories |

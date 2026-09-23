@@ -6,12 +6,14 @@
 
 **Status:** Phase 0 through 0D and repository-library Phase 1A are implemented on open
 GitHub stack [#218](https://github.com/jlevy/metabrowser/stack/218), above the released
-v0.11.0 `main`. Cache Phase 1B is on draft
+v0.11.0 `main`. Cache Phase 1B is on ready-for-review
 [#217](https://github.com/jlevy/metabrowser/pull/217) and
 [#216](https://github.com/jlevy/metabrowser/pull/216); #216 combines the source boundary
-and leased Git pin. The #209 content-trust foundation is on `main`, including in the
-stack base through #224. Provider URL open, `gh` acquisition, and hosted-review views
-are not started. Landing remains `mb-n2ro` and requires explicit approval.
+and leased Git pin. The alpha test plan is on
+[#225](https://github.com/jlevy/metabrowser/pull/225) above #216. The #209 content-trust
+foundation is on `main`, including in the stack base through #224. Provider URL open,
+`gh` acquisition, and hosted-review views are not started.
+Landing remains `mb-n2ro` and requires explicit approval.
 The [alpha test plan](plan-2026-09-22-v012-alpha-testing.md) tests incremental readiness
 through direct PR viewing before the full milestone reaches the bounded PR index and
 virtual navigation.
@@ -1021,8 +1023,9 @@ This phase is owned by the
 first implementation prerequisite here.
 Phase 1A is on nondraft [#140](https://github.com/jlevy/metabrowser/pull/140) with green
 CI; final stack review remains open.
-file:// acquire is draft [#217](https://github.com/jlevy/metabrowser/pull/217). The
-source boundary and leased Git-tree pin share draft
+file:// acquire is ready for review on
+[#217](https://github.com/jlevy/metabrowser/pull/217). The source boundary and leased
+Git-tree pin share ready-for-review
 [#216](https://github.com/jlevy/metabrowser/pull/216). https/ssh acquire, HTTP serving,
 and the remaining `mb-dg00` goldens are not done.
 
@@ -1059,10 +1062,10 @@ choose one prerequisite lineage while omitting another.
 | 0D source-binding correction | `mb-z2mc` | `mb-9u45` | Green shared-mirror design head |
 | 1A cache format foundation | `mb-ire2`, `mb-xa0p`, `mb-4gnu`, `mb-k54c` | `mb-lm5m` | Green Phase 0D head |
 | 1B-a worktree-free acquisition | `mb-dxmb`, `mb-h51g`, `mb-dg00` | `mb-k900` | Green Phase 1A head |
-| 1B-b and 1B-c source boundary and immutable Git-tree source | `mb-3bna`, `mb-z335` | `mb-tsdc`, `mb-hoae` | Draft #216 over the green acquisition head; both reviews cover the consolidated PR |
+| 1B-b and 1B-c source boundary and immutable Git-tree source | `mb-3bna`, `mb-z335` | `mb-tsdc`, `mb-hoae` | Ready-for-review #216 over the green acquisition head; both reviews cover the consolidated PR |
 | Untrusted-content profile | `mb-cun0`, `mb-vib1` | `mb-d658` | Landed through #209 on `main`; verify its commits in the Phase 2A integration base |
 | 2A repository URL open | `mb-12cz`, `mb-ew38` | `mb-innz` | Exact green source/pin head plus the landed trust commits, recorded by `mb-j439` |
-| 2B provider-job and selected-ref foundation | `mb-jlon` | `mb-bf94` | Green Phase 2A head |
+| 2B provider jobs, selected refs, and background convergence | `mb-jlon`, `mb-bgn8` | `mb-bf94` | Green Phase 2A head |
 | 2C selected-branch integration | `mb-2xq7` | `mb-9aku` | Green Phase 2B head |
 | 3A provider foundation | `mb-y1ax`, `mb-p4sw`, `mb-s123`, `mb-ji83`, `mb-s0gv`, `mb-i3xc`, `mb-2oxp`, `mb-cbak` | `mb-k7lc` | Green Phase 2C head |
 | 3B direct PR cache | `mb-h64t` | `mb-cpco` | Green Phase 3A head |

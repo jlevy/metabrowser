@@ -60,7 +60,7 @@ trust profile and prove it against a populated cache.
 Layers of stack #218, bottom to top — the PRs that still exist as review units, not the
 crumb slices they folded in:
 
-`#125 → #134 → #136 → #139 → #140 → #217 → #216`
+`#125 → #134 → #136 → #139 → #140 → #217 → #216 → #225`
 
 New testing, stabilization, and feature PRs extend this chain.
 Landing is tracked by `mb-n2ro`.

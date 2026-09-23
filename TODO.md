@@ -18,7 +18,7 @@ Checked items below are supported today; unchecked items are planned work.
 | File editing | [Opt-in trusted-local file editing](docs/project/specs/active/plan-2026-07-16-trusted-local-file-editing.md) | Draft |
 | Scan state | [Scanning state and recent directories](docs/project/specs/active/plan-2026-07-16-scanning-state-and-recent-directories.md) | Draft |
 | Git surfaces | [Git graph nav panel](docs/project/specs/active/plan-2026-08-06-git-graph-view.md), [general diff rendering](docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md), [Git status and working-tree diffs](docs/project/specs/active/plan-2026-08-26-git-status-and-working-tree-diffs.md) | Graph panel, read-only Git API, and diff rendering shipped; working-tree status and `/compare/` remain, after CLI parity |
-| Repository library | [Repository library and open from a Git URL](docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md) | v0.11.0 released. Stack [#218](https://github.com/jlevy/metabrowser/stack/218) holds the owner-only cache, draft `file://` acquisition, and draft leased Git-tree pin. Repository URL opening, https/ssh acquisition, and HTTP serving remain; immutable Git trees are read without a checkout or detached worktree |
+| Repository library | [Repository library and open from a Git URL](docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md) | v0.11.0 released. Stack [#218](https://github.com/jlevy/metabrowser/stack/218) holds the owner-only cache, ready-for-review `file://` acquisition, and ready-for-review leased Git-tree pin. Repository URL opening, https/ssh acquisition, and HTTP serving remain; immutable Git trees are read without a checkout or detached worktree |
 | Hosted review and GitHub | [Hosted review model and GitHub provider](docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md), [architecture](docs/project/architecture/arch-hosted-review-model.md) | Provider-neutral records and installed contract gates are on stack [#218](https://github.com/jlevy/metabrowser/stack/218). The `gh api` adapter, auth-scoped snapshots, direct-PR views, bounded PR index, and virtual nav remain planned. [Alpha testing](docs/project/specs/active/plan-2026-09-22-v012-alpha-testing.md) covers incremental readiness through the direct PR view; the full v0.12 milestone continues through the index and nav |
 | Editor host | [VS Code extension host](docs/project/architecture/arch-vscode-extension-host.md) | Architecture only; no plan yet |
 | Load-time performance | [End-to-end load time](docs/project/specs/active/plan-2026-08-21-load-time-performance.md) | Draft |
@@ -44,8 +44,9 @@ component:
 2. `mb-ire2`, `mb-xa0p`, `mb-4gnu`, and `mb-h51g` establish the owner-only versioned
    application home and publish a pinned generic Git cache entry.
    `mb-k54c`, `mb-dg00`, and `mb-dxmb` expose and golden-pin its state and URL grammar.
-   The first seven stack layers through draft #216 carry this foundation; remaining
-   acceptance work is tracked in the
+   The first seven stack layers through ready-for-review #216 carry this foundation;
+   [#225](https://github.com/jlevy/metabrowser/pull/225) adds the alpha test plan above
+   them. Remaining acceptance work is tracked in the
    [repository plan](docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md).
 3. The untrusted-content profile (`mb-cun0`, `mb-vib1`) landed on `main` through #209.
    `mb-r5gn` and `mb-u4mf` provide Git working-tree status for attached filesystem
