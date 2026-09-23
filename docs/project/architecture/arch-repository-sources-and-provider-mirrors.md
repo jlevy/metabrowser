@@ -1,9 +1,10 @@
 # Repository Sources and Provider Mirrors
 
-**Superseded in part (2026-09-23):** fetch jobs, credential leases, revision leases,
-convergence, and provider mirrors below are replaced by
+**Superseded in part (2026-09-23):** planned fetch jobs, credential handling, and
+provider mirrors below are replaced by
 [Thin Mirror for Git and GitHub Browsing](../specs/active/plan-2026-09-23-v012-thin-mirror.md).
-The Simplify pull request updates this document to match the code it leaves.
+Revision leases, subject refs, convergence, and store reclamation are removed from the
+code and from this document.
 
 **Status:** Partly implemented.
 Repository subjects, `SourceSession`, capabilities, the attached-filesystem content
