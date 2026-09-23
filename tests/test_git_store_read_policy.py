@@ -12,10 +12,8 @@ from typing import Any
 
 import pytest
 
-from metabrowser.git import change_set as change_set_module
 from metabrowser.git import process as process_module
 from metabrowser.git import tree_source as tree_module
-from metabrowser.git.change_set import change_set_blob_oids
 from metabrowser.git.process import (
     ACQUISITION_POLICY,
     READ_POLICY,
@@ -216,30 +214,3 @@ def test_info_many_applies_the_batch_deadline_per_chunk(
             await subject.aclose()
 
     asyncio.run(run())
-
-
-def test_a_change_set_names_blob_sides_only() -> None:
-    """Paths are skipped even when they look like records; gitlinks and absent sides too."""
-
-    blob_a, blob_b, link, other = "a" * 40, "b" * 40, "c" * 40, "d" * 40
-    zero = "0" * 40
-    raw = (
-        f"\n:000000 100644 {zero} {blob_a} A\0:100644 100644 {other} {other} M\0"
-        f":100644 160000 {blob_b} {link} T\0vendor/dep\0"
-        f":120000 100755 {other} {blob_a} T\0tool\0"
-    ).encode()
-    assert change_set_blob_oids(raw) == (blob_a, blob_b, other)
-
-
-def test_a_worktree_change_set_is_not_checked(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Only a store runs without lazy fetch, so only a store pays for the check."""
-
-    async def no_git(*_args: object, **_kwargs: object) -> bytes:
-        raise AssertionError("a worktree comparison must not be pre-checked")
-
-    monkeypatch.setattr(change_set_module, "run_git_at", no_git)
-    location = GitLocation.filesystem(tmp_path)
-    asyncio.run(change_set_module.require_commit_blobs(location, "a" * 40))
-    asyncio.run(change_set_module.require_comparison_blobs(location, ["a" * 40, "b" * 40]))

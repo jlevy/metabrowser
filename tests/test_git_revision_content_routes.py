@@ -6,12 +6,10 @@ import asyncio
 import base64
 import os
 import shutil
-import socket
 import subprocess
 import threading
-import time
-from collections.abc import AsyncGenerator, Generator
-from contextlib import asynccontextmanager, contextmanager
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -56,7 +54,6 @@ _PNG_1X1 = (
     b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\xda\x63\x00"
     b"\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
 )
-_PROMISOR_MISS_BUDGET_S = 1.0
 
 
 def _git_env(root: Path) -> dict[str, str]:
@@ -174,17 +171,9 @@ def _delete_store_blob(store: Path, oid: str) -> None:
             )
             pack.unlink()
             pack.with_suffix(".idx").unlink(missing_ok=True)
-            pack.with_suffix(".promisor").unlink(missing_ok=True)
     if not loose.is_file():
         raise AssertionError(f"store blob {oid} was not a loose object")
     loose.unlink()
-
-
-@contextmanager
-def _unanswered_promisor() -> Generator[str, None, None]:
-    with socket.create_server(("127.0.0.1", 0)) as sock:
-        port = int(sock.getsockname()[1])
-        yield f"http://127.0.0.1:{port}/repo.git"
 
 
 def _wire(*names: bytes) -> str:
@@ -1811,7 +1800,7 @@ def test_git_file_raw_return_lfs_pointer_bytes_without_smudge(tmp_path: Path) ->
     assert marker.exists() is False
 
 
-def test_git_file_raw_promisor_miss_is_object_unavailable(tmp_path: Path) -> None:
+def test_git_file_raw_missing_blob_is_object_unavailable(tmp_path: Path) -> None:
     work = tmp_path / "work"
     store = tmp_path / "store.git"
     work.mkdir()
@@ -1824,47 +1813,40 @@ def test_git_file_raw_promisor_miss_is_object_unavailable(tmp_path: Path) -> Non
     missing_oid = _git(work, "rev-parse", "HEAD:README.md").decode().strip()
     _git(tmp_path, "clone", "--bare", "--template=", str(work), str(store), env_root=tmp_path)
     _delete_store_blob(store, missing_oid)
-    with _unanswered_promisor() as url:
-        _git(store, "config", "extensions.partialClone", "origin")
-        _git(store, "config", "remote.origin.promisor", "true")
-        _git(store, "config", "remote.origin.url", url)
 
-        async def _run() -> None:
-            async with _pinned_client(store, commit) as (client, _subject):
-                tree = await client.get("/api/tree")
-                assert tree.status_code == 200
-                tree_body = tree.json()
-                names = {entry["display"] for entry in tree_body["entries"]}
-                assert names == {"README.md", "keep.txt"}
-                assert "summary" not in tree_body
-                started = time.monotonic()
-                async with asyncio.timeout(2):
-                    missing = await client.get("/api/file", params={"path": _wire(b"README.md")})
-                assert time.monotonic() - started < _PROMISOR_MISS_BUDGET_S
-                assert missing.status_code == 404
-                body = missing.json()
-                assert body["code"] == "object_unavailable"
-                assert body["oid"] == missing_oid
-                assert str(store) not in missing.text
-                raw = await client.get("/raw", params={"path": _wire(b"README.md")})
-                assert raw.status_code == 404
-                kept = await client.get("/api/file", params={"path": _wire(b"keep.txt")})
-                assert kept.status_code == 200
-                assert kept.json()["content"] == "kept\n"
-                rollup = await client.get("/api/rollup")
-                assert rollup.status_code == 404
-                assert rollup.json()["code"] == "object_unavailable"
-                assert rollup.json()["oid"] == missing_oid
-                catalog = await client.get("/api/catalog")
-                assert catalog.status_code == 200
-                catalog_body = catalog.json()
-                assert catalog_body["complete"] is True
-                paths = {file["p"] for file in catalog_body["files"]}
-                assert _wire(b"README.md") in paths
-                assert _wire(b"keep.txt") in paths
-                assert str(store) not in catalog.text
+    async def _run() -> None:
+        async with _pinned_client(store, commit) as (client, _subject):
+            tree = await client.get("/api/tree")
+            assert tree.status_code == 200
+            tree_body = tree.json()
+            names = {entry["display"] for entry in tree_body["entries"]}
+            assert names == {"README.md", "keep.txt"}
+            assert "summary" not in tree_body
+            missing = await client.get("/api/file", params={"path": _wire(b"README.md")})
+            assert missing.status_code == 404
+            body = missing.json()
+            assert body["code"] == "object_unavailable"
+            assert body["oid"] == missing_oid
+            assert str(store) not in missing.text
+            raw = await client.get("/raw", params={"path": _wire(b"README.md")})
+            assert raw.status_code == 404
+            kept = await client.get("/api/file", params={"path": _wire(b"keep.txt")})
+            assert kept.status_code == 200
+            assert kept.json()["content"] == "kept\n"
+            rollup = await client.get("/api/rollup")
+            assert rollup.status_code == 404
+            assert rollup.json()["code"] == "object_unavailable"
+            assert rollup.json()["oid"] == missing_oid
+            catalog = await client.get("/api/catalog")
+            assert catalog.status_code == 200
+            catalog_body = catalog.json()
+            assert catalog_body["complete"] is True
+            paths = {file["p"] for file in catalog_body["files"]}
+            assert _wire(b"README.md") in paths
+            assert _wire(b"keep.txt") in paths
+            assert str(store) not in catalog.text
 
-        asyncio.run(_run())
+    asyncio.run(_run())
 
 
 def test_git_view_shell_honors_gitpath_and_refuses_filesystem_spelling(tmp_path: Path) -> None:

@@ -5,11 +5,8 @@ from __future__ import annotations
 import asyncio
 import os
 import shutil
-import socket
 import subprocess
-import time
-from collections.abc import Generator
-from contextlib import contextmanager, suppress
+from contextlib import suppress
 from dataclasses import replace
 from pathlib import Path
 
@@ -58,8 +55,6 @@ _LFS_POINTER = (
     b"oid sha256:4d7a214614ab2935c943f9e0ff69d22eadbb8f32b1258daaa5e2ca24d17e2393\n"
     b"size 12345\n"
 )
-# A hanging promisor without GIT_NO_LAZY_FETCH waited past 8 s in this suite.
-_PROMISOR_MISS_BUDGET_S = 1.0
 
 
 def _git_env(root: Path) -> dict[str, str]:
@@ -163,19 +158,9 @@ def _delete_store_blob(store: Path, oid: str) -> None:
             )
             pack.unlink()
             pack.with_suffix(".idx").unlink(missing_ok=True)
-            pack.with_suffix(".promisor").unlink(missing_ok=True)
     if not loose.is_file():
         raise AssertionError(f"store blob {oid} was not a loose object")
     loose.unlink()
-
-
-@contextmanager
-def _unanswered_promisor() -> Generator[str, None, None]:
-    """A TCP port that accepts no HTTP so a lazy fetch would stall."""
-
-    with socket.create_server(("127.0.0.1", 0)) as sock:
-        port = int(sock.getsockname()[1])
-        yield f"http://127.0.0.1:{port}/repo.git"
 
 
 def test_git_path_round_trips_invalid_utf8_and_newlines() -> None:
@@ -688,7 +673,7 @@ def test_lfs_pointer_blob_is_stored_bytes_without_smudge(tmp_path: Path) -> None
     assert marker.exists() is False
 
 
-def test_promisor_miss_is_object_unavailable_without_lazy_fetch(tmp_path: Path) -> None:
+def test_a_blob_missing_from_the_store_is_object_unavailable(tmp_path: Path) -> None:
     work = tmp_path / "work"
     store = tmp_path / "store.git"
     work.mkdir()
@@ -701,45 +686,34 @@ def test_promisor_miss_is_object_unavailable_without_lazy_fetch(tmp_path: Path) 
     missing_oid = _git(work, "rev-parse", "HEAD:README.md").decode().strip()
     _git(tmp_path, "clone", "--bare", "--template=", str(work), str(store), env_root=tmp_path)
     _delete_store_blob(store, missing_oid)
-    with _unanswered_promisor() as url:
-        _git(store, "config", "extensions.partialClone", "origin")
-        _git(store, "config", "remote.origin.promisor", "true")
-        _git(store, "config", "remote.origin.url", url)
 
-        async def _run() -> None:
-            subject = await git_revision_subject(
-                target=repository_store_target(git_dir=store),
-                commit_oid=commit,
-                store_identity="fixture",
-            )
-            source = subject.tree_source
-            try:
-                children = await source.list_tree()
-                names = {entry.path.segments[-1] for entry in children}
-                assert names == {b"README.md", b"keep.txt"}
-                readme = next(
-                    entry for entry in children if entry.path.segments[-1] == b"README.md"
-                )
-                assert readme.oid == missing_oid
-                assert readme.size is None
-                miss_tally = await source.tree_tally()
-                assert miss_tally is not None
-                assert miss_tally.total_files == 2
-                assert miss_tally.total_size is None
-                started = time.monotonic()
-                async with asyncio.timeout(2):
-                    try:
-                        await source.read_blob(readme.path)
-                        raise AssertionError("promisor miss must fail closed")
-                    except GitObjectUnavailableError as exc:
-                        assert exc.code == "object_unavailable"
-                        assert exc.oid == missing_oid
-                assert time.monotonic() - started < _PROMISOR_MISS_BUDGET_S
-                assert await source.read_blob(GitPath.from_segments(b"keep.txt")) == b"kept\n"
-            finally:
-                await subject.aclose()
+    async def _run() -> None:
+        subject = await git_revision_subject(
+            target=repository_store_target(git_dir=store),
+            commit_oid=commit,
+            store_identity="fixture",
+        )
+        source = subject.tree_source
+        try:
+            children = await source.list_tree()
+            names = {entry.path.segments[-1] for entry in children}
+            assert names == {b"README.md", b"keep.txt"}
+            readme = next(entry for entry in children if entry.path.segments[-1] == b"README.md")
+            assert readme.oid == missing_oid
+            assert readme.size is None
+            miss_tally = await source.tree_tally()
+            assert miss_tally is not None
+            assert miss_tally.total_files == 2
+            assert miss_tally.total_size is None
+            with pytest.raises(GitObjectUnavailableError) as caught:
+                await source.read_blob(readme.path)
+            assert caught.value.code == "object_unavailable"
+            assert caught.value.oid == missing_oid
+            assert await source.read_blob(GitPath.from_segments(b"keep.txt")) == b"kept\n"
+        finally:
+            await subject.aclose()
 
-        asyncio.run(_run())
+    asyncio.run(_run())
 
 
 def test_revision_subject_identity_requires_the_real_store_id(tmp_path: Path) -> None:

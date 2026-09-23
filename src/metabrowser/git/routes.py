@@ -19,9 +19,7 @@ Every route is read-only. Four shared rules hold across all of them:
 * **Numeric parameters are clamped, not rejected.** An out-of-range
   ``limit`` is a client bug that should still render a panel.
 * **Git failures become 5xx with a generic body.** Git's error text
-  contains absolute local paths, so it is logged and dropped. The one
-  exception is a blob a repository store lacks, which is a typed 404
-  ``object_unavailable`` naming only the object id.
+  contains absolute local paths, so it is logged and dropped.
 """
 
 from __future__ import annotations
@@ -44,7 +42,7 @@ from metabrowser.git.history import (
 from metabrowser.git.log import read_history_summary, read_refs
 from metabrowser.git.process import GitError, GitLocation, GitTimeoutError, failure_detail
 from metabrowser.git.repo import RepoContext, repo_info
-from metabrowser.git.tree_source import GitObjectUnavailableError, GitRevisionSubject
+from metabrowser.git.tree_source import GitRevisionSubject
 from metabrowser.git.wire import GitRepoInfo, is_full_revision
 from metabrowser.settings import GIT_LOG_DEFAULT_LIMIT, GIT_LOG_MAX_LIMIT
 from metabrowser.source import get_source_session, session_filesystem_root
@@ -87,12 +85,6 @@ def _git_failure_response(exc: GitError) -> JSONResponse:
     retry can plausibly fix — a very large repository under load — and
     the browser can present it as such.
     """
-    if isinstance(exc, GitObjectUnavailableError):
-        return JSONResponse(
-            {"error": str(exc), "code": exc.code, "oid": exc.oid},
-            status_code=404,
-            headers={"cache-control": "no-store"},
-        )
     if isinstance(exc, GitTimeoutError):
         return JSONResponse({"error": "git command timed out"}, status_code=504)
     return JSONResponse({"error": "git command failed"}, status_code=500)

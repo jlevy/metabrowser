@@ -165,8 +165,6 @@ BATCH_OBJECT_POLICY: Final[GitProcessPolicy] = GitProcessPolicy(
     child_umask=0o077,
     isolate_user_config=True,
     no_lazy_fetch=True,
-    # Untranslated stderr: an older Git's refused lazy fetch is read from it.
-    extra_env={"LC_ALL": "C"},
 )
 
 
@@ -367,12 +365,11 @@ def _default_policy(target: GitCommandTarget | None) -> GitProcessPolicy:
 def _require_no_lazy_fetch(target: GitCommandTarget | None, policy: GitProcessPolicy) -> None:
     """Refuse a store spawn whose policy would let Git fetch a missing object itself.
 
-    The open-repository plan's lazy-fetch decision: every Git process on a
-    worktree-free store runs with ``GIT_NO_LAZY_FETCH=1``, so a blob the store
-    lacks is reported as unavailable instead of fetched from the promisor remote
-    inside a request. Objects enter a store only through an explicit fetch.
-    Checking here, where every store spawn passes, keeps that true for callers
-    that name a policy as well as for those that inherit the default.
+    Stores are full clones with no promisor remote, so this is defense in depth:
+    every Git process on a worktree-free store runs with ``GIT_NO_LAZY_FETCH=1``,
+    and objects enter a store only through an explicit fetch, never inside a
+    request. Checking here, where every store spawn passes, keeps that true for
+    callers that name a policy as well as for those that inherit the default.
     """
 
     if isinstance(target, RepositoryStoreTarget) and not policy.no_lazy_fetch:
