@@ -804,7 +804,6 @@ def _metab(
                     plugins_dir=plugins_dir,
                     log_level=log_level,
                     index_timeout_s=index_timeout,
-                    untrusted=untrusted,
                     no_active_content=no_active_content,
                     allow_edits=allow_edits,
                 )
@@ -839,7 +838,6 @@ def _metab(
                 plugins_dir=plugins_dir,
                 log_level=log_level,
                 index_timeout_s=index_timeout,
-                untrusted=untrusted,
                 no_active_content=no_active_content,
                 allow_edits=allow_edits,
             )

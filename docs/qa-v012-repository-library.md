@@ -168,6 +168,7 @@ uv --config-file uv.toml run --frozen pytest \
   tests/test_cli_git_pin_golden.py \
   tests/test_cli_acquire.py \
   tests/test_cli_cache_acquire_golden.py \
+  tests/test_cli_cache_recovery_golden.py \
   tests/test_cli_no_serve_surface.py \
   tests/test_cache_acquire.py \
   tests/test_cache_urls.py \
@@ -182,10 +183,14 @@ uv --config-file uv.toml run --frozen pytest \
 
 **Pass:** Every selected test passed or was skipped for a documented reason (missing
 `git` binary; installed Git already meets the floor so the below-floor live test skips;
-non-POSIX). `tests/test_cli_git_pin_golden.py` pins `cli-git-pin.txt`: `--show README`
-on a `file://` origin, `/api/index/progress` with `"provider": "git"`, `/api/file` on
-the `g1-` wire, `/api/tree` with `"subject": "git_revision"`. Nothing in that golden
-prints `Serving`.
+non-POSIX). `tests/test_cli_git_pin_golden.py` pins `cli-git-pin.txt` against a
+multi-entry `file://` origin with nested directories, Markdown, JSON, JSONL, an image, a
+binary, an oversized blob, a symlink, an executable, a gitlink, and names containing a
+newline, a tab, and a byte that is not UTF-8. It records `--show` kinds and routes,
+index counts, `/api/tree` nesting with its lazy sentinel past `depth`, name order in
+`/api/tree` against blob order in `/api/catalog`, file content on `g1-` wires, and the
+404, 409, and 413 refusals.
+Nothing in that golden prints `Serving`.
 
 **Fail:** A failed assertion, a 500-shaped CLI envelope, or a golden update performed
 without an intended product change.
@@ -281,8 +286,20 @@ floor.
 Repeat once with an empty directory already at `METABROWSER_HOME` (the `mktemp -d`
 case). The refuse must leave that directory empty: no `cache/`, no `config.yml`.
 
+The pin modes acquire through the same mapper, so repeat the refusal through them:
+
+```shell
+uv --config-file uv.toml run --frozen metab "${FILE_URL}" --show README.md; echo "exit:$?"
+uv --config-file uv.toml run --frozen metab "${FILE_URL}" --api '/api/tree?depth=1'; echo "exit:$?"
+test ! -e "${METABROWSER_HOME}"
+```
+
+**Pass:** The same one-line `unsupported Git version` error as `--no-serve`, with no
+Python traceback and no staging or home path.
+
 **Fail:** Home created on refuse; an empty existing directory written into an `f01`
-skeleton; a 500; acquire succeeds on 2.43.0; the error omits the version fact.
+skeleton; a 500; acquire succeeds on 2.43.0; the error omits the version fact; a pin
+mode prints a traceback or a different message than `--no-serve`.
 
 ## Phase 3: Filesystem v0.10 Still Works
 
@@ -415,6 +432,25 @@ Tree has `"subject": "git_revision"` and `"kind": "tree"`. Progress has
 **Fail:** 500; `"subject": "filesystem"` on a pin; a display path accepted as `path=`
 without a `g1-` prefix succeeding as if it were a wire (the query `path` is a wire);
 missing `--api` subject; raw cache paths in the body.
+
+### 4.5 Pins always run under the untrusted profile
+
+Acquired content is third-party, so no flag or environment variable lifts the profile on
+a pin.
+
+```shell
+uv --config-file uv.toml run --frozen metab "${FILE_URL}" --api /api/capabilities
+METAB_ACTIVE_CONTENT=1 METAB_ALLOW_EDITS=1 \
+  uv --config-file uv.toml run --frozen metab "${FILE_URL}" --api /api/capabilities
+uv --config-file uv.toml run --frozen metab "${FILE_URL}" --show README.md --allow-edits; echo "exit:$?"
+```
+
+**Pass:** Both capability envelopes report `"active_content": false` and
+`"mutations": false`. The `--allow-edits` call exits non-zero with
+`--allow-edits is not available on an acquired Git source`.
+
+**Fail:** `"active_content": true` on a pin; `--allow-edits` accepted or silently
+ignored.
 
 ## Phase 5: HTML Trust on the Integration Tip
 

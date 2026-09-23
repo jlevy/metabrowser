@@ -7,6 +7,15 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 MAX_SAFE_INTEGER = 9_007_199_254_740_991
+# Stable tokens are the only identifiers here that we choose ourselves rather than admit
+# from a provider: adapter and operation IDs, resource-collection names, and capability
+# tokens. The basis is therefore what our own naming needs, not a provider limit. The
+# longest such value anywhere in the tree is the 23-character "change-request-deletion"
+# operation ID (the longest declared collection name is "change_request_index", 20), and
+# 128 leaves more than five times that while staying well inside the opaque provider ID
+# bound, which admits data we do not name. It lives here, not in the record models, so a
+# declared collection name and the stored record field it must equal share one bound.
+MAX_STABLE_TOKEN_LENGTH = 128
 _STABLE_TOKEN_RE = re.compile(r"^[a-z][a-z0-9._:-]*$")
 _CONTRACT_ID_RE = re.compile(r"^[a-z][a-z0-9.-]*:[A-Za-z][A-Za-z0-9._-]*/v[1-9][0-9]*$")
 _RESOURCE_PROFILE_ID_RE = re.compile(r"^[a-z][a-z0-9.-]*:[a-z][a-z0-9-]*/v[1-9][0-9]*$")
@@ -50,7 +59,11 @@ class ResourceCollectionSpec:
         maximum_artifacts = _runtime_descriptor_value(self.maximum_artifacts)
         pagination = _runtime_descriptor_value(self.pagination)
         required_for_last_complete = _runtime_descriptor_value(self.required_for_last_complete)
-        if not isinstance(name, str) or _STABLE_TOKEN_RE.fullmatch(name) is None:
+        if (
+            not isinstance(name, str)
+            or len(name) > MAX_STABLE_TOKEN_LENGTH
+            or _STABLE_TOKEN_RE.fullmatch(name) is None
+        ):
             raise ValueError("resource collection profile name must be a stable token")
         if (
             not isinstance(artifact_contract_id, str)
@@ -126,6 +139,7 @@ class ResourceProfileSpec:
 
 
 __all__ = [
+    "MAX_STABLE_TOKEN_LENGTH",
     "CollectionPaginationPolicy",
     "ResourceCollectionSpec",
     "ResourceProfileSpec",

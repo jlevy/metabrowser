@@ -81,7 +81,7 @@ from starlette.responses import JSONResponse, PlainTextResponse, Response
 
 from metabrowser import kpress_adapter
 from metabrowser.capabilities import get_capabilities
-from metabrowser.content_sniff import ContentClass, classify_prefix
+from metabrowser.content_sniff import SNIFF_PREFIX_BYTES, ContentClass, classify_prefix
 from metabrowser.file_extensions import (
     BROWSER_IMAGE_EXTS,
     BROWSER_TEXT_EXTS,
@@ -525,7 +525,9 @@ async def _git_nav_tree(
         return []
     nodes: list[dict[str, Any]] = []
     nest = remaining_depth > 1
-    for entry in entries:
+    # Directories first, matching the filesystem tree contract the SPA renders in
+    # server order; ``sorted`` is stable, so names keep the source's byte order.
+    for entry in sorted(entries, key=lambda item: not item.is_tree):
         prefix = _join_git_prefix(index_prefix, entry.path.segments[-1]) if entry.is_tree else b""
         tally = view.tally(prefix) if entry.is_tree and view is not None else None
         if entry.is_tree and nest and budget.remaining > 0:
@@ -591,10 +593,8 @@ def _with_requested_path(
     return payload
 
 
-def _git_text_preview_fields(
-    request: Request, entry: GitTreeEntry, ext: str, body: bytes
-) -> dict[str, Any]:
-    """Bounded text window matching filesystem /api/file preview policy."""
+def _git_text_window(request: Request, entry: GitTreeEntry, ext: str) -> tuple[int, int]:
+    """The requested text window's offset and limit, under the filesystem's policy."""
 
     offset = max(0, _query_int(request, "offset", 0))
     default_limit = TEXT_PREVIEW_CHUNK_BYTES
@@ -608,14 +608,26 @@ def _git_text_preview_fields(
         1,
         min(_query_int(request, "limit", default_limit), TEXT_PREVIEW_REQUEST_MAX_BYTES),
     )
-    window = body[offset : offset + limit]
+    return offset, limit
+
+
+def _git_text_preview_fields(
+    request: Request, entry: GitTreeEntry, ext: str, body: bytes
+) -> dict[str, Any]:
+    """Bounded text window matching filesystem /api/file preview policy."""
+
+    offset, limit = _git_text_window(request, entry, ext)
+    return _git_text_fields(offset, limit, body[offset : offset + limit], len(body))
+
+
+def _git_text_fields(offset: int, limit: int, window: bytes, size: int) -> dict[str, Any]:
     bytes_read = len(window)
     return {
         "content": window.decode("utf-8", "replace"),
         "content_offset": offset,
         "content_bytes": bytes_read,
         "bytes_read": bytes_read,
-        "content_truncated": offset + bytes_read < len(body),
+        "content_truncated": offset + bytes_read < size,
         "content_preview_limit": limit,
         "content_max_preview_limit": TEXT_PREVIEW_REQUEST_MAX_BYTES,
         "highlight_disabled": (
@@ -1343,6 +1355,119 @@ async def _blob_file_payload(entry: GitTreeEntry, body: bytes, request: Request)
     return payload
 
 
+# Every content predicate reads a bounded prefix: a JSON mapping is refused past 256 KiB,
+# YAML reads 16 KiB, and frontmatter 256 KiB. One byte past the largest gives each the
+# answer the whole blob would.
+_PREDICATE_PREFIX_BYTES = 256 * 1024 + 1
+
+
+async def _windowed_blob_file_response(
+    request: Request,
+    source: GitTreeSource,
+    entry: GitTreeEntry,
+    size: int,
+    *,
+    requested: GitPath,
+    wire: str,
+) -> JSONResponse:
+    """``/api/file`` for a blob larger than the pin reads whole.
+
+    The filesystem types a large file from its extension and a bounded sniff, then
+    serves the requested text window. A pin does the same from a streamed window, so
+    the blob is never held whole and nothing is refused for its size before it is
+    classified. Like a compressed artifact, a blob streams from its start, so reaching
+    an offset costs reading up to it: a text window is clipped to end within the pin's
+    ceiling, and one that would start past it is 416, as a compressed file is past its
+    decompression budget.
+    """
+
+    ext = _logical_ext(entry.path)
+    payload: dict[str, Any] = {"subject": "git_revision", "size": size, **_identity_fields(entry)}
+    if ext:
+        payload["ext"] = ext
+    if ext in BROWSER_IMAGE_EXTS:
+        payload.update({"type": "image", "kind": "image", "views": _views_for_kind("image")})
+        return _json(_with_requested_path(payload, entry, requested))
+    offset, limit = _git_text_window(request, entry, ext)
+    limit = min(limit, source.max_blob_bytes - offset)
+    head, _size = await source.read_blob_window(
+        entry.oid,
+        offset=0,
+        max_bytes=max(_PREDICATE_PREFIX_BYTES, offset + limit if limit > 0 else 0),
+    )
+    content_class = classify_prefix(head[:SNIFF_PREFIX_BYTES])
+    if content_class is ContentClass.BINARY or (
+        ext not in BROWSER_TEXT_EXTS and content_class is not ContentClass.TEXT
+    ):
+        payload.update({"type": "binary", "kind": "binary", "views": _views_for_kind("binary")})
+        return _json(_with_requested_path(payload, entry, requested))
+    if ext == ".jsonl":
+        return await _windowed_jsonl_response(source, entry, size, payload, requested, wire)
+    if limit <= 0:
+        return _json(
+            {
+                "type": "error",
+                "path": wire,
+                "error": "Requested preview window exceeds the stream budget for this blob",
+                "max_offset": source.max_blob_bytes,
+            },
+            status_code=416,
+        )
+    json_top, yaml_top, frontmatter, frontmatter_error = _git_blob_content_predicates(
+        ext, head[:_PREDICATE_PREFIX_BYTES]
+    )
+    kind = _plugin_kind_for_git_path(
+        entry.path,
+        json_top_level=json_top,
+        yaml_top_level=yaml_top,
+        frontmatter=frontmatter,
+    ) or (classify_by_ext(ext) if ext else "text")
+    payload.update(
+        {
+            "type": "text",
+            "kind": kind,
+            "views": _views_for_kind(kind),
+            **_git_text_fields(offset, limit, head[offset : offset + limit], size),
+            **_git_frontmatter_envelope(mapping=frontmatter, error=frontmatter_error),
+        }
+    )
+    return _json(_with_requested_path(payload, entry, requested))
+
+
+async def _windowed_jsonl_response(
+    source: GitTreeSource,
+    entry: GitTreeEntry,
+    size: int,
+    payload: dict[str, Any],
+    requested: GitPath,
+    wire: str,
+) -> JSONResponse:
+    """Parse a JSONL blob under the filesystem's parser ceiling, or say it is too large."""
+
+    from metabrowser.jsonl_view import _JSONL_PARSE_MAX_BYTES, parse_jsonl_bytes
+
+    if size > _JSONL_PARSE_MAX_BYTES:
+        # The filesystem refuses an uncompressed file this size before reading it.
+        return _json(
+            {
+                "type": "error",
+                "kind": "error",
+                "views": [],
+                "path": wire,
+                "error": f"JSONL content exceeds {_JSONL_PARSE_MAX_BYTES} decompressed bytes",
+            }
+        )
+    body, _size = await source.read_blob_window(entry.oid, offset=0, max_bytes=size)
+    parsed = await asyncio.to_thread(parse_jsonl_bytes, body)
+    adapter = parsed.get("summary", {}).get("adapter")
+    adapter_name = adapter if isinstance(adapter, str) else None
+    kind = _plugin_kind_for_git_path(entry.path, adapter=adapter_name) or classify_by_ext(
+        ".jsonl", adapter_name
+    )
+    payload.update({"type": "jsonl", "kind": kind, "views": _views_for_kind(kind), **parsed})
+    return _json(_with_requested_path(payload, entry, requested))
+
+
 def _patch_container_payload(
     entry: GitTreeEntry, *, wire: str, inner: str, path: GitPath
 ) -> dict[str, Any]:
@@ -1410,7 +1535,13 @@ async def git_revision_file(request: Request, subject: GitRevisionSubject) -> JS
             return _json(_with_requested_path(_gitlink_file_payload(entry), entry, path))
         if not entry.is_blob:
             return _json(_NOT_FOUND, status_code=404)
-        body = await subject.tree_source.read_blob(entry.path)
+        source = subject.tree_source
+        size = entry.size if entry.size is not None else (await source.object_info(entry.oid)).size
+        if size > source.max_blob_bytes:
+            return await _windowed_blob_file_response(
+                request, source, entry, size, requested=path, wire=wire
+            )
+        body = await source.read_blob(entry.path)
     except GitObjectUnavailableError as exc:
         return _json(_object_unavailable_payload(exc), status_code=404)
     except GitBlobTooLargeError as exc:

@@ -1,12 +1,71 @@
-# metab file://<ORIGIN> --show README
+# metab file://<ORIGIN> --show README.md
 exit: 0
 --- stdout ---
-show: README
-route: /view/g1-UkVBRE1F
+show: README.md
+route: /view/g1-UkVBRE1FLm1k
+kind: markdown
+views: rendered (default), source
+model: text envelope; size=17 content_bytes=17 content_truncated=False
+--- stderr ---
+# metab file://<ORIGIN> --show a/deep/nested.md
+exit: 0
+--- stdout ---
+show: a/deep/nested.md
+route: /view/g1-YQ/g1-ZGVlcA/g1-bmVzdGVkLm1k
+kind: markdown
+views: rendered (default), source
+model: text envelope; size=27 content_bytes=27 content_truncated=False
+--- stderr ---
+# metab file://<ORIGIN> --show a/deep
+exit: 0
+--- stdout ---
+show: a/deep
+route: /view/g1-YQ/g1-ZGVlcA
+kind: folder
+views: overview (default), treemap
+model: folder envelope; readme_path=
+--- stderr ---
+# metab file://<ORIGIN> --show links/to-readme.md
+exit: 0
+--- stdout ---
+show: links/to-readme.md
+route: /view/g1-bGlua3M/g1-dG8tcmVhZG1lLm1k
+kind: markdown
+views: rendered (default), source
+model: text envelope; size=17 content_bytes=17 content_truncated=False
+--- stderr ---
+# metab file://<ORIGIN> --show bin/glyph.png
+exit: 0
+--- stdout ---
+show: bin/glyph.png
+route: /view/g1-Ymlu/g1-Z2x5cGgucG5n
+kind: image
+views: preview (default)
+model: image envelope; size=67
+--- stderr ---
+# metab file://<ORIGIN> --show bin/sample.bin
+exit: 0
+--- stdout ---
+show: bin/sample.bin
+route: /view/g1-Ymlu/g1-c2FtcGxlLmJpbg
+kind: binary
+views: bytes (default)
+model: binary envelope; size=8
+--- stderr ---
+# metab file://<ORIGIN> --show g1-b2Rk/g1-bGluZQpicmVhay50eHQ
+exit: 0
+--- stdout ---
+show: g1-b2Rk/g1-bGluZQpicmVhay50eHQ
+route: /view/g1-b2Rk/g1-bGluZQpicmVhay50eHQ
 kind: text
 views: source (default)
-model: text envelope; size=6 content_bytes=6 content_truncated=False
+model: text envelope; size=13 content_bytes=13 content_truncated=False
 --- stderr ---
+# metab file://<ORIGIN> --show nope.txt
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: nope.txt is not a selection the browser can open (HTTP 404)
 # metab file://<ORIGIN> --api /api/index/progress
 exit: 0
 --- stdout ---
@@ -14,7 +73,7 @@ api: /api/index/progress
 status: 200
 {
   "status": "done",
-  "indexed_files": 1,
+  "indexed_files": 16,
   "max_files": 500000,
   "truncated": false,
   "complete": true,
@@ -23,21 +82,2116 @@ status: 200
   "active": false
 }
 --- stderr ---
-# metab file://<ORIGIN> --api /api/file?path=g1-UkVBRE1F
+# metab file://<ORIGIN> --api /api/index/meta
 exit: 0
 --- stdout ---
-api: /api/file?path=g1-UkVBRE1F
+api: /api/index/meta
+status: 200
+{
+  "status": "done",
+  "indexed_files": 16,
+  "max_files": 500000,
+  "truncated": false,
+  "complete": true,
+  "provider": "git",
+  "contract": "git-revision",
+  "indexed_dirs": 7,
+  "suffixes": [
+    {
+      "ext": ".txt",
+      "count": 4
+    },
+    {
+      "ext": ".md",
+      "count": 3
+    },
+    {
+      "ext": ".bin",
+      "count": 2
+    },
+    {
+      "ext": ".json",
+      "count": 1
+    },
+    {
+      "ext": ".jsonl",
+      "count": 1
+    },
+    {
+      "ext": ".png",
+      "count": 1
+    },
+    {
+      "ext": ".py",
+      "count": 1
+    },
+    {
+      "ext": ".sh",
+      "count": 1
+    }
+  ]
+}
+--- stderr ---
+# metab file://<ORIGIN> --api /api/capabilities
+exit: 0
+--- stdout ---
+api: /api/capabilities
+status: 200
+{
+  "backends": [
+    {
+      "prefix": ".",
+      "mode": "none",
+      "reason": "git-revision-immutable",
+      "state": "idle"
+    }
+  ],
+  "index": {
+    "complete": true,
+    "indexed_files": 16,
+    "max_files": 500000,
+    "truncated": false,
+    "provider": "git",
+    "contract": "git-revision"
+  },
+  "events": {
+    "stream": "off",
+    "reason": "git-revision-no-watcher"
+  },
+  "capabilities": {
+    "active_content": false,
+    "mutations": false
+  }
+}
+--- stderr ---
+# metab file://<ORIGIN> --api /api/tree?depth=0
+exit: 0
+--- stdout ---
+api: /api/tree?depth=0
 status: 200
 {
   "subject": "git_revision",
-  "size": 6,
-  "path": "g1-UkVBRE1F",
-  "display": "README",
+  "path": "",
+  "display": "",
+  "oid": "2aba9e6f68f6b11f98bee8a8d7b47693aca3fb43",
+  "kind": "tree",
+  "entries": [],
+  "tree": [],
+  "tally_cache_status": "done",
+  "tally_cache_max_files": 500000,
+  "summary": {
+    "files": 16,
+    "size": 16777474,
+    "ignored_files": 0,
+    "ignored_size": 0
+  },
+  "extensions": [
+    [
+      ".txt",
+      4,
+      0
+    ],
+    [
+      ".md",
+      3,
+      0
+    ],
+    [
+      ".bin",
+      2,
+      0
+    ],
+    [
+      ".json",
+      1,
+      0
+    ],
+    [
+      ".jsonl",
+      1,
+      0
+    ],
+    [
+      ".png",
+      1,
+      0
+    ],
+    [
+      ".py",
+      1,
+      0
+    ],
+    [
+      ".sh",
+      1,
+      0
+    ]
+  ],
+  "canonical_extensions": [
+    [
+      ".txt",
+      4,
+      0
+    ],
+    [
+      ".md",
+      3,
+      0
+    ],
+    [
+      ".bin",
+      2,
+      0
+    ],
+    [
+      ".json",
+      1,
+      0
+    ],
+    [
+      ".jsonl",
+      1,
+      0
+    ],
+    [
+      ".png",
+      1,
+      0
+    ],
+    [
+      ".py",
+      1,
+      0
+    ],
+    [
+      ".sh",
+      1,
+      0
+    ]
+  ],
+  "type_families": [
+    [
+      "plain-text",
+      4,
+      0
+    ],
+    [
+      "markdown",
+      3,
+      0
+    ],
+    [
+      "images",
+      1,
+      0
+    ],
+    [
+      "json",
+      1,
+      0
+    ],
+    [
+      "log-files",
+      1,
+      0
+    ],
+    [
+      "python",
+      1,
+      0
+    ],
+    [
+      "shell",
+      1,
+      0
+    ]
+  ],
+  "type_presets": [
+    [
+      "code",
+      2,
+      0
+    ],
+    [
+      "docs",
+      7,
+      0
+    ],
+    [
+      "data",
+      1,
+      0
+    ],
+    [
+      "archives",
+      0,
+      0
+    ],
+    [
+      "media",
+      1,
+      0
+    ]
+  ]
+}
+--- stderr ---
+# metab file://<ORIGIN> --api /api/tree?depth=2
+exit: 0
+--- stdout ---
+api: /api/tree?depth=2
+status: 200
+{
+  "subject": "git_revision",
+  "path": "",
+  "display": "",
+  "oid": "2aba9e6f68f6b11f98bee8a8d7b47693aca3fb43",
+  "kind": "tree",
+  "entries": [
+    {
+      "path": "g1-UkVBRE1FLm1k",
+      "display": "README.md",
+      "mode": "100644",
+      "kind": "blob",
+      "symlink": false,
+      "gitlink": false,
+      "oid": "36516194dee2aa72ce75357bc32cd75a59f71e57",
+      "size": 17
+    },
+    {
+      "path": "g1-YQ",
+      "display": "a",
+      "mode": "040000",
+      "kind": "tree",
+      "symlink": false,
+      "gitlink": false,
+      "oid": "488995644342a4443f2cc5280e6a6d13f3a045fe"
+    },
+    {
+      "path": "g1-YS1i",
+      "display": "a-b",
+      "mode": "100644",
+      "kind": "blob",
+      "symlink": false,
+      "gitlink": false,
+      "oid": "a2544f7ec3007899167de1fef481a5a0fd63fa41",
+      "size": 5
+    },
+    {
+      "path": "g1-YS50eHQ",
+      "display": "a.txt",
+      "mode": "100644",
+      "kind": "blob",
+      "symlink": false,
+      "gitlink": false,
+      "oid": "06b3a8f652461758c3095a9b0014a7d626e1915c",
+      "size": 9
+    },
+    {
+      "path": "g1-YWI",
+      "display": "ab",
+      "mode": "100644",
+      "kind": "blob",
+      "symlink": false,
+      "gitlink": false,
+      "oid": "b9bca019c83a65e6d717d0b6da86215f45dde1b3",
+      "size": 6
+    },
+    {
+      "path": "g1-Ymlu",
+      "display": "bin",
+      "mode": "040000",
+      "kind": "tree",
+      "symlink": false,
+      "gitlink": false,
+      "oid": "406c2736ec0c08fdcff7ee8b3f5752ad8f83e043"
+    },
+    {
+      "path": "g1-ZGF0YQ",
+      "display": "data",
+      "mode": "040000",
+      "kind": "tree",
+      "symlink": false,
+      "gitlink": false,
+      "oid": "92a2aa36f8772eb7faf7ffe45bf38b9d24b18978"
+    },
+    {
+      "path": "g1-bGlua3M",
+      "display": "links",
+      "mode": "040000",
+      "kind": "tree",
+      "symlink": false,
+      "gitlink": false,
+      "oid": "a7dd58c1121a97ccb71a6428c5a9213093f36616"
+    },
+    {
+      "path": "g1-b2Rk",
+      "display": "odd",
+      "mode": "040000",
+      "kind": "tree",
+      "symlink": false,
+      "gitlink": false,
+      "oid": "5386dad79188f6147a05b096d0035cf0f4827ce3"
+    },
+    {
+      "path": "g1-dG9vbHM",
+      "display": "tools",
+      "mode": "040000",
+      "kind": "tree",
+      "symlink": false,
+      "gitlink": false,
+      "oid": "e0ac75fc5c8f12a47f2556d20668bb54e641f955"
+    },
+    {
+      "path": "g1-dmVuZG9y",
+      "display": "vendor",
+      "mode": "160000",
+      "kind": "commit",
+      "symlink": false,
+      "gitlink": true,
+      "oid": "1111111111111111111111111111111111111111"
+    }
+  ],
+  "tree": [
+    {
+      "name": "a",
+      "path": "g1-YQ",
+      "type": "dir",
+      "children": [
+        {
+          "name": "deep",
+          "path": "g1-YQ/g1-ZGVlcA",
+          "type": "dir",
+          "children": null,
+          "has_children": true,
+          "total_files": 2,
+          "total_size": 52
+        },
+        {
+          "name": "one.py",
+          "path": "g1-YQ/g1-b25lLnB5",
+          "type": "file",
+          "ext": ".py",
+          "size": 6
+        }
+      ],
+      "has_children": true,
+      "total_files": 3,
+      "total_size": 58
+    },
+    {
+      "name": "bin",
+      "path": "g1-Ymlu",
+      "type": "dir",
+      "children": [
+        {
+          "name": "glyph.png",
+          "path": "g1-Ymlu/g1-Z2x5cGgucG5n",
+          "type": "file",
+          "ext": ".png",
+          "size": 67
+        },
+        {
+          "name": "oversize.bin",
+          "path": "g1-Ymlu/g1-b3ZlcnNpemUuYmlu",
+          "type": "file",
+          "ext": ".bin",
+          "size": 16777217
+        },
+        {
+          "name": "sample.bin",
+          "path": "g1-Ymlu/g1-c2FtcGxlLmJpbg",
+          "type": "file",
+          "ext": ".bin",
+          "size": 8
+        }
+      ],
+      "has_children": true,
+      "total_files": 3,
+      "total_size": 16777292
+    },
+    {
+      "name": "data",
+      "path": "g1-ZGF0YQ",
+      "type": "dir",
+      "children": [
+        {
+          "name": "events.jsonl",
+          "path": "g1-ZGF0YQ/g1-ZXZlbnRzLmpzb25s",
+          "type": "file",
+          "ext": ".jsonl",
+          "size": 18
+        }
+      ],
+      "has_children": true,
+      "total_files": 1,
+      "total_size": 18
+    },
+    {
+      "name": "links",
+      "path": "g1-bGlua3M",
+      "type": "dir",
+      "children": [
+        {
+          "name": "to-readme.md",
+          "path": "g1-bGlua3M/g1-dG8tcmVhZG1lLm1k",
+          "type": "symlink",
+          "size": 12
+        }
+      ],
+      "has_children": true,
+      "total_files": 1,
+      "total_size": 12
+    },
+    {
+      "name": "odd",
+      "path": "g1-b2Rk",
+      "type": "dir",
+      "children": [
+        {
+          "name": "latin-�.txt",
+          "path": "g1-b2Rk/g1-bGF0aW4t6S50eHQ",
+          "type": "file",
+          "ext": ".txt",
+          "size": 13
+        },
+        {
+          "name": "line�break.txt",
+          "path": "g1-b2Rk/g1-bGluZQpicmVhay50eHQ",
+          "type": "file",
+          "ext": ".txt",
+          "size": 13
+        },
+        {
+          "name": "tab�here.txt",
+          "path": "g1-b2Rk/g1-dGFiCWhlcmUudHh0",
+          "type": "file",
+          "ext": ".txt",
+          "size": 9
+        }
+      ],
+      "has_children": true,
+      "total_files": 3,
+      "total_size": 35
+    },
+    {
+      "name": "tools",
+      "path": "g1-dG9vbHM",
+      "type": "dir",
+      "children": [
+        {
+          "name": "run.sh",
+          "path": "g1-dG9vbHM/g1-cnVuLnNo",
+          "type": "file",
+          "ext": ".sh",
+          "size": 22
+        }
+      ],
+      "has_children": true,
+      "total_files": 1,
+      "total_size": 22
+    },
+    {
+      "name": "README.md",
+      "path": "g1-UkVBRE1FLm1k",
+      "type": "file",
+      "ext": ".md",
+      "size": 17
+    },
+    {
+      "name": "a-b",
+      "path": "g1-YS1i",
+      "type": "file",
+      "size": 5
+    },
+    {
+      "name": "a.txt",
+      "path": "g1-YS50eHQ",
+      "type": "file",
+      "ext": ".txt",
+      "size": 9
+    },
+    {
+      "name": "ab",
+      "path": "g1-YWI",
+      "type": "file",
+      "size": 6
+    },
+    {
+      "name": "vendor",
+      "path": "g1-dmVuZG9y",
+      "type": "file"
+    }
+  ],
+  "tally_cache_status": "done",
+  "tally_cache_max_files": 500000,
+  "summary": {
+    "files": 16,
+    "size": 16777474,
+    "ignored_files": 0,
+    "ignored_size": 0
+  },
+  "extensions": [
+    [
+      ".txt",
+      4,
+      0
+    ],
+    [
+      ".md",
+      3,
+      0
+    ],
+    [
+      ".bin",
+      2,
+      0
+    ],
+    [
+      ".json",
+      1,
+      0
+    ],
+    [
+      ".jsonl",
+      1,
+      0
+    ],
+    [
+      ".png",
+      1,
+      0
+    ],
+    [
+      ".py",
+      1,
+      0
+    ],
+    [
+      ".sh",
+      1,
+      0
+    ]
+  ],
+  "canonical_extensions": [
+    [
+      ".txt",
+      4,
+      0
+    ],
+    [
+      ".md",
+      3,
+      0
+    ],
+    [
+      ".bin",
+      2,
+      0
+    ],
+    [
+      ".json",
+      1,
+      0
+    ],
+    [
+      ".jsonl",
+      1,
+      0
+    ],
+    [
+      ".png",
+      1,
+      0
+    ],
+    [
+      ".py",
+      1,
+      0
+    ],
+    [
+      ".sh",
+      1,
+      0
+    ]
+  ],
+  "type_families": [
+    [
+      "plain-text",
+      4,
+      0
+    ],
+    [
+      "markdown",
+      3,
+      0
+    ],
+    [
+      "images",
+      1,
+      0
+    ],
+    [
+      "json",
+      1,
+      0
+    ],
+    [
+      "log-files",
+      1,
+      0
+    ],
+    [
+      "python",
+      1,
+      0
+    ],
+    [
+      "shell",
+      1,
+      0
+    ]
+  ],
+  "type_presets": [
+    [
+      "code",
+      2,
+      0
+    ],
+    [
+      "docs",
+      7,
+      0
+    ],
+    [
+      "data",
+      1,
+      0
+    ],
+    [
+      "archives",
+      0,
+      0
+    ],
+    [
+      "media",
+      1,
+      0
+    ]
+  ]
+}
+--- stderr ---
+# metab file://<ORIGIN> --api '/api/tree?path=g1-YQ&depth=1'
+exit: 0
+--- stdout ---
+api: /api/tree?path=g1-YQ&depth=1
+status: 200
+{
+  "subject": "git_revision",
+  "path": "g1-YQ",
+  "display": "a",
+  "oid": "488995644342a4443f2cc5280e6a6d13f3a045fe",
+  "kind": "tree",
+  "entries": [
+    {
+      "path": "g1-YQ/g1-ZGVlcA",
+      "display": "a/deep",
+      "mode": "040000",
+      "kind": "tree",
+      "symlink": false,
+      "gitlink": false,
+      "oid": "7f540f734fe44c6ecbcdf5a4bafc4a57efccb672"
+    },
+    {
+      "path": "g1-YQ/g1-b25lLnB5",
+      "display": "a/one.py",
+      "mode": "100644",
+      "kind": "blob",
+      "symlink": false,
+      "gitlink": false,
+      "oid": "7d4290a117a4ddcc11daae7ea675841033830c8f",
+      "size": 6
+    }
+  ],
+  "tree": [
+    {
+      "name": "deep",
+      "path": "g1-YQ/g1-ZGVlcA",
+      "type": "dir",
+      "children": null,
+      "has_children": true,
+      "total_files": 2,
+      "total_size": 52
+    },
+    {
+      "name": "one.py",
+      "path": "g1-YQ/g1-b25lLnB5",
+      "type": "file",
+      "ext": ".py",
+      "size": 6
+    }
+  ],
+  "tally_cache_status": "done",
+  "tally_cache_max_files": 500000,
+  "summary": {
+    "files": 16,
+    "size": 16777474,
+    "ignored_files": 0,
+    "ignored_size": 0
+  },
+  "extensions": [
+    [
+      ".txt",
+      4,
+      0
+    ],
+    [
+      ".md",
+      3,
+      0
+    ],
+    [
+      ".bin",
+      2,
+      0
+    ],
+    [
+      ".json",
+      1,
+      0
+    ],
+    [
+      ".jsonl",
+      1,
+      0
+    ],
+    [
+      ".png",
+      1,
+      0
+    ],
+    [
+      ".py",
+      1,
+      0
+    ],
+    [
+      ".sh",
+      1,
+      0
+    ]
+  ],
+  "canonical_extensions": [
+    [
+      ".txt",
+      4,
+      0
+    ],
+    [
+      ".md",
+      3,
+      0
+    ],
+    [
+      ".bin",
+      2,
+      0
+    ],
+    [
+      ".json",
+      1,
+      0
+    ],
+    [
+      ".jsonl",
+      1,
+      0
+    ],
+    [
+      ".png",
+      1,
+      0
+    ],
+    [
+      ".py",
+      1,
+      0
+    ],
+    [
+      ".sh",
+      1,
+      0
+    ]
+  ],
+  "type_families": [
+    [
+      "plain-text",
+      4,
+      0
+    ],
+    [
+      "markdown",
+      3,
+      0
+    ],
+    [
+      "images",
+      1,
+      0
+    ],
+    [
+      "json",
+      1,
+      0
+    ],
+    [
+      "log-files",
+      1,
+      0
+    ],
+    [
+      "python",
+      1,
+      0
+    ],
+    [
+      "shell",
+      1,
+      0
+    ]
+  ],
+  "type_presets": [
+    [
+      "code",
+      2,
+      0
+    ],
+    [
+      "docs",
+      7,
+      0
+    ],
+    [
+      "data",
+      1,
+      0
+    ],
+    [
+      "archives",
+      0,
+      0
+    ],
+    [
+      "media",
+      1,
+      0
+    ]
+  ]
+}
+--- stderr ---
+# metab file://<ORIGIN> --api '/api/tree?depth=1&types=.md'
+exit: 0
+--- stdout ---
+api: /api/tree?depth=1&types=.md
+status: 200
+{
+  "subject": "git_revision",
+  "path": "",
+  "display": "",
+  "oid": "2aba9e6f68f6b11f98bee8a8d7b47693aca3fb43",
+  "kind": "tree",
+  "entries": [
+    {
+      "path": "g1-UkVBRE1FLm1k",
+      "display": "README.md",
+      "mode": "100644",
+      "kind": "blob",
+      "symlink": false,
+      "gitlink": false,
+      "oid": "36516194dee2aa72ce75357bc32cd75a59f71e57",
+      "size": 17
+    },
+    {
+      "path": "g1-YQ",
+      "display": "a",
+      "mode": "040000",
+      "kind": "tree",
+      "symlink": false,
+      "gitlink": false,
+      "oid": "488995644342a4443f2cc5280e6a6d13f3a045fe"
+    },
+    {
+      "path": "g1-bGlua3M",
+      "display": "links",
+      "mode": "040000",
+      "kind": "tree",
+      "symlink": false,
+      "gitlink": false,
+      "oid": "a7dd58c1121a97ccb71a6428c5a9213093f36616"
+    }
+  ],
+  "tree": [
+    {
+      "name": "a",
+      "path": "g1-YQ",
+      "type": "dir",
+      "children": null,
+      "has_children": true,
+      "total_files": 1,
+      "total_size": 27
+    },
+    {
+      "name": "links",
+      "path": "g1-bGlua3M",
+      "type": "dir",
+      "children": null,
+      "has_children": true,
+      "total_files": 1,
+      "total_size": 12
+    },
+    {
+      "name": "README.md",
+      "path": "g1-UkVBRE1FLm1k",
+      "type": "file",
+      "ext": ".md",
+      "size": 17
+    }
+  ],
+  "tally_cache_status": "done",
+  "tally_cache_max_files": 500000,
+  "summary": {
+    "files": 16,
+    "size": 16777474,
+    "ignored_files": 0,
+    "ignored_size": 0
+  },
+  "extensions": [
+    [
+      ".txt",
+      4,
+      0
+    ],
+    [
+      ".md",
+      3,
+      0
+    ],
+    [
+      ".bin",
+      2,
+      0
+    ],
+    [
+      ".json",
+      1,
+      0
+    ],
+    [
+      ".jsonl",
+      1,
+      0
+    ],
+    [
+      ".png",
+      1,
+      0
+    ],
+    [
+      ".py",
+      1,
+      0
+    ],
+    [
+      ".sh",
+      1,
+      0
+    ]
+  ],
+  "canonical_extensions": [
+    [
+      ".txt",
+      4,
+      0
+    ],
+    [
+      ".md",
+      3,
+      0
+    ],
+    [
+      ".bin",
+      2,
+      0
+    ],
+    [
+      ".json",
+      1,
+      0
+    ],
+    [
+      ".jsonl",
+      1,
+      0
+    ],
+    [
+      ".png",
+      1,
+      0
+    ],
+    [
+      ".py",
+      1,
+      0
+    ],
+    [
+      ".sh",
+      1,
+      0
+    ]
+  ],
+  "type_families": [
+    [
+      "plain-text",
+      4,
+      0
+    ],
+    [
+      "markdown",
+      3,
+      0
+    ],
+    [
+      "images",
+      1,
+      0
+    ],
+    [
+      "json",
+      1,
+      0
+    ],
+    [
+      "log-files",
+      1,
+      0
+    ],
+    [
+      "python",
+      1,
+      0
+    ],
+    [
+      "shell",
+      1,
+      0
+    ]
+  ],
+  "type_presets": [
+    [
+      "code",
+      2,
+      0
+    ],
+    [
+      "docs",
+      7,
+      0
+    ],
+    [
+      "data",
+      1,
+      0
+    ],
+    [
+      "archives",
+      0,
+      0
+    ],
+    [
+      "media",
+      1,
+      0
+    ]
+  ],
+  "filtered": {
+    "files": 3,
+    "size": 56,
+    "entries": 3
+  }
+}
+--- stderr ---
+# metab file://<ORIGIN> --api /api/rollup?depth=1
+exit: 0
+--- stdout ---
+api: /api/rollup?depth=1
+status: 200
+{
+  "subject": "git_revision",
+  "root": "",
+  "path": "",
+  "node": {
+    "name": "",
+    "path": "",
+    "type": "dir",
+    "state": "complete",
+    "total_files": 16,
+    "total_size": 16777474,
+    "unignored_files": 16,
+    "unignored_size": 16777474,
+    "gitignored": false,
+    "dominant_ext": ".bin",
+    "children": [
+      {
+        "name": "bin",
+        "path": "g1-Ymlu",
+        "type": "dir",
+        "state": "complete",
+        "total_files": 3,
+        "total_size": 16777292,
+        "unignored_files": 3,
+        "unignored_size": 16777292,
+        "gitignored": false,
+        "dominant_ext": ".bin",
+        "children": null
+      },
+      {
+        "name": "a",
+        "path": "g1-YQ",
+        "type": "dir",
+        "state": "complete",
+        "total_files": 3,
+        "total_size": 58,
+        "unignored_files": 3,
+        "unignored_size": 58,
+        "gitignored": false,
+        "dominant_ext": ".md",
+        "children": null
+      },
+      {
+        "name": "odd",
+        "path": "g1-b2Rk",
+        "type": "dir",
+        "state": "complete",
+        "total_files": 3,
+        "total_size": 35,
+        "unignored_files": 3,
+        "unignored_size": 35,
+        "gitignored": false,
+        "dominant_ext": ".txt",
+        "children": null
+      },
+      {
+        "name": "tools",
+        "path": "g1-dG9vbHM",
+        "type": "dir",
+        "state": "complete",
+        "total_files": 1,
+        "total_size": 22,
+        "unignored_files": 1,
+        "unignored_size": 22,
+        "gitignored": false,
+        "dominant_ext": ".sh",
+        "children": null
+      },
+      {
+        "name": "data",
+        "path": "g1-ZGF0YQ",
+        "type": "dir",
+        "state": "complete",
+        "total_files": 1,
+        "total_size": 18,
+        "unignored_files": 1,
+        "unignored_size": 18,
+        "gitignored": false,
+        "dominant_ext": ".jsonl",
+        "children": null
+      },
+      {
+        "name": "README.md",
+        "path": "g1-UkVBRE1FLm1k",
+        "type": "file",
+        "size": 17,
+        "ext": ".md",
+        "gitignored": false
+      },
+      {
+        "name": "links",
+        "path": "g1-bGlua3M",
+        "type": "dir",
+        "state": "complete",
+        "total_files": 1,
+        "total_size": 12,
+        "unignored_files": 1,
+        "unignored_size": 12,
+        "gitignored": false,
+        "dominant_ext": ".md",
+        "children": null
+      },
+      {
+        "name": "a.txt",
+        "path": "g1-YS50eHQ",
+        "type": "file",
+        "size": 9,
+        "ext": ".txt",
+        "gitignored": false
+      },
+      {
+        "name": "ab",
+        "path": "g1-YWI",
+        "type": "file",
+        "size": 6,
+        "ext": "",
+        "gitignored": false
+      },
+      {
+        "name": "a-b",
+        "path": "g1-YS1i",
+        "type": "file",
+        "size": 5,
+        "ext": "",
+        "gitignored": false
+      }
+    ]
+  },
+  "ext_tallies": [
+    [
+      ".bin",
+      2,
+      16777225,
+      2,
+      16777225
+    ],
+    [
+      ".png",
+      1,
+      67,
+      1,
+      67
+    ],
+    [
+      ".md",
+      3,
+      56,
+      3,
+      56
+    ],
+    [
+      ".txt",
+      4,
+      44,
+      4,
+      44
+    ],
+    [
+      ".json",
+      1,
+      25,
+      1,
+      25
+    ],
+    [
+      ".sh",
+      1,
+      22,
+      1,
+      22
+    ],
+    [
+      ".jsonl",
+      1,
+      18,
+      1,
+      18
+    ],
+    [
+      "(none)",
+      2,
+      11,
+      2,
+      11
+    ],
+    [
+      ".py",
+      1,
+      6,
+      1,
+      6
+    ]
+  ],
+  "file_type_breakdown": {
+    "schema": "file-type-breakdown-v1",
+    "registry": {
+      "schema_version": 4,
+      "revision": 3,
+      "fingerprint": "d6a500a45b7da7e5acf2587c735000ee74b99d7dbb5845f2f3481a0cd5ed0e1c"
+    },
+    "metrics": {
+      "all": {
+        "files": 16,
+        "bytes": 16777474
+      },
+      "unignored": {
+        "files": 16,
+        "bytes": 16777474
+      }
+    },
+    "groups": [
+      {
+        "id": "code",
+        "families": [
+          {
+            "id": "python",
+            "metrics": {
+              "all": {
+                "files": 1,
+                "bytes": 6
+              },
+              "unignored": {
+                "files": 1,
+                "bytes": 6
+              }
+            },
+            "extensions": [
+              {
+                "extension": ".py",
+                "metrics": {
+                  "all": {
+                    "files": 1,
+                    "bytes": 6
+                  },
+                  "unignored": {
+                    "files": 1,
+                    "bytes": 6
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "id": "shell",
+            "metrics": {
+              "all": {
+                "files": 1,
+                "bytes": 22
+              },
+              "unignored": {
+                "files": 1,
+                "bytes": 22
+              }
+            },
+            "extensions": [
+              {
+                "extension": ".sh",
+                "metrics": {
+                  "all": {
+                    "files": 1,
+                    "bytes": 22
+                  },
+                  "unignored": {
+                    "files": 1,
+                    "bytes": 22
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "docs",
+        "families": [
+          {
+            "id": "markdown",
+            "metrics": {
+              "all": {
+                "files": 3,
+                "bytes": 56
+              },
+              "unignored": {
+                "files": 3,
+                "bytes": 56
+              }
+            },
+            "extensions": [
+              {
+                "extension": ".md",
+                "metrics": {
+                  "all": {
+                    "files": 3,
+                    "bytes": 56
+                  },
+                  "unignored": {
+                    "files": 3,
+                    "bytes": 56
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "id": "plain-text",
+            "metrics": {
+              "all": {
+                "files": 4,
+                "bytes": 44
+              },
+              "unignored": {
+                "files": 4,
+                "bytes": 44
+              }
+            },
+            "extensions": [
+              {
+                "extension": ".txt",
+                "metrics": {
+                  "all": {
+                    "files": 4,
+                    "bytes": 44
+                  },
+                  "unignored": {
+                    "files": 4,
+                    "bytes": 44
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "data",
+        "families": [
+          {
+            "id": "json",
+            "metrics": {
+              "all": {
+                "files": 1,
+                "bytes": 25
+              },
+              "unignored": {
+                "files": 1,
+                "bytes": 25
+              }
+            },
+            "extensions": [
+              {
+                "extension": ".json",
+                "metrics": {
+                  "all": {
+                    "files": 1,
+                    "bytes": 25
+                  },
+                  "unignored": {
+                    "files": 1,
+                    "bytes": 25
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "media",
+        "families": [
+          {
+            "id": "images",
+            "metrics": {
+              "all": {
+                "files": 1,
+                "bytes": 67
+              },
+              "unignored": {
+                "files": 1,
+                "bytes": 67
+              }
+            },
+            "extensions": [
+              {
+                "extension": ".png",
+                "metrics": {
+                  "all": {
+                    "files": 1,
+                    "bytes": 67
+                  },
+                  "unignored": {
+                    "files": 1,
+                    "bytes": 67
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "other",
+        "families": [
+          {
+            "id": "log-files",
+            "metrics": {
+              "all": {
+                "files": 1,
+                "bytes": 18
+              },
+              "unignored": {
+                "files": 1,
+                "bytes": 18
+              }
+            },
+            "extensions": [
+              {
+                "extension": ".jsonl",
+                "metrics": {
+                  "all": {
+                    "files": 1,
+                    "bytes": 18
+                  },
+                  "unignored": {
+                    "files": 1,
+                    "bytes": 18
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "no_extension": {
+      "metrics": {
+        "all": {
+          "files": 2,
+          "bytes": 11
+        },
+        "unignored": {
+          "files": 2,
+          "bytes": 11
+        }
+      },
+      "filenames": [
+        {
+          "basename": "ab",
+          "metrics": {
+            "all": {
+              "files": 1,
+              "bytes": 6
+            },
+            "unignored": {
+              "files": 1,
+              "bytes": 6
+            }
+          }
+        },
+        {
+          "basename": "a-b",
+          "metrics": {
+            "all": {
+              "files": 1,
+              "bytes": 5
+            },
+            "unignored": {
+              "files": 1,
+              "bytes": 5
+            }
+          }
+        }
+      ],
+      "others": null
+    },
+    "remaining_types": {
+      "metrics": {
+        "all": {
+          "files": 2,
+          "bytes": 16777225
+        },
+        "unignored": {
+          "files": 2,
+          "bytes": 16777225
+        }
+      },
+      "extensions": [
+        {
+          "extension": ".bin",
+          "metrics": {
+            "all": {
+              "files": 2,
+              "bytes": 16777225
+            },
+            "unignored": {
+              "files": 2,
+              "bytes": 16777225
+            }
+          }
+        }
+      ],
+      "others": null
+    }
+  },
+  "index_status": "complete",
+  "indexed_files": 16,
+  "max_files": 500000,
+  "truncated": false
+}
+--- stderr ---
+# metab file://<ORIGIN> --api /api/catalog
+exit: 0
+--- stdout ---
+api: /api/catalog
+status: 200
+{
+  "complete": true,
+  "truncated": false,
+  "revision": 1,
+  "files": [
+    {
+      "p": "g1-UkVBRE1FLm1k",
+      "e": ".md",
+      "n": "README.md"
+    },
+    {
+      "p": "g1-YS1i",
+      "e": "",
+      "n": "a-b"
+    },
+    {
+      "p": "g1-YS50eHQ",
+      "e": ".txt",
+      "n": "a.txt"
+    },
+    {
+      "p": "g1-YQ/g1-ZGVlcA/g1-bmVzdGVkLm1k",
+      "e": ".md",
+      "n": "nested.md"
+    },
+    {
+      "p": "g1-YQ/g1-ZGVlcA/g1-cGF5bG9hZC5qc29u",
+      "e": ".json",
+      "n": "payload.json"
+    },
+    {
+      "p": "g1-YQ/g1-b25lLnB5",
+      "e": ".py",
+      "n": "one.py"
+    },
+    {
+      "p": "g1-YWI",
+      "e": "",
+      "n": "ab"
+    },
+    {
+      "p": "g1-Ymlu/g1-Z2x5cGgucG5n",
+      "e": ".png",
+      "n": "glyph.png"
+    },
+    {
+      "p": "g1-Ymlu/g1-b3ZlcnNpemUuYmlu",
+      "e": ".bin",
+      "n": "oversize.bin"
+    },
+    {
+      "p": "g1-Ymlu/g1-c2FtcGxlLmJpbg",
+      "e": ".bin",
+      "n": "sample.bin"
+    },
+    {
+      "p": "g1-ZGF0YQ/g1-ZXZlbnRzLmpzb25s",
+      "e": ".jsonl",
+      "n": "events.jsonl"
+    },
+    {
+      "p": "g1-bGlua3M/g1-dG8tcmVhZG1lLm1k",
+      "e": ".md",
+      "n": "to-readme.md"
+    },
+    {
+      "p": "g1-b2Rk/g1-bGF0aW4t6S50eHQ",
+      "e": ".txt",
+      "n": "latin-�.txt"
+    },
+    {
+      "p": "g1-b2Rk/g1-bGluZQpicmVhay50eHQ",
+      "e": ".txt",
+      "n": "line�break.txt"
+    },
+    {
+      "p": "g1-b2Rk/g1-dGFiCWhlcmUudHh0",
+      "e": ".txt",
+      "n": "tab�here.txt"
+    },
+    {
+      "p": "g1-dG9vbHM/g1-cnVuLnNo",
+      "e": ".sh",
+      "n": "run.sh"
+    }
+  ]
+}
+--- stderr ---
+# metab file://<ORIGIN> --api /api/file
+exit: 0
+--- stdout ---
+api: /api/file
+status: 200
+{
+  "subject": "git_revision",
+  "type": "folder",
+  "kind": "folder",
+  "name": "",
+  "views": [
+    {
+      "id": "overview",
+      "label": "Overview",
+      "default": true,
+      "container_class": "content-body folder-overview-host",
+      "printable": false,
+      "print_profile": "plain",
+      "render_runtime": null
+    },
+    {
+      "id": "treemap",
+      "label": "Treemap",
+      "default": false,
+      "container_class": "content-body folder-treemap-host",
+      "printable": false,
+      "print_profile": "plain",
+      "render_runtime": null
+    }
+  ],
+  "readme_path": "g1-UkVBRE1FLm1k",
+  "readme_search_truncated": false,
+  "dir": {
+    "total_files": 16,
+    "total_size": 16777474
+  },
+  "path": "",
+  "display": "",
+  "mode": "040000",
+  "git_kind": "tree",
+  "symlink": false,
+  "gitlink": false,
+  "oid": "2aba9e6f68f6b11f98bee8a8d7b47693aca3fb43"
+}
+--- stderr ---
+# metab file://<ORIGIN> --api /api/file?path=g1-UkVBRE1FLm1k
+exit: 0
+--- stdout ---
+api: /api/file?path=g1-UkVBRE1FLm1k
+status: 200
+{
+  "subject": "git_revision",
+  "size": 17,
+  "path": "g1-UkVBRE1FLm1k",
+  "display": "README.md",
   "mode": "100644",
   "git_kind": "blob",
   "symlink": false,
   "gitlink": false,
-  "oid": "ce013625030ba8dba906f756967f9e9ca394464a",
+  "oid": "36516194dee2aa72ce75357bc32cd75a59f71e57",
+  "ext": ".md",
+  "type": "text",
+  "kind": "markdown",
+  "views": [
+    {
+      "id": "rendered",
+      "label": "Document",
+      "default": true,
+      "container_class": "content-body metabrowser-kpress-host md-body",
+      "printable": true,
+      "print_profile": "document",
+      "render_runtime": "kpress"
+    },
+    {
+      "id": "source",
+      "label": "Source",
+      "default": false,
+      "container_class": "content-body metabrowser-source-host",
+      "printable": true,
+      "print_profile": "source",
+      "render_runtime": "client"
+    }
+  ],
+  "content": "# Pinned fixture\n",
+  "content_offset": 0,
+  "content_bytes": 17,
+  "bytes_read": 17,
+  "content_truncated": false,
+  "content_preview_limit": 524288,
+  "content_max_preview_limit": 16777216,
+  "highlight_disabled": false
+}
+--- stderr ---
+# metab file://<ORIGIN> --api /api/file?path=g1-YQ/g1-ZGVlcA/g1-bmVzdGVkLm1k
+exit: 0
+--- stdout ---
+api: /api/file?path=g1-YQ/g1-ZGVlcA/g1-bmVzdGVkLm1k
+status: 200
+{
+  "subject": "git_revision",
+  "size": 27,
+  "path": "g1-YQ/g1-ZGVlcA/g1-bmVzdGVkLm1k",
+  "display": "a/deep/nested.md",
+  "mode": "100644",
+  "git_kind": "blob",
+  "symlink": false,
+  "gitlink": false,
+  "oid": "5a25ec06c95d3fd0cef42c6438817485dfc27fe2",
+  "ext": ".md",
+  "type": "text",
+  "kind": "markdown",
+  "views": [
+    {
+      "id": "rendered",
+      "label": "Document",
+      "default": true,
+      "container_class": "content-body metabrowser-kpress-host md-body",
+      "printable": true,
+      "print_profile": "document",
+      "render_runtime": "kpress"
+    },
+    {
+      "id": "source",
+      "label": "Source",
+      "default": false,
+      "container_class": "content-body metabrowser-source-host",
+      "printable": true,
+      "print_profile": "source",
+      "render_runtime": "client"
+    }
+  ],
+  "content": "# Nested\n\nTwo levels down.\n",
+  "content_offset": 0,
+  "content_bytes": 27,
+  "bytes_read": 27,
+  "content_truncated": false,
+  "content_preview_limit": 524288,
+  "content_max_preview_limit": 16777216,
+  "highlight_disabled": false
+}
+--- stderr ---
+# metab file://<ORIGIN> --api /api/file?path=g1-YQ
+exit: 0
+--- stdout ---
+api: /api/file?path=g1-YQ
+status: 200
+{
+  "subject": "git_revision",
+  "type": "folder",
+  "kind": "folder",
+  "name": "a",
+  "views": [
+    {
+      "id": "overview",
+      "label": "Overview",
+      "default": true,
+      "container_class": "content-body folder-overview-host",
+      "printable": false,
+      "print_profile": "plain",
+      "render_runtime": null
+    },
+    {
+      "id": "treemap",
+      "label": "Treemap",
+      "default": false,
+      "container_class": "content-body folder-treemap-host",
+      "printable": false,
+      "print_profile": "plain",
+      "render_runtime": null
+    }
+  ],
+  "readme_path": "",
+  "readme_search_truncated": false,
+  "dir": {
+    "total_files": 3,
+    "total_size": 58
+  },
+  "path": "g1-YQ",
+  "display": "a",
+  "mode": "040000",
+  "git_kind": "tree",
+  "symlink": false,
+  "gitlink": false,
+  "oid": "488995644342a4443f2cc5280e6a6d13f3a045fe"
+}
+--- stderr ---
+# metab file://<ORIGIN> --api /api/file?path=g1-Ymlu/g1-Z2x5cGgucG5n
+exit: 0
+--- stdout ---
+api: /api/file?path=g1-Ymlu/g1-Z2x5cGgucG5n
+status: 200
+{
+  "subject": "git_revision",
+  "size": 67,
+  "path": "g1-Ymlu/g1-Z2x5cGgucG5n",
+  "display": "bin/glyph.png",
+  "mode": "100644",
+  "git_kind": "blob",
+  "symlink": false,
+  "gitlink": false,
+  "oid": "91a99b94e23a00cc8133f22e3fe2a0b48a015808",
+  "ext": ".png",
+  "type": "image",
+  "kind": "image",
+  "views": [
+    {
+      "id": "preview",
+      "label": "Image",
+      "default": true,
+      "container_class": "content-body metabrowser-image-host",
+      "printable": false,
+      "print_profile": "plain",
+      "render_runtime": "client"
+    }
+  ]
+}
+--- stderr ---
+# metab file://<ORIGIN> --api /api/file?path=g1-ZGF0YQ/g1-ZXZlbnRzLmpzb25s
+exit: 0
+--- stdout ---
+api: /api/file?path=g1-ZGF0YQ/g1-ZXZlbnRzLmpzb25s
+status: 200
+{
+  "subject": "git_revision",
+  "size": 18,
+  "path": "g1-ZGF0YQ/g1-ZXZlbnRzLmpzb25s",
+  "display": "data/events.jsonl",
+  "mode": "100644",
+  "git_kind": "blob",
+  "symlink": false,
+  "gitlink": false,
+  "oid": "7c4b11046c3ea8beffbbe06800c96c72a1100c66",
+  "ext": ".jsonl",
+  "type": "jsonl",
+  "kind": "unknown-jsonl",
+  "views": [
+    {
+      "id": "log",
+      "label": "Log",
+      "default": true,
+      "container_class": "content-body",
+      "printable": false,
+      "print_profile": "plain",
+      "render_runtime": null
+    },
+    {
+      "id": "raw",
+      "label": "Raw JSON",
+      "default": false,
+      "container_class": "content-body",
+      "printable": false,
+      "print_profile": "plain",
+      "render_runtime": null
+    }
+  ],
+  "summary": {
+    "adapter": "unknown",
+    "total_events": 2,
+    "tool_calls": 0,
+    "errors": 0,
+    "cost_usd": null,
+    "duration_s": null,
+    "is_done": false,
+    "is_error": false
+  },
+  "events": [
+    {
+      "kind": "unknown",
+      "summary": "[unknown] {'e': 1}",
+      "adapter": "claude",
+      "provider": null,
+      "timestamp": null,
+      "is_error": false,
+      "is_done": false,
+      "cost_usd": null,
+      "duration_s": null,
+      "raw": {
+        "e": 1
+      },
+      "summary_parts": null
+    },
+    {
+      "kind": "unknown",
+      "summary": "[unknown] {'e': 2}",
+      "adapter": "claude",
+      "provider": null,
+      "timestamp": null,
+      "is_error": false,
+      "is_done": false,
+      "cost_usd": null,
+      "duration_s": null,
+      "raw": {
+        "e": 2
+      },
+      "summary_parts": null
+    }
+  ],
+  "raw_text": "{\n  \"e\": 1\n}\n{\n  \"e\": 2\n}",
+  "raw_truncation": null,
+  "bytes_read": 18
+}
+--- stderr ---
+# metab file://<ORIGIN> --api /api/file?path=g1-bGlua3M/g1-dG8tcmVhZG1lLm1k
+exit: 0
+--- stdout ---
+api: /api/file?path=g1-bGlua3M/g1-dG8tcmVhZG1lLm1k
+status: 200
+{
+  "subject": "git_revision",
+  "size": 17,
+  "path": "g1-bGlua3M/g1-dG8tcmVhZG1lLm1k",
+  "display": "links/to-readme.md",
+  "mode": "100644",
+  "git_kind": "blob",
+  "symlink": false,
+  "gitlink": false,
+  "oid": "36516194dee2aa72ce75357bc32cd75a59f71e57",
+  "ext": ".md",
+  "type": "text",
+  "kind": "markdown",
+  "views": [
+    {
+      "id": "rendered",
+      "label": "Document",
+      "default": true,
+      "container_class": "content-body metabrowser-kpress-host md-body",
+      "printable": true,
+      "print_profile": "document",
+      "render_runtime": "kpress"
+    },
+    {
+      "id": "source",
+      "label": "Source",
+      "default": false,
+      "container_class": "content-body metabrowser-source-host",
+      "printable": true,
+      "print_profile": "source",
+      "render_runtime": "client"
+    }
+  ],
+  "content": "# Pinned fixture\n",
+  "content_offset": 0,
+  "content_bytes": 17,
+  "bytes_read": 17,
+  "content_truncated": false,
+  "content_preview_limit": 524288,
+  "content_max_preview_limit": 16777216,
+  "highlight_disabled": false
+}
+--- stderr ---
+# metab file://<ORIGIN> --api /api/file?path=g1-b2Rk/g1-bGF0aW4t6S50eHQ
+exit: 0
+--- stdout ---
+api: /api/file?path=g1-b2Rk/g1-bGF0aW4t6S50eHQ
+status: 200
+{
+  "subject": "git_revision",
+  "size": 13,
+  "path": "g1-b2Rk/g1-bGF0aW4t6S50eHQ",
+  "display": "odd/latin-�.txt",
+  "mode": "100644",
+  "git_kind": "blob",
+  "symlink": false,
+  "gitlink": false,
+  "oid": "7d112eb477b5c49174f9b627b9565bc281d61fc5",
+  "ext": ".txt",
   "type": "text",
   "kind": "text",
   "views": [
@@ -51,66 +2205,190 @@ status: 200
       "render_runtime": "client"
     }
   ],
-  "content": "hello\n",
+  "content": "latin-1 name\n",
   "content_offset": 0,
-  "content_bytes": 6,
-  "bytes_read": 6,
+  "content_bytes": 13,
+  "bytes_read": 13,
   "content_truncated": false,
   "content_preview_limit": 2097152,
   "content_max_preview_limit": 16777216,
   "highlight_disabled": false
 }
 --- stderr ---
-# metab file://<ORIGIN> --api /api/tree?depth=0
+# metab file://<ORIGIN> --api /api/file?path=g1-dG9vbHM/g1-cnVuLnNo
 exit: 0
 --- stdout ---
-api: /api/tree?depth=0
+api: /api/file?path=g1-dG9vbHM/g1-cnVuLnNo
 status: 200
 {
   "subject": "git_revision",
-  "path": "",
-  "display": "",
-  "oid": "7d4a466af82cd6857c85c0296d5c23fc68cba887",
-  "kind": "tree",
-  "entries": [],
-  "tree": [],
-  "tally_cache_status": "done",
-  "tally_cache_max_files": 500000,
-  "summary": {
-    "files": 1,
-    "size": 6,
-    "ignored_files": 0,
-    "ignored_size": 0
-  },
-  "extensions": [],
-  "canonical_extensions": [],
-  "type_families": [],
-  "type_presets": [
-    [
-      "code",
-      0,
-      0
-    ],
-    [
-      "docs",
-      1,
-      0
-    ],
-    [
-      "data",
-      0,
-      0
-    ],
-    [
-      "archives",
-      0,
-      0
-    ],
-    [
-      "media",
-      0,
-      0
-    ]
-  ]
+  "size": 22,
+  "path": "g1-dG9vbHM/g1-cnVuLnNo",
+  "display": "tools/run.sh",
+  "mode": "100755",
+  "git_kind": "blob",
+  "symlink": false,
+  "gitlink": false,
+  "oid": "f8a83a2e95834c492d940623ebd0bc3147b1d26e",
+  "ext": ".sh",
+  "type": "text",
+  "kind": "text",
+  "views": [
+    {
+      "id": "source",
+      "label": "Source",
+      "default": true,
+      "container_class": "content-body metabrowser-source-host",
+      "printable": true,
+      "print_profile": "source",
+      "render_runtime": "client"
+    }
+  ],
+  "content": "#!/bin/sh\necho pinned\n",
+  "content_offset": 0,
+  "content_bytes": 22,
+  "bytes_read": 22,
+  "content_truncated": false,
+  "content_preview_limit": 524288,
+  "content_max_preview_limit": 16777216,
+  "highlight_disabled": false
 }
 --- stderr ---
+# metab file://<ORIGIN> --api /api/file?path=g1-dmVuZG9y
+exit: 0
+--- stdout ---
+api: /api/file?path=g1-dmVuZG9y
+status: 200
+{
+  "subject": "git_revision",
+  "type": "gitlink",
+  "kind": "commit",
+  "views": [],
+  "path": "g1-dmVuZG9y",
+  "display": "vendor",
+  "mode": "160000",
+  "git_kind": "commit",
+  "symlink": false,
+  "gitlink": true,
+  "oid": "1111111111111111111111111111111111111111"
+}
+--- stderr ---
+# metab file://<ORIGIN> --api /api/plugin/structured/parsed?path=g1-YQ/g1-ZGVlcA/g1-cGF5bG9hZC5qc29u
+exit: 0
+--- stdout ---
+api: /api/plugin/structured/parsed?path=g1-YQ/g1-ZGVlcA/g1-cGF5bG9hZC5qc29u
+status: 200
+{
+  "type": "structured",
+  "path": "g1-YQ/g1-ZGVlcA/g1-cGF5bG9hZC5qc29u",
+  "ext": ".json",
+  "mtime_hash": "e7aca33e6d951936387247320c40b0ee8321df7a",
+  "size": 25,
+  "parsed": {
+    "k": 1,
+    "list": [
+      1,
+      2
+    ]
+  },
+  "pretty_yaml": "k: 1\nlist:\n  - 1\n  - 2\n",
+  "node_count": 5,
+  "max_depth": 2,
+  "comments_supported": false,
+  "parse_error": null,
+  "truncated": false
+}
+--- stderr ---
+# metab file://<ORIGIN> --api /api/plugin/binary/chunk?path=g1-Ymlu/g1-c2FtcGxlLmJpbg
+exit: 0
+--- stdout ---
+api: /api/plugin/binary/chunk?path=g1-Ymlu/g1-c2FtcGxlLmJpbg
+status: 200
+{
+  "type": "binary_chunk",
+  "path": "g1-Ymlu/g1-c2FtcGxlLmJpbg",
+  "offset": 0,
+  "bytes_read": 8,
+  "next_offset": 8,
+  "logical_size": 8,
+  "max_preview_bytes": 33554432,
+  "has_more": false,
+  "preview_limited": false,
+  "mtime_hash": "e0d84f457d2b5c802ecd286e7e576365d94af3b9",
+  "content_base64": "AAECAwQFBgc="
+}
+--- stderr ---
+# metab file://<ORIGIN> --api '/api/file?path=g1-Ymlu/g1-b3ZlcnNpemUuYmlu&limit=64'
+exit: 0
+--- stdout ---
+api: /api/file?path=g1-Ymlu/g1-b3ZlcnNpemUuYmlu&limit=64
+status: 200
+{
+  "subject": "git_revision",
+  "size": 16777217,
+  "path": "g1-Ymlu/g1-b3ZlcnNpemUuYmlu",
+  "display": "bin/oversize.bin",
+  "mode": "100644",
+  "git_kind": "blob",
+  "symlink": false,
+  "gitlink": false,
+  "oid": "b3754b81ea7bf9696d09f847b67f8e06021f6091",
+  "ext": ".bin",
+  "type": "text",
+  "kind": "text",
+  "views": [
+    {
+      "id": "source",
+      "label": "Source",
+      "default": true,
+      "container_class": "content-body metabrowser-source-host",
+      "printable": true,
+      "print_profile": "source",
+      "render_runtime": "client"
+    }
+  ],
+  "content": "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+  "content_offset": 0,
+  "content_bytes": 64,
+  "bytes_read": 64,
+  "content_truncated": true,
+  "content_preview_limit": 64,
+  "content_max_preview_limit": 16777216,
+  "highlight_disabled": false
+}
+--- stderr ---
+# metab file://<ORIGIN> --api /api/recent
+exit: 1
+--- stdout ---
+api: /api/recent
+status: 409
+{
+  "error": "source does not support recency",
+  "code": "unsupported_for_subject",
+  "capability": "recency"
+}
+--- stderr ---
+Error: /api/recent returned HTTP 409
+# metab file://<ORIGIN> --api /api/file?path=g1-bm9wZS50eHQ
+exit: 1
+--- stdout ---
+api: /api/file?path=g1-bm9wZS50eHQ
+status: 404
+{
+  "error": "Not found"
+}
+--- stderr ---
+Error: /api/file?path=g1-bm9wZS50eHQ returned HTTP 404
+# metab file://<ORIGIN> --api '/api/file?path=g1-Ymlu/g1-b3ZlcnNpemUuYmlu&offset=16777217'
+exit: 1
+--- stdout ---
+api: /api/file?path=g1-Ymlu/g1-b3ZlcnNpemUuYmlu&offset=16777217
+status: 416
+{
+  "type": "error",
+  "path": "g1-Ymlu/g1-b3ZlcnNpemUuYmlu",
+  "error": "Requested preview window exceeds the stream budget for this blob",
+  "max_offset": 16777216
+}
+--- stderr ---
+Error: /api/file?path=g1-Ymlu/g1-b3ZlcnNpemUuYmlu&offset=16777217 returned HTTP 416

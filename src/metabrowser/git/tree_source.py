@@ -53,7 +53,7 @@ import threading
 from array import array
 from bisect import bisect_left
 from collections import OrderedDict
-from collections.abc import AsyncGenerator, Callable, Hashable, Mapping, Sequence
+from collections.abc import AsyncGenerator, Callable, Coroutine, Hashable, Mapping, Sequence
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -108,6 +108,15 @@ _STDERR_MAX_BYTES: Final[int] = 64 * 1024
 # ninth of the 15 s deadline. A chunk also caps the commands buffered before a
 # flush at under 0.5 MiB.
 INFO_MANY_CHUNK_OBJECTS: Final[int] = 10_000
+# A windowed blob read streams the object from its start, since ``cat-file`` has no
+# byte ranges. Past the window it either drains the rest, which keeps the actor, or
+# terminates the actor, which costs the next read a respawn. Measured on a packed
+# store on macOS at load average 8 to 23: a respawn cost 4.0 ms and a terminate 0.5 ms,
+# while draining ran near 1.1 GiB/s (a 64 MiB blob in about 55 ms), so abandoning pays
+# off past about 4.5 MiB. Terminating is what makes a first window cheap: 2 MiB of a
+# 256 MiB blob took 39 to 45 ms, against 1.1 s drained and 1.0 s read whole.
+BLOB_WINDOW_DRAIN_MAX_BYTES: Final[int] = 4 * 1024 * 1024
+_STREAM_CHUNK_BYTES: Final[int] = 1024 * 1024
 _FULL_OID: Final = re.compile(r"\b(?:[0-9a-f]{64}|[0-9a-f]{40})\b")
 # Facts memoized per pinned source: index chrome, index facts, extensions, the
 # catalog body, and one entry per recently used filter or rollup shape. Each is
@@ -133,6 +142,19 @@ class GitObjectUnavailableError(GitError, ContentUnavailableError):
     def __init__(self, oid: str) -> None:
         self.oid = oid
         super().__init__(f"object_unavailable: {oid}")
+
+
+class _LazyFetchRefusedError(GitObjectUnavailableError):
+    """An older Git died instead of answering ``missing`` for this object."""
+
+
+# ``git_environment`` runs the batch actor under ``LC_ALL=C``, so this is Git's own
+# untranslated text (promisor-remote.c ``promisor_remote_get_direct``).
+_LAZY_FETCH_REFUSED_RE: Final = re.compile(
+    rb"could not fetch ([0-9a-f]{40}|[0-9a-f]{64}) from promisor remote"
+)
+# A dead actor's stderr is at EOF already; this only bounds a pathological pipe.
+_DEAD_ACTOR_STDERR_WAIT_S: Final = 2.0
 
 
 class GitBlobTooLargeError(GitError):
@@ -252,8 +274,16 @@ class GitPath:
         return "/".join(display_segment(segment) for segment in self.segments)
 
 
-# Relative in-tree symlink hops on file/raw/KPress/sidekicks. Listings still show the link.
+# Relative in-tree symlink hops per resolution on file/raw/KPress/sidekicks, counting
+# links met partway through a target. Listings still show the link.
 _MAX_GIT_SYMLINK_FOLLOW = 8
+# Linux ``PATH_MAX``. ``symlink(2)`` refuses a longer target with ``ENAMETOOLONG``, so
+# a checkout could not hold such a link either. It also bounds resolution work, which
+# is one lookup per component in the directory already in hand. Measured on macOS
+# under load: a 4091-byte ``a/..`` body at depth 200 took 0.14 s, and eight such links
+# chained took 0.88 s, with no loop stall over 15 ms. Walking from the root per
+# component had taken 12 s and 97 s for the same two cases.
+_MAX_GIT_SYMLINK_BODY_BYTES = 4096
 
 
 def split_git_container_wire(wire: str) -> tuple[GitPath, str]:
@@ -478,7 +508,11 @@ class _BatchObjectReader:
         return result
 
     async def info_many(self, oids: tuple[str, ...]) -> dict[str, _ObjectInfo | None]:
-        """``info`` for many objects, one flush per chunk. A missing object is ``None``."""
+        """``info`` for many objects, one flush per chunk. A missing object is ``None``.
+
+        When an older Git dies refusing a lazy fetch (see :meth:`_header`), the rest
+        of that chunk is absent from the result: unknown, not missing.
+        """
 
         unique: list[str] = []
         seen: set[str] = set()
@@ -496,46 +530,28 @@ class _BatchObjectReader:
     async def _info_chunk(self, oids: tuple[str, ...]) -> dict[str, _ObjectInfo | None]:
         """One flush under one deadline, so a whole tree never shares a fixed budget."""
 
-        try:
-            return await asyncio.wait_for(
-                self._info_many_inner(oids),
-                timeout=BATCH_OBJECT_POLICY.timeout_s,
-            )
-        except TimeoutError as exc:
-            await self._poison()
-            raise GitTimeoutError() from exc
-        except asyncio.CancelledError:
-            await self._poison()
-            raise
-        except (BrokenPipeError, ConnectionResetError, asyncio.IncompleteReadError) as exc:
-            await self._poison()
-            raise GitBatchProtocolError("cat-file actor framing failed") from exc
-        except GitBatchProtocolError:
-            await self._poison()
-            raise
-        except Exception:
-            await self._poison()
-            raise
+        return await self._within_deadline(self._info_many_inner(oids))
 
     async def _info_many_inner(self, oids: tuple[str, ...]) -> dict[str, _ObjectInfo | None]:
-        await self._ensure()
-        proc = self._proc
-        writer = None if proc is None else proc.stdin
-        reader = None if proc is None else proc.stdout
-        if proc is None or writer is None or reader is None:
-            raise GitBatchProtocolError("cat-file actor has no pipes")
+        reader, writer = await self._pipes()
         for oid in oids:
             writer.write(f"info {oid}\n".encode("ascii"))
         writer.write(b"flush\n")
         await writer.drain()
         found: dict[str, _ObjectInfo | None] = {}
-        for oid in oids:
-            header = await _read_header(reader)
-            parts = header.split(b" ")
-            if len(parts) == 2 and parts[1] == b"missing":
-                found[oid] = None
-                continue
-            found[oid] = _parse_info_header(oid, header)
+        try:
+            for oid in oids:
+                header = await self._header(reader, oids)
+                parts = header.split(b" ")
+                if len(parts) == 2 and parts[1] == b"missing":
+                    found[oid] = None
+                    continue
+                found[oid] = _parse_info_header(oid, header)
+        except _LazyFetchRefusedError as exc:
+            # An older Git died on this object, so it is missing. Asking again would
+            # cost a new actor, and a promisor-set scan, per missing object in a
+            # converging store; the chunk's unanswered objects are left unknown.
+            found[exc.oid] = None
         return found
 
     async def read_blob(self, oid: str, *, max_blob_bytes: int) -> bytes:
@@ -548,6 +564,44 @@ class _BatchObjectReader:
         if isinstance(body, _ObjectInfo):
             raise GitBatchProtocolError("contents transaction returned info")
         return body
+
+    async def read_blob_window(self, oid: str, *, offset: int, max_bytes: int) -> tuple[bytes, int]:
+        """At most *max_bytes* of blob *oid* from *offset*, and the blob's size.
+
+        ``cat-file`` addresses objects, not byte ranges, so the blob streams from its
+        start like a compressed artifact: the bytes before *offset* are read and
+        dropped, the window is kept, and nothing past it is held. A remainder up to
+        :data:`BLOB_WINDOW_DRAIN_MAX_BYTES` is drained so the actor stays usable; past
+        that the actor is terminated and the next transaction starts a new one.
+        """
+
+        require_full_oid(oid)
+        if offset < 0 or max_bytes < 0:
+            raise ValueError("blob window offset and size cannot be negative")
+        return await self._within_deadline(self._read_blob_window_inner(oid, offset, max_bytes))
+
+    async def _read_blob_window_inner(
+        self, oid: str, offset: int, max_bytes: int
+    ) -> tuple[bytes, int]:
+        reader, writer = await self._pipes()
+        writer.write(f"contents {oid}\nflush\n".encode("ascii"))
+        await writer.drain()
+        info = _parse_info_header(oid, await self._header(reader, (oid,)))
+        if info.kind != "blob":
+            # Its body is still in the pipe, so the actor is discarded.
+            raise GitBatchProtocolError(f"{oid} is {info.kind}, not a blob")
+        start = min(offset, info.size)
+        stop = min(start + max_bytes, info.size)
+        await _discard_exactly(reader, start)
+        window = await reader.readexactly(stop - start)
+        remainder = info.size - stop
+        if remainder > BLOB_WINDOW_DRAIN_MAX_BYTES:
+            await self._poison()
+            return window, info.size
+        await _discard_exactly(reader, remainder)
+        if await reader.readexactly(1) != b"\n":
+            raise GitBatchProtocolError("contents frame is missing the trailing newline")
+        return window, info.size
 
     async def read_tree(self, oid: str) -> bytes:
         """Raw tree object bytes: one actor round trip, not an ``ls-tree`` spawn.
@@ -567,20 +621,15 @@ class _BatchObjectReader:
         self._closed = True
         await self._poison()
 
-    async def _transact(
-        self,
-        oid: str,
-        *,
-        contents: bool,
-        expected: _ObjectInfo | None = None,
-        tree: bool = False,
-    ) -> _ObjectInfo | bytes:
-        require_full_oid(oid)
+    async def _within_deadline[T](self, transaction: Coroutine[Any, Any, T]) -> T:
+        """Run one transaction under the batch deadline; discard the actor if it fails.
+
+        A missing object is a complete frame, so the actor survives it. Anything else
+        can leave part of a frame in the pipe.
+        """
+
         try:
-            return await asyncio.wait_for(
-                self._transact_inner(oid, contents=contents, expected=expected, tree=tree),
-                timeout=BATCH_OBJECT_POLICY.timeout_s,
-            )
+            return await asyncio.wait_for(transaction, timeout=BATCH_OBJECT_POLICY.timeout_s)
         except TimeoutError as exc:
             await self._poison()
             raise GitTimeoutError() from exc
@@ -592,12 +641,31 @@ class _BatchObjectReader:
         except (BrokenPipeError, ConnectionResetError, asyncio.IncompleteReadError) as exc:
             await self._poison()
             raise GitBatchProtocolError("cat-file actor framing failed") from exc
-        except GitBatchProtocolError:
-            await self._poison()
-            raise
         except Exception:
             await self._poison()
             raise
+
+    async def _pipes(self) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
+        await self._ensure()
+        proc = self._proc
+        writer = None if proc is None else proc.stdin
+        reader = None if proc is None else proc.stdout
+        if proc is None or writer is None or reader is None:
+            raise GitBatchProtocolError("cat-file actor has no pipes")
+        return reader, writer
+
+    async def _transact(
+        self,
+        oid: str,
+        *,
+        contents: bool,
+        expected: _ObjectInfo | None = None,
+        tree: bool = False,
+    ) -> _ObjectInfo | bytes:
+        require_full_oid(oid)
+        return await self._within_deadline(
+            self._transact_inner(oid, contents=contents, expected=expected, tree=tree)
+        )
 
     async def _transact_inner(
         self,
@@ -607,16 +675,11 @@ class _BatchObjectReader:
         expected: _ObjectInfo | None,
         tree: bool,
     ) -> _ObjectInfo | bytes:
-        await self._ensure()
-        proc = self._proc
-        writer = None if proc is None else proc.stdin
-        reader = None if proc is None else proc.stdout
-        if proc is None or writer is None or reader is None:
-            raise GitBatchProtocolError("cat-file actor has no pipes")
+        reader, writer = await self._pipes()
         command = "contents" if contents else "info"
         writer.write(f"{command} {oid}\nflush\n".encode("ascii"))
         await writer.drain()
-        header = await _read_header(reader)
+        header = await self._header(reader, (oid,))
         info = _parse_info_header(oid, header)
         if not contents:
             return info
@@ -634,6 +697,49 @@ class _BatchObjectReader:
         if trailer != b"\n":
             raise GitBatchProtocolError("contents frame is missing the trailing newline")
         return body
+
+    async def _header(self, reader: asyncio.StreamReader, asked: Sequence[str]) -> bytes:
+        """The next header line, or the object an older Git died refusing to fetch.
+
+        With ``GIT_NO_LAZY_FETCH`` set, Git 2.43 (observed on 2.43.7, the lowest
+        admitted release) dies with ``could not fetch <oid> from promisor remote``
+        for a promised object the store lacks, where later releases answer
+        ``missing``. Only a death naming an object this transaction asked about is
+        read that way; anything else is still a framing failure.
+        """
+
+        try:
+            return await _read_header(reader)
+        except GitBatchProtocolError:
+            if not reader.at_eof():
+                raise
+            refused = await self._refused_lazy_fetch()
+            if refused is None or refused not in asked:
+                raise
+            raise _LazyFetchRefusedError(refused) from None
+
+    async def _refused_lazy_fetch(self) -> str | None:
+        """The object a dead actor's stderr says it could not fetch; the actor is reaped."""
+
+        task = self._stderr_task
+        stderr = b""
+        if task is not None:
+            try:
+                stderr, _overflowed = await asyncio.wait_for(
+                    asyncio.shield(task), timeout=_DEAD_ACTOR_STDERR_WAIT_S
+                )
+            except (TimeoutError, OSError):
+                stderr = b""
+            except asyncio.CancelledError:
+                # The pool closing this actor cancels the stderr task under the shield;
+                # only a cancellation of this task itself propagates.
+                current = asyncio.current_task()
+                if current is not None and current.cancelling():
+                    raise
+                stderr = b""
+        await self._poison()
+        match = _LAZY_FETCH_REFUSED_RE.search(stderr)
+        return None if match is None else match.group(1).decode("ascii")
 
     async def _ensure(self) -> None:
         if self._closed:
@@ -774,6 +880,27 @@ async def read_store_blob(
         await _release_pool(pool)
 
 
+async def require_store_objects(target: RepositoryStoreTarget, oids: Sequence[str]) -> None:
+    """Raise :class:`GitObjectUnavailableError` for the first object the store lacks.
+
+    One ``info`` flush per chunk through the shared per-store pool, so checking a
+    change set costs an actor round trip rather than a spawn per object. With lazy
+    fetch disabled an absent object answers ``missing`` and no promisor is asked.
+    """
+
+    if not oids:
+        return
+    pool = _retain_pool(target)
+    try:
+        async with pool.checkout() as reader:
+            found = await reader.info_many(tuple(oids))
+    finally:
+        await _release_pool(pool)
+    for oid, info in found.items():
+        if info is None:
+            raise GitObjectUnavailableError(oid)
+
+
 async def _drain_stderr(proc: asyncio.subprocess.Process) -> tuple[bytes, bool]:
     stream = proc.stderr
     if stream is None:
@@ -792,6 +919,13 @@ async def _drain_stderr(proc: asyncio.subprocess.Process) -> tuple[bytes, bool]:
             overflowed = True
         total += len(chunk)
     return b"".join(chunks), overflowed
+
+
+async def _discard_exactly(reader: asyncio.StreamReader, count: int) -> None:
+    """Read and drop *count* bytes without holding more than one chunk of them."""
+
+    while count > 0:
+        count -= len(await reader.readexactly(min(count, _STREAM_CHUNK_BYTES)))
 
 
 async def _read_header(reader: asyncio.StreamReader) -> bytes:
@@ -978,6 +1112,17 @@ class GitTreeSource:
             return None
         return (await self._load_tree(parent, parent_path=parent_path)).child(path)
 
+    async def resolve_child(self, directory: GitTreeEntry, name: bytes) -> GitTreeEntry | None:
+        """*name* inside a tree entry already in hand, without re-walking its path."""
+
+        if not directory.is_tree:
+            return None
+        cached = await self._load_tree(directory.oid, parent_path=directory.path)
+        entry = cached.by_name.get(name)
+        if entry is None:
+            return None
+        return cached.child(directory.path.child(name))
+
     async def list_tree(self, path: GitPath | None = None) -> tuple[GitTreeEntry, ...]:
         located = GitPath.root() if path is None else path
         tree_oid = await self._tree_oid_for(located)
@@ -1039,10 +1184,28 @@ class GitTreeSource:
             reader=_GitBlobReader(source=self, entry=entry),
         )
 
+    @property
+    def max_blob_bytes(self) -> int:
+        """The largest blob this pin reads whole; a larger one is read in windows."""
+
+        return self._max_blob_bytes
+
     async def read_blob_oid(self, oid: str) -> bytes:
         async with self._pool.checkout() as reader:
             return await reader.read_blob(
                 require_full_oid(oid), max_blob_bytes=self._max_blob_bytes
+            )
+
+    async def read_blob_window(self, oid: str, *, offset: int, max_bytes: int) -> tuple[bytes, int]:
+        """A bounded window of one blob and the blob's size, at any blob size.
+
+        See :meth:`_BatchObjectReader.read_blob_window`: reaching *offset* costs
+        streaming up to it, and nothing past the window is held.
+        """
+
+        async with self._pool.checkout() as reader:
+            return await reader.read_blob_window(
+                require_full_oid(oid), offset=offset, max_bytes=max_bytes
             )
 
     async def object_info(self, oid: str) -> _ObjectInfo:
@@ -1193,47 +1356,107 @@ class GitTreeSource:
         return tuple(sized)
 
 
-def _git_symlink_target(link_path: GitPath, raw: bytes) -> GitPath | None:
-    """Resolve a relative POSIX symlink body against the link's parent tree."""
+@dataclass(slots=True)
+class _SymlinkBudget:
+    """Hops left for one resolution, shared by every link it meets."""
 
-    if not raw or b"\x00" in raw or raw.startswith(b"/"):
-        return None
-    cursor = link_path.parent()
-    for part in raw.split(b"/"):
-        if part in {b"", b"."}:
-            continue
-        if part == b"..":
-            if not cursor.segments:
-                return None
-            cursor = cursor.parent()
-            continue
-        try:
-            cursor = cursor.child(part)
-        except GitPathError:
-            return None
-    return cursor
+    hops: int = _MAX_GIT_SYMLINK_FOLLOW
+
+    def spend(self) -> bool:
+        self.hops -= 1
+        return self.hops >= 0
 
 
 async def follow_git_symlinks(source: GitTreeSource, entry: GitTreeEntry) -> GitTreeEntry | None:
-    """Follow in-tree relative symlink blobs. None when the target is unusable."""
+    """Follow in-tree relative symlink blobs the way the operating system would.
 
-    current = entry
-    seen: set[GitPath] = set()
-    hops = 0
-    while current.is_symlink:
-        if current.path in seen or hops >= _MAX_GIT_SYMLINK_FOLLOW:
-            return None
-        seen.add(current.path)
-        hops += 1
-        raw = await source.read_blob(current.path)
-        target = _git_symlink_target(current.path, raw)
-        if target is None:
-            return None
-        nxt = await source.resolve_path(target)
-        if nxt is None:
-            return None
-        current = nxt
+    A link body resolves one component at a time from the link's own directory. A
+    link met partway through is followed before the walk goes on, so a ``..`` after
+    it climbs from where that link led, and a component that is missing or is not a
+    directory stops the walk, as it would for a checkout on disk. Normalizing the
+    body as text first would answer ``dir-link/..`` with the link's own directory and
+    turn ``file/..`` or ``missing/..`` into a hit. None when the target is absolute,
+    climbs out of the tree, cannot be resolved, or takes more than
+    ``_MAX_GIT_SYMLINK_FOLLOW`` hops in all.
+    """
+
+    budget = _SymlinkBudget()
+    current: GitTreeEntry | None = entry
+    while current is not None and current.is_symlink:
+        current = await _resolve_git_symlink(source, current, budget)
     return current
+
+
+async def _resolve_git_symlink(
+    source: GitTreeSource, link: GitTreeEntry, budget: _SymlinkBudget
+) -> GitTreeEntry | None:
+    """The entry one link names, itself possibly a link; see :func:`follow_git_symlinks`.
+
+    Each component is looked up in the directory entry already in hand, and ``..``
+    pops back to the one before, so a body costs one lookup per component rather than
+    a walk from the root per component. Only following a link partway through
+    rebuilds the stack, from the directory that link led to.
+    """
+
+    if not budget.spend():
+        return None
+    if link.size is not None and link.size > _MAX_GIT_SYMLINK_BODY_BYTES:
+        return None
+    raw = await source.read_blob(link.path)
+    if len(raw) > _MAX_GIT_SYMLINK_BODY_BYTES:
+        return None
+    if not raw or b"\x00" in raw or raw.startswith(b"/"):
+        return None
+    parts = [part for part in raw.split(b"/") if part not in {b"", b"."}]
+    stack = await _directory_stack(source, link.path.parent())
+    if stack is None:
+        return None
+    for index, part in enumerate(parts):
+        # A cached tree answers without suspending, so yield once per component.
+        await asyncio.sleep(0)
+        if part == b"..":
+            if len(stack) == 1:
+                return None
+            stack.pop()
+            continue
+        try:
+            entry = await source.resolve_child(stack[-1], part)
+        except GitPathError:
+            return None
+        if entry is None:
+            return None
+        if index == len(parts) - 1:
+            return entry
+        if entry.is_symlink:
+            while entry is not None and entry.is_symlink:
+                entry = await _resolve_git_symlink(source, entry, budget)
+            if entry is None or not entry.is_tree:
+                return None
+            # ``..`` after a link climbs from where the link led.
+            stack = await _directory_stack(source, entry.path)
+            if stack is None:
+                return None
+            continue
+        if not entry.is_tree:
+            return None
+        stack.append(entry)
+    # The body ended on ``..`` or named the link's own directory.
+    return stack[-1]
+
+
+async def _directory_stack(source: GitTreeSource, path: GitPath) -> list[GitTreeEntry] | None:
+    """The tree entries from the root down to *path*, or None if one is not a tree."""
+
+    root = await source.resolve_path(GitPath.root())
+    if root is None:
+        return None
+    stack = [root]
+    for segment in path.segments:
+        entry = await source.resolve_child(stack[-1], segment)
+        if entry is None or not entry.is_tree:
+            return None
+        stack.append(entry)
+    return stack
 
 
 async def resolve_git_blob_entry(source: GitTreeSource, path: GitPath) -> GitTreeEntry | None:
@@ -1282,16 +1505,17 @@ class _GitBlobReader:
         return ContentStat(size=size)
 
     async def read_window(self, *, offset: int, max_bytes: int) -> ContentWindow:
-        # ``cat-file`` addresses objects, not byte ranges, so the store read is
-        # bounded by the pin's own blob ceiling and the window is sliced from
-        # it. The caller's bound still governs what leaves this method.
-        body = await self.source.read_blob_oid(self.entry.oid)
-        window = body[offset : offset + max_bytes]
-        return ContentWindow(
-            data=window,
-            offset=offset,
-            has_more=offset + len(window) < len(body),
+        # The blob streams from its start to the end of the window, like a compressed
+        # artifact, and only the window is held, so no blob size is refused here. It is
+        # not memoized between windows. Paging the byte view to its 32 MiB ceiling, seven
+        # requests, took 0.27 s in all for a 32 MiB blob and 0.38 s for 64 MiB, at worst
+        # 56 and 70 ms a request; reading the blob once and slicing took 0.04 and 0.11 s,
+        # but only by holding the whole blob in server memory while the view might page.
+        # See docs/large-content-rendering.md.
+        window, size = await self.source.read_blob_window(
+            self.entry.oid, offset=offset, max_bytes=max_bytes
         )
+        return ContentWindow(data=window, offset=offset, has_more=offset + len(window) < size)
 
 
 class GitRevisionSubject:
@@ -1382,6 +1606,7 @@ async def git_revision_subject(
 
 
 __all__ = [
+    "BLOB_WINDOW_DRAIN_MAX_BYTES",
     "GIT_REVISION_CAPABILITIES",
     "MAX_BATCH_READERS_PER_STORE",
     "GitBatchProtocolError",
@@ -1401,6 +1626,7 @@ __all__ = [
     "git_revision_subject",
     "read_store_blob",
     "require_full_oid",
+    "require_store_objects",
     "resolve_git_blob_entry",
     "split_git_container_wire",
     "store_batch_reader_count",

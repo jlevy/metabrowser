@@ -355,3 +355,24 @@ def test_lease_refuses_abbreviated_missing_and_absent_stores(
     with pytest.raises(GitUnavailableError):
         asyncio.run(lease_revision(home=home, store_key="b" * 64, commit_oid=second))
     assert held_locks() == ()
+
+
+@pytest.mark.parametrize("ref_exists", [False, True], ids=["first-pin", "repeat-pin"])
+def test_a_stale_subject_ref_lock_does_not_block_later_pins(
+    ref_exists: bool, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A Git killed mid-``update-ref`` leaves ``<ref>.lock``; the next lease recovers (mb-2k9c)."""
+    home, store_key, git_dir, _first, second = _publish(tmp_path, monkeypatch)
+    if ref_exists:
+        asyncio.run(lease_revision(home=home, store_key=store_key, commit_oid=second)).release()
+    stale = git_dir / f"{subject_revision_ref(second)}.lock"
+    stale.parent.mkdir(parents=True, exist_ok=True)
+    stale.write_text("0" * 40 + "\n")
+    lease = asyncio.run(lease_revision(home=home, store_key=store_key, commit_oid=second))
+    try:
+        assert not stale.exists()
+        assert (
+            asyncio.run(_store_git(lease.target, "rev-parse", "--verify", lease.ref_name)) == second
+        )
+    finally:
+        lease.release()

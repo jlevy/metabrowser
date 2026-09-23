@@ -625,9 +625,9 @@ async def read_content_window(ref: ContentRef, *, offset: int = 0, max_bytes: in
     knows what it asked the server to hold. Both arguments are byte counts and
     must not be negative.
 
-    A pinned store hands back whole objects, so a window there is sliced from a
-    read the pin's own blob ceiling already bounds; ``max_bytes`` still governs
-    what the hook receives and returns.
+    On a pin a blob streams from its start, like a compressed artifact: reaching
+    ``offset`` costs reading up to it, and only the window is held, so no blob is
+    refused for its size.
     """
 
     if offset < 0:

@@ -109,6 +109,10 @@ Nothing binds a port.
 Serving, walking, and `--check-api` still refuse Git sources.
 https and ssh URLs stay closed.
 A second `--no-serve` of the same `file://` source reuses the published store.
+That cache hit reads only the application home: it runs no Git, does not need the
+origin, and works against a home the current user cannot write.
+Spellings that normalize to the same address, such as `FILE://localhost/path/` and
+`file:///path`, are one source.
 
 Inspect cache state from any local root after an acquire: the cache routes resolve
 `METABROWSER_HOME` independently of the served directory.
@@ -116,6 +120,39 @@ Inspect cache state from any local root after an acquire: the cache routes resol
 ```shell
 metab ./notes --api /api/cache/sources
 ```
+
+### Refusals, failures, and interruptions
+
+Every refusal prints one `Error:` line and exits with status 1. None of them publishes a
+source, and none changes another source already in the cache.
+
+- **A ROOT the grammar rejects** prints `invalid ROOT (<reason>)`. The reason names the
+  rule, such as `credentials_in_url` or `option_like`, and the argument itself is not
+  repeated, so a token in a URL does not reach the terminal.
+- **A Git below the acquisition security floor** refuses a new acquisition with the
+  version it found and the versions it accepts.
+  The application home is not created.
+  Upgrade Git; a source already in the cache is still reused.
+- **A source that cannot be fetched** — a missing path, a directory that is not a
+  repository, a repository with no commits, or one whose `HEAD` is not a branch —
+  publishes nothing.
+- **An acquisition that is interrupted** leaves nothing visible, because the source is
+  published last, after its store.
+  The next acquisition removes the abandoned staging entry or reclaims the store no
+  source names, then fetches again.
+
+Refusals that concern the application home say how to repair it:
+
+| Message begins | Repair |
+| --- | --- |
+| `METABROWSER_HOME is set but empty`, `METABROWSER_HOME must be an absolute path` | Unset it, or set it to an absolute path |
+| `The Metabrowser application home is accessible to other users` | Run `chmod 700` on it, or use another `METABROWSER_HOME` |
+| `An entry in the Metabrowser application home cannot be verified` | Restore the current user’s write permission, or use another `METABROWSER_HOME` |
+| `This Metabrowser application home uses format` | Upgrade Metabrowser, or use another `METABROWSER_HOME` |
+
+A home other users can read refuses cache hits as well as new acquisitions.
+A home the current user cannot write still reuses cached sources and refuses only new
+ones.
 
 ## Inspecting Data: `--api`
 

@@ -32,8 +32,12 @@ Plugin contracts:
 - The repository cache’s `f01` records install as enforced contracts through a
   `repository-cache` capability provider, so `metab --doctor` now reports three
   capability providers and 22 contracts.
-  No command writes the cache yet: the application home and `CACHEDIR.TAG` are created
-  when opening a repository URL lands.
+  The application home and `CACHEDIR.TAG` are created by the first `file://`
+  acquisition.
+
+- A collection name declared in a resource publication profile is limited to the same
+  128 characters as the collection name in a resource-set record, so a longer
+  declaration is rejected when the profile loads rather than invalidating every record.
 
 Plugin SDK:
 
@@ -106,6 +110,24 @@ Repository cache:
   reuse the store, lease the default revision, and inspect that `GitRevisionSubject`
   in-process. Serving, walking, and `--check-api` still refuse Git sources, and nothing
   binds a port. https and ssh stay closed.
+  Those pin modes report acquisition failures with the same messages as `--no-serve`,
+  and a Git failure while opening the pin is also path-free.
+  A pin’s `/api/tree` lists directories before files, as a folder listing does.
+  A pinned blob larger than the 16 MiB whole-read limit is classified from a bounded
+  window and paged in the text and byte views like a large file on disk, instead of
+  answering 413; a text window starting past that budget answers 416. `/raw` still
+  refuses such a blob.
+  A pinned symlink resolves one path component at a time, as a checkout does.
+  On a pin, a commit detail or diff that needs a blob the store does not hold answers a
+  typed 404 `object_unavailable` instead of a generic 500 or 502, and no store read can
+  fetch lazily from the origin.
+  A pin always runs under the untrusted profile: `METAB_ACTIVE_CONTENT=1` and
+  `METAB_ALLOW_EDITS=1` do not lift it, and `--allow-edits` on a pin is an error.
+
+- A timed-out or cancelled acquisition kills Git’s whole process group, including the
+  helpers it forks, rather than only the `git` process.
+  Git built by a distribution that backports the security fixes without raising the
+  upstream version is still refused below the acquisition floor.
 
 - A classified `file://` source can be fetched into an isolated worktree-free staging
   store using Git’s pack transport (`git fetch`, not `clone --local` hardlinks).

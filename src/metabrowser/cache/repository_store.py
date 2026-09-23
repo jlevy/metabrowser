@@ -9,16 +9,18 @@ not serve content, migrate remaining routes, or check out a worktree.
 
 from __future__ import annotations
 
-import asyncio
+import functools
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, Self
 
 from metabrowser.cache.locks import (
     CacheLock,
+    acquire_store_lease,
     repository_store_lock,
     require_no_hierarchy_locks,
-    store_lease,
+    run_lock_section,
     store_maintenance_lock,
 )
 from metabrowser.cache.paths import store_directory
@@ -33,6 +35,8 @@ from metabrowser.git.process import (
     run_git_blocking,
 )
 from metabrowser.git.tree_source import GitObjectUnavailableError, require_full_oid
+
+log = logging.getLogger(__name__)
 
 _MAILMAP_ARGS: Final[tuple[str, ...]] = ("-c", "mailmap.blob=", "-c", "mailmap.file=")
 SUBJECT_REF_PREFIX: Final = "refs/metabrowser/subjects/"
@@ -99,6 +103,16 @@ def _write_subject_ref(
     """
 
     with repository_store_lock(home, store_key):
+        # Only this function writes refs in a published store, and it runs under the
+        # store lock, exclusive across processes, while the caller's lease excludes
+        # maintenance. So a lock that exists is what a Git killed mid-``update-ref``
+        # left, and it would refuse every later pin of this revision (mb-2k9c). The one
+        # overlap is a Git child that outlives its SIGKILLed parent by milliseconds;
+        # both write the same object ID, so at worst one of them fails once.
+        stale = target.git_dir / f"{ref}.lock"
+        if stale.is_file():
+            log.warning("removing a stale subject-ref lock left by an interrupted Git")
+            stale.unlink(missing_ok=True)
         run_git_blocking(
             [*_MAILMAP_ARGS, "update-ref", "--no-deref", ref, oid],
             target=target,
@@ -110,7 +124,8 @@ async def _publish_subject_ref(
     home: Path, store_key: str, target: RepositoryStoreTarget, oid: str
 ) -> str:
     ref = subject_revision_ref(oid)
-    await asyncio.to_thread(_write_subject_ref, home, store_key, target, ref, oid)
+    # Waited for even when cancelled, so the caller's lease outlives the write.
+    await run_lock_section(functools.partial(_write_subject_ref, home, store_key, target, ref, oid))
     return ref
 
 
@@ -119,13 +134,18 @@ async def lease_revision(*, home: Path, store_key: str, commit_oid: str) -> Revi
 
     The flock is released on :meth:`RevisionLease.release`. The ref remains so
     Git can still reach the commit when no process is running.
+
+    The lease belongs to the calling thread, which for a coroutine is the event-loop
+    thread that keeps and releases it; see :func:`acquire_store_lease`. Only its wait
+    leaves the loop, so a maintenance holder in another process running ``gc`` or
+    ``repack`` delays this coroutine without stalling the others on the loop.
     """
 
     oid = require_full_oid(commit_oid)
     git_dir = home / store_directory(store_key) / "repository.git"
     if not git_dir.is_dir():
         raise GitUnavailableError(f"repository store is not a directory: {git_dir}")
-    lock = store_lease(home, store_key)
+    lock = await acquire_store_lease(home, store_key)
     try:
         if not git_dir.is_dir():
             raise GitUnavailableError(f"repository store is not a directory: {git_dir}")

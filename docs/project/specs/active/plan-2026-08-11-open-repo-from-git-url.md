@@ -1171,8 +1171,10 @@ process’s working directory.
 Initial acquisition has no low-speed bound yet: the one measured stall bound was
 measured on object-ID fetches, and a large or bitmap-less acquisition may legitimately
 send nothing for longer while the server counts and compresses objects.
-Until Phase 1B-a measures that case, user-driven job cancellation is the guard against a
-stalled clone.
+A `file://` acquisition cannot stall on a server, so the bound is measured and chosen
+with HTTPS acquisition in Phase 2A (`mb-rati`, under `mb-s1lt`), against a real HTTP
+server. Until then the 900 s acquisition timeout and user cancellation are the guards;
+both kill the whole Git process group, including the helpers Git forks.
 
 A cache hit validates the source and store and serves a full-OID subject without fetch,
 credential lookup, or background refresh.
@@ -1332,9 +1334,9 @@ treated as below every floor, so URL opening is refused with the typed state, an
 detected string is recorded in `store.yml` under `acquisition.git_version` so a later
 entry can be explained.
 
-**Open decision, owned by `mb-h51g`: distribution backports.** Distributions backport
-these CVE fixes without changing the upstream version string — for example, Ubuntu
-24.04’s patched Git reports 2.43.0 and Debian 12’s reports 2.39.x — so a gate on
+**Distribution backports, decided 2026-09-22 (`mb-e32d`): refuse.** Distributions
+backport these CVE fixes without changing the upstream version string — for example,
+Ubuntu 24.04’s patched Git reports 2.43.0 and Debian 12’s reports 2.39.x — so a gate on
 upstream versions refuses builds that are in fact patched.
 The options:
 
@@ -1348,6 +1350,16 @@ The options:
    changelog for the fixed CVEs.
    It is accurate where it works, but it is per-platform code that is hard to test,
    fails for Git not installed from a package, and runs package tools at startup.
+
+Option 1 is the decision.
+A version string cannot show which fixes a build carries, and the other two options
+either move a security judgment to the user or add per-platform code that runs package
+tools at startup. The refusal is the typed `unsupported_git_version` state, and its
+message names the detected version and the upstream floor.
+Local-path browsing is unaffected, and a user on an affected distribution installs a
+newer upstream Git for URL opening.
+Revisit this when a common supported distribution ships no admitted Git at all, not
+before.
 
 ## Generic Cache Operations
 
@@ -1532,7 +1544,7 @@ replay against production functions when they land.
 | Store layout | A bare repository created with `git init --bare --template=`, configuration written only by Metabrowser, and one fetch with explicit refspecs into Metabrowser-owned refs; `HEAD` is set from the observed remote `HEAD` | Cost did not distinguish layouts: bare and `--no-checkout` full clones overlapped (flask 2.83 s against 3.25 s, mypy 11.64 s against 15.54 s, disk within 1%). State did: `--no-checkout` leaves `core.bare=false`, an empty work tree, reflogs, and a local branch; `clone --bare` writes remote branches into `refs/heads/`. The explicit form costs one `ls-remote --symref` round trip (4.21 s and 13.94 s full) |
 | Acquisition strategy | Blobless when the version gate passes; before publication, fetch the pinned default revision’s blob-mode entries in one object-ID request; after publication, converge the rest in the background. Full fetch below the gate or when the remote ignores the filter, recorded as complete. No size threshold | The decision rests on mypy and on coverage, not on flask. Over HTTPS, back to back, the default revision’s content was complete in 5.8–5.9 s blobless against 8.8–17.8 s full for mypy; flask’s advantage was small and variable (1.1× and 1.4× across two pairs). Every object took longer blobless (21.3–29.7 s against 8.8–17.8 s for mypy), which is why convergence runs after serving. Generic Git advertises no repository size before transfer, so a threshold would need a provider API the generic cache may not use |
 | Convergence | Explicit `git fetch --stdin` of the missing object IDs listed by `rev-list --objects --missing=print`, at most 50,000 IDs per request; `git backfill` is not used | Coverage decides it: backfill left 1,318 mypy objects outside `HEAD`’s history missing, and did nothing when `HEAD` was unborn. Speed does not: one request of 53,607 IDs took 16.2 s and 24.9 s against 25.5–26.0 s for backfill plus its remainder, but only two runs were taken, always after backfill, so order effects are not excluded. No larger request was measured |
-| Object-fetch stall bound | Object-ID prefetch and convergence fetches set `http.lowSpeedLimit=1000` and `http.lowSpeedTime=30`. Initial acquisition has no low-speed bound until Phase 1B-a measures one; user cancellation is the interim guard | Git defaults waited past 20 s on a remote that never answered; a 1 B/s over 3 s bound failed in 3.13 s; the 30 s bound interrupted none of the eight measured object-ID fetches, the longest 24.9 s. No stall bound was measured on an acquisition, where a server may send nothing while it counts and compresses objects |
+| Object-fetch stall bound | Object-ID prefetch and convergence fetches set `http.lowSpeedLimit=1000` and `http.lowSpeedTime=30`. Initial acquisition has no low-speed bound until Phase 2A measures one against an HTTPS server (`mb-rati`); the acquisition timeout and user cancellation, which kill the Git process group, are the interim guards | Git defaults waited past 20 s on a remote that never answered; a 1 B/s over 3 s bound failed in 3.13 s; the 30 s bound interrupted none of the eight measured object-ID fetches, the longest 24.9 s. No stall bound was measured on an acquisition, where a server may send nothing while it counts and compresses objects |
 | Lazy fetch | `GIT_NO_LAZY_FETCH=1` on every request-path read; diff routes check the `--no-renames` change set first; network only through the object-job port | See [the offline guarantee](#blobless-acquisition-and-the-offline-guarantee) |
 | Object requests | Only blob modes `100644`, `100755`, and `120000` are requested; gitlinks are submodule entries; a per-object rejection splits the request in halves down to single IDs, at most 8 rejected IDs per job, after which unresolved IDs are deferred; unclassified and other failures fail the job; `object-requests.json` | A want list with a gitlink failed with `not our ref` under protocol v0 and v2 and fetched nothing; splitting a 13-ID list with a gitlink and an absent object took 13 requests and fetched all 11 blobs. The cap of 8 is a provisional cost policy, bounding a job to 257 requests, not a measurement |
 | Store reads | Every store read runs with `GIT_NO_LAZY_FETCH=1`, `-c mailmap.blob=`, and `-c mailmap.file=`; stderr from a read is logged and degrades the result instead of passing as success | With Git defaults the history page and `show --raw` read `HEAD:.mailmap` and, with lazy fetch disabled, printed an error and exited 0. `log.mailmap=false` alone did not stop a `%aN` read, and `mailmap.blob=` alone still applied an inherited `mailmap.file`; the two keys stopped every read |
@@ -1767,7 +1779,8 @@ names the acceptance owners and testing checkpoints.
 [#217](https://github.com/jlevy/metabrowser/pull/217) is ready for review and implements
 file:// acquire without serving.
 https and ssh are classified and refused.
-Review and publication remain `mb-k900`. `mb-dg00` still owns missing golden sessions.
+[#226](https://github.com/jlevy/metabrowser/pull/226) stabilizes it and adds the
+remaining acceptance, goldens, and admitted-Git CI evidence.
 
 - [x] Add conservative source normalization, and claim uniquified slugs under the
   source-alias lock with the identity digest, slug derivation, and collision extension
@@ -1790,22 +1803,32 @@ Review and publication remain `mb-k900`. `mb-dg00` still owns missing golden ses
   These records do not start a background convergence worker.
   Post-serving background convergence belongs to Phase 2B (`mb-bgn8`), so it does not
   block publication of this acquisition-only slice.
-- [ ] Apply the Phase 0 lazy-fetch decision on every read path, and prove a
-  not-yet-converged blob read behaves as decided both online and offline.
-- [ ] Run those no-lazy-fetch acceptance tests against the lowest admitted Git release
-  in CI, so the source reading behind the version floor is proven at runtime.
-- [ ] Measure initial acquisition of a large or bitmap-less repository with a stalled or
-  slow server, and choose its low-speed bound; until then user-driven job cancellation
-  is the guard.
-- [ ] Decide the distribution-backport policy recorded under
-  [Git version gates](#git-version-gates).
+- [x] Apply the Phase 0 lazy-fetch decision on every read path, and prove a
+  not-yet-converged blob read behaves as decided both online and offline
+  (`tests/test_git_lazy_fetch_acceptance.py`; commit detail and diffs answer a typed
+  `object_unavailable`).
+- [x] Run those no-lazy-fetch acceptance tests against the lowest admitted Git release
+  in CI, so the source reading behind the version floor is proven at runtime: the
+  `admitted-git` job builds checksum-verified 2.43.7 and 2.50.1. Its first run found
+  that 2.43.7 dies instead of answering `missing` on a refused lazy fetch; the batch
+  reader now reads that death as a missing object.
+- [x] Measure initial acquisition of a large or bitmap-less repository with a stalled or
+  slow server, and choose its low-speed bound: moved to Phase 2A with HTTPS acquisition,
+  because a `file://` origin cannot stall (`mb-rati`). The timeout and cancellation kill
+  the whole Git process group (`mb-lp89`).
+- [x] Decide the distribution-backport policy recorded under
+  [Git version gates](#git-version-gates): refuse (`mb-e32d`).
 - [x] Replace the test oracle for the URL grammar, version gates, object requests, and
   the acquisition machine with the production functions, and replay the same fixtures.
-- [ ] Verify the landed untrusted profile on every URL-opened root and pin entry point;
-  acquisition, identity, publication, and CLI inspection may ship before URL serving.
-- [ ] Add CLI goldens and docs for first open, cache hit, offline reuse, unsafe input,
+- [x] Verify the landed untrusted profile on every pin entry point: `--show` and
+  non-cache `--api` force it against flags and environment, refuse `--allow-edits`, and
+  a pin in a populated cache sees only its own tree (`mb-99ub`). URL-opened roots are
+  verified with URL serving in Phase 2A (`mb-innz`).
+- [x] Add CLI goldens and docs for first open, cache hit, offline reuse, unsafe input,
   interrupted clone, read-only application home, unsupported Git version, and repair
-  guidance.
+  guidance (`tests/test_cli_cache_recovery_golden.py`, `cli-cache-url-grammar`, and the
+  live `cli-cache-acquire-live` golden on admitted Git).
+  An interruption during CAS ref publication waits for Phase 2B `publish_refs`.
 
 Acquisition staging and publication do not depend on the Git-status `is_clean` predicate
 because the store has no working tree.
@@ -1816,7 +1839,8 @@ replacement, repair, and purge use object, ref, record, and lease validation ins
 
 [#216](https://github.com/jlevy/metabrowser/pull/216) is ready for review and implements
 the source boundary.
-Remaining acceptance, independent review, and publication are tracked by `mb-tsdc`.
+Its acceptance and independent review are completed in
+[#226](https://github.com/jlevy/metabrowser/pull/226).
 
 - [x] Add `RepositorySubject`, `SourceSession`, `SourceCapabilities`, `ContentHandle`,
   and `ContentSource`, with one active attached-filesystem subject per server/browser
@@ -1837,15 +1861,18 @@ Remaining acceptance, independent review, and publication are tracked by `mb-tsd
   image and Markdown delivery to the Git content source.
   Focused route tests cover these consumers in
   `tests/test_git_revision_content_routes.py`.
-- [ ] Complete the source-boundary acceptance and CLI golden coverage, then
-  independently review and publish through `mb-tsdc`.
+- [x] Complete the source-boundary acceptance and CLI golden coverage, then
+  independently review and publish through `mb-tsdc`: the multi-entry pin golden, the
+  source-kind session over served output, and the independent review in
+  [#226](https://github.com/jlevy/metabrowser/pull/226).
 
 #### Phase 1B-c: Serve immutable Git revisions (`mb-z335`, `mb-hoae`)
 
 [#216](https://github.com/jlevy/metabrowser/pull/216) is ready for review and implements
 a leased `file://` pin for `metab --show` and non-cache `--api`. HTTP `--walk` /
 `--check-api` / serve still refuse Git sources.
-Independent review and publication remain `mb-hoae`.
+Its acceptance and independent review are completed in
+[#226](https://github.com/jlevy/metabrowser/pull/226).
 
 - [x] Add `AttachedWorktreeTarget` and `RepositoryStoreTarget` to the one Git process
   boundary, preserving fixed arguments and ambient-environment scrubbing.
@@ -1866,13 +1893,15 @@ Independent review and publication remain `mb-hoae`.
 - [x] Define symlink, gitlink, LFS-pointer, oversized-blob, promisor-miss,
   invalid-UTF-8, and newline-name behavior with focused source and route tests in
   `tests/test_git_tree_source.py` and `tests/test_git_revision_content_routes.py`.
-- [ ] Complete installed-CLI acceptance for immutable Git content, including the
-  minimum-Git evidence in the [alpha test plan](plan-2026-09-22-v012-alpha-testing.md).
-  URL-serving browser acceptance belongs to Phase 2A.
+- [x] Complete installed-CLI acceptance for immutable Git content, including the
+  minimum-Git evidence in the [alpha test plan](plan-2026-09-22-v012-alpha-testing.md):
+  the T0 walkthrough in [#226](https://github.com/jlevy/metabrowser/pull/226) and the
+  `admitted-git` job. URL-serving browser acceptance belongs to Phase 2A.
 - [x] Prove two processes share one object store while browsing different OIDs without a
   checkout, index, local branch, or working-tree mutation.
-- [ ] Independently review and publish through `mb-hoae` before any URL route claims it
-  can serve a repository.
+- [x] Independently review and publish through `mb-hoae` before any URL route claims it
+  can serve a repository ([#216](https://github.com/jlevy/metabrowser/pull/216), with
+  its stabilization in [#226](https://github.com/jlevy/metabrowser/pull/226)).
 
 #### Phase 2A: Open repository and hosted web URLs (`mb-12cz`, `mb-s1lt`, `mb-ew38`, `mb-innz`)
 
@@ -1893,6 +1922,9 @@ Independent review and publication remain `mb-hoae`.
   behavior. Prove a cold public repository URL as well as warm and offline reuse.
   Parent `mb-bi2c` retains separately tested SSH acquisition; it is not closed by the
   HTTPS subtask.
+- [ ] Measure initial HTTPS acquisition of a large or bitmap-less repository against a
+  stalled and a slow server, choose its low-speed bound, and record the measurement
+  beside the constant (`mb-rati`).
 - [ ] Open a repository-root URL through `resolve_open_target`, reuse the repository
   store without a network or provider credential lookup, and pass one immutable subject
   to server and inspection paths.
