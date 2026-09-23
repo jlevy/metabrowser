@@ -142,6 +142,9 @@ revision — and never constructs one or branches on the subject kind.
   the bound is on bytes, not on a decoded string.
   It reports whether content continues past the window, which is what settles size for a
   compressed artifact whose declared length is a trailer nothing verifies.
+  On a pin a window streams the blob from its start, as a compressed artifact does, so
+  reaching an offset costs reading up to it; only the window is held, and no blob is
+  refused for its size.
   `stat_content` is the separate call for a caller that needs a validated logical size
   and accepts what establishing one costs.
 

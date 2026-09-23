@@ -53,7 +53,7 @@ import threading
 from array import array
 from bisect import bisect_left
 from collections import OrderedDict
-from collections.abc import AsyncGenerator, Callable, Hashable, Mapping, Sequence
+from collections.abc import AsyncGenerator, Callable, Coroutine, Hashable, Mapping, Sequence
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -108,6 +108,15 @@ _STDERR_MAX_BYTES: Final[int] = 64 * 1024
 # ninth of the 15 s deadline. A chunk also caps the commands buffered before a
 # flush at under 0.5 MiB.
 INFO_MANY_CHUNK_OBJECTS: Final[int] = 10_000
+# A windowed blob read streams the object from its start, since ``cat-file`` has no
+# byte ranges. Past the window it either drains the rest, which keeps the actor, or
+# terminates the actor, which costs the next read a respawn. Measured on a packed
+# store on macOS at load average 8 to 23: a respawn cost 4.0 ms and a terminate 0.5 ms,
+# while draining ran near 1.1 GiB/s (a 64 MiB blob in about 55 ms), so abandoning pays
+# off past about 4.5 MiB. Terminating is what makes a first window cheap: 2 MiB of a
+# 256 MiB blob took 39 to 45 ms, against 1.1 s drained and 1.0 s read whole.
+BLOB_WINDOW_DRAIN_MAX_BYTES: Final[int] = 4 * 1024 * 1024
+_STREAM_CHUNK_BYTES: Final[int] = 1024 * 1024
 _FULL_OID: Final = re.compile(r"\b(?:[0-9a-f]{64}|[0-9a-f]{40})\b")
 # Facts memoized per pinned source: index chrome, index facts, extensions, the
 # catalog body, and one entry per recently used filter or rollup shape. Each is
@@ -496,34 +505,10 @@ class _BatchObjectReader:
     async def _info_chunk(self, oids: tuple[str, ...]) -> dict[str, _ObjectInfo | None]:
         """One flush under one deadline, so a whole tree never shares a fixed budget."""
 
-        try:
-            return await asyncio.wait_for(
-                self._info_many_inner(oids),
-                timeout=BATCH_OBJECT_POLICY.timeout_s,
-            )
-        except TimeoutError as exc:
-            await self._poison()
-            raise GitTimeoutError() from exc
-        except asyncio.CancelledError:
-            await self._poison()
-            raise
-        except (BrokenPipeError, ConnectionResetError, asyncio.IncompleteReadError) as exc:
-            await self._poison()
-            raise GitBatchProtocolError("cat-file actor framing failed") from exc
-        except GitBatchProtocolError:
-            await self._poison()
-            raise
-        except Exception:
-            await self._poison()
-            raise
+        return await self._within_deadline(self._info_many_inner(oids))
 
     async def _info_many_inner(self, oids: tuple[str, ...]) -> dict[str, _ObjectInfo | None]:
-        await self._ensure()
-        proc = self._proc
-        writer = None if proc is None else proc.stdin
-        reader = None if proc is None else proc.stdout
-        if proc is None or writer is None or reader is None:
-            raise GitBatchProtocolError("cat-file actor has no pipes")
+        reader, writer = await self._pipes()
         for oid in oids:
             writer.write(f"info {oid}\n".encode("ascii"))
         writer.write(b"flush\n")
@@ -549,6 +534,44 @@ class _BatchObjectReader:
             raise GitBatchProtocolError("contents transaction returned info")
         return body
 
+    async def read_blob_window(self, oid: str, *, offset: int, max_bytes: int) -> tuple[bytes, int]:
+        """At most *max_bytes* of blob *oid* from *offset*, and the blob's size.
+
+        ``cat-file`` addresses objects, not byte ranges, so the blob streams from its
+        start like a compressed artifact: the bytes before *offset* are read and
+        dropped, the window is kept, and nothing past it is held. A remainder up to
+        :data:`BLOB_WINDOW_DRAIN_MAX_BYTES` is drained so the actor stays usable; past
+        that the actor is terminated and the next transaction starts a new one.
+        """
+
+        require_full_oid(oid)
+        if offset < 0 or max_bytes < 0:
+            raise ValueError("blob window offset and size cannot be negative")
+        return await self._within_deadline(self._read_blob_window_inner(oid, offset, max_bytes))
+
+    async def _read_blob_window_inner(
+        self, oid: str, offset: int, max_bytes: int
+    ) -> tuple[bytes, int]:
+        reader, writer = await self._pipes()
+        writer.write(f"contents {oid}\nflush\n".encode("ascii"))
+        await writer.drain()
+        info = _parse_info_header(oid, await _read_header(reader))
+        if info.kind != "blob":
+            # Its body is still in the pipe, so the actor is discarded.
+            raise GitBatchProtocolError(f"{oid} is {info.kind}, not a blob")
+        start = min(offset, info.size)
+        stop = min(start + max_bytes, info.size)
+        await _discard_exactly(reader, start)
+        window = await reader.readexactly(stop - start)
+        remainder = info.size - stop
+        if remainder > BLOB_WINDOW_DRAIN_MAX_BYTES:
+            await self._poison()
+            return window, info.size
+        await _discard_exactly(reader, remainder)
+        if await reader.readexactly(1) != b"\n":
+            raise GitBatchProtocolError("contents frame is missing the trailing newline")
+        return window, info.size
+
     async def read_tree(self, oid: str) -> bytes:
         """Raw tree object bytes: one actor round trip, not an ``ls-tree`` spawn.
 
@@ -567,20 +590,15 @@ class _BatchObjectReader:
         self._closed = True
         await self._poison()
 
-    async def _transact(
-        self,
-        oid: str,
-        *,
-        contents: bool,
-        expected: _ObjectInfo | None = None,
-        tree: bool = False,
-    ) -> _ObjectInfo | bytes:
-        require_full_oid(oid)
+    async def _within_deadline[T](self, transaction: Coroutine[Any, Any, T]) -> T:
+        """Run one transaction under the batch deadline; discard the actor if it fails.
+
+        A missing object is a complete frame, so the actor survives it. Anything else
+        can leave part of a frame in the pipe.
+        """
+
         try:
-            return await asyncio.wait_for(
-                self._transact_inner(oid, contents=contents, expected=expected, tree=tree),
-                timeout=BATCH_OBJECT_POLICY.timeout_s,
-            )
+            return await asyncio.wait_for(transaction, timeout=BATCH_OBJECT_POLICY.timeout_s)
         except TimeoutError as exc:
             await self._poison()
             raise GitTimeoutError() from exc
@@ -592,12 +610,31 @@ class _BatchObjectReader:
         except (BrokenPipeError, ConnectionResetError, asyncio.IncompleteReadError) as exc:
             await self._poison()
             raise GitBatchProtocolError("cat-file actor framing failed") from exc
-        except GitBatchProtocolError:
-            await self._poison()
-            raise
         except Exception:
             await self._poison()
             raise
+
+    async def _pipes(self) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
+        await self._ensure()
+        proc = self._proc
+        writer = None if proc is None else proc.stdin
+        reader = None if proc is None else proc.stdout
+        if proc is None or writer is None or reader is None:
+            raise GitBatchProtocolError("cat-file actor has no pipes")
+        return reader, writer
+
+    async def _transact(
+        self,
+        oid: str,
+        *,
+        contents: bool,
+        expected: _ObjectInfo | None = None,
+        tree: bool = False,
+    ) -> _ObjectInfo | bytes:
+        require_full_oid(oid)
+        return await self._within_deadline(
+            self._transact_inner(oid, contents=contents, expected=expected, tree=tree)
+        )
 
     async def _transact_inner(
         self,
@@ -607,12 +644,7 @@ class _BatchObjectReader:
         expected: _ObjectInfo | None,
         tree: bool,
     ) -> _ObjectInfo | bytes:
-        await self._ensure()
-        proc = self._proc
-        writer = None if proc is None else proc.stdin
-        reader = None if proc is None else proc.stdout
-        if proc is None or writer is None or reader is None:
-            raise GitBatchProtocolError("cat-file actor has no pipes")
+        reader, writer = await self._pipes()
         command = "contents" if contents else "info"
         writer.write(f"{command} {oid}\nflush\n".encode("ascii"))
         await writer.drain()
@@ -792,6 +824,13 @@ async def _drain_stderr(proc: asyncio.subprocess.Process) -> tuple[bytes, bool]:
             overflowed = True
         total += len(chunk)
     return b"".join(chunks), overflowed
+
+
+async def _discard_exactly(reader: asyncio.StreamReader, count: int) -> None:
+    """Read and drop *count* bytes without holding more than one chunk of them."""
+
+    while count > 0:
+        count -= len(await reader.readexactly(min(count, _STREAM_CHUNK_BYTES)))
 
 
 async def _read_header(reader: asyncio.StreamReader) -> bytes:
@@ -1039,10 +1078,28 @@ class GitTreeSource:
             reader=_GitBlobReader(source=self, entry=entry),
         )
 
+    @property
+    def max_blob_bytes(self) -> int:
+        """The largest blob this pin reads whole; a larger one is read in windows."""
+
+        return self._max_blob_bytes
+
     async def read_blob_oid(self, oid: str) -> bytes:
         async with self._pool.checkout() as reader:
             return await reader.read_blob(
                 require_full_oid(oid), max_blob_bytes=self._max_blob_bytes
+            )
+
+    async def read_blob_window(self, oid: str, *, offset: int, max_bytes: int) -> tuple[bytes, int]:
+        """A bounded window of one blob and the blob's size, at any blob size.
+
+        See :meth:`_BatchObjectReader.read_blob_window`: reaching *offset* costs
+        streaming up to it, and nothing past the window is held.
+        """
+
+        async with self._pool.checkout() as reader:
+            return await reader.read_blob_window(
+                require_full_oid(oid), offset=offset, max_bytes=max_bytes
             )
 
     async def object_info(self, oid: str) -> _ObjectInfo:
@@ -1282,16 +1339,17 @@ class _GitBlobReader:
         return ContentStat(size=size)
 
     async def read_window(self, *, offset: int, max_bytes: int) -> ContentWindow:
-        # ``cat-file`` addresses objects, not byte ranges, so the store read is
-        # bounded by the pin's own blob ceiling and the window is sliced from
-        # it. The caller's bound still governs what leaves this method.
-        body = await self.source.read_blob_oid(self.entry.oid)
-        window = body[offset : offset + max_bytes]
-        return ContentWindow(
-            data=window,
-            offset=offset,
-            has_more=offset + len(window) < len(body),
+        # The blob streams from its start to the end of the window, like a compressed
+        # artifact, and only the window is held, so no blob size is refused here. It is
+        # not memoized between windows. Paging the byte view to its 32 MiB ceiling, seven
+        # requests, took 0.27 s in all for a 32 MiB blob and 0.38 s for 64 MiB, at worst
+        # 56 and 70 ms a request; reading the blob once and slicing took 0.04 and 0.11 s,
+        # but only by holding the whole blob in server memory while the view might page.
+        # See docs/large-content-rendering.md.
+        window, size = await self.source.read_blob_window(
+            self.entry.oid, offset=offset, max_bytes=max_bytes
         )
+        return ContentWindow(data=window, offset=offset, has_more=offset + len(window) < size)
 
 
 class GitRevisionSubject:
@@ -1382,6 +1440,7 @@ async def git_revision_subject(
 
 
 __all__ = [
+    "BLOB_WINDOW_DRAIN_MAX_BYTES",
     "GIT_REVISION_CAPABILITIES",
     "MAX_BATCH_READERS_PER_STORE",
     "GitBatchProtocolError",

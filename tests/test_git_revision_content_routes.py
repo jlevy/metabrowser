@@ -732,12 +732,15 @@ def test_git_tree_filters_and_blob_size_gate(tmp_path: Path) -> None:
             assert [entry["display"] for entry in nested_body["entries"]] == ["docs/note.txt"]
             assert nested_body["filtered"] == {"files": 1, "size": 7, "entries": 1}
 
-            too_big = await client.get("/api/file", params={"path": _wire(b"big.bin")})
-            assert too_big.status_code == 413
-            too_big_body = too_big.json()
-            assert too_big_body["code"] == "blob_too_large"
-            assert too_big_body["max_bytes"] == 32
-            assert too_big_body["size"] == 64
+            # Past the whole-read ceiling a blob is still classified, from a bounded
+            # window, the way the filesystem types a large file: /api/file answers.
+            windowed = await client.get("/api/file", params={"path": _wire(b"big.bin")})
+            assert windowed.status_code == 200
+            windowed_body = windowed.json()
+            assert windowed_body["type"] == "text"
+            assert windowed_body["size"] == 64
+            assert windowed_body["content"] == "x" * 32
+            assert windowed_body["content_truncated"] is True
 
             raw_too_big = await client.get("/raw", params={"path": _wire(b"big.bin")})
             assert raw_too_big.status_code == 413
