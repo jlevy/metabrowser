@@ -16,6 +16,7 @@ import pytest
 from typer.testing import CliRunner
 
 from metabrowser.cache import acquire as acquire_module
+from metabrowser.cache.atomic import RecordError
 from metabrowser.cache.paths import SOURCES, STAGING
 from metabrowser.cli import git_pin_cli
 from metabrowser.cli.main import _app
@@ -199,3 +200,42 @@ def test_log_level_debug_prints_a_pin_open_failure(
     result = runner.invoke(_app, [url, *MODES[mode], "--log-level", "debug"])
     assert isinstance(result.exception, CLIError), result.exception
     assert "opening the pinned revision failed" in result.output
+
+
+def _plant_an_earlier_build_record(home: Path) -> None:
+    """Rewrite the store records the way an earlier v0.12 development build wrote them."""
+
+    (store,) = (home / "cache" / "repository-stores").iterdir()
+    record = store / "store.yml"
+    text = record.read_text(encoding="utf-8")
+    record.write_text(
+        text.replace("    git_version:", "    strategy: blobless\n    git_version:"),
+        encoding="utf-8",
+    )
+    state = store / "state.yml"
+    text = state.read_text(encoding="utf-8")
+    state.write_text(
+        text.replace("  last_fetch_at:", "  object_state: converging\n  last_fetch_at:")
+    )
+
+
+@pytest.mark.parametrize("mode", sorted(MODES))
+def test_a_home_an_earlier_build_wrote_is_one_repair_message_in_every_mode(
+    mode: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = _isolate_home(tmp_path, monkeypatch)
+    url = _file_url(_origin(tmp_path))
+    assert runner.invoke(_app, [url, "--no-serve"]).exit_code == 0
+    _plant_an_earlier_build_record(home)
+    before = sorted(str(path.relative_to(home)) for path in home.rglob("*"))
+
+    result = runner.invoke(_app, [url, *MODES[mode]])
+
+    assert isinstance(result.exception, CLIError), (mode, result.exception)
+    assert isinstance(result.exception.__cause__, RecordError)
+    message = str(result.exception)
+    assert "earlier v0.12 development build" in message
+    assert "METABROWSER_HOME" in message
+    _assert_path_free(message, tmp_path, home)
+    _assert_path_free(result.output, tmp_path, home)
+    assert sorted(str(path.relative_to(home)) for path in home.rglob("*")) == before

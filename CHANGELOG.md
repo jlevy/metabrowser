@@ -146,6 +146,9 @@ Repository cache:
   Nothing deletes a published store: one that an interrupted acquisition left without
   its alias is reused by the next acquisition of that source.
   Read routes do not sweep.
+  A cache that an earlier v0.12 development build wrote is not migrated: every `file://`
+  mode refuses it with one message, without a traceback or a path, saying to move the
+  cache directory aside or set `METABROWSER_HOME` to a different directory.
   A `file://` acquire that the Git version floor refuses does not create the application
   home, including when that path already exists as an empty directory; a cache hit still
   reuses a published store without fetching, including against an application home the

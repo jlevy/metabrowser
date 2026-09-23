@@ -69,6 +69,9 @@ Landing is tracked by `mb-n2ro`.
 
 - **Isolate `METABROWSER_HOME`.** Every acquire or refuse step in this runbook uses a
   scratch home. A refuse that creates `~/.metabrowser` is a failure.
+  Discard any home an earlier v0.12 development build wrote: its records are not
+  migrated, and every `file://` mode refuses it with one message that says to move the
+  cache directory aside or set `METABROWSER_HOME` to a different directory.
 - **Git acquisition floor.** Acquisition requires Git **2.43.7** or a patched release on
   a newer track (see `ACQUISITION_PATCHED_TRACKS` in `src/metabrowser/git/process.py`
   and `tests/fixtures/repository-cache/git-version-gates.json`). Ubuntu’s
