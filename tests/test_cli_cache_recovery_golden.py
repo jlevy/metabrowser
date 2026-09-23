@@ -47,7 +47,6 @@ from typing import Any, Final
 import pytest
 
 from metabrowser.cache import acquire as acquire_module
-from metabrowser.cache import layout as layout_module
 from metabrowser.cache.identity import (
     cache_slug,
     repository_store_id,
@@ -334,20 +333,15 @@ def test_golden_interrupted_between_store_and_alias_publication(
     assert '"reference_state": "unreferenced"' in session.inspect("/api/cache/stores")
     assert '"sources": []' in session.inspect("/api/cache/sources")
 
-    reclaimed: list[tuple[str, ...]] = []
-    reclaim = layout_module.reclaim_unreferenced_stores
-
-    def spy(home_path: Path) -> tuple[str, ...]:
-        reclaimed.append(reclaim(home_path))
-        return reclaimed[-1]
-
-    monkeypatch.setattr(layout_module, "reclaim_unreferenced_stores", spy)
-    session.note("The next acquisition reclaims the orphan store, fetches, and publishes both.")
+    (orphan,) = list((home / "cache" / "repository-stores").iterdir())
+    orphan_inode = orphan.stat().st_ino
+    session.note(
+        "The next acquisition fetches again, finds the same store already published, "
+        "reuses it, and publishes the alias."
+    )
     assert ORIGIN_REVISION in _no_serve(session, "A", url)
-    # The orphan was reclaimed and a new store published, not the orphan adopted.
-    assert [key for keys in reclaimed for key in keys] == [
-        store_key(repository_store_id(_source_id(url), "sha1"))
-    ]
+    assert orphan.name == store_key(repository_store_id(_source_id(url), "sha1"))
+    assert orphan.stat().st_ino == orphan_inode
     layout = session.inspect("/api/cache/layout")
     assert '"staging_entries": 0' in layout
     assert '"trash_entries": 0' in layout

@@ -1,9 +1,9 @@
-"""Attach a leased Git pin for in-process CLI inspection.
+"""Attach a pinned Git revision for in-process CLI inspection.
 
-``file://`` is acquired or reused, then ``lease_revision`` plus
-``git_revision_subject`` become the process subject. ``--show`` and ``--api``
-drive the same ASGI stack the browser uses. Nothing binds a port. https and
-ssh stay closed. Serving acquired Git stays later.
+``file://`` is acquired or reused, then ``open_revision`` pins the default
+commit and its ``GitRevisionSubject`` becomes the process subject. ``--show``
+and ``--api`` drive the same ASGI stack the browser uses. Nothing binds a port.
+https and ssh stay closed. Serving acquired Git stays later.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from metabrowser.cache.acquire import PublishedSource
-from metabrowser.cache.repository_store import RevisionLease, lease_revision
+from metabrowser.cache.repository_store import open_revision
 from metabrowser.cache.urls import GitSource
 from metabrowser.cli.acquire_cli import _ACQUIRE_CLI_ERRORS, acquire_for_cli
 from metabrowser.cli.asgi_client import INDEX_READY_TIMEOUT_S
@@ -26,7 +26,6 @@ from metabrowser.git.tree_source import (
     GitObjectUnavailableError,
     GitPathError,
     GitRevisionSubject,
-    git_revision_subject,
 )
 from metabrowser.source import attach_subject, reset_source_session
 
@@ -87,21 +86,16 @@ def _require_file_source(source: GitSource, *, mode: str) -> None:
 
 
 @asynccontextmanager
-async def _leased_file_pin(source: GitSource) -> AsyncGenerator[PublishedSource]:
+async def _file_pin(source: GitSource) -> AsyncGenerator[PublishedSource]:
     published = await acquire_for_cli(source)
-    lease: RevisionLease | None = None
     subject: GitRevisionSubject | None = None
     try:
         # Before the server module attaches its handler: see ``acquire_for_cli``.
         with maybe_cli_logging():
             try:
-                lease = await lease_revision(
+                subject = await open_revision(
                     home=published.home,
                     store_key=published.store_key,
-                    commit_oid=published.default_revision,
-                )
-                subject = await git_revision_subject(
-                    target=lease.target,
                     commit_oid=published.default_revision,
                     store_identity=published.store_id,
                 )
@@ -113,8 +107,6 @@ async def _leased_file_pin(source: GitSource) -> AsyncGenerator[PublishedSource]
     finally:
         if subject is not None:
             await subject.aclose()
-        if lease is not None:
-            lease.release()
         reset_source_session()
 
 
@@ -137,7 +129,7 @@ def run_show_after_acquire(
     from metabrowser.cli.show_cli import ashow_active
 
     async def _run() -> None:
-        async with _leased_file_pin(source) as published:
+        async with _file_pin(source) as published:
             await ashow_active(
                 path=path,
                 fmt=fmt,
@@ -176,7 +168,7 @@ def run_pin_api(
     from metabrowser.cli.api_cli import aissue_on_active_session
 
     async def _run() -> None:
-        async with _leased_file_pin(source) as published:
+        async with _file_pin(source) as published:
             await aissue_on_active_session(
                 route=route,
                 fmt=fmt,

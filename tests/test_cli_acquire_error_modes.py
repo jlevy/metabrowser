@@ -152,10 +152,10 @@ def test_a_path_bearing_git_error_while_opening_the_pin_is_path_free(
     home = _isolate_home(tmp_path, monkeypatch)
     url = _file_url(_origin(tmp_path, allow_filter=False))
 
-    async def fail_lease(**_kwargs: object) -> object:
+    async def fail_open(**_kwargs: object) -> object:
         raise GitUnavailableError(f"repository store is not a directory: {home}/stores/x")
 
-    monkeypatch.setattr(git_pin_cli, "lease_revision", fail_lease)
+    monkeypatch.setattr(git_pin_cli, "open_revision", fail_open)
     result = runner.invoke(_app, [url, *MODES[mode]])
     assert isinstance(result.exception, CLIError), result.exception
     assert isinstance(result.exception.__cause__, GitUnavailableError)
@@ -192,10 +192,10 @@ def test_log_level_debug_prints_a_pin_open_failure(
     monkeypatch.setenv("METABROWSER_LOG_LEVEL", "")
     monkeypatch.delenv("METABROWSER_LOG_LEVEL")
 
-    async def fail_lease(**_kwargs: object) -> object:
+    async def fail_open(**_kwargs: object) -> object:
         raise GitUnavailableError(f"repository store is not a directory: {home}/stores/x")
 
-    monkeypatch.setattr(git_pin_cli, "lease_revision", fail_lease)
+    monkeypatch.setattr(git_pin_cli, "open_revision", fail_open)
     result = runner.invoke(_app, [url, *MODES[mode], "--log-level", "debug"])
     assert isinstance(result.exception, CLIError), result.exception
     assert "opening the pinned revision failed" in result.output

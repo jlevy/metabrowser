@@ -3,16 +3,15 @@
 The fixtures under ``tests/fixtures/repository-cache/`` are the contract the
 format-foundation and acquisition implementations consume: the root-argument URL grammar,
 source and repository-store identity, slug derivation, Git version gates,
-and the lock, publication, lease, trash, and quarantine state machines.
+and the lock, publication, trash, and quarantine state machines.
 
 Rules with a production implementation replay the fixtures through it:
 source and store identity, store keys, and slugs through
 ``metabrowser.cache.identity``, the root-argument URL grammar through
 ``metabrowser.cache.urls``, the Git version gates through
 ``metabrowser.git.process``, and the lock hierarchy, lock-file placement, and lock
-sequences through ``metabrowser.cache.locks``. The sweep, trash, quarantine, and store
-reclamation machines replay against ``metabrowser.cache.reclaim`` in
-``tests/test_cache_reclaim.py``.
+sequences through ``metabrowser.cache.locks``. The sweep, trash, and quarantine machines
+replay against ``metabrowser.cache.reclaim`` in ``tests/test_cache_reclaim.py``.
 
 The state-machine well-formedness checks and the exhaustive interleaving exploration
 verify the design itself.
@@ -362,12 +361,6 @@ def test_lock_files_are_where_the_fixture_places_them(tmp_path: Path) -> None:
         ),
         "staging_entry": (lambda: locks.staging_entry_lock(home, "e1"), {"<entry>": "e1"}),
         "trash_entry": (lambda: locks.trash_entry_lock(home, "e1"), {"<entry>": "e1"}),
-        "job_entry": (lambda: locks.job_entry_lock(home, "j1"), {"<job-id>": "j1"}),
-        "maintenance_shared": (lambda: locks.store_lease(home, store), {"<store-key>": store}),
-        "maintenance_exclusive": (
-            lambda: locks.store_maintenance_lock(home, store),
-            {"<store-key>": store},
-        ),
     }
     for name, (acquire, placeholders) in acquisitions.items():
         expected = templates[name]
@@ -475,9 +468,7 @@ def test_every_machine_has_a_crash_scenario_or_is_crash_free() -> None:
 
 
 # ----------------------------------------------------------------------------
-# Exhaustive interleaving of acquisition, reclamation, and purge
-
-_CONTENDED_SIDE_LOCKS = frozenset({"maintenance_shared", "maintenance_exclusive"})
+# Exhaustive interleaving of acquisition, purge, and quarantine
 
 
 def _condition(atom: str, shared: dict[str, Any]) -> bool:
@@ -502,35 +493,28 @@ def _explore(document: dict[str, Any], model: dict[str, Any]) -> dict[str, Any]:
     programs = [interleaving["programs"][name] for name in model["processes"]]
     labels = [{step["label"]: step for step in program["steps"]} for program in programs]
 
-    def freeze(shared: dict[str, Any], locks: dict[str, Any], procs: list[Any]) -> Any:
-        return (
-            tuple(sorted(shared.items())),
-            tuple(sorted((key, value) for key, value in locks.items())),
-            tuple(procs),
-        )
+    def freeze(shared: dict[str, Any], owners: dict[str, int], procs: list[Any]) -> Any:
+        return (tuple(sorted(shared.items())), tuple(sorted(owners.items())), tuple(procs))
 
-    initial_shared = dict(model.get("initial", interleaving["initial"]))
     crashes = {(crash["program"], crash["before"]): crash for crash in model.get("crashes", [])}
-    initial_procs = [
-        (program["steps"][0]["label"], program["start"], frozenset()) for program in programs
-    ]
-    start: tuple[dict[str, Any], dict[str, Any], list[Any]] = (
-        initial_shared,
-        {"exclusive": None, "shared": frozenset()},
-        initial_procs,
+    start: tuple[dict[str, Any], dict[str, int], list[Any]] = (
+        dict(model.get("initial", interleaving["initial"])),
+        {},
+        [(program["steps"][0]["label"], program["start"], frozenset()) for program in programs],
     )
     seen = {freeze(*start)}
     queue = deque([start])
     violations: set[str] = set()
     events: set[str] = set()
 
-    def lock_name(item: dict[str, Any]) -> str:
-        if item["lock"] == "maintenance":
-            return f"maintenance_{item['mode']}"
-        return f"{item['lock']}:{item['key']}"
+    def visit(state: tuple[dict[str, Any], dict[str, int], list[Any]]) -> None:
+        key = freeze(*state)
+        if key not in seen:
+            seen.add(key)
+            queue.append(state)
 
     while queue:
-        shared, locks, procs = queue.popleft()
+        shared, owners, procs = queue.popleft()
         if shared["alias"] == "K" and shared["store"] != "present":
             violations.add("alias_names_absent_store")
         enabled = False
@@ -549,61 +533,23 @@ def _explore(document: dict[str, Any], model: dict[str, Any]) -> dict[str, Any]:
                     }
                     if machine_states[state].get("on_crash") != crash["recovery"]:
                         violations.add(f"crash_recovery_mismatch:{state}")
-                crashed_locks = {"exclusive": locks["exclusive"], "shared": locks["shared"]}
-                crashed_locks.update({k: v for k, v in locks.items() if ":" in k})
-                for name in held:
-                    if name == "maintenance_shared":
-                        crashed_locks["shared"] = crashed_locks["shared"] - {index}
-                    elif name == "maintenance_exclusive":
-                        crashed_locks["exclusive"] = None
-                    else:
-                        crashed_locks[name] = None
                 crashed_procs = list(procs)
                 crashed_procs[index] = ("crashed", state, frozenset())
-                crashed = (
-                    dict(shared),
-                    {
-                        k: v
-                        for k, v in crashed_locks.items()
-                        if v is not None or k in ("exclusive", "shared")
-                    },
-                    crashed_procs,
+                visit(
+                    (
+                        dict(shared),
+                        {name: owner for name, owner in owners.items() if name not in held},
+                        crashed_procs,
+                    )
                 )
-                crashed_key = freeze(*crashed)
-                if crashed_key not in seen:
-                    seen.add(crashed_key)
-                    queue.append(crashed)
             step = labels[index][label]
-            new_locks = {"exclusive": locks["exclusive"], "shared": locks["shared"]}
+            new_owners = dict(owners)
             new_held = set(held)
             blocked = False
-            busy = False
             for item in step["acquire"]:
-                name = lock_name(item)
-                hierarchy_held = [h for h in new_held if h.split(":")[0] in hierarchy]
-                if item["lock"] == "maintenance":
-                    if item.get("wait") and hierarchy_held:
-                        violations.add("blocking_side_lock_under_hierarchy_lock")
-                    if item["mode"] == "exclusive" and item.get("wait"):
-                        violations.add("exclusive_maintenance_blocks")
-                    if item["mode"] == "shared":
-                        available = new_locks["exclusive"] is None
-                    else:
-                        available = new_locks["exclusive"] is None and not new_locks["shared"]
-                    if not available:
-                        if item.get("wait"):
-                            blocked = True
-                        else:
-                            busy = True
-                        break
-                    if item["mode"] == "shared":
-                        new_locks["shared"] = new_locks["shared"] | {index}
-                    else:
-                        new_locks["exclusive"] = index
-                    new_held.add(name)
-                    continue
+                name = f"{item['lock']}:{item['key']}"
                 rank = hierarchy[item["lock"]]["rank"]
-                for other in hierarchy_held:
+                for other in new_held:
                     other_lock, _, other_key = other.partition(":")
                     other_rank = hierarchy[other_lock]["rank"]
                     ordered = other_rank < rank or (
@@ -613,58 +559,36 @@ def _explore(document: dict[str, Any], model: dict[str, Any]) -> dict[str, Any]:
                     )
                     if not ordered:
                         violations.add("hierarchy_order")
-                if locks.get(name) is not None and locks.get(name) != index:
+                if new_owners.get(name, index) != index:
                     blocked = True
                     break
-                new_locks[name] = index
+                new_owners[name] = index
                 new_held.add(name)
             if blocked:
                 continue
             enabled = True
-            branch: dict[str, Any]
-            if busy:
-                branch = {
-                    "event": step["busy"]["event"],
-                    "effects": {},
-                    "release": [],
-                    "next": step["busy"]["next"],
-                }
-                new_locks = {"exclusive": locks["exclusive"], "shared": locks["shared"]}
-                new_locks.update({k: v for k, v in locks.items() if ":" in k})
-                new_held = set(held)
-            else:
-                new_locks.update(
-                    {k: v for k, v in locks.items() if ":" in k and k not in new_locks}
-                )
-                candidates = [
-                    b for b in step["branches"] if all(_condition(a, shared) for a in b["when"])
-                ]
-                if not candidates:
-                    violations.add(f"no_branch:{label}")
-                    continue
-                branch = candidates[0]
+            candidates = [
+                b for b in step["branches"] if all(_condition(a, shared) for a in b["when"])
+            ]
+            if not candidates:
+                violations.add(f"no_branch:{label}")
+                continue
+            branch = candidates[0]
             events.add(branch["event"])
             next_state = state
             if program["machine"] is not None:
-                machine = machines[program["machine"]]
                 matches = [
                     t
-                    for t in machine["transitions"]
+                    for t in machines[program["machine"]]["transitions"]
                     if t["from"] == state and t["event"] == branch["event"]
                 ]
                 if len(matches) != 1:
                     violations.add(f"unknown_transition:{state}:{branch['event']}")
                     continue
-                transition = matches[0]
-                contended = {
-                    lock
-                    for lock in transition["holds"]
-                    if lock in hierarchy or lock in _CONTENDED_SIDE_LOCKS
-                }
-                held_names = {h.split(":")[0] for h in new_held}
-                if contended != held_names:
+                contended = {lock for lock in matches[0]["holds"] if lock in hierarchy}
+                if contended != {h.split(":")[0] for h in new_held}:
                     violations.add(f"holds_mismatch:{branch['event']}")
-                next_state = transition["to"]
+                next_state = matches[0]["to"]
             new_shared = dict(shared)
             new_shared.update(branch["effects"])
             releases = branch["release"]
@@ -673,24 +597,12 @@ def _explore(document: dict[str, Any], model: dict[str, Any]) -> dict[str, Any]:
             for release in releases:
                 for name in [h for h in new_held if h.split(":")[0] == release]:
                     new_held.discard(name)
-                    if name == "maintenance_shared":
-                        new_locks["shared"] = new_locks["shared"] - {index}
-                    elif name == "maintenance_exclusive":
-                        new_locks["exclusive"] = None
-                    else:
-                        new_locks[name] = None
+                    del new_owners[name]
             if branch["next"] == "end" and new_held:
                 violations.add(f"locks_held_at_end:{branch['event']}")
             new_procs = list(procs)
             new_procs[index] = (branch["next"], next_state, frozenset(new_held))
-            clean_locks = {
-                k: v for k, v in new_locks.items() if v is not None or k in ("exclusive", "shared")
-            }
-            successor = (new_shared, clean_locks, new_procs)
-            key = freeze(*successor)
-            if key not in seen:
-                seen.add(key)
-                queue.append(successor)
+            visit((new_shared, new_owners, new_procs))
         if live and not enabled:
             violations.add("deadlock")
     return {"violations": violations, "events": events, "states": len(seen)}

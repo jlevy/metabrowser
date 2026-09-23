@@ -19,7 +19,6 @@ from metabrowser.cache.acquire import (
 from metabrowser.cache.atomic import write_record_atomic
 from metabrowser.cache.layout import open_cache
 from metabrowser.cache.paths import SOURCES, STAGING, source_record, store_directory
-from metabrowser.cache.reclaim import StoreReclamation, reclaim_store
 from metabrowser.cache.records import REPOSITORY_STORE_ALIAS_CONTRACT_ID, RepositoryStoreAlias
 from tests.test_cache_acquire import _allow_installed_git, _file_source, _origin
 
@@ -104,7 +103,7 @@ def test_an_alias_that_names_a_different_store_is_left_in_place(
 
 
 @posix_only
-def test_reclaim_removes_an_unreferenced_store_after_an_abandoned_staging_publish(
+def test_a_store_left_unreferenced_is_kept_and_reused_by_the_next_acquire(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _allow_installed_git(monkeypatch)
@@ -116,26 +115,12 @@ def test_reclaim_removes_an_unreferenced_store_after_an_abandoned_staging_publis
     for entry in (home / SOURCES).iterdir():
         if entry.is_dir():
             shutil.rmtree(entry)
-    outcome = reclaim_store(home, published.store_key)
-    assert outcome is StoreReclamation.RECLAIMED
-    assert not published.git_dir.exists()
-
-
-@posix_only
-def test_the_next_cache_open_reclaims_a_store_left_unreferenced_after_publish(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _allow_installed_git(monkeypatch)
-    origin = _origin(tmp_path, allow_filter=False)
-    home = tmp_path / "home"
-    source = _file_source(origin)
-    staged = asyncio.run(acquire_into_staging(source, home=home))
-    published = publish_from_staging(staged)
-    for entry in (home / SOURCES).iterdir():
-        if entry.is_dir():
-            shutil.rmtree(entry)
-    assert published.git_dir.is_dir()
+    store_inode = published.git_dir.stat().st_ino
 
     open_cache(home)
+    assert published.git_dir.stat().st_ino == store_inode
 
-    assert not published.git_dir.exists()
+    again = asyncio.run(acquire_file_source(source, home=home))
+    assert again == published
+    assert published.git_dir.stat().st_ino == store_inode
+    assert list((home / STAGING).iterdir()) == []

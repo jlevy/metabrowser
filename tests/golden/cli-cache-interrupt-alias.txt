@@ -84,7 +84,7 @@ status: 200
   "next_after": null
 }
 --- stderr ---
-## The next acquisition reclaims the orphan store, fetches, and publishes both.
+## The next acquisition fetches again, finds the same store already published, reuses it, and publishes the alias.
 # metab <ORIGIN-A> --no-serve
 exit: 0
 --- stdout ---

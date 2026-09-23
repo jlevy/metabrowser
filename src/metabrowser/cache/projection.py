@@ -815,11 +815,10 @@ def _store_records(home: Path, key: str) -> StoreRecords | None:
 def _references(home: Path, budget: _Budget) -> tuple[dict[str, list[StoreReference]], bool]:
     """Every readable alias by the store it names, and whether nothing else could refer.
 
-    This mirrors :func:`~metabrowser.cache.reclaim.store_is_referenced`: provider data, an
-    unrecognized source entry, and an unreadable alias all keep reclamation from treating
-    a store as unreferenced, so they make the answer incomplete. So does running out of
-    the request's record budget, which is why the aliases read before that still count as
-    references while the stores none of them names are reported unknown.
+    Provider data, an unrecognized source entry, and an unreadable alias may each name a
+    store, so they make the answer incomplete. So does running out of the request's
+    record budget, which is why the aliases read before that still count as references
+    while the stores none of them names are reported unknown.
     """
 
     complete = not any(

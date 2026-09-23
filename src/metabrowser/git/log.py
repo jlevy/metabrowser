@@ -41,8 +41,7 @@ from metabrowser.git.wire import GitAuthor, GitCommit, GitRef, is_full_revision
 # block, which git never emits itself in these fields.
 _FIELD_SEP = "\x1f"
 
-# The namespaces history shows. A published store also holds private
-# ``refs/metabrowser/subjects/*`` reachability refs, which are not history.
+# The namespaces history shows: branches, remote-tracking branches, and tags.
 PUBLIC_REF_NAMESPACES = ("refs/heads", "refs/remotes", "refs/tags")
 
 # Field order in LOG_FORMAT. The subject is last on purpose; see the
@@ -324,7 +323,7 @@ async def read_history_summary(
     location = as_location(served_root)
     selector: tuple[str, ...] = tuple(revisions)
     if all_refs:
-        # ``--all`` on a published store would also walk the private subject refs.
+        # A pinned store's history is these namespaces plus the pin, not every ref.
         selector = (
             ("--all",)
             if location.pinned_revision is None

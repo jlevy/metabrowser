@@ -10,6 +10,7 @@ https and ssh stay closed. A bare path never reaches here.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import functools
 import logging
 import os
@@ -39,7 +40,6 @@ from metabrowser.cache.locks import (
     run_lock_section,
     source_alias_lock,
     staging_entry_lock,
-    store_lease,
 )
 from metabrowser.cache.paths import (
     source_directory,
@@ -176,7 +176,7 @@ class _StagingClaim:
 def _open_and_claim_staging(home: Path, owner: LockOrder) -> _StagingClaim:
     """Check the Git floor, open the cache, and claim a staging entry, in a worker thread.
 
-    ``open_cache`` takes the blocking home lock and sweeps and reclaims the home, so none
+    ``open_cache`` takes the blocking home lock and sweeps the home, so none
     of this may run on the event loop. The staging entry's lock outlives this section, so
     it is recorded for *owner*, the thread that awaits the acquisition and keeps it.
     """
@@ -451,17 +451,13 @@ def _require_same_store(home: Path, key: str, store_id: str) -> RepositoryStore:
     return record
 
 
-def _publish_or_reuse_store(staged: StagingAcquisition, key: str, store_id: str) -> None:
+def _publish_store_if_absent(staged: StagingAcquisition, key: str, store_lock: CacheLock) -> None:
     home = staged.home
     target = store_directory(key)
-    with repository_store_lock(home, key) as store_lock:
-        if os.path.lexists(home / target):
-            _require_same_store(home, key, store_id)
-            return
-        try:
-            publish_entry(home, staging_entry(staged.entry), target, owner=store_lock)
-        except FileExistsError:
-            _require_same_store(home, key, store_id)
+    if os.path.lexists(home / target):
+        return
+    with contextlib.suppress(FileExistsError):
+        publish_entry(home, staging_entry(staged.entry), target, owner=store_lock)
 
 
 def _publish_source_directory(
@@ -534,19 +530,47 @@ def _published(
     )
 
 
-def _attach_or_conflict(
-    home: Path,
-    source: GitSource,
-    source_id: str,
-    store_id: str,
-    key: str,
-    at: str,
+def _attach_existing_source(home: Path, slug: str, source_id: str, store_id: str, at: str) -> None:
+    """Write the alias of a source published without one, or check the alias it has."""
+
+    try:
+        alias = read_record(
+            home, source_record(slug, "store-alias.yml"), REPOSITORY_STORE_ALIAS_CONTRACT_ID
+        )
+    except FileNotFoundError:
+        write_record_atomic(
+            home,
+            source_record(slug, "store-alias.yml"),
+            RepositoryStoreAlias(
+                source_id=source_id, store_id=store_id, generation=1, updated_at=at
+            ),
+            REPOSITORY_STORE_ALIAS_CONTRACT_ID,
+            replace=False,
+        )
+        return
+    if not isinstance(alias, RepositoryStoreAlias):
+        raise ValidationFailedError("store-alias.yml did not validate")
+    if alias.store_id != store_id:
+        raise AliasConflictError("this source already names a different store")
+
+
+def _publish_store_and_alias(
+    staged: StagingAcquisition, store_id: str, key: str, at: str
 ) -> PublishedSource:
+    """Publish or reuse the store, then its alias, under both locks held throughout.
+
+    The alias lock and then the store lock are held from the store's rename through the
+    alias commit, so every alias that names a store is written under that store's lock,
+    and a holder of the store lock never sees this store published without its alias.
+    A crash between the two renames leaves an unreferenced store, which the next
+    acquisition of the same source reuses.
+    """
+
+    home, source, source_id = staged.home, staged.source, staged.source_id
     slug, alias_lock = _claim_source_slug(home, source, source_id)
     try:
-        with alias_lock, repository_store_lock(home, key):
-            if not os.path.lexists(home / store_directory(key)):
-                raise ValidationFailedError("the store vanished before its alias was published")
+        with alias_lock, repository_store_lock(home, key) as store_lock:
+            _publish_store_if_absent(staged, key, store_lock)
             # A concurrent acquisition may have won publication with a different HEAD.
             # Report the selected store, never metadata from the discarded staging entry.
             store = _require_same_store(home, key, store_id)
@@ -559,47 +583,10 @@ def _attach_or_conflict(
                 or state.default_revision is None
             ):
                 raise ValidationFailedError("the published store has no default revision")
-            object_format = store.acquisition.object_format
-            default_remote_ref = state.default_remote_ref
-            default_revision = state.default_revision
-            source_rel = source_directory(slug)
-            if os.path.lexists(home / source_rel):
-                try:
-                    alias = read_record(
-                        home,
-                        source_record(slug, "store-alias.yml"),
-                        REPOSITORY_STORE_ALIAS_CONTRACT_ID,
-                    )
-                except FileNotFoundError:
-                    write_record_atomic(
-                        home,
-                        source_record(slug, "store-alias.yml"),
-                        RepositoryStoreAlias(
-                            source_id=source_id,
-                            store_id=store_id,
-                            generation=1,
-                            updated_at=at,
-                        ),
-                        REPOSITORY_STORE_ALIAS_CONTRACT_ID,
-                        replace=False,
-                    )
-                else:
-                    if not isinstance(alias, RepositoryStoreAlias):
-                        raise ValidationFailedError("store-alias.yml did not validate")
-                    if alias.store_id != store_id:
-                        raise AliasConflictError("this source already names a different store")
-                return _published(
-                    home,
-                    slug,
-                    key,
-                    source,
-                    source_id,
-                    store_id,
-                    object_format,
-                    default_remote_ref,
-                    default_revision,
-                )
-            _publish_source_directory(home, slug, source, source_id, store_id, at, alias_lock)
+            if not os.path.lexists(home / source_directory(slug)):
+                _publish_source_directory(home, slug, source, source_id, store_id, at, alias_lock)
+            else:
+                _attach_existing_source(home, slug, source_id, store_id, at)
             return _published(
                 home,
                 slug,
@@ -607,9 +594,9 @@ def _attach_or_conflict(
                 source,
                 source_id,
                 store_id,
-                object_format,
-                default_remote_ref,
-                default_revision,
+                store.acquisition.object_format,
+                state.default_remote_ref,
+                state.default_revision,
             )
     finally:
         if alias_lock.held:
@@ -673,39 +660,24 @@ def _find_published(source: GitSource, home: Path) -> PublishedSource | None:
 def publish_from_staging(staged: StagingAcquisition) -> PublishedSource:
     """Publish *staged* as an immutable store and a source alias, then drop staging.
 
-    Synchronous and blocking: it takes the store lease, the store lock, and the alias
-    lock, each of which may wait on another process. Async callers run it in a worker
-    thread, as :func:`acquire_file_source` does.
+    Synchronous and blocking: it takes the alias lock and the store lock, each of which
+    may wait on another process. Async callers run it in a worker thread, as
+    :func:`acquire_file_source` does.
     """
 
     if staged.default_remote_ref is None:
         staged.abandon()
         raise ValidationFailedError("the source HEAD is not a branch")
-    home = staged.home
     store_id = repository_store_id(staged.source_id, staged.object_format)
     key = store_key(store_id)
     at = _canonical_now()
-    lease: CacheLock | None = None
     try:
         _write_store_records(staged, store_id, at)
-        lease = store_lease(home, key)
-        _publish_or_reuse_store(staged, key, store_id)
-        staged.abandon()
-        return _attach_or_conflict(
-            home,
-            staged.source,
-            staged.source_id,
-            store_id,
-            key,
-            at,
-        )
-    except BaseException:
-        if staged._lock is not None and staged._lock.held:
-            staged.abandon()
-        raise
+        return _publish_store_and_alias(staged, store_id, key, at)
     finally:
-        if lease is not None and lease.held:
-            lease.release()
+        # After the locks: when the store was reused, staging still holds a whole
+        # fetched copy, and deleting it is no work to do under a lock.
+        staged.abandon()
 
 
 async def acquire_file_source(source: GitSource, *, home: Path) -> PublishedSource:
@@ -717,7 +689,7 @@ async def acquire_file_source(source: GitSource, *, home: Path) -> PublishedSour
     returns. A miss checks the Git floor before ``open_cache``, so a below-floor
     refuse does not create the application home or complete an empty directory
     into an ``f01`` skeleton. A miss that is allowed to fetch then opens the
-    cache (sweep, reclaim) and fetches. A future layout is refused before any
+    cache (and sweeps staging and trash) and fetches. A future layout is refused before any
     write.
     """
 

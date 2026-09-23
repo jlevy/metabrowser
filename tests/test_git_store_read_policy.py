@@ -154,10 +154,6 @@ def test_no_store_spawn_may_run_with_lazy_fetch_enabled(
     for policy in (READ_POLICY, lazy):
         with pytest.raises(ValueError, match="lazy fetch"):
             asyncio.run(run_git(["cat-file", "-t", commit], target=target, policy=policy))
-        with pytest.raises(ValueError, match="lazy fetch"):
-            process_module.run_git_blocking(
-                ["cat-file", "-t", commit], target=target, policy=policy
-            )
     assert spawned == []
     policies = [
         value

@@ -106,7 +106,7 @@ ADMITTED_GIT_TESTS := \
 	tests/test_cli_cache_acquire_golden.py \
 	tests/test_cli_git_pin_golden.py \
 	tests/test_cli_git_pin_show_selection.py \
-	tests/test_git_revision_lease.py \
+	tests/test_git_revision_open.py \
 	tests/test_git_store_read_policy.py \
 	tests/test_git_tree_source.py \
 	tests/test_git_revision_content_routes.py \

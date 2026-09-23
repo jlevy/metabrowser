@@ -2,9 +2,9 @@
 
 Every home is written by the production writers: ``ensure_home`` and ``migrate_layout``
 create the skeleton and layout, stores and sources are staged and published with
-``publish_entry`` under the locks that own them, aliases are written under the store
-lease and the source-alias lock, and quarantine and reclamation run through
-``quarantine_entries`` and ``reclaim_store``. Addresses, versions, and timestamps are
+``publish_entry`` under the locks that own them, aliases are written under the
+source-alias lock and the store lock, and quarantine runs through
+``quarantine_entries``. Addresses, versions, and timestamps are
 fixed, so identities, slugs, and records are identical on every machine; only the
 quarantine entry name is random, because ``quarantine_entries`` chooses it.
 
@@ -35,7 +35,6 @@ from metabrowser.cache.locks import (
     repository_store_lock,
     source_alias_lock,
     staging_entry_lock,
-    store_lease,
 )
 from metabrowser.cache.paths import (
     LAYOUT_RECORD,
@@ -44,7 +43,7 @@ from metabrowser.cache.paths import (
     staging_entry,
     store_directory,
 )
-from metabrowser.cache.reclaim import StoreReclamation, quarantine_entries, reclaim_store
+from metabrowser.cache.reclaim import quarantine_entries
 from metabrowser.cache.records import (
     CACHE_LAYOUT_CONTRACT_ID,
     REPOSITORY_SOURCE_CONTRACT_ID,
@@ -103,7 +102,8 @@ FLASK_STORE_KEY: Final = FLASK_HTTPS.store_key()
 # An acquisition interrupted after publishing its store and before its alias.
 ORPHAN_STORE_KEY: Final = CLICK.store_key()
 QUARANTINED_STORE_KEY: Final = JINJA.store_key()
-RECLAIMED_STORE_KEY: Final = WERKZEUG.store_key()
+# A store nothing publishes, for an alias that dangles.
+MISSING_STORE_KEY: Final = WERKZEUG.store_key()
 
 
 def _stage_and_publish_store(home: Path, key: str, *, with_revision: bool) -> None:
@@ -172,9 +172,9 @@ def _stage_and_publish_source(home: Path, source: FixtureSource, *, opened: bool
 
 
 def _attach(home: Path, source: FixtureSource, key: str, *, generation: int, at: str) -> None:
-    """Write the alias, the visibility commit, under the store lease and alias lock."""
+    """Write the alias, the visibility commit, under the alias lock and the store lock."""
 
-    with store_lease(home, key), source_alias_lock(home, source.slug):
+    with source_alias_lock(home, source.slug), repository_store_lock(home, key):
         write_record_atomic(
             home,
             source_record(source.slug, "store-alias.yml"),
@@ -197,14 +197,13 @@ def build_empty_home(home: Path) -> None:
 
 
 def build_populated_home(home: Path) -> str:
-    """Publish, alias, quarantine, and reclaim entries; return the quarantine entry name.
+    """Publish, alias, and quarantine entries; return the quarantine entry name.
 
     - flask over HTTPS and over SSH are two sources aliasing one store; the SSH alias
       was repointed once, so it is at generation 2.
     - click's acquisition published its store and its source but not its alias, so the
       source is unattached and the store is unreferenced.
     - jinja's store failed revalidation and was quarantined with its alias.
-    - werkzeug's unreferenced store was reclaimed, so nothing of it remains.
     - an interrupted acquisition left one staging entry for the next sweep.
     """
 
@@ -230,11 +229,6 @@ def build_populated_home(home: Path) -> str:
     )
     if quarantined.state != "quarantined" or quarantined.entry is None:
         raise RuntimeError(f"quarantine did not happen: {quarantined.state}")
-
-    _stage_and_publish_store(home, RECLAIMED_STORE_KEY, with_revision=False)
-    reclaimed = reclaim_store(home, RECLAIMED_STORE_KEY)
-    if reclaimed is not StoreReclamation.RECLAIMED:
-        raise RuntimeError(f"reclamation did not happen: {reclaimed}")
 
     ensure_private_directory(home, f"{staging_entry(LEFTOVER_STAGING_ENTRY)}/repository.git")
     return quarantined.entry

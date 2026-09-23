@@ -160,11 +160,12 @@ def _probe_locks(home: Path, relative_path: str) -> None:
 
 
 def _probe_separate_open(home: Path, relative_path: str) -> None:
-    """An exclusive attempt through its own ``open()`` must contend with a held lease.
+    """An exclusive attempt through its own ``open()`` must contend with a held lock.
 
     The caller holds a shared lock on the file through another descriptor. Were the new
-    attempt to succeed, one process's lease and maintenance lock could coexist, as they
-    do through a ``dup()`` or under record locks.
+    attempt to succeed, two holders in one process, such as a staging entry's owner and
+    the sweep that tries its lock, could both hold it, as they do through a ``dup()`` or
+    under record locks.
     """
 
     assert fcntl is not None

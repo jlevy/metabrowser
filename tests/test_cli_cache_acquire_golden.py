@@ -284,7 +284,7 @@ def test_golden_lock_free_staging_is_swept_on_acquire(
 
 
 @posix_only
-def test_golden_unreferenced_store_is_reclaimed_on_the_next_acquire(
+def test_golden_unreferenced_store_is_kept_by_the_next_acquire(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     home = _isolate(tmp_path, monkeypatch)
@@ -302,9 +302,9 @@ def test_golden_unreferenced_store_is_reclaimed_on_the_next_acquire(
     acquired = _invoke([_file_url(origin), "--no-serve"])
 
     after = _invoke([str(empty), "--api", "/api/cache/stores"])
-    assert '"reference_state": "unreferenced"' not in after.stdout
+    assert '"reference_state": "unreferenced"' in after.stdout
     assert '"reference_state": "referenced"' in after.stdout
-    assert f"sha256:{ORPHAN_STORE_KEY}" not in after.stdout
+    assert f"sha256:{ORPHAN_STORE_KEY}" in after.stdout
     assert ORIGIN_REVISION in after.stdout
     assert list((home / "cache" / "repository-stores").iterdir()) != []
 
@@ -321,7 +321,7 @@ def test_golden_unreferenced_store_is_reclaimed_on_the_next_acquire(
         ]
     )
     assert str(tmp_path) not in rendered
-    check_golden("cli-cache-orphan-reclaim.txt", rendered)
+    check_golden("cli-cache-orphan-kept.txt", rendered)
 
 
 @posix_only

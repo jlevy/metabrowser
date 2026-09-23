@@ -59,9 +59,9 @@ type ReferenceState = Literal[
     "referenced",
     # Every alias was read and none names the store, and there is no provider data.
     "unreferenced",
-    # Something reclamation treats as a reference could not be ruled out: an unreadable
-    # alias, an unrecognized source entry, provider data, or a request whose record
-    # budget ran out before the alias scan finished.
+    # A reference could not be ruled out: an unreadable alias, an unrecognized source
+    # entry, provider data, or a request whose record budget ran out before the alias
+    # scan finished.
     "unknown",
 ]
 

@@ -1,10 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://metabrowser.test/schemas/repository-cache-state-machines-v1.json",
-  "title": "Repository cache lock, publication, lease, trash, and quarantine state machines",
+  "title": "Repository cache lock, publication, trash, and quarantine state machines",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "decided", "visibility", "locks", "publication", "crash_recovery", "machines", "scenarios", "interleaving", "configuration_snapshot"],
+  "required": ["schema", "decided", "visibility", "locks", "publication", "crash_recovery", "machines", "scenarios", "interleaving"],
   "$defs": {"name": {"type": "string", "pattern": "^[a-z][a-z_]*$"}},
   "properties": {
     "schema": {"const": "metabrowser-repository-cache-state-machines-v1"},
@@ -44,7 +44,7 @@
             "required": ["name", "mode", "path", "acquisition", "why_outside_the_hierarchy"],
             "properties": {
               "name": {"$ref": "#/$defs/name"},
-              "mode": {"enum": ["shared", "exclusive"]},
+              "mode": {"const": "exclusive"},
               "path": {"type": "string"},
               "acquisition": {"type": "string"},
               "why_outside_the_hierarchy": {"type": "string"}
@@ -171,18 +171,10 @@
                         "additionalProperties": false,
                         "required": ["lock"],
                         "properties": {
-                          "lock": {"enum": ["maintenance", "home", "source_alias", "repository_store", "provider_resource"]},
-                          "mode": {"enum": ["shared", "exclusive"]},
-                          "wait": {"type": "boolean"},
+                          "lock": {"enum": ["home", "source_alias", "repository_store", "provider_resource"]},
                           "key": {"type": "string"}
                         }
                       }
-                    },
-                    "busy": {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "required": ["event", "next"],
-                      "properties": {"event": {"$ref": "#/$defs/name"}, "next": {"type": "string"}}
                     },
                     "branches": {
                       "type": "array",
@@ -240,18 +232,6 @@
             }
           }
         }
-      }
-    },
-    "configuration_snapshot": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["digest", "recorded", "verified_by", "on_mismatch", "basis"],
-      "properties": {
-        "digest": {"type": "string"},
-        "recorded": {"type": "string"},
-        "verified_by": {"type": "string"},
-        "on_mismatch": {"type": "string"},
-        "basis": {"type": "string"}
       }
     }
   }

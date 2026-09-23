@@ -1,4 +1,4 @@
-"""Reclamation of staging, trash, quarantine, and unreferenced stores.
+"""Reclamation of staging and trash, quarantine, and published stores kept in place.
 
 Each production operation reports its transitions and the locks it holds at each one.
 :class:`MachineReplay` walks those reports through the machine frozen in
@@ -18,7 +18,7 @@ import signal
 import subprocess
 import sys
 import textwrap
-from collections.abc import Callable, Generator
+from collections.abc import Generator
 from pathlib import Path
 from typing import Any, cast
 
@@ -34,14 +34,10 @@ from metabrowser.cache.locks import (
 from metabrowser.cache.paths import source_record
 from metabrowser.cache.reclaim import (
     MachineEvent,
-    StoreReclamation,
     purge_quarantined,
     quarantine_entries,
     reclaim_staging,
-    reclaim_store,
     reclaim_trash,
-    reclaim_unreferenced_stores,
-    store_is_referenced,
     sweep_staging_and_trash,
 )
 from metabrowser.cache.records import (
@@ -361,171 +357,6 @@ def test_opening_the_cache_survives_an_entry_it_cannot_search(tmp_path: Path) ->
     assert list((home / "cache/staging").iterdir()) == []
 
 
-# ── Store reclamation ──────────────────────────────────────────────
-
-
-def test_an_unreferenced_store_is_moved_to_trash_and_deleted(home: Path) -> None:
-    _make_store(home)
-    replay = MachineReplay("store_reclamation")
-
-    outcome = reclaim_store(home, STORE_KEY, observer=replay)
-
-    assert outcome is StoreReclamation.RECLAIMED
-    assert replay.events == ["try_exclusive", "move_to_trash", "delete_completed"]
-    assert replay.state == "reclaimed"
-    assert not (home / f"cache/repository-stores/{STORE_KEY}").exists()
-    assert list((home / "cache/trash").iterdir()) == []
-    assert list((home / "cache/locks/trash").iterdir()) == []
-
-
-def test_reclamation_skips_a_store_with_a_live_lease(home: Path) -> None:
-    scenario = _scenario("reclaim-skips-leased-store")
-    _make_store(home)
-    subject = _Child(home, f"lease = locks.store_lease(home, {STORE_KEY!r})")
-    replay = MachineReplay("store_reclamation")
-    try:
-        outcome = reclaim_store(home, STORE_KEY, observer=replay)
-    finally:
-        subject.finish()
-
-    assert outcome is StoreReclamation.BUSY
-    assert replay.events == scenario["events"]
-    assert replay.state == scenario["expected_final"]
-    assert (home / f"cache/repository-stores/{STORE_KEY}").is_dir()
-
-
-def test_startup_reclaims_unreferenced_stores_and_keeps_aliased_ones(home: Path) -> None:
-    orphan = "a" * 64
-    ensure_private_directory(home, f"cache/repository-stores/{orphan}/repository.git")
-    _make_store(home)
-    _make_source_with_alias(home)
-
-    reclaimed = reclaim_unreferenced_stores(home)
-
-    assert reclaimed == (orphan,)
-    assert not (home / f"cache/repository-stores/{orphan}").exists()
-    assert (home / f"cache/repository-stores/{STORE_KEY}").is_dir()
-    assert list((home / "cache/trash").iterdir()) == []
-
-
-def test_startup_reclaim_reads_each_alias_once_plus_once_per_candidate(
-    home: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """One pass builds the referenced set; only a candidate is re-checked under its locks."""
-    orphan = "a" * 64
-    ensure_private_directory(home, f"cache/repository-stores/{orphan}/repository.git")
-    for filler in ("b", "c", "d"):
-        ensure_private_directory(home, f"cache/repository-stores/{filler * 64}/repository.git")
-        slug = f"example-com--owner--{filler}--{filler * 12}"
-        ensure_private_directory(home, f"cache/sources/{slug}")
-        write_record_atomic(
-            home,
-            source_record(slug, "store-alias.yml"),
-            RepositoryStoreAlias(
-                source_id=SOURCE_ID,
-                store_id=f"sha256:{filler * 64}",
-                generation=1,
-                updated_at="2026-09-17T12:00:00Z",
-            ),
-            REPOSITORY_STORE_ALIAS_CONTRACT_ID,
-        )
-    alias_reads: list[str] = []
-    real_read = reclaim_module.read_record
-
-    def counting_read(home: Path, relative: str, contract: str) -> object:
-        alias_reads.append(relative)
-        return real_read(home, relative, contract)
-
-    monkeypatch.setattr(reclaim_module, "read_record", counting_read)
-    assert reclaim_unreferenced_stores(home) == (orphan,)
-    # Three aliases in the pass, then three again for the one candidate's locked re-check.
-    assert len(alias_reads) == 6
-
-
-def test_startup_reclaim_skips_a_store_with_a_live_lease(home: Path) -> None:
-    _make_store(home)
-    subject = _Child(home, f"lease = locks.store_lease(home, {STORE_KEY!r})")
-    try:
-        reclaimed = reclaim_unreferenced_stores(home)
-    finally:
-        subject.finish()
-
-    assert reclaimed == ()
-    assert (home / f"cache/repository-stores/{STORE_KEY}").is_dir()
-
-
-def test_startup_reclaim_leaves_names_that_are_not_store_keys(home: Path) -> None:
-    ensure_private_directory(home, "cache/repository-stores/not-a-store-key")
-
-    assert reclaim_unreferenced_stores(home) == ()
-    assert (home / "cache/repository-stores/not-a-store-key").is_dir()
-
-
-def test_reclamation_skips_a_referenced_or_absent_store(home: Path) -> None:
-    absent = MachineReplay("store_reclamation")
-    assert reclaim_store(home, STORE_KEY, observer=absent) is StoreReclamation.ABSENT
-    assert absent.events == ["try_exclusive", "store_absent"]
-
-    _make_store(home)
-    _make_source_with_alias(home)
-    referenced = MachineReplay("store_reclamation")
-    assert reclaim_store(home, STORE_KEY, observer=referenced) is StoreReclamation.REFERENCED
-    assert referenced.events == ["try_exclusive", "still_referenced"]
-    assert referenced.state == "skipped"
-    assert (home / f"cache/repository-stores/{STORE_KEY}").is_dir()
-
-
-@pytest.mark.parametrize(
-    "setup",
-    [
-        lambda home: ensure_private_directory(home, "cache/provider-bindings"),
-        lambda home: (
-            ensure_private_directory(home, "cache/provider-bindings"),
-            write_private_file_atomic(home, "cache/provider-bindings/source.yml", b"x"),
-        ),
-        lambda home: (
-            ensure_private_directory(home, f"cache/sources/{SLUG}"),
-            write_private_file_atomic(home, source_record(SLUG, "store-alias.yml"), b"alias: ["),
-        ),
-        lambda home: ensure_private_directory(home, "cache/sources/Unknown Entry"),
-    ],
-    ids=["empty-provider-directory", "provider-binding", "unreadable-alias", "unknown-source"],
-)
-def test_reference_checks_fail_safe(home: Path, setup: Callable[[Path], object]) -> None:
-    setup(home)
-    unreferenced = not any((home / "cache/provider-bindings").glob("*")) and not any(
-        (home / "cache/sources").glob("*")
-    )
-
-    assert store_is_referenced(home, STORE_KEY) is not unreferenced
-
-
-def test_a_reclamation_killed_while_deleting_trash_is_finished_by_the_sweep(home: Path) -> None:
-    scenario = _scenario("reclaim-crash-in-trash")
-    _make_store(home)
-
-    result = _run_until_killed(
-        home,
-        f"""
-        reclaim._remove_tree = die
-        reclaim.reclaim_store(home, {STORE_KEY!r})
-        """,
-    )
-
-    assert result.returncode == -signal.SIGKILL, result.stderr
-    replay = MachineReplay("store_reclamation")
-    replay.advance([event for event in scenario["events"] if event != "crash"])
-    assert replay.crash() == scenario["expected_final"] == "trash_swept"
-    assert not (home / f"cache/repository-stores/{STORE_KEY}").exists()
-    (left,) = list((home / "cache/trash").iterdir())
-
-    report = reclaim_trash(home)
-
-    assert report.removed == (f"cache/trash/{left.name}",)
-    assert list((home / "cache/trash").iterdir()) == []
-    assert replay.visible is scenario["expected_visible"]
-
-
 # ── Quarantine ─────────────────────────────────────────────────────
 
 
@@ -557,11 +388,7 @@ def test_quarantine_moves_the_alias_then_the_store(
     )
 
     assert outcome.state == "quarantined" and outcome.entry is not None
-    assert replay.events == [
-        "try_exclusive",
-        "move_alias_to_quarantine",
-        "move_store_to_quarantine",
-    ]
+    assert replay.events == ["move_alias_to_quarantine", "move_store_to_quarantine"]
     assert moves == [f"cache/sources/{SLUG}", f"cache/repository-stores/{STORE_KEY}"]
     assert outcome.retained == (
         f"cache/quarantine/{outcome.entry}/sources/{SLUG}",
@@ -589,7 +416,7 @@ def test_a_quarantined_store_is_deleted_only_by_explicit_purge(home: Path) -> No
         observer=replay,
     )
     assert outcome.entry is not None
-    assert reclaim_store(home, STORE_KEY) is StoreReclamation.ABSENT
+    assert not (home / f"cache/repository-stores/{STORE_KEY}").exists()
     assert purge_quarantined(home, outcome.entry, observer=replay) is True
 
     assert replay.events == scenario["events"]
@@ -609,7 +436,7 @@ def test_quarantine_leaves_a_healthy_entry_in_place(home: Path) -> None:
     )
 
     assert outcome.state == "healthy"
-    assert replay.events == ["try_exclusive", "revalidated_ok"]
+    assert replay.events == ["revalidated_ok"]
     assert (home / f"cache/sources/{SLUG}").is_dir()
     assert list((home / "cache/quarantine").iterdir()) == []
 
@@ -627,32 +454,11 @@ def test_quarantine_of_an_absent_store_moves_nothing(home: Path) -> None:
     )
 
     assert outcome.state == "nothing_to_quarantine"
-    assert replay.events == ["try_exclusive", "store_absent"]
+    assert replay.events == ["store_absent"]
     assert replay.state == "nothing_to_quarantine"
     assert (home / f"cache/sources/{SLUG}").is_dir()
     with pytest.raises(ValueError, match="at least one repository store"):
         quarantine_entries(home, source_slugs=[SLUG], store_keys=[], revalidate=lambda: False)
-
-
-@pytest.mark.parametrize("source_slugs", [[SLUG], []], ids=["alias-first", "store-only"])
-def test_quarantine_defers_while_a_lease_is_held(home: Path, source_slugs: list[str]) -> None:
-    _make_store(home)
-    subject = _Child(home, f"lease = locks.store_lease(home, {STORE_KEY!r})")
-    replay = MachineReplay("quarantine")
-    try:
-        outcome = quarantine_entries(
-            home,
-            source_slugs=source_slugs,
-            store_keys=[STORE_KEY],
-            revalidate=lambda: pytest.fail("revalidated without the maintenance lock"),
-            observer=replay,
-        )
-    finally:
-        subject.finish()
-
-    assert outcome.state == "deferred"
-    assert replay.events == ["exclusive_busy"]
-    assert replay.state == "deferred"
 
 
 def test_a_quarantine_survives_a_crash_and_every_later_sweep(home: Path) -> None:
@@ -710,14 +516,15 @@ def test_a_crash_between_alias_and_store_leaves_an_ordinary_unreferenced_store(
     assert result.returncode == -signal.SIGKILL, result.stderr
     replay = MachineReplay("quarantine")
     replay.advance([event for event in scenario["events"] if event != "crash"])
-    assert replay.crash() == scenario["expected_final"] == "alias_quarantined_store_reclaimable"
+    assert replay.crash() == scenario["expected_final"] == "alias_quarantined_store_kept"
     assert replay.visible is scenario["expected_visible"]
     (entry,) = list((home / "cache/quarantine").iterdir())
     assert (entry / "sources" / SLUG / "store-alias.yml").is_file()
     assert not (home / f"cache/sources/{SLUG}").exists()
     assert (home / f"cache/repository-stores/{STORE_KEY}").is_dir()
-    assert not store_is_referenced(home, STORE_KEY)
-    assert reclaim_store(home, STORE_KEY) is StoreReclamation.RECLAIMED
+    # An ordinary unreferenced store: the startup sweep keeps it in place.
+    sweep_staging_and_trash(home)
+    assert (home / f"cache/repository-stores/{STORE_KEY}").is_dir()
 
 
 # ── Store-only quarantine ──────────────────────────────────────────
@@ -776,7 +583,7 @@ def test_store_only_quarantine_treats_an_unreadable_alias_as_naming_the_store(
         home, source_slugs=[], store_keys=[STORE_KEY], revalidate=lambda: False, observer=replay
     )
 
-    assert replay.events[:2] == ["try_exclusive", "alias_now_names_store"]
+    assert replay.events[:1] == ["alias_now_names_store"]
     assert outcome.entry is not None
     assert (home / f"cache/quarantine/{outcome.entry}/sources/{SLUG}/store-alias.yml").is_file()
 
@@ -784,8 +591,8 @@ def test_store_only_quarantine_treats_an_unreadable_alias_as_naming_the_store(
 @pytest.mark.parametrize(
     ("make_store", "revalidates", "expected"),
     [
-        (False, False, ["try_exclusive", "unreferenced_store_absent"]),
-        (True, True, ["try_exclusive", "unreferenced_store_revalidated_ok"]),
+        (False, False, ["unreferenced_store_absent"]),
+        (True, True, ["unreferenced_store_revalidated_ok"]),
     ],
     ids=["absent", "repaired"],
 )
@@ -810,30 +617,24 @@ def test_store_only_quarantine_moves_nothing_it_need_not(
     assert (home / f"cache/repository-stores/{STORE_KEY}").is_dir() is make_store
 
 
-@pytest.mark.parametrize("operation", ["reclaim", "purge"], ids=["reclamation", "quarantine-purge"])
 def test_a_failed_trash_deletion_still_releases_its_entry_lock(
-    home: Path, monkeypatch: pytest.MonkeyPatch, operation: str
+    home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A leaked descriptor would make the sweep read the entry as live for this process."""
 
     _make_store(home)
-    entry: str | None = None
-    if operation == "purge":
-        outcome = quarantine_entries(
-            home, source_slugs=[], store_keys=[STORE_KEY], revalidate=lambda: False
-        )
-        entry = outcome.entry
-        assert entry is not None
+    outcome = quarantine_entries(
+        home, source_slugs=[], store_keys=[STORE_KEY], revalidate=lambda: False
+    )
+    entry = outcome.entry
+    assert entry is not None
 
     def unreadable(_path: Path) -> bool:
         raise OSError(errno.EIO, "input/output error")
 
     monkeypatch.setattr(reclaim_module, "_remove_tree", unreadable)
     with pytest.raises(OSError, match="input/output error"):
-        if entry is None:
-            reclaim_store(home, STORE_KEY)
-        else:
-            purge_quarantined(home, entry)
+        purge_quarantined(home, entry)
 
     monkeypatch.undo()
     (left,) = list((home / "cache/trash").iterdir())

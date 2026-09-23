@@ -52,10 +52,10 @@ from tests.cache_home_fixture import (
     FLASK_SSH,
     FLASK_STORE_KEY,
     JINJA,
+    MISSING_STORE_KEY,
     OPENED_AT,
     ORPHAN_STORE_KEY,
     QUARANTINED_STORE_KEY,
-    RECLAIMED_STORE_KEY,
     build_empty_home,
     build_future_home,
     build_populated_home,
@@ -383,7 +383,6 @@ def test_stores_report_references_and_what_reclamation_would_keep(
     rows = {row["id"]: row for row in body["stores"]}
     assert list(rows) == sorted([f"sha256:{FLASK_STORE_KEY}", f"sha256:{ORPHAN_STORE_KEY}"])
     assert f"sha256:{QUARANTINED_STORE_KEY}" not in rows
-    assert f"sha256:{RECLAIMED_STORE_KEY}" not in rows
 
     flask = rows[f"sha256:{FLASK_STORE_KEY}"]
     assert flask == {
@@ -647,7 +646,7 @@ def test_a_damaged_source_is_reported_beside_the_readable_ones(
     assert [(p["record"], p["code"]) for p in click["problems"]] == [("source.yml", "invalid")]
 
     stores = {row["id"]: row for row in _json(client, "/api/cache/stores")["stores"]}
-    # An alias reclamation cannot read keeps every store it might name.
+    # An alias that cannot be read might name any store.
     assert stores[f"sha256:{ORPHAN_STORE_KEY}"]["reference_state"] == "unknown"
     assert stores[f"sha256:{FLASK_STORE_KEY}"]["reference_state"] == "referenced"
 
@@ -661,7 +660,7 @@ def test_an_alias_to_a_missing_store_is_dangling(
         source_record(CLICK.slug, "store-alias.yml"),
         RepositoryStoreAlias(
             source_id=CLICK.id,
-            store_id=f"sha256:{RECLAIMED_STORE_KEY}",
+            store_id=f"sha256:{MISSING_STORE_KEY}",
             generation=1,
             updated_at="2026-09-17T12:00:06Z",
         ),

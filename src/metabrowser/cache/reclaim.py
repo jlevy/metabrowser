@@ -1,4 +1,4 @@
-"""Reclaiming ``staging/``, ``trash/``, quarantine, and unreferenced stores.
+"""Reclaiming ``staging/`` and ``trash/``, and quarantine.
 
 Each operation follows its machine in ``tests/fixtures/repository-cache/state-machines.json``
 and reports every transition, with the locks held at that moment, to an optional
@@ -12,19 +12,17 @@ observer; the fixture replay checks those reports against the frozen machines.
 - **Recoverable trash.** An entry moves into ``trash/<entry>/`` under its owning lock
   while the trash entry's liveness lock is held, and is deleted at the end of the same
   operation; the sweep removes anything a crashed operation left.
-- **Quarantine** (``quarantine``). Never reclaimed automatically. Under the exclusive
-  maintenance locks and the ordered source-alias and store locks, a store that still
-  fails revalidation moves to ``quarantine/<entry>/`` after the aliases naming it, so a
-  crash between the two leaves the aliases retained and an ordinary unreferenced store.
-  A store no alias was seen to name is quarantined under its store lock alone, after
-  verifying there that no alias names it. Only an explicit purge moves a quarantined
-  entry to trash, under the application-home lock.
-- **Store reclamation** (``store_reclamation``). A store no alias names is moved to
-  trash under its exclusive maintenance lock, which a live lease makes busy, and its
-  store lock. Provider references are not modeled yet, so any provider binding or
-  provider repository in the home counts as a reference. Startup lists
-  ``repository-stores`` and runs this for each published store after the staging/trash
-  sweep. Read routes do not.
+- **Quarantine** (``quarantine``). Never reclaimed automatically. Under the ordered
+  source-alias and store locks, a store that still fails revalidation moves to
+  ``quarantine/<entry>/`` after the aliases naming it, so a crash between the two leaves
+  the aliases retained and an ordinary unreferenced store. A store no alias was seen to
+  name is quarantined under its store lock alone, after verifying there that no alias
+  names it. Only an explicit purge moves a quarantined entry to trash, under the
+  application-home lock.
+
+Nothing here deletes a published store. A store no alias names, which a crash between
+an acquisition's two renames leaves behind, stays in place until the next acquisition
+of its source reuses it.
 """
 
 from __future__ import annotations
@@ -37,12 +35,11 @@ import stat
 from collections.abc import Callable, Sequence
 from contextlib import ExitStack
 from dataclasses import dataclass
-from enum import StrEnum
 from pathlib import Path
 from typing import Final
 
 from metabrowser.cache.atomic import RecordError, publish_entry, read_record
-from metabrowser.cache.identity import IDENTITY_PREFIX, is_slug, is_store_key
+from metabrowser.cache.identity import IDENTITY_PREFIX, is_slug
 from metabrowser.cache.locks import (
     CacheLock,
     LockBusyError,
@@ -52,13 +49,9 @@ from metabrowser.cache.locks import (
     repository_store_lock,
     source_alias_lock,
     staging_entry_lock,
-    store_maintenance_lock,
     trash_entry_lock,
 )
 from metabrowser.cache.paths import (
-    PROVIDER_BINDINGS,
-    PROVIDER_REPOSITORIES,
-    REPOSITORY_STORES,
     SOURCES,
     STAGING,
     STAGING_LOCKS,
@@ -379,133 +372,6 @@ def _move_into_new_trash(
     return trash
 
 
-# ── Store reclamation ──────────────────────────────────────────────
-
-
-class StoreReclamation(StrEnum):
-    """How a store reclamation ended."""
-
-    BUSY = "exclusive_busy"
-    ABSENT = "store_absent"
-    REFERENCED = "still_referenced"
-    RECLAIMED = "reclaimed"
-    DELETE_FAILED = "delete_failed"
-
-
-def _referenced_store_ids(home: Path) -> frozenset[str] | None:
-    """The store IDs the source aliases name, or None when every store must count.
-
-    Fails safe: provider data, a source entry that is not a slug, or an alias that
-    cannot be read or validated may name any store.
-    """
-
-    for directory in (PROVIDER_BINDINGS, PROVIDER_REPOSITORIES):
-        try:
-            if any(True for _ in os.scandir(home / directory)):
-                return None
-        except FileNotFoundError:
-            continue
-    named: set[str] = set()
-    for entry in os.scandir(home / SOURCES):
-        if not is_slug(entry.name):
-            return None
-        try:
-            alias = read_record(
-                home,
-                source_record(entry.name, "store-alias.yml"),
-                REPOSITORY_STORE_ALIAS_CONTRACT_ID,
-            )
-        except FileNotFoundError:
-            continue
-        except (RecordError, PrivateStorageError, OSError):
-            return None
-        if not isinstance(alias, RepositoryStoreAlias):
-            return None
-        named.add(alias.store_id)
-    return frozenset(named)
-
-
-def store_is_referenced(home: Path, store_key: str) -> bool:
-    """Whether any alias names the store, failing safe on anything it cannot read.
-
-    Aliases that name a store are written under that store's lease, so a caller holding
-    its exclusive maintenance lock sees a stable answer.
-    """
-
-    named = _referenced_store_ids(home)
-    return named is None or f"{IDENTITY_PREFIX}{store_key}" in named
-
-
-def reclaim_store(
-    home: Path, store_key: str, *, observer: MachineObserver | None = None
-) -> StoreReclamation:
-    """Move an unreferenced, unleased store to trash and delete it."""
-
-    machine = "store_reclamation"
-    try:
-        maintenance = store_maintenance_lock(home, store_key)
-    except LockBusyError:
-        _emit(observer, machine, "exclusive_busy")
-        return StoreReclamation.BUSY
-    try:
-        _emit(observer, machine, "try_exclusive")
-        with repository_store_lock(home, store_key) as store_lock:
-            if not os.path.lexists(home / store_directory(store_key)):
-                _emit(observer, machine, "store_absent")
-                return StoreReclamation.ABSENT
-            if store_is_referenced(home, store_key):
-                _emit(observer, machine, "still_referenced")
-                return StoreReclamation.REFERENCED
-            trash = _move_into_new_trash(home, "reclaim", store_directory(store_key), store_lock)
-            _emit(observer, machine, "move_to_trash")
-    finally:
-        maintenance.release()
-    try:
-        deleted = _remove_tree(home / trash.relative_path)
-        _emit(observer, machine, "delete_completed")
-    finally:
-        # Whatever deletion did, the trash entry's liveness lock is released, or the
-        # sweep would read the leaked descriptor as a live owner for this process's life.
-        trash.lock.remove_lock_file()
-    return StoreReclamation.RECLAIMED if deleted else StoreReclamation.DELETE_FAILED
-
-
-def reclaim_unreferenced_stores(
-    home: Path, *, observer: MachineObserver | None = None
-) -> tuple[str, ...]:
-    """Reclaim published stores no alias names.
-
-    A live lease makes exclusive maintenance busy, so a concurrent publish is skipped
-    and retried on a later open. Directory names that are not store keys stay in place.
-    """
-
-    try:
-        names = sorted(entry.name for entry in os.scandir(home / REPOSITORY_STORES))
-    except FileNotFoundError:
-        return ()
-    # One pass over the aliases picks the candidates, so a cache open reads each alias
-    # once instead of once per store. The pass holds no lock and decides nothing:
-    # ``reclaim_store`` checks each candidate again under its maintenance and store locks.
-    keys = [name for name in names if is_store_key(name)]
-    named = _referenced_store_ids(home) if keys else None
-    if named is None:
-        return ()
-    reclaimed: list[str] = []
-    for name in keys:
-        if f"{IDENTITY_PREFIX}{name}" in named:
-            continue
-        try:
-            outcome = reclaim_store(home, name, observer=observer)
-        except PrivateStorageError:
-            log.warning("Skipped a repository store whose lock file is unusable", exc_info=True)
-            continue
-        if outcome is StoreReclamation.RECLAIMED:
-            reclaimed.append(name)
-        elif outcome is StoreReclamation.DELETE_FAILED:
-            log.warning("Could not delete a reclaimed store; the next sweep retries it")
-    return tuple(reclaimed)
-
-
 # ── Quarantine ─────────────────────────────────────────────────────
 
 
@@ -557,8 +423,7 @@ def quarantine_entries(
 ) -> QuarantineOutcome:
     """Quarantine stores, and the aliases naming them, that still fail *revalidate*.
 
-    Takes each store's exclusive maintenance lock without blocking and defers if any is
-    busy. *revalidate* runs under the locks that follow and must not do network or
+    *revalidate* runs under the locks that follow and must not do network or
     long-running work.
 
     With *source_slugs*, the sources the stores were resolved through, it takes their
@@ -568,15 +433,16 @@ def quarantine_entries(
     quarantine and the stores ordinary unreferenced stores.
 
     Without *source_slugs*, for stores no alias was seen to name, it takes the store
-    locks alone. That is safe because the exclusive maintenance lock excludes every
-    lease and an alias naming a store is written only under that store's lease, so no
-    alias can come to name a store while it is held; and an acquisition that begins
-    after the move re-verifies the store under the store lock before publishing its
-    alias. An alias published before the exclusive lock was taken is still possible, so
-    the absence of one is verified under the store locks, and if one names a store the
-    store locks are released and the alias-first path runs with those sources.
+    locks alone. That is safe because an alias naming a store is written only under
+    that store's lock, so while it is held no alias can come to name the store, and an
+    acquisition that begins after the move finds the store absent under its own locks
+    and publishes a new one. An alias published before the store locks were taken is
+    still possible, so the absence of one is verified under them, and if one names a
+    store the store locks are released and the alias-first path runs with those
+    sources.
 
-    When no store is present there is nothing to quarantine.
+    When no store is present there is nothing to quarantine. A process already reading
+    a quarantined store fails its next Git read with a typed error.
     """
 
     if not store_keys:
@@ -584,43 +450,26 @@ def quarantine_entries(
     machine = "quarantine"
     keys = sorted(set(store_keys))
     slugs = sorted(set(source_slugs))
-    maintenance: list[CacheLock] = []
-    try:
-        try:
-            for key in keys:
-                maintenance.append(store_maintenance_lock(home, key))
-        except LockBusyError:
-            _emit(observer, machine, "exclusive_busy")
-            return QuarantineOutcome("deferred")
-        _emit(observer, machine, "try_exclusive")
-        if not slugs:
-            with ExitStack() as store_locks:
-                locked = [
-                    store_locks.enter_context(repository_store_lock(home, key)) for key in keys
-                ]
-                if not any(os.path.lexists(home / store_directory(key)) for key in keys):
-                    _emit(observer, machine, "unreferenced_store_absent")
-                    return QuarantineOutcome("nothing_to_quarantine")
-                slugs = list(aliases_naming_stores(home, keys))
-                if slugs:
-                    _emit(observer, machine, "alias_now_names_store")
-                elif revalidate():
-                    _emit(observer, machine, "unreferenced_store_revalidated_ok")
-                    return QuarantineOutcome("healthy")
-                else:
-                    entry, retained = _move_into_quarantine(
-                        home,
-                        [
-                            (store_directory(key), lock)
-                            for key, lock in zip(keys, locked, strict=True)
-                        ],
-                    )
-                    _emit(observer, machine, "move_unreferenced_store_to_quarantine")
-                    return QuarantineOutcome("quarantined", entry, retained)
-        return _quarantine_with_aliases(home, slugs, keys, revalidate, observer)
-    finally:
-        for lock in reversed(maintenance):
-            lock.release()
+    if not slugs:
+        with ExitStack() as store_locks:
+            locked = [store_locks.enter_context(repository_store_lock(home, key)) for key in keys]
+            if not any(os.path.lexists(home / store_directory(key)) for key in keys):
+                _emit(observer, machine, "unreferenced_store_absent")
+                return QuarantineOutcome("nothing_to_quarantine")
+            slugs = list(aliases_naming_stores(home, keys))
+            if slugs:
+                _emit(observer, machine, "alias_now_names_store")
+            elif revalidate():
+                _emit(observer, machine, "unreferenced_store_revalidated_ok")
+                return QuarantineOutcome("healthy")
+            else:
+                entry, retained = _move_into_quarantine(
+                    home,
+                    [(store_directory(key), lock) for key, lock in zip(keys, locked, strict=True)],
+                )
+                _emit(observer, machine, "move_unreferenced_store_to_quarantine")
+                return QuarantineOutcome("quarantined", entry, retained)
+    return _quarantine_with_aliases(home, slugs, keys, revalidate, observer)
 
 
 def _quarantine_with_aliases(
@@ -703,7 +552,6 @@ __all__ = [
     "MachineEvent",
     "MachineObserver",
     "QuarantineOutcome",
-    "StoreReclamation",
     "SweepReport",
     "TrashEntry",
     "begin_trash_entry",
@@ -712,9 +560,6 @@ __all__ = [
     "purge_quarantined",
     "quarantine_entries",
     "reclaim_staging",
-    "reclaim_store",
     "reclaim_trash",
-    "reclaim_unreferenced_stores",
-    "store_is_referenced",
     "sweep_staging_and_trash",
 ]
