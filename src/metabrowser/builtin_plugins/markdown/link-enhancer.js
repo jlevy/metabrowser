@@ -1,6 +1,6 @@
 import { findElementById, matchingDescendants } from "./dom-traversal.js";
 import { localizeGithubUrl } from "./github-localizer.js";
-import { createTrustedStandardLinkResolutionContext } from "./links.js";
+import { createTrustedStandardLinkResolutionContext, gitPathWireForDisplayPath } from "./links.js";
 import { acquireMarkdownWorkerClient } from "./markdown-worker-client.js";
 import {
   createMarkdownEnhancementBudget,
@@ -105,7 +105,12 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
         } else if (resolved.status === "external") {
           const localized = localizeGithubUrl(authoredTarget, mb.repository);
           if (localized) {
-            const target = navigationTarget(localized);
+            // A pin addresses its tree by GitPath wire, as every internal link on it does.
+            const target = navigationTarget(
+              sourceKind === "git_revision"
+                ? { ...localized, path: gitPathWireForDisplayPath(localized.path) }
+                : localized,
+            );
             anchor.setAttribute("href", mb.navigation.href(target));
             anchor.setAttribute("data-metabrowser-github-localization", localized.localization);
             if (localized.localization === "working-tree" && !anchor.hasAttribute("title")) {
