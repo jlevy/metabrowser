@@ -1998,3 +1998,42 @@ def test_api_same_origin_proof_covers_the_git_content_routes(tmp_path: Path) -> 
                 assert accepted.status_code == 200, route
 
     asyncio.run(_run())
+
+
+def test_git_symlink_bodies_past_path_max_are_refused(tmp_path: Path) -> None:
+    """A body longer than a checkout could hold is unresolvable, and costs nothing.
+
+    Each component walks the tree from the root, so an unbounded crafted body kept
+    the event loop busy for over a minute in review. The long body here would
+    otherwise resolve to the README, so a 404 proves the bound, not a bad path.
+    """
+
+    work = tmp_path / "work"
+    store = tmp_path / "store.git"
+    work.mkdir()
+    _git(work, "init", "-q", "-b", "main")
+    (work / "README.md").write_text("root readme\n", encoding="utf-8")
+    (work / "d").mkdir()
+    (work / "d" / "keep").write_text("keep\n", encoding="utf-8")
+    _git(work, "add", "-A")
+    bodies = {"long": "d/../" * 820 + "README.md", "short": "d/../" * 800 + "README.md"}
+    assert len(bodies["long"]) > 4096 >= len(bodies["short"])
+    for name, body in bodies.items():
+        target = work / f".{name}.body"
+        target.write_text(body, encoding="utf-8")
+        oid = _git(work, "hash-object", "-w", str(target)).decode().strip()
+        target.unlink()
+        _git(work, "update-index", "--add", "--cacheinfo", f"120000,{oid},{name}")
+    _git(work, "commit", "-qm", "long links")
+    commit = _git(work, "rev-parse", "HEAD").decode().strip()
+    _git(tmp_path, "clone", "--bare", "--template=", str(work), str(store), env_root=tmp_path)
+
+    async def _run() -> None:
+        async with _pinned_client(store, commit) as (client, _subject):
+            short = await client.get("/api/file", params={"path": _wire(b"short")})
+            assert short.status_code == 200, short.text
+            assert short.json()["content"] == "root readme\n"
+            long = await client.get("/api/file", params={"path": _wire(b"long")})
+            assert long.status_code == 404, long.text
+
+    asyncio.run(_run())

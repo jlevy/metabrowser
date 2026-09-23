@@ -277,6 +277,11 @@ class GitPath:
 # Relative in-tree symlink hops per resolution on file/raw/KPress/sidekicks, counting
 # links met partway through a target. Listings still show the link.
 _MAX_GIT_SYMLINK_FOLLOW = 8
+# Linux ``PATH_MAX``. ``symlink(2)`` refuses a longer target with ``ENAMETOOLONG``, so
+# a checkout could not hold such a link either. It also bounds resolution: each
+# component walks the tree from the root, and a crafted 1 MB body at depth 60 kept
+# the loop busy for 84 s in review; at this size it is milliseconds.
+_MAX_GIT_SYMLINK_BODY_BYTES = 4096
 
 
 def split_git_container_wire(wire: str) -> tuple[GitPath, str]:
@@ -1372,12 +1377,18 @@ async def _resolve_git_symlink(
 
     if not budget.spend():
         return None
+    if link.size is not None and link.size > _MAX_GIT_SYMLINK_BODY_BYTES:
+        return None
     raw = await source.read_blob(link.path)
+    if len(raw) > _MAX_GIT_SYMLINK_BODY_BYTES:
+        return None
     if not raw or b"\x00" in raw or raw.startswith(b"/"):
         return None
     parts = [part for part in raw.split(b"/") if part not in {b"", b"."}]
     directory = link.path.parent()
     for index, part in enumerate(parts):
+        # A cached tree answers without suspending, so yield once per component.
+        await asyncio.sleep(0)
         if part == b"..":
             if not directory.segments:
                 return None
