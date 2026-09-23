@@ -291,9 +291,21 @@ It names its reader, always `gh:<login>`, because `gh api` refuses requests whil
 out, and the account is read before and after the API reads so a record read across an
 account switch is discarded.
 Requests carry the previous record’s ETags when the same reader wrote it, and a `304`
-reuses that part. `GET /api/plugin/github/pull` reads the record for the served pull
-request and never fetches; the one-shot CLI fetches a missing record once, and
-`--no-serve` refreshes it.
+reuses that part. A page larger than `gh`’s output cap is asked for again in smaller
+pages, down to one item; an item still too large, or one that cannot be read, is left
+out and its list marked incomplete, and each list has a request cap as well as an item
+cap. Every text field is budgeted on its JSON-escaped size, so a written record always
+fits the read bound.
+Check runs and statuses GitHub refuses, and a comparison whose base cannot be fetched,
+are named in the record’s `unavailable` rather than failing it.
+`GET /api/plugin/github/pull` reads the record for the served pull request and never
+fetches, parsing it again only when the file changed; the one-shot CLI fetches a missing
+record once, and `--no-serve` refreshes it.
+When a pull request cannot be opened, the CLI answers from a cached record, or falls
+back to the default branch or the commit URL’s commit, and says why.
+The route’s `pin` is the served commit, and the record’s head names the head it was read
+at; they differ for a commit URL inside the pull request and after a refresh finds a
+newer head, which the pull-request page offers rather than switching to.
 In serving, the refresh coordinator is the planned caller; see Planned seams.
 
 ### Git path and blob semantics

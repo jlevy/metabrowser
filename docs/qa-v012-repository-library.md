@@ -557,9 +557,15 @@ npx --no-install tryscript run tests/golden/cli-github-pull.tryscript.md
 
 **Pass:** All pass. In the refresh transcript, the first open of `/pull/7` runs
 `gh auth status`, six `gh api` reads, and `gh auth status` again; `--no-serve` sends
-`If-None-Match` on all six; a cached read runs no `gh`; and each refusal ends in its
-typed state (`not_found_or_private`, `not_logged_in`, `gh_too_old`, `rate_limited` with
-its reset time, `network_error`, `account_changed`, `head_mismatch`, `gh_missing`).
+`If-None-Match` on all six; a cached read runs no `gh`; and each failure exits 0 with
+its typed state on the `pull_request` line (`not_found_or_private`, `not_logged_in`,
+`gh_too_old`, `rate_limited`, `network_error`, `account_changed`, `head_mismatch`,
+`gh_missing`), pinned at the cached head when there is a record and at the default
+branch when there is none.
+In `cli-github-url-open.txt`, `/pull/7` pins the default branch and
+`/pull/7/commits/89e0fad` that commit when `gh` fails, as before pull-request data.
+In `cli-github-pull.tryscript.md`, pull requests 12, 13, and 14 answer `absent` with
+`schema_mismatch`, `unreadable`, and `not_cached`.
 
 With the network, a signed-in `gh` 2.81.0 or newer, and a Git the floor admits
 (read-only; nothing is written to GitHub):
@@ -578,7 +584,8 @@ The command prints `pin: <head> (pull request 507 head)` and
 whose `comparison.base_from` is `base_sha`. Run again, it answers from the cache.
 
 **Fail:** A `gh` call on a cached read; a token, scope, or `gh` output in a message; a
-record whose Files changed differs from GitHub’s; a refusal without its typed state.
+record whose Files changed differs from GitHub’s; a failure without its typed state; a
+traceback.
 
 ## Phase 5: HTML Trust on the Integration Tip
 

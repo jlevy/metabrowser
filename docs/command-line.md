@@ -165,11 +165,18 @@ to the head, as GitHub shows it; issue it with `--api` to get the diff.
 
 Reading pull requests needs `gh` 2.81.0 or newer, signed in with `gh auth login`,
 because `gh api` refuses requests while signed out.
-A failure exits with status 1 and names its cause: `gh_missing`, `gh_too_old`,
-`not_logged_in`, `rate_limited` with the time the limit resets, `not_found_or_private`,
-`network_error`, `account_changed` when the active account changed during the read, or
-`head_mismatch` when the pull request kept moving.
-A record already cached is kept.
+A pull request that cannot be read does not fail the command.
+With a record cached, the pin stays at the record’s head and the `pull_request` line
+adds why the refresh failed.
+Without one, `/pull/<n>` pins the default branch and `/pull/<n>/commits/<id>` pins that
+commit if the mirror has it, and the `pull_request` line says why: `gh_missing`,
+`gh_too_old`, `not_logged_in`, `rate_limited` with the time the limit resets when GitHub
+gives one, `not_found_or_private`, `network_error`, `account_changed` when the active
+account changed during the read, `head_mismatch` when the pull request kept moving,
+`gh_failed` for an answer that cannot be read, `fetch_failed` or `git_failed` when Git
+failed, `record_too_large`, or `cache_unwritable`. Check runs or statuses GitHub
+refuses, and a comparison whose base cannot be fetched, are listed in the record’s
+`unavailable`, and the rest of the record stands.
 
 `--api /api/cache/…` on a `file://` URL acquires as a side effect, then issues the route
 against an empty throwaway directory so cache inspection cannot expose origin objects

@@ -126,10 +126,19 @@ GitHub URLs and HTTPS:
   GitHub computes it, and `/api/plugin/diff/comparison` now honors
   `base_policy=merge_base` for such a comparison.
   Reading pull requests needs `gh` 2.81.0 or newer signed in to github.com, because
-  `gh api` refuses unauthenticated requests; a failure names its cause (`gh_missing`,
-  `gh_too_old`, `not_logged_in`, `rate_limited` with the reset time,
-  `not_found_or_private`, `network_error`, `account_changed`, or `head_mismatch`) and
-  keeps any record already cached.
+  `gh api` refuses unauthenticated requests.
+  A pull request that cannot be read does not stop the command: with a cached record,
+  the pin stays at its head and the report adds why the refresh failed; without one, a
+  `/pull/<n>` URL pins the default branch and a `/pull/<n>/commits/<id>` URL the commit,
+  as before pull-request data existed, and the `pull_request` line says why.
+  Each cause is named: `gh_missing`, `gh_too_old`, `not_logged_in`, `rate_limited` with
+  the reset time when GitHub gives one, `not_found_or_private`, `network_error`,
+  `account_changed`, `head_mismatch`, `gh_failed` for an answer that cannot be read,
+  `fetch_failed` and `git_failed` for Git, `record_too_large`, `cache_unwritable`, and
+  `not_github`. Check runs or statuses GitHub refuses, and a comparison whose base
+  cannot be fetched, leave the rest of the record standing and are listed in its
+  `unavailable`; an item that cannot be read or is too large for one page is left out,
+  an `http://` link is left empty, and the list is marked incomplete.
   Lists and text are bounded per pull request, and a cut is reported, never silent.
 
 - A terminal hangup now cancels an acquisition the way Ctrl-C does: Git and every helper

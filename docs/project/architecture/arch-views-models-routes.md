@@ -188,6 +188,8 @@ and reports it in the document.
 `absent` (with `no_pull_request`, `not_cached`, `schema_mismatch`, or `unreadable`),
 `pending`, `current`, or `stale`, plus the pin and `comparison_route`, the
 `diff/comparison` of the record’s merge-base endpoints.
+The pin is the served commit and can differ from the record’s head: a commit URL inside
+the pull request pins that commit, and a refresh can find a newer head than the pin.
 A record is fetched only by a refresh; see
 [Pull-request records](arch-repository-sources-and-provider-mirrors.md#pull-request-records).
 
