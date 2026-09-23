@@ -104,9 +104,9 @@ No tbd release or process cleanup is a prerequisite.
 | Phase 2B: object jobs and convergence | Selected-ref jobs `mb-jlon`, background convergence `mb-bgn8`; review/publication `mb-bf94` | Bounded fetch, cancellation, identity isolation, publication races and post-serving convergence are testable through CLI/models |
 | Phase 2C: selected revisions | Selection `mb-2xq7`; review/publication `mb-9aku` | Branch/tag/OID/path resolution, missing-ref acquisition, concurrent subjects and offline navigation complete T1 |
 
-The existing `mb-j439` gate remains open until the foundation acceptance is complete.
-The next agent should make a focused stabilization PR above the live stack tip and
-record the corrected findings there, preserving the earlier PR review history.
+Foundation stabilization is [#226](https://github.com/jlevy/metabrowser/pull/226), above
+#225. It closes the foundation findings and records its reviewed green head in
+`mb-j439`, and Phase 2A starts from that head.
 Do not reopen the acquired-HTTP acceptance cycle: foundation checks exercise the
 existing CLI and content routes; the new server/browser path is proved in Phase 2A.
 
@@ -192,8 +192,8 @@ Record that narrower coverage without claiming the complete T1 or T2 milestone.
    Compare the full OID and file content at each step.
 4. **Probe the foundation failures.** Continue through the foundation QA runbook for
    below-floor Git, read-only home, corruption/recovery and refusal behavior.
-   Record the known pin acquisition-error defect (`mb-sumg`) as a failure if reproduced;
-   a successful happy path does not clear it.
+   The pin modes must report the same one-line errors as `--no-serve` (`mb-sumg`, fixed
+   in #226); a traceback or a path in the message is a failure.
 5. **After 2A–2C, test real repository URLs.** Run M02–M06 through the installed CLI and
    a browser: URL intent, relative links, concurrent branches, offline restart and
    acquired-content trust.

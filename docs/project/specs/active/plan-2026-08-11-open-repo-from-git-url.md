@@ -1779,7 +1779,8 @@ names the acceptance owners and testing checkpoints.
 [#217](https://github.com/jlevy/metabrowser/pull/217) is ready for review and implements
 file:// acquire without serving.
 https and ssh are classified and refused.
-Review and publication remain `mb-k900`. `mb-dg00` still owns missing golden sessions.
+[#226](https://github.com/jlevy/metabrowser/pull/226) stabilizes it and adds the
+remaining acceptance, goldens, and admitted-Git CI evidence.
 
 - [x] Add conservative source normalization, and claim uniquified slugs under the
   source-alias lock with the identity digest, slug derivation, and collision extension
@@ -1802,10 +1803,15 @@ Review and publication remain `mb-k900`. `mb-dg00` still owns missing golden ses
   These records do not start a background convergence worker.
   Post-serving background convergence belongs to Phase 2B (`mb-bgn8`), so it does not
   block publication of this acquisition-only slice.
-- [ ] Apply the Phase 0 lazy-fetch decision on every read path, and prove a
-  not-yet-converged blob read behaves as decided both online and offline.
-- [ ] Run those no-lazy-fetch acceptance tests against the lowest admitted Git release
-  in CI, so the source reading behind the version floor is proven at runtime.
+- [x] Apply the Phase 0 lazy-fetch decision on every read path, and prove a
+  not-yet-converged blob read behaves as decided both online and offline
+  (`tests/test_git_lazy_fetch_acceptance.py`; commit detail and diffs answer a typed
+  `object_unavailable`).
+- [x] Run those no-lazy-fetch acceptance tests against the lowest admitted Git release
+  in CI, so the source reading behind the version floor is proven at runtime: the
+  `admitted-git` job builds checksum-verified 2.43.7 and 2.50.1. Its first run found
+  that 2.43.7 dies instead of answering `missing` on a refused lazy fetch; the batch
+  reader now reads that death as a missing object.
 - [x] Measure initial acquisition of a large or bitmap-less repository with a stalled or
   slow server, and choose its low-speed bound: moved to Phase 2A with HTTPS acquisition,
   because a `file://` origin cannot stall (`mb-rati`). The timeout and cancellation kill
@@ -1818,9 +1824,11 @@ Review and publication remain `mb-k900`. `mb-dg00` still owns missing golden ses
   non-cache `--api` force it against flags and environment, refuse `--allow-edits`, and
   a pin in a populated cache sees only its own tree (`mb-99ub`). URL-opened roots are
   verified with URL serving in Phase 2A (`mb-innz`).
-- [ ] Add CLI goldens and docs for first open, cache hit, offline reuse, unsafe input,
+- [x] Add CLI goldens and docs for first open, cache hit, offline reuse, unsafe input,
   interrupted clone, read-only application home, unsupported Git version, and repair
-  guidance.
+  guidance (`tests/test_cli_cache_recovery_golden.py`, `cli-cache-url-grammar`, and the
+  live `cli-cache-acquire-live` golden on admitted Git).
+  An interruption during CAS ref publication waits for Phase 2B `publish_refs`.
 
 Acquisition staging and publication do not depend on the Git-status `is_clean` predicate
 because the store has no working tree.
@@ -1831,7 +1839,8 @@ replacement, repair, and purge use object, ref, record, and lease validation ins
 
 [#216](https://github.com/jlevy/metabrowser/pull/216) is ready for review and implements
 the source boundary.
-Remaining acceptance, independent review, and publication are tracked by `mb-tsdc`.
+Its acceptance and independent review are completed in
+[#226](https://github.com/jlevy/metabrowser/pull/226).
 
 - [x] Add `RepositorySubject`, `SourceSession`, `SourceCapabilities`, `ContentHandle`,
   and `ContentSource`, with one active attached-filesystem subject per server/browser
@@ -1852,15 +1861,18 @@ Remaining acceptance, independent review, and publication are tracked by `mb-tsd
   image and Markdown delivery to the Git content source.
   Focused route tests cover these consumers in
   `tests/test_git_revision_content_routes.py`.
-- [ ] Complete the source-boundary acceptance and CLI golden coverage, then
-  independently review and publish through `mb-tsdc`.
+- [x] Complete the source-boundary acceptance and CLI golden coverage, then
+  independently review and publish through `mb-tsdc`: the multi-entry pin golden, the
+  source-kind session over served output, and the independent review in
+  [#226](https://github.com/jlevy/metabrowser/pull/226).
 
 #### Phase 1B-c: Serve immutable Git revisions (`mb-z335`, `mb-hoae`)
 
 [#216](https://github.com/jlevy/metabrowser/pull/216) is ready for review and implements
 a leased `file://` pin for `metab --show` and non-cache `--api`. HTTP `--walk` /
 `--check-api` / serve still refuse Git sources.
-Independent review and publication remain `mb-hoae`.
+Its acceptance and independent review are completed in
+[#226](https://github.com/jlevy/metabrowser/pull/226).
 
 - [x] Add `AttachedWorktreeTarget` and `RepositoryStoreTarget` to the one Git process
   boundary, preserving fixed arguments and ambient-environment scrubbing.
@@ -1881,13 +1893,15 @@ Independent review and publication remain `mb-hoae`.
 - [x] Define symlink, gitlink, LFS-pointer, oversized-blob, promisor-miss,
   invalid-UTF-8, and newline-name behavior with focused source and route tests in
   `tests/test_git_tree_source.py` and `tests/test_git_revision_content_routes.py`.
-- [ ] Complete installed-CLI acceptance for immutable Git content, including the
-  minimum-Git evidence in the [alpha test plan](plan-2026-09-22-v012-alpha-testing.md).
-  URL-serving browser acceptance belongs to Phase 2A.
+- [x] Complete installed-CLI acceptance for immutable Git content, including the
+  minimum-Git evidence in the [alpha test plan](plan-2026-09-22-v012-alpha-testing.md):
+  the T0 walkthrough in [#226](https://github.com/jlevy/metabrowser/pull/226) and the
+  `admitted-git` job. URL-serving browser acceptance belongs to Phase 2A.
 - [x] Prove two processes share one object store while browsing different OIDs without a
   checkout, index, local branch, or working-tree mutation.
-- [ ] Independently review and publish through `mb-hoae` before any URL route claims it
-  can serve a repository.
+- [x] Independently review and publish through `mb-hoae` before any URL route claims it
+  can serve a repository ([#216](https://github.com/jlevy/metabrowser/pull/216), with
+  its stabilization in [#226](https://github.com/jlevy/metabrowser/pull/226)).
 
 #### Phase 2A: Open repository and hosted web URLs (`mb-12cz`, `mb-s1lt`, `mb-ew38`, `mb-innz`)
 
