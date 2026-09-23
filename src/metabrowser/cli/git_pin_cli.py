@@ -1,8 +1,10 @@
 """Attach a pinned Git revision for in-process CLI inspection.
 
 A ``file://`` or ``https://`` source is acquired or reused, the commit its URL selects
-is resolved in the mirror (the default branch when the URL selects none), and
-``open_revision`` pins it; its ``GitRevisionSubject`` becomes the process subject.
+is resolved in the mirror (the default branch when the URL selects none, the head for a
+pull request, whose record is fetched once when none is cached), and ``open_revision``
+pins it; its ``GitRevisionSubject`` becomes the process subject, attached with the
+published source so routes can find what the URL selected.
 ``--show`` and ``--api`` drive the same ASGI stack the browser uses, and what the URL
 selected is reported on stderr. Nothing binds a port. ssh stays closed. Serving
 acquired Git stays later.
@@ -98,9 +100,10 @@ async def _pin(source: GitSource) -> AsyncGenerator[PublishedSource]:
     report: list[str] = []
     resolved: ResolvedSelection | None = None
     if source.selection is not None:
-        resolved = await resolve_for_cli(published, source.selection)
+        resolution = await resolve_for_cli(published, source.selection)
+        resolved = resolution.resolved
         commit = resolved.commit
-        report = selection_lines(source.selection, resolved)
+        report = selection_lines(source.selection, resolution)
     subject: GitRevisionSubject | None = None
     try:
         # Before the server module attaches its handler: see ``acquire_for_cli``.
@@ -120,7 +123,7 @@ async def _pin(source: GitSource) -> AsyncGenerator[PublishedSource]:
         # stderr, so the route's envelope on stdout stays the only thing a pipe reads.
         for line in report:
             typer.echo(line, err=True)
-        attach_subject(subject)
+        attach_subject(subject, published=published)
         yield published
     finally:
         if subject is not None:

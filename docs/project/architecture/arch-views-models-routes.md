@@ -176,11 +176,20 @@ reservation and its invariants, is in
 | `/_debug/tasks`, `/_debug/inventory` | Opt-in local task and inventory-provider diagnostics when `METABROWSER_DEBUG=1` |
 
 Plugin hooks currently registered: `diff/document`, `diff/children`, `diff/comparison`,
-`folder/*`, `binary/chunk`, `agent-log/charts`, `structured/parsed`. On a
+`folder/*`, `binary/chunk`, `agent-log/charts`, `structured/parsed`, `github/pull`. On a
 `GitRevisionSubject`, `diff/comparison` honors the pin through `GitLocation` and
 `GitDiffSource.content` reads blobs through the shared cat-file pool; patch
 `document`/`children`, `binary/chunk`, `structured/parsed`, and `agent-log/charts` honor
 `GitPath` and follow in-tree relative symlink blobs.
+`diff/comparison?left=&right=` takes `base_policy=direct` (the default) or `merge_base`,
+and reports it in the document.
+
+`github/pull` answers the served pull request’s cached record from the cache alone:
+`absent` (with `no_pull_request`, `not_cached`, `schema_mismatch`, or `unreadable`),
+`pending`, `current`, or `stale`, plus the pin and `comparison_route`, the
+`diff/comparison` of the record’s merge-base endpoints.
+A record is fetched only by a refresh; see
+[Pull-request records](arch-repository-sources-and-provider-mirrors.md#pull-request-records).
 
 The hosted-review slice registers these exact proposed resource routes with the browser
 address in the same implementation changes:
@@ -258,7 +267,8 @@ or kind arrives with transcript evidence or the build fails.
 | `/api/plugin/binary/chunk` | covered | `--api` | `cli-api-plugins.tryscript.md` |
 | `/api/plugin/diff/document` | covered | `--api` | `cli-api-plugins.tryscript.md` |
 | `/api/plugin/diff/children` | covered | `--api` | `cli-api-plugins.tryscript.md` |
-| `/api/plugin/diff/comparison` | covered | `--api` | `cli-api-plugins.tryscript.md`, `cli-api-git.tryscript.md` |
+| `/api/plugin/diff/comparison` | covered | `--api` | `cli-api-plugins.tryscript.md`, `cli-api-git.tryscript.md`, `cli-github-pull.tryscript.md` |
+| `/api/plugin/github/pull` | covered | `--api` | `cli-github-pull.tryscript.md` |
 | `/api/plugin/structured/parsed` | covered | `--api` | `cli-api-plugins.tryscript.md` |
 | `/view` | covered | `--show PATH`, `--show /view/...` | `cli-show.tryscript.md` |
 | `/commit` | covered | `--show /commit/<rev>[/<inner>]` | `cli-api-git.tryscript.md` |

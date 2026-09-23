@@ -1,0 +1,555 @@
+"""Pull-request records: the gh runner, the account check, refresh, bounds, and reads.
+
+Everything runs against ``tests/github_pull_fixture.py``: a ``file://`` origin with
+GitHub's ``refs/pull/<n>/head`` standing in for ``https://github.com/octo/demo``, and a
+fake ``gh`` replaying scrubbed real responses. Nothing reaches the network or the
+``gh`` a developer has signed in.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import os
+import shutil
+from collections.abc import Iterator
+from dataclasses import dataclass, replace
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from typing import Any
+
+import pytest
+from starlette.testclient import TestClient
+
+from metabrowser.builtin_plugins.github import pulls
+from metabrowser.builtin_plugins.github.gh import (
+    GhError,
+    GhResponse,
+    gh_account,
+    gh_api,
+    parse_account,
+    parse_included_response,
+    rate_limit_reset,
+)
+from metabrowser.builtin_plugins.github.pull_record import (
+    MAX_BODY_BYTES,
+    MAX_DIFF_HUNK_BYTES,
+    PullRecord,
+    apply_text_budget,
+    cut_text,
+    read_pull_record,
+    serialize_pull_record,
+    write_pull_record,
+)
+from metabrowser.builtin_plugins.github.pull_route import PULL_FRESH_S, pull_state
+from metabrowser.builtin_plugins.github.pulls import PullDataError, open_pull_request
+from metabrowser.cache.acquire import PublishedSource, acquire_source
+from metabrowser.cache.layout import open_cache
+from metabrowser.cache.paths import source_pull_record
+from metabrowser.cache.pull_refs import ref_commit
+from metabrowser.cache.repository_store import open_revision
+from metabrowser.cache.urls import GitSource, RepositorySelection
+from metabrowser.git import repo as git_repo
+from metabrowser.git.tree_source import GitRevisionSubject
+from metabrowser.server import app
+from metabrowser.source import attach_subject, reset_source_session
+from tests.github_pull_fixture import (
+    CANONICAL,
+    FETCHED_AT,
+    READER,
+    Origin,
+    account,
+    build_origin,
+    install_fake_gh,
+    ok,
+    page,
+    scenario,
+)
+from tests.test_cache_acquire import _allow_installed_git
+
+pytestmark = [
+    pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required"),
+    pytest.mark.skipif(os.name != "posix", reason="the fake gh is a POSIX script"),
+]
+
+SOURCE = GitSource(transport="https", form="url", normalized=CANONICAL)
+
+
+@dataclass
+class _Stand:
+    origin: Origin
+    published: PublishedSource
+    tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch
+
+    def answer(self, answers: dict[str, Any]) -> None:
+        for name, value in install_fake_gh(self.tmp_path, answers).items():
+            self.monkeypatch.setenv(name, value)
+
+    def calls(self) -> list[dict[str, Any]]:
+        log = self.tmp_path / "fake-gh-log.jsonl"
+        if not log.exists():
+            return []
+        entries = [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()]
+        log.unlink()
+        return entries
+
+    def refresh(self, number: int) -> PullRecord:
+        return asyncio.run(pulls.refresh_pull_request(self.published, number))
+
+    def record(self, number: int) -> PullRecord | str:
+        return read_pull_record(self.published.home, self.published.slug, number)
+
+
+@pytest.fixture
+def stand(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> _Stand:
+    home = tmp_path / "home"
+    monkeypatch.setenv("METABROWSER_HOME", str(home))
+    _allow_installed_git(monkeypatch)
+    origin = build_origin(tmp_path)
+    local = origin.url
+    monkeypatch.setattr(
+        "metabrowser.cache.acquire.remote_url_for",
+        lambda source: local if source.normalized == CANONICAL else source.normalized,  # pyright: ignore[reportUnknownLambdaType, reportUnknownMemberType]
+    )
+    monkeypatch.setattr(pulls, "utc_now", lambda: FETCHED_AT)
+    stand = _Stand(origin, None, tmp_path, monkeypatch)  # pyright: ignore[reportArgumentType]
+    stand.answer(scenario(origin))
+    stand.published = asyncio.run(acquire_source(SOURCE, home=home))
+    stand.calls()
+    return stand
+
+
+def _api(answers: dict[str, Any], path: str, entry: Any) -> dict[str, Any]:
+    return {**answers, "api": {**answers["api"], path: entry}}
+
+
+# ── gh runner ──────────────────────────────────────────────────
+
+
+def test_included_response_is_split_as_gh_prints_it() -> None:
+    # gh 2.98.0 ends the status line with LF and each header with CRLF.
+    raw = b'HTTP/2.0 200 OK\nEtag: W/"abc"\r\nLink: <x>; rel="next"\r\n\r\n{"a": 1}'
+    response = parse_included_response(raw)
+    assert response is not None
+    assert (response.status, response.etag, response.has_next_page) == (200, 'W/"abc"', True)
+    assert response.json() == {"a": 1}
+    not_modified = parse_included_response(b'HTTP/2.0 304 Not Modified\nEtag: "abc"\r\n\r\n')
+    assert not_modified is not None and (not_modified.status, not_modified.body) == (304, b"")
+    assert parse_included_response(b"error connecting to api.github.com\n") is None
+
+
+def test_rate_limit_reset_reads_retry_after_then_the_primary_reset() -> None:
+    now = datetime(2026, 9, 17, 12, 0, tzinfo=UTC)
+    exhausted = GhResponse(
+        403, {"x-ratelimit-remaining": "0", "x-ratelimit-reset": "1790181960"}, b"{}"
+    )
+    assert rate_limit_reset(exhausted, now=now) == "2026-09-23T16:46:00Z"
+    secondary = GhResponse(403, {"retry-after": "60", "x-ratelimit-remaining": "0"}, b"{}")
+    assert rate_limit_reset(secondary, now=now) == "2026-09-17T12:01:00Z"
+    assert (
+        rate_limit_reset(GhResponse(403, {"x-ratelimit-remaining": "12"}, b"{}"), now=now) is None
+    )
+    assert rate_limit_reset(GhResponse(429, {}, b"{}"), now=now) == "unknown"
+
+
+def test_gh_api_runs_isolated_with_fixed_arguments(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("GH_DEBUG", "api")
+    monkeypatch.setenv("GH_HOST", "enterprise.example.com")
+    monkeypatch.setenv("GH_REPO", "other/repo")
+    response = asyncio.run(gh_api("repos/octo/demo/pulls/7", etag='W/"x"'))
+    assert response.status == 200
+    (call,) = stand.calls()
+    assert call["args"] == [
+        "api",
+        "--hostname",
+        "github.com",
+        "--method",
+        "GET",
+        "--include",
+        "-H",
+        "X-GitHub-Api-Version: 2022-11-28",
+        "-H",
+        'If-None-Match: W/"x"',
+        "repos/octo/demo/pulls/7",
+    ]
+    assert call["stdin_null"] is True
+    assert call["env"] == {
+        "GH_PROMPT_DISABLED": "1",
+        "GH_NO_UPDATE_NOTIFIER": "1",
+        "NO_COLOR": "1",
+        "GH_DEBUG": None,
+        "GH_HOST": None,
+        "GH_REPO": None,
+    }
+
+
+@pytest.mark.parametrize(
+    "path", ["../repos/x", "repos/octo/../demo", "repos/octo/demo --paginate", "-X"]
+)
+def test_gh_api_refuses_a_path_it_did_not_build(path: str) -> None:
+    with pytest.raises(ValueError, match="not a repository API path"):
+        asyncio.run(gh_api(path))
+
+
+def test_gh_api_returns_304_and_types_refusals(stand: _Stand) -> None:
+    entry = scenario(stand.origin)["api"]["repos/octo/demo/pulls/7"]
+    unchanged = asyncio.run(gh_api("repos/octo/demo/pulls/7", etag=entry["headers"]["Etag"]))
+    assert (unchanged.status, unchanged.body) == (304, b"")
+    with pytest.raises(GhError) as missing:
+        asyncio.run(gh_api("repos/octo/demo/pulls/404"))
+    assert missing.value.state == "not_found_or_private"
+    stand.answer(
+        {
+            **scenario(stand.origin),
+            "api_failure": {
+                "stderr": "To get started with GitHub CLI, please run:  gh auth login\n",
+                "exit": 4,
+            },
+        }
+    )
+    with pytest.raises(GhError) as logged_out:
+        asyncio.run(gh_api("repos/octo/demo/pulls/7"))
+    assert logged_out.value.state == "not_logged_in"
+
+
+def test_account_is_the_active_login_even_in_an_error_state() -> None:
+    assert parse_account(account("octo", state="error")["stdout"].encode()) == "octo"
+    assert parse_account(b'{"hosts":{}}') is None
+    inactive = {"hosts": {"github.com": [{"active": False, "login": "other", "state": "success"}]}}
+    assert parse_account(json.dumps(inactive).encode()) is None
+    with pytest.raises(GhError):
+        parse_account(b'{"hosts":{"github.com":[{"active":true,"login":"bad login"}]}}')
+
+
+def test_account_states(stand: _Stand, monkeypatch: pytest.MonkeyPatch) -> None:
+    assert asyncio.run(gh_account()) == READER
+    stand.answer({**scenario(stand.origin), "auth": {"stdout": '{"hosts":{}}\n'}})
+    with pytest.raises(GhError) as logged_out:
+        asyncio.run(gh_account())
+    assert logged_out.value.state == "not_logged_in"
+    stand.answer(
+        {**scenario(stand.origin), "auth": {"stderr": "unknown flag: --json\n", "exit": 1}}
+    )
+    with pytest.raises(GhError) as old:
+        asyncio.run(gh_account())
+    assert old.value.state == "gh_too_old"
+    monkeypatch.setattr("metabrowser.builtin_plugins.github.gh.gh_executable", lambda: None)
+    with pytest.raises(GhError) as missing:
+        asyncio.run(gh_account())
+    assert missing.value.state == "gh_missing"
+
+
+# ── refresh ────────────────────────────────────────────────────
+
+
+def test_a_fork_pull_request_brings_its_commits_and_the_mirror_base(stand: _Stand) -> None:
+    record = stand.refresh(7)
+    origin = stand.origin
+    assert record.reader == f"gh:{READER}"
+    assert record.pull.head.repository == "forker/demo"
+    assert asyncio.run(ref_commit(stand.published, "refs/pull/7/head")) == origin["fork_head"]
+    assert record.comparison is not None
+    assert (record.comparison.base, record.comparison.base_from) == (origin["base"], "base_branch")
+    assert record.comparison.base_commit == origin["topic"]
+    assert stand.record(7) == record
+
+
+def test_merged_and_closed_pull_requests_compare_from_base_sha(stand: _Stand) -> None:
+    origin = stand.origin
+    merged = stand.refresh(8)
+    assert merged.pull.merged and merged.pull.mergeable == "unknown"
+    assert merged.comparison is not None
+    assert (merged.comparison.base_commit, merged.comparison.base_from) == (
+        origin["topic_before_merge"],
+        "base_sha",
+    )
+    # 9's base.sha is on no mirrored ref, so it is fetched by ID first.
+    closed = stand.refresh(9)
+    assert closed.pull.head.repository is None and closed.pull.author is None
+    assert closed.comparison is not None
+    assert closed.comparison.base_commit == origin["rewritten_base"]
+    assert closed.comparison.base == origin["base"]
+    draft = stand.refresh(10)
+    assert draft.pull.draft and draft.pull.mergeable == "conflicting"
+    assert draft.comparison is not None and draft.comparison.base == origin["topic"]
+
+
+def test_a_second_refresh_is_conditional_and_reuses_unchanged_parts(stand: _Stand) -> None:
+    first = stand.refresh(7)
+    stand.calls()
+    again = stand.refresh(7)
+    api_calls = [call["args"] for call in stand.calls() if call["args"][0] == "api"]
+    assert len(api_calls) == 6
+    assert all(any(arg.startswith("If-None-Match: ") for arg in args) for args in api_calls)
+    assert again.model_dump(exclude={"fetched_at"}) == first.model_dump(exclude={"fetched_at"})
+
+
+def test_etags_are_not_sent_for_another_reader(stand: _Stand) -> None:
+    stand.refresh(7)
+    stand.answer({**scenario(stand.origin), "auth": account("someone-else")})
+    stand.calls()
+    record = stand.refresh(7)
+    assert record.reader == "gh:someone-else"
+    sent = [call["args"] for call in stand.calls() if call["args"][0] == "api"]
+    assert not any(arg.startswith("If-None-Match: ") for args in sent for arg in args)
+
+
+def test_a_record_read_while_the_account_changed_is_discarded(stand: _Stand) -> None:
+    stand.answer({**scenario(stand.origin), "auth": [account(READER), account("someone-else")]})
+    with pytest.raises(PullDataError) as changed:
+        stand.refresh(7)
+    assert changed.value.state == "account_changed"
+    assert stand.record(7) == "not_cached"
+
+
+def test_a_head_that_moved_once_is_read_again(stand: _Stand) -> None:
+    answers = scenario(stand.origin)
+    path = "repos/octo/demo/pulls/7"
+    body = answers["api"][path]["body"]
+    earlier = stand.origin["fork_earlier"]
+    stale = ok(path, {**body, "head": {**body["head"], "sha": earlier}})
+    answers = _api(answers, path, [stale, answers["api"][path]])
+    for part, empty in (
+        ("check-runs", {"total_count": 0, "check_runs": []}),
+        ("status", {"state": "pending", "statuses": []}),
+    ):
+        listed = page(f"repos/octo/demo/commits/{earlier}/{part}")
+        answers = _api(answers, listed, ok(listed, empty))
+    stand.answer(answers)
+    record = stand.refresh(7)
+    assert record.pull.head.sha == stand.origin["fork_head"]
+    reads = [call for call in stand.calls() if call["args"][-1] == path]
+    assert len(reads) == 2
+
+
+def test_pages_follow_link_and_stop_at_the_cap(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(pulls, "MAX_ISSUE_COMMENTS", 150)
+    answers = scenario(stand.origin)
+    base = "repos/octo/demo/issues/7/comments"
+    template = answers["api"][page(base)]["body"][0]
+
+    def comments(start: int, count: int) -> list[dict[str, Any]]:
+        return [{**template, "id": start + index} for index in range(count)]
+
+    def listed(number: int, count: int, *, more: bool) -> dict[str, Any]:
+        path = f"{base}?per_page=100&page={number}"
+        link = (
+            {"Link": f'<https://api.github.com/{base}?page={number + 1}>; rel="next"'}
+            if more
+            else {}
+        )
+        return ok(path, comments(number * 1000, count), link)
+
+    answers = _api(answers, page(base), listed(1, 100, more=True))
+    answers = _api(answers, f"{base}?per_page=100&page=2", listed(2, 100, more=True))
+    record = pulls.refresh_pull_request
+    stand.answer(answers)
+    cut = asyncio.run(record(stand.published, 7))
+    assert len(cut.issue_comments) == 150 and cut.truncated.issue_comments
+    pages_read = [call["args"][-1] for call in stand.calls() if base in call["args"][-1]]
+    assert pages_read == [page(base), f"{base}?per_page=100&page=2"]
+
+
+def test_bodies_and_hunks_are_cut_and_say_so(stand: _Stand) -> None:
+    answers = scenario(stand.origin)
+    path = "repos/octo/demo/pulls/7"
+    long_body = "é" * MAX_BODY_BYTES
+    answers = _api(answers, path, ok(path, {**answers["api"][path]["body"], "body": long_body}))
+    comments = page("repos/octo/demo/pulls/7/comments")
+    hunk = "@@ -1 +1 @@\n" + "\n".join(f"+line {index}" for index in range(4000))
+    listed = [{**answers["api"][comments]["body"][0], "diff_hunk": hunk}]
+    answers = _api(answers, comments, ok(comments, listed))
+    stand.answer(answers)
+    record = stand.refresh(7)
+    assert record.pull.body_truncated and len(record.pull.body.encode()) <= MAX_BODY_BYTES
+    kept = record.review_comments[0]
+    assert kept.diff_hunk_truncated and kept.diff_hunk.endswith("+line 3999")
+    assert (
+        kept.diff_hunk.startswith("+line ") and len(kept.diff_hunk.encode()) <= MAX_DIFF_HUNK_BYTES
+    )
+
+
+def test_the_text_budget_cuts_later_text_first(stand: _Stand) -> None:
+    record = stand.refresh(7)
+    budget = len(record.pull.body.encode()) + 10
+    cut = apply_text_budget(record, budget)
+    assert cut.truncated.text and not cut.pull.body_truncated
+    assert cut.issue_comments[0].body_truncated
+    assert len(cut.issue_comments[0].body.encode()) == 10
+    assert all(comment.body == "" for comment in cut.review_comments)
+    assert apply_text_budget(record) == record
+
+
+def test_cut_text_respects_characters() -> None:
+    assert cut_text("aé", 2) == ("a", True)
+    assert cut_text("one\ntwo\nthree", 7, keep="tail") == ("three", True)
+    assert cut_text("short", 10) == ("short", False)
+
+
+# ── records on disk ────────────────────────────────────────────
+
+
+def test_a_record_from_another_schema_or_damaged_is_refetched(stand: _Stand) -> None:
+    record = stand.refresh(7)
+    path = stand.published.home / source_pull_record(stand.published.slug, 7)
+    payload = json.loads(path.read_bytes())
+    path.write_text(json.dumps({**payload, "schema_version": 0}), encoding="utf-8")
+    assert stand.record(7) == "schema_mismatch"
+    path.write_text("{not json", encoding="utf-8")
+    assert stand.record(7) == "unreadable"
+    path.write_text(json.dumps({**payload, "reader": "anonymous"}), encoding="utf-8")
+    assert stand.record(7) == "unreadable"
+    path.write_text(json.dumps({**payload, "number": 8}), encoding="utf-8")
+    assert stand.record(7) == "unreadable"
+    stand.calls()
+    pin = asyncio.run(open_pull_request(stand.published, 7, fetch="if_missing"))
+    assert pin.head == record.pull.head.sha
+    assert any(call["args"][0] == "api" for call in stand.calls())
+    assert stand.record(7) == record
+
+
+def test_a_cached_record_is_read_without_gh(stand: _Stand, monkeypatch: pytest.MonkeyPatch) -> None:
+    stand.refresh(7)
+    stand.calls()
+    monkeypatch.setattr("metabrowser.builtin_plugins.github.gh.gh_executable", lambda: None)
+    pin = asyncio.run(open_pull_request(stand.published, 7, fetch="if_missing"))
+    assert pin.summary == f"open; fetched 2026-09-17T12:00:00Z by gh:{READER}"
+    assert stand.calls() == []
+    with pytest.raises(PullDataError) as refused:
+        asyncio.run(open_pull_request(stand.published, 7, fetch="always"))
+    assert refused.value.state == "gh_missing"
+    assert "the record fetched 2026-09-17T12:00:00Z is kept" in str(refused.value)
+
+
+def test_serialization_validates_and_bounds(stand: _Stand, monkeypatch: pytest.MonkeyPatch) -> None:
+    record = stand.refresh(7)
+    assert json.loads(serialize_pull_record(record))["number"] == 7
+    monkeypatch.setattr("metabrowser.builtin_plugins.github.pull_record.MAX_PULL_RECORD_BYTES", 100)
+    with pytest.raises(Exception, match="would be"):
+        write_pull_record(stand.published.home, stand.published.slug, record)
+
+
+def test_the_startup_sweep_leaves_records_alone(stand: _Stand) -> None:
+    record = stand.refresh(7)
+    open_cache(stand.published.home)
+    assert stand.record(7) == record
+
+
+# ── route state ────────────────────────────────────────────────
+
+
+def test_route_states_follow_age_and_refresh(stand: _Stand) -> None:
+    record = stand.refresh(7)
+    fresh = FETCHED_AT + timedelta(seconds=PULL_FRESH_S)
+    assert pull_state(record, now=fresh) == ("current", None)
+    assert pull_state(record, now=fresh + timedelta(seconds=1)) == ("stale", None)
+    assert pull_state("not_cached", now=fresh) == ("absent", "not_cached")
+    assert pull_state("not_cached", now=fresh, refreshing=True) == ("pending", None)
+
+
+# ── routes on a pinned pull request ────────────────────────────
+
+
+@pytest.fixture
+def pinned_pull(stand: _Stand) -> Iterator[tuple[_Stand, TestClient]]:
+    """Pull request 7 cached, its head pinned, and the source attached as the CLI does."""
+
+    stand.refresh(7)
+    selected = replace(SOURCE, selection=RepositorySelection(kind="pull_request", pull_request=7))
+    published = replace(stand.published, source=selected)
+
+    async def _pin() -> GitRevisionSubject:
+        subject = await open_revision(
+            home=published.home,
+            store_key=published.store_key,
+            commit_oid=stand.origin["fork_head"],
+            store_identity=published.store_id,
+        )
+        await subject.aclose()
+        return subject
+
+    attach_subject(asyncio.run(_pin()), published=published)
+    git_repo.clear_repo_cache()
+    try:
+        with TestClient(app) as client:
+            yield stand, client
+    finally:
+        reset_source_session()
+        git_repo.clear_repo_cache()
+
+
+def _changed(body: dict[str, Any]) -> set[str]:
+    return {
+        (change.get("new") or change.get("old"))["path"] for change in body["manifest"]["files"]
+    }
+
+
+def test_the_pull_route_and_the_comparison_it_names(
+    pinned_pull: tuple[_Stand, TestClient],
+) -> None:
+    stand, client = pinned_pull
+    origin = stand.origin
+    envelope = client.get("/api/plugin/github/pull").json()
+    assert (envelope["state"], envelope["number"], envelope["pin"]) == (
+        "current",
+        7,
+        origin["fork_head"],
+    )
+    assert envelope["record"]["reader"] == f"gh:{READER}"
+    comparison = client.get(envelope["comparison_route"])
+    assert comparison.status_code == 200
+    body = comparison.json()
+    assert body["resolved"]["base_policy"] == "merge_base"
+    assert body["resolved"]["left"]["id"] == origin["base"]
+    assert _changed(body) == {"docs/new.md", "src/app.txt"}
+    # Merge base, not direct: the base branch's own README change is not the PR's.
+    direct = client.get(
+        "/api/plugin/diff/comparison",
+        params={"left": origin["topic"], "right": origin["fork_head"]},
+    ).json()
+    assert direct["resolved"]["base_policy"] == "direct"
+    assert "README.md" in _changed(direct)
+    by_merge_base = client.get(
+        "/api/plugin/diff/comparison",
+        params={"left": origin["topic"], "right": origin["fork_head"], "base_policy": "merge_base"},
+    ).json()
+    assert by_merge_base["resolved"]["left"]["id"] == origin["base"]
+    assert _changed(by_merge_base) == {"docs/new.md", "src/app.txt"}
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"left": "HEAD", "right": "HEAD", "base_policy": "first_parent"},
+        {"left": "HEAD", "right": "HEAD", "base_policy": "sideways"},
+        {"revision": "HEAD", "base_policy": "merge_base"},
+    ],
+)
+def test_the_comparison_route_refuses_a_base_policy_it_cannot_honor(
+    pinned_pull: tuple[_Stand, TestClient], params: dict[str, str]
+) -> None:
+    _stand, client = pinned_pull
+    refused = client.get("/api/plugin/diff/comparison", params=params)
+    assert refused.status_code == 400
+    assert refused.json()["error"] == "diff_comparison"
+
+
+def test_the_pull_route_reports_a_missing_record(pinned_pull: tuple[_Stand, TestClient]) -> None:
+    stand, client = pinned_pull
+    (stand.published.home / source_pull_record(stand.published.slug, 7)).unlink()
+    envelope = client.get("/api/plugin/github/pull").json()
+    assert (envelope["state"], envelope["reason"], envelope["record"]) == (
+        "absent",
+        "not_cached",
+        None,
+    )
+    stand.monkeypatch.setattr(
+        pulls, "utc_now", lambda: FETCHED_AT + timedelta(seconds=PULL_FRESH_S + 1)
+    )
+    stand.refresh(7)
+    assert client.get("/api/plugin/github/pull").json()["state"] == "current"

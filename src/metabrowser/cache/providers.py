@@ -1,21 +1,47 @@
 """The built-in repository providers and the few places core asks them anything.
 
 Core code names no provider and never branches on one. It asks the providers listed
-here, through :class:`RepositoryProvider`, for four things: URL reducers for the root
+here, through :class:`RepositoryProvider`, for five things: URL reducers for the root
 argument, extra Git configuration for a remote URL (a credential helper), a check to run
-before a first clone, and the ``repository_context`` of a mirrored source. The list is
-fixed, as the built-in browser plugin directories are; there is no public registration
-surface for the alpha.
+before a first clone, the ``repository_context`` of a mirrored source, and the commit a
+pull-request URL pins. The list is fixed, as the built-in browser plugin directories
+are; there is no public registration surface for the alpha.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from functools import cache
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Literal, Protocol
 
 if TYPE_CHECKING:
+    from metabrowser.cache.acquire import PublishedSource
     from metabrowser.cache.urls import GitSource, ProviderUrlReducer
     from metabrowser.repository_context import RepositoryContext
+
+type PullRequestFetch = Literal["if_missing", "always"]
+"""When opening a pull request may fetch: only without a usable record, or always."""
+
+
+@dataclass(frozen=True, slots=True)
+class PullRequestPin:
+    """What a pull-request URL pins: its head commit and ref, and a line about its data."""
+
+    number: int
+    head: str
+    ref: str
+    summary: str
+
+
+class PullRequestUnavailableError(Exception):
+    """A pull request's data could not be read or fetched; ``state`` says why.
+
+    ``str()`` is written for the user and names no local path.
+    """
+
+    def __init__(self, state: str, message: str) -> None:
+        super().__init__(message)
+        self.state = state
 
 
 class RepositoryProvider(Protocol):
@@ -46,6 +72,16 @@ class RepositoryProvider(Protocol):
         self, source_url: str, *, revision: str, branch: str | None
     ) -> RepositoryContext | None:
         """The context that lets rendered links into *source_url* open locally."""
+        ...
+
+    async def pull_request(
+        self, published: PublishedSource, number: int, *, fetch: PullRequestFetch
+    ) -> PullRequestPin | None:
+        """Pull request *number* of *published*, fetched as *fetch* allows.
+
+        Return ``None`` for a source this provider does not own; raise
+        :class:`PullRequestUnavailableError` when its data cannot be had.
+        """
         ...
 
 
@@ -106,10 +142,28 @@ def repository_context_for(
     return None
 
 
+async def open_pull_request(
+    published: PublishedSource, number: int, *, fetch: PullRequestFetch
+) -> PullRequestPin:
+    """The pin of pull request *number* of *published*, from the provider that owns it."""
+
+    for provider in installed_providers():
+        pin = await provider.pull_request(published, number, fetch=fetch)
+        if pin is not None:
+            return pin
+    raise PullRequestUnavailableError(
+        "unsupported", f"{published.source.normalized} has no pull requests Metabrowser can read"
+    )
+
+
 __all__ = [
+    "PullRequestFetch",
+    "PullRequestPin",
+    "PullRequestUnavailableError",
     "RepositoryProvider",
     "check_first_clone",
     "installed_providers",
+    "open_pull_request",
     "provider_credential_hint",
     "provider_git_config",
     "repository_context_for",

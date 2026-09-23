@@ -55,7 +55,7 @@ TAG_REF_PREFIX: Final = "refs/tags/"
 _COMMIT_ID = re.compile(r"^[0-9a-f]{4,64}$")
 _REF_FORBIDDEN = frozenset(" ~^:?*[\\\x7f")
 
-type ResolvedVia = Literal["default", "branch", "tag", "commit"]
+type ResolvedVia = Literal["default", "branch", "tag", "commit", "pull_request"]
 type UnresolvedReason = Literal[
     "ref_not_found", "commit_not_found", "commit_ambiguous", "not_a_commit", "invalid_ref"
 ]
@@ -252,9 +252,12 @@ async def resolve_selection(
 ) -> ResolvedSelection | UnresolvedSelection:
     """The commit and path a URL selection pins in the store at *target*.
 
-    A repository or pull-request URL pins the default branch. Reading only, from the
-    mirror as it is: the integration point for serving is to start one background
-    refresh when the answer ``needs_fetch`` and resolve again once it finishes.
+    A repository URL pins the default branch. A pull-request URL pins its head, which
+    only its record names, so callers open the pull request through its provider first
+    (``cli/selection.py``); asked here, it answers the default branch. Reading only,
+    from the mirror as it is: the integration point for serving is to start one
+    background refresh when the answer ``needs_fetch`` and resolve again once it
+    finishes.
     """
 
     if selection.kind in {"tree", "blob"}:

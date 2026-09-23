@@ -4,14 +4,26 @@ The one-shot modes read the mirror as it is: a ref or commit the mirror does not
 is reported not found rather than fetched, which keeps transcripts deterministic.
 Serving resolves through the same :func:`~metabrowser.cache.resolve.resolve_selection`
 and adds one background refresh.
+
+A URL inside a pull request is the exception. Its record is opened first, through the
+provider that owns the source: from the cache when a usable record is there, with no
+call to gh or the network, and otherwise fetched once, which also brings the pull
+request's commits, a fork's included, into the store. ``--no-serve`` fetches it every
+time. A pull-request URL then pins the head commit.
 """
 
 from __future__ import annotations
 
 import logging
-from typing import Final
+from dataclasses import dataclass
 
 from metabrowser.cache.acquire import PublishedSource
+from metabrowser.cache.providers import (
+    PullRequestFetch,
+    PullRequestPin,
+    PullRequestUnavailableError,
+    open_pull_request,
+)
 from metabrowser.cache.repository_store import open_revision
 from metabrowser.cache.resolve import (
     ResolvedSelection,
@@ -26,7 +38,13 @@ from metabrowser.git.tree_source import GitPath, GitRevisionSubject
 
 LOG = logging.getLogger(__name__)
 
-_PULL_REQUEST_NOTE: Final = "pull-request data is not fetched yet"
+
+@dataclass(frozen=True, slots=True)
+class CliResolution:
+    """The commit a URL pins, and the pull request it is inside, if any."""
+
+    resolved: ResolvedSelection
+    pull: PullRequestPin | None = None
 
 
 def unresolved_message(
@@ -50,11 +68,41 @@ def unresolved_message(
     return f"{text} ({reason})"
 
 
-async def resolve_for_cli(
-    published: PublishedSource, selection: RepositorySelection
-) -> ResolvedSelection:
-    """Resolve *selection* in the published store, or raise a path-free ``CLIError``."""
+async def _open_pull_request_for_cli(
+    published: PublishedSource, number: int, *, fetch: PullRequestFetch
+) -> PullRequestPin:
+    with maybe_cli_logging():
+        try:
+            return await open_pull_request(published, number, fetch=fetch)
+        except PullRequestUnavailableError as exc:
+            raise CLIError(str(exc)) from exc
+        except GitError as exc:
+            LOG.debug("reading pull request %s failed: %s", number, exc)
+            raise CLIError(
+                f"a Git command failed while reading pull request {number} "
+                "(--log-level debug shows Git's own message)"
+            ) from exc
 
+
+async def resolve_for_cli(
+    published: PublishedSource,
+    selection: RepositorySelection,
+    *,
+    fetch: PullRequestFetch = "if_missing",
+) -> CliResolution:
+    """Resolve *selection* in the published store, or raise a path-free ``CLIError``.
+
+    A URL inside a pull request opens its record first, fetching as *fetch* allows.
+    """
+
+    pull: PullRequestPin | None = None
+    if selection.pull_request is not None:
+        pull = await _open_pull_request_for_cli(published, selection.pull_request, fetch=fetch)
+        if selection.kind == "pull_request":
+            resolved = ResolvedSelection(
+                via="pull_request", name=str(pull.number), ref=pull.ref, commit=pull.head
+            )
+            return CliResolution(resolved, pull)
     target = repository_store_target(git_dir=published.git_dir)
     with maybe_cli_logging():
         try:
@@ -72,7 +120,7 @@ async def resolve_for_cli(
             ) from exc
     if isinstance(resolution, UnresolvedSelection):
         raise CLIError(unresolved_message(published.source.normalized, selection, resolution))
-    return resolution
+    return CliResolution(resolution, pull)
 
 
 async def require_selected_path(
@@ -89,13 +137,17 @@ async def require_selected_path(
 
 
 async def resolve_and_check_for_cli(
-    published: PublishedSource, selection: RepositorySelection
-) -> ResolvedSelection:
+    published: PublishedSource,
+    selection: RepositorySelection,
+    *,
+    fetch: PullRequestFetch = "if_missing",
+) -> CliResolution:
     """Resolve *selection*, then prove its path is in the pinned tree and let go of it."""
 
-    resolved = await resolve_for_cli(published, selection)
+    resolution = await resolve_for_cli(published, selection, fetch=fetch)
+    resolved = resolution.resolved
     if not resolved.path:
-        return resolved
+        return resolution
     try:
         subject = await open_revision(
             home=published.home,
@@ -113,7 +165,7 @@ async def resolve_and_check_for_cli(
         await require_selected_path(subject, published.source.normalized, resolved)
     finally:
         await subject.aclose()
-    return resolved
+    return resolution
 
 
 def _pin_label(resolved: ResolvedSelection) -> str:
@@ -121,14 +173,17 @@ def _pin_label(resolved: ResolvedSelection) -> str:
         return f"default branch {resolved.name}"
     if resolved.via == "commit":
         return "commit"
+    if resolved.via == "pull_request":
+        return f"pull request {resolved.name} head"
     return f"{resolved.via} {resolved.name}"
 
 
-def selection_lines(selection: RepositorySelection, resolved: ResolvedSelection) -> list[str]:
+def selection_lines(selection: RepositorySelection, resolution: CliResolution) -> list[str]:
     """``key: value`` lines naming what the URL selected; none for a bare repository URL."""
 
     if selection.kind == "repository":
         return []
+    resolved = resolution.resolved
     lines = [f"selection: {selection.kind}", f"pin: {resolved.commit} ({_pin_label(resolved)})"]
     if resolved.path:
         lines.append(f"path: {GitPath(resolved.path).display()}")
@@ -136,15 +191,13 @@ def selection_lines(selection: RepositorySelection, resolved: ResolvedSelection)
         lines.append(f"lines: {selection.lines.fragment()}")
     if selection.plain:
         lines.append("plain: true")
-    if selection.pull_request is not None:
-        note = _PULL_REQUEST_NOTE
-        if selection.kind == "pull_request":
-            note += "; the pin is the default branch"
-        lines.append(f"pull_request: {selection.pull_request} ({note})")
+    if resolution.pull is not None:
+        lines.append(f"pull_request: {resolution.pull.number} ({resolution.pull.summary})")
     return lines
 
 
 __all__ = [
+    "CliResolution",
     "require_selected_path",
     "resolve_and_check_for_cli",
     "resolve_for_cli",

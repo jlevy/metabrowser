@@ -160,9 +160,12 @@ def run_no_serve(root: Path | GitSource, *, log_level: str = "") -> None:
     typer.echo(f"revision: {published.default_revision}")
     if root.selection is not None:
         # After the identity lines: the store is published even when the URL's ref is
-        # not in it, and the error that follows says so.
-        resolved = run_cancelling_on_hangup(resolve_and_check_for_cli(published, root.selection))
-        for line in selection_lines(root.selection, resolved):
+        # not in it, and the error that follows says so. A URL inside a pull request
+        # refreshes its record: this is the command that writes the cache.
+        resolution = run_cancelling_on_hangup(
+            resolve_and_check_for_cli(published, root.selection, fetch="always")
+        )
+        for line in selection_lines(root.selection, resolution):
             typer.echo(line)
 
 

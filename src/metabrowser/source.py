@@ -16,7 +16,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
-from typing import IO, Protocol, runtime_checkable
+from typing import IO, TYPE_CHECKING, Protocol, runtime_checkable
 
 from strif import file_mtime_hash
 
@@ -25,6 +25,9 @@ from metabrowser.content_errors import ContentReadError, ContentUnavailableError
 from metabrowser.gz_io import ArtifactCompressionError, ArtifactPath
 from metabrowser.inventory_engine.contract import canonical_inventory_path, native_inventory_path
 from metabrowser.paths_safe import _is_within, _relativize, register_root_callback
+
+if TYPE_CHECKING:
+    from metabrowser.cache.acquire import PublishedSource
 
 
 class RepositorySubjectKind(StrEnum):
@@ -458,11 +461,16 @@ class SourceLease:
 
 @dataclass(slots=True)
 class SourceSession:
-    """The one active subject for this server/browser process."""
+    """The one active subject for this server/browser process.
+
+    ``published`` is the cached source a pinned revision was opened from, carrying the
+    URL's selection (a pull request, for one), or ``None`` for a filesystem root.
+    """
 
     subject: RepositorySubject
     generation: int
     lease: SourceLease
+    published: PublishedSource | None = None
 
     @property
     def content(self) -> ContentSource:
@@ -488,8 +496,13 @@ _session: SourceSession | None = None
 _generation = 0
 
 
-def attach_subject(subject: RepositorySubject) -> SourceSession:
-    """Install `subject` as the sole active session, releasing any previous lease."""
+def attach_subject(
+    subject: RepositorySubject, *, published: PublishedSource | None = None
+) -> SourceSession:
+    """Install `subject` as the sole active session, releasing any previous lease.
+
+    *published* names the cached source a pinned subject came from.
+    """
 
     global _session, _generation
     if _session is not None:
@@ -499,6 +512,7 @@ def attach_subject(subject: RepositorySubject) -> SourceSession:
         subject=subject,
         generation=_generation,
         lease=SourceLease(generation=_generation),
+        published=published,
     )
     return _session
 

@@ -1,0 +1,883 @@
+# metab https://github.com/octo/demo/pull/7 --api /api/plugin/github/pull
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "number": 7,
+  "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "fresh_for_s": 60.0,
+  "comparison_route": "/api/plugin/diff/comparison?left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base",
+  "record": {
+    "schema_version": 1,
+    "source": "https://github.com/octo/demo",
+    "number": 7,
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "reader": "gh:octo-reader",
+    "etags": {
+      "repos/octo/demo/pulls/7": "W/\"865983808811b03c59b073a9a553cdda8094f3bc07611317ea924210341c8089\"",
+      "repos/octo/demo/issues/7/comments?per_page=100&page=1": "W/\"129ba5d41c7ad9dc46b0ecc3d92124b83747ed95e5ff5422603eb05b99399608\"",
+      "repos/octo/demo/pulls/7/reviews?per_page=100&page=1": "W/\"553dbffc68c21141af1083cb13e8be39e4138e90d4011da721d679e7853c5e9d\"",
+      "repos/octo/demo/pulls/7/comments?per_page=100&page=1": "W/\"b4ca741eae91bcff3445421bd4f16ee7b2ae05d25fa979346f04a378ee3bd6cc\"",
+      "repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1": "W/\"8b11f63f1595a605256b810ecbc6ad42f31ec79413e5748815f151c4ed6821e8\"",
+      "repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1": "W/\"7362c7bd7021c47983e06eb57cbc2d2b436158c6a1ec5f3fdeda0be1cc45832f\""
+    },
+    "pull": {
+      "number": 7,
+      "title": "Count to two in the app",
+      "body": "The app counts to one.\r\n\r\nThis teaches it **two**.",
+      "body_truncated": false,
+      "state": "open",
+      "draft": false,
+      "merged": false,
+      "merge_commit_sha": null,
+      "mergeable": "mergeable",
+      "labels": [
+        "enhancement"
+      ],
+      "author": "forker",
+      "created_at": "2026-09-16T10:57:23Z",
+      "updated_at": "2026-09-16T17:39:01Z",
+      "merged_at": null,
+      "closed_at": null,
+      "base": {
+        "ref": "topic",
+        "sha": "07b55f07793d9ed4e9f3e130c4414d979137bc53",
+        "repository": "octo/demo"
+      },
+      "head": {
+        "ref": "count-to-two",
+        "sha": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+        "repository": "forker/demo"
+      },
+      "html_url": "https://github.com/octo/demo/pull/7"
+    },
+    "issue_comments": [
+      {
+        "id": 3341937855,
+        "author": "maintainer",
+        "body": "Thanks. CI is green; one question inline.",
+        "body_truncated": false,
+        "created_at": "2026-09-16T17:34:17Z",
+        "updated_at": "2026-09-16T17:35:33Z"
+      }
+    ],
+    "reviews": [
+      {
+        "id": 3274109685,
+        "state": "COMMENTED",
+        "author": "maintainer",
+        "body": "",
+        "body_truncated": false,
+        "submitted_at": "2026-09-16T12:32:50Z",
+        "commit_id": "f7c5a9918657080d6aeb455902615b6e17df760a"
+      },
+      {
+        "id": 3279967139,
+        "state": "APPROVED",
+        "author": "maintainer",
+        "body": "Looks right.",
+        "body_truncated": false,
+        "submitted_at": "2026-09-16T17:36:02Z",
+        "commit_id": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a"
+      }
+    ],
+    "review_comments": [
+      {
+        "id": 2383608906,
+        "review_id": 3274109685,
+        "in_reply_to": null,
+        "path": "src/app.txt",
+        "line": null,
+        "original_line": 1,
+        "start_line": null,
+        "original_start_line": null,
+        "side": "RIGHT",
+        "commit_id": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+        "original_commit_id": "f7c5a9918657080d6aeb455902615b6e17df760a",
+        "diff_hunk": "@@ -1 +1 @@\n-one\n+one",
+        "diff_hunk_truncated": false,
+        "author": "maintainer",
+        "body": "Why does this line change?",
+        "body_truncated": false,
+        "created_at": "2026-09-16T12:32:50Z",
+        "updated_at": "2026-09-16T12:32:50Z"
+      },
+      {
+        "id": 2388073350,
+        "review_id": 3279967139,
+        "in_reply_to": 2383608906,
+        "path": "src/app.txt",
+        "line": 2,
+        "original_line": 2,
+        "start_line": null,
+        "original_start_line": null,
+        "side": "RIGHT",
+        "commit_id": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+        "original_commit_id": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+        "diff_hunk": "@@ -1 +1,2 @@\n one\n+two",
+        "diff_hunk_truncated": false,
+        "author": "forker",
+        "body": "It no longer does; the second line is new.",
+        "body_truncated": false,
+        "created_at": "2026-09-16T17:30:11Z",
+        "updated_at": "2026-09-16T17:30:11Z"
+      }
+    ],
+    "check_runs": [
+      {
+        "id": 51401654787,
+        "name": "tests (3.13)",
+        "status": "completed",
+        "conclusion": "success",
+        "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+        "app": "GitHub Actions"
+      },
+      {
+        "id": 51401654788,
+        "name": "docs",
+        "status": "in_progress",
+        "conclusion": null,
+        "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+        "app": "GitHub Actions"
+      }
+    ],
+    "status": {
+      "state": "success",
+      "statuses": [
+        {
+          "context": "docs/readthedocs.org:demo",
+          "state": "success",
+          "description": "Read the Docs build succeeded!",
+          "target_url": "https://demo--7.org.readthedocs.build/en/7/"
+        }
+      ]
+    },
+    "comparison": {
+      "base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
+      "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+      "base_commit": "c691256511d05858850bc7684ae062fea0d41132",
+      "base_from": "base_branch"
+    },
+    "truncated": {
+      "issue_comments": false,
+      "reviews": false,
+      "review_comments": false,
+      "check_runs": false,
+      "statuses": false,
+      "text": false
+    }
+  }
+}
+--- stderr ---
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- gh ---
+gh api repos/octo/demo --jq .size
+gh auth status
+gh api repos/octo/demo/pulls/7
+gh api repos/octo/demo/issues/7/comments?per_page=100&page=1
+gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1
+gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1
+gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1
+gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1
+gh auth status
+# metab https://github.com/octo/demo/pull/7 --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: c691256511d05858850bc7684ae062fea0d41132
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- stderr ---
+--- gh ---
+gh auth status
+gh api repos/octo/demo/pulls/7 (If-None-Match)
+gh api repos/octo/demo/issues/7/comments?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1 (If-None-Match)
+gh auth status
+# metab https://github.com/octo/demo/pull/7/commits/f7c5a99 --show src/app.txt
+exit: 0
+--- stdout ---
+show: src/app.txt
+route: /view/g1-c3Jj/g1-YXBwLnR4dA
+kind: text
+views: source (default)
+model: text envelope; size=10 content_bytes=10 content_truncated=False
+--- stderr ---
+selection: commit
+pin: f7c5a9918657080d6aeb455902615b6e17df760a (commit)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- gh ---
+# metab https://github.com/octo/demo/pull/7 --api /api/plugin/github/pull
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "number": 7,
+  "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "fresh_for_s": 60.0,
+  "comparison_route": "/api/plugin/diff/comparison?left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base",
+  "record": {
+    "schema_version": 1,
+    "source": "https://github.com/octo/demo",
+    "number": 7,
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "reader": "gh:octo-reader",
+    "etags": {
+      "repos/octo/demo/pulls/7": "W/\"865983808811b03c59b073a9a553cdda8094f3bc07611317ea924210341c8089\"",
+      "repos/octo/demo/issues/7/comments?per_page=100&page=1": "W/\"129ba5d41c7ad9dc46b0ecc3d92124b83747ed95e5ff5422603eb05b99399608\"",
+      "repos/octo/demo/pulls/7/reviews?per_page=100&page=1": "W/\"553dbffc68c21141af1083cb13e8be39e4138e90d4011da721d679e7853c5e9d\"",
+      "repos/octo/demo/pulls/7/comments?per_page=100&page=1": "W/\"b4ca741eae91bcff3445421bd4f16ee7b2ae05d25fa979346f04a378ee3bd6cc\"",
+      "repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1": "W/\"8b11f63f1595a605256b810ecbc6ad42f31ec79413e5748815f151c4ed6821e8\"",
+      "repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1": "W/\"7362c7bd7021c47983e06eb57cbc2d2b436158c6a1ec5f3fdeda0be1cc45832f\""
+    },
+    "pull": {
+      "number": 7,
+      "title": "Count to two in the app",
+      "body": "The app counts to one.\r\n\r\nThis teaches it **two**.",
+      "body_truncated": false,
+      "state": "open",
+      "draft": false,
+      "merged": false,
+      "merge_commit_sha": null,
+      "mergeable": "mergeable",
+      "labels": [
+        "enhancement"
+      ],
+      "author": "forker",
+      "created_at": "2026-09-16T10:57:23Z",
+      "updated_at": "2026-09-16T17:39:01Z",
+      "merged_at": null,
+      "closed_at": null,
+      "base": {
+        "ref": "topic",
+        "sha": "07b55f07793d9ed4e9f3e130c4414d979137bc53",
+        "repository": "octo/demo"
+      },
+      "head": {
+        "ref": "count-to-two",
+        "sha": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+        "repository": "forker/demo"
+      },
+      "html_url": "https://github.com/octo/demo/pull/7"
+    },
+    "issue_comments": [
+      {
+        "id": 3341937855,
+        "author": "maintainer",
+        "body": "Thanks. CI is green; one question inline.",
+        "body_truncated": false,
+        "created_at": "2026-09-16T17:34:17Z",
+        "updated_at": "2026-09-16T17:35:33Z"
+      }
+    ],
+    "reviews": [
+      {
+        "id": 3274109685,
+        "state": "COMMENTED",
+        "author": "maintainer",
+        "body": "",
+        "body_truncated": false,
+        "submitted_at": "2026-09-16T12:32:50Z",
+        "commit_id": "f7c5a9918657080d6aeb455902615b6e17df760a"
+      },
+      {
+        "id": 3279967139,
+        "state": "APPROVED",
+        "author": "maintainer",
+        "body": "Looks right.",
+        "body_truncated": false,
+        "submitted_at": "2026-09-16T17:36:02Z",
+        "commit_id": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a"
+      }
+    ],
+    "review_comments": [
+      {
+        "id": 2383608906,
+        "review_id": 3274109685,
+        "in_reply_to": null,
+        "path": "src/app.txt",
+        "line": null,
+        "original_line": 1,
+        "start_line": null,
+        "original_start_line": null,
+        "side": "RIGHT",
+        "commit_id": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+        "original_commit_id": "f7c5a9918657080d6aeb455902615b6e17df760a",
+        "diff_hunk": "@@ -1 +1 @@\n-one\n+one",
+        "diff_hunk_truncated": false,
+        "author": "maintainer",
+        "body": "Why does this line change?",
+        "body_truncated": false,
+        "created_at": "2026-09-16T12:32:50Z",
+        "updated_at": "2026-09-16T12:32:50Z"
+      },
+      {
+        "id": 2388073350,
+        "review_id": 3279967139,
+        "in_reply_to": 2383608906,
+        "path": "src/app.txt",
+        "line": 2,
+        "original_line": 2,
+        "start_line": null,
+        "original_start_line": null,
+        "side": "RIGHT",
+        "commit_id": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+        "original_commit_id": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+        "diff_hunk": "@@ -1 +1,2 @@\n one\n+two",
+        "diff_hunk_truncated": false,
+        "author": "forker",
+        "body": "It no longer does; the second line is new.",
+        "body_truncated": false,
+        "created_at": "2026-09-16T17:30:11Z",
+        "updated_at": "2026-09-16T17:30:11Z"
+      }
+    ],
+    "check_runs": [
+      {
+        "id": 51401654787,
+        "name": "tests (3.13)",
+        "status": "completed",
+        "conclusion": "success",
+        "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+        "app": "GitHub Actions"
+      },
+      {
+        "id": 51401654788,
+        "name": "docs",
+        "status": "in_progress",
+        "conclusion": null,
+        "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+        "app": "GitHub Actions"
+      }
+    ],
+    "status": {
+      "state": "success",
+      "statuses": [
+        {
+          "context": "docs/readthedocs.org:demo",
+          "state": "success",
+          "description": "Read the Docs build succeeded!",
+          "target_url": "https://demo--7.org.readthedocs.build/en/7/"
+        }
+      ]
+    },
+    "comparison": {
+      "base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
+      "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+      "base_commit": "c691256511d05858850bc7684ae062fea0d41132",
+      "base_from": "base_branch"
+    },
+    "truncated": {
+      "issue_comments": false,
+      "reviews": false,
+      "review_comments": false,
+      "check_runs": false,
+      "statuses": false,
+      "text": false
+    }
+  }
+}
+--- stderr ---
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- gh ---
+# metab https://github.com/octo/demo/pull/7 --no-serve
+exit: 1
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: c691256511d05858850bc7684ae062fea0d41132
+--- stderr ---
+Error: pull request 7 of https://github.com/octo/demo: gh could not reach api.github.com; the record fetched 2026-09-17T12:00:00Z is kept (network_error)
+--- gh ---
+gh auth status
+gh api repos/octo/demo/pulls/7 (If-None-Match)
+# metab https://github.com/octo/demo/pull/8 --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: c691256511d05858850bc7684ae062fea0d41132
+selection: pull_request
+pin: 8ae27617c9c475851b67ee69433d008836d112ba (pull request 8 head)
+pull_request: 8 (merged; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- stderr ---
+--- gh ---
+gh auth status
+gh api repos/octo/demo/pulls/8
+gh api repos/octo/demo/issues/8/comments?per_page=100&page=1
+gh api repos/octo/demo/pulls/8/reviews?per_page=100&page=1
+gh api repos/octo/demo/pulls/8/comments?per_page=100&page=1
+gh api repos/octo/demo/commits/8ae27617c9c475851b67ee69433d008836d112ba/check-runs?per_page=100&page=1
+gh api repos/octo/demo/commits/8ae27617c9c475851b67ee69433d008836d112ba/status?per_page=100&page=1
+gh auth status
+# metab https://github.com/octo/demo/pull/9 --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: c691256511d05858850bc7684ae062fea0d41132
+selection: pull_request
+pin: 0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd (pull request 9 head)
+pull_request: 9 (closed; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- stderr ---
+--- gh ---
+gh auth status
+gh api repos/octo/demo/pulls/9
+gh api repos/octo/demo/issues/9/comments?per_page=100&page=1
+gh api repos/octo/demo/pulls/9/reviews?per_page=100&page=1
+gh api repos/octo/demo/pulls/9/comments?per_page=100&page=1
+gh api repos/octo/demo/commits/0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd/check-runs?per_page=100&page=1
+gh api repos/octo/demo/commits/0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd/status?per_page=100&page=1
+gh auth status
+# metab https://github.com/octo/demo/pull/10 --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: c691256511d05858850bc7684ae062fea0d41132
+selection: pull_request
+pin: 7a7d6596e515735d244dc1d942463c95851e139c (pull request 10 head)
+pull_request: 10 (draft; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- stderr ---
+--- gh ---
+gh auth status
+gh api repos/octo/demo/pulls/10
+gh api repos/octo/demo/issues/10/comments?per_page=100&page=1
+gh api repos/octo/demo/pulls/10/reviews?per_page=100&page=1
+gh api repos/octo/demo/pulls/10/comments?per_page=100&page=1
+gh api repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/check-runs?per_page=100&page=1
+gh api repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/status?per_page=100&page=1
+gh auth status
+# metab https://github.com/octo/demo/pull/8 --api /api/plugin/github/pull
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "number": 8,
+  "pin": "8ae27617c9c475851b67ee69433d008836d112ba",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "fresh_for_s": 60.0,
+  "comparison_route": "/api/plugin/diff/comparison?left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=8ae27617c9c475851b67ee69433d008836d112ba&base_policy=merge_base",
+  "record": {
+    "schema_version": 1,
+    "source": "https://github.com/octo/demo",
+    "number": 8,
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "reader": "gh:octo-reader",
+    "etags": {
+      "repos/octo/demo/pulls/8": "W/\"73c8dc15fc54abdf80e292434ca9493cbf5afc3abd3e11e9ca9268fe763ffdf0\"",
+      "repos/octo/demo/issues/8/comments?per_page=100&page=1": "W/\"2b4c95bd77989d40c5a1b37e2d2a079777a5c3ef305c8e09bc705054e03d760d\"",
+      "repos/octo/demo/pulls/8/reviews?per_page=100&page=1": "W/\"16fba7b3f3bc6d7027a457cf94c165e22e0b7abf9028c07fe23cc83bc0a1581e\"",
+      "repos/octo/demo/pulls/8/comments?per_page=100&page=1": "W/\"f73d9aff466a7b2f5242a55272b78820afe30d2c875a17ab2d2d861e74765899\"",
+      "repos/octo/demo/commits/8ae27617c9c475851b67ee69433d008836d112ba/check-runs?per_page=100&page=1": "W/\"d2736ece042ac596e74546df1dbe6b570777d422a0efba2237576abd78c1ac6b\"",
+      "repos/octo/demo/commits/8ae27617c9c475851b67ee69433d008836d112ba/status?per_page=100&page=1": "W/\"0e146adb4edd448e9ceb49815073dcb595e6c0fce4e3c9d125329c8de5e4f9bf\""
+    },
+    "pull": {
+      "number": 8,
+      "title": "Say more in the guide",
+      "body": "",
+      "body_truncated": false,
+      "state": "closed",
+      "draft": false,
+      "merged": true,
+      "merge_commit_sha": "c691256511d05858850bc7684ae062fea0d41132",
+      "mergeable": "unknown",
+      "labels": [],
+      "author": "maintainer",
+      "created_at": "2026-09-16T10:57:23Z",
+      "updated_at": "2026-09-16T17:39:01Z",
+      "merged_at": "2026-09-16T18:00:00Z",
+      "closed_at": "2026-09-16T18:00:00Z",
+      "base": {
+        "ref": "topic",
+        "sha": "07b55f07793d9ed4e9f3e130c4414d979137bc53",
+        "repository": "octo/demo"
+      },
+      "head": {
+        "ref": "guide-more",
+        "sha": "8ae27617c9c475851b67ee69433d008836d112ba",
+        "repository": "octo/demo"
+      },
+      "html_url": "https://github.com/octo/demo/pull/8"
+    },
+    "issue_comments": [],
+    "reviews": [],
+    "review_comments": [],
+    "check_runs": [
+      {
+        "id": 51401654787,
+        "name": "tests (3.13)",
+        "status": "completed",
+        "conclusion": "success",
+        "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+        "app": "GitHub Actions"
+      },
+      {
+        "id": 51401654788,
+        "name": "docs",
+        "status": "in_progress",
+        "conclusion": null,
+        "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+        "app": "GitHub Actions"
+      }
+    ],
+    "status": {
+      "state": "success",
+      "statuses": [
+        {
+          "context": "docs/readthedocs.org:demo",
+          "state": "success",
+          "description": "Read the Docs build succeeded!",
+          "target_url": "https://demo--7.org.readthedocs.build/en/7/"
+        }
+      ]
+    },
+    "comparison": {
+      "base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
+      "head": "8ae27617c9c475851b67ee69433d008836d112ba",
+      "base_commit": "07b55f07793d9ed4e9f3e130c4414d979137bc53",
+      "base_from": "base_sha"
+    },
+    "truncated": {
+      "issue_comments": false,
+      "reviews": false,
+      "review_comments": false,
+      "check_runs": false,
+      "statuses": false,
+      "text": false
+    }
+  }
+}
+--- stderr ---
+selection: pull_request
+pin: 8ae27617c9c475851b67ee69433d008836d112ba (pull request 8 head)
+pull_request: 8 (merged; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- gh ---
+# metab https://github.com/octo/demo/pull/11 --no-serve
+exit: 1
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: c691256511d05858850bc7684ae062fea0d41132
+--- stderr ---
+Error: pull request 11 of https://github.com/octo/demo: GitHub has no such pull request, or it is private and the gh account cannot read it (not_found_or_private)
+--- gh ---
+gh auth status
+gh api repos/octo/demo/pulls/11
+# metab https://github.com/octo/demo/pull/11 --no-serve
+exit: 1
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: c691256511d05858850bc7684ae062fea0d41132
+--- stderr ---
+Error: pull request 11 of https://github.com/octo/demo: gh is not signed in to github.com; run gh auth login (not_logged_in)
+--- gh ---
+gh auth status
+# metab https://github.com/octo/demo/pull/11 --no-serve
+exit: 1
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: c691256511d05858850bc7684ae062fea0d41132
+--- stderr ---
+Error: pull request 11 of https://github.com/octo/demo: this gh is too old to report its account; install gh 2.81.0 or newer (gh_too_old)
+--- gh ---
+gh auth status
+# metab https://github.com/octo/demo/pull/11 --no-serve
+exit: 1
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: c691256511d05858850bc7684ae062fea0d41132
+--- stderr ---
+Error: pull request 11 of https://github.com/octo/demo: GitHub's API rate limit is exhausted until 2026-09-23T16:46:00Z (rate_limited)
+--- gh ---
+gh auth status
+gh api repos/octo/demo/pulls/11
+# metab https://github.com/octo/demo/pull/11 --no-serve
+exit: 1
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: c691256511d05858850bc7684ae062fea0d41132
+--- stderr ---
+Error: pull request 11 of https://github.com/octo/demo: GitHub's API rate limit is exhausted until 2026-09-17T12:02:00Z (rate_limited)
+--- gh ---
+gh auth status
+gh api repos/octo/demo/pulls/11
+# metab https://github.com/octo/demo/pull/11 --no-serve
+exit: 1
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: c691256511d05858850bc7684ae062fea0d41132
+--- stderr ---
+Error: pull request 11 of https://github.com/octo/demo: gh could not reach api.github.com (network_error)
+--- gh ---
+gh auth status
+gh api repos/octo/demo/pulls/11
+# metab https://github.com/octo/demo/pull/7 --no-serve
+exit: 1
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: c691256511d05858850bc7684ae062fea0d41132
+--- stderr ---
+Error: pull request 7 of https://github.com/octo/demo: the active gh account changed during the read, so what was read is discarded; open it again; the record fetched 2026-09-17T12:00:00Z is kept (account_changed)
+--- gh ---
+gh auth status
+gh api repos/octo/demo/pulls/7 (If-None-Match)
+gh api repos/octo/demo/issues/7/comments?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1 (If-None-Match)
+gh auth status
+# metab https://github.com/octo/demo/pull/7 --no-serve
+exit: 1
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: c691256511d05858850bc7684ae062fea0d41132
+--- stderr ---
+Error: pull request 7 of https://github.com/octo/demo: its head kept moving while it was read; open it again; the record fetched 2026-09-17T12:00:00Z is kept (head_mismatch)
+--- gh ---
+gh auth status
+gh api repos/octo/demo/pulls/7 (If-None-Match)
+gh api repos/octo/demo/issues/7/comments?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/commits/8ae27617c9c475851b67ee69433d008836d112ba/check-runs?per_page=100&page=1
+gh api repos/octo/demo/commits/8ae27617c9c475851b67ee69433d008836d112ba/status?per_page=100&page=1
+gh auth status
+gh auth status
+gh api repos/octo/demo/pulls/7 (If-None-Match)
+gh api repos/octo/demo/issues/7/comments?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/commits/8ae27617c9c475851b67ee69433d008836d112ba/check-runs?per_page=100&page=1
+gh api repos/octo/demo/commits/8ae27617c9c475851b67ee69433d008836d112ba/status?per_page=100&page=1
+gh auth status
+# metab https://github.com/octo/demo/pull/11 --api /api/plugin/github/pull
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: pull request 11 of https://github.com/octo/demo: GitHub CLI (gh) is not on PATH (gh_missing)
+--- gh ---
+# metab https://github.com/octo/demo/pull/7 --api /api/plugin/github/pull
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "number": 7,
+  "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "fresh_for_s": 60.0,
+  "comparison_route": "/api/plugin/diff/comparison?left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base",
+  "record": {
+    "schema_version": 1,
+    "source": "https://github.com/octo/demo",
+    "number": 7,
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "reader": "gh:octo-reader",
+    "etags": {
+      "repos/octo/demo/pulls/7": "W/\"865983808811b03c59b073a9a553cdda8094f3bc07611317ea924210341c8089\"",
+      "repos/octo/demo/issues/7/comments?per_page=100&page=1": "W/\"129ba5d41c7ad9dc46b0ecc3d92124b83747ed95e5ff5422603eb05b99399608\"",
+      "repos/octo/demo/pulls/7/reviews?per_page=100&page=1": "W/\"553dbffc68c21141af1083cb13e8be39e4138e90d4011da721d679e7853c5e9d\"",
+      "repos/octo/demo/pulls/7/comments?per_page=100&page=1": "W/\"b4ca741eae91bcff3445421bd4f16ee7b2ae05d25fa979346f04a378ee3bd6cc\"",
+      "repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1": "W/\"8b11f63f1595a605256b810ecbc6ad42f31ec79413e5748815f151c4ed6821e8\"",
+      "repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1": "W/\"7362c7bd7021c47983e06eb57cbc2d2b436158c6a1ec5f3fdeda0be1cc45832f\""
+    },
+    "pull": {
+      "number": 7,
+      "title": "Count to two in the app",
+      "body": "The app counts to one.\r\n\r\nThis teaches it **two**.",
+      "body_truncated": false,
+      "state": "open",
+      "draft": false,
+      "merged": false,
+      "merge_commit_sha": null,
+      "mergeable": "mergeable",
+      "labels": [
+        "enhancement"
+      ],
+      "author": "forker",
+      "created_at": "2026-09-16T10:57:23Z",
+      "updated_at": "2026-09-16T17:39:01Z",
+      "merged_at": null,
+      "closed_at": null,
+      "base": {
+        "ref": "topic",
+        "sha": "07b55f07793d9ed4e9f3e130c4414d979137bc53",
+        "repository": "octo/demo"
+      },
+      "head": {
+        "ref": "count-to-two",
+        "sha": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+        "repository": "forker/demo"
+      },
+      "html_url": "https://github.com/octo/demo/pull/7"
+    },
+    "issue_comments": [
+      {
+        "id": 3341937855,
+        "author": "maintainer",
+        "body": "Thanks. CI is green; one question inline.",
+        "body_truncated": false,
+        "created_at": "2026-09-16T17:34:17Z",
+        "updated_at": "2026-09-16T17:35:33Z"
+      }
+    ],
+    "reviews": [
+      {
+        "id": 3274109685,
+        "state": "COMMENTED",
+        "author": "maintainer",
+        "body": "",
+        "body_truncated": false,
+        "submitted_at": "2026-09-16T12:32:50Z",
+        "commit_id": "f7c5a9918657080d6aeb455902615b6e17df760a"
+      },
+      {
+        "id": 3279967139,
+        "state": "APPROVED",
+        "author": "maintainer",
+        "body": "Looks right.",
+        "body_truncated": false,
+        "submitted_at": "2026-09-16T17:36:02Z",
+        "commit_id": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a"
+      }
+    ],
+    "review_comments": [
+      {
+        "id": 2383608906,
+        "review_id": 3274109685,
+        "in_reply_to": null,
+        "path": "src/app.txt",
+        "line": null,
+        "original_line": 1,
+        "start_line": null,
+        "original_start_line": null,
+        "side": "RIGHT",
+        "commit_id": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+        "original_commit_id": "f7c5a9918657080d6aeb455902615b6e17df760a",
+        "diff_hunk": "@@ -1 +1 @@\n-one\n+one",
+        "diff_hunk_truncated": false,
+        "author": "maintainer",
+        "body": "Why does this line change?",
+        "body_truncated": false,
+        "created_at": "2026-09-16T12:32:50Z",
+        "updated_at": "2026-09-16T12:32:50Z"
+      },
+      {
+        "id": 2388073350,
+        "review_id": 3279967139,
+        "in_reply_to": 2383608906,
+        "path": "src/app.txt",
+        "line": 2,
+        "original_line": 2,
+        "start_line": null,
+        "original_start_line": null,
+        "side": "RIGHT",
+        "commit_id": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+        "original_commit_id": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+        "diff_hunk": "@@ -1 +1,2 @@\n one\n+two",
+        "diff_hunk_truncated": false,
+        "author": "forker",
+        "body": "It no longer does; the second line is new.",
+        "body_truncated": false,
+        "created_at": "2026-09-16T17:30:11Z",
+        "updated_at": "2026-09-16T17:30:11Z"
+      }
+    ],
+    "check_runs": [
+      {
+        "id": 51401654787,
+        "name": "tests (3.13)",
+        "status": "completed",
+        "conclusion": "success",
+        "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+        "app": "GitHub Actions"
+      },
+      {
+        "id": 51401654788,
+        "name": "docs",
+        "status": "in_progress",
+        "conclusion": null,
+        "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+        "app": "GitHub Actions"
+      }
+    ],
+    "status": {
+      "state": "success",
+      "statuses": [
+        {
+          "context": "docs/readthedocs.org:demo",
+          "state": "success",
+          "description": "Read the Docs build succeeded!",
+          "target_url": "https://demo--7.org.readthedocs.build/en/7/"
+        }
+      ]
+    },
+    "comparison": {
+      "base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
+      "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+      "base_commit": "c691256511d05858850bc7684ae062fea0d41132",
+      "base_from": "base_branch"
+    },
+    "truncated": {
+      "issue_comments": false,
+      "reviews": false,
+      "review_comments": false,
+      "check_runs": false,
+      "statuses": false,
+      "text": false
+    }
+  }
+}
+--- stderr ---
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- gh ---
