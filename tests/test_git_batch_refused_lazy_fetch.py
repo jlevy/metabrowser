@@ -28,6 +28,7 @@ pytestmark = pytest.mark.skipif(os.name != "posix", reason="the stand-in git is 
 PRESENT = "1" * 40
 OTHER = "2" * 40
 MISSING = "3" * 40
+MISSING_TOO = "4" * 40
 
 # Answers ``info``/``contents`` for PRESENT and OTHER, and dies on MISSING the way
 # Git 2.43.7 does. It counts spawns so a test can see the actor restart.
@@ -39,7 +40,7 @@ while IFS= read -r line; do
   case "$cmd" in
     flush) ;;
     info|contents)
-      if [ "$oid" = "{MISSING}" ]; then
+      if [ "$oid" = "{MISSING}" ] || [ "$oid" = "{MISSING_TOO}" ]; then
         echo "fatal: could not fetch $oid from promisor remote" >&2
         exit 128
       fi
@@ -72,21 +73,31 @@ def _reader(tmp_path: Path) -> _BatchObjectReader:
     return _BatchObjectReader(repository_store_target(git_dir=tmp_path / "store.git"))
 
 
-def test_info_many_reports_the_refused_object_missing_and_answers_the_rest(
+def test_info_many_reports_the_refused_object_missing_and_the_rest_unknown(
     tmp_path: Path, stand_in: Path
 ) -> None:
-    async def run() -> dict[str, object]:
+    """One death per chunk at most: the unanswered objects are left out, not re-asked.
+
+    Re-asking cost a new actor per missing object, which timed a converging store's
+    listing out on Git 2.43. After the chunk, a fresh actor still answers.
+    """
+
+    async def run() -> tuple[dict[str, object], bytes]:
         reader = _reader(tmp_path)
         try:
-            return dict(await reader.info_many((PRESENT, MISSING, OTHER)))
+            found: dict[str, object] = dict(
+                await reader.info_many((PRESENT, MISSING, OTHER, MISSING_TOO))
+            )
+            return found, await reader.read_blob(OTHER, max_blob_bytes=1024)
         finally:
             await reader.aclose()
 
-    found = asyncio.run(run())
-    assert found[MISSING] is None
+    found, body = asyncio.run(run())
     assert found[PRESENT] is not None
-    assert found[OTHER] is not None
-    assert len(stand_in.read_text().splitlines()) >= 2, "the dead actor was not replaced"
+    assert found[MISSING] is None
+    assert OTHER not in found and MISSING_TOO not in found
+    assert body == b"hello"
+    assert len(stand_in.read_text().splitlines()) == 2
 
 
 def test_a_single_read_of_the_refused_object_is_unavailable_and_the_actor_recovers(

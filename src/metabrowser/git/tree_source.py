@@ -278,9 +278,11 @@ class GitPath:
 # links met partway through a target. Listings still show the link.
 _MAX_GIT_SYMLINK_FOLLOW = 8
 # Linux ``PATH_MAX``. ``symlink(2)`` refuses a longer target with ``ENAMETOOLONG``, so
-# a checkout could not hold such a link either. It also bounds resolution: each
-# component walks the tree from the root, and a crafted 1 MB body at depth 60 kept
-# the loop busy for 84 s in review; at this size it is milliseconds.
+# a checkout could not hold such a link either. It also bounds resolution work, which
+# is one lookup per component in the directory already in hand. Measured on macOS
+# under load: a 4091-byte ``a/..`` body at depth 200 took 0.14 s, and eight such links
+# chained took 0.88 s, with no loop stall over 15 ms. Walking from the root per
+# component had taken 12 s and 97 s for the same two cases.
 _MAX_GIT_SYMLINK_BODY_BYTES = 4096
 
 
@@ -506,7 +508,11 @@ class _BatchObjectReader:
         return result
 
     async def info_many(self, oids: tuple[str, ...]) -> dict[str, _ObjectInfo | None]:
-        """``info`` for many objects, one flush per chunk. A missing object is ``None``."""
+        """``info`` for many objects, one flush per chunk. A missing object is ``None``.
+
+        When an older Git dies refusing a lazy fetch (see :meth:`_header`), the rest
+        of that chunk is absent from the result: unknown, not missing.
+        """
 
         unique: list[str] = []
         seen: set[str] = set()
@@ -527,32 +533,25 @@ class _BatchObjectReader:
         return await self._within_deadline(self._info_many_inner(oids))
 
     async def _info_many_inner(self, oids: tuple[str, ...]) -> dict[str, _ObjectInfo | None]:
+        reader, writer = await self._pipes()
+        for oid in oids:
+            writer.write(f"info {oid}\n".encode("ascii"))
+        writer.write(b"flush\n")
+        await writer.drain()
         found: dict[str, _ObjectInfo | None] = {}
-        pending = list(oids)
-        # Each pass answers at least one object, so this ends. A pass ends early only
-        # when an older Git dies refusing a lazy fetch; that object is missing, and the
-        # rest are asked again of a new actor.
-        while pending:
-            reader, writer = await self._pipes()
-            for oid in pending:
-                writer.write(f"info {oid}\n".encode("ascii"))
-            writer.write(b"flush\n")
-            await writer.drain()
-            answered = 0
-            try:
-                for oid in pending:
-                    header = await self._header(reader, pending[answered:])
-                    parts = header.split(b" ")
-                    if len(parts) == 2 and parts[1] == b"missing":
-                        found[oid] = None
-                    else:
-                        found[oid] = _parse_info_header(oid, header)
-                    answered += 1
-            except _LazyFetchRefusedError as exc:
-                found[exc.oid] = None
-                pending = [oid for oid in pending[answered:] if oid != exc.oid]
-                continue
-            pending = []
+        try:
+            for oid in oids:
+                header = await self._header(reader, oids)
+                parts = header.split(b" ")
+                if len(parts) == 2 and parts[1] == b"missing":
+                    found[oid] = None
+                    continue
+                found[oid] = _parse_info_header(oid, header)
+        except _LazyFetchRefusedError as exc:
+            # An older Git died on this object, so it is missing. Asking again would
+            # cost a new actor, and a promisor-set scan, per missing object in a
+            # converging store; the chunk's unanswered objects are left unknown.
+            found[exc.oid] = None
         return found
 
     async def read_blob(self, oid: str, *, max_blob_bytes: int) -> bytes:
@@ -730,6 +729,13 @@ class _BatchObjectReader:
                     asyncio.shield(task), timeout=_DEAD_ACTOR_STDERR_WAIT_S
                 )
             except (TimeoutError, OSError):
+                stderr = b""
+            except asyncio.CancelledError:
+                # The pool closing this actor cancels the stderr task under the shield;
+                # only a cancellation of this task itself propagates.
+                current = asyncio.current_task()
+                if current is not None and current.cancelling():
+                    raise
                 stderr = b""
         await self._poison()
         match = _LAZY_FETCH_REFUSED_RE.search(stderr)
@@ -1106,6 +1112,17 @@ class GitTreeSource:
             return None
         return (await self._load_tree(parent, parent_path=parent_path)).child(path)
 
+    async def resolve_child(self, directory: GitTreeEntry, name: bytes) -> GitTreeEntry | None:
+        """*name* inside a tree entry already in hand, without re-walking its path."""
+
+        if not directory.is_tree:
+            return None
+        cached = await self._load_tree(directory.oid, parent_path=directory.path)
+        entry = cached.by_name.get(name)
+        if entry is None:
+            return None
+        return cached.child(directory.path.child(name))
+
     async def list_tree(self, path: GitPath | None = None) -> tuple[GitTreeEntry, ...]:
         located = GitPath.root() if path is None else path
         tree_oid = await self._tree_oid_for(located)
@@ -1373,7 +1390,13 @@ async def follow_git_symlinks(source: GitTreeSource, entry: GitTreeEntry) -> Git
 async def _resolve_git_symlink(
     source: GitTreeSource, link: GitTreeEntry, budget: _SymlinkBudget
 ) -> GitTreeEntry | None:
-    """The entry one link names, itself possibly a link; see :func:`follow_git_symlinks`."""
+    """The entry one link names, itself possibly a link; see :func:`follow_git_symlinks`.
+
+    Each component is looked up in the directory entry already in hand, and ``..``
+    pops back to the one before, so a body costs one lookup per component rather than
+    a walk from the root per component. Only following a link partway through
+    rebuilds the stack, from the directory that link led to.
+    """
 
     if not budget.spend():
         return None
@@ -1385,30 +1408,55 @@ async def _resolve_git_symlink(
     if not raw or b"\x00" in raw or raw.startswith(b"/"):
         return None
     parts = [part for part in raw.split(b"/") if part not in {b"", b"."}]
-    directory = link.path.parent()
+    stack = await _directory_stack(source, link.path.parent())
+    if stack is None:
+        return None
     for index, part in enumerate(parts):
         # A cached tree answers without suspending, so yield once per component.
         await asyncio.sleep(0)
         if part == b"..":
-            if not directory.segments:
+            if len(stack) == 1:
                 return None
-            directory = directory.parent()
+            stack.pop()
             continue
         try:
-            entry = await source.resolve_path(directory.child(part))
+            entry = await source.resolve_child(stack[-1], part)
         except GitPathError:
             return None
         if entry is None:
             return None
         if index == len(parts) - 1:
             return entry
-        while entry is not None and entry.is_symlink:
-            entry = await _resolve_git_symlink(source, entry, budget)
+        if entry.is_symlink:
+            while entry is not None and entry.is_symlink:
+                entry = await _resolve_git_symlink(source, entry, budget)
+            if entry is None or not entry.is_tree:
+                return None
+            # ``..`` after a link climbs from where the link led.
+            stack = await _directory_stack(source, entry.path)
+            if stack is None:
+                return None
+            continue
+        if not entry.is_tree:
+            return None
+        stack.append(entry)
+    # The body ended on ``..`` or named the link's own directory.
+    return stack[-1]
+
+
+async def _directory_stack(source: GitTreeSource, path: GitPath) -> list[GitTreeEntry] | None:
+    """The tree entries from the root down to *path*, or None if one is not a tree."""
+
+    root = await source.resolve_path(GitPath.root())
+    if root is None:
+        return None
+    stack = [root]
+    for segment in path.segments:
+        entry = await source.resolve_child(stack[-1], segment)
         if entry is None or not entry.is_tree:
             return None
-        directory = entry.path
-    # The body ended on ``..`` or named the link's own directory.
-    return await source.resolve_path(directory)
+        stack.append(entry)
+    return stack
 
 
 async def resolve_git_blob_entry(source: GitTreeSource, path: GitPath) -> GitTreeEntry | None:
