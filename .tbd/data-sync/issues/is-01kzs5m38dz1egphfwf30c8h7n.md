@@ -5,10 +5,11 @@ title: Repository library and hosted-review roadmap
 kind: epic
 status: in_progress
 priority: 1
-version: 73
+version: 74
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: claude-code@spud10.local
-labels: []
+labels:
+  - release:v0.12.0
 dependencies:
   - type: blocks
     target: is-01m0b71xgqp0jgz007h0wtzr3z
@@ -72,16 +73,18 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-08-11T19:43:35.692Z
-updated_at: 2026-09-23T00:23:26.596Z
+updated_at: 2026-09-23T00:39:03.493Z
 started_at: 2026-09-16T21:10:44.764Z
 extensions:
   linear:
     id: 06ad4ed9-e57c-43ff-a0bd-72bc542de8f5
     linked_at: 2026-08-16T08:05:43.412Z
 ---
-Deliver the GitHub-first v0.11 vertical slice on three independent layers: session RepositorySubjects, one shared worktree-free Git object store, and one stable-repository/auth-scoped provider mirror. Open managed URLs and attached user checkouts; serve branches and PR content by full OID without checkouts, indexes, or detached worktrees; define transparent SoftSchema records and trusted plugin registries; use bounded gh api acquisition; cache direct PR bundles before the bounded index; and render shared PR, diff, revision, release, and virtual-navigation views. Local checkouts are never cache authority or mutation targets. Later work retains chooser, issues, GitLab, stacks, and measured large-repository support.
+Deliver the GitHub-first v0.12 vertical slice on three independent layers: session RepositorySubjects, one shared worktree-free Git object store, and one stable-repository/auth-scoped provider mirror. Open managed URLs and attached user checkouts; serve branches and PR content by full OID without checkouts, indexes, or detached worktrees; define transparent SoftSchema records and trusted plugin registries; use bounded gh api acquisition; cache direct PR bundles before the bounded index; and render shared PR, diff, revision, release, and virtual-navigation views. Local checkouts are never cache authority or mutation targets. Later work retains chooser, issues, GitLab, stacks, and measured large-repository support.
 
 ## Notes
+
+2026-09-22 current status: v0.12 implementation remains on formal GitHub Stack 218: #125 design -> #134 Phase 0 records -> #136 installed contracts -> #139 source binding -> #140 cache format -> #217 file:// acquisition (draft) -> #216 consolidated source boundary and immutable Git pin (draft). Current integration head b3c001a96eed64eb77961c2b7165b103af98b77c includes main 6c278f3f and the merged #209 HTML trust foundation through #224. No stack PR has landed. Current runtime supports file:// acquisition, pinned --show and --api; GitHub URL reduction/HTTP serving, HTTPS/SSH acquisition, provider runtime and PR views remain planned. The alpha test plan at docs/project/specs/active/plan-2026-09-22-v012-alpha-testing.md defines T0 local foundation, T1 repository URL alpha, T2 direct PR alpha, and T3 full v0.12 discovery/navigation/anchors. mb-gnr9 owns installed-artifact and real-browser alpha acceptance. Future implementation/testing/stabilization PRs extend the current stack tip; hold the entire stack until stabilization and explicit approval through mb-n2ro. mb-eegt owns this review/status reconciliation. Full review: https://github.com/jlevy/metabrowser/pull/216#issuecomment-5786877244 . #219 remains separate process maintenance awaiting a get-tbd release containing upstream #316; #87/#51 are separate research PRs. Historical handoff follows.
 
 2026-09-19 handoff: formal GitHub stack #218 (nothing on main):
 
