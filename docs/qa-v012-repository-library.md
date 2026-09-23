@@ -38,7 +38,7 @@ crumb slices (#208, #210, #211–#215).
 
 | Lane | PR | Branch | Tip | What it adds |
 | --- | --- | --- | --- | --- |
-| Repository Library / Git pin | [#216](https://github.com/jlevy/metabrowser/pull/216) (consolidates #211–#215) | `cursor/v011-git-revision-pin-bd04` | the command below | GitPath / leased `file://` pin for `--show` and non-cache `--api`; review and acceptance work remains |
+| Repository Library / Git pin | [#216](https://github.com/jlevy/metabrowser/pull/216) (consolidates #211–#215) | `cursor/v011-git-revision-pin-bd04` | the command below | GitPath / `file://` pin for `--show` and non-cache `--api`; review and acceptance work remains |
 | HTML trust | [#209](https://github.com/jlevy/metabrowser/pull/209), merged to `main` | Included in the integration tip | verify ancestry below | `/raw` sandbox, `/api` same-origin proof, `--untrusted`, HTML preview kind, plus subsequent mainline hardening |
 
 Every tip in this runbook is read from the live branch rather than written down, because

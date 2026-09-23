@@ -107,7 +107,7 @@ No tbd release or process cleanup is a prerequisite.
 | --- | --- | --- |
 | Foundation stabilization | Findings under `mb-gacf`; acquisition/source/pin acceptance `mb-k900`, `mb-tsdc`, `mb-hoae`; integration-base gate `mb-j439` | Complete the remaining T0 evidence and record one reviewed, green foundation head |
 | Phase 2A: repository URL opening | Reducers `mb-12cz`, HTTPS acquisition `mb-s1lt`, opening/serving `mb-ew38`; review/publication `mb-innz` | Cold public HTTPS repository URL opens the default immutable revision in the browser and CLI; warm/offline reuse and forced trust pass |
-| Phase 2B: object jobs and convergence | Selected-ref jobs `mb-jlon`, background convergence `mb-bgn8`; review/publication `mb-bf94` | Bounded fetch, cancellation, identity isolation, publication races and post-serving convergence are testable through CLI/models |
+| Phase 2B: object jobs and convergence | Retired; `mb-jlon` and `mb-bgn8` are closed | Stores are full clones, and refresh is one `git fetch` under a fetch side lock, as the [thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md) specifies |
 | Phase 2C: selected revisions | Selection `mb-2xq7`; review/publication `mb-9aku` | Branch/tag/OID/path resolution, missing-ref acquisition, concurrent subjects and offline navigation complete T1 |
 
 Foundation stabilization is [#226](https://github.com/jlevy/metabrowser/pull/226), above
@@ -356,7 +356,7 @@ harnesses; do not introduce a second test framework merely for the alpha.
 | 3A provider foundation | Deterministic fake `gh` process → adapter → auth-scoped mirror → CLI model | Bounded bytes/pages/time; missing login/scope, 403/404, rate limit, partial GraphQL data, cancellation, and invalid payloads remain distinct |
 | 3A credential bridge | Controlled credential session and Git transport with conflicting ambient configuration | One principal across API and Git; account switch, expired lease, redirect, and cancellation cannot supply another principal or disclose a credential |
 | 3A binding and explicit rebind | Attached checkout changes its remote or a source observes a different provider repository; exercise rejection and the explicit user operation | No silent identity reassignment; rebind proof and disposition are validated, old snapshots become honestly stale/detached, and private state cannot cross bindings |
-| 3A publication | Slow old refresh races fast new refresh; interruption at publication boundaries | Current pointer cannot regress; failed/partial results preserve last-complete; reachable leased snapshots survive recovery |
+| 3A publication | Slow old refresh races fast new refresh; interruption at publication boundaries | Current pointer cannot regress; failed/partial results preserve last-complete; the previous complete record set survives recovery |
 | 3B direct PR bundle | PR outside/absent from index; fork/deleted fork; force-push between observation and fetch | Metadata OIDs and content agree or return explicit unavailable/stale state; direct fetch neither requires nor rewrites index membership |
 | 4A direct PR view | Production browserless lifecycle and CLI route goldens, then wheel subprocess E2E | Address parse/format, reload selection, back/forward model, disposal, document/diff identity, offline state and partiality agree |
 | 3C/4B discovery | Multiple pages, tie-breakers, changed filters, truncation, failed page, direct selection outside index | No fabricated completeness/counts; listing fetches no PR bodies or Git refs; bounded memory and stable navigation |
