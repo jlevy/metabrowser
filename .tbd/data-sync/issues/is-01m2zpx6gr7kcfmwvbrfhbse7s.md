@@ -5,17 +5,17 @@ title: "S209-4: HTML preview on a Git source 404s and relative references cannot
 kind: bug
 status: open
 priority: 2
-version: 5
+version: 7
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 labels:
   - release:v0.12.0
   - stack:followup
 dependencies:
   - type: blocks
-    target: is-01m36k3xm77y33seww2jbwwb69
+    target: is-01m36ma4er7sj7gqsqpz6jms30
 parent_id: is-01m2yxd3tnr1s2zf0h0jat1ey2
 created_at: 2026-09-20T15:28:11.798Z
-updated_at: 2026-09-23T07:37:26.166Z
+updated_at: 2026-09-23T07:57:33.162Z
 ---
 Finding S209-4 from the v0.11 stabilization review. Owning layer: PR #209. Full evidence, path:line, and suggested fix are in the notes of mb-gacf under S209-4.
 
