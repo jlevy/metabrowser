@@ -19,7 +19,7 @@ from metabrowser.cache.repository_store import RevisionLease, lease_revision
 from metabrowser.cache.urls import GitSource
 from metabrowser.cli.acquire_cli import _ACQUIRE_CLI_ERRORS, acquire_for_cli
 from metabrowser.cli.asgi_client import INDEX_READY_TIMEOUT_S
-from metabrowser.cli.common import apply_log_level
+from metabrowser.cli.common import apply_log_level, maybe_cli_logging
 from metabrowser.errors import CLIError
 from metabrowser.git.process import GitError, GitTimeoutError, GitUnavailableError
 from metabrowser.git.tree_source import (
@@ -92,20 +92,22 @@ async def _leased_file_pin(source: GitSource) -> AsyncGenerator[PublishedSource]
     lease: RevisionLease | None = None
     subject: GitRevisionSubject | None = None
     try:
-        try:
-            lease = await lease_revision(
-                home=published.home,
-                store_key=published.store_key,
-                commit_oid=published.default_revision,
-            )
-            subject = await git_revision_subject(
-                target=lease.target,
-                commit_oid=published.default_revision,
-                store_identity=published.store_id,
-            )
-        except _PIN_CLI_ERRORS as exc:
-            LOG.debug("opening the pinned revision failed: %s", exc)
-            raise CLIError(_pin_failure_message(exc)) from exc
+        # Before the server module attaches its handler: see ``acquire_for_cli``.
+        with maybe_cli_logging():
+            try:
+                lease = await lease_revision(
+                    home=published.home,
+                    store_key=published.store_key,
+                    commit_oid=published.default_revision,
+                )
+                subject = await git_revision_subject(
+                    target=lease.target,
+                    commit_oid=published.default_revision,
+                    store_identity=published.store_id,
+                )
+            except _PIN_CLI_ERRORS as exc:
+                LOG.debug("opening the pinned revision failed: %s", exc)
+                raise CLIError(_pin_failure_message(exc)) from exc
         attach_subject(subject)
         yield published
     finally:

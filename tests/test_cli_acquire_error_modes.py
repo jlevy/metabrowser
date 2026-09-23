@@ -184,3 +184,23 @@ def test_log_level_debug_prints_gits_own_failure_text(
     )
     assert isinstance(result.exception, CLIError), (mode, result.exception)
     assert "does not appear to be a git repository" in result.output
+
+
+@pytest.mark.parametrize("mode", ["pin-show", "pin-api"])
+def test_log_level_debug_prints_a_pin_open_failure(
+    mode: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failure after acquisition, while opening the pin, is logged at debug too."""
+
+    home = _isolate_home(tmp_path, monkeypatch)
+    url = _file_url(_origin(tmp_path, allow_filter=False))
+    monkeypatch.setenv("METABROWSER_LOG_LEVEL", "")
+    monkeypatch.delenv("METABROWSER_LOG_LEVEL")
+
+    async def fail_lease(**_kwargs: object) -> object:
+        raise GitUnavailableError(f"repository store is not a directory: {home}/stores/x")
+
+    monkeypatch.setattr(git_pin_cli, "lease_revision", fail_lease)
+    result = runner.invoke(_app, [url, *MODES[mode], "--log-level", "debug"])
+    assert isinstance(result.exception, CLIError), result.exception
+    assert "opening the pinned revision failed" in result.output

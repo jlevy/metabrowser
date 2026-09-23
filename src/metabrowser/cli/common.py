@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import os
 from collections.abc import Generator
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager, nullcontext
 from pathlib import Path
 from typing import Any, TextIO
 
@@ -135,3 +135,15 @@ def cli_logging() -> Generator[None]:
         handler.close()
         logger.setLevel(previous_level)
         logger.propagate = previous_propagate
+
+
+def maybe_cli_logging() -> AbstractContextManager[None]:
+    """:func:`cli_logging` when a log level was requested, else nothing.
+
+    For CLI stages that run before the server module attaches its own handler, so an
+    explicit ``--log-level debug`` prints what those stages log.
+    """
+
+    if os.environ.get("METABROWSER_LOG_LEVEL"):
+        return cli_logging()
+    return nullcontext()
