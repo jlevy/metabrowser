@@ -502,6 +502,10 @@ If the port was taken, use the one the banner names below.
 
 **Fail:** A refusal; a different revision; a `METABROWSER_HOME` path in the output.
 
+Starting instead with `--path docs/` or `--path ./README.md` prints a URL ending in the
+directory’s `/view/g1-…/` or the file’s `/view/g1-…`; `--path nope.txt` exits 1 with
+`--path target is not in the pinned revision`.
+
 ### 5.2 The wire, from a second terminal
 
 ```shell
@@ -536,10 +540,14 @@ curl -s "$BASE/api/capabilities"; echo
 Open `http://127.0.0.1:8471/view/` in a browser, with its developer tools open.
 
 1. The navigation heading shows the branch, then a muted 12-character commit.
-   Hovering it shows the full commit, the file count, and the size.
+   Narrow the navigation column: the branch name truncates with an ellipsis and the
+   commit stays visible.
+   Hovering the heading shows the full commit, the file count, and the size, and the
+   count and size equal `/api/rollup?depth=0` (a symlink counts as a file on a pin).
    The file header prefix is the full commit.
 2. The tree lists this repository’s top-level entries with sizes; folders expand.
-   The filter bar has no recency filter and no “Show ignored” control.
+   The filter bar has no recency filter and no “Show ignored” control, and neither has
+   the root folder’s Overview.
 3. `README.md` renders as a document, and its image (`images/metabrowser-overview.jpg`)
    loads. A relative link to another document opens it inside the pin, at a `/view/g1-…`
    address.

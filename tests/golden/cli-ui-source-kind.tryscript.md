@@ -19,8 +19,9 @@ and displayed location, and which of Recent, index polling, the live event strea
 the recency and ignore filters a pin turns off.
 It also pins the navigation heading as served and after the tree loads: a folder’s
 becomes the served root’s name, and a pin keeps the ref and short commit the server
-rendered from its session. The heading tooltip’s count and size must equal the server’s
-summary; a top-level symlink is a blob on a pin and is not followed in a folder.
+rendered from its session.
+The heading tooltip’s count and size must equal the server’s summary; a top-level
+symlink is a blob on a pin and is not followed in a folder.
 Row order is the server’s: a folder lists directories first, while a pin currently lists
 its SPA tree in byte order of the names.
 
