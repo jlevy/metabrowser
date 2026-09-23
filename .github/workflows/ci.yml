@@ -76,6 +76,96 @@ jobs:
       - name: Run tests
         run: make test
 
+  admitted-git:
+    # Production refuses repository acquisition below the Git security floor
+    # (tests/fixtures/repository-cache/git-version-gates.json), and the runner's
+    # distribution Git reports a version below it. The `test` job therefore patches
+    # the floor, and nothing there acquires on a Git production would admit.
+    #
+    # This job builds the lowest admitted release and the newest patched one from
+    # checksum-verified kernel.org source, puts that Git first on PATH for this job
+    # only, and runs the acquisition, store-read, and no-lazy-fetch acceptance tests
+    # with nothing patched. METABROWSER_REQUIRE_ADMITTED_GIT turns their below-floor
+    # skip into a failure and fails when a different Git answers, so the job cannot
+    # pass by testing nothing. Pins and review: SUPPLY-CHAIN-SECURITY.md.
+    name: admitted-git (${{ matrix.git }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # ACQUISITION_MINIMUM and ACQUISITION_NEWEST_PATCHED. Checksums are pinned in
+        # devtools/build_admitted_git.sh; check_supply_chain.py requires both floors here.
+        git: ["2.43.7", "2.50.1"]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Locate the admitted Git build
+        id: admitted-git
+        run: |
+          echo "prefix=$HOME/.cache/admitted-git/${{ matrix.git }}" >> "$GITHUB_OUTPUT"
+          echo "image=${ImageOS:-unknown}" >> "$GITHUB_OUTPUT"
+
+      # The build links the runner's shared libraries, so the key names the runner
+      # image. The build script holds the pinned checksum and recipe, so a changed
+      # pin or recipe rebuilds.
+      - name: Restore the admitted Git build
+        id: restore-git
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.admitted-git.outputs.prefix }}
+          key: admitted-git-${{ runner.os }}-${{ steps.admitted-git.outputs.image }}-${{ matrix.git }}-${{ hashFiles('devtools/build_admitted_git.sh') }}
+
+      - name: Build Git from checksum-verified source
+        if: steps.restore-git.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends libcurl4-openssl-dev zlib1g-dev
+          bash devtools/build_admitted_git.sh "${{ matrix.git }}" "${{ steps.admitted-git.outputs.prefix }}"
+
+      # Saved right after the build rather than at job end, so a failing test does
+      # not throw the build away.
+      - name: Save the admitted Git build
+        if: steps.restore-git.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.admitted-git.outputs.prefix }}
+          key: ${{ steps.restore-git.outputs.cache-primary-key }}
+
+      - name: Put the admitted Git first on PATH
+        run: echo "${{ steps.admitted-git.outputs.prefix }}/bin" >> "$GITHUB_PATH"
+
+      - name: Confirm which Git answers
+        run: |
+          command -v git
+          git --version
+          test "$(git --version)" = "git version ${{ matrix.git }}"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          version: "0.11.26"
+          checksum: "6426a73c3837e6e2483ee344cbc00f36394d179afcba6183cb77437e67db4af0"
+          enable-cache: true
+          python-version: "3.13"
+
+      - name: Set up Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "24.18.0"
+          cache: "npm"
+
+      - name: Set up Python
+        run: uv python install
+
+      - name: Run acquisition and no-lazy-fetch acceptance on the admitted Git
+        env:
+          METABROWSER_REQUIRE_ADMITTED_GIT: ${{ matrix.git }}
+        run: make test-admitted-git
+
   distribution:
     runs-on: ubuntu-latest
     steps:

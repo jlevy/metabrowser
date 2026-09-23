@@ -107,6 +107,43 @@ update must add SoftSchema, upgrade Frontmatter Format, and change nothing else.
 The full verification gate reruns the hosted-review codecs, schema compilation checks,
 installed-wheel smoke tests, and dependency audits.
 
+## Admitted Git in CI
+
+Production refuses repository acquisition below the Git security floor in
+`tests/fixtures/repository-cache/git-version-gates.json`, and the CI runner’s
+distribution Git reports a version below it.
+The `admitted-git` CI job therefore builds Git from source, so acquisition and the
+no-lazy-fetch acceptance tests run on releases production admits: the lowest admitted
+release and the newest patched one.
+
+| Release | Role | SHA-256 of `git-<release>.tar.xz` |
+| --- | --- | --- |
+| 2.43.7 | Lowest admitted release | `657e2374455d9e62f6cdb3e7c55d867b6db5404d744e97e112cc5b0db687a19f` |
+| 2.50.1 | Newest patched release | `7e3e6c36decbd8f1eedd14d42db6674be03671c2204864befa2a41756c5c8fc4` |
+
+- **Source.** The archives come from
+  `https://mirrors.edge.kernel.org/pub/software/scm/git/`. The checksums were copied
+  from that directory’s `sha256sums.asc`, fetched on September 22, 2026. That file is
+  signed with the kernel.org checksum autosigner key
+  `B8868C80BA62A1FFFAF5FDA9632D3A06589DA6B1`; the signature was not verified when the
+  checksums were copied.
+  The 2.50.1 values also match those recorded independently in the tracking issue.
+- **Cool-off.** Both archives were published on July 8, 2025, in the security batch the
+  version floor is based on, so they are well past the 14-day cool-off.
+- **Build.** `devtools/build_admitted_git.sh` holds the pins and builds only a pinned
+  release. It downloads over HTTPS only and checks the SHA-256 before unpacking.
+  It builds without Tcl/Tk, gettext, Perl, Python, Expat, or OpenSSL. Its only other
+  inputs are `libcurl4-openssl-dev` and `zlib1g-dev` from the runner’s own Ubuntu
+  archive.
+- **Reach.** The build is cached with `actions/cache` v6.1.0, keyed by runner image,
+  release, and a hash of the build script, so a changed pin or recipe rebuilds.
+  That release was published June 26, 2026. Only the `admitted-git` job puts the build
+  on `PATH`. Nothing in the wheel, the other jobs, or the publish workflow uses it.
+
+`devtools/check_supply_chain.py` requires this table, the script’s pins, and the job’s
+matrix to agree, and requires the matrix to include both floors from the version-gates
+fixture. Moving a floor therefore means pinning and reviewing the new release here.
+
 ## Verification
 
 ### Development HTTP Client Review (September 8, 2026)
