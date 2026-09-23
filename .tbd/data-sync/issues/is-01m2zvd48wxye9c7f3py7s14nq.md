@@ -3,9 +3,9 @@ type: is
 id: is-01m2zvd48wxye9c7f3py7s14nq
 title: "Phase 1B-a: not-yet-converged blob read, online and offline"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: claude-code@spud10
 labels:
@@ -15,7 +15,11 @@ parent_id: is-01m0dkj0gqvpzpxm7t1tpshf30
 hold: null
 hold_until: null
 created_at: 2026-09-20T16:46:48.091Z
-updated_at: 2026-09-23T03:31:07.532Z
+updated_at: 2026-09-23T05:32:20.792Z
 started_at: 2026-09-23T03:31:07.531Z
+closed_at: 2026-09-23T05:32:20.789Z
+close_reason: "Done on codex/v012-foundation-stabilization (PR #226) (1478ac07, 53428f5b, a5339d8b). Every store read path was audited (the table is in the PR), and one spawn-point guard refuses a store spawn under a lazy-fetch policy. Commit detail and diffs check their change set first and answer a typed 404 object_unavailable. tests/test_git_lazy_fetch_acceptance.py builds a converging store through production blobless acquisition and proves online and offline reads fetch nothing and leave the store unchanged. It fails when GIT_NO_LAZY_FETCH is removed. Green on real 2.43.7 and 2.50.1: https://github.com/jlevy/metabrowser/actions/runs/35820742829. Reporting a missing blob as deferred and fetching it is Phase 2B (mb-bgn8)."
+resolution: null
+duplicate_of: null
 ---
 Phase 1B-a of docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md (heading at line 1774) still has this item unchecked: apply the Phase 0 lazy-fetch decision on every read path, and prove that a not-yet-converged blob read behaves as decided both online and offline. Parented under mb-z335 because it is a read path.
