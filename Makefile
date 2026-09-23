@@ -123,11 +123,12 @@ test-admitted-git:
 # tryscript rewrites changed blocks with literal output, golden_fixup.py
 # restores the elision patterns, and the pytest goldens (serve banners,
 # file:// acquire and recovery, file:// pin and its serve banner, refresh and pin
-# switching, live acquire) are rewritten in place. The served source-kind fixture is
-# recorded first because a tryscript session reads it. Review the diff before
-# committing.
+# switching, live acquire) are rewritten in place. The served source-kind shell and
+# a served mirror's responses are recorded first because tryscript sessions read
+# them. Review the diff before committing.
 golden-update:
-	GOLDEN_UPDATE=1 $(UV_RUN) pytest tests/test_source_kind_session.py
+	GOLDEN_UPDATE=1 $(UV_RUN) pytest tests/test_source_kind_session.py \
+		tests/test_source_freshness_session.py
 	npx --no-install tryscript run --update 'tests/golden/*.tryscript.md' || true
 	$(UV_RUN) python devtools/golden_fixup.py
 	npx --no-install tryscript run 'tests/golden/*.tryscript.md'

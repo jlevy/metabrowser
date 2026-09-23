@@ -500,3 +500,25 @@ def test_the_coordinator_bounds_concurrent_jobs_across_keys() -> None:
     peak, answers = asyncio.run(scenario())
     assert peak == 2
     assert answers == ["started", "started", "started", "joined", "started"]
+
+
+# ── The shell ────────────────────────────────────────────────────────
+
+
+def test_a_pin_shell_has_a_freshness_row_loaded_on_demand(
+    served: TestClient, tmp_path: Path
+) -> None:
+    shell = served.get("/view/").text
+    assert '<div class="source-freshness" id="source-freshness" role="status"' in shell
+    bundles = shell[shell.index("window.METABROWSER_ASSET_BUNDLES=") :]
+    bundles = bundles[: bundles.index("</script>")]
+    assert '"source-freshness": [{"src": "/static/source-freshness.js' in bundles
+    # On demand, never eager: no blocking script tag names it.
+    assert '<script src="/static/source-freshness.js' not in shell
+
+
+def test_a_folder_shell_has_no_freshness_row(tmp_path: Path) -> None:
+    server._set_root_dir(tmp_path)
+    with TestClient(server.app) as client:
+        shell = client.get("/view/").text
+    assert 'id="source-freshness"' not in shell

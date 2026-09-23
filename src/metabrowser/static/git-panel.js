@@ -51,6 +51,7 @@
    * @property {number | null} failedPage Logical page whose request failed.
    * @property {string | null} retryCursor Cursor retained for an in-place retry.
    * @property {boolean} retryInitial Whether the failed request starts a session.
+   * @property {boolean} stale The server answered that this walk's refs moved.
    * @property {boolean} endReached Git reported the real end of this session.
    * @property {string | null} headRevision
    * @property {string | null} headRef
@@ -84,6 +85,7 @@
       failedPage: null,
       retryCursor: null,
       retryInitial: false,
+      stale: false,
       endReached: false,
       headRevision: null,
       headRef: null,
@@ -356,6 +358,21 @@
     return fetch(`${path}${query}`, options);
   }
 
+  /**
+   * The typed `code` of an error response, or null when it carries none.
+   *
+   * @param {Response} response
+   * @returns {Promise<string | null>}
+   */
+  async function errorCode(response) {
+    try {
+      const body = await response.json();
+      return typeof body?.code === "string" ? body.code : null;
+    } catch {
+      return null;
+    }
+  }
+
   // ── Data ───────────────────────────────────────────────────
 
   /**
@@ -513,9 +530,18 @@
         return false;
       }
       if (!response.ok) {
-        recoverSession =
-          !options.initial &&
-          (response.status === 400 || response.status === 409 || response.status === 410);
+        const failure = historyWindowModule().classifyPageFailure({
+          status: response.status,
+          code: await errorCode(response),
+          initial: Boolean(options.initial),
+        });
+        if (requestGeneration !== historyGeneration || state !== requestState) {
+          return false;
+        }
+        recoverSession = failure === "recover";
+        if (failure === "stale") {
+          state.stale = true;
+        }
         throw new Error(`HTTP ${response.status}`);
       }
       const page = /** @type {MetabrowserGitLogPage} */ (await response.json());
@@ -547,7 +573,12 @@
       state.retryInitial = false;
       loaded = true;
     } catch {
-      if (requestGeneration === historyGeneration && state === requestState && !recoverSession) {
+      if (
+        requestGeneration === historyGeneration &&
+        state === requestState &&
+        !recoverSession &&
+        !state.stale
+      ) {
         state.failed = true;
         state.failedPage = expectedPage;
         state.retryCursor = cursor;
@@ -655,7 +686,7 @@
           return;
         }
         renderVirtualRows(true);
-        if (state.failed) {
+        if (state.failed || state.stale) {
           wantedRange = null;
         }
       }
@@ -998,7 +1029,9 @@
       placeholder.className = "git-history-page-placeholder";
       placeholder.style.height = `${(ordinal - missingStart) * graphModule().SWIMLANE_HEIGHT}px`;
       placeholder.setAttribute("role", "status");
-      if (state.failed && state.failedPage !== null) {
+      if (state.stale) {
+        placeholder.appendChild(staleHistoryNotice());
+      } else if (state.failed && state.failedPage !== null) {
         const retry = document.createElement("button");
         retry.type = "button";
         retry.className = "btn git-history-retry";
@@ -1150,7 +1183,12 @@
       scroller.focus({ preventScroll: true });
       state.focusSuspended = true;
     }
-    if (mounted.length < range.end - range.start && !state.loading && !state.failed) {
+    if (
+      mounted.length < range.end - range.start &&
+      !state.loading &&
+      !state.failed &&
+      !state.stale
+    ) {
       scheduleRangeLoad(range);
     }
     if (
@@ -1423,6 +1461,30 @@
     }
   }
 
+  /**
+   * The typed stale state: the refs this walk was fingerprinted by moved, so the
+   * rows above are history as it was when the list loaded. Reloading starts a new
+   * walk over the refs as they are now.
+   *
+   * @returns {HTMLElement}
+   */
+  function staleHistoryNotice() {
+    const notice = document.createElement("div");
+    notice.className = "git-graph-more git-graph-more-failed git-history-stale";
+    notice.setAttribute("role", "status");
+    const text = document.createElement("span");
+    text.textContent = "History changed since this list loaded.";
+    const reload = document.createElement("button");
+    reload.type = "button";
+    reload.className = "btn git-history-reload";
+    reload.textContent = "Reload history";
+    reload.addEventListener("click", () => {
+      void refreshHistory();
+    });
+    notice.append(text, reload);
+    return notice;
+  }
+
   /** Retry the exact failed append or replay request. */
   async function retryFailedPage() {
     if (!state.failed || state.failedPage === null) {
@@ -1451,6 +1513,8 @@
       trailing.style.setProperty("--git-skeleton-row-height", `${graphModule().SWIMLANE_HEIGHT}px`);
       trailing.style.height = `${graphModule().SWIMLANE_HEIGHT * 2}px`;
       trailing.setAttribute("aria-label", "Loading more history");
+    } else if (state.stale) {
+      trailing = staleHistoryNotice();
     } else if (state.failed && state.failedPage === state.nextPageNumber) {
       trailing = document.createElement("div");
       trailing.className = "git-graph-more git-graph-more-failed";
@@ -1963,7 +2027,7 @@
       return;
     }
     renderVirtualRows();
-    if (state.loading || state.failed || !state.cursor) {
+    if (state.loading || state.failed || state.stale || !state.cursor) {
       return;
     }
     const remaining = content.scrollHeight - content.scrollTop - content.clientHeight;

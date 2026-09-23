@@ -1229,6 +1229,7 @@ async def index(request: Request) -> HTMLResponse:
     git_graph_url = _static_asset_url("git-graph.js")
     git_history_window_url = _static_asset_url("git-history-window.js")
     git_panel_url = _static_asset_url("git-panel.js")
+    source_freshness_url = _static_asset_url("source-freshness.js")
     app_url = _static_asset_url("app.js")
     perf_url = _static_asset_url("perf.js")
     # Inject the client-visible settings dict before any app code
@@ -1240,6 +1241,13 @@ async def index(request: Request) -> HTMLResponse:
         f"<script>window.METABROWSER_CONTAINER_EXTS={_json.dumps(_container_exts())};</script>"
     )
     repository_context_json = _json.dumps(repository_context).replace("<", "\\u003c")
+    # A pin's freshness row, filled by static/source-freshness.js. A folder has none.
+    source_freshness_row = (
+        '\n      <div class="source-freshness" id="source-freshness" role="status"'
+        ' aria-live="polite" hidden></div>'
+        if git_pin
+        else ""
+    )
     source_kind_json = _json.dumps("git_revision" if git_pin else "filesystem")
     # The tree's first rows, inlined. Without this the reader waits for a round
     # trip the server did not have to make them take: time to first row is
@@ -1383,6 +1391,10 @@ async def index(request: Request) -> HTMLResponse:
         # first tree is usable. renderFile awaits this bundle and rechecks its
         # ownership claim before preparing or mounting a view.
         "view-composition": [{"src": view_composition_url}],
+        # Only a served mirror has freshness to show, so a folder never fetches
+        # this; a pin starts it after the first tree request settles, and the
+        # label it paints is a quiet row the page does not wait for.
+        "source-freshness": [{"src": source_freshness_url}],
         "source-append": [{"src": source_append_url}],
         "chart": [
             {"src": _static_asset_url("vendor/chart.umd.min.js"), "provides": "Chart"},
@@ -1585,7 +1597,7 @@ async def index(request: Request) -> HTMLResponse:
       <div class="index-progress" id="index-progress" role="status" aria-live="polite" hidden>
         <span class="index-progress-spinner" aria-hidden="true"></span>
         <span class="index-progress-text">Scanning…</span>
-      </div>
+      </div>{source_freshness_row}
     </div>
     <div class="resize-handle" id="tree-resize"></div>
     <!-- Every route that serves this shell selects something: /view/ names a

@@ -2073,6 +2073,60 @@ html.theme-anim .menu {
   white-space: nowrap;
 }
 
+/* A served mirror's freshness, at the foot of the navigation pane where a
+   folder shows crawl progress: when it was last fetched, and an offer when a
+   refresh moved the pinned ref. Quiet unless a refresh failed. */
+.source-freshness[hidden] {
+  display: none;
+}
+.source-freshness {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  min-height: 30px;
+  padding: 6px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--sidebar-bg);
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+  line-height: 1.2;
+}
+.source-freshness-label {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.source-freshness-label:hover,
+.source-freshness-label:focus-visible {
+  color: var(--link);
+}
+.source-freshness-label:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+  border-radius: var(--radius-chrome);
+}
+.source-freshness-label:disabled {
+  color: inherit;
+  cursor: default;
+}
+.source-freshness[data-tone="warning"] .source-freshness-label {
+  color: var(--status-warning-strong);
+}
+.source-freshness-offer {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+}
+.source-freshness-error {
+  color: var(--status-warning-strong);
+}
+
 /* ── Resize handle ───────────────────────────────────────────── */
 
 .resize-handle {

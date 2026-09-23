@@ -1937,6 +1937,67 @@ async function run() {
     assertTrue("recovery: the rebuilt session is not failed", !recovered.failed);
   }
 
+  // ── A stale cursor is a typed state with a reload action ───
+  //
+  // `history_stale` means the refs the walk was fingerprinted by moved, as
+  // a mirror refresh or a pin switch in another tab does. The panel keeps
+  // the rows it has, says the history changed, stops paging, and reloads
+  // only when asked; it neither replays a different walk silently nor
+  // reports a failure.
+  {
+    responses.set("/api/git/repo", {
+      is_repo: true,
+      root: "",
+      head: { ref: "refs/heads/main", revision: SHA_A, detached: false, unborn: false },
+    });
+    responses.set("/api/git/refs", { is_repo: true, refs: [] });
+    let staleCalls = 0;
+    responses.set("/api/git/log", () => {
+      staleCalls += 1;
+      return {
+        httpStatus: 409,
+        body: { error: "git history changed; refresh required", code: "history_stale" },
+      };
+    });
+    const open = internals.emptyState();
+    open.headRevision = SHA_A;
+    internals.setStateForTests(open);
+    appendTestPage([commit(SHA_A, [SHA_B], "on screen")], "history:1");
+    const before = internals.stateForTests();
+    assertEqual("stale: one row on screen before the next page", before.rowCount, 1);
+    await internals.loadNextPage(false);
+    const stale = internals.stateForTests();
+    assertEqual("stale: one request, no silent replay", staleCalls, 1);
+    assertTrue("stale: the state is typed stale", stale.stale);
+    assertTrue("stale: a stale walk is not a failure", !stale.failed);
+    assertEqual("stale: rows on screen are kept", stale.rowCount, 1);
+    internals.renderVirtualRows();
+    assertEqual("stale: scrolling does not page past a stale walk", staleCalls, 1);
+    const panelNode = document.getElementById("tab-git");
+    const notice = panelNode.querySelector(".git-history-stale");
+    assertTrue("stale: the panel says the history changed", notice);
+    assertContains(
+      "stale: the notice text",
+      notice?.textContent ?? "",
+      "History changed since this list loaded.",
+    );
+    const reload = notice?.querySelector(".git-history-reload");
+    assertTrue("stale: the notice offers a reload", reload);
+    responses.set("/api/git/log", historyPage(0, [commit(SHA_B, [], "reloaded")], 1, SHA_A));
+    reload?.dispatch("click");
+    for (let tick = 0; tick < 50 && internals.stateForTests().commits.length === 0; tick += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    for (let tick = 0; tick < 50 && internals.stateForTests().loading; tick += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    const reloaded = internals.stateForTests();
+    assertTrue("stale: reload starts a new walk", !reloaded.stale);
+    assertEqual("stale: the new walk has its own rows", reloaded.commits[0]?.id, SHA_B);
+    // The reloaded walk reached its end; later checks start from an open one.
+    internals.setStateForTests(internals.emptyState());
+  }
+
   // ── Teardown restores the shared scroller ──────────────────
   //
   // The focus-suspension path writes tabindex onto the shell-owned
