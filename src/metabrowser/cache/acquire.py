@@ -821,10 +821,13 @@ def _find_or_open_cache(
 ) -> tuple[PublishedSource | None, Path]:
     """Return a cache hit, or open the cache for a miss; synchronous and blocking.
 
-    With *open_on_miss* false, a miss only checks the Git floor and opens nothing.
+    With *open_on_miss* false, a miss only checks the Git floor and opens nothing, so a
+    below-floor Git is refused before any provider check reaches the network.
     """
 
     if not home.exists():
+        if not open_on_miss:
+            require_acquisition_git()
         return None, home
     try:
         layout = read_layout(home, shared="keep")

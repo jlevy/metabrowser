@@ -32,13 +32,14 @@ PROTOCOL_ARGS: Final[tuple[str, ...]] = (
 # - healthy full fetches ran at 3.5 to 14.6 MB/s (flask, requests, mypy, django), and
 #   the longest quiet gap in django's 291 MB pack stream was 0.38 s, so a limit of
 #   1000 B/s sits more than three orders of magnitude below a healthy transfer;
-# - a proxy that stopped forwarding after 3 MB failed the fetch 10 s after the stall
-#   with lowSpeedTime=10, one throttled to 500 B/s failed after 10 s ("curl 28
-#   Operation too slow"), and one throttled to 4000 B/s kept going for the full 45 s
-#   the run allowed;
-# - the bound does not apply before TLS completes: a server that accepts and never
-#   answers failed only at curl's 300 s connect timeout whatever lowSpeedTime was, which
-#   is why the first command against an origin also has REMOTE_PROBE_TIMEOUT_S.
+# - with lowSpeedLimit=1000 and lowSpeedTime=10, a proxy that stopped forwarding 1.1 s
+#   into a flask fetch failed it at 17.4 s (Git reported an early EOF), one throttled
+#   to 500 B/s failed at 17.3 s ("curl 28 Operation too slow"), and one throttled to
+#   4000 B/s kept going for the full 45 s the run allowed;
+# - the bound does not apply before TLS completes: with lowSpeedTime=5, a server that
+#   accepts and never answers failed only at 300.2 s, curl's connect timeout ("SSL
+#   connection timeout"), which is why the first command against an origin also has
+#   REMOTE_PROBE_TIMEOUT_S.
 # 30 s tolerates a server that is slow to start its pack, which a fetch with progress
 # off sees as silence broken only by keepalives, while bounding a stall at half a
 # minute rather than the whole acquisition deadline.

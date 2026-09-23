@@ -14,6 +14,7 @@ from metabrowser.cache import acquire as acquire_module
 from metabrowser.cache.acquire import RepositoryTooLargeError, acquire_source
 from metabrowser.cache.urls import GitSource, classify_root_argument
 from metabrowser.cli import acquire_cli
+from metabrowser.git.process import UnsupportedGitVersionError
 from tests.github_origin import github_origin
 from tests.test_cache_acquire import _allow_installed_git
 
@@ -84,3 +85,21 @@ def test_phases_reach_a_terminal_only(monkeypatch: pytest.MonkeyPatch) -> None:
     assert terminal.getvalue().rstrip().endswith(" s)")
     monkeypatch.setattr("sys.stderr", io.StringIO())
     assert acquire_cli.terminal_phase_reporter(source) is None
+
+
+def test_a_below_floor_git_is_refused_before_any_provider_check(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def below_floor() -> tuple[int, int, int]:
+        raise UnsupportedGitVersionError("git version 2.43.0", "2.43.7")
+
+    async def no_check(_source: GitSource) -> None:
+        raise AssertionError("the provider check ran before the Git floor")
+
+    monkeypatch.setattr(acquire_module, "require_acquisition_git", below_floor)
+    monkeypatch.setattr(acquire_module, "check_first_clone", no_check)
+    source = GitSource(transport="https", form="url", normalized="https://github.com/o/r")
+    home = tmp_path / "home"
+    with pytest.raises(UnsupportedGitVersionError):
+        asyncio.run(acquire_source(source, home=home))
+    assert not home.exists()
