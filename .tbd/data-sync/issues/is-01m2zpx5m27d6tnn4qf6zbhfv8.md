@@ -3,9 +3,9 @@ type: is
 id: is-01m2zpx5m27d6tnn4qf6zbhfv8
 title: Apply a forced untrusted profile to every acquired-source entrypoint
 kind: feature
-status: in_progress
+status: closed
 priority: 1
-version: 9
+version: 10
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: claude-code@spud10
 labels:
@@ -20,8 +20,12 @@ parent_id: is-01m2yxd3tnr1s2zf0h0jat1ey2
 hold: null
 hold_until: null
 created_at: 2026-09-20T15:28:10.881Z
-updated_at: 2026-09-23T07:57:33.150Z
+updated_at: 2026-09-23T17:39:15.074Z
 started_at: 2026-09-23T03:31:09.257Z
+closed_at: 2026-09-23T17:39:15.072Z
+close_reason: "Every acquired-source entry point is now forced untrusted: --show and --api (PR #226) and serve mode (PR #229, cad7dba9). Populated-cache isolation is proven over HTTP by the test_serve_pin isolation sweep, which covers other cached sources, cache metadata, the comparison parameters, kpress and debug routes. GitHub URLs reach the same entry points in step 5."
+resolution: null
+duplicate_of: null
 ---
 Finding S209-3 from the v0.11 stabilization review. Owning layer: PR #209. Full evidence, path:line, and suggested fix are in the notes of mb-gacf under S209-3.
 
