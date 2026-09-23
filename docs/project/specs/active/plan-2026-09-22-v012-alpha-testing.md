@@ -317,6 +317,7 @@ The current focused foundation lane is executable now:
 uv --config-file uv.toml run --frozen pytest \
   tests/test_cli_acquire.py \
   tests/test_cli_cache_acquire_golden.py \
+  tests/test_cli_cache_recovery_golden.py \
   tests/test_cli_git_pin_golden.py \
   tests/test_cli_no_serve_surface.py \
   tests/test_cache_acquire.py \
