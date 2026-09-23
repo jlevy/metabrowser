@@ -328,7 +328,7 @@ def test_acquisition_waits_for_the_home_lock_without_blocking_the_loop(
 
 
 def test_a_cancelled_acquisition_behind_a_busy_home_stops_promptly(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     """Ctrl-C cancels the CLI's task; the worker's lock wait must end with it.
 
@@ -358,6 +358,9 @@ def test_a_cancelled_acquisition_behind_a_busy_home_stops_promptly(
         elapsed = time.monotonic() - started
         assert elapsed < HOLD_AT_MOST / 2, f"cancellation waited {elapsed:.1f}s for the lock"
         assert held_locks() == ()
+        # Python 3.14 logs an exception left in a shielded worker; an abandoned wait
+        # must not leave one, or Ctrl-C prints a traceback.
+        assert not [r for r in caplog.records if r.name == "asyncio"], caplog.text
     finally:
         holder.close()
     assert list((home / "cache" / "staging").iterdir()) == []

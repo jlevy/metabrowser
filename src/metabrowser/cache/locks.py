@@ -427,27 +427,48 @@ async def run_lock_section[ResultT](
     *release*, the section keeps something past its return; cancellation propagates at
     once and whatever the section goes on to acquire is released, as
     :func:`run_acquiring_thread` does.
+
+    An abandoned section returns a private marker instead of raising: its caller is
+    already cancelled, and an exception left in the shielded worker is logged as
+    unretrieved on Python 3.14.
     """
 
-    if release is None:
-
-        def cancellable(abandon: threading.Event) -> ResultT:
-            with _abandonable_waits(abandon):
-                return work()
-
-        return await run_cancellable_thread(cancellable)
-
-    abandon = threading.Event()
-
-    def acquiring() -> ResultT:
+    def section(abandon: threading.Event) -> ResultT | _Abandoned:
         with _abandonable_waits(abandon):
-            return work()
+            try:
+                return work()
+            except LockWaitAbandonedError:
+                if abandon.is_set():
+                    return _ABANDONED
+                raise
 
-    try:
-        return await run_acquiring_thread(acquiring, release=release)
-    except asyncio.CancelledError:
-        abandon.set()
-        raise
+    if release is None:
+        result = await run_cancellable_thread(section)
+    else:
+        abandon = threading.Event()
+
+        def release_kept(kept: ResultT | _Abandoned) -> None:
+            if not isinstance(kept, _Abandoned):
+                release(kept)
+
+        try:
+            result = await run_acquiring_thread(
+                functools.partial(section, abandon), release=release_kept
+            )
+        except asyncio.CancelledError:
+            abandon.set()
+            raise
+    if isinstance(result, _Abandoned):
+        # Only reached if the abandon event was set without cancelling this caller.
+        raise LockWaitAbandonedError("a lock wait was abandoned")
+    return result
+
+
+class _Abandoned:
+    """What an abandoned locked section returns in place of its result."""
+
+
+_ABANDONED: Final = _Abandoned()
 
 
 def _refuse_blocking_on_event_loop(kind: LockKind) -> None:
