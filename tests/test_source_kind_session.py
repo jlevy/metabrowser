@@ -10,10 +10,11 @@ index polling, Recent, and the filter controls -- branches on that global.
 ``tests/golden/cli-ui-source-kind.tryscript.md`` pins its transcript. So that
 the session consumes the real server's output rather than a global a test set
 by hand, its input is ``tests/fixtures/source-kind-shell.json``: for an
-attached folder and for a Git pin of the same names, the source-kind block the
-in-process application served at ``/view/`` and the SPA tree it answered at
-``/api/tree?depth=2``, projected to name, path, type, and children. The first
-test here rebuilds both subjects and fails when the fixture no longer matches.
+attached folder and for a Git pin of the same names, the source-kind block and
+navigation heading the in-process application served at ``/view/`` and the SPA
+tree it answered at ``/api/tree?depth=2``, projected to name, path, type, and
+children, with the root it named. The first test here rebuilds both subjects and
+fails when the fixture no longer matches.
 
 Regenerate the fixture after an intended change, then the transcript:
 
@@ -31,7 +32,7 @@ import shutil
 import subprocess
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import pytest
@@ -65,6 +66,14 @@ _INDEX_POLLS = 1200
 _SOURCE_KIND_BLOCK = re.compile(
     r"<script>(window\.METABROWSER_(?:SOURCE_KIND|REPOSITORY_CONTEXT)=[^<]*;)</script>"
 )
+# The navigation heading as served: a folder's name, or a pin's ref and short commit.
+_HEADING = re.compile(
+    r'<a href="/view/" class="header-path"\s+data-served-root="[^"]*">(.*?)</a>', re.S
+)
+
+# The label a pin records for the ref it was resolved from. A label only: it is not read
+# back to find the commit.
+_PIN_REF = "refs/remotes/origin/topic"
 
 posix_only = pytest.mark.skipif(os.name != "posix", reason="folder identities are POSIX bytes")
 pytestmark = pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required")
@@ -118,9 +127,19 @@ async def _observe(client: AsyncClient) -> dict[str, Any]:
     assert shell.status_code == 200
     block = _SOURCE_KIND_BLOCK.findall(shell.text)
     assert len(block) == 2, block
+    heading = _HEADING.findall(shell.text)
+    assert len(heading) == 1, heading
     tree = await client.get("/api/tree?depth=2")
     assert tree.status_code == 200, tree.text
-    return {"shell": block, "tree": _project(tree.json()["tree"])}
+    payload = tree.json()
+    return {
+        "shell": block,
+        "heading": heading[0],
+        # A folder's root is an absolute path, and the heading reads only its last
+        # component, which is all that is recorded. A pin's tree names no root.
+        "root": PurePosixPath(payload["root"]).name if "root" in payload else None,
+        "tree": _project(payload["tree"]),
+    }
 
 
 def _served(tmp_path: Path) -> dict[str, Any]:
@@ -135,7 +154,7 @@ def _served(tmp_path: Path) -> dict[str, Any]:
     async def run() -> dict[str, Any]:
         async with _folder_client(folder) as client:
             filesystem = await _observe(client)
-        async with pinned_client(store, commit) as (client, _subject):
+        async with pinned_client(store, commit, ref=_PIN_REF) as (client, _subject):
             git_revision = await _observe(client)
         return {"filesystem": filesystem, "git_revision": git_revision}
 
@@ -180,3 +199,7 @@ def test_source_kind_session_agrees_with_the_served_kind() -> None:
     assert sorted(row["location"] for row in folder["rows"]) == sorted(
         row["location"] for row in pin["rows"]
     )
+    # The tree load keeps a pin's served ref-and-commit heading.
+    assert pin["heading"]["afterTreeLoad"] == pin["heading"]["served"]
+    assert '<span class="path-base">topic</span>' in pin["heading"]["served"]
+    assert 'class="header-revision"' in pin["heading"]["served"]

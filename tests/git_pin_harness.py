@@ -65,12 +65,13 @@ def fast_import_store(tmp_path: Path, files: Mapping[bytes, bytes]) -> tuple[Pat
 
 @asynccontextmanager
 async def pinned_client(
-    store: Path, commit: str, *, raise_app_exceptions: bool = True
+    store: Path, commit: str, *, raise_app_exceptions: bool = True, ref: str | None = None
 ) -> AsyncGenerator[tuple[AsyncClient, GitRevisionSubject], None]:
     subject = await git_revision_subject(
         target=repository_store_target(git_dir=store),
         commit_oid=commit,
         store_identity="pin-fixture",
+        ref=ref,
     )
     attach_subject(subject)
     try:

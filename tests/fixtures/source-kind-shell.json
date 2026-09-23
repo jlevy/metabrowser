@@ -4,6 +4,8 @@
       "window.METABROWSER_SOURCE_KIND=\"filesystem\";",
       "window.METABROWSER_REPOSITORY_CONTEXT=null;"
     ],
+    "heading": "<span class=\"path\"><span class=\"path-base\">folder</span></span>",
+    "root": "folder",
     "tree": [
       {
         "name": "docs",
@@ -46,6 +48,8 @@
       "window.METABROWSER_SOURCE_KIND=\"git_revision\";",
       "window.METABROWSER_REPOSITORY_CONTEXT=null;"
     ],
+    "heading": "<span class=\"path\"><span class=\"path-base\">topic</span></span><span class=\"header-revision\">021c6bc4a0a4</span>",
+    "root": null,
     "tree": [
       {
         "name": "docs",

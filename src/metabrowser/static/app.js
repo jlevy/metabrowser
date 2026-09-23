@@ -245,6 +245,18 @@ function pathBaseHtml(path) {
   return `<span class="path"><span class="path-base">${esc(base || trimmed)}</span></span>`;
 }
 
+/**
+ * Settle the navigation heading once the tree has loaded. A folder shows the
+ * served root's name from the tree payload. A pinned revision keeps the heading
+ * the server rendered from its session, its ref and short commit: the tree's
+ * root there is the empty GitPath, which has no name to show.
+ */
+function renderServedRootHeading(pathEl, root) {
+  if (pathEl && !isGitRevisionSource()) {
+    pathEl.innerHTML = pathBaseHtml(root);
+  }
+}
+
 // The served root, absolute, from the one element that carries it.
 function servedRoot() {
   return queryHtml(".header-path")?.dataset.servedRoot || "";
@@ -1019,9 +1031,7 @@ async function loadTree(options = {}) {
       }
       knownFileCatalog?.observeInitialTree(data.tree);
       var pathEl = queryHtml(".header-path");
-      if (pathEl) {
-        pathEl.innerHTML = pathBaseHtml(data.root);
-      }
+      renderServedRootHeading(pathEl, data.root);
       // Aggregate root size + file count + newest-mtime from top-level
       // children. Same shape as a folder tooltip — the served root reads
       // as "just another folder", the top-most one.

@@ -1314,6 +1314,14 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* A pinned revision's heading: the ref at the heading's weight, then its short
+   commit, muted. The full commit is the served root, shown in the heading's
+   tooltip and the file header's prefix. */
+.header-revision {
+  margin-left: 6px;
+  color: var(--muted);
+  font-weight: var(--weight-normal);
+}
 /* ── Text buttons — shared labelled action primitive ─────────────
    A compact action with a persistent surface and border. Use-site
    classes position the control; they do not restyle it. */

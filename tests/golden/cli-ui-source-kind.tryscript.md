@@ -17,6 +17,9 @@ navigation, plugin SDK, and filter modules and the shell’s source-kind gates.
 The transcript pins what `metabrowser.sourceKind()` reports, each row’s rendered name
 and displayed location, and which of Recent, index polling, the live event stream, and
 the recency and ignore filters a pin turns off.
+It also pins the navigation heading as served and after the tree loads: a folder’s
+becomes the served root’s name, and a pin keeps the ref and short commit the server
+rendered from its session.
 Row order is the server’s: a folder lists directories first, while a pin currently lists
 its SPA tree in byte order of the names.
 
@@ -67,6 +70,10 @@ $ node tests/dom/source-kind-session.js
         "location": "README.md"
       }
     ],
+    "heading": {
+      "served": "<span class=\"path\"><span class=\"path-base\">folder</span></span>",
+      "afterTreeLoad": "<span class=\"path\"><span class=\"path-base\">folder</span></span>"
+    },
     "gates": {
       "filesPanelUsesRecentSource": true,
       "indexProgress": {
@@ -133,6 +140,10 @@ $ node tests/dom/source-kind-session.js
         "location": "README.md"
       }
     ],
+    "heading": {
+      "served": "<span class=\"path\"><span class=\"path-base\">topic</span></span><span class=\"header-revision\">021c6bc4a0a4</span>",
+      "afterTreeLoad": "<span class=\"path\"><span class=\"path-base\">topic</span></span><span class=\"header-revision\">021c6bc4a0a4</span>"
+    },
     "gates": {
       "filesPanelUsesRecentSource": false,
       "indexProgress": {

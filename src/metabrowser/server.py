@@ -212,6 +212,7 @@ from metabrowser.source import (
     session_filesystem_root,
     unsupported_source_payload,
 )
+from metabrowser.source_routes import SOURCE_ROUTES, SourceStatus, source_status
 from metabrowser.sse import api_stream
 from metabrowser.tree import (
     _IGNORE_CACHE,
@@ -1085,6 +1086,26 @@ def _initial_path_html() -> str:
     return f'<span class="path"><span class="path-base">{html_escape(label)}</span></span>'
 
 
+def _pin_label_html(status: SourceStatus) -> str:
+    """The navigation heading for a pinned revision: its ref, then its short commit.
+
+    It stands where a folder's name stands, so it uses the same `.path-base`
+    emphasis for the name a reader chose, and the commit follows it muted. The full
+    commit is the served root: the file header's prefix and this heading's tooltip
+    both read it from `data-served-root`. Without a known ref the short commit is
+    the name.
+    """
+
+    short = html_escape((status["pin"] or "")[:12])
+    ref_name = status["ref_name"]
+    if ref_name is None:
+        return f'<span class="path"><span class="path-base">{short}</span></span>'
+    return (
+        f'<span class="path"><span class="path-base">{html_escape(ref_name)}</span></span>'
+        f'<span class="header-revision">{short}</span>'
+    )
+
+
 def _served_root_str() -> str:
     """The served root, absolute. What the API reports and paths resolve against."""
     return str(_paths_safe.ROOT_DIR.resolve())
@@ -1160,10 +1181,11 @@ async def index(request: Request) -> HTMLResponse:
     git_pin = isinstance(subject, GitRevisionSubject)
     if git_pin:
         pin_oid = subject.commit_oid
-        initial_path = (
-            f'<span class="path"><span class="path-base">{html_escape(pin_oid[:12])}</span></span>'
-        )
+        initial_path = _pin_label_html(source_status())
         initial_root = html_escape(pin_oid, quote=True)
+        # A file:// mirror names no hosted repository, and core holds no provider
+        # URL grammar. GitHub mirrors get theirs from the GitHub plugin, planned for
+        # step 5 of the thin-mirror plan; until then a pin has none.
         repository_context = None
     else:
         initial_path = _initial_path_html()
@@ -3843,6 +3865,8 @@ routes = [
     # Read-only logical cache state for CLI parity. The table imports the cache and
     # the application home only inside a cache request; see ``metabrowser.cache.routes``.
     *CACHE_ROUTES,
+    # What this server serves: the subject and, on a pin, its commit and ref.
+    *SOURCE_ROUTES,
     *build_plugin_routes(_LOADED_PLUGINS),
 ]
 
