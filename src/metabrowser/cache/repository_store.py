@@ -9,7 +9,7 @@ not serve content, migrate remaining routes, or check out a worktree.
 
 from __future__ import annotations
 
-import asyncio
+import functools
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,6 +20,7 @@ from metabrowser.cache.locks import (
     acquire_store_lease,
     repository_store_lock,
     require_no_hierarchy_locks,
+    run_lock_section,
     store_maintenance_lock,
 )
 from metabrowser.cache.paths import store_directory
@@ -104,9 +105,10 @@ def _write_subject_ref(
     with repository_store_lock(home, store_key):
         # Only this function writes refs in a published store, and it runs under the
         # store lock, exclusive across processes, while the caller's lease excludes
-        # maintenance. So no live writer can own this ref's lock: one that exists is
-        # what a Git killed mid-``update-ref`` leaves, and it would refuse every later
-        # pin of this revision (mb-2k9c).
+        # maintenance. So a lock that exists is what a Git killed mid-``update-ref``
+        # left, and it would refuse every later pin of this revision (mb-2k9c). The one
+        # overlap is a Git child that outlives its SIGKILLed parent by milliseconds;
+        # both write the same object ID, so at worst one of them fails once.
         stale = target.git_dir / f"{ref}.lock"
         if stale.is_file():
             log.warning("removing a stale subject-ref lock left by an interrupted Git")
@@ -122,7 +124,8 @@ async def _publish_subject_ref(
     home: Path, store_key: str, target: RepositoryStoreTarget, oid: str
 ) -> str:
     ref = subject_revision_ref(oid)
-    await asyncio.to_thread(_write_subject_ref, home, store_key, target, ref, oid)
+    # Waited for even when cancelled, so the caller's lease outlives the write.
+    await run_lock_section(functools.partial(_write_subject_ref, home, store_key, target, ref, oid))
     return ref
 
 

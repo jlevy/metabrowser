@@ -48,6 +48,8 @@ import functools
 import os
 import re
 import threading
+from collections.abc import Callable, Generator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -55,7 +57,7 @@ from types import TracebackType
 from typing import Final, Self
 
 from metabrowser.cache.identity import is_slug, is_store_key
-from metabrowser.cancellable_thread import run_acquiring_thread
+from metabrowser.cancellable_thread import run_acquiring_thread, run_cancellable_thread
 from metabrowser.home import (
     PrivateStorageError,
     PrivateStorageLocation,
@@ -131,6 +133,10 @@ _MAINTENANCE: Final = frozenset({LockKind.MAINTENANCE_SHARED, LockKind.MAINTENAN
 
 class LockOrderError(RuntimeError):
     """An acquisition would break the frozen lock order or deadlock its own thread."""
+
+
+class LockWaitAbandonedError(Exception):
+    """A blocking lock wait in a worker thread was abandoned because its caller was cancelled."""
 
 
 class LockBusyError(Exception):
@@ -380,6 +386,70 @@ def _open_lock_file(home: Path, relative_path: str) -> int:
     raise _unverifiable(home / relative_path, _LOCK_CHANGED)
 
 
+# The abandon signal for blocking waits on this thread; see :func:`run_lock_section`.
+_WAITS = threading.local()
+
+
+@contextmanager
+def _abandonable_waits(abandon: threading.Event) -> Generator[None]:
+    previous: threading.Event | None = getattr(_WAITS, "abandon", None)
+    _WAITS.abandon = abandon
+    try:
+        yield
+    finally:
+        _WAITS.abandon = previous
+
+
+def _wait_for_flock(fd: int, operation: int, path: Path, abandon: threading.Event) -> None:
+    """Take a lock by retrying without blocking, until it is free or *abandon* is set.
+
+    A thread blocked in ``flock`` cannot be interrupted, so a cancelled caller, and
+    interpreter exit after it, would wait for as long as another process held the
+    lock: a second Ctrl-C no longer stopped a command queued behind a busy home.
+    """
+
+    assert fcntl is not None
+    delay = LEASE_RETRY_FIRST_S
+    while not _flock(fd, operation | fcntl.LOCK_NB, path):
+        if abandon.wait(delay):
+            raise LockWaitAbandonedError(f"abandoned a wait for {path.name}")
+        delay = min(delay * 2, LEASE_RETRY_MAX_S)
+
+
+async def run_lock_section[ResultT](
+    work: Callable[[], ResultT], /, *, release: Callable[[ResultT], None] | None = None
+) -> ResultT:
+    """Run a synchronous locked section in a worker thread; cancellation abandons its waits.
+
+    Without *release*, a cancelled caller waits for the section to finish (it stops
+    within one retry interval if it is still waiting for a lock), so nothing the
+    section covers is still running when the caller's own cleanup starts. With
+    *release*, the section keeps something past its return; cancellation propagates at
+    once and whatever the section goes on to acquire is released, as
+    :func:`run_acquiring_thread` does.
+    """
+
+    if release is None:
+
+        def cancellable(abandon: threading.Event) -> ResultT:
+            with _abandonable_waits(abandon):
+                return work()
+
+        return await run_cancellable_thread(cancellable)
+
+    abandon = threading.Event()
+
+    def acquiring() -> ResultT:
+        with _abandonable_waits(abandon):
+            return work()
+
+    try:
+        return await run_acquiring_thread(acquiring, release=release)
+    except asyncio.CancelledError:
+        abandon.set()
+        raise
+
+
 def _refuse_blocking_on_event_loop(kind: LockKind) -> None:
     """Refuse a blocking ``flock`` on a thread that is running an event loop.
 
@@ -417,10 +487,13 @@ def _acquire(
         raise _unverifiable(home / relative_path, _LOCKS_UNSUPPORTED)
     operation = (fcntl.LOCK_SH if shared else fcntl.LOCK_EX) | (0 if blocking else fcntl.LOCK_NB)
     path = home / relative_path
+    abandon: threading.Event | None = getattr(_WAITS, "abandon", None) if blocking else None
     for _ in range(_IDENTITY_ATTEMPTS):
         fd = _open_lock_file(home, relative_path)
         try:
-            if not _flock(fd, operation, path):
+            if abandon is not None:
+                _wait_for_flock(fd, operation, path, abandon)
+            elif not _flock(fd, operation, path):
                 raise LockBusyError(kind, key)
             if _same_inode(fd, path):
                 order.acquired(kind, key)

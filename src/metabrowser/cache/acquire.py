@@ -36,6 +36,7 @@ from metabrowser.cache.locks import (
     lock_order,
     repository_store_lock,
     require_no_hierarchy_locks,
+    run_lock_section,
     source_alias_lock,
     staging_entry_lock,
     store_lease,
@@ -62,7 +63,6 @@ from metabrowser.cache.records import (
     StoreOperation,
 )
 from metabrowser.cache.urls import GitSource
-from metabrowser.cancellable_thread import run_acquiring_thread
 from metabrowser.git.process import (
     ACQUISITION_POLICY,
     FETCH_POLICY,
@@ -360,7 +360,7 @@ async def acquire_into_staging(source: GitSource, *, home: Path) -> StagingAcqui
         raise AcquisitionError(
             f"{source.transport} Git sources are not acquired yet ({source.normalized})"
         )
-    claim = await run_acquiring_thread(
+    claim = await run_lock_section(
         functools.partial(_open_and_claim_staging, home, lock_order()),
         release=_StagingClaim.abandon,
     )
@@ -848,11 +848,11 @@ async def acquire_file_source(source: GitSource, *, home: Path) -> PublishedSour
         )
     # Every step that reads the home, takes a cache lock, or sweeps runs in a worker
     # thread; the event loop only awaits Git processes and those threads.
-    found, home = await asyncio.to_thread(_find_or_open_cache, source, home)
+    found, home = await run_lock_section(functools.partial(_find_or_open_cache, source, home))
     if found is not None:
         return found
     staged = await acquire_into_staging(source, home=home)
-    return await asyncio.to_thread(_publish_and_touch, staged)
+    return await run_lock_section(functools.partial(_publish_and_touch, staged))
 
 
 def _find_or_open_cache(source: GitSource, home: Path) -> tuple[PublishedSource | None, Path]:

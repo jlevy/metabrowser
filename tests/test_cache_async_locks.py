@@ -17,6 +17,7 @@ import subprocess
 import sys
 import textwrap
 import threading
+import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -323,4 +324,40 @@ def test_acquisition_waits_for_the_home_lock_without_blocking_the_loop(
         holder.close()
     assert held_locks() == ()
     assert (home / "cache" / "repository-stores" / store_key).is_dir()
+    assert list((home / "cache" / "staging").iterdir()) == []
+
+
+def test_a_cancelled_acquisition_behind_a_busy_home_stops_promptly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Ctrl-C cancels the CLI's task; the worker's lock wait must end with it.
+
+    A thread blocked in ``flock`` cannot be interrupted, and ``asyncio.run`` joins its
+    executor on the way out, so an uninterruptible wait kept the command running for
+    as long as another process held the home lock.
+    """
+
+    _allow_installed_git(monkeypatch)
+    home = tmp_path / "home"
+    asyncio.run(acquire_file_source(_file_source(_origin(tmp_path, allow_filter=False)), home=home))
+    other = tmp_path / "other"
+    other.mkdir()
+    other_source = _file_source(_origin(other, allow_filter=False))
+    holder = _BoundedHolder(home, "locks.application_home_lock(home)")
+    try:
+
+        async def scenario() -> None:
+            waiting = asyncio.create_task(acquire_file_source(other_source, home=home))
+            assert await _ticks_while_pending(waiting) == TICKS
+            waiting.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await waiting
+
+        started = time.monotonic()
+        asyncio.run(scenario())
+        elapsed = time.monotonic() - started
+        assert elapsed < HOLD_AT_MOST / 2, f"cancellation waited {elapsed:.1f}s for the lock"
+        assert held_locks() == ()
+    finally:
+        holder.close()
     assert list((home / "cache" / "staging").iterdir()) == []
