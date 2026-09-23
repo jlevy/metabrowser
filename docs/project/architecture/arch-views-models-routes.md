@@ -282,7 +282,13 @@ Their transcript builds each application home in the sandbox with the production
 writers, and each command names its home with a leading `METABROWSER_HOME=$PWD/<home>`
 assignment, because tryscript frontmatter cannot name the sandbox path.
 `check_parity.py` skips leading environment assignments and nothing else, so the command
-must still be `metab`.
+must still be `metab`. Sessions that write the cache through `--no-serve` — acquisition,
+reuse, interruption recovery, fetch failure, and refusal — also read state through these
+routes, but they run in-process as `.txt` goldens from
+`tests/test_cli_cache_acquire_golden.py` and `tests/test_cli_cache_recovery_golden.py`,
+because CI’s Git is below the acquisition floor.
+`check_parity.py` reads only tryscript console blocks, so those sessions are not counted
+as the rows’ evidence.
 
 The exempt rows are the honest boundary.
 A server-sent-event response has no terminating envelope, so `--api` bounds the request

@@ -1,0 +1,35 @@
+## A is acquired, then the owner's write permission is removed from the home.
+# metab <ORIGIN-A> --no-serve
+exit: 0
+--- stdout ---
+acquired: <ORIGIN-A>
+slug: <SLUG-A>
+store: <STORE-A>
+strategy: full
+revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
+--- stderr ---
+## A is reused. A new source B is refused, and nothing in the home changes.
+# metab <ORIGIN-A> --no-serve
+exit: 0
+--- stdout ---
+acquired: <ORIGIN-A>
+slug: <SLUG-A>
+store: <STORE-A>
+strategy: full
+revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
+--- stderr ---
+# metab <ORIGIN-B> --no-serve
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: An entry in the Metabrowser application home cannot be verified as private to the current user: permission was denied while creating it. Make sure the current user can write to the directory that holds it, or set METABROWSER_HOME to a private directory you own.
+## With owner write restored, B is acquired.
+# metab <ORIGIN-B> --no-serve
+exit: 0
+--- stdout ---
+acquired: <ORIGIN-B>
+slug: <SLUG-B>
+store: <STORE-B>
+strategy: full
+revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
+--- stderr ---

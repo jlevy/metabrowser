@@ -447,9 +447,17 @@ Until CI pins Git 2.50.1 (`mb-oueh`), acquire / reuse / staging-sweep / orphan-s
 reclaim / read-only cache hit / last-opened-at evidence is
 `tests/test_cli_cache_acquire_golden.py`: the production CLI in-process, the floor
 monkeypatched, a real pack fetch.
-Layout and future-format refusal remain `cli-api-cache.tryscript.md`. Do not add
-`<HOME>` or `<MTIME>` to `normalize.py` until a transcript emits those values; cache
-routes never report paths, and `--no-serve` does not print the home.
+`tests/test_cli_cache_recovery_golden.py` adds the interrupted, failed, and refused
+sessions the same way, rendered through the console script’s own `Error:` handling.
+Its interruptions are real: a child interpreter running the same CLI is killed with
+SIGKILL at the store or alias publication, and the next command recovers from what the
+crash left. Its below-floor session replaces `detect_git_version` rather than the gate,
+so the production floor check refuses.
+Layout and future-format refusal on the read routes remain `cli-api-cache.tryscript.md`,
+and the ROOT grammar is `cli-cache-url-grammar.tryscript.md`, which reaches no Git and
+so runs as a subprocess.
+Do not add `<HOME>` or `<MTIME>` to `normalize.py` until a transcript emits those
+values; cache routes never report paths, and `--no-serve` does not print the home.
 
 ### What each phase’s golden proves
 
@@ -460,10 +468,18 @@ routes never report paths, and `--no-serve` does not print the home.
 | `cli-git-status.tryscript.md` | conflicts, staged, unstaged, untracked, renames, unborn HEAD, binary, submodule | Status P1 |
 | `cli-git-status-bounds.tryscript.md` | truncation is honest and reported, not silent | Status P1 |
 | `cli-cache-layout.tryscript.md` | home creation, `f01` record, `CACHEDIR.TAG`, future-format refusal | Cache 1A |
-| `cli-cache-acquire.tryscript.md` | clone, publish, second open reuses with no network | Cache 1B-a |
-| `cli-cache-recover.tryscript.md` | interrupted publish quarantines; reclaim sweeps staging | Cache 1B-a |
+| `cli-cache-acquire.txt` | clone, publish, second open reuses with no network | Cache 1B-a |
+| `cli-cache-recover.txt` | the next acquisition sweeps a lock-free staging entry | Cache 1B-a |
+| `cli-cache-orphan-reclaim.txt` | the next acquisition reclaims a store no alias names | Cache 1B-a |
 | `cli-cache-readonly-hit.txt` | second `--no-serve` reuses a published store against a home without owner-write | Cache 1B-a |
-| `cli-url-open.tryscript.md` | URL grammar accepts and rejects, with reasons | Cache 1B-b |
+| `cli-cache-readonly-miss.txt` | a home without owner-write refuses a new source and stays unchanged | Cache 1B-a |
+| `cli-cache-interrupt-store.txt` | a process killed before store publication leaves only staging, which the next acquisition sweeps | Cache 1B-a |
+| `cli-cache-interrupt-alias.txt` | a process killed between store and alias publication leaves an unreferenced store and no visible source; the next acquisition reclaims it and publishes both | Cache 1B-a |
+| `cli-cache-fetch-failures.txt` | missing, non-repository, empty, and detached-HEAD origins fail without touching another source; a folded spelling reuses the same source | Cache 1B-a |
+| `cli-cache-unsupported-git.txt` | below-floor Git refuses a miss without creating or changing the home, and still reuses a hit without Git | Cache 1B-a |
+| `cli-cache-repair-guidance.txt` | invalid `METABROWSER_HOME`, a shared home, and a future format each name their repair, which then works | Cache 1B-a |
+| `cli-cache-url-grammar.tryscript.md` | ROOT grammar accepts and normalizes, or rejects with a reason and without echoing the input | Cache 1B-a |
+| `cli-url-open.tryscript.md` | URL open accepts and rejects, with reasons | Cache 1B-b |
 | `cli-github-repo-open.tryscript.md` | GitHub repository URL reduces to and reuses the shared store without provider auth | Repository 2A |
 | `cli-github-branch-open.tryscript.md` | default, non-default, slash-containing, offline, and unavailable branches use immutable revision subjects without moving a checkout | Repository 2C |
 | `cli-github-pr-open.tryscript.md` | a direct PR selection publishes one bundle and fetches only selected refs without an index | GitHub P3B |
