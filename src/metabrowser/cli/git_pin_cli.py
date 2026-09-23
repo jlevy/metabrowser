@@ -57,6 +57,20 @@ def _pin_failure_message(exc: Exception) -> str:
     )
 
 
+def _require_untrusted_profile(*, allow_edits: bool) -> None:
+    """Acquired content is third-party, so a pin always runs under the untrusted profile.
+
+    Nothing lifts it: ``--untrusted`` is implied, an environment enable is ignored
+    because the profile is passed as an explicit flag, and ``--allow-edits`` is
+    refused rather than dropped so the operator learns their flag had no effect.
+    """
+    if allow_edits:
+        raise CLIError(
+            "--allow-edits is not available on an acquired Git source; "
+            "acquired content always runs under the untrusted profile"
+        )
+
+
 def _require_file_source(source: GitSource, *, mode: str) -> None:
     if source.transport == "file":
         return
@@ -110,13 +124,13 @@ def run_show_after_acquire(
     plugins_dir: list[Path] | None = None,
     log_level: str = "",
     index_timeout_s: float = INDEX_READY_TIMEOUT_S,
-    untrusted: bool = False,
     no_active_content: bool = False,
     allow_edits: bool = False,
 ) -> None:
     """Acquire a ``file://`` source, attach its default pin, and ``--show``."""
 
     _require_file_source(source, mode="show")
+    _require_untrusted_profile(allow_edits=allow_edits)
     apply_log_level(log_level)
     from metabrowser.cli.show_cli import ashow_active
 
@@ -130,9 +144,9 @@ def run_show_after_acquire(
                 index_timeout_s=index_timeout_s,
                 normalize_root=published.git_dir,
                 filesystem_root=None,
-                untrusted=untrusted,
+                untrusted=True,
                 no_active_content=no_active_content,
-                allow_edits=allow_edits,
+                allow_edits=False,
             )
 
     asyncio.run(_run())
@@ -147,7 +161,6 @@ def run_pin_api(
     plugins_dir: list[Path] | None = None,
     log_level: str = "",
     index_timeout_s: float = INDEX_READY_TIMEOUT_S,
-    untrusted: bool = False,
     no_active_content: bool = False,
     allow_edits: bool = False,
 ) -> None:
@@ -156,6 +169,7 @@ def run_pin_api(
     if not route.startswith("/api/"):
         raise CLIError(f"route must begin with /api/; got {route}")
     _require_file_source(source, mode="api")
+    _require_untrusted_profile(allow_edits=allow_edits)
     apply_log_level(log_level)
     from metabrowser.cli.api_cli import aissue_on_active_session
 
@@ -169,9 +183,9 @@ def run_pin_api(
                 log_level=log_level,
                 index_timeout_s=index_timeout_s,
                 normalize_root=published.git_dir,
-                untrusted=untrusted,
+                untrusted=True,
                 no_active_content=no_active_content,
-                allow_edits=allow_edits,
+                allow_edits=False,
             )
 
     asyncio.run(_run())

@@ -24,8 +24,10 @@ from metabrowser.git.process import (
     acquisition_allowed,
     detect_git_version,
 )
+from metabrowser.git.tree_source import GitPath
 from tests.test_cache_acquire import (
     _allow_installed_git,
+    _git,
     _origin,
     _remove_owner_write,
     _restore_owner_write,
@@ -124,25 +126,93 @@ def test_file_url_api_applies_the_content_trust_flags(
 
 
 @posix_only
-def test_pin_api_applies_the_content_trust_flags(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize(
+    ("flags", "env"),
+    [
+        ([], {}),
+        (["--untrusted"], {}),
+        ([], {"METAB_ACTIVE_CONTENT": "1", "METAB_ALLOW_EDITS": "1"}),
+        ([], {"METAB_UNTRUSTED": "0"}),
+    ],
+    ids=["default", "explicit", "env-enables", "env-trusted"],
+)
+def test_pin_api_always_runs_under_the_untrusted_profile(
+    flags: list[str],
+    env: dict[str, str],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A pin is a content surface, so ``--untrusted`` must reach its envelope.
+    """Acquired content is third-party, so no flag or variable lifts the profile.
 
-    The pin entry points issue against an attached subject instead of a
-    filesystem root, which is a second code path to the same capability block.
     ``/api/capabilities`` is the wire form, so this reads the answer the
     browser would read rather than a process global.
     """
     _isolate_home(tmp_path, monkeypatch)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
     url = _file_url(_origin(tmp_path, allow_filter=False))
-    default = runner.invoke(_app, [url, "--api", "/api/capabilities"])
-    assert default.exit_code == 0, default.output
-    assert '"active_content": true' in default.output
-    untrusted = runner.invoke(_app, [url, "--api", "/api/capabilities", "--untrusted"])
-    assert untrusted.exit_code == 0, untrusted.output
-    assert '"active_content": false' in untrusted.output
-    assert '"mutations": false' in untrusted.output
+    result = runner.invoke(_app, [url, "--api", "/api/capabilities", *flags])
+    assert result.exit_code == 0, result.output
+    assert '"active_content": false' in result.output
+    assert '"mutations": false' in result.output
+
+
+@posix_only
+@pytest.mark.parametrize("mode", [["--api", "/api/capabilities"], ["--show", "README"]])
+def test_pin_refuses_allow_edits_instead_of_dropping_it(
+    mode: list[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = _isolate_home(tmp_path, monkeypatch)
+    url = _file_url(_origin(tmp_path, allow_filter=False))
+    result = runner.invoke(_app, [url, *mode, "--allow-edits"])
+    assert isinstance(result.exception, CLIError)
+    assert "--allow-edits is not available on an acquired Git source" in str(result.exception)
+    assert not home.exists()
+
+
+@posix_only
+def test_pin_show_runs_under_the_untrusted_profile(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.capabilities import get_capabilities
+
+    _isolate_home(tmp_path, monkeypatch)
+    monkeypatch.setenv("METAB_ACTIVE_CONTENT", "1")
+    url = _file_url(_origin(tmp_path, allow_filter=False))
+    result = runner.invoke(_app, [url, "--show", "README"])
+    assert result.exit_code == 0, result.output
+    assert get_capabilities().active_content is False
+    assert get_capabilities().mutations is False
+
+
+@posix_only
+def test_a_pin_in_a_populated_cache_sees_only_its_own_tree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Another cached source's objects are unreachable from a pin's content routes."""
+    home = _isolate_home(tmp_path, monkeypatch)
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    first_url = _file_url(_origin(first, allow_filter=False))
+    second_origin = _origin(second, allow_filter=False)
+    work = second / "work"
+    (work / "OTHER").write_text("other source\n", encoding="utf-8")
+    _git(work, "add", "OTHER")
+    _git(work, "commit", "-qm", "second")
+    _git(work, "push", "-q", str(second_origin), "HEAD:topic")
+    assert runner.invoke(_app, [_file_url(second_origin), "--no-serve"]).exit_code == 0
+    assert len([p for p in (home / SOURCES).iterdir() if p.is_dir()]) == 1
+
+    tree = runner.invoke(_app, [first_url, "--api", "/api/tree?depth=1"])
+    assert tree.exit_code == 0, tree.output
+    assert "README" in tree.output
+    assert "OTHER" not in tree.output
+    other_wire = GitPath.from_segments(b"OTHER").to_wire()
+    missing = runner.invoke(_app, [first_url, "--api", f"/api/file?path={other_wire}"])
+    assert "other source" not in missing.output
+    assert len([p for p in (home / SOURCES).iterdir() if p.is_dir()]) == 2
 
 
 @posix_only
