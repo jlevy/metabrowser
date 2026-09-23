@@ -165,3 +165,22 @@ def test_a_path_bearing_git_error_while_opening_the_pin_is_path_free(
     assert isinstance(result.exception, CLIError), result.exception
     assert isinstance(result.exception.__cause__, GitUnavailableError)
     _assert_path_free(str(result.exception), tmp_path, home)
+
+
+@pytest.mark.parametrize("mode", sorted(MODES))
+def test_log_level_debug_prints_gits_own_failure_text(
+    mode: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The error message promises ``--log-level debug`` shows Git's text; keep it true."""
+
+    _isolate_home(tmp_path, monkeypatch)
+    missing = tmp_path / "missing"
+    # ``apply_log_level`` writes ``os.environ`` directly; register the name so
+    # monkeypatch restores it after the command sets it.
+    monkeypatch.setenv("METABROWSER_LOG_LEVEL", "")
+    monkeypatch.delenv("METABROWSER_LOG_LEVEL")
+    result = runner.invoke(
+        _app, [_file_url(missing), *MODES[mode], "--log-level", "debug"], catch_exceptions=True
+    )
+    assert isinstance(result.exception, CLIError), (mode, result.exception)
+    assert "does not appear to be a git repository" in result.output

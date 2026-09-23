@@ -11,6 +11,7 @@ on a listening port.
 from __future__ import annotations
 
 import asyncio
+import os
 import tempfile
 from pathlib import Path
 
@@ -21,7 +22,7 @@ from metabrowser.cache.layout import FutureLayoutFormatError, LayoutError
 from metabrowser.cache.locks import LockBusyError
 from metabrowser.cache.urls import GitSource
 from metabrowser.cli.asgi_client import INDEX_READY_TIMEOUT_S
-from metabrowser.cli.common import apply_log_level
+from metabrowser.cli.common import apply_log_level, cli_logging
 from metabrowser.errors import CLIError
 from metabrowser.git.process import (
     GIT_ACQUISITION_TIMEOUT_S,
@@ -87,6 +88,11 @@ async def acquire_for_cli(source: GitSource) -> PublishedSource:
     raw ``GitError`` reach the user with its argument vector or staging path.
     """
     try:
+        # The server's handler is not attached yet on these paths, so an explicit
+        # ``--log-level`` needs its own, or Git's failure text is never printed.
+        if os.environ.get("METABROWSER_LOG_LEVEL"):
+            with cli_logging():
+                return await acquire_file_source(source, home=application_home())
         return await acquire_file_source(source, home=application_home())
     except _ACQUIRE_CLI_ERRORS as exc:
         raise CLIError(str(exc)) from exc
@@ -136,6 +142,7 @@ def run_api_after_acquire(
             f"{source.transport} Git sources are not served yet "
             f"({source.normalized}). Inspect cache state with --api /api/cache/..."
         )
+    apply_log_level(log_level)
     acquire_published_source(source)
     from metabrowser.cli.api_cli import run_api
 

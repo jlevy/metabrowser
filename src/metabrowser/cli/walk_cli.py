@@ -10,19 +10,15 @@ build pipeline under test. Argument parsing lives in
 from __future__ import annotations
 
 import asyncio
-import logging
-import os
-from collections.abc import Generator
-from contextlib import contextmanager
 from pathlib import Path
 
 import typer
 
-from metabrowser.cli.common import apply_log_level, validate_contained_path
+from metabrowser.cli.common import apply_log_level, cli_logging, validate_contained_path
 from metabrowser.dotenv import load_dotenv_chain as _load_dotenv_chain
 from metabrowser.errors import CLIError
 from metabrowser.inventory_engine.contract import parse_inventory_path
-from metabrowser.settings import RECENT_WINDOW_SECONDS, VALID_LOG_LEVELS
+from metabrowser.settings import RECENT_WINDOW_SECONDS
 from metabrowser.tree_filter import TreeFilter, parse_recency, parse_types
 from metabrowser.walk import (
     DETAIL_LEVELS,
@@ -115,7 +111,7 @@ def run_walk(
         min_size=parse_min_size(min_size),
         include_ignored=include_ignored,
     )
-    with _walk_logging():
+    with cli_logging():
         _run_walk(root, fmt, stream, subpath, detail, max_depth, max_files, tree_filter)
 
 
@@ -206,40 +202,3 @@ def _run_walk(
         ),
         nl=False,
     )
-
-
-@contextmanager
-def _walk_logging() -> Generator[None]:
-    """Scope a stderr handler to one walk invocation.
-
-    Attach the handler at the configured level so ``--walk --log-level debug``
-    prints walker traces. Mirrors ``server._setup_perf_logging`` but stays
-    lightweight (no server/plugin import). Restore process-global logger state
-    so repeated in-process commands never retain a closed standard-error
-    stream.
-    """
-
-    # ``getattr(logging, name)`` would accept any module attribute, so a
-    # name like ``BASIC_FORMAT`` returned a format string that ``setLevel``
-    # then rejected. Check membership first: an unknown value is INFO.
-    level_name = os.environ.get("METABROWSER_LOG_LEVEL", "INFO").upper()
-    if level_name not in VALID_LOG_LEVELS:
-        level_name = "INFO"
-    level = getattr(logging, level_name, logging.INFO)
-    logger = logging.getLogger("metabrowser")
-    previous_level = logger.level
-    previous_propagate = logger.propagate
-    handler = logging.StreamHandler()
-    handler.setFormatter(
-        logging.Formatter("%(asctime)s %(name)s | %(message)s", datefmt="%H:%M:%S")
-    )
-    logger.setLevel(level)
-    logger.addHandler(handler)
-    logger.propagate = False
-    try:
-        yield
-    finally:
-        logger.removeHandler(handler)
-        handler.close()
-        logger.setLevel(previous_level)
-        logger.propagate = previous_propagate
