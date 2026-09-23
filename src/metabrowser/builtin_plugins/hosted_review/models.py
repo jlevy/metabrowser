@@ -26,6 +26,7 @@ from pydantic import (
 )
 
 from metabrowser.provider_resources.profiles import (
+    MAX_STABLE_TOKEN_LENGTH,
     CollectionPaginationPolicy,
     ResourceProfileSpec,
     ResourceTargetClass,
@@ -70,14 +71,6 @@ MAX_ENTITY_TAG_LENGTH = 1024
 # can materialize; the base64 bound is the encoding of that many bytes.
 MAX_REVIEW_PATH_LENGTH = 4096
 MAX_REVIEW_PATH_B64_LENGTH = 5464
-# Stable tokens are the only identifiers here that we choose ourselves rather than admit
-# from a provider: adapter and operation IDs, resource-collection names, and capability
-# tokens. The basis is therefore what our own naming needs, not a provider limit. The
-# longest such value anywhere in the tree is the 23-character "change-request-deletion"
-# operation ID (the longest declared collection name is "change_request_index", 20), and
-# 128 leaves more than five times that while staying well inside the opaque provider ID
-# bound above, which admits data we do not name.
-MAX_STABLE_TOKEN_LENGTH = 128
 # Code point ranges, inclusive. Explicit ranges rather than Unicode categories, so the
 # Python and browser validators cannot disagree across Unicode database versions.
 _CONTROL_AND_LINE_SEPARATOR_RANGES = (
@@ -160,7 +153,6 @@ MAX_DNS_HOST_LENGTH = 253
 MAX_OPAQUE_CURSOR_LENGTH = 4096
 _HOST_LABEL = r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
 _PROVIDER_KIND_RE = re.compile(r"^[a-z][a-z0-9-]*$")
-_STABLE_TOKEN_RE = re.compile(r"^[a-z][a-z0-9._:-]*$")
 _CONTRACT_ID_RE = re.compile(r"^[a-z][a-z0-9.-]*:[A-Za-z][A-Za-z0-9._-]*/v[1-9][0-9]*$")
 _RESOURCE_PROFILE_ID_RE = re.compile(r"^[a-z][a-z0-9.-]*:[a-z][a-z0-9-]*/v[1-9][0-9]*$")
 _OPAQUE_CURSOR_RE = re.compile(r"^[A-Za-z0-9._~+=:-]+$")
