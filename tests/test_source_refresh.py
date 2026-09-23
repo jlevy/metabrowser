@@ -35,7 +35,15 @@ from metabrowser.cache.update import RefreshOutcome, StoreUpdate
 from metabrowser.cli.main import _app
 from metabrowser.git.tree_source import GitPath, GitRevisionSubject, store_batch_reader_count
 from metabrowser.mirror_refresh import RefreshCoordinator
-from metabrowser.source import get_source_session, reset_source_session
+from metabrowser.source import (
+    SubjectNotOpenError,
+    attach_owned_subject,
+    close_owned_subject,
+    get_source_session,
+    replace_owned_subject,
+    reset_source_session,
+    serve_subject_opener,
+)
 from tests.test_cache_acquire import _git
 from tests.test_serve_pin import (
     _home,
@@ -534,3 +542,57 @@ def test_a_folder_shell_has_no_freshness_row(tmp_path: Path) -> None:
     with TestClient(server.app) as client:
         shell = client.get("/view/").text
     assert 'id="source-freshness"' not in shell
+
+
+def test_a_restart_reopens_the_announced_pin_not_a_switched_one(origin: _Origin) -> None:
+    """The opener stays the one serve mode configured, so the banner stays true."""
+
+    assert _serve(origin.url).exit_code == 0
+    with TestClient(server.app) as client:
+        switched = _post(client, "/api/source/pin", {"oid": origin.first}).json()
+        assert switched["status"]["pin"] == origin.first
+    with TestClient(server.app) as client:
+        status = client.get("/api/source/status").json()
+    assert status["pin"] == origin.second
+    assert status["ref"] == "refs/remotes/origin/topic"
+
+
+def test_a_switch_attaches_the_new_pin_before_it_closes_the_old() -> None:
+    """No request can meet a moment with no subject attached while an opener is set."""
+
+    observed: list[str] = []
+
+    class _Subject:
+        kind = "git_revision"
+        identity = ""
+        capabilities = None
+        content = None
+        filesystem_root = None
+
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        async def aclose(self) -> None:
+            try:
+                served = get_source_session().subject.name  # type: ignore[attr-defined]
+            except SubjectNotOpenError:
+                served = "nothing"
+            observed.append(f"close {self.name} while serving {served}")
+
+    async def never_called() -> Any:
+        raise AssertionError("the opener only runs in a lifespan")
+
+    serve_subject_opener(never_called)
+    try:
+        first, second = _Subject("first"), _Subject("second")
+        attach_owned_subject(first)  # type: ignore[arg-type]
+        before = get_source_session().generation
+        session = asyncio.run(replace_owned_subject(second))  # type: ignore[arg-type]
+        assert session.subject is second
+        assert session.generation == before + 1
+        assert observed == ["close first while serving second"]
+        # Shutdown is the one moment nothing is served, and a request then is refused.
+        asyncio.run(close_owned_subject())
+        assert observed[-1] == "close second while serving nothing"
+    finally:
+        reset_source_session()
