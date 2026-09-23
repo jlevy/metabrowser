@@ -5,7 +5,8 @@ Run it with::
 
     METABROWSER_LIVE_GITHUB=1 uv --config-file uv.toml run --frozen pytest -rs tests/test_github_live_smoke.py
 
-Everything is read-only. Clones are anonymous: each ``metab`` process has a fake ``gh``
+Everything is read-only. One test serves a public repository in-process, asks
+``POST /api/source/refresh``, and reads ``/api/source/status``. Clones are anonymous: each ``metab`` process has a fake ``gh``
 first on ``PATH`` that answers nothing, so Git's credential helper never returns a real
 credential. The real ``gh``, when it is installed and signed in, is used for one thing,
 the provider's ``gh api --hostname github.com repos/<o>/<r>`` size check, a GET that
@@ -21,8 +22,10 @@ import shutil
 import stat
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -187,3 +190,51 @@ def test_live_size_check_with_the_real_gh() -> None:
     large = GitSource(transport="https", form="url", normalized="https://github.com/torvalds/linux")
     with pytest.raises(RepositoryTooLargeError, match=r"\(too_large\)"):
         asyncio.run(provider.check_first_clone(large))
+
+
+def test_live_serve_refresh_and_status(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Serve a public repository in-process, refresh it over HTTPS, and read status.
+
+    Read-only, and anonymous: the fake ``gh`` is first on ``PATH`` for the process, so
+    the credential helper and the size check both find nothing.
+    """
+
+    require_admitted_git()
+    from starlette.testclient import TestClient
+    from typer.testing import CliRunner
+
+    from metabrowser import server
+    from metabrowser.cli.main import _app
+    from metabrowser.source import reset_source_session
+
+    monkeypatch.setenv("METABROWSER_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("PATH", _no_credentials_path(tmp_path))
+    monkeypatch.setattr("metabrowser.cli.git_pin_cli.stop_on_interrupt", lambda: None)
+    with (
+        patch("metabrowser.cli.serve._QuietForceExitServer"),
+        patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
+    ):
+        result = CliRunner().invoke(_app, [f"{HELLO}/blob/master/README#L1", "--no-open"])
+    assert result.exit_code == 0, result.output
+    assert "Revision: " in result.stdout and "(master)" in result.stdout
+    try:
+        with TestClient(server.app) as client:
+            status = client.get("/api/source/status").json()
+            assert status["ref_name"] == "master" and status["refreshable"] is True
+            pin = status["pin"]
+            started = client.post(
+                "/api/source/refresh", json={}, headers={"content-type": "application/json"}
+            )
+            assert started.status_code == 202
+            deadline = time.monotonic() + 120
+            while client.get("/api/source/status").json()["refreshing"]:
+                assert time.monotonic() < deadline, "the refresh did not finish"
+                time.sleep(0.2)
+            after = client.get("/api/source/status").json()
+            assert after["last_outcome"]["operation"] == "refresh"
+            assert after["last_outcome"]["outcome"] == "succeeded", after
+            assert after["pin"] == pin and after["latest"] is not None
+            shell = client.get("/view/").text
+            assert '"owner": "octocat"' in shell and '"name": "hello-world"' in shell
+    finally:
+        reset_source_session()
