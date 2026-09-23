@@ -19,7 +19,8 @@ and displayed location, and which of Recent, index polling, the live event strea
 the recency and ignore filters a pin turns off.
 It also pins the navigation heading as served and after the tree loads: a folder’s
 becomes the served root’s name, and a pin keeps the ref and short commit the server
-rendered from its session.
+rendered from its session. The heading tooltip’s count and size must equal the server’s
+summary; a top-level symlink is a blob on a pin and is not followed in a folder.
 Row order is the server’s: a folder lists directories first, while a pin currently lists
 its SPA tree in byte order of the names.
 
@@ -68,11 +69,27 @@ $ node tests/dom/source-kind-session.js
         "name": "README.md",
         "row": "README.md",
         "location": "README.md"
+      },
+      {
+        "path": "guide-link.md",
+        "name": "guide-link.md",
+        "row": "guide-link.md",
+        "location": "guide-link.md"
       }
     ],
     "heading": {
       "served": "<span class=\"path\"><span class=\"path-base\">folder</span></span>",
       "afterTreeLoad": "<span class=\"path\"><span class=\"path-base\">folder</span></span>"
+    },
+    "tally": {
+      "heading": {
+        "files": 4,
+        "size": 39
+      },
+      "server": {
+        "files": 4,
+        "size": 39
+      }
     },
     "gates": {
       "filesPanelUsesRecentSource": true,
@@ -138,11 +155,27 @@ $ node tests/dom/source-kind-session.js
         "name": "README.md",
         "row": "README.md",
         "location": "README.md"
+      },
+      {
+        "path": "g1-Z3VpZGUtbGluay5tZA",
+        "name": "guide-link.md",
+        "row": "guide-link.md",
+        "location": "guide-link.md"
       }
     ],
     "heading": {
-      "served": "<span class=\"path\"><span class=\"path-base\">topic</span></span><span class=\"header-revision\">021c6bc4a0a4</span>",
-      "afterTreeLoad": "<span class=\"path\"><span class=\"path-base\">topic</span></span><span class=\"header-revision\">021c6bc4a0a4</span>"
+      "served": "<span class=\"path\"><span class=\"path-base\">topic</span></span><span class=\"header-revision\">232207c214b3</span>",
+      "afterTreeLoad": "<span class=\"path\"><span class=\"path-base\">topic</span></span><span class=\"header-revision\">232207c214b3</span>"
+    },
+    "tally": {
+      "heading": {
+        "files": 5,
+        "size": 52
+      },
+      "server": {
+        "files": 5,
+        "size": 52
+      }
     },
     "gates": {
       "filesPanelUsesRecentSource": false,

@@ -257,6 +257,52 @@ function renderServedRootHeading(pathEl, root) {
   }
 }
 
+/**
+ * The served root's file count, size, and newest mtime, from its top-level rows.
+ * Same shape as a folder tooltip: the served root reads as "just another
+ * folder", the top-most one. Count and size are null while a directory's
+ * aggregate is still pending.
+ *
+ * A symlink counts the way the server's own tallies count it, so the heading
+ * agrees with /api/rollup. On a pinned revision a link is a blob, one file of
+ * its stored size; under a served folder it is not followed and counts for
+ * nothing.
+ */
+function rootTallyFromTopLevel(tree) {
+  var linksAreFiles = isGitRevisionSource();
+  var totalSize = 0;
+  var totalFiles = 0;
+  var newestMtime = 0;
+  var hasPendingAggregate = false;
+  for (var i = 0; i < tree.length; i++) {
+    var n = tree[i];
+    if (n.type === "dir") {
+      if (
+        n.total_size === null ||
+        n.total_size === undefined ||
+        n.total_files === null ||
+        n.total_files === undefined
+      ) {
+        hasPendingAggregate = true;
+      } else {
+        totalSize += n.total_size;
+        totalFiles += n.total_files;
+      }
+    } else if (n.type === "file" || (linksAreFiles && n.type === "symlink")) {
+      totalSize += n.size || 0;
+      totalFiles += 1;
+    }
+    if ((n.mtime || 0) > newestMtime) {
+      newestMtime = n.mtime || 0;
+    }
+  }
+  return {
+    files: hasPendingAggregate ? null : totalFiles,
+    size: hasPendingAggregate ? null : totalSize,
+    newestMtime: newestMtime,
+  };
+}
+
 // The served root, absolute, from the one element that carries it.
 function servedRoot() {
   return queryHtml(".header-path")?.dataset.servedRoot || "";
@@ -1032,37 +1078,10 @@ async function loadTree(options = {}) {
       knownFileCatalog?.observeInitialTree(data.tree);
       var pathEl = queryHtml(".header-path");
       renderServedRootHeading(pathEl, data.root);
-      // Aggregate root size + file count + newest-mtime from top-level
-      // children. Same shape as a folder tooltip — the served root reads
-      // as "just another folder", the top-most one.
-      var totalSize = 0;
-      var totalFiles = 0;
-      var newestMtime = 0;
-      var hasPendingAggregate = false;
-      for (var i = 0; i < data.tree.length; i++) {
-        var n = data.tree[i];
-        if (n.type === "dir") {
-          if (
-            n.total_size === null ||
-            n.total_size === undefined ||
-            n.total_files === null ||
-            n.total_files === undefined
-          ) {
-            hasPendingAggregate = true;
-          } else {
-            totalSize += n.total_size;
-            totalFiles += n.total_files;
-          }
-        } else if (n.type === "file") {
-          totalSize += n.size || 0;
-          totalFiles += 1;
-        }
-        if ((n.mtime || 0) > newestMtime) {
-          newestMtime = n.mtime || 0;
-        }
-      }
-      var summaryFiles = hasPendingAggregate ? null : totalFiles;
-      var summarySize = hasPendingAggregate ? null : totalSize;
+      var rootTally = rootTallyFromTopLevel(data.tree);
+      var newestMtime = rootTally.newestMtime;
+      var summaryFiles = rootTally.files;
+      var summarySize = rootTally.size;
       // Per-entry pending check above isn't enough: a partial scan can finalize
       // every visible top-level dir before the walker is done, leaving the
       // summary at a stale "known but incomplete" value. The envelope-level

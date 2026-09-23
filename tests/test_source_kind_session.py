@@ -58,6 +58,10 @@ FILES: dict[bytes, bytes] = {
     b"docs/guide.md": b"# Guide\n",
 }
 
+# A top-level link, which a folder does not follow and a pin stores as a blob, so the
+# two count it differently and the heading's tally must follow each server's count.
+SYMLINKS: dict[bytes, bytes] = {b"guide-link.md": b"docs/guide.md"}
+
 # A deadlock guard, not a speed budget: four entries walk in milliseconds, but a
 # loaded host can take seconds to schedule the walker.
 _INDEX_POLL_S = 0.05
@@ -95,11 +99,14 @@ async def _folder_client(root: Path) -> AsyncGenerator[AsyncClient]:
 
 
 def _project(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Name, path, type, and loaded children: what the session reads from a node."""
+    """Name, path, type, sizes, and loaded children: what the session reads from a node."""
 
     projected: list[dict[str, Any]] = []
     for node in nodes:
         item: dict[str, Any] = {"name": node["name"], "path": node["path"], "type": node["type"]}
+        for key in ("size", "total_files", "total_size"):
+            if node.get(key) is not None:
+                item[key] = node[key]
         if node.get("children"):
             item["children"] = _project(node["children"])
         projected.append(item)
@@ -132,6 +139,9 @@ async def _observe(client: AsyncClient) -> dict[str, Any]:
     tree = await client.get("/api/tree?depth=2")
     assert tree.status_code == 200, tree.text
     payload = tree.json()
+    tallies = await client.get("/api/tree?depth=0")
+    assert tallies.status_code == 200, tallies.text
+    summary = tallies.json()["summary"]
     return {
         "shell": block,
         "heading": heading[0],
@@ -139,6 +149,11 @@ async def _observe(client: AsyncClient) -> dict[str, Any]:
         # component, which is all that is recorded. A pin's tree names no root.
         "root": PurePosixPath(payload["root"]).name if "root" in payload else None,
         "tree": _project(payload["tree"]),
+        # The server's own whole-tree count, which the heading's tooltip must match.
+        "summary": {
+            "files": summary["files"] + summary["ignored_files"],
+            "size": summary["size"] + summary["ignored_size"],
+        },
     }
 
 
@@ -148,8 +163,10 @@ def _served(tmp_path: Path) -> dict[str, Any]:
         target = folder / name.decode()
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(body)
+    for name, target_bytes in SYMLINKS.items():
+        (folder / name.decode()).symlink_to(target_bytes.decode())
     (tmp_path / "git").mkdir()
-    store, commit = fast_import_store(tmp_path / "git", FILES)
+    store, commit = fast_import_store(tmp_path / "git", FILES, symlinks=SYMLINKS)
 
     async def run() -> dict[str, Any]:
         async with _folder_client(folder) as client:
