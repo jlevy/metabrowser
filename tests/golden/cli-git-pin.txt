@@ -2318,6 +2318,45 @@ status: 200
   "content_base64": "AAECAwQFBgc="
 }
 --- stderr ---
+# metab file://<ORIGIN> --api '/api/file?path=g1-Ymlu/g1-b3ZlcnNpemUuYmlu&limit=64'
+exit: 0
+--- stdout ---
+api: /api/file?path=g1-Ymlu/g1-b3ZlcnNpemUuYmlu&limit=64
+status: 200
+{
+  "subject": "git_revision",
+  "size": 16777217,
+  "path": "g1-Ymlu/g1-b3ZlcnNpemUuYmlu",
+  "display": "bin/oversize.bin",
+  "mode": "100644",
+  "git_kind": "blob",
+  "symlink": false,
+  "gitlink": false,
+  "oid": "b3754b81ea7bf9696d09f847b67f8e06021f6091",
+  "ext": ".bin",
+  "type": "text",
+  "kind": "text",
+  "views": [
+    {
+      "id": "source",
+      "label": "Source",
+      "default": true,
+      "container_class": "content-body metabrowser-source-host",
+      "printable": true,
+      "print_profile": "source",
+      "render_runtime": "client"
+    }
+  ],
+  "content": "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+  "content_offset": 0,
+  "content_bytes": 64,
+  "bytes_read": 64,
+  "content_truncated": true,
+  "content_preview_limit": 64,
+  "content_max_preview_limit": 16777216,
+  "highlight_disabled": false
+}
+--- stderr ---
 # metab file://<ORIGIN> --api /api/recent
 exit: 1
 --- stdout ---
@@ -2340,17 +2379,16 @@ status: 404
 }
 --- stderr ---
 Error: /api/file?path=g1-bm9wZS50eHQ returned HTTP 404
-# metab file://<ORIGIN> --api /api/file?path=g1-Ymlu/g1-b3ZlcnNpemUuYmlu
+# metab file://<ORIGIN> --api '/api/file?path=g1-Ymlu/g1-b3ZlcnNpemUuYmlu&offset=16777217'
 exit: 1
 --- stdout ---
-api: /api/file?path=g1-Ymlu/g1-b3ZlcnNpemUuYmlu
-status: 413
+api: /api/file?path=g1-Ymlu/g1-b3ZlcnNpemUuYmlu&offset=16777217
+status: 416
 {
-  "error": "blob b3754b81ea7bf9696d09f847b67f8e06021f6091 is 16777217 bytes; limit is 16777216",
-  "code": "blob_too_large",
-  "oid": "b3754b81ea7bf9696d09f847b67f8e06021f6091",
-  "size": 16777217,
-  "max_bytes": 16777216
+  "type": "error",
+  "path": "g1-Ymlu/g1-b3ZlcnNpemUuYmlu",
+  "error": "Requested preview window exceeds the stream budget for this blob",
+  "max_offset": 16777216
 }
 --- stderr ---
-Error: /api/file?path=g1-Ymlu/g1-b3ZlcnNpemUuYmlu returned HTTP 413
+Error: /api/file?path=g1-Ymlu/g1-b3ZlcnNpemUuYmlu&offset=16777217 returned HTTP 416

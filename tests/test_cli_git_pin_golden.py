@@ -43,11 +43,11 @@ Every entry answers something a one-file origin cannot:
   bytes.
 - ``bin/sample.bin`` -- NUL-bearing bytes, so the binary kind and its chunk
   hook are pinned.
-- ``bin/oversize.bin`` -- one byte past ``TEXT_PREVIEW_REQUEST_MAX_BYTES``. It
-  is the only way to reach ``blob_too_large`` through acquisition with the
-  production constant rather than a lowered test bound, and it packs to a few
-  kilobytes because the content is one repeated byte. It also shows that the
-  recursive tally counts a blob whose content the routes refuse to read.
+- ``bin/oversize.bin`` -- one byte past ``TEXT_PREVIEW_REQUEST_MAX_BYTES``, with
+  the production constant rather than a lowered test bound. It packs to a few
+  kilobytes because the content is one repeated byte. It shows that a blob past
+  the whole-read limit is classified from a bounded window and paged like a large
+  file on disk, and that a window starting past the text budget is refused.
 - ``data/events.jsonl`` -- a JSONL blob, a distinct kind with a parsed envelope.
 - ``links/to-readme.md`` -- an in-tree relative symlink (mode 120000).
   Listings show the link; ``/api/file`` follows it.
@@ -294,12 +294,13 @@ def test_golden_multi_entry_pin_show_and_api(
         f"/api/file?path={GITLINK_WIRE}",
         f"/api/plugin/structured/parsed?path={JSON_WIRE}",
         f"/api/plugin/binary/chunk?path={BINARY_WIRE}",
+        f"/api/file?path={OVERSIZE_WIRE}&limit=64",
     ]
     show_refusals = ["nope.txt"]
     api_refusals = [
         "/api/recent",
         f"/api/file?path={ABSENT_WIRE}",
-        f"/api/file?path={OVERSIZE_WIRE}",
+        f"/api/file?path={OVERSIZE_WIRE}&offset={TEXT_PREVIEW_REQUEST_MAX_BYTES + 1}",
     ]
 
     shown = {selection: _ok([url, "--show", selection]) for selection in shows}
@@ -383,8 +384,11 @@ def test_golden_multi_entry_pin_show_and_api(
     assert "status: 409" in refused["/api/recent"].stdout
     assert _payload(refused["/api/recent"])["code"] == "unsupported_for_subject"
     assert "status: 404" in refused[f"/api/file?path={ABSENT_WIRE}"].stdout
-    assert "status: 413" in refused[f"/api/file?path={OVERSIZE_WIRE}"].stdout
-    assert _payload(refused[f"/api/file?path={OVERSIZE_WIRE}"])["code"] == "blob_too_large"
+    oversize = _payload(answered[f"/api/file?path={OVERSIZE_WIRE}&limit=64"])
+    assert oversize["size"] == TEXT_PREVIEW_REQUEST_MAX_BYTES + 1
+    assert oversize["kind"] == "text" and oversize["content_truncated"] is True
+    past = f"/api/file?path={OVERSIZE_WIRE}&offset={TEXT_PREVIEW_REQUEST_MAX_BYTES + 1}"
+    assert "status: 416" in refused[past].stdout
 
     rendered = "".join(
         [
