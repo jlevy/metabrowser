@@ -8,6 +8,8 @@ https and ssh stay closed. A bare path never reaches here.
 
 from __future__ import annotations
 
+import asyncio
+import functools
 import hashlib
 import logging
 import os
@@ -30,6 +32,8 @@ from metabrowser.cache.layout import open_cache, read_config, read_layout
 from metabrowser.cache.locks import (
     CacheLock,
     LockBusyError,
+    LockOrder,
+    lock_order,
     repository_store_lock,
     require_no_hierarchy_locks,
     source_alias_lock,
@@ -58,6 +62,7 @@ from metabrowser.cache.records import (
     StoreOperation,
 )
 from metabrowser.cache.urls import GitSource
+from metabrowser.cancellable_thread import run_acquiring_thread
 from metabrowser.git.process import (
     ACQUISITION_POLICY,
     FETCH_POLICY,
@@ -147,16 +152,54 @@ def _delete_staging(home: Path, entry: str) -> None:
         shutil.rmtree(path)
 
 
-def _claim_staging(home: Path) -> tuple[str, CacheLock]:
+def _claim_staging(home: Path, *, order: LockOrder | None = None) -> tuple[str, CacheLock]:
     for _attempt in range(_ENTRY_ATTEMPTS):
         entry = "acq-" + secrets.token_hex(6)
         try:
-            lock = staging_entry_lock(home, entry)
+            lock = staging_entry_lock(home, entry, order=order)
         except LockBusyError:
             continue
         ensure_private_directory(home, staging_entry(entry))
         return entry, lock
     raise AcquisitionError("could not claim a staging entry")
+
+
+@dataclass(frozen=True, slots=True)
+class _StagingClaim:
+    """An opened home and a claimed, still empty staging entry."""
+
+    home: Path
+    entry: str
+    lock: CacheLock
+    git_version: str
+
+    def abandon(self) -> None:
+        _delete_staging(self.home, self.entry)
+        if self.lock.held:
+            self.lock.remove_lock_file()
+
+
+def _open_and_claim_staging(home: Path, owner: LockOrder) -> _StagingClaim:
+    """Check the Git floor, open the cache, and claim a staging entry, in a worker thread.
+
+    ``open_cache`` takes the blocking home lock and sweeps and reclaims the home, so none
+    of this may run on the event loop. The staging entry's lock outlives this section, so
+    it is recorded for *owner*, the thread that awaits the acquisition and keeps it.
+    """
+
+    version = require_acquisition_git()
+    cache = open_cache(home)
+    entry, lock = _claim_staging(cache.home, order=owner)
+    return _StagingClaim(cache.home, entry, lock, f"{version[0]}.{version[1]}.{version[2]}")
+
+
+async def _abandon_off_loop(claim: _StagingClaim) -> None:
+    """Delete a failed staging entry in a worker thread, finishing even if cancelled again.
+
+    The entry can hold a whole fetched store, so its ``rmtree`` stays off the event loop.
+    """
+
+    await asyncio.shield(asyncio.ensure_future(asyncio.to_thread(claim.abandon)))
 
 
 async def _run(
@@ -317,11 +360,11 @@ async def acquire_into_staging(source: GitSource, *, home: Path) -> StagingAcqui
         raise AcquisitionError(
             f"{source.transport} Git sources are not acquired yet ({source.normalized})"
         )
-    version = require_acquisition_git()
-    git_version = f"{version[0]}.{version[1]}.{version[2]}"
-    cache = open_cache(home)
-    home = cache.home
-    entry, lock = _claim_staging(home)
+    claim = await run_acquiring_thread(
+        functools.partial(_open_and_claim_staging, home, lock_order()),
+        release=_StagingClaim.abandon,
+    )
+    home, entry, lock, git_version = claim.home, claim.entry, claim.lock, claim.git_version
     # Commands that run before the store exists start in the claimed staging entry, not
     # the home. Discovery stops at the working directory, and this one is private, new,
     # and never a repository, so neither the home nor anything enclosing it lends config.
@@ -407,10 +450,12 @@ async def acquire_into_staging(source: GitSource, *, home: Path) -> StagingAcqui
             git_version=git_version,
             _lock=lock,
         )
+    except GeneratorExit:
+        # A closed coroutine cannot await its cleanup.
+        claim.abandon()
+        raise
     except BaseException:
-        _delete_staging(home, entry)
-        if lock.held:
-            lock.remove_lock_file()
+        await _abandon_off_loop(claim)
         raise
 
 
@@ -743,7 +788,12 @@ def _find_published(source: GitSource, home: Path) -> PublishedSource | None:
 
 
 def publish_from_staging(staged: StagingAcquisition) -> PublishedSource:
-    """Publish *staged* as an immutable store and a source alias, then drop staging."""
+    """Publish *staged* as an immutable store and a source alias, then drop staging.
+
+    Synchronous and blocking: it takes the store lease, the store lock, and the alias
+    lock, each of which may wait on another process. Async callers run it in a worker
+    thread, as :func:`acquire_file_source` does.
+    """
 
     if staged.default_remote_ref is None:
         staged.abandon()
@@ -792,25 +842,41 @@ async def acquire_file_source(source: GitSource, *, home: Path) -> PublishedSour
         raise AcquisitionError(
             f"{source.transport} Git sources are not acquired yet ({source.normalized})"
         )
-    if home.exists():
-        try:
-            layout = read_layout(home, shared="keep")
-            read_config(home, shared="keep")
-        except PrivateStorageError:
-            layout = None
-        if layout is not None:
-            found = _find_published(source, home)
-            if found is not None:
-                _touch_last_opened(found)
-                return found
-        require_acquisition_git()
-        cache = open_cache(home)
-        home = cache.home
+    # Every step that reads the home, takes a cache lock, or sweeps runs in a worker
+    # thread; the event loop only awaits Git processes and those threads.
+    found, home = await asyncio.to_thread(_find_or_open_cache, source, home)
+    if found is not None:
+        return found
+    staged = await acquire_into_staging(source, home=home)
+    return await asyncio.to_thread(_publish_and_touch, staged)
+
+
+def _find_or_open_cache(source: GitSource, home: Path) -> tuple[PublishedSource | None, Path]:
+    """Return a cache hit, or open the cache for a miss; synchronous and blocking."""
+
+    if not home.exists():
+        return None, home
+    try:
+        layout = read_layout(home, shared="keep")
+        read_config(home, shared="keep")
+    except PrivateStorageError:
+        layout = None
+    if layout is not None:
         found = _find_published(source, home)
         if found is not None:
             _touch_last_opened(found)
-            return found
-    published = publish_from_staging(await acquire_into_staging(source, home=home))
+            return found, home
+    require_acquisition_git()
+    cache = open_cache(home)
+    home = cache.home
+    found = _find_published(source, home)
+    if found is not None:
+        _touch_last_opened(found)
+    return found, home
+
+
+def _publish_and_touch(staged: StagingAcquisition) -> PublishedSource:
+    published = publish_from_staging(staged)
     _touch_last_opened(published)
     return published
 

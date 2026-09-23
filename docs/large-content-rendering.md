@@ -54,6 +54,26 @@ Walking size *S* in chunks of *C* therefore decompresses `S²/2C` in total — w
 a **larger** chunk makes compressed files cheaper, not dearer.
 The per-request cost stays linear and small.
 
+A blob on a Git pin is the same asymmetry.
+`cat-file` hands out whole objects, not byte ranges, so a window streams the blob from
+its start, and Git inflates the object besides; only the window is held.
+Measured on a packed store at load average 8:
+
+| Blob | First 2 MiB | Byte view to its 32 MiB ceiling (7 requests) | Worst request |
+| --- | --- | --- | --- |
+| 8 MiB | 4.6 ms | 72 ms | 28 ms |
+| 32 MiB | 7.0 ms | 272 ms | 56 ms |
+| 64 MiB | 12 ms | 380 ms | 70 ms |
+| 256 MiB | 39 ms | 915 ms | 187 ms |
+
+The same windows from disk took 0.7 ms and about 10 ms.
+A blob is not memoized between requests: reading it once and slicing took 40 ms for 32
+MiB and 114 ms for 64 MiB over the whole sequence, a saving of well under 100 ms per
+click bought by holding the blob in server memory for as long as the view might page.
+A blob larger than the pin reads whole is classified from a bounded window the way a
+large file is, and a text window ends within `TEXT_PREVIEW_REQUEST_MAX_BYTES`, the
+stream budget a compressed file has.
+
 ### CSS wrapping one large run is quadratic
 
 Handing the browser a single long text run and asking it to wrap is the expensive
@@ -247,7 +267,7 @@ window that never existed on disk.
 | --- | --- | --- |
 | `TEXT_PREVIEW_CHUNK_BYTES` | 2 MiB | Opening latency |
 | `TEXT_PREVIEW_MAX_CHUNK_BYTES` | 8 MiB | Per-click main-thread time |
-| `TEXT_PREVIEW_REQUEST_MAX_BYTES` | 16 MiB | One request, and the decompression window |
+| `TEXT_PREVIEW_REQUEST_MAX_BYTES` | 16 MiB | One request, and the stream window of a compressed file or Git blob |
 | `SYNTAX_HIGHLIGHT_MAX_BYTES` | 512 KiB | Highlight.js main-thread work and token-span DOM |
 | `BINARY_PREVIEW_MAX_BYTES` | 32 MiB | Browser memory for loaded bytes |
 | `BINARY_PREVIEW_CHUNK_BYTES` | 1 MiB | Opening latency |

@@ -142,6 +142,9 @@ revision — and never constructs one or branches on the subject kind.
   the bound is on bytes, not on a decoded string.
   It reports whether content continues past the window, which is what settles size for a
   compressed artifact whose declared length is a trailer nothing verifies.
+  On a pin a window streams the blob from its start, as a compressed artifact does, so
+  reaching an offset costs reading up to it; only the window is held, and no blob is
+  refused for its size.
   `stat_content` is the separate call for a caller that needs a validated logical size
   and accepts what establishing one costs.
 
@@ -415,7 +418,11 @@ Omitted size, mtime, and directory aggregates leave tally chrome empty rather th
 pending.
 
 Tree enumeration uses NUL-framed Git output.
-Symlinks are entries whose blob bytes name the link target and are never followed.
+Symlinks are entries whose blob bytes name the link target, and enumeration never
+follows them.
+File, raw, KPress, and plugin content reads follow an in-tree relative link
+one component at a time, as a checkout on disk resolves it, and refuse one that is
+absolute, climbs out of the tree, or does not end within `_MAX_GIT_SYMLINK_FOLLOW` hops.
 Gitlinks are distinct non-folder entries that carry the referenced commit OID. Git LFS
 pointer files remain ordinary blobs; no smudge filter or implicit LFS network request
 runs. Focused tests pin that `cat-file` returns the stored pointer bytes even when a
@@ -567,6 +574,14 @@ shared, blocking only while holding no ordered lock.
 lock; reclamation, purge, and quarantine take the exclusive form before their ordered
 locks. The exclusive form never blocks, so a lease defers maintenance and refuses purge.
 Process exit releases the shared lock, including after a crash.
+No cache lock blocks the event loop, and `_acquire` in `cache/locks.py` refuses a
+blocking lock on a thread that runs one.
+Opening the cache, publication, and the subject-ref write each run as one synchronous
+section in a worker thread and release their locks before returning.
+A lease or staging entry that async code keeps across `await` is recorded for the
+event-loop thread that keeps it, although a worker thread opens and locks it, so a
+pooled worker never carries a lock into unrelated work; a lease waits for a maintenance
+holder by retrying rather than by blocking a thread.
 Automatic Git maintenance is disabled in every store’s configuration, so maintenance
 runs only under that lock.
 Because an acquisition holds the lease until its alias exists, reclamation cannot trash

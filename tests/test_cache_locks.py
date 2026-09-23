@@ -273,7 +273,8 @@ def test_a_worker_thread_is_its_own_holder_and_still_refuses_descending_locks(
             return held_locks()
 
     async def in_a_worker() -> tuple[HeldLock, ...]:
-        with source_alias_lock(home, SLUG_B):
+        # Only a non-blocking attempt may run on the loop thread itself.
+        with source_alias_lock(home, SLUG_B, blocking=False):
             return await asyncio.to_thread(take_then_descend)
 
     assert asyncio.run(in_a_worker()) == (HeldLock(LockKind.REPOSITORY_STORE, STORE_B),)

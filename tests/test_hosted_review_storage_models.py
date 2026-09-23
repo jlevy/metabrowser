@@ -7,6 +7,7 @@ import pytest
 from hosted_review_cases import apply_case_changes, load_hosted_review_corpus
 
 from metabrowser.builtin_plugins.hosted_review import models as hosted_review
+from metabrowser.provider_resources import profiles
 
 _RETRIEVAL_SNAPSHOT_ID = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 _RESOURCE_SET_SNAPSHOT_ID = (
@@ -159,6 +160,28 @@ def test_resource_collection_name_is_a_bounded_stable_token() -> None:
     collection["name"] = "n" * (bound + 1)
     with pytest.raises(ValueError):
         hosted_review.ResourceCollection.model_validate(collection)
+
+
+def test_resource_collection_declaration_shares_the_record_name_bound() -> None:
+    # validate_resource_set_against_profile requires a record's collection name to equal
+    # its declaration's, so a declaration longer than the record bound would make every
+    # resource set for that profile invalid. The two share one constant instead.
+    assert hosted_review.MAX_STABLE_TOKEN_LENGTH is profiles.MAX_STABLE_TOKEN_LENGTH
+    bound = profiles.MAX_STABLE_TOKEN_LENGTH
+
+    def declare(name: str) -> profiles.ResourceCollectionSpec:
+        return profiles.ResourceCollectionSpec(
+            name=name,
+            artifact_contract_id="example.test:Item/v1",
+            minimum_artifacts=0,
+            maximum_artifacts=1,
+            pagination=profiles.CollectionPaginationPolicy.forbidden,
+            required_for_last_complete=True,
+        )
+
+    assert declare("n" * bound).name == "n" * bound
+    with pytest.raises(ValueError, match="stable token"):
+        declare("n" * (bound + 1))
 
 
 def test_new_provider_collection_needs_only_a_trusted_profile_declaration() -> None:

@@ -732,12 +732,15 @@ def test_git_tree_filters_and_blob_size_gate(tmp_path: Path) -> None:
             assert [entry["display"] for entry in nested_body["entries"]] == ["docs/note.txt"]
             assert nested_body["filtered"] == {"files": 1, "size": 7, "entries": 1}
 
-            too_big = await client.get("/api/file", params={"path": _wire(b"big.bin")})
-            assert too_big.status_code == 413
-            too_big_body = too_big.json()
-            assert too_big_body["code"] == "blob_too_large"
-            assert too_big_body["max_bytes"] == 32
-            assert too_big_body["size"] == 64
+            # Past the whole-read ceiling a blob is still classified, from a bounded
+            # window, the way the filesystem types a large file: /api/file answers.
+            windowed = await client.get("/api/file", params={"path": _wire(b"big.bin")})
+            assert windowed.status_code == 200
+            windowed_body = windowed.json()
+            assert windowed_body["type"] == "text"
+            assert windowed_body["size"] == 64
+            assert windowed_body["content"] == "x" * 32
+            assert windowed_body["content_truncated"] is True
 
             raw_too_big = await client.get("/raw", params={"path": _wire(b"big.bin")})
             assert raw_too_big.status_code == 413
@@ -1058,6 +1061,51 @@ def test_git_file_raw_kpress_follow_in_tree_symlinks(tmp_path: Path) -> None:
             assert (await client.get("/api/file", params={"path": _wire(b"a")})).status_code == 404
             assert (await client.get("/raw", params={"path": _wire(b"to_docs")})).status_code == 404
             assert str(store) not in nested.text
+
+    asyncio.run(_run())
+
+
+def test_git_symlinks_resolve_component_by_component_like_the_checkout(tmp_path: Path) -> None:
+    """A link body is not normalized as text: the checkout on disk is the oracle.
+
+    ``..`` after a directory link climbs from where the link led, a link partway
+    through a target is followed, and ``file/..`` or ``missing/..`` does not resolve.
+    """
+
+    work = tmp_path / "work"
+    store = tmp_path / "store.git"
+    work.mkdir()
+    _git(work, "init", "-q", "-b", "main")
+    (work / "README.md").write_text("root readme\n", encoding="utf-8")
+    (work / "docs" / "deep").mkdir(parents=True)
+    (work / "docs" / "README.md").write_text("docs readme\n", encoding="utf-8")
+    (work / "docs" / "deep" / "note.txt").write_text("deep note\n", encoding="utf-8")
+    (work / "deep_link").symlink_to("docs/deep")
+    (work / "climb").symlink_to("deep_link/../README.md")
+    (work / "through").symlink_to("deep_link/note.txt")
+    (work / "file_parent").symlink_to("README.md/../README.md")
+    (work / "missing_parent").symlink_to("nope/../README.md")
+    (work / "loop_mid").symlink_to("loop/README.md")
+    (work / "loop").symlink_to("loop")
+    _git(work, "add", "-A")
+    _git(work, "commit", "-qm", "symlinks")
+    commit = _git(work, "rev-parse", "HEAD").decode().strip()
+    _git(tmp_path, "clone", "--bare", "--template=", str(work), str(store), env_root=tmp_path)
+
+    async def _run() -> None:
+        async with _pinned_client(store, commit) as (client, _subject):
+            for name in (b"climb", b"through"):
+                served = await client.get("/api/file", params={"path": _wire(name)})
+                assert served.status_code == 200, name
+                on_disk = (work / name.decode()).read_text(encoding="utf-8")
+                assert served.json()["content"] == on_disk, name
+                raw = await client.get("/raw", params={"path": _wire(name)})
+                assert raw.content.decode() == on_disk, name
+            assert (work / "climb").read_text(encoding="utf-8") == "docs readme\n"
+            for name in (b"file_parent", b"missing_parent", b"loop_mid"):
+                assert not (work / name.decode()).exists(), name
+                refused = await client.get("/api/file", params={"path": _wire(name)})
+                assert refused.status_code == 404, name
 
     asyncio.run(_run())
 
