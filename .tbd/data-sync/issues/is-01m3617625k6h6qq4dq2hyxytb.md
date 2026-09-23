@@ -5,7 +5,7 @@ title: "Repository Phase 2A: acquire HTTPS Git sources for URL opening"
 kind: feature
 status: open
 priority: 1
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 labels:
   - release:v0.12.0
@@ -18,6 +18,10 @@ dependencies:
     target: is-01m2zvdh0wgdt6c9qx38dz52xw
 parent_id: is-01m2zvdh0wgdt6c9qx38dz52xw
 created_at: 2026-09-23T02:23:51.363Z
-updated_at: 2026-09-23T02:26:04.295Z
+updated_at: 2026-09-23T05:32:38.835Z
 ---
 Own the HTTPS portion of mb-bi2c in the Phase 2A PR. Extend the existing bounded Git acquisition and publication path to credential-free HTTPS Git sources, preserving environment isolation, prompt suppression, safe diagnostics, version gates and no implicit fetch on content reads. Prove a cold public repository URL can acquire, publish and open its default full OID, and a valid warm/read-only/offline hit uses no network or provider credential lookup. Include transport failure/cancellation and interrupted publication coverage. The GitHub API, provider-principal credential bridge, selected-ref jobs and SSH are outside this subtask. SSH remains tracked by parent mb-bi2c, which must stay open until both transports meet their acceptance. Planning only: do not begin implementation until the next implementation task is explicitly started.
+
+## Notes
+
+2026-09-22 (from mb-dg00, PR #226): this bead now owns the auth-isolated half of the fetch-failure goldens. file:// has no credentials, so tests/golden/cli-cache-fetch-failures.txt covers only source isolation. With HTTPS, show that one source failing authentication does not affect another source alias or its store.
