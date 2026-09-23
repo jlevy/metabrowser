@@ -14,6 +14,7 @@ import pytest
 from metabrowser.cache import acquire as acquire_module
 from metabrowser.cache.acquire import (
     AcquisitionError,
+    PartialCloneSourceError,
     RemoteUnavailableError,
     ValidationFailedError,
     acquire_file_source,
@@ -436,6 +437,35 @@ def test_a_missing_file_origin_abandons_without_leaving_staging(
     staging = home / "cache" / "staging"
     if staging.is_dir():
         assert list(staging.iterdir()) == []
+
+
+@posix_only
+def test_a_partial_clone_source_is_refused_with_a_typed_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A blobless clone lacks blobs its own upload-pack cannot send."""
+    _allow_installed_git(monkeypatch)
+    upstream = _origin(tmp_path)
+    _git(upstream, "config", "uploadpack.allowFilter", "true")
+    partial = tmp_path / "partial.git"
+    _git(
+        tmp_path,
+        "clone",
+        "-q",
+        "--bare",
+        "--filter=blob:none",
+        "--",
+        f"file://{upstream.resolve()}",
+        str(partial),
+    )
+    # Its promisor is gone, so no Git can fetch the missing blobs, lazy fetch or not.
+    shutil.rmtree(upstream)
+    home = tmp_path / "home"
+    with pytest.raises(PartialCloneSourceError, match="partial clone missing objects"):
+        asyncio.run(acquire_file_source(_file_source(partial), home=home))
+    assert list((home / "cache" / "staging").iterdir()) == []
+    assert list((home / "cache" / "sources").iterdir()) == []
+    assert list((home / "cache" / "repository-stores").iterdir()) == []
 
 
 @posix_only

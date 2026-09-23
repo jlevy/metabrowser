@@ -14,6 +14,7 @@ import contextlib
 import functools
 import logging
 import os
+import re
 import secrets
 import shutil
 from dataclasses import dataclass, field
@@ -89,6 +90,10 @@ _STORE_CONFIG: Final[tuple[tuple[str, str], ...]] = (
     ("core.hooksPath", "/dev/null"),
 )
 _ENTRY_ATTEMPTS: Final = 8
+# How a source that is itself a partial clone refuses to send an object it lacks. The
+# fetch's upload-pack inherits GIT_NO_LAZY_FETCH, and acquisition runs Git under
+# LC_ALL=C, so this is Git's own untranslated text (promisor-remote.c).
+_PARTIAL_CLONE_SOURCE: Final = re.compile(r"could not fetch [0-9a-f]+ from promisor remote")
 
 
 class AcquisitionError(Exception):
@@ -101,6 +106,10 @@ class RemoteUnavailableError(AcquisitionError):
 
 class FetchFailedError(AcquisitionError):
     """The fetch into staging failed after HEAD was observed."""
+
+
+class PartialCloneSourceError(FetchFailedError):
+    """The source is a partial clone missing objects the fetch needs."""
 
 
 class ValidationFailedError(AcquisitionError):
@@ -316,6 +325,10 @@ async def acquire_into_staging(source: GitSource, *, home: Path) -> StagingAcqui
                 git_dir=git_dir,
             )
         except GitCommandError as exc:
+            if _PARTIAL_CLONE_SOURCE.search(exc.stderr_summary):
+                raise PartialCloneSourceError(
+                    "the source is a partial clone missing objects; clone it fully first"
+                ) from exc
             raise FetchFailedError("the fetch into staging failed") from exc
         try:
             kind = (await _run(["cat-file", "-t", revision], git_dir=git_dir)).strip()
@@ -740,6 +753,7 @@ __all__ = [
     "AcquisitionError",
     "AliasConflictError",
     "FetchFailedError",
+    "PartialCloneSourceError",
     "PublishedSource",
     "RemoteUnavailableError",
     "StagingAcquisition",

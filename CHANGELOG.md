@@ -131,9 +131,10 @@ Repository cache:
   store using Git’s pack transport (`git fetch`, not `clone --local` hardlinks).
   The fetch is a full clone, every object reachable from the origin’s branches and tags,
   so a published store never needs its origin again.
-  A later acquire of the same `file://` source publishes that staging entry into
-  `repository-stores` and a source alias as the visibility commit, or reuses a store
-  already published for that identity.
+  An origin that is itself a partial clone missing objects is refused with a message
+  that says so. A later acquire of the same `file://` source publishes that staging entry
+  into `repository-stores` and a source alias as the visibility commit, or reuses a
+  store already published for that identity.
   The default branch is read only from the origin’s own `HEAD`, and an acquire whose
   fetched default branch does not resolve to the observed `HEAD` commit is refused
   before publication. Acquisition runs Git without any inherited `GIT_*` variable, so an

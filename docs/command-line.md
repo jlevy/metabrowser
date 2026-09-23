@@ -136,7 +136,8 @@ source, and none changes another source already in the cache.
   Upgrade Git; a source already in the cache is still reused.
 - **A source that cannot be fetched** — a missing path, a directory that is not a
   repository, a repository with no commits, or one whose `HEAD` is not a branch —
-  publishes nothing.
+  publishes nothing. A source that is itself a partial clone missing objects says so;
+  clone it fully first.
 - **An acquisition that is interrupted** leaves nothing visible, because the source is
   published last, after its store.
   The next acquisition removes the abandoned staging entry, fetches again, and reuses a
