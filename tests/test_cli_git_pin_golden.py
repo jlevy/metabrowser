@@ -30,10 +30,12 @@ Every entry answers something a one-file origin cannot:
 - ``README.md`` -- a direct-child README, which is what mounts folder Overview.
 - ``a-b``, ``a.txt``, ``a/``, ``ab`` -- the byte-order boundary around ``/``
   (0x2F). Git orders a tree as if a directory name ended in ``/``, so its
-  canonical order is ``a-b``, ``a.txt``, ``a/...``, ``ab``. ``/api/tree`` sorts
-  by name (``a``, ``a-b``, ``a.txt``, ``ab``) while ``/api/catalog`` keeps the
-  recursive blob order, and the transcript shows both. ``a-b`` and ``ab`` have
-  no extension, which pins where ``ext`` is omitted.
+  canonical order is ``a-b``, ``a.txt``, ``a/...``, ``ab``. ``/api/tree``
+  currently lists by name bytes with directories interleaved (``a``, ``a-b``,
+  ``a.txt``, ``ab``), unlike the directories-first order of a folder listing,
+  while ``/api/catalog`` keeps the recursive blob order. The transcript records
+  both as they are today. ``a-b`` and ``ab`` have no extension, which pins
+  where ``ext`` is omitted.
 - ``a/deep/nested.md``, ``a/deep/payload.json`` -- a second directory level,
   so ``depth`` nesting and the lazy sentinel past the cap are visible.
 - ``a/one.py`` -- source, so ``type_families`` has a code member.
@@ -327,7 +329,9 @@ def test_golden_multi_entry_pin_show_and_api(
     assert chrome["summary"]["size"] == sum(len(body) for _mode, _path, body in PIN_ORIGIN_BLOBS)
 
     listing = _payload(answered["/api/tree?depth=2"])
-    # Display-name order, with the directory "a" ahead of "a-b".
+    # Today's pin order: name bytes, directories interleaved. A folder listing
+    # puts directories first (tree.py) and the shell renders server order, so
+    # the two sources order the same names differently.
     assert [node["name"] for node in listing["tree"]] == [
         "README.md",
         "a",

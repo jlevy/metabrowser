@@ -1,0 +1,86 @@
+{
+  "filesystem": {
+    "shell": [
+      "window.METABROWSER_SOURCE_KIND=\"filesystem\";",
+      "window.METABROWSER_REPOSITORY_CONTEXT=null;"
+    ],
+    "tree": [
+      {
+        "name": "docs",
+        "path": "docs",
+        "type": "dir",
+        "children": [
+          {
+            "name": "guide.md",
+            "path": "docs/guide.md",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "name": "g1-data",
+        "path": "g1-data",
+        "type": "dir",
+        "children": [
+          {
+            "name": "note.txt",
+            "path": "g1-data/note.txt",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "name": "50%25-off.md",
+        "path": "50%25-off.md",
+        "type": "file"
+      },
+      {
+        "name": "README.md",
+        "path": "README.md",
+        "type": "file"
+      }
+    ]
+  },
+  "git_revision": {
+    "shell": [
+      "window.METABROWSER_SOURCE_KIND=\"git_revision\";",
+      "window.METABROWSER_REPOSITORY_CONTEXT=null;"
+    ],
+    "tree": [
+      {
+        "name": "50%-off.md",
+        "path": "g1-NTAlLW9mZi5tZA",
+        "type": "file"
+      },
+      {
+        "name": "README.md",
+        "path": "g1-UkVBRE1FLm1k",
+        "type": "file"
+      },
+      {
+        "name": "docs",
+        "path": "g1-ZG9jcw",
+        "type": "dir",
+        "children": [
+          {
+            "name": "guide.md",
+            "path": "g1-ZG9jcw/g1-Z3VpZGUubWQ",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "name": "g1-data",
+        "path": "g1-ZzEtZGF0YQ",
+        "type": "dir",
+        "children": [
+          {
+            "name": "note.txt",
+            "path": "g1-ZzEtZGF0YQ/g1-bm90ZS50eHQ",
+            "type": "file"
+          }
+        ]
+      }
+    ]
+  }
+}
