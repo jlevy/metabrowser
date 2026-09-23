@@ -73,12 +73,6 @@ def canonical_now() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def parse_canonical_timestamp(value: str) -> datetime:
-    """The UTC moment a canonical record timestamp names."""
-
-    return datetime.fromisoformat(value.removesuffix("Z") + "+00:00")
-
-
 def _require_timestamp(value: str) -> str:
     if re.fullmatch(_RFC3339_UTC_PATTERN, value) is None or value.endswith(".000Z"):
         raise ValueError("timestamps must use canonical RFC 3339 UTC syntax")
@@ -292,5 +286,4 @@ __all__ = [
     "StoreAcquisition",
     "StoreOperation",
     "canonical_now",
-    "parse_canonical_timestamp",
 ]

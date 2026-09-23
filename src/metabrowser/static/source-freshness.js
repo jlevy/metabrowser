@@ -415,9 +415,19 @@
       render: (model) => paint(element, model, actions),
       reload: () => window.location.reload(),
     });
-    document.addEventListener("visibilitychange", controller.onVisibilityChange);
+    const listening = new AbortController();
+    document.addEventListener("visibilitychange", controller.onVisibilityChange, {
+      signal: listening.signal,
+    });
     void controller.start();
-    return controller;
+    const mounted = controller;
+    return Object.freeze({
+      ...mounted,
+      dispose() {
+        listening.abort();
+        mounted.dispose();
+      },
+    });
   }
 
   window.MetabrowserSourceFreshness = Object.freeze({

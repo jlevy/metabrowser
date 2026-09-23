@@ -267,7 +267,10 @@ class MirrorSession:
         if subject is None or subject.ref is None:
             self._tip = None
             return
-        self._tip = (subject.ref, await self.mirror.ref_tip(subject.ref))
+        tip = await self.mirror.ref_tip(subject.ref)
+        # A pin switch during the lookup recorded its own ref's tip; keep that one.
+        if _served_revision() is subject:
+            self._tip = (subject.ref, tip)
 
     def last_fetch_at(self) -> str | None:
         recorded = self._recorded.last_fetch_at

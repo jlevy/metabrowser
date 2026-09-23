@@ -28,6 +28,7 @@ from starlette.routing import Route
 
 from metabrowser.content_errors import ContentReadError
 from metabrowser.git.tree_source import GitRevisionSubject, ref_short_name
+from metabrowser.http_caching import build_scoped_etag, etag_headers, matches_if_none_match
 from metabrowser.mirror_refresh import (
     UNSERVED_FRESHNESS,
     FreshnessFields,
@@ -100,26 +101,20 @@ def source_status(mirror: MirrorSession | None = None) -> SourceStatus:
     )
 
 
-def _etag(payload: object) -> str:
-    body = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
-    return '"' + hashlib.sha256(body).hexdigest()[:32] + '"'
+def _status_etag(status: SourceStatus) -> str:
+    """A validator for exactly this envelope: any field that changes changes it."""
 
-
-def _if_none_match(request: Request, etag: str) -> bool:
-    header = request.headers.get("if-none-match", "")
-    candidates = {value.strip().removeprefix("W/") for value in header.split(",")}
-    return etag in candidates or "*" in candidates
+    body = json.dumps(status, sort_keys=True, separators=(",", ":")).encode()
+    return build_scoped_etag(hashlib.sha256(body).hexdigest()[:32])
 
 
 async def api_source_status(request: Request) -> Response:
     """``GET /api/source/status`` — the active subject, its pin, and its freshness."""
 
     status = source_status(mirror_session(request.app))
-    etag = _etag(status)
-    # no-store keeps any cache from answering for the server; the browser revalidates
-    # explicitly with If-None-Match and reads the 304 itself.
-    headers = {"cache-control": "no-store", "etag": etag}
-    if _if_none_match(request, etag):
+    etag = _status_etag(status)
+    headers = etag_headers(etag)
+    if matches_if_none_match(request, etag):
         return Response(status_code=304, headers=headers)
     return JSONResponse(dict(status), headers=headers)
 

@@ -153,17 +153,21 @@ def test_status_reports_freshness_from_memory_and_revalidates(
     assert status["last_outcome"]["operation"] == "acquire"
     assert status["last_outcome"]["outcome"] == "succeeded"
     assert status["last_fetch_at"] == status["last_outcome"]["at"]
-    assert response.headers["cache-control"] == "no-store"
+    # A validator the client must revalidate, never a body a cache may reuse.
+    assert response.headers["cache-control"] == "no-cache"
     etag = response.headers["etag"]
 
     unchanged = served.get("/api/source/status", headers={"if-none-match": etag})
     assert unchanged.status_code == 304
     assert unchanged.headers["etag"] == etag
     assert unchanged.content == b""
-    weak = served.get("/api/source/status", headers={"if-none-match": f"W/{etag}"})
-    assert weak.status_code == 304
     other = served.get("/api/source/status", headers={"if-none-match": '"other"'})
     assert other.status_code == 200
+    # Any change to the envelope is a new validator: here, a refresh starting.
+    assert _post(served, "/api/source/refresh").status_code == 202
+    moved = served.get("/api/source/status", headers={"if-none-match": etag})
+    assert moved.status_code == 200
+    _settle(served)
 
 
 def test_a_folder_reports_no_freshness_and_refuses_both_routes(tmp_path: Path) -> None:
@@ -228,6 +232,14 @@ def test_a_refresh_shows_the_newer_revision_and_switching_serves_it(
     again = _post(served, "/api/source/pin", {"oid": origin.second})
     assert again.json()["changed"] is False
     assert again.json()["status"]["generation"] == back.json()["status"]["generation"]
+    # A file that differs between pins answers from the pin served now, not a cache.
+    first = _post(served, "/api/source/pin", {"oid": origin.first})
+    assert first.json()["status"]["pin"] == origin.first
+    readme = served.get("/api/file", params={"path": _wire("README.md")}).json()
+    assert "Second revision." not in readme["content"]
+    assert served.get("/api/file", params={"path": _wire("data.json")}).status_code == 404
+    history = served.get("/api/git/log", params={"limit": "10"}).json()
+    assert [commit["id"] for commit in history["commits"]] == [origin.first]
 
 
 def test_concurrent_refresh_requests_join_one_fetch(
