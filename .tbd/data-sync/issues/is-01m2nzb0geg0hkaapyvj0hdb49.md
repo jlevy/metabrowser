@@ -5,7 +5,7 @@ title: "Immutable Git-tree review: publish revision-source PR"
 kind: task
 status: in_progress
 priority: 1
-version: 16
+version: 17
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: claude-code@spud10.local
 labels:
@@ -26,13 +26,16 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-09-16T20:43:08.685Z
-updated_at: 2026-09-23T00:23:24.421Z
+updated_at: 2026-09-23T01:38:17.827Z
 started_at: 2026-09-16T21:12:28.728Z
 ---
 Independently review GitRevisionSubject, GitTreeSource, GitPath, RepositoryStoreTarget migration across every Git consumer and content route, batch framing/cancellation/large-blob behavior, process-safe maintenance locks and durable reachability refs, plugin capability behavior, and two-process concurrent subjects. Resolve findings, run make verify, and publish one formal GitHub PR with gh stacked on exact green mb-tsdc content-source head. Record exact stack/review/CI evidence. Do not merge.
 
 ## Notes
 
+2026-09-22 follow-up: no work is held on tbd. All eight current stack PRs are ready for review; #217/#216 draft flags were removed at the user’s request after live ancestry, mergeability and green-CI checks. This changes mechanical mergeability, not feature completion or landing authorization. #216 is ready for review at b3c001a9. Pin acceptance remains open, including mb-sumg and nontrivial golden/browser/installed evidence. Existing focused edge tests are implemented, not wholly missing.
+
+Earlier history:
 Immutable Git-tree review now targets draft #216 https://github.com/jlevy/metabrowser/pull/216 (folded #211–#215). Formal PR exists.
 --show and non-cache --api pin a file:// revision. HTTP serve / --walk / --check-api still refuse Git sources (mb-ew38).
 Unpinned edge tests remain: symlink, gitlink, LFS-pointer, oversized-blob, promisor-miss.

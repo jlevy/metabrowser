@@ -5,7 +5,7 @@ title: Repository library and hosted-review roadmap
 kind: epic
 status: in_progress
 priority: 1
-version: 76
+version: 77
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: claude-code@spud10.local
 labels:
@@ -74,7 +74,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-08-11T19:43:35.692Z
-updated_at: 2026-09-23T01:29:50.880Z
+updated_at: 2026-09-23T01:38:18.129Z
 started_at: 2026-09-16T21:10:44.764Z
 extensions:
   linear:
@@ -85,6 +85,9 @@ Deliver the GitHub-first v0.12 vertical slice on three independent layers: sessi
 
 ## Notes
 
+2026-09-22 follow-up: no work is held on tbd. All eight current stack PRs are ready for review; #217/#216 draft flags were removed at the user’s request after live ancestry, mergeability and green-CI checks. This changes mechanical mergeability, not feature completion or landing authorization. The expanded alpha plan on #225 maps all repository/GitHub features to built, partial or planned, lists deferred scope, and supplies a testing walkthrough from local browser/Git foundation through default URL smoke, selected branches, direct PRs and discovery/anchors. Optional shortcut cleanup mb-dbue has no upstream-release dependency and is not a product gate.
+
+Earlier history:
 2026-09-22 current status: v0.12 implementation remains on formal GitHub Stack 218: #125 design -> #134 Phase 0 records -> #136 installed contracts -> #139 source binding -> #140 cache format -> #217 file:// acquisition (draft) -> #216 consolidated source boundary and immutable Git pin (draft). Current integration head b3c001a96eed64eb77961c2b7165b103af98b77c includes main 6c278f3f and the merged #209 HTML trust foundation through #224. No stack PR has landed. Current runtime supports file:// acquisition, pinned --show and --api; GitHub URL reduction/HTTP serving, HTTPS/SSH acquisition, provider runtime and PR views remain planned. The alpha test plan at docs/project/specs/active/plan-2026-09-22-v012-alpha-testing.md defines T0 local foundation, T1 repository URL alpha, T2 direct PR alpha, and T3 full v0.12 discovery/navigation/anchors. mb-gnr9 owns installed-artifact and real-browser alpha acceptance. Future implementation/testing/stabilization PRs extend the current stack tip; hold the entire stack until stabilization and explicit approval through mb-n2ro. mb-eegt owns this review/status reconciliation. Full review: https://github.com/jlevy/metabrowser/pull/216#issuecomment-5786877244 . #219 remains separate process maintenance awaiting a get-tbd release containing upstream #316; #87/#51 are separate research PRs. Historical handoff follows.
 
 2026-09-19 handoff: formal GitHub stack #218 (nothing on main):

@@ -5,7 +5,7 @@ title: "v0.12 repository and hosted-resource stack: coordinate stabilized landin
 kind: task
 status: in_progress
 priority: 1
-version: 56
+version: 57
 spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
 refs:
   - kind: other
@@ -47,13 +47,16 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: blocked
 hold_until: null
 created_at: 2026-09-15T18:59:49.596Z
-updated_at: 2026-09-23T00:58:00.750Z
+updated_at: 2026-09-23T01:38:18.423Z
 started_at: 2026-09-16T21:24:51.532Z
 ---
 Coordinate the whole v0.12 repository/GitHub Stack 218, beginning with #125 -> #134 -> #136 -> #139 -> #140 -> #217 -> #216 and extending with alpha-testing, stabilization, and later feature PRs. Keep exact base/head relationships, current per-layer review dispositions and green CI, top integration evidence against current main, and aligned specs/beads. mb-nhky coordinates later Phase 2A-4C publications within this same stack. Hold all layers until the agreed acceptance milestone is stabilized and the user explicitly approves landing; then land and retarget coherently. Do not treat published draft PRs or passing unit/model tests as completed GitHub alpha acceptance.
 
 ## Notes
 
+2026-09-22 follow-up: no work is held on tbd. All eight current stack PRs are ready for review; #217/#216 draft flags were removed at the user’s request after live ancestry, mergeability and green-CI checks. This changes mechanical mergeability, not feature completion or landing authorization. GitHub reports all current layers mergeable/clean against main 6c278f3f and no required-review rule; draft flags are removed. Continue coordinating product stabilization and the user’s whole-stack landing decision. No tbd update/release/shortcut cleanup is a prerequisite.
+
+Earlier history:
 Do not merge. Do not imply landed.
 
 GitHub stack #218: https://github.com/jlevy/metabrowser/stack/218

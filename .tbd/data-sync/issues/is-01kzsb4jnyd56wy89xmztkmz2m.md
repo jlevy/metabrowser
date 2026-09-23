@@ -5,7 +5,7 @@ title: "Repository library Phase 1B-a: hardened worktree-free Git acquisition (n
 kind: task
 status: in_progress
 priority: 1
-version: 63
+version: 64
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: unknown@cursor
 labels:
@@ -41,7 +41,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-08-11T21:19:58.653Z
-updated_at: 2026-09-23T00:21:40.556Z
+updated_at: 2026-09-23T01:38:16.304Z
 started_at: 2026-09-16T21:10:44.811Z
 extensions:
   linear:
@@ -52,6 +52,9 @@ Extend the one Git runner with core-constructed trusted command targets, version
 
 ## Notes
 
+2026-09-22 follow-up: no work is held on tbd. All eight current stack PRs are ready for review; #217/#216 draft flags were removed at the user’s request after live ancestry, mergeability and green-CI checks. This changes mechanical mergeability, not feature completion or landing authorization. Current file:// acquisition, default-tree prefetch and complete/converging record creation exist. Background convergence runtime is not implemented; its serving/job integration belongs after the appropriate runtime prerequisites. Remaining acquisition acceptance stays open. HTTPS/SSH are recognized and refused.
+
+Earlier history:
 Implementation is on draft #217 https://github.com/jlevy/metabrowser/pull/217 (file:// only; no serving; https/ssh refused). Review is mb-k900.
 
 Still open on this phase (spec Phase 1B-a unchecked items): not-yet-converged blob read online/offline; no-lazy-fetch tests against the lowest admitted Git in CI; initial-acquisition stall-bound measurement; distribution-backport policy; remaining mb-dg00 goldens; force untrusted profile on URL-opened roots (mb-ew38 / mb-vib1).

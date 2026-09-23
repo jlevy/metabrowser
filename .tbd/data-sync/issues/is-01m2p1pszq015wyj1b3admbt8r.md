@@ -5,7 +5,7 @@ title: "Repository source boundary review: publish content-source PR"
 kind: task
 status: in_progress
 priority: 1
-version: 11
+version: 12
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: claude-code@spud10.local
 labels:
@@ -22,13 +22,16 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-09-16T21:24:32.374Z
-updated_at: 2026-09-23T00:23:22.825Z
+updated_at: 2026-09-23T01:38:17.522Z
 started_at: 2026-09-16T21:24:54.997Z
 ---
 Independently review RepositorySubject, ContentSource, AttachedFilesystemSubject, source capabilities, one-active-subject lifecycle, filesystem-only plugin API gating, route/inventory generalization, exact-root containment, CLI parity, and goldens. Resolve every finding, run make verify, and publish one formal GitHub PR with gh stacked on the exact green acquisition head. Record exact stack evidence and final green CI. Do not merge.
 
 ## Notes
 
+2026-09-22 follow-up: no work is held on tbd. All eight current stack PRs are ready for review; #217/#216 draft flags were removed at the user’s request after live ancestry, mergeability and green-CI checks. This changes mechanical mergeability, not feature completion or landing authorization. #216 is ready for review at b3c001a9. Source-boundary acceptance and review obligations remain; consumers are substantially implemented and the spec now separates that from evidence still owed.
+
+Earlier history:
 Source-boundary review now targets draft #216 https://github.com/jlevy/metabrowser/pull/216 (folded #156). Not a separate PR.
 Parent: #217. Head: cursor/v011-git-revision-pin-bd04.
 Do not merge. Review the source-boundary contract inside #216, then the stack.
