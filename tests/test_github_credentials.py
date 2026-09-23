@@ -30,10 +30,11 @@ pytestmark = [
 GH_SENTINEL = "gh-sentinel-7f3a"
 USER_SENTINEL = "user-sentinel-91c2"
 
-_FAKE_GH = f"""#!/bin/sh
+_FAKE_GH = """#!/bin/sh
+env > '{env_log}'
 if [ "$1 $2 $3" = "auth git-credential get" ]; then
   while IFS= read -r line && [ -n "$line" ]; do :; done
-  printf 'username=x-access-token\\npassword={GH_SENTINEL}\\n'
+  printf 'username=x-access-token\\npassword={sentinel}\\n'
   exit 0
 fi
 exit 1
@@ -45,9 +46,15 @@ def _fake_gh(tmp_path: Path) -> Path:
     directory = tmp_path / "fake gh's bin"
     directory.mkdir()
     gh = directory / "gh"
-    gh.write_text(_FAKE_GH, encoding="utf-8")
+    env_log = tmp_path / "gh-env.log"
+    gh.write_text(_FAKE_GH.format(env_log=env_log, sentinel=GH_SENTINEL), encoding="utf-8")
     gh.chmod(gh.stat().st_mode | stat.S_IXUSR)
     return gh
+
+
+def _gh_env(tmp_path: Path) -> dict[str, str]:
+    lines = (tmp_path / "gh-env.log").read_text(encoding="utf-8").splitlines()
+    return dict(line.split("=", 1) for line in lines if "=" in line)
 
 
 def _user_config(tmp_path: Path) -> Path:
@@ -121,7 +128,8 @@ def test_the_provider_adds_the_helper_only_for_github_remotes(
     gh = _fake_gh(tmp_path)
     monkeypatch.setattr(github_provider, "gh_executable", lambda: str(gh))
     provider = GithubProvider()
-    helper = credential_helper_args(str(gh))
+    monkeypatch.setenv("HOME", "/srv/o'neil")
+    helper = credential_helper_args(str(gh), home="/srv/o'neil")
     assert provider.git_config("https://github.com/octo/demo") == helper
     assert provider.git_config("https://example.com/octo/demo.git") == ()
     assert provider.git_config("file:///srv/git/demo.git") == ()
@@ -130,7 +138,9 @@ def test_the_provider_adds_the_helper_only_for_github_remotes(
         "-c",
         "credential.helper=",
         "-c",
-        f"credential.https://github.com.helper=!{quoted} auth git-credential",
+        "credential.https://github.com.helper=!unset GH_DEBUG GH_HOST GH_REPO GH_PAGER "
+        "DEBUG; GH_PROMPT_DISABLED=1 GH_NO_UPDATE_NOTIFIER=1 NO_COLOR=1 "
+        f"HOME='/srv/o'\"'\"'neil' {quoted} auth git-credential",
     )
     # Every network command gets it, after the protocol allowlist and stall bound.
     args = remote_git_args("https://github.com/octo/demo")
@@ -144,11 +154,21 @@ def test_the_provider_adds_the_helper_only_for_github_remotes(
 def test_the_acquisition_environment_asks_gh_the_same_way(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The same answer in the isolated environment every acquisition Git runs with."""
+    """The same answer in the isolated environment every acquisition Git runs with.
+
+    That environment has HOME=/dev/null, so curl reads no .netrc; gh gets the real
+    home back, and none of the variables that would redirect or log it.
+    """
 
     gh = _fake_gh(tmp_path)
+    real_home = tmp_path / "real home"
+    real_home.mkdir()
     monkeypatch.setattr(github_provider, "gh_executable", lambda: str(gh))
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(_user_config(tmp_path)))
+    monkeypatch.setenv("HOME", str(real_home))
+    for name in ("GH_DEBUG", "GH_HOST", "GH_REPO", "GH_PAGER"):
+        monkeypatch.setenv(name, "leaked")
+    assert git_environment(ACQUISITION_POLICY)["HOME"] == os.devnull
 
     def fill(url_args: tuple[str, ...], host: str) -> subprocess.CompletedProcess[bytes]:
         return subprocess.run(
@@ -163,6 +183,10 @@ def test_the_acquisition_environment_asks_gh_the_same_way(
 
     github = fill(remote_git_args("https://github.com/octo/demo"), "github.com")
     assert f"password={GH_SENTINEL}".encode() in github.stdout
+    seen = _gh_env(tmp_path)
+    assert seen["HOME"] == str(real_home)
+    assert seen["GH_PROMPT_DISABLED"] == "1" and seen["GH_NO_UPDATE_NOTIFIER"] == "1"
+    assert not {"GH_DEBUG", "GH_HOST", "GH_REPO", "GH_PAGER"} & seen.keys()
     other = fill(remote_git_args("https://example.com/octo/demo.git"), "example.com")
     assert other.returncode != 0
     assert GH_SENTINEL.encode() not in other.stdout

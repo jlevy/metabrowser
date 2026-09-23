@@ -130,6 +130,13 @@ READ_POLICY: Final[GitProcessPolicy] = GitProcessPolicy(
     isolate_user_config=False,
     no_lazy_fetch=False,
 )
+# Acquisition Git runs with HOME=/dev/null. User and XDG Git configuration are already
+# isolated; what HOME still reached was curl's optional ``$HOME/.netrc``, which Git
+# enables and cannot turn off, so a netrc entry would answer an origin's challenge
+# before any credential helper Metabrowser chose. Measured 2026-09-23 against a local
+# server answering 401: with a netrc in HOME, curl retried with its credentials; with
+# HOME=/dev/null it sent none. A credential helper that needs the real home (``gh``)
+# is given it in its own command.
 ACQUISITION_POLICY: Final[GitProcessPolicy] = GitProcessPolicy(
     name="acquisition",
     timeout_s=GIT_ACQUISITION_TIMEOUT_S,
@@ -139,7 +146,7 @@ ACQUISITION_POLICY: Final[GitProcessPolicy] = GitProcessPolicy(
     isolate_user_config=True,
     no_lazy_fetch=True,
     ssh_batch=True,
-    extra_env={"GCM_INTERACTIVE": "never", "LC_ALL": "C"},
+    extra_env={"GCM_INTERACTIVE": "never", "LC_ALL": "C", "HOME": os.devnull},
     own_process_group=True,
 )
 # Request-path reads of a published store: ``ls-tree``, ``rev-parse``, ``log``,

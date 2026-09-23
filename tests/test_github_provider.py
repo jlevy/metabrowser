@@ -65,8 +65,14 @@ def test_a_repository_over_the_limit_is_refused_before_cloning(
     message = str(refused.value)
     assert message.startswith("https://github.com/octo/demo is too large to clone")
     assert f"{MAX_FIRST_CLONE_KB + 1:,} KB" in message and "(too_large)" in message
+    # Pinned to github.com: a user signed in only to an Enterprise host must not send
+    # this repository name, or that host's token, anywhere but github.com.
     assert (fake_gh.parent / "gh-log.args").read_text().split() == [
         "api",
+        "--hostname",
+        "github.com",
+        "--method",
+        "GET",
         "repos/octo/demo",
         "--jq",
         ".size",

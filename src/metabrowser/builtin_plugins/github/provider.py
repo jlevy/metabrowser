@@ -7,6 +7,7 @@ Core reaches this class only through
 from __future__ import annotations
 
 import logging
+import os
 from typing import TYPE_CHECKING, Final
 
 from metabrowser.builtin_plugins.github.gh import GhError, gh_executable, run_gh
@@ -32,9 +33,10 @@ _GITHUB_HTTPS: Final = f"https://{CANONICAL_HOST}/"
 # Measured 2026-09-23 on one macOS machine (Git 2.50.1, load average 36 to 103), full
 # fetches of every branch and tag, in GitHub-reported kilobytes per second of wall
 # clock: flask 4,010, requests 5,160, mypy 3,500, and django 4,120 and 14,200 on two
-# runs. The slowest, 3,500 KB/s, would move about 3.1 GB in the 900 s deadline; a third
-# of that leaves room for a slower network and for server-side pack preparation, and is
-# rounded down to 1,000,000 KB.
+# runs; the first 290 MB of torvalds/linux arrived at 1,820 KB/s of pack data. A
+# repository's pack runs about 1.1 times its reported size (django: 313 MB stored for
+# 283 MB reported), so the limit below fetches in about 600 s at the slowest rate seen,
+# inside the 900 s deadline with room for a slower network.
 MAX_FIRST_CLONE_KB: Final[int] = 1_000_000
 _SIZE_OUTPUT_MAX_BYTES: Final[int] = 64
 
@@ -45,18 +47,37 @@ def _single_quoted(text: str) -> str:
     return "'" + text.replace("'", "'\"'\"'") + "'"
 
 
-def credential_helper_args(gh_path: str) -> tuple[str, ...]:
+# The helper runs as ``sh -c '<command> get'`` in acquisition Git's environment, which
+# keeps every non-Git variable. These would redirect or log gh; they are cleared for it.
+HELPER_UNSET_ENV: Final[tuple[str, ...]] = ("GH_DEBUG", "GH_HOST", "GH_REPO", "GH_PAGER", "DEBUG")
+HELPER_SET_ENV: Final[tuple[tuple[str, str], ...]] = (
+    ("GH_PROMPT_DISABLED", "1"),
+    ("GH_NO_UPDATE_NOTIFIER", "1"),
+    ("NO_COLOR", "1"),
+)
+
+
+def credential_helper_args(gh_path: str, *, home: str | None = None) -> tuple[str, ...]:
     """Clear every configured helper, then let ``gh`` answer for github.com alone.
 
     Git asks a helper only after the server challenges, so a public repository is
-    fetched anonymously without anyone deciding its visibility first.
+    fetched anonymously without anyone deciding its visibility first. Acquisition Git
+    runs with ``HOME=/dev/null`` so curl reads no ``.netrc``; *home*, the real one, is
+    given back to ``gh`` alone, which needs it to find its own configuration.
     """
 
+    assignments = [f"{name}={value}" for name, value in HELPER_SET_ENV]
+    if home:
+        assignments.append(f"HOME={_single_quoted(home)}")
+    command = (
+        f"unset {' '.join(HELPER_UNSET_ENV)}; "
+        f"{' '.join(assignments)} {_single_quoted(gh_path)} auth git-credential"
+    )
     return (
         "-c",
         "credential.helper=",
         "-c",
-        f"credential.{_GITHUB_HTTPS.rstrip('/')}.helper=!{_single_quoted(gh_path)} auth git-credential",
+        f"credential.{_GITHUB_HTTPS.rstrip('/')}.helper=!{command}",
     )
 
 
@@ -78,7 +99,9 @@ class GithubProvider:
         if not _is_github_remote(remote_url):
             return ()
         gh = gh_executable()
-        return credential_helper_args(gh) if gh is not None else ()
+        if gh is None:
+            return ()
+        return credential_helper_args(gh, home=os.environ.get("HOME"))
 
     def credential_hint(self, source_url: str) -> str | None:
         if not _is_github_remote(source_url):
@@ -94,7 +117,16 @@ class GithubProvider:
         owner, repository = parsed
         try:
             out = await run_gh(
-                ["api", f"repos/{owner}/{repository}", "--jq", ".size"],
+                [
+                    "api",
+                    "--hostname",
+                    CANONICAL_HOST,
+                    "--method",
+                    "GET",
+                    f"repos/{owner}/{repository}",
+                    "--jq",
+                    ".size",
+                ],
                 max_bytes=_SIZE_OUTPUT_MAX_BYTES,
             )
         except GhError as exc:
