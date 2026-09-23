@@ -125,10 +125,13 @@ Repository cache:
   A pin always runs under the untrusted profile: `METAB_ACTIVE_CONTENT=1` and
   `METAB_ALLOW_EDITS=1` do not lift it, and `--allow-edits` on a pin is an error.
 
-- `metab file://…` serves the acquired source in the browser, pinned to its default
-  branch’s commit, until Ctrl-C, with no network.
+- `metab file://…` serves the acquired source in the browser, pinned to the commit its
+  default branch named when the store was acquired, until Ctrl-C, with no network.
   The banner names the source and prints a `Revision:` line with the full commit and
-  branch, and `--path` deep-links a path within the pin.
+  branch. `--path` deep-links a path within the pin, spelled as `--show` accepts it, and
+  prints a directory’s address with a trailing slash.
+  If the pin cannot be opened again when the server starts, the command prints the same
+  path-free error as `--show` and exits 1 rather than a traceback.
   The tree, file views, Markdown and its images, JSON, images, history, commit detail,
   and diffs all read from the store.
   The navigation heading shows the branch and short commit; its tooltip and the file
@@ -140,6 +143,9 @@ Repository cache:
   The `/raw/<path>` form answers the same way, because its only consumer is the HTML
   preview a pin never offers; Markdown images resolve within the pin through
   `/raw?path=`. A served `file://` pin has no `repository_context`.
+
+- `metab ROOT` exits non-zero when the server’s startup fails, instead of reporting
+  success for a server that never listened.
 
 - New `GET /api/source/status` reports what the server serves: the subject kind, the
   session generation, and on a Git pin its full commit (`pin`), the store ref it was

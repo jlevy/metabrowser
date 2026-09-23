@@ -31,6 +31,7 @@ from metabrowser.cli.plugin_paths import apply_extra_plugin_dirs
 from metabrowser.dotenv import load_dotenv_chain as _load_dotenv_chain
 from metabrowser.errors import CLIError
 from metabrowser.server_utils import find_available_local_port, port_search_range
+from metabrowser.source import subject_open_failure
 from metabrowser.view_routes import format_view_href
 
 
@@ -74,6 +75,17 @@ def _shutdown_noise_filter(record: logging.LogRecord) -> bool:
     if record.exc_info is not None and isinstance(record.exc_info[1], asyncio.CancelledError):
         return False
     return "timeout graceful shutdown exceeded" not in record.getMessage()
+
+
+def _subject_open_failure_filter(_record: logging.LogRecord) -> bool:
+    """Hold back Uvicorn's report of a served subject that did not open.
+
+    Starlette formats the lifespan's exception into a traceback, and Uvicorn logs
+    it and "Application startup failed". The failure already carries a message fit
+    to print, which the command reports once the server has stopped, so while it
+    stands nothing else from Uvicorn is worth a reader's attention.
+    """
+    return subject_open_failure() is None
 
 
 # Acknowledgement for the first Ctrl-C, so the interrupt is visibly
@@ -339,6 +351,7 @@ def serve_until_interrupted(
     uvicorn_logger = logging.getLogger("uvicorn.error")
     original_uvicorn_log_level = uvicorn_logger.level
     uvicorn_logger.addFilter(_shutdown_noise_filter)
+    uvicorn_logger.addFilter(_subject_open_failure_filter)
     try:
         uvicorn_server = _QuietForceExitServer(
             uvicorn.Config(
@@ -351,6 +364,16 @@ def serve_until_interrupted(
         )
         if _run_until_interrupted(uvicorn_server):
             raise typer.Exit(code=INTERRUPTED_EXIT_CODE)
+        # Uvicorn returns normally when the application's startup fails, so an
+        # unchecked return would report success for a server that never listened.
+        if uvicorn_server.started is False:
+            failure = subject_open_failure()
+            raise CLIError(
+                str(failure)
+                if failure is not None
+                else "the server did not start; the log above says why"
+            )
     finally:
         uvicorn_logger.removeFilter(_shutdown_noise_filter)
+        uvicorn_logger.removeFilter(_subject_open_failure_filter)
         uvicorn_logger.setLevel(original_uvicorn_log_level)

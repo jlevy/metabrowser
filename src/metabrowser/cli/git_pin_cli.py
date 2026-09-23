@@ -26,18 +26,23 @@ from metabrowser.cli.asgi_client import INDEX_READY_TIMEOUT_S
 from metabrowser.cli.common import apply_log_level, maybe_cli_logging
 from metabrowser.cli.plugin_paths import apply_extra_plugin_dirs
 from metabrowser.cli.serve import serve_until_interrupted, stop_on_interrupt
-from metabrowser.cli.show_cli import display_git_path
+from metabrowser.cli.show_cli import git_wire_candidates
 from metabrowser.dotenv import load_dotenv_chain
 from metabrowser.errors import CLIError
 from metabrowser.git.process import GitError, GitTimeoutError, GitUnavailableError
 from metabrowser.git.tree_source import (
     GitObjectUnavailableError,
-    GitPath,
     GitPathError,
     GitRevisionSubject,
     ref_short_name,
+    split_git_container_wire,
 )
-from metabrowser.source import attach_subject, reset_source_session, serve_subject_opener
+from metabrowser.source import (
+    SubjectOpenError,
+    attach_subject,
+    reset_source_session,
+    serve_subject_opener,
+)
 from metabrowser.view_routes import VIEW_ROUTE_PREFIX
 
 LOG = logging.getLogger(__name__)
@@ -118,6 +123,28 @@ def _revision_opener(published: PublishedSource) -> Callable[[], Awaitable[GitRe
         store_identity=published.store_id,
         ref=published.default_remote_ref,
     )
+
+
+def _serving_opener(published: PublishedSource) -> Callable[[], Awaitable[GitRevisionSubject]]:
+    """The opener the server's lifespan calls, failing with the same path-free message.
+
+    Serve mode has opened the pin once already, but the lifespan reads the store again
+    in the serving loop, and it can fail in between: a removed store, a Git timeout.
+    That failure reaches the command as :class:`SubjectOpenError`, whose message is
+    the one ``--show`` and ``--api`` print; Git's own text is logged at debug and
+    kept out of the exception, so no traceback Starlette formats can carry a path.
+    """
+
+    opener = _revision_opener(published)
+
+    async def open_to_serve() -> GitRevisionSubject:
+        try:
+            return await opener()
+        except _PIN_CLI_ERRORS as exc:
+            LOG.debug("opening the pinned revision to serve it failed: %s", exc)
+            raise SubjectOpenError(_pin_failure_message(exc)) from None
+
+    return open_to_serve
 
 
 async def _open_pin(published: PublishedSource) -> GitRevisionSubject:
@@ -268,26 +295,34 @@ async def _prove_servable(source: GitSource, *, path: str) -> _ServablePin:
     published = await acquire_for_cli(source)
     subject = await _open_pin(published)
     try:
-        if not path:
-            return _ServablePin(published=published, view_href=VIEW_ROUTE_PREFIX)
-        try:
-            selected = display_git_path(path)
-        except GitPathError as exc:
-            raise CLIError(f"--path is not a path in this revision: {path}") from exc
-        try:
-            entry = await subject.tree_source.resolve_path(selected)
-        except _PIN_CLI_ERRORS as exc:
-            raise CLIError(_pin_failure_message(exc)) from exc
-        if entry is None:
-            raise CLIError(f"--path target is not in the pinned revision: {path}")
-        return _ServablePin(published=published, view_href=_view_href(selected))
+        view_href = await _selection_href(subject, path) if path else VIEW_ROUTE_PREFIX
+        return _ServablePin(published=published, view_href=view_href)
     finally:
         await subject.aclose()
 
 
-def _view_href(path: GitPath) -> str:
-    # A wire is `g1-` plus unpadded base64url per segment: nothing in it needs quoting.
-    return VIEW_ROUTE_PREFIX + path.to_wire()
+async def _selection_href(subject: GitRevisionSubject, path: str) -> str:
+    """The canonical `/view/` address of ``--path`` in the pin.
+
+    The spelling is read the way ``--show`` reads it: a display path first, with a
+    leading `/` or `./` and a trailing `/` dropped, then a GitPath wire. A directory
+    gets a trailing slash, as folder serving prints one. A wire (`g1-` plus unpadded
+    base64url per segment) needs no quoting.
+    """
+
+    for wire in git_wire_candidates(path, from_route=False):
+        git_path, inner = split_git_container_wire(wire)
+        if inner:
+            continue
+        try:
+            entry = await subject.tree_source.resolve_path(git_path)
+        except _PIN_CLI_ERRORS as exc:
+            raise CLIError(_pin_failure_message(exc)) from exc
+        if entry is None:
+            continue
+        slash = "/" if entry.is_tree and git_path.segments else ""
+        return VIEW_ROUTE_PREFIX + git_path.to_wire() + slash
+    raise CLIError(f"--path target is not in the pinned revision: {path}")
 
 
 def run_serve_pin(
@@ -333,6 +368,6 @@ def run_serve_pin(
         host=host,
         port=port,
         no_open=no_open,
-        attach=lambda: serve_subject_opener(_revision_opener(published)),
+        attach=lambda: serve_subject_opener(_serving_opener(published)),
         banner=(f"Revision: {revision}",),
     )

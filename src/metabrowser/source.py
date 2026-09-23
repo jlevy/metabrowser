@@ -496,9 +496,26 @@ class SourceSession:
         }
 
 
+class SubjectOpenError(Exception):
+    """The served subject did not open. The message names no path and is fit to print."""
+
+
+class SubjectNotOpenError(RuntimeError):
+    """A subject is configured to be served, and none is open to answer this request.
+
+    Only a request made outside the application lifespan meets it: before startup,
+    after shutdown, or from a client that never ran the lifespan. Falling back to
+    the filesystem root there would serve the working directory in place of the pin.
+    """
+
+    def __init__(self) -> None:
+        super().__init__("the served subject is not open")
+
+
 _session: SourceSession | None = None
 _generation = 0
 _subject_opener: SubjectOpener | None = None
+_open_failure: SubjectOpenError | None = None
 
 
 def attach_subject(subject: RepositorySubject) -> SourceSession:
@@ -530,10 +547,16 @@ def detach_session(session: SourceSession) -> None:
 
 
 def get_source_session() -> SourceSession:
-    """Return the active session, wrapping `ROOT_DIR` if nothing is attached yet."""
+    """Return the active session, wrapping `ROOT_DIR` if nothing is attached yet.
+
+    While an opener is configured, only the lifespan attaches the subject, so a
+    request with none attached raises :class:`SubjectNotOpenError` instead.
+    """
 
     global _session
     if _session is None:
+        if _subject_opener is not None:
+            raise SubjectNotOpenError
         return attach_subject(AttachedFilesystemSubject(paths_safe.ROOT_DIR))
     return _session
 
@@ -541,12 +564,13 @@ def get_source_session() -> SourceSession:
 def reset_source_session() -> None:
     """Drop the process session and any served opener. Tests restore a root afterwards."""
 
-    global _session, _generation, _subject_opener
+    global _session, _generation, _subject_opener, _open_failure
     if _session is not None:
         _session.close()
     _session = None
     _generation = 0
     _subject_opener = None
+    _open_failure = None
 
 
 def serve_subject_opener(opener: SubjectOpener | None) -> None:
@@ -559,8 +583,15 @@ def serve_subject_opener(opener: SubjectOpener | None) -> None:
     Setting a filesystem root clears the opener.
     """
 
-    global _subject_opener
+    global _subject_opener, _open_failure
     _subject_opener = opener
+    _open_failure = None
+
+
+def subject_open_failure() -> SubjectOpenError | None:
+    """Why the configured subject failed to open at the last startup, if it did."""
+
+    return _open_failure
 
 
 @asynccontextmanager
@@ -569,14 +600,22 @@ async def lifespan_subject() -> AsyncGenerator[SourceSession | None]:
 
     Without an opener this does nothing, and the filesystem root attaches lazily as
     before. Each entry opens a fresh subject, so a server that starts again after a
-    shutdown reads through new processes and a new session generation.
+    shutdown reads through new processes and a new session generation. An opener
+    that fails raises :class:`SubjectOpenError`, which is recorded for
+    :func:`subject_open_failure` so a server can report it without a traceback.
     """
 
+    global _open_failure
     opener = _subject_opener
     if opener is None:
         yield None
         return
-    subject = await opener()
+    _open_failure = None
+    try:
+        subject = await opener()
+    except SubjectOpenError as exc:
+        _open_failure = exc
+        raise
     session = attach_subject(subject)
     try:
         yield session
@@ -730,6 +769,8 @@ __all__ = [
     "SourceLease",
     "SourceSession",
     "SubjectOpener",
+    "SubjectNotOpenError",
+    "SubjectOpenError",
     "UnsupportedSourceCapabilityError",
     "attach_subject",
     "detach_session",
@@ -749,5 +790,6 @@ __all__ = [
     "session_filesystem_root",
     "source_capabilities",
     "stat_content",
+    "subject_open_failure",
     "unsupported_source_payload",
 ]
