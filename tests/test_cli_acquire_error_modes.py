@@ -63,7 +63,7 @@ def test_git_failures_during_acquisition_are_the_same_cli_error_in_every_mode(
     mode: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     home = _isolate_home(tmp_path, monkeypatch)
-    url = _file_url(_origin(tmp_path, allow_filter=False))
+    url = _file_url(_origin(tmp_path))
     real_run = acquire_module._run
     messages: dict[str, str] = {}
     for kind in KINDS:
@@ -99,7 +99,7 @@ def test_every_mode_reports_one_message_per_failure_kind(
     """The four modes share one mapper, so the same failure reads the same way."""
 
     _isolate_home(tmp_path, monkeypatch)
-    url = _file_url(_origin(tmp_path, allow_filter=False))
+    url = _file_url(_origin(tmp_path))
     real_run = acquire_module._run
 
     async def time_out_init(
@@ -133,7 +133,7 @@ def test_below_floor_git_is_refused_in_every_mode_without_writing_the_home(
         raise UnsupportedGitVersionError("git version 2.39.5", "2.43.7")
 
     monkeypatch.setattr("metabrowser.cache.acquire.require_acquisition_git", refuse)
-    url = _file_url(_origin(tmp_path, allow_filter=False))
+    url = _file_url(_origin(tmp_path))
     result = runner.invoke(_app, [url, *MODES[mode]])
     assert isinstance(result.exception, CLIError), (mode, result.exception)
     assert isinstance(result.exception.__cause__, UnsupportedGitVersionError)
@@ -150,7 +150,7 @@ def test_a_path_bearing_git_error_while_opening_the_pin_is_path_free(
     mode: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     home = _isolate_home(tmp_path, monkeypatch)
-    url = _file_url(_origin(tmp_path, allow_filter=False))
+    url = _file_url(_origin(tmp_path))
 
     async def fail_open(**_kwargs: object) -> object:
         raise GitUnavailableError(f"repository store is not a directory: {home}/stores/x")
@@ -188,7 +188,7 @@ def test_log_level_debug_prints_a_pin_open_failure(
     """A failure after acquisition, while opening the pin, is logged at debug too."""
 
     home = _isolate_home(tmp_path, monkeypatch)
-    url = _file_url(_origin(tmp_path, allow_filter=False))
+    url = _file_url(_origin(tmp_path))
     monkeypatch.setenv("METABROWSER_LOG_LEVEL", "")
     monkeypatch.delenv("METABROWSER_LOG_LEVEL")
 

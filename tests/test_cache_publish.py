@@ -30,7 +30,7 @@ def test_publish_makes_the_source_visible_and_clears_staging(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _allow_installed_git(monkeypatch)
-    origin = _origin(tmp_path, allow_filter=False)
+    origin = _origin(tmp_path)
     home = tmp_path / "home"
     source = _file_source(origin)
     staged = asyncio.run(acquire_into_staging(source, home=home))
@@ -49,7 +49,7 @@ def test_a_second_acquire_reuses_the_store_without_fetching(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _allow_installed_git(monkeypatch)
-    origin = _origin(tmp_path, allow_filter=False)
+    origin = _origin(tmp_path)
     home = tmp_path / "home"
     source = _file_source(origin)
     first = asyncio.run(acquire_file_source(source, home=home))
@@ -78,7 +78,7 @@ def test_an_alias_that_names_a_different_store_is_left_in_place(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _allow_installed_git(monkeypatch)
-    origin = _origin(tmp_path, allow_filter=False)
+    origin = _origin(tmp_path)
     home = tmp_path / "home"
     source = _file_source(origin)
     published = asyncio.run(acquire_file_source(source, home=home))
@@ -107,7 +107,7 @@ def test_a_store_left_unreferenced_is_kept_and_reused_by_the_next_acquire(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _allow_installed_git(monkeypatch)
-    origin = _origin(tmp_path, allow_filter=False)
+    origin = _origin(tmp_path)
     home = tmp_path / "home"
     source = _file_source(origin)
     staged = asyncio.run(acquire_into_staging(source, home=home))
