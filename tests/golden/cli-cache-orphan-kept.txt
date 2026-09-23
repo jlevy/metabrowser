@@ -65,6 +65,30 @@ status: 200
         }
       },
       "state": {
+        "default_remote_ref": null,
+        "default_revision": null,
+        "last_fetch_at": "<TIME>",
+        "last_operation": {
+          "kind": "acquire",
+          "outcome": "succeeded",
+          "at": "<TIME>"
+        }
+      },
+      "problems": [],
+      "referenced_by": [],
+      "reference_state": "unreferenced"
+    },
+    {
+      "id": "<STORE_ID>",
+      "publication": "published",
+      "identity": {
+        "created_at": "<TIME>",
+        "acquisition": {
+          "git_version": "<GIT_VERSION>",
+          "object_format": "sha1"
+        }
+      },
+      "state": {
         "default_remote_ref": "refs/remotes/origin/topic",
         "default_revision": "8f05aafe23bbeade03ef581868a59e3c944ac5c4",
         "last_fetch_at": "<TIME>",
@@ -82,30 +106,6 @@ status: 200
         }
       ],
       "reference_state": "referenced"
-    },
-    {
-      "id": "<STORE_ID>",
-      "publication": "published",
-      "identity": {
-        "created_at": "<TIME>",
-        "acquisition": {
-          "git_version": "<GIT_VERSION>",
-          "object_format": "sha1"
-        }
-      },
-      "state": {
-        "default_remote_ref": null,
-        "default_revision": null,
-        "last_fetch_at": "<TIME>",
-        "last_operation": {
-          "kind": "acquire",
-          "outcome": "succeeded",
-          "at": "<TIME>"
-        }
-      },
-      "problems": [],
-      "referenced_by": [],
-      "reference_state": "unreferenced"
     }
   ],
   "unrecognized_entries": 0,
