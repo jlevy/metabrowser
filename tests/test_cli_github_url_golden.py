@@ -11,8 +11,9 @@ does, with two substitutions and nothing else:
   helper (both are covered in ``tests/test_github_provider.py`` and
   ``tests/test_github_credentials.py``).
 
-Pull-request URLs read pull-request data through ``gh``, so they are opened in
-``tests/test_cli_github_pull_golden.py`` with a fake ``gh`` instead.
+Pull-request URLs run against a ``gh`` that fails every command, so they show the
+fallback to what the mirror answers without pull-request data. Reading that data is
+``tests/test_cli_github_pull_golden.py``, with a fake ``gh`` that answers.
 
 The Git floor is patched as in the other acquisition goldens, because CI's Git is below
 it. Real HTTPS is the opt-in live smoke test, ``tests/test_github_live_smoke.py``.
@@ -56,8 +57,14 @@ def _stand_in(monkeypatch: pytest.MonkeyPatch, origin: Path) -> None:
 
     monkeypatch.setattr("metabrowser.cache.acquire.remote_url_for", remote_url_for)
     monkeypatch.setattr("metabrowser.builtin_plugins.github.provider.gh_executable", lambda: None)
-    # Every other gh run, so nothing here can reach the gh a developer has signed in.
-    monkeypatch.setattr("metabrowser.builtin_plugins.github.gh.gh_executable", lambda: None)
+    # Every other gh run finds one that fails first on PATH, so nothing here can reach
+    # the gh a developer has signed in.
+    failing = origin.parent / "failing-gh"
+    failing.mkdir(exist_ok=True)
+    gh = failing / "gh"
+    gh.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+    gh.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{failing}{os.pathsep}{os.environ.get('PATH', '')}")
 
 
 def _quoted(argument: str) -> str:
@@ -83,17 +90,21 @@ OPENED: list[list[str]] = [
     [f"{REPO}/tree/refs/tags/same", "--no-serve"],
     [f"{REPO}/tree/523f/docs", "--no-serve"],
     [f"{REPO}/commit/523F476", "--no-serve"],
+    [f"{REPO}/pull/7/files", "--no-serve"],
+    [f"{REPO}/pull/7/commits/89e0fad", "--no-serve"],
     [f"{RAW}/refs/heads/release/v1/docs/v1.md", "--no-serve"],
     [f"{RAW}/topic/docs/My%20Notes.md", "--no-serve"],
     [f"{REPO}/blob/release/v1/docs/v1.md#L1", "--show", "docs/v1.md"],
     [f"{REPO}/tree/release/v1", "--api", "/api/git/repo"],
     [f"{REPO}/tree/v1.0", "--api", "/api/tree?depth=1"],
+    [f"{REPO}/pull/7", "--api", "/api/git/repo"],
 ]
 REFUSED: list[list[str]] = [
     [f"{REPO}/tree/nope/docs", "--no-serve"],
     [f"{REPO}/blob/topic/docs/missing.md", "--show", "README.md"],
     [f"{REPO}/commit/0000000", "--no-serve"],
     [f"{REPO}/tree/tree-tag", "--no-serve"],
+    [f"{REPO}/pull/7/commits/abcdef0", "--api", "/api/git/repo"],
 ]
 
 
@@ -125,6 +136,9 @@ def test_golden_github_urls_open_through_a_local_stand_in(
     assert "lines: L3-L4\nplain: true\n" in anchored.stdout
     assert "utm_source" not in anchored.stdout
     assert "(branch 523f)" in by_command[f"{REPO}/tree/523f/docs --no-serve"].stdout
+    pull = by_command[f"{REPO}/pull/7 --api /api/git/repo"]
+    assert "pull_request: 7 (not opened: " in pull.stderr and FIRST_COMMIT in pull.stdout
+    assert "(gh_failed); the pin is the default branch)" in pull.stderr
     pinned = by_command[f"{REPO}/tree/release/v1 --api /api/git/repo"]
     assert f'"revision": "{SECOND_COMMIT}"' in pinned.stdout
 

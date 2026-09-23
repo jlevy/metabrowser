@@ -37,6 +37,7 @@ from metabrowser.builtin_plugins.github.pull_record import (
     PullRecord,
     apply_text_budget,
     cut_text,
+    escaped_size,
     read_pull_record,
     serialize_pull_record,
     write_pull_record,
@@ -159,6 +160,9 @@ def test_gh_api_runs_isolated_with_fixed_arguments(
     monkeypatch.setenv("GH_DEBUG", "api")
     monkeypatch.setenv("GH_HOST", "enterprise.example.com")
     monkeypatch.setenv("GH_REPO", "other/repo")
+    # Common in dotfiles: either makes gh colorize --include headers and JSON.
+    monkeypatch.setenv("CLICOLOR_FORCE", "1")
+    monkeypatch.setenv("GH_FORCE_TTY", "1")
     response = asyncio.run(gh_api("repos/octo/demo/pulls/7", etag='W/"x"'))
     assert response.status == 200
     (call,) = stand.calls()
@@ -183,6 +187,8 @@ def test_gh_api_runs_isolated_with_fixed_arguments(
         "GH_DEBUG": None,
         "GH_HOST": None,
         "GH_REPO": None,
+        "GH_FORCE_TTY": None,
+        "CLICOLOR_FORCE": None,
     }
 
 
@@ -376,7 +382,7 @@ def test_bodies_and_hunks_are_cut_and_say_so(stand: _Stand) -> None:
 
 def test_the_text_budget_cuts_later_text_first(stand: _Stand) -> None:
     record = stand.refresh(7)
-    budget = len(record.pull.body.encode()) + 10
+    budget = escaped_size(record.pull.body) + 10
     cut = apply_text_budget(record, budget)
     assert cut.truncated.text and not cut.pull.body_truncated
     assert cut.issue_comments[0].body_truncated
@@ -420,10 +426,17 @@ def test_a_cached_record_is_read_without_gh(stand: _Stand, monkeypatch: pytest.M
     pin = asyncio.run(open_pull_request(stand.published, 7, fetch="if_missing"))
     assert pin.summary == f"open; fetched 2026-09-17T12:00:00Z by gh:{READER}"
     assert stand.calls() == []
+    # A failed refresh beside a usable record answers from it and says why.
+    kept = asyncio.run(open_pull_request(stand.published, 7, fetch="always"))
+    assert kept.head == pin.head
+    assert kept.summary.endswith(
+        "; the refresh failed: GitHub CLI (gh) is not on PATH (gh_missing)"
+    )
+    # With no record to answer from, the failure is raised.
+    (stand.published.home / source_pull_record(stand.published.slug, 7)).unlink()
     with pytest.raises(PullDataError) as refused:
-        asyncio.run(open_pull_request(stand.published, 7, fetch="always"))
+        asyncio.run(open_pull_request(stand.published, 7, fetch="if_missing"))
     assert refused.value.state == "gh_missing"
-    assert "the record fetched 2026-09-17T12:00:00Z is kept" in str(refused.value)
 
 
 def test_serialization_validates_and_bounds(stand: _Stand, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -553,3 +566,237 @@ def test_the_pull_route_reports_a_missing_record(pinned_pull: tuple[_Stand, Test
     )
     stand.refresh(7)
     assert client.get("/api/plugin/github/pull").json()["state"] == "current"
+
+
+# ── Review hardening: degraded parts, oversized pages, and typed failures ──
+
+
+def test_a_secondary_rate_limit_is_rate_limited(stand: _Stand) -> None:
+    path = "repos/octo/demo/pulls/7"
+    stand.answer(
+        _api(
+            scenario(stand.origin),
+            path,
+            {
+                "status": 403,
+                "headers": {"X-Ratelimit-Remaining": "4990"},
+                "body": {"message": "You have exceeded a secondary rate limit. Please wait."},
+            },
+        )
+    )
+    with pytest.raises(GhError) as limited:
+        asyncio.run(gh_api(path))
+    assert (limited.value.state, limited.value.reset_at) == ("rate_limited", None)
+
+
+def test_unreadable_optional_fields_are_left_empty_and_items_left_out(stand: _Stand) -> None:
+    answers = scenario(stand.origin)
+    head = stand.origin["fork_head"]
+    checks = page(f"repos/octo/demo/commits/{head}/check-runs")
+    runs = answers["api"][checks]["body"]["check_runs"]
+    listed = {
+        "total_count": 3,
+        "check_runs": [
+            {**runs[0], "details_url": "http://ci.example.invalid/job/1"},
+            {**runs[1], "details_url": "https://" + "x" * 5000, "conclusion": 7},
+            {**runs[1], "id": 3, "name": None},
+        ],
+    }
+    status_path = page(f"repos/octo/demo/commits/{head}/status")
+    status = answers["api"][status_path]["body"]
+    combined = {
+        **status,
+        "statuses": [{**status["statuses"][0], "target_url": "http://docs.example.invalid/"}],
+    }
+    comments = page("repos/octo/demo/issues/7/comments")
+    comment = answers["api"][comments]["body"][0]
+    odd = [{**comment, "user": {"login": "not a login"}}, {**comment, "id": "seven"}]
+    answers = _api(answers, checks, ok(checks, listed))
+    answers = _api(answers, status_path, ok(status_path, combined))
+    answers = _api(answers, comments, ok(comments, odd))
+    stand.answer(answers)
+    record = stand.refresh(7)
+    assert [run.details_url for run in record.check_runs] == [None, None]
+    assert record.check_runs[1].conclusion is None
+    assert record.truncated.check_runs
+    assert record.status is not None and record.status.statuses[0].target_url is None
+    assert [comment.author for comment in record.issue_comments] == [None]
+    assert record.truncated.issue_comments
+
+
+def test_refused_checks_and_status_leave_the_record_standing(stand: _Stand) -> None:
+    answers = scenario(stand.origin)
+    head = stand.origin["fork_head"]
+    checks = page(f"repos/octo/demo/commits/{head}/check-runs")
+    status_path = page(f"repos/octo/demo/commits/{head}/status")
+    answers = _api(answers, checks, {"status": 403, "body": {"message": "Resource not accessible"}})
+    answers = _api(answers, status_path, {"status": 422, "body": {"message": "No commit found"}})
+    stand.answer(answers)
+    record = stand.refresh(7)
+    assert record.check_runs == () and record.status is None
+    assert record.unavailable == {"check_runs": "not_found_or_private", "status": "gh_failed"}
+    assert record.comparison is not None
+
+
+def test_a_base_that_cannot_be_fetched_leaves_no_comparison(stand: _Stand) -> None:
+    answers = scenario(stand.origin)
+    path = "repos/octo/demo/pulls/9"
+    body = answers["api"][path]["body"]
+    gone = {**body, "base": {**body["base"], "sha": "1" * 40}}
+    stand.answer(_api(answers, path, ok(path, gone)))
+    record = stand.refresh(9)
+    assert record.comparison is None
+    assert record.unavailable == {"comparison": "fetch_failed"}
+
+
+def test_an_oversized_page_is_asked_for_again_smaller(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("metabrowser.builtin_plugins.github.gh.GH_API_MAX_BYTES", 4000)
+    answers = scenario(stand.origin)
+    base = "repos/octo/demo/issues/7/comments"
+    template = answers["api"][page(base)]["body"][0]
+    comments = [
+        {**template, "id": 1, "body": "first"},
+        {**template, "id": 2, "body": "big " * 2000},
+        {**template, "id": 3, "body": "third"},
+    ]
+    for size in (100, 50, 25, 5):
+        path = f"{base}?per_page={size}&page=1"
+        answers = _api(answers, path, ok(path, comments))
+    for number, comment in enumerate(comments, start=1):
+        path = f"{base}?per_page=1&page={number}"
+        more = {"Link": f'<https://api.github.com/{base}?page={number + 1}>; rel="next"'}
+        answers = _api(answers, path, ok(path, [comment], more if number < 3 else None))
+    stand.answer(answers)
+    record = stand.refresh(7)
+    assert [comment.id for comment in record.issue_comments] == [1, 3]
+    assert record.truncated.issue_comments
+    asked = [call["args"][-1] for call in stand.calls() if call["args"][-1].startswith(base)]
+    assert asked == [
+        f"{base}?per_page=100&page=1",
+        f"{base}?per_page=50&page=1",
+        f"{base}?per_page=25&page=1",
+        f"{base}?per_page=5&page=1",
+        f"{base}?per_page=1&page=1",
+        f"{base}?per_page=1&page=2",
+        f"{base}?per_page=1&page=3",
+    ]
+
+
+def test_a_list_stops_at_its_page_cap(stand: _Stand, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Requests, not items: pages asked for again smaller spend the same allowance.
+    monkeypatch.setattr(pulls, "_EXTRA_PAGE_REQUESTS", 0)
+    monkeypatch.setattr("metabrowser.builtin_plugins.github.gh.GH_API_MAX_BYTES", 4000)
+    answers = scenario(stand.origin)
+    base = "repos/octo/demo/pulls/7/reviews"
+    template = answers["api"][page(base)]["body"][0]
+    reviews = [{**template, "id": number, "body": "x" * 1500} for number in range(1, 11)]
+    for size in (100, 50, 25, 5):
+        path = f"{base}?per_page={size}&page=1"
+        answers = _api(answers, path, ok(path, reviews[:size]))
+    for number, review in enumerate(reviews, start=1):
+        path = f"{base}?per_page=1&page={number}"
+        more = {"Link": f'<https://api.github.com/{base}?page={number + 1}>; rel="next"'}
+        answers = _api(answers, path, ok(path, [review], more))
+    stand.answer(answers)
+    record = stand.refresh(7)
+    # The cap of 500 reviews allows five requests: four oversized, then one review.
+    assert [review.id for review in record.reviews] == [1]
+    assert record.truncated.reviews
+
+
+def test_text_escaping_counts_against_the_read_bound(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    answers = scenario(stand.origin)
+    comments = page("repos/octo/demo/issues/7/comments")
+    control = [{**answers["api"][comments]["body"][0], "body": "\x01" * 60000}]
+    stand.answer(_api(answers, comments, ok(comments, control)))
+    monkeypatch.setattr(
+        "metabrowser.builtin_plugins.github.pull_record.MAX_PULL_RECORD_BYTES", 120_000
+    )
+    record = stand.refresh(7)
+    written = stand.published.home / source_pull_record(stand.published.slug, 7)
+    assert written.stat().st_size <= 120_000
+    assert record.truncated.text and record.issue_comments[0].body_truncated
+    assert escaped_size(record.issue_comments[0].body) < 120_000
+
+
+def test_a_reused_list_keeps_the_text_budget_cut(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("metabrowser.builtin_plugins.github.pull_record.MAX_TEXT_BYTES", 80)
+    first = stand.refresh(7)
+    assert first.truncated.text
+    again = stand.refresh(7)
+    assert again.truncated.text
+    assert again.issue_comments == first.issue_comments
+
+
+def test_a_body_that_is_not_json_is_a_typed_failure(stand: _Stand) -> None:
+    comments = page("repos/octo/demo/issues/7/comments")
+    answers = _api(scenario(stand.origin), comments, {"status": 200, "raw": "<html>"})
+    stand.answer(answers)
+    with pytest.raises(PullDataError) as refused:
+        stand.refresh(7)
+    assert refused.value.state == "gh_failed"
+
+
+def test_a_record_the_cache_cannot_hold_or_read_is_typed(stand: _Stand) -> None:
+    record = stand.refresh(7)
+    written = stand.published.home / source_pull_record(stand.published.slug, 7)
+    elsewhere = stand.tmp_path / "elsewhere.json"
+    written.rename(elsewhere)
+    written.symlink_to(elsewhere)
+    assert stand.record(7) == "unreadable"
+    written.unlink()
+    pulls_dir = written.parent
+    for leftover in pulls_dir.iterdir():
+        leftover.unlink()
+    pulls_dir.rmdir()
+    pulls_dir.write_text("not a directory", encoding="utf-8")
+    with pytest.raises(PullDataError) as refused:
+        stand.refresh(7)
+    assert refused.value.state == "cache_unwritable"
+    assert record.number == 7
+
+
+def test_fetches_are_atomic(stand: _Stand, monkeypatch: pytest.MonkeyPatch) -> None:
+    from metabrowser.cache import pull_refs
+
+    seen: list[list[str]] = []
+    original = pull_refs.run_git
+
+    async def recording(args: list[str], **kwargs: Any) -> bytes:
+        seen.append(list(args))
+        return await original(args, **kwargs)
+
+    monkeypatch.setattr(pull_refs, "run_git", recording)
+    stand.refresh(9)
+    fetches = [args for args in seen if "fetch" in args]
+    assert len(fetches) == 2  # refs/pull/9/head, then base.sha by ID
+    assert all("--atomic" in args for args in fetches)
+
+
+def test_the_route_parses_a_record_again_only_when_it_changed(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.builtin_plugins.github import pull_route
+
+    stand.refresh(7)
+    reads: list[int] = []
+    original = pull_route.read_pull_record
+
+    def counting(home: Path, slug: str, number: int) -> PullRecord | str:
+        reads.append(number)
+        return original(home, slug, number)
+
+    monkeypatch.setattr(pull_route, "read_pull_record", counting)
+    home, slug = stand.published.home, stand.published.slug
+    first, _ = pull_route.cached_pull_record(home, slug, 7)
+    again, _ = pull_route.cached_pull_record(home, slug, 7)
+    assert again is first and reads == [7]
+    stand.refresh(7)
+    pull_route.cached_pull_record(home, slug, 7)
+    assert reads == [7, 7]

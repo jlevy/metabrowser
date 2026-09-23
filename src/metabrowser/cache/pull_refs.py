@@ -9,8 +9,10 @@ computes Files changed. A closed or merged pull request's comparison starts from
 API's ``base.sha`` instead, fetched by ID when the mirror does not have it.
 
 Every fetch is a network command on an acquisition-grade Git: :func:`remote_git_args`,
-the isolated acquisition policy, its own process group, and the Git floor. Nothing here
-writes a record or takes a cache lock.
+the isolated acquisition policy, its own process group, and the Git floor, all in
+:func:`fetch_into_store`. Nothing here writes a record or takes a cache lock; the
+refresh coordinator's fetch side lock and stale-lock cleanup wrap
+:func:`fetch_into_store`.
 """
 
 from __future__ import annotations
@@ -77,26 +79,39 @@ async def _read(published: PublishedSource, args: list[str]) -> bytes:
     return await run_git(args, target=_target(published), policy=STORE_READ_POLICY)
 
 
-async def _fetch(published: PublishedSource, specs: list[str]) -> None:
-    """``git fetch`` *specs* from the source's origin into its store."""
+async def fetch_into_store(published: PublishedSource, specs: list[str]) -> None:
+    """``git fetch --atomic`` *specs* from the source's origin into its published store.
+
+    Every fetch this module makes is this one command, the pull-request ref and the
+    base branch with it, or one commit by ID; the refresh coordinator's fetch side lock
+    and its stale ``*.lock`` cleanup belong around this call, as around the mirror
+    update. ``--atomic`` writes every ref or none, after the objects.
+    """
 
     # Through the acquisition module, so the Git floor and the origin URL have one seam
     # each for every command that fetches into a store.
     await asyncio.to_thread(acquire.require_acquisition_git)
     remote_url = acquire.remote_url_for(published.source)
+    await run_git(
+        [
+            *remote_git_args(remote_url),
+            "fetch",
+            "--atomic",
+            "--no-tags",
+            "--no-write-fetch-head",
+            "origin",
+            *specs,
+        ],
+        target=_target(published),
+        policy=ACQUISITION_POLICY,
+    )
+
+
+async def _fetch(published: PublishedSource, specs: list[str]) -> None:
+    """:func:`fetch_into_store`, with Git's failure as a typed :class:`PullRefError`."""
+
     try:
-        await run_git(
-            [
-                *remote_git_args(remote_url),
-                "fetch",
-                "--no-tags",
-                "--no-write-fetch-head",
-                "origin",
-                *specs,
-            ],
-            target=_target(published),
-            policy=ACQUISITION_POLICY,
-        )
+        await fetch_into_store(published, specs)
     except GitTimeoutError as exc:
         raise PullRefError("network_error", "Git did not finish the fetch in time") from exc
     except GitCommandError as exc:
@@ -202,6 +217,7 @@ __all__ = [
     "PullRefError",
     "comparison_endpoints",
     "fetch_commit",
+    "fetch_into_store",
     "fetch_pull_head",
     "has_commit",
     "pull_head_ref",

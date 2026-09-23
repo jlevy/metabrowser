@@ -23,7 +23,12 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, Validation
 
 from metabrowser.cache.atomic import RecordError, read_bytes_bounded
 from metabrowser.cache.paths import source_pull_record, source_pulls_directory
-from metabrowser.home import SharedEntryPolicy, ensure_private_directory, write_private_file_atomic
+from metabrowser.home import (
+    PrivateStorageError,
+    SharedEntryPolicy,
+    ensure_private_directory,
+    write_private_file_atomic,
+)
 
 PULL_RECORD_SCHEMA: Final = 1
 
@@ -53,13 +58,17 @@ API_PAGE_SIZE: Final = 100
 MAX_BODY_BYTES: Final = 64 * 1024
 MAX_DIFF_HUNK_BYTES: Final = 16 * 1024
 MAX_TITLE_BYTES: Final = 1024
-# All bodies and hunks of one record together. The most measured was about 2.0 MB
-# (kubernetes#102884: 1.72 MB of hunks before the hunk cap, 0.23 MB of bodies); 4 MiB
-# leaves about twice that. Past it, later text is cut, in record order.
+# All bodies and hunks of one record together, as written: JSON escaping counts, so a
+# body of control characters costs six bytes a character. The most measured was about
+# 2.0 MB (kubernetes#102884: 1.72 MB of hunks before the hunk cap, 0.23 MB of bodies);
+# 4 MiB leaves about twice that. Past it, later text is cut, in record order.
 MAX_TEXT_BYTES: Final = 4 * 1024 * 1024
-# The read bound. The text budget plus the fixed-size fields of at most 2,900 items
-# stays well under it; a record that would not is refused rather than written.
+# The read bound. The text budget shrinks when the other fields leave less than it of
+# this, so every record written can be read back.
 MAX_PULL_RECORD_BYTES: Final = 16 * 1024 * 1024
+# A cut flag written as ``false`` is one byte longer than ``true``, and a record carries
+# about 3,500 of them.
+_FLAG_SLACK_BYTES: Final = 16 * 1024
 
 type Sha = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")]
 type Timestamp = Annotated[str, StringConstraints(pattern=r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")]
@@ -67,6 +76,7 @@ type Login = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9][A-Za-z0-9_\
 type Short = Annotated[str, StringConstraints(max_length=1024)]
 type Url = Annotated[str, StringConstraints(pattern=r"^https://", max_length=4096)]
 type Mergeable = Literal["mergeable", "conflicting", "unknown"]
+type UnavailablePart = Literal["check_runs", "status", "comparison"]
 
 
 class _Model(BaseModel):
@@ -194,7 +204,11 @@ class Comparison(_Model):
 
 
 class Truncation(_Model):
-    """Which lists stopped at their cap, and whether the text budget cut anything."""
+    """Which lists are incomplete, and whether the text budget cut anything.
+
+    A list is incomplete when it reached its cap or its page cap, or when GitHub sent an
+    item too large to read or one Metabrowser could not read, which is left out.
+    """
 
     issue_comments: bool
     reviews: bool
@@ -221,9 +235,17 @@ class PullRecord(_Model):
     reviews: tuple[Review, ...] = Field(max_length=MAX_REVIEWS)
     review_comments: tuple[ReviewComment, ...] = Field(max_length=MAX_REVIEW_COMMENTS)
     check_runs: tuple[CheckRun, ...] = Field(max_length=MAX_CHECK_RUNS)
-    status: CombinedStatus
+    status: CombinedStatus | None
     comparison: Comparison | None
     truncated: Truncation
+    unavailable: dict[UnavailablePart, Short]
+    """Parts that could not be read, each with the typed state that said why.
+
+    ``check_runs`` and ``status`` when GitHub refused them (a token without checks
+    access answers 403); ``comparison`` when the base could not be fetched
+    (``not_found_or_private``, ``network_error``, ``fetch_failed``) or shares no history
+    with the head (``no_merge_base``). The rest of the record stands.
+    """
 
 
 type RecordAbsence = Literal["not_cached", "schema_mismatch", "unreadable"]
@@ -250,8 +272,55 @@ def cut_text(text: str, limit: int, *, keep: Literal["head", "tail"] = "head") -
     return (tail[newline + 1 :] if newline >= 0 else tail), True
 
 
+_JSON_SHORT_ESCAPES: Final = frozenset('"\\\b\f\n\r\t')
+
+
+def _escaped_char_size(char: str) -> int:
+    if char in _JSON_SHORT_ESCAPES:
+        return 2
+    if ord(char) < 0x20:
+        return 6
+    return len(char.encode("utf-8", errors="surrogatepass"))
+
+
+def escaped_size(text: str) -> int:
+    """The bytes *text* takes inside a JSON string of the written record.
+
+    Control characters escape to six bytes and quotes and backslashes to two, so a
+    budget on raw bytes could be exceeded several times over.
+    """
+
+    return len(json.dumps(text, ensure_ascii=False).encode("utf-8", errors="surrogatepass")) - 2
+
+
+def cut_escaped(
+    text: str, limit: int, *, keep: Literal["head", "tail"] = "head"
+) -> tuple[str, bool]:
+    """*text* cut so its :func:`escaped_size` is at most *limit*; whether it was.
+
+    ``tail`` keeps the end and starts it at a line boundary, as :func:`cut_text` does.
+    """
+
+    if escaped_size(text) <= limit:
+        return text, False
+    chars = reversed(text) if keep == "tail" else iter(text)
+    kept: list[str] = []
+    used = 0
+    for char in chars:
+        size = _escaped_char_size(char)
+        if used + size > limit:
+            break
+        kept.append(char)
+        used += size
+    if keep == "head":
+        return "".join(kept), True
+    tail = "".join(reversed(kept))
+    newline = tail.find("\n")
+    return (tail[newline + 1 :] if newline >= 0 else tail), True
+
+
 def apply_text_budget(record: PullRecord, budget: int = MAX_TEXT_BYTES) -> PullRecord:
-    """Cut bodies and hunks, in record order, once they pass *budget* bytes together."""
+    """Cut bodies and hunks, in record order, once they pass *budget* written bytes."""
 
     remaining = budget
     cut_any = False
@@ -260,8 +329,8 @@ def apply_text_budget(record: PullRecord, budget: int = MAX_TEXT_BYTES) -> PullR
         text: str, truncated: bool, *, keep: Literal["head", "tail"] = "head"
     ) -> tuple[str, bool]:
         nonlocal remaining, cut_any
-        kept, cut = cut_text(text, max(remaining, 0), keep=keep)
-        remaining -= len(kept.encode("utf-8"))
+        kept, cut = cut_escaped(text, max(remaining, 0), keep=keep)
+        remaining -= escaped_size(kept)
         cut_any = cut_any or cut
         return kept, truncated or cut
 
@@ -301,6 +370,23 @@ def apply_text_budget(record: PullRecord, budget: int = MAX_TEXT_BYTES) -> PullR
     )
 
 
+def fit_record(record: PullRecord) -> PullRecord:
+    """*record* with its text budgeted so the written record fits the read bound.
+
+    The budget is :data:`MAX_TEXT_BYTES`, or what the record's other fields leave of
+    :data:`MAX_PULL_RECORD_BYTES` when that is less.
+    """
+
+    fixed = len(apply_text_budget(record, 0).model_dump_json().encode("utf-8"))
+    budget = min(MAX_TEXT_BYTES, MAX_PULL_RECORD_BYTES - fixed - _FLAG_SLACK_BYTES)
+    if budget < 0:
+        raise RecordTooLargeError(
+            f"the pull-request record would be {fixed:,} bytes without any text, more than "
+            f"{MAX_PULL_RECORD_BYTES:,}"
+        )
+    return apply_text_budget(record, budget)
+
+
 def serialize_pull_record(record: PullRecord) -> bytes:
     """Validate *record* again and serialize it, refusing one past the read bound."""
 
@@ -314,7 +400,11 @@ def serialize_pull_record(record: PullRecord) -> bytes:
 
 
 def write_pull_record(home: Path, slug: str, record: PullRecord) -> None:
-    """Publish *record* atomically under its source. Blocking; run it off the event loop."""
+    """Publish *record* atomically under its source. Blocking; run it off the event loop.
+
+    Raises :class:`RecordTooLargeError`, or the home's ``PrivateStorageError`` or an
+    ``OSError`` when the cache cannot take it.
+    """
 
     data = serialize_pull_record(record)
     ensure_private_directory(home, source_pulls_directory(slug))
@@ -326,8 +416,9 @@ def read_pull_record(
 ) -> PullRecord | RecordAbsence:
     """The cached record, or why there is none. Blocking and bounded; run it off the loop.
 
-    A record another schema wrote is ``schema_mismatch`` and one that is too large,
-    malformed, or outside the model is ``unreadable``; either way the caller refetches.
+    A record another schema wrote is ``schema_mismatch``. One that is too large,
+    malformed, outside the model, or not a private regular file (a symbolic link, one
+    shared with other users) is ``unreadable``; either way the caller refetches.
     """
 
     try:
@@ -336,7 +427,7 @@ def read_pull_record(
         )
     except FileNotFoundError:
         return "not_cached"
-    except RecordError:
+    except (RecordError, PrivateStorageError, OSError):
         return "unreadable"
     try:
         payload = json.loads(data)
@@ -380,8 +471,12 @@ __all__ = [
     "Review",
     "ReviewComment",
     "Truncation",
+    "UnavailablePart",
     "apply_text_budget",
+    "cut_escaped",
     "cut_text",
+    "escaped_size",
+    "fit_record",
     "read_pull_record",
     "serialize_pull_record",
     "write_pull_record",

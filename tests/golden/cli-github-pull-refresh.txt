@@ -170,7 +170,8 @@ status: 200
       "check_runs": false,
       "statuses": false,
       "text": false
-    }
+    },
+    "unavailable": {}
   }
 }
 --- stderr ---
@@ -392,7 +393,8 @@ status: 200
       "check_runs": false,
       "statuses": false,
       "text": false
-    }
+    },
+    "unavailable": {}
   }
 }
 --- stderr ---
@@ -401,14 +403,16 @@ pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- gh ---
 # metab https://github.com/octo/demo/pull/7 --no-serve
-exit: 1
+exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
 slug: github-com--octo--demo--46386669dc01
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: c691256511d05858850bc7684ae062fea0d41132
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader; the refresh failed: gh could not reach api.github.com (network_error))
 --- stderr ---
-Error: pull request 7 of https://github.com/octo/demo: gh could not reach api.github.com; the record fetched 2026-09-17T12:00:00Z is kept (network_error)
 --- gh ---
 gh auth status
 gh api repos/octo/demo/pulls/7 (If-None-Match)
@@ -573,7 +577,8 @@ status: 200
       "check_runs": false,
       "statuses": false,
       "text": false
-    }
+    },
+    "unavailable": {}
   }
 }
 --- stderr ---
@@ -582,84 +587,112 @@ pin: 8ae27617c9c475851b67ee69433d008836d112ba (pull request 8 head)
 pull_request: 8 (merged; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- gh ---
 # metab https://github.com/octo/demo/pull/11 --no-serve
-exit: 1
+exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
 slug: github-com--octo--demo--46386669dc01
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: c691256511d05858850bc7684ae062fea0d41132
+selection: pull_request
+pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
+pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: GitHub has no such pull request, or it is private and the gh account cannot read it (not_found_or_private); the pin is the default branch)
 --- stderr ---
-Error: pull request 11 of https://github.com/octo/demo: GitHub has no such pull request, or it is private and the gh account cannot read it (not_found_or_private)
 --- gh ---
 gh auth status
 gh api repos/octo/demo/pulls/11
 # metab https://github.com/octo/demo/pull/11 --no-serve
-exit: 1
+exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
 slug: github-com--octo--demo--46386669dc01
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: c691256511d05858850bc7684ae062fea0d41132
+selection: pull_request
+pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
+pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: gh is not signed in to github.com; run gh auth login (not_logged_in); the pin is the default branch)
 --- stderr ---
-Error: pull request 11 of https://github.com/octo/demo: gh is not signed in to github.com; run gh auth login (not_logged_in)
 --- gh ---
 gh auth status
 # metab https://github.com/octo/demo/pull/11 --no-serve
-exit: 1
+exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
 slug: github-com--octo--demo--46386669dc01
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: c691256511d05858850bc7684ae062fea0d41132
+selection: pull_request
+pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
+pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: this gh is too old to report its account; install gh 2.81.0 or newer (gh_too_old); the pin is the default branch)
 --- stderr ---
-Error: pull request 11 of https://github.com/octo/demo: this gh is too old to report its account; install gh 2.81.0 or newer (gh_too_old)
 --- gh ---
 gh auth status
 # metab https://github.com/octo/demo/pull/11 --no-serve
-exit: 1
+exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
 slug: github-com--octo--demo--46386669dc01
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: c691256511d05858850bc7684ae062fea0d41132
+selection: pull_request
+pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
+pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: GitHub's API rate limit is exhausted until 2026-09-23T16:46:00Z (rate_limited); the pin is the default branch)
 --- stderr ---
-Error: pull request 11 of https://github.com/octo/demo: GitHub's API rate limit is exhausted until 2026-09-23T16:46:00Z (rate_limited)
---- gh ---
-gh auth status
-gh api repos/octo/demo/pulls/11
-# metab https://github.com/octo/demo/pull/11 --no-serve
-exit: 1
---- stdout ---
-acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
-store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
-revision: c691256511d05858850bc7684ae062fea0d41132
---- stderr ---
-Error: pull request 11 of https://github.com/octo/demo: GitHub's API rate limit is exhausted until 2026-09-17T12:02:00Z (rate_limited)
 --- gh ---
 gh auth status
 gh api repos/octo/demo/pulls/11
 # metab https://github.com/octo/demo/pull/11 --no-serve
-exit: 1
+exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
 slug: github-com--octo--demo--46386669dc01
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: c691256511d05858850bc7684ae062fea0d41132
+selection: pull_request
+pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
+pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: GitHub's API rate limit is exhausted until 2026-09-17T12:02:00Z (rate_limited); the pin is the default branch)
 --- stderr ---
-Error: pull request 11 of https://github.com/octo/demo: gh could not reach api.github.com (network_error)
+--- gh ---
+gh auth status
+gh api repos/octo/demo/pulls/11
+# metab https://github.com/octo/demo/pull/11 --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: c691256511d05858850bc7684ae062fea0d41132
+selection: pull_request
+pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
+pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: GitHub's API rate limit is exhausted; try again in a few minutes (rate_limited); the pin is the default branch)
+--- stderr ---
+--- gh ---
+gh auth status
+gh api repos/octo/demo/pulls/11
+# metab https://github.com/octo/demo/pull/11 --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: c691256511d05858850bc7684ae062fea0d41132
+selection: pull_request
+pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
+pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: gh could not reach api.github.com (network_error); the pin is the default branch)
+--- stderr ---
 --- gh ---
 gh auth status
 gh api repos/octo/demo/pulls/11
 # metab https://github.com/octo/demo/pull/7 --no-serve
-exit: 1
+exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
 slug: github-com--octo--demo--46386669dc01
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: c691256511d05858850bc7684ae062fea0d41132
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader; the refresh failed: the active gh account changed during the read, so what was read is discarded; open it again (account_changed))
 --- stderr ---
-Error: pull request 7 of https://github.com/octo/demo: the active gh account changed during the read, so what was read is discarded; open it again; the record fetched 2026-09-17T12:00:00Z is kept (account_changed)
 --- gh ---
 gh auth status
 gh api repos/octo/demo/pulls/7 (If-None-Match)
@@ -670,14 +703,16 @@ gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-ru
 gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1 (If-None-Match)
 gh auth status
 # metab https://github.com/octo/demo/pull/7 --no-serve
-exit: 1
+exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
 slug: github-com--octo--demo--46386669dc01
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: c691256511d05858850bc7684ae062fea0d41132
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader; the refresh failed: its head kept moving while it was read; open it again (head_mismatch))
 --- stderr ---
-Error: pull request 7 of https://github.com/octo/demo: its head kept moving while it was read; open it again; the record fetched 2026-09-17T12:00:00Z is kept (head_mismatch)
 --- gh ---
 gh auth status
 gh api repos/octo/demo/pulls/7 (If-None-Match)
@@ -696,10 +731,25 @@ gh api repos/octo/demo/commits/8ae27617c9c475851b67ee69433d008836d112ba/check-ru
 gh api repos/octo/demo/commits/8ae27617c9c475851b67ee69433d008836d112ba/status?per_page=100&page=1
 gh auth status
 # metab https://github.com/octo/demo/pull/11 --api /api/plugin/github/pull
-exit: 1
+exit: 0
 --- stdout ---
+api: /api/plugin/github/pull
+status: 200
+{
+  "state": "absent",
+  "reason": "not_cached",
+  "source": "https://github.com/octo/demo",
+  "number": 11,
+  "pin": "c691256511d05858850bc7684ae062fea0d41132",
+  "fetched_at": null,
+  "fresh_for_s": 60.0,
+  "comparison_route": null,
+  "record": null
+}
 --- stderr ---
-Error: pull request 11 of https://github.com/octo/demo: GitHub CLI (gh) is not on PATH (gh_missing)
+selection: pull_request
+pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
+pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: GitHub CLI (gh) is not on PATH (gh_missing); the pin is the default branch)
 --- gh ---
 # metab https://github.com/octo/demo/pull/7 --api /api/plugin/github/pull
 exit: 0
@@ -873,7 +923,8 @@ status: 200
       "check_runs": false,
       "statuses": false,
       "text": false
-    }
+    },
+    "unavailable": {}
   }
 }
 --- stderr ---

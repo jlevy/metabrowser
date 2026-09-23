@@ -9,7 +9,10 @@ A URL inside a pull request is the exception. Its record is opened first, throug
 provider that owns the source: from the cache when a usable record is there, with no
 call to gh or the network, and otherwise fetched once, which also brings the pull
 request's commits, a fork's included, into the store. ``--no-serve`` fetches it every
-time. A pull-request URL then pins the head commit.
+time. A pull-request URL then pins the head commit. When the pull request cannot be
+opened, the URL falls back to what it pinned before pull-request data existed: a commit
+URL inside it pins that commit if the mirror has it, and a pull-request URL pins the
+default branch, with the reason on the ``pull_request`` line.
 """
 
 from __future__ import annotations
@@ -41,10 +44,15 @@ LOG = logging.getLogger(__name__)
 
 @dataclass(frozen=True, slots=True)
 class CliResolution:
-    """The commit a URL pins, and the pull request it is inside, if any."""
+    """The commit a URL pins, and the pull request it is inside, if any.
+
+    ``pull_unavailable`` is why a pull request the URL names could not be opened, when
+    it could not; the pin then falls back to what the mirror answers without it.
+    """
 
     resolved: ResolvedSelection
     pull: PullRequestPin | None = None
+    pull_unavailable: str | None = None
 
 
 def unresolved_message(
@@ -70,18 +78,15 @@ def unresolved_message(
 
 async def _open_pull_request_for_cli(
     published: PublishedSource, number: int, *, fetch: PullRequestFetch
-) -> PullRequestPin:
+) -> PullRequestPin | str:
+    """The pull request's pin, or why it could not be opened."""
+
     with maybe_cli_logging():
         try:
             return await open_pull_request(published, number, fetch=fetch)
         except PullRequestUnavailableError as exc:
-            raise CLIError(str(exc)) from exc
-        except GitError as exc:
-            LOG.debug("reading pull request %s failed: %s", number, exc)
-            raise CLIError(
-                f"a Git command failed while reading pull request {number} "
-                "(--log-level debug shows Git's own message)"
-            ) from exc
+            LOG.debug("pull request %s could not be opened: %s", number, exc)
+            return str(exc)
 
 
 async def resolve_for_cli(
@@ -92,13 +97,21 @@ async def resolve_for_cli(
 ) -> CliResolution:
     """Resolve *selection* in the published store, or raise a path-free ``CLIError``.
 
-    A URL inside a pull request opens its record first, fetching as *fetch* allows.
+    A URL inside a pull request opens its record first, fetching as *fetch* allows. When
+    it cannot be opened (no signed-in ``gh``, say), a commit URL inside it still pins a
+    commit the mirror has and a pull-request URL pins the default branch, and the
+    report says why.
     """
 
     pull: PullRequestPin | None = None
+    unavailable: str | None = None
     if selection.pull_request is not None:
-        pull = await _open_pull_request_for_cli(published, selection.pull_request, fetch=fetch)
-        if selection.kind == "pull_request":
+        opened = await _open_pull_request_for_cli(published, selection.pull_request, fetch=fetch)
+        if isinstance(opened, str):
+            unavailable = opened
+        else:
+            pull = opened
+        if pull is not None and selection.kind == "pull_request":
             resolved = ResolvedSelection(
                 via="pull_request", name=str(pull.number), ref=pull.ref, commit=pull.head
             )
@@ -119,8 +132,11 @@ async def resolve_for_cli(
                 "(--log-level debug shows Git's own message)"
             ) from exc
     if isinstance(resolution, UnresolvedSelection):
-        raise CLIError(unresolved_message(published.source.normalized, selection, resolution))
-    return CliResolution(resolution, pull)
+        message = unresolved_message(published.source.normalized, selection, resolution)
+        if unavailable is not None:
+            message += f"; {unavailable}"
+        raise CLIError(message)
+    return CliResolution(resolution, pull, unavailable)
 
 
 async def require_selected_path(
@@ -193,6 +209,12 @@ def selection_lines(selection: RepositorySelection, resolution: CliResolution) -
         lines.append("plain: true")
     if resolution.pull is not None:
         lines.append(f"pull_request: {resolution.pull.number} ({resolution.pull.summary})")
+    elif resolution.pull_unavailable is not None and selection.pull_request is not None:
+        fallback = "; the pin is the default branch" if selection.kind == "pull_request" else ""
+        lines.append(
+            f"pull_request: {selection.pull_request} "
+            f"(not opened: {resolution.pull_unavailable}{fallback})"
+        )
     return lines
 
 

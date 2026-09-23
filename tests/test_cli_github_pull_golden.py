@@ -143,7 +143,9 @@ def test_golden_pull_requests_fetch_refresh_and_read_offline(
     offline = session.run(f"{PULL}/7", "--api", "/api/plugin/github/pull")
     assert offline.exit_code == 0, offline.stderr
     assert json.loads(offline.stdout[offline.stdout.index("{") :])["record"] == envelope["record"]
-    assert session.run(f"{PULL}/7", "--no-serve").exit_code == 1
+    stale = session.run(f"{PULL}/7", "--no-serve")
+    assert stale.exit_code == 0 and "; the refresh failed: " in stale.stdout
+    assert "(network_error))" in stale.stdout
 
     session.answer(online)
     for number in (8, 9, 10):
@@ -191,6 +193,18 @@ def test_golden_pull_requests_fetch_refresh_and_read_offline(
             ),
         ),
         (
+            "rate_limited",
+            _api(
+                online,
+                "repos/octo/demo/pulls/11",
+                {
+                    "status": 403,
+                    "headers": {"X-Ratelimit-Remaining": "4990"},
+                    "body": {"message": "You have exceeded a secondary rate limit."},
+                },
+            ),
+        ),
+        (
             "network_error",
             _with(online, api_failure={"stderr": "dial tcp: i/o timeout\n", "exit": 1}),
         ),
@@ -198,24 +212,32 @@ def test_golden_pull_requests_fetch_refresh_and_read_offline(
     for state, answers in refusals:
         session.answer(answers)
         refused = session.run(f"{PULL}/11", "--no-serve")
-        assert refused.exit_code == 1 and f"({state})" in refused.stderr, (state, refused.stderr)
+        assert refused.exit_code == 0, (state, refused.stderr)
+        assert f"({state}); the pin is the default branch)" in refused.stdout, (
+            state,
+            refused.stdout,
+        )
 
     # The account switches between the two account checks around a complete read.
     session.answer(_with(online, auth=[account("octo-reader"), account("someone-else")]))
     switched = session.run(f"{PULL}/7", "--no-serve")
-    assert switched.exit_code == 1 and "(account_changed)" in switched.stderr
+    assert switched.exit_code == 0 and "(account_changed))" in switched.stdout
 
-    # The API names a head that refs/pull/7/head does not: read again once, then refuse.
+    # The API names a head that refs/pull/7/head does not: read again once, then give up
+    # and answer from the cached record.
     path = "repos/octo/demo/pulls/7"
     body = online["api"][path]["body"]
     moved = ok(path, {**body, "head": {**body["head"], "sha": origin["merged_head"]}})
     session.answer(_api(online, path, moved))
     mismatch = session.run(f"{PULL}/7", "--no-serve")
-    assert mismatch.exit_code == 1 and "(head_mismatch)" in mismatch.stderr
+    assert mismatch.exit_code == 0 and "(head_mismatch))" in mismatch.stdout
 
     monkeypatch.setattr("metabrowser.builtin_plugins.github.gh.gh_executable", lambda: None)
     missing = session.run(f"{PULL}/11", "--api", "/api/plugin/github/pull")
-    assert missing.exit_code == 1 and "(gh_missing)" in missing.stderr
+    assert (
+        missing.exit_code == 0 and "(gh_missing); the pin is the default branch)" in missing.stderr
+    )
+    assert json.loads(missing.stdout[missing.stdout.index("{") :])["reason"] == "not_cached"
     # The cached record outlived every failed refresh.
     kept = session.run(f"{PULL}/7", "--api", "/api/plugin/github/pull")
     assert (

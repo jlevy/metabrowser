@@ -1,6 +1,7 @@
 ---
 sandbox: true
 path:
+  - ../fixtures/github-pull/no-gh
   - ../../.venv/bin
 env:
   TERM: "dumb"
@@ -27,8 +28,10 @@ clock fixed at 2026-09-17T12:00:00Z.
 | 9 | closed, its fork deleted, its `base.sha` on no mirrored ref |
 | 10 | open draft |
 
-Every command below answers from that cache: none runs `gh` or reaches the network, and
-none needs a Git the acquisition floor admits.
+Every command below answers from that cache and none reaches the network or needs a Git
+the acquisition floor admits.
+`gh` is `tests/fixtures/github-pull/no-gh/gh`, which fails every command: only a pull
+request with no usable record asks it, and then falls back to the default branch.
 A record fetched more than a minute ago reads as `stale`, which every one here is.
 Fetching, refusals, and account and rate-limit states are in
 `tests/test_cli_github_pull_golden.py`.
@@ -213,7 +216,8 @@ status: 200
       "check_runs": false,
       "statuses": false,
       "text": false
-    }
+    },
+    "unavailable": {}
   }
 }
 ? 0
@@ -580,7 +584,8 @@ status: 200
       "check_runs": false,
       "statuses": false,
       "text": false
-    }
+    },
+    "unavailable": {}
   }
 }
 ? 0
@@ -777,7 +782,8 @@ status: 200
       "check_runs": false,
       "statuses": false,
       "text": false
-    }
+    },
+    "unavailable": {}
   }
 }
 ? 0
@@ -795,6 +801,75 @@ status: 200
   "source": null,
   "number": null,
   "pin": null,
+  "fetched_at": null,
+  "fresh_for_s": 60.0,
+  "comparison_route": null,
+  "record": null
+}
+? 0
+```
+
+## Test: a pull request with no usable record answers why
+
+Nothing is cached for 14; 12 holds a record from another schema; 13 holds something that
+is not JSON. Each asks the failing `gh` once, falls back to the default branch, and the
+route says why it has nothing to show.
+
+```console
+$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/14 --api /api/plugin/github/pull
+selection: pull_request
+pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
+pull_request: 14 (not opened: pull request 14 of https://github.com/octo/demo: gh exited 1 without an HTTP response (gh_failed); the pin is the default branch)
+api: /api/plugin/github/pull
+status: 200
+{
+  "state": "absent",
+  "reason": "not_cached",
+  "source": "https://github.com/octo/demo",
+  "number": 14,
+  "pin": "c691256511d05858850bc7684ae062fea0d41132",
+  "fetched_at": null,
+  "fresh_for_s": 60.0,
+  "comparison_route": null,
+  "record": null
+}
+? 0
+```
+
+```console
+$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/12 --api /api/plugin/github/pull
+selection: pull_request
+pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
+pull_request: 12 (not opened: pull request 12 of https://github.com/octo/demo: gh exited 1 without an HTTP response (gh_failed); the pin is the default branch)
+api: /api/plugin/github/pull
+status: 200
+{
+  "state": "absent",
+  "reason": "schema_mismatch",
+  "source": "https://github.com/octo/demo",
+  "number": 12,
+  "pin": "c691256511d05858850bc7684ae062fea0d41132",
+  "fetched_at": null,
+  "fresh_for_s": 60.0,
+  "comparison_route": null,
+  "record": null
+}
+? 0
+```
+
+```console
+$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/13 --api /api/plugin/github/pull
+selection: pull_request
+pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
+pull_request: 13 (not opened: pull request 13 of https://github.com/octo/demo: gh exited 1 without an HTTP response (gh_failed); the pin is the default branch)
+api: /api/plugin/github/pull
+status: 200
+{
+  "state": "absent",
+  "reason": "unreadable",
+  "source": "https://github.com/octo/demo",
+  "number": 13,
+  "pin": "c691256511d05858850bc7684ae062fea0d41132",
   "fetched_at": null,
   "fresh_for_s": 60.0,
   "comparison_route": null,

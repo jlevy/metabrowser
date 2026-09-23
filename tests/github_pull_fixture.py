@@ -72,7 +72,7 @@ def pick(key, value):
 
 if log:
     watched = ("GH_PROMPT_DISABLED", "GH_NO_UPDATE_NOTIFIER", "NO_COLOR", "GH_DEBUG",
-               "GH_HOST", "GH_REPO")
+               "GH_HOST", "GH_REPO", "GH_FORCE_TTY", "CLICOLOR_FORCE")
     stdin_null = os.path.samestat(os.fstat(0), os.stat(os.devnull))
     with open(log, "a", encoding="utf-8") as handle:
         handle.write(json.dumps({{"args": args, "stdin_null": stdin_null,
@@ -103,7 +103,7 @@ if args[:1] == ["api"]:
     entry = pick(path, scenario["api"].get(path, {{"status": 404, "body": {{"message": "Not Found"}}}}))
     status = entry["status"]
     headers = dict(entry.get("headers", {{}}))
-    body = json.dumps(entry.get("body", None)).encode()
+    body = entry["raw"].encode() if "raw" in entry else json.dumps(entry.get("body", None)).encode()
     if match is not None and headers.get("Etag") == match:
         status, body = 304, b""
     reason = {{200: "OK", 304: "Not Modified", 403: "Forbidden", 404: "Not Found",
@@ -471,7 +471,24 @@ def build_home(directory: Path) -> None:
             except SystemExit as exc:
                 if exc.code not in (0, None):
                     raise
+    write_damaged_records(directory / "home")
     (directory / "root").mkdir(exist_ok=True)
+
+
+def write_damaged_records(home: Path) -> None:
+    """Records the route cannot use: 12 from another schema, 13 not JSON at all."""
+
+    from metabrowser.cache.identity import cache_slug, source_identity
+    from metabrowser.cache.paths import source_pull_record
+    from metabrowser.home import write_private_file_atomic
+
+    slug = cache_slug(
+        "https", CANONICAL, source_identity("https", CANONICAL), slug_owner=lambda _slug: None
+    )
+    write_private_file_atomic(
+        home, source_pull_record(slug, 12), json.dumps({"schema_version": 0}).encode()
+    )
+    write_private_file_atomic(home, source_pull_record(slug, 13), b"{not json")
 
 
 if __name__ == "__main__":
