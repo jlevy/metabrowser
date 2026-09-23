@@ -63,7 +63,7 @@ make audit
 # Run a targeted test.
 uv --config-file uv.toml run --frozen pytest tests/test_plugin_loader.py::test_classifier_priority_wins
 
-# Run acquisition and no-lazy-fetch acceptance tests on the installed Git, with the
+# Run acquisition and full-clone acceptance tests on the installed Git, with the
 # acquisition floor unpatched. They skip when that floor refuses the installed Git.
 make test-admitted-git
 
@@ -512,8 +512,8 @@ controls removes the coverage the golden existed to provide.
 Placeholders use angle brackets, because tryscript reads `[NAME]` in expected output as
 an elision pattern and `[ROOT]` is one of its built-ins.
 
-**State counts too.** The cache persists layout, identity, entry state, quarantine, and
-trash, none of which appears in a response envelope.
+**State counts too.** The cache persists layout, identity, entry state, and abandoned
+staging, none of which appears in a response envelope.
 Those are read through `/api/cache/*` like any other model rather than through a bespoke
 inspection command, which is the practical reason to prefer a route to a CLI mode.
 `/api/cache/layout`, `/api/cache/sources`, `/api/cache/source/<slug>`, and

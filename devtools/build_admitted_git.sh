@@ -6,7 +6,7 @@
 # Production refuses repository acquisition below the Git security floor in
 # tests/fixtures/repository-cache/git-version-gates.json, and the CI runner's
 # distribution Git reports a version below it. The CI admitted-git job builds the
-# releases pinned here, so acquisition and the no-lazy-fetch acceptance tests run on
+# releases pinned here, so acquisition and the full-clone acceptance tests run on
 # a Git that production admits. SUPPLY-CHAIN-SECURITY.md ("Admitted Git in CI")
 # records the review; devtools/check_supply_chain.py keeps its table, these pins,
 # and the job's matrix in agreement.
@@ -42,9 +42,9 @@ echo "${sha256}  ${work}/${tarball}" | sha256sum --check --strict -
 
 tar -xJf "${work}/${tarball}" -C "$work"
 
-# The core commands and the HTTP(S) remote helper, which the stalled-promisor tests
-# reach. No Tcl/Tk tools, translations, Perl or Python commands, DAV push, or
-# OpenSSL (curl brings its own TLS).
+# The core commands and the HTTP(S) remote helper, which HTTPS acquisition needs.
+# No Tcl/Tk tools, translations, Perl or Python commands, DAV push, or OpenSSL
+# (curl brings its own TLS).
 if ! make -C "${work}/git-${version}" -j"$(nproc)" prefix="$prefix" \
   NO_TCLTK=1 NO_GETTEXT=1 NO_PERL=1 NO_PYTHON=1 NO_EXPAT=1 NO_OPENSSL=1 \
   all install >"${work}/build.log" 2>&1; then

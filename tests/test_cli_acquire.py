@@ -17,7 +17,6 @@ from metabrowser.git.process import (
     GitCommandError,
     GitError,
     GitOutputTooLargeError,
-    GitProcessPolicy,
     GitTimeoutError,
     GitUnavailableError,
     UnsupportedGitVersionError,
@@ -59,14 +58,13 @@ def test_no_serve_acquires_a_file_source_and_prints_logical_identity(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     home = _isolate_home(tmp_path, monkeypatch)
-    url = _file_url(_origin(tmp_path, allow_filter=False))
+    url = _file_url(_origin(tmp_path))
     result = runner.invoke(_app, [url, "--no-serve"])
     assert result.exit_code == 0, result.output
     assert "Serving" not in result.output
     assert "acquired: " in result.output
     assert "slug: " in result.output
     assert "store: sha256:" in result.output
-    assert "strategy: full" in result.output
     assert "revision: " in result.output
     assert list((home / STAGING).iterdir()) == []
     assert any((home / SOURCES).iterdir())
@@ -79,7 +77,7 @@ def test_a_second_no_serve_reuses_the_published_store(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _isolate_home(tmp_path, monkeypatch)
-    url = _file_url(_origin(tmp_path, allow_filter=False))
+    url = _file_url(_origin(tmp_path))
     first = runner.invoke(_app, [url, "--no-serve"])
     second = runner.invoke(_app, [url, "--no-serve"])
     assert first.exit_code == 0, first.output
@@ -92,7 +90,7 @@ def test_file_url_api_cache_layout_acquires_then_inspects(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     home = _isolate_home(tmp_path, monkeypatch)
-    url = _file_url(_origin(tmp_path, allow_filter=False))
+    url = _file_url(_origin(tmp_path))
     result = runner.invoke(_app, [url, "--api", "/api/cache/layout"])
     assert result.exit_code == 0, result.output
     assert "api: /api/cache/layout" in result.output
@@ -118,7 +116,7 @@ def test_file_url_api_applies_the_content_trust_flags(
     from metabrowser.capabilities import get_capabilities
 
     _isolate_home(tmp_path, monkeypatch)
-    url = _file_url(_origin(tmp_path, allow_filter=False))
+    url = _file_url(_origin(tmp_path))
     result = runner.invoke(_app, [url, "--api", "/api/cache/layout", "--untrusted"])
     assert result.exit_code == 0, result.output
     assert get_capabilities().active_content is False
@@ -150,7 +148,7 @@ def test_pin_api_always_runs_under_the_untrusted_profile(
     _isolate_home(tmp_path, monkeypatch)
     for name, value in env.items():
         monkeypatch.setenv(name, value)
-    url = _file_url(_origin(tmp_path, allow_filter=False))
+    url = _file_url(_origin(tmp_path))
     result = runner.invoke(_app, [url, "--api", "/api/capabilities", *flags])
     assert result.exit_code == 0, result.output
     assert '"active_content": false' in result.output
@@ -163,7 +161,7 @@ def test_pin_refuses_allow_edits_instead_of_dropping_it(
     mode: list[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     home = _isolate_home(tmp_path, monkeypatch)
-    url = _file_url(_origin(tmp_path, allow_filter=False))
+    url = _file_url(_origin(tmp_path))
     result = runner.invoke(_app, [url, *mode, "--allow-edits"])
     assert isinstance(result.exception, CLIError)
     assert "--allow-edits is not available on an acquired Git source" in str(result.exception)
@@ -178,7 +176,7 @@ def test_pin_show_runs_under_the_untrusted_profile(
 
     _isolate_home(tmp_path, monkeypatch)
     monkeypatch.setenv("METAB_ACTIVE_CONTENT", "1")
-    url = _file_url(_origin(tmp_path, allow_filter=False))
+    url = _file_url(_origin(tmp_path))
     result = runner.invoke(_app, [url, "--show", "README"])
     assert result.exit_code == 0, result.output
     assert get_capabilities().active_content is False
@@ -195,8 +193,8 @@ def test_a_pin_in_a_populated_cache_sees_only_its_own_tree(
     second = tmp_path / "second"
     first.mkdir()
     second.mkdir()
-    first_url = _file_url(_origin(first, allow_filter=False))
-    second_origin = _origin(second, allow_filter=False)
+    first_url = _file_url(_origin(first))
+    second_origin = _origin(second)
     work = second / "work"
     (work / "OTHER").write_text("other source\n", encoding="utf-8")
     _git(work, "add", "OTHER")
@@ -220,7 +218,7 @@ def test_file_url_api_tree_attaches_the_default_pin(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     home = _isolate_home(tmp_path, monkeypatch)
-    url = _file_url(_origin(tmp_path, allow_filter=False))
+    url = _file_url(_origin(tmp_path))
     result = runner.invoke(_app, [url, "--api", "/api/tree"])
     assert result.exit_code == 0, result.output
     assert "Serving" not in result.output
@@ -236,7 +234,7 @@ def test_file_url_show_reports_the_pin_blob(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _isolate_home(tmp_path, monkeypatch)
-    url = _file_url(_origin(tmp_path, allow_filter=False))
+    url = _file_url(_origin(tmp_path))
     result = runner.invoke(_app, [url, "--show", "README"])
     assert result.exit_code == 0, result.output
     assert "Serving" not in result.output
@@ -281,7 +279,7 @@ def test_api_on_a_local_root_sees_a_prior_no_serve_acquire(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     home = _isolate_home(tmp_path, monkeypatch)
-    url = _file_url(_origin(tmp_path, allow_filter=False))
+    url = _file_url(_origin(tmp_path))
     acquired = runner.invoke(_app, [url, "--no-serve"])
     assert acquired.exit_code == 0, acquired.output
     slug = next(
@@ -307,7 +305,7 @@ def test_no_serve_refuses_below_floor_git_without_creating_the_home(
         raise UnsupportedGitVersionError("git version 2.39.5", "2.43.7")
 
     monkeypatch.setattr("metabrowser.cache.acquire.require_acquisition_git", refuse)
-    url = _file_url(_origin(tmp_path, allow_filter=False))
+    url = _file_url(_origin(tmp_path))
     result = runner.invoke(_app, [url, "--no-serve"])
     assert isinstance(result.exception, CLIError)
     assert "unsupported Git version" in str(result.exception)
@@ -326,7 +324,7 @@ def test_no_serve_refuses_below_floor_git_without_writing_an_empty_home(
         raise UnsupportedGitVersionError("git version 2.39.5", "2.43.7")
 
     monkeypatch.setattr("metabrowser.cache.acquire.require_acquisition_git", refuse)
-    url = _file_url(_origin(tmp_path, allow_filter=False))
+    url = _file_url(_origin(tmp_path))
     result = runner.invoke(_app, [url, "--no-serve"])
     assert isinstance(result.exception, CLIError)
     assert "unsupported Git version" in str(result.exception)
@@ -342,7 +340,7 @@ def test_installed_git_below_the_floor_is_refused_by_no_serve(
         pytest.skip("installed git meets the acquisition floor")
     home = tmp_path / "home"
     monkeypatch.setenv("METABROWSER_HOME", str(home))
-    url = _file_url(_origin(tmp_path, allow_filter=False))
+    url = _file_url(_origin(tmp_path))
     result = runner.invoke(_app, [url, "--no-serve"])
     assert isinstance(result.exception, CLIError)
     assert "unsupported Git version" in str(result.exception)
@@ -355,7 +353,7 @@ def test_no_serve_reuses_a_cache_hit_when_the_home_has_no_owner_write(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     home = _isolate_home(tmp_path, monkeypatch)
-    url = _file_url(_origin(tmp_path, allow_filter=False))
+    url = _file_url(_origin(tmp_path))
     first = runner.invoke(_app, [url, "--no-serve"])
     assert first.exit_code == 0, first.output
     _remove_owner_write(home)
@@ -374,12 +372,12 @@ def test_no_serve_miss_against_a_home_without_owner_write_does_not_fetch(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     home = _isolate_home(tmp_path, monkeypatch)
-    first_url = _file_url(_origin(tmp_path, allow_filter=False))
+    first_url = _file_url(_origin(tmp_path))
     first = runner.invoke(_app, [first_url, "--no-serve"])
     assert first.exit_code == 0, first.output
     other = tmp_path / "other"
     other.mkdir()
-    other_url = _file_url(_origin(other, allow_filter=False))
+    other_url = _file_url(_origin(other))
     sources_before = {path.name for path in (home / SOURCES).iterdir() if path.is_dir()}
     _remove_owner_write(home)
     try:
@@ -408,7 +406,7 @@ def test_git_failures_during_acquisition_are_distinct_path_free_cli_errors(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     home = _isolate_home(tmp_path, monkeypatch)
-    url = _file_url(_origin(tmp_path, allow_filter=False))
+    url = _file_url(_origin(tmp_path))
     real_run = acquire_module._run
     messages: dict[str, str] = {}
     for kind in ("timeout", "too-large", "unavailable", "command"):
@@ -418,13 +416,11 @@ def test_git_failures_during_acquisition_are_distinct_path_free_cli_errors(
             *,
             cwd: Path | None = None,
             git_dir: Path | None = None,
-            policy: GitProcessPolicy = acquire_module.ACQUISITION_POLICY,
-            stdin: bytes | None = None,
             kind: str = kind,
         ) -> bytes:
             if args[0] == "init":
                 raise _git_failure(kind, args)
-            return await real_run(args, cwd=cwd, git_dir=git_dir, policy=policy, stdin=stdin)
+            return await real_run(args, cwd=cwd, git_dir=git_dir)
 
         monkeypatch.setattr(acquire_module, "_run", fail_init)
         result = runner.invoke(_app, [url, "--no-serve"])
@@ -447,7 +443,7 @@ def test_pin_html_offers_only_source_under_the_forced_profile(
 ) -> None:
     """A pin never offers HTML preview, so it cannot 404 on a relative reference (mb-g5je)."""
     _isolate_home(tmp_path, monkeypatch)
-    origin = _origin(tmp_path, allow_filter=False)
+    origin = _origin(tmp_path)
     work = tmp_path / "work"
     (work / "page.html").write_text('<img src="logo.png"><a href="b.html">b</a>\n')
     _git(work, "add", "page.html")

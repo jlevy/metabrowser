@@ -246,10 +246,8 @@ async def _pinned_history_scope(
     material = bytearray(f"history-scope-v1\0{object_format}\0pin\0{pin}\0".encode())
     material.extend(b"HEAD-REF\0\0")
     if wants_all:
-        # A published store also holds ``refs/metabrowser/subjects/*``, one per
-        # leased pin. Those are private reachability refs: walking them would
-        # show commits no branch or tag names, and fingerprinting them would
-        # stale every open cursor whenever another pin is leased.
+        # Only the namespaces history shows count, so a ref outside them neither
+        # adds commits to the walk nor changes the fingerprint of an open cursor.
         refs = await _run_git(
             location,
             [

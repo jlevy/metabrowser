@@ -5,7 +5,7 @@
   "locks": {
     "primitive": {
       "kind": "flock",
-      "basis": "BSD flock on a lock file opened O_CLOEXEC: an exclusive holder blocked a second exclusive request, two shared holders coexisted and blocked an exclusive request, and the lock was released 2.8 ms after its holder was SIGKILLed (results/platform.json). POSIX record locks (lockf/fcntl) are rejected: the lock silently vanished when the same process closed an unrelated descriptor for the file. A flock request on a dup() of a descriptor that holds a shared lease silently converts that lease to exclusive: in one process, an exclusive non-blocking request on a separate open() of the lock file was refused while the lease was held, the same request on a dup() of the lease descriptor was granted, and another process could then no longer take a shared lock (results/lockdescriptors.json).",
+      "basis": "BSD flock on a lock file opened O_CLOEXEC: an exclusive holder blocked a second exclusive request, and the lock was released 2.8 ms after its holder was SIGKILLed (results/platform.json). POSIX record locks (lockf/fcntl) are rejected: the lock silently vanished when the same process closed an unrelated descriptor for the file. flock state belongs to the open file description, so a request through a dup() of a held descriptor is granted rather than refused, while a request on a separate open() of the lock file contends with it (results/lockdescriptors.json).",
       "unmeasured": "Only macOS APFS was measured, and CI runs only ubuntu-latest. Network filesystems can emulate flock with POSIX record locks, which behave like the rejected lockf. The format foundation therefore probes the application home at setup instead of trusting the platform: cross-process exclusion, survival of the lock when an unrelated descriptor for the lock file closes, and no-replace publication; a home that fails any probe is refused as unverifiable."
     },
     "hierarchy": [
@@ -14,21 +14,21 @@
         "rank": 1,
         "multiple": false,
         "path": "cache/locks/home.lock",
-        "protects": "layout migration, brief global enumeration for catalog scans and sweeps, and moving quarantined entries to trash"
+        "protects": "layout migration and brief global enumeration for catalog scans and sweeps"
       },
       {
         "name": "source_alias",
         "rank": 2,
         "multiple": true,
         "path": "cache/locks/sources/<slug>.lock",
-        "protects": "slug claim, alias creation, and compare-and-swap repointing; several aliases lock in ascending slug order"
+        "protects": "slug claim and alias creation; several aliases lock in ascending slug order"
       },
       {
         "name": "repository_store",
         "rank": 3,
         "multiple": true,
         "path": "cache/locks/stores/<store-key>.lock",
-        "protects": "store directory publication and removal, store records, and ref compare-and-swap; several stores lock in ascending key order. It is held only for those short steps, never across network work or a long-running Git process such as fetch, gc, or repack"
+        "protects": "store directory publication and store records; several stores lock in ascending key order. It is held only for those short steps, never across network work or a long-running Git process such as fetch"
       },
       {
         "name": "provider_resource",
@@ -45,44 +45,18 @@
         "path": "cache/locks/staging/<entry>.lock",
         "acquisition": "taken before cache/staging/<entry>/ is created and held by its one owner for the entry's whole life, including network work; every other process only tries it without blocking",
         "why_outside_the_hierarchy": "It is a liveness marker nobody waits on, so holding it across network work cannot block another operation."
-      },
-      {
-        "name": "trash_entry",
-        "mode": "exclusive",
-        "path": "cache/locks/trash/<entry>.lock",
-        "acquisition": "taken before an entry is renamed into trash and held until deletion finishes; others try without blocking",
-        "why_outside_the_hierarchy": "Same liveness role as staging_entry."
-      },
-      {
-        "name": "job_entry",
-        "mode": "exclusive",
-        "path": "cache/locks/jobs/<job-id>.lock",
-        "acquisition": "held by the process running a fetch job for the job's whole life; reclamation tries it without blocking before deleting that job's private refs",
-        "why_outside_the_hierarchy": "Same liveness role as staging_entry."
-      },
-      {
-        "name": "maintenance_shared",
-        "mode": "shared",
-        "path": "cache/locks/stores/<store-key>.maintenance.lock",
-        "acquisition": "the store lease: held by a live subject, by an acquisition from before store publication until its alias is published, and by a fetch job from before its network work until publication, each through its own open() of the lock file. It may block only while its holder holds no hierarchy lock",
-        "why_outside_the_hierarchy": "Nobody blocks on it while holding a hierarchy lock, and its exclusive form never blocks, so it cannot close a wait cycle."
-      },
-      {
-        "name": "maintenance_exclusive",
-        "mode": "exclusive",
-        "path": "cache/locks/stores/<store-key>.maintenance.lock",
-        "acquisition": "never blocks; taken while holding no hierarchy lock by gc and repack, which run under it alone, and by reclamation, purge, and quarantine before their hierarchy locks. Failure defers maintenance or refuses the operation",
-        "why_outside_the_hierarchy": "Because it never waits, a long-lived lease cannot turn it into a deadlock."
       }
     ],
     "rules": [
-      "No network work, provider process, or long-running Git process runs while a hierarchy lock is held; gc and repack run under maintenance_exclusive alone.",
-      "Every lease and every lock attempt uses its own open() of the lock file. Descriptors are never shared or duplicated between lock holders, including two holders in one process, because flock state belongs to the open file description and a second request through a duplicate converts the first holder's lock instead of contending with it.",
+      "No network work, provider process, or long-running Git process runs while a hierarchy lock is held.",
+      "Every lock attempt uses its own open() of the lock file. Descriptors are never shared or duplicated between lock holders, including two holders in one process, because flock state belongs to the open file description and a second request through a duplicate would be granted the first holder's lock instead of contending with it.",
       "Hierarchy locks are acquired in ascending rank, and within one rank in ascending key order; a lock is never re-acquired while held.",
       "The home lock is never acquired while any narrower hierarchy lock is held.",
-      "Blocking on a side lock is allowed only while holding no hierarchy lock, and maintenance_exclusive never blocks.",
-      "Every object enters a store under the store lease, and every alias that names a store is written under that store's lease, so an exclusive maintenance holder sees a stable set of objects and referring aliases.",
-      "Lock files live under cache/locks/ and are never inside a directory that publication, purge, quarantine, or reclamation renames.",
+      "Side locks are liveness markers and are only ever tried without blocking.",
+      "A store is published and the alias that names it is written by one holder of the source-alias lock and the store's lock, held from the store's publication through the alias commit, so every alias that names a store is written under that store's lock.",
+      "Nothing removes objects from a published store: automatic maintenance and gc stay off in its configuration and no operation runs gc, prune, or repack. A reader pinned to a full object ID therefore holds no lock and writes no ref.",
+      "Nothing deletes a published store. A store no alias names stays in place until an acquisition of its source reuses it; only the startup sweep of abandoned staging entries deletes anything.",
+      "Lock files live under cache/locks/ and are never inside a directory that publication or the sweep renames or deletes.",
       "After acquiring any lock, the holder compares the locked descriptor's fstat with the path's lstat (device and inode) and releases and retries on a mismatch, because a sweep may have removed and recreated the lock file.",
       "Liveness is decided by trying the entry's lock, not by age: a crashed holder releases within milliseconds, while no age can distinguish a slow clone from a dead one."
     ],
@@ -93,18 +67,16 @@
           "home",
           "release:home",
           "network",
-          "repository_store:s1",
-          "release:repository_store",
           "source_alias:k1",
           "repository_store:s1",
           "release:repository_store",
           "release:source_alias"
         ],
         "valid": true,
-        "why": "Enumerate briefly, stage without locks, publish the store, then the alias while re-verifying the store."
+        "why": "Enumerate briefly, stage without locks, then publish the store and its alias under the alias and store locks."
       },
       {
-        "id": "converge-several",
+        "id": "several-in-order",
         "steps": [
           "source_alias:a",
           "source_alias:b",
@@ -196,45 +168,13 @@
       "visible_after": false,
       "action": "The startup sweep finds the staging entry's lock free and deletes the entry. A SIGKILLed clone leaves its destination and a temporary pack behind (results/concurrency.json), so staging is never inside a published path."
     },
-    "unreferenced_store_reclaimable": {
+    "unreferenced_store_kept": {
       "visible_after": false,
-      "action": "The operating system released the crashed acquisition's lease. A published store that no alias, durable provider ref, or lease reaches is not visible; reclamation moves it to trash under the exclusive maintenance lock and the store lock, or quarantines it when its records do not validate."
-    },
-    "trash_swept": {
-      "visible_after": false,
-      "action": "The startup sweep deletes a trash entry whose lock is free."
-    },
-    "job_refs_reclaimable": {
-      "visible_after": false,
-      "action": "Reclamation deletes the job's private refs under refs/metabrowser/jobs/<job-id>/ once its job lock is free; public refs never changed. In a blobless store the objects those refs named stay: gc --prune=now, repack -a -d, and prune --expire=now all kept a discarded job's commit and blob, because Git never prunes promisor objects (results/storeconfig.json). They accumulate until an explicit compaction that later cache operations own; in a full store gc --prune=now removed them."
-    },
-    "shared_lock_released_by_os": {
-      "visible_after": false,
-      "action": "The process is gone, so its subject is gone; the operating system released the lease. Durable private refs keep promised objects reachable."
+      "action": "The crash released the acquisition's locks after its store was published and before its alias was. A published store that no alias names is not visible. It stays in place, and the next acquisition of the same source reuses it and publishes the alias."
     },
     "sweep_restarts": {
       "visible_after": "unchanged",
       "action": "The sweep is idempotent and runs again at the next startup."
-    },
-    "maintenance_rerun": {
-      "visible_after": "unchanged",
-      "action": "Git writes new packs before removing old ones; the next maintenance run removes temporary files. Crash during gc was not measured."
-    },
-    "quarantine_retained": {
-      "visible_after": false,
-      "action": "Quarantine is never reclaimed automatically; inspect and purge report the retained path."
-    },
-    "alias_cas_atomic": {
-      "visible_after": "unchanged",
-      "action": "The alias record is replaced by one atomic rename after its generation check, so it names either the old or the new store."
-    },
-    "alias_trashed_store_reclaimable": {
-      "visible_after": false,
-      "action": "The alias was moved to trash first, so the startup sweep deletes it, and the store is an ordinary unreferenced store that reclamation moves to trash."
-    },
-    "alias_quarantined_store_reclaimable": {
-      "visible_after": false,
-      "action": "The alias was moved into the quarantine entry first and is retained there; the store is an ordinary unreferenced store that reclamation validates and then trashes or quarantines."
     }
   },
   "machines": [
@@ -258,26 +198,18 @@
         },
         { "name": "fetching", "visible": false, "terminal": false, "on_crash": "staging_swept" },
         { "name": "fetched", "visible": false, "terminal": false, "on_crash": "staging_swept" },
-        { "name": "prefetching", "visible": false, "terminal": false, "on_crash": "staging_swept" },
-        {
-          "name": "object_state_recorded",
-          "visible": false,
-          "terminal": false,
-          "on_crash": "staging_swept"
-        },
         { "name": "validated", "visible": false, "terminal": false, "on_crash": "staging_swept" },
-        { "name": "leased", "visible": false, "terminal": false, "on_crash": "staging_swept" },
         {
           "name": "store_published",
           "visible": false,
           "terminal": false,
-          "on_crash": "unreferenced_store_reclaimable"
+          "on_crash": "unreferenced_store_kept"
         },
         {
           "name": "store_reused",
           "visible": false,
           "terminal": false,
-          "on_crash": "unreferenced_store_reclaimable"
+          "on_crash": "unreferenced_store_kept"
         },
         { "name": "alias_published", "visible": true, "terminal": true },
         { "name": "alias_conflict_reported", "visible": true, "terminal": true },
@@ -314,7 +246,7 @@
           "to": "fetching",
           "holds": ["staging_entry"],
           "network": true,
-          "effect": "init --bare --template=, Metabrowser-written config, then one blobless fetch with explicit refspecs; no low-speed bound until acquisition stalls are measured, so user cancellation is the guard."
+          "effect": "init --bare --template=, Metabrowser-written config with automatic maintenance and gc off, then one fetch of every object with explicit refspecs; no low-speed bound until acquisition stalls are measured, so user cancellation is the guard."
         },
         {
           "from": "fetching",
@@ -338,101 +270,53 @@
           "to": "fetched",
           "holds": ["staging_entry"],
           "network": false,
-          "effect": "Commits, trees, and private refs are present in staging; record the configuration snapshot digest, which every later Git process on this store verifies first."
+          "effect": "Every object reachable from the fetched branches and tags is present in staging."
         },
         {
           "from": "fetched",
-          "event": "filter_ignored",
-          "to": "object_state_recorded",
-          "holds": ["staging_entry"],
-          "network": false,
-          "effect": "The remote sent blobs despite the filter: every object reachable from the fetched refs is present, so the store records strategy full and object_state complete, not partial."
-        },
-        {
-          "from": "fetched",
-          "event": "filter_honored",
-          "to": "prefetching",
-          "holds": ["staging_entry"],
-          "network": false,
-          "effect": "Blobs are missing, as requested."
-        },
-        {
-          "from": "prefetching",
-          "event": "prefetch_succeeded",
-          "to": "object_state_recorded",
-          "holds": ["staging_entry"],
-          "network": true,
-          "effect": "Object-ID fetch of the default revision's blob-mode entries (100644, 100755, 120000) with the object-fetch low-speed bound; per-object rejections are bisected and recorded unavailable individually. object_state is partial."
-        },
-        {
-          "from": "prefetching",
-          "event": "prefetch_failed",
-          "to": "object_state_recorded",
-          "holds": ["staging_entry"],
-          "network": false,
-          "effect": "A transport failure or stall bound ends the prefetch; the store is still published with object_state partial, and the default revision's missing blobs are deferred for convergence."
-        },
-        {
-          "from": "prefetching",
-          "event": "cancelled",
-          "to": "abandoned",
-          "holds": ["staging_entry"],
-          "network": false,
-          "effect": "Git terminated; staging deleted."
-        },
-        {
-          "from": "object_state_recorded",
           "event": "validation_failed",
           "to": "abandoned",
           "holds": ["staging_entry"],
           "network": false,
-          "effect": "Connectivity, the observed HEAD object, or the object format did not validate; staging deleted."
+          "effect": "The observed HEAD object, its branch, or the object format did not validate; staging deleted."
         },
         {
-          "from": "object_state_recorded",
+          "from": "fetched",
           "event": "validated",
           "to": "validated",
           "holds": ["staging_entry"],
           "network": false,
-          "effect": "Records written in staging."
+          "effect": "Records written in staging: strategy full and object_state complete."
         },
         {
           "from": "validated",
-          "event": "acquire_lease",
-          "to": "leased",
-          "holds": ["maintenance_shared", "staging_entry"],
-          "network": false,
-          "effect": "Take the store lease while holding no hierarchy lock, so reclamation and purge cannot remove the store between its publication and the alias."
-        },
-        {
-          "from": "leased",
           "event": "publish_store",
           "to": "store_published",
-          "holds": ["repository_store", "maintenance_shared", "staging_entry"],
+          "holds": ["source_alias", "repository_store", "staging_entry"],
           "network": false,
-          "effect": "Under the store lock verify the store directory is absent, rename staging into repository-stores/<store-key>, and release the store lock; the lease stays held."
+          "effect": "Take the alias lock, then the store lock, and keep both through the alias commit; verify the store directory is absent and rename staging into repository-stores/<store-key>."
         },
         {
-          "from": "leased",
+          "from": "validated",
           "event": "store_exists_same_identity",
           "to": "store_reused",
-          "holds": ["repository_store", "maintenance_shared", "staging_entry"],
+          "holds": ["source_alias", "repository_store", "staging_entry"],
           "network": false,
-          "effect": "A concurrent acquisition published the same deterministic store first; its records validate, staging is discarded, and the lease stays held."
+          "effect": "Under the same two locks, a concurrent acquisition had published the same deterministic store first; its records validate, and staging is deleted after the locks are released."
         },
         {
           "from": "store_published",
           "event": "publish_alias",
           "to": "alias_published",
-          "holds": ["source_alias", "repository_store", "maintenance_shared"],
+          "holds": ["source_alias", "repository_store", "staging_entry"],
           "network": false,
-          "effect": "Take the alias lock, then the store lock; verify the store is present; atomically create sources/<slug>/ with source.yml and store-alias.yml as the sole visibility commit; release both locks and the lease."
+          "effect": "Still under both locks, atomically create sources/<slug>/ with source.yml and store-alias.yml as the sole visibility commit; release both locks."
         },
         {
           "from": "store_reused",
           "event": "publish_alias",
           "to": "alias_published",
-          "holds": ["source_alias", "repository_store", "maintenance_shared"],
+          "holds": ["source_alias", "repository_store", "staging_entry"],
           "network": false,
           "effect": "Same visibility commit."
         },
@@ -440,116 +324,33 @@
           "from": "store_published",
           "event": "alias_exists_same_store",
           "to": "alias_published",
-          "holds": ["source_alias", "repository_store", "maintenance_shared"],
+          "holds": ["source_alias", "repository_store", "staging_entry"],
           "network": false,
-          "effect": "Another process committed the identical alias first; release the lease."
+          "effect": "Another process committed the identical alias first; release both locks."
         },
         {
           "from": "store_reused",
           "event": "alias_exists_same_store",
           "to": "alias_published",
-          "holds": ["source_alias", "repository_store", "maintenance_shared"],
+          "holds": ["source_alias", "repository_store", "staging_entry"],
           "network": false,
-          "effect": "Another process committed the identical alias first; release the lease."
+          "effect": "Another process committed the identical alias first; release both locks."
         },
         {
           "from": "store_published",
           "event": "alias_points_elsewhere",
           "to": "alias_conflict_reported",
-          "holds": ["source_alias", "repository_store", "maintenance_shared"],
+          "holds": ["source_alias", "repository_store", "staging_entry"],
           "network": false,
-          "effect": "The existing alias stays; release the lease, leaving the new store unreferenced and reclaimable."
+          "effect": "The existing alias stays; release both locks, leaving the new store unreferenced."
         },
         {
           "from": "store_reused",
           "event": "alias_points_elsewhere",
           "to": "alias_conflict_reported",
-          "holds": ["source_alias", "repository_store", "maintenance_shared"],
+          "holds": ["source_alias", "repository_store", "staging_entry"],
           "network": false,
-          "effect": "The existing alias stays; release the lease."
-        },
-        {
-          "from": "store_published",
-          "event": "store_missing",
-          "to": "abandoned",
-          "holds": ["source_alias", "repository_store", "maintenance_shared"],
-          "network": false,
-          "effect": "Defensive: the store vanished, so no alias is written. The interleaving check proves this is unreachable while the lease is held."
-        },
-        {
-          "from": "store_reused",
-          "event": "store_missing",
-          "to": "abandoned",
-          "holds": ["source_alias", "repository_store", "maintenance_shared"],
-          "network": false,
-          "effect": "Defensive, as above."
-        }
-      ]
-    },
-    {
-      "name": "store_reclamation",
-      "owner_phase": "1B-a",
-      "initial": "idle",
-      "states": [
-        { "name": "idle", "visible": false, "terminal": false, "on_crash": "nothing_to_recover" },
-        {
-          "name": "exclusive_held",
-          "visible": false,
-          "terminal": false,
-          "on_crash": "nothing_to_recover"
-        },
-        { "name": "in_trash", "visible": false, "terminal": false, "on_crash": "trash_swept" },
-        { "name": "skipped", "visible": false, "terminal": true },
-        { "name": "reclaimed", "visible": false, "terminal": true }
-      ],
-      "transitions": [
-        {
-          "from": "idle",
-          "event": "try_exclusive",
-          "to": "exclusive_held",
-          "holds": ["maintenance_exclusive"],
-          "network": false,
-          "effect": "Non-blocking; no lease exists, so no acquisition, job, or subject is using the store."
-        },
-        {
-          "from": "idle",
-          "event": "exclusive_busy",
-          "to": "skipped",
-          "holds": [],
-          "network": false,
-          "effect": "A lease is held; try again later."
-        },
-        {
-          "from": "exclusive_held",
-          "event": "store_absent",
-          "to": "skipped",
-          "holds": ["repository_store", "maintenance_exclusive"],
-          "network": false,
-          "effect": "Nothing is published under the key."
-        },
-        {
-          "from": "exclusive_held",
-          "event": "still_referenced",
-          "to": "skipped",
-          "holds": ["repository_store", "maintenance_exclusive"],
-          "network": false,
-          "effect": "An alias or durable provider ref names the store; release both locks."
-        },
-        {
-          "from": "exclusive_held",
-          "event": "move_to_trash",
-          "to": "in_trash",
-          "holds": ["repository_store", "maintenance_exclusive", "trash_entry"],
-          "network": false,
-          "effect": "Under the store lock, verify no alias or durable provider ref names the store and rename it into trash/<entry>."
-        },
-        {
-          "from": "in_trash",
-          "event": "delete_completed",
-          "to": "reclaimed",
-          "holds": ["trash_entry"],
-          "network": false,
-          "effect": "Delete outside every hierarchy lock, tolerating read-only Git object files."
+          "effect": "The existing alias stays; release both locks."
         }
       ]
     },
@@ -576,7 +377,7 @@
           "to": "enumerating",
           "holds": ["home"],
           "network": false,
-          "effect": "List entry names under staging/ and trash/ only."
+          "effect": "List entry names under staging/ only."
         },
         {
           "from": "enumerating",
@@ -600,7 +401,7 @@
           "to": "removing",
           "holds": ["staging_entry"],
           "network": false,
-          "effect": "Nobody owns the entry and the lock file's identity rechecks; trash entries use trash_entry the same way."
+          "effect": "Nobody owns the entry and the lock file's identity rechecks."
         },
         {
           "from": "removing",
@@ -619,630 +420,6 @@
           "effect": "Every listed entry was skipped or removed."
         }
       ]
-    },
-    {
-      "name": "selected_ref_fetch",
-      "owner_phase": "2B",
-      "initial": "requested",
-      "states": [
-        {
-          "name": "requested",
-          "visible": false,
-          "terminal": false,
-          "on_crash": "nothing_to_recover"
-        },
-        {
-          "name": "job_registered",
-          "visible": false,
-          "terminal": false,
-          "on_crash": "nothing_to_recover"
-        },
-        { "name": "leased", "visible": false, "terminal": false, "on_crash": "nothing_to_recover" },
-        {
-          "name": "fetching",
-          "visible": false,
-          "terminal": false,
-          "on_crash": "job_refs_reclaimable"
-        },
-        {
-          "name": "fetched",
-          "visible": false,
-          "terminal": false,
-          "on_crash": "job_refs_reclaimable"
-        },
-        { "name": "joined_in_flight", "visible": false, "terminal": true },
-        { "name": "published", "visible": true, "terminal": true },
-        { "name": "discarded", "visible": false, "terminal": true },
-        { "name": "cancelled", "visible": false, "terminal": true },
-        { "name": "failed", "visible": false, "terminal": true },
-        { "name": "refused_suspect", "visible": false, "terminal": true }
-      ],
-      "transitions": [
-        {
-          "from": "requested",
-          "event": "equal_key_in_flight",
-          "to": "joined_in_flight",
-          "holds": [],
-          "network": false,
-          "effect": "In-process coalescing on the exact job key; the joiner validates its own context and lease first."
-        },
-        {
-          "from": "requested",
-          "event": "start",
-          "to": "job_registered",
-          "holds": ["job_entry"],
-          "network": false,
-          "effect": "Allocate a job ID and take its liveness lock."
-        },
-        {
-          "from": "job_registered",
-          "event": "acquire_lease",
-          "to": "leased",
-          "holds": ["job_entry", "maintenance_shared"],
-          "network": false,
-          "effect": "Take the store lease with no hierarchy lock held, so maintenance cannot prune objects while they arrive."
-        },
-        {
-          "from": "leased",
-          "event": "fetch_started",
-          "to": "fetching",
-          "holds": ["job_entry", "maintenance_shared"],
-          "network": true,
-          "effect": "Verify the configuration snapshot, then fetch from a remote recorded in it (never a URL) directly into the store, writing only refs/metabrowser/jobs/<job-id>/; the store's filter applies, so every received pack is a promisor pack."
-        },
-        {
-          "from": "fetching",
-          "event": "fetch_failed",
-          "to": "failed",
-          "holds": ["job_entry", "maintenance_shared"],
-          "network": false,
-          "effect": "Typed failure; delete the job's refs."
-        },
-        {
-          "from": "fetching",
-          "event": "cancelled",
-          "to": "cancelled",
-          "holds": ["job_entry", "maintenance_shared"],
-          "network": false,
-          "effect": "Git terminated; delete the job's refs."
-        },
-        {
-          "from": "fetching",
-          "event": "fetched",
-          "to": "fetched",
-          "holds": ["job_entry", "maintenance_shared"],
-          "network": false,
-          "effect": "Job refs name the fetched object IDs."
-        },
-        {
-          "from": "fetched",
-          "event": "publish",
-          "to": "published",
-          "holds": ["repository_store", "job_entry", "maintenance_shared"],
-          "network": false,
-          "effect": "Verify the configuration snapshot, then: one update-ref --stdin transaction updates each public ref from its observed old value and deletes the job refs."
-        },
-        {
-          "from": "fetched",
-          "event": "already_published",
-          "to": "published",
-          "holds": ["repository_store", "job_entry", "maintenance_shared"],
-          "network": false,
-          "effect": "Verify the configuration snapshot, then: the compare-and-swap lost to a job that published the same object IDs; delete the job refs."
-        },
-        {
-          "from": "fetched",
-          "event": "generation_conflict",
-          "to": "discarded",
-          "holds": ["repository_store", "job_entry", "maintenance_shared"],
-          "network": false,
-          "effect": "Verify the configuration snapshot, then: a newer generation published different object IDs; delete the job refs."
-        },
-        {
-          "from": "fetched",
-          "event": "expected_oid_mismatch",
-          "to": "discarded",
-          "holds": ["repository_store", "job_entry", "maintenance_shared"],
-          "network": false,
-          "effect": "Verify the configuration snapshot, then: the fetched ref no longer names the provider-observed object; delete the job refs."
-        },
-        {
-          "from": "leased",
-          "event": "config_mismatch",
-          "to": "refused_suspect",
-          "holds": ["job_entry", "maintenance_shared"],
-          "network": false,
-          "effect": "The configuration snapshot does not match: Git is not run, the store is marked suspect in this process, the lease is released, and quarantine is requested."
-        },
-        {
-          "from": "fetched",
-          "event": "config_mismatch",
-          "to": "refused_suspect",
-          "holds": ["job_entry", "maintenance_shared"],
-          "network": false,
-          "effect": "The configuration changed during the fetch: publication is not run, the job refs stay for quarantine to retain, the lease is released, and quarantine is requested."
-        }
-      ]
-    },
-    {
-      "name": "revision_subject_lease",
-      "owner_phase": "1B-c",
-      "initial": "resolving",
-      "states": [
-        {
-          "name": "resolving",
-          "visible": false,
-          "terminal": false,
-          "on_crash": "nothing_to_recover"
-        },
-        {
-          "name": "shared_held",
-          "visible": false,
-          "terminal": false,
-          "on_crash": "shared_lock_released_by_os"
-        },
-        {
-          "name": "leased",
-          "visible": true,
-          "terminal": false,
-          "on_crash": "shared_lock_released_by_os"
-        },
-        { "name": "unavailable", "visible": false, "terminal": true },
-        { "name": "released", "visible": false, "terminal": true },
-        { "name": "refused_suspect", "visible": false, "terminal": true }
-      ],
-      "transitions": [
-        {
-          "from": "resolving",
-          "event": "acquire_shared",
-          "to": "shared_held",
-          "holds": ["maintenance_shared"],
-          "network": false,
-          "effect": "Block only on a running maintenance exclusive holder, with no hierarchy lock held."
-        },
-        {
-          "from": "shared_held",
-          "event": "object_missing",
-          "to": "unavailable",
-          "holds": ["maintenance_shared"],
-          "network": false,
-          "effect": "Typed object_unavailable with lazy fetch disabled; any fetch belongs to the object-job port."
-        },
-        {
-          "from": "shared_held",
-          "event": "object_present",
-          "to": "leased",
-          "holds": ["maintenance_shared"],
-          "network": false,
-          "effect": "Verify the configuration snapshot before the first Git process, then serve the full object ID. A batch reader verifies once when it is spawned, not on each request."
-        },
-        {
-          "from": "shared_held",
-          "event": "object_present_offline_promise",
-          "to": "leased",
-          "holds": ["repository_store", "maintenance_shared"],
-          "network": false,
-          "effect": "Also write a durable private ref so gc --prune=now cannot remove the promised objects."
-        },
-        {
-          "from": "leased",
-          "event": "session_closed",
-          "to": "released",
-          "holds": [],
-          "network": false,
-          "effect": "Close readers, then release the lease."
-        },
-        {
-          "from": "shared_held",
-          "event": "config_mismatch",
-          "to": "refused_suspect",
-          "holds": ["maintenance_shared"],
-          "network": false,
-          "effect": "Git is not run; the store is suspect in this process, the lease is released, and quarantine is requested."
-        },
-        {
-          "from": "leased",
-          "event": "reader_config_mismatch",
-          "to": "refused_suspect",
-          "holds": ["maintenance_shared"],
-          "network": false,
-          "effect": "A later reader spawn found a mismatch: running readers are closed, the subject is refused, the lease is released, and quarantine is requested."
-        }
-      ]
-    },
-    {
-      "name": "store_maintenance",
-      "owner_phase": "1B-c",
-      "initial": "requested",
-      "states": [
-        {
-          "name": "requested",
-          "visible": true,
-          "terminal": false,
-          "on_crash": "nothing_to_recover"
-        },
-        {
-          "name": "exclusive_held",
-          "visible": true,
-          "terminal": false,
-          "on_crash": "nothing_to_recover"
-        },
-        { "name": "running", "visible": true, "terminal": false, "on_crash": "maintenance_rerun" },
-        { "name": "deferred", "visible": true, "terminal": true },
-        { "name": "refused_suspect", "visible": false, "terminal": true },
-        { "name": "done", "visible": true, "terminal": true }
-      ],
-      "transitions": [
-        {
-          "from": "requested",
-          "event": "try_exclusive",
-          "to": "exclusive_held",
-          "holds": ["maintenance_exclusive"],
-          "network": false,
-          "effect": "Non-blocking; no lease exists."
-        },
-        {
-          "from": "requested",
-          "event": "exclusive_busy",
-          "to": "deferred",
-          "holds": [],
-          "network": false,
-          "effect": "A lease is held; retry later."
-        },
-        {
-          "from": "exclusive_held",
-          "event": "config_verified",
-          "to": "running",
-          "holds": ["maintenance_exclusive"],
-          "network": false,
-          "effect": "The configuration snapshot matches. Explicit repack or gc runs under this lock alone, never under the store lock; automatic maintenance stays disabled in store config."
-        },
-        {
-          "from": "exclusive_held",
-          "event": "config_mismatch",
-          "to": "refused_suspect",
-          "holds": ["maintenance_exclusive"],
-          "network": false,
-          "effect": "Git is not run; the store is suspect, and quarantine is requested before the exclusive lock is released."
-        },
-        {
-          "from": "running",
-          "event": "completed",
-          "to": "done",
-          "holds": ["maintenance_exclusive"],
-          "network": false,
-          "effect": "Release the lock."
-        }
-      ]
-    },
-    {
-      "name": "purge",
-      "owner_phase": "Later cache operations; trash reclamation in 1A",
-      "initial": "requested",
-      "states": [
-        {
-          "name": "requested",
-          "visible": true,
-          "terminal": false,
-          "on_crash": "nothing_to_recover"
-        },
-        {
-          "name": "resolved",
-          "visible": true,
-          "terminal": false,
-          "on_crash": "nothing_to_recover"
-        },
-        {
-          "name": "exclusive_held",
-          "visible": true,
-          "terminal": false,
-          "on_crash": "nothing_to_recover"
-        },
-        {
-          "name": "alias_in_trash",
-          "visible": false,
-          "terminal": false,
-          "on_crash": "alias_trashed_store_reclaimable"
-        },
-        { "name": "in_trash", "visible": false, "terminal": false, "on_crash": "trash_swept" },
-        { "name": "refused_unresolved", "visible": true, "terminal": true },
-        { "name": "dry_run_reported", "visible": true, "terminal": true },
-        { "name": "refused_live_lease", "visible": true, "terminal": true },
-        { "name": "refused_still_referenced", "visible": true, "terminal": true },
-        { "name": "deleted", "visible": false, "terminal": true }
-      ],
-      "transitions": [
-        {
-          "from": "requested",
-          "event": "resolve_exactly_one",
-          "to": "resolved",
-          "holds": [],
-          "network": false,
-          "effect": "Exactly one alias or store identity."
-        },
-        {
-          "from": "requested",
-          "event": "ambiguous_or_missing",
-          "to": "refused_unresolved",
-          "holds": [],
-          "network": false,
-          "effect": "Typed refusal."
-        },
-        {
-          "from": "resolved",
-          "event": "dry_run",
-          "to": "dry_run_reported",
-          "holds": [],
-          "network": false,
-          "effect": "The default: report what would move."
-        },
-        {
-          "from": "resolved",
-          "event": "confirm",
-          "to": "exclusive_held",
-          "holds": ["maintenance_exclusive"],
-          "network": false,
-          "effect": "Non-blocking exclusive maintenance lock with no hierarchy lock held."
-        },
-        {
-          "from": "resolved",
-          "event": "lease_held",
-          "to": "refused_live_lease",
-          "holds": [],
-          "network": false,
-          "effect": "A subject, acquisition, or fetch job holds the store lease."
-        },
-        {
-          "from": "exclusive_held",
-          "event": "alias_changed",
-          "to": "refused_unresolved",
-          "holds": ["source_alias", "repository_store", "maintenance_exclusive"],
-          "network": false,
-          "effect": "The alias no longer names the store."
-        },
-        {
-          "from": "exclusive_held",
-          "event": "still_referenced",
-          "to": "refused_still_referenced",
-          "holds": ["source_alias", "repository_store", "maintenance_exclusive"],
-          "network": false,
-          "effect": "Another alias, durable provider ref, or provider revision reaches the store."
-        },
-        {
-          "from": "exclusive_held",
-          "event": "move_alias_to_trash",
-          "to": "alias_in_trash",
-          "holds": ["source_alias", "repository_store", "maintenance_exclusive", "trash_entry"],
-          "network": false,
-          "effect": "Under the alias and store locks, rename the alias into trash/<entry> first, so no visible alias can outlive its store."
-        },
-        {
-          "from": "alias_in_trash",
-          "event": "move_store_to_trash",
-          "to": "in_trash",
-          "holds": ["source_alias", "repository_store", "maintenance_exclusive", "trash_entry"],
-          "network": false,
-          "effect": "Still under both locks, rename the now unreferenced store into the same trash entry, then release the locks."
-        },
-        {
-          "from": "exclusive_held",
-          "event": "move_store_to_trash",
-          "to": "in_trash",
-          "holds": ["source_alias", "repository_store", "maintenance_exclusive", "trash_entry"],
-          "network": false,
-          "effect": "A store purged by identity with no alias: rename it into trash/<entry>."
-        },
-        {
-          "from": "in_trash",
-          "event": "delete_completed",
-          "to": "deleted",
-          "holds": ["trash_entry"],
-          "network": false,
-          "effect": "Delete at the end of the run outside every hierarchy lock, tolerating read-only Git object files."
-        }
-      ]
-    },
-    {
-      "name": "quarantine",
-      "owner_phase": "1A",
-      "initial": "detected",
-      "states": [
-        {
-          "name": "detected",
-          "visible": false,
-          "terminal": false,
-          "on_crash": "nothing_to_recover"
-        },
-        {
-          "name": "exclusive_held",
-          "visible": false,
-          "terminal": false,
-          "on_crash": "nothing_to_recover"
-        },
-        {
-          "name": "alias_quarantined",
-          "visible": false,
-          "terminal": false,
-          "on_crash": "alias_quarantined_store_reclaimable"
-        },
-        {
-          "name": "quarantined",
-          "visible": false,
-          "terminal": false,
-          "on_crash": "quarantine_retained"
-        },
-        { "name": "in_trash", "visible": false, "terminal": false, "on_crash": "trash_swept" },
-        { "name": "deferred", "visible": false, "terminal": true },
-        { "name": "nothing_to_quarantine", "visible": false, "terminal": true },
-        { "name": "healthy", "visible": true, "terminal": true },
-        { "name": "purged", "visible": false, "terminal": true }
-      ],
-      "transitions": [
-        {
-          "from": "detected",
-          "event": "try_exclusive",
-          "to": "exclusive_held",
-          "holds": ["maintenance_exclusive"],
-          "network": false,
-          "effect": "An invalid record, future format, key mismatch, failed connectivity check, or configuration snapshot mismatch is never served; take the exclusive maintenance lock without blocking."
-        },
-        {
-          "from": "detected",
-          "event": "exclusive_busy",
-          "to": "deferred",
-          "holds": [],
-          "network": false,
-          "effect": "A lease is held; the store stays refused in every process that detected the problem and is detected again at the next open."
-        },
-        {
-          "from": "exclusive_held",
-          "event": "store_absent",
-          "to": "nothing_to_quarantine",
-          "holds": ["source_alias", "repository_store", "maintenance_exclusive"],
-          "network": false,
-          "effect": "The store was already removed."
-        },
-        {
-          "from": "exclusive_held",
-          "event": "revalidated_ok",
-          "to": "healthy",
-          "holds": ["source_alias", "repository_store", "maintenance_exclusive"],
-          "network": false,
-          "effect": "Another process replaced or repaired the entry meanwhile."
-        },
-        {
-          "from": "exclusive_held",
-          "event": "move_alias_to_quarantine",
-          "to": "alias_quarantined",
-          "holds": ["source_alias", "repository_store", "maintenance_exclusive"],
-          "network": false,
-          "effect": "Under the alias and store locks, move every alias that names the store into cache/quarantine/<entry> first."
-        },
-        {
-          "from": "alias_quarantined",
-          "event": "move_store_to_quarantine",
-          "to": "quarantined",
-          "holds": ["source_alias", "repository_store", "maintenance_exclusive"],
-          "network": false,
-          "effect": "Still under both locks, move the store into the same entry and report the retained path."
-        },
-        {
-          "from": "exclusive_held",
-          "event": "move_store_to_quarantine",
-          "to": "quarantined",
-          "holds": ["source_alias", "repository_store", "maintenance_exclusive"],
-          "network": false,
-          "effect": "No alias names the store: move it into cache/quarantine/<entry> and report the retained path."
-        },
-        {
-          "from": "exclusive_held",
-          "event": "unreferenced_store_absent",
-          "to": "nothing_to_quarantine",
-          "holds": ["repository_store", "maintenance_exclusive"],
-          "network": false,
-          "effect": "Store-only variant, for a store no alias was seen to name: under the store lock alone the store was already removed."
-        },
-        {
-          "from": "exclusive_held",
-          "event": "alias_now_names_store",
-          "to": "exclusive_held",
-          "holds": ["repository_store", "maintenance_exclusive"],
-          "network": false,
-          "effect": "Store-only variant: under the store lock an alias now names the store, so release the store lock, keep the exclusive maintenance lock, and take the alias-first path under the alias and store locks."
-        },
-        {
-          "from": "exclusive_held",
-          "event": "unreferenced_store_revalidated_ok",
-          "to": "healthy",
-          "holds": ["repository_store", "maintenance_exclusive"],
-          "network": false,
-          "effect": "Store-only variant: no alias names the store and another process repaired it meanwhile."
-        },
-        {
-          "from": "exclusive_held",
-          "event": "move_unreferenced_store_to_quarantine",
-          "to": "quarantined",
-          "holds": ["repository_store", "maintenance_exclusive"],
-          "network": false,
-          "effect": "Store-only variant: verified under the store lock that no alias names the store, move it into cache/quarantine/<entry> without taking any source-alias lock. No alias can appear meanwhile: an alias naming a store is written under that store's lease, which the exclusive maintenance lock excludes."
-        },
-        {
-          "from": "quarantined",
-          "event": "explicit_purge",
-          "to": "in_trash",
-          "holds": ["home", "trash_entry"],
-          "network": false,
-          "effect": "Only an explicit purge removes quarantine: rename it into trash under the home lock."
-        },
-        {
-          "from": "in_trash",
-          "event": "delete_completed",
-          "to": "purged",
-          "holds": ["trash_entry"],
-          "network": false,
-          "effect": "Delete outside the home lock."
-        }
-      ]
-    },
-    {
-      "name": "alias_repoint",
-      "owner_phase": "3A provider convergence",
-      "initial": "current",
-      "states": [
-        { "name": "current", "visible": true, "terminal": false, "on_crash": "nothing_to_recover" },
-        { "name": "leased", "visible": true, "terminal": false, "on_crash": "nothing_to_recover" },
-        {
-          "name": "transfer_staged",
-          "visible": true,
-          "terminal": false,
-          "on_crash": "job_refs_reclaimable"
-        },
-        { "name": "repointed", "visible": true, "terminal": true },
-        { "name": "generation_conflict", "visible": true, "terminal": true },
-        { "name": "validation_failed", "visible": true, "terminal": true }
-      ],
-      "transitions": [
-        {
-          "from": "current",
-          "event": "acquire_lease",
-          "to": "leased",
-          "holds": ["maintenance_shared"],
-          "network": false,
-          "effect": "Lease the deterministic provider store, which may not exist yet; its lock files live under cache/locks/."
-        },
-        {
-          "from": "leased",
-          "event": "stage_transfer",
-          "to": "transfer_staged",
-          "holds": ["job_entry", "maintenance_shared"],
-          "network": true,
-          "effect": "Fetch the object IDs the aliases' refs name directly from the provider's promisor remote into the target store under job refs, with no hierarchy lock held. Objects are never copied from the old store, whose packs are not the target's promisor packs."
-        },
-        {
-          "from": "transfer_staged",
-          "event": "validation_failed",
-          "to": "validation_failed",
-          "holds": ["job_entry", "maintenance_shared"],
-          "network": false,
-          "effect": "Object format, reachability, or a rejected object ID failed; job refs are deleted, every alias is unchanged, and unique objects stay in the old store."
-        },
-        {
-          "from": "transfer_staged",
-          "event": "generation_matches",
-          "to": "repointed",
-          "holds": ["source_alias", "repository_store", "maintenance_shared"],
-          "network": false,
-          "effect": "Aliases, then old and new stores in ascending key order; publish the target refs, compare-and-swap each alias, and release the lease. The old store stays until nothing reaches it."
-        },
-        {
-          "from": "transfer_staged",
-          "event": "generation_changed",
-          "to": "generation_conflict",
-          "holds": ["source_alias", "repository_store", "maintenance_shared"],
-          "network": false,
-          "effect": "Unchanged; delete the job refs and retry from the new generation."
-        }
-      ]
     }
   ],
   "scenarios": [
@@ -1254,45 +431,7 @@
         "lookup_remote_head",
         "fetch_started",
         "fetch_succeeded",
-        "filter_honored",
-        "prefetch_succeeded",
         "validated",
-        "acquire_lease",
-        "publish_store",
-        "publish_alias"
-      ],
-      "expected_final": "alias_published",
-      "expected_visible": true
-    },
-    {
-      "id": "acquire-origin-ignores-filter",
-      "machine": "store_acquisition",
-      "events": [
-        "claim_staging",
-        "lookup_remote_head",
-        "fetch_started",
-        "fetch_succeeded",
-        "filter_ignored",
-        "validated",
-        "acquire_lease",
-        "publish_store",
-        "publish_alias"
-      ],
-      "expected_final": "alias_published",
-      "expected_visible": true
-    },
-    {
-      "id": "acquire-prefetch-fails-publishes-partial",
-      "machine": "store_acquisition",
-      "events": [
-        "claim_staging",
-        "lookup_remote_head",
-        "fetch_started",
-        "fetch_succeeded",
-        "filter_honored",
-        "prefetch_failed",
-        "validated",
-        "acquire_lease",
         "publish_store",
         "publish_alias"
       ],
@@ -1314,14 +453,11 @@
         "lookup_remote_head",
         "fetch_started",
         "fetch_succeeded",
-        "filter_honored",
-        "prefetch_succeeded",
         "validated",
-        "acquire_lease",
         "publish_store",
         "crash"
       ],
-      "expected_final": "unreferenced_store_reclaimable",
+      "expected_final": "unreferenced_store_kept",
       "expected_visible": false
     },
     {
@@ -1332,10 +468,7 @@
         "lookup_remote_head",
         "fetch_started",
         "fetch_succeeded",
-        "filter_honored",
-        "prefetch_succeeded",
         "validated",
-        "acquire_lease",
         "store_exists_same_identity",
         "alias_exists_same_store"
       ],
@@ -1347,20 +480,6 @@
       "machine": "store_acquisition",
       "events": ["claim_staging", "lookup_remote_head", "fetch_started", "cancelled"],
       "expected_final": "abandoned",
-      "expected_visible": false
-    },
-    {
-      "id": "reclaim-skips-leased-store",
-      "machine": "store_reclamation",
-      "events": ["exclusive_busy"],
-      "expected_final": "skipped",
-      "expected_visible": false
-    },
-    {
-      "id": "reclaim-crash-in-trash",
-      "machine": "store_reclamation",
-      "events": ["try_exclusive", "move_to_trash", "crash"],
-      "expected_final": "trash_swept",
       "expected_visible": false
     },
     {
@@ -1376,980 +495,6 @@
       ],
       "expected_final": "done",
       "expected_visible": false
-    },
-    {
-      "id": "fetch-duplicate-job-already-published",
-      "machine": "selected_ref_fetch",
-      "events": ["start", "acquire_lease", "fetch_started", "fetched", "already_published"],
-      "expected_final": "published",
-      "expected_visible": true
-    },
-    {
-      "id": "fetch-stale-generation",
-      "machine": "selected_ref_fetch",
-      "events": ["start", "acquire_lease", "fetch_started", "fetched", "generation_conflict"],
-      "expected_final": "discarded",
-      "expected_visible": false
-    },
-    {
-      "id": "fetch-joins-in-flight",
-      "machine": "selected_ref_fetch",
-      "events": ["equal_key_in_flight"],
-      "expected_final": "joined_in_flight",
-      "expected_visible": false
-    },
-    {
-      "id": "fetch-crash-leaves-job-refs",
-      "machine": "selected_ref_fetch",
-      "events": ["start", "acquire_lease", "fetch_started", "fetched", "crash"],
-      "expected_final": "job_refs_reclaimable",
-      "expected_visible": false
-    },
-    {
-      "id": "lease-offline-promise",
-      "machine": "revision_subject_lease",
-      "events": ["acquire_shared", "object_present_offline_promise"],
-      "expected_final": "leased",
-      "expected_visible": true
-    },
-    {
-      "id": "lease-crash",
-      "machine": "revision_subject_lease",
-      "events": ["acquire_shared", "object_present", "crash"],
-      "expected_final": "shared_lock_released_by_os",
-      "expected_visible": false
-    },
-    {
-      "id": "lease-missing-object",
-      "machine": "revision_subject_lease",
-      "events": ["acquire_shared", "object_missing"],
-      "expected_final": "unavailable",
-      "expected_visible": false
-    },
-    {
-      "id": "purge-refused-live-lease",
-      "machine": "purge",
-      "events": ["resolve_exactly_one", "lease_held"],
-      "expected_final": "refused_live_lease",
-      "expected_visible": true
-    },
-    {
-      "id": "repoint-generation-conflict",
-      "machine": "alias_repoint",
-      "events": ["acquire_lease", "stage_transfer", "generation_changed"],
-      "expected_final": "generation_conflict",
-      "expected_visible": true
-    },
-    {
-      "id": "repoint-crash-after-transfer",
-      "machine": "alias_repoint",
-      "events": ["acquire_lease", "stage_transfer", "crash"],
-      "expected_final": "job_refs_reclaimable",
-      "expected_visible": false
-    },
-    {
-      "id": "maintenance-deferred-by-lease",
-      "machine": "store_maintenance",
-      "events": ["exclusive_busy"],
-      "expected_final": "deferred",
-      "expected_visible": true
-    },
-    {
-      "id": "maintenance-refuses-changed-config",
-      "machine": "store_maintenance",
-      "events": ["try_exclusive", "config_mismatch"],
-      "expected_final": "refused_suspect",
-      "expected_visible": false
-    },
-    {
-      "id": "fetch-refuses-changed-config",
-      "machine": "selected_ref_fetch",
-      "events": ["start", "acquire_lease", "config_mismatch"],
-      "expected_final": "refused_suspect",
-      "expected_visible": false
-    },
-    {
-      "id": "fetch-config-changed-before-publication",
-      "machine": "selected_ref_fetch",
-      "events": ["start", "acquire_lease", "fetch_started", "fetched", "config_mismatch"],
-      "expected_final": "refused_suspect",
-      "expected_visible": false
-    },
-    {
-      "id": "reader-spawn-refuses-changed-config",
-      "machine": "revision_subject_lease",
-      "events": ["acquire_shared", "object_present", "reader_config_mismatch"],
-      "expected_final": "refused_suspect",
-      "expected_visible": false
-    },
-    {
-      "id": "purge-crash-between-moves",
-      "machine": "purge",
-      "events": ["resolve_exactly_one", "confirm", "move_alias_to_trash", "crash"],
-      "expected_final": "alias_trashed_store_reclaimable",
-      "expected_visible": false
-    },
-    {
-      "id": "purge-crash-in-trash",
-      "machine": "purge",
-      "events": [
-        "resolve_exactly_one",
-        "confirm",
-        "move_alias_to_trash",
-        "move_store_to_trash",
-        "crash"
-      ],
-      "expected_final": "trash_swept",
-      "expected_visible": false
-    },
-    {
-      "id": "quarantine-crash-between-moves",
-      "machine": "quarantine",
-      "events": ["try_exclusive", "move_alias_to_quarantine", "crash"],
-      "expected_final": "alias_quarantined_store_reclaimable",
-      "expected_visible": false
-    },
-    {
-      "id": "quarantine-survives-crash",
-      "machine": "quarantine",
-      "events": ["try_exclusive", "move_alias_to_quarantine", "move_store_to_quarantine", "crash"],
-      "expected_final": "quarantine_retained",
-      "expected_visible": false
-    },
-    {
-      "id": "quarantine-explicit-purge",
-      "machine": "quarantine",
-      "events": ["try_exclusive", "move_store_to_quarantine", "explicit_purge", "delete_completed"],
-      "expected_final": "purged",
-      "expected_visible": false
-    },
-    {
-      "id": "quarantine-unreferenced-store",
-      "machine": "quarantine",
-      "events": ["try_exclusive", "move_unreferenced_store_to_quarantine"],
-      "expected_final": "quarantined",
-      "expected_visible": false
-    },
-    {
-      "id": "quarantine-unreferenced-store-now-aliased",
-      "machine": "quarantine",
-      "events": [
-        "try_exclusive",
-        "alias_now_names_store",
-        "move_alias_to_quarantine",
-        "move_store_to_quarantine"
-      ],
-      "expected_final": "quarantined",
-      "expected_visible": false
     }
-  ],
-  "interleaving": {
-    "purpose": "Exhaustively explore every interleaving of the listed processes over one source alias S and one store K. Each step is atomic: its acquisitions, the first branch whose conditions hold, the branch's effects, and its releases. A step whose blocking acquisition is unavailable is not enabled; a step whose non-blocking acquisition fails takes its busy branch. Locks belong to processes, and a process may hold a lock across steps. A model may start from existing records and may let a named program crash before a named step, which releases every lock that process holds. Modeling locks per process is sound only because every lease and lock attempt uses its own open() of the lock file; a duplicated descriptor would let two holders share one lock and convert it.",
-    "initial": { "store": "absent", "alias": null },
-    "conditions": ["store_absent", "store_present", "alias_absent", "alias_is_store"],
-    "invariants": [
-      "An alias never names a store that is absent from repository-stores (trashed, quarantined, reclaimed, or never published), including after any modeled crash.",
-      "Hierarchy locks are acquired in ascending rank and key order, blocking side-lock acquisitions happen with no hierarchy lock held, and the exclusive maintenance lock never blocks.",
-      "Some process can always move until every process has ended, and every lock is released at the end.",
-      "Every executed event is a transition from the process's current machine state whose contended locks equal the locks held during the step.",
-      "A crash leaves each process in a machine state whose recorded crash recovery is the one the model declares."
-    ],
-    "programs": {
-      "acquisition": {
-        "machine": "store_acquisition",
-        "start": "validated",
-        "steps": [
-          {
-            "label": "lease",
-            "acquire": [{ "lock": "maintenance", "mode": "shared", "wait": true }],
-            "branches": [
-              {
-                "when": [],
-                "event": "acquire_lease",
-                "effects": {},
-                "release": [],
-                "next": "store"
-              }
-            ]
-          },
-          {
-            "label": "store",
-            "acquire": [{ "lock": "repository_store", "key": "K" }],
-            "branches": [
-              {
-                "when": ["store_absent"],
-                "event": "publish_store",
-                "effects": { "store": "present" },
-                "release": ["repository_store"],
-                "next": "alias"
-              },
-              {
-                "when": ["store_present"],
-                "event": "store_exists_same_identity",
-                "effects": {},
-                "release": ["repository_store"],
-                "next": "alias"
-              }
-            ]
-          },
-          {
-            "label": "alias",
-            "acquire": [
-              { "lock": "source_alias", "key": "S" },
-              { "lock": "repository_store", "key": "K" }
-            ],
-            "branches": [
-              {
-                "when": ["store_present", "alias_absent"],
-                "event": "publish_alias",
-                "effects": { "alias": "K" },
-                "release": ["all"],
-                "next": "end"
-              },
-              {
-                "when": ["store_present", "alias_is_store"],
-                "event": "alias_exists_same_store",
-                "effects": {},
-                "release": ["all"],
-                "next": "end"
-              },
-              {
-                "when": ["store_absent"],
-                "event": "store_missing",
-                "effects": {},
-                "release": ["all"],
-                "next": "end"
-              }
-            ]
-          }
-        ]
-      },
-      "acquisition_without_lease": {
-        "machine": null,
-        "start": "validated",
-        "note": "The design this check replaced: no store lease, and the alias commit does not re-verify the store under the store lock.",
-        "steps": [
-          {
-            "label": "store",
-            "acquire": [{ "lock": "repository_store", "key": "K" }],
-            "branches": [
-              {
-                "when": ["store_absent"],
-                "event": "publish_store",
-                "effects": { "store": "present" },
-                "release": ["repository_store"],
-                "next": "alias"
-              },
-              {
-                "when": ["store_present"],
-                "event": "store_exists_same_identity",
-                "effects": {},
-                "release": ["repository_store"],
-                "next": "alias"
-              }
-            ]
-          },
-          {
-            "label": "alias",
-            "acquire": [{ "lock": "source_alias", "key": "S" }],
-            "branches": [
-              {
-                "when": ["alias_absent"],
-                "event": "publish_alias",
-                "effects": { "alias": "K" },
-                "release": ["all"],
-                "next": "end"
-              },
-              {
-                "when": ["alias_is_store"],
-                "event": "alias_exists_same_store",
-                "effects": {},
-                "release": ["all"],
-                "next": "end"
-              }
-            ]
-          }
-        ]
-      },
-      "reclamation": {
-        "machine": "store_reclamation",
-        "start": "idle",
-        "steps": [
-          {
-            "label": "exclusive",
-            "acquire": [{ "lock": "maintenance", "mode": "exclusive", "wait": false }],
-            "branches": [
-              {
-                "when": [],
-                "event": "try_exclusive",
-                "effects": {},
-                "release": [],
-                "next": "check"
-              }
-            ],
-            "busy": { "event": "exclusive_busy", "next": "end" }
-          },
-          {
-            "label": "check",
-            "acquire": [{ "lock": "repository_store", "key": "K" }],
-            "branches": [
-              {
-                "when": ["store_absent"],
-                "event": "store_absent",
-                "effects": {},
-                "release": ["all"],
-                "next": "end"
-              },
-              {
-                "when": ["store_present", "alias_is_store"],
-                "event": "still_referenced",
-                "effects": {},
-                "release": ["all"],
-                "next": "end"
-              },
-              {
-                "when": ["store_present", "alias_absent"],
-                "event": "move_to_trash",
-                "effects": { "store": "absent" },
-                "release": ["all"],
-                "next": "delete"
-              }
-            ]
-          },
-          {
-            "label": "delete",
-            "acquire": [],
-            "branches": [
-              {
-                "when": [],
-                "event": "delete_completed",
-                "effects": {},
-                "release": [],
-                "next": "end"
-              }
-            ]
-          }
-        ]
-      },
-      "purge": {
-        "machine": "purge",
-        "start": "requested",
-        "steps": [
-          {
-            "label": "resolve",
-            "acquire": [],
-            "branches": [
-              {
-                "when": ["alias_is_store"],
-                "event": "resolve_exactly_one",
-                "effects": {},
-                "release": [],
-                "next": "exclusive"
-              },
-              {
-                "when": ["alias_absent"],
-                "event": "ambiguous_or_missing",
-                "effects": {},
-                "release": [],
-                "next": "end"
-              }
-            ]
-          },
-          {
-            "label": "exclusive",
-            "acquire": [{ "lock": "maintenance", "mode": "exclusive", "wait": false }],
-            "branches": [
-              { "when": [], "event": "confirm", "effects": {}, "release": [], "next": "alias" }
-            ],
-            "busy": { "event": "lease_held", "next": "end" }
-          },
-          {
-            "label": "alias",
-            "acquire": [
-              { "lock": "source_alias", "key": "S" },
-              { "lock": "repository_store", "key": "K" }
-            ],
-            "branches": [
-              {
-                "when": ["alias_is_store", "store_present"],
-                "event": "move_alias_to_trash",
-                "effects": { "alias": null },
-                "release": [],
-                "next": "store"
-              },
-              {
-                "when": ["alias_absent"],
-                "event": "alias_changed",
-                "effects": {},
-                "release": ["all"],
-                "next": "end"
-              }
-            ]
-          },
-          {
-            "label": "store",
-            "acquire": [],
-            "branches": [
-              {
-                "when": ["store_present"],
-                "event": "move_store_to_trash",
-                "effects": { "store": "absent" },
-                "release": ["all"],
-                "next": "delete"
-              }
-            ]
-          },
-          {
-            "label": "delete",
-            "acquire": [],
-            "branches": [
-              {
-                "when": [],
-                "event": "delete_completed",
-                "effects": {},
-                "release": [],
-                "next": "end"
-              }
-            ]
-          }
-        ]
-      },
-      "quarantine": {
-        "machine": "quarantine",
-        "start": "detected",
-        "steps": [
-          {
-            "label": "exclusive",
-            "acquire": [{ "lock": "maintenance", "mode": "exclusive", "wait": false }],
-            "branches": [
-              {
-                "when": [],
-                "event": "try_exclusive",
-                "effects": {},
-                "release": [],
-                "next": "alias"
-              }
-            ],
-            "busy": { "event": "exclusive_busy", "next": "end" }
-          },
-          {
-            "label": "alias",
-            "acquire": [
-              { "lock": "source_alias", "key": "S" },
-              { "lock": "repository_store", "key": "K" }
-            ],
-            "branches": [
-              {
-                "when": ["store_absent"],
-                "event": "store_absent",
-                "effects": {},
-                "release": ["all"],
-                "next": "end"
-              },
-              {
-                "when": ["alias_is_store", "store_present"],
-                "event": "move_alias_to_quarantine",
-                "effects": { "alias": null },
-                "release": [],
-                "next": "store"
-              },
-              {
-                "when": ["alias_absent", "store_present"],
-                "event": "move_store_to_quarantine",
-                "effects": { "store": "absent" },
-                "release": ["all"],
-                "next": "end"
-              }
-            ]
-          },
-          {
-            "label": "store",
-            "acquire": [],
-            "branches": [
-              {
-                "when": ["store_present"],
-                "event": "move_store_to_quarantine",
-                "effects": { "store": "absent" },
-                "release": ["all"],
-                "next": "end"
-              }
-            ]
-          }
-        ]
-      },
-      "purge_store_first": {
-        "machine": null,
-        "start": "requested",
-        "note": "A mutant with the two purge renames in the other order.",
-        "steps": [
-          {
-            "label": "resolve",
-            "acquire": [],
-            "branches": [
-              {
-                "when": ["alias_is_store"],
-                "event": "resolve_exactly_one",
-                "effects": {},
-                "release": [],
-                "next": "exclusive"
-              },
-              {
-                "when": ["alias_absent"],
-                "event": "ambiguous_or_missing",
-                "effects": {},
-                "release": [],
-                "next": "end"
-              }
-            ]
-          },
-          {
-            "label": "exclusive",
-            "acquire": [{ "lock": "maintenance", "mode": "exclusive", "wait": false }],
-            "branches": [
-              { "when": [], "event": "confirm", "effects": {}, "release": [], "next": "store" }
-            ],
-            "busy": { "event": "lease_held", "next": "end" }
-          },
-          {
-            "label": "store",
-            "acquire": [
-              { "lock": "source_alias", "key": "S" },
-              { "lock": "repository_store", "key": "K" }
-            ],
-            "branches": [
-              {
-                "when": ["alias_is_store", "store_present"],
-                "event": "move_store_to_trash",
-                "effects": { "store": "absent" },
-                "release": [],
-                "next": "alias"
-              },
-              {
-                "when": ["alias_absent"],
-                "event": "alias_changed",
-                "effects": {},
-                "release": ["all"],
-                "next": "end"
-              }
-            ]
-          },
-          {
-            "label": "alias",
-            "acquire": [],
-            "branches": [
-              {
-                "when": [],
-                "event": "move_alias_to_trash",
-                "effects": { "alias": null },
-                "release": ["all"],
-                "next": "end"
-              }
-            ]
-          }
-        ]
-      },
-      "quarantine_store_first": {
-        "machine": null,
-        "start": "detected",
-        "note": "A mutant with the two quarantine moves in the other order.",
-        "steps": [
-          {
-            "label": "exclusive",
-            "acquire": [{ "lock": "maintenance", "mode": "exclusive", "wait": false }],
-            "branches": [
-              {
-                "when": [],
-                "event": "try_exclusive",
-                "effects": {},
-                "release": [],
-                "next": "store"
-              }
-            ],
-            "busy": { "event": "exclusive_busy", "next": "end" }
-          },
-          {
-            "label": "store",
-            "acquire": [
-              { "lock": "source_alias", "key": "S" },
-              { "lock": "repository_store", "key": "K" }
-            ],
-            "branches": [
-              {
-                "when": ["store_absent"],
-                "event": "store_absent",
-                "effects": {},
-                "release": ["all"],
-                "next": "end"
-              },
-              {
-                "when": ["store_present"],
-                "event": "move_store_to_quarantine",
-                "effects": { "store": "absent" },
-                "release": [],
-                "next": "alias"
-              }
-            ]
-          },
-          {
-            "label": "alias",
-            "acquire": [],
-            "branches": [
-              {
-                "when": [],
-                "event": "move_alias_to_quarantine",
-                "effects": { "alias": null },
-                "release": ["all"],
-                "next": "end"
-              }
-            ]
-          }
-        ]
-      },
-      "quarantine_store_only": {
-        "machine": "quarantine",
-        "start": "detected",
-        "note": "Quarantine of a store no alias was seen to name. It takes no source-alias lock: the exclusive maintenance lock excludes every lease, and an alias naming a store is written only under that store's lease, so while it is held no alias can come to name the store. It still verifies under the store lock that no alias names the store, because one may have been published before the exclusive lock was taken; if one does, it falls back to the alias-first path. An acquisition that begins after the move takes the lease after the exclusive lock is released and re-verifies the store under the store lock before it publishes an alias.",
-        "steps": [
-          {
-            "label": "exclusive",
-            "acquire": [{ "lock": "maintenance", "mode": "exclusive", "wait": false }],
-            "branches": [
-              {
-                "when": [],
-                "event": "try_exclusive",
-                "effects": {},
-                "release": [],
-                "next": "store_only"
-              }
-            ],
-            "busy": { "event": "exclusive_busy", "next": "end" }
-          },
-          {
-            "label": "store_only",
-            "acquire": [{ "lock": "repository_store", "key": "K" }],
-            "branches": [
-              {
-                "when": ["store_absent"],
-                "event": "unreferenced_store_absent",
-                "effects": {},
-                "release": ["all"],
-                "next": "end"
-              },
-              {
-                "when": ["store_present", "alias_is_store"],
-                "event": "alias_now_names_store",
-                "effects": {},
-                "release": ["repository_store"],
-                "next": "alias"
-              },
-              {
-                "when": ["store_present", "alias_absent"],
-                "event": "move_unreferenced_store_to_quarantine",
-                "effects": { "store": "absent" },
-                "release": ["all"],
-                "next": "end"
-              }
-            ]
-          },
-          {
-            "label": "alias",
-            "acquire": [
-              { "lock": "source_alias", "key": "S" },
-              { "lock": "repository_store", "key": "K" }
-            ],
-            "branches": [
-              {
-                "when": ["store_absent"],
-                "event": "store_absent",
-                "effects": {},
-                "release": ["all"],
-                "next": "end"
-              },
-              {
-                "when": ["alias_is_store", "store_present"],
-                "event": "move_alias_to_quarantine",
-                "effects": { "alias": null },
-                "release": [],
-                "next": "store"
-              },
-              {
-                "when": ["alias_absent", "store_present"],
-                "event": "move_store_to_quarantine",
-                "effects": { "store": "absent" },
-                "release": ["all"],
-                "next": "end"
-              }
-            ]
-          },
-          {
-            "label": "store",
-            "acquire": [],
-            "branches": [
-              {
-                "when": ["store_present"],
-                "event": "move_store_to_quarantine",
-                "effects": { "store": "absent" },
-                "release": ["all"],
-                "next": "end"
-              }
-            ]
-          }
-        ]
-      },
-      "quarantine_store_only_without_alias_check": {
-        "machine": null,
-        "start": "detected",
-        "note": "A mutant of the store-only variant that trusts its earlier observation and moves the store without verifying under the store lock that no alias names it.",
-        "steps": [
-          {
-            "label": "exclusive",
-            "acquire": [{ "lock": "maintenance", "mode": "exclusive", "wait": false }],
-            "branches": [
-              {
-                "when": [],
-                "event": "try_exclusive",
-                "effects": {},
-                "release": [],
-                "next": "store_only"
-              }
-            ],
-            "busy": { "event": "exclusive_busy", "next": "end" }
-          },
-          {
-            "label": "store_only",
-            "acquire": [{ "lock": "repository_store", "key": "K" }],
-            "branches": [
-              {
-                "when": ["store_absent"],
-                "event": "unreferenced_store_absent",
-                "effects": {},
-                "release": ["all"],
-                "next": "end"
-              },
-              {
-                "when": ["store_present"],
-                "event": "move_unreferenced_store_to_quarantine",
-                "effects": { "store": "absent" },
-                "release": ["all"],
-                "next": "end"
-              }
-            ]
-          }
-        ]
-      },
-      "acquisition_verifying_without_lease": {
-        "machine": null,
-        "start": "validated",
-        "note": "An acquisition without the store lease that still re-verifies the store under the store lock when it publishes its alias, isolating that re-verification as the second defense.",
-        "steps": [
-          {
-            "label": "store",
-            "acquire": [{ "lock": "repository_store", "key": "K" }],
-            "branches": [
-              {
-                "when": ["store_absent"],
-                "event": "publish_store",
-                "effects": { "store": "present" },
-                "release": ["repository_store"],
-                "next": "alias"
-              },
-              {
-                "when": ["store_present"],
-                "event": "store_exists_same_identity",
-                "effects": {},
-                "release": ["repository_store"],
-                "next": "alias"
-              }
-            ]
-          },
-          {
-            "label": "alias",
-            "acquire": [
-              { "lock": "source_alias", "key": "S" },
-              { "lock": "repository_store", "key": "K" }
-            ],
-            "branches": [
-              {
-                "when": ["store_present", "alias_absent"],
-                "event": "publish_alias",
-                "effects": { "alias": "K" },
-                "release": ["all"],
-                "next": "end"
-              },
-              {
-                "when": ["store_present", "alias_is_store"],
-                "event": "alias_exists_same_store",
-                "effects": {},
-                "release": ["all"],
-                "next": "end"
-              },
-              {
-                "when": ["store_absent"],
-                "event": "store_missing",
-                "effects": {},
-                "release": ["all"],
-                "next": "end"
-              }
-            ]
-          }
-        ]
-      }
-    },
-    "models": [
-      {
-        "id": "frozen",
-        "processes": ["acquisition", "acquisition", "reclamation", "purge"],
-        "expect": "safe",
-        "reachable_events": [
-          "publish_store",
-          "store_exists_same_identity",
-          "publish_alias",
-          "alias_exists_same_store",
-          "exclusive_busy",
-          "lease_held",
-          "still_referenced",
-          "move_alias_to_trash",
-          "move_store_to_trash",
-          "delete_completed"
-        ],
-        "unreachable_events": ["store_missing"]
-      },
-      {
-        "id": "two-reclaimers",
-        "processes": ["acquisition", "reclamation", "reclamation"],
-        "expect": "safe",
-        "reachable_events": ["publish_alias", "exclusive_busy", "still_referenced"],
-        "unreachable_events": ["store_missing", "move_to_trash"]
-      },
-      {
-        "id": "existing-entry-with-crashes",
-        "initial": { "store": "present", "alias": "K" },
-        "processes": ["acquisition", "reclamation", "purge", "quarantine"],
-        "expect": "safe",
-        "crashes": [
-          { "program": "purge", "before": "store", "recovery": "alias_trashed_store_reclaimable" },
-          {
-            "program": "quarantine",
-            "before": "store",
-            "recovery": "alias_quarantined_store_reclaimable"
-          }
-        ],
-        "reachable_events": [
-          "store_exists_same_identity",
-          "alias_exists_same_store",
-          "publish_store",
-          "publish_alias",
-          "move_alias_to_trash",
-          "move_store_to_trash",
-          "move_alias_to_quarantine",
-          "move_store_to_quarantine",
-          "move_to_trash",
-          "still_referenced",
-          "lease_held",
-          "crash:purge:store",
-          "crash:quarantine:store"
-        ],
-        "unreachable_events": ["store_missing"]
-      },
-      {
-        "id": "without-acquisition-lease",
-        "processes": ["acquisition_without_lease", "reclamation"],
-        "expect": "alias_names_absent_store",
-        "reachable_events": ["publish_store", "move_to_trash", "publish_alias"],
-        "unreachable_events": []
-      },
-      {
-        "id": "without-acquisition-lease-existing-entry",
-        "initial": { "store": "present", "alias": "K" },
-        "processes": ["acquisition_without_lease", "purge"],
-        "expect": "alias_names_absent_store",
-        "reachable_events": [
-          "store_exists_same_identity",
-          "move_alias_to_trash",
-          "move_store_to_trash",
-          "publish_alias"
-        ],
-        "unreachable_events": []
-      },
-      {
-        "id": "purge-store-first-crash",
-        "initial": { "store": "present", "alias": "K" },
-        "processes": ["purge_store_first", "reclamation"],
-        "expect": "alias_names_absent_store",
-        "crashes": [{ "program": "purge_store_first", "before": "alias", "recovery": null }],
-        "reachable_events": ["move_store_to_trash", "crash:purge_store_first:alias"],
-        "unreachable_events": []
-      },
-      {
-        "id": "quarantine-store-first-crash",
-        "initial": { "store": "present", "alias": "K" },
-        "processes": ["quarantine_store_first", "reclamation"],
-        "expect": "alias_names_absent_store",
-        "crashes": [{ "program": "quarantine_store_first", "before": "alias", "recovery": null }],
-        "reachable_events": ["move_store_to_quarantine", "crash:quarantine_store_first:alias"],
-        "unreachable_events": []
-      },
-      {
-        "id": "store-only-quarantine",
-        "initial": { "store": "present", "alias": null },
-        "processes": ["acquisition", "quarantine_store_only", "reclamation"],
-        "expect": "safe",
-        "crashes": [
-          {
-            "program": "quarantine_store_only",
-            "before": "store_only",
-            "recovery": "nothing_to_recover"
-          },
-          {
-            "program": "quarantine_store_only",
-            "before": "store",
-            "recovery": "alias_quarantined_store_reclaimable"
-          }
-        ],
-        "reachable_events": [
-          "exclusive_busy",
-          "move_unreferenced_store_to_quarantine",
-          "alias_now_names_store",
-          "unreferenced_store_absent",
-          "move_alias_to_quarantine",
-          "move_store_to_quarantine",
-          "store_exists_same_identity",
-          "publish_store",
-          "publish_alias",
-          "move_to_trash",
-          "crash:quarantine_store_only:store_only",
-          "crash:quarantine_store_only:store"
-        ],
-        "unreachable_events": ["store_missing"]
-      },
-      {
-        "id": "store-only-quarantine-without-alias-check",
-        "initial": { "store": "present", "alias": null },
-        "processes": ["acquisition", "quarantine_store_only_without_alias_check"],
-        "expect": "alias_names_absent_store",
-        "reachable_events": ["publish_alias", "move_unreferenced_store_to_quarantine"],
-        "unreachable_events": []
-      },
-      {
-        "id": "store-only-quarantine-verifying-acquisition-without-lease",
-        "initial": { "store": "present", "alias": null },
-        "processes": ["acquisition_verifying_without_lease", "quarantine_store_only"],
-        "expect": "safe",
-        "reachable_events": [
-          "store_exists_same_identity",
-          "move_unreferenced_store_to_quarantine",
-          "store_missing",
-          "alias_now_names_store"
-        ],
-        "unreachable_events": []
-      }
-    ]
-  },
-  "configuration_snapshot": {
-    "digest": "sha256 of the exact stdout bytes of `git config --file <store>/repository.git/config --list -z`, run with GIT_CONFIG_NOSYSTEM=1 and GIT_CONFIG_GLOBAL set to the null device. --file reads only that file and does not follow include.path, so an include is itself a recorded key. Entries stay in file order; `-z` output separates key and value with a newline and ends each entry with NUL, which the digest covers as written.",
-    "recorded": "After the store's first successful fetch in staging and before publication, the digest is recorded in the repository-store state record. Any Metabrowser operation that intentionally changes the store's configuration updates the digest under the repository-store lock in the same step.",
-    "verified_by": "Every Git process spawned on a store, credentialed or not: each batch-reader spawn (not each request on a running reader), each other read, each fetch job and its publication, and each maintenance run. A planted core.sshCommand, remote.<name>.uploadpack, diff.external, include.path, url.<base>.insteadOf, or credential helper therefore changes the digest before it can run.",
-    "on_mismatch": "Git is not run. The process marks the store suspect and refuses reads and fetches on it for the rest of its life, releases any lease it holds, and requests quarantine, which takes the exclusive maintenance lock without blocking and is deferred while a lease is held; the store stays refused in every process that saw the mismatch.",
-    "basis": "Measured on Git 2.50.1 (results/storeconfig.json): init and Metabrowser wrote core.repositoryformatversion, core.filemode, core.bare, core.ignorecase and core.precomposeunicode on macOS, core.hookspath, the maintenance and transfer keys, and remote.origin.url; the first filtered fetch added remote.origin.promisor and remote.origin.partialclonefilter. After that, a job fetch into private refs, an object-ID prefetch, an update-ref transaction, gc --prune=now, repack -a -d, and a store read left the digest unchanged. A fork fetched by URL with the filter changed it."
-  }
+  ]
 }

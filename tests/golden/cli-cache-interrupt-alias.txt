@@ -23,11 +23,7 @@ status: 200
     "upgrades": []
   },
   "reclamation": {
-    "staging_entries": 1,
-    "trash_entries": 0,
-    "quarantine_entries": 0,
-    "quarantine": [],
-    "quarantine_truncated": false
+    "staging_entries": 1
   }
 }
 --- stderr ---
@@ -46,13 +42,11 @@ status: 200
       "identity": {
         "created_at": "<TIME>",
         "acquisition": {
-          "strategy": "full",
           "git_version": "<GIT_VERSION>",
           "object_format": "sha1"
         }
       },
       "state": {
-        "object_state": "complete",
         "default_remote_ref": "refs/remotes/origin/topic",
         "default_revision": "8f05aafe23bbeade03ef581868a59e3c944ac5c4",
         "last_fetch_at": "<TIME>",
@@ -86,14 +80,13 @@ status: 200
   "next_after": null
 }
 --- stderr ---
-## The next acquisition reclaims the orphan store, fetches, and publishes both.
+## The next acquisition fetches again, finds the same store already published, reuses it, and publishes the alias.
 # metab <ORIGIN-A> --no-serve
 exit: 0
 --- stdout ---
 acquired: <ORIGIN-A>
 slug: <SLUG-A>
 store: <STORE-A>
-strategy: full
 revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
 --- stderr ---
 # metab <ROOT> --api /api/cache/layout
@@ -115,11 +108,7 @@ status: 200
     "upgrades": []
   },
   "reclamation": {
-    "staging_entries": 0,
-    "trash_entries": 0,
-    "quarantine_entries": 0,
-    "quarantine": [],
-    "quarantine_truncated": false
+    "staging_entries": 0
   }
 }
 --- stderr ---
@@ -138,13 +127,11 @@ status: 200
       "identity": {
         "created_at": "<TIME>",
         "acquisition": {
-          "strategy": "full",
           "git_version": "<GIT_VERSION>",
           "object_format": "sha1"
         }
       },
       "state": {
-        "object_state": "complete",
         "default_remote_ref": "refs/remotes/origin/topic",
         "default_revision": "8f05aafe23bbeade03ef581868a59e3c944ac5c4",
         "last_fetch_at": "<TIME>",

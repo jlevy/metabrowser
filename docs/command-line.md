@@ -22,8 +22,8 @@ metab ROOT [MODE] [OPTIONS]
 A clone URL (`https://…`, `ssh://…`, `git@host:path`, or `file://…`) is a Git source,
 not a local path. `file://` is acquired with `--no-serve`, and also as a side effect of
 `--show` or `--api`. https and ssh stay closed.
-`--show` and `--api` inspect a leased pin in-process; nothing binds a port, and acquired
-content is not served.
+`--show` and `--api` inspect a pinned revision in-process; nothing binds a port, and
+acquired content is not served.
 A bare filesystem path is never treated as a clone origin.
 With no mode flag, `metab ROOT` starts the server and opens a browser, the way `open`
 opens a folder on macOS.
@@ -89,9 +89,10 @@ These flags also apply to `--api`, `--show`, and `--check-api`.
 ## Acquiring a Git source: `--no-serve`
 
 `file://` is the only origin this release acquires.
-`--no-serve` fetches it into the repository cache under `METABROWSER_HOME` (default
-`~/.metabrowser`) and prints the source slug, store identity, strategy, and revision,
-without binding a port or opening a browser.
+`--no-serve` fetches every object of it into the repository cache under
+`METABROWSER_HOME` (default `~/.metabrowser`) and prints the source slug, store
+identity, and revision, without binding a port or opening a browser.
+The store is a complete, read-only clone, so later reads never need the origin.
 
 ```shell
 metab file:///path/to/origin.git --no-serve
@@ -103,7 +104,7 @@ metab file:///path/to/origin.git --api /api/tree
 `--api /api/cache/…` on a `file://` URL acquires as a side effect, then issues the route
 against an empty throwaway directory so cache inspection cannot expose origin objects
 through `/api/tree`. `--show` and other `--api` routes on that URL acquire or reuse the
-store, lease the default revision, and inspect the pin in-process.
+store, pin the default revision, and inspect the pin in-process.
 Nothing binds a port.
 `--show` accepts a display path (`README`) or a `GitPath` wire.
 Serving, walking, and `--check-api` still refuse Git sources.
@@ -135,11 +136,13 @@ source, and none changes another source already in the cache.
   Upgrade Git; a source already in the cache is still reused.
 - **A source that cannot be fetched** — a missing path, a directory that is not a
   repository, a repository with no commits, or one whose `HEAD` is not a branch —
-  publishes nothing.
+  publishes nothing. A source that is itself a partial clone missing objects says so;
+  clone it fully first.
 - **An acquisition that is interrupted** leaves nothing visible, because the source is
   published last, after its store.
-  The next acquisition removes the abandoned staging entry or reclaims the store no
-  source names, then fetches again.
+  The next acquisition removes the abandoned staging entry, fetches again, and reuses a
+  store that was already published.
+  Nothing deletes a published store.
 
 Refusals that concern the application home say how to repair it:
 

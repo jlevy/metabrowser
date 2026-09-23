@@ -8,6 +8,9 @@
 [Thin Mirror for Git and GitHub Browsing](plan-2026-09-23-v012-thin-mirror.md), which
 replaces this plan wherever they disagree.
 The built foundation and its record below stay as background.
+Its Simplify step then changed part of that foundation; the
+[Phase 1B addendum](#phase-1b-generic-git-cache-and-repository-url-open) lists what it
+replaced.
 
 **Status:** v0.12.0 implementation is on open GitHub stack
 [#218](https://github.com/jlevy/metabrowser/stack/218), above the released v0.11.0
@@ -1779,6 +1782,27 @@ together. The
 [next-PR sequence](plan-2026-09-22-v012-alpha-testing.md#next-prs-and-agent-handoff)
 names the acceptance owners and testing checkpoints.
 
+**Addendum (2026-09-23, thin-mirror Simplify step):** the checklists below record what
+was built; the Simplify step replaced part of it.
+Acquisition fetches every object, so the default-tree prefetch, the `complete` or
+`converging` object state, and the store record’s `strategy` and never-verified
+`configuration_digest` are gone.
+`tests/test_git_full_clone_acceptance.py` replaced the lazy-fetch acceptance test on the
+admitted-Git job, and the batch reader’s handling of Git 2.43 dying on a refused lazy
+fetch and the change-set pre-check before commit detail and diffs are gone;
+`GIT_NO_LAZY_FETCH` stays set as defense in depth.
+Revision leases, `refs/metabrowser/subjects/*` refs, maintenance locks, and
+`maintain_store` gave way to `open_revision`, which holds no lock and writes nothing.
+Nothing reclaims a store no alias names: acquisition holds the alias and store locks
+from the store’s publication through its alias, and the next acquisition of the source
+reuses a store an interruption left behind.
+Quarantine, recoverable trash, their machines, and the interleaving check that proved
+them safe against acquisition were removed too, because nothing in v0.12 moves or
+deletes a published store; only the startup sweep of abandoned staging deletes anything,
+and the Phase 1A text below about trash and quarantine is superseded.
+A home written by an earlier v0.12 development build does not validate against these
+records and must be discarded.
+
 #### Phase 1B-a: Acquire and reuse a shared repository store (`mb-h51g`, `mb-dg00`)
 
 [#217](https://github.com/jlevy/metabrowser/pull/217) is ready for review and implements
@@ -1980,7 +2004,7 @@ Its acceptance and independent review are completed in
   valid lease fails with `git_credentials_unavailable` before Git starts, so no ambient
   credential can be used.
   The broker and projection arrive in Phase 3A under the isolation rules in
-  [Repository Sources and Provider Mirrors](../../architecture/arch-repository-sources-and-provider-mirrors.md#fetch-jobs-authorization-and-credentials).
+  [Repository Sources and Provider Mirrors](../../architecture/arch-repository-sources-and-provider-mirrors.md#fetch-and-credentials).
 - [ ] Persist a non-secret `StagedFetch` job record, take the store lease with no
   ordered lock held, verify the configuration snapshot, and fetch from a promisor remote
   recorded in it — never a URL — directly into the store under

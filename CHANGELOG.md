@@ -85,9 +85,9 @@ Repository cache:
 
 - New read-only routes `/api/cache/layout`, `/api/cache/sources`,
   `/api/cache/source/<slug>`, and `/api/cache/stores` report the cache’s layout and
-  config formats, what reclamation left in staging, trash, and quarantine, sources with
-  their alias generation and publication state, and stores with the aliases that name
-  them. Reach them with `metab <root> --api /api/cache/layout` like any other route.
+  config formats, abandoned staging entries the next sweep removes, sources with their
+  alias generation and publication state, and stores with the aliases that name them.
+  Reach them with `metab <root> --api /api/cache/layout` like any other route.
   They resolve `METABROWSER_HOME`, or `~/.metabrowser`, on each request and change
   nothing: a missing home reports `absent` rather than being created, an entry other
   users can reach is reported as `not_private` rather than tightened, and a home other
@@ -101,13 +101,13 @@ Repository cache:
   `file://` is the only way to ask for a local origin to be acquired — a bare
   `/path/to/repo` is never rewritten into one — and `ext::` remote-helper syntax is
   rejected. `metab file://… --no-serve` fetches into the cache and prints slug, store
-  identity, and strategy without starting a server.
+  identity, and revision without starting a server.
   A Git timeout, oversized output, missing executable, or failed command during that
   acquire is reported as its own error message without a traceback or a local path.
   `metab file://… --api /api/cache/…` acquires as a side effect, then inspects cache
   state against an empty throwaway root so cache inspection cannot expose origin objects
   through `/api/tree`. `metab file://… --show PATH` and non-cache `--api` acquire or
-  reuse the store, lease the default revision, and inspect that `GitRevisionSubject`
+  reuse the store, pin the default revision, and inspect that `GitRevisionSubject`
   in-process. Serving, walking, and `--check-api` still refuse Git sources, and nothing
   binds a port. https and ssh stay closed.
   Those pin modes report acquisition failures with the same messages as `--no-serve`,
@@ -118,9 +118,7 @@ Repository cache:
   answering 413; a text window starting past that budget answers 416. `/raw` still
   refuses such a blob.
   A pinned symlink resolves one path component at a time, as a checkout does.
-  On a pin, a commit detail or diff that needs a blob the store does not hold answers a
-  typed 404 `object_unavailable` instead of a generic 500 or 502, and no store read can
-  fetch lazily from the origin.
+  No store read fetches from the origin.
   A pin always runs under the untrusted profile: `METAB_ACTIVE_CONTENT=1` and
   `METAB_ALLOW_EDITS=1` do not lift it, and `--allow-edits` on a pin is an error.
 
@@ -131,11 +129,12 @@ Repository cache:
 
 - A classified `file://` source can be fetched into an isolated worktree-free staging
   store using Git’s pack transport (`git fetch`, not `clone --local` hardlinks).
-  The fetch is blobless when the origin honors `--filter=blob:none`, and complete when
-  the origin ignores the filter.
-  A later acquire of the same `file://` source publishes that staging entry into
-  `repository-stores` and a source alias as the visibility commit, or reuses a store
-  already published for that identity.
+  The fetch is a full clone, every object reachable from the origin’s branches and tags,
+  so a published store never needs its origin again.
+  An origin that is itself a partial clone missing objects is refused with a message
+  that says so. A later acquire of the same `file://` source publishes that staging entry
+  into `repository-stores` and a source alias as the visibility commit, or reuses a
+  store already published for that identity.
   The default branch is read only from the origin’s own `HEAD`, and an acquire whose
   fetched default branch does not resolve to the observed `HEAD` commit is refused
   before publication. Acquisition runs Git without any inherited `GIT_*` variable, so an
@@ -144,11 +143,13 @@ Repository cache:
   It also stops repository discovery at its own staging directory, so a repository that
   encloses the application home, such as a dotfiles checkout, does not lend its
   `url.*.insteadOf` or other local configuration.
-  After a blobless fetch, acquisition prefetches the default revision’s blob-mode tree
-  entries by object ID; a prefetch failure still publishes with `object_state`
-  converging. A staging entry whose liveness lock is free is swept on the next cache
-  open. A published store no alias names is reclaimed on that same open; a live store
-  lease skips it. Read routes do not reclaim.
+  A staging entry whose liveness lock is free is swept on the next cache open.
+  Nothing deletes a published store: one that an interrupted acquisition left without
+  its alias is reused by the next acquisition of that source.
+  Read routes do not sweep.
+  A cache that an earlier v0.12 development build wrote is not migrated: every `file://`
+  mode refuses it with one message, without a traceback or a path, saying to move the
+  cache directory aside or set `METABROWSER_HOME` to a different directory.
   A `file://` acquire that the Git version floor refuses does not create the application
   home, including when that path already exists as an empty directory; a cache hit still
   reuses a published store without fetching, including against an application home the
@@ -175,11 +176,10 @@ Content source:
   is a lossless byte-segment identity, `GitTreeSource` lists NUL-framed trees and reads
   size-gated blobs through exclusive `cat-file --batch-command` actors, and missing or
   oversized objects fail before an unbounded body read.
-  `lease_revision` holds that store’s shared maintenance lock for a live subject and
-  writes a durable `refs/metabrowser/subjects/<oid>` ref so the commit stays reachable
-  after the process exits; two processes can lease different OIDs in one store.
-  `maintain_store` runs `gc --prune=now` and `repack -a -d` under that store’s exclusive
-  maintenance lock, never under the store lock, and refuses while a live lease is held.
+  `open_revision` pins a commit in a published store without a lock or a ref of its own:
+  nothing runs `gc`, `prune`, or `repack` on a store, so a commit in it stays readable.
+  Two processes can read different OIDs in one store, and a pin opens from a home the
+  process cannot write.
   Batch `cat-file` actors are pooled per store, at most four in one process.
   `/api/git/repo`, refs, summary, log, and commit detail honor a `GitRevisionSubject`
   through `GitLocation` (a worktree path or a `RepositoryStoreTarget` plus pinned OID).
@@ -254,15 +254,15 @@ Content source:
   cyclic targets 404. `/api/stream` still returns `unsupported_for_subject` rather than
   the lifespan filesystem inventory.
   A Git LFS pointer blob is the stored pointer bytes, with no smudge filter.
-  A blob the tree names but the store lacks, including a promisor miss, is
-  `object_unavailable` with `GIT_NO_LAZY_FETCH` and does not contact the remote.
-  `/view/` on a Git pin accepts a `GitPath` wire, optionally plus a patch-file container
-  inner, and refuses a filesystem spelling; missing Git objects remain valid shell
-  destinations. `/api/tree` on that pin keeps Git-native `entries` and also projects a
-  SPA `tree` array (`dir` / `file` / `symlink`, `GitPath` wires, depth-bounded nested
-  `children` with a lazy sentinel past the cap) with `cat-file` blob sizes on files and
-  symlinks and recursive blob `total_files` / `total_size` on directories, without mtime
-  or ignore facts. Gitlinks project as files, not directories.
+  A blob the tree names but the store lacks is `object_unavailable` and does not contact
+  the remote. `/view/` on a Git pin accepts a `GitPath` wire, optionally plus a
+  patch-file container inner, and refuses a filesystem spelling; missing Git objects
+  remain valid shell destinations.
+  `/api/tree` on that pin keeps Git-native `entries` and also projects a SPA `tree`
+  array (`dir` / `file` / `symlink`, `GitPath` wires, depth-bounded nested `children`
+  with a lazy sentinel past the cap) with `cat-file` blob sizes on files and symlinks
+  and recursive blob `total_files` / `total_size` on directories, without mtime or
+  ignore facts. Gitlinks project as files, not directories.
   A Git tree `/api/file` envelope is SPA `folder` chrome (`git_kind` stays `tree`) with
   recursive blob `total_files` / `total_size` and no mtime or ignore.
   Markdown and wiki links on that pin encode authored segments as `GitPath` wires; the

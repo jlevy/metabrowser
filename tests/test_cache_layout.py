@@ -725,9 +725,8 @@ def test_open_cache_prepares_probes_migrates_and_sweeps(tmp_path: Path) -> None:
 
 
 @posix_only
-def test_open_cache_reclaims_an_unreferenced_store_and_keeps_an_aliased_one(
-    tmp_path: Path,
-) -> None:
+def test_open_cache_keeps_an_unreferenced_store_and_an_aliased_one(tmp_path: Path) -> None:
+    """Nothing deletes a published store; the next acquisition of its source reuses it."""
     home = tmp_path / "home"
     ensure_home(home)
     migrate_layout(home, version="0.11.0")
@@ -738,7 +737,7 @@ def test_open_cache_reclaims_an_unreferenced_store_and_keeps_an_aliased_one(
 
     open_cache(home, version="0.11.0")
 
-    assert not (home / f"cache/repository-stores/{ORPHAN_STORE_KEY}").exists()
+    assert (home / f"cache/repository-stores/{ORPHAN_STORE_KEY}").is_dir()
     assert (home / f"cache/repository-stores/{FLASK_STORE_KEY}").is_dir()
 
 
@@ -758,7 +757,7 @@ def test_open_cache_resolves_metabrowser_home_when_no_home_is_given(
 @pytest.mark.parametrize("prepare", [open_cache, migrate_layout])
 @pytest.mark.parametrize(
     "directory",
-    ["sources", "repository-stores", "quarantine", "provider-bindings", "provider-repositories"],
+    ["sources", "repository-stores", "provider-bindings", "provider-repositories"],
 )
 def test_unrecognized_durable_cache_is_refused_without_any_mutation(
     tmp_path: Path, prepare: Callable[..., object], directory: str

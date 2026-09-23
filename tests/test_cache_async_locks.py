@@ -19,7 +19,6 @@ import textwrap
 import threading
 import time
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -27,23 +26,17 @@ import pytest
 from metabrowser.cache.acquire import acquire_file_source
 from metabrowser.cache.locks import (
     CacheLock,
-    HeldLock,
-    LockKind,
     LockOrderError,
-    acquire_store_lease,
     application_home_lock,
     held_locks,
     provider_resource_lock,
     repository_store_lock,
     source_alias_lock,
-    store_lease,
-    store_maintenance_lock,
+    staging_entry_lock,
 )
-from metabrowser.cache.repository_store import lease_revision
 from metabrowser.cancellable_thread import run_acquiring_thread
 from metabrowser.home import ensure_home
 from tests.test_cache_acquire import _allow_installed_git, _file_source, _origin
-from tests.test_git_revision_lease import _publish
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="cache locks are BSD flock locks")
 
@@ -126,7 +119,6 @@ BLOCKING_LOCKS: list[Callable[[Path], CacheLock]] = [
     lambda home: source_alias_lock(home, SLUG_A),
     lambda home: repository_store_lock(home, STORE_A),
     lambda home: provider_resource_lock(home, "p1"),
-    lambda home: store_lease(home, STORE_A),
 ]
 
 
@@ -159,108 +151,14 @@ def test_attempts_that_never_block_may_run_on_the_loop(tmp_path: Path) -> None:
     async def on_the_loop() -> None:
         with source_alias_lock(home, SLUG_A, blocking=False):
             pass
-        with store_maintenance_lock(home, STORE_A):
+        with staging_entry_lock(home, "acquire-1"):
             pass
 
     asyncio.run(on_the_loop())
     assert held_locks() == ()
 
 
-# ── Lease ownership ────────────────────────────────────────────────
-
-
-def test_an_async_lease_belongs_to_the_awaiting_thread_not_the_worker(tmp_path: Path) -> None:
-    """The worker opens and locks; the loop thread holds, reports, and releases."""
-
-    home = tmp_path / "home"
-    ensure_home(home)
-
-    async def scenario() -> tuple[tuple[HeldLock, ...], tuple[HeldLock, ...]]:
-        # One worker thread, so the thread that made the attempt is the one asked.
-        asyncio.get_running_loop().set_default_executor(ThreadPoolExecutor(max_workers=1))
-        lease = await acquire_store_lease(home, STORE_A)
-        try:
-            with pytest.raises(LockOrderError, match="other mode"):
-                store_maintenance_lock(home, STORE_A)
-            return held_locks(), await asyncio.to_thread(held_locks)
-        finally:
-            lease.release()
-
-    on_loop, on_worker = asyncio.run(scenario())
-    assert on_loop == (HeldLock(LockKind.MAINTENANCE_SHARED, STORE_A),)
-    assert on_worker == ()
-    assert held_locks() == ()
-
-
-def test_an_async_lease_is_still_checked_as_a_blocking_wait(tmp_path: Path) -> None:
-    home = tmp_path / "home"
-    ensure_home(home)
-
-    async def while_holding(take: Callable[[], CacheLock]) -> None:
-        with take():
-            await acquire_store_lease(home, STORE_A)
-
-    with pytest.raises(LockOrderError, match="could deadlock"):
-        asyncio.run(while_holding(lambda: source_alias_lock(home, SLUG_A, blocking=False)))
-    with pytest.raises(LockOrderError, match="other mode"):
-        asyncio.run(while_holding(lambda: store_maintenance_lock(home, STORE_A)))
-    assert held_locks() == ()
-
-
-@requires_git
-def test_a_lease_waits_for_maintenance_in_another_process_without_blocking_the_loop(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    home, store_key, _git_dir, _first, second = _publish(tmp_path, monkeypatch)
-    holder = _BoundedHolder(home, f"locks.store_maintenance_lock(home, {store_key!r})")
-    try:
-
-        async def scenario() -> None:
-            waiting = asyncio.create_task(
-                lease_revision(home=home, store_key=store_key, commit_oid=second)
-            )
-            assert await _ticks_while_pending(waiting) == TICKS
-            assert not waiting.done()
-            assert held_locks() == ()
-            assert holder.release() == "asked"
-            lease = await asyncio.wait_for(waiting, CHILD_TIMEOUT)
-            try:
-                assert held_locks() == (HeldLock(LockKind.MAINTENANCE_SHARED, store_key),)
-            finally:
-                lease.release()
-
-        asyncio.run(scenario())
-    finally:
-        holder.close()
-    assert held_locks() == ()
-    with store_maintenance_lock(home, store_key):
-        pass
-
-
-@requires_git
-def test_a_cancelled_lease_wait_holds_nothing(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    home, store_key, _git_dir, _first, second = _publish(tmp_path, monkeypatch)
-    holder = _BoundedHolder(home, f"locks.store_maintenance_lock(home, {store_key!r})")
-    try:
-
-        async def scenario() -> None:
-            waiting = asyncio.create_task(
-                lease_revision(home=home, store_key=store_key, commit_oid=second)
-            )
-            await _ticks_while_pending(waiting)
-            waiting.cancel()
-            with pytest.raises(asyncio.CancelledError):
-                await waiting
-
-        asyncio.run(scenario())
-        assert holder.release() == "asked"
-    finally:
-        holder.close()
-    assert held_locks() == ()
-    with store_maintenance_lock(home, store_key):
-        pass
+# ── Abandoned work ─────────────────────────────────────────────────
 
 
 def test_work_a_cancelled_task_abandoned_is_released_when_it_finishes() -> None:
@@ -303,10 +201,10 @@ def test_acquisition_waits_for_the_home_lock_without_blocking_the_loop(
 
     _allow_installed_git(monkeypatch)
     home = tmp_path / "home"
-    asyncio.run(acquire_file_source(_file_source(_origin(tmp_path, allow_filter=False)), home=home))
+    asyncio.run(acquire_file_source(_file_source(_origin(tmp_path)), home=home))
     other = tmp_path / "other"
     other.mkdir()
-    other_source = _file_source(_origin(other, allow_filter=False))
+    other_source = _file_source(_origin(other))
     holder = _BoundedHolder(home, "locks.application_home_lock(home)")
     try:
 
@@ -339,10 +237,10 @@ def test_a_cancelled_acquisition_behind_a_busy_home_stops_promptly(
 
     _allow_installed_git(monkeypatch)
     home = tmp_path / "home"
-    asyncio.run(acquire_file_source(_file_source(_origin(tmp_path, allow_filter=False)), home=home))
+    asyncio.run(acquire_file_source(_file_source(_origin(tmp_path)), home=home))
     other = tmp_path / "other"
     other.mkdir()
-    other_source = _file_source(_origin(other, allow_filter=False))
+    other_source = _file_source(_origin(other))
     holder = _BoundedHolder(home, "locks.application_home_lock(home)")
     try:
 

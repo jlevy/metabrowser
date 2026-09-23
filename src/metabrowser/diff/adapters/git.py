@@ -44,7 +44,6 @@ from metabrowser.diff.format import (
     SourceInfo,
     Totals,
 )
-from metabrowser.git.change_set import require_comparison_blobs
 from metabrowser.git.process import (
     GitError,
     GitLocation,
@@ -125,8 +124,6 @@ class GitDiffSource:
     def __init__(self, repo: Path | GitLocation) -> None:
         self._location = as_location(repo)
         self._empty_tree_oid: str | None = None
-        # Endpoint pairs whose change set was found present in the store.
-        self._present: set[tuple[str, ...]] = set()
 
     async def _rev_parse(self, revision: str) -> str:
         pin = self._location.pinned_revision
@@ -199,18 +196,8 @@ class GitDiffSource:
         assert left is not None
         return [left, right]
 
-    async def _require_change_set(self, endpoints: list[str]) -> None:
-        """On a store, fail typed before a blob-reading diff meets a missing blob."""
-
-        key = tuple(endpoints)
-        if key in self._present:
-            return
-        await require_comparison_blobs(self._location, endpoints)
-        self._present.add(key)
-
     async def manifest(self, resolved: ResolvedComparison) -> ChangeSetManifest:
         endpoints = self._endpoints(resolved)
-        await self._require_change_set(endpoints)
         raw = await run_git_at(
             [
                 "diff",

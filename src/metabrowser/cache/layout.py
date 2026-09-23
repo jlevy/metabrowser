@@ -41,16 +41,11 @@ from metabrowser.cache.paths import (
     LAYOUT_RECORD,
     PROVIDER_BINDINGS,
     PROVIDER_REPOSITORIES,
-    QUARANTINE,
     REPOSITORY_STORES,
     SOURCES,
 )
 from metabrowser.cache.probe import ProbeReport, probe_application_home
-from metabrowser.cache.reclaim import (
-    SweepReport,
-    reclaim_unreferenced_stores,
-    sweep_staging_and_trash,
-)
+from metabrowser.cache.reclaim import SweepReport, sweep_staging
 from metabrowser.cache.records import (
     CACHE_LAYOUT_CONTRACT_ID,
     CONFIG_CONTRACT_ID,
@@ -276,8 +271,8 @@ def _write_config(home: Path, config: ApplicationConfig) -> None:
 def _has_durable_entries(home: Path) -> bool:
     """Whether the cache holds data a layout would have to describe.
 
-    Staging and trash are disposable in every format, so a crash that left them behind
-    before the first layout was published does not block creating it. Each directory is
+    Staging is disposable in every format, so a crash that left it behind before the
+    first layout was published does not block creating it. Each directory is
     listed through the verified, no-follow path the read routes use, so a link where one
     of them belongs is refused with a typed, path-free
     :class:`~metabrowser.home.PrivateStorageError` instead of being followed out of the
@@ -287,7 +282,6 @@ def _has_durable_entries(home: Path) -> bool:
     for directory in (
         SOURCES,
         REPOSITORY_STORES,
-        QUARANTINE,
         PROVIDER_BINDINGS,
         PROVIDER_REPOSITORIES,
     ):
@@ -403,9 +397,9 @@ def open_cache(home: Path | None = None, *, version: str | None = None) -> Cache
     """Prepare the application home for cache use.
 
     Resolves the home when none is given, creates or verifies its owner-only skeleton and
-    ``CACHEDIR.TAG``, probes its locks and publication, migrates its layout, runs the
-    startup sweep of ``staging/`` and ``trash/``, and reclaims published stores no alias
-    names. Ordinary local browsing never calls this. Read routes do not.
+    ``CACHEDIR.TAG``, probes its locks and publication, migrates its layout, and runs the
+    startup sweep of ``staging/``. It never deletes a published store.
+    Ordinary local browsing never calls this. Read routes do not.
     """
 
     home = application_home() if home is None else home
@@ -413,8 +407,7 @@ def open_cache(home: Path | None = None, *, version: str | None = None) -> Cache
     ensure_home(home)
     probe = probe_application_home(home)
     outcome = migrate_layout(home, version=version)
-    sweep = sweep_staging_and_trash(home)
-    reclaim_unreferenced_stores(home)
+    sweep = sweep_staging(home)
     return CacheHome(home, outcome.layout, outcome.config, probe, sweep)
 
 

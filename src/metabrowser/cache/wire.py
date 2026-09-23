@@ -1,11 +1,9 @@
 """Wire shapes for the read-only ``/api/cache/`` routes.
 
 The routes project logical ``f01`` state: the layout and config formats, source and store
-identity, alias generations, publication state, and reclamation outcomes. Nothing here
+identity, alias generations, publication state, and abandoned staging. Nothing here
 names a cache path, a pack file, a Git internal, or a count that changes with ``gc``, and
-nothing names the application home itself. The store's ``configuration_digest`` is left
-out on purpose: it is an integrity snapshot every Git process verifies, and it changes
-with the Git version that wrote the configuration, not with anything a reader decides.
+nothing names the application home itself.
 
 Conventions follow :mod:`metabrowser.git.wire`: required keys are required to the type
 checker, conditional keys are ``NotRequired``, and a record that could not be read is
@@ -61,9 +59,9 @@ type ReferenceState = Literal[
     "referenced",
     # Every alias was read and none names the store, and there is no provider data.
     "unreferenced",
-    # Something reclamation treats as a reference could not be ruled out: an unreadable
-    # alias, an unrecognized source entry, provider data, or a request whose record
-    # budget ran out before the alias scan finished.
+    # A reference could not be ruled out: an unreadable alias, an unrecognized source
+    # entry, provider data, or a request whose record budget ran out before the alias
+    # scan finished.
     "unknown",
 ]
 
@@ -98,7 +96,7 @@ class CacheError(TypedDict):
     violation: NotRequired[str]
     # home_not_private: the fixed f01 location that failed, such as `cache/sources`, so
     # the user knows what to fix. Absent for anything else, and never a slug, a store
-    # key, or a quarantine entry name.
+    # key, or a staging entry name.
     path: NotRequired[str]
     # future_format: the format found and the newest one this release reads.
     found: NotRequired[str]
@@ -134,26 +132,10 @@ class ConfigRecord(TypedDict):
     upgrades: list[ConfigUpgrade]
 
 
-class QuarantineEntry(TypedDict):
-    """One quarantine outcome and the logical entries it retains.
-
-    ``truncated`` is true when either list was cut at the per-entry name bound.
-    """
-
-    entry: str
-    sources: list[str]
-    stores: list[str]
-    truncated: bool
-
-
 class Reclamation(TypedDict):
-    """What reclamation left: sweepable leftovers and retained quarantine."""
+    """What the next startup sweep may remove: abandoned staging entries."""
 
     staging_entries: int
-    trash_entries: int
-    quarantine_entries: int
-    quarantine: list[QuarantineEntry]
-    quarantine_truncated: bool
 
 
 class CacheLayoutResponse(TypedDict):
@@ -211,7 +193,6 @@ class CacheSourcesResponse(TypedDict):
 
 
 class StoreAcquisition(TypedDict):
-    strategy: str
     git_version: str
     object_format: str
 
@@ -228,7 +209,6 @@ class StoreOperation(TypedDict):
 
 
 class StoreState(TypedDict):
-    object_state: str
     default_remote_ref: str | None
     default_revision: str | None
     last_fetch_at: str | None
@@ -284,7 +264,6 @@ __all__ = [
     "HomePresence",
     "LayoutRecord",
     "LayoutState",
-    "QuarantineEntry",
     "Reclamation",
     "RecordName",
     "RecordProblem",

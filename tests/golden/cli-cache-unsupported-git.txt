@@ -36,7 +36,6 @@ exit: 0
 acquired: <ORIGIN-A>
 slug: <SLUG-A>
 store: <STORE-A>
-strategy: full
 revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
 --- stderr ---
 ## Below the floor again, with origin A moved away, A is reused without Git, and a new source B is refused without changing the home.
@@ -46,7 +45,6 @@ exit: 0
 acquired: <ORIGIN-A>
 slug: <SLUG-A>
 store: <STORE-A>
-strategy: full
 revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
 --- stderr ---
 # metab <ORIGIN-B> --no-serve

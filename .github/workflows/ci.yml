@@ -84,7 +84,7 @@ jobs:
     #
     # This job builds the lowest admitted release and the newest patched one from
     # checksum-verified kernel.org source, puts that Git first on PATH for this job
-    # only, and runs the acquisition, store-read, and no-lazy-fetch acceptance tests
+    # only, and runs the acquisition, store-read, and full-clone acceptance tests
     # with nothing patched. METABROWSER_REQUIRE_ADMITTED_GIT turns their below-floor
     # skip into a failure and fails when a different Git answers, so the job cannot
     # pass by testing nothing. Pins and review: SUPPLY-CHAIN-SECURITY.md.
@@ -161,7 +161,7 @@ jobs:
       - name: Set up Python
         run: uv python install
 
-      - name: Run acquisition and no-lazy-fetch acceptance on the admitted Git
+      - name: Run acquisition and full-clone acceptance on the admitted Git
         env:
           METABROWSER_REQUIRE_ADMITTED_GIT: ${{ matrix.git }}
         run: make test-admitted-git

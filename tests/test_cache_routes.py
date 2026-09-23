@@ -26,7 +26,6 @@ from metabrowser.cache.listing import ListingLimitError, list_private_directory
 from metabrowser.cache.paths import (
     SOURCES,
     STAGING,
-    quarantine_entry,
     source_directory,
     source_record,
     store_record,
@@ -51,11 +50,9 @@ from tests.cache_home_fixture import (
     FLASK_REVISION,
     FLASK_SSH,
     FLASK_STORE_KEY,
-    JINJA,
+    MISSING_STORE_KEY,
     OPENED_AT,
     ORPHAN_STORE_KEY,
-    QUARANTINED_STORE_KEY,
-    RECLAIMED_STORE_KEY,
     build_empty_home,
     build_future_home,
     build_populated_home,
@@ -151,13 +148,7 @@ def test_a_home_without_a_cache_is_uninitialized_and_nothing_is_created(
     assert layout["home"] == "present"
     assert layout["state"] == "uninitialized"
     assert layout["layout"] is None and layout["config"] is None
-    assert layout["reclamation"] == {
-        "staging_entries": 0,
-        "trash_entries": 0,
-        "quarantine_entries": 0,
-        "quarantine": [],
-        "quarantine_truncated": False,
-    }
+    assert layout["reclamation"] == {"staging_entries": 0}
     assert sources["home"] == "present" and sources["layout_format"] is None
     assert sources["sources"] == [] and stores["stores"] == []
     assert _snapshot(tmp_path) == before
@@ -231,13 +222,7 @@ def test_an_empty_cache_reports_its_current_layout_and_config(
         "state": "current",
         "layout": {"format": "f01", "created_by": FIXTURE_VERSION},
         "config": {"format": "f01", "written_by": FIXTURE_VERSION, "upgrades": []},
-        "reclamation": {
-            "staging_entries": 0,
-            "trash_entries": 0,
-            "quarantine_entries": 0,
-            "quarantine": [],
-            "quarantine_truncated": False,
-        },
+        "reclamation": {"staging_entries": 0},
     }
     assert sources["layout_format"] == "f01" and sources["sources"] == []
     assert stores["layout_format"] == "f01" and stores["stores"] == []
@@ -301,38 +286,21 @@ def test_an_unreadable_layout_is_a_typed_refusal(
 
 
 @pytest.fixture
-def populated(use_home: Any, tmp_path: Path) -> tuple[Path, str]:
+def populated(use_home: Any, tmp_path: Path) -> Path:
     home = use_home(tmp_path / "home")
-    entry = build_populated_home(home)
-    return home, entry
+    build_populated_home(home)
+    return home
 
 
-def test_reclamation_outcomes_are_reported_on_the_layout(
-    client: TestClient, populated: tuple[Path, str]
-) -> None:
-    _home, entry = populated
-
+def test_abandoned_staging_is_reported_on_the_layout(client: TestClient, populated: Path) -> None:
     layout = _json(client, "/api/cache/layout")
 
     assert layout["state"] == "current"
-    assert layout["reclamation"] == {
-        "staging_entries": 1,
-        "trash_entries": 0,
-        "quarantine_entries": 1,
-        "quarantine": [
-            {
-                "entry": entry,
-                "sources": [JINJA.slug],
-                "stores": [f"sha256:{QUARANTINED_STORE_KEY}"],
-                "truncated": False,
-            }
-        ],
-        "quarantine_truncated": False,
-    }
+    assert layout["reclamation"] == {"staging_entries": 1}
 
 
 def test_sources_report_identity_alias_generation_and_publication(
-    client: TestClient, populated: tuple[Path, str]
+    client: TestClient, populated: Path
 ) -> None:
     body = _json(client, "/api/cache/sources")
 
@@ -340,7 +308,6 @@ def test_sources_report_identity_alias_generation_and_publication(
     assert body["next_after"] is None and body["unrecognized_entries"] == 0
     rows = {row["slug"]: row for row in body["sources"]}
     assert list(rows) == sorted([CLICK.slug, FLASK_HTTPS.slug, FLASK_SSH.slug])
-    assert JINJA.slug not in rows
 
     https = rows[FLASK_HTTPS.slug]
     assert https == {
@@ -376,14 +343,12 @@ def test_sources_report_identity_alias_generation_and_publication(
 
 
 def test_stores_report_references_and_what_reclamation_would_keep(
-    client: TestClient, populated: tuple[Path, str]
+    client: TestClient, populated: Path
 ) -> None:
     body = _json(client, "/api/cache/stores")
 
     rows = {row["id"]: row for row in body["stores"]}
     assert list(rows) == sorted([f"sha256:{FLASK_STORE_KEY}", f"sha256:{ORPHAN_STORE_KEY}"])
-    assert f"sha256:{QUARANTINED_STORE_KEY}" not in rows
-    assert f"sha256:{RECLAIMED_STORE_KEY}" not in rows
 
     flask = rows[f"sha256:{FLASK_STORE_KEY}"]
     assert flask == {
@@ -392,13 +357,11 @@ def test_stores_report_references_and_what_reclamation_would_keep(
         "identity": {
             "created_at": "2026-09-17T12:00:00Z",
             "acquisition": {
-                "strategy": "blobless",
                 "git_version": "2.50.1",
                 "object_format": "sha1",
             },
         },
         "state": {
-            "object_state": "converging",
             "default_remote_ref": "refs/remotes/origin/trunk",
             "default_revision": FLASK_REVISION,
             "last_fetch_at": "2026-09-17T12:00:05Z",
@@ -421,7 +384,7 @@ def test_stores_report_references_and_what_reclamation_would_keep(
 
 
 def test_a_source_detail_adds_its_recency_and_its_store_head(
-    client: TestClient, populated: tuple[Path, str]
+    client: TestClient, populated: Path
 ) -> None:
     body = _json(client, f"/api/cache/source/{FLASK_HTTPS.slug}")
 
@@ -440,18 +403,17 @@ def test_a_source_detail_adds_its_recency_and_its_store_head(
 
 
 def test_an_unknown_or_malformed_slug_is_answered_honestly(
-    client: TestClient, populated: tuple[Path, str]
+    client: TestClient, populated: Path
 ) -> None:
     missing = _json(client, "/api/cache/source/github-com--nobody--nothing--000000000000", 404)
-    quarantined = _json(client, f"/api/cache/source/{JINJA.slug}", 404)
     malformed = _json(client, "/api/cache/source/Not_A_Slug", 400)
 
-    assert missing["code"] == quarantined["code"] == "source_not_found"
+    assert missing["code"] == "source_not_found"
     assert malformed["code"] == "invalid_parameter"
 
 
 def test_pages_follow_the_sorted_keys_and_clamp_their_limit(
-    client: TestClient, populated: tuple[Path, str]
+    client: TestClient, populated: Path
 ) -> None:
     slugs = sorted([CLICK.slug, FLASK_HTTPS.slug, FLASK_SSH.slug])
 
@@ -482,15 +444,15 @@ def test_pages_follow_the_sorted_keys_and_clamp_their_limit(
     ["/api/cache/sources?after=Not_A_Slug", "/api/cache/stores?after=sha256:xyz"],
 )
 def test_a_malformed_page_key_is_a_bad_request(
-    client: TestClient, populated: tuple[Path, str], route: str
+    client: TestClient, populated: Path, route: str
 ) -> None:
     assert _json(client, route, 400)["code"] == "invalid_parameter"
 
 
 def test_reads_take_no_lock_and_write_nothing(
-    client: TestClient, populated: tuple[Path, str], tmp_path: Path
+    client: TestClient, populated: Path, tmp_path: Path
 ) -> None:
-    home, _entry = populated
+    home = populated
     # Entries the old read path would have repaired, so the snapshot constrains that too.
     (home / source_record(CLICK.slug, "source.yml")).chmod(0o640)
     (home / source_directory(FLASK_SSH.slug)).chmod(0o750)
@@ -503,9 +465,9 @@ def test_reads_take_no_lock_and_write_nothing(
 
 
 def test_a_shared_record_is_reported_rather_than_repaired(
-    client: TestClient, populated: tuple[Path, str]
+    client: TestClient, populated: Path
 ) -> None:
-    home, _entry = populated
+    home = populated
     record = home / source_record(CLICK.slug, "source.yml")
     record.chmod(0o640)
 
@@ -525,9 +487,9 @@ def test_a_shared_record_is_reported_rather_than_repaired(
 
 
 def test_a_shared_entry_directory_is_reported_rather_than_repaired(
-    client: TestClient, populated: tuple[Path, str]
+    client: TestClient, populated: Path
 ) -> None:
-    home, _entry = populated
+    home = populated
     directory = home / source_directory(CLICK.slug)
     directory.chmod(0o750)
 
@@ -547,11 +509,11 @@ def test_a_shared_entry_directory_is_reported_rather_than_repaired(
     [(SOURCES, "/api/cache/sources"), (STAGING, "/api/cache/layout")],
 )
 def test_a_shared_cache_directory_is_refused_by_the_name_the_user_must_fix(
-    client: TestClient, populated: tuple[Path, str], layout_path: str, route: str
+    client: TestClient, populated: Path, layout_path: str, route: str
 ) -> None:
     """A fixed layout name is not a secret, and without it the remedy is a guess."""
 
-    home, _entry = populated
+    home = populated
     directory = home / layout_path
     directory.chmod(0o755)
 
@@ -569,9 +531,9 @@ def test_a_shared_cache_directory_is_refused_by_the_name_the_user_must_fix(
 
 
 def test_a_shared_record_refusal_offers_the_file_remedy_without_naming_the_slug(
-    client: TestClient, populated: tuple[Path, str]
+    client: TestClient, populated: Path
 ) -> None:
-    home, _entry = populated
+    home = populated
     (home / source_record(CLICK.slug, "source.yml")).chmod(0o640)
 
     row = _json(client, f"/api/cache/source/{CLICK.slug}")["source"]
@@ -583,13 +545,13 @@ def test_a_shared_record_refusal_offers_the_file_remedy_without_naming_the_slug(
 
 
 def test_an_invalid_record_reports_its_rule_and_not_what_is_in_it(
-    client: TestClient, populated: tuple[Path, str]
+    client: TestClient, populated: Path
 ) -> None:
     """A record can hold a credential-bearing URL, so no reason may quote its values."""
 
     secret = "ghp-examplesecrettokenvalue"
     write_private_file_atomic(
-        client_home := populated[0],
+        client_home := populated,
         source_record(CLICK.slug, "source.yml"),
         (
             "softschema:\n"
@@ -618,7 +580,7 @@ def test_an_invalid_record_reports_its_rule_and_not_what_is_in_it(
 
 
 def test_no_response_names_a_path_a_pack_or_a_git_internal(
-    client: TestClient, populated: tuple[Path, str], tmp_path: Path
+    client: TestClient, populated: Path, tmp_path: Path
 ) -> None:
     for route in (*LIST_ROUTES, f"/api/cache/source/{FLASK_HTTPS.slug}"):
         text = client.get(route).text
@@ -630,9 +592,9 @@ def test_no_response_names_a_path_a_pack_or_a_git_internal(
 
 
 def test_a_damaged_source_is_reported_beside_the_readable_ones(
-    client: TestClient, populated: tuple[Path, str]
+    client: TestClient, populated: Path
 ) -> None:
-    home, _entry = populated
+    home = populated
     write_private_file_atomic(
         home, source_record(FLASK_SSH.slug, "store-alias.yml"), b"alias: nonsense\n"
     )
@@ -649,21 +611,19 @@ def test_a_damaged_source_is_reported_beside_the_readable_ones(
     assert [(p["record"], p["code"]) for p in click["problems"]] == [("source.yml", "invalid")]
 
     stores = {row["id"]: row for row in _json(client, "/api/cache/stores")["stores"]}
-    # An alias reclamation cannot read keeps every store it might name.
+    # An alias that cannot be read might name any store.
     assert stores[f"sha256:{ORPHAN_STORE_KEY}"]["reference_state"] == "unknown"
     assert stores[f"sha256:{FLASK_STORE_KEY}"]["reference_state"] == "referenced"
 
 
-def test_an_alias_to_a_missing_store_is_dangling(
-    client: TestClient, populated: tuple[Path, str]
-) -> None:
-    home, _entry = populated
+def test_an_alias_to_a_missing_store_is_dangling(client: TestClient, populated: Path) -> None:
+    home = populated
     write_record_atomic(
         home,
         source_record(CLICK.slug, "store-alias.yml"),
         RepositoryStoreAlias(
             source_id=CLICK.id,
-            store_id=f"sha256:{RECLAIMED_STORE_KEY}",
+            store_id=f"sha256:{MISSING_STORE_KEY}",
             generation=1,
             updated_at="2026-09-17T12:00:06Z",
         ),
@@ -675,10 +635,8 @@ def test_an_alias_to_a_missing_store_is_dangling(
     assert rows[CLICK.slug]["publication"] == "dangling"
 
 
-def test_an_alias_naming_another_source_is_a_mismatch(
-    client: TestClient, populated: tuple[Path, str]
-) -> None:
-    home, _entry = populated
+def test_an_alias_naming_another_source_is_a_mismatch(client: TestClient, populated: Path) -> None:
+    home = populated
     write_record_atomic(
         home,
         source_record(CLICK.slug, "store-alias.yml"),
@@ -697,10 +655,8 @@ def test_an_alias_naming_another_source_is_a_mismatch(
     assert [(p["record"], p["code"]) for p in row["problems"]] == [("store-alias.yml", "mismatch")]
 
 
-def test_a_store_without_its_state_record_is_damaged(
-    client: TestClient, populated: tuple[Path, str]
-) -> None:
-    home, _entry = populated
+def test_a_store_without_its_state_record_is_damaged(client: TestClient, populated: Path) -> None:
+    home = populated
     (home / store_record(ORPHAN_STORE_KEY, "state.yml")).unlink()
 
     rows = {row["id"]: row for row in _json(client, "/api/cache/stores")["stores"]}
@@ -711,11 +667,11 @@ def test_a_store_without_its_state_record_is_damaged(
 
 
 def test_a_damaged_source_state_damages_the_entry_on_both_routes(
-    client: TestClient, populated: tuple[Path, str]
+    client: TestClient, populated: Path
 ) -> None:
     """state.yml is read by both routes, so one entry cannot look healthy on one of them."""
 
-    home, _entry = populated
+    home = populated
     write_private_file_atomic(
         home, source_record(FLASK_HTTPS.slug, "state.yml"), b"state: nonsense\n"
     )
@@ -731,9 +687,9 @@ def test_a_damaged_source_state_damages_the_entry_on_both_routes(
 
 
 def test_unrecognized_source_entries_are_counted_not_named(
-    client: TestClient, populated: tuple[Path, str]
+    client: TestClient, populated: Path
 ) -> None:
-    home, _entry = populated
+    home = populated
     ensure_private_directory(home, f"{SOURCES}/Private Notes")
 
     sources = _json(client, "/api/cache/sources")
@@ -748,7 +704,7 @@ def test_unrecognized_source_entries_are_counted_not_named(
 
 
 def test_a_directory_past_the_enumeration_bound_is_refused(
-    client: TestClient, populated: tuple[Path, str], monkeypatch: pytest.MonkeyPatch
+    client: TestClient, populated: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(projection, "MAX_DIRECTORY_ENTRIES", 2)
 
@@ -757,27 +713,8 @@ def test_a_directory_past_the_enumeration_bound_is_refused(
     assert body["code"] == "cache_enumeration_limit"
 
 
-def test_a_quarantine_entry_reports_bounded_names(
-    client: TestClient, populated: tuple[Path, str], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A quarantine entry cannot put an unbounded number of names in one response."""
-
-    home, entry = populated
-    monkeypatch.setattr(projection, "MAX_QUARANTINE_NAMES", 2)
-    retained = f"{quarantine_entry(entry)}/sources"
-    for index in range(3):
-        ensure_private_directory(home, f"{retained}/example-com--org--repo-{index}--{index:012x}")
-
-    quarantined = _json(client, "/api/cache/layout")["reclamation"]["quarantine"]
-
-    assert len(quarantined) == 1
-    assert len(quarantined[0]["sources"]) == 2
-    assert quarantined[0]["truncated"] is True
-    assert quarantined[0]["stores"] == [f"sha256:{QUARANTINED_STORE_KEY}"]
-
-
 def test_a_reference_scan_cut_by_the_record_budget_reports_unknown(
-    client: TestClient, populated: tuple[Path, str], monkeypatch: pytest.MonkeyPatch
+    client: TestClient, populated: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The page is served first; what the budget has left decides how far aliases go."""
 
@@ -793,7 +730,7 @@ def test_a_reference_scan_cut_by_the_record_budget_reports_unknown(
 
 
 def test_a_page_cut_by_the_record_budget_stays_resumable(
-    client: TestClient, populated: tuple[Path, str], monkeypatch: pytest.MonkeyPatch
+    client: TestClient, populated: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(projection, "MAX_RECORDS_PER_REQUEST", 3)
     slugs = sorted([CLICK.slug, FLASK_HTTPS.slug, FLASK_SSH.slug])

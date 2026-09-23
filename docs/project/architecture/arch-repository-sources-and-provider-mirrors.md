@@ -1,18 +1,23 @@
 # Repository Sources and Provider Mirrors
 
-**Superseded in part (2026-09-23):** fetch jobs, credential leases, revision leases,
-convergence, and provider mirrors below are replaced by
+**Superseded in part (2026-09-23):** planned fetch jobs, credential handling, and
+provider mirrors below are replaced by
 [Thin Mirror for Git and GitHub Browsing](../specs/active/plan-2026-09-23-v012-thin-mirror.md).
-The Simplify pull request updates this document to match the code it leaves.
+Revision leases, subject refs, convergence, and store reclamation are removed from the
+code and from this document.
 
 **Status:** Partly implemented.
 Repository subjects, `SourceSession`, capabilities, the attached-filesystem content
 source, `GitCommandTarget`, the immutable Git tree source with `GitPath` file, raw, and
-tree routes, `file://` acquisition into a shared repository store, and revision leases
-with store maintenance are implemented; `metab` attaches a `file://` pin in-process for
-`--show` and non-cache `--api`. Serving an acquired pin over HTTP, `https` and `ssh`
-acquisition, fetch jobs, credential leases and the askpass bridge, store convergence and
-object reclamation, and the provider mirror store remain planned.
+tree routes, and `file://` acquisition of full clones into a shared, read-only
+repository store are implemented; `metab` opens a `file://` pin in-process for `--show`
+and non-cache `--api`. Serving an acquired pin over HTTP, `https` acquisition, refresh,
+and pull-request data remain planned, and
+[Thin Mirror for Git and GitHub Browsing](../specs/active/plan-2026-09-23-v012-thin-mirror.md)
+replaces the planned parts of this document wherever they disagree.
+It retired blobless clones and convergence, private subject refs, revision leases,
+maintenance locks, fetch jobs, and credential leases; this document no longer describes
+them.
 Provider binding and local object-availability records exist today as hosted-review
 models; see [Hosted Review Model and Provider Boundary](arch-hosted-review-model.md).
 Per-seam state is in [Implementation Seams](#implementation-seams).
@@ -37,7 +42,7 @@ session selection
                          │
                          ▼
 shared repository store
-  Git objects, Metabrowser-owned refs, tree indexes
+  every Git object, mirrored branches and tags, tree indexes
                          │
                          ▼
 shared provider mirror
@@ -59,7 +64,7 @@ No layer owns either of the other two.
 Closing a session does not delete a repository store.
 Detaching a local checkout does not delete provider snapshots.
 Purging a generic source alias cannot delete objects or snapshots still reachable
-through another alias, lease, current pointer, or archival pin.
+through another alias, current pointer, or archival pin.
 
 ## Repository Subjects
 
@@ -92,7 +97,7 @@ It owns:
 - the `RepositorySubject` and opaque subject generation;
 - its `ContentSource` and navigation/index provider;
 - a `SourceCapabilities` envelope; and
-- the subject, reader, and store leases released when the session closes.
+- the subject’s readers, closed when the session closes.
 
 Root replacement closes and joins the old `SourceSession` before publishing the new one.
 Work from the old generation cannot update route caches, history sessions, browser
@@ -107,7 +112,7 @@ not one invented filesystem representation:
 - resolve a child path without following an unsafe escape;
 - state whether content is mutable and whether watchers, mtimes, ignore state, and local
   status are meaningful; and
-- close all readers and leases.
+- close all readers.
 
 The existing filesystem inventory continues to provide filesystem-only facts.
 An immutable Git-tree source enumerates trees and reads blobs directly from the
@@ -178,21 +183,21 @@ or cache paths.
 
 ## Shared Repository Store
 
-One logical repository store owns one worktree-free Git database plus
-Metabrowser-controlled refs.
-It is a bare repository created with an empty template and configuration written only by
-Metabrowser, acquired blobless where the Git version allows and converged by explicit
-object-ID fetches; the measured basis is in [Measured Decisions](#measured-decisions).
+One logical repository store owns one worktree-free Git database: a read-only mirror of
+its origin. It is a bare repository created with an empty template and configuration
+written only by Metabrowser, with automatic maintenance and `gc` off, and filled by one
+fetch of every object reachable from the origin’s branches and tags, a full clone.
 These invariants hold for every store:
 
 - there is no shared index or checked-out branch;
 - no view operation runs `checkout`, `switch`, `reset`, or `worktree add`;
-- provider-observed refs are fetched into a private namespace and verified against the
-  expected full object ID before publication;
-- repository content is self-contained for every object Metabrowser promises to serve;
-  it does not depend on alternates into a user-owned checkout;
+- its refs are the origin’s branches under `refs/remotes/origin/` and its tags;
+  Metabrowser writes no ref of its own;
+- repository content is self-contained: every object is present, and nothing depends on
+  alternates into a user-owned checkout or on the origin after acquisition;
 - tree enumeration and blob reads are bounded and cancellation-aware; and
-- maintenance and reclamation cannot remove objects held by a live subject lease.
+- nothing removes objects: no operation runs `gc`, `prune`, or `repack`, so a commit a
+  reader pinned stays readable without a lock or a ref.
 
 The repository library assigns a stable internal `RepositoryStoreId`. A conservative,
 credential-free Git source identity may create the store before provider resolution.
@@ -202,57 +207,29 @@ store without changing their own source records.
 Conflicting identities fail closed; they are never merged from owner/name text alone.
 
 A source alias is a generation-checked indirection, not part of a store transaction.
-Initial acquisition publishes and validates the immutable store first, then atomically
-creates the alias as the sole visibility commit.
-A crash between those commits leaves an unreachable completed store that startup may
-reclaim or quarantine; it never leaves a visible half-entry.
-Repointing takes the source-alias lock and uses compare-and-swap.
-
-When stable provider identity proves that independently populated aliases name one
-repository, the canonical `RepositoryStoreId` is derived with a domain-separated digest
-of provider kind, canonical provider instance, raw stable repository opaque ID, and Git
-object format.
-It contains no authorization context or credential and requires no mutable
-provider-to-store pointer.
-Convergence first leases that deterministically named store, creating it if needed,
-fetches the object IDs the aliases’ refs name directly from the provider’s promisor
-remote into it under job refs, and validates object format and reachability; objects are
-never copied from the old store, whose packs are not the new store’s promisor packs.
-It then locks the aliases and affected stores in ascending `RepositoryStoreId` order,
-publishes the refs, and compare-and-swap repoints the aliases.
-No provider record changes in this transaction: provider snapshots name the stable
-`RepositoryRef` and exact object IDs, and resolve the derived store only when a content
-lease is requested. The old store remains until no alias, durable ref, or live lease
-reaches it. Failed validation leaves every alias unchanged; unique cached objects are
-never discarded.
-
-An attached local checkout does not require an eager second clone.
-Hosted metadata can be enabled with only a provider attachment.
-The shared repository store is created or hydrated lazily when an immutable branch,
-revision, diff, or hosted comparison needs Git objects.
-Selected-ref fetches acquire only the declared refs and objects allowed by the measured
-fetch policy.
+Initial acquisition holds the source-alias lock and the store lock from the store’s
+rename into place through the alias commit, and the alias is the sole visibility commit.
+A crash between the two renames leaves a completed store no alias names; it is never a
+visible half-entry, and the next acquisition of the same source reuses it.
+Nothing deletes a published store automatically.
+Attaching a user-owned checkout to a store, and merging stores by provider identity, are
+deferred by the thin-mirror plan.
 
 ### Read path and performance
 
 The revision source resolves a root tree once and caches its immutable directory index
 by tree object ID. Blob access uses a bounded pool of long-lived batch Git readers
 rather than spawning one process per file: at most four per store per process, created
-on demand. Every read runs with `GIT_NO_LAZY_FETCH=1` and with `-c mailmap.blob=` and
-`-c mailmap.file=`, because a bare store’s default mailmap is `HEAD:.mailmap`, and
-nothing on a read path lists blob sizes from a store that may be missing blobs, because
-a size-bearing `ls-tree -l` otherwise issues one network request per missing blob.
-Git can report a failed read on stderr and still exit 0, so stderr from a store read
-degrades the result rather than passing as success.
-Before spawning any Git process on a store, including each batch reader when it starts
-(not on each request), core verifies the store’s configuration snapshot and refuses the
-store on a mismatch; see
-[Locks, Leases, and Reclamation](#locks-leases-and-reclamation).
-Diff, commit-detail, and comparison reads first list their change set with
-`git diff --raw -z --no-abbrev --no-renames`, check its blob-mode entries (`100644`,
-`100755`, `120000`) with `cat-file --batch-check`, and report `deferred` while the
-object-job port fetches exactly the missing blobs.
-A `160000` gitlink is a submodule entry: it is never requested and never missing.
+on demand.
+Every read runs with `-c mailmap.blob=` and `-c mailmap.file=`, because a bare
+store’s default mailmap is `HEAD:.mailmap`, and with `GIT_NO_LAZY_FETCH=1` as defense in
+depth: a store has no promisor remote, and the spawn seam refuses a store read whose
+policy would leave lazy fetch on.
+Blob sizes come from the batch readers’ `info` answers rather than `ls-tree -l`. Git can
+report a failed read on stderr and still exit 0, so stderr from a store read degrades
+the result rather than passing as success.
+Diff, commit-detail, and comparison reads run Git directly, because a full store holds
+every blob they read.
 Diff, history, commit detail, and tree reads receive a trusted Git command target that
 may name either a worktree plus Git directory or the shared worktree-free store.
 
@@ -266,146 +243,16 @@ An immutable subject starts history and detail from its pinned full object ID ra
 than ambient `HEAD`; refs are observations, and every diff receives the same target plus
 exact OIDs.
 
-### Fetch jobs, authorization, and credentials
+### Fetch and credentials
 
-`FetchAuthorizationContext` is a closed, non-secret job identity with `AnonymousPublic`,
-`ProviderPrincipal`, `DeclaredExternal`, and `UnverifiableEphemeral` variants.
-`ProviderPrincipal` carries provider kind, provider instance, stable opaque principal
-ID, optional visibility-partition digest, and the derived authorization-context key;
-`DeclaredExternal` carries an operator-configured context key; and an SSH or
-credential-helper source whose principal cannot be proven receives a fresh in-memory
-`UnverifiableEphemeral` nonce and never coalesces with another request.
-Only the variant and a non-secret key digest enter staged diagnostics; credentials never
-enter records or ref names.
-
-`RepositoryObjectJobPort` is the single provider-to-job conversion boundary.
-It accepts `AuthorizationContextRef`, validates its mode and field combination, derives
-the canonical authorization-context key itself, and maps `anonymous` to
-`AnonymousPublic` or `authenticated` to `ProviderPrincipal` with every field above
-copied exactly. The key is never accepted from a caller.
-An invalid combination fails before job lookup, so the key and visibility partition
-participate in job coalescing even when provider instance, principal, source, and
-refspec otherwise match.
-Phase 2B moves `AuthorizationContextRef` and its key function from the hosted-review
-plugin into the neutral `provider_resources` package before this port consumes them, so
-core neither imports a domain plugin nor keeps a second key implementation.
-
-Authorization identity and credential execution are separate capabilities.
-An authenticated provider-selected fetch also presents a `GitFetchCredentialLease`. The
-lease is only an unforgeable, process-local, non-serializable handle into the core-owned
-`GitFetchCredentialLeaseRegistry`; the handle object carries no authority of its own.
-The trusted credential broker registers each issuance with its provider kind, provider
-instance, stable principal, authorization-context key, optional visibility partition,
-expiry, cancellation generation, and allowlisted credential-free HTTPS Git sources.
-A lease authorizes an authorization-context key, not a broker session: a deferred fetch
-may use a lease from a later session whose pinned principal derives an equal key.
-A session keeps its registrations live until every Git run using them finishes, then
-revokes them. `validate_git_fetch_credential_lease` looks the handle up by identity and
-reads every bound value, the expiry, the revocation state, and the cancellation
-generation from that registry entry, never from the handle.
-No token bytes reach the plugin or the application process.
-
-Every request validates its own context and lease before job lookup, including a request
-that would join in-flight work.
-An absent, unregistered, expired, revoked, host-mismatched, or source-mismatched lease,
-or one whose provider, principal, authorization-context key, or visibility partition
-differs from the request context, fails with typed `git_credentials_unavailable` or
-`authorization_unavailable`. A provider-principal Git run uses the lease of the request
-that started it; a joining request attaches only with its own valid lease for the same
-context. When the starting request cancels or its lease is revoked while other requests
-remain attached, core terminates that Git run and restarts it once under another
-attached live lease for an equal authorization-context key or, when none remains, fails
-the remaining requests with a typed error.
-Provider-principal work never falls back to ambient Git credentials, SSH agents, or
-another `gh` login. Phase 2B defines the registry protocol and proves it with a test
-issuer.
-Until the Phase 3A askpass projection exists, a provider-principal request with a
-valid lease still fails with `git_credentials_unavailable` before Git starts.
-
-`git/process.py` remains the only Git subprocess boundary.
-Phase 3A projects a validated lease through a packaged askpass bridge to the broker,
-with no token in argv, the child environment, a file, a ref, a record, or diagnostics.
-Git reads credentials from more places than its own environment variables, so a
-provider-principal run is isolated from each of them:
-
-- **Environment.** The run receives a short allowlisted environment rather than a
-  scrubbed copy of the parent’s: a fixed `PATH` and locale, an empty Metabrowser-owned
-  `HOME` and `XDG_CONFIG_HOME`, terminal prompting disabled, and only named proxy and
-  certificate variables.
-  `NETRC`, `SSH_AUTH_SOCK`, inherited `GIT_CONFIG_*` values, `GIT_TRACE*`,
-  `GIT_CURL_VERBOSE`, and `GIT_SSL_NO_VERIFY` never pass, so a `.netrc` login, an SSH
-  agent, injected configuration, or a curl trace cannot supply or print a credential.
-  Among Git configuration variables the runner sets only `GIT_CONFIG_NOSYSTEM=1`; it
-  also passes platform-required variables it names, such as `SYSTEMROOT` on Windows.
-- **Configuration.** System and global Git configuration are disabled.
-  The fetch runs inside the repository store, because objects may enter a blobless store
-  only from its promisor remote: importing from a separate staging repository either
-  failed outright or left a non-promisor pack that made later `gc` and `repack` fail.
-  Stores are created with an empty template and carry only configuration Metabrowser
-  writes. After the store’s first fetch its configuration snapshot is recorded — SHA-256
-  of `git config --file <store>/repository.git/config --list -z` output — and every Git
-  process on the store, credentialed or not, verifies it first.
-  An exact expected configuration cannot be fixed in advance, because Git itself adds
-  promisor keys on the first filtered fetch and macOS `init` adds case and Unicode keys.
-  On a mismatch Git is not run, the store is refused and its quarantine requested, so a
-  credential helper, `url.*.insteadOf` rewrite, `http.*.extraHeader`, `core.sshCommand`,
-  or `remote.<name>.uploadpack` planted in repository-local configuration never reaches
-  a run. The run also passes an empty credential-helper list, disables hooks, and allows
-  only the HTTPS protocol, so no helper supplies, stores, or erases the credential and
-  no rewrite or extra header changes the transport or principal.
-- **Prompt binding.** The run disables HTTP redirects and sets `credential.useHttpPath`
-  and a fixed credential username, so Git asks exactly one password question that names
-  the full source URL. Immediately before spawning Git, core arms exactly one answer at
-  the broker that registered the run’s lease, for that run, lease, and source URL, and
-  disarms it when Git exits, the run is cancelled or restarted, or the lease is revoked;
-  the broker answers nothing that is not armed.
-  It compares the prompted URL after removing the fixed username and applying Git’s
-  credential URL form, a percent-decoded path without a trailing slash, and it registers
-  allowlisted sources only in that form.
-  A redirect fails with a typed error instead of carrying the credential to another
-  host.
-
-Phase 3A measures and chooses the cross-platform inherited-pipe or local-IPC bridge
-mechanism, but it may not weaken these boundaries.
-Public anonymous jobs and explicitly declared external Git jobs retain their separate
-credential policies.
-
-Fetch jobs are keyed by repository store, source identity, `FetchAuthorizationContext`,
-fetch-policy version, and exact requested refspec.
-They receive an explicit credential-free source URL and do not treat shared `origin`
-configuration as authority.
-Private ref namespaces include the source and request identities, so an SSH failure or
-cancellation cannot poison an HTTPS request for the same store.
-Clients in one process join compatible in-flight work instead of starting duplicate
-fetches. Git does not do this for them: four concurrent same-ref fetches into one
-blobless store all succeeded, and together transferred four times the bytes of one.
-Across processes, jobs may overlap and the duplicates cost space until maintenance
-compacts them; each job records the store generation and expected remote object IDs it
-observed. A job writes a non-secret `StagedFetch` record containing the source and
-authorization policy, exact refspec, expected OID, object format, and base store
-generation, takes the store lease, verifies the configuration snapshot, and fetches with
-no ordered lock held, writing only `refs/metabrowser/jobs/<job-id>/`. Objects enter a
-store only from promisor remotes recorded in its configuration snapshot, which
-Metabrowser writes when it creates the store; a job names such a remote, never a URL.
-Fetching a fork by URL into a blobless store wrote `remote.<url>.promisor` into the
-store’s configuration, or without the filter wrote objects that made `gc --prune=now`
-fail. For a pull request, base, head, and optional merge objects are therefore fetched
-through the base repository store’s own remote from the provider-published refs —
-GitHub’s `refs/pull/<n>/head` and `refs/pull/<n>/merge`, GitLab’s
-`refs/merge-requests/<n>/head` — which remain fetchable after a fork is deleted.
-An object reachable only from a fork is acquired through the fork’s own source and
-store, never fetched by URL into another store.
-Every declared source belongs to the allowlist of a lease whose authorization-context
-key equals that of the observation that recorded the object IDs.
+Only `file://` acquisition is built.
+The thin-mirror plan owns HTTPS acquisition and refresh: a plain `git fetch` into the
+store under one lock per mirror, with `gh` as the only credential helper for a private
+fetch.
+Every fetch runs in the isolated Git environment of `git/process.py`, the only Git
+subprocess boundary: no inherited `GIT_*` variable, no system or global configuration,
+terminal prompting disabled, and hooks off.
 Acquisition never inherits an attached checkout’s remote or credential helper.
-Publication briefly takes the repository-store lock, verifies the expected OIDs, and
-runs one `update-ref --stdin` transaction that advances Metabrowser-owned public refs
-from their observed old values and deletes the job’s refs.
-A job that loses the compare-and-swap to one that published the same object IDs
-succeeds; a slower job whose observation would regress a ref or replace a newer
-generation loses publication, deletes its job refs, or retries from the new generation.
-Job refs left by a crashed job are deleted once its job lock is free.
-Readers already pinned to an object ID continue unaffected.
 
 ### Git path and blob semantics
 
@@ -440,20 +287,13 @@ measured preview or raw limit, and drains the complete frame.
 Cancellation, timeout, unexpected framing, or a short body poisons and restarts the
 process. Only validated full OIDs enter the line protocol; byte paths are resolved
 separately through NUL-framed tree lookup.
-Promisor misses are reported as `object_unavailable` with implicit lazy fetch disabled;
-the object-job port owns any subsequent network request.
-Focused tests pin a tree-named missing blob against a hanging promisor: the miss returns
-in bounded time, and a later present blob still reads on the same batch actor.
+A blob the tree names but the store lacks, which only a damaged store can produce, is
+reported as `object_unavailable`, and a later present blob still reads on the same batch
+actor.
 
-A valid repository subject opens without network access.
-Git refs and objects refresh only for an explicit refresh or when a requested ref or
-object is absent, which is a typed content miss rather than a cache-hit refresh.
-Provider observations have a separate stale-while-revalidate policy: invoking an enabled
-hosted capability reads the current valid snapshot immediately and may schedule one
-coalesced refresh when its declared profile is stale.
-An explicit offline mode suppresses that refresh, and deterministic cache-hit tests use
-offline mode. Failure leaves prior validated refs, subjects, and provider snapshots
-available with honest stale or offline state.
+A valid repository subject opens without network access, and every read answers from the
+store alone, with the origin reachable or not.
+Refresh and its freshness window belong to the thin-mirror plan.
 
 ## Shared Provider Mirror
 
@@ -546,72 +386,43 @@ If a provider ref moves between API observation and Git fetch, publication verif
 fetched ref still matches `X`; otherwise it reacquires or reports the stale/unavailable
 state. It never combines metadata for one object with content from another.
 
-## Locks, Leases, and Reclamation
+## Locks and Deletion
 
 The fixed lock order is:
 
 1. application-home lock for layout migration and global enumeration;
-2. source-alias lock for alias creation or compare-and-swap repointing;
+2. source-alias lock for alias creation;
 3. one or more repository-store locks in ascending `RepositoryStoreId` order for store
-   directory publication and removal, store records, and ref compare-and-swap; and
-4. provider-resource lock for binding, snapshot publication, pointer movement, and
-   provider reclamation.
+   directory publication and store records; and
+4. provider-resource lock, whose use belongs to the provider plan.
 
-Network work and long-running Git processes, including `gc` and `repack`, hold none of
-these locks. Publication reacquires only the required locks, in order, and revalidates
-its generation and authorization context.
-Repository refs and provider `current` and `last-complete` pointers use compare-and-swap
-publication against the generation observed before staging; stale jobs cannot move a
-pointer backward or replace a newer observation.
-A local checkout is never a lock target.
+Network work and long-running Git processes hold none of these locks, and a local
+checkout is never a lock target.
+Acquisition takes the alias lock and then the store lock and holds both from the store’s
+rename through the alias commit, so every alias that names a store is written under that
+store’s lock. `tests/test_cache_publish.py` checks that the real acquisition holds both
+at the store rename, the alias write, and the source rename.
 
-Each store has a lease: the maintenance lock file
-`cache/locks/stores/<store-key>.maintenance.lock`, which lives outside the store
-directory so purge and reclamation never rename it.
-Every lease and every lock attempt uses its own `open()` of the lock file, and
-descriptors are never shared or duplicated between holders, even in one process: `flock`
-belongs to the open file description, and a measured exclusive request through a `dup()`
-of a shared lease descriptor was granted and converted the lease.
-A live subject, an acquisition from before its store is published until its alias is
-published, and a fetch job from before its network work until publication hold it
-shared, blocking only while holding no ordered lock.
-`gc` and `repack` run under its exclusive form alone, never under the repository-store
-lock; reclamation, purge, and quarantine take the exclusive form before their ordered
-locks. The exclusive form never blocks, so a lease defers maintenance and refuses purge.
-Process exit releases the shared lock, including after a crash.
+Nothing deletes or moves a published store or source.
+A reader reaches a store only through its alias and takes no lock, and nothing removes
+objects from a store.
+A store no alias names, which a crash between the two renames leaves, stays until the
+next acquisition of its source reuses it.
+The only deletion is the startup sweep: a staging entry carries a liveness lock that is
+only tried without blocking, and the sweep deletes an entry whose lock is free.
+Quarantine, trash, and automatic store reclamation were removed with the thin-mirror
+Simplify step; a purge command for stores is deferred until after the alpha.
+
+Every lock attempt uses its own `open()` of the lock file, and descriptors are never
+shared or duplicated between holders, even in one process: `flock` belongs to the open
+file description, and a request through a `dup()` of a held descriptor is granted
+instead of contending.
 No cache lock blocks the event loop, and `_acquire` in `cache/locks.py` refuses a
 blocking lock on a thread that runs one.
-Opening the cache, publication, and the subject-ref write each run as one synchronous
-section in a worker thread and release their locks before returning.
-A lease or staging entry that async code keeps across `await` is recorded for the
-event-loop thread that keeps it, although a worker thread opens and locks it, so a
-pooled worker never carries a lock into unrelated work; a lease waits for a maintenance
-holder by retrying rather than by blocking a thread.
-Automatic Git maintenance is disabled in every store’s configuration, so maintenance
-runs only under that lock.
-Because an acquisition holds the lease until its alias exists, reclamation cannot trash
-a store between its publication and its alias.
-Purge and quarantine move the alias before the store, so a crash between the two moves
-leaves an ordinary unreferenced store.
-An exhaustive interleaving check in `tests/test_repository_cache_contract_fixtures.py`
-proves both from an empty cache and from an existing alias and store with those crashes
-allowed, and finds the race in the design without the lease and in either move made in
-the other order. It gives each process its own locks, which is sound only because of the
-per-`open()` rule. Configuration mismatches follow the same path: a process that finds a
-store’s configuration snapshot changed runs no Git on it, releases its lease, and
-requests quarantine, which waits for the exclusive lock and leaves the store refused
-meanwhile. Durable private refs separately keep every object promised for offline reuse
-reachable to Git when no process is running.
-Provider snapshot readers similarly hold a shared lock on the published generation while
-reclamation takes the exclusive lock before moving it to trash.
-Lock files exist before publication so a read-only cache hit opens them without creating
-state. Windows reclamation moves only after exclusive acquisition and never depends on
-unlinking an open file.
-
-Reclamation preserves objects reachable from live subjects, durable provider-selected
-refs, current and last-complete pointers, bounded diagnostics, and archival pins.
-Removing one attachment or source alias cannot reclaim state still reachable through
-another consumer.
+Opening the cache and publication each run as one synchronous section in a worker thread
+and release their locks before returning.
+The lock order and state machines are
+`tests/fixtures/repository-cache/state-machines.json`.
 
 ## Implementation Seams
 
@@ -623,12 +434,12 @@ in [Views, Models, and Routes](arch-views-models-routes.md).
 
 | Area | Implemented at | Responsibility |
 | --- | --- | --- |
-| Subject and Git target | `source.py`: `RepositorySubject`, `AttachedFilesystemSubject`, `SourceSession`; `git/tree_source.py`: `GitRevisionSubject`; `git/process.py`: `GitCommandTarget`, `GitLocation`, `run_git`, `run_git_at`, `spawn_git_process` | Separate session selection from a filesystem path. `metab` can `--show` or non-cache `--api` a leased `file://` pin in-process |
-| Content source | `source.py`: `SourceCapabilities`, `ContentSource`, `ContentHandle`, `FilesystemContentSource`; `inventory_engine/coordinator.py`: `open_subject`; `cli/git_pin_cli.py`: leased `file://` pin; `git/tree_source.py`: `GitTreeSource` | One capability-gated content contract for an attached filesystem and an immutable revision, with no invented mtime, ignore state, or watcher. Inventory open on a Git pin leaves the walker closed and reports a complete-at-once index. What each route answers on a pin is in [Git and Comparison Sources](arch-git-and-comparison-sources.md) |
+| Subject and Git target | `source.py`: `RepositorySubject`, `AttachedFilesystemSubject`, `SourceSession`; `git/tree_source.py`: `GitRevisionSubject`; `git/process.py`: `GitCommandTarget`, `GitLocation`, `run_git`, `run_git_at`, `spawn_git_process` | Separate session selection from a filesystem path. `metab` can `--show` or non-cache `--api` a `file://` pin in-process |
+| Content source | `source.py`: `SourceCapabilities`, `ContentSource`, `ContentHandle`, `FilesystemContentSource`; `inventory_engine/coordinator.py`: `open_subject`; `cli/git_pin_cli.py`: `file://` pin; `git/tree_source.py`: `GitTreeSource` | One capability-gated content contract for an attached filesystem and an immutable revision, with no invented mtime, ignore state, or watcher. Inventory open on a Git pin leaves the walker closed and reports a complete-at-once index. What each route answers on a pin is in [Git and Comparison Sources](arch-git-and-comparison-sources.md) |
 | Plugin content reader | `plugin_api.py`: `resolve_content`, `resolve_content_container`, `stat_content`, `read_content_window`, `ContentRef`, `ContentStat`, `ContentWindow`; `source.py`: `FilesystemContentSource.open_ref`, `read_artifact_window`; `git/tree_source.py`: `GitTreeSource.open_ref`, `blob_logical_ext`; `content_errors.py`: `ContentReadError`, `ContentUnavailableError` | One bounded, source-agnostic read for plugin data hooks over an opaque `ContentRef`, with every read taking an explicit byte maximum and no unbounded variant, filesystem work in the thread pool and pinned reads through the pooled `cat-file` actors, and one catchable failure family carrying the `code` and `http_status` the pinned routes answer with. The four built-in data hooks that read bytes hold no Git import and no source-kind branch |
 | Plugin and route bridge | `plugin_api.py`: `open_content`, `source_capabilities`, `require_source_capability`, filesystem-only path helpers; `server.py`, `events_route.py`, `git/routes.py`, `git/content_routes.py`, `git/repo.py`, `git/history.py`; `diff/adapters/git.py`: `GitDiffSource`; `builtin_plugins/diff/sidekick.py`: comparison, document, and children hooks; `builtin_plugins/binary/sidekick.py`: chunk hook; `builtin_plugins/structured`: parsed hook; `builtin_plugins/agent_log/sidekick.py`: charts hook; `plugin_loader/classify.py`: `classify_identity` | Resolve the active content-source handle rather than assuming the global root is a `Path`; capability-gate recency, ignore, watcher, activity, mutation, and Git listing sizes; honor a pinned `GitRevisionSubject` on Git collection, file, raw, tree, rollup, catalog, index status, capabilities, tree filter tallies, tree summary, filtered tree totals, include_ignored no-op, tree depth, file envelope ext, markdown frontmatter, text preview window, in-tree symlink follow including plugin sidekicks, diff-comparison including `GitDiffSource.content`, KPress, patch-file container, binary-chunk, identity-and-content-kind, structured-parsed, and agent-log routes, and image preview; keep route, CLI, and golden parity |
 | Revision tree | `git/tree_source.py`: `GitPath`, `GitTreeSource`, `GitRevisionSubject`, `list_tree`, `read_blob`; shared per-store `cat-file --batch-command --buffer` pool (`MAX_BATCH_READERS_PER_STORE`); `git/content_routes.py`: file, raw, tree, catalog, `split_git_container_wire`, and extension plugin kinds | Enumerate NUL-framed byte-safe full-OID trees and read size-gated blobs from a `RepositoryStoreTarget` with no materialization. `GitPath` wires are the identity on every route that accepts one, and blob kinds come from extension, basename, sniffed adapter, and bounded JSON/YAML/frontmatter mappings. The per-route projections are in [Git and Comparison Sources](arch-git-and-comparison-sources.md) |
-| Repository store | `cache/repository_store.py`: `lease_revision`, `maintain_store`, `subject_revision_ref`; `cache/records.py`: source aliases and store state; `cache/acquire.py`: `acquire_file_source` | `lease_revision` holds the store’s shared maintenance lock and a durable `refs/metabrowser/subjects/<oid>` ref for a live pinned commit. `maintain_store` runs `gc` and `repack` under the exclusive maintenance lock alone. Acquisition covers `file://` sources |
+| Repository store | `cache/repository_store.py`: `open_revision`; `cache/records.py`: source aliases and store state; `cache/acquire.py`: `acquire_file_source`; `cache/reclaim.py`: staging sweep | `open_revision` checks that a commit is in the published store and returns its `GitRevisionSubject`, writing nothing and holding no lock. Acquisition fetches every object of a `file://` source and publishes the store and its alias under the alias and store locks. Nothing deletes a published store |
 | Remote discovery | `repository_context.py`: `discover_repository_context` | Read a checkout’s `origin` remote and `HEAD` without running Git, so a provider candidate can be recognized before any network work |
 | File and raw routes | `view_routes.py`, `server.py`, `git/content_routes.py`, `plugin_api.py`; `static/navigation.js`: `displayPath` | Resolve the active content-source handle rather than assuming the global root is a `Path`; Git subjects use `GitPath` wire identities for `/view/`, file, raw, tree, KPress, patch-file containers, identity-and-content plugin kinds, structured parsed, agent-log JSONL, and image preview; Markdown and wiki links on a pin encode authored segments as `GitPath` wires; SPA path chrome decodes those wires to display names (C0 and invalid UTF-8 become U+FFFD); retain route, CLI, and golden parity for filesystem browsing |
 
@@ -640,8 +451,7 @@ lacks.
 
 | Area | Planned boundary | Responsibility |
 | --- | --- | --- |
-| Store acquisition and convergence | `cache/repository_store.py`: `resolve_store`, `stage_fetch`, `publish_refs`, `converge_store`, `reclaim_objects`; `cache/records.py`: `StagedFetch` | Acquire `https` and `ssh` sources, publish refs under compare-and-swap, converge aliases on one store, and reclaim unreachable objects |
-| Fetch jobs and credentials | `cache/jobs.py`: `GitFetchCredentialLeaseRegistry`, `validate_git_fetch_credential_lease`; `provider_process.py`: `issue_git_fetch_credential_lease`; the askpass bridge in `git/process.py`, which today only disables prompting | Coalesce authorized fetch jobs and project a validated lease into a Git run with no token in argv, environment, records, or diagnostics |
+| HTTPS acquisition and refresh | `cache/acquire.py` | Clone `https` sources and refresh a store with `git fetch` under one lock per mirror, with `gh` as the credential helper for a private fetch; the [thin-mirror plan](../specs/active/plan-2026-09-23-v012-thin-mirror.md) owns the design |
 | Source attachments | A neutral provider-resources module for source binding and local-availability records | Map local and managed sources to stable provider repository identity without storing local paths or requiring a cache entry. `ProviderBinding`, `LocalGitObjectAvailability`, `AuthorizationContextRef`, and `authorization_context_key` live today in `builtin_plugins/hosted_review/models.py` and move under `mb-s0gv` |
 | Provider mirror | `provider_resources/store.py`: `stage_snapshot`, `publish_manifest`, `read_current`, `read_last_complete`, `lease_snapshot`, `reclaim_snapshots` | Publish one repository-scoped, auth-scoped mirror reused by every attachment. The package holds only `profiles.py` today |
 | Provider ports | `plugin_api.py`: opaque `GitFetchCredentialLease`, `provider_fetch_authorization_context`, `RepositoryContentPort.open_subject`, `RepositoryObjectJobPort.request_selected_refs`, `ProviderResourceStorePort.stage`, `publish`, `read`, `lease` | Inject narrow cancellable capabilities with typed unavailable, authorization, stale-generation, and publication failures; selected-ref requests carry a non-secret context plus an unforgeable registry handle, never tokens, unrestricted sources, core stores, or paths |
@@ -681,56 +491,24 @@ The architecture is satisfied only when tests prove:
   without any checkout, index, branch switch, or worktree directory;
 - one server exposes exactly one active subject generation, while two processes can
   browse different subjects and share the store without cache or event cross-talk;
-- a dirty attached checkout remains byte-for-byte unchanged while provider data and
-  selected refs refresh;
-- two local clones plus HTTPS and SSH URL opens for one stable provider repository share
-  one provider mirror and converge on one repository store;
-- provider records can be cached and refreshed for an attached checkout before a managed
-  repository store exists;
-- a force-push race cannot publish a provider/Git combination with mismatched object
-  IDs;
-- two processes racing to refresh one ref or provider resource cannot let a slower,
-  stale job regress a ref or pointer after a newer generation publishes;
-- authorization contexts never share pointers, validators, deletion evidence, or
-  freshness merely because object bytes deduplicate;
-- provider kind and visibility-partition differences map to distinct `ProviderPrincipal`
-  job keys, and a malformed or mismatched `AuthorizationContextRef` is rejected before
-  coalescing;
-- an authenticated provider observation and its selected Git fetch use the same stable
-  principal even when ambient Git credentials name another account, and a missing,
-  unregistered, expired, revoked, or mismatched lease fails closed without an ambient
-  fallback, including for a request that joins in-flight work;
-- a handle object that claims one principal but is registered for another authorization
-  context, or is not registered at all, is rejected by the registry lookup, and a
-  deferred fetch succeeds with a later session’s lease for an equal key;
-- a token-only private-provider fixture can fetch selected objects with ambient Git
-  authentication disabled, while argv, environment, diagnostics, files, records, ref
-  names, and cancellation output remain secret-free even with `GIT_TRACE_CURL` set in
-  the parent, proved against a local HTTPS fixture whose test certificate authority
-  arrives through an allowed certificate variable;
-- a conflicting `.netrc` login, SSH agent, credential helper, SSH `insteadOf` rewrite,
-  and extra authorization header in system, global, environment-injected, template, or
-  repository-local configuration are neither consulted nor written by a
-  provider-principal fetch;
-- an HTTP redirect to another host fails with a typed error and never receives the
-  credential, and the broker answers only an armed run’s normalized source URL, never a
-  request from a cancelled, restarted, or revoked run;
-- fork PR base, head, and merge objects are fetched through the base repository store’s
-  own remote from provider-published pull refs, including after a fork is deleted, and
-  never by fork URL, under leases for the observation’s authorization-context key, with
-  broker crash, revocation, and cancellation reaping Git and its askpass bridge;
+- a dirty attached checkout remains byte-for-byte unchanged while provider data and refs
+  refresh;
+- an acquired store is complete: every read family answers from it with its origin
+  deleted, and no read changes its objects;
+- a crash between a store’s publication and its alias leaves an unreferenced store that
+  the next acquisition of the source reuses, and no alias ever names an absent store;
 - a valid cached view opens while another client refreshes, and failed refresh leaves
   the prior validated observation available;
-- purging or detaching one consumer does not remove objects or snapshots leased or
-  reachable by another; and
-- a crash releases live OS leases, while durable refs keep promised offline objects
-  reachable; GC, repack, provider reclamation, and Windows trash movement wait for the
-  exclusive maintenance lock;
-- cancellation mid-blob, an oversized blob, a promisor miss, invalid UTF-8, a newline in
+- purging one source does not remove a store another alias names;
+- cancellation mid-blob, an oversized blob, a missing blob, invalid UTF-8, a newline in
   a Git name, a symlink, and a gitlink all produce the specified bounded result without
   desynchronizing another reader; and
 - every new route, model, persisted state, and browser interaction has `metab` parity,
   exact goldens, and an architecture-map entry when it becomes registered.
+
+The thin-mirror plan’s
+[Testing](../specs/active/plan-2026-09-23-v012-thin-mirror.md#testing) section owns
+acceptance for HTTPS, refresh, GitHub authentication, and pull-request data.
 
 ## Measured Decisions
 
@@ -745,33 +523,8 @@ are not budgets.
 - **Bare layout.** Bare and no-checkout stores cost the same to acquire and store,
   within run-to-run variation, but a no-checkout store keeps `core.bare=false`, an empty
   work tree, reflogs, and a local branch.
-  The store is created with `git init --bare`, and refs arrive through explicit refspecs
-  into Metabrowser-owned names.
-- **Blobless acquisition with default-revision prefetch.** Serving the default
-  revision’s complete tree took 5.8–5.9 s blobless against 8.8–17.8 s full for
-  `python/mypy` over HTTPS; `pallets/flask`’s advantage was small and variable.
-  Every object took longer blobless, so convergence runs after serving.
-  There is no size threshold: generic Git offers no size before transfer.
-- **Explicit convergence, not `git backfill`.** Backfill left every blob outside
-  `HEAD`’s history missing (1,318 objects for mypy) and did nothing when `HEAD` was
-  unborn; one object-ID request of 53,607 IDs converged in 16–25 s, in two runs always
-  taken after backfill.
-  Requests carry at most 50,000 IDs, and object-ID fetches bound stalls with
-  `http.lowSpeedLimit` and `http.lowSpeedTime`; initial acquisition has no such bound
-  until one is measured.
-- **No implicit lazy fetch.** With Git defaults a blob read waited past 20 s on a remote
-  that never answered, and `remote.<name>.promisor=false` did not prevent it; with
-  `GIT_NO_LAZY_FETCH=1` it failed in 8 ms and the batch protocol stayed framed.
-  Checking a diff’s `--no-renames` change set first was sufficient in 40 of 40
-  comparisons.
-- **Blob modes only, and split rejected requests.** A want list containing a gitlink
-  failed with `not our ref` and fetched nothing, so only blob-mode entries are
-  requested, and a per-object rejection splits the list down to single object IDs,
-  stopping after 8 rejected IDs, a provisional cost policy, and deferring the rest.
-- **Only recorded promisor remotes, and a verified configuration.** A fork fetched by
-  URL changed a blobless store’s configuration or broke its next `gc`, so jobs name only
-  remotes in the store’s configuration snapshot, and every Git process verifies that
-  snapshot first; six ordinary store operations after the first fetch left it unchanged.
+  The store is created with `git init --bare`, and refs arrive through explicit
+  refspecs: branches under `refs/remotes/origin/`, and tags.
 - **No mailmap on store reads.** With Git defaults, history and commit reads loaded
   `HEAD:.mailmap`, and with lazy fetch disabled they printed an error and exited 0.
 - **Automatic maintenance disabled, umask `077`.** Each fetch, including each lazy
@@ -784,17 +537,6 @@ are not budgets.
 - **Shared store for concurrent subjects.** Readers of different object IDs ran
   concurrently with byte-identical output, and readers saw no failure across
   `repack -a -d` and `gc --prune=now`.
-- **Coalesce in process; fetch directly into the store across processes.** Concurrent
-  same-ref jobs into one blobless store never failed and published once; their extra
-  promisor packs compacted under `gc --prune=now` and `repack -a -d` with no object lost
-  and no bitmap setting changed.
-  Staging through a separate repository with the store as an alternate failed on the
-  same store, at import or at the next repack.
-- **Durable refs for offline promises.** Only a ref kept an object through
-  `gc --prune=now` in a full store, and bare stores write no reflogs.
-  In a blobless store a discarded job’s objects survived `gc --prune=now`,
-  `repack -a -d`, and `prune --expire=now`, so they accumulate until a later explicit
-  compaction.
 - **`flock`, lock-based liveness, and locked no-replace publication.** A killed `flock`
   holder released in 2.8 ms, a `lockf` lock vanished when an unrelated descriptor
   closed, and `os.rename` replaced an empty directory.
@@ -803,14 +545,30 @@ are not budgets.
   The lock order and state machines are
   `tests/fixtures/repository-cache/state-machines.json`.
 
+The thin-mirror plan reversed the choices that served partial clones on 2026-09-23.
+Their measurements stay in the exploration as the record to revisit:
+
+- **Blobless acquisition with default-revision prefetch.** Serving the default
+  revision’s tree took 5.8–5.9 s blobless against 8.8–17.8 s full for `python/mypy` over
+  HTTPS. Stores are full clones now; blobless clones return only if a measurement shows
+  full clones too slow for common repositories.
+- **Explicit convergence, object-ID requests, and recorded promisor remotes.** No store
+  is missing objects, so nothing converges, requests blobs by ID, or has a promisor
+  remote. The configuration snapshot that guarded promisor remotes was never verified on
+  reads and is gone.
+- **No implicit lazy fetch.** `GIT_NO_LAZY_FETCH=1` stays set on every store read as
+  defense in depth; no behavior depends on it.
+- **Durable refs, coalesced fetch jobs, and job refs.** Nothing prunes a store, so a
+  commit stays reachable without a ref of Metabrowser’s own, and refresh is one plain
+  fetch under one lock per mirror.
+
 Still open, with owners:
 
 - tree-index and immutable directory-index bounds, which need browser measurements
   (Phase 1B-c);
-- refresh age and cross-process retry and contention bounds (Phase 2B and later cache
-  operations);
-- prune expiry, size accounting, and retention thresholds for repository objects (later
-  cache operations) and for provider artifacts (the provider plan);
+- refresh age and cross-process retry and contention bounds (the thin-mirror plan);
+- size accounting and a purge command for repository stores, which the thin-mirror plan
+  defers until after the alpha;
 - lock, rename, and case semantics beyond macOS: CI runs only on Linux, so Phase 1A adds
   a runtime probe at application-home setup that refuses a home whose locks or
   no-replace publication do not behave as frozen;
@@ -820,7 +578,7 @@ Still open, with owners:
 
 These choices may tune cost.
 They may not introduce shared working-tree state, make a local checkout cache authority,
-or weaken immutable and authorization-scoped publication.
+or weaken immutable publication.
 
 ## References
 
@@ -829,9 +587,9 @@ or weaken immutable and authorization-scoped publication.
 - [git-ls-tree](https://git-scm.com/docs/git-ls-tree) documents tree enumeration without
   a checkout.
 - [Partial clone](https://git-scm.com/docs/partial-clone) defines the
-  object-availability model evaluated before choosing any filtered acquisition policy.
-- [git-maintenance](https://git-scm.com/docs/git-maintenance) documents repository
-  maintenance whose scheduling must honor subject leases and store locks.
+  object-availability model evaluated before choosing full clones.
+- [git-maintenance](https://git-scm.com/docs/git-maintenance) documents the repository
+  maintenance that stays off in every store.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

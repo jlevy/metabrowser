@@ -33,15 +33,11 @@ from metabrowser.cache.locks import (
     LockOrderError,
     application_home_lock,
     held_locks,
-    job_entry_lock,
     provider_resource_lock,
     repository_store_lock,
     require_no_hierarchy_locks,
     source_alias_lock,
     staging_entry_lock,
-    store_lease,
-    store_maintenance_lock,
-    trash_entry_lock,
 )
 from metabrowser.home import (
     PrivateStorageError,
@@ -207,16 +203,6 @@ def test_network_work_is_refused_while_a_hierarchy_lock_is_held(home: Path) -> N
             require_no_hierarchy_locks("fetch")
 
 
-def test_a_lease_blocks_only_while_no_hierarchy_lock_is_held(home: Path) -> None:
-    with repository_store_lock(home, STORE_A):
-        with pytest.raises(LockOrderError, match="deadlock"):
-            store_lease(home, STORE_A)
-        with store_lease(home, STORE_A, blocking=False):
-            pass
-    with store_lease(home, STORE_A):
-        pass
-
-
 def test_locks_can_be_released_out_of_order_and_retaken(home: Path) -> None:
     alias = source_alias_lock(home, SLUG_A)
     store = repository_store_lock(home, STORE_A)
@@ -257,8 +243,7 @@ def test_a_worker_thread_is_its_own_holder_and_still_refuses_descending_locks(
 ) -> None:
     """A locked section moved off the event loop is not exempt from the order.
 
-    ``lease_revision`` runs its store-lock section through ``asyncio.to_thread`` so the
-    ``flock`` and the Git process it covers share one thread instead of spanning an
+    Blocking sections run through a worker thread so a ``flock`` never spans an
     ``await``. The worker is a holder like any other: it starts with nothing held, and
     a genuine descent within it is still refused before a descriptor is opened.
     """
@@ -296,41 +281,7 @@ def test_lock_keys_cannot_name_paths_outside_their_directory(
         call(home)
 
 
-# ── Descriptors, leases, and exclusion ─────────────────────────────
-
-
-def test_each_acquisition_owns_its_own_descriptor(home: Path) -> None:
-    first = store_lease(home, STORE_A)
-    second = store_lease(home, STORE_A, blocking=False)
-    try:
-        assert _descriptor(first) != _descriptor(second)
-        assert os.fstat(_descriptor(first)).st_ino == os.fstat(_descriptor(second)).st_ino
-    finally:
-        second.release()
-        first.release()
-
-
-def test_an_exclusive_attempt_is_refused_while_this_process_holds_a_shared_lease(
-    home: Path,
-) -> None:
-    with store_lease(home, STORE_A):
-        with pytest.raises(LockOrderError, match="other mode"):
-            store_maintenance_lock(home, STORE_A)
-        outcome: list[BaseException | None] = []
-
-        def other_thread() -> None:
-            try:
-                store_maintenance_lock(home, STORE_A).release()
-                outcome.append(None)
-            except BaseException as error:
-                outcome.append(error)
-
-        thread = threading.Thread(target=other_thread)
-        thread.start()
-        thread.join(CHILD_TIMEOUT)
-        assert len(outcome) == 1 and isinstance(outcome[0], LockBusyError)
-    with store_maintenance_lock(home, STORE_A):
-        pass
+# ── Descriptors and exclusion ──────────────────────────────────────
 
 
 def test_a_second_process_cannot_take_a_held_lock_until_its_holder_dies(home: Path) -> None:
@@ -341,21 +292,6 @@ def test_a_second_process_cannot_take_a_held_lock_until_its_holder_dies(home: Pa
         holder.kill()
         lock = repository_store_lock(home, STORE_A)
         lock.release()
-    finally:
-        if holder.process.poll() is None:
-            holder.kill()
-
-
-def test_shared_leases_coexist_across_processes_and_defer_maintenance(home: Path) -> None:
-    holder = _Holder(home, f"locks.store_lease(home, {STORE_A!r})")
-    try:
-        with store_lease(home, STORE_A, blocking=False):
-            pass
-        with pytest.raises(LockBusyError):
-            store_maintenance_lock(home, STORE_A)
-        holder.release()
-        with store_maintenance_lock(home, STORE_A):
-            pass
     finally:
         if holder.process.poll() is None:
             holder.kill()
@@ -395,22 +331,13 @@ def test_a_waiter_on_a_replaced_lock_file_retries_on_the_new_file(
         second.release()
 
 
-@pytest.mark.parametrize(
-    "call",
-    [
-        lambda home: staging_entry_lock(home, "acquire-1"),
-        lambda home: trash_entry_lock(home, "purge-1"),
-        lambda home: job_entry_lock(home, "job-1"),
-    ],
-    ids=["staging", "trash", "job"],
-)
-def test_entry_liveness_locks_never_block(home: Path, call: Callable[[Path], CacheLock]) -> None:
-    holder_lock = call(home)
+def test_a_staging_liveness_lock_never_blocks(home: Path) -> None:
+    holder_lock = staging_entry_lock(home, "acquire-1")
     outcome: list[BaseException | None] = []
 
     def other_thread() -> None:
         try:
-            call(home).release()
+            staging_entry_lock(home, "acquire-1").release()
             outcome.append(None)
         except BaseException as error:
             outcome.append(error)
@@ -461,8 +388,8 @@ def test_lock_files_live_only_under_cache_locks(home: Path) -> None:
         repository_store_lock(home, STORE_A) as store,
     ):
         paths = [home_lock.relative_path, alias.relative_path, store.relative_path]
-    with store_lease(home, STORE_A) as lease, staging_entry_lock(home, "acquire-1") as staging:
-        paths += [lease.relative_path, staging.relative_path]
+    with staging_entry_lock(home, "acquire-1") as staging:
+        paths.append(staging.relative_path)
     assert all(path.startswith("cache/locks/") for path in paths)
     assert all(_mode(home / path) == 0o600 for path in paths)
 
@@ -569,7 +496,7 @@ def test_record_locks_that_survive_every_close_are_still_refused_in_process(
     with pytest.raises(PrivateStorageError, match="separate descriptor"):
         probe.probe_application_home(home, force=True)
 
-    assert asked == ["ex sh=busy busy"]
+    assert asked == ["try=busy"]
 
 
 def test_a_home_whose_locks_do_not_exclude_another_process_is_refused(
@@ -615,10 +542,6 @@ def test_locks_module_exports_every_side_lock() -> None:
         "repository_store",
         "provider_resource",
         "staging_entry",
-        "trash_entry",
-        "job_entry",
-        "maintenance_shared",
-        "maintenance_exclusive",
     }
     assert locks.HIERARCHY_RANKS == {
         LockKind.HOME: 1,

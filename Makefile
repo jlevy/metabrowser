@@ -98,7 +98,7 @@ test:
 # job builds each admitted release and sets METABROWSER_REQUIRE_ADMITTED_GIT, which
 # turns that skip into a failure; see tests/admitted_git.py.
 ADMITTED_GIT_TESTS := \
-	tests/test_git_lazy_fetch_acceptance.py \
+	tests/test_git_full_clone_acceptance.py \
 	tests/test_cli_live_acquire_golden.py \
 	tests/test_cache_acquire.py \
 	tests/test_cache_publish.py \
@@ -106,7 +106,7 @@ ADMITTED_GIT_TESTS := \
 	tests/test_cli_cache_acquire_golden.py \
 	tests/test_cli_git_pin_golden.py \
 	tests/test_cli_git_pin_show_selection.py \
-	tests/test_git_revision_lease.py \
+	tests/test_git_revision_open.py \
 	tests/test_git_store_read_policy.py \
 	tests/test_git_tree_source.py \
 	tests/test_git_revision_content_routes.py \

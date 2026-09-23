@@ -40,8 +40,8 @@ Kind checks use the leaf path.
 `include_ignored=0` is a no-op because ignore is absent.
 `depth` nests SPA children the way filesystem listings do (default 2) and emits a lazy
 sentinel past the cap.
-LFS pointers stay stored bytes; a promisor miss is `object_unavailable` with lazy fetch
-disabled. Serving acquired Git remains later.
+LFS pointers stay stored bytes; a blob the store lacks is `object_unavailable`. Serving
+acquired Git remains later.
 See
 [Repository Sources and Provider Mirrors](arch-repository-sources-and-provider-mirrors.md).
 
@@ -263,21 +263,19 @@ trusted `GitCommandTarget` constructed by core.
 The process boundary converts that handle into fixed arguments while continuing to scrub
 ambient repository environment variables.
 Caller-supplied paths do not become `GIT_DIR`, `GIT_WORK_TREE`, or environment
-overrides. Store reads disable mailmap and implicit lazy fetch.
+overrides. Store reads disable mailmap, and implicit lazy fetch as defense in depth: a
+store is a full clone with no promisor remote.
 The spawn seam refuses any policy that would leave lazy fetch on for a store target.
 For a repository-store target, history and detail start from the subject’s pinned full
 object ID rather than ambient `HEAD`; refs remain optional observations.
-Commit detail and the diff comparison list their change set with `--raw --no-renames`
-and check its blobs with one batch `info` before the blob-reading command runs
-(`metabrowser/git/change_set.py`). A blob the store lacks is then a typed 404
-`object_unavailable` naming the object ID, not a Git failure.
+Commit detail and the diff comparison run Git directly, because a full store holds every
+blob they read.
 
 The immutable content source resolves a full object ID to one tree, enumerates paths
 with NUL-framed `ls-tree` output, and reads bounded blobs through owned batch `cat-file`
 processes. One actor serializes each batch process, issues `info` before `contents`,
 enforces the declared size bound, drains the complete frame, and restarts the process
 after cancellation or framing failure.
-Implicit promisor fetch is disabled.
 Tree entries have Git mode, kind, and object ID; blob size comes from `cat-file` info at
 listing and read time, not from `ls-tree -l`. They do not invent filesystem mtimes,
 ignore state, ownership, or watcher events.
@@ -304,8 +302,8 @@ Listings do not follow symlinks.
 File, raw, KPress, and plugin sidekicks follow in-tree relative symlink blobs.
 Gitlinks are distinct non-folder entries, and LFS pointers remain ordinary blobs (stored
 pointer bytes, no smudge).
-A blob the tree names but the store lacks, including a promisor miss with
-`GIT_NO_LAZY_FETCH`, is `object_unavailable` and does not contact the remote.
+A blob the tree names but the store lacks, which only a damaged store can produce, is
+`object_unavailable` and does not contact the remote.
 `/view/` on that subject accepts a `GitPath` wire, optionally plus a patch-file
 container inner, and refuses a filesystem spelling.
 `/api/tree` keeps Git-native `entries` and also projects a SPA `tree` array

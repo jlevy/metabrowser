@@ -142,18 +142,6 @@ ACQUISITION_POLICY: Final[GitProcessPolicy] = GitProcessPolicy(
     extra_env={"GCM_INTERACTIVE": "never", "LC_ALL": "C"},
     own_process_group=True,
 )
-FETCH_POLICY: Final[GitProcessPolicy] = GitProcessPolicy(
-    name="fetch",
-    timeout_s=GIT_ACQUISITION_TIMEOUT_S,
-    max_bytes=GIT_SUBPROCESS_MAX_BYTES,
-    stdin="devnull",
-    child_umask=0o077,
-    isolate_user_config=True,
-    no_lazy_fetch=True,
-    ssh_batch=True,
-    extra_env={"GCM_INTERACTIVE": "never", "LC_ALL": "C"},
-    own_process_group=True,
-)
 # Request-path reads of a published store: ``ls-tree``, ``rev-parse``, ``log``,
 # ``rev-list``, ``show``, ``diff``. The store holds untrusted content, so the
 # isolation is acquisition-grade and lazy fetch is off. The deadline is the
@@ -177,8 +165,6 @@ BATCH_OBJECT_POLICY: Final[GitProcessPolicy] = GitProcessPolicy(
     child_umask=0o077,
     isolate_user_config=True,
     no_lazy_fetch=True,
-    # Untranslated stderr: an older Git's refused lazy fetch is read from it.
-    extra_env={"LC_ALL": "C"},
 )
 
 
@@ -379,12 +365,11 @@ def _default_policy(target: GitCommandTarget | None) -> GitProcessPolicy:
 def _require_no_lazy_fetch(target: GitCommandTarget | None, policy: GitProcessPolicy) -> None:
     """Refuse a store spawn whose policy would let Git fetch a missing object itself.
 
-    The open-repository plan's lazy-fetch decision: every Git process on a
-    worktree-free store runs with ``GIT_NO_LAZY_FETCH=1``, so a blob the store
-    lacks is reported as unavailable instead of fetched from the promisor remote
-    inside a request. Objects enter a store only through an explicit fetch.
-    Checking here, where every store spawn passes, keeps that true for callers
-    that name a policy as well as for those that inherit the default.
+    Stores are full clones with no promisor remote, so this is defense in depth:
+    every Git process on a worktree-free store runs with ``GIT_NO_LAZY_FETCH=1``,
+    and objects enter a store only through an explicit fetch, never inside a
+    request. Checking here, where every store spawn passes, keeps that true for
+    callers that name a policy as well as for those that inherit the default.
     """
 
     if isinstance(target, RepositoryStoreTarget) and not policy.no_lazy_fetch:
@@ -402,9 +387,9 @@ def git_environment(policy: GitProcessPolicy | None = None) -> dict[str, str]:
     repository needing credentials fails fast instead of blocking the
     request on a prompt that has no terminal to appear on.
 
-    An acquisition, fetch, or batch-object policy also drops every inherited
-    ``GIT_*`` variable, isolates user and system Git configuration, disables
-    implicit lazy fetch, and can force SSH batch mode. Those extras are not
+    An isolated policy (acquisition, store read, or batch object) also drops every
+    inherited ``GIT_*`` variable, isolates user and system Git configuration,
+    disables implicit lazy fetch, and can force SSH batch mode. Those extras are not
     applied to ordinary local reads, which keep honoring the caller's Git
     environment.
     """
@@ -471,7 +456,6 @@ async def run_git(
     policy: GitProcessPolicy | None = None,
     timeout_s: float | None = None,
     max_bytes: int | None = None,
-    stdin: bytes | None = None,
 ) -> bytes:
     """Run ``git`` with *args* in *cwd* and return raw stdout.
 
@@ -483,47 +467,28 @@ async def run_git(
     Pass *target* for a core-constructed repository; *cwd* remains the
     path used by local-worktree readers. *timeout_s* and *max_bytes*
     override the selected policy when a caller already named a bound.
-    *stdin* is reserved for bounded, validated input such as an object-ID
-    list; it opens a pipe even when the policy would otherwise use
-    ``DEVNULL``.
 
     Raises :class:`GitUnavailableError`, :class:`GitTimeoutError`,
     :class:`GitOutputTooLargeError`, or :class:`GitCommandError`.
     """
     chosen = policy if policy is not None else _default_policy(target)
-    proc = await spawn_git_process(
-        args, cwd=cwd, target=target, policy=chosen, pipe_stdin=stdin is not None
-    )
+    proc = await spawn_git_process(args, cwd=cwd, target=target, policy=chosen)
     timeout = chosen.timeout_s if timeout_s is None else timeout_s
     max_bytes = chosen.max_bytes if max_bytes is None else max_bytes
-
-    async def write_stdin() -> None:
-        writer = proc.stdin
-        if writer is None or stdin is None:
-            return
-        try:
-            writer.write(stdin)
-            await writer.drain()
-        except (BrokenPipeError, ConnectionResetError):
-            pass
-        finally:
-            writer.close()
 
     # stdout and stderr are drained concurrently. Reading them in
     # sequence deadlocks as soon as git fills the pipe we are not
     # reading, which a repository with a lot of output will do.
     stdout_task = asyncio.ensure_future(_read_capped(proc.stdout, max_bytes))
     stderr_task = asyncio.ensure_future(_read_capped(proc.stderr, _STDERR_MAX_BYTES))
-    stdin_task = asyncio.ensure_future(write_stdin())
     try:
-        (stdout, overflowed), (stderr, _), _, returncode = await asyncio.wait_for(
-            asyncio.gather(stdout_task, stderr_task, stdin_task, proc.wait()),
+        (stdout, overflowed), (stderr, _), returncode = await asyncio.wait_for(
+            asyncio.gather(stdout_task, stderr_task, proc.wait()),
             timeout=timeout,
         )
     except TimeoutError:
         stdout_task.cancel()
         stderr_task.cancel()
-        stdin_task.cancel()
         await terminate_git_process(proc)
         raise GitTimeoutError(
             f"git {' '.join(args)} exceeded {timeout:g}s and was terminated"
@@ -535,7 +500,6 @@ async def run_git(
         # converting it to a GitError would swallow the shutdown signal.
         stdout_task.cancel()
         stderr_task.cancel()
-        stdin_task.cancel()
         await terminate_git_process(proc)
         raise
 
@@ -559,59 +523,6 @@ async def run_git(
         raise GitCommandError(args, returncode, stderr_summary)
 
     return stdout
-
-
-def run_git_blocking(
-    args: Sequence[str],
-    *,
-    target: GitCommandTarget,
-    policy: GitProcessPolicy,
-) -> None:
-    """Run a short ``git`` command that produces no stdout, blocking this thread.
-
-    The one shape :func:`run_git` cannot serve: a command that has to run inside a
-    cache lock. A hierarchy lock is owned by the thread that took it, and the
-    ``flock`` behind it blocks that thread, so the lock and the command it covers
-    belong to one thread rather than to a coroutine that spans an ``await``. Callers
-    on the event loop reach this through ``asyncio.to_thread``; see
-    :func:`metabrowser.cache.repository_store.lease_revision`.
-
-    stdin and stdout are ``DEVNULL``. A caller that needs stdout wants :func:`run_git`,
-    whose incremental drain bounds memory while the process is still running; this one
-    would have to buffer the whole stream before it could check a cap.
-    """
-
-    _require_no_lazy_fetch(target, policy)
-    exe = git_executable()
-    if exe is None:
-        raise GitUnavailableError("git executable not found on PATH")
-    prefix, work_cwd = _target_prefix_and_cwd(target)
-    env = git_environment(policy)
-    if policy.isolate_user_config:
-        env["GIT_CEILING_DIRECTORIES"] = str(work_cwd.resolve().parent)
-    try:
-        completed = subprocess.run(
-            (exe, *GIT_COMMON_ARGS, *prefix, *args),
-            cwd=work_cwd,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-            env=env,
-            umask=policy.child_umask if policy.child_umask is not None else -1,
-            timeout=policy.timeout_s,
-            check=False,
-        )
-    except subprocess.TimeoutExpired as exc:
-        # ``subprocess.run`` kills and reaps the child before re-raising.
-        raise GitTimeoutError(
-            f"git {' '.join(args)} exceeded {policy.timeout_s:g}s and was terminated"
-        ) from exc
-    except OSError as exc:
-        raise GitUnavailableError(f"could not run git: {exc}") from exc
-    if completed.returncode != 0:
-        summary = completed.stderr[:_STDERR_MAX_BYTES].decode("utf-8", errors="replace").strip()
-        log.debug("git %s exited %s: %s", " ".join(args), completed.returncode, summary)
-        raise GitCommandError(args, completed.returncode, summary)
 
 
 def _target_prefix_and_cwd(target: GitCommandTarget) -> tuple[tuple[str, ...], Path]:
@@ -700,7 +611,6 @@ async def run_git_at(
     policy: GitProcessPolicy | None = None,
     timeout_s: float | None = None,
     max_bytes: int | None = None,
-    stdin: bytes | None = None,
 ) -> bytes:
     """Run ``git`` at *location*, applying store isolation when it is a pin."""
 
@@ -711,7 +621,6 @@ async def run_git_at(
         policy=policy if policy is not None else location.read_policy,
         timeout_s=timeout_s,
         max_bytes=max_bytes,
-        stdin=stdin,
     )
 
 
@@ -814,18 +723,9 @@ def acquisition_allowed(version: tuple[int, int, int] | None) -> bool:
     return version >= ACQUISITION_NEWEST_PATCHED
 
 
-def initial_https_strategy(version: tuple[int, int, int] | None) -> Literal["blobless", "refused"]:
-    """Blobless is the initial HTTPS strategy above the acquisition floor."""
-    return "blobless" if acquisition_allowed(version) else "refused"
-
-
-def acquisition_gate_as_fixture(version_output: str) -> dict[str, bool | str]:
+def acquisition_gate_as_fixture(version_output: str) -> dict[str, bool]:
     """Project a version string into the git-version-gates fixture expected object."""
-    version = parse_git_version(version_output)
-    return {
-        "acquisition": acquisition_allowed(version),
-        "initial_strategy_for_https": initial_https_strategy(version),
-    }
+    return {"acquisition": acquisition_allowed(parse_git_version(version_output))}
 
 
 def parsed_git_version_as_fixture(version_output: str) -> list[int] | None:
@@ -875,7 +775,6 @@ __all__ = [
     "ACQUISITION_PATCHED_TRACKS",
     "ACQUISITION_POLICY",
     "BATCH_OBJECT_POLICY",
-    "FETCH_POLICY",
     "GIT_ACQUISITION_TIMEOUT_S",
     "GIT_DISABLE_MAILMAP_ARGS",
     "GitCommandError",
@@ -896,14 +795,12 @@ __all__ = [
     "failure_detail",
     "git_environment",
     "git_executable",
-    "initial_https_strategy",
     "parse_git_version",
     "parsed_git_version_as_fixture",
     "repository_store_target",
     "require_acquisition_git",
     "run_git",
     "run_git_at",
-    "run_git_blocking",
     "spawn_git_at",
     "spawn_git_process",
     "terminate_git_process",

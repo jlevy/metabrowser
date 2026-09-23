@@ -13,8 +13,8 @@ import pytest
 from metabrowser.git.process import (
     ACQUISITION_POLICY,
     BATCH_OBJECT_POLICY,
-    FETCH_POLICY,
     READ_POLICY,
+    STORE_READ_POLICY,
     GitCommandError,
     GitLocation,
     GitProcessPolicy,
@@ -76,14 +76,14 @@ def test_isolated_policies_ignore_environment_injected_config(
         config = tmp_path / "injected.config"
         config.write_text("[review]\n  injected = ambient\n")
         monkeypatch.setenv("GIT_CONFIG", str(config))
-    for policy in (ACQUISITION_POLICY, FETCH_POLICY, BATCH_OBJECT_POLICY):
+    for policy in (ACQUISITION_POLICY, STORE_READ_POLICY, BATCH_OBJECT_POLICY):
         result = asyncio.run(run_git(["config", "--list"], cwd=tmp_path, policy=policy))
         assert b"review.injected=ambient" not in result
     ordinary = asyncio.run(run_git(["config", "--list"], cwd=tmp_path, policy=READ_POLICY))
     assert b"review.injected=ambient" in ordinary
 
 
-@pytest.mark.parametrize("policy", [ACQUISITION_POLICY, FETCH_POLICY, BATCH_OBJECT_POLICY])
+@pytest.mark.parametrize("policy", [ACQUISITION_POLICY, STORE_READ_POLICY, BATCH_OBJECT_POLICY])
 def test_isolated_policies_ignore_an_ambient_protocol_allowlist(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, policy: GitProcessPolicy
 ) -> None:
@@ -105,7 +105,7 @@ def test_isolated_policies_drop_every_ambient_git_variable(
     monkeypatch.setenv("GIT_DEFAULT_REF_FORMAT", "reftable")
     monkeypatch.setenv("GIT_TRACE", "1")
     monkeypatch.setenv("GIT_SSH_COMMAND", "ssh -oProxyCommand=ambient")
-    for policy in (ACQUISITION_POLICY, FETCH_POLICY, BATCH_OBJECT_POLICY):
+    for policy in (ACQUISITION_POLICY, STORE_READ_POLICY, BATCH_OBJECT_POLICY):
         env = git_environment(policy)
         wanted = {
             "GIT_OPTIONAL_LOCKS": "0",
@@ -140,7 +140,7 @@ def test_an_ambient_ref_format_does_not_reach_an_acquired_store(
     assert not (store / "reftable").exists()
 
 
-@pytest.mark.parametrize("policy", [ACQUISITION_POLICY, FETCH_POLICY, BATCH_OBJECT_POLICY])
+@pytest.mark.parametrize("policy", [ACQUISITION_POLICY, STORE_READ_POLICY, BATCH_OBJECT_POLICY])
 def test_isolated_policies_do_not_discover_an_enclosing_repository(
     tmp_path: Path, policy: GitProcessPolicy
 ) -> None:
@@ -201,20 +201,6 @@ def test_acquisition_policy_creates_owner_only_store_entries(tmp_path: Path) -> 
         if path.exists() and path.stat().st_mode & (stat.S_IRWXG | stat.S_IRWXO)
     ]
     assert leaked == []
-
-
-def test_run_git_accepts_bounded_stdin(tmp_path: Path) -> None:
-    digest = asyncio.run(
-        run_git(
-            ["hash-object", "--stdin"],
-            cwd=tmp_path,
-            policy=BATCH_OBJECT_POLICY,
-            stdin=b"hello\n",
-        )
-    )
-    assert len(digest.strip()) == 40
-    isolated = git_environment(FETCH_POLICY)
-    assert isolated["GIT_NO_LAZY_FETCH"] == "1"
 
 
 def test_require_acquisition_git_matches_the_installed_binary() -> None:
