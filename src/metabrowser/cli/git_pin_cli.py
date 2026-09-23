@@ -5,7 +5,10 @@ commit. ``--show`` and ``--api`` attach its ``GitRevisionSubject`` and drive
 the same ASGI stack the browser uses without binding a port. Serve mode proves
 the pin opens, then hands the server an opener so the application lifespan
 opens it again in the serving event loop and closes it at shutdown. Every
-mode runs under the forced untrusted profile. https and ssh stay closed.
+mode also hands the server the store as a mirror, so ``/api/source/status``
+reports freshness and ``/api/source/refresh`` and ``/api/source/pin`` act on
+it; only serve mode refreshes a stale mirror on its own. Every mode runs under
+the forced untrusted profile. https and ssh stay closed.
 """
 
 from __future__ import annotations
@@ -20,6 +23,7 @@ from pathlib import Path
 
 from metabrowser.cache.acquire import PublishedSource
 from metabrowser.cache.repository_store import open_revision
+from metabrowser.cache.served_mirror import StoreMirror
 from metabrowser.cache.urls import GitSource
 from metabrowser.cli.acquire_cli import _ACQUIRE_CLI_ERRORS, acquire_for_cli
 from metabrowser.cli.asgi_client import INDEX_READY_TIMEOUT_S
@@ -37,7 +41,13 @@ from metabrowser.git.tree_source import (
     GitRevisionSubject,
     ref_short_name,
 )
-from metabrowser.source import attach_subject, reset_source_session, serve_subject_opener
+from metabrowser.mirror_refresh import serve_mirror
+from metabrowser.source import (
+    attach_owned_subject,
+    close_owned_subject,
+    reset_source_session,
+    serve_subject_opener,
+)
 from metabrowser.view_routes import VIEW_ROUTE_PREFIX
 
 LOG = logging.getLogger(__name__)
@@ -134,15 +144,22 @@ async def _open_pin(published: PublishedSource) -> GitRevisionSubject:
 
 @asynccontextmanager
 async def _file_pin(source: GitSource) -> AsyncGenerator[PublishedSource]:
+    """Serve the default pin in this process for one command, then close it.
+
+    The store is also served as a mirror without a refresh of its own, so a one-shot
+    command reaches the network only through an explicit ``POST /api/source/refresh``.
+    Whatever pin is served at the end -- the default, or one a ``POST /api/source/pin``
+    switched to -- is closed.
+    """
+
     published = await acquire_for_cli(source)
-    subject: GitRevisionSubject | None = None
     try:
-        subject = await _open_pin(published)
-        attach_subject(subject)
+        attach_owned_subject(await _open_pin(published))
+        serve_mirror(StoreMirror.from_published(published))
         yield published
     finally:
-        if subject is not None:
-            await subject.aclose()
+        serve_mirror(None)
+        await close_owned_subject()
         reset_source_session()
 
 
@@ -333,6 +350,13 @@ def run_serve_pin(
         host=host,
         port=port,
         no_open=no_open,
-        attach=lambda: serve_subject_opener(_revision_opener(published)),
+        attach=functools.partial(_serve_published, published),
         banner=(f"Revision: {revision}",),
     )
+
+
+def _serve_published(published: PublishedSource) -> None:
+    """Hand the server the pin to open and the mirror to keep fresh."""
+
+    serve_subject_opener(_revision_opener(published))
+    serve_mirror(StoreMirror.from_published(published), refresh_when_stale=True)

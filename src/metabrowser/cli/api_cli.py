@@ -32,6 +32,8 @@ from metabrowser.cli.common import apply_log_level
 from metabrowser.cli.plugin_paths import resolve_extra_plugin_dirs
 from metabrowser.dotenv import load_dotenv_chain
 from metabrowser.errors import CLIError
+from metabrowser.git.process import GIT_ACQUISITION_TIMEOUT_S
+from metabrowser.mirror_refresh import drain_refreshes
 from metabrowser.normalize import NormalizeContext, normalize_payload, normalize_text
 
 LOG = logging.getLogger(__name__)
@@ -101,8 +103,14 @@ async def _issue(
             result = await _wait_for_index(client, timeout_s=index_timeout_s)
             index_detail = result.detail if result.completed else f"incomplete: {result.detail}"
         if body:
-            return await client.post(route, body=body), index_detail
-        return await client.get(route), index_detail
+            response = await client.post(route, body=body)
+        else:
+            response = await client.get(route)
+        # Leaving the client shuts the application down, which cancels background work.
+        # The only background work a one-shot command has is a refresh its own request
+        # asked for, and that is the work the command exists to do, so let it finish.
+        await drain_refreshes(app, timeout_s=GIT_ACQUISITION_TIMEOUT_S)
+        return response, index_detail
 
 
 def _request_body(data: Path | None) -> bytes:

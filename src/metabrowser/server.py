@@ -157,6 +157,7 @@ from metabrowser.inventory_engine.tree_page_assembly import (
 )
 from metabrowser.inventory_rollup import RollupOptions, RollupRank
 from metabrowser.jsonl_view import _parse_jsonl_file
+from metabrowser.mirror_refresh import lifespan_refresh
 
 # Document rendering is delegated through the KPress adapter and built-in plugin route.
 # KPress is the sole Markdown-to-HTML renderer; raw source remains a separate view.
@@ -3865,7 +3866,8 @@ routes = [
     # Read-only logical cache state for CLI parity. The table imports the cache and
     # the application home only inside a cache request; see ``metabrowser.cache.routes``.
     *CACHE_ROUTES,
-    # What this server serves: the subject and, on a pin, its commit and ref.
+    # What this server serves: the subject and, on a pin, its commit, ref, and
+    # freshness, plus the POST routes that refresh the mirror and switch the pin.
     *SOURCE_ROUTES,
     *build_plugin_routes(_LOADED_PLUGINS),
 ]
@@ -3910,10 +3912,12 @@ def _inventory_root_provider() -> object:
 @asynccontextmanager  # pyright: ignore[reportDeprecated]
 async def _lifespan(app: Starlette) -> AsyncIterator[None]:
     # A served pin attaches before the inventory opens, which reads the active
-    # subject, and closes after it, so nothing still reads its Git processes.
+    # subject, and closes after it, so nothing still reads its Git processes. The
+    # refresh jobs start once the pin is attached and are cancelled before it closes.
     async with (
         lifespan_subject(),
         build_lifespan(app=app, root_provider=_inventory_root_provider),
+        lifespan_refresh(app),
     ):
         try:
             yield

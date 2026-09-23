@@ -174,7 +174,17 @@ status: 200
   "generation": 1,
   "pin": "8653ceb4d5ca69e2e7e3b39d04645b3820233854",
   "ref": "refs/remotes/origin/topic",
-  "ref_name": "topic"
+  "ref_name": "topic",
+  "refreshable": true,
+  "latest": "8653ceb4d5ca69e2e7e3b39d04645b3820233854",
+  "last_fetch_at": "<TIME>",
+  "last_outcome": {
+    "operation": "acquire",
+    "outcome": "succeeded",
+    "at": "<TIME>"
+  },
+  "refreshing": false,
+  "stale": false
 }
 --- stderr ---
 # metab file://<ORIGIN> --api /api/tree?depth=0

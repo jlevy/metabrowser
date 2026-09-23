@@ -40,6 +40,16 @@ def _reset_capabilities() -> Generator[None, None, None]:  # pyright: ignore[rep
 
 
 @pytest.fixture(autouse=True)
+def _reset_served_mirror() -> Generator[None, None, None]:  # pyright: ignore[reportUnusedFunction]
+    """Never let a mirror one test served reach the next test's application lifespan."""
+    from metabrowser.mirror_refresh import serve_mirror
+
+    serve_mirror(None)
+    yield
+    serve_mirror(None)
+
+
+@pytest.fixture(autouse=True)
 def _reset_browser_response_caches() -> Generator[None, None, None]:  # pyright: ignore[reportUnusedFunction]
     """Keep route response caches isolated between tests."""
     yield
