@@ -92,7 +92,7 @@ _PACKAGE_VERSION_KEYS: Final = frozenset({"created_by", "written_by"})
 # after the first ``survive`` ones kills the process before its rename can commit.
 _KILLED_AT_PUBLICATION: Final = textwrap.dedent(
     """
-    import os, signal, sys
+    import os, signal, sys, time
     from metabrowser.cache import acquire
     from metabrowser.cli.main import _run_cli
     from metabrowser.git.process import detect_git_version
@@ -107,6 +107,10 @@ _KILLED_AT_PUBLICATION: Final = textwrap.dedent(
         global published
         if published == survive:
             os.kill(os.getpid(), signal.SIGKILL)
+            # Publication runs on a worker thread, which on macOS can keep running
+            # until the kernel tears the process down; never reach the rename.
+            while True:
+                time.sleep(1)
         published += 1
         return publish(*args, **kwargs)
 
