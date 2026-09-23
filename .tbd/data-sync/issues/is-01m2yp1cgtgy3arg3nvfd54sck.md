@@ -3,15 +3,19 @@ type: is
 id: is-01m2yp1cgtgy3arg3nvfd54sck
 title: "Agent handoff: v0.11 stack 2026-09-19"
 kind: task
-status: open
+status: in_progress
 priority: 2
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
+delegate: codex@spud10
 labels: []
 dependencies: []
 parent_id: is-01kzs5m38dz1egphfwf30c8h7n
+hold: null
+hold_until: null
 created_at: 2026-09-20T05:53:46.008Z
-updated_at: 2026-09-20T15:47:14.343Z
+updated_at: 2026-09-23T00:40:30.771Z
+started_at: 2026-09-23T00:40:30.765Z
 ---
 Task: Finish v0.11 review organization and keep the next agent oriented across tbd and metabrowser. Do not merge anything to main unless the user asks.
 
