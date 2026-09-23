@@ -106,6 +106,15 @@ Repository cache:
   reuse the store, lease the default revision, and inspect that `GitRevisionSubject`
   in-process. Serving, walking, and `--check-api` still refuse Git sources, and nothing
   binds a port. https and ssh stay closed.
+  Those pin modes report acquisition failures with the same messages as `--no-serve`,
+  and a Git failure while opening the pin is also path-free.
+  A pin always runs under the untrusted profile: `METAB_ACTIVE_CONTENT=1` and
+  `METAB_ALLOW_EDITS=1` do not lift it, and `--allow-edits` on a pin is an error.
+
+- A timed-out or cancelled acquisition kills Git’s whole process group, including the
+  helpers it forks, rather than only the `git` process.
+  Git built by a distribution that backports the security fixes without raising the
+  upstream version is still refused below the acquisition floor.
 
 - A classified `file://` source can be fetched into an isolated worktree-free staging
   store using Git’s pack transport (`git fetch`, not `clone --local` hardlinks).

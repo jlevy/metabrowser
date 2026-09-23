@@ -281,8 +281,20 @@ floor.
 Repeat once with an empty directory already at `METABROWSER_HOME` (the `mktemp -d`
 case). The refuse must leave that directory empty: no `cache/`, no `config.yml`.
 
+The pin modes acquire through the same mapper, so repeat the refusal through them:
+
+```shell
+uv --config-file uv.toml run --frozen metab "${FILE_URL}" --show README.md; echo "exit:$?"
+uv --config-file uv.toml run --frozen metab "${FILE_URL}" --api '/api/tree?depth=1'; echo "exit:$?"
+test ! -e "${METABROWSER_HOME}"
+```
+
+**Pass:** The same one-line `unsupported Git version` error as `--no-serve`, with no
+Python traceback and no staging or home path.
+
 **Fail:** Home created on refuse; an empty existing directory written into an `f01`
-skeleton; a 500; acquire succeeds on 2.43.0; the error omits the version fact.
+skeleton; a 500; acquire succeeds on 2.43.0; the error omits the version fact; a pin
+mode prints a traceback or a different message than `--no-serve`.
 
 ## Phase 3: Filesystem v0.10 Still Works
 
@@ -415,6 +427,25 @@ Tree has `"subject": "git_revision"` and `"kind": "tree"`. Progress has
 **Fail:** 500; `"subject": "filesystem"` on a pin; a display path accepted as `path=`
 without a `g1-` prefix succeeding as if it were a wire (the query `path` is a wire);
 missing `--api` subject; raw cache paths in the body.
+
+### 4.5 Pins always run under the untrusted profile
+
+Acquired content is third-party, so no flag or environment variable lifts the profile on
+a pin.
+
+```shell
+uv --config-file uv.toml run --frozen metab "${FILE_URL}" --api /api/capabilities
+METAB_ACTIVE_CONTENT=1 METAB_ALLOW_EDITS=1 \
+  uv --config-file uv.toml run --frozen metab "${FILE_URL}" --api /api/capabilities
+uv --config-file uv.toml run --frozen metab "${FILE_URL}" --show README.md --allow-edits; echo "exit:$?"
+```
+
+**Pass:** Both capability envelopes report `"active_content": false` and
+`"mutations": false`. The `--allow-edits` call exits non-zero with
+`--allow-edits is not available on an acquired Git source`.
+
+**Fail:** `"active_content": true` on a pin; `--allow-edits` accepted or silently
+ignored.
 
 ## Phase 5: HTML Trust on the Integration Tip
 

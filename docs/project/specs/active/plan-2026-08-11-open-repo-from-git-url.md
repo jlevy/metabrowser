@@ -1814,8 +1814,10 @@ Review and publication remain `mb-k900`. `mb-dg00` still owns missing golden ses
   [Git version gates](#git-version-gates): refuse (`mb-e32d`).
 - [x] Replace the test oracle for the URL grammar, version gates, object requests, and
   the acquisition machine with the production functions, and replay the same fixtures.
-- [ ] Verify the landed untrusted profile on every URL-opened root and pin entry point;
-  acquisition, identity, publication, and CLI inspection may ship before URL serving.
+- [x] Verify the landed untrusted profile on every pin entry point: `--show` and
+  non-cache `--api` force it against flags and environment, refuse `--allow-edits`, and
+  a pin in a populated cache sees only its own tree (`mb-99ub`). URL-opened roots are
+  verified with URL serving in Phase 2A (`mb-innz`).
 - [ ] Add CLI goldens and docs for first open, cache hit, offline reuse, unsafe input,
   interrupted clone, read-only application home, unsupported Git version, and repair
   guidance.
