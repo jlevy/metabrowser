@@ -34,15 +34,18 @@ $ metab --help
  Data modes read the same server the browser reads, without a browser or a
  listening port: --api issues one route, --show reports the four layers
  behind one selection, --walk dumps the inventory, --diff shows a change
- set. --no-serve acquires a file:// Git source into the cache without
- starting a server. Diagnostics: --check-api, --plugins, --plugin, --doctor.
+ set. --no-serve acquires a file:// or https:// Git source, or a GitHub web
+ URL, into the cache without starting a server. Diagnostics: --check-api,
+ --plugins, --plugin, --doctor.
  Remote serving: --remote.
 
 ╭─ Arguments ──────────────────────────────────────────────────────────────────╮
 │   [root]      TEXT  Root directory to serve, check, or walk; a file may be   │
-│                     served directly. https, ssh, and file:// clone URLs are  │
-│                     Git sources, not local paths. Acquire file:// with       │
-│                     --no-serve. With no ROOT and no mode, prints help.       │
+│                     served directly. https, ssh, and file:// clone URLs and  │
+│                     GitHub web URLs are Git sources, not local paths.        │
+│                     --no-serve, --show, and --api acquire https:// and       │
+│                     file:// sources; ssh stays closed. With no ROOT and no   │
+│                     mode, prints help.                                       │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Options ────────────────────────────────────────────────────────────────────╮
 │ --version          Show the installed version and exit.                      │
@@ -61,8 +64,8 @@ $ metab --help
 │                           kind, views, and a model summary.                  │
 │ --check-api               Run the navigation API scenario without a browser  │
 │                           or listening port.                                 │
-│ --no-serve                Acquire a file:// Git source into the cache        │
-│                           without starting a server.                         │
+│ --no-serve                Acquire a file:// or https:// Git source into the  │
+│                           cache without starting a server.                   │
 │ --remote           HOST   SSH into HOST, start metab there, and tunnel it to │
 │                           localhost. Pass the remote directory with --path.  │
 │ --plugins                 List every discovered plugin.                      │

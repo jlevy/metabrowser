@@ -1,0 +1,332 @@
+# metab https://github.com/Octo/Demo.git --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
+--- stderr ---
+# metab https://www.github.com/octo/demo/ --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
+--- stderr ---
+# metab git@github.com:octo/demo.git --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
+--- stderr ---
+# metab https://github.com/octo/demo/tree/release/v1/docs --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
+selection: tree
+pin: 89e0fadf1d6368c47b9363ff7df0cd26b48d67df (branch release/v1)
+path: docs
+--- stderr ---
+# metab 'https://github.com/octo/demo/blob/topic/README.md?plain=1&utm_source=chat#L3-L4' --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
+selection: blob
+pin: 523f476bbcbde731f18dec9d6875df8fe8db13f3 (branch topic)
+path: README.md
+lines: L3-L4
+plain: true
+--- stderr ---
+# metab 'https://github.com/octo/demo/blob/v1.0/docs/v1.md#L1C3-L1C9' --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
+selection: blob
+pin: 89e0fadf1d6368c47b9363ff7df0cd26b48d67df (tag v1.0)
+path: docs/v1.md
+lines: L1C3-L1C9
+--- stderr ---
+# metab https://github.com/octo/demo/tree/refs/tags/same --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
+selection: tree
+pin: 89e0fadf1d6368c47b9363ff7df0cd26b48d67df (tag same)
+--- stderr ---
+# metab https://github.com/octo/demo/tree/523f/docs --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
+selection: tree
+pin: 89e0fadf1d6368c47b9363ff7df0cd26b48d67df (branch 523f)
+path: docs
+--- stderr ---
+# metab https://github.com/octo/demo/commit/523F476 --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
+selection: commit
+pin: 523f476bbcbde731f18dec9d6875df8fe8db13f3 (commit)
+--- stderr ---
+# metab https://github.com/octo/demo/pull/7/files --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
+selection: pull_request
+pin: 523f476bbcbde731f18dec9d6875df8fe8db13f3 (default branch topic)
+pull_request: 7 (pull-request data is not fetched yet; the pin is the default branch)
+--- stderr ---
+# metab https://github.com/octo/demo/pull/7/commits/89e0fad --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
+selection: commit
+pin: 89e0fadf1d6368c47b9363ff7df0cd26b48d67df (commit)
+pull_request: 7 (pull-request data is not fetched yet)
+--- stderr ---
+# metab https://raw.githubusercontent.com/octo/demo/refs/heads/release/v1/docs/v1.md --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
+selection: blob
+pin: 89e0fadf1d6368c47b9363ff7df0cd26b48d67df (branch release/v1)
+path: docs/v1.md
+--- stderr ---
+# metab https://raw.githubusercontent.com/octo/demo/topic/docs/My%20Notes.md --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
+selection: blob
+pin: 523f476bbcbde731f18dec9d6875df8fe8db13f3 (branch topic)
+path: docs/My Notes.md
+--- stderr ---
+# metab 'https://github.com/octo/demo/blob/release/v1/docs/v1.md#L1' --show docs/v1.md
+exit: 0
+--- stdout ---
+show: docs/v1.md
+route: /view/g1-ZG9jcw/g1-djEubWQ
+kind: markdown
+views: rendered (default), source
+model: text envelope; size=14 content_bytes=14 content_truncated=False
+--- stderr ---
+selection: blob
+pin: 89e0fadf1d6368c47b9363ff7df0cd26b48d67df (branch release/v1)
+path: docs/v1.md
+lines: L1
+# metab https://github.com/octo/demo/tree/release/v1 --api /api/git/repo
+exit: 0
+--- stdout ---
+api: /api/git/repo
+status: 200
+{
+  "is_repo": true,
+  "root": "",
+  "head": {
+    "ref": null,
+    "revision": "89e0fadf1d6368c47b9363ff7df0cd26b48d67df",
+    "detached": true,
+    "unborn": false
+  }
+}
+--- stderr ---
+selection: tree
+pin: 89e0fadf1d6368c47b9363ff7df0cd26b48d67df (branch release/v1)
+# metab https://github.com/octo/demo/tree/v1.0 --api '/api/tree?depth=1'
+exit: 0
+--- stdout ---
+api: /api/tree?depth=1
+status: 200
+{
+  "subject": "git_revision",
+  "path": "",
+  "display": "",
+  "oid": "16b502a290064c3af6283e273cfa51839f1aaa08",
+  "kind": "tree",
+  "entries": [
+    {
+      "path": "g1-UkVBRE1FLm1k",
+      "display": "README.md",
+      "mode": "100644",
+      "kind": "blob",
+      "symlink": false,
+      "gitlink": false,
+      "oid": "15c204cf58818fbe20a8bef0504b01ed4c59722f",
+      "size": 31
+    },
+    {
+      "path": "g1-ZG9jcw",
+      "display": "docs",
+      "mode": "040000",
+      "kind": "tree",
+      "symlink": false,
+      "gitlink": false,
+      "oid": "5af0020a1d1ad7e671f47d00d706617fbf808376"
+    }
+  ],
+  "tree": [
+    {
+      "name": "docs",
+      "path": "g1-ZG9jcw",
+      "type": "dir",
+      "children": null,
+      "has_children": true,
+      "total_files": 3,
+      "total_size": 39
+    },
+    {
+      "name": "README.md",
+      "path": "g1-UkVBRE1FLm1k",
+      "type": "file",
+      "ext": ".md",
+      "size": 31
+    }
+  ],
+  "tally_cache_status": "done",
+  "tally_cache_max_files": 500000,
+  "summary": {
+    "files": 4,
+    "size": 70,
+    "ignored_files": 0,
+    "ignored_size": 0
+  },
+  "extensions": [
+    [
+      ".md",
+      4,
+      0
+    ]
+  ],
+  "canonical_extensions": [
+    [
+      ".md",
+      4,
+      0
+    ]
+  ],
+  "type_families": [
+    [
+      "markdown",
+      4,
+      0
+    ]
+  ],
+  "type_presets": [
+    [
+      "code",
+      0,
+      0
+    ],
+    [
+      "docs",
+      4,
+      0
+    ],
+    [
+      "data",
+      0,
+      0
+    ],
+    [
+      "archives",
+      0,
+      0
+    ],
+    [
+      "media",
+      0,
+      0
+    ]
+  ]
+}
+--- stderr ---
+selection: tree
+pin: 89e0fadf1d6368c47b9363ff7df0cd26b48d67df (tag v1.0)
+# metab https://github.com/octo/demo/pull/7 --api /api/git/repo
+exit: 0
+--- stdout ---
+api: /api/git/repo
+status: 200
+{
+  "is_repo": true,
+  "root": "",
+  "head": {
+    "ref": null,
+    "revision": "523f476bbcbde731f18dec9d6875df8fe8db13f3",
+    "detached": true,
+    "unborn": false
+  }
+}
+--- stderr ---
+selection: pull_request
+pin: 523f476bbcbde731f18dec9d6875df8fe8db13f3 (default branch topic)
+pull_request: 7 (pull-request data is not fetched yet; the pin is the default branch)
+# metab https://github.com/octo/demo/tree/nope/docs --no-serve
+exit: 1
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
+--- stderr ---
+Error: the mirror of https://github.com/octo/demo has no branch, tag, or commit that begins the URL's path (ref_not_found)
+# metab https://github.com/octo/demo/blob/topic/docs/missing.md --show README.md
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: docs/missing.md is not in https://github.com/octo/demo at topic (path_not_found)
+# metab https://github.com/octo/demo/commit/0000000 --no-serve
+exit: 1
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
+--- stderr ---
+Error: the mirror of https://github.com/octo/demo has no commit 0000000 (commit_not_found)
+# metab https://github.com/octo/demo/tree/tree-tag --no-serve
+exit: 1
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
+--- stderr ---
+Error: the URL names an object in https://github.com/octo/demo that is not a commit (not_a_commit)
+# metab https://github.com/octo/demo/pull/7/commits/abcdef0 --api /api/git/repo
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: the mirror of https://github.com/octo/demo has no commit abcdef0 (commit_not_found)

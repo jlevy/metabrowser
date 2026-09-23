@@ -16,8 +16,8 @@ from metabrowser.cache.acquire import (
     AcquisitionError,
     RemoteUnavailableError,
     ValidationFailedError,
-    acquire_file_source,
     acquire_into_staging,
+    acquire_source,
 )
 from metabrowser.cache.atomic import read_record
 from metabrowser.cache.identity import source_identity
@@ -144,11 +144,11 @@ def test_sha256_source_acquires_and_reopens_without_changing_object_format(
     _git(work, "commit", "-qm", "first")
     source = _file_source(work)
     home = tmp_path / "home"
-    published = asyncio.run(acquire_file_source(source, home=home))
+    published = asyncio.run(acquire_source(source, home=home))
     assert published.object_format == "sha256"
     assert len(published.default_revision) == 64
     _git(published.git_dir, "cat-file", "-e", published.default_revision)
-    assert asyncio.run(acquire_file_source(source, home=home)) == published
+    assert asyncio.run(acquire_source(source, home=home)) == published
 
 
 @posix_only
@@ -171,7 +171,7 @@ def test_racing_acquisitions_return_the_selected_stores_revision(
             reused = acquire_module.publish_from_staging(second)
     assert reused == winner
     _git(reused.git_dir, "cat-file", "-e", reused.default_revision)
-    assert asyncio.run(acquire_file_source(source, home=home)) == winner
+    assert asyncio.run(acquire_source(source, home=home)) == winner
 
 
 @posix_only
@@ -192,7 +192,7 @@ def test_an_ordinary_non_bare_clone_acquires_through_its_own_head(
         text=True,
     ).stdout
     assert "ref: refs/remotes/origin/topic\trefs/remotes/origin/HEAD" in advertised
-    published = asyncio.run(acquire_file_source(_file_source(clone), home=tmp_path / "home"))
+    published = asyncio.run(acquire_source(_file_source(clone), home=tmp_path / "home"))
     assert published.default_remote_ref == "refs/remotes/origin/local-work"
     _git(published.git_dir, "cat-file", "-e", published.default_revision)
 
@@ -224,7 +224,7 @@ def test_a_hostile_symref_named_head_does_not_choose_the_published_branch(
     _git(hostile, "commit", "-qm", "decoy commit")
     _git(hostile, "checkout", "-q", "trunk")
     _git(hostile, "symbolic-ref", "refs/heads/zz/HEAD", "refs/heads/decoy")
-    published = asyncio.run(acquire_file_source(_file_source(hostile), home=tmp_path / "home"))
+    published = asyncio.run(acquire_source(_file_source(hostile), home=tmp_path / "home"))
     assert published.default_remote_ref == "refs/remotes/origin/trunk"
     assert published.default_revision == _rev_parse(hostile, "refs/heads/trunk")
     assert _rev_parse(published.git_dir, published.default_remote_ref) == (
@@ -248,8 +248,9 @@ def test_a_default_branch_that_does_not_resolve_to_the_observed_head_is_refused(
         *,
         cwd: Path | None = None,
         git_dir: Path | None = None,
+        timeout_s: float | None = None,
     ) -> bytes:
-        result = await real_run(args, cwd=cwd, git_dir=git_dir)
+        result = await real_run(args, cwd=cwd, git_dir=git_dir, timeout_s=timeout_s)
         if "ls-remote" in args:
             _git(work, "commit", "-q", "--allow-empty", "-m", "moved")
             _git(work, "push", "-q", str(origin), "topic")
@@ -257,7 +258,7 @@ def test_a_default_branch_that_does_not_resolve_to_the_observed_head_is_refused(
 
     monkeypatch.setattr(acquire_module, "_run", move_branch_after_observation)
     with pytest.raises(ValidationFailedError, match="default branch"):
-        asyncio.run(acquire_file_source(_file_source(origin), home=home))
+        asyncio.run(acquire_source(_file_source(origin), home=home))
     assert list((home / "cache" / "staging").iterdir()) == []
     assert list((home / "cache" / "sources").iterdir()) == []
     assert list((home / "cache" / "repository-stores").iterdir()) == []
@@ -272,7 +273,7 @@ def test_ambient_git_variables_do_not_steer_an_acquisition(
     origin = _origin(tmp_path, allow_filter=False)
     monkeypatch.setenv("GIT_ALLOW_PROTOCOL", "https")
     monkeypatch.setenv("GIT_DEFAULT_REF_FORMAT", "reftable")
-    published = asyncio.run(acquire_file_source(_file_source(origin), home=tmp_path / "home"))
+    published = asyncio.run(acquire_source(_file_source(origin), home=tmp_path / "home"))
     config = (published.git_dir / "config").read_text(encoding="utf-8").lower()
     assert "refstorage" not in config
     assert not (published.git_dir / "reftable").exists()
@@ -295,7 +296,7 @@ def test_a_repository_enclosing_the_cache_home_does_not_rewrite_the_origin(
     _git(outer, "init", "-q", "-b", "main")
     source = _file_source(real)
     _git(outer, "config", f"url.file://{decoy.resolve()}.insteadOf", source.normalized)
-    published = asyncio.run(acquire_file_source(source, home=outer / nested))
+    published = asyncio.run(acquire_source(source, home=outer / nested))
     assert published.default_remote_ref == "refs/remotes/origin/topic"
     assert published.default_revision == _rev_parse(real, "refs/heads/topic")
 
@@ -317,13 +318,14 @@ def test_a_detached_head_origin_is_refused_before_anything_is_fetched(
         *,
         cwd: Path | None = None,
         git_dir: Path | None = None,
+        timeout_s: float | None = None,
     ) -> bytes:
         commands.append(args)
-        return await real_run(args, cwd=cwd, git_dir=git_dir)
+        return await real_run(args, cwd=cwd, git_dir=git_dir, timeout_s=timeout_s)
 
     monkeypatch.setattr(acquire_module, "_run", record)
     with pytest.raises(ValidationFailedError, match="not a branch"):
-        asyncio.run(acquire_file_source(_file_source(work), home=home))
+        asyncio.run(acquire_source(_file_source(work), home=home))
     assert len(commands) == 1 and "ls-remote" in commands[0]
     assert list((home / "cache" / "staging").iterdir()) == []
 
@@ -456,10 +458,10 @@ def test_a_crashed_staging_holder_is_swept(tmp_path: Path, monkeypatch: pytest.M
     assert not staged.git_dir.exists()
 
 
-def test_https_sources_are_out_of_scope_for_staging_fetch() -> None:
-    source = classify_root_argument("https://example.com/owner/repo.git")
+def test_ssh_sources_are_out_of_scope_for_staging_fetch() -> None:
+    source = classify_root_argument("ssh://git@example.com/owner/repo.git")
     assert isinstance(source, GitSource)
-    with pytest.raises(AcquisitionError, match="not acquired yet"):
+    with pytest.raises(AcquisitionError, match="ssh Git sources are not acquired yet"):
         asyncio.run(acquire_into_staging(source, home=Path("/tmp/unused")))
 
 
@@ -482,7 +484,7 @@ def test_git_below_the_acquisition_floor_is_refused(
 
 
 @posix_only
-def test_acquire_file_source_refuses_below_floor_git_before_creating_the_home(
+def test_acquire_source_refuses_below_floor_git_before_creating_the_home(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     origin = _origin(tmp_path, allow_filter=False)
@@ -493,12 +495,12 @@ def test_acquire_file_source_refuses_below_floor_git_before_creating_the_home(
 
     monkeypatch.setattr("metabrowser.cache.acquire.require_acquisition_git", refuse)
     with pytest.raises(UnsupportedGitVersionError):
-        asyncio.run(acquire_file_source(_file_source(origin), home=home))
+        asyncio.run(acquire_source(_file_source(origin), home=home))
     assert not home.exists()
 
 
 @posix_only
-def test_acquire_file_source_refuses_below_floor_git_without_writing_an_empty_home(
+def test_acquire_source_refuses_below_floor_git_without_writing_an_empty_home(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     origin = _origin(tmp_path, allow_filter=False)
@@ -510,7 +512,7 @@ def test_acquire_file_source_refuses_below_floor_git_without_writing_an_empty_ho
 
     monkeypatch.setattr("metabrowser.cache.acquire.require_acquisition_git", refuse)
     with pytest.raises(UnsupportedGitVersionError):
-        asyncio.run(acquire_file_source(_file_source(origin), home=home))
+        asyncio.run(acquire_source(_file_source(origin), home=home))
     assert list(home.iterdir()) == []
 
 
@@ -522,13 +524,13 @@ def test_a_cache_hit_does_not_require_the_acquisition_floor(
     origin = _origin(tmp_path, allow_filter=False)
     home = tmp_path / "home"
     source = _file_source(origin)
-    first = asyncio.run(acquire_file_source(source, home=home))
+    first = asyncio.run(acquire_source(source, home=home))
 
     def refuse() -> tuple[int, int, int]:
         raise UnsupportedGitVersionError("git version 2.39.5", "2.43.7")
 
     monkeypatch.setattr("metabrowser.cache.acquire.require_acquisition_git", refuse)
-    second = asyncio.run(acquire_file_source(source, home=home))
+    second = asyncio.run(acquire_source(source, home=home))
     assert second.store_id == first.store_id
     assert second.slug == first.slug
 
@@ -541,13 +543,13 @@ def test_a_cache_hit_does_not_open_the_home_for_write(
     origin = _origin(tmp_path, allow_filter=False)
     home = tmp_path / "home"
     source = _file_source(origin)
-    first = asyncio.run(acquire_file_source(source, home=home))
+    first = asyncio.run(acquire_source(source, home=home))
 
     def refuse_write(home_path: Path | None = None, *, version: str | None = None) -> object:
         raise AssertionError("a cache hit must not open the home for write")
 
     monkeypatch.setattr(acquire_module, "open_cache", refuse_write)
-    second = asyncio.run(acquire_file_source(source, home=home))
+    second = asyncio.run(acquire_source(source, home=home))
     assert second.store_id == first.store_id
     assert second.slug == first.slug
     assert second.git_dir == first.git_dir
@@ -562,10 +564,10 @@ def test_a_cache_hit_against_a_home_without_owner_write_reuses(
     origin = _origin(tmp_path, allow_filter=False)
     home = tmp_path / "home"
     source = _file_source(origin)
-    first = asyncio.run(acquire_file_source(source, home=home))
+    first = asyncio.run(acquire_source(source, home=home))
     _remove_owner_write(home)
     try:
-        second = asyncio.run(acquire_file_source(source, home=home))
+        second = asyncio.run(acquire_source(source, home=home))
         assert second.store_id == first.store_id
         assert second.slug == first.slug
         assert list((home / "cache" / "staging").iterdir()) == []
@@ -581,14 +583,14 @@ def test_a_cache_miss_against_a_home_without_owner_write_does_not_fetch(
     _allow_installed_git(monkeypatch)
     origin = _origin(tmp_path, allow_filter=False)
     home = tmp_path / "home"
-    asyncio.run(acquire_file_source(_file_source(origin), home=home))
+    asyncio.run(acquire_source(_file_source(origin), home=home))
     other = tmp_path / "other"
     other.mkdir()
     other_source = _file_source(_origin(other, allow_filter=False))
     _remove_owner_write(home)
     try:
         with pytest.raises(PrivateStorageError):
-            asyncio.run(acquire_file_source(other_source, home=home))
+            asyncio.run(acquire_source(other_source, home=home))
         assert list((home / "cache" / "staging").iterdir()) == []
     finally:
         _restore_owner_write(home)
@@ -602,7 +604,7 @@ def test_a_future_home_is_refused_before_opening_the_cache_for_write(
     origin = _origin(tmp_path, allow_filter=False)
     home = tmp_path / "home"
     source = _file_source(origin)
-    asyncio.run(acquire_file_source(source, home=home))
+    asyncio.run(acquire_source(source, home=home))
     layout = home / "cache" / "layout.yml"
     layout.write_text(layout.read_text(encoding="utf-8").replace("format: f01", "format: f02", 1))
 
@@ -611,7 +613,7 @@ def test_a_future_home_is_refused_before_opening_the_cache_for_write(
 
     monkeypatch.setattr(acquire_module, "open_cache", refuse_write)
     with pytest.raises(FutureLayoutFormatError, match="Upgrade Metabrowser"):
-        asyncio.run(acquire_file_source(source, home=home))
+        asyncio.run(acquire_source(source, home=home))
 
 
 @posix_only
@@ -622,10 +624,10 @@ def test_a_writable_cache_hit_records_last_opened_at(
     origin = _origin(tmp_path, allow_filter=False)
     home = tmp_path / "home"
     source = _file_source(origin)
-    first = asyncio.run(acquire_file_source(source, home=home))
+    first = asyncio.run(acquire_source(source, home=home))
     opened = _last_opened_at(home, first.slug)
     assert opened is not None
-    second = asyncio.run(acquire_file_source(source, home=home))
+    second = asyncio.run(acquire_source(source, home=home))
     later = _last_opened_at(home, second.slug)
     assert later is not None
     assert later >= opened
@@ -640,11 +642,11 @@ def test_a_read_only_hit_keeps_the_published_last_opened_at(
     origin = _origin(tmp_path, allow_filter=False)
     home = tmp_path / "home"
     source = _file_source(origin)
-    first = asyncio.run(acquire_file_source(source, home=home))
+    first = asyncio.run(acquire_source(source, home=home))
     opened = _last_opened_at(home, first.slug)
     _remove_owner_write(home)
     try:
-        second = asyncio.run(acquire_file_source(source, home=home))
+        second = asyncio.run(acquire_source(source, home=home))
         assert second.store_id == first.store_id
         assert _last_opened_at(home, second.slug) == opened
     finally:
@@ -659,7 +661,7 @@ def test_a_dropped_last_opened_at_write_does_not_fail_the_hit(
     origin = _origin(tmp_path, allow_filter=False)
     home = tmp_path / "home"
     source = _file_source(origin)
-    first = asyncio.run(acquire_file_source(source, home=home))
+    first = asyncio.run(acquire_source(source, home=home))
 
     def refuse(*_args: object, **_kwargs: object) -> None:
         raise OSError(28, "No space left on device")
@@ -670,7 +672,7 @@ def test_a_dropped_last_opened_at_write_does_not_fail_the_hit(
         raise AssertionError("a cache hit must not open the home for write")
 
     monkeypatch.setattr(acquire_module, "open_cache", refuse_write)
-    second = asyncio.run(acquire_file_source(source, home=home))
+    second = asyncio.run(acquire_source(source, home=home))
     assert second.store_id == first.store_id
     assert second.slug == first.slug
 
@@ -683,11 +685,11 @@ def test_a_contended_alias_lock_does_not_fail_the_hit(
     origin = _origin(tmp_path, allow_filter=False)
     home = tmp_path / "home"
     source = _file_source(origin)
-    first = asyncio.run(acquire_file_source(source, home=home))
+    first = asyncio.run(acquire_source(source, home=home))
 
     def busy(*_args: object, **_kwargs: object) -> object:
         raise LockBusyError(LockKind.SOURCE_ALIAS, first.slug)
 
     monkeypatch.setattr(acquire_module, "source_alias_lock", busy)
-    second = asyncio.run(acquire_file_source(source, home=home))
+    second = asyncio.run(acquire_source(source, home=home))
     assert second.store_id == first.store_id

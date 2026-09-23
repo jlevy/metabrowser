@@ -1,25 +1,31 @@
 """Attach a pinned Git revision for in-process CLI inspection.
 
-``file://`` is acquired or reused, then ``open_revision`` pins the default
-commit and its ``GitRevisionSubject`` becomes the process subject. ``--show``
-and ``--api`` drive the same ASGI stack the browser uses. Nothing binds a port.
-https and ssh stay closed. Serving acquired Git stays later.
+A ``file://`` or ``https://`` source is acquired or reused, the commit its URL selects
+is resolved in the mirror (the default branch when the URL selects none), and
+``open_revision`` pins it; its ``GitRevisionSubject`` becomes the process subject.
+``--show`` and ``--api`` drive the same ASGI stack the browser uses, and what the URL
+selected is reported on stderr. Nothing binds a port. ssh stays closed. Serving
+acquired Git stays later.
 """
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import typer
+
 from metabrowser.cache.acquire import PublishedSource
 from metabrowser.cache.repository_store import open_revision
+from metabrowser.cache.resolve import ResolvedSelection
 from metabrowser.cache.urls import GitSource
 from metabrowser.cli.acquire_cli import _ACQUIRE_CLI_ERRORS, acquire_for_cli
 from metabrowser.cli.asgi_client import INDEX_READY_TIMEOUT_S
 from metabrowser.cli.common import apply_log_level, maybe_cli_logging
+from metabrowser.cli.hangup import run_cancelling_on_hangup
+from metabrowser.cli.selection import require_selected_path, resolve_for_cli, selection_lines
 from metabrowser.errors import CLIError
 from metabrowser.git.process import GitError, GitTimeoutError, GitUnavailableError
 from metabrowser.git.tree_source import (
@@ -70,14 +76,14 @@ def _require_untrusted_profile(*, allow_edits: bool) -> None:
         )
 
 
-def _require_file_source(source: GitSource, *, mode: str) -> None:
-    if source.transport == "file":
+def _require_acquired_transport(source: GitSource, *, mode: str) -> None:
+    if source.transport in {"file", "https"}:
         return
     if mode == "show":
         raise CLIError(
             f"{source.transport} Git sources are not opened yet "
-            f"({source.normalized}). Show a local directory, or acquire a "
-            "file:// source and --show a path on that pin."
+            f"({source.normalized}). Show a local directory, or --show a path "
+            "on a file:// or https:// source."
         )
     raise CLIError(
         f"{source.transport} Git sources are not served yet "
@@ -86,8 +92,15 @@ def _require_file_source(source: GitSource, *, mode: str) -> None:
 
 
 @asynccontextmanager
-async def _file_pin(source: GitSource) -> AsyncGenerator[PublishedSource]:
+async def _pin(source: GitSource) -> AsyncGenerator[PublishedSource]:
     published = await acquire_for_cli(source)
+    commit = published.default_revision
+    report: list[str] = []
+    resolved: ResolvedSelection | None = None
+    if source.selection is not None:
+        resolved = await resolve_for_cli(published, source.selection)
+        commit = resolved.commit
+        report = selection_lines(source.selection, resolved)
     subject: GitRevisionSubject | None = None
     try:
         # Before the server module attaches its handler: see ``acquire_for_cli``.
@@ -96,12 +109,17 @@ async def _file_pin(source: GitSource) -> AsyncGenerator[PublishedSource]:
                 subject = await open_revision(
                     home=published.home,
                     store_key=published.store_key,
-                    commit_oid=published.default_revision,
+                    commit_oid=commit,
                     store_identity=published.store_id,
                 )
             except _PIN_CLI_ERRORS as exc:
                 LOG.debug("opening the pinned revision failed: %s", exc)
                 raise CLIError(_pin_failure_message(exc)) from exc
+        if resolved is not None:
+            await require_selected_path(subject, published.source.normalized, resolved)
+        # stderr, so the route's envelope on stdout stays the only thing a pipe reads.
+        for line in report:
+            typer.echo(line, err=True)
         attach_subject(subject)
         yield published
     finally:
@@ -121,15 +139,15 @@ def run_show_after_acquire(
     no_active_content: bool = False,
     allow_edits: bool = False,
 ) -> None:
-    """Acquire a ``file://`` source, attach its default pin, and ``--show``."""
+    """Acquire a source, attach the pin its URL selects, and ``--show``."""
 
-    _require_file_source(source, mode="show")
+    _require_acquired_transport(source, mode="show")
     _require_untrusted_profile(allow_edits=allow_edits)
     apply_log_level(log_level)
     from metabrowser.cli.show_cli import ashow_active
 
     async def _run() -> None:
-        async with _file_pin(source) as published:
+        async with _pin(source) as published:
             await ashow_active(
                 path=path,
                 fmt=fmt,
@@ -143,7 +161,7 @@ def run_show_after_acquire(
                 allow_edits=False,
             )
 
-    asyncio.run(_run())
+    run_cancelling_on_hangup(_run())
 
 
 def run_pin_api(
@@ -158,17 +176,17 @@ def run_pin_api(
     no_active_content: bool = False,
     allow_edits: bool = False,
 ) -> None:
-    """Acquire a ``file://`` source, attach its default pin, and ``--api``."""
+    """Acquire a source, attach the pin its URL selects, and ``--api``."""
 
     if not route.startswith("/api/"):
         raise CLIError(f"route must begin with /api/; got {route}")
-    _require_file_source(source, mode="api")
+    _require_acquired_transport(source, mode="api")
     _require_untrusted_profile(allow_edits=allow_edits)
     apply_log_level(log_level)
     from metabrowser.cli.api_cli import aissue_on_active_session
 
     async def _run() -> None:
-        async with _file_pin(source) as published:
+        async with _pin(source) as published:
             await aissue_on_active_session(
                 route=route,
                 fmt=fmt,
@@ -182,4 +200,4 @@ def run_pin_api(
                 allow_edits=False,
             )
 
-    asyncio.run(_run())
+    run_cancelling_on_hangup(_run())

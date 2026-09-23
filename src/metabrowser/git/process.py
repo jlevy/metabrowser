@@ -607,8 +607,8 @@ async def spawn_git_process(
         # the parent: Git looks at the working directory and no higher. Resolved,
         # because Git compares the ceiling against its physical working directory.
         env["GIT_CEILING_DIRECTORIES"] = str(Path(work_cwd).resolve().parent)
-    try:
-        return await asyncio.create_subprocess_exec(
+    spawn = asyncio.ensure_future(
+        asyncio.create_subprocess_exec(
             *argv,
             cwd=work_cwd,
             stdin=_stdin_for_policy(chosen, pipe_stdin=pipe_stdin),
@@ -618,11 +618,31 @@ async def spawn_git_process(
             umask=child_umask,
             start_new_session=chosen.own_process_group and os.name == "posix",
         )
+    )
+    try:
+        return await asyncio.shield(spawn)
+    except asyncio.CancelledError:
+        # Cancelled while the child was starting. The child may already have forked
+        # helpers, and asyncio's own cleanup would kill only ``git``; finish the
+        # spawn, then kill the whole group before the cancellation continues.
+        await _kill_when_spawned(spawn)
+        raise
     except OSError as exc:
         # Spawn itself failed — a missing cwd, a permissions problem, or
         # process-table exhaustion. Nothing downstream can distinguish
         # these usefully, so they collapse into one typed failure.
         raise GitUnavailableError(f"could not run git: {exc}") from exc
+
+
+async def _kill_when_spawned(spawn: asyncio.Future[asyncio.subprocess.Process]) -> None:
+    """Wait out a spawn that a cancellation interrupted, then kill what it started."""
+
+    while not spawn.done():
+        with contextlib.suppress(asyncio.CancelledError):
+            await asyncio.wait({spawn})
+    if spawn.cancelled() or spawn.exception() is not None:
+        return
+    await terminate_git_process(spawn.result())
 
 
 async def run_git_at(

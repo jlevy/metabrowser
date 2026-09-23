@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from metabrowser.cache.acquire import acquire_file_source
+from metabrowser.cache.acquire import acquire_source
 from metabrowser.cache.locks import held_locks
 from metabrowser.cache.repository_store import open_revision
 from metabrowser.git.process import GitUnavailableError
@@ -65,7 +65,7 @@ def _two_commit_origin(tmp_path: Path) -> tuple[Path, str, str]:
 def _publish(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, str, Path, str, str]:
     _allow_installed_git(monkeypatch)
     origin, first, second = _two_commit_origin(tmp_path)
-    published = asyncio.run(acquire_file_source(_file_source(origin), home=tmp_path / "home"))
+    published = asyncio.run(acquire_source(_file_source(origin), home=tmp_path / "home"))
     assert published.default_revision == second
     return published.home, published.store_key, published.git_dir, first, second
 

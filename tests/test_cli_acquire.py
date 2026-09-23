@@ -245,20 +245,20 @@ def test_file_url_show_reports_the_pin_blob(
 
 
 @posix_only
-def test_https_show_stays_closed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_ssh_show_stays_closed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     home = _isolate_home(tmp_path, monkeypatch)
-    result = runner.invoke(_app, ["https://example.com/owner/repo.git", "--show", "README"])
+    result = runner.invoke(_app, ["ssh://git@example.com/owner/repo.git", "--show", "README"])
     assert isinstance(result.exception, CLIError)
-    assert "https Git sources are not opened yet" in str(result.exception)
+    assert "ssh Git sources are not opened yet" in str(result.exception)
     assert not home.exists()
 
 
 @posix_only
-def test_https_api_tree_stays_closed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_ssh_api_tree_stays_closed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     home = _isolate_home(tmp_path, monkeypatch)
-    result = runner.invoke(_app, ["https://example.com/owner/repo.git", "--api", "/api/tree"])
+    result = runner.invoke(_app, ["ssh://git@example.com/owner/repo.git", "--api", "/api/tree"])
     assert isinstance(result.exception, CLIError)
-    assert "https Git sources are not served yet" in str(result.exception)
+    assert "ssh Git sources are not served yet" in str(result.exception)
     assert not home.exists()
 
 
@@ -416,11 +416,12 @@ def test_git_failures_during_acquisition_are_distinct_path_free_cli_errors(
             *,
             cwd: Path | None = None,
             git_dir: Path | None = None,
+            timeout_s: float | None = None,
             kind: str = kind,
         ) -> bytes:
             if args[0] == "init":
                 raise _git_failure(kind, args)
-            return await real_run(args, cwd=cwd, git_dir=git_dir)
+            return await real_run(args, cwd=cwd, git_dir=git_dir, timeout_s=timeout_s)
 
         monkeypatch.setattr(acquire_module, "_run", fail_init)
         result = runner.invoke(_app, [url, "--no-serve"])

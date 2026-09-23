@@ -193,11 +193,11 @@ Error: [CWD]/missing is not a directory
 ? 1
 ```
 
-## Test: https is not acquired by --no-serve
+## Test: an https source is not walked
 
 ```console
-$ metab https://example.com/owner/repo.git --no-serve 2>&1
-Error: https Git sources are not acquired yet (https://example.com/owner/repo.git)
+$ metab https://example.com/owner/repo.git --walk 2>&1
+Error: https Git sources are not opened yet (https://example.com/owner/repo.git). Serve a local directory, or acquire a file:// or https:// source with --no-serve.
 ? 1
 ```
 
@@ -209,10 +209,10 @@ Error: ssh Git sources are not acquired yet (ssh://git@example.com/owner/repo.gi
 ? 1
 ```
 
-## Test: https --api does not acquire
+## Test: ssh --api does not acquire
 
 ```console
-$ metab https://example.com/owner/repo.git --api /api/cache/layout 2>&1
-Error: https Git sources are not acquired yet (https://example.com/owner/repo.git)
+$ metab ssh://git@example.com/owner/repo.git --api /api/cache/layout 2>&1
+Error: ssh Git sources are not acquired yet (ssh://git@example.com/owner/repo.git)
 ? 1
 ```
