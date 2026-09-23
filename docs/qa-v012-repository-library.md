@@ -571,8 +571,26 @@ A signed-in `gh` is used only for github.com, and a public repository needs none
 The smoke test calls the real `gh` only for the read-only size check; its clones run
 with a fake `gh` that answers nothing.
 
+Then serve the same repository at a file, from a terminal you keep open:
+
+```shell
+uv --config-file uv.toml run --frozen metab \
+  'https://github.com/octocat/Hello-World/blob/master/README#L1' --no-open --port 8475
+curl -s http://127.0.0.1:8475/api/source/status; echo
+curl -s -X POST -H 'Content-Type: application/json' -d '{}' \
+  http://127.0.0.1:8475/api/source/refresh; echo
+```
+
+**Pass:** The banner prints
+`Serving https://github.com/octocat/hello-world at http://127.0.0.1:8475/view/g1-UkVBRE1F#L1`,
+then `Revision: <commit> (master)` and `Selection: blob README#L1`. Status names
+`"ref_name": "master"`; the refresh answers `202`, and status soon reports
+`"last_outcome"` with `"operation": "refresh"` and `"outcome": "succeeded"`. Opening the
+printed address shows the README.
+
 **Fail:** A token prompt; a message containing Git’s own error text or a local path; a
-second clone on the cache hit.
+second clone on the cache hit; a refresh outcome other than `succeeded` on a working
+network.
 
 ### 4.9 A terminal hangup cancels a first clone
 
