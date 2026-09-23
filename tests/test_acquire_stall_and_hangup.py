@@ -20,12 +20,17 @@ import threading
 import time
 from collections.abc import Iterator
 from pathlib import Path
+from types import FrameType
 
 import pytest
 
 from metabrowser.cache.acquire import RemoteAccessError, acquire_source
 from metabrowser.cache.urls import GitSource
-from metabrowser.cli.hangup import HANGUP_EXIT_STATUS
+from metabrowser.cli.hangup import (
+    HANGUP_EXIT_STATUS,
+    TERMINATION_EXIT_STATUS,
+    run_cancelling_on_hangup,
+)
 from metabrowser.git.process import _REPO_PINNING_GIT_VARS
 from tests.admitted_git import require_admitted_git
 from tests.test_cache_acquire import _allow_installed_git
@@ -121,12 +126,15 @@ def test_a_stalled_https_origin_fails_at_the_probe_deadline(
 
 
 _HANGUP_CHILD = """
+import signal
 import sys
 from pathlib import Path
 from metabrowser.cli.hangup import run_cancelling_on_hangup
 from metabrowser.git.process import ACQUISITION_POLICY, run_git
 
 pid_file = sys.argv[1]
+if sys.argv[3] == "ignore-hangup":
+    signal.signal(signal.SIGHUP, signal.SIG_IGN)
 script = f"!sleep 60 & echo $! > '{pid_file}'; wait"
 run_cancelling_on_hangup(
     run_git(["-c", f"alias.hang={script}", "hang"], cwd=Path(sys.argv[2]), policy=ACQUISITION_POLICY)
@@ -138,33 +146,85 @@ def _child_env() -> dict[str, str]:
     return {key: value for key, value in os.environ.items() if key not in _REPO_PINNING_GIT_VARS}
 
 
-def test_hangup_cancels_acquisition_git_and_its_helpers(tmp_path: Path) -> None:
-    """Any Git: the helper is ``sleep`` forked by a Git alias, as in the timeout test."""
-
+def _start_child(tmp_path: Path, mode: str) -> tuple[subprocess.Popen[bytes], int]:
     pid_file = tmp_path / "helper.pid"
     child = subprocess.Popen(
-        [sys.executable, "-c", _HANGUP_CHILD, str(pid_file), str(tmp_path)],
+        [sys.executable, "-c", _HANGUP_CHILD, str(pid_file), str(tmp_path), mode],
         env=_child_env(),
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         start_new_session=True,
     )
-    helper = 0
+    if not _wait_for(lambda: pid_file.is_file() and pid_file.read_text().strip() != ""):
+        child.kill()
+        child.wait()
+        pytest.fail("the helper never started")
+    return child, int(pid_file.read_text())
+
+
+def _reap(child: subprocess.Popen[bytes], helper: int) -> None:
+    if child.poll() is None:
+        child.kill()
+        child.wait()
+    if helper and _alive(helper):
+        os.kill(helper, signal.SIGKILL)
+
+
+@pytest.mark.parametrize(
+    ("sent", "status"),
+    [(signal.SIGHUP, HANGUP_EXIT_STATUS), (signal.SIGTERM, TERMINATION_EXIT_STATUS)],
+)
+def test_hangup_or_termination_cancels_acquisition_git_and_its_helpers(
+    tmp_path: Path, sent: signal.Signals, status: int
+) -> None:
+    """Any Git: the helper is ``sleep`` forked by a Git alias, as in the timeout test."""
+
+    child, helper = _start_child(tmp_path, "default")
     try:
-        assert _wait_for(lambda: pid_file.is_file() and pid_file.read_text().strip() != "")
-        helper = int(pid_file.read_text())
-        child.send_signal(signal.SIGHUP)
-        assert child.wait(timeout=15) == HANGUP_EXIT_STATUS, (
-            child.stderr.read() if child.stderr else ""
-        )
-        assert _wait_for(lambda: not _alive(helper), 5), "the helper outlived the hangup"
+        child.send_signal(sent)
+        assert child.wait(timeout=15) == status, child.stderr.read() if child.stderr else ""
+        assert _wait_for(lambda: not _alive(helper), 5), f"the helper outlived {sent.name}"
     finally:
-        if child.poll() is None:
-            child.kill()
-            child.wait()
-        if helper and _alive(helper):
-            os.kill(helper, signal.SIGKILL)
+        _reap(child, helper)
+
+
+def test_an_ignored_hangup_stays_ignored(tmp_path: Path) -> None:
+    """``nohup metab …`` keeps acquiring after the terminal closes; SIGTERM still stops it."""
+
+    child, helper = _start_child(tmp_path, "ignore-hangup")
+    try:
+        child.send_signal(signal.SIGHUP)
+        assert not _wait_for(lambda: child.poll() is not None, 1.5), "SIGHUP was not ignored"
+        assert _alive(helper)
+        child.send_signal(signal.SIGTERM)
+        assert child.wait(timeout=15) == TERMINATION_EXIT_STATUS
+        assert _wait_for(lambda: not _alive(helper), 5)
+    finally:
+        _reap(child, helper)
+
+
+def test_the_previous_handlers_are_restored() -> None:
+    def hangup_handler(_number: int, _frame: FrameType | None) -> None:
+        return
+
+    def termination_handler(_number: int, _frame: FrameType | None) -> None:
+        return
+
+    before = (signal.getsignal(signal.SIGHUP), signal.getsignal(signal.SIGTERM))
+    signal.signal(signal.SIGHUP, hangup_handler)
+    signal.signal(signal.SIGTERM, termination_handler)
+    try:
+        assert run_cancelling_on_hangup(asyncio.sleep(0, result="done")) == "done"
+        assert signal.getsignal(signal.SIGHUP) is hangup_handler
+        assert signal.getsignal(signal.SIGTERM) is termination_handler
+        signal.signal(signal.SIGHUP, signal.SIG_IGN)
+        run_cancelling_on_hangup(asyncio.sleep(0))
+        assert signal.getsignal(signal.SIGHUP) == signal.SIG_IGN
+    finally:
+        for number, handler in zip((signal.SIGHUP, signal.SIGTERM), before, strict=True):
+            if handler is not None:
+                signal.signal(number, handler)
 
 
 def _metab() -> str:
