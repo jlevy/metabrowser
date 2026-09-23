@@ -15,6 +15,7 @@ import contextlib
 import functools
 import logging
 import os
+import re
 import secrets
 import shutil
 from collections.abc import Callable
@@ -95,6 +96,10 @@ _STORE_CONFIG: Final[tuple[tuple[str, str], ...]] = (
     ("core.hooksPath", "/dev/null"),
 )
 _ENTRY_ATTEMPTS: Final = 8
+# How a source that is itself a partial clone refuses to send an object it lacks. The
+# fetch's upload-pack inherits GIT_NO_LAZY_FETCH, and acquisition runs Git under
+# LC_ALL=C, so this is Git's own untranslated text (promisor-remote.c).
+_PARTIAL_CLONE_SOURCE: Final = re.compile(r"could not fetch [0-9a-f]+ from promisor remote")
 
 
 class AcquisitionError(Exception):
@@ -107,6 +112,10 @@ class RemoteUnavailableError(AcquisitionError):
 
 class FetchFailedError(AcquisitionError):
     """The fetch into staging failed after HEAD was observed."""
+
+
+class PartialCloneSourceError(FetchFailedError):
+    """The source is a partial clone missing objects the fetch needs."""
 
 
 class ValidationFailedError(AcquisitionError):
@@ -398,6 +407,10 @@ async def acquire_into_staging(
                 git_dir=git_dir,
             )
         except GitCommandError as exc:
+            if _PARTIAL_CLONE_SOURCE.search(exc.stderr_summary):
+                raise PartialCloneSourceError(
+                    "the source is a partial clone missing objects; clone it fully first"
+                ) from exc
             raise _classified(source, exc) or FetchFailedError(
                 "the fetch into staging failed"
             ) from exc
@@ -777,8 +790,8 @@ async def acquire_source(
     each provider refuse the first clone (the GitHub provider's size check) before
     ``open_cache``, so neither refusal creates the application home or completes an
     empty directory into an ``f01`` skeleton. A miss that is allowed to fetch then
-    opens the cache (and sweeps staging and trash) and fetches, telling *on_phase*
-    each phase as it starts. A future layout is refused before any write.
+    opens the cache (and sweeps staging) and fetches, telling *on_phase* each phase
+    as it starts. A future layout is refused before any write.
     """
 
     if source.transport not in _ACQUIRED_TRANSPORTS:
@@ -844,6 +857,7 @@ __all__ = [
     "AcquisitionError",
     "AliasConflictError",
     "FetchFailedError",
+    "PartialCloneSourceError",
     "PhaseReporter",
     "PublishedSource",
     "RemoteAccessError",

@@ -1,24 +1,14 @@
-"""Reclaiming ``staging/`` and ``trash/``, and quarantine.
+"""The startup sweep of ``staging/``: the one thing the cache deletes.
 
-Each operation follows its machine in ``tests/fixtures/repository-cache/state-machines.json``
+The operation follows its machine in ``tests/fixtures/repository-cache/state-machines.json``
 and reports every transition, with the locks held at that moment, to an optional
-observer; the fixture replay checks those reports against the frozen machines.
+observer; the fixture replay checks those reports against the frozen machine.
 
-- **Startup sweep** (``startup_sweep``). Under the application-home lock, list the entry
-  names; release it; then delete each entry whose liveness lock can be taken without
-  blocking. Liveness is the lock, never age: a crashed holder's lock is already free,
-  and no age tells a slow clone from a dead one. Deletion runs outside the home lock.
-  Lock files whose entry is gone and whose lock is free are removed too.
-- **Recoverable trash.** An entry moves into ``trash/<entry>/`` under its owning lock
-  while the trash entry's liveness lock is held, and is deleted at the end of the same
-  operation; the sweep removes anything a crashed operation left.
-- **Quarantine** (``quarantine``). Never reclaimed automatically. Under the ordered
-  source-alias and store locks, a store that still fails revalidation moves to
-  ``quarantine/<entry>/`` after the aliases naming it, so a crash between the two leaves
-  the aliases retained and an ordinary unreferenced store. A store no alias was seen to
-  name is quarantined under its store lock alone, after verifying there that no alias
-  names it. Only an explicit purge moves a quarantined entry to trash, under the
-  application-home lock.
+Under the application-home lock, the sweep lists the entry names; releases it; then
+deletes each entry whose liveness lock can be taken without blocking. Liveness is the
+lock, never age: a crashed holder's lock is already free, and no age tells a slow clone
+from a dead one. Deletion runs outside the home lock. Lock files whose entry is gone and
+whose lock is free are removed too.
 
 Nothing here deletes a published store. A store no alias names, which a crash between
 an acquisition's two renames leaves behind, stays in place until the next acquisition
@@ -29,46 +19,28 @@ from __future__ import annotations
 
 import logging
 import os
-import secrets
 import shutil
 import stat
 from collections.abc import Callable, Sequence
-from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
-from metabrowser.cache.atomic import RecordError, publish_entry, read_record
-from metabrowser.cache.identity import IDENTITY_PREFIX, is_slug
 from metabrowser.cache.locks import (
-    CacheLock,
     LockBusyError,
     application_home_lock,
     held_locks,
     is_entry_name,
-    repository_store_lock,
-    source_alias_lock,
     staging_entry_lock,
-    trash_entry_lock,
 )
 from metabrowser.cache.paths import (
-    SOURCES,
     STAGING,
     STAGING_LOCKS,
-    TRASH,
-    TRASH_LOCKS,
-    quarantine_entry,
-    source_directory,
-    source_record,
-    store_directory,
-    trash_entry,
 )
-from metabrowser.cache.records import REPOSITORY_STORE_ALIAS_CONTRACT_ID, RepositoryStoreAlias
-from metabrowser.home import PrivateStorageError, ensure_private_directory
+from metabrowser.home import PrivateStorageError
 
 log = logging.getLogger(__name__)
 
-_ENTRY_ATTEMPTS: Final = 4
 _LOCK_SUFFIX: Final = ".lock"
 # A repair unblocks one directory, and rmtree does not revisit what it already skipped,
 # so the walk is repeated while it keeps repairing something. Each round is bounded by
@@ -202,27 +174,14 @@ class SweepReport:
     failed: tuple[str, ...] = ()
     removed_lock_files: tuple[str, ...] = ()
 
-    def __add__(self, other: SweepReport) -> SweepReport:
-        return SweepReport(
-            self.removed + other.removed,
-            self.live + other.live,
-            self.unrecognized + other.unrecognized,
-            self.failed + other.failed,
-            self.removed_lock_files + other.removed_lock_files,
-        )
 
+def sweep_staging(home: Path, *, observer: MachineObserver | None = None) -> SweepReport:
+    """Delete staging entries whose owner is gone, and their free lock files."""
 
-def _sweep(
-    home: Path,
-    directory: str,
-    locks_directory: str,
-    entry_lock: Callable[[Path, str], CacheLock],
-    observer: MachineObserver | None,
-) -> SweepReport:
     machine = "startup_sweep"
     with application_home_lock(home):
-        names = sorted(entry.name for entry in os.scandir(home / directory))
-        lock_names = sorted(entry.name for entry in os.scandir(home / locks_directory))
+        names = sorted(entry.name for entry in os.scandir(home / STAGING))
+        lock_names = sorted(entry.name for entry in os.scandir(home / STAGING_LOCKS))
         _emit(observer, machine, "begin")
     _emit(observer, machine, "listed")
     removed: list[str] = []
@@ -230,12 +189,12 @@ def _sweep(
     unrecognized: list[str] = []
     failed: list[str] = []
     for name in names:
-        logical = f"{directory}/{name}"
+        logical = f"{STAGING}/{name}"
         if not is_entry_name(name):
             unrecognized.append(logical)
             continue
         try:
-            lock = entry_lock(home, name)
+            lock = staging_entry_lock(home, name)
         except LockBusyError:
             _emit(observer, machine, "entry_lock_busy")
             live.append(logical)
@@ -248,13 +207,11 @@ def _sweep(
             continue
         try:
             _emit(observer, machine, "entry_lock_acquired")
-            (removed if _remove_tree(home / directory / name) else failed).append(logical)
+            (removed if _remove_tree(home / STAGING / name) else failed).append(logical)
             _emit(observer, machine, "removed")
         finally:
             lock.remove_lock_file()
-    removed_lock_files = _remove_orphan_lock_files(
-        home, directory, locks_directory, lock_names, set(names), entry_lock
-    )
+    removed_lock_files = _remove_orphan_lock_files(home, lock_names, set(names))
     _emit(observer, machine, "exhausted")
     return SweepReport(
         tuple(removed), tuple(live), tuple(unrecognized), tuple(failed), removed_lock_files
@@ -262,12 +219,7 @@ def _sweep(
 
 
 def _remove_orphan_lock_files(
-    home: Path,
-    directory: str,
-    locks_directory: str,
-    lock_names: Sequence[str],
-    entry_names: set[str],
-    entry_lock: Callable[[Path, str], CacheLock],
+    home: Path, lock_names: Sequence[str], entry_names: set[str]
 ) -> tuple[str, ...]:
     removed: list[str] = []
     for lock_name in lock_names:
@@ -275,291 +227,20 @@ def _remove_orphan_lock_files(
         if name == lock_name or name in entry_names or not is_entry_name(name):
             continue
         try:
-            lock = entry_lock(home, name)
+            lock = staging_entry_lock(home, name)
         except (LockBusyError, PrivateStorageError):
             continue
-        if os.path.lexists(home / directory / name):
+        if os.path.lexists(home / STAGING / name):
             lock.release()
             continue
         lock.remove_lock_file()
-        removed.append(f"{locks_directory}/{lock_name}")
+        removed.append(f"{STAGING_LOCKS}/{lock_name}")
     return tuple(removed)
-
-
-def reclaim_staging(home: Path, *, observer: MachineObserver | None = None) -> SweepReport:
-    """Delete staging entries whose owner is gone."""
-
-    return _sweep(home, STAGING, STAGING_LOCKS, staging_entry_lock, observer)
-
-
-def reclaim_trash(home: Path, *, observer: MachineObserver | None = None) -> SweepReport:
-    """Delete trash a crashed purge, quarantine, or reclamation left behind."""
-
-    return _sweep(home, TRASH, TRASH_LOCKS, trash_entry_lock, observer)
-
-
-def sweep_staging_and_trash(home: Path, *, observer: MachineObserver | None = None) -> SweepReport:
-    """Run the startup sweep over ``staging/`` and then ``trash/``."""
-
-    return reclaim_staging(home, observer=observer) + reclaim_trash(home, observer=observer)
-
-
-# ── Recoverable trash ──────────────────────────────────────────────
-
-
-@dataclass(slots=True)
-class TrashEntry:
-    """A trash entry this process owns, with its held liveness lock."""
-
-    name: str
-    lock: CacheLock
-
-    @property
-    def relative_path(self) -> str:
-        return trash_entry(self.name)
-
-
-def begin_trash_entry(home: Path, purpose: str) -> TrashEntry:
-    """Create and lock a new, empty ``trash/<purpose>-<random>/`` entry."""
-
-    for _ in range(_ENTRY_ATTEMPTS):
-        name = f"{purpose}-{secrets.token_hex(8)}"
-        try:
-            lock = trash_entry_lock(home, name)
-        except LockBusyError:
-            continue
-        try:
-            ensure_private_directory(home, trash_entry(name))
-        except BaseException:
-            lock.remove_lock_file()
-            raise
-        return TrashEntry(name, lock)
-    raise RuntimeError("could not allocate a trash entry")
-
-
-def move_to_trash(home: Path, entry: TrashEntry, relative_path: str, *, owner: CacheLock) -> str:
-    """Move a cache path into *entry* under its owning lock; return where it went.
-
-    The path keeps its logical location inside the entry, so
-    ``cache/sources/<slug>`` becomes ``cache/trash/<entry>/sources/<slug>``.
-    """
-
-    if not entry.lock.held:
-        raise RuntimeError("the trash entry's liveness lock must be held")
-    target = f"{entry.relative_path}/{relative_path.removeprefix('cache/')}"
-    publish_entry(home, relative_path, target, owner=owner)
-    return target
-
-
-def delete_trash_entry(home: Path, entry: TrashEntry) -> bool:
-    """Delete a trash entry and its lock file; ``False`` leaves it for the sweep."""
-
-    try:
-        return _remove_tree(home / entry.relative_path)
-    finally:
-        entry.lock.remove_lock_file()
-
-
-def _move_into_new_trash(
-    home: Path, purpose: str, relative_path: str, owner: CacheLock
-) -> TrashEntry:
-    trash = begin_trash_entry(home, purpose)
-    try:
-        move_to_trash(home, trash, relative_path, owner=owner)
-    except BaseException:
-        delete_trash_entry(home, trash)
-        raise
-    return trash
-
-
-# ── Quarantine ─────────────────────────────────────────────────────
-
-
-@dataclass(frozen=True, slots=True)
-class QuarantineOutcome:
-    """How a quarantine attempt ended and, if it moved anything, where it is retained."""
-
-    state: str
-    entry: str | None = None
-    retained: tuple[str, ...] = ()
-
-
-def aliases_naming_stores(home: Path, store_keys: Sequence[str]) -> tuple[str, ...]:
-    """Return the slugs of sources whose alias names any of *store_keys*, in slug order.
-
-    An alias record that cannot be read may name one of them, so its slug is included:
-    the caller then locks and retains it rather than trusting that it does not. An entry
-    whose name is not a slug cannot be an alias Metabrowser wrote and is ignored.
-    """
-
-    store_ids = {f"{IDENTITY_PREFIX}{key}" for key in store_keys}
-    naming: list[str] = []
-    for entry in os.scandir(home / SOURCES):
-        if not is_slug(entry.name):
-            continue
-        try:
-            alias = read_record(
-                home,
-                source_record(entry.name, "store-alias.yml"),
-                REPOSITORY_STORE_ALIAS_CONTRACT_ID,
-            )
-        except FileNotFoundError:
-            continue
-        except (RecordError, PrivateStorageError, OSError):
-            naming.append(entry.name)
-            continue
-        if not isinstance(alias, RepositoryStoreAlias) or alias.store_id in store_ids:
-            naming.append(entry.name)
-    return tuple(sorted(naming))
-
-
-def quarantine_entries(
-    home: Path,
-    *,
-    source_slugs: Sequence[str],
-    store_keys: Sequence[str],
-    revalidate: Callable[[], bool],
-    observer: MachineObserver | None = None,
-) -> QuarantineOutcome:
-    """Quarantine stores, and the aliases naming them, that still fail *revalidate*.
-
-    *revalidate* runs under the locks that follow and must not do network or
-    long-running work.
-
-    With *source_slugs*, the sources the stores were resolved through, it takes their
-    alias locks and the store locks in order; their alias locks are held even when an
-    alias entry is already gone, as the frozen machine requires. Every alias moves
-    before any store, so a crash between the two leaves the aliases retained in
-    quarantine and the stores ordinary unreferenced stores.
-
-    Without *source_slugs*, for stores no alias was seen to name, it takes the store
-    locks alone. That is safe because an alias naming a store is written only under
-    that store's lock, so while it is held no alias can come to name the store, and an
-    acquisition that begins after the move finds the store absent under its own locks
-    and publishes a new one. An alias published before the store locks were taken is
-    still possible, so the absence of one is verified under them, and if one names a
-    store the store locks are released and the alias-first path runs with those
-    sources.
-
-    When no store is present there is nothing to quarantine. A process already reading
-    a quarantined store fails its next Git read with a typed error.
-    """
-
-    if not store_keys:
-        raise ValueError("quarantine needs at least one repository store")
-    machine = "quarantine"
-    keys = sorted(set(store_keys))
-    slugs = sorted(set(source_slugs))
-    if not slugs:
-        with ExitStack() as store_locks:
-            locked = [store_locks.enter_context(repository_store_lock(home, key)) for key in keys]
-            if not any(os.path.lexists(home / store_directory(key)) for key in keys):
-                _emit(observer, machine, "unreferenced_store_absent")
-                return QuarantineOutcome("nothing_to_quarantine")
-            slugs = list(aliases_naming_stores(home, keys))
-            if slugs:
-                _emit(observer, machine, "alias_now_names_store")
-            elif revalidate():
-                _emit(observer, machine, "unreferenced_store_revalidated_ok")
-                return QuarantineOutcome("healthy")
-            else:
-                entry, retained = _move_into_quarantine(
-                    home,
-                    [(store_directory(key), lock) for key, lock in zip(keys, locked, strict=True)],
-                )
-                _emit(observer, machine, "move_unreferenced_store_to_quarantine")
-                return QuarantineOutcome("quarantined", entry, retained)
-    return _quarantine_with_aliases(home, slugs, keys, revalidate, observer)
-
-
-def _quarantine_with_aliases(
-    home: Path,
-    slugs: Sequence[str],
-    keys: Sequence[str],
-    revalidate: Callable[[], bool],
-    observer: MachineObserver | None,
-) -> QuarantineOutcome:
-    machine = "quarantine"
-    with ExitStack() as held:
-        alias_locks = [held.enter_context(source_alias_lock(home, slug)) for slug in slugs]
-        store_locks = [held.enter_context(repository_store_lock(home, key)) for key in keys]
-        if not any(os.path.lexists(home / store_directory(key)) for key in keys):
-            _emit(observer, machine, "store_absent")
-            return QuarantineOutcome("nothing_to_quarantine")
-        if revalidate():
-            _emit(observer, machine, "revalidated_ok")
-            return QuarantineOutcome("healthy")
-        entry = f"quarantine-{secrets.token_hex(8)}"
-        retained: list[str] = []
-        for moves, event in (
-            (
-                [(source_directory(s), lock) for s, lock in zip(slugs, alias_locks, strict=True)],
-                "move_alias_to_quarantine",
-            ),
-            (
-                [(store_directory(k), lock) for k, lock in zip(keys, store_locks, strict=True)],
-                "move_store_to_quarantine",
-            ),
-        ):
-            moved = _move_into_quarantine(home, moves, entry=entry)[1]
-            if moved:
-                retained.extend(moved)
-                _emit(observer, machine, event)
-        return QuarantineOutcome("quarantined", entry, tuple(retained))
-
-
-def _move_into_quarantine(
-    home: Path, moves: Sequence[tuple[str, CacheLock]], *, entry: str | None = None
-) -> tuple[str, tuple[str, ...]]:
-    """Move each present path into one quarantine entry under its owning lock."""
-
-    entry = f"quarantine-{secrets.token_hex(8)}" if entry is None else entry
-    ensure_private_directory(home, quarantine_entry(entry))
-    retained: list[str] = []
-    for relative_path, lock in moves:
-        if not os.path.lexists(home / relative_path):
-            continue
-        target = f"{quarantine_entry(entry)}/{relative_path.removeprefix('cache/')}"
-        publish_entry(home, relative_path, target, owner=lock)
-        retained.append(target)
-    if retained:
-        log.warning(
-            "Quarantined %d cache entries that failed validation; retained at %s",
-            len(retained),
-            home / quarantine_entry(entry),
-        )
-    return entry, tuple(retained)
-
-
-def purge_quarantined(home: Path, entry: str, *, observer: MachineObserver | None = None) -> bool:
-    """Explicitly purge one quarantine entry: to trash under the home lock, then delete."""
-
-    machine = "quarantine"
-    with application_home_lock(home) as home_lock:
-        relative_path = quarantine_entry(entry)
-        os.lstat(home / relative_path)
-        trash = _move_into_new_trash(home, "purge", relative_path, home_lock)
-        _emit(observer, machine, "explicit_purge")
-    try:
-        deleted = _remove_tree(home / trash.relative_path)
-        _emit(observer, machine, "delete_completed")
-    finally:
-        trash.lock.remove_lock_file()
-    return deleted
 
 
 __all__ = [
     "MachineEvent",
     "MachineObserver",
-    "QuarantineOutcome",
     "SweepReport",
-    "TrashEntry",
-    "begin_trash_entry",
-    "delete_trash_entry",
-    "move_to_trash",
-    "purge_quarantined",
-    "quarantine_entries",
-    "reclaim_staging",
-    "reclaim_trash",
-    "sweep_staging_and_trash",
+    "sweep_staging",
 ]

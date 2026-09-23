@@ -166,13 +166,15 @@ def test_full_and_abbreviated_commit_ids(mirror: PublishedSource) -> None:
 
 def test_missing_refs_and_commits_ask_for_one_fetch(mirror: PublishedSource) -> None:
     missing = _resolve(mirror, b"nope", b"README.md")
-    assert missing == UnresolvedSelection("ref_not_found")
-    assert missing.needs_fetch
+    assert isinstance(missing, UnresolvedSelection)
+    assert missing.reason == "ref_not_found" and missing.needs_fetch
     target = repository_store_target(git_dir=mirror.git_dir)
     absent = asyncio.run(resolve_commit_id(target, "0" * 40))
-    assert absent == UnresolvedSelection("commit_not_found") and absent.needs_fetch
+    assert isinstance(absent, UnresolvedSelection)
+    assert absent.reason == "commit_not_found" and absent.needs_fetch
     tree = asyncio.run(resolve_commit_id(target, "5a2a414f"))
-    assert tree == UnresolvedSelection("not_a_commit") and not tree.needs_fetch
+    assert isinstance(tree, UnresolvedSelection)
+    assert tree.reason == "not_a_commit" and not tree.needs_fetch
 
 
 @pytest.mark.parametrize(

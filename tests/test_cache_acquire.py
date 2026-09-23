@@ -14,6 +14,7 @@ import pytest
 from metabrowser.cache import acquire as acquire_module
 from metabrowser.cache.acquire import (
     AcquisitionError,
+    PartialCloneSourceError,
     RemoteUnavailableError,
     ValidationFailedError,
     acquire_into_staging,
@@ -24,7 +25,7 @@ from metabrowser.cache.identity import source_identity
 from metabrowser.cache.layout import FutureLayoutFormatError
 from metabrowser.cache.locks import LockBusyError, LockKind, held_locks
 from metabrowser.cache.paths import source_record
-from metabrowser.cache.reclaim import sweep_staging_and_trash
+from metabrowser.cache.reclaim import sweep_staging
 from metabrowser.cache.records import REPOSITORY_SOURCE_STATE_CONTRACT_ID, RepositorySourceState
 from metabrowser.cache.urls import GitSource, classify_root_argument
 from metabrowser.git.process import (
@@ -116,7 +117,7 @@ def _file_source(path: Path) -> GitSource:
     return classified
 
 
-def _origin(tmp_path: Path, *, allow_filter: bool) -> Path:
+def _origin(tmp_path: Path) -> Path:
     work = tmp_path / "work"
     origin = tmp_path / "origin.git"
     work.mkdir()
@@ -125,9 +126,6 @@ def _origin(tmp_path: Path, *, allow_filter: bool) -> Path:
     _git(work, "add", "README")
     _git(work, "commit", "-qm", "first")
     _git(work, "clone", "--bare", "--template=", "--", str(work), str(origin))
-    if allow_filter:
-        _git(origin, "config", "uploadpack.allowFilter", "true")
-        _git(origin, "config", "uploadpack.allowAnySHA1InWant", "true")
     return origin
 
 
@@ -156,7 +154,7 @@ def test_racing_acquisitions_return_the_selected_stores_revision(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _allow_installed_git(monkeypatch)
-    origin = _origin(tmp_path, allow_filter=False)
+    origin = _origin(tmp_path)
     source = _file_source(origin)
     home = tmp_path / "home"
     with asyncio.run(acquire_into_staging(source, home=home)) as first:
@@ -180,7 +178,7 @@ def test_an_ordinary_non_bare_clone_acquires_through_its_own_head(
 ) -> None:
     """A clone also advertises ``refs/remotes/origin/HEAD``; only ``HEAD`` names the branch."""
     _allow_installed_git(monkeypatch)
-    upstream = _origin(tmp_path, allow_filter=False)
+    upstream = _origin(tmp_path)
     clone = tmp_path / "clone"
     _git(tmp_path, "clone", "-q", "--template=", "--", str(upstream), str(clone))
     _git(clone, "checkout", "-q", "-b", "local-work")
@@ -238,7 +236,7 @@ def test_a_default_branch_that_does_not_resolve_to_the_observed_head_is_refused(
 ) -> None:
     """The origin moves its branch after HEAD was observed and before the fetch."""
     _allow_installed_git(monkeypatch)
-    origin = _origin(tmp_path, allow_filter=False)
+    origin = _origin(tmp_path)
     work = tmp_path / "work"
     home = tmp_path / "home"
     real_run = acquire_module._run
@@ -270,7 +268,7 @@ def test_ambient_git_variables_do_not_steer_an_acquisition(
 ) -> None:
     """An allowlist naming only https would refuse file://; reftable would change the store."""
     _allow_installed_git(monkeypatch)
-    origin = _origin(tmp_path, allow_filter=False)
+    origin = _origin(tmp_path)
     monkeypatch.setenv("GIT_ALLOW_PROTOCOL", "https")
     monkeypatch.setenv("GIT_DEFAULT_REF_FORMAT", "reftable")
     published = asyncio.run(acquire_source(_file_source(origin), home=tmp_path / "home"))
@@ -286,7 +284,7 @@ def test_a_repository_enclosing_the_cache_home_does_not_rewrite_the_origin(
 ) -> None:
     """A repository around the home, or the home itself, must not lend its config."""
     _allow_installed_git(monkeypatch)
-    real = _origin(tmp_path, allow_filter=False)
+    real = _origin(tmp_path)
     decoy = tmp_path / "decoy"
     decoy.mkdir()
     _git(decoy, "init", "-q", "-b", "decoy-branch")
@@ -306,7 +304,7 @@ def test_a_detached_head_origin_is_refused_before_anything_is_fetched(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _allow_installed_git(monkeypatch)
-    _origin(tmp_path, allow_filter=False)
+    _origin(tmp_path)
     work = tmp_path / "work"
     _git(work, "checkout", "-q", "--detach")
     home = tmp_path / "home"
@@ -386,7 +384,7 @@ def test_file_origin_without_filter_support_fetches_a_complete_staging_store(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _allow_installed_git(monkeypatch)
-    origin = _origin(tmp_path, allow_filter=False)
+    origin = _origin(tmp_path)
     home = tmp_path / "home"
     staged = asyncio.run(acquire_into_staging(_file_source(origin), home=home))
     with staged:
@@ -417,12 +415,12 @@ def test_a_live_staging_entry_survives_the_startup_sweep_then_abandon_deletes_it
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _allow_installed_git(monkeypatch)
-    origin = _origin(tmp_path, allow_filter=False)
+    origin = _origin(tmp_path)
     home = tmp_path / "home"
     staged = asyncio.run(acquire_into_staging(_file_source(origin), home=home))
     entry = staged.entry
     with staged:
-        report = sweep_staging_and_trash(home)
+        report = sweep_staging(home)
         assert f"cache/staging/{entry}" in report.live
         assert staged.git_dir.is_dir()
     staging = home / "cache" / "staging"
@@ -444,16 +442,45 @@ def test_a_missing_file_origin_abandons_without_leaving_staging(
 
 
 @posix_only
+def test_a_partial_clone_source_is_refused_with_a_typed_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A blobless clone lacks blobs its own upload-pack cannot send."""
+    _allow_installed_git(monkeypatch)
+    upstream = _origin(tmp_path)
+    _git(upstream, "config", "uploadpack.allowFilter", "true")
+    partial = tmp_path / "partial.git"
+    _git(
+        tmp_path,
+        "clone",
+        "-q",
+        "--bare",
+        "--filter=blob:none",
+        "--",
+        f"file://{upstream.resolve()}",
+        str(partial),
+    )
+    # Its promisor is gone, so no Git can fetch the missing blobs, lazy fetch or not.
+    shutil.rmtree(upstream)
+    home = tmp_path / "home"
+    with pytest.raises(PartialCloneSourceError, match="partial clone missing objects"):
+        asyncio.run(acquire_source(_file_source(partial), home=home))
+    assert list((home / "cache" / "staging").iterdir()) == []
+    assert list((home / "cache" / "sources").iterdir()) == []
+    assert list((home / "cache" / "repository-stores").iterdir()) == []
+
+
+@posix_only
 def test_a_crashed_staging_holder_is_swept(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _allow_installed_git(monkeypatch)
-    origin = _origin(tmp_path, allow_filter=False)
+    origin = _origin(tmp_path)
     home = tmp_path / "home"
     staged = asyncio.run(acquire_into_staging(_file_source(origin), home=home))
     lock = staged._lock
     assert lock is not None
     lock.release()
     staged._lock = None
-    report = sweep_staging_and_trash(home)
+    report = sweep_staging(home)
     assert f"cache/staging/{staged.entry}" in report.removed
     assert not staged.git_dir.exists()
 
@@ -468,7 +495,7 @@ def test_ssh_sources_are_out_of_scope_for_staging_fetch() -> None:
 def test_git_below_the_acquisition_floor_is_refused(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    origin = _origin(tmp_path, allow_filter=False)
+    origin = _origin(tmp_path)
     home = tmp_path / "home"
 
     def refuse() -> tuple[int, int, int]:
@@ -487,7 +514,7 @@ def test_git_below_the_acquisition_floor_is_refused(
 def test_acquire_source_refuses_below_floor_git_before_creating_the_home(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    origin = _origin(tmp_path, allow_filter=False)
+    origin = _origin(tmp_path)
     home = tmp_path / "home"
 
     def refuse() -> tuple[int, int, int]:
@@ -503,7 +530,7 @@ def test_acquire_source_refuses_below_floor_git_before_creating_the_home(
 def test_acquire_source_refuses_below_floor_git_without_writing_an_empty_home(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    origin = _origin(tmp_path, allow_filter=False)
+    origin = _origin(tmp_path)
     home = tmp_path / "home"
     home.mkdir()
 
@@ -521,7 +548,7 @@ def test_a_cache_hit_does_not_require_the_acquisition_floor(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _allow_installed_git(monkeypatch)
-    origin = _origin(tmp_path, allow_filter=False)
+    origin = _origin(tmp_path)
     home = tmp_path / "home"
     source = _file_source(origin)
     first = asyncio.run(acquire_source(source, home=home))
@@ -540,7 +567,7 @@ def test_a_cache_hit_does_not_open_the_home_for_write(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _allow_installed_git(monkeypatch)
-    origin = _origin(tmp_path, allow_filter=False)
+    origin = _origin(tmp_path)
     home = tmp_path / "home"
     source = _file_source(origin)
     first = asyncio.run(acquire_source(source, home=home))
@@ -561,7 +588,7 @@ def test_a_cache_hit_against_a_home_without_owner_write_reuses(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _allow_installed_git(monkeypatch)
-    origin = _origin(tmp_path, allow_filter=False)
+    origin = _origin(tmp_path)
     home = tmp_path / "home"
     source = _file_source(origin)
     first = asyncio.run(acquire_source(source, home=home))
@@ -581,12 +608,12 @@ def test_a_cache_miss_against_a_home_without_owner_write_does_not_fetch(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _allow_installed_git(monkeypatch)
-    origin = _origin(tmp_path, allow_filter=False)
+    origin = _origin(tmp_path)
     home = tmp_path / "home"
     asyncio.run(acquire_source(_file_source(origin), home=home))
     other = tmp_path / "other"
     other.mkdir()
-    other_source = _file_source(_origin(other, allow_filter=False))
+    other_source = _file_source(_origin(other))
     _remove_owner_write(home)
     try:
         with pytest.raises(PrivateStorageError):
@@ -601,7 +628,7 @@ def test_a_future_home_is_refused_before_opening_the_cache_for_write(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _allow_installed_git(monkeypatch)
-    origin = _origin(tmp_path, allow_filter=False)
+    origin = _origin(tmp_path)
     home = tmp_path / "home"
     source = _file_source(origin)
     asyncio.run(acquire_source(source, home=home))
@@ -621,7 +648,7 @@ def test_a_writable_cache_hit_records_last_opened_at(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _allow_installed_git(monkeypatch)
-    origin = _origin(tmp_path, allow_filter=False)
+    origin = _origin(tmp_path)
     home = tmp_path / "home"
     source = _file_source(origin)
     first = asyncio.run(acquire_source(source, home=home))
@@ -639,7 +666,7 @@ def test_a_read_only_hit_keeps_the_published_last_opened_at(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _allow_installed_git(monkeypatch)
-    origin = _origin(tmp_path, allow_filter=False)
+    origin = _origin(tmp_path)
     home = tmp_path / "home"
     source = _file_source(origin)
     first = asyncio.run(acquire_source(source, home=home))
@@ -658,7 +685,7 @@ def test_a_dropped_last_opened_at_write_does_not_fail_the_hit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _allow_installed_git(monkeypatch)
-    origin = _origin(tmp_path, allow_filter=False)
+    origin = _origin(tmp_path)
     home = tmp_path / "home"
     source = _file_source(origin)
     first = asyncio.run(acquire_source(source, home=home))
@@ -682,7 +709,7 @@ def test_a_contended_alias_lock_does_not_fail_the_hit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _allow_installed_git(monkeypatch)
-    origin = _origin(tmp_path, allow_filter=False)
+    origin = _origin(tmp_path)
     home = tmp_path / "home"
     source = _file_source(origin)
     first = asyncio.run(acquire_source(source, home=home))

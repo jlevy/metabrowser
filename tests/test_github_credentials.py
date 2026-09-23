@@ -9,7 +9,6 @@ fake ``gh`` answer only for ``https://github.com``.
 
 from __future__ import annotations
 
-import asyncio
 import os
 import shutil
 import stat
@@ -21,7 +20,7 @@ import pytest
 from metabrowser.builtin_plugins.github import provider as github_provider
 from metabrowser.builtin_plugins.github.provider import GithubProvider, credential_helper_args
 from metabrowser.cache.remote import remote_git_args
-from metabrowser.git.process import ACQUISITION_POLICY, GitCommandError, run_git
+from metabrowser.git.process import ACQUISITION_POLICY, git_environment
 
 pytestmark = [
     pytest.mark.skipif(os.name != "posix", reason="the fake gh is a POSIX shell script"),
@@ -142,29 +141,29 @@ def test_the_provider_adds_the_helper_only_for_github_remotes(
     assert provider.git_config("https://github.com/octo/demo") == ()
 
 
-def test_the_acquisition_environment_asks_gh_through_the_production_runner(
+def test_the_acquisition_environment_asks_gh_the_same_way(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The same answer through ``run_git`` and the acquisition policy's isolated env."""
+    """The same answer in the isolated environment every acquisition Git runs with."""
 
     gh = _fake_gh(tmp_path)
     monkeypatch.setattr(github_provider, "gh_executable", lambda: str(gh))
-    args = remote_git_args("https://github.com/octo/demo")
-    out = asyncio.run(
-        run_git(
-            [*args, "credential", "fill"],
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(_user_config(tmp_path)))
+
+    def fill(url_args: tuple[str, ...], host: str) -> subprocess.CompletedProcess[bytes]:
+        return subprocess.run(
+            ["git", *url_args, "credential", "fill"],
+            input=f"protocol=https\nhost={host}\n\n".encode(),
+            capture_output=True,
+            env=git_environment(ACQUISITION_POLICY),
             cwd=tmp_path,
-            policy=ACQUISITION_POLICY,
-            stdin=b"protocol=https\nhost=github.com\n\n",
+            check=False,
+            timeout=30,
         )
-    )
-    assert f"password={GH_SENTINEL}".encode() in out
-    with pytest.raises(GitCommandError):
-        asyncio.run(
-            run_git(
-                [*remote_git_args("https://example.com/octo/demo.git"), "credential", "fill"],
-                cwd=tmp_path,
-                policy=ACQUISITION_POLICY,
-                stdin=b"protocol=https\nhost=example.com\n\n",
-            )
-        )
+
+    github = fill(remote_git_args("https://github.com/octo/demo"), "github.com")
+    assert f"password={GH_SENTINEL}".encode() in github.stdout
+    other = fill(remote_git_args("https://example.com/octo/demo.git"), "example.com")
+    assert other.returncode != 0
+    assert GH_SENTINEL.encode() not in other.stdout
+    assert USER_SENTINEL.encode() not in other.stdout

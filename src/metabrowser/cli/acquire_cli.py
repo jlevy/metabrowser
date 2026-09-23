@@ -11,10 +11,12 @@ Ctrl-C.
 
 from __future__ import annotations
 
+import logging
 import sys
 import tempfile
 import time
 from pathlib import Path
+from typing import Final
 
 import typer
 
@@ -24,6 +26,7 @@ from metabrowser.cache.acquire import (
     PublishedSource,
     acquire_source,
 )
+from metabrowser.cache.atomic import RecordError
 from metabrowser.cache.layout import FutureLayoutFormatError, LayoutError
 from metabrowser.cache.locks import LockBusyError
 from metabrowser.cache.urls import GitSource
@@ -42,6 +45,8 @@ from metabrowser.git.process import (
 )
 from metabrowser.home import ApplicationHomeError, PrivateStorageError, application_home
 
+LOG = logging.getLogger(__name__)
+
 _ACQUIRE_CLI_ERRORS = (
     AcquisitionError,
     ApplicationHomeError,
@@ -49,6 +54,13 @@ _ACQUIRE_CLI_ERRORS = (
     LayoutError,
     LockBusyError,
     PrivateStorageError,
+)
+# A record the current contracts refuse is, before v0.12 is released, almost always one
+# an earlier development build wrote; those records are not migrated.
+_UNREADABLE_RECORD: Final = (
+    "the repository cache holds a record this build cannot read, such as one an earlier "
+    "v0.12 development build wrote; nothing was published. Move the cache directory aside, "
+    "or set METABROWSER_HOME to a different directory"
 )
 
 
@@ -122,6 +134,9 @@ async def acquire_for_cli(source: GitSource) -> PublishedSource:
             )
     except _ACQUIRE_CLI_ERRORS as exc:
         raise CLIError(str(exc)) from exc
+    except RecordError as exc:
+        LOG.debug("unreadable cache record %s: %s", exc.path, exc)
+        raise CLIError(_UNREADABLE_RECORD) from exc
     except GitError as exc:
         raise CLIError(_git_failure_message(exc)) from exc
 

@@ -12,8 +12,8 @@ namespace matches and the order of lengths does not matter.
 User text never reaches ``rev-parse`` revision syntax, which would evaluate ``:/text``,
 ``@{…}``, or ``^{/…}``: a ref name is only ever an exact ``show-ref --verify`` argument
 after ``--``, and a commit ID is validated hexadecimal, expanded with
-``rev-parse --disambiguate`` (a prefix listing, not revision syntax) and typed with
-``cat-file --batch-check``.
+``rev-parse --disambiguate`` (a prefix listing, not revision syntax) and each full ID
+typed with ``cat-file -t``.
 
 An unresolved answer says whether one fetch could change it. Serving turns that into one
 background refresh and a typed pending state; the one-shot CLI reads the mirror as it
@@ -44,6 +44,11 @@ from metabrowser.git.wire import is_full_revision
 # a miss at 24 spawns, about 0.6 s under that load. Git bounds no ref depth, but a
 # GitHub branch or tag name with more than eleven slashes is not one this needs to open.
 MAX_REF_CANDIDATES: Final[int] = 12
+
+# An abbreviated ID that matches more objects than this is reported ambiguous rather
+# than typed one ``cat-file -t`` spawn at a time. Four hexadecimal digits match about
+# 150 objects in a ten-million-object repository; the seven GitHub shows match one.
+MAX_DISAMBIGUATION_OBJECTS: Final[int] = 8
 
 BRANCH_REF_PREFIX: Final = "refs/remotes/origin/"
 TAG_REF_PREFIX: Final = "refs/tags/"
@@ -127,10 +132,8 @@ def ref_candidates(
     return tuple(found)
 
 
-async def _git(
-    target: RepositoryStoreTarget, args: list[str], *, stdin: bytes | None = None
-) -> bytes:
-    return await run_git(args, target=target, policy=STORE_READ_POLICY, stdin=stdin)
+async def _git(target: RepositoryStoreTarget, args: list[str]) -> bytes:
+    return await run_git(args, target=target, policy=STORE_READ_POLICY)
 
 
 async def _verified_oid(target: RepositoryStoreTarget, ref: str) -> str | None:
@@ -148,25 +151,20 @@ async def _verified_oid(target: RepositoryStoreTarget, ref: str) -> str | None:
     return oid
 
 
-async def _object_types(target: RepositoryStoreTarget, oids: tuple[str, ...]) -> dict[str, str]:
-    if not oids:
-        return {}
-    out = await _git(
-        target, ["cat-file", "--batch-check"], stdin="".join(f"{oid}\n" for oid in oids).encode()
-    )
-    types: dict[str, str] = {}
-    for line in out.decode("ascii", errors="replace").splitlines():
-        parts = line.split(" ")
-        if len(parts) == 3 and is_full_revision(parts[0]):
-            types[parts[0]] = parts[1]
-    return types
+async def _object_type(target: RepositoryStoreTarget, oid: str) -> str | None:
+    """The type of a full object ID the store has, or ``None``."""
+
+    try:
+        return (await _git(target, ["cat-file", "-t", oid])).decode("ascii", "replace").strip()
+    except GitCommandError:
+        return None
 
 
 async def _commit_at(target: RepositoryStoreTarget, ref: str) -> str | UnresolvedSelection | None:
     oid = await _verified_oid(target, ref)
     if oid is None:
         return None
-    if (await _object_types(target, (oid,))).get(oid) != "commit":
+    if await _object_type(target, oid) != "commit":
         return UnresolvedSelection("not_a_commit")
     return oid
 
@@ -186,8 +184,9 @@ async def resolve_commit_id(
     oids = tuple(
         line for line in listed.decode("ascii", errors="replace").split() if is_full_revision(line)
     )
-    types = await _object_types(target, oids)
-    commits = [oid for oid in oids if types.get(oid) == "commit"]
+    if len(oids) > MAX_DISAMBIGUATION_OBJECTS:
+        return UnresolvedSelection("commit_ambiguous")
+    commits = [oid for oid in oids if await _object_type(target, oid) == "commit"]
     if len(commits) > 1:
         return UnresolvedSelection("commit_ambiguous")
     if not commits:
@@ -268,6 +267,7 @@ async def resolve_selection(
 
 __all__ = [
     "BRANCH_REF_PREFIX",
+    "MAX_DISAMBIGUATION_OBJECTS",
     "MAX_REF_CANDIDATES",
     "TAG_REF_PREFIX",
     "RefCandidate",

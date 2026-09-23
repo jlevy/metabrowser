@@ -123,19 +123,15 @@ CACHEDIR_TAG_CONTENT: Final = (
     b"# For information about cache directory tags, see https://bford.info/cachedir/\n"
 )
 # The owner-only directories of the f01 layout, parents first. Lock files live under
-# cache/locks/ so no publication, purge, quarantine, or reclamation ever renames one.
+# cache/locks/ so no publication or sweep ever renames one.
 F01_DIRECTORIES: Final = (
     "cache",
     "cache/locks",
     "cache/locks/sources",
     "cache/locks/stores",
     "cache/locks/staging",
-    "cache/locks/trash",
-    "cache/locks/jobs",
     "cache/locks/providers",
     "cache/staging",
-    "cache/trash",
-    "cache/quarantine",
     "cache/sources",
     "cache/repository-stores",
 )

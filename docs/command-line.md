@@ -177,7 +177,9 @@ source, and none changes another source already in the cache.
   Upgrade Git; a source already in the cache is still reused.
 - **A source that cannot be fetched** — a missing path, a directory that is not a
   repository, a repository with no commits, or one whose `HEAD` is not a branch —
-  publishes nothing. An https origin names why, in parentheses: `not_found_or_private`,
+  publishes nothing. A source that is itself a partial clone missing objects says so;
+  clone it fully first.
+  An https origin names why, in parentheses: `not_found_or_private`,
   `network_unreachable`, `tls_failed`, `timed_out` (an origin that stops answering; a
   transfer below 1000 bytes per second for 30 seconds counts as stopped), or
   `too_large`.

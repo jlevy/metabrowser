@@ -201,10 +201,10 @@ def test_acquisition_waits_for_the_home_lock_without_blocking_the_loop(
 
     _allow_installed_git(monkeypatch)
     home = tmp_path / "home"
-    asyncio.run(acquire_source(_file_source(_origin(tmp_path, allow_filter=False)), home=home))
+    asyncio.run(acquire_source(_file_source(_origin(tmp_path)), home=home))
     other = tmp_path / "other"
     other.mkdir()
-    other_source = _file_source(_origin(other, allow_filter=False))
+    other_source = _file_source(_origin(other))
     holder = _BoundedHolder(home, "locks.application_home_lock(home)")
     try:
 
@@ -237,10 +237,10 @@ def test_a_cancelled_acquisition_behind_a_busy_home_stops_promptly(
 
     _allow_installed_git(monkeypatch)
     home = tmp_path / "home"
-    asyncio.run(acquire_source(_file_source(_origin(tmp_path, allow_filter=False)), home=home))
+    asyncio.run(acquire_source(_file_source(_origin(tmp_path)), home=home))
     other = tmp_path / "other"
     other.mkdir()
-    other_source = _file_source(_origin(other, allow_filter=False))
+    other_source = _file_source(_origin(other))
     holder = _BoundedHolder(home, "locks.application_home_lock(home)")
     try:
 

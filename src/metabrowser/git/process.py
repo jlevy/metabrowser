@@ -387,9 +387,9 @@ def git_environment(policy: GitProcessPolicy | None = None) -> dict[str, str]:
     repository needing credentials fails fast instead of blocking the
     request on a prompt that has no terminal to appear on.
 
-    An acquisition, fetch, or batch-object policy also drops every inherited
-    ``GIT_*`` variable, isolates user and system Git configuration, disables
-    implicit lazy fetch, and can force SSH batch mode. Those extras are not
+    An isolated policy (acquisition, store read, or batch object) also drops every
+    inherited ``GIT_*`` variable, isolates user and system Git configuration,
+    disables implicit lazy fetch, and can force SSH batch mode. Those extras are not
     applied to ordinary local reads, which keep honoring the caller's Git
     environment.
     """
@@ -456,7 +456,6 @@ async def run_git(
     policy: GitProcessPolicy | None = None,
     timeout_s: float | None = None,
     max_bytes: int | None = None,
-    stdin: bytes | None = None,
 ) -> bytes:
     """Run ``git`` with *args* in *cwd* and return raw stdout.
 
@@ -468,47 +467,28 @@ async def run_git(
     Pass *target* for a core-constructed repository; *cwd* remains the
     path used by local-worktree readers. *timeout_s* and *max_bytes*
     override the selected policy when a caller already named a bound.
-    *stdin* is reserved for bounded, validated input such as an object-ID
-    list; it opens a pipe even when the policy would otherwise use
-    ``DEVNULL``.
 
     Raises :class:`GitUnavailableError`, :class:`GitTimeoutError`,
     :class:`GitOutputTooLargeError`, or :class:`GitCommandError`.
     """
     chosen = policy if policy is not None else _default_policy(target)
-    proc = await spawn_git_process(
-        args, cwd=cwd, target=target, policy=chosen, pipe_stdin=stdin is not None
-    )
+    proc = await spawn_git_process(args, cwd=cwd, target=target, policy=chosen)
     timeout = chosen.timeout_s if timeout_s is None else timeout_s
     max_bytes = chosen.max_bytes if max_bytes is None else max_bytes
-
-    async def write_stdin() -> None:
-        writer = proc.stdin
-        if writer is None or stdin is None:
-            return
-        try:
-            writer.write(stdin)
-            await writer.drain()
-        except (BrokenPipeError, ConnectionResetError):
-            pass
-        finally:
-            writer.close()
 
     # stdout and stderr are drained concurrently. Reading them in
     # sequence deadlocks as soon as git fills the pipe we are not
     # reading, which a repository with a lot of output will do.
     stdout_task = asyncio.ensure_future(_read_capped(proc.stdout, max_bytes))
     stderr_task = asyncio.ensure_future(_read_capped(proc.stderr, _STDERR_MAX_BYTES))
-    stdin_task = asyncio.ensure_future(write_stdin())
     try:
-        (stdout, overflowed), (stderr, _), _, returncode = await asyncio.wait_for(
-            asyncio.gather(stdout_task, stderr_task, stdin_task, proc.wait()),
+        (stdout, overflowed), (stderr, _), returncode = await asyncio.wait_for(
+            asyncio.gather(stdout_task, stderr_task, proc.wait()),
             timeout=timeout,
         )
     except TimeoutError:
         stdout_task.cancel()
         stderr_task.cancel()
-        stdin_task.cancel()
         await terminate_git_process(proc)
         raise GitTimeoutError(
             f"git {' '.join(args)} exceeded {timeout:g}s and was terminated"
@@ -520,7 +500,6 @@ async def run_git(
         # converting it to a GitError would swallow the shutdown signal.
         stdout_task.cancel()
         stderr_task.cancel()
-        stdin_task.cancel()
         await terminate_git_process(proc)
         raise
 
@@ -652,7 +631,6 @@ async def run_git_at(
     policy: GitProcessPolicy | None = None,
     timeout_s: float | None = None,
     max_bytes: int | None = None,
-    stdin: bytes | None = None,
 ) -> bytes:
     """Run ``git`` at *location*, applying store isolation when it is a pin."""
 
@@ -663,7 +641,6 @@ async def run_git_at(
         policy=policy if policy is not None else location.read_policy,
         timeout_s=timeout_s,
         max_bytes=max_bytes,
-        stdin=stdin,
     )
 
 
