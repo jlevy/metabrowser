@@ -34,6 +34,7 @@ import logging
 import os
 import re
 import shutil
+import signal
 import subprocess
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -111,6 +112,13 @@ class GitProcessPolicy:
     no_lazy_fetch: bool
     ssh_batch: bool = False
     extra_env: Mapping[str, str] | None = None
+    # Start Git as the leader of its own process group so a timeout or a
+    # cancellation kills the helpers it forks (``upload-pack``, ``index-pack``,
+    # ``remote-https``), not only the ``git`` process itself. The terminal's
+    # Ctrl-C then reaches Git through cancellation, which kills the group, rather
+    # than directly, so this is only for families whose spawns fork helpers and
+    # are always awaited by a caller that handles cancellation (mb-lp89).
+    own_process_group: bool = False
 
 
 READ_POLICY: Final[GitProcessPolicy] = GitProcessPolicy(
@@ -132,6 +140,7 @@ ACQUISITION_POLICY: Final[GitProcessPolicy] = GitProcessPolicy(
     no_lazy_fetch=True,
     ssh_batch=True,
     extra_env={"GCM_INTERACTIVE": "never", "LC_ALL": "C"},
+    own_process_group=True,
 )
 FETCH_POLICY: Final[GitProcessPolicy] = GitProcessPolicy(
     name="fetch",
@@ -143,6 +152,7 @@ FETCH_POLICY: Final[GitProcessPolicy] = GitProcessPolicy(
     no_lazy_fetch=True,
     ssh_batch=True,
     extra_env={"GCM_INTERACTIVE": "never", "LC_ALL": "C"},
+    own_process_group=True,
 )
 # Request-path reads of a published store: ``ls-tree``, ``rev-parse``, ``log``,
 # ``rev-list``, ``show``, ``diff``. The store holds untrusted content, so the
@@ -655,6 +665,7 @@ async def spawn_git_process(
             stderr=asyncio.subprocess.PIPE,
             env=env,
             umask=child_umask,
+            start_new_session=chosen.own_process_group and os.name == "posix",
         )
     except OSError as exc:
         # Spawn itself failed — a missing cwd, a permissions problem, or
@@ -713,12 +724,30 @@ async def terminate_git_process(proc: asyncio.subprocess.Process) -> None:
         return
     # The process may exit between the returncode check and the signal.
     with contextlib.suppress(ProcessLookupError):
-        proc.kill()
+        if _leads_its_own_group(proc.pid):
+            os.killpg(proc.pid, signal.SIGKILL)
+        else:
+            proc.kill()
     # The request may be cancelled again while reaping. The child is
     # already signalled by then, and re-raising here would replace the
     # original failure with a cancellation from the cleanup path.
     with contextlib.suppress(asyncio.CancelledError):
         await proc.wait()
+
+
+def _leads_its_own_group(pid: int) -> bool:
+    """Whether *pid* was started with ``own_process_group``.
+
+    Read from the process rather than remembered, so a caller holding only the
+    ``Process`` can still kill the whole group. An unreaped child keeps its group
+    id, so this is exact until :func:`terminate_git_process` reaps it.
+    """
+    if os.name != "posix":
+        return False
+    try:
+        return os.getpgid(pid) == pid
+    except ProcessLookupError:
+        return False
 
 
 def attached_worktree_target(*, worktree: Path, git_dir: Path) -> AttachedWorktreeTarget:
