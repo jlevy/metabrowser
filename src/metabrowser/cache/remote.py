@@ -40,9 +40,12 @@ PROTOCOL_ARGS: Final[tuple[str, ...]] = (
 #   accepts and never answers failed only at 300.2 s, curl's connect timeout ("SSL
 #   connection timeout"), which is why the first command against an origin also has
 #   REMOTE_PROBE_TIMEOUT_S.
-# 30 s tolerates a server that is slow to start its pack, which a fetch with progress
-# off sees as silence broken only by keepalives, while bounding a stall at half a
-# minute rather than the whole acquisition deadline.
+# - the bound covers a server preparing its pack, which a fetch with progress off sees
+#   as silence broken only by keepalives: torvalds/linux, among the largest public
+#   repositories, began its pack 1.7 s after the request, and its longest silence in
+#   the first 290 MB was 0.49 s.
+# 30 s tolerates a server much slower to start its pack than that, while bounding a
+# stall at half a minute rather than the whole acquisition deadline.
 HTTP_LOW_SPEED_LIMIT_BYTES: Final[int] = 1000
 HTTP_LOW_SPEED_TIME_S: Final[int] = 30
 _STALL_ARGS: Final[tuple[str, ...]] = (
@@ -57,37 +60,81 @@ _STALL_ARGS: Final[tuple[str, ...]] = (
 # each: 0.76 to 2.36 s for octocat/Hello-World, django, kubernetes, torvalds/linux, and
 # cpython. Thirteen times the slowest keeps a slow network from failing, and it bounds
 # the stalled-TLS case above at 30 s instead of 300.
+#
+# The fetch that follows has no such deadline, because a whole clone must not be
+# killed while it is making progress. Once its connection is up, the low-speed bound
+# covers it to the end, pack preparation included. Before TLS completes it is bounded
+# only by curl's 300 s connect timeout and GIT_ACQUISITION_TIMEOUT_S: Git has no
+# configuration for a connect timeout alone. The ls-remote seconds earlier has just
+# completed a TLS handshake with the same origin, so that window is narrow.
 REMOTE_PROBE_TIMEOUT_S: Final[float] = 30.0
 
 type RemoteFailureState = Literal[
     "not_found_or_private",
     "network_unreachable",
+    "connection_interrupted",
     "tls_failed",
     "timed_out",
+    "server_error",
+    "rate_limited",
+    "proxy_auth_required",
     "too_large",
 ]
 
-# Git runs with LC_ALL=C, so these are its and curl's untranslated messages, as
-# captured 2026-09-23 from Git 2.50.1 (Homebrew, curl with OpenSSL) against github.com,
-# an unresolvable host, a closed port, and badssl.com's self-signed, expired, and
-# wrong-host certificates. Order matters: a TLS handshake that stalls reports
-# "SSL connection timeout", which is a timeout. Quoted text, which is where Git puts the
-# URL, is removed before matching, so a repository named ``tls-notes`` stays not found.
+# Git runs with LC_ALL=C, so these are its and curl's untranslated messages. The samples
+# in tests/test_cache_remote.py were captured 2026-09-23 from Git 2.50.1 (Homebrew, curl
+# with OpenSSL) against github.com, an unresolvable host, a closed port, badssl.com's
+# certificate failures, a stalled server, CONNECT proxies that reset, truncate, or
+# demand authentication, and HTTP servers answering 429, 500, and 503. Two reported
+# forms the machine could not produce are included and marked there: OpenSSL on Linux
+# reports a reset as ``SSL_ERROR_SYSCALL, errno 104``, and HTTP/2 as curl 92.
+# Order matters, because one failure prints several lines: a low-speed abort also
+# prints ``early EOF``, so a timeout is decided first; an HTTP status outranks the
+# connection it arrived on; and an interrupted connection outranks the TLS layer it was
+# reported through. Quoted text, which is where Git puts the URL, is removed before
+# matching, so a repository named ``tls-notes`` stays not found.
 _QUOTED = re.compile(r"'[^'\n]*'")
+_SERVER_ERROR = re.compile(r"returned error: 5\d\d\b")
 _PATTERNS: Final[tuple[tuple[RemoteFailureState, tuple[str, ...]], ...]] = (
     (
         "timed_out",
-        ("operation too slow", "timed out", "connection timeout", "timeout was reached"),
+        (
+            "operation too slow",
+            "timed out",
+            "connection timeout",
+            "timeout was reached",
+            "curl 28 ",
+        ),
+    ),
+    (
+        "proxy_auth_required",
+        ("response 407", "received http code 407", "returned error: 407"),
+    ),
+    ("rate_limited", ("returned error: 429",)),
+    (
+        "connection_interrupted",
+        (
+            "connection reset",
+            "ssl_error_syscall",
+            "unexpected eof while reading",
+            "transferred a partial file",
+            "transfer closed with outstanding read data",
+            "curl 18 ",
+            "curl 56 ",
+            "curl 92 ",
+            "was not closed cleanly",
+            "unexpected disconnect",
+            "early eof",
+            "the remote end hung up unexpectedly",
+        ),
     ),
     (
         "tls_failed",
         (
             "ssl certificate problem",
-            "ssl: ",
+            "ssl: no alternative certificate",
+            "ssl: certificate subject name",
             "ssl connect error",
-            "ssl_connect",
-            "ssl_error",
-            "ssl routines",
             "tls connect error",
             "gnutls_handshake",
             "server certificate verification failed",
@@ -104,7 +151,6 @@ _PATTERNS: Final[tuple[tuple[RemoteFailureState, tuple[str, ...]], ...]] = (
             "failed to connect",
             "network is unreachable",
             "connection refused",
-            "connection reset",
             "no route to host",
         ),
     ),
@@ -126,8 +172,12 @@ _PATTERNS: Final[tuple[tuple[RemoteFailureState, tuple[str, ...]], ...]] = (
 _STATE_TEXT: Final[dict[RemoteFailureState, str]] = {
     "not_found_or_private": "was not found, or it is private and Git has no credentials for it",
     "network_unreachable": "could not be reached; check the network connection",
+    "connection_interrupted": "dropped the connection before the transfer finished; try again",
     "tls_failed": "failed the TLS security check",
     "timed_out": "stopped answering in time",
+    "server_error": "answered with a server error; try again later",
+    "rate_limited": "is limiting the rate of requests; try again later",
+    "proxy_auth_required": "is behind a proxy that requires authentication",
     "too_large": "is too large to clone within the acquisition deadline",
 }
 
@@ -150,6 +200,8 @@ def classify_remote_failure(stderr_summary: str) -> RemoteFailureState | None:
     for state, needles in _PATTERNS:
         if any(needle in text for needle in needles):
             return state
+        if state == "rate_limited" and _SERVER_ERROR.search(text):
+            return "server_error"
     return None
 
 
