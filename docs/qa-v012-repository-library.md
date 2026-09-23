@@ -182,10 +182,14 @@ uv --config-file uv.toml run --frozen pytest \
 
 **Pass:** Every selected test passed or was skipped for a documented reason (missing
 `git` binary; installed Git already meets the floor so the below-floor live test skips;
-non-POSIX). `tests/test_cli_git_pin_golden.py` pins `cli-git-pin.txt`: `--show README`
-on a `file://` origin, `/api/index/progress` with `"provider": "git"`, `/api/file` on
-the `g1-` wire, `/api/tree` with `"subject": "git_revision"`. Nothing in that golden
-prints `Serving`.
+non-POSIX). `tests/test_cli_git_pin_golden.py` pins `cli-git-pin.txt` against a
+multi-entry `file://` origin with nested directories, Markdown, JSON, JSONL, an image, a
+binary, an oversized blob, a symlink, an executable, a gitlink, and names containing a
+newline, a tab, and a byte that is not UTF-8. It records `--show` kinds and routes,
+index counts, `/api/tree` nesting with its lazy sentinel past `depth`, name order in
+`/api/tree` against blob order in `/api/catalog`, file content on `g1-` wires, and the
+404, 409, and 413 refusals.
+Nothing in that golden prints `Serving`.
 
 **Fail:** A failed assertion, a 500-shaped CLI envelope, or a golden update performed
 without an intended product change.

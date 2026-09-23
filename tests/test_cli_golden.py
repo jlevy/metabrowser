@@ -83,13 +83,15 @@ def _normalize(text: str, root: Path) -> str:
 def check_golden(name: str, actual: str) -> None:
     """Compare ``actual`` to the checked-in golden; GOLDEN_UPDATE=1 rewrites it."""
     path = GOLDEN_DIR / name
+    # UTF-8 whatever the locale says: the Git pin golden records display names
+    # in which a tree name that is not valid UTF-8 appears as U+FFFD.
     if os.environ.get("GOLDEN_UPDATE") == "1":
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(actual)
+        path.write_text(actual, encoding="utf-8")
         return
     if not path.is_file():
         pytest.fail(f"missing golden {path.name}; regenerate with GOLDEN_UPDATE=1")
-    expected = path.read_text()
+    expected = path.read_text(encoding="utf-8")
     if actual != expected:
         diff = "".join(
             difflib.unified_diff(
