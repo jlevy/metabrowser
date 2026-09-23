@@ -264,8 +264,13 @@ The process boundary converts that handle into fixed arguments while continuing 
 ambient repository environment variables.
 Caller-supplied paths do not become `GIT_DIR`, `GIT_WORK_TREE`, or environment
 overrides. Store reads disable mailmap and implicit lazy fetch.
+The spawn seam refuses any policy that would leave lazy fetch on for a store target.
 For a repository-store target, history and detail start from the subject’s pinned full
 object ID rather than ambient `HEAD`; refs remain optional observations.
+Commit detail and the diff comparison list their change set with `--raw --no-renames`
+and check its blobs with one batch `info` before the blob-reading command runs
+(`metabrowser/git/change_set.py`). A blob the store lacks is then a typed 404
+`object_unavailable` naming the object ID, not a Git failure.
 
 The immutable content source resolves a full object ID to one tree, enumerates paths
 with NUL-framed `ls-tree` output, and reads bounded blobs through owned batch `cat-file`

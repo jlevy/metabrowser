@@ -364,6 +364,21 @@ def _default_policy(target: GitCommandTarget | None) -> GitProcessPolicy:
     return STORE_READ_POLICY if isinstance(target, RepositoryStoreTarget) else READ_POLICY
 
 
+def _require_no_lazy_fetch(target: GitCommandTarget | None, policy: GitProcessPolicy) -> None:
+    """Refuse a store spawn whose policy would let Git fetch a missing object itself.
+
+    The open-repository plan's lazy-fetch decision: every Git process on a
+    worktree-free store runs with ``GIT_NO_LAZY_FETCH=1``, so a blob the store
+    lacks is reported as unavailable instead of fetched from the promisor remote
+    inside a request. Objects enter a store only through an explicit fetch.
+    Checking here, where every store spawn passes, keeps that true for callers
+    that name a policy as well as for those that inherit the default.
+    """
+
+    if isinstance(target, RepositoryStoreTarget) and not policy.no_lazy_fetch:
+        raise ValueError(f"Git policy {policy.name!r} would allow lazy fetch in a repository store")
+
+
 def git_environment(policy: GitProcessPolicy | None = None) -> dict[str, str]:
     """Environment for a git child process.
 
@@ -554,6 +569,7 @@ def run_git_blocking(
     would have to buffer the whole stream before it could check a cap.
     """
 
+    _require_no_lazy_fetch(target, policy)
     exe = git_executable()
     if exe is None:
         raise GitUnavailableError("git executable not found on PATH")
@@ -624,11 +640,12 @@ async def spawn_git_process(
     if target is None and cwd is None:
         raise TypeError("run_git requires cwd or target")
 
+    chosen = policy if policy is not None else _default_policy(target)
+    _require_no_lazy_fetch(target, chosen)
     exe = git_executable()
     if exe is None:
         raise GitUnavailableError("git executable not found on PATH")
 
-    chosen = policy if policy is not None else _default_policy(target)
     prefix: tuple[str, ...] = ()
     work_cwd = cwd
     if target is not None:

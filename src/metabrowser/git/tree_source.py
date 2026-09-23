@@ -774,6 +774,27 @@ async def read_store_blob(
         await _release_pool(pool)
 
 
+async def require_store_objects(target: RepositoryStoreTarget, oids: Sequence[str]) -> None:
+    """Raise :class:`GitObjectUnavailableError` for the first object the store lacks.
+
+    One ``info`` flush per chunk through the shared per-store pool, so checking a
+    change set costs an actor round trip rather than a spawn per object. With lazy
+    fetch disabled an absent object answers ``missing`` and no promisor is asked.
+    """
+
+    if not oids:
+        return
+    pool = _retain_pool(target)
+    try:
+        async with pool.checkout() as reader:
+            found = await reader.info_many(tuple(oids))
+    finally:
+        await _release_pool(pool)
+    for oid, info in found.items():
+        if info is None:
+            raise GitObjectUnavailableError(oid)
+
+
 async def _drain_stderr(proc: asyncio.subprocess.Process) -> tuple[bytes, bool]:
     stream = proc.stderr
     if stream is None:
@@ -1401,6 +1422,7 @@ __all__ = [
     "git_revision_subject",
     "read_store_blob",
     "require_full_oid",
+    "require_store_objects",
     "resolve_git_blob_entry",
     "split_git_container_wire",
     "store_batch_reader_count",
