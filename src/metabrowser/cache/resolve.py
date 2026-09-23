@@ -2,16 +2,17 @@
 
 A URL such as ``…/tree/release/v1/docs`` cannot be split by reading it: the ref may be
 ``release``, ``release/v1``, or ``release/v1/docs``. Only the mirror knows, so each
-split is a candidate, up to :data:`MAX_REF_CANDIDATES`, and each candidate that passes
-Git's ref-name rules is checked with ``show-ref --verify`` against the exact ref it would
-be. The precedence is branch (``refs/remotes/origin/<name>``), then tag
-(``refs/tags/<name>``), then a full or abbreviated commit ID in the first segment. A
-store cannot hold both ``a`` and ``a/b`` in one namespace, so at most one candidate per
-namespace matches and the order of lengths does not matter.
+split is a candidate, up to :data:`MAX_REF_CANDIDATES`. Every candidate that passes
+Git's ref-name rules is looked up in one ``for-each-ref``, which lists refs by the names
+the store holds, and only an exact, case-sensitive match counts. The precedence is branch
+(``refs/remotes/origin/<name>``), then tag (``refs/tags/<name>``), then a full or
+abbreviated commit ID in the first segment; a first segment ``HEAD`` is the default
+branch. A store cannot hold both ``a`` and ``a/b`` in one namespace, so at most one
+candidate per namespace matches and the order of lengths does not matter.
 
 User text never reaches ``rev-parse`` revision syntax, which would evaluate ``:/text``,
-``@{…}``, or ``^{/…}``: a ref name is only ever an exact ``show-ref --verify`` argument
-after ``--``, and a commit ID is validated hexadecimal, expanded with
+``@{…}``, or ``^{/…}``: a ref name is only ever a ``for-each-ref`` pattern after ``--``
+that cannot hold a wildcard, and a commit ID is validated hexadecimal, expanded with
 ``rev-parse --disambiguate`` (a prefix listing, not revision syntax) and each full ID
 typed with ``cat-file -t``.
 
@@ -22,7 +23,10 @@ is and reports it not found.
 
 from __future__ import annotations
 
+import bisect
 import re
+import unicodedata
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Final, Literal
 
@@ -35,14 +39,10 @@ from metabrowser.git.process import (
 )
 from metabrowser.git.wire import is_full_revision
 
-# Candidates tried per URL, one per leading path segment. A miss costs one
-# ``show-ref --verify`` spawn per candidate per namespace, so a URL that matches nothing
-# costs twice the cap; a match stops at the first candidate that exists, which for a
-# typical ``blob/<branch>/…`` URL is the first. Measured 2026-09-23 on macOS against a
-# store with 2,000 packed refs, under load average 36: 22 to 24 ms per spawn, found or
-# not (``git --version`` alone took 30 ms under the same load). Twelve candidates bound
-# a miss at 24 spawns, about 0.6 s under that load. Git bounds no ref depth, but a
-# GitHub branch or tag name with more than eleven slashes is not one this needs to open.
+# Candidates tried per URL, one per leading path segment, all in one ``for-each-ref``.
+# The cap bounds the patterns and the refs they list, not spawns. Git bounds no ref
+# depth, but a GitHub branch or tag name with more than eleven slashes is not one this
+# needs to open.
 MAX_REF_CANDIDATES: Final[int] = 12
 
 # An abbreviated ID that matches more objects than this is reported ambiguous rather
@@ -51,6 +51,7 @@ MAX_REF_CANDIDATES: Final[int] = 12
 MAX_DISAMBIGUATION_OBJECTS: Final[int] = 8
 
 BRANCH_REF_PREFIX: Final = "refs/remotes/origin/"
+_REF_FORMAT: Final = "%(refname)%00%(objectname)%00%(objecttype)%00%(*objectname)%00%(*objecttype)"
 TAG_REF_PREFIX: Final = "refs/tags/"
 _COMMIT_ID = re.compile(r"^[0-9a-f]{4,64}$")
 _REF_FORBIDDEN = frozenset(" ~^:?*[\\\x7f")
@@ -115,6 +116,39 @@ def is_valid_ref_name(name: str) -> bool:
     )
 
 
+def _folded(name: str) -> str:
+    """How a case- and normalization-insensitive filesystem compares a name, as APFS does."""
+
+    return unicodedata.normalize("NFD", unicodedata.normalize("NFD", name).casefold())
+
+
+def case_colliding_refs(names: Iterable[str]) -> tuple[str, ...]:
+    """Ref names a case-insensitive filesystem cannot hold apart, sorted.
+
+    Two names collide when they fold to the same name, or when one folds to a directory
+    of the other (``Release`` and ``release/v1``) while differing in case.
+    """
+
+    by_fold: dict[str, set[str]] = {}
+    for name in names:
+        by_fold.setdefault(_folded(name), set()).add(name)
+    colliding: set[str] = set()
+    for group in by_fold.values():
+        if len(group) > 1:
+            colliding |= group
+    folds = sorted(by_fold)
+    for fold in folds:
+        start = bisect.bisect_left(folds, fold + "/")
+        for below in folds[start:]:
+            if not below.startswith(fold + "/"):
+                break
+            for upper in by_fold[fold]:
+                for lower in by_fold[below]:
+                    if not lower.startswith(upper + "/"):
+                        colliding |= {upper, lower}
+    return tuple(sorted(colliding))
+
+
 def ref_candidates(
     segments: tuple[bytes, ...], *, cap: int = MAX_REF_CANDIDATES
 ) -> tuple[RefCandidate, ...]:
@@ -136,19 +170,62 @@ async def _git(target: RepositoryStoreTarget, args: list[str]) -> bytes:
     return await run_git(args, target=target, policy=STORE_READ_POLICY)
 
 
-async def _verified_oid(target: RepositoryStoreTarget, ref: str) -> str | None:
-    """The object a ref names, peeled through annotated tags, or ``None``."""
+@dataclass(frozen=True, slots=True)
+class _RefObject:
+    """What one ref names: its object, and the object an annotated tag points at."""
 
+    oid: str
+    kind: str
+    peeled_oid: str | None
+    peeled_kind: str | None
+
+
+async def _exact_refs(target: RepositoryStoreTarget, refs: list[str]) -> dict[str, _RefObject]:
+    """The refs among *refs* that the store holds under exactly that name.
+
+    One ``for-each-ref`` for every candidate. It lists refs by the names the ref store
+    holds, where ``show-ref --verify`` looks a loose ref up as a path: on a
+    case-insensitive filesystem that finds ``refs/remotes/origin/topic`` for ``TOPIC``,
+    and GitHub, whose refs are case-sensitive, has no branch ``TOPIC``. A pattern also
+    lists refs below it, so only exact names are kept.
+    """
+
+    if not refs:
+        return {}
+    out = await _git(target, ["for-each-ref", f"--format={_REF_FORMAT}", "--", *refs])
+    wanted = set(refs)
+    found: dict[str, _RefObject] = {}
+    for line in out.split(b"\n"):
+        fields = line.decode("utf-8", "surrogateescape").split("\0")
+        if len(fields) != 5 or fields[0] not in wanted or not is_full_revision(fields[1]):
+            continue
+        peeled = fields[3] if is_full_revision(fields[3]) else None
+        found[fields[0]] = _RefObject(fields[1], fields[2], peeled, fields[4] or None)
+    return found
+
+
+async def _peeled_commit(target: RepositoryStoreTarget, ref: _RefObject) -> str | None:
+    """The commit a ref names, through any chain of annotated tags, or ``None``."""
+
+    if ref.kind == "commit":
+        return ref.oid
+    if ref.kind != "tag" or ref.peeled_oid is None:
+        return None
+    if ref.peeled_kind == "commit":
+        return ref.peeled_oid
+    if ref.peeled_kind != "tag":
+        return None
+    # A tag of a tag: peel the rest of the chain. The argument is a full object ID
+    # Git printed, never text from the URL.
     try:
-        out = await _git(target, ["show-ref", "--verify", "--dereference", "--", ref])
+        out = await _git(
+            target,
+            ["rev-parse", "--verify", "--quiet", "--end-of-options", f"{ref.peeled_oid}^{{}}"],
+        )
     except GitCommandError:
         return None
-    oid: str | None = None
-    for line in out.decode("ascii", errors="replace").splitlines():
-        value, _, name = line.partition(" ")
-        if name in {ref, f"{ref}^{{}}"} and is_full_revision(value):
-            oid = value
-    return oid
+    oid = out.decode("ascii", "replace").strip()
+    return oid if is_full_revision(oid) and await _object_type(target, oid) == "commit" else None
 
 
 async def _object_type(target: RepositoryStoreTarget, oid: str) -> str | None:
@@ -158,15 +235,6 @@ async def _object_type(target: RepositoryStoreTarget, oid: str) -> str | None:
         return (await _git(target, ["cat-file", "-t", oid])).decode("ascii", "replace").strip()
     except GitCommandError:
         return None
-
-
-async def _commit_at(target: RepositoryStoreTarget, ref: str) -> str | UnresolvedSelection | None:
-    oid = await _verified_oid(target, ref)
-    if oid is None:
-        return None
-    if await _object_type(target, oid) != "commit":
-        return UnresolvedSelection("not_a_commit")
-    return oid
 
 
 async def resolve_commit_id(
@@ -214,19 +282,24 @@ async def resolve_ref_and_path(
     elif explicit == (b"refs", b"tags"):
         namespaces, rest = namespaces[1:], segments[2:]
     candidates = ref_candidates(rest)
+    exact = await _exact_refs(
+        target, [prefix + candidate.name for _via, prefix in namespaces for candidate in candidates]
+    )
     for via, prefix in namespaces:
         for candidate in candidates:
-            found = await _commit_at(target, prefix + candidate.name)
-            if isinstance(found, UnresolvedSelection):
-                return found
-            if found is not None:
-                return ResolvedSelection(
-                    via=via,
-                    name=candidate.name,
-                    ref=prefix + candidate.name,
-                    commit=found,
-                    path=candidate.path,
-                )
+            ref = exact.get(prefix + candidate.name)
+            if ref is None:
+                continue
+            commit = await _peeled_commit(target, ref)
+            if commit is None:
+                return UnresolvedSelection("not_a_commit")
+            return ResolvedSelection(
+                via=via,
+                name=candidate.name,
+                ref=prefix + candidate.name,
+                commit=commit,
+                path=candidate.path,
+            )
     if len(namespaces) == 2 and rest:
         try:
             first = rest[0].decode("ascii")
@@ -252,16 +325,25 @@ async def resolve_selection(
 ) -> ResolvedSelection | UnresolvedSelection:
     """The commit and path a URL selection pins in the store at *target*.
 
-    A repository or pull-request URL pins the default branch. Reading only, from the
-    mirror as it is: the integration point for serving is to start one background
-    refresh when the answer ``needs_fetch`` and resolve again once it finishes.
+    A repository or pull-request URL pins the default branch, and so does a tree or blob
+    URL whose ref is ``HEAD``, as on GitHub. Reading only, from the mirror as it is: the
+    integration point for serving is to start one background refresh when the answer
+    ``needs_fetch`` and resolve again once it finishes.
     """
 
+    name = default_ref.removeprefix(BRANCH_REF_PREFIX)
     if selection.kind in {"tree", "blob"}:
+        if selection.ref_and_path[:1] == (b"HEAD",):
+            return ResolvedSelection(
+                via="default",
+                name=name,
+                ref=default_ref,
+                commit=default_revision,
+                path=selection.ref_and_path[1:],
+            )
         return await resolve_ref_and_path(target, selection.ref_and_path)
     if selection.kind == "commit" and selection.commit is not None:
         return await resolve_commit_id(target, selection.commit)
-    name = default_ref.removeprefix(BRANCH_REF_PREFIX)
     return ResolvedSelection(via="default", name=name, ref=default_ref, commit=default_revision)
 
 
@@ -274,6 +356,7 @@ __all__ = [
     "ResolvedSelection",
     "SelectionResolution",
     "UnresolvedSelection",
+    "case_colliding_refs",
     "is_valid_ref_name",
     "ref_candidates",
     "resolve_commit_id",

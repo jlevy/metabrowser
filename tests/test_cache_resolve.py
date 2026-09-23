@@ -5,16 +5,23 @@ from __future__ import annotations
 import asyncio
 import os
 import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
 
-from metabrowser.cache.acquire import PublishedSource, acquire_source
+from metabrowser.cache.acquire import (
+    PublishedSource,
+    RefCaseCollisionError,
+    acquire_source,
+    fetched_ref_names,
+)
 from metabrowser.cache.resolve import (
     MAX_REF_CANDIDATES,
     RefCandidate,
     ResolvedSelection,
     UnresolvedSelection,
+    case_colliding_refs,
     is_valid_ref_name,
     ref_candidates,
     resolve_commit_id,
@@ -23,6 +30,7 @@ from metabrowser.cache.resolve import (
 )
 from metabrowser.cache.urls import GitSource, RepositorySelection, classify_root_argument
 from metabrowser.git.process import repository_store_target
+from tests.git_pin_harness import git_env
 from tests.github_origin import FIRST_COMMIT, SECOND_COMMIT, github_origin
 from tests.test_cache_acquire import _allow_installed_git
 
@@ -224,3 +232,121 @@ def test_repository_and_pull_request_selections_pin_the_default_branch(
         )
     )
     assert isinstance(commit, ResolvedSelection) and commit.commit == SECOND_COMMIT
+
+
+@pytest.mark.parametrize(
+    ("names", "expected"),
+    [
+        (["main", "topic"], ()),
+        (["Feature", "feature", "main"], ("Feature", "feature")),
+        (["refs/tags/V1", "refs/tags/v1"], ("refs/tags/V1", "refs/tags/v1")),
+        (["Release", "release/v1"], ("Release", "release/v1")),
+        (["release", "release/v1"], ()),
+        (["café", "café"], ("café", "café")),
+        (["STRASSE", "straße"], ("STRASSE", "straße")),
+    ],
+)
+def test_case_colliding_refs(names: list[str], expected: tuple[str, ...]) -> None:
+    assert case_colliding_refs(names) == expected
+
+
+def test_fetch_porcelain_names_every_written_ref() -> None:
+    zero = "0" * 40
+    porcelain = (
+        f"* {zero} {FIRST_COMMIT} refs/remotes/origin/Feature\n"
+        f"  {FIRST_COMMIT} {SECOND_COMMIT} refs/remotes/origin/topic\n"
+        f"t {zero} {SECOND_COMMIT} refs/tags/v1.0\n"
+    ).encode()
+    assert fetched_ref_names(porcelain) == (
+        "refs/remotes/origin/Feature",
+        "refs/remotes/origin/topic",
+        "refs/tags/v1.0",
+    )
+
+
+def test_a_ref_matches_only_by_its_exact_name(mirror: PublishedSource) -> None:
+    """On a case-insensitive filesystem a loose-ref lookup would find ``topic`` for these."""
+
+    assert _resolve(mirror, b"TOPIC", b"README.md") == UnresolvedSelection("ref_not_found")
+    assert _resolve(mirror, b"Release", b"v1", b"docs") == UnresolvedSelection("ref_not_found")
+    assert _resolve(mirror, b"refs", b"tags", b"V1.0") == UnresolvedSelection("ref_not_found")
+
+
+def test_head_is_the_default_branch(mirror: PublishedSource) -> None:
+    target = repository_store_target(git_dir=mirror.git_dir)
+    resolved = asyncio.run(
+        resolve_selection(
+            target,
+            RepositorySelection(kind="blob", ref_and_path=(b"HEAD", b"docs", b"guide.md")),
+            default_ref=mirror.default_remote_ref,
+            default_revision=mirror.default_revision,
+        )
+    )
+    assert resolved == ResolvedSelection(
+        via="default",
+        name="topic",
+        ref="refs/remotes/origin/topic",
+        commit=FIRST_COMMIT,
+        path=(b"docs", b"guide.md"),
+    )
+
+
+def _case_colliding_origin(tmp_path: Path) -> Path:
+    """``Feature`` at the first commit and ``feature`` at the second, both packed.
+
+    Packing between the two updates lets a case-insensitive filesystem hold both.
+    """
+
+    origin = github_origin(tmp_path)
+    env = git_env(tmp_path)
+
+    def git(*args: str) -> None:
+        subprocess.run(["git", "--git-dir", str(origin), *args], check=True, env=env)
+
+    git("update-ref", "refs/heads/Feature", FIRST_COMMIT)
+    git("pack-refs", "--all")
+    git("update-ref", "refs/heads/feature", SECOND_COMMIT)
+    git("pack-refs", "--all")
+    return origin
+
+
+def _filesystem_ignores_case(directory: Path) -> bool:
+    probe = directory / "case-probe"
+    probe.write_text("", encoding="utf-8")
+    return (directory / "CASE-PROBE").exists()
+
+
+def test_refs_that_differ_only_in_case_are_refused_where_the_store_cannot_hold_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _allow_installed_git(monkeypatch)
+    origin = _case_colliding_origin(tmp_path)
+    source = classify_root_argument(f"file://{origin.resolve()}")
+    assert isinstance(source, GitSource)
+
+    forced = tmp_path / "forced-home"
+    with monkeypatch.context() as patched:
+        patched.setattr("metabrowser.cache.acquire.store_ignores_case", _always_true)
+        with pytest.raises(RefCaseCollisionError) as refused:
+            asyncio.run(acquire_source(source, home=forced))
+    assert str(refused.value) == (
+        "the source has branches or tags whose names differ only in letter case "
+        "(refs/remotes/origin/Feature, refs/remotes/origin/feature), which this "
+        "filesystem cannot keep apart (ref_case_collision); nothing was published"
+    )
+    assert list((forced / "cache" / "staging").iterdir()) == []
+
+    home = tmp_path / "home"
+    if _filesystem_ignores_case(tmp_path):
+        with pytest.raises(RefCaseCollisionError):
+            asyncio.run(acquire_source(source, home=home))
+        return
+    published = asyncio.run(acquire_source(source, home=home))
+    upper = _resolve(published, b"Feature")
+    lower = _resolve(published, b"feature")
+    assert isinstance(upper, ResolvedSelection) and isinstance(lower, ResolvedSelection)
+    assert (upper.commit, lower.commit) == (FIRST_COMMIT, SECOND_COMMIT)
+
+
+async def _always_true(_git_dir: Path) -> bool:
+    return True

@@ -73,6 +73,7 @@ from metabrowser.cache.remote import (
     describe_remote_failure,
     remote_git_args,
 )
+from metabrowser.cache.resolve import case_colliding_refs
 from metabrowser.cache.urls import GitSource
 from metabrowser.git.process import (
     ACQUISITION_POLICY,
@@ -82,6 +83,7 @@ from metabrowser.git.process import (
     require_acquisition_git,
     run_git,
 )
+from metabrowser.git.tree_source import display_segment
 from metabrowser.git.wire import is_full_revision
 from metabrowser.home import PrivateStorageError, SharedEntryPolicy, ensure_private_directory
 
@@ -167,6 +169,60 @@ def _classified(source: GitSource, exc: GitCommandError) -> RemoteAccessError | 
         return None
     state = classify_remote_failure(exc.stderr_summary)
     return None if state is None else RemoteAccessError(state, source.normalized)
+
+
+class RefCaseCollisionError(ValidationFailedError):
+    """The origin has refs a case-insensitive store cannot hold apart."""
+
+    state: Final = "ref_case_collision"
+
+
+def fetched_ref_names(porcelain: bytes) -> tuple[str, ...]:
+    """The local ref names in ``git fetch --porcelain`` output.
+
+    Each line is ``<flag> <old-oid> <new-oid> <local-ref>``, and the flag may itself be
+    a space. The refresh path reads its own fetch the same way.
+    """
+
+    names: list[str] = []
+    for line in porcelain.split(b"\n"):
+        fields = line[2:].split(b" ")
+        if len(line) > 2 and len(fields) == 3:
+            names.append(fields[2].decode("utf-8", "surrogateescape"))
+    return tuple(names)
+
+
+async def store_ignores_case(git_dir: Path) -> bool:
+    """Whether Git found the store's filesystem case-insensitive when it created it."""
+
+    try:
+        value = await _run(["config", "--get", "--bool", "core.ignorecase"], git_dir=git_dir)
+    except GitCommandError:
+        return False
+    return value.strip() == b"true"
+
+
+async def _refuse_case_collisions(git_dir: Path, names: tuple[str, ...]) -> None:
+    """Refuse a store whose refs a case-insensitive filesystem folded together.
+
+    On such a filesystem ``refs/remotes/origin/Feature`` and ``…/feature`` are one loose
+    file: a non-atomic fetch keeps whichever it wrote last under the first name, and the
+    other name resolves to it too, so a URL could pin the wrong commit. Nothing is
+    published; the refresh path runs the same check on its own fetch.
+    """
+
+    colliding = case_colliding_refs(names)
+    if not colliding or not await store_ignores_case(git_dir):
+        return
+    shown = ", ".join(
+        display_segment(name.encode("utf-8", "surrogateescape")) for name in colliding[:4]
+    )
+    more = f" and {len(colliding) - 4} more" if len(colliding) > 4 else ""
+    raise RefCaseCollisionError(
+        f"the source has branches or tags whose names differ only in letter case "
+        f"({shown}{more}), which this filesystem cannot keep apart (ref_case_collision); "
+        "nothing was published"
+    )
 
 
 def _report(on_phase: PhaseReporter | None, phase: str) -> None:
@@ -395,10 +451,12 @@ async def acquire_into_staging(
         try:
             # Every object: a published store is complete, so no read ever needs the
             # origin again, and an origin that would honor a filter is not asked to.
-            await _run(
+            # ``--porcelain`` (Git 2.41) lists every ref the fetch wrote, one per line.
+            updated = await _run(
                 [
                     *network,
                     "fetch",
+                    "--porcelain",
                     "--no-write-fetch-head",
                     "origin",
                     "+refs/heads/*:refs/remotes/origin/*",
@@ -415,6 +473,7 @@ async def acquire_into_staging(
                 "the fetch into staging failed"
             ) from exc
         _report(on_phase, "validating")
+        await _refuse_case_collisions(git_dir, fetched_ref_names(updated))
         try:
             kind = (await _run(["cat-file", "-t", revision], git_dir=git_dir)).strip()
             object_format_raw = (
@@ -863,6 +922,7 @@ __all__ = [
     "PartialCloneSourceError",
     "PhaseReporter",
     "PublishedSource",
+    "RefCaseCollisionError",
     "RemoteAccessError",
     "RemoteUnavailableError",
     "RepositoryTooLargeError",
@@ -870,6 +930,8 @@ __all__ = [
     "ValidationFailedError",
     "acquire_into_staging",
     "acquire_source",
+    "fetched_ref_names",
     "publish_from_staging",
     "remote_url_for",
+    "store_ignores_case",
 ]
