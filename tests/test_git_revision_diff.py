@@ -158,3 +158,39 @@ def test_comparison_base_policy_passes_through_and_refuses_what_it_cannot_honor(
             refused = client.get("/api/plugin/diff/comparison", params=params)
             assert refused.status_code == 400
             assert refused.json()["error"] == "diff_comparison"
+
+
+def test_a_merge_base_comparison_of_unrelated_histories_is_a_typed_refusal(
+    pinned_base: tuple[Path, Path, str, str],
+) -> None:
+    _work, store, base, _target = pinned_base
+    env = _git_env(store.parent)
+    tree = (
+        subprocess.run(
+            ["git", "--git-dir", str(store), "mktree"],
+            input=b"",
+            check=True,
+            capture_output=True,
+            env=env,
+        )
+        .stdout.decode()
+        .strip()
+    )
+    orphan = (
+        subprocess.run(
+            ["git", "--git-dir", str(store), "commit-tree", tree, "-m", "unrelated"],
+            check=True,
+            capture_output=True,
+            env=env,
+        )
+        .stdout.decode()
+        .strip()
+    )
+    with TestClient(app) as client:
+        refused = client.get(
+            "/api/plugin/diff/comparison",
+            params={"left": orphan, "right": base, "base_policy": "merge_base"},
+        )
+    assert refused.status_code == 404
+    assert refused.json()["error"] == "diff_comparison"
+    assert "no merge base" in refused.json()["message"]
