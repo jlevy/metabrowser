@@ -29,7 +29,8 @@ stylesheets and the files they use stay in its assets.
 
 The render is marked `inert`, and every tag and attribute left in its HTML is one the
 allowlist keeps: plain text markup, links (`href`, and `target` and `rel` on one that
-leaves the page), and the repository image (`src`, `alt`).
+leaves the page), the repository image (`src`, `alt`), and each heading’s
+`user-content-` anchor (`id`), which the hardener makes from the heading’s text.
 
 ```console
 $ metab hostile --untrusted --api '/api/kpress/render?path=README.md&view=document' | grep -E '^  "inert":'
@@ -41,6 +42,7 @@ $ metab hostile --untrusted --api '/api/kpress/render?path=README.md&view=docume
 $ metab hostile --untrusted --api '/api/kpress/render?path=README.md&view=document' | grep -E '^  "html":' | grep -oE '<[a-z0-9]+|[ ][a-z-]+=' | sort -u
  alt=
  href=
+ id=
  rel=
  src=
  target=

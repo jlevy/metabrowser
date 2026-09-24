@@ -364,14 +364,15 @@ def _heading_ids(html: str) -> list[tuple[str, str]]:
     return found
 
 
-# The only sources that may name the anchor namespace: the two allowlists, and the
-# markdown plugin's inert render, which builds the table of contents that links to it.
+# The only sources that may name the anchor namespace: the two allowlists that make the
+# anchors, the inert render that points KPress's entries at them, the page's table of
+# contents that links to them, and the link enhancer that scrolls a GitHub fragment to one.
 ANCHOR_NAMESPACE_OWNERS = {
     "src/metabrowser/inert_html.py",
     "src/metabrowser/kpress_adapter.py",
     "src/metabrowser/static/inert-html.js",
-    "src/metabrowser/static/types.d.ts",
-    "src/metabrowser/builtin_plugins/markdown/inert-render.js",
+    "src/metabrowser/builtin_plugins/markdown/inert-toc.js",
+    "src/metabrowser/builtin_plugins/markdown/link-enhancer.js",
 }
 
 

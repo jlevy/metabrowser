@@ -257,6 +257,7 @@ assets in static_root:
   - github-localizer.js
   - index.js
   - inert-render.js
+  - inert-toc.js
   - link-enhancer.js
   - links.js
   - manifest.toml
@@ -327,6 +328,7 @@ $ metab --plugin markdown --json
       "github-localizer.js",
       "index.js",
       "inert-render.js",
+      "inert-toc.js",
       "link-enhancer.js",
       "links.js",
       "manifest.toml",

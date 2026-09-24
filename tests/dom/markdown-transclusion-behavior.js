@@ -27,6 +27,11 @@ class FakeElement {
     this.attributes.set(name, value);
   }
 
+  // A trusted render is HTML text here, never parsed: no inert article to find.
+  querySelector() {
+    return null;
+  }
+
   replaceWith(replacement) {
     const index = this.parentElement.elements.indexOf(this);
     this.parentElement.elements[index] = replacement;
