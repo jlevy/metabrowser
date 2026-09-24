@@ -413,6 +413,10 @@ class MirrorSession:
         self._last_success_at: str | None = None
         self._tip: tuple[str, str | None] | None = None
         self._pin_lock = asyncio.Lock()
+        # The mirror's refresh and the pull request's each fetch into the store under its
+        # fetch lock; within this server they take turns here first, so neither finds
+        # the other holding it and reports a refresh running elsewhere.
+        self._fetch_turn = asyncio.Lock()
 
     # ── Observation ─────────────────────────────────────────────
 
@@ -444,16 +448,17 @@ class MirrorSession:
         """Whether the mirror, or the data served beside it, is older than the window."""
 
         moment_now = now or _now_utc()
-        if self.companion is not None and self.companion.is_stale(
-            moment_now, window_s=self._window_s
-        ):
-            return True
+        return self._companion_stale(moment_now) or self._mirror_stale(moment_now)
+
+    def _companion_stale(self, now: datetime) -> bool:
+        return self.companion is not None and self.companion.is_stale(now, window_s=self._window_s)
+
+    def _mirror_stale(self, now: datetime) -> bool:
         fetched = self.last_fetch_at()
         moment = _parse_timestamp(fetched) if fetched is not None else None
         if moment is None:
             return True
-        elapsed = (moment_now - moment).total_seconds()
-        return elapsed > self._window_s
+        return (now - moment).total_seconds() > self._window_s
 
     def freshness_fields(self, subject: GitRevisionSubject) -> FreshnessFields:
         """The freshness half of the status envelope, from memory alone."""
@@ -525,17 +530,24 @@ class MirrorSession:
 
     # ── Refresh ─────────────────────────────────────────────────
 
-    def request_refresh(self) -> StartedOrJoined:
+    def request_refresh(self, *, for_selection: bool = False) -> StartedOrJoined:
         """Start a background refresh of the mirror, or join the one running.
 
         A URL selection still waiting, as after a fetch that failed, waits for this one.
-        The data served beside the mirror is refreshed with it, as its own job.
+        The data served beside the mirror is refreshed as its own job when it is stale,
+        and when only it is stale, only it is refreshed. *for_selection* is the fetch a
+        pin the mirror lacks waits for: the mirror's alone.
         """
 
+        now = _now_utc()
+        companion_stale = not for_selection and self._companion_stale(now)
+        if companion_stale and self._pending_selection is None and not self._mirror_stale(now):
+            return self.request_companion_refresh() or "joined"
         started = self._coordinator.start(self.mirror.key, self._refresh_job)
         if self._pending_selection is not None:
             self._selection_state = "pending"
-        self.request_companion_refresh()
+        if companion_stale:
+            self.request_companion_refresh()
         return started
 
     def request_companion_refresh(self) -> StartedOrJoined | None:
@@ -554,7 +566,8 @@ class MirrorSession:
         if companion is None:
             return
         try:
-            await companion.refresh()
+            async with self._fetch_turn:
+                await companion.refresh()
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -568,7 +581,8 @@ class MirrorSession:
 
     async def _refresh_job(self) -> None:
         try:
-            result = await self.mirror.refresh()
+            async with self._fetch_turn:
+                result = await self.mirror.refresh()
         except asyncio.CancelledError:
             self._set_result(RefreshResult("cancelled", _utc_timestamp()))
             raise
@@ -725,7 +739,7 @@ class MirrorSession:
             if len(self._misses) >= MAX_REMEMBERED_MISSES:
                 self._misses.pop(next(iter(self._misses)))
             self._misses[key] = self._refreshes_ended
-        return SelectionPendingError(self.request_refresh())
+        return SelectionPendingError(self.request_refresh(for_selection=True))
 
 
 def _served_revision() -> GitRevisionSubject | None:
