@@ -69,6 +69,7 @@ from metabrowser.cache.origin import (
     mirror_fetch_args,
     mirror_prune_args,
     parse_symref_head,
+    pruned_ref_names,
     remote_tracking_ref,
 )
 from metabrowser.cache.paths import store_directory, store_record
@@ -269,16 +270,37 @@ def _named(exc: GitError, remote_url: str, fallback: RefreshOutcome) -> RefreshO
     return fallback
 
 
-async def _fetch_atomically(target: RepositoryStoreTarget, remote_url: str, lock_fd: int) -> bytes:
+@dataclass(frozen=True, slots=True)
+class _Fetched:
+    """The ``--porcelain`` output of the fetch that landed, and the refs before it ran.
+
+    ``baseline`` is *before* as given, or the store's refs after a prune when the
+    first fetch failed and the prune ran; ``None`` when no listing was asked for.
+    """
+
+    porcelain: bytes
+    baseline: dict[str, str] | None
+
+
+async def _fetch_atomically(
+    target: RepositoryStoreTarget,
+    remote_url: str,
+    lock_fd: int,
+    before: dict[str, str] | None,
+) -> _Fetched:
     """Fetch every branch and tag in one transaction, pruning separately and retrying once.
 
-    Returns the fetch's ``--porcelain`` output. Raises :class:`_FetchFailedError` when
-    the fetch fails after the one retry, or when the prune itself fails.
+    Raises :class:`_FetchFailedError` when the fetch fails after the one retry, or when
+    the prune itself fails. With *before*, the refs listed before the fetch, the result
+    says what the store held just before the fetch that landed.
     """
 
     fetch = mirror_fetch_args(remote_url, prune=True)
     try:
-        return await run_git(fetch, target=target, policy=ACQUISITION_POLICY, pass_fds=(lock_fd,))
+        porcelain = await run_git(
+            fetch, target=target, policy=ACQUISITION_POLICY, pass_fds=(lock_fd,)
+        )
+        return _Fetched(porcelain, before)
     except GitCommandError as exc:
         log.debug("the atomic fetch failed; pruning stale refs, then once more: %s", _detail(exc))
     except GitError as exc:
@@ -295,41 +317,61 @@ async def _fetch_atomically(target: RepositoryStoreTarget, remote_url: str, lock
         # A prune deletes one ref at a time, so a failed one may have deleted some.
         raise _FetchFailedError(exc, pruned=True) from exc
     try:
-        return await run_git(fetch, target=target, policy=ACQUISITION_POLICY, pass_fds=(lock_fd,))
+        # The prune deleted refs the retry's porcelain does not list.
+        baseline = await mirror_refs(target) if before is not None else None
+        porcelain = await run_git(
+            fetch, target=target, policy=ACQUISITION_POLICY, pass_fds=(lock_fd,)
+        )
     except GitError as exc:
         raise _FetchFailedError(exc, pruned=True) from exc
+    return _Fetched(porcelain, baseline)
 
 
-async def _restore_refs(
+async def restore_mirror_refs(
     target: RepositoryStoreTarget, before: dict[str, str], lock_fd: int
-) -> None:
-    """Put every branch and tag back as *before* lists them, one ``update-ref`` at a time.
+) -> tuple[str, ...]:
+    """Put every branch and tag back as *before* lists them; the refs still moved after.
 
-    Names the store lists now and did not before are deleted first: on a
-    case-insensitive filesystem one of them may be the file a name in *before* was folded
-    into. Then each name in *before* is set to its old object, which the store still has
-    because nothing removes objects. Each command checks nothing it did not just read,
-    under the fetch lock no other writer holds. A failure is logged and leaves the rest
-    for the next refresh, which restores again.
+    Two ``update-ref --stdin`` transactions: names the store lists now and did not before
+    are deleted first, because on a case-insensitive filesystem one of them may be the
+    file a name in *before* was folded into; then each name in *before* is set to its old
+    object, which the store still has because nothing removes objects. Under the fetch
+    lock no other writer holds, so each update checks nothing it did not just read.
+    Returns the refs that still differ from *before* -- all of them when the store
+    cannot be listed -- so a caller can say which stayed moved; the next refresh
+    restores again.
     """
 
     try:
         held = await mirror_refs(target)
-        commands = [
-            ["update-ref", "--no-deref", "-d", name, held[name]]
-            for name in sorted(set(held) - set(before))
-        ]
-        commands += [
-            ["update-ref", "--no-deref", name, oid]
+        deletions = [f"delete {name} {held[name]}\n" for name in sorted(set(held) - set(before))]
+        updates = [
+            f"update {name} {oid}\n"
             for name, oid in sorted(before.items())
             if held.get(name) != oid
         ]
-        for command in commands:
-            await run_git(command, target=target, policy=ACQUISITION_POLICY, pass_fds=(lock_fd,))
+        for batch in (deletions, updates):
+            if batch:
+                await run_git(
+                    ["update-ref", "--no-deref", "--stdin"],
+                    target=target,
+                    policy=ACQUISITION_POLICY,
+                    pass_fds=(lock_fd,),
+                    stdin_bytes="".join(batch).encode("utf-8", "surrogateescape"),
+                )
+        held = await mirror_refs(target)
     except GitError as exc:
-        log.warning(
-            "could not put the store's refs back after a case fold: %s", failure_detail(exc)
+        log.warning("could not put the store's refs back after a case fold: %s", _detail(exc))
+        return tuple(sorted(before))
+    moved = tuple(
+        sorted(
+            {name for name, oid in before.items() if held.get(name) != oid}
+            | (set(held) - set(before))
         )
+    )
+    if moved:
+        log.warning("after a case fold these refs are still moved: %s", ", ".join(moved[:8]))
+    return moved
 
 
 async def _fetch(
@@ -363,7 +405,7 @@ async def _fetch(
     # that folded two refs into one file can be undone; see ``folded_refs``.
     before = await mirror_refs(target) if await store_ignores_case(target) else None
     try:
-        updated = await _fetch_atomically(target, remote_url, lock_fd)
+        fetched = await _fetch_atomically(target, remote_url, lock_fd, before)
     except _FetchFailedError as exc:
         cause = exc.cause
         log.debug("refresh fetch failed: %s", _detail(cause))
@@ -375,7 +417,7 @@ async def _fetch(
             and isinstance(cause, GitCommandError)
             and _REF_LOCK_CONFLICT.search(cause.stderr_summary) is not None
         ):
-            await _restore_refs(target, before, lock_fd)
+            await restore_mirror_refs(target, before, lock_fd)
             return StoreUpdate(RefreshOutcome.ref_case_collision, canonical_now())
         outcome = _named(cause, remote_url, RefreshOutcome.fetch_failed)
         if not exc.pruned:
@@ -389,14 +431,25 @@ async def _fetch(
                     outcome, canonical_now(), default_remote_ref=ref, default_revision=tip
                 )
         return StoreUpdate(outcome, canonical_now())
-    if before is not None:
-        folded = folded_refs(fetched_refs(updated), await mirror_refs(target))
+    if before is not None and fetched.baseline is not None:
+        try:
+            folded = folded_refs(
+                before=fetched.baseline,
+                written=fetched_refs(fetched.porcelain),
+                pruned=pruned_ref_names(fetched.porcelain),
+                held=await mirror_refs(target),
+            )
+        except GitError as exc:
+            # Unchecked refs could be folded ones; nothing that cannot be checked stays.
+            log.warning("could not check the refs a refresh wrote: %s", _detail(exc))
+            await restore_mirror_refs(target, before, lock_fd)
+            return StoreUpdate(RefreshOutcome.failed, canonical_now())
         if folded:
             log.warning(
                 "refresh fetched refs that differ only in letter case; putting every ref back: %s",
                 ", ".join(folded[:4]),
             )
-            await _restore_refs(target, before, lock_fd)
+            await restore_mirror_refs(target, before, lock_fd)
             return StoreUpdate(RefreshOutcome.ref_case_collision, canonical_now())
     default_remote_ref = remote_tracking_ref(head_ref)
     outcome = RefreshOutcome.succeeded
@@ -521,9 +574,15 @@ async def update_store(home: Path, store_key: str, *, remote_url: str) -> StoreU
         if removed:
             log.debug("removed files an interrupted fetch left in a store: %s", removed)
         previous_ref = await asyncio.to_thread(_previous_default_ref, home, store_key)
-        update = await _fetch(
-            target, remote_url, lock_fd=fetch_lock.descriptor, previous_ref=previous_ref
-        )
+        try:
+            update = await _fetch(
+                target, remote_url, lock_fd=fetch_lock.descriptor, previous_ref=previous_ref
+            )
+        except GitError as exc:
+            # A local read of the store failed around the fetch: listing its refs, its
+            # case setting, or a tip. Reported, never raised into the caller.
+            log.warning("refresh could not read the store: %s", _detail(exc))
+            update = StoreUpdate(RefreshOutcome.failed, canonical_now())
         if update.outcome in _RECORDED:
             try:
                 await run_lock_section(functools.partial(_record, home, store_key, update))
@@ -541,5 +600,6 @@ __all__ = [
     "RefreshOutcome",
     "StoreUpdate",
     "remove_interrupted_fetch_leftovers",
+    "restore_mirror_refs",
     "update_store",
 ]

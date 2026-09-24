@@ -1,0 +1,10 @@
+#!/bin/sh
+# A failing stand-in for gh, first on PATH while the tryscript goldens run (Makefile
+# TRYSCRIPT), so no golden reaches a developer's signed-in gh: a real `gh auth` or
+# `gh api` call reads the keychain. Each call is logged to $METABROWSER_TEST_GH_LOG when
+# it is set. tests/conftest.py installs the same guard for pytest.
+if [ -n "${METABROWSER_TEST_GH_LOG:-}" ]; then
+  printf '%s\n' "$*" >> "$METABROWSER_TEST_GH_LOG"
+fi
+echo "gh is not available to golden tests" >&2
+exit 1

@@ -422,6 +422,22 @@ def _reaped(proc: asyncio.subprocess.Process) -> None:
         del _LIVE_PROCESS_GROUPS[proc.pid]
 
 
+def track_process_group(proc: asyncio.subprocess.Process) -> None:
+    """Have :func:`kill_live_process_groups` kill *proc*'s group, as it kills Git's.
+
+    For another tool run the way Git is, as the leader of its own process group, such
+    as ``gh``; call :func:`forget_process_group` once it is reaped.
+    """
+
+    _register_group(proc)
+
+
+def forget_process_group(proc: asyncio.subprocess.Process) -> None:
+    """Stop tracking a group :func:`track_process_group` registered."""
+
+    _reaped(proc)
+
+
 def git_environment(policy: GitProcessPolicy | None = None) -> dict[str, str]:
     """Environment for a git child process.
 
@@ -503,6 +519,7 @@ async def run_git(
     timeout_s: float | None = None,
     max_bytes: int | None = None,
     pass_fds: Sequence[int] = (),
+    stdin_bytes: bytes | None = None,
 ) -> bytes:
     """Run ``git`` with *args* in *cwd* and return raw stdout.
 
@@ -515,13 +532,21 @@ async def run_git(
     path used by local-worktree readers. *timeout_s* and *max_bytes*
     override the selected policy when a caller already named a bound.
     *pass_fds* are descriptors Git inherits, such as a lock it must hold for
-    as long as it runs, even if this process dies first.
+    as long as it runs, even if this process dies first. *stdin_bytes* is written
+    to Git's stdin, which is then closed, as ``update-ref --stdin`` reads it.
 
     Raises :class:`GitUnavailableError`, :class:`GitTimeoutError`,
     :class:`GitOutputTooLargeError`, or :class:`GitCommandError`.
     """
     chosen = policy if policy is not None else _default_policy(target)
-    proc = await spawn_git_process(args, cwd=cwd, target=target, policy=chosen, pass_fds=pass_fds)
+    proc = await spawn_git_process(
+        args,
+        cwd=cwd,
+        target=target,
+        policy=chosen,
+        pass_fds=pass_fds,
+        pipe_stdin=stdin_bytes is not None,
+    )
     timeout = chosen.timeout_s if timeout_s is None else timeout_s
     max_bytes = chosen.max_bytes if max_bytes is None else max_bytes
 
@@ -530,9 +555,19 @@ async def run_git(
     # reading, which a repository with a lot of output will do.
     stdout_task = asyncio.ensure_future(_read_capped(proc.stdout, max_bytes))
     stderr_task = asyncio.ensure_future(_read_capped(proc.stderr, _STDERR_MAX_BYTES))
+
+    async def feed_stdin() -> None:
+        if stdin_bytes is None or proc.stdin is None:
+            return
+        # A Git that exits early closes its end; its exit status says why.
+        with contextlib.suppress(BrokenPipeError, ConnectionResetError):
+            proc.stdin.write(stdin_bytes)
+            await proc.stdin.drain()
+        proc.stdin.close()
+
     try:
-        (stdout, overflowed), (stderr, _), returncode = await asyncio.wait_for(
-            asyncio.gather(stdout_task, stderr_task, proc.wait()),
+        _fed, (stdout, overflowed), (stderr, _), returncode = await asyncio.wait_for(
+            asyncio.gather(feed_stdin(), stdout_task, stderr_task, proc.wait()),
             timeout=timeout,
         )
         _reaped(proc)
@@ -877,6 +912,7 @@ __all__ = [
     "failure_detail",
     "git_environment",
     "git_executable",
+    "forget_process_group",
     "kill_live_process_groups",
     "parse_git_version",
     "parsed_git_version_as_fixture",
@@ -887,4 +923,5 @@ __all__ = [
     "spawn_git_at",
     "spawn_git_process",
     "terminate_git_process",
+    "track_process_group",
 ]

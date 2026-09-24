@@ -11,8 +11,10 @@ when a stale mirror opens in serve mode, and when a stale page becomes visible -
 the pull request fresh too.
 
 What the pull route and status need is kept in memory: when the record was fetched and
-how the last refresh in this server ended. A refresh that fails leaves the record as it
-was; the next attempt waits a window, so a missing ``gh`` is not asked on every poll.
+how the last refresh ended, read at startup from what the last command kept beside the
+record. A refresh that fails leaves the record as it was; the next attempt waits a
+window, so a missing ``gh`` is not asked on every poll, nor again by a command started
+just after one that asked.
 """
 
 from __future__ import annotations
@@ -76,6 +78,12 @@ class ServedPull:
             return False
         return self._last_attempt is None or now - self._last_attempt > window
 
+    def saw_record(self, fetched_at: str | None) -> None:
+        """Adopt a record time the pull route read, if newer, so status and it agree."""
+
+        if fetched_at is not None and (self.fetched_at is None or fetched_at > self.fetched_at):
+            self.fetched_at = fetched_at
+
     async def refresh(self) -> None:
         """Read the pull request again; a failure is kept as :attr:`last`."""
 
@@ -99,12 +107,25 @@ class ServedPull:
 def served_pull(published: PublishedSource, number: int) -> ServedPull:
     """The served pull request, knowing when its cached record was fetched, if it was.
 
-    Blocking and bounded: it reads the record once. Call it off the event loop.
+    Blocking and bounded: it reads the record and the last refresh's stamp once. Call it
+    off the event loop.
     """
 
     record = read_pull_record(published.home, published.slug, number)
     fetched_at = record.fetched_at if isinstance(record, PullRecord) else None
-    return ServedPull(published=published, number=number, fetched_at=fetched_at)
+    stamp = pulls.last_refresh(published, number)
+    if stamp is None:
+        return ServedPull(published=published, number=number, fetched_at=fetched_at)
+    last = PullRefreshOutcome(
+        outcome=stamp.outcome, message=stamp.message, reset_at=stamp.reset_at, at=stamp.at
+    )
+    return ServedPull(
+        published=published,
+        number=number,
+        fetched_at=fetched_at,
+        last=last,
+        _last_attempt=_parse_stamp(stamp.at),
+    )
 
 
 __all__ = ["PullRefreshOutcome", "ServedPull", "served_pull"]

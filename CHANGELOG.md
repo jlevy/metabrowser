@@ -113,10 +113,12 @@ GitHub URLs and HTTPS:
   A server instead serves the default branch, fetches once in the background, and
   switches to the selection if the fetch brings it, like any pin switch; a page opened
   meanwhile then goes to the selection’s address, line anchor included, which status
-  reports as `selection_href`. `/api/source/status` reports `selection_state` as
-  `pending`, then `found` or `not_found`; `fetch_failed` when the fetch could not run,
-  in which case the next refresh tries again; and `superseded` once a pin switch serves
-  something else, which a waiting selection then never undoes.
+  reports as `selection_href`. Until then the page’s freshness row says the address is
+  still being fetched, is not on the origin, or could not be fetched, with a Retry.
+  `/api/source/status` reports `selection_state` as `pending`, then `found` or
+  `not_found`; `fetch_failed` when the fetch could not run, in which case the next
+  refresh tries again; and `superseded` once a pin switch serves something else, which a
+  waiting selection then never undoes.
   A mirror cloned by the same command has just been fetched, so there a missing
   selection is not found at once.
   One-shot `--api /api/source/refresh --data …` also waits for the refresh it asks for
@@ -183,6 +185,13 @@ GitHub URLs and HTTPS:
   `pending` while the first record is being read.
   A newer head is offered as the source’s `latest`, and `/api/source/pin` accepts
   `refs/pull/<n>/head` to take it.
+  Only the stale one of the mirror and the record is refreshed, a pin the mirror lacks
+  never runs `gh`, and how the last refresh ended is kept beside the record, so a later
+  command reports it and does not ask `gh` again within the minute.
+  A one-shot `--api /api/plugin/github/pull-refresh` waits for the refresh, prints the
+  record after it, and exits 1 when it failed.
+  A `/pull/<n>/commits/<id>` URL naming a commit newer than the cached record refreshes
+  the pull request to reach it.
   Each cause is named: `gh_missing`, `gh_too_old`, `not_logged_in`, `rate_limited` with
   the reset time when GitHub gives one, `not_found_or_private`, `network_error`,
   `account_changed`, `head_mismatch`, `gh_failed` for an answer that cannot be read,

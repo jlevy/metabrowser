@@ -199,7 +199,7 @@ $ node tests/dom/source-freshness-session.js
       "paint": {
         "label": "Refreshing…",
         "tone": "refreshing",
-        "detail": "Fetching from the origin. The mirror was last fetched 6 d ago.",
+        "detail": "Fetching from the origin. The mirror was last fetched 6 d ago. The address this page was opened at is not in the mirror yet; it opens when the fetch brings it.",
         "offer": "topic is now at 66f65bf1e89d [Switch] → refs/remotes/origin/topic",
         "error": null
       }
@@ -236,6 +236,54 @@ $ node tests/dom/source-freshness-session.js
         "tone": "quiet",
         "detail": "The mirror was last fetched from its origin 5 min ago.",
         "offer": "The server now serves another revision [Reload]",
+        "error": null
+      }
+    },
+    {
+      "step": "the address is not on the origin",
+      "requests": [
+        "GET /api/source/status"
+      ],
+      "timer": "slow",
+      "reloads": 0,
+      "repaints": 1,
+      "paint": {
+        "label": "Address not found · fetched 5 min ago",
+        "tone": "warning",
+        "detail": "The address this page was opened at is not on the origin, so the default branch is shown.",
+        "offer": "topic is now at 66f65bf1e89d [Switch] → refs/remotes/origin/topic",
+        "error": null
+      }
+    },
+    {
+      "step": "the address could not be fetched",
+      "requests": [
+        "GET /api/source/status"
+      ],
+      "timer": "slow",
+      "reloads": 0,
+      "repaints": 1,
+      "paint": {
+        "label": "Address not fetched · fetched 5 min ago",
+        "tone": "warning",
+        "detail": "The address this page was opened at could not be fetched, so the default branch is shown. The origin could not be read.",
+        "offer": "Fetch the address again [Retry]",
+        "error": null
+      }
+    },
+    {
+      "step": "retry the address",
+      "requests": [
+        "POST /api/source/refresh {}"
+      ],
+      "timer": "fast",
+      "reloads": 0,
+      "repaints": 1,
+      "paint": {
+        "label": "Refreshing…",
+        "tone": "refreshing",
+        "detail": "Fetching from the origin. The mirror was last fetched 5 min ago. The address this page was opened at is not in the mirror yet; it opens when the fetch brings it.",
+        "offer": "topic is now at 66f65bf1e89d [Switch] → refs/remotes/origin/topic",
         "error": null
       }
     },

@@ -199,8 +199,10 @@ The pin is the served commit and can differ from the record’s head: a commit U
 the pull request pins that commit, and a refresh can find a newer head than the pin.
 A record is fetched only by a refresh.
 `POST github/pull-refresh` starts or joins that refresh in the refresh coordinator and
-answers `202` at once; it is a POST with a JSON object body for the same reason
-`/api/source/refresh` is, and plugin data routes are one path segment, hence the name.
+answers `202` at once, naming `github/pull` as its `status_route`, which a one-shot
+`--api` prints after the refresh ends, exiting 1 when it failed; it is a POST with a
+JSON object body for the same reason `/api/source/refresh` is, and plugin data routes
+are one path segment, hence the name.
 `github/pull` also sends an entity tag over everything but the record, which changes
 only with `fetched_at`, and answers a matching `If-None-Match` with `304`, so the
 pull-request page polls it as cheaply as the status route.
@@ -404,7 +406,7 @@ SSE transport whose emitted snapshot is already owned by its data routes.
 | `navigation.served-source-kind` | interaction | `static/plugin-sdk.js#sourceKind`, `static/navigation.js#displayPath` | `/view`, `/api/tree` | `node tests/dom/source-kind-session.js` | `cli-ui-source-kind.tryscript.md` |
 | `source.pinned-revision` | data | `/api/source/status` | `owned-route` | `metab shellroot --api /api/source/status` | `cli-api-shell.tryscript.md` |
 | `source.mirror-freshness` | interaction | `static/source-freshness.js#createController`, `static/source-freshness.js#describe` | `/api/source/status`, `/api/source/refresh` | `node tests/dom/source-freshness-session.js` | `cli-ui-source-freshness.tryscript.md` |
-| `source.selection-arrival` | interaction | `static/source-freshness.js#selectionToOpen`, `static/source-freshness.js#createController` | `/api/source/status`, `/api/source/refresh` | `node tests/dom/source-freshness-session.js` | `cli-ui-source-freshness.tryscript.md` |
+| `source.selection-arrival` | interaction | `static/source-freshness.js#selectionToOpen`, `static/source-freshness.js#describe`, `static/source-freshness.js#createController` | `/api/source/status`, `/api/source/refresh` | `node tests/dom/source-freshness-session.js` | `cli-ui-source-freshness.tryscript.md` |
 | `source.newer-revision-offer` | interaction | `static/source-freshness.js#describe`, `static/source-freshness.js#acceptOffer` | `/api/source/status`, `/api/source/pin` | `node tests/dom/source-freshness-session.js` | `cli-ui-source-freshness.tryscript.md` |
 | `source.stale-pin-guard` | interaction | `static/source-pin-guard.js#guardFetch`, `static/source-pin-guard.js#guardedRequest` | `/api/file`, `/api/tree`, `/api/source/status` | `node tests/dom/source-freshness-session.js` | `cli-ui-source-freshness.tryscript.md` |
 | `git.history-stale-cursor` | interaction | `static/git-history-window.js#classifyPageFailure` | `/api/git/log` | `node tests/dom/source-freshness-session.js` | `cli-ui-source-freshness.tryscript.md` |

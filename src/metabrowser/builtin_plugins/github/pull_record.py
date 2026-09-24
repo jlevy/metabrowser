@@ -22,7 +22,11 @@ from typing import Annotated, Final, Literal
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError
 
 from metabrowser.cache.atomic import RecordError, read_bytes_bounded
-from metabrowser.cache.paths import source_pull_record, source_pulls_directory
+from metabrowser.cache.paths import (
+    source_pull_record,
+    source_pull_refresh,
+    source_pulls_directory,
+)
 from metabrowser.home import (
     PrivateStorageError,
     SharedEntryPolicy,
@@ -444,6 +448,42 @@ def read_pull_record(
     return record
 
 
+# How a pull request's last refresh ended, kept beside its record so a later command
+# can report it and not ask gh again within the freshness window. One small object;
+# the message is the user-facing one, which names no path, token, or gh output.
+MAX_PULL_REFRESH_BYTES: Final = 4096
+
+
+class PullRefreshStamp(_Model):
+    """``succeeded`` or a failure state, why, when GitHub's limit lifts, and when."""
+
+    outcome: Annotated[str, StringConstraints(pattern=r"^[a-z_]{1,40}$")]
+    message: Annotated[str, StringConstraints(max_length=1000)] | None = None
+    reset_at: Timestamp | None = None
+    at: Timestamp
+
+
+def write_pull_refresh(home: Path, slug: str, number: int, stamp: PullRefreshStamp) -> None:
+    """Publish *stamp* atomically beside the record. Blocking; run it off the event loop."""
+
+    ensure_private_directory(home, source_pulls_directory(slug))
+    write_private_file_atomic(
+        home, source_pull_refresh(slug, number), stamp.model_dump_json().encode("utf-8")
+    )
+
+
+def read_pull_refresh(home: Path, slug: str, number: int) -> PullRefreshStamp | None:
+    """The last refresh's stamp, or ``None`` when there is no usable one. Blocking."""
+
+    try:
+        data = read_bytes_bounded(
+            home, source_pull_refresh(slug, number), max_bytes=MAX_PULL_REFRESH_BYTES
+        )
+        return PullRefreshStamp.model_validate_json(data)
+    except (FileNotFoundError, RecordError, PrivateStorageError, OSError, ValidationError):
+        return None
+
+
 __all__ = [
     "API_PAGE_SIZE",
     "MAX_BODY_BYTES",
@@ -452,12 +492,14 @@ __all__ = [
     "MAX_ISSUE_COMMENTS",
     "MAX_LABELS",
     "MAX_PULL_RECORD_BYTES",
+    "MAX_PULL_REFRESH_BYTES",
     "MAX_REVIEWS",
     "MAX_REVIEW_COMMENTS",
     "MAX_STATUSES",
     "MAX_TEXT_BYTES",
     "MAX_TITLE_BYTES",
     "PULL_RECORD_SCHEMA",
+    "PullRefreshStamp",
     "CheckRun",
     "CombinedStatus",
     "CommitStatus",
@@ -478,6 +520,8 @@ __all__ = [
     "escaped_size",
     "fit_record",
     "read_pull_record",
+    "read_pull_refresh",
     "serialize_pull_record",
     "write_pull_record",
+    "write_pull_refresh",
 ]

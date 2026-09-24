@@ -493,6 +493,51 @@ def test_a_ref_folded_into_its_case_twin_is_put_back_and_reported(mirror: _Mirro
     assert "refs/remotes/origin/SAME" not in refs
 
 
+def test_refs_the_filesystem_spells_differently_are_not_folds(mirror: _Mirror) -> None:
+    """A case-insensitive, normalization-insensitive filesystem respells, and that is all.
+
+    ``Feature/x`` is written into the existing ``feature/`` directory and lists as
+    ``feature/x``; a decomposed ``zürich`` lists precomposed. Neither moves another ref,
+    so the refresh lands rather than reporting ``ref_case_collision``.
+    """
+
+    if not _case_insensitive(mirror.published.git_dir):
+        pytest.skip("the file system is case-sensitive, so every name keeps its spelling")
+    _git(mirror.work, "branch", "feature/y")
+    mirror.push("feature/y")
+    assert _update(mirror) is RefreshOutcome.succeeded
+    newer = mirror.commit("b.txt", "second\n", "second")
+    mirror.push("topic")
+    _add_packed_ref(mirror.origin, "refs/heads/Feature/x", newer)
+    for _attempt in range(2):
+        assert _update(mirror) is RefreshOutcome.succeeded
+        refs = _refs(mirror.published.git_dir)
+        assert refs["refs/remotes/origin/topic"] == newer
+        assert refs["refs/remotes/origin/feature/y"] == mirror.published.default_revision
+        assert refs["refs/remotes/origin/feature/x"] == newer
+    # Only the first refresh: after it, Git's own prune and fetch disagree about a
+    # decomposed name on such a filesystem (see the architecture document).
+    _add_packed_ref(mirror.origin, "refs/heads/zu\u0308rich", newer)
+    assert _update(mirror) is RefreshOutcome.succeeded
+    assert mirror.state().last_operation.outcome == "succeeded"
+
+
+def test_a_store_read_that_fails_around_the_fetch_is_an_outcome_not_an_exception(
+    mirror: _Mirror, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """update_store reports every failure; a Git read of the store is one of them."""
+
+    import metabrowser.cache.update as update_module
+
+    async def unreadable(target: RepositoryStoreTarget) -> bool:
+        raise GitCommandError(["config"], 128, "fatal: not a git repository")
+
+    monkeypatch.setattr(update_module, "store_ignores_case", unreadable)
+    before = mirror.state()
+    assert _update(mirror) is RefreshOutcome.failed
+    assert mirror.state() == before
+
+
 def test_a_detached_origin_head_still_fetches_and_keeps_the_default_branch(
     mirror: _Mirror,
 ) -> None:
@@ -846,10 +891,15 @@ def test_a_tag_of_a_tree_is_not_a_commit_and_head_is_the_default_branch(
     """The pin route resolves as URL opening does, through the one resolver."""
 
     _git(mirror.work, "tag", "tree-tag", "HEAD^{tree}")
-    mirror.push("tree-tag")
+    # A tag of a tree whose name is also a commit ID: the commit is what it names.
+    commit = mirror.published.default_revision
+    _git(mirror.work, "tag", commit[:9], "HEAD^{tree}")
+    mirror.push("tree-tag", commit[:9])
     assert _update(mirror) is RefreshOutcome.succeeded
     with pytest.raises(SelectionNotACommitError):
         asyncio.run(resolve_pin(mirror.target, ref="tree-tag"))
+    by_id = asyncio.run(resolve_pin(mirror.target, ref=commit[:9]))
+    assert (by_id.commit_oid, by_id.ref) == (commit, None)
     head = asyncio.run(
         resolve_pin(mirror.target, ref="HEAD", default_ref="refs/remotes/origin/topic")
     )

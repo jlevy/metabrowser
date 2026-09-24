@@ -301,6 +301,22 @@ def _parse_timestamp(value: str) -> datetime | None:
         return None
 
 
+def followed_outcome(recorded: RecordedFreshness, *, since: str, ended: bool) -> str:
+    """The outcome of another process's refresh that this one waited for.
+
+    *since* is when this process found the store busy. Only a record written at or after
+    it can be that refresh's: a refresh that was killed or cancelled writes none, and the
+    record then still says what an earlier operation did. Otherwise, or when the wait
+    ran out before the other refresh ended, the answer is ``failed``, which says nothing
+    about the origin: a selection waiting on it stays waiting for the next refresh.
+    """
+
+    at = recorded.last_outcome_at
+    if not ended or recorded.last_outcome is None or at is None or at < since:
+        return "failed"
+    return recorded.last_outcome
+
+
 class RefreshCoordinator:
     """Background jobs keyed by what they refresh, run at most *limit* at a time.
 
@@ -399,13 +415,15 @@ class MirrorSession:
             "pending" if pending_selection is not None else None
         )
         self._selection_href: str | None = None
-        # Whether the last fetch a missing selection could wait for ran, and its outcome.
-        self._last_fetch_ran = True
+        # Fetches that ran to the end, and the outcome of the last refresh that ended.
+        self._fetches_ran = 0
         self._last_fetch_outcome = "succeeded"
         # Refresh jobs that have ended, and for each missing selection the count when it
         # was found missing: a later count means a fetch ran since.
         self._refreshes_ended = 0
-        self._misses: dict[tuple[str | None, str | None], int] = {}
+        # For each missing selection, both counts when it was found missing: a later
+        # ended count means a refresh ended since, a later ran count that one fetched.
+        self._misses: dict[tuple[str | None, str | None], tuple[int, int]] = {}
         self._recorded = RecordedFreshness(None, None, None, None)
         self._last_result: RefreshResult | None = None
         # The record as last observed when that result was set, to break a tie.
@@ -413,6 +431,10 @@ class MirrorSession:
         self._last_success_at: str | None = None
         self._tip: tuple[str, str | None] | None = None
         self._pin_lock = asyncio.Lock()
+        # The mirror's refresh and the pull request's each fetch into the store under its
+        # fetch lock; within this server they take turns here first, so neither finds
+        # the other holding it and reports a refresh running elsewhere.
+        self._fetch_turn = asyncio.Lock()
 
     # ── Observation ─────────────────────────────────────────────
 
@@ -444,16 +466,17 @@ class MirrorSession:
         """Whether the mirror, or the data served beside it, is older than the window."""
 
         moment_now = now or _now_utc()
-        if self.companion is not None and self.companion.is_stale(
-            moment_now, window_s=self._window_s
-        ):
-            return True
+        return self._companion_stale(moment_now) or self._mirror_stale(moment_now)
+
+    def _companion_stale(self, now: datetime) -> bool:
+        return self.companion is not None and self.companion.is_stale(now, window_s=self._window_s)
+
+    def _mirror_stale(self, now: datetime) -> bool:
         fetched = self.last_fetch_at()
         moment = _parse_timestamp(fetched) if fetched is not None else None
         if moment is None:
             return True
-        elapsed = (moment_now - moment).total_seconds()
-        return elapsed > self._window_s
+        return (now - moment).total_seconds() > self._window_s
 
     def freshness_fields(self, subject: GitRevisionSubject) -> FreshnessFields:
         """The freshness half of the status envelope, from memory alone."""
@@ -525,17 +548,24 @@ class MirrorSession:
 
     # ── Refresh ─────────────────────────────────────────────────
 
-    def request_refresh(self) -> StartedOrJoined:
+    def request_refresh(self, *, for_selection: bool = False) -> StartedOrJoined:
         """Start a background refresh of the mirror, or join the one running.
 
         A URL selection still waiting, as after a fetch that failed, waits for this one.
-        The data served beside the mirror is refreshed with it, as its own job.
+        The data served beside the mirror is refreshed as its own job when it is stale,
+        and when only it is stale, only it is refreshed. *for_selection* is the fetch a
+        pin the mirror lacks waits for: the mirror's alone.
         """
 
+        now = _now_utc()
+        companion_stale = not for_selection and self._companion_stale(now)
+        if companion_stale and self._pending_selection is None and not self._mirror_stale(now):
+            return self.request_companion_refresh() or "joined"
         started = self._coordinator.start(self.mirror.key, self._refresh_job)
         if self._pending_selection is not None:
             self._selection_state = "pending"
-        self.request_companion_refresh()
+        if companion_stale:
+            self.request_companion_refresh()
         return started
 
     def request_companion_refresh(self) -> StartedOrJoined | None:
@@ -554,7 +584,8 @@ class MirrorSession:
         if companion is None:
             return
         try:
-            await companion.refresh()
+            async with self._fetch_turn:
+                await companion.refresh()
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -568,7 +599,8 @@ class MirrorSession:
 
     async def _refresh_job(self) -> None:
         try:
-            result = await self.mirror.refresh()
+            async with self._fetch_turn:
+                result = await self.mirror.refresh()
         except asyncio.CancelledError:
             self._set_result(RefreshResult("cancelled", _utc_timestamp()))
             raise
@@ -609,7 +641,7 @@ class MirrorSession:
             self._selection_state = "not_found"
             log.warning("could not open the requested selection after a refresh", exc_info=True)
         finally:
-            self._last_fetch_ran = ran
+            self._fetches_ran += int(ran)
             self._last_fetch_outcome = outcome
             self._refreshes_ended += 1
 
@@ -635,9 +667,7 @@ class MirrorSession:
             await self.observe()
         except Exception:
             log.warning("could not observe the mirror after another refresh", exc_info=True)
-        # What the other process recorded is the fetch this one waited for.
-        recorded = self._recorded.last_outcome
-        await self._after_fetch(recorded if ended and recorded is not None else "failed")
+        await self._after_fetch(followed_outcome(self._recorded, since=busy.at, ended=ended))
         if ended and self._last_result is busy:
             self._last_result = None
 
@@ -689,6 +719,12 @@ class MirrorSession:
                     raise
                 raise self._missing((ref, oid), exc) from None
             self._misses.pop((ref, oid), None)
+            if self._selection_state is not None:
+                # The reader chose a pin, even the one served: a URL selection still
+                # waiting must not replace it when its fetch ends, and a found one no
+                # longer describes what the reader asked for.
+                self._pending_selection = None
+                self._selection_state = "superseded"
             current = _served_revision()
             if (
                 current is not None
@@ -703,11 +739,6 @@ class MirrorSession:
                 self._tip = (subject.ref, subject.commit_oid)
             else:
                 self._tip = None
-            if self._selection_state is not None:
-                # The reader chose another pin: a URL selection still waiting must not
-                # replace it when its fetch ends, and a found one is no longer served.
-                self._pending_selection = None
-                self._selection_state = "superseded"
             return True, session
 
     def _missing(
@@ -715,17 +746,18 @@ class MirrorSession:
     ) -> SelectionError:
         """Pending while the fetch for *key* is still to run or running, then not found."""
 
-        seen_at = self._misses.get(key)
-        if seen_at is not None and seen_at < self._refreshes_ended and not self.refreshing():
+        seen = self._misses.get(key)
+        if seen is not None and seen[0] < self._refreshes_ended and not self.refreshing():
             del self._misses[key]
-            if not self._last_fetch_ran:
+            # Not found only if a fetch ran to the end since the miss, not merely ended.
+            if self._fetches_ran == seen[1]:
                 return SelectionFetchFailedError(self._last_fetch_outcome)
             return not_found
-        if seen_at is None:
+        if seen is None:
             if len(self._misses) >= MAX_REMEMBERED_MISSES:
                 self._misses.pop(next(iter(self._misses)))
-            self._misses[key] = self._refreshes_ended
-        return SelectionPendingError(self.request_refresh())
+            self._misses[key] = (self._refreshes_ended, self._fetches_ran)
+        return SelectionPendingError(self.request_refresh(for_selection=True))
 
 
 def _served_revision() -> GitRevisionSubject | None:
@@ -870,6 +902,7 @@ __all__ = [
     "SelectionState",
     "ServedMirror",
     "drain_refreshes",
+    "followed_outcome",
     "lifespan_refresh",
     "mirror_session",
     "refresh_coordinator",

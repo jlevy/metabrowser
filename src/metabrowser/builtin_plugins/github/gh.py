@@ -28,7 +28,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Final, Literal
 
-from metabrowser.git.process import terminate_git_process
+from metabrowser.git.process import (
+    forget_process_group,
+    terminate_git_process,
+    track_process_group,
+)
 
 log = logging.getLogger(__name__)
 
@@ -206,6 +210,18 @@ async def _run(args: Sequence[str], *, timeout_s: float, max_bytes: int) -> _Com
         )
     except OSError as exc:
         raise GhError(f"could not run gh: {exc.strerror}") from exc
+    if os.name == "posix":
+        # A Ctrl-C or hangup that cannot unwind kills Git's groups; gh's too.
+        track_process_group(proc)
+    try:
+        return await _finish(proc, args, timeout_s=timeout_s, max_bytes=max_bytes)
+    finally:
+        forget_process_group(proc)
+
+
+async def _finish(
+    proc: asyncio.subprocess.Process, args: Sequence[str], *, timeout_s: float, max_bytes: int
+) -> _Completed:
     stdout_task = asyncio.ensure_future(_read_capped(proc.stdout, max_bytes))
     stderr_task = asyncio.ensure_future(_read_capped(proc.stderr, _STDERR_MAX_BYTES))
     try:

@@ -59,7 +59,12 @@ status: 200
   "fetched_at": "2026-09-17T12:00:00Z",
   "fresh_for_s": 60.0,
   "refreshing": false,
-  "last_refresh": null,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
   "comparison_route": "/api/plugin/diff/comparison?left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base",
   "record": {
     "schema_version": 1,
@@ -498,7 +503,12 @@ status: 200
   "fetched_at": "2026-09-17T12:00:00Z",
   "fresh_for_s": 60.0,
   "refreshing": false,
-  "last_refresh": null,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
   "comparison_route": "/api/plugin/diff/comparison?left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&base_policy=merge_base",
   "record": {
     "schema_version": 1,
@@ -629,7 +639,12 @@ status: 200
   "fetched_at": "2026-09-17T12:00:00Z",
   "fresh_for_s": 60.0,
   "refreshing": false,
-  "last_refresh": null,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
   "comparison_route": "/api/plugin/diff/comparison?left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base",
   "record": {
     "schema_version": 1,
@@ -840,7 +855,12 @@ status: 200
   "fetched_at": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
-  "last_refresh": null,
+  "last_refresh": {
+    "outcome": "gh_failed",
+    "message": "gh exited 1 without an HTTP response",
+    "reset_at": null,
+    "at": "[..]"
+  },
   "comparison_route": null,
   "record": null
 }
@@ -863,7 +883,12 @@ status: 200
   "fetched_at": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
-  "last_refresh": null,
+  "last_refresh": {
+    "outcome": "gh_failed",
+    "message": "gh exited 1 without an HTTP response",
+    "reset_at": null,
+    "at": "[..]"
+  },
   "comparison_route": null,
   "record": null
 }
@@ -886,7 +911,12 @@ status: 200
   "fetched_at": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
-  "last_refresh": null,
+  "last_refresh": {
+    "outcome": "gh_failed",
+    "message": "gh exited 1 without an HTTP response",
+    "reset_at": null,
+    "at": "[..]"
+  },
   "comparison_route": null,
   "record": null
 }
@@ -916,21 +946,28 @@ pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 
 `pull-refresh` starts the pull request’s refresh in the refresh coordinator and answers
 `202` without waiting for it, with the envelope as of that moment, so `refreshing` is
-true. The one-shot command then lets the refresh finish; here `gh` fails, which leaves
-the record as it was.
+true. `status_route` names the route that reports how it ended: the one-shot command
+waits for the refresh, prints that route `after` it, and exits 1 when it failed.
+Here `gh` fails, which leaves the record as it was.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/7 --api /api/plugin/github/pull-refresh --data refresh.json | grep -E '^(api|status|  "refresh"|    "(state|number|refreshing|last_refresh)")'
+$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/7 --api /api/plugin/github/pull-refresh --data refresh.json | grep -E '^(api|status|after|  "(refresh|status_route|refreshing)"|    "(state|number|refreshing|outcome)")'
 selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+Error: the refresh ended with gh_failed
 api: /api/plugin/github/pull-refresh
 status: 202
   "refresh": "started",
     "state": "stale",
     "number": 7,
     "refreshing": true,
-    "last_refresh": null,
+  "status_route": "/api/plugin/github/pull"
+after: /api/plugin/github/pull
+status: 200
+  "refreshing": false,
+    "outcome": "gh_failed",
+    "number": 7,
 ? 0
 ```
 
@@ -938,10 +975,11 @@ With no record cached the envelope is `pending` rather than `absent` while the r
 runs.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/14 --api /api/plugin/github/pull-refresh --data refresh.json | grep -E '^(api|status|  "refresh"|    "(state|reason|number|refreshing)")'
+$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/14 --api /api/plugin/github/pull-refresh --data refresh.json | grep -E '^(api|status|after|  "(refresh|refreshing)"|    "(state|reason|number|refreshing|outcome)")'
 selection: pull_request
 pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
 pull_request: 14 (not opened: pull request 14 of https://github.com/octo/demo: gh exited 1 without an HTTP response (gh_failed); the pin is the default branch)
+Error: the refresh ended with gh_failed
 api: /api/plugin/github/pull-refresh
 status: 202
   "refresh": "started",
@@ -949,6 +987,10 @@ status: 202
     "reason": null,
     "number": 14,
     "refreshing": true,
+after: /api/plugin/github/pull
+status: 200
+  "refreshing": false,
+    "outcome": "gh_failed",
 ? 0
 ```
 

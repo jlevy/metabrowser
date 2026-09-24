@@ -37,7 +37,7 @@ from pathlib import Path
 import typer
 
 from metabrowser.cache.acquire import PublishedSource
-from metabrowser.cache.providers import served_pull_request_for
+from metabrowser.cache.providers import PullRequestFetch, served_pull_request_for
 from metabrowser.cache.repository_store import open_revision
 from metabrowser.cache.resolve import ResolvedSelection, UnresolvedSelection
 from metabrowser.cache.served_mirror import StoreMirror
@@ -188,8 +188,17 @@ async def _select(source: GitSource, *, allow_pending: bool) -> _Selected:
     pull: PullOpen | None = None
     companion: CompanionRefresh | None = None
     if selection.pull_request is not None:
-        pull = await open_pull_for_cli(published, selection.pull_request, fetch="if_missing")
-        companion = await served_pull_request_for(published, selection.pull_request)
+        number = selection.pull_request
+        fetch: PullRequestFetch = "if_missing"
+        if selection.kind != "pull_request":
+            # A commit inside the pull request that the mirror lacks can be newer than
+            # the cached record, and only a refresh fetches refs/pull/<n>/head, which
+            # brings it: the one refresh this open makes either way.
+            inside = await resolve_in_mirror(published, selection)
+            if isinstance(inside, UnresolvedSelection) and inside.needs_fetch:
+                fetch = "always"
+        pull = await open_pull_for_cli(published, number, fetch=fetch)
+        companion = await served_pull_request_for(published, number)
         head = pull.resolution() if selection.kind == "pull_request" else None
         if head is not None:
             return _Selected(published, head.commit, head.ref, head, False, pull, companion)

@@ -67,6 +67,7 @@ from metabrowser.builtin_plugins.github.pull_record import (
     Comparison,
     IssueComment,
     PullRecord,
+    PullRefreshStamp,
     PullRequest,
     PullSide,
     RecordTooLargeError,
@@ -77,7 +78,9 @@ from metabrowser.builtin_plugins.github.pull_record import (
     cut_text,
     fit_record,
     read_pull_record,
+    read_pull_refresh,
     write_pull_record,
+    write_pull_refresh,
 )
 from metabrowser.builtin_plugins.github.urls import parse_repository_url
 from metabrowser.cache.providers import PullRequestFetch, PullRequestPin
@@ -775,12 +778,41 @@ async def refresh_pull_request(published: PublishedSource, number: int) -> PullR
     """Read pull request *number* of *published* from GitHub and cache it; see the module.
 
     Raises only :class:`PullDataError`. A failure leaves any previous record in place.
+    How it ended is kept beside the record either way; see :func:`last_refresh`.
     """
 
     try:
-        return await _refresh(published, number)
-    except GitError as exc:
-        raise _git_failure(number, exc) from exc
+        try:
+            record = await _refresh(published, number)
+        except GitError as exc:
+            raise _git_failure(number, exc) from exc
+    except PullDataError as exc:
+        stamp = {
+            "outcome": exc.state,
+            "message": str(exc)[:1000],
+            "reset_at": exc.reset_at,
+            "at": _stamp(utc_now()),
+        }
+        await asyncio.to_thread(_keep_stamp, published, number, stamp)
+        raise
+    succeeded = {"outcome": "succeeded", "at": record.fetched_at}
+    await asyncio.to_thread(_keep_stamp, published, number, succeeded)
+    return record
+
+
+def _keep_stamp(published: PublishedSource, number: int, fields: dict[str, Any]) -> None:
+    try:
+        stamp = PullRefreshStamp.model_validate(fields)
+        write_pull_refresh(published.home, published.slug, number, stamp)
+    except (PrivateStorageError, OSError, ValidationError) as exc:
+        # Only the report of the refresh is lost; the record, if any, is written.
+        log.debug("could not keep how pull request %s's refresh ended: %s", number, exc)
+
+
+def last_refresh(published: PublishedSource, number: int) -> PullRefreshStamp | None:
+    """How the last refresh of pull request *number* ended, in any process. Blocking."""
+
+    return read_pull_refresh(published.home, published.slug, number)
 
 
 def _summary(record: PullRecord) -> str:
@@ -835,6 +867,7 @@ async def open_pull_request(
 __all__ = [
     "PullDataError",
     "PullDataState",
+    "last_refresh",
     "open_pull_request",
     "refresh_pull_request",
     "utc_now",

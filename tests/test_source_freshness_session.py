@@ -241,6 +241,23 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             assert started.status_code == 202
             recorded["selection_refresh_started"] = started.json()
             recorded["selection_found"] = _settle(client)
+        # One the fetch does not bring, then one whose fetch cannot run.
+        for name, key in (("never", "selection_not_found"), ("gone", "selection_fetch_failed")):
+            if key == "selection_fetch_failed":
+                shutil.move(origin, away)
+            missing = RepositorySelection(kind="tree", ref_and_path=(name.encode(),))
+            serve_mirror(
+                StoreMirror.from_published(published),
+                pending_selection=pending_selection_opener(published, missing),
+            )
+            with TestClient(server.app) as client:
+                assert client.post("/api/source/refresh", json={}, headers=_JSON).status_code == 202
+                recorded[key] = _settle(client)
+                if key == "selection_fetch_failed":
+                    retried = client.post("/api/source/refresh", json={}, headers=_JSON)
+                    assert retried.status_code == 202
+                    recorded["selection_retry_started"] = retried.json()
+                    _settle(client)
     finally:
         serve_mirror(None)
         reset_source_session()
@@ -265,6 +282,9 @@ def test_recording_is_what_a_served_mirror_answers(
     found = recorded["selection_found"]
     assert (found["selection_state"], found["ref_name"]) == ("found", "later")
     assert found["selection_href"].endswith("#L1")
+    assert recorded["selection_not_found"]["selection_state"] == "not_found"
+    assert recorded["selection_fetch_failed"]["selection_state"] == "fetch_failed"
+    assert recorded["selection_retry_started"]["status"]["selection_state"] == "pending"
     rendered = json.dumps(recorded, indent=2, ensure_ascii=False) + "\n"
     if os.environ.get("GOLDEN_UPDATE") == "1":
         FIXTURE.write_text(rendered, encoding="utf-8")
@@ -314,3 +334,8 @@ def test_the_session_runs_on_the_recording() -> None:
     assert arrived["navigated"][0].endswith("#L1")
     assert "navigated" not in by_name["a URL selection waits for its fetch"]
     assert "navigated" not in by_name["a page goes to a selection once"]
+    # The row says what became of the address, and offers a retry when its fetch failed.
+    assert by_name["the address is not on the origin"]["paint"]["tone"] == "warning"
+    failed = by_name["the address could not be fetched"]["paint"]
+    assert failed["tone"] == "warning" and failed["offer"] == "Fetch the address again [Retry]"
+    assert by_name["retry the address"]["requests"] == ["POST /api/source/refresh {}"]

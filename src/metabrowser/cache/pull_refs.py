@@ -34,14 +34,25 @@ from metabrowser.cache.locks import (
     run_lock_section,
     store_fetch_lock,
 )
-from metabrowser.cache.origin import BRANCH_MIRROR_PREFIX, classify_remote_failure, origin_git_args
+from metabrowser.cache.origin import (
+    BRANCH_MIRROR_PREFIX,
+    classify_remote_failure,
+    fetched_refs,
+    origin_git_args,
+)
 from metabrowser.cache.paths import MAX_PULL_REQUEST_NUMBER
-from metabrowser.cache.resolve import is_valid_ref_name
-from metabrowser.cache.update import remove_interrupted_fetch_leftovers
+from metabrowser.cache.resolve import (
+    folded_refs,
+    is_valid_ref_name,
+    mirror_refs,
+    store_ignores_case,
+)
+from metabrowser.cache.update import remove_interrupted_fetch_leftovers, restore_mirror_refs
 from metabrowser.git.process import (
     ACQUISITION_POLICY,
     STORE_READ_POLICY,
     GitCommandError,
+    GitError,
     GitTimeoutError,
     RepositoryStoreTarget,
     repository_store_target,
@@ -66,6 +77,10 @@ FETCH_LOCK_WAIT_S: Final = 60.0
 type PullFetchFailure = Literal[
     "not_found_or_private", "network_error", "fetch_failed", "refreshing_elsewhere"
 ]
+
+
+class RefCaseCollisionError(Exception):
+    """The fetch folded a branch into one whose name differs only in case; refs are back."""
 
 
 class PullRefError(Exception):
@@ -159,26 +174,48 @@ async def fetch_into_store(published: PublishedSource, specs: list[str]) -> None
         try:
             removed = await asyncio.shield(cleanup)
         except asyncio.CancelledError:
-            # The lock is released on the way out, so the removal must finish first.
-            with contextlib.suppress(asyncio.CancelledError):
-                await cleanup
+            # The lock is released on the way out, so the removal must finish first,
+            # however many times the fetch is cancelled while it runs.
+            while not cleanup.done():
+                with contextlib.suppress(asyncio.CancelledError):
+                    await asyncio.shield(cleanup)
             raise
         if removed:
             log.debug("removed files an interrupted fetch left in a store: %s", removed)
-        await run_git(
+        target = _target(published)
+        # On a case-insensitive filesystem the base branch can fold into a branch whose
+        # name differs only in case; the mirror update's check and restore apply.
+        before = await mirror_refs(target) if await store_ignores_case(target) else None
+        written = await run_git(
             [
                 *origin_git_args(remote_url),
                 "fetch",
                 "--atomic",
+                "--porcelain",
                 "--no-tags",
                 "--no-write-fetch-head",
                 remote_url,
                 *specs,
             ],
-            target=_target(published),
+            target=target,
             policy=ACQUISITION_POLICY,
             pass_fds=(lock.descriptor,),
         )
+        if before is not None:
+            branches = {
+                name: oid
+                for name, oid in fetched_refs(written).items()
+                if name.startswith(BRANCH_MIRROR_PREFIX)
+            }
+            try:
+                held = await mirror_refs(target)
+            except GitError:
+                # Unchecked refs could be folded ones; nothing that cannot be checked stays.
+                await restore_mirror_refs(target, before, lock.descriptor)
+                raise
+            if folded_refs(before=before, written=branches, pruned=(), held=held):
+                await restore_mirror_refs(target, before, lock.descriptor)
+                raise RefCaseCollisionError
     finally:
         lock.release()
 
@@ -191,6 +228,12 @@ async def _fetch(published: PublishedSource, specs: list[str]) -> None:
     except LockBusyError as exc:
         raise PullRefError(
             "refreshing_elsewhere", "another refresh of the mirror kept its fetch lock"
+        ) from exc
+    except RefCaseCollisionError as exc:
+        raise PullRefError(
+            "fetch_failed",
+            "the base branch differs only in letter case from another branch, which this "
+            "filesystem cannot hold apart",
         ) from exc
     except (PrivateStorageError, OSError) as exc:
         # The lock file could not be opened: the cache is not the owner-only directory
@@ -299,6 +342,7 @@ __all__ = [
     "PullEndpoints",
     "PullFetchFailure",
     "PullRefError",
+    "RefCaseCollisionError",
     "comparison_endpoints",
     "fetch_commit",
     "fetch_into_store",
