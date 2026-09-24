@@ -8,6 +8,10 @@ it carries an ETag so an unchanged answer is a ``304``. The browser's revision l
 rendered from the same :func:`source_status`, so the label and
 ``metab --api /api/source/status`` cannot disagree.
 
+``GET /api/source/refs`` lists the mirror's branches or tags for the ref selector,
+filtered and bounded, with the default branch first and the served ref marked. It reads
+the mirror alone, never the network.
+
 ``POST /api/source/refresh`` starts a background refresh of the served mirror, or joins
 the one running, and returns at once. ``POST /api/source/pin`` switches the served pin
 to a branch, tag, or commit in the mirror. Both change state or start work, so both are
@@ -27,13 +31,20 @@ from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
 from metabrowser.content_errors import ContentReadError
-from metabrowser.git.tree_source import GitRevisionSubject, ref_short_name
+from metabrowser.git.tree_source import (
+    GitPathError,
+    GitRevisionSubject,
+    ref_short_name,
+    split_git_container_wire,
+)
 from metabrowser.http_caching import build_scoped_etag, etag_headers, matches_if_none_match
 from metabrowser.mirror_refresh import (
     UNSERVED_FRESHNESS,
     FreshnessFields,
     LastOutcome,
+    MirrorRef,
     MirrorSession,
+    RefKind,
     SelectionError,
     SelectionPendingError,
     SelectionState,
@@ -45,12 +56,23 @@ from metabrowser.source import (
     get_source_session,
     unsupported_source_payload,
 )
+from metabrowser.view_routes import VIEW_ROUTE_PREFIX, decode_view_logical_path
 
 log = logging.getLogger(__name__)
 
-# A pin request is one short ref name or commit ID. Git bounds a ref name at the file
-# system's name length; four KiB holds any real one with room for the JSON around it.
+# A pin request is one short ref name or commit ID, and the page's own address. Git
+# bounds a ref name at the file system's name length; four KiB holds any real one with
+# room for the JSON around it and an address a few levels deep.
 MAX_SOURCE_REQUEST_BYTES: Final = 4 * 1024
+# Refs one listing answers. The selector shows a page of plain rows and narrows by the
+# filter box rather than scrolling far: a hundred rows is a few kilobytes of JSON, and
+# the listing's cost is one ``for-each-ref`` of the namespace whatever the page size.
+# A caller's limit is clamped to the range, as the ``/api/git/`` routes clamp theirs.
+REFS_DEFAULT_LIMIT: Final = 100
+REFS_MAX_LIMIT: Final = 1000
+# The filter is a name fragment; a ref name longer than this is not one a reader types.
+REFS_MAX_QUERY_CHARS: Final = 256
+_REF_KINDS: Final = ("branch", "tag")
 
 
 class SourceStatus(TypedDict):
@@ -126,6 +148,113 @@ async def api_source_status(request: Request) -> Response:
     return JSONResponse(dict(status), headers=headers)
 
 
+class SourceRef(TypedDict):
+    """One row of ``/api/source/refs``: a :class:`MirrorRef` and whether it is served."""
+
+    name: str
+    ref: str
+    commit: str
+    default: bool
+    current: bool
+
+
+class SourceRefs(TypedDict):
+    """The envelope of ``GET /api/source/refs``.
+
+    ``refs`` are the matching refs in listing order, at most ``limit`` of them;
+    ``total`` counts every match, and ``truncated`` says the page stops short of it.
+    ``pin`` and ``ref`` are what the server serves now, so the selector marks the
+    served ref even when the page was rendered for another.
+    """
+
+    kind: RefKind
+    query: str
+    limit: int
+    pin: str
+    ref: str | None
+    total: int
+    truncated: bool
+    refs: list[SourceRef]
+
+
+def source_refs(
+    listed: tuple[MirrorRef, ...],
+    subject: GitRevisionSubject,
+    *,
+    kind: RefKind,
+    query: str,
+    limit: int,
+) -> SourceRefs:
+    """The page of *listed* that matches *query*, a case-insensitive name fragment."""
+
+    needle = query.casefold()
+    matches = [entry for entry in listed if needle in entry.name.casefold()]
+    return SourceRefs(
+        kind=kind,
+        query=query,
+        limit=limit,
+        pin=subject.commit_oid,
+        ref=subject.ref,
+        total=len(matches),
+        truncated=len(matches) > limit,
+        refs=[
+            SourceRef(
+                name=entry.name,
+                ref=entry.ref,
+                commit=entry.commit,
+                default=entry.default,
+                current=entry.ref == subject.ref,
+            )
+            for entry in matches[:limit]
+        ],
+    )
+
+
+def _refs_limit(value: str | None) -> int:
+    try:
+        limit = int(value) if value is not None else REFS_DEFAULT_LIMIT
+    except ValueError:
+        limit = REFS_DEFAULT_LIMIT
+    return max(1, min(limit, REFS_MAX_LIMIT))
+
+
+async def api_source_refs(request: Request) -> JSONResponse:
+    """``GET /api/source/refs?kind=branch|tag&q=&limit=`` — the mirror's branches or tags.
+
+    Read from the mirror alone. A folder, or a pin with no mirror, answers
+    ``unsupported_for_subject`` (409); an unknown ``kind`` or an overlong ``q``,
+    ``invalid_request`` (400).
+    """
+
+    params = request.query_params
+    kind = params.get("kind", "branch")
+    query = params.get("q", "")
+    if kind not in _REF_KINDS:
+        return _error('"kind" is "branch" or "tag"', "invalid_request", 400)
+    if len(query) > REFS_MAX_QUERY_CHARS:
+        return _error("the filter is too long", "invalid_request", 400)
+    try:
+        mirror = _served_mirror(request, "refs")
+    except UnsupportedSourceCapabilityError as exc:
+        return JSONResponse(unsupported_source_payload(exc), status_code=409)
+    subject = get_source_session().subject
+    assert isinstance(subject, GitRevisionSubject)
+    try:
+        listed = await mirror.mirror.list_refs(kind)
+    except ContentReadError as exc:
+        # Git's text can name the store, so only the code leaves the server.
+        log.warning("listing the mirror's refs failed: %s", exc)
+        return _error("the mirror's refs could not be listed", exc.code, exc.http_status)
+    page = source_refs(
+        listed,
+        subject,
+        kind=kind,
+        query=query,
+        limit=_refs_limit(params.get("limit")),
+    )
+    return JSONResponse(dict(page))
+
+
 def _served_mirror(request: Request, capability: str) -> MirrorSession:
     mirror = mirror_session(request.app)
     if mirror is None or not isinstance(get_source_session().subject, GitRevisionSubject):
@@ -186,24 +315,55 @@ async def api_source_refresh(request: Request) -> JSONResponse:
     )
 
 
-def _selection(body: dict[str, Any]) -> tuple[str | None, str | None]:
-    unknown = sorted(set(body) - {"ref", "oid"})
+def _selection(body: dict[str, Any]) -> tuple[str | None, str | None, str | None]:
+    unknown = sorted(set(body) - {"ref", "oid", "view"})
     if unknown:
-        raise _BadRequestError('a pin request names only "ref" or "oid"')
+        raise _BadRequestError('a pin request names only "ref" or "oid", and "view"')
     ref = body.get("ref")
     oid = body.get("oid")
+    view = body.get("view")
     if (ref is None) == (oid is None):
         raise _BadRequestError('give exactly one of "ref" and "oid"')
     if not isinstance(ref if ref is not None else oid, str):
         raise _BadRequestError("the selection must be a string")
-    return cast(str | None, ref), cast(str | None, oid)
+    if view is not None and not (isinstance(view, str) and view.startswith(VIEW_ROUTE_PREFIX)):
+        raise _BadRequestError('"view" is a /view/ address')
+    return cast(str | None, ref), cast(str | None, oid), view
+
+
+async def view_on_pin(subject: GitRevisionSubject, view: str) -> str:
+    """Where a page at the ``/view/`` address *view* goes on *subject*.
+
+    The same entry, in its canonical spelling, when the revision has it; otherwise the
+    root, ``/view/``. An entry inside a container file keeps its address when the
+    container is there. A line anchor or query is not part of *view* and is not kept:
+    the lines may differ on another revision.
+    """
+
+    raw = view.removesuffix("/") if len(view) > len(VIEW_ROUTE_PREFIX) else view
+    logical = decode_view_logical_path(raw.encode("utf-8", "surrogateescape"))
+    if not logical:
+        return VIEW_ROUTE_PREFIX
+    try:
+        git_path, inner = split_git_container_wire(logical)
+        entry = await subject.tree_source.resolve_path(git_path)
+    except (GitPathError, ContentReadError) as exc:
+        log.debug("the page's address is not in the new pin: %s", exc)
+        return VIEW_ROUTE_PREFIX
+    if entry is None or not git_path.segments:
+        return VIEW_ROUTE_PREFIX
+    if inner:
+        return raw
+    return VIEW_ROUTE_PREFIX + git_path.to_wire() + ("/" if entry.is_tree else "")
 
 
 async def api_source_pin(request: Request) -> JSONResponse:
     """``POST /api/source/pin`` — serve another branch, tag, or commit of the mirror.
 
-    The body is ``{"ref": "<branch or tag>"}`` or ``{"oid": "<commit ID>"}``. The
-    selection is resolved in the mirror alone: a branch, then a tag, then a commit ID.
+    The body is ``{"ref": "<branch or tag>"}`` or ``{"oid": "<commit ID>"}``, and
+    optionally ``"view"``, the ``/view/`` address the page shows: the answer's
+    ``view_href`` is then where that page goes on the new pin (:func:`view_on_pin`).
+    The selection is resolved in the mirror alone: a branch, then a tag, then a commit ID.
     In a server, one the mirror lacks answers ``202`` with ``selection_pending`` and
     starts one background fetch; asking again after it ends answers the switch or
     ``404``.
@@ -213,14 +373,14 @@ async def api_source_pin(request: Request) -> JSONResponse:
     """
 
     try:
-        ref, oid = _selection(await _json_object(request))
+        ref, oid, view = _selection(await _json_object(request))
         mirror = _served_mirror(request, "pin")
     except _BadRequestError as exc:
         return _error(str(exc), "invalid_selection", exc.status_code)
     except UnsupportedSourceCapabilityError as exc:
         return JSONResponse(unsupported_source_payload(exc), status_code=409)
     try:
-        changed, _session = await mirror.switch_pin(ref=ref, oid=oid)
+        changed, session = await mirror.switch_pin(ref=ref, oid=oid)
     except SelectionPendingError as exc:
         return JSONResponse(
             {
@@ -238,7 +398,10 @@ async def api_source_pin(request: Request) -> JSONResponse:
         # only the code leaves the server.
         log.warning("switching the pin failed: %s", exc)
         return _error("the selection could not be opened", exc.code, exc.http_status)
-    return JSONResponse({"changed": changed, "status": dict(source_status(mirror))})
+    answer: dict[str, Any] = {"changed": changed, "status": dict(source_status(mirror))}
+    if view is not None and isinstance(session.subject, GitRevisionSubject):
+        answer["view_href"] = await view_on_pin(session.subject, view)
+    return JSONResponse(answer)
 
 
 # A page on a pin names the commit it was rendered for on every data request
@@ -312,6 +475,7 @@ def _served_pin() -> str | None:
 
 SOURCE_ROUTES = [
     Route("/api/source/status", api_source_status),
+    Route("/api/source/refs", api_source_refs),
     Route("/api/source/refresh", api_source_refresh, methods=["POST"]),
     Route("/api/source/pin", api_source_pin, methods=["POST"]),
 ]
@@ -321,11 +485,19 @@ __all__ = [
     "MAX_SOURCE_REQUEST_BYTES",
     "PIN_CHANGED_HEADER",
     "PIN_HEADER",
+    "REFS_DEFAULT_LIMIT",
+    "REFS_MAX_LIMIT",
+    "REFS_MAX_QUERY_CHARS",
     "SOURCE_ROUTES",
     "SourcePinGuard",
+    "SourceRef",
+    "SourceRefs",
     "SourceStatus",
     "api_source_pin",
     "api_source_refresh",
+    "api_source_refs",
     "api_source_status",
+    "source_refs",
     "source_status",
+    "view_on_pin",
 ]

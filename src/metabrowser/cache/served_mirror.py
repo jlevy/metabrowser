@@ -20,13 +20,13 @@ from metabrowser.cache.paths import store_directory, store_record
 from metabrowser.cache.providers import repository_context_for
 from metabrowser.cache.records import REPOSITORY_STORE_STATE_CONTRACT_ID, RepositoryStoreState
 from metabrowser.cache.repository_store import open_revision
-from metabrowser.cache.resolve import ref_tip, resolve_pin
+from metabrowser.cache.resolve import list_mirror_refs, ref_tip, resolve_pin
 from metabrowser.cache.update import update_store
 from metabrowser.cache.urls import GitSource
 from metabrowser.git.process import RepositoryStoreTarget, repository_store_target
 from metabrowser.git.tree_source import GitRevisionSubject
 from metabrowser.home import PrivateStorageError
-from metabrowser.mirror_refresh import RecordedFreshness, RefreshResult
+from metabrowser.mirror_refresh import MirrorRef, RecordedFreshness, RefKind, RefreshResult
 from metabrowser.repository_context import RepositoryContext
 
 
@@ -122,6 +122,10 @@ class StoreMirror:
 
     async def ref_tip(self, ref: str) -> str | None:
         return await ref_tip(self._target(), ref)
+
+    async def list_refs(self, kind: RefKind) -> tuple[MirrorRef, ...]:
+        default_ref = await asyncio.to_thread(self._default_ref) if kind == "branch" else None
+        return await list_mirror_refs(self._target(), kind, default_ref=default_ref)
 
     def repository_context(self, *, revision: str, branch: str | None) -> RepositoryContext | None:
         return repository_context_for(self.source.normalized, revision=revision, branch=branch)
