@@ -1565,6 +1565,8 @@ type MetabrowserPublicFileCatalogApi = Readonly<{
 
 type MetabrowserPluginHostRuntime = Readonly<{
   attachFileCatalog(catalog: MetabrowserKnownFileCatalogApi): () => void;
+  /** The shell names a partial-content notice's Load more action; see plugin-sdk.js. */
+  registerLoadMoreAction(name: string, action: () => unknown): void;
   configureAssets(
     assetsByKind: Record<
       string,

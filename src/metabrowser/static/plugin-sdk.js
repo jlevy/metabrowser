@@ -302,10 +302,26 @@
     }
   }
 
+  // Load more actions by name. A partial-content notice's button names one; the SDK's
+  // delegated listener runs it only for the button the notice built, and a name nobody
+  // registered does nothing. The shell registers its text loader through the private
+  // host; a view that continues its own content passes `action: null` and wires its own.
+  /** @type {Map<string, () => unknown>} */
+  const _loadMoreActions = new Map();
+
+  /** @param {string} name @param {() => unknown} action */
+  function registerLoadMoreAction(name, action) {
+    if (!/^[A-Za-z_$][\w$]*$/.test(name) || typeof action !== "function") {
+      throw new TypeError("registerLoadMoreAction: a function and its identifier name");
+    }
+    _loadMoreActions.set(name, action);
+  }
+
   global.MetabrowserPluginHost = Object.freeze({
     attachFileCatalog,
     configureAssets,
     loadPluginsForKind,
+    registerLoadMoreAction,
   });
 
   function registerView(kindId, viewId, spec) {
@@ -906,8 +922,8 @@
   function loadMoreButtonHtml(position, action) {
     // `action: null` means the caller wires its own listener — a view that
     // tracks its own offsets cannot be continued by the shell's text loader.
-    // Otherwise the SDK's delegated listener runs the action: the shell's text
-    // loader, or a global function named as "name()". No inline handler is
+    // Otherwise the SDK's delegated listener runs the registered action it names
+    // as "name()": the shell's text loader by default. No inline handler is
     // written, so the page policy for an untrusted source needs none.
     const named = typeof action === "string" && action ? action : "loadMoreCurrentText()";
     const handler = action === null ? "" : ` data-mb-load-more="${escapeHtml(named)}"`;
@@ -1939,13 +1955,14 @@
           _handleCopyClick(btn);
           return;
         }
-        // Load more: the action a notice named, a global function called with no
-        // arguments (see loadMoreButtonHtml).
-        var more = target.closest("[data-mb-load-more]");
+        // Load more: only a notice's own button, and only an action registered by
+        // name (see registerLoadMoreAction); anything else in the page is ignored.
+        var more = target.closest("button.metabrowser-load-more[data-mb-load-more]");
         var call =
           more && /^([A-Za-z_$][\w$]*)\(\)$/.exec(more.getAttribute("data-mb-load-more") || "");
-        if (call && typeof global[call[1]] === "function") {
-          global[call[1]]();
+        var registered = call ? _loadMoreActions.get(call[1]) : undefined;
+        if (registered) {
+          registered();
         }
       });
     }

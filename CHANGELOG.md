@@ -453,8 +453,10 @@ Content trust:
 - The application writes no inline event handlers: the file header’s print button, the
   structured view’s copy button, an agent log’s event toggle, and the partial-content
   notice’s Load more use delegated listeners.
-  `partialNoticeHtml`’s `action` runs a global function named as `name()` (the default
-  is the shell’s Load more); any other string no longer becomes an inline handler.
+  A partial-content notice’s Load more runs only an action registered by name, only from
+  the button the notice built: the shell’s text loader by default.
+  `partialNoticeHtml`’s `action` string no longer becomes an inline handler; a view that
+  continues its own content passes `action: null` and wires its own listener.
 
 Content source:
 

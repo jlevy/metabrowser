@@ -5103,8 +5103,7 @@ function showTextChunkLoadError() {
     "<strong>Could not load more content.</strong> Select Load more to try again.";
 }
 
-// Called by the generated file-header action.
-// biome-ignore lint/correctness/noUnusedVariables: referenced from generated HTML.
+// The partial-content notice's Load more, registered by name with the SDK below.
 async function loadMoreCurrentText() {
   if (textChunkLoadInFlight || !currentPath) {
     return;
@@ -5714,6 +5713,9 @@ function printActiveView() {
 if (typeof window !== "undefined") {
   window.printActiveView = printActiveView;
 }
+
+// The partial-content notice's Load more runs the shell's text loader by name.
+window.MetabrowserPluginHost?.registerLoadMoreAction?.("loadMoreCurrentText", loadMoreCurrentText);
 
 // The file header's print button, delegated rather than an inline handler: the page
 // policy for an untrusted source runs no inline handler.

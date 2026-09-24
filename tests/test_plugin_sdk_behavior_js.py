@@ -60,6 +60,8 @@ def test_plugin_sdk_behavior_contracts() -> None:
     assert payload["completeText"]["ok"] is True, payload["completeText"]
     assert payload["pathText"]["ok"] is True, payload["pathText"]
     assert payload["sameKindOrder"]["ok"] is True, payload["sameKindOrder"]
+    # Load more runs only the shell's registered loader, and only from a notice's button.
+    assert payload["loadMore"] == {"ok": True, "calls": ["shell"]}, payload["loadMore"]
 
 
 def test_plugin_sdk_syntax_token_contracts() -> None:
