@@ -17,9 +17,12 @@ import pytest
 from metabrowser.cache.origin import (
     HTTP_LOW_SPEED_LIMIT_BYTES,
     HTTP_LOW_SPEED_TIME_S,
+    MIRROR_REFSPECS,
     PROTOCOL_ARGS,
     classify_remote_failure,
     describe_remote_failure,
+    mirror_fetch_args,
+    mirror_prune_args,
     origin_git_args,
 )
 from metabrowser.git.process import ACQUISITION_POLICY, git_environment
@@ -119,6 +122,27 @@ def test_every_network_command_gets_the_allowlist_and_the_stall_bound() -> None:
     )
     assert f"http.lowSpeedLimit={HTTP_LOW_SPEED_LIMIT_BYTES}" in args
     assert f"http.lowSpeedTime={HTTP_LOW_SPEED_TIME_S}" in args
+
+
+def test_the_prune_reads_the_url_the_fetch_reads_with_its_arguments() -> None:
+    """``remote prune`` names a remote, so the one it names is defined from the URL.
+
+    The store's own ``remote.origin.url`` never decides where a refresh's prune reads
+    from: the remote exists only on the command line, with the fetch's URL, refspecs,
+    allowlist, stall bound, and credential helper.
+    """
+
+    url = "https://github.com/octo/demo"
+    shared = list(origin_git_args(url))
+    prune = mirror_prune_args(url)
+    assert mirror_fetch_args(url, prune=True)[: len(shared)] == shared
+    assert prune[: len(shared)] == shared
+    configured = [prune[i + 1] for i in range(len(shared), len(prune) - 3) if prune[i] == "-c"]
+    assert configured == [
+        f"remote.metabrowser-origin.url={url}",
+        *(f"remote.metabrowser-origin.fetch={spec}" for spec in MIRROR_REFSPECS),
+    ]
+    assert prune[-3:] == ["remote", "prune", "metabrowser-origin"]
 
 
 class _Challenge(http.server.BaseHTTPRequestHandler):

@@ -239,6 +239,9 @@ def test_a_branch_replaced_by_a_directory_of_branches_does_not_wedge_the_mirror(
     _git(mirror.work, "switch", "-q", "-c", "side/x")
     nested = mirror.commit("x.txt", "nested\n", "nested branch")
     mirror.push("side/x")
+    # Every command a refresh runs names the URL it was given, the prune included, so
+    # what the store configures as its origin decides nothing.
+    _git(mirror.published.git_dir, "config", "remote.origin.url", "file:///nonexistent.git")
     import metabrowser.cache.update as update_module
 
     real_run_git = update_module.run_git
@@ -255,7 +258,7 @@ def test_a_branch_replaced_by_a_directory_of_branches_does_not_wedge_the_mirror(
     # The atomic fetch refused, the prune ran on its own, and the fetch ran again.
     fetches = [command for command in commands if " fetch " in f" {command} "]
     assert len(fetches) == 2
-    assert any("remote prune origin" in command for command in commands)
+    assert any("remote prune metabrowser-origin" in command for command in commands)
     monkeypatch.setattr(update_module, "run_git", real_run_git)
     refs = _refs(mirror.published.git_dir)
     assert "refs/remotes/origin/side" not in refs

@@ -264,19 +264,32 @@ def fetched_ref_names(porcelain: bytes) -> tuple[str, ...]:
     return tuple(fetched_refs(porcelain))
 
 
+# ``remote prune`` takes a remote's name, not a URL. This one is defined only on the
+# command line, so *remote_url* is its one URL whatever the store configures.
+_PRUNE_REMOTE: Final = "metabrowser-origin"
+
+
 def mirror_prune_args(remote_url: str) -> list[str]:
     """Delete the mirror refs whose branch or tag the origin no longer has, and nothing else.
 
-    ``remote prune`` maps the origin's refs through the same refspecs a fetch uses,
-    passed as configuration because the store configures none. It names the store's
-    ``origin`` remote, whose URL acquisition wrote, and gets *remote_url*'s arguments,
-    so the credential helper is the fetch's. It only deletes, so a refresh runs it
-    before the atomic fetch when one transaction cannot both delete ``side`` and create
-    ``side/x``.
+    ``remote prune`` maps the origin's refs through the same refspecs a fetch uses. The
+    remote it names is defined here, from *remote_url* and those refspecs, so it reads
+    the origin the fetch reads, never the store's configured ``origin``, and it gets
+    *remote_url*'s arguments, so the credential helper is the fetch's. It only
+    deletes, so a refresh runs it before the atomic fetch when one transaction cannot
+    both delete ``side`` and create ``side/x``.
     """
 
-    refspecs = [arg for spec in MIRROR_REFSPECS for arg in ("-c", f"remote.origin.fetch={spec}")]
-    return [*origin_git_args(remote_url), *refspecs, "remote", "prune", "origin"]
+    remote = [
+        "-c",
+        f"remote.{_PRUNE_REMOTE}.url={remote_url}",
+        *(
+            arg
+            for spec in MIRROR_REFSPECS
+            for arg in ("-c", f"remote.{_PRUNE_REMOTE}.fetch={spec}")
+        ),
+    ]
+    return [*origin_git_args(remote_url), *remote, "remote", "prune", _PRUNE_REMOTE]
 
 
 def parse_symref_head(stdout: bytes) -> tuple[str | None, str]:
