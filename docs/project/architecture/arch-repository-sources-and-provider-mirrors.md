@@ -17,7 +17,7 @@ A served store refreshes from its origin in the background, and a server can swi
 pin to another branch, tag, or commit of the same store.
 Pull-request records are implemented: a pull-request URL pins the pull request’s head,
 and its record is served beside the mirror and refreshed with it.
-The pull-request page remains planned, and
+The pull-request page is implemented in the GitHub plugin at `/pull/<n>`, and
 [Thin Mirror for Git and GitHub Browsing](../specs/active/plan-2026-09-23-v012-thin-mirror.md)
 replaces the planned parts of this document wherever they disagree.
 It retired blobless clones and convergence, private subject refs, revision leases,
@@ -352,6 +352,15 @@ once.
 After the job, the session reads the pinned ref’s tip again, so a newer head behind
 `refs/pull/<n>/head` is offered as `latest`, and `resolve_pin` accepts that ref.
 One-shot modes fetch only a pull request with no usable record, before serving.
+
+The pull-request page (`builtin_plugins/github/pull-page.js`) is the view the GitHub
+plugin registers for the `pull-request` kind, which the shell mounts at `/pull/<n>` and
+`/pull/<n>/files`; a served pull-request URL opens there.
+It reads the pull route only, polling it with an entity tag while visible, and renders
+each text as Markdown through `GET /api/plugin/github/pull-markdown?part=<part>`, which
+renders one text of the cached record through KPress’s sanitized mode.
+Files changed is the diff plugin’s view over the record’s comparison, passed as two
+endpoints with `base_policy=merge_base`.
 
 ### Git path and blob semantics
 

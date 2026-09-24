@@ -70,6 +70,7 @@ Built-in kinds, as registered by the manifests in `src/metabrowser/builtin_plugi
 | `unknown-jsonl` | Other `.jsonl` | Log, Raw JSON | File envelope |
 | `image` | Browser image extensions | Image | File envelope; raw asset |
 | `binary` | Non-text files | Bytes | Bounded byte-chunk hook |
+| `pull-request` | No file; the shell selects it for `/pull/<n>[/files]` | Pull request | `github/pull` envelope; `github/pull-markdown` per text; `diff/comparison` for Files changed |
 
 Two kinds are also **containers** — folder-like entries whose children are addressable
 (see [nav containers](arch-nav-containers.md)): `folder` (children are files and
@@ -181,12 +182,13 @@ reservation and its invariants, is in
 
 Plugin hooks currently registered: `diff/document`, `diff/children`, `diff/comparison`,
 `folder/*`, `binary/chunk`, `agent-log/charts`, `structured/parsed`, `github/pull`,
-`github/pull-refresh`. On a `GitRevisionSubject`, `diff/comparison` honors the pin
-through `GitLocation` and `GitDiffSource.content` reads blobs through the shared
-cat-file pool; patch `document`/`children`, `binary/chunk`, `structured/parsed`, and
-`agent-log/charts` honor `GitPath` and follow in-tree relative symlink blobs.
-`diff/comparison?left=&right=` takes `base_policy=direct` (the default) or `merge_base`,
-and reports it in the document.
+`github/pull-refresh`, `github/pull-markdown`. On a `GitRevisionSubject`,
+`diff/comparison` honors the pin through `GitLocation` and `GitDiffSource.content` reads
+blobs through the shared cat-file pool; patch `document`/`children`, `binary/chunk`,
+`structured/parsed`, and `agent-log/charts` honor `GitPath` and follow in-tree relative
+symlink blobs.
+`diff/comparison?left=&right=` takes `base_policy=direct` (the default) or
+`merge_base`, and reports it in the document.
 
 `github/pull` answers the served pull request’s cached record from the cache alone:
 `absent` (with `no_pull_request`, `not_cached`, `schema_mismatch`, or `unreadable`),
@@ -199,7 +201,13 @@ A record is fetched only by a refresh.
 `POST github/pull-refresh` starts or joins that refresh in the refresh coordinator and
 answers `202` at once; it is a POST with a JSON object body for the same reason
 `/api/source/refresh` is, and plugin data routes are one path segment, hence the name.
-See
+`github/pull` also sends an entity tag over everything but the record, which changes
+only with `fetched_at`, and answers a matching `If-None-Match` with `304`, so the
+pull-request page polls it as cheaply as the status route.
+`github/pull-markdown?part=<part>` renders one text of the cached record through KPress
+in its sanitized mode and answers KPress’s render envelope with the record’s
+`fetched_at` and the part: `body`, or `issue_comment/<id>`, `review/<id>`, or
+`review_comment/<id>`. It never fetches; a part the record lacks is `unknown_part`. See
 [Pull-request records](arch-repository-sources-and-provider-mirrors.md#pull-request-records).
 
 The hosted-review slice registers these exact proposed resource routes with the browser

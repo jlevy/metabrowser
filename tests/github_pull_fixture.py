@@ -21,6 +21,11 @@ mirror and the records of all four pull requests, fetched through the production
 path with the fake ``gh`` and a fixed clock, and ``<directory>/root``::
 
     github_pull_fixture.py <directory>
+
+With ``--serve``, it serves one of those pull requests from that home for a browser, as
+the QA runbook's pull-request page walkthrough does::
+
+    github_pull_fixture.py <directory> --serve <number> <port>
 """
 
 from __future__ import annotations
@@ -491,7 +496,39 @@ def write_damaged_records(home: Path) -> None:
     write_private_file_atomic(home, source_pull_record(slug, 13), b"{not json")
 
 
+def serve_stand_in(directory: Path, number: int, port: int) -> None:
+    """Serve pull request *number* from a home :func:`build_home` wrote, for a browser.
+
+    The same seams as :func:`build_home`, with the real clock, so the records read as
+    stale and a refresh through the page asks the fake ``gh`` again. Nothing leaves
+    ``127.0.0.1``: the mirror refreshes from the ``file://`` origin.
+    """
+
+    from metabrowser.cache import acquire
+    from metabrowser.cache.urls import GitSource
+    from metabrowser.cli.main import _run_cli  # pyright: ignore[reportPrivateUsage]
+    from metabrowser.git.process import detect_git_version
+
+    answers = json.loads((directory / "fake-gh-scenario.json").read_text(encoding="utf-8"))
+    os.environ.update(install_fake_gh(directory, answers))
+    os.environ["METABROWSER_HOME"] = str(directory / "home")
+    local = (directory / "github-pull-origin.git").as_uri()
+    version, _raw = detect_git_version()
+
+    def remote_url_for(source: GitSource) -> str:
+        return local if source.normalized == CANONICAL else source.normalized
+
+    with (
+        _patched(acquire, "remote_url_for", remote_url_for),
+        _patched(acquire, "require_acquisition_git", lambda: version),
+    ):
+        _run_cli([f"{CANONICAL}/pull/{number}", "--no-open", "--port", str(port)])
+
+
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        raise SystemExit("usage: github_pull_fixture.py <directory>")
-    build_home(Path(sys.argv[1]).resolve())
+    if len(sys.argv) == 5 and sys.argv[2] == "--serve":
+        serve_stand_in(Path(sys.argv[1]).resolve(), int(sys.argv[3]), int(sys.argv[4]))
+    elif len(sys.argv) == 2:
+        build_home(Path(sys.argv[1]).resolve())
+    else:
+        raise SystemExit("usage: github_pull_fixture.py <directory> [--serve <number> <port>]")

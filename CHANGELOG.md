@@ -193,6 +193,28 @@ GitHub URLs and HTTPS:
   an `http://` link is left empty, and the list is marked incomplete.
   Lists and text are bounded per pull request, and a cut is reported, never silent.
 
+- Pull-request page: serving a pull-request URL now opens its page at `/pull/<n>`, the
+  way github.com shows it: title, state (open, draft, merged, or closed), author, base
+  and head branches, times, labels, merge status (unknown until GitHub has computed it),
+  the description, a conversation of comments and reviews in time order with review
+  states, review comments with their file, line, and diff hunk, checks and statuses with
+  links to their details, and notes for anything the record cut or could not read.
+  `/pull/<n>/files` is its Files changed, the diff view over the record’s merge-base
+  comparison. The page reads only the cached record, so it opens instantly and offline;
+  it says how old the record is and who read it, offers a refresh when it is stale,
+  shows a quiet loading state while the first record is fetched, and updates the
+  conversation and checks in place when a refresh brings a new record, while the diff
+  stays on what it showed and offers a newer head.
+  Descriptions and comments render as Markdown through KPress’s sanitized mode, one text
+  at a time as it scrolls into view, never from GitHub’s own HTML; links open on GitHub
+  in a new tab, and only `http` and `https` links are kept.
+  A review comment’s file opens at the served head, at its line.
+  The freshness row links to the page, and back, forward, and reload keep its tab.
+  `metab <pr-url> --show /pull/<n>[/files]` reports the page’s kind and a summary of its
+  record, and `/api/plugin/github/pull-markdown?part=…` answers the rendered text of the
+  description (`body`) or one comment, review, or review comment.
+  `/api/plugin/github/pull` answers with an entity tag and a `304` when nothing changed.
+
 - A terminal hangup or `SIGTERM` now cancels an acquisition the way Ctrl-C does: Git and
   every helper it started are stopped, staging is removed, and `metab` exits with status
   129 or 143. A hangup that was already ignored, as under `nohup`, stays ignored.

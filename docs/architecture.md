@@ -333,6 +333,7 @@ which space it belongs to:
 | `/view/<path>` | Content in the served tree or a pinned Git revision | A served-root-relative path, or a `GitPath` wire when the session is a `GitRevisionSubject` |
 | `/commit/<rev>` | One commit’s change set, compared against its first parent | A revision |
 | `/commit/<rev>/<inner>` | One file’s diff inside that change set | A revision, then a path within the comparison |
+| `/pull/<n>`, `/pull/<n>/files` | The served pull request’s page: its conversation, or its Files changed | A pull-request number, then an optional tab |
 | `/compare/<base>..<head>` | An explicit comparison (`...` for merge-base) | Two revisions |
 | `/compare/<spec>/<inner>` | One file’s diff inside that comparison | A comparison spec, then a path within it |
 | `/hosted/<provider-kind>/<instance-key>/<repository-key>/<resource-kind>/<resource-key>` | One provider-neutral hosted resource | Provider kind plus canonical typed address atoms for instance, repository, and resource identity |
@@ -376,6 +377,11 @@ Route invariants:
 
 Path and fragment are implemented for `/view/`; `/commit/` is implemented for commit
 selection in the Git panel.
+`/pull/` is the served pull request’s page: the shell mounts the view a plugin registers
+for the `pull-request` kind, the GitHub plugin’s, and a tab is part of the URL, so back,
+forward, and reload keep it.
+The page belongs to the one pull request a server serves; a server serves one repository
+and at most one pull request, so the number selects nothing else.
 `/compare/` is specified here and not yet built.
 `/hosted/` is proposed for v0.12.0; the hosted-resource plugin owns its HTTP surface
 through the planned mounted-router SDK and its browser parse, format, apply, preview,

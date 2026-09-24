@@ -875,6 +875,70 @@ reload; no console errors; no request leaves `127.0.0.1`.
 cross-origin or form POST is accepted; a failed refresh breaks the page; a force-pushed
 commit becomes unreadable.
 
+### 5.7 The pull-request page (stand-in, no network)
+
+Build the stand-in of `tests/github_pull_fixture.py` (a `file://` origin standing in for
+`https://github.com/octo/demo`, a fake `gh` replaying scrubbed real responses, and a
+home holding pull requests 7 to 10), then serve pull request 7 from it:
+
+```shell
+QA_PR="$(mktemp -d "${TMPDIR:-/tmp}/mb-qa-pr.XXXXXX")"
+uv --config-file uv.toml run --frozen python tests/github_pull_fixture.py "${QA_PR}"
+uv --config-file uv.toml run --frozen python tests/github_pull_fixture.py "${QA_PR}" \
+  --serve 7 8475
+```
+
+The banner prints
+`Serving https://github.com/octo/demo at http://127.0.0.1:8475/pull/7`. Open that
+address.
+
+1. The page shows **Count to two in the app #7** with an **Open** badge,
+   `forker wants to merge into topic from forker:count-to-two`, the opened and updated
+   times, **View on GitHub**, **Browse code**, and the `enhancement` label.
+   The status line reads `Fetched … by gh:octo-reader`; the records were fetched on
+   2026-09-17, so it first adds `may be out of date` and offers **Refresh**, and the
+   freshness row at the foot of the navigation pane refreshes on its own and links
+   **Pull request #7**.
+2. The description renders as Markdown (**two** in bold), after a moment as plain text.
+   The conversation lists, in time order, maintainer’s **reviewed** review, the comment
+   `Thanks. CI is green; one question inline.`, and the **approved** review
+   `Looks right.`
+3. **Review comments (2)** shows `src/app.txt` with an **outdated** badge and its diff
+   hunk, then forker’s reply on `src/app.txt:2`. **Checks** reads
+   `2 success · 1 pending`, with `tests (3.13)`, `docs` (in progress), and the Read the
+   Docs status, each linking out in a new tab, and `No conflicts with the base branch`.
+4. Click **Files changed**. The address becomes `/pull/7/files` and the diff shows two
+   files, `docs/new.md` and `src/app.txt`, and not `README.md`, which changed only on
+   `topic`. Reload: the page opens on Files changed.
+   Back: the conversation.
+5. Click `src/app.txt:2`. The file opens at `/view/g1-c3Jj/g1-YXBwLnR4dA#L2` from the
+   served head, `one` and `two`. Back returns to the pull-request page.
+6. Click **Refresh** while the record is stale.
+   The status line reads `Refreshing…` and then `Fetched just now by gh:octo-reader`;
+   the conversation does not flicker or jump.
+7. Open `/pull/8`. The page says `This server serves pull request #7.`
+8. Stop the server and serve pull request 9 (`--serve 9 8475`): **spam** is **Closed**,
+   from `spam (deleted fork)` into `topic`, with no conversation, and Files changed
+   compares from the recorded `base.sha`.
+
+**Pass:** every step as described; no console errors; no request leaves `127.0.0.1`
+except the check and status links you click, which open in a new tab.
+
+**Fail:** a text of the pull request rendered as HTML other than through the Markdown
+renderer; a link that opens in the same tab or keeps an opener; a `javascript:` link; a
+diff that moves to a newer head on its own; a blank page on a reload or back.
+
+With the network, a signed-in `gh`, and a Git the floor admits (read-only), open a real
+public pull request, for example `pallets/markupsafe#507`, and repeat steps 1 to 6:
+
+```shell
+uv --config-file uv.toml run --frozen metab https://github.com/pallets/markupsafe/pull/507
+```
+
+**Pass:** the page matches the pull request on github.com: title, **Merged** badge,
+description, conversation, review comments, checks, and the Files changed file list.
+Nothing is written to GitHub.
+
 ## Phase 6: HTML Trust on the Integration Tip
 
 The selected integration tip must include the merged HTML trust implementation:
