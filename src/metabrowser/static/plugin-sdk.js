@@ -1858,15 +1858,23 @@
 
   /**
    * Render the shared bounded Source surface used by generic text-like views.
+   *
+   * `options.parts` shows the text in consecutive code blocks under one gutter, each
+   * highlighted in its own language, such as a Markdown file's YAML front matter and
+   * its body. The parts must join to the content exactly; a large file, whose text is
+   * not highlighted, or parts that do not join to the content, show as one block.
+   *
    * @param {HTMLElement} container
    * @param {Record<string, unknown> & {content?: string, ext?: string}} data
+   * @param {{parts?: ReadonlyArray<Readonly<{text: string, language: string}>>}} [options]
    */
-  function renderSourceView(container, data) {
+  function renderSourceView(container, data, options = {}) {
     const truncationWarning = renderTextTruncationWarning(data);
     const loadMoreFooter = renderTextLoadMoreFooter(data);
     const content = typeof data.content === "string" ? data.content : "";
+    const large = isLargeTextPreview(data);
     let languageClass = "plaintext no-highlight";
-    if (!isLargeTextPreview(data)) {
+    if (!large) {
       const language = langForPath(
         typeof data.path === "string" ? data.path : "",
         typeof data.ext === "string" ? data.ext : "",
@@ -1877,10 +1885,36 @@
     // this one, because the gutter is part of the first paint.
     // The HTML parser turns CR and CRLF into LF, so the gutter counts the same text.
     const lineAnchors = global.MetabrowserSourceLineAnchors;
-    const text = content.replace(/\r\n?/g, "\n");
+    const normalize = (/** @type {string} */ text) => text.replace(/\r\n?/g, "\n");
+    const text = normalize(content);
+    // Each part starts on a line of its own, so every part but the last ends a line;
+    // then the gutter's count of the whole text is the lines the parts show.
+    const given = Array.isArray(options.parts) ? options.parts : [];
+    const parts =
+      !large &&
+      given.length > 1 &&
+      given.map((part) => normalize(part.text)).join("") === text &&
+      given.slice(0, -1).every((part) => normalize(part.text).endsWith("\n"))
+        ? given.map((part) => ({
+            text: part.text,
+            languageClass: /^[A-Za-z0-9_+-]+$/.test(part.language)
+              ? `language-${part.language}`
+              : "plaintext",
+          }))
+        : [{ text: content, languageClass }];
+    const codes = parts
+      .map(
+        (part) => `<code class="${part.languageClass}">${escapeHtml(normalize(part.text))}</code>`,
+      )
+      .join("");
+    // Copy takes the first code element in the wrap, so several parts copy one payload.
+    const payload =
+      parts.length > 1
+        ? `<code data-mb-copy-payload class="no-highlight" hidden>${escapeHtml(text)}</code>`
+        : "";
     const code =
-      `<pre class="code-block metabrowser-source-lines">${lineAnchors.gutterHtml(text)}` +
-      `<code class="${languageClass}">${escapeHtml(text)}</code></pre>`;
+      `${payload}<pre class="code-block metabrowser-source-lines">${lineAnchors.gutterHtml(text)}` +
+      `${codes}</pre>`;
     container.classList.add("metabrowser-source-host");
     container.innerHTML = truncationWarning + wrapWithCopy(code) + loadMoreFooter;
     lineAnchors.mount(container, {

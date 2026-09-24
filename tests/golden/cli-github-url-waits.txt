@@ -1,4 +1,4 @@
-# metab 'https://github.com/octo/demo/blob/later/docs/v1.md#L1-L2' --api /api/source/refresh --data refresh.json
+# metab 'https://github.com/octo/demo/blob/later/docs/v1.md?plain=1#L1-L2' --api /api/source/refresh --data refresh.json
 exit: 0
 --- stdout ---
 api: /api/source/refresh
@@ -48,7 +48,7 @@ status: 200
   "stale": false,
   "pull_request": null,
   "selection_state": "found",
-  "selection_href": "/view/g1-ZG9jcw/g1-djEubWQ#L1-L2"
+  "selection_href": "/view/g1-ZG9jcw/g1-djEubWQ?plain=1#L1-L2"
 }
 --- stderr ---
 selection: blob (not in the mirror yet; the refresh fetches it)

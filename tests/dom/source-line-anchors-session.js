@@ -6,8 +6,12 @@
 // small fake document. Then it takes the paths a reader takes: open a partly loaded
 // file at #L60, Load more, click a line number, shift-click a range, edit the fragment,
 // anchor columns, change the zoom, anchor past the end, clear the fragment, and reach an
-// anchor through Load more's full re-render. Each step prints the address, the gutter,
-// the highlighted lines, the measured line pitch, the notice, and any scroll.
+// anchor through Load more's full re-render. Then the keyboard moves and extends the
+// anchor on the focused gutter, a view mounted when its tab is first shown scrolls to the
+// anchor while a staged one waits, and a Markdown file with front matter renders
+// through the Markdown plugin's own Source renderer as two code blocks under one gutter.
+// Each step prints the address, the gutter and its spoken value, the highlighted lines,
+// the measured line pitch, the notice and the status line, and any scroll.
 //
 // A fake layout gives each rendered line a rounded height that differs from the
 // computed `1lh`, as a browser's layout does. The highlight is placed by the pitch the
@@ -16,6 +20,7 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
+const { pathToFileURL } = require("node:url");
 const vm = require("node:vm");
 
 const repoRoot = path.resolve(__dirname, "../..");
@@ -174,6 +179,9 @@ class FakeElement {
     }
   }
   matches(selector) {
+    if (selector.startsWith("[") && selector.endsWith("]")) {
+      return this.attributes.has(selector.slice(1, -1));
+    }
     const parts = selector.split(/\s*>\s*/);
     if (!matchesCompound(this, parts[parts.length - 1])) {
       return false;
@@ -213,11 +221,12 @@ class FakeElement {
     // Only the gutter is measured: one text node of rendered line boxes.
     const lines =
       this.firstChild?.nodeType === 3 ? this.firstChild.nodeValue.split("\n").length : 0;
-    return { height: this.isConnected ? lines * renderedLinePx : 0 };
+    return { top: 0, height: this.isConnected ? lines * renderedLinePx : 0 };
   }
   scrollIntoView(options) {
     const pre = this.closest("pre.metabrowser-source-lines");
-    scrollLog.push({ line: Number(pre?.styleValues.get("--mb-line-first")), ...options });
+    const line = pre?.styleValues.get("--mb-line-focus") ?? pre?.styleValues.get("--mb-line-first");
+    scrollLog.push({ line: Number(line), ...options });
   }
 }
 
@@ -231,14 +240,15 @@ function unescapeHtml(text) {
 }
 
 // A source host builds the element tree the SDK's markup describes: the notices, the
-// copy wrap, and the pre with its gutter and code. It reads only that markup's shape.
+// copy wrap with its copy payload when the text is in several code blocks, and the pre
+// with its gutter and code blocks. It reads only that markup's shape.
 class FakeSourceHost extends FakeElement {
   set innerHTML(markup) {
     for (const node of [...this.childNodes]) {
       detach(node);
     }
     const source =
-      /<pre class="([^"]+)"><span class="source-line-numbers" aria-hidden="true">([^<]*)<\/span><code class="([^"]+)">([^<]*)<\/code><\/pre>/.exec(
+      /(<code data-mb-copy-payload class="no-highlight" hidden>[^<]*<\/code>)?<pre class="([^"]+)"><span class="source-line-numbers"([^>]*)>([^<]*)<\/span>((?:<code class="[^"]+">[^<]*<\/code>)+)<\/pre>/.exec(
         markup,
       );
     if (!source) {
@@ -250,13 +260,24 @@ class FakeSourceHost extends FakeElement {
       );
     }
     const wrap = this.appendChild(new FakeElement("div", "content-copy-wrap"));
-    const pre = wrap.appendChild(new FakeElement("pre", source[1]));
-    const gutter = pre.appendChild(new FakeElement("span", "source-line-numbers"));
-    if (source[2]) {
-      gutter.appendChild(new FakeText(source[2]));
+    if (source[1]) {
+      const payload = wrap.appendChild(new FakeElement("code", "no-highlight"));
+      payload.setAttribute("data-mb-copy-payload", "");
     }
-    const code = pre.appendChild(new FakeElement("code", source[3]));
-    code.appendChild(new FakeText(unescapeHtml(source[4])));
+    const pre = wrap.appendChild(new FakeElement("pre", source[2]));
+    const gutter = pre.appendChild(new FakeElement("span", "source-line-numbers"));
+    for (const [, name, value] of source[3].matchAll(/ ([a-z-]+)="([^"]*)"/g)) {
+      gutter.setAttribute(name, value);
+    }
+    if (source[4]) {
+      gutter.appendChild(new FakeText(source[4]));
+    }
+    for (const [, className, text] of source[5].matchAll(
+      /<code class="([^"]+)">([^<]*)<\/code>/g,
+    )) {
+      const code = pre.appendChild(new FakeElement("code", className));
+      code.appendChild(new FakeText(unescapeHtml(text)));
+    }
     if (markup.includes("metabrowser-source-more-footer")) {
       this.appendChild(
         new FakeElement("div", "notice partial-notice metabrowser-source-more-footer"),
@@ -269,6 +290,7 @@ const pane = new FakeElement("main", "preview-pane");
 pane.connected = true;
 
 const fakeDocument = {
+  activeElement: null,
   addEventListener() {},
   body: { append() {} },
   contains: (node) => pane.contains(node),
@@ -304,6 +326,8 @@ const sandbox = {
   console,
   document: fakeDocument,
   fetch: () => Promise.reject(new Error("fetch unavailable in the line-anchor session")),
+  // Twenty rendered lines fit in the window, so a page is nineteen.
+  innerHeight: 20.5 * renderedLinePx,
   ResizeObserver: class {
     constructor(callback) {
       this.callback = callback;
@@ -400,6 +424,50 @@ const clicks = {
   "shift-click 7 without an anchor": anchors.nextFragment("", 7, true),
   "click 7 over L5-L20": anchors.nextFragment("L5-L20", 7, false),
 };
+const layout = { lines: 100, page: 19, origin: 1 };
+const keys = {
+  "Down with nothing anchored": anchors.keyStep("", 0, "ArrowDown", false, layout),
+  "Down with nothing anchored, line 30 first in view": anchors.keyStep("", 0, "ArrowDown", false, {
+    ...layout,
+    origin: 30,
+  }),
+  "Down from L10-L20": anchors.keyStep("L10-L20", 0, "ArrowDown", false, layout),
+  "Up from L10-L20 moving its first line": anchors.keyStep("L10-L20", 10, "ArrowUp", false, layout),
+  "Shift+Down from L10": anchors.keyStep("L10", 10, "ArrowDown", true, layout),
+  "Shift+Up from L10-L11 moving its last line": anchors.keyStep(
+    "L10-L11",
+    11,
+    "ArrowUp",
+    true,
+    layout,
+  ),
+  "Shift+Up from L10 across its fixed end": anchors.keyStep("L10", 10, "ArrowUp", true, layout),
+  "Shift+Page Down from L90": anchors.keyStep("L90", 90, "PageDown", true, layout),
+  "Page Up from L5": anchors.keyStep("L5", 5, "PageUp", false, layout),
+  "Home from L50": anchors.keyStep("L50", 50, "Home", false, layout),
+  "Shift+End from L50": anchors.keyStep("L50", 50, "End", true, layout),
+  "a letter": anchors.keyStep("L50", 50, "j", false, layout),
+  "an empty file": anchors.keyStep("", 0, "ArrowDown", false, { ...layout, lines: 0 }),
+};
+const spoken = {
+  "L12 shown": anchors.spoken(anchors.describe("L12", wholeFile)),
+  "L30-L60 partial": anchors.spoken(anchors.describe("L30-L60", partLoaded)),
+  "L1000-L2000 shown": anchors.spoken(
+    anchors.describe("L1000-L2000", { lines: 5000, truncated: false }),
+  ),
+  "L60 not loaded": anchors.spoken(anchors.describe("L60", partLoaded)),
+  "no anchor": anchors.spoken(anchors.describe("", wholeFile)),
+};
+const preferredView = Object.fromEntries(
+  [
+    ["README.md#L3-L4", { path: "README.md", fragment: "L3-L4" }],
+    ["README.md?plain=1", { path: "README.md", query: "plain=1" }],
+    ["README.md?utm_source=chat&plain=1", { path: "README.md", query: "utm_source=chat&plain=1" }],
+    ["README.md?plain=10", { path: "README.md", query: "plain=10" }],
+    ["README.md#install", { path: "README.md", fragment: "install" }],
+    ["README.md", { path: "README.md" }],
+  ].map(([label, target]) => [label, anchors.preferredView(target)]),
+);
 const lineAt = {
   "top of line 1": anchors.lineAt(0, LINE_HEIGHT_PX, 40),
   "middle of line 3": anchors.lineAt(2.5 * LINE_HEIGHT_PX, LINE_HEIGHT_PX, 40),
@@ -449,23 +517,38 @@ const fullContent = () => ({
   content_bytes: totalBytes,
   content_truncated: false,
 });
+const markdownText = "---\r\ntitle: Guide\r\n---\r\n# Guide\r\n\r\nText.\r\n";
+let markdown = null;
 const controller = route.createController({
   // What app.js's applyNavigationTarget does for a file: open it when the path
-  // changes, then deliver the target's fragment to whatever the pane shows.
+  // changes, rendering into an inert stage whose view then moves into the pane, and
+  // then deliver the target's fragment to whatever the pane shows. A Markdown file
+  // opens in its Source view, because every address here anchors lines.
   apply(target, context) {
     if (context.pathChanged) {
       host?.remove();
-      host = new FakeSourceHost("div", "content-body");
+      const stage = pane.appendChild(new FakeElement("div", "preview-file-stage"));
+      stage.setAttribute("inert", "");
+      host = stage.appendChild(new FakeSourceHost("div", "content-body"));
+      if (target.path.endsWith(".md")) {
+        markdown.renderMarkdownSource(
+          host,
+          { raw: { path: target.path, ext: ".md", content: markdownText } },
+          sandbox.metabrowser,
+        );
+      } else {
+        sandbox.metabrowser.renderSourceView(host, {
+          path: target.path,
+          ext: ".py",
+          size: totalBytes,
+          bytes_read: Buffer.byteLength(firstPart),
+          content: firstPart,
+          content_bytes: Buffer.byteLength(firstPart),
+          content_truncated: true,
+        });
+      }
       pane.appendChild(host);
-      sandbox.metabrowser.renderSourceView(host, {
-        path: target.path,
-        ext: ".py",
-        size: totalBytes,
-        bytes_read: Buffer.byteLength(firstPart),
-        content: firstPart,
-        content_bytes: Buffer.byteLength(firstPart),
-        content_truncated: true,
-      });
+      stage.remove();
     }
     sandbox.dispatchEvent(
       new FakeCustomEvent("metabrowser:navigation-fragment", {
@@ -487,10 +570,13 @@ function snapshot(step) {
   const gutter = pre.querySelector(".source-line-numbers");
   const numbers = gutter.firstChild?.nodeType === 3 ? gutter.firstChild.nodeValue : "";
   const notice = host.querySelector("div.metabrowser-source-anchor-notice");
+  const status = host.querySelector("span.metabrowser-source-anchor-status");
   return {
     step,
     address: `${location.pathname}${location.search}${location.hash}`,
     gutter: numbers ? `1–${numbers.split("\n").length}` : "",
+    value: `${gutter.getAttribute("aria-valuenow")} of ${gutter.getAttribute("aria-valuemax")}: ${gutter.getAttribute("aria-valuetext")}`,
+    status: status.textContent,
     highlighted: pre.classList.contains("has-line-anchor")
       ? `${pre.styleValues.get("--mb-line-first")}–${pre.styleValues.get("--mb-line-last")}`
       : null,
@@ -499,6 +585,25 @@ function snapshot(step) {
     notice: notice ? { role: notice.getAttribute("role"), text: notice.textContent } : null,
     scrolls: scrollLog.splice(0),
   };
+}
+
+function press(key, modifiers = {}) {
+  const gutter = host.querySelector(".source-line-numbers");
+  let prevented = false;
+  for (const listener of gutter.listeners.get("keydown") ?? []) {
+    listener({
+      key,
+      shiftKey: false,
+      altKey: false,
+      ctrlKey: false,
+      metaKey: false,
+      ...modifiers,
+      preventDefault() {
+        prevented = true;
+      },
+    });
+  }
+  return prevented;
 }
 
 function clickLine(line, shiftKey) {
@@ -514,6 +619,9 @@ async function popTo(hash) {
 }
 
 async function main() {
+  markdown = await import(
+    pathToFileURL(path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/source.js")).href
+  );
   const steps = [];
   await controller.start();
   await settle();
@@ -584,6 +692,88 @@ async function main() {
   anchors.refresh(fakeDocument, { content_truncated: false });
   steps.push(snapshot("the refresh after that render"));
 
+  // The keyboard: Tab reaches the gutter, and keys move and extend the anchor. The
+  // focused gutter's own value is what a screen reader announces, so the status line
+  // keeps its last words until the anchor changes some other way.
+  const gutter = host.querySelector(".source-line-numbers");
+  steps.push({
+    ...snapshot("Tab reaches the gutter"),
+    role: gutter.getAttribute("role"),
+    tabindex: gutter.getAttribute("tabindex"),
+    label: gutter.getAttribute("aria-label"),
+    orientation: gutter.getAttribute("aria-orientation"),
+  });
+  fakeDocument.activeElement = gutter;
+  for (const [label, key, modifiers] of [
+    ["Down", "ArrowDown", {}],
+    ["Shift+Down", "ArrowDown", { shiftKey: true }],
+    ["Shift+Up", "ArrowUp", { shiftKey: true }],
+    ["Shift+Up again", "ArrowUp", { shiftKey: true }],
+    ["Shift+Up across the fixed end", "ArrowUp", { shiftKey: true }],
+    ["Page Down", "PageDown", {}],
+    ["End", "End", {}],
+    ["Home", "Home", {}],
+    ["Shift+End", "End", { shiftKey: true }],
+    ["Ctrl+Down, left to the browser", "ArrowDown", { ctrlKey: true }],
+    ["J, not a gutter key", "j", {}],
+  ]) {
+    const prevented = press(key, modifiers);
+    await settle();
+    steps.push({ ...snapshot(label), prevented });
+  }
+  fakeDocument.activeElement = null;
+  await popTo("#L5");
+  steps.push(snapshot("focus leaves, and the reader edits the fragment"));
+
+  // A view the shell renders into its inert stage waits for the fragment event; a view
+  // mounted when its tab is first shown is already in the pane and scrolls at once.
+  const stage = pane.appendChild(new FakeElement("div", "preview-file-stage"));
+  stage.setAttribute("inert", "");
+  const shownHost = host;
+  host = stage.appendChild(new FakeSourceHost("div", "content-body"));
+  sandbox.metabrowser.renderSourceView(host, fullContent());
+  steps.push(snapshot("a view rendered into the inert stage"));
+  stage.remove();
+  host = pane.appendChild(new FakeSourceHost("div", "content-body"));
+  sandbox.metabrowser.renderSourceView(host, fullContent());
+  steps.push(snapshot("a Source tab shown for the first time"));
+  host.remove();
+  host = shownHost;
+
+  // A Markdown file with front matter, through the Markdown plugin's Source renderer:
+  // YAML and Markdown blocks under one gutter, each block's band offset by the lines
+  // above it, and one copy payload for the whole text.
+  await controller.open({ path: "docs/guide.md", fragment: "L4-L5" });
+  await settle();
+  const markdownPre = host.querySelector("pre.metabrowser-source-lines");
+  const markdownParts = markdownPre.childNodes
+    .filter((node) => node.tagName === "CODE")
+    .map((code) => ({
+      className: code.className,
+      text: code.textContent,
+      lineOffset: code.styleValues.get("--mb-line-offset") ?? null,
+    }));
+  steps.push({
+    ...snapshot("a Markdown file with front matter at #L4-L5"),
+    parts: markdownPre.styleValues.get("--mb-source-parts") ?? null,
+    markdownParts,
+    copyPayload: host.querySelector("code.no-highlight")?.getAttribute("data-mb-copy-payload"),
+  });
+  host.remove();
+  host = pane.appendChild(new FakeSourceHost("div", "content-body"));
+  markdown.renderMarkdownSource(
+    host,
+    { raw: { path: "docs/guide.md", ext: ".md", content: "---\nunclosed: true\n# Guide\n" } },
+    sandbox.metabrowser,
+  );
+  steps.push({
+    ...snapshot("a Markdown file whose front matter never closes"),
+    markdownParts: host
+      .querySelector("pre.metabrowser-source-lines")
+      .childNodes.filter((node) => node.tagName === "CODE")
+      .map((code) => code.className),
+  });
+
   const crlf = new FakeSourceHost("div", "content-body");
   pane.appendChild(crlf);
   sandbox.metabrowser.renderSourceView(crlf, { path: "crlf.txt", content: "one\r\ntwo\rthree\n" });
@@ -594,7 +784,7 @@ async function main() {
   };
 
   process.stdout.write(
-    `${JSON.stringify({ grammar, lineCounts, describe, clicks, lineAt, steps, crlfLines, historyWrites }, null, 2)}\n`,
+    `${JSON.stringify({ grammar, lineCounts, describe, clicks, keys, spoken, preferredView, lineAt, steps, crlfLines, historyWrites }, null, 2)}\n`,
   );
 }
 

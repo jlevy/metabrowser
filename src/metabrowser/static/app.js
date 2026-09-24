@@ -7758,7 +7758,11 @@ async function applyNavigationTarget(target, context) {
   if (!context.isCurrent()) {
     return { status: "cancelled" };
   }
-  var outcome = await selectFile(path, context.viewId);
+  // An address that anchors lines or carries `plain=1` opens the file's Source view.
+  var outcome = await selectFile(
+    path,
+    context.viewId || window.MetabrowserSourceLineAnchors.preferredView(target) || undefined,
+  );
   if (outcome.status === "opened" && context.isCurrent()) {
     deliverNavigationFragment(navigationController.current() || target);
   }
