@@ -104,7 +104,7 @@
   // (Alphabetic, Mark, Decimal_Number, Connector_Punctuation) github-slugger keeps,
   // spelled by general category as inert_html.py spells them.
   const SLUG_DROPS =
-    /[^\p{L}\p{M}\p{Nd}\p{Nl}\p{Pc}\u24B6-\u24E9\u{1F130}-\u{1F149}\u{1F150}-\u{1F169}\u{1F170}-\u{1F189} -]/gu;
+    /[^\p{Letter}\p{Mark}\p{Decimal_Number}\p{Letter_Number}\p{Connector_Punctuation}\u24B6-\u24E9\u{1F130}-\u{1F149}\u{1F150}-\u{1F169}\u{1F170}-\u{1F189} -]/gu;
 
   /**
    * GitHub's slug of a heading's text: lowercased, word characters, hyphens, and
