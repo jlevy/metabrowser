@@ -309,8 +309,10 @@ def test_the_shutdown_cancels_a_running_refresh(
     origin: _Origin, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     ended: list[str] = []
+    fetching = threading.Event()
 
     async def endless_update(home: Path, store_key: str, *, remote_url: str) -> StoreUpdate:
+        fetching.set()
         try:
             await asyncio.sleep(3600)
         except asyncio.CancelledError:
@@ -323,6 +325,9 @@ def test_the_shutdown_cancels_a_running_refresh(
     with TestClient(server.app) as client:
         assert _post(client, "/api/source/refresh").json()["refresh"] == "started"
         assert client.get("/api/source/status").json()["refreshing"] is True
+        # The job reads the store record before it fetches; shut down only once the
+        # fetch itself is running, so the cancellation lands inside it.
+        assert fetching.wait(10)
     assert ended == ["cancelled"]
 
 
