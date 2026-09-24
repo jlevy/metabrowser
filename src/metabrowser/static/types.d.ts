@@ -441,6 +441,13 @@ type MetabrowserSourceLineAnchorsRuntime = Readonly<{
     loaded: Readonly<{ lines: number; truncated: boolean }>,
   ): MetabrowserSourceLineAnchorState;
   gutterHtml(text: string): string;
+  keyStep(
+    current: string | null | undefined,
+    focus: number,
+    key: string,
+    extend: boolean,
+    layout: Readonly<{ lines: number; page: number; origin: number }>,
+  ): Readonly<{ fragment: string; focus: number }> | null;
   lineAt(offsetY: number, lineHeight: number, lines: number): number;
   mount(
     host: ParentNode,
@@ -455,7 +462,9 @@ type MetabrowserSourceLineAnchorsRuntime = Readonly<{
   ): void;
   nextFragment(current: string | null | undefined, line: number, extend: boolean): string;
   parse(fragment: string | null | undefined): Readonly<{ start: number; end: number }> | null;
+  preferredView(target: MetabrowserNavigationTarget | null | undefined): "source" | null;
   refresh(root: ParentNode, loaded: { content_truncated?: boolean }): void;
+  spoken(state: MetabrowserSourceLineAnchorState): string;
 }>;
 
 type MetabrowserSourceAppendRuntime = Readonly<{
@@ -1021,6 +1030,7 @@ type MetabrowserSdk = {
   renderSourceView(
     container: HTMLElement,
     data: Record<string, unknown> & { content?: string; ext?: string },
+    options?: { parts?: ReadonlyArray<Readonly<{ text: string; language: string }>> },
   ): void;
   partialNoticeHtml(
     progress: { loaded: string; total: string },

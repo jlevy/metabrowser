@@ -756,11 +756,23 @@ Open `http://127.0.0.1:8471/view/` in a browser, with its developer tools open.
    Edit it to `#L99999`: no line is highlighted, and a notice says the line is past the
    end of the file and how many lines it has.
    Copy the address into a second tab: the same lines are highlighted there.
+9. Press Tab until the line numbers take focus, which draws a focus ring around them.
+   Down moves the anchor one line and the address follows it; Shift+Down twice extends
+   it to three lines; Page Down, Home, and End move it and bring the line into view.
+   With VoiceOver on, each key reads the highlighted lines, such as “Lines 30–32”.
+10. Open `README.md` with `#L3-L5` added to its address, then with `?plain=1` and no
+    anchor. Both open the Source tab rather than the document, and the first highlights
+    lines 3–5. A Markdown file with front matter shows the front matter highlighted as
+    YAML with the body’s numbering continuing below it, and an anchor in the body
+    highlights the body’s lines.
+11. Open `package.json` (Tree), edit the address to end in `#L5`, then select the Source
+    tab: line 5 is highlighted and scrolled into view.
 
 **Pass:** Every step as described; no console errors; no request leaves `127.0.0.1`.
 
 **Fail:** A blank heading, a different commit anywhere, a Preview tab on HTML, a broken
-image, a line number beside the wrong line, or a request to another host.
+image, a line number beside the wrong line, a Markdown anchor that opens the document,
+or a request to another host.
 
 ### 5.4 Reopen with the origin gone (M05)
 

@@ -89,6 +89,62 @@ def test_browser_and_reducer_accept_the_same_line_anchors() -> None:
         assert parsed == reducer, fragment
 
 
+# Queries the two `plain=1` tests must agree on: the reducer keeps it for the served
+# address, and the browser opens the Source view for it.
+PLAIN_CORPUS = (
+    "plain=1",
+    "utm_source=chat&plain=1",
+    "plain=1&utm_source=chat",
+    "plain=10",
+    "plain=0",
+    "Plain=1",
+    "plain%3D1",
+    "xplain=1",
+    "",
+)
+
+_JS_PLAIN = """
+const fs = require("node:fs");
+const vm = require("node:vm");
+const sandbox = {};
+vm.createContext(sandbox);
+vm.runInContext(fs.readFileSync(process.argv[1], "utf8"), sandbox);
+const corpus = JSON.parse(process.argv[2]);
+const view = (query) => sandbox.MetabrowserSourceLineAnchors.preferredView({ path: "a.md", query });
+process.stdout.write(JSON.stringify(corpus.map((query) => view(query) === "source")));
+"""
+
+
+def test_browser_and_reducer_read_plain_the_same_way() -> None:
+    result = subprocess.run(
+        ["node", "-e", _JS_PLAIN, str(STATIC / "source-line-anchors.js"), json.dumps(PLAIN_CORPUS)],
+        capture_output=True,
+        text=True,
+        timeout=20,
+        check=True,
+    )
+    browser = json.loads(result.stdout)
+    for query, source in zip(PLAIN_CORPUS, browser, strict=True):
+        assert source == github_urls._plain(query), query  # pyright: ignore[reportPrivateUsage]
+
+
+def test_an_anchored_address_opens_the_source_view() -> None:
+    # The shell asks for the view the address names when it opens a file; an explicit
+    # view from plugin navigation still wins. tests/dom/preview-pane-state-session.js
+    # runs this; Load more's full render, which no session runs, keeps the active tab.
+    app = (STATIC / "app.js").read_text(encoding="utf-8")
+    assert (
+        "context.viewId || window.MetabrowserSourceLineAnchors.preferredView(target) || undefined"
+        in app
+    )
+    load_more = app[app.index("async function loadMoreCurrentText(") :]
+    load_more = load_more[: load_more.index("\n}\n")]
+    assert 'var activeView = document.getElementById("preview-pane")?.dataset.activeView;' in (
+        load_more
+    )
+    assert "await renderFile(nextCached, activeView || undefined, previewClaim, {" in load_more
+
+
 def test_gutter_and_highlight_use_the_code_line_box() -> None:
     css = (STATIC / "styles.css").read_text(encoding="utf-8")
     code = _rule(css, ".code-block code")
@@ -109,11 +165,18 @@ def test_gutter_and_highlight_use_the_code_line_box() -> None:
     # Rendered line boxes are rounded, so a position in `lh` units drifts off its line
     # far down a file; the band and the scroll target use the measured pitch, and `1lh`
     # only until the first measurement.
-    assert "calc((var(--mb-line-first) - 1) * var(--mb-line-pitch, 1lh))" in highlight
-    assert "calc(var(--mb-line-last) * var(--mb-line-pitch, 1lh))" in highlight
+    # A code block below another, such as a Markdown body below its front matter,
+    # offsets its band by the lines above it.
+    offset = "var(--mb-line-offset, 0)"
+    pitch = "var(--mb-line-pitch, 1lh)"
+    assert f"calc((var(--mb-line-first) - 1 - {offset}) * {pitch})" in highlight
+    assert f"calc((var(--mb-line-last) - {offset}) * {pitch})" in highlight
     assert "var(--highlight-bg)" in highlight
+    # One gutter runs beside every code block, and a key's scroll target is its line.
+    assert "grid-row: 1 / span var(--mb-source-parts, 1);" in gutter
+    assert "outline: 2px solid var(--link);" in _rule(css, ".source-line-numbers:focus-visible")
     target = _rule(css, ".source-line-anchor-target")
-    assert "top: calc((var(--mb-line-first) - 1) * var(--mb-line-pitch, 1lh));" in target
+    assert f"top: calc((var(--mb-line-focus, var(--mb-line-first)) - 1) * {pitch});" in target
     assert "height: var(--mb-line-pitch, 1lh);" in target
     assert "pointer-events: none;" in target
     assert not re.search(r"--mb-line-(first|last)\)[^;]*\* 1lh\)", css)
