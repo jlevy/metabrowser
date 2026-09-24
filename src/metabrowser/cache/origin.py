@@ -241,19 +241,27 @@ def mirror_fetch_args(remote_url: str, *, prune: bool) -> list[str]:
     ]
 
 
-def fetched_ref_names(porcelain: bytes) -> tuple[str, ...]:
-    """The refs a ``fetch --porcelain`` left in the store, from its output.
+def fetched_refs(porcelain: bytes) -> dict[str, str]:
+    """The refs a ``fetch --porcelain`` wrote, each with the object it wrote, in order.
 
     Each line is ``<flag> <old-oid> <new-oid> <local-ref>``, and the flag may itself be
     a space. A pruned ref, whose new object ID is all zeros, is gone and not listed.
     """
 
-    names: list[str] = []
+    written: dict[str, str] = {}
     for line in porcelain.split(b"\n"):
         fields = line[2:].split(b" ")
         if len(line) > 2 and len(fields) == 3 and fields[1].strip(b"0"):
-            names.append(fields[2].decode("utf-8", "surrogateescape"))
-    return tuple(names)
+            written[fields[2].decode("utf-8", "surrogateescape")] = fields[1].decode(
+                "ascii", "replace"
+            )
+    return written
+
+
+def fetched_ref_names(porcelain: bytes) -> tuple[str, ...]:
+    """The names of the refs a ``fetch --porcelain`` wrote; see :func:`fetched_refs`."""
+
+    return tuple(fetched_refs(porcelain))
 
 
 def mirror_prune_args(remote_url: str) -> list[str]:
@@ -342,6 +350,7 @@ __all__ = [
     "classify_remote_failure",
     "describe_remote_failure",
     "fetched_ref_names",
+    "fetched_refs",
     "ls_remote_head_args",
     "mirror_fetch_args",
     "mirror_prune_args",

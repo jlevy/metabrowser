@@ -223,7 +223,8 @@ isolation sweep over every registered GET route.
 `tests/test_cache_update.py` refreshes real stores from real origins: new commits, a
 force-push that keeps the old commit readable, a deleted branch pruned by name and
 readable by ID, a fetch lock another process holds, stale lock files, a fetch cancelled
-mid-transfer, and a removed origin.
+mid-transfer, a removed origin, and on a case-insensitive filesystem a ref the fetch
+folded into its case twin, which is put back and reported as `ref_case_collision`.
 `tests/test_refresh_signals.py` runs the real command and interrupts a refresh
 mid-fetch: Ctrl-C or a terminal hangup leaves no Git running and the fetch lock free,
 and a killed server’s Git keeps the lock until it exits; it needs an admitted Git and

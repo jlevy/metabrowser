@@ -274,6 +274,13 @@ Ref names resolve by exact, case-sensitive match against the names the store hol
 On a case-insensitive filesystem two origin refs that differ only in case are one loose
 file, so acquisition refuses such an origin as `ref_case_collision` rather than publish
 a ref that names the other’s commit, and a refresh reports the same outcome.
+A refresh cannot rely on Git failing: when the origin gains `SAME` beside an unchanged
+`same`, the atomic fetch writes `SAME` into `same`’s file and succeeds.
+So on such a filesystem a refresh lists the store’s refs before it fetches, and
+afterwards checks that the store holds every ref the fetch reported writing, under that
+exact name and at that object (`cache/resolve.py`: `folded_refs`). If it does not, every
+ref is put back as it was, objects being kept, and the outcome is `ref_case_collision`
+with neither the recorded fetch time nor the default branch’s commit moved.
 Every fetch runs in the isolated Git environment of `git/process.py`, the only Git
 subprocess boundary: no inherited `GIT_*` variable, no system or global configuration,
 terminal prompting disabled, and hooks off.

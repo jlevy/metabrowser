@@ -16,12 +16,14 @@ from metabrowser.cache.acquire import (
     acquire_source,
     fetched_ref_names,
 )
+from metabrowser.cache.origin import fetched_refs
 from metabrowser.cache.resolve import (
     MAX_REF_CANDIDATES,
     RefCandidate,
     ResolvedSelection,
     UnresolvedSelection,
     case_colliding_refs,
+    folded_refs,
     is_valid_ref_name,
     ref_candidates,
     resolve_commit_id,
@@ -262,6 +264,43 @@ def test_fetch_porcelain_names_every_written_ref() -> None:
         "refs/remotes/origin/topic",
         "refs/tags/v1.0",
     )
+
+
+def test_a_written_ref_the_store_lists_under_another_case_is_folded() -> None:
+    """Simulated ``fetch --porcelain`` and ``for-each-ref`` for the fold a refresh undoes.
+
+    The origin gained ``SAME`` beside an unchanged ``same``. On a case-insensitive
+    filesystem Git wrote ``SAME`` into ``same``'s loose file and reported success; the
+    store lists only ``same``, now at ``SAME``'s commit.
+    """
+
+    zero = "0" * 40
+    porcelain = (
+        f"* {zero} {SECOND_COMMIT} refs/remotes/origin/SAME\n"
+        f"  {FIRST_COMMIT} {SECOND_COMMIT} refs/remotes/origin/topic\n"
+        f"- {FIRST_COMMIT} {zero} refs/remotes/origin/gone\n"
+    ).encode()
+    written = fetched_refs(porcelain)
+    assert written == {
+        "refs/remotes/origin/SAME": SECOND_COMMIT,
+        "refs/remotes/origin/topic": SECOND_COMMIT,
+    }
+    folded_into_twin = {
+        "refs/remotes/origin/same": SECOND_COMMIT,
+        "refs/remotes/origin/topic": SECOND_COMMIT,
+    }
+    assert folded_refs(written, folded_into_twin) == ("refs/remotes/origin/SAME",)
+    # A loose SAME beside a packed same: both listed, and every read of one finds the other.
+    shadowed = {**folded_into_twin, "refs/remotes/origin/SAME": SECOND_COMMIT}
+    shadowed["refs/remotes/origin/same"] = FIRST_COMMIT
+    assert folded_refs(written, shadowed) == (
+        "refs/remotes/origin/SAME",
+        "refs/remotes/origin/same",
+    )
+    # Written as reported, under exactly those names: nothing folded.
+    held = {"refs/remotes/origin/SAME2": SECOND_COMMIT, "refs/remotes/origin/topic": SECOND_COMMIT}
+    assert folded_refs({"refs/remotes/origin/SAME2": SECOND_COMMIT}, held) == ()
+    assert folded_refs({}, held) == ()
 
 
 def test_a_ref_matches_only_by_its_exact_name(mirror: PublishedSource) -> None:

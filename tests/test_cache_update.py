@@ -292,6 +292,71 @@ def test_a_case_only_branch_rename_does_not_wedge_the_mirror(mirror: _Mirror) ->
     assert "refs/remotes/origin/Topic2" not in refs
 
 
+def _add_packed_ref(git_dir: Path, name: str, oid: str) -> None:
+    """Give a bare origin *name* in ``packed-refs``, where it can differ only in case.
+
+    A packed-refs file is text, so it holds ``refs/heads/SAME`` beside
+    ``refs/heads/same`` on any filesystem, as a GitHub origin does. Every ref is packed
+    first, so no loose file can shadow either, and the new line keeps the file sorted.
+    """
+
+    _git(git_dir, "pack-refs", "--all", "--prune")
+    packed = git_dir / "packed-refs"
+    lines = packed.read_text(encoding="utf-8").splitlines(keepends=True)
+    entry = f"{oid} {name}\n"
+    at = next(
+        (
+            index
+            for index, line in enumerate(lines)
+            if not line.startswith(("#", "^")) and line.split(" ", 1)[1].rstrip("\n") > name
+        ),
+        len(lines),
+    )
+    packed.write_text("".join([*lines[:at], entry, *lines[at:]]), encoding="utf-8")
+
+
+def test_a_ref_folded_into_its_case_twin_is_put_back_and_reported(mirror: _Mirror) -> None:
+    """``SAME`` added beside an unchanged ``same``: one loose file cannot hold both.
+
+    Git writes ``SAME`` into ``same``'s file and reports success, which would repoint
+    ``same`` at ``SAME``'s commit. The refresh sees the store does not hold what the
+    fetch wrote, puts every ref back, including a branch that legitimately moved, and
+    reports ``ref_case_collision`` without moving the recorded fetch or tip. It stays
+    that way until the origin drops the twin.
+    """
+
+    if not _case_insensitive(mirror.published.git_dir):
+        pytest.skip("the file system is case-sensitive, so both refs have their own file")
+    _git(mirror.work, "branch", "same")
+    mirror.push("same")
+    assert _update(mirror) is RefreshOutcome.succeeded
+    before_refs = _refs(mirror.published.git_dir)
+    before_state = mirror.state()
+    first = before_refs["refs/remotes/origin/same"]
+    newer = mirror.commit("b.txt", "second\n", "second")
+    mirror.push("topic")
+    _add_packed_ref(mirror.origin, "refs/heads/SAME", newer)
+
+    for _attempt in range(2):
+        assert _update(mirror) is RefreshOutcome.ref_case_collision
+        assert _refs(mirror.published.git_dir) == before_refs
+        state = mirror.state()
+        assert state.last_operation.outcome == "ref_case_collision"
+        assert (state.last_fetch_at, state.default_revision) == (
+            before_state.last_fetch_at,
+            before_state.default_revision,
+        )
+        assert asyncio.run(ref_tip(mirror.target, "refs/remotes/origin/same")) == first
+        assert asyncio.run(resolve_pin(mirror.target, ref="same")).commit_oid == first
+
+    _git(mirror.origin, "update-ref", "-d", "refs/heads/SAME")
+    assert _update(mirror) is RefreshOutcome.succeeded
+    refs = _refs(mirror.published.git_dir)
+    assert refs["refs/remotes/origin/topic"] == newer
+    assert refs["refs/remotes/origin/same"] == first
+    assert "refs/remotes/origin/SAME" not in refs
+
+
 def test_a_detached_origin_head_still_fetches_and_keeps_the_default_branch(
     mirror: _Mirror,
 ) -> None:

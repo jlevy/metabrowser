@@ -267,6 +267,8 @@ source, and none changes another source already in the cache.
 - **A repository whose branch or tag names differ only in letter case** (`Feature` and
   `feature`) is refused as `ref_case_collision` on a case-insensitive filesystem, such
   as macOS’s default, which cannot hold both.
+  A served mirror whose origin gains such a twin later reports the same outcome for its
+  refresh and keeps every ref where it was.
 - **An acquisition that is interrupted**, by Ctrl-C, by the terminal hanging up, or by
   `SIGTERM`, stops Git and every helper it started, and leaves nothing visible, because
   the source is published last, after its store.

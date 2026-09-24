@@ -31,7 +31,7 @@ from __future__ import annotations
 import bisect
 import re
 import unicodedata
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Final, Literal
 
@@ -170,6 +170,23 @@ def case_colliding_refs(names: Iterable[str]) -> tuple[str, ...]:
     return tuple(sorted(colliding))
 
 
+def folded_refs(written: Mapping[str, str], held: Mapping[str, str]) -> tuple[str, ...]:
+    """Refs a fetch wrote that the store does not hold as written, and refs it cannot hold apart.
+
+    *written* is what ``fetch --porcelain`` reports it wrote, name to object; *held* is
+    every ref the store lists by exact name afterwards. On a case-insensitive
+    filesystem a loose ref is a file, so a fetch that writes ``SAME`` beside an
+    unchanged ``same`` writes into ``same``'s file: Git reports ``SAME`` written, the
+    store lists only ``same``, now naming ``SAME``'s commit, and nothing fails. A
+    written ref the store does not list at that object is such a fold. A loose ref
+    whose name folds onto a packed one shadows it on every read, so names in *held*
+    that collide count too. Sorted; empty when the store holds exactly what was written.
+    """
+
+    folded = {name for name, oid in written.items() if held.get(name) != oid}
+    return tuple(sorted(folded.union(case_colliding_refs(held))))
+
+
 def describe_case_collision(colliding: tuple[str, ...]) -> str:
     """What a case collision is, naming a few of the refs, for a user message."""
 
@@ -250,6 +267,27 @@ async def _exact_refs(target: RepositoryStoreTarget, refs: list[str]) -> dict[st
         peeled = fields[3] if is_full_revision(fields[3]) else None
         found[fields[0]] = _RefObject(fields[1], fields[2], peeled, fields[4] or None)
     return found
+
+
+async def mirror_refs(target: RepositoryStoreTarget) -> dict[str, str]:
+    """Every branch and tag the store holds, by the exact name it lists, with its object."""
+
+    out = await _git(
+        target,
+        [
+            "for-each-ref",
+            "--format=%(refname)%00%(objectname)",
+            "--",
+            BRANCH_MIRROR_PREFIX,
+            TAG_PREFIX,
+        ],
+    )
+    held: dict[str, str] = {}
+    for line in out.split(b"\n"):
+        fields = line.decode("utf-8", "surrogateescape").split("\0")
+        if len(fields) == 2 and is_full_revision(fields[1]):
+            held[fields[0]] = fields[1]
+    return held
 
 
 async def _peeled_commit(target: RepositoryStoreTarget, ref: _RefObject) -> str | None:
@@ -475,7 +513,9 @@ __all__ = [
     "UnresolvedSelection",
     "case_colliding_refs",
     "describe_case_collision",
+    "folded_refs",
     "is_valid_ref_name",
+    "mirror_refs",
     "ref_candidates",
     "ref_tip",
     "resolve_commit_id",

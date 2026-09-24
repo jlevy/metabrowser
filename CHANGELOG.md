@@ -140,6 +140,11 @@ GitHub URLs and HTTPS:
   prune and single retry after a ref that cannot be locked, and a refresh’s outcome, in
   the status and in the store’s `state.yml`, carries the same names, plus
   `ref_case_collision` where a case-insensitive filesystem cannot hold two refs apart.
+  Git does not always refuse that fetch: given `SAME` beside an unchanged `same`, it
+  writes `SAME` into `same`’s file and succeeds, repointing `same`. A refresh on such a
+  filesystem checks the store holds every ref the fetch wrote under its exact name, and
+  otherwise puts every ref back and reports `ref_case_collision`, so no pin resolves to
+  the twin’s commit.
 
 - A terminal hangup or `SIGTERM` now cancels an acquisition the way Ctrl-C does: Git and
   every helper it started are stopped, staging is removed, and `metab` exits with status

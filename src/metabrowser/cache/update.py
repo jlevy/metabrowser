@@ -7,7 +7,10 @@ upstream leaves the mirror, and no object is ever removed, so a commit a reader 
 pinned stays readable after a force-push or a deleted branch. One atomic transaction
 cannot delete ``side`` and create ``side/x``, or on a case-insensitive file system
 rename ``Topic`` to ``topic``; when Git reports that ref-lock conflict, the stale refs
-are pruned on their own and the atomic fetch is tried once more.
+are pruned on their own and the atomic fetch is tried once more. On a case-insensitive
+file system Git can also succeed wrongly, writing ``SAME`` into the loose file of an
+unchanged ``same``; there the refs are listed before the fetch and checked after it,
+and a fold puts every ref back and is reported as ``ref_case_collision``.
 
 Locks follow ``tests/fixtures/repository-cache/state-machines.json`` (``store_refresh``):
 
@@ -58,7 +61,7 @@ from metabrowser.cache.origin import (
     REMOTE_PROBE_TIMEOUT_S,
     OriginHeadError,
     classify_remote_failure,
-    fetched_ref_names,
+    fetched_refs,
     ls_remote_head_args,
     mirror_fetch_args,
     mirror_prune_args,
@@ -73,7 +76,7 @@ from metabrowser.cache.records import (
     StoreOperation,
     canonical_now,
 )
-from metabrowser.cache.resolve import case_colliding_refs, ref_tip, store_ignores_case
+from metabrowser.cache.resolve import folded_refs, mirror_refs, ref_tip, store_ignores_case
 from metabrowser.git.process import (
     ACQUISITION_POLICY,
     GitCommandError,
@@ -275,6 +278,38 @@ async def _fetch_atomically(target: RepositoryStoreTarget, remote_url: str, lock
         return await run_git(fetch, target=target, policy=ACQUISITION_POLICY, pass_fds=(lock_fd,))
 
 
+async def _restore_refs(
+    target: RepositoryStoreTarget, before: dict[str, str], lock_fd: int
+) -> None:
+    """Put every branch and tag back as *before* lists them, one ``update-ref`` at a time.
+
+    Names the store lists now and did not before are deleted first: on a
+    case-insensitive filesystem one of them may be the file a name in *before* was folded
+    into. Then each name in *before* is set to its old object, which the store still has
+    because nothing removes objects. Each command checks nothing it did not just read,
+    under the fetch lock no other writer holds. A failure is logged and leaves the rest
+    for the next refresh, which restores again.
+    """
+
+    try:
+        held = await mirror_refs(target)
+        commands = [
+            ["update-ref", "--no-deref", "-d", name, held[name]]
+            for name in sorted(set(held) - set(before))
+        ]
+        commands += [
+            ["update-ref", "--no-deref", name, oid]
+            for name, oid in sorted(before.items())
+            if held.get(name) != oid
+        ]
+        for command in commands:
+            await run_git(command, target=target, policy=ACQUISITION_POLICY, pass_fds=(lock_fd,))
+    except GitError as exc:
+        log.warning(
+            "could not put the store's refs back after a case fold: %s", failure_detail(exc)
+        )
+
+
 async def _fetch(
     target: RepositoryStoreTarget, remote_url: str, *, lock_fd: int, previous_ref: str | None
 ) -> StoreUpdate:
@@ -302,22 +337,33 @@ async def _fetch(
     except OriginHeadError as exc:
         log.debug("refresh could not read the origin: %s", _detail(exc))
         return StoreUpdate(RefreshOutcome.origin_unavailable, canonical_now())
+    # On a case-insensitive filesystem, what the store held before is kept, so a fetch
+    # that folded two refs into one file can be undone; see ``folded_refs``.
+    before = await mirror_refs(target) if await store_ignores_case(target) else None
     try:
         updated = await _fetch_atomically(target, remote_url, lock_fd)
     except GitError as exc:
         log.debug("refresh fetch failed: %s", failure_detail(exc))
         # Still a ref-lock clash after pruning, on a case-insensitive filesystem: the
         # origin has two refs that differ only in case, which one loose file cannot hold.
+        # The prune before the retry is undone too, so no ref moved.
         if (
             isinstance(exc, GitCommandError)
             and _REF_LOCK_CONFLICT.search(exc.stderr_summary) is not None
-            and await store_ignores_case(target)
+            and before is not None
         ):
+            await _restore_refs(target, before, lock_fd)
             return StoreUpdate(RefreshOutcome.ref_case_collision, canonical_now())
         return StoreUpdate(_named(exc, remote_url, RefreshOutcome.fetch_failed), canonical_now())
-    if case_colliding_refs(fetched_ref_names(updated)) and await store_ignores_case(target):
-        log.warning("refresh fetched refs that differ only in letter case")
-        return StoreUpdate(RefreshOutcome.ref_case_collision, canonical_now())
+    if before is not None:
+        folded = folded_refs(fetched_refs(updated), await mirror_refs(target))
+        if folded:
+            log.warning(
+                "refresh fetched refs that differ only in letter case; putting every ref back: %s",
+                ", ".join(folded[:4]),
+            )
+            await _restore_refs(target, before, lock_fd)
+            return StoreUpdate(RefreshOutcome.ref_case_collision, canonical_now())
     default_remote_ref = remote_tracking_ref(head_ref)
     outcome = RefreshOutcome.succeeded
     if default_remote_ref is None:
