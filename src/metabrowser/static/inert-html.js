@@ -7,8 +7,10 @@
 // from the allowlist alone: new elements for allowed tags with only their checked
 // attributes, new text, images kept only inside the served tree and otherwise turned
 // into links, other tags unwrapped, and the dropped ones gone with their content. No
-// class, id, name, data, style, or event attribute survives, nor any SVG, MathML,
-// media, stylesheet, frame, or form.
+// class, name, data, style, or event attribute survives, nor any SVG, MathML, media,
+// stylesheet, frame, or form, and no id the document wrote: in a document inside the
+// served tree each heading gets the anchor github.com would give it, `user-content-`
+// and the slug of its text, and a `#name` link becomes `#user-content-name`.
 //
 // Loaded on demand (`ensureAsset("inert-html")`) by the views that render untrusted
 // Markdown: the pull-request page and repository Markdown under the untrusted profile.
@@ -82,7 +84,9 @@
     "track",
     "video",
   ]);
-  // The attributes each tag may keep; every value is checked by allowedAttributes.
+  // The attributes each tag may keep; every value is checked by allowedAttributes,
+  // except a heading's id, which is always sanitizeNodes' own anchor.
+  const HEADINGS = Object.freeze(["h1", "h2", "h3", "h4", "h5", "h6"]);
   const ALLOWED_ATTRIBUTES = Object.freeze({
     a: Object.freeze(["href", "target", "rel"]),
     img: Object.freeze(["src", "alt"]),
@@ -90,7 +94,56 @@
     td: Object.freeze(["colspan", "rowspan", "align"]),
     th: Object.freeze(["colspan", "rowspan", "align"]),
     details: Object.freeze(["open"]),
+    ...Object.fromEntries(HEADINGS.map((tag) => [tag, Object.freeze(["id"])])),
   });
+
+  // Every heading anchor begins with this, as on github.com: the document's names stay
+  // apart from the application's ids and from window properties.
+  const ANCHOR_PREFIX = "user-content-";
+  // What a GitHub slug drops: all but hyphen, space, and the Unicode word characters
+  // (Alphabetic, Mark, Decimal_Number, Connector_Punctuation) github-slugger keeps,
+  // spelled by general category as inert_html.py spells them.
+  const SLUG_DROPS =
+    /[^\p{L}\p{M}\p{Nd}\p{Nl}\p{Pc}\u24B6-\u24E9\u{1F130}-\u{1F149}\u{1F150}-\u{1F169}\u{1F170}-\u{1F189} -]/gu;
+
+  /**
+   * GitHub's slug of a heading's text: lowercased, word characters, hyphens, and
+   * spaces kept, and each space a hyphen.
+   *
+   * @param {string} text
+   */
+  function headingSlug(text) {
+    return text.toLowerCase().replace(SLUG_DROPS, "").replaceAll(" ", "-");
+  }
+
+  /** GitHub's numbering of repeated slugs (github-slugger): `a`, `a-1`, `a-2`. */
+  function createAnchors() {
+    /** @type {Map<string, number>} */
+    const seen = new Map();
+    /** @param {string} text */
+    return (text) => {
+      const original = headingSlug(text);
+      let result = original;
+      while (seen.has(result)) {
+        const count = (seen.get(original) ?? 0) + 1;
+        seen.set(original, count);
+        result = `${original}-${count}`;
+      }
+      seen.set(result, 0);
+      return ANCHOR_PREFIX + result;
+    };
+  }
+
+  /**
+   * A fragment-only reference as it reaches a heading anchor: `#name` becomes
+   * `#user-content-name`, and one already in the namespace stays, as on github.com.
+   *
+   * @param {string} href
+   */
+  function fragmentLink(href) {
+    const name = href.slice(1);
+    return name === "" || name.startsWith(ANCHOR_PREFIX) ? href : `#${ANCHOR_PREFIX}${name}`;
+  }
 
   /**
    * What a browser reads from a URL: ASCII tab and newline removed anywhere, C0
@@ -218,7 +271,8 @@
    */
   function linkHref(href, base) {
     if (base === null && isInside(href)) {
-      return { href: clean(href ?? ""), leaves: false };
+      const cleaned = clean(href ?? "");
+      return { href: cleaned.startsWith("#") ? fragmentLink(cleaned) : cleaned, leaves: false };
     }
     const outside = outsideLink(href, base);
     return outside === null ? null : { href: outside, leaves: true };
@@ -306,7 +360,9 @@
   }
 
   /**
-   * Rebuild parsed nodes from the allowlist alone. Nothing of *nodes* is returned.
+   * Rebuild parsed nodes from the allowlist alone. Nothing of *nodes* is returned. In a
+   * document (a null *base*) each heading gets its anchor, in document order, from the
+   * text it shows.
    *
    * @param {ArrayLike<Node>} nodes A template's, where nothing has loaded.
    * @param {Pick<Document, "createElement" | "createTextNode">} doc
@@ -315,11 +371,39 @@
    * @returns {Node[]}
    */
   function sanitizeNodes(nodes, doc, base) {
+    /** @type {Heading[]} */
+    const headings = [];
+    const out = rebuild(nodes, doc, base, headings, []);
+    const anchor = createAnchors();
+    for (const heading of headings) {
+      heading.element.setAttribute("id", anchor(heading.text.join("")));
+    }
+    return out;
+  }
+
+  /** @typedef {{element: Element, text: string[]}} Heading */
+
+  /**
+   * @param {ArrayLike<Node>} nodes
+   * @param {Pick<Document, "createElement" | "createTextNode">} doc
+   * @param {string | null} base
+   * @param {Heading[]} headings Every heading so far, in document order.
+   * @param {Heading[]} open The headings the text written now belongs to.
+   * @returns {Node[]}
+   */
+  function rebuild(nodes, doc, base, headings, open) {
     /** @type {Node[]} */
     const out = [];
+    /** @param {string} text */
+    const shown = (text) => {
+      for (const heading of open) {
+        heading.text.push(text);
+      }
+    };
     for (const node of Array.from(nodes)) {
       if (node.nodeType === 3) {
         out.push(doc.createTextNode(node.nodeValue ?? ""));
+        shown(node.nodeValue ?? "");
         continue;
       }
       if (node.nodeType !== 1) {
@@ -344,16 +428,22 @@
           image.href === null ? [] : allowedAttributes("a", () => image.href, base),
         );
         link.append(doc.createTextNode(image.text));
+        shown(image.text);
         out.push(link);
         continue;
       }
-      const children = sanitizeNodes(source.childNodes, doc, base);
       if (!ALLOWED_TAGS.includes(tag)) {
-        out.push(...children);
+        out.push(...rebuild(source.childNodes, doc, base, headings, open));
         continue;
       }
       const clean = element(doc, tag, allowedAttributes(tag, read, base));
-      clean.append(...children);
+      let inside = open;
+      if (base === null && HEADINGS.includes(tag)) {
+        const heading = { element: clean, text: [] };
+        headings.push(heading);
+        inside = [...open, heading];
+      }
+      clean.append(...rebuild(source.childNodes, doc, base, headings, inside));
       out.push(clean);
     }
     return out;
@@ -378,9 +468,12 @@
 
   window.MetabrowserInertHtml = Object.freeze({
     ALLOWED_ATTRIBUTES,
+    ANCHOR_PREFIX,
     ALLOWED_TAGS,
     DROPPED_WITH_CONTENT,
     allowedAttributes,
+    fragmentLink,
+    headingSlug,
     imageLink,
     isInside,
     keepsImage,

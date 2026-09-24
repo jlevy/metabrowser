@@ -54,8 +54,12 @@ const input = JSON.parse(fs.readFileSync(0, "utf8"));
 if (input.lists) {
   process.stdout.write(JSON.stringify({
     tags: inert.ALLOWED_TAGS, dropped: inert.DROPPED_WITH_CONTENT,
-    attributes: inert.ALLOWED_ATTRIBUTES,
+    attributes: inert.ALLOWED_ATTRIBUTES, prefix: inert.ANCHOR_PREFIX,
   }));
+  process.exit(0);
+}
+if (input.slugs) {
+  process.stdout.write(JSON.stringify(input.slugs.map((text) => inert.headingSlug(text))));
   process.exit(0);
 }
 const nodes = (tree) => tree.map((node) => typeof node === "string"
@@ -139,6 +143,7 @@ def test_the_browser_and_the_server_share_one_allowlist() -> None:
     assert {tag: tuple(names) for tag, names in lists["attributes"].items()} == (
         inert_html.ALLOWED_ATTRIBUTES
     )
+    assert lists["prefix"] == inert_html.ANCHOR_PREFIX
 
 
 @pytest.mark.parametrize(("base", "images"), [(None, True), (PR_PAGE, False)])
@@ -157,7 +162,7 @@ def test_a_document_keeps_its_own_references_and_turns_outside_images_into_links
     inert = harden(_kpress(HOSTILE_README))
     assert '<img src="docs/diagram.png" alt="diagram">' in inert
     assert '<a href="docs/guide.md">Guide</a>' in inert
-    assert '<a href="#readme">Top</a>' in inert
+    assert '<a href="#user-content-readme">Top</a>' in inert
     assert '<a href="../x.md">Up</a>' in inert
     # An outside image is a link to it, in a new tab; one with no http(s) address is text.
     assert (
@@ -229,3 +234,157 @@ def test_the_session_plays_what_kpress_renders_of_the_hostile_readme() -> None:
     assert allowlist_violations(transcript["document"], images=True) == []
     assert allowlist_violations(transcript["comment"]) == []
     assert transcript["inertRender"] == {"inert": True, "trusted": False}
+
+
+# Headings written to attack the anchors: names of Object.prototype and window, ids and
+# names of the document's own, repeats that collide with a numbered repeat, text that is
+# all punctuation or emoji, a very long one, scripts and marks, and markup inside.
+HOSTILE_HEADINGS = "\n\n".join(
+    [
+        "# Hostile headings",
+        "## `__proto__`",
+        "## constructor",
+        "## constructor",
+        "## hasOwnProperty",
+        "## metabrowser",
+        '<h2 id="metabrowser" name="MetabrowserInertHtml">Clobber</h2>',
+        '<h3 id="user-content-clobber">Clobber</h3>',
+        "## a-1",
+        "## A",
+        "## a",
+        "## !!!",
+        "## !!!",
+        "## \U0001f680 Getting started",
+        "## C++ & Rust: *fast* `code`",
+        "## Über Straße ΣΊΣΥΦΟΣ",
+        "## 日本語の見出し",
+        "## Ⓐ x² Ⅻ café \u200d",
+        "## العربية مَرحبا",
+        "## ![logo](https://example.com/logo.png) Project",
+        "## ![local](docs/local.png) Local",
+        "<h2>Inside <svg><text>hidden</text></svg><script>x</script>shown</h2>",
+        "## " + "Long " * 2000,
+        "[a](#__proto__) [b](#constructor-1) [c](#user-content-a-2) [d](#) [e](#Über-straße)",
+    ]
+)
+
+
+def test_headings_get_github_anchors_and_links_reach_them() -> None:
+    inert = harden(_kpress(HOSTILE_HEADINGS))
+    ids = [value for _tag, value in _heading_ids(inert)]
+    assert ids[:19] == [
+        "user-content-hostile-headings",
+        "user-content-__proto__",
+        "user-content-constructor",
+        "user-content-constructor-1",
+        "user-content-hasownproperty",
+        "user-content-metabrowser",
+        "user-content-clobber",
+        "user-content-clobber-1",
+        "user-content-a-1",
+        "user-content-a",
+        "user-content-a-2",
+        "user-content-",
+        "user-content--1",
+        "user-content--getting-started",
+        "user-content-c--rust-fast-code",
+        "user-content-über-straße-σίσυφος",
+        "user-content-日本語の見出し",
+        "user-content-ⓐ-x-ⅻ-café-",
+        "user-content-العربية-مَرحبا",
+    ]
+    # Text the page shows counts, as an outside image's link text does; hidden text not.
+    assert ids[19:22] == [
+        "user-content-logo-project",
+        "user-content--local",
+        "user-content-inside-shown",
+    ]
+    assert ids[22] == "user-content-" + "long-" * 1999 + "long"
+    assert len(ids) == len(set(ids)) == 23
+    # No id or name the document wrote survives; every link reaches the namespace.
+    assert 'id="metabrowser"' not in inert and "name=" not in inert
+    for fragment in ("__proto__", "constructor-1", "a-2", "%C3%9Cber-stra%C3%9Fe"):
+        assert f'href="#user-content-{fragment}"' in inert, fragment
+    assert '<a href="#">d</a>' in inert
+    assert allowlist_violations(inert, images=True) == []
+    # A pull request's comment has no anchors: its fragments are the pull request's.
+    comment = harden(_kpress(HOSTILE_HEADINGS), PR_PAGE)
+    assert " id=" not in comment
+    assert 'href="https://github.com/octo/demo/pull/7#__proto__"' in comment
+
+
+def test_both_sides_make_the_same_anchors() -> None:
+    rendered = _kpress(HOSTILE_HEADINGS)
+    browser = _node({"tree": html_tree(rendered), "base": None})
+    assert _tokens(browser) == _tokens(harden(rendered))
+    # The page hardens the server's answer again; the anchors come out the same.
+    assert _tokens(_node({"tree": html_tree(harden(rendered)), "base": None})) == _tokens(
+        harden(rendered)
+    )
+
+
+def test_both_sides_slug_the_same() -> None:
+    samples = [
+        "Hello World",
+        "  spaced  out  ",
+        "tab\tand\nnewline",
+        "snake_case and kebab-case",
+        "en–dash — em",
+        "ÀÉÎÕÜ İstanbul ΣΊΣΥΦΟΣ",
+        "Ⓐⓩ \U0001f130 \U0001f170 x²³ ½ Ⅻ ٣",
+        "\u0301 combining \u200c\u200d joiners",
+        "emoji \U0001f680\U0001f3fd flags \U0001f1fa\U0001f1f8",
+        "\u00a0nbsp\u2003em space",
+        "<>&\"'`",
+    ]
+    assert json.loads(_node({"slugs": samples})) == [
+        inert_html.heading_slug(text) for text in samples
+    ]
+
+
+def test_harden_document_maps_the_ids_it_replaces() -> None:
+    html, replaced = inert_html.harden_document(
+        '<h1 id="title">T</h1><h2 id="part">Part</h2><h2 id="part">Part</h2><h3>No id</h3>'
+    )
+    assert replaced == {"title": "user-content-t", "part": "user-content-part"}
+    assert '<h2 id="user-content-part-1">' in html
+
+
+def _heading_ids(html: str) -> list[tuple[str, str]]:
+    found: list[tuple[str, str]] = []
+
+    class _Read(HTMLParser):
+        def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+            if tag in {"h1", "h2", "h3", "h4", "h5", "h6"}:
+                found.append((tag, dict(attrs).get("id") or ""))
+
+    reader = _Read()
+    reader.feed(html)
+    reader.close()
+    return found
+
+
+# The only sources that may name the anchor namespace: the two allowlists, and the
+# markdown plugin's inert render, which builds the table of contents that links to it.
+ANCHOR_NAMESPACE_OWNERS = {
+    "src/metabrowser/inert_html.py",
+    "src/metabrowser/kpress_adapter.py",
+    "src/metabrowser/static/inert-html.js",
+    "src/metabrowser/static/types.d.ts",
+    "src/metabrowser/builtin_plugins/markdown/inert-render.js",
+}
+
+
+def test_no_application_name_is_in_the_anchor_namespace() -> None:
+    """An ``id`` is a ``window`` property and a ``getElementById`` answer. A document's
+    anchors all begin with ``user-content-``, so they can shadow only a name that begins
+    with it; nothing the application or its plugins read, write, or look up does."""
+
+    namers = sorted(
+        str(path.relative_to(REPO_ROOT))
+        for path in (REPO_ROOT / "src" / "metabrowser").rglob("*")
+        if path.suffix in {".py", ".js", ".ts", ".html", ".css", ".toml"}
+        and "vendor" not in path.parts
+        and "user-content" in path.read_text(encoding="utf-8", errors="replace")
+    )
+    assert set(namers) <= ANCHOR_NAMESPACE_OWNERS, namers

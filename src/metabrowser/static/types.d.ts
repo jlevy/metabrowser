@@ -2156,7 +2156,10 @@ declare global {
   type MetabrowserInertHtmlRuntime = Readonly<{
     ALLOWED_ATTRIBUTES: Readonly<Record<string, readonly string[]>>;
     ALLOWED_TAGS: readonly string[];
+    ANCHOR_PREFIX: string;
     DROPPED_WITH_CONTENT: readonly string[];
+    fragmentLink(href: string): string;
+    headingSlug(text: string): string;
     allowedAttributes(
       tag: string,
       read: (name: string) => string | null,

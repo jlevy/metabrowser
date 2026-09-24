@@ -76,6 +76,8 @@ function serialize(nodes) {
         const names = inert.ALLOWED_ATTRIBUTES[node.tag] ?? [];
         assert(names.includes(name), `the page kept ${node.tag}[${name}]`);
       }
+      const id = node.attributes.find(([name]) => name === "id")?.[1];
+      assert(id === undefined || id.startsWith(inert.ANCHOR_PREFIX), `the page kept id=${id}`);
       const attributes = node.attributes
         .map(([name, value]) =>
           name === "open" ? " open" : ` ${name}="${escapeText(value).replaceAll('"', "&quot;")}"`,
