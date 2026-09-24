@@ -3,9 +3,9 @@ type: is
 id: is-01m3am6nwyanzc2t01c2mcrqf0
 title: A pasted GitHub URL with a raw Unicode character or space is refused without a recovery hint
 kind: bug
-status: in_progress
+status: closed
 priority: 3
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 delegate: claude-code@spud10.local
 labels:
@@ -15,8 +15,12 @@ parent_id: is-01m36k3w9vgwy97c9hcj2sqrs5
 hold: null
 hold_until: null
 created_at: 2026-09-24T21:12:35.485Z
-updated_at: 2026-09-24T21:28:20.258Z
+updated_at: 2026-09-24T23:10:44.362Z
 started_at: 2026-09-24T21:28:20.257Z
+closed_at: 2026-09-24T23:10:44.361Z
+close_reason: "PR #243: raw space/non-ASCII percent-encoded as a browser does; invisible, default-ignorable, Cn, Co refused naming code point and encoded spelling; CI green"
+resolution: null
+duplicate_of: null
 ---
 Found during the v0.12 alpha acceptance (mb-gnr9) on the integrated stack (PR #241; installed wheel 0.11.1.dev400+250a10c4).
 

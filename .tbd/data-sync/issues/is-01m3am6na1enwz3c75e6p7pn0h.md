@@ -3,9 +3,9 @@ type: is
 id: is-01m3am6na1enwz3c75e6p7pn0h
 title: TOC drawer toggle scrolls away with the document in a narrow preview pane
 kind: bug
-status: in_progress
+status: closed
 priority: 2
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 delegate: claude-code@spud10.local
 labels:
@@ -15,8 +15,12 @@ parent_id: is-01m36k3w9vgwy97c9hcj2sqrs5
 hold: null
 hold_until: null
 created_at: 2026-09-24T21:12:34.879Z
-updated_at: 2026-09-24T21:28:19.793Z
+updated_at: 2026-09-24T23:10:43.874Z
 started_at: 2026-09-24T21:28:19.789Z
+closed_at: 2026-09-24T23:10:43.873Z
+close_reason: "PR #243: non-scrolling .preview-frame carries the containing block; toggle measured fixed at every scroll depth; review fixes; CI green"
+resolution: null
+duplicate_of: null
 ---
 Found during the v0.12 alpha acceptance (mb-gnr9) on the integrated stack (PR #241, head aa1f4d93; installed wheel 0.11.1.dev400+250a10c4).
 

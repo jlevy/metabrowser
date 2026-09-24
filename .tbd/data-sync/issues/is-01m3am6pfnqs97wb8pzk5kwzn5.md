@@ -3,9 +3,9 @@ type: is
 id: is-01m3am6pfnqs97wb8pzk5kwzn5
 title: Pull-request header says 'wants to merge' for merged and closed PRs; skipped checks counted as neutral
 kind: bug
-status: in_progress
+status: closed
 priority: 3
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 delegate: claude-code@spud10.local
 labels:
@@ -15,8 +15,12 @@ parent_id: is-01m36k3w9vgwy97c9hcj2sqrs5
 hold: null
 hold_until: null
 created_at: 2026-09-24T21:12:36.084Z
-updated_at: 2026-09-24T21:28:20.793Z
+updated_at: 2026-09-24T23:10:44.798Z
 started_at: 2026-09-24T21:28:20.791Z
+closed_at: 2026-09-24T23:10:44.796Z
+close_reason: "PR #243: merged header names merger and 'merged N commits'; skipped, cancelled, stale, unknown counted separately; closed keeps github.com's 'wants to merge'; CI green"
+resolution: null
+duplicate_of: null
 ---
 Found during the v0.12 alpha acceptance (mb-gnr9) on the integrated stack (PR #241; installed wheel 0.11.1.dev400+250a10c4), on cli/cli#14128 (merged; head 5dfc6b06b53e8c3962b28d3ebf00e9b696daf985).
 
