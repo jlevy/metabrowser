@@ -238,7 +238,7 @@ $ metab --plugin markdown
 name:         markdown
 display_name: Markdown
 version:      0.0.1
-sdk_version:  0.6
+sdk_version:  0.7
 source:       builtin
 static_root:  [BUILTIN]/markdown
 
@@ -287,7 +287,7 @@ $ metab --plugin markdown --json
     "name": "markdown",
     "display_name": "Markdown",
     "version": "0.0.1",
-    "sdk_version": "0.6",
+    "sdk_version": "0.7",
     "source": "builtin",
     "static_root": "[BUILTIN]/markdown",
     "kinds": [

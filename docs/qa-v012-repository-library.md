@@ -403,6 +403,19 @@ Optional filesystem walk (large tree; not required for the pin lane):
 uv --config-file uv.toml run --frozen metab . --walk --max-depth 1
 ```
 
+A filename with a backslash (POSIX only) lists and opens instead of failing the index:
+
+```shell
+QA_BS="$(mktemp -d)" && printf 'x\n' > "$QA_BS/a\\b.txt"
+uv --config-file uv.toml run --frozen metab "$QA_BS" --api /api/tree
+uv --config-file uv.toml run --frozen metab "$QA_BS" --api '/api/file?path=a%255Cb.txt'
+rm -r "$QA_BS"
+```
+
+**Pass:** both are HTTP 200; the tree lists `"path": "a%5Cb.txt"`, and in a served
+browser the row reads `a\b.txt` and opens at `/view/a%5Cb.txt`. **Fail:** HTTP 500 or
+`dirty path must be a canonical POSIX-relative path`.
+
 ## Phase 4: `file://` Acquire and the Pin
 
 Skip the acquire/pin commands when Phase 2.4 already refused below-floor Git.
@@ -747,11 +760,16 @@ Open `http://127.0.0.1:8471/view/` in a browser, with its developer tools open.
    Reloading that `/commit/…` address reopens the same commit.
 7. Reload a `/view/g1-…` address, use back and forward, and open a copied link in a
    second tab: the same file and revision open each time.
+8. A text file over 2 MB (commit one to a scratch origin if the pinned repository has
+   none) opens with “Showing 2.0 MB of …” above and below.
+   Each Load more raises that figure in both notices, and the text continues where it
+   stopped rather than repeating.
 
 **Pass:** Every step as described; no console errors; no request leaves `127.0.0.1`.
 
 **Fail:** A blank heading, a different commit anywhere, a Preview tab on HTML, a broken
-image, or a request to another host.
+image, a partial-content notice that keeps its figure after Load more, or a request to
+another host.
 
 ### 5.4 Reopen with the origin gone (M05)
 

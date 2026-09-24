@@ -78,7 +78,7 @@ def make_plugin_dir(tmp_path: Path):
 
 def test_deferred_plugin_asset_lifecycle_is_sdk_0_5() -> None:
     """Selected-kind loading is a released lifecycle break, not an additive 0.4 change."""
-    assert PLUGIN_SDK_VERSION == "0.6"
+    assert PLUGIN_SDK_VERSION == "0.7"
 
 
 def test_manifest_minimum_fields(make_plugin_dir) -> None:
@@ -87,7 +87,7 @@ def test_manifest_minimum_fields(make_plugin_dir) -> None:
         """
 [plugin]
 name = "p1"
-sdk_version = "0.6"
+sdk_version = "0.7"
 
 [[kind]]
 id = "myk"
@@ -162,7 +162,7 @@ id = "myk"
 match = { ext = ".myk" }
 """,
     )
-    with pytest.raises(ValueError, match=r"targets browser SDK '0\.4'.*provides '0\.6'"):
+    with pytest.raises(ValueError, match=r"targets browser SDK '0\.4'.*provides '0\.7'"):
         load_manifest(plugin_dir / "manifest.toml")
 
 
@@ -172,7 +172,7 @@ def test_manifest_rejects_empty_match(make_plugin_dir) -> None:
         """
 [plugin]
 name = "p2"
-sdk_version = "0.6"
+sdk_version = "0.7"
 
 [[kind]]
 id = "myk"
@@ -189,7 +189,7 @@ def test_manifest_rejects_duplicate_view_ids(make_plugin_dir) -> None:
         """
 [plugin]
 name = "p3"
-sdk_version = "0.6"
+sdk_version = "0.7"
 
 [[kind]]
 id = "myk"
@@ -215,7 +215,7 @@ def test_manifest_rejects_multiple_defaults(make_plugin_dir) -> None:
         """
 [plugin]
 name = "p4"
-sdk_version = "0.6"
+sdk_version = "0.7"
 
 [[kind]]
 id = "myk"
@@ -243,7 +243,7 @@ def test_manifest_rejects_bad_sidekick(make_plugin_dir) -> None:
         """
 [plugin]
 name = "p5"
-sdk_version = "0.6"
+sdk_version = "0.7"
 
 [[kind]]
 id = "myk"
@@ -308,7 +308,7 @@ def test_discovery_reports_manifest_missing_index_js(make_plugin_dir, tmp_path: 
         """
 [plugin]
 name = "broken"
-sdk_version = "0.6"
+sdk_version = "0.7"
 
 [[kind]]
 id = "x"
@@ -334,7 +334,7 @@ def test_discovery_finds_extra_dir_plugin(make_plugin_dir, tmp_path: Path) -> No
         """
 [plugin]
 name = "myplug"
-sdk_version = "0.6"
+sdk_version = "0.7"
 
 [[kind]]
 id = "myk"
@@ -355,7 +355,7 @@ def test_entry_point_calls_documented_plugin_dir_factory(
         """
 [plugin]
 name = "entrypoint-plugin"
-sdk_version = "0.6"
+sdk_version = "0.7"
 
 [[kind]]
 id = "entrypoint-kind"

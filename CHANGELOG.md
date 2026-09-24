@@ -9,7 +9,7 @@ Plugin contracts:
 - Installed Python distributions can register versioned artifact contracts and resource
   publication profiles through the new `metabrowser.capabilities.v1` entry-point group.
   Contract discovery is separate from browser plugin manifests and operator plugin
-  directories, so it does not create a static asset root or change browser SDK 0.6.
+  directories, so it does not create a static asset root or change the browser SDK.
 
 - Hosted Review Format installs enforced SoftSchema contracts for its provider,
   change-request, review, check, and activity records.
@@ -41,14 +41,24 @@ Plugin contracts:
 
 Plugin SDK:
 
+- **Breaking:** `PLUGIN_SDK_VERSION` is now `0.7`. The shared copy and Load more
+  listeners act only on a control carrying the page’s owner mark, so a plugin that wrote
+  the documented `data-mb-copy`, `data-mb-copy-text`, and `data-mb-copy-label` markup by
+  hand now gets a button that silently does nothing (see Content trust below for why).
+  To migrate, set `sdk_version = "0.7"` and stamp each copy control the plugin builds
+  itself: `mb.ownDelegate(element)` on an element, or `mb.delegateOwnerAttribute()`
+  spliced into markup.
+  Controls from `wrapWithCopy` and `partialNoticeHtml` are stamped already and need no
+  change. A manifest left at `0.6` is refused when it loads.
+
 - `window.metabrowser.sourceKind()` reports whether the served tree is a filesystem root
   or a `git_revision` pin.
   Markdown link and wiki resolution use that kind instead of inferring GitPath encoding
   from `g1-` filenames, so a tracked file literally named `g1-notes.md` is a name rather
   than an identity to decode.
   Built-in views read the kind through this accessor rather than a page global.
-  The browser SDK stays 0.6: `sourceKind()` is an addition, and a plugin that never asks
-  sees the filesystem answer it saw before.
+  `sourceKind()` is an addition, and a plugin that never asks sees the filesystem answer
+  it saw before.
 
 - `mb.sizeHtml(undefined)` now renders nothing instead of a pending skeleton.
   `null` still means “this aggregate is still being computed” and keeps its skeleton
@@ -75,8 +85,8 @@ Plugin SDK:
   for a missing object, an oversized blob, an unreadable compressed stream, and a
   timeout alike. The four built-in data hooks — binary bytes, structured parse, agent-log
   charts, and diff documents — now read this way and no longer branch on the source
-  kind. The browser SDK stays 0.6: these are additions to the Python helper surface and
-  no manifest, kind, or `window.metabrowser` call changes.
+  kind. These are additions to the Python helper surface; no manifest, kind, or
+  `window.metabrowser` call changes.
   `content_source()`, added earlier in this unreleased series and never part of a
   release, is gone: it handed a hook the raw active source, which is what the content
   reader replaces.
@@ -464,6 +474,17 @@ Content trust:
   `partialNoticeHtml`’s `action` string no longer becomes an inline handler; a view that
   continues its own content passes `action: null` and wires its own listener.
 
+- The application’s document-wide handlers act only on controls the page created.
+  A trusted folder’s Markdown keeps class, `id`, and `data-*`, so a document could write
+  `data-mb-copy="text"` with its own `data-mb-copy-text` and replace the clipboard on a
+  click, or spell an address crumb (`data-nav-dir`, `data-nav-file`), the print button,
+  or a Load more button.
+  The copy, Load more, crumb, parent-folder, and print handlers now require
+  `data-mb-owner` with a value drawn when the page loads, which a document written
+  earlier cannot carry, and the tooltip ignores a rendered document’s `data-tip-text`.
+  The header’s print button no longer has an `id` (`print-view-btn`), so a label naming
+  it could not click it with its mark; SECURITY.md lists what the mark does not cover.
+
 Content source:
 
 - In a trusted served folder, a Markdown link to a file whose POSIX name holds a
@@ -613,6 +634,22 @@ Content source:
   15-second request deadline instead of the 15-minute acquisition deadline.
   A store target read without a named policy gets the same policy, and whole-tree blob
   sizes are read in chunks that each get the batch deadline.
+
+Fixes:
+
+- A served folder holding a filename with a backslash, which POSIX allows, no longer
+  fails its whole index: the index progress route errored and the tree answered HTTP
+  500\. The inventory now escapes the backslash as `%5C`, as it escapes a literal `%` as
+  `%25`, so the file lists, opens, and has a `/view/` URL (`/view/a%5Cb.txt`); the tree
+  shows its real name.
+  A literal backslash in a `/view/` URL is refused, and Windows, where a backslash is a
+  separator, is unchanged.
+
+- Load more on a large text file in a pin advances its notice and continues the text.
+  A pin’s later window reported its own length as `bytes_read`, where the filesystem
+  reports the cursor past the window, so after Load more the notice kept reading
+  “Showing 2.0 MB of 15.2 MB” and the next Load more read from 2.0 MB again, repeating
+  text. `/api/file` on a pin now reports the cursor, as a served folder does.
 
 ## 0.11.0
 

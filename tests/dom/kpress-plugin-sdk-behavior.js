@@ -250,30 +250,42 @@ function check_load_more_runs_only_registered_actions() {
   sandbox.MetabrowserPluginHost.registerLoadMoreAction("loadMoreCurrentText", () =>
     calls.push("shell"),
   );
-  /** A click target: the notice's own button, or any other element carrying the name. */
-  const target = (name, isNoticeButton) => ({
+  const notice = sandbox.metabrowser.partialNoticeHtml({ loaded: "1 KB", total: "2 KB" }, "top");
+  const ownNotice = sandbox.metabrowser.partialNoticeHtml({ loaded: "1", total: "2" }, "top", {
+    action: null,
+  });
+  // The owner mark the notice's button carries, drawn when the SDK loaded.
+  const owner = /data-mb-owner="([0-9a-f]{32})"/.exec(notice)?.[1] ?? null;
+  /**
+   * A click target: a button with the notice's class and `data-mb-load-more`, or any
+   * other element carrying the name. `mark` is its `data-mb-owner`: the notice's own
+   * button has the SDK's, and a copy a trusted folder's Markdown writes has none or a
+   * guess.
+   */
+  const target = (name, isNoticeButton, mark) => ({
     closest(selector) {
       return selector === "button.metabrowser-load-more[data-mb-load-more]" && isNoticeButton
         ? this
         : null;
     },
-    getAttribute: (attribute) => (attribute === "data-mb-load-more" ? name : null),
+    getAttribute: (attribute) =>
+      attribute === "data-mb-load-more" ? name : attribute === "data-mb-owner" ? mark : null,
   });
   const click = (element) => {
     for (const listener of clicks) {
       listener({ target: element });
     }
   };
-  const notice = sandbox.metabrowser.partialNoticeHtml({ loaded: "1 KB", total: "2 KB" }, "top");
-  const ownNotice = sandbox.metabrowser.partialNoticeHtml({ loaded: "1", total: "2" }, "top", {
-    action: null,
-  });
-  click(target("loadMoreCurrentText()", true));
-  click(target("open()", true)); // a real button naming an unregistered global
-  click(target("loadMoreCurrentText()", false)); // an injected element, not the notice's button
-  click(target("open()", false)); // an injected element naming a native
-  click(target("alert(document.cookie)", true)); // not a bare name
+  click(target("loadMoreCurrentText()", true, owner));
+  click(target("open()", true, owner)); // a real button naming an unregistered global
+  click(target("loadMoreCurrentText()", false, owner)); // an injected element, not a button
+  click(target("open()", false, null)); // an injected element naming a native
+  click(target("alert(document.cookie)", true, owner)); // not a bare name
+  // A document's copy of the notice's button: same class and name, no owner or a guess.
+  click(target("loadMoreCurrentText()", true, null));
+  click(target("loadMoreCurrentText()", true, "0".repeat(32)));
   const ok =
+    owner !== null &&
     calls.join(",") === "shell" &&
     notice.includes('class="btn metabrowser-load-more"') &&
     notice.includes('data-mb-load-more="loadMoreCurrentText()"') &&

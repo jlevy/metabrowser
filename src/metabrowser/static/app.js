@@ -308,6 +308,19 @@ function servedRoot() {
   return queryHtml(".header-path")?.dataset.servedRoot || "";
 }
 
+// The shell's delegated controls (the address crumbs, the parent button, print, and
+// copy path) carry the SDK's per-page owner mark, and their document listeners act
+// only on a marked element: a trusted folder's Markdown keeps class, id, and data-*,
+// so it can spell the same markup. See `_delegateOwner` in plugin-sdk.js.
+function ownedControlAttr() {
+  return window.metabrowser?.delegateOwnerAttribute?.() ?? "";
+}
+
+/** @param {Element | null} element */
+function isOwnedControl(element) {
+  return window.MetabrowserPluginHost?.isOwnedDelegate?.(element) === true;
+}
+
 /**
  * The main view's address: the served root dimmed, the root slash, then one
  * control per component beneath it.
@@ -330,8 +343,7 @@ function headerAddressHtml(path, isFile) {
   // <bdi> isolates the path from the start-truncation direction on the
   // wrapper; see .file-header-root. It carries no style of its own.
   var prefix = root ? `<span class="file-header-root"><bdi>${esc(root)}</bdi></span>` : "";
-  var rootCrumb =
-    '<button type="button" class="folder-crumb folder-crumb-root" data-nav-dir="" data-tip-text="Served root">/</button>';
+  var rootCrumb = `<button type="button" class="folder-crumb folder-crumb-root" data-nav-dir=""${ownedControlAttr()} data-tip-text="Served root">/</button>`;
   var segments = path ? path.split("/") : [];
   var crumbs = [];
   var walked = "";
@@ -341,7 +353,7 @@ function headerAddressHtml(path, isFile) {
     var attr = last && isFile ? "data-nav-file" : "data-nav-dir";
     var cls = last ? "folder-crumb folder-crumb-current" : "folder-crumb";
     crumbs.push(
-      `<button type="button" class="${cls}" ${attr}="${esc(walked)}" data-tip-text="${esc(window.MetabrowserNavigationRoute.displayPath(walked))}">${esc(window.MetabrowserNavigationRoute.displayPath(segments[i]))}</button>`,
+      `<button type="button" class="${cls}" ${attr}="${esc(walked)}"${ownedControlAttr()} data-tip-text="${esc(window.MetabrowserNavigationRoute.displayPath(walked))}">${esc(window.MetabrowserNavigationRoute.displayPath(segments[i]))}</button>`,
     );
   }
   return prefix + rootCrumb + crumbs.join('<span class="folder-crumb-sep">/</span>');
@@ -2468,10 +2480,17 @@ if (typeof window !== "undefined") {
  * including a plugin's. Tooltips are pointer-only supplementary detail;
  * keyboard focus uses the element's accessible name and dismisses any tooltip
  * left under a stationary pointer.
+ *
+ * Unlike the action delegates it is not owner-marked (see `ownedControlAttr`):
+ * it runs nothing, and plugins write plain `data-tip-text`. It does ignore a
+ * rendered document's own markup, which a trusted folder's Markdown keeps, so a
+ * document cannot label itself in the application's tooltip layer.
  */
 function tipTextAnchor(event) {
   var anchor = eventTargetElement(event)?.closest("[data-tip-text]");
-  return anchor instanceof HTMLElement ? anchor : null;
+  return anchor instanceof HTMLElement && !anchor.closest(".metabrowser-kpress-host")
+    ? anchor
+    : null;
 }
 
 /** @param {Event} e */
@@ -5483,7 +5502,7 @@ function renderFolderHeader(data) {
   var upButton =
     parent === null
       ? '<button type="button" class="btn parent-nav-btn parent-nav-btn-icon-only folder-up" data-tip-text="No parent folder" aria-label="No parent folder" disabled><span class="parent-nav-arrow" aria-hidden="true">↑</span></button>'
-      : `<button type="button" class="btn parent-nav-btn parent-nav-btn-icon-only folder-up" data-tip-text="Open ${esc(parentLabel)}" aria-label="Open parent folder ${esc(parentLabel)}" data-nav-dir="${esc(parent)}"><span class="parent-nav-arrow" aria-hidden="true">↑</span></button>`;
+      : `<button type="button" class="btn parent-nav-btn parent-nav-btn-icon-only folder-up" data-tip-text="Open ${esc(parentLabel)}" aria-label="Open parent folder ${esc(parentLabel)}" data-nav-dir="${esc(parent)}"${ownedControlAttr()}><span class="parent-nav-arrow" aria-hidden="true">↑</span></button>`;
   var dir = data.dir && typeof data.dir === "object" ? data.dir : null;
   var summary = dir
     ? `<span class="folder-header-summary">${folderHeaderSummaryHtml(dir)}</span>`
@@ -5493,7 +5512,7 @@ function renderFolderHeader(data) {
     upButton +
     `<span class="file-header-path folder-breadcrumb">${headerAddressHtml(path, false)}</span>` +
     summary +
-    '<button class="icon-btn file-header-icon file-header-print" id="print-view-btn" type="button" data-tip-text="Print view" aria-label="Print view" hidden>' +
+    `<button class="icon-btn file-header-icon file-header-print" type="button"${ownedControlAttr()} data-tip-text="Print view" aria-label="Print view" hidden>` +
     (ICONS.print || "") +
     "</button>" +
     "</div>"
@@ -5646,8 +5665,14 @@ function viewMetaAttrs(view) {
   return attrs;
 }
 
+// The header's print button, found by class and owner mark. It carries no `id`: a
+// document's `<label for=…>` would otherwise click it, and its stamp would pass.
+function shellPrintButton() {
+  return Array.from(queryHtmlAll(".file-header-print")).find((btn) => isOwnedControl(btn)) || null;
+}
+
 function updatePrintButton(printable) {
-  var btn = document.getElementById("print-view-btn");
+  var btn = shellPrintButton();
   if (!btn) {
     return;
   }
@@ -5719,11 +5744,16 @@ window.MetabrowserPluginHost?.registerLoadMoreAction?.("loadMoreCurrentText", lo
 
 // The file header's print button, delegated rather than an inline handler: the page
 // policy for an untrusted source runs no inline handler.
-document.addEventListener("click", (event) => {
-  if (event.target instanceof Element && event.target.closest("#print-view-btn")) {
+/** @param {Event} event */
+function onPrintViewClick(event) {
+  if (
+    event.target instanceof Element &&
+    isOwnedControl(event.target.closest(".file-header-print"))
+  ) {
     printActiveView();
   }
-});
+}
+document.addEventListener("click", onPrintViewClick);
 
 document.addEventListener("metabrowser:view-print-state", () => {
   var preview = document.getElementById("preview-pane");
@@ -5868,14 +5898,14 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
           html +=
             '<span class="file-header-path folder-breadcrumb">' +
             headerAddressHtml(data.path, true) +
-            `<button class="icon-btn icon-btn-reveal file-header-copy" type="button" data-mb-copy="text" data-mb-copy-text="${esc(window.MetabrowserNavigationRoute.displayPath(data.path))}" data-mb-copy-label="Copy path" data-tip-text="Copy path" aria-label="Copy path">` +
+            `<button class="icon-btn icon-btn-reveal file-header-copy" type="button" data-mb-copy="text" data-mb-copy-text="${esc(window.MetabrowserNavigationRoute.displayPath(data.path))}"${ownedControlAttr()} data-mb-copy-label="Copy path" data-tip-text="Copy path" aria-label="Copy path">` +
             ICON_COPY +
             "</button>" +
             "</span>";
           html += badges;
           html += sizeHtml(data.size, "file-header-size");
           html +=
-            '<button class="icon-btn file-header-icon file-header-print" id="print-view-btn" type="button" data-tip-text="Print view" aria-label="Print view" hidden>' +
+            `<button class="icon-btn file-header-icon file-header-print" type="button"${ownedControlAttr()} data-tip-text="Print view" aria-label="Print view" hidden>` +
             (ICONS.print || "") +
             "</button>";
           html += "</div>";
@@ -6105,13 +6135,14 @@ function toggleEvent(header) {
 // Delegated handlers for header navigation controls. Copyable values use
 // the SDK-owned data-mb-copy contract, so path and revision identifiers
 // share clipboard and feedback behavior without inline handlers.
-document.addEventListener("click", (e) => {
+/** @param {Event} e */
+function onHeaderNavigationClick(e) {
   var origin = eventTargetElement(e);
   if (!origin) {
     return;
   }
   var navBtn = /** @type {HTMLElement | null} */ (origin.closest("[data-nav-dir]"));
-  if (navBtn && !navBtn.hasAttribute("disabled")) {
+  if (navBtn && isOwnedControl(navBtn) && !navBtn.hasAttribute("disabled")) {
     navigateToFolder(navBtn.dataset.navDir ?? "");
     return;
   }
@@ -6119,11 +6150,12 @@ document.addEventListener("click", (e) => {
   // re-opens what is already open, which is the point: every segment of the
   // address behaves alike.
   var fileBtn = /** @type {HTMLElement | null} */ (origin.closest("[data-nav-file]"));
-  if (fileBtn && !fileBtn.hasAttribute("disabled")) {
+  if (fileBtn && isOwnedControl(fileBtn) && !fileBtn.hasAttribute("disabled")) {
     void navigateToPath(fileBtn.dataset.navFile ?? "");
     return;
   }
-});
+}
+document.addEventListener("click", onHeaderNavigationClick);
 
 // biome-ignore lint/correctness/noUnusedVariables: referenced from generated HTML.
 function copyContent(btn) {
