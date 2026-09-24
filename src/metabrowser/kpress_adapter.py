@@ -85,6 +85,7 @@ __all__ = [
     "clear_render_cache",
     "export_kpress_document",
     "get_kpress_static_asset",
+    "inert_render",
     "kpress_static_url",
     "prepare_browser_assets",
     "render_kpress_view",
@@ -237,3 +238,37 @@ def export_kpress_document(request: KPressExportRequest) -> dict[str, object]:
         raise KPressInvalidRequestError(str(exc)) from exc
     except (runtime.KPressPublishError, runtime.KPressRenderError) as exc:
         raise KPressRenderError(str(exc)) from exc
+
+
+def inert_render(rendered: dict[str, Any]) -> dict[str, Any]:
+    """*rendered* for a page that must not trust it: allowlisted HTML and no scripts.
+
+    Under the untrusted profile (active content off) a document's author is not the
+    reader's to trust: its HTML is reduced to :mod:`metabrowser.inert_html`'s allowlist,
+    references inside the document kept for the page to resolve, and every KPress
+    script leaves the asset list -- KPress adds entry points for what a document
+    contains, such as a video popover, and the document must not choose what the page
+    loads. Stylesheets stay, and so does KPress's reading type. ``inert`` tells the page
+    to apply the same allowlist again before inserting the HTML.
+    """
+
+    from metabrowser.inert_html import harden
+
+    inert = dict(rendered)
+    inert["html"] = harden(str(rendered.get("html", "")))
+    assets = rendered.get("assets")
+    if isinstance(assets, dict):
+        kept = [
+            asset
+            for asset in cast("list[object]", assets.get("assets") or [])
+            if isinstance(asset, dict) and asset.get("loading") in {"stylesheet", "resource"}
+        ]
+        inert["assets"] = {
+            key: value for key, value in assets.items() if key not in {"assets", "import_map"}
+        } | {"assets": kept}
+    inert["widgets"] = {}
+    model = rendered.get("model")
+    if isinstance(model, dict):
+        inert["model"] = {**model, "widgets": {}}
+    inert["inert"] = True
+    return inert

@@ -393,81 +393,92 @@ HOSTILE_COMMENT: Final = (
     "<script>alert(1)</script>\n"
 )
 
-# The markup the page may insert: its tags and, per tag, its attributes.
-PAGE_TAGS: Final = frozenset(
-    [
-        "a",
-        "b",
-        "blockquote",
-        "br",
-        "code",
-        "dd",
-        "del",
-        "details",
-        "div",
-        "dl",
-        "dt",
-        "em",
-        "h1",
-        "h2",
-        "h3",
-        "h4",
-        "h5",
-        "h6",
-        "hr",
-        "i",
-        "ins",
-        "kbd",
-        "li",
-        "ol",
-        "p",
-        "pre",
-        "s",
-        "span",
-        "strong",
-        "sub",
-        "summary",
-        "sup",
-        "table",
-        "tbody",
-        "td",
-        "tfoot",
-        "th",
-        "thead",
-        "tr",
-        "ul",
-    ]
-)
-PAGE_ATTRIBUTES: Final = {
-    "a": {"href", "target", "rel"},
-    "ol": {"start"},
-    "td": {"colspan", "rowspan", "align"},
-    "th": {"colspan", "rowspan", "align"},
-    "details": {"open"},
-}
 
+def allowlist_violations(html: str, *, images: bool = False) -> list[str]:
+    """Every tag and attribute in *html* the page may not insert, parsed as HTML.
 
-def allowlist_violations(html: str) -> list[str]:
-    """Every tag and attribute in *html* the page may not insert, parsed as HTML."""
+    The allowlist is :mod:`metabrowser.inert_html`'s. *images* admits an image, which a
+    document inside the served tree keeps and a pull-request comment never does. Every
+    link must leave for http(s) or stay inside the served tree.
+    """
 
     from html.parser import HTMLParser
 
+    from metabrowser.inert_html import ALLOWED_ATTRIBUTES, ALLOWED_TAGS, is_inside
+
+    tags = ALLOWED_TAGS | ({"img"} if images else set())
     found: list[str] = []
 
     class _Check(HTMLParser):
         def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-            if tag not in PAGE_TAGS:
+            if tag not in tags:
                 found.append(f"<{tag}>")
             for name, value in attrs:
-                if name not in PAGE_ATTRIBUTES.get(tag, set()):
+                if name not in ALLOWED_ATTRIBUTES.get(tag, ()):
                     found.append(f"{tag}[{name}]")
-                elif name == "href" and not (value or "").startswith(("https://", "http://")):
-                    found.append(f"{tag}[href={value}]")
+                elif name in {"href", "src"} and not (
+                    (value or "").startswith(("https://", "http://")) or is_inside(value)
+                ):
+                    found.append(f"{tag}[{name}={value}]")
 
     checker = _Check()
     checker.feed(html)
     checker.close()
     return found
+
+
+def html_tree(html: str) -> list[Any]:
+    """*html* parsed as HTML into nested ``{"tag", "attrs", "children"}`` nodes and text.
+
+    Browserless sessions build a template from it, so the page's own defense runs on a
+    real parse of what KPress sends rather than on a parse the session does itself.
+    """
+
+    from html.parser import HTMLParser
+
+    void = {
+        "area",
+        "base",
+        "br",
+        "col",
+        "embed",
+        "hr",
+        "img",
+        "input",
+        "link",
+        "meta",
+        "param",
+        "source",
+        "track",
+        "wbr",
+    }
+    root: dict[str, Any] = {"children": []}
+    stack = [root]
+
+    class _Build(HTMLParser):
+        def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+            node = {"tag": tag, "attrs": [[k, v or ""] for k, v in attrs], "children": []}
+            stack[-1]["children"].append(node)
+            if tag not in void:
+                stack.append(node)
+
+        def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+            node = {"tag": tag, "attrs": [[k, v or ""] for k, v in attrs], "children": []}
+            stack[-1]["children"].append(node)
+
+        def handle_endtag(self, tag: str) -> None:
+            for depth in range(len(stack) - 1, 0, -1):
+                if stack[depth].get("tag") == tag:
+                    del stack[depth:]
+                    break
+
+        def handle_data(self, data: str) -> None:
+            stack[-1]["children"].append(data)
+
+    builder = _Build(convert_charrefs=True)
+    builder.feed(html)
+    builder.close()
+    return root["children"]
 
 
 def page(path: str) -> str:

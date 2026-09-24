@@ -64,6 +64,7 @@ from tests.github_pull_fixture import (
     HOSTILE_COMMENT,
     allowlist_violations,
     build_origin,
+    html_tree,
     install_fake_gh,
     ok,
     page,
@@ -138,60 +139,6 @@ def _kpress_render(text: str) -> str:
 
 def _markdown(response: Any) -> dict[str, Any]:
     return _answer(response)
-
-
-def _tree(html: str) -> list[Any]:
-    """*html* parsed as HTML into nested ``{"tag", "attrs", "children"}`` nodes and text.
-
-    The session builds the page's template from it, so the page's own defense runs on a
-    real parse of what KPress sends rather than on a parse the session does itself.
-    """
-
-    from html.parser import HTMLParser
-
-    void = {
-        "area",
-        "base",
-        "br",
-        "col",
-        "embed",
-        "hr",
-        "img",
-        "input",
-        "link",
-        "meta",
-        "param",
-        "source",
-        "track",
-        "wbr",
-    }
-    root: dict[str, Any] = {"children": []}
-    stack = [root]
-
-    class _Build(HTMLParser):
-        def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-            node = {"tag": tag, "attrs": [[k, v or ""] for k, v in attrs], "children": []}
-            stack[-1]["children"].append(node)
-            if tag not in void:
-                stack.append(node)
-
-        def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-            node = {"tag": tag, "attrs": [[k, v or ""] for k, v in attrs], "children": []}
-            stack[-1]["children"].append(node)
-
-        def handle_endtag(self, tag: str) -> None:
-            for depth in range(len(stack) - 1, 0, -1):
-                if stack[depth].get("tag") == tag:
-                    del stack[depth:]
-                    break
-
-        def handle_data(self, data: str) -> None:
-            stack[-1]["children"].append(data)
-
-    builder = _Build(convert_charrefs=True)
-    builder.feed(html)
-    builder.close()
-    return root["children"]
 
 
 def _session_tags(recorded: dict[str, Any]) -> dict[str, Any]:
@@ -338,7 +285,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             recorded["kpress added"] = {
                 "status": 200,
                 "etag": None,
-                "body": {"tree": _tree(_prose(_kpress_render(HOSTILE_COMMENT)))},
+                "body": {"tree": html_tree(_prose(_kpress_render(HOSTILE_COMMENT)))},
             }
     finally:
         serve_mirror(None)

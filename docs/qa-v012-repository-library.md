@@ -956,6 +956,47 @@ uv --config-file uv.toml run --frozen metab https://github.com/pallets/markupsaf
 description, conversation, review comments, checks, and the Files changed file list.
 Nothing is written to GitHub.
 
+### 5.8 A hostile README on a mirror (no network)
+
+Serve a `file://` origin whose README carries every payload of the hostile corpus,
+`tests/fixtures/untrusted-markdown`, with the browser’s network panel open:
+
+```shell
+QA_README="$(mktemp -d "${TMPDIR:-/tmp}/mb-qa-readme.XXXXXX")"
+cp -R tests/fixtures/untrusted-markdown "${QA_README}/work"
+git -C "${QA_README}/work" init -q -b main
+git -C "${QA_README}/work" add -A
+git -C "${QA_README}/work" -c user.name=QA -c user.email=qa@example.invalid commit -q -m qa
+git clone -q --bare "${QA_README}/work" "${QA_README}/origin.git"
+uv --config-file uv.toml run --frozen metab "file://${QA_README}/origin.git" --no-open --port 8479
+```
+
+1. Open `http://127.0.0.1:8479/view/`. The folder Overview’s README shows **Hostile
+   readme** as plain paragraphs, links, and text: **build badge** and **tracker** are
+   links to their images, `video`, `copy`, `fake dialog`, and `styled` are plain text,
+   and the repository image `docs/diagram.png` shows.
+2. The network panel shows no request to any origin but `127.0.0.1`, no
+   `/kpress-static/` script (its stylesheets and fonts load), and no iframe; no dialog
+   covers the page.
+3. The page’s response carries `Content-Security-Policy` with
+   `script-src 'self' 'nonce-…'`. In the console,
+   `document.body.append(Object.assign(document.createElement("img"), {src: "https://example.com/x.png"}))`
+   is refused by `img-src`, and no other policy violation is reported.
+4. Open `README.md` itself, then **Guide**: the relative link opens `docs/guide.md` at
+   the pin.
+5. In the console, the repository’s own files are not code:
+   `document.head.append(Object.assign(document.createElement("script"), {src: "/raw?path=g1-ZG9jcw%2Fg1-Z3VpZGUubWQ"}))`
+   (any browsed file) is refused by `script-src`, and `/raw` answers such a request 403.
+   Wiki links and embeds in a mirrored document show as plain text.
+6. Serve the same folder as a trusted local folder (`metab "${QA_README}/work"`): the
+   README renders with KPress’s full styling, and the response carries no policy.
+
+**Pass:** every step as described.
+
+**Fail:** any request to another origin, a KPress script loaded for the mirror’s README,
+an iframe, a dialog over the page, a policy violation from the application itself, or a
+trusted folder that renders plainly.
+
 ## Phase 6: HTML Trust on the Integration Tip
 
 The selected integration tip must include the merged HTML trust implementation:

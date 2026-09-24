@@ -667,7 +667,7 @@ def test_the_markdown_route_answers_only_allowlisted_markup(
 
 
 def test_harden_keeps_the_allowlist_and_is_idempotent() -> None:
-    from metabrowser.builtin_plugins.github.pull_html import harden
+    from metabrowser.inert_html import harden
 
     base = "https://github.com/o/r/pull/1"
     source = (

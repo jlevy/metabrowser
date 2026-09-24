@@ -145,3 +145,42 @@ def raw_sandbox_csp(*, active_content: bool) -> str:
     return " ".join(
         token for token in _RAW_SANDBOX_TOKENS if active_content or token != "allow-scripts"
     )
+
+
+def untrusted_shell_csp(nonce: str, origin: str) -> str:
+    """The Content-Security-Policy of the application page when active content is off.
+
+    Rendered Markdown is already reduced to an allowlist before it reaches the page
+    (:mod:`metabrowser.inert_html`); this is the second line. Scripts run only from the
+    application's own static paths on *origin* -- ``/static/`` and ``/plugin-static/``,
+    never ``/raw``, where the browsed repository's own files are -- and the shell's
+    inline scripts only by *nonce*; no inline handler runs. Stylesheets come from those
+    paths and ``/kpress-static/``; the Markdown worker from ``/plugin-static/``. Images,
+    fonts, and requests stay on this origin (images include ``data:`` ones the
+    stylesheet draws and the repository's own through ``/raw``). The page frames nothing
+    -- the untrusted profile removes the HTML preview, its only frame -- is framed by
+    nothing, and has no plugins, ``<base>``, or form submission. Inline ``style``
+    attributes stay allowed because the application writes them; an outside ``url()``
+    inside one is still an image the image rule refuses.
+    """
+
+    static = f"{origin}/static/"
+    plugins = f"{origin}/plugin-static/"
+    kpress = f"{origin}/kpress-static/"
+    return "; ".join(
+        (
+            "default-src 'self'",
+            f"script-src 'nonce-{nonce}' {static} {plugins}",
+            f"style-src {static} {plugins} {kpress}",
+            "style-src-attr 'unsafe-inline'",
+            "img-src 'self' data:",
+            "font-src 'self'",
+            "connect-src 'self'",
+            f"worker-src {plugins}",
+            "frame-src 'none'",
+            "frame-ancestors 'none'",
+            "object-src 'none'",
+            "base-uri 'none'",
+            "form-action 'none'",
+        )
+    )

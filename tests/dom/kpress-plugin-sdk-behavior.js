@@ -137,6 +137,8 @@ async function importKpressModule(specifier) {
 // errorFetch returns 502, used for the third contract.
 let useErrorFetch = false;
 
+/** @type {Record<string, Array<(event: unknown) => void>>} */
+const documentListeners = {};
 const sandbox = {
   console: {
     log: (...a) => process.stderr.write(`[sdk:log] ${a.join(" ")}\n`),
@@ -155,6 +157,11 @@ const sandbox = {
     head: fakeParent,
     body: fakeParent,
     createElement: makeElement,
+    // The SDK's delegated click listeners (copy, Load more) are kept for the contract
+    // that clicks them.
+    addEventListener(type, listener) {
+      documentListeners[type] = [...(documentListeners[type] || []), listener];
+    },
     documentElement: {
       getAttribute(name) {
         if (name === "data-theme-mode") {
@@ -229,6 +236,51 @@ if (!sandbox.metabrowser || typeof sandbox.metabrowser.fetchKpressRender !== "fu
   fail("plugin-sdk.js did not expose metabrowser.fetchKpressRender");
 }
 const { fetchCompleteText, fetchKpressRender, fetchText, loadKpressAssets } = sandbox.metabrowser;
+
+// ── Contract: Load more runs only a registered action, from the notice's button ──
+
+function check_load_more_runs_only_registered_actions() {
+  const clicks = documentListeners.click || [];
+  if (clicks.length === 0) {
+    return { ok: false, reason: "the SDK installed no delegated click listener" };
+  }
+  const calls = [];
+  // A page global a hostile element might name, and the shell's registered loader.
+  sandbox.open = () => calls.push("open");
+  sandbox.MetabrowserPluginHost.registerLoadMoreAction("loadMoreCurrentText", () =>
+    calls.push("shell"),
+  );
+  /** A click target: the notice's own button, or any other element carrying the name. */
+  const target = (name, isNoticeButton) => ({
+    closest(selector) {
+      return selector === "button.metabrowser-load-more[data-mb-load-more]" && isNoticeButton
+        ? this
+        : null;
+    },
+    getAttribute: (attribute) => (attribute === "data-mb-load-more" ? name : null),
+  });
+  const click = (element) => {
+    for (const listener of clicks) {
+      listener({ target: element });
+    }
+  };
+  const notice = sandbox.metabrowser.partialNoticeHtml({ loaded: "1 KB", total: "2 KB" }, "top");
+  const ownNotice = sandbox.metabrowser.partialNoticeHtml({ loaded: "1", total: "2" }, "top", {
+    action: null,
+  });
+  click(target("loadMoreCurrentText()", true));
+  click(target("open()", true)); // a real button naming an unregistered global
+  click(target("loadMoreCurrentText()", false)); // an injected element, not the notice's button
+  click(target("open()", false)); // an injected element naming a native
+  click(target("alert(document.cookie)", true)); // not a bare name
+  const ok =
+    calls.join(",") === "shell" &&
+    notice.includes('class="btn metabrowser-load-more"') &&
+    notice.includes('data-mb-load-more="loadMoreCurrentText()"') &&
+    !notice.includes("onclick") &&
+    !ownNotice.includes("data-mb-load-more");
+  return { ok, calls };
+}
 
 // ── Contract 1: _loadStylesheet waits for onload ──────────────────────────
 
@@ -761,9 +813,10 @@ async function check_same_kind_plugins_follow_manifest_order() {
   const selectedKindAssets = await check_selected_kind_plugin_assets();
   const cachedPluginStylesheet = await check_cached_plugin_stylesheet_settles_without_onload();
   const sameKindOrder = await check_same_kind_plugins_follow_manifest_order();
+  const loadMore = check_load_more_runs_only_registered_actions();
 
   process.stdout.write(
-    `${JSON.stringify({ stylesheet, dedup, errorProp, assetRetry, cachedStylesheet, assetFailureFallback, transformedSource, fileCatalog, completeText, pathText, selectedKindAssets, cachedPluginStylesheet, sameKindOrder })}\n`,
+    `${JSON.stringify({ stylesheet, dedup, errorProp, assetRetry, cachedStylesheet, assetFailureFallback, transformedSource, fileCatalog, completeText, pathText, selectedKindAssets, cachedPluginStylesheet, sameKindOrder, loadMore })}\n`,
   );
 
   if (
@@ -779,7 +832,8 @@ async function check_same_kind_plugins_follow_manifest_order() {
     !pathText.ok ||
     !selectedKindAssets.ok ||
     !cachedPluginStylesheet.ok ||
-    !sameKindOrder.ok
+    !sameKindOrder.ok ||
+    !loadMore.ok
   ) {
     process.exit(1);
   }

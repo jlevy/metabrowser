@@ -5103,8 +5103,7 @@ function showTextChunkLoadError() {
     "<strong>Could not load more content.</strong> Select Load more to try again.";
 }
 
-// Called by the generated file-header action.
-// biome-ignore lint/correctness/noUnusedVariables: referenced from generated HTML.
+// The partial-content notice's Load more, registered by name with the SDK below.
 async function loadMoreCurrentText() {
   if (textChunkLoadInFlight || !currentPath) {
     return;
@@ -5494,7 +5493,7 @@ function renderFolderHeader(data) {
     upButton +
     `<span class="file-header-path folder-breadcrumb">${headerAddressHtml(path, false)}</span>` +
     summary +
-    '<button class="icon-btn file-header-icon file-header-print" id="print-view-btn" type="button" onclick="printActiveView()" data-tip-text="Print view" aria-label="Print view" hidden>' +
+    '<button class="icon-btn file-header-icon file-header-print" id="print-view-btn" type="button" data-tip-text="Print view" aria-label="Print view" hidden>' +
     (ICONS.print || "") +
     "</button>" +
     "</div>"
@@ -5715,6 +5714,17 @@ if (typeof window !== "undefined") {
   window.printActiveView = printActiveView;
 }
 
+// The partial-content notice's Load more runs the shell's text loader by name.
+window.MetabrowserPluginHost?.registerLoadMoreAction?.("loadMoreCurrentText", loadMoreCurrentText);
+
+// The file header's print button, delegated rather than an inline handler: the page
+// policy for an untrusted source runs no inline handler.
+document.addEventListener("click", (event) => {
+  if (event.target instanceof Element && event.target.closest("#print-view-btn")) {
+    printActiveView();
+  }
+});
+
 document.addEventListener("metabrowser:view-print-state", () => {
   var preview = document.getElementById("preview-pane");
   if (preview?.dataset.activeView) {
@@ -5865,7 +5875,7 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
           html += badges;
           html += sizeHtml(data.size, "file-header-size");
           html +=
-            '<button class="icon-btn file-header-icon file-header-print" id="print-view-btn" type="button" onclick="printActiveView()" data-tip-text="Print view" aria-label="Print view" hidden>' +
+            '<button class="icon-btn file-header-icon file-header-print" id="print-view-btn" type="button" data-tip-text="Print view" aria-label="Print view" hidden>' +
             (ICONS.print || "") +
             "</button>";
           html += "</div>";
@@ -6064,12 +6074,12 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
   );
 }
 
-// The agent-log built-in plugin emits onclick="toggleEvent(this)"
-// in each log event header. This handler sits on window so the
-// inline onclick resolves at click time. Lazy-highlight on first
-// expand keeps initial render cheap on logs with thousands of events.
+// The agent-log built-in plugin calls toggleEvent from its delegated click
+// listener on each log event header; it sits on window so the plugin reaches
+// it. Lazy-highlight on first expand keeps initial render cheap on logs with
+// thousands of events.
 
-// biome-ignore lint/correctness/noUnusedVariables: referenced from generated plugin HTML.
+// biome-ignore lint/correctness/noUnusedVariables: called by the agent-log plugin through window.
 function toggleEvent(header) {
   var parent = header.parentElement;
   parent.classList.toggle("expanded");

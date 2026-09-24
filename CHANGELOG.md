@@ -415,6 +415,49 @@ Repository cache:
   read-only home, full disk, or contended lock drops that write and still returns the
   published alias.
 
+Content trust:
+
+- Markdown from an untrusted source renders inert.
+  With active content off — every served mirror, where a fork’s author controls the
+  head’s Markdown, and a folder served with `--untrusted` — a document’s KPress render
+  reaches the page only as an allowlist of plain markup, on the server and again in the
+  page: paragraphs, headings, emphasis, code, quotes, lists, tables, details, links, and
+  images inside the served tree, with no class, `id`, `name`, `data-*`, style, or event
+  attribute, and no SVG, MathML, media, stylesheet, frame, form, or script.
+  KPress kept such markup in its sanitized mode, so a README could load a stylesheet or
+  images from anywhere, make the page load KPress’s video script and a YouTube frame,
+  cover the page with the application’s own dialog styling, reach its document-wide
+  handlers, or clobber a global.
+  Repository images and relative links keep working inside the pin; an outside image
+  becomes a link; code blocks show without highlighting; and no KPress script loads, so
+  such a document has no table of contents and its in-page anchors do not scroll.
+  `GET /api/kpress/render` answers such a render marked `inert`, with only stylesheets
+  in its assets. Trusted folders render as before.
+  The pull-request page uses the same allowlist, now in core
+  (`src/metabrowser/inert_html.py`, `static/inert-html.js`).
+
+- With active content off the application page carries a Content-Security-Policy:
+  scripts run only from the application’s `/static/` and `/plugin-static/` paths and the
+  shell’s inline scripts by a per-response nonce, never from the browsed tree’s `/raw`
+  files; stylesheets, fonts, images, requests, and the Markdown worker load from this
+  server alone; the page frames nothing and nothing may frame it
+  (`X-Frame-Options: DENY`); and no plugins, `<base>`, or form submission.
+  `/raw` refuses a browsed file requested as a script, stylesheet, worker, or worklet,
+  and sends JavaScript and CSS as `text/plain`. See SECURITY.md.
+
+- In an inert render, a query alone and root-relative `/api`, `/_debug`, and `/raw`
+  references lose their address, as does any link or image past the link enhancer’s
+  limit; images resolve before the page loads them; and Obsidian wiki links and embeds
+  show as plain text.
+
+- The application writes no inline event handlers: the file header’s print button, the
+  structured view’s copy button, an agent log’s event toggle, and the partial-content
+  notice’s Load more use delegated listeners.
+  A partial-content notice’s Load more runs only an action registered by name, only from
+  the button the notice built: the shell’s text loader by default.
+  `partialNoticeHtml`’s `action` string no longer becomes an inline handler; a view that
+  continues its own content passes `action: null` and wires its own listener.
+
 Content source:
 
 - The server now has one active repository subject per process.

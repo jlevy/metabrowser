@@ -256,6 +256,7 @@ assets in static_root:
   - dom-traversal.js
   - github-localizer.js
   - index.js
+  - inert-render.js
   - link-enhancer.js
   - links.js
   - manifest.toml
@@ -325,6 +326,7 @@ $ metab --plugin markdown --json
       "dom-traversal.js",
       "github-localizer.js",
       "index.js",
+      "inert-render.js",
       "link-enhancer.js",
       "links.js",
       "manifest.toml",

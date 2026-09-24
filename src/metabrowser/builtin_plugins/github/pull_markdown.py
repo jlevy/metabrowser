@@ -4,7 +4,7 @@
 through the KPress adapter, the renderer every Markdown file goes through, in its
 sanitized trust mode: raw HTML in the text is cleaned, never trusted, and GitHub's own
 ``body_html`` is never read. KPress keeps what a document of its own may use, so
-:func:`~.pull_html.harden` then reduces the HTML to a small allowlist of plain markup. A
+:func:`~metabrowser.inert_html.harden` then reduces the HTML to a small allowlist of plain markup. A
 part is ``body``, the description, or ``issue_comment/<id>``, ``review/<id>``, or
 ``review_comment/<id>``. The answer is that HTML with the record's ``fetched_at`` and the
 ``part``, so a page drops a render of a record it no longer shows. None of KPress's
@@ -23,9 +23,9 @@ import re
 from typing import Any, Final
 
 from metabrowser import kpress_adapter
-from metabrowser.builtin_plugins.github.pull_html import harden
 from metabrowser.builtin_plugins.github.pull_record import PullRecord
 from metabrowser.builtin_plugins.github.pull_route import ServedPullView, cached_pull_record
+from metabrowser.inert_html import harden
 
 PART_PATTERN: Final = re.compile(r"^(?:body|(?:issue_comment|review|review_comment)/[0-9]{1,20})$")
 

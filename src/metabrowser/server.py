@@ -43,13 +43,15 @@ import datetime as _dt
 import json as _json
 import logging
 import os
+import re
+import secrets
 import sys
 import time
 from collections.abc import AsyncIterator, Mapping, MutableMapping
 from contextlib import asynccontextmanager
 from html import escape as html_escape
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, TextIO, cast
+from typing import TYPE_CHECKING, Any, Final, TextIO, cast
 from urllib.parse import quote
 
 from starlette.applications import Starlette
@@ -77,7 +79,7 @@ from metabrowser.activity import ACTIVITY_POLL_INTERVAL_MS
 from metabrowser.build_version import display_version_line
 from metabrowser.builtin_plugins.html.detect import sniff_full_page_html
 from metabrowser.cache.routes import CACHE_ROUTES
-from metabrowser.capabilities import get_capabilities, raw_sandbox_csp
+from metabrowser.capabilities import get_capabilities, raw_sandbox_csp, untrusted_shell_csp
 
 # Cache invalidator: clear_charts_cache is invoked by the root-change
 # handler so chart memos don't stick across served-root swaps.
@@ -901,6 +903,37 @@ class _HostValidationMiddleware:
         await self.app(scope, receive, send)
 
 
+# Fetch destinations that run or apply what they load. Under the untrusted profile /raw
+# refuses them, so no page -- the application's included -- takes a browsed file as code.
+_CODE_DESTINATIONS: Final = frozenset(
+    {
+        b"script",
+        b"style",
+        b"worker",
+        b"sharedworker",
+        b"serviceworker",
+        b"audioworklet",
+        b"paintworklet",
+    }
+)
+# Media types a browser runs or applies as code. Under the untrusted profile /raw sends
+# them as text/plain, which with nosniff no browser takes as a script or stylesheet, for a
+# browser that does not send Sec-Fetch-Dest.
+_SCRIPT_CAPABLE: Final = re.compile(
+    r"^\s*(?:text|application)/(?:x-)?(?:javascript|ecmascript|jscript|livescript|css)\b",
+    re.IGNORECASE,
+)
+
+
+def _request_header(scope: Mapping[str, Any], name: bytes) -> bytes:
+    """One request header's value, lowercased, or empty."""
+
+    for key, value in scope.get("headers") or ():
+        if key.lower() == name:
+            return bytes(value).strip().lower()
+    return b""
+
+
 class _RawTrustHeaderMiddleware:
     """Sandbox every ``/raw`` response, whichever layer produced it.
 
@@ -942,6 +975,7 @@ class _RawTrustHeaderMiddleware:
             return
 
         started = False
+        active_content = get_capabilities().active_content
 
         # ``MutableMapping``, not ``dict``: this wrapper is handed to
         # ``Response.__call__`` below, whose ``Send`` alias is written
@@ -951,11 +985,21 @@ class _RawTrustHeaderMiddleware:
             if message.get("type") == "http.response.start":
                 started = True
                 headers = MutableHeaders(scope=message)
-                headers["Content-Security-Policy"] = raw_sandbox_csp(
-                    active_content=get_capabilities().active_content
-                )
+                headers["Content-Security-Policy"] = raw_sandbox_csp(active_content=active_content)
                 headers["X-Content-Type-Options"] = "nosniff"
+                if not active_content and _SCRIPT_CAPABLE.match(headers.get("content-type", "")):
+                    # A browsed script or stylesheet is text to a reader, never code.
+                    headers["Content-Type"] = "text/plain; charset=utf-8"
             await send(message)
+
+        if not active_content and _request_header(scope, b"sec-fetch-dest") in _CODE_DESTINATIONS:
+            # Under the untrusted profile a browsed file is never a script, stylesheet,
+            # or worker of any page, the application's included: its own static paths
+            # are the only code it runs (capabilities.untrusted_shell_csp).
+            await PlainTextResponse("A browsed file is not loaded as code here.", status_code=403)(
+                scope, receive, send_sandboxed
+            )
+            return
 
         try:
             await self.app(scope, receive, send_sandboxed)
@@ -1227,6 +1271,7 @@ async def index(request: Request) -> HTMLResponse:
     file_type_taxonomy_url = _static_asset_url("file-type-taxonomy.js")
     plugin_sdk_url = _static_asset_url("plugin-sdk.js")
     view_composition_url = _static_asset_url("view-composition.js")
+    inert_html_url = _static_asset_url("inert-html.js")
     filter_state_url = _static_asset_url("filter-state.js")
     filter_controls_url = _static_asset_url("filter-controls.js")
     icons_url = _static_asset_url("icons.js")
@@ -1418,6 +1463,9 @@ async def index(request: Request) -> HTMLResponse:
         # first tree is usable. renderFile awaits this bundle and rechecks its
         # ownership claim before preparing or mounting a view.
         "view-composition": [{"src": view_composition_url}],
+        # Only untrusted Markdown needs the allowlist: a pull-request comment, or a
+        # document under the untrusted profile, which the server marks inert.
+        "inert-html": [{"src": inert_html_url}],
         # Only a served mirror has freshness to show, so a folder never fetches
         # this; a pin starts it after the first tree request settles, and the
         # label it paints is a quiet row the page does not wait for.
@@ -1671,7 +1719,20 @@ async def index(request: Request) -> HTMLResponse:
   {optional_assets_block}
 </body>
 </html>"""
-    return HTMLResponse(html)
+    if get_capabilities().active_content:
+        return HTMLResponse(html)
+    # An untrusted source: the page runs only what this server wrote. Every inline script
+    # of the shell carries this response's nonce (capabilities.untrusted_shell_csp).
+    nonce = secrets.token_urlsafe(18)
+    html = html.replace("<script>", f'<script nonce="{nonce}">')
+    origin = f"{request.url.scheme}://{request.url.netloc}"
+    return HTMLResponse(
+        html,
+        headers={
+            "Content-Security-Policy": untrusted_shell_csp(nonce, origin),
+            "X-Frame-Options": "DENY",
+        },
+    )
 
 
 async def view_shell(request: Request) -> Response:
@@ -3066,6 +3127,9 @@ async def api_kpress_render(request: Request) -> Response:
             },
             status_code=502,
         )
+    if not get_capabilities().active_content:
+        # A document the reader does not trust renders inert (kpress_adapter.inert_render).
+        rendered = kpress_adapter.inert_render(rendered)
     return JSONResponse(rendered, headers={"cache-control": "no-cache"})
 
 

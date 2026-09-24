@@ -66,21 +66,20 @@ def test_the_pull_route_serves_the_shell_and_the_plugin_for_its_kind() -> None:
             assert (answer.status_code, answer.text) == (400, "Invalid pull-request route.")
 
 
-def test_the_page_parses_no_html_but_sanitized_markdown() -> None:
+def test_the_page_parses_no_html_but_through_the_inert_allowlist() -> None:
     """Every text of the pull request is painted with textContent.
 
-    The one ``innerHTML`` write is KPress's Markdown into an inert template, made inert by
-    ``sanitizeNodes``, which rebuilds only allowlisted nodes; every outside link opens with
-    no opener or referrer, and no KPress script or stylesheet is loaded for it.
+    Its Markdown is parsed and rebuilt only by ``static/inert-html.js``'s ``sanitizeHtml``,
+    with links made absolute against the pull request; every outside link opens with no
+    opener or referrer, and no KPress script or stylesheet is loaded for it.
     """
 
     source = PAGE_JS.read_text(encoding="utf-8")
-    assert source.count("innerHTML") == 1
-    assert "template.innerHTML = String(rendered.html);" in source
-    assert "...sanitizeNodes(template.content.childNodes, document," in source
+    assert "innerHTML" not in source
+    assert "inert.sanitizeHtml(String(rendered.html), shown?.pull?.htmlUrl" in source
+    assert 'ensureAsset("inert-html")' in source
     assert "loadKpressAssets" not in source
     assert "insertAdjacentHTML" not in source and "outerHTML" not in source
     assert source.count('rel: "noopener noreferrer"') == 1
-    assert source.count('["rel", "noopener noreferrer"]') == 1
     # GitHub's own rendering of the text is never read.
     assert ".body_html" not in source and '["body_html"]' not in source

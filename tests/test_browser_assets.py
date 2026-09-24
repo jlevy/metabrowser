@@ -55,8 +55,8 @@ def test_generated_html_handlers_keep_their_global_names() -> None:
     agent_log = _browser_asset("builtin_plugins/agent_log/index.js")
 
     # The Load more control moved into the SDK's partial-content notice, so the
-    # inline handler is emitted there while the global it names still lives in
-    # app.js. That split is exactly what this check exists to catch.
+    # delegated listener there calls a global that still lives in app.js. That split
+    # is exactly what this check exists to catch.
     assert 'loadMoreCurrentText()"' in sdk
     assert "async function loadMoreCurrentText()" in app
     # Header copy/navigation buttons carry values in data-* attributes
@@ -70,5 +70,8 @@ def test_generated_html_handlers_keep_their_global_names() -> None:
     assert 'target.closest("[data-mb-copy]")' in sdk
     assert "_copyDelegationInstalled" in sdk
     assert "function copyContent(btn)" in app
-    assert 'onclick="toggleEvent(this)"' in agent_log
+    # An agent log's event header opens through one delegated listener that calls the
+    # shell's toggleEvent; no inline handler names it.
+    assert "window.toggleEvent(header)" in agent_log
+    assert "onclick" not in agent_log
     assert "function toggleEvent(header)" in app
