@@ -172,21 +172,51 @@ def case_colliding_refs(names: Iterable[str]) -> tuple[str, ...]:
     return tuple(sorted(colliding))
 
 
-def folded_refs(written: Mapping[str, str], held: Mapping[str, str]) -> tuple[str, ...]:
-    """Refs a fetch wrote that the store does not hold as written, and refs it cannot hold apart.
+def _spelled(name: str) -> str:
+    """A ref name as Git spells it whatever the filesystem's normalization: NFC, case kept."""
 
-    *written* is what ``fetch --porcelain`` reports it wrote, name to object; *held* is
-    every ref the store lists by exact name afterwards. On a case-insensitive
-    filesystem a loose ref is a file, so a fetch that writes ``SAME`` beside an
-    unchanged ``same`` writes into ``same``'s file: Git reports ``SAME`` written, the
-    store lists only ``same``, now naming ``SAME``'s commit, and nothing fails. A
-    written ref the store does not list at that object is such a fold. A loose ref
-    whose name folds onto a packed one shadows it on every read, so names in *held*
-    that collide count too. Sorted; empty when the store holds exactly what was written.
+    return unicodedata.normalize("NFC", name)
+
+
+def folded_refs(
+    *,
+    before: Mapping[str, str],
+    written: Mapping[str, str],
+    pruned: Iterable[str],
+    held: Mapping[str, str],
+) -> tuple[str, ...]:
+    """What a fetch broke by writing two refs into one file, sorted; empty when nothing.
+
+    *before* and *held* are the refs the store listed before and after the fetch;
+    *written* and *pruned* are what ``fetch --porcelain`` reports. On a
+    case-insensitive filesystem a loose ref is a file, so a fetch that writes ``SAME``
+    beside an unchanged ``same`` writes into ``same``'s file and succeeds. Two things
+    show that, and only that:
+
+    - a ref the store held before, which the fetch neither wrote nor pruned, no longer
+      names its old object (``same`` now names ``SAME``'s commit);
+    - a ref the fetch wrote is not held, at the object written, under any name the
+      filesystem folds its name to (two written refs shared one file).
+
+    Names are compared as the filesystem does, not byte for byte: a ref written as
+    ``Feature/x`` into an existing ``feature/`` directory lists as ``feature/x``, and
+    Git lists a decomposed ``zürich`` precomposed. A loose ref whose name folds onto a
+    packed one shadows it on every read, so names in *held* that collide count too.
     """
 
-    folded = {name for name, oid in written.items() if held.get(name) != oid}
-    return tuple(sorted(folded.union(case_colliding_refs(held))))
+    touched = {_spelled(name) for name in written} | {_spelled(name) for name in pruned}
+    broken = {
+        name
+        for name, oid in before.items()
+        if _spelled(name) not in touched and held.get(name) != oid
+    }
+    held_by_fold: dict[str, set[str]] = {}
+    for name, oid in held.items():
+        held_by_fold.setdefault(_folded(name), set()).add(oid)
+    broken |= {
+        name for name, oid in written.items() if oid not in held_by_fold.get(_folded(name), set())
+    }
+    return tuple(sorted(broken.union(case_colliding_refs(held))))
 
 
 def describe_case_collision(colliding: tuple[str, ...]) -> str:
@@ -418,6 +448,10 @@ async def resolve_pin(
     else:
         candidates = (BRANCH_MIRROR_PREFIX + ref, TAG_PREFIX + ref)
     is_hex = _COMMIT_ID.fullmatch(ref.lower()) is not None
+    # A name that is not a commit, such as a tag of a tree, is decided only after every
+    # other reading -- a tag of the same name, a commit ID -- had its turn.
+    not_a_commit = SelectionNotACommitError("that name is in the mirror but does not name a commit")
+    names_a_non_commit = False
     if all(is_valid_ref_name(candidate) for candidate in candidates):
         exact = await _exact_refs(target, list(candidates))
         for candidate in candidates:
@@ -425,15 +459,20 @@ async def resolve_pin(
             if found is None:
                 continue
             commit = await _peeled_commit(target, found)
-            if commit is None:
-                raise SelectionNotACommitError(
-                    "that name is in the mirror but does not name a commit"
-                )
-            return ResolvedPin(commit_oid=commit, ref=candidate)
+            if commit is not None:
+                return ResolvedPin(commit_oid=commit, ref=candidate)
+            names_a_non_commit = True
     elif not is_hex:
         raise InvalidSelectionError("the ref is not a valid Git ref name")
     if is_hex:
-        return ResolvedPin(commit_oid=await _pin_commit_id(target, ref), ref=None)
+        try:
+            return ResolvedPin(commit_oid=await _pin_commit_id(target, ref), ref=None)
+        except SelectionNotFoundError:
+            if names_a_non_commit:
+                raise not_a_commit from None
+            raise
+    if names_a_non_commit:
+        raise not_a_commit
     raise SelectionNotFoundError("no branch or tag with that name is in the mirror")
 
 
@@ -460,6 +499,8 @@ async def resolve_ref_and_path(
     exact = await _exact_refs(
         target, [prefix + candidate.name for _via, prefix in namespaces for candidate in candidates]
     )
+    # A name that is not a commit is decided only after every other reading had its turn.
+    names_a_non_commit = False
     for via, prefix in namespaces:
         for candidate in candidates:
             ref = exact.get(prefix + candidate.name)
@@ -467,7 +508,8 @@ async def resolve_ref_and_path(
                 continue
             commit = await _peeled_commit(target, ref)
             if commit is None:
-                return UnresolvedSelection("not_a_commit")
+                names_a_non_commit = True
+                continue
             return ResolvedSelection(
                 via=via,
                 name=candidate.name,
@@ -488,7 +530,7 @@ async def resolve_ref_and_path(
                 )
             if resolved.reason != "commit_not_found":
                 return resolved
-    return UnresolvedSelection("ref_not_found")
+    return UnresolvedSelection("not_a_commit" if names_a_non_commit else "ref_not_found")
 
 
 async def resolve_selection(

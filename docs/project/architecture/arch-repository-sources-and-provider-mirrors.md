@@ -277,13 +277,17 @@ a ref that names the other’s commit, and a refresh reports the same outcome.
 A refresh cannot rely on Git failing: when the origin gains `SAME` beside an unchanged
 `same`, the atomic fetch writes `SAME` into `same`’s file and succeeds.
 So on such a filesystem a refresh lists the store’s refs before it fetches, and
-afterwards checks that the store holds every ref the fetch reported writing, under that
-exact name and at that object (`cache/resolve.py`: `folded_refs`). If it does not, every
-ref is put back as it was, objects being kept, and the outcome is `ref_case_collision`
-with neither the recorded fetch time nor the default branch’s commit moved.
-Every fetch runs in the isolated Git environment of `git/process.py`, the only Git
-subprocess boundary: no inherited `GIT_*` variable, no system or global configuration,
-terminal prompting disabled, and hooks off.
+afterwards checks what a fold breaks (`cache/resolve.py`: `folded_refs`): a ref the
+fetch neither wrote nor pruned must still name its old object, and every ref it wrote
+must be held at that object under a name the filesystem folds to the same one.
+Names are compared as the filesystem does, because it respells without moving anything:
+`Feature/x` written into an existing `feature/` directory lists as `feature/x`, and Git
+lists a decomposed name precomposed.
+If it does not, every ref is put back as it was, objects being kept, and the outcome is
+`ref_case_collision` with neither the recorded fetch time nor the default branch’s
+commit moved. Every fetch runs in the isolated Git environment of `git/process.py`, the
+only Git subprocess boundary: no inherited `GIT_*` variable, no system or global
+configuration, terminal prompting disabled, and hooks off.
 Git runs in its own process group, so a timeout, Ctrl-C, a terminal hangup, or `SIGTERM`
 kills the helpers it forks as well, including a cancellation that arrives while Git is
 still starting. Being outside the terminal’s foreground group, a serving refresh’s Git
@@ -632,7 +636,10 @@ Still open, with owners:
   defers until after the alpha;
 - lock, rename, and case semantics beyond macOS: CI runs only on Linux, so Phase 1A adds
   a runtime probe at application-home setup that refuses a home whose locks or
-  no-replace publication do not behave as frozen; and
+  no-replace publication do not behave as frozen;
+- an origin ref whose name is decomposed (NFD) on a macOS store: the first refresh
+  lands, but Git’s `remote prune` precomposes the name while `fetch --prune` does not,
+  so later refreshes meet a ref-lock clash and report `ref_case_collision`; and
 - whether distribution Git builds that backport the security fixes under an older
   version string are admitted (Phase 1B-a).
 

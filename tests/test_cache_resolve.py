@@ -16,7 +16,7 @@ from metabrowser.cache.acquire import (
     acquire_source,
     fetched_ref_names,
 )
-from metabrowser.cache.origin import fetched_refs
+from metabrowser.cache.origin import fetched_refs, pruned_ref_names
 from metabrowser.cache.resolve import (
     MAX_REF_CANDIDATES,
     RefCandidate,
@@ -268,41 +268,55 @@ def test_fetch_porcelain_names_every_written_ref() -> None:
     )
 
 
-def test_a_written_ref_the_store_lists_under_another_case_is_folded() -> None:
-    """Simulated ``fetch --porcelain`` and ``for-each-ref`` for the fold a refresh undoes.
+def test_a_fold_is_what_breaks_a_ref_not_a_spelling_the_filesystem_changed() -> None:
+    """Simulated ``fetch --porcelain`` and ``for-each-ref`` for folds and non-folds.
 
-    The origin gained ``SAME`` beside an unchanged ``same``. On a case-insensitive
-    filesystem Git wrote ``SAME`` into ``same``'s loose file and reported success; the
-    store lists only ``same``, now at ``SAME``'s commit.
+    A true fold: the origin gained ``SAME`` beside an unchanged ``same``; Git wrote
+    ``SAME`` into ``same``'s loose file, so the store lists only ``same``, now at
+    ``SAME``'s commit. Not folds: ``Feature/x`` written into an existing ``feature/``
+    directory lists as ``feature/x``, and a decomposed ``zürich`` lists precomposed.
     """
 
     zero = "0" * 40
+    same = "refs/remotes/origin/same"
+    topic = "refs/remotes/origin/topic"
     porcelain = (
         f"* {zero} {SECOND_COMMIT} refs/remotes/origin/SAME\n"
-        f"  {FIRST_COMMIT} {SECOND_COMMIT} refs/remotes/origin/topic\n"
+        f"  {FIRST_COMMIT} {SECOND_COMMIT} {topic}\n"
         f"- {FIRST_COMMIT} {zero} refs/remotes/origin/gone\n"
     ).encode()
     written = fetched_refs(porcelain)
-    assert written == {
-        "refs/remotes/origin/SAME": SECOND_COMMIT,
-        "refs/remotes/origin/topic": SECOND_COMMIT,
-    }
-    folded_into_twin = {
-        "refs/remotes/origin/same": SECOND_COMMIT,
-        "refs/remotes/origin/topic": SECOND_COMMIT,
-    }
-    assert folded_refs(written, folded_into_twin) == ("refs/remotes/origin/SAME",)
-    # A loose SAME beside a packed same: both listed, and every read of one finds the other.
-    shadowed = {**folded_into_twin, "refs/remotes/origin/SAME": SECOND_COMMIT}
-    shadowed["refs/remotes/origin/same"] = FIRST_COMMIT
-    assert folded_refs(written, shadowed) == (
-        "refs/remotes/origin/SAME",
-        "refs/remotes/origin/same",
+    pruned = pruned_ref_names(porcelain)
+    assert written == {"refs/remotes/origin/SAME": SECOND_COMMIT, topic: SECOND_COMMIT}
+    assert pruned == ("refs/remotes/origin/gone",)
+    before = {same: FIRST_COMMIT, topic: FIRST_COMMIT, "refs/remotes/origin/gone": FIRST_COMMIT}
+
+    folded_into_twin = {same: SECOND_COMMIT, topic: SECOND_COMMIT}
+    assert folded_refs(before=before, written=written, pruned=pruned, held=folded_into_twin) == (
+        same,
     )
-    # Written as reported, under exactly those names: nothing folded.
-    held = {"refs/remotes/origin/SAME2": SECOND_COMMIT, "refs/remotes/origin/topic": SECOND_COMMIT}
-    assert folded_refs({"refs/remotes/origin/SAME2": SECOND_COMMIT}, held) == ()
-    assert folded_refs({}, held) == ()
+    # A loose SAME beside a packed same: both listed, and every read of one finds the other.
+    shadowed = {same: FIRST_COMMIT, "refs/remotes/origin/SAME": SECOND_COMMIT, topic: SECOND_COMMIT}
+    assert folded_refs(before=before, written=written, pruned=pruned, held=shadowed) == (
+        "refs/remotes/origin/SAME",
+        same,
+    )
+
+    # Feature/x lands in the existing feature/ directory and lists as feature/x.
+    lower = "refs/remotes/origin/feature/y"
+    before = {lower: FIRST_COMMIT}
+    written = {"refs/remotes/origin/Feature/x": SECOND_COMMIT}
+    held = {lower: FIRST_COMMIT, "refs/remotes/origin/feature/x": SECOND_COMMIT}
+    assert folded_refs(before=before, written=written, pruned=(), held=held) == ()
+
+    # Porcelain names a decomposed zürich; Git lists it precomposed.
+    decomposed = "refs/remotes/origin/zu\u0308rich"
+    precomposed = "refs/remotes/origin/z\u00fcrich"
+    before = {precomposed: FIRST_COMMIT}
+    written = {decomposed: SECOND_COMMIT}
+    held = {precomposed: SECOND_COMMIT}
+    assert folded_refs(before=before, written=written, pruned=(), held=held) == ()
+    assert folded_refs(before={}, written=written, pruned=(), held=held) == ()
 
 
 def test_a_ref_matches_only_by_its_exact_name(mirror: PublishedSource) -> None:
