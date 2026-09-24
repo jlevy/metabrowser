@@ -175,10 +175,10 @@ $ node tests/dom/github-pull-page-session.js
       "timer": "slow",
       "paints": 0,
       "markdown": [
-        "body: <p>The app counts to one.</p>\n<p>This teaches it <strong>two</strong>.</p>",
-        "issue_comment/3341937855: <p>Thanks. CI is green; one question inline.</p>",
-        "review/3279967139: <p>Looks right.</p>",
-        "review_comment/2383608906: <p>Why does this line change?</p>"
+        "body: <div><div><p>The app counts to one.</p>\n<p>This teaches it <strong>two</strong>.</p></div></div>",
+        "issue_comment/3341937855: <div><div><p>Thanks. CI is green; one question inline.</p></div></div>",
+        "review/3279967139: <div><div><p>Looks right.</p></div></div>",
+        "review_comment/2383608906: <div><div><p>Why does this line change?</p></div></div>"
       ]
     },
     {
@@ -187,7 +187,7 @@ $ node tests/dom/github-pull-page-session.js
       "timer": "slow",
       "paints": 0,
       "markdown": [
-        "body: <p>The app counts to one.</p>\n<p>This teaches it <strong>two</strong>.</p>"
+        "body: <div><div><p>The app counts to one.</p>\n<p>This teaches it <strong>two</strong>.</p></div></div>"
       ]
     },
     {
@@ -553,7 +553,7 @@ $ node tests/dom/github-pull-page-session.js
       "timer": "slow",
       "paints": 0,
       "markdown": [
-        "issue_comment/3341937856: <p>Rebased on <code>topic</code>; see <a href=\"https://github.com/octo/demo/pull/docs/new.md\" target=\"_blank\" rel=\"noopener noreferrer\">the docs</a>.</p>\n\n<a class=\"github-pull-image\" href=\"https://example.com/badge.png\" target=\"_blank\" rel=\"noopener noreferrer\">build badge</a> <span class=\"github-pull-image\">image</span>\n<a href=\"https://example.com/x\" target=\"_blank\" rel=\"noopener noreferrer\">x</a>\n<svg></svg>\n<input>"
+        "issue_comment/3341937856: <div><div><p>Rebased on <code>topic</code>; see <a href=\"https://github.com/octo/demo/pull/docs/new.md\" target=\"_blank\" rel=\"noopener noreferrer\">the docs</a>.</p>\n\n<a href=\"https://example.com/badge.png\" target=\"_blank\" rel=\"noopener noreferrer\">build badge</a> <span>image</span>\n<a href=\"https://example.com/x\" target=\"_blank\" rel=\"noopener noreferrer\">x</a>\n\n<div>video</div><span>copy</span><div>fake dialog</div><p>styled</p>\n</div></div>"
       ]
     },
     {
@@ -652,13 +652,7 @@ $ node tests/dom/github-pull-page-session.js
     }
   ],
   "wire": "g1-c3Jj/g1-YXBwLnR4dA",
-  "pageDefense": [
-    "<p>Rebased on <code>topic</code>; see <a href=\"https://github.com/octo/demo/pull/docs/new.md\" target=\"_blank\" rel=\"noopener noreferrer\">the docs</a>.</p>",
-    "<a class=\"github-pull-image\" href=\"https://example.com/badge.png\" target=\"_blank\" rel=\"noopener noreferrer\">build badge</a> <span class=\"github-pull-image\">image</span>",
-    "<a href=\"https://example.com/x\" target=\"_blank\" rel=\"noopener noreferrer\">x</a>",
-    "<svg></svg>",
-    "<input>"
-  ],
+  "pageDefense": "<p>Rebased on <code>topic</code>; see <a href=\"https://github.com/octo/demo/pull/docs/new.md\" target=\"_blank\" rel=\"noopener noreferrer\">the docs</a>.</p>\n\n<a href=\"https://example.com/badge.png\" target=\"_blank\" rel=\"noopener noreferrer\">build badge</a> <span>image</span>\n<a href=\"https://example.com/x\" target=\"_blank\" rel=\"noopener noreferrer\">x</a>\n\n<div>video</div><span>copy</span><div>fake dialog</div><p>styled</p>\n",
   "filesChanged": [
     "nothing open yet: mount",
     "open on the record's comparison: keep",

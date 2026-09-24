@@ -156,18 +156,30 @@
 .github-pull-merge[data-state="conflicting"] {
   color: var(--status-error);
 }
-/* KPress renders each text as a document; inside a card it is one comment, so the
-   document's own page padding and first and last paragraph margins go. */
-.github-pull-markdown .kpress-doc {
-  max-width: none;
-  padding: 0;
-}
-.github-pull-markdown .kpress-prose {
-  padding: 0;
-}
-.github-pull-markdown .kpress-prose > :first-child {
+/* A text's Markdown is plain allowlisted markup with no KPress styling of its own. */
+.github-pull-markdown > :first-child {
   margin-top: 0;
 }
-.github-pull-markdown .kpress-prose > :last-child {
+.github-pull-markdown > :last-child {
   margin-bottom: 0;
+}
+.github-pull-markdown pre {
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-chrome);
+  overflow-x: auto;
+}
+.github-pull-markdown blockquote {
+  margin: 0 0 0 4px;
+  padding-left: 12px;
+  border-left: 3px solid var(--border);
+  color: var(--muted);
+}
+.github-pull-markdown table {
+  border-collapse: collapse;
+}
+.github-pull-markdown th,
+.github-pull-markdown td {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
 }

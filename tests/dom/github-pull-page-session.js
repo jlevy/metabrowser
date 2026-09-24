@@ -76,114 +76,76 @@ function summarize(model) {
   };
 }
 
-// ── A small element tree for neutralizeFragment ───────────────────
+// ── The template the page parses a text into ──────────────────────
 //
-// The page parses a text's HTML into an inert template and makes it inert with
-// neutralizeFragment before inserting it. The session plays the template with this tree,
-// built from KPress's own serialized output, which is well formed: quoted attributes,
-// explicit end tags, and no void end tags.
+// The page parses a text's HTML into an inert template and inserts only nodes that
+// sanitizeNodes rebuilds from the allowlist. The session plays the template with plain
+// objects built from the recording's tree, which Python's HTML parser made from what
+// KPress alone renders; the real browser's parse is checked in the QA runbook's
+// walkthrough with a network watch.
 
-const VOID = new Set(["br", "hr", "img", "input", "link", "meta", "source", "wbr"]);
+const ALLOWED_ATTRIBUTES = {
+  a: ["href", "target", "rel"],
+  ol: ["start"],
+  td: ["colspan", "rowspan", "align"],
+  th: ["colspan", "rowspan", "align"],
+  details: ["open"],
+};
 
-class FakeElement {
-  constructor(tagName) {
-    this.tagName = tagName.toUpperCase();
-    this.attributes = new Map();
-    this.children = [];
-    this.parent = null;
-  }
-  getAttribute(name) {
-    return this.attributes.has(name) ? this.attributes.get(name) : null;
-  }
-  getAttributeNames() {
-    return [...this.attributes.keys()];
-  }
-  setAttribute(name, value) {
-    this.attributes.set(name, String(value));
-  }
-  removeAttribute(name) {
-    this.attributes.delete(name);
-  }
-  set textContent(value) {
-    this.children = [String(value)];
-  }
-  append(child) {
-    if (typeof child !== "string") {
-      child.parent = this;
-    }
-    this.children.push(child);
-  }
-  remove() {
-    this.replaceWith();
-  }
-  replaceWith(...nodes) {
-    const siblings = this.parent?.children;
-    if (siblings) {
-      const at = siblings.indexOf(this);
-      for (const node of nodes) {
-        node.parent = this.parent;
-      }
-      siblings.splice(at, 1, ...nodes);
-    }
-    this.parent = null;
-  }
-  querySelectorAll(selector) {
-    assert(selector === "*", `the fake tree answers only "*", not ${selector}`);
-    const found = [];
-    const walk = (node) => {
-      for (const child of node.children) {
-        if (typeof child !== "string") {
-          found.push(child);
-          walk(child);
-        }
-      }
-    };
-    walk(this);
-    return found;
-  }
+function templateNodes(tree) {
+  return tree.map((node) =>
+    typeof node === "string"
+      ? { nodeType: 3, nodeValue: node }
+      : {
+          nodeType: 1,
+          tagName: node.tag.toUpperCase(),
+          getAttribute: (name) => node.attrs.find(([key]) => key === name)?.[1] ?? null,
+          childNodes: templateNodes(node.children),
+        },
+  );
 }
 
-function parseFragment(html) {
-  const root = new FakeElement("#fragment");
-  let open = root;
-  const token =
-    /<!--[\s\S]*?-->|<\/([\w:-]+)\s*>|<([\w:-]+)((?:\s+[^\s=>/]+(?:="[^"]*")?)*)\s*\/?>|[^<]+/g;
-  for (const match of html.matchAll(token)) {
-    const [whole, closing, opening, attributes] = match;
-    if (whole.startsWith("<!--")) {
-      continue;
-    }
-    if (closing) {
-      open = open.parent ?? root;
-    } else if (opening) {
-      const element = new FakeElement(opening);
-      for (const [, name, value] of (attributes ?? "").matchAll(/([^\s=]+)(?:="([^"]*)")?/g)) {
-        element.setAttribute(name, (value ?? "").replaceAll("&amp;", "&"));
-      }
-      open.append(element);
-      if (!VOID.has(opening.toLowerCase())) {
-        open = element;
-      }
-    } else {
-      open.append(whole);
-    }
-  }
-  return root;
+// What sanitizeNodes builds: new elements and text, then serialized as a browser would.
+const pageDocument = {
+  createTextNode: (value) => ({ text: String(value) }),
+  createElement: (tag) => ({
+    tag,
+    attributes: [],
+    children: [],
+    setAttribute(name, value) {
+      this.attributes.push([name, String(value)]);
+    },
+    append(...nodes) {
+      this.children.push(...nodes);
+    },
+  }),
+};
+
+function escapeText(value) {
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
-function serialize(node) {
-  return node.children
-    .map((child) => {
-      if (typeof child === "string") {
-        return child;
+function serialize(nodes) {
+  return nodes
+    .map((node) => {
+      if ("text" in node) {
+        return escapeText(node.text);
       }
-      const tag = child.tagName.toLowerCase();
-      const attributes = [...child.attributes]
-        .map(([name, value]) => ` ${name}="${value}"`)
+      for (const [name] of node.attributes) {
+        assert(
+          (ALLOWED_ATTRIBUTES[node.tag] ?? []).includes(name),
+          `the page kept ${node.tag}[${name}]`,
+        );
+      }
+      const attributes = node.attributes
+        .map(([name, value]) =>
+          name === "open" ? " open" : ` ${name}="${escapeText(value).replaceAll('"', "&quot;")}"`,
+        )
         .join("");
-      return VOID.has(tag)
-        ? `<${tag}${attributes}>`
-        : `<${tag}${attributes}>${serialize(child)}</${tag}>`;
+      const inner = serialize(node.children);
+      return node.tag === "br" || node.tag === "hr"
+        ? `<${node.tag}${attributes}>`
+        : `<${node.tag}${attributes}>${inner}</${node.tag}>`;
     })
     .join("");
 }
@@ -459,13 +421,10 @@ async function main() {
   ].map((href) => ({ href, followed: runtime.safeLink(href, base) }));
 
   // The page's own defense, played on what KPress alone made of the hostile comment: the
-  // template the page parses it into, made inert before anything is inserted.
-  const kept = parseFragment(recorded["kpress added"].body.html);
-  runtime.neutralizeFragment(kept, { createElement: (tag) => new FakeElement(tag) }, base);
-  const inert = serialize(kept);
-  for (const forbidden of ["<link", "<img", "<use", "<form", ' id="', ' name="', "javascript:"]) {
-    assert(!inert.includes(forbidden), `the page kept ${forbidden}`);
-  }
+  // nodes rebuilt from the template the page parses it into.
+  const inert = serialize(
+    runtime.sanitizeNodes(templateNodes(recorded["kpress added"].body.tree), pageDocument, base),
+  );
 
   // Files changed keeps the diff it opened: a record whose comparison moved offers it.
   // The diff opened before the switch compared the base with the pin served then.
@@ -486,7 +445,7 @@ async function main() {
         otherNumber: { status: other.status, message: other.message },
         links,
         wire: runtime.gitPathWire("src/app.txt"),
-        pageDefense: inert.split("\n").filter((line) => line.trim() !== ""),
+        pageDefense: inert,
         filesChanged: files,
       },
       null,

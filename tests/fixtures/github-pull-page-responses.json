@@ -248,7 +248,7 @@
       "number": 7,
       "fetched_at": "2026-09-17T12:00:00Z",
       "part": "body",
-      "html": "<p>The app counts to one.</p>\n<p>This teaches it <strong>two</strong>.</p>"
+      "html": "\n<div><div><p>The app counts to one.</p>\n<p>This teaches it <strong>two</strong>.</p></div></div>"
     }
   },
   "markdown issue_comment": {
@@ -258,7 +258,7 @@
       "number": 7,
       "fetched_at": "2026-09-17T12:00:00Z",
       "part": "issue_comment/3341937855",
-      "html": "<p>Thanks. CI is green; one question inline.</p>"
+      "html": "\n<div><div><p>Thanks. CI is green; one question inline.</p></div></div>"
     }
   },
   "markdown review": {
@@ -268,7 +268,7 @@
       "number": 7,
       "fetched_at": "2026-09-17T12:00:00Z",
       "part": "review/3279967139",
-      "html": "<p>Looks right.</p>"
+      "html": "\n<div><div><p>Looks right.</p></div></div>"
     }
   },
   "markdown review_comment": {
@@ -278,7 +278,7 @@
       "number": 7,
       "fetched_at": "2026-09-17T12:00:00Z",
       "part": "review_comment/2383608906",
-      "html": "<p>Why does this line change?</p>"
+      "html": "\n<div><div><p>Why does this line change?</p></div></div>"
     }
   },
   "markdown missing": {
@@ -1425,7 +1425,7 @@
         "reader": "gh:octo-reader",
         "etags": {
           "repos/octo/demo/pulls/7": "W/\"865983808811b03c59b073a9a553cdda8094f3bc07611317ea924210341c8089\"",
-          "repos/octo/demo/issues/7/comments?per_page=100&page=1": "W/\"3d98d6ae6d4cd1e11a2b74ffe75e5ab05ad5114f3ca717fe1a5b90efb136340b\"",
+          "repos/octo/demo/issues/7/comments?per_page=100&page=1": "W/\"375507b4bc250b766f66e58ece0a79eed10ecaf2007a199c3dd883bf409bd973\"",
           "repos/octo/demo/pulls/7/reviews?per_page=100&page=1": "W/\"553dbffc68c21141af1083cb13e8be39e4138e90d4011da721d679e7853c5e9d\"",
           "repos/octo/demo/pulls/7/comments?per_page=100&page=1": "W/\"b4ca741eae91bcff3445421bd4f16ee7b2ae05d25fa979346f04a378ee3bd6cc\"",
           "repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1": "W/\"8b11f63f1595a605256b810ecbc6ad42f31ec79413e5748815f151c4ed6821e8\"",
@@ -1473,7 +1473,7 @@
           {
             "id": 3341937856,
             "author": "forker",
-            "body": "Rebased on `topic`; see [the docs](docs/new.md).\n\n<link rel=\"stylesheet\" href=\"http://127.0.0.1:9/evil.css\"><style>body{display:none}</style>\n<img src=\"https://example.com/badge.png\" alt=\"build badge\"> <img src=\"javascript:alert(1)\">\n<a id=\"metabrowser\" name=\"settings\" href=\"https://example.com/x\">x</a>\n<svg><use href=\"#kpress-icon-copy\"></use></svg>\n<form action=\"https://example.com/steal\"><input name=\"q\"></form>\n",
+            "body": "Rebased on `topic`; see [the docs](docs/new.md).\n\n<link rel=\"stylesheet\" href=\"http://127.0.0.1:9/evil.css\"><style>p{color:red}</style>\n<img src=\"https://example.com/badge.png\" alt=\"build badge\"> <img src=\"javascript:alert(1)\">\n<a id=\"metabrowser\" name=\"settings\" href=\"https://example.com/x\" ping=\"https://e.x/p\" attributionsrc=\"https://e.x/a\">x</a>\n<svg width=\"10\" height=\"10\"><rect width=\"10\" height=\"10\" fill=\"url(http://e.x/f#p)\" stroke=\"url(http://e.x/s#p)\" marker-start=\"url(http://e.x/m#p)\" filter=\"url(http://e.x/fi#p)\" mask=\"url(http://e.x/ma#p)\" clip-path=\"url(http://e.x/c#p)\"/><use href=\"#kpress-icon-copy\"></use><a href=\"#x\"><set attributeName=\"href\" to=\"javascript:alert(1)\"/><animate attributeName=\"href\" values=\"javascript:alert(1)\"/>s</a></svg>\n<div data-kpress-video-id=\"dQw4w9WgXcQ\">video</div><span data-mb-copy=\"evil\" data-nav-dir=\"up\">copy</span><div class=\"modal-overlay\">fake dialog</div><p style=\"cursor:url(http://e.x/c.png),auto\">styled</p>\n<form action=\"https://e.x/steal\"><input name=\"q\" src=\"https://e.x/i.png\"></form><iframe src=\"https://e.x/f\"></iframe><video src=\"https://e.x/v.mp4\"></video><script>alert(1)</script>\n",
             "body_truncated": false,
             "created_at": "2026-09-17T12:03:00Z",
             "updated_at": "2026-09-17T12:03:00Z"
@@ -1595,14 +1595,252 @@
       "number": 7,
       "fetched_at": "2026-09-17T12:06:00Z",
       "part": "issue_comment/3341937856",
-      "html": "<p>Rebased on <code>topic</code>; see <a href=\"https://github.com/octo/demo/pull/docs/new.md\" target=\"_blank\" rel=\"noopener noreferrer\">the docs</a>.</p>\n\n<a class=\"github-pull-image\" href=\"https://example.com/badge.png\" target=\"_blank\" rel=\"noopener noreferrer\">build badge</a> <span class=\"github-pull-image\">image</span>\n<a href=\"https://example.com/x\" target=\"_blank\" rel=\"noopener noreferrer\">x</a>\n<svg></svg>\n<input>"
+      "html": "\n<div><div><p>Rebased on <code>topic</code>; see <a href=\"https://github.com/octo/demo/pull/docs/new.md\" target=\"_blank\" rel=\"noopener noreferrer\">the docs</a>.</p>\n\n<a href=\"https://example.com/badge.png\" target=\"_blank\" rel=\"noopener noreferrer\">build badge</a> <span>image</span>\n<a href=\"https://example.com/x\" target=\"_blank\" rel=\"noopener noreferrer\">x</a>\n\n<div>video</div><span>copy</span><div>fake dialog</div><p>styled</p>\n</div></div>"
     }
   },
   "kpress added": {
     "status": 200,
     "etag": null,
     "body": {
-      "html": "<p>Rebased on <code>topic</code>; see <a href=\"docs/new.md\">the docs</a>.</p>\n<link rel=\"stylesheet\" href=\"http://127.0.0.1:9/evil.css\">\n<img src=\"https://example.com/badge.png\" alt=\"build badge\" class=\"kpress-image\" data-kpress-image=\"true\" loading=\"lazy\"> <img class=\"kpress-image\" data-kpress-image=\"true\" loading=\"lazy\">\n<a id=\"metabrowser\" href=\"https://example.com/x\" target=\"_blank\" rel=\"noopener noreferrer\">x</a>\n<svg><use href=\"#kpress-icon-copy\"></use></svg>\n<input>"
+      "tree": [
+        {
+          "tag": "p",
+          "attrs": [],
+          "children": [
+            "Rebased on ",
+            {
+              "tag": "code",
+              "attrs": [],
+              "children": [
+                "topic"
+              ]
+            },
+            "; see ",
+            {
+              "tag": "a",
+              "attrs": [
+                [
+                  "href",
+                  "docs/new.md"
+                ]
+              ],
+              "children": [
+                "the docs"
+              ]
+            },
+            "."
+          ]
+        },
+        "\n",
+        {
+          "tag": "link",
+          "attrs": [
+            [
+              "rel",
+              "stylesheet"
+            ],
+            [
+              "href",
+              "http://127.0.0.1:9/evil.css"
+            ]
+          ],
+          "children": []
+        },
+        "\n",
+        {
+          "tag": "img",
+          "attrs": [
+            [
+              "src",
+              "https://example.com/badge.png"
+            ],
+            [
+              "alt",
+              "build badge"
+            ],
+            [
+              "class",
+              "kpress-image"
+            ],
+            [
+              "data-kpress-image",
+              "true"
+            ],
+            [
+              "loading",
+              "lazy"
+            ]
+          ],
+          "children": []
+        },
+        " ",
+        {
+          "tag": "img",
+          "attrs": [
+            [
+              "class",
+              "kpress-image"
+            ],
+            [
+              "data-kpress-image",
+              "true"
+            ],
+            [
+              "loading",
+              "lazy"
+            ]
+          ],
+          "children": []
+        },
+        "\n",
+        {
+          "tag": "a",
+          "attrs": [
+            [
+              "id",
+              "metabrowser"
+            ],
+            [
+              "href",
+              "https://example.com/x"
+            ],
+            [
+              "target",
+              "_blank"
+            ],
+            [
+              "rel",
+              "noopener noreferrer"
+            ]
+          ],
+          "children": [
+            "x"
+          ]
+        },
+        "\n",
+        {
+          "tag": "svg",
+          "attrs": [
+            [
+              "width",
+              "10"
+            ],
+            [
+              "height",
+              "10"
+            ]
+          ],
+          "children": [
+            {
+              "tag": "rect",
+              "attrs": [
+                [
+                  "width",
+                  "10"
+                ],
+                [
+                  "height",
+                  "10"
+                ],
+                [
+                  "fill",
+                  "url(http://e.x/f#p)"
+                ],
+                [
+                  "stroke",
+                  "url(http://e.x/s#p)"
+                ],
+                [
+                  "marker-start",
+                  "url(http://e.x/m#p)"
+                ]
+              ],
+              "children": []
+            },
+            {
+              "tag": "use",
+              "attrs": [
+                [
+                  "href",
+                  "#kpress-icon-copy"
+                ]
+              ],
+              "children": []
+            },
+            {
+              "tag": "a",
+              "attrs": [
+                [
+                  "href",
+                  "#x"
+                ]
+              ],
+              "children": [
+                "s"
+              ]
+            }
+          ]
+        },
+        "\n",
+        {
+          "tag": "div",
+          "attrs": [
+            [
+              "data-kpress-video-id",
+              "dQw4w9WgXcQ"
+            ]
+          ],
+          "children": [
+            "video"
+          ]
+        },
+        {
+          "tag": "span",
+          "attrs": [
+            [
+              "data-mb-copy",
+              "evil"
+            ],
+            [
+              "data-nav-dir",
+              "up"
+            ]
+          ],
+          "children": [
+            "copy"
+          ]
+        },
+        {
+          "tag": "div",
+          "attrs": [
+            [
+              "class",
+              "modal-overlay"
+            ]
+          ],
+          "children": [
+            "fake dialog"
+          ]
+        },
+        {
+          "tag": "p",
+          "attrs": [],
+          "children": [
+            "styled"
+          ]
+        },
+        "\n",
+        {
+          "tag": "input",
+          "attrs": [
+            [
+              "src",
+              "https://e.x/i.png"
+            ]
+          ],
+          "children": []
+        }
+      ]
     }
   }
 }

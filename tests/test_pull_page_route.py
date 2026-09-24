@@ -70,16 +70,17 @@ def test_the_page_parses_no_html_but_sanitized_markdown() -> None:
     """Every text of the pull request is painted with textContent.
 
     The one ``innerHTML`` write is KPress's Markdown into an inert template, made inert by
-    ``neutralizeFragment`` before insertion; every outside link opens with no opener or
-    referrer.
+    ``sanitizeNodes``, which rebuilds only allowlisted nodes; every outside link opens with
+    no opener or referrer, and no KPress script or stylesheet is loaded for it.
     """
 
     source = PAGE_JS.read_text(encoding="utf-8")
     assert source.count("innerHTML") == 1
     assert "template.innerHTML = String(rendered.html);" in source
-    assert "neutralizeFragment(template.content, document," in source
+    assert "...sanitizeNodes(template.content.childNodes, document," in source
+    assert "loadKpressAssets" not in source
     assert "insertAdjacentHTML" not in source and "outerHTML" not in source
     assert source.count('rel: "noopener noreferrer"') == 1
-    assert source.count('setAttribute("rel", "noopener noreferrer");') == 2
+    assert source.count('["rel", "noopener noreferrer"]') == 1
     # GitHub's own rendering of the text is never read.
     assert ".body_html" not in source and '["body_html"]' not in source

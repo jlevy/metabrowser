@@ -385,8 +385,9 @@ plugin registers for the `pull-request` kind, which the shell mounts at `/pull/<
 `/pull/<n>/files`; a served pull-request URL opens there.
 It reads the pull route only, polling it with an entity tag while visible, and renders
 each text as Markdown through `GET /api/plugin/github/pull-markdown?part=<part>`, which
-renders one text of the cached record through KPress’s sanitized mode and then makes it
-inert: nothing in it loads, restyles the page, or names an element.
+renders one text of the cached record through KPress’s sanitized mode and then reduces
+it to an allowlist of plain markup, on the server and again in the page, so nothing in
+it loads, restyles the page, reaches the application’s handlers, or names an element.
 Files changed is the diff plugin’s view over the record’s comparison, passed as two
 endpoints with `base_policy=merge_base`.
 

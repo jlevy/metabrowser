@@ -3,12 +3,13 @@
 ``GET /api/plugin/github/pull-markdown?part=<part>`` renders one text of the record
 through the KPress adapter, the renderer every Markdown file goes through, in its
 sanitized trust mode: raw HTML in the text is cleaned, never trusted, and GitHub's own
-``body_html`` is never read. KPress keeps what a document of its own may load --
-stylesheets, images, IDs -- so :func:`~.pull_html.harden` then makes the HTML inert
-inside the page. A part is ``body``, the description, or
-``issue_comment/<id>``, ``review/<id>``, or ``review_comment/<id>``. The answer is the
-render envelope ``/api/kpress/render`` answers, with the record's ``fetched_at`` and the
-``part``, so a page drops a render of a record it no longer shows.
+``body_html`` is never read. KPress keeps what a document of its own may use, so
+:func:`~.pull_html.harden` then reduces the HTML to a small allowlist of plain markup. A
+part is ``body``, the description, or ``issue_comment/<id>``, ``review/<id>``, or
+``review_comment/<id>``. The answer is that HTML with the record's ``fetched_at`` and the
+``part``, so a page drops a render of a record it no longer shows. None of KPress's
+render envelope reaches the page: its asset list names scripts KPress adds for what a
+text contains, and a comment must not choose what the page loads.
 
 It reads the record the pull route reads and never runs gh or Git. One part is one
 render of at most one body, which the record bounds, so a page with many comments asks
@@ -76,8 +77,8 @@ def render_part(view: ServedPullView | None, part: str) -> tuple[int, dict[str, 
     except (kpress_adapter.KPressInvalidRequestError, kpress_adapter.KPressRenderError) as exc:
         return 422, {"error": f"the text could not be rendered: {exc}", "code": "render_failed"}
     # KPress's sanitized mode keeps what a document may load; in the page it must not.
-    rendered["html"] = harden(str(rendered["html"]), record.pull.html_url)
-    return 200, {"number": number, "fetched_at": record.fetched_at, "part": part, **rendered}
+    html = harden(str(rendered["html"]), record.pull.html_url)
+    return 200, {"number": number, "fetched_at": record.fetched_at, "part": part, "html": html}
 
 
 __all__ = ["PART_PATTERN", "part_text", "render_part"]

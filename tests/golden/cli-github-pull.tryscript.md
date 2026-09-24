@@ -1088,7 +1088,6 @@ status: 200
   "number": 7,
   "fetched_at": "2026-09-17T12:00:00Z",
   "part": "body",
-  "type": "kpress-rendered-document",
 ? 0
 ```
 

@@ -61,6 +61,8 @@ from tests.github_pull_fixture import (
     CANONICAL,
     DEFAULT_BRANCH,
     FETCHED_AT,
+    HOSTILE_COMMENT,
+    allowlist_violations,
     build_origin,
     install_fake_gh,
     ok,
@@ -79,17 +81,6 @@ _REFRESH = "/api/plugin/github/pull-refresh"
 _MARKDOWN = "/api/plugin/github/pull-markdown"
 _PIN = "/api/source/pin"
 _PROSE = re.compile(r'<div class="kpress-prose[^"]*">(.*)</div></div></article>', re.S)
-# A comment with markup KPress's sanitized mode keeps -- a stylesheet, images, an `id`
-# and `name`, an SVG `<use>`, a form -- and one it removes, a `<style>`.
-HOSTILE_COMMENT = (
-    "Rebased on `topic`; see [the docs](docs/new.md).\n\n"
-    '<link rel="stylesheet" href="http://127.0.0.1:9/evil.css"><style>body{display:none}</style>\n'
-    '<img src="https://example.com/badge.png" alt="build badge"> <img src="javascript:alert(1)">\n'
-    '<a id="metabrowser" name="settings" href="https://example.com/x">x</a>\n'
-    '<svg><use href="#kpress-icon-copy"></use></svg>\n'
-    '<form action="https://example.com/steal"><input name="q"></form>\n'
-)
-
 pytestmark = [
     pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required"),
     pytest.mark.skipif(os.name != "posix", reason="the fake gh is a POSIX script"),
@@ -146,15 +137,61 @@ def _kpress_render(text: str) -> str:
 
 
 def _markdown(response: Any) -> dict[str, Any]:
-    answer = _answer(response)
-    body = answer["body"]
-    answer["body"] = {
-        "number": body["number"],
-        "fetched_at": body["fetched_at"],
-        "part": body["part"],
-        "html": _prose(body["html"]),
+    return _answer(response)
+
+
+def _tree(html: str) -> list[Any]:
+    """*html* parsed as HTML into nested ``{"tag", "attrs", "children"}`` nodes and text.
+
+    The session builds the page's template from it, so the page's own defense runs on a
+    real parse of what KPress sends rather than on a parse the session does itself.
+    """
+
+    from html.parser import HTMLParser
+
+    void = {
+        "area",
+        "base",
+        "br",
+        "col",
+        "embed",
+        "hr",
+        "img",
+        "input",
+        "link",
+        "meta",
+        "param",
+        "source",
+        "track",
+        "wbr",
     }
-    return answer
+    root: dict[str, Any] = {"children": []}
+    stack = [root]
+
+    class _Build(HTMLParser):
+        def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+            node = {"tag": tag, "attrs": [[k, v or ""] for k, v in attrs], "children": []}
+            stack[-1]["children"].append(node)
+            if tag not in void:
+                stack.append(node)
+
+        def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+            node = {"tag": tag, "attrs": [[k, v or ""] for k, v in attrs], "children": []}
+            stack[-1]["children"].append(node)
+
+        def handle_endtag(self, tag: str) -> None:
+            for depth in range(len(stack) - 1, 0, -1):
+                if stack[depth].get("tag") == tag:
+                    del stack[depth:]
+                    break
+
+        def handle_data(self, data: str) -> None:
+            stack[-1]["children"].append(data)
+
+    builder = _Build(convert_charrefs=True)
+    builder.feed(html)
+    builder.close()
+    return root["children"]
 
 
 def _session_tags(recorded: dict[str, Any]) -> dict[str, Any]:
@@ -301,7 +338,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             recorded["kpress added"] = {
                 "status": 200,
                 "etag": None,
-                "body": {"html": _prose(_kpress_render(HOSTILE_COMMENT))},
+                "body": {"tree": _tree(_prose(_kpress_render(HOSTILE_COMMENT)))},
             }
     finally:
         serve_mirror(None)
@@ -341,20 +378,10 @@ def test_recording_is_what_a_served_pull_request_answers(
         unchanged["record"]["issue_comments"]
         == recorded["stale"]["body"]["record"]["issue_comments"]
     )
-    kept = recorded["kpress added"]["body"]["html"]
-    assert "<link" in kept and "<img" in kept and ' id="' in kept, "KPress alone keeps them"
-    hardened = recorded["markdown added"]["body"]["html"]
-    for forbidden in (
-        "<link",
-        "<img",
-        "<style",
-        "<use",
-        "<form",
-        ' id="',
-        ' name="',
-        "javascript:",
-    ):
-        assert forbidden not in hardened, forbidden
+    kept = json.dumps(recorded["kpress added"]["body"]["tree"])
+    for hazard in ('"link"', '"img"', '"svg"', '"data-kpress-video-id"', '"modal-overlay"'):
+        assert hazard in kept, f"KPress alone no longer keeps {hazard}"
+    assert allowlist_violations(recorded["markdown added"]["body"]["html"]) == []
     rendered = json.dumps(recorded, indent=2, ensure_ascii=False) + "\n"
     if os.environ.get("GOLDEN_UPDATE") == "1":
         FIXTURE.write_text(rendered, encoding="utf-8")
@@ -382,13 +409,10 @@ def test_the_session_runs_on_the_recording() -> None:
     unchanged = steps["a refresh that changed no text keeps the conversation"]
     assert unchanged["conversation"] == "reask"
     transcript = json.loads(result.stdout)
-    for inert in (
-        steps["the hook sends the comment inert"]["markdown"][0],
-        *transcript["pageDefense"],
-    ):
-        for forbidden in ("<link", "<img", "<use", "<form", ' id="', ' name="', "javascript:"):
-            assert forbidden not in inert
-    assert any("build badge</a>" in line for line in transcript["pageDefense"])
+    hook = steps["the hook sends the comment inert"]["markdown"][0].split(": ", 1)[1]
+    assert allowlist_violations(hook) == []
+    assert allowlist_violations(transcript["pageDefense"]) == []
+    assert "build badge</a>" in transcript["pageDefense"]
     assert transcript["filesChanged"][2] == "open on an older head: offer"
     assert steps["a render of the older record is dropped"]["markdown"] == []
     offer = steps["the record arrives"]["paint"]["headOffer"]

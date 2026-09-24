@@ -207,14 +207,19 @@ are one path segment, hence the name.
 only with `fetched_at`, and answers a matching `If-None-Match` with `304`, so the
 pull-request page polls it as cheaply as the status route.
 `github/pull-markdown?part=<part>` renders one text of the cached record through KPress
-in its sanitized mode and answers KPress’s render envelope with the record’s
+in its sanitized mode and answers only the resulting HTML, with the record’s
 `fetched_at` and the part: `body`, or `issue_comment/<id>`, `review/<id>`, or
 `review_comment/<id>`. It never fetches; a part the record lacks is `unknown_part`.
-KPress keeps what a document of its own may load, so the hook then makes the HTML inert
-(`builtin_plugins/github/pull_html.py`): stylesheets, styles, media, frames, forms, SVG
-`<use>`, and `id` and `name` attributes go, an image becomes a link to it, and a link is
-kept only for `http` and `https`, absolute against the pull request’s github.com page.
-The page applies the same rules again before inserting it.
+KPress keeps what a document of its own may use, so the hook reduces that HTML to an
+allowlist (`builtin_plugins/github/pull_html.py`): plain text markup (paragraphs,
+headings, emphasis, code, quotes, lists, tables, details, `div`, `span`) with no
+attributes but a link’s `href` (http or https, absolute against the pull request’s
+github.com page, in a new tab), `ol[start]`, a table cell’s `colspan`, `rowspan`, and
+`align`, and `details[open]`. Scripts, styles, SVG, MathML, media, frames, forms, and
+stylesheets go with their content; an image becomes a link to it; any other tag is
+unwrapped to its text.
+KPress’s asset list is not sent, so no script KPress adds for a text’s content loads.
+The page applies the same allowlist again, rebuilding the nodes it inserts.
 See
 [Pull-request records](arch-repository-sources-and-provider-mirrors.md#pull-request-records).
 
@@ -417,7 +422,7 @@ SSE transport whose emitted snapshot is already owned by its data routes.
 | `source.stale-pin-guard` | interaction | `static/source-pin-guard.js#guardFetch`, `static/source-pin-guard.js#guardedRequest` | `/api/file`, `/api/tree`, `/api/source/status` | `node tests/dom/source-freshness-session.js` | `cli-ui-source-freshness.tryscript.md` |
 | `git.history-stale-cursor` | interaction | `static/git-history-window.js#classifyPageFailure` | `/api/git/log` | `node tests/dom/source-freshness-session.js` | `cli-ui-source-freshness.tryscript.md` |
 | `github.pull-page` | interaction | `builtin_plugins/github/pull-page.js#describePull`, `builtin_plugins/github/pull-page.js#createPullController` | `/api/plugin/github/pull`, `/api/plugin/github/pull-refresh`, `/api/plugin/github/pull-markdown`, `/api/source/pin` | `node tests/dom/github-pull-page-session.js` | `cli-ui-github-pull-page.tryscript.md` |
-| `github.pull-page-inert-markup` | interaction | `builtin_plugins/github/pull-page.js#neutralizeFragment`, `builtin_plugins/github/pull-page.js#imageLink`, `builtin_plugins/github/pull-page.js#safeLink`, `builtin_plugins/github/pull-page.js#gitPathWire` | `/api/plugin/github/pull-markdown` | `node tests/dom/github-pull-page-session.js` | `cli-ui-github-pull-page.tryscript.md` |
+| `github.pull-page-inert-markup` | interaction | `builtin_plugins/github/pull-page.js#sanitizeNodes`, `builtin_plugins/github/pull-page.js#allowedAttributes`, `builtin_plugins/github/pull-page.js#imageLink`, `builtin_plugins/github/pull-page.js#safeLink`, `builtin_plugins/github/pull-page.js#gitPathWire` | `/api/plugin/github/pull-markdown` | `node tests/dom/github-pull-page-session.js` | `cli-ui-github-pull-page.tryscript.md` |
 | `github.pull-page-paint-decisions` | interaction | `builtin_plugins/github/pull-page.js#conversationAction`, `builtin_plugins/github/pull-page.js#conversationKey`, `builtin_plugins/github/pull-page.js#filesAction` | `/api/plugin/github/pull` | `node tests/dom/github-pull-page-session.js` | `cli-ui-github-pull-page.tryscript.md` |
 | `navigation.pull-page-history` | interaction | `static/navigation.js#pullHistoryAction` | `local-only` | `node tests/dom/navigation-route-behavior.js` | `cli-ui-navigation.tryscript.md` |
 | `assets.on-demand-load-recovery` | interaction | `static/asset-loader.js#ensureAsset`, `static/asset-loader.js#ensureScript` | `local-only` | `node tests/dom/asset-loader-behavior.js` | `cli-ui-navigation.tryscript.md` |
