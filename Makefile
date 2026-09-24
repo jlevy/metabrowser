@@ -89,9 +89,13 @@ lint-check:
 	$(UV_RUN) python -m devtools.check_parity
 	$(FLOWMARK) --auto --check .
 
+# The tryscript goldens run with a failing gh first on PATH (tests/no-real-gh/gh), so
+# none reaches a developer's signed-in gh; pytest has the same guard in tests/conftest.py.
+TRYSCRIPT := PATH="$(CURDIR)/tests/no-real-gh:$$PATH" npx --no-install tryscript
+
 test:
 	$(UV_RUN) pytest
-	npx --no-install tryscript run 'tests/golden/*.tryscript.md'
+	$(TRYSCRIPT) run 'tests/golden/*.tryscript.md'
 
 # Acquisition and store-read tests on a real Git the acquisition floor admits,
 # with nothing patched. They skip on a Git below the floor. The CI admitted-git
@@ -134,9 +138,9 @@ test-admitted-git:
 golden-update:
 	GOLDEN_UPDATE=1 $(UV_RUN) pytest tests/test_source_kind_session.py \
 		tests/test_source_freshness_session.py
-	npx --no-install tryscript run --update 'tests/golden/*.tryscript.md' || true
+	$(TRYSCRIPT) run --update 'tests/golden/*.tryscript.md' || true
 	$(UV_RUN) python devtools/golden_fixup.py
-	npx --no-install tryscript run 'tests/golden/*.tryscript.md'
+	$(TRYSCRIPT) run 'tests/golden/*.tryscript.md'
 	GOLDEN_UPDATE=1 $(UV_RUN) pytest tests/test_cli_golden.py tests/test_cli_cache_acquire_golden.py \
 		tests/test_cli_cache_recovery_golden.py tests/test_cli_git_pin_golden.py \
 		tests/test_cli_git_refresh_golden.py tests/test_cli_live_acquire_golden.py \
