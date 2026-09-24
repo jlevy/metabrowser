@@ -196,8 +196,10 @@ The pin is the served commit and can differ from the record’s head: a commit U
 the pull request pins that commit, and a refresh can find a newer head than the pin.
 A record is fetched only by a refresh.
 `POST github/pull-refresh` starts or joins that refresh in the refresh coordinator and
-answers `202` at once; it is a POST with a JSON object body for the same reason
-`/api/source/refresh` is, and plugin data routes are one path segment, hence the name.
+answers `202` at once, naming `github/pull` as its `status_route`, which a one-shot
+`--api` prints after the refresh ends, exiting 1 when it failed; it is a POST with a
+JSON object body for the same reason `/api/source/refresh` is, and plugin data routes
+are one path segment, hence the name.
 See
 [Pull-request records](arch-repository-sources-and-provider-mirrors.md#pull-request-records).
 

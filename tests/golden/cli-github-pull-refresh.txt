@@ -12,7 +12,12 @@ status: 200
   "fetched_at": "2026-09-17T12:00:00Z",
   "fresh_for_s": 60.0,
   "refreshing": false,
-  "last_refresh": null,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
   "comparison_route": "/api/plugin/diff/comparison?left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base",
   "record": {
     "schema_version": 1,
@@ -237,7 +242,12 @@ status: 200
   "fetched_at": "2026-09-17T12:00:00Z",
   "fresh_for_s": 60.0,
   "refreshing": false,
-  "last_refresh": null,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
   "comparison_route": "/api/plugin/diff/comparison?left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base",
   "record": {
     "schema_version": 1,
@@ -494,7 +504,12 @@ status: 200
   "fetched_at": "2026-09-17T12:00:00Z",
   "fresh_for_s": 60.0,
   "refreshing": false,
-  "last_refresh": null,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
   "comparison_route": "/api/plugin/diff/comparison?left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=8ae27617c9c475851b67ee69433d008836d112ba&base_policy=merge_base",
   "record": {
     "schema_version": 1,
@@ -750,7 +765,12 @@ status: 200
   "fetched_at": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
-  "last_refresh": null,
+  "last_refresh": {
+    "outcome": "gh_missing",
+    "message": "GitHub CLI (gh) is not on PATH",
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
   "comparison_route": null,
   "record": null
 }
@@ -773,7 +793,12 @@ status: 200
   "fetched_at": "2026-09-17T12:00:00Z",
   "fresh_for_s": 60.0,
   "refreshing": false,
-  "last_refresh": null,
+  "last_refresh": {
+    "outcome": "head_mismatch",
+    "message": "its head kept moving while it was read; open it again",
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
   "comparison_route": "/api/plugin/diff/comparison?left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base",
   "record": {
     "schema_version": 1,

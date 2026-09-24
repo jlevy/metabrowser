@@ -1075,3 +1075,86 @@ def test_a_served_pull_request_pins_its_head_and_refreshes_beside_the_mirror(
         serve_mirror(None)
         reset_source_session()
         git_repo.clear_repo_cache()
+
+
+def test_a_commit_url_newer_than_the_record_refreshes_the_pull_request_to_serve_it(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only the pull request's refresh fetches refs/pull/7/head, which brings the commit."""
+
+    monkeypatch.setattr("metabrowser.cli.git_pin_cli.stop_on_interrupt", lambda: None)
+    earlier, head = stand.origin["fork_earlier"], stand.origin["fork_head"]
+    _move_pull_head(stand, earlier)
+    stand.answer(_answering_head(stand, earlier))
+    stand.refresh(7)
+    _move_pull_head(stand, head)
+    stand.answer(scenario(stand.origin))
+    stand.calls()
+    try:
+        result = _serve(f"{CANONICAL}/pull/7/commits/{head[:7]}")
+        assert result.exit_code == 0, result.output
+        assert f"Revision: {head}" in result.stdout
+        reads = [call for call in stand.calls() if call["args"][:1] == ["api"]]
+        assert reads, "the pull request was read again"
+        with TestClient(app) as client:
+            status = client.get("/api/source/status").json()
+            assert (status["pin"], status["selection_state"]) == (head, None)
+    finally:
+        serve_mirror(None)
+        reset_source_session()
+        git_repo.clear_repo_cache()
+
+
+def test_a_base_branch_folded_by_case_is_put_back(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The mirror update's check and restore wrap the pull request's fetch too."""
+
+    restored: list[dict[str, str]] = []
+
+    async def ignores_case(target: Any) -> bool:
+        return True
+
+    async def restore(target: Any, before: dict[str, str], lock_fd: int) -> None:
+        restored.append(before)
+
+    monkeypatch.setattr(pull_refs, "store_ignores_case", ignores_case)
+    monkeypatch.setattr(pull_refs, "folded_refs", lambda written, held: ("refs/remotes/origin/x",))
+    monkeypatch.setattr(pull_refs, "restore_mirror_refs", restore)
+    with pytest.raises(PullDataError) as folded:
+        stand.refresh(7)
+    assert folded.value.state == "fetch_failed" and "letter case" in str(folded.value)
+    assert restored and "refs/remotes/origin/topic" in restored[0]
+
+
+def test_gh_runs_in_a_group_the_stop_path_can_kill(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.builtin_plugins.github import gh as gh_module
+
+    tracked: list[int] = []
+    forgotten: list[int] = []
+    monkeypatch.setattr(gh_module, "track_process_group", lambda proc: tracked.append(proc.pid))
+    monkeypatch.setattr(gh_module, "forget_process_group", lambda proc: forgotten.append(proc.pid))
+    assert asyncio.run(gh_account()) == READER
+    assert tracked and tracked == forgotten
+
+
+def test_how_the_last_refresh_ended_is_kept_for_the_next_command(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stand.refresh(7)
+    kept = served_pull(stand.published, 7)
+    assert kept.last is not None and kept.last["outcome"] == "succeeded"
+    later = FETCHED_AT + timedelta(seconds=FRESHNESS_WINDOW_S * 2)
+    monkeypatch.setattr(pulls, "utc_now", lambda: later)
+    monkeypatch.setattr("metabrowser.builtin_plugins.github.gh.gh_executable", lambda: None)
+    with pytest.raises(PullDataError):
+        stand.refresh(7)
+    kept = served_pull(stand.published, 7)
+    assert kept.last is not None and kept.last["outcome"] == "gh_missing"
+    assert kept.fetched_at == "2026-09-17T12:00:00Z"
+    # Asked a moment ago, so the next command does not ask gh again within the window.
+    window = FRESHNESS_WINDOW_S
+    assert not kept.is_stale(later, window_s=window)
+    assert kept.is_stale(later + timedelta(seconds=window + 1), window_s=window)

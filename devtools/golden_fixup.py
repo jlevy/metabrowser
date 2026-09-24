@@ -14,6 +14,7 @@ restores them so `make golden-update` is a single reviewable step:
   heading visible so the transcript still proves the source override took effect
 * the pending-tally diagnostic's stderr line, which carries a wall clock
 * the time a one-shot refresh found another process refreshing, a wall clock
+* the time a pull request's refresh failed during the transcript, a wall clock
 * the watcher's mode, state, and reason, which are host facts and startup
   transients -- the filesystem the served root sits on, the backend that made
   available, and how far selection had got when the request landed -- and the
@@ -89,6 +90,12 @@ FIXUPS: list[tuple[str, str]] = [
     # are the fixture's and stay literal.
     (
         r'(^\s+"outcome": "refreshing_elsewhere",\n\s+"at": )"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ"',
+        r'\1"[..]"',
+    ),
+    # When a pull request's refresh failed in the transcript itself: this process's wall
+    # clock. A refresh the fixture ran keeps its fixed time.
+    (
+        r'(^\s+"reset_at": null,\n\s+"at": )"(?!2026-09-17T12:00:00Z)\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ"',
         r'\1"[..]"',
     ),
 ]

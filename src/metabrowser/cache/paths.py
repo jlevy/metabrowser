@@ -56,6 +56,12 @@ def source_pull_record(slug: str, number: int) -> str:
     return f"{source_pulls_directory(slug)}/{number}.json"
 
 
+def source_pull_refresh(slug: str, number: int) -> str:
+    """Return ``cache/sources/<slug>/pulls/<n>.refresh.json``: how its last refresh ended."""
+
+    return source_pull_record(slug, number).removesuffix(".json") + ".refresh.json"
+
+
 def store_directory(store_key: str) -> str:
     """Return ``cache/repository-stores/<store-key>``."""
 
@@ -91,6 +97,7 @@ __all__ = [
     "STAGING_LOCKS",
     "source_directory",
     "source_pull_record",
+    "source_pull_refresh",
     "source_pulls_directory",
     "source_record",
     "staging_entry",

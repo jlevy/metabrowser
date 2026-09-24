@@ -82,6 +82,9 @@ _INDEX_DEPENDENT: tuple[str, ...] = (
 _REFRESH_ROUTE = "/api/source/refresh"
 _STATUS_ROUTE = "/api/source/status"
 _REFRESH_ENDED_WELL = frozenset({"succeeded", "default_branch_unknown", "refreshing_elsewhere"})
+# Any other POST that answers 202 may name, as ``status_route``, the GET that reports
+# how the work it started ended, as a plugin's refresh does; it is followed the same way.
+_STATUS_ROUTE_FIELD = "status_route"
 # How long a one-shot command waits for that refresh: one Git deadline. A refresh that
 # prunes and fetches again can run longer; the command then says it did not finish, and
 # leaving stops it, as a server's shutdown does.
@@ -105,7 +108,7 @@ async def _issue(
     *,
     body: bytes,
     index_timeout_s: float,
-) -> tuple[ApiResponse, str, ApiResponse | None]:
+) -> tuple[ApiResponse, str, tuple[str, ApiResponse] | None]:
     """Return the response, the index state it was produced under, and any follow-up.
 
     The follow-up is the status after a refresh this request started has ended.
@@ -124,10 +127,28 @@ async def _issue(
         # The only background work a one-shot command has is a refresh its own request
         # asked for, and that is the work the command exists to do, so let it finish.
         await drain_refreshes(app, timeout_s=_REFRESH_DRAIN_S)
-        after: ApiResponse | None = None
-        if body and route.split("?", 1)[0] == _REFRESH_ROUTE and response.status_code == 202:
-            after = await client.get(_STATUS_ROUTE)
+        after: tuple[str, ApiResponse] | None = None
+        follow = _follow_route(route, response) if body else None
+        if follow is not None:
+            after = (follow, await client.get(follow))
         return response, index_detail, after
+
+
+def _follow_route(route: str, response: ApiResponse) -> str | None:
+    """The status route that reports how the work a 202 answer started ended, if any."""
+
+    if response.status_code != 202:
+        return None
+    if route.split("?", 1)[0] == _REFRESH_ROUTE:
+        return _STATUS_ROUTE
+    try:
+        declared = response.json()
+    except ValueError:
+        return None
+    named = declared.get(_STATUS_ROUTE_FIELD) if isinstance(declared, dict) else None
+    if isinstance(named, str) and named.startswith("/api/") and "?" not in named:
+        return named
+    return None
 
 
 def _request_body(data: Path | None) -> bytes:
@@ -171,6 +192,11 @@ def _refresh_outcome(after: ApiResponse) -> tuple[bool, str | None]:
     if isinstance(outcome, dict) and outcome.get("operation") == "refresh":
         value = outcome.get("outcome")
         return running, value if isinstance(value, str) else None
+    # A plugin's refresh reports its own last one as ``last_refresh``.
+    refresh = status.get("last_refresh")
+    if isinstance(refresh, dict):
+        value = refresh.get("outcome")
+        return running, value if isinstance(value, str) else None
     return running, None
 
 
@@ -181,7 +207,7 @@ def _emit_api_response(
     *,
     fmt: str,
     normalize_root: Path,
-    after: ApiResponse | None = None,
+    after: tuple[str, ApiResponse] | None = None,
 ) -> None:
     ctx = NormalizeContext(root=normalize_root)
     _echo_envelope("api", route, response, ctx, fmt)
@@ -198,8 +224,9 @@ def _emit_api_response(
     if not 200 <= response.status_code < 300:
         raise CLIError(f"{route} returned HTTP {response.status_code}")
     if after is not None:
-        _echo_envelope("after", _STATUS_ROUTE, after, ctx, fmt)
-        running, outcome = _refresh_outcome(after)
+        follow, followed = after
+        _echo_envelope("after", follow, followed, ctx, fmt)
+        running, outcome = _refresh_outcome(followed)
         if running:
             raise CLIError(
                 f"the refresh did not finish within {_REFRESH_DRAIN_S:g}s and was stopped"

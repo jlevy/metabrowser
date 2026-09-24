@@ -305,9 +305,11 @@ through it.
 Every such fetch holds the store’s fetch side lock, as a mirror refresh does,
 removes what a killed fetch left first, and hands the lock’s descriptor to Git; a pull
 request’s refresh that finds another refresh holding it tries again for up to a minute,
-then reports `refreshing_elsewhere`. An open pull request’s base branch is fetched in
-the same command into the `refs/remotes/origin/<base>` the mirror update writes, so its
-merge base is taken against the base branch as it is now.
+then reports `refreshing_elsewhere`. On a case-insensitive filesystem the base branch it
+writes gets the mirror update’s case-fold check, and a fold puts every branch and tag
+back. An open pull request’s base branch is fetched in the same command into the
+`refs/remotes/origin/<base>` the mirror update writes, so its merge base is taken
+against the base branch as it is now.
 A closed or merged pull request compares from the API’s `base.sha`, fetched by ID when
 no mirrored ref reaches it.
 The fetched head must be the head the API reported; one full re-read covers a push
@@ -343,15 +345,25 @@ newer head, which the pull-request page offers rather than switching to.
 A server serves the pull request beside the mirror: the CLI hands it a `ServedPull`
 (`builtin_plugins/github/served_pull.py`), a `CompanionRefresh` of the mirror session.
 Its refresh is a coordinator job keyed by store key and number, so requests join it, it
-counts against the limit of two, and shutdown cancels it; the source’s refresh starts it
-too, and its record’s age counts toward status `stale`, so serve mode’s refresh of a
-stale source at startup and the page’s refresh when a stale page becomes visible keep it
-fresh. A failed refresh is tried again after a window, not on every poll.
+counts against the limit of two, and shutdown cancels it.
+Its record’s age counts toward status `stale`, and the source’s refresh starts whichever
+of the two jobs is stale, so serve mode’s refresh of a stale source at startup and the
+page’s refresh when a stale page becomes visible keep it fresh without fetching a fresh
+mirror for it; a pin the mirror lacks fetches the mirror alone and never runs `gh`.
+Within one server the two jobs take turns before the store’s fetch lock, so neither
+finds the other holding it and reports a refresh running elsewhere.
+How each refresh ended is kept beside the record in `pulls/<n>.refresh.json`, so the
+route and a later command report it, and a failed one is tried again after a window, not
+on every poll or by the next command.
 `POST /api/plugin/github/pull-refresh` starts or joins the job and returns `202` at
-once.
+once, naming `/api/plugin/github/pull` as its `status_route`; a one-shot `--api` waits
+for the job, prints that route, and exits 1 when the refresh failed.
 After the job, the session reads the pinned ref’s tip again, so a newer head behind
 `refs/pull/<n>/head` is offered as `latest`, and `resolve_pin` accepts that ref.
-One-shot modes fetch only a pull request with no usable record, before serving.
+One-shot modes fetch only a pull request with no usable record, or one whose commit URL
+names a commit the mirror lacks, which only its `refs/pull/<n>/head` can bring, before
+serving. `gh` runs as the leader of its own process group, registered with Git’s, so a
+Ctrl-C or hangup that cannot unwind kills it too.
 
 ### Git path and blob semantics
 

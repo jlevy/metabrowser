@@ -183,6 +183,13 @@ GitHub URLs and HTTPS:
   `pending` while the first record is being read.
   A newer head is offered as the source’s `latest`, and `/api/source/pin` accepts
   `refs/pull/<n>/head` to take it.
+  Only the stale one of the mirror and the record is refreshed, a pin the mirror lacks
+  never runs `gh`, and how the last refresh ended is kept beside the record, so a later
+  command reports it and does not ask `gh` again within the minute.
+  A one-shot `--api /api/plugin/github/pull-refresh` waits for the refresh, prints the
+  record after it, and exits 1 when it failed.
+  A `/pull/<n>/commits/<id>` URL naming a commit newer than the cached record refreshes
+  the pull request to reach it.
   Each cause is named: `gh_missing`, `gh_too_old`, `not_logged_in`, `rate_limited` with
   the reset time when GitHub gives one, `not_found_or_private`, `network_error`,
   `account_changed`, `head_mismatch`, `gh_failed` for an answer that cannot be read,

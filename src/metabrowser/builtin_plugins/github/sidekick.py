@@ -33,6 +33,7 @@ if TYPE_CHECKING:
 _NO_STORE: Final = {"cache-control": "no-store"}
 # A refresh request carries no parameters; a JSON object of any size worth reading fits.
 MAX_REFRESH_REQUEST_BYTES: Final = 1024
+PULL_ROUTE: Final = "/api/plugin/github/pull"
 
 
 async def pull_handler(request: Request) -> JSONResponse:
@@ -45,6 +46,8 @@ async def pull_handler(request: Request) -> JSONResponse:
 
     view = served_pull_view(mirror_session(request.app), get_source_session().subject)
     envelope = await asyncio.to_thread(served_pull_envelope, view)
+    if view is not None:
+        view.served.saw_record(envelope["fetched_at"])
     return JSONResponse(dict(envelope), headers=_NO_STORE)
 
 
@@ -102,9 +105,11 @@ async def pull_refresh_handler(request: Request) -> JSONResponse:
     # Read after the start, on the loop: the job is running, whatever it does next.
     view = served_pull_view(mirror, get_source_session().subject)
     envelope = await asyncio.to_thread(served_pull_envelope, view)
-    return JSONResponse(
-        {"refresh": started, "pull": dict(envelope)}, status_code=202, headers=_NO_STORE
-    )
+    if view is not None:
+        view.served.saw_record(envelope["fetched_at"])
+    # ``status_route`` is where a one-shot ``--api`` reads how the refresh ended.
+    body = {"refresh": started, "pull": dict(envelope), "status_route": PULL_ROUTE}
+    return JSONResponse(body, status_code=202, headers=_NO_STORE)
 
 
-__all__ = ["MAX_REFRESH_REQUEST_BYTES", "pull_handler", "pull_refresh_handler"]
+__all__ = ["MAX_REFRESH_REQUEST_BYTES", "PULL_ROUTE", "pull_handler", "pull_refresh_handler"]
