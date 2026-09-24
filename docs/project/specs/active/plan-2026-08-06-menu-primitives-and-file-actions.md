@@ -207,10 +207,11 @@ implementation. A surface taller than the viewport gets a max-height and scrolls
 internally.
 
 Every surface portals to `document.body` and positions in viewport coordinates.
-That is a correctness requirement, not a style choice: `.preview-pane` carries
-`transform: translateZ(0)` (its KPress containment fix), and a transformed ancestor
-becomes the containing block for `position: fixed` descendants, so a menu mounted inside
-a pane would pin to the pane instead of the viewport.
+That is a correctness requirement, not a style choice: `.preview-frame`, the
+non-scrolling wrapper of the preview pane, carries `transform: translateZ(0)` (its
+KPress containment fix), and a transformed ancestor becomes the containing block for
+`position: fixed` descendants, so a menu mounted inside a pane would pin to the pane
+instead of the viewport.
 The body portal also means a tree re-render or preview replacement cannot detach an open
 surface.
 
