@@ -226,6 +226,8 @@ def test_shell_ships_the_placeholder_the_pane_starts_in(session: dict[str, Any])
     html = _render_index_html()
     pane = html[html.index('id="preview-pane"') :]
     pane = pane[pane.index(">") + 1 : pane.index("</main>")]
+    # The pane closes, and then the frame that wraps it.
+    pane = pane[: pane.rindex("</div>")]
     pane = pane[: pane.rindex("</div>")]
     shipped = re.sub(r"\s+", " ", pane).strip()
 

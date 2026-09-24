@@ -699,6 +699,13 @@ Fixes:
   “Showing 2.0 MB of 15.2 MB” and the next Load more read from 2.0 MB again, repeating
   text. `/api/file` on a pin now reports the cursor, as a served folder does.
 
+- In a pane too narrow for the Contents rail, the table-of-contents toggle now stays in
+  the pane’s top-left corner as the document scrolls, so the drawer opens from any
+  depth. It used to scroll away with the document, in a trusted folder and a mirror
+  alike, because the scrolling preview pane was also the box its fixed position pinned
+  to. The pane now scrolls inside a non-scrolling frame that holds the drawer, its
+  toggle, and its backdrop, as KPress’s embedding contract asks.
+
 ## 0.11.0
 
 Content trust:

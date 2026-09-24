@@ -1086,8 +1086,11 @@ uv --config-file uv.toml run --frozen metab "file://${QA_TOC}/origin.git" --no-o
 4. Click **install** and **again** in the first paragraph: each scrolls to its heading.
    Replace the address’s fragment with `#install` and reload: the page scrolls to
    **Install**, as github.com does.
-5. Narrow the window until the rail folds away and scroll down: the toggle appears; it
-   opens the drawer, and an entry or the backdrop closes it.
+5. Narrow the window until the rail folds away and scroll down to the end: the toggle
+   appears in the pane’s top-left corner and stays there at every depth.
+   From the end of the document it opens the drawer over the pane, not the file tree,
+   and an entry or the backdrop closes it.
+   Repeat in the trusted folder of step 6.
 6. Serve the working folder as a trusted folder (`metab "${QA_TOC}/work"`): **odd**
    opens `a\b.md` (the tree lists it as `a%5Cb.md`;
    `tests/test_markdown_backslash_links.py` runs this end to end).
@@ -1097,7 +1100,8 @@ uv --config-file uv.toml run --frozen metab "file://${QA_TOC}/origin.git" --no-o
 **Pass:** every step as described.
 
 **Fail:** a flat list of entries in the document, an `id` the document wrote, an entry
-or link that does not scroll, or a KPress script loaded for the mirror.
+or link that does not scroll, a toggle that scrolls away with the document, or a KPress
+script loaded for the mirror.
 
 ### 5.10 Switch branch or tag from the selector (no network)
 
