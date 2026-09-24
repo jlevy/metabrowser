@@ -124,6 +124,7 @@ const TRUNCATED = Object.freeze({
  *   number: number,
  *   tab: string,
  *   status: "absent" | "pending" | "current" | "stale" | "other_number" | "unavailable",
+ *   recordAt: string | null,
  *   message: string | null,
  *   refreshing: boolean,
  *   canRefresh: boolean,
@@ -387,6 +388,7 @@ export function describePull(envelope, page) {
     number: page.number,
     tab: page.tab,
     status: "unavailable",
+    recordAt: null,
     message: page.error ?? null,
     refreshing: false,
     canRefresh: false,
@@ -424,6 +426,7 @@ export function describePull(envelope, page) {
       envelope.state === "absent" && envelope.reason !== "no_pull_request" && !envelope.refreshing;
     return model;
   }
+  model.recordAt = typeof record.fetched_at === "string" ? record.fetched_at : null;
   model.message = page.error ?? null;
   model.canRefresh = envelope.state === "stale" && !envelope.refreshing;
   const age = relativeAge(record.fetched_at ?? null, page.nowMs);
@@ -576,8 +579,14 @@ export function createPullController(deps, options) {
     }
   }
 
-  async function poll() {
-    if (disposed || polling || !deps.isVisible()) {
+  /**
+   * Read the pull route. A hidden page does not poll; *first* is the page's own first
+   * read, which a page opened in the background needs as much as a visible one.
+   *
+   * @param {boolean} [first]
+   */
+  async function poll(first = false) {
+    if (disposed || polling || (!first && !deps.isVisible())) {
       return;
     }
     polling = true;
@@ -643,7 +652,6 @@ export function createPullController(deps, options) {
   function pump() {
     while (!disposed && inFlight < MARKDOWN_CONCURRENCY && queue.length > 0) {
       const part = /** @type {string} */ (queue.shift());
-      const forRecord = markdownFor;
       inFlight += 1;
       void deps
         .request("GET", `${MARKDOWN_ROUTE}?part=${encodeURIComponent(part)}`, {})
@@ -654,8 +662,7 @@ export function createPullController(deps, options) {
             response.status !== 200 ||
             body === null ||
             typeof body.html !== "string" ||
-            body.fetched_at !== forRecord ||
-            markdownFor !== forRecord
+            body.fetched_at !== markdownFor
           ) {
             // A render of a record the page no longer shows, or none at all: the
             // plain text stays, and a newer record is asked for again.
@@ -713,8 +720,11 @@ export function createPullController(deps, options) {
   }
 
   return Object.freeze({
-    start: () => poll(),
-    poll,
+    start: () => {
+      render();
+      return poll(true);
+    },
+    poll: () => poll(),
     requestRefresh,
     requestMarkdown,
     setTab,
@@ -841,6 +851,8 @@ export function mountPullPage(container, ctx, mb) {
   /** @type {PullModel | null} */
   let shown = null;
   let bodyKey = "";
+  /** The record the conversation last asked for Markdown from. @type {string | null} */
+  let markdownRecord = null;
   /** @type {Map<string, HTMLElement>} */
   const texts = new Map();
   /** @type {{left: string, right: string} | null} */
@@ -1238,7 +1250,21 @@ export function mountPullPage(container, ctx, mb) {
     if (key !== bodyKey) {
       bodyKey = key;
       paintConversation(model);
+    } else if (model.recordAt !== markdownRecord) {
+      // A refresh that changed none of the text: what is rendered stays, and what is
+      // still plain is asked for again from the new record.
+      for (const [part, element] of texts) {
+        if (element.querySelector(":scope > .github-pull-plain") === null) {
+          continue;
+        }
+        if (part === "body" || observer === null) {
+          controller.requestMarkdown(part);
+        } else {
+          observer.observe(element);
+        }
+      }
     }
+    markdownRecord = model.recordAt;
   }
 
   const controller = createPullController(

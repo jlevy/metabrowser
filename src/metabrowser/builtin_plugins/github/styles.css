@@ -156,3 +156,18 @@
 .github-pull-merge[data-state="conflicting"] {
   color: var(--status-error);
 }
+/* KPress renders each text as a document; inside a card it is one comment, so the
+   document's own page padding and first and last paragraph margins go. */
+.github-pull-markdown .kpress-doc {
+  max-width: none;
+  padding: 0;
+}
+.github-pull-markdown .kpress-prose {
+  padding: 0;
+}
+.github-pull-markdown .kpress-prose > :first-child {
+  margin-top: 0;
+}
+.github-pull-markdown .kpress-prose > :last-child {
+  margin-bottom: 0;
+}

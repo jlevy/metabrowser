@@ -281,6 +281,17 @@ async function main() {
   );
   steps.push(await page.step("dispose", async () => controller.dispose()));
 
+  // A page opened in a background tab, on its Files changed: it reads the record once so
+  // it has something to show, and polls only once it is visible.
+  const background = createPage(runtime, { number: 7, tab: "files" });
+  background.setVisible(false);
+  background.server.pull = recorded.current;
+  steps.push(
+    await background.step("a page opened in the background reads once", () =>
+      background.controller.start(),
+    ),
+  );
+
   // What a page for another number, and the links a rendered text keeps, would show.
   const other = runtime.describePull(recorded.current.body, {
     number: 8,
