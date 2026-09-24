@@ -224,11 +224,17 @@
      * @param {{number: number, tab: string}} route
      */
     function open(route) {
-      const href = pullHref(route.number, route.tab);
+      const number = Number(route.number);
+      let href;
+      try {
+        href = pullHref(number, route.tab);
+      } catch (error) {
+        return Promise.reject(error);
+      }
       if (deps.pathname() !== href) {
         deps.pushHref(href);
       }
-      return show(Object.freeze({ number: route.number, tab: route.tab }));
+      return show(Object.freeze({ number, tab: route.tab }));
     }
 
     /**

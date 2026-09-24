@@ -510,6 +510,9 @@ function isEnvelope(value) {
   return (
     typeof envelope.state === "string" &&
     typeof envelope.refreshing === "boolean" &&
+    (envelope.number === null ||
+      envelope.number === undefined ||
+      (Number.isInteger(envelope.number) && Number(envelope.number) > 0)) &&
     (envelope.record === null || typeof envelope.record === "object")
   );
 }
