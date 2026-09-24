@@ -14,12 +14,12 @@
 //
 // All text is the pull request's own and untrusted. Paint writes it with textContent;
 // only KPress's Markdown HTML is parsed, and only after it is reduced to an allowlist of
-// plain markup twice: by the hook on the server (pull_html.py), and by `sanitizeNodes`,
-// which rebuilds the inserted nodes from an inert template. No class, id, data, style,
-// or event attribute survives, nor any SVG, media, stylesheet, frame, or form; an image
-// becomes a link to it; a link is made absolute against the pull request's github.com
-// page, kept only for http(s), and opened in a new tab with rel="noopener noreferrer";
-// and no KPress script or stylesheet is loaded for a text.
+// plain markup twice: by the hook on the server (src/metabrowser/inert_html.py), and by
+// static/inert-html.js, which rebuilds the inserted nodes from an inert template. No
+// class, id, data, style, or event attribute survives, nor any SVG, media, stylesheet,
+// frame, or form; an image becomes a link to it; a link is made absolute against the
+// pull request's github.com page, kept only for http(s), and opened in a new tab with
+// rel="noopener noreferrer"; and no KPress script or stylesheet is loaded for a text.
 
 // The same intervals as the freshness row (static/source-freshness.js), measured there:
 // one second while a refresh runs makes its end visible promptly, and thirty seconds
@@ -864,180 +864,6 @@ export function safeLink(href, base) {
   }
 }
 
-// The markup a text's Markdown may insert, and nothing else; kept in step with
-// builtin_plugins/github/pull_html.py, which applies the same allowlist first on the
-// server. Every other tag is unwrapped to its text, and these are dropped with all
-// they contain.
-export const ALLOWED_TAGS = Object.freeze([
-  "a",
-  "b",
-  "blockquote",
-  "br",
-  "code",
-  "dd",
-  "del",
-  "details",
-  "div",
-  "dl",
-  "dt",
-  "em",
-  "h1",
-  "h2",
-  "h3",
-  "h4",
-  "h5",
-  "h6",
-  "hr",
-  "i",
-  "ins",
-  "kbd",
-  "li",
-  "ol",
-  "p",
-  "pre",
-  "s",
-  "span",
-  "strong",
-  "sub",
-  "summary",
-  "sup",
-  "table",
-  "tbody",
-  "td",
-  "tfoot",
-  "th",
-  "thead",
-  "tr",
-  "ul",
-]);
-export const DROPPED_WITH_CONTENT = Object.freeze([
-  "audio",
-  "base",
-  "canvas",
-  "embed",
-  "form",
-  "iframe",
-  "link",
-  "math",
-  "meta",
-  "noscript",
-  "object",
-  "option",
-  "picture",
-  "script",
-  "select",
-  "source",
-  "style",
-  "svg",
-  "template",
-  "textarea",
-  "title",
-  "track",
-  "video",
-]);
-
-/**
- * The attributes an allowed tag keeps, each value checked; every other attribute goes.
- * Pure.
- *
- * @param {string} tag
- * @param {(name: string) => string | null} read
- * @param {string} base The pull request's github.com page, for relative links.
- * @returns {Array<[string, string]>}
- */
-export function allowedAttributes(tag, read, base) {
-  /** @type {Array<[string, string]>} */
-  const kept = [];
-  if (tag === "a") {
-    const href = safeLink(read("href"), base);
-    if (href !== null) {
-      kept.push(["href", href], ["target", "_blank"], ["rel", "noopener noreferrer"]);
-    }
-  } else if (tag === "ol") {
-    const start = read("start") ?? "";
-    if (/^[0-9]{1,6}$/.test(start)) {
-      kept.push(["start", start]);
-    }
-  } else if (tag === "td" || tag === "th") {
-    for (const name of ["colspan", "rowspan"]) {
-      const value = read(name) ?? "";
-      if (/^[1-9][0-9]?$/.test(value)) {
-        kept.push([name, value]);
-      }
-    }
-    const align = (read("align") ?? "").toLowerCase();
-    if (align === "left" || align === "center" || align === "right") {
-      kept.push(["align", align]);
-    }
-  } else if (tag === "details" && read("open") !== null) {
-    kept.push(["open", ""]);
-  }
-  return kept;
-}
-
-/**
- * What an image in a text becomes: a link to it, never the image. Pure.
- *
- * @param {string | null} src
- * @param {string | null} alt
- * @param {string} base
- */
-export function imageLink(src, alt, base) {
-  return { href: safeLink(src, base), text: (alt ?? "").trim() || "image" };
-}
-
-/**
- * Rebuild parsed Markdown from the allowlist alone: new elements for allowed tags with
- * only their checked attributes, text as new text, images as links, other tags
- * unwrapped, and the dropped ones gone with their content. Nothing of the parsed nodes
- * is inserted; *nodes* are a template's, where nothing has loaded.
- *
- * @param {ArrayLike<Node>} nodes
- * @param {Pick<Document, "createElement" | "createTextNode">} doc
- * @param {string} base The pull request's github.com page, for relative links.
- * @returns {Node[]}
- */
-export function sanitizeNodes(nodes, doc, base) {
-  /** @type {Node[]} */
-  const out = [];
-  for (const node of Array.from(nodes)) {
-    if (node.nodeType === 3) {
-      out.push(doc.createTextNode(node.nodeValue ?? ""));
-      continue;
-    }
-    if (node.nodeType !== 1) {
-      continue;
-    }
-    const element = /** @type {Element} */ (node);
-    const tag = element.tagName.toLowerCase();
-    if (DROPPED_WITH_CONTENT.includes(tag)) {
-      continue;
-    }
-    if (tag === "img") {
-      const image = imageLink(element.getAttribute("src"), element.getAttribute("alt"), base);
-      const link = doc.createElement(image.href === null ? "span" : "a");
-      for (const [name, value] of allowedAttributes("a", () => image.href, base)) {
-        link.setAttribute(name, value);
-      }
-      link.append(doc.createTextNode(image.text));
-      out.push(link);
-      continue;
-    }
-    const children = sanitizeNodes(element.childNodes, doc, base);
-    if (!ALLOWED_TAGS.includes(tag)) {
-      out.push(...children);
-      continue;
-    }
-    const clean = doc.createElement(tag);
-    for (const [name, value] of allowedAttributes(tag, (n) => element.getAttribute(n), base)) {
-      clean.setAttribute(name, value);
-    }
-    clean.append(...children);
-    out.push(clean);
-  }
-  return out;
-}
-
 /**
  * What Files changed does with the record's comparison. Pure.
  *
@@ -1171,6 +997,13 @@ export function mountPullPage(container, ctx, mb) {
   let markdownRecord = null;
   /** @type {Map<string, HTMLElement>} */
   const texts = new Map();
+  // The allowlist a text's Markdown passes through before it is inserted; a text stays
+  // plain if it cannot load.
+  /** @type {Promise<MetabrowserInertHtmlRuntime | null>} */
+  const inertReady = mb
+    .ensureAsset("inert-html")
+    .then(() => window.MetabrowserInertHtml ?? null)
+    .catch(() => null);
   /** @type {{left: string, right: string} | null} */
   let diffFor = null;
   /** @type {{dispose?: () => void} | null} */
@@ -1233,22 +1066,22 @@ export function mountPullPage(container, ctx, mb) {
    * @param {Record<string, any>} rendered
    */
   function renderMarkdown(part, rendered) {
-    const element = texts.get(part);
-    const plain = element?.querySelector(":scope > .github-pull-plain");
-    if (!element || !plain) {
-      return;
-    }
-    const holder = h("div", { class: "github-pull-markdown" });
-    // KPress's Markdown HTML, reduced to the allowlist on the server; GitHub's own
-    // body_html is never used, and no KPress script or stylesheet is loaded for it. A
-    // template's content is inert -- nothing in it loads or runs -- and only nodes
-    // rebuilt from the same allowlist leave it.
-    const template = document.createElement("template");
-    template.innerHTML = String(rendered.html);
-    holder.replaceChildren(
-      ...sanitizeNodes(template.content.childNodes, document, shown?.pull?.htmlUrl ?? ""),
-    );
-    plain.replaceWith(holder);
+    void inertReady.then((inert) => {
+      const element = texts.get(part);
+      const plain = element?.querySelector(":scope > .github-pull-plain");
+      if (!element || !plain || inert === null) {
+        return;
+      }
+      const holder = h("div", { class: "github-pull-markdown" });
+      // KPress's Markdown HTML, reduced to the allowlist on the server; GitHub's own
+      // body_html is never used, and no KPress script or stylesheet is loaded for it.
+      // static/inert-html.js parses it into an inert template and inserts only nodes
+      // rebuilt from the same allowlist, links made absolute against the pull request.
+      holder.replaceChildren(
+        ...inert.sanitizeHtml(String(rendered.html), shown?.pull?.htmlUrl ?? "https://github.com/"),
+      );
+      plain.replaceWith(holder);
+    });
   }
 
   /** @param {string} path @param {number | null} line */

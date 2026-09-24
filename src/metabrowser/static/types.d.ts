@@ -2150,6 +2150,33 @@ declare global {
     | { kind: "retry"; text: string; button: string };
 
   /** What the freshness label says and offers; see static/source-freshness.js. */
+  /** static/inert-html.js: untrusted Markdown reduced to an allowlist. */
+  type MetabrowserInertHtmlRuntime = Readonly<{
+    ALLOWED_ATTRIBUTES: Readonly<Record<string, readonly string[]>>;
+    ALLOWED_TAGS: readonly string[];
+    DROPPED_WITH_CONTENT: readonly string[];
+    allowedAttributes(
+      tag: string,
+      read: (name: string) => string | null,
+      base: string | null,
+    ): Array<[string, string]>;
+    imageLink(
+      src: string | null,
+      alt: string | null,
+      base: string | null,
+    ): { href: string | null; text: string };
+    isInside(href: string | null): boolean;
+    keepsImage(src: string | null, base: string | null): boolean;
+    linkHref(href: string | null, base: string | null): { href: string; leaves: boolean } | null;
+    outsideLink(href: string | null, base: string | null): string | null;
+    sanitizeHtml(html: string, base: string | null): Node[];
+    sanitizeNodes(
+      nodes: ArrayLike<Node>,
+      doc: Pick<Document, "createElement" | "createTextNode">,
+      base: string | null,
+    ): Node[];
+  }>;
+
   type MetabrowserSourceFreshnessModel = {
     visible: boolean;
     tone: "quiet" | "stale" | "refreshing" | "warning";
@@ -2430,6 +2457,7 @@ declare global {
     MetabrowserTreeKeyboardNavigation: MetabrowserTreeKeyboardRuntime;
     MetabrowserSourceAppend: MetabrowserSourceAppendRuntime;
     MetabrowserSourceFreshness?: MetabrowserSourceFreshnessRuntime;
+    MetabrowserInertHtml?: MetabrowserInertHtmlRuntime;
     MetabrowserSourcePinGuard?: Readonly<{
       PIN_CHANGED_HEADER: string;
       PIN_HEADER: string;

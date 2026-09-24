@@ -1,3 +1,4 @@
+import { placeRendered } from "./inert-render.js";
 import { enhanceRenderedLinks } from "./link-enhancer.js";
 import { acquireMarkdownWorkerClient } from "./markdown-worker-client.js";
 import { initTocWithIntersectionFallback } from "./toc-intersection-fallback.js";
@@ -180,7 +181,9 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
         sourceText: wiki?.changed ? wiki.source : undefined,
       });
       if (!disposed && !controller.signal.aborted) {
-        container.innerHTML = rendered.html;
+        await placeRendered(container, rendered, mb);
+      }
+      if (!disposed && !controller.signal.aborted) {
         const diagnostics = [
           ...preparationDiagnostics,
           ...(wiki?.diagnostics || []),

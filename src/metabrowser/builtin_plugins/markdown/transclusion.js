@@ -1,3 +1,4 @@
+import { placeRendered } from "./inert-render.js";
 import { acquireMarkdownWorkerClient } from "./markdown-worker-client.js";
 import { initTocWithIntersectionFallback } from "./toc-intersection-fallback.js";
 
@@ -438,7 +439,10 @@ export function mountWikiTransclusion(container, sourceElement, resolved, mb, op
       if (!live()) {
         return;
       }
-      aside.innerHTML = rendered.html;
+      await placeRendered(aside, rendered, mb);
+      if (!live()) {
+        return;
+      }
       aside.setAttribute("aria-busy", "false");
       aside.setAttribute("data-metabrowser-transclusion-status", "ready");
       nestedHandle =

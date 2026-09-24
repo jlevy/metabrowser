@@ -26,6 +26,14 @@ const recorded = JSON.parse(
   fs.readFileSync(path.join(repoRoot, "tests/fixtures/github-pull-page-responses.json"), "utf8"),
 );
 const pagePath = path.join(repoRoot, "src/metabrowser/builtin_plugins/github/pull-page.js");
+// The allowlist the page passes a text's Markdown through, loaded whole as the shell
+// loads it on demand.
+const inertPath = path.join(repoRoot, "src/metabrowser/static/inert-html.js");
+const inertContext = { window: {}, URL };
+require("node:vm").runInNewContext(fs.readFileSync(inertPath, "utf8"), inertContext, {
+  filename: inertPath,
+});
+const inertHtml = inertContext.window.MetabrowserInertHtml;
 
 function assert(condition, message) {
   if (!condition) {
@@ -423,7 +431,7 @@ async function main() {
   // The page's own defense, played on what KPress alone made of the hostile comment: the
   // nodes rebuilt from the template the page parses it into.
   const inert = serialize(
-    runtime.sanitizeNodes(templateNodes(recorded["kpress added"].body.tree), pageDocument, base),
+    inertHtml.sanitizeNodes(templateNodes(recorded["kpress added"].body.tree), pageDocument, base),
   );
 
   // Files changed keeps the diff it opened: a record whose comparison moved offers it.

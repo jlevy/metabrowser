@@ -1660,6 +1660,8 @@ async def git_revision_kpress_render(
             },
             status_code=502,
         )
+    if not get_capabilities().active_content:
+        rendered = kpress_adapter.inert_render(rendered)
     return JSONResponse(rendered, headers={"cache-control": "no-cache"})
 
 

@@ -1227,6 +1227,7 @@ async def index(request: Request) -> HTMLResponse:
     file_type_taxonomy_url = _static_asset_url("file-type-taxonomy.js")
     plugin_sdk_url = _static_asset_url("plugin-sdk.js")
     view_composition_url = _static_asset_url("view-composition.js")
+    inert_html_url = _static_asset_url("inert-html.js")
     filter_state_url = _static_asset_url("filter-state.js")
     filter_controls_url = _static_asset_url("filter-controls.js")
     icons_url = _static_asset_url("icons.js")
@@ -1418,6 +1419,9 @@ async def index(request: Request) -> HTMLResponse:
         # first tree is usable. renderFile awaits this bundle and rechecks its
         # ownership claim before preparing or mounting a view.
         "view-composition": [{"src": view_composition_url}],
+        # Only untrusted Markdown needs the allowlist: a pull-request comment, or a
+        # document under the untrusted profile, which the server marks inert.
+        "inert-html": [{"src": inert_html_url}],
         # Only a served mirror has freshness to show, so a folder never fetches
         # this; a pin starts it after the first tree request settles, and the
         # label it paints is a quiet row the page does not wait for.
@@ -3066,6 +3070,9 @@ async def api_kpress_render(request: Request) -> Response:
             },
             status_code=502,
         )
+    if not get_capabilities().active_content:
+        # A document the reader does not trust renders inert (kpress_adapter.inert_render).
+        rendered = kpress_adapter.inert_render(rendered)
     return JSONResponse(rendered, headers={"cache-control": "no-cache"})
 
 
