@@ -13,6 +13,7 @@ restores them so `make golden-update` is a single reviewable step:
   and would make the transcript unreviewable; the POST case keeps its overridden
   heading visible so the transcript still proves the source override took effect
 * the pending-tally diagnostic's stderr line, which carries a wall clock
+* the time a one-shot refresh found another process refreshing, a wall clock
 * the watcher's mode, state, and reason, which are host facts and startup
   transients -- the filesystem the served root sits on, the backend that made
   available, and how far selection had got when the request landed -- and the
@@ -82,6 +83,13 @@ FIXUPS: list[tuple[str, str]] = [
     (
         r'(^    "contract": "inventory-provider-v1",\n    "version": )\d+',
         r"\1[..]",
+    ),
+    # When a one-shot refresh found another process refreshing the store: this
+    # process's own wall clock, which no fixture can pin. The fetch times beside it
+    # are the fixture's and stay literal.
+    (
+        r'(^\s+"outcome": "refreshing_elsewhere",\n\s+"at": )"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ"',
+        r'\1"[..]"',
     ),
 ]
 

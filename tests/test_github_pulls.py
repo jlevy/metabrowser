@@ -12,14 +12,19 @@ import asyncio
 import json
 import os
 import shutil
+import subprocess
+import threading
+import time
 from collections.abc import Iterator
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 from starlette.testclient import TestClient
+from typer.testing import CliRunner
 
 from metabrowser.builtin_plugins.github import pulls
 from metabrowser.builtin_plugins.github.gh import (
@@ -42,18 +47,33 @@ from metabrowser.builtin_plugins.github.pull_record import (
     serialize_pull_record,
     write_pull_record,
 )
-from metabrowser.builtin_plugins.github.pull_route import PULL_FRESH_S, pull_state
+from metabrowser.builtin_plugins.github.pull_route import pull_state
 from metabrowser.builtin_plugins.github.pulls import PullDataError, open_pull_request
+from metabrowser.builtin_plugins.github.served_pull import ServedPull, served_pull
+from metabrowser.cache import pull_refs
 from metabrowser.cache.acquire import PublishedSource, acquire_source
 from metabrowser.cache.layout import open_cache
+from metabrowser.cache.locks import LockBusyError, store_fetch_lock
 from metabrowser.cache.paths import source_pull_record
 from metabrowser.cache.pull_refs import ref_commit
 from metabrowser.cache.repository_store import open_revision
+from metabrowser.cache.resolve import resolve_pin
+from metabrowser.cache.served_mirror import StoreMirror
 from metabrowser.cache.urls import GitSource, RepositorySelection
+from metabrowser.cli.main import _app
 from metabrowser.git import repo as git_repo
+from metabrowser.git.process import repository_store_target
 from metabrowser.git.tree_source import GitRevisionSubject
+from metabrowser.mirror_refresh import (
+    FRESHNESS_WINDOW_S,
+    InvalidSelectionError,
+    mirror_session,
+    serve_mirror,
+)
 from metabrowser.server import app
 from metabrowser.source import attach_subject, reset_source_session
+from metabrowser.source_routes import GENERATION_HEADER
+from tests.git_pin_harness import git_env
 from tests.github_pull_fixture import (
     CANONICAL,
     FETCHED_AT,
@@ -458,7 +478,7 @@ def test_the_startup_sweep_leaves_records_alone(stand: _Stand) -> None:
 
 def test_route_states_follow_age_and_refresh(stand: _Stand) -> None:
     record = stand.refresh(7)
-    fresh = FETCHED_AT + timedelta(seconds=PULL_FRESH_S)
+    fresh = FETCHED_AT + timedelta(seconds=FRESHNESS_WINDOW_S)
     assert pull_state(record, now=fresh) == ("current", None)
     assert pull_state(record, now=fresh + timedelta(seconds=1)) == ("stale", None)
     assert pull_state("not_cached", now=fresh) == ("absent", "not_cached")
@@ -470,7 +490,7 @@ def test_route_states_follow_age_and_refresh(stand: _Stand) -> None:
 
 @pytest.fixture
 def pinned_pull(stand: _Stand) -> Iterator[tuple[_Stand, TestClient]]:
-    """Pull request 7 cached, its head pinned, and the source attached as the CLI does."""
+    """Pull request 7 cached, its head pinned, and served beside the mirror as the CLI does."""
 
     stand.refresh(7)
     selected = replace(SOURCE, selection=RepositorySelection(kind="pull_request", pull_request=7))
@@ -482,16 +502,23 @@ def pinned_pull(stand: _Stand) -> Iterator[tuple[_Stand, TestClient]]:
             store_key=published.store_key,
             commit_oid=stand.origin["fork_head"],
             store_identity=published.store_id,
+            ref="refs/pull/7/head",
         )
         await subject.aclose()
         return subject
 
-    attach_subject(asyncio.run(_pin()), published=published)
+    attach_subject(asyncio.run(_pin()))
+    serve_mirror(
+        StoreMirror.from_published(published),
+        pull_request=7,
+        companion=served_pull(published, 7),
+    )
     git_repo.clear_repo_cache()
     try:
         with TestClient(app) as client:
             yield stand, client
     finally:
+        serve_mirror(None)
         reset_source_session()
         git_repo.clear_repo_cache()
 
@@ -562,7 +589,7 @@ def test_the_pull_route_reports_a_missing_record(pinned_pull: tuple[_Stand, Test
         None,
     )
     stand.monkeypatch.setattr(
-        pulls, "utc_now", lambda: FETCHED_AT + timedelta(seconds=PULL_FRESH_S + 1)
+        pulls, "utc_now", lambda: FETCHED_AT + timedelta(seconds=FRESHNESS_WINDOW_S + 1)
     )
     stand.refresh(7)
     assert client.get("/api/plugin/github/pull").json()["state"] == "current"
@@ -800,3 +827,251 @@ def test_the_route_parses_a_record_again_only_when_it_changed(
     stand.refresh(7)
     pull_route.cached_pull_record(home, slug, 7)
     assert reads == [7, 7]
+
+
+# ── served beside the mirror: the fetch lock, the refresh route, and serve mode ──
+
+_JSON = {"content-type": "application/json"}
+_REFRESH_ROUTE = "/api/plugin/github/pull-refresh"
+
+
+def test_a_fetch_takes_the_mirror_fetch_lock_and_hands_it_to_git(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Leftovers are removed under the lock, Git inherits its descriptor, and a lock
+    another refresh keeps past the wait is ``refreshing_elsewhere``."""
+
+    home, store_key = stand.published.home, stand.published.store_key
+    claimed: list[int] = []
+    cleaned: list[bool] = []
+    handed: list[tuple[int, ...]] = []
+    claim, cleanup, git = (
+        pull_refs._claim_fetch_lock,  # pyright: ignore[reportPrivateUsage]
+        pull_refs.remove_interrupted_fetch_leftovers,
+        pull_refs.run_git,
+    )
+
+    def claiming(published: PublishedSource, owner: Any) -> Any:
+        lock = claim(published, owner)
+        claimed.append(lock.descriptor)
+        return lock
+
+    def cleaning(git_dir: Path) -> tuple[str, ...]:
+        with pytest.raises(LockBusyError):
+            store_fetch_lock(home, store_key)
+        cleaned.append(True)
+        return cleanup(git_dir)
+
+    async def recording(args: list[str], **kwargs: Any) -> bytes:
+        if "fetch" in args:
+            handed.append(tuple(kwargs.get("pass_fds", ())))
+        return await git(args, **kwargs)
+
+    monkeypatch.setattr(pull_refs, "_claim_fetch_lock", claiming)
+    monkeypatch.setattr(pull_refs, "remove_interrupted_fetch_leftovers", cleaning)
+    monkeypatch.setattr(pull_refs, "run_git", recording)
+    stand.refresh(7)
+    assert claimed and handed == [(descriptor,) for descriptor in claimed]
+    assert cleaned == [True] * len(claimed)
+    store_fetch_lock(home, store_key).release()  # released after the fetch
+
+    monkeypatch.setattr(pull_refs, "FETCH_LOCK_WAIT_S", 0.0)
+    (home / source_pull_record(stand.published.slug, 7)).unlink()
+    held = store_fetch_lock(home, store_key)
+    try:
+        with pytest.raises(PullDataError) as busy:
+            stand.refresh(7)
+    finally:
+        held.release()
+    assert busy.value.state == "refreshing_elsewhere"
+    assert stand.record(7) == "not_cached"
+
+
+def test_a_served_pull_request_is_stale_by_its_record_or_its_last_try(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    window = FRESHNESS_WINDOW_S
+    assert served_pull(stand.published, 7).is_stale(FETCHED_AT, window_s=window)
+    stand.refresh(7)
+    served = served_pull(stand.published, 7)
+    assert served.key == f"{stand.published.store_key}:pull/7"
+    assert not served.is_stale(FETCHED_AT + timedelta(seconds=window), window_s=window)
+    later = FETCHED_AT + timedelta(seconds=window + 1)
+    assert served.is_stale(later, window_s=window)
+
+    async def failing(published: PublishedSource, number: int) -> PullRecord:
+        raise PullDataError("gh_missing", f"pull request {number}: gh is not installed")
+
+    monkeypatch.setattr(pulls, "refresh_pull_request", failing)
+    monkeypatch.setattr(pulls, "utc_now", lambda: later)
+    asyncio.run(served.refresh())
+    assert served.last is not None and served.last["outcome"] == "gh_missing"
+    assert served.fetched_at == "2026-09-17T12:00:00Z"
+    # A failing refresh is tried once a window, not on every poll.
+    assert not served.is_stale(later, window_s=window)
+    assert served.is_stale(later + timedelta(seconds=window + 1), window_s=window)
+
+
+def test_a_pull_request_head_is_pinned_by_its_ref(stand: _Stand) -> None:
+    stand.refresh(7)
+    target = repository_store_target(git_dir=stand.published.git_dir)
+    resolved = asyncio.run(resolve_pin(target, ref="refs/pull/7/head"))
+    assert (resolved.commit_oid, resolved.ref) == (stand.origin["fork_head"], "refs/pull/7/head")
+    for ref in ("refs/pull/0/head", "refs/pull/7/merge", "refs/pull/x/head", "refs/heads/topic"):
+        with pytest.raises(InvalidSelectionError):
+            asyncio.run(resolve_pin(target, ref=ref))
+
+
+def _settle(client: TestClient) -> dict[str, Any]:
+    deadline = time.monotonic() + 60
+    while True:
+        status = client.get("/api/source/status").json()
+        if not status["refreshing"]:
+            return status
+        assert time.monotonic() < deadline, "the refresh did not finish"
+        time.sleep(0.02)
+
+
+def test_the_refresh_route_starts_or_joins_one_job(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _stand, client = pinned_pull
+    session = mirror_session(app)
+    served = None if session is None else session.companion
+    assert isinstance(served, ServedPull)
+    release = threading.Event()
+    runs: list[int] = []
+
+    async def held() -> None:
+        runs.append(7)
+        # The test thread sets it; a worker thread waits so the job stays running.
+        await asyncio.to_thread(release.wait, 30)
+
+    monkeypatch.setattr(served, "refresh", held)
+    first = client.post(_REFRESH_ROUTE, json={}, headers=_JSON)
+    assert (first.status_code, first.headers["cache-control"]) == (202, "no-store")
+    body = first.json()
+    assert (body["refresh"], body["pull"]["number"], body["pull"]["refreshing"]) == (
+        "started",
+        7,
+        True,
+    )
+    assert client.post(_REFRESH_ROUTE, json={}, headers=_JSON).json()["refresh"] == "joined"
+    assert client.get("/api/plugin/github/pull").json()["refreshing"] is True
+    assert client.get("/api/source/status").json()["refreshing"] is True
+    release.set()
+    _settle(client)
+    assert runs == [7]
+    assert client.get("/api/plugin/github/pull").json()["refreshing"] is False
+
+
+def test_the_refresh_route_refuses_what_is_not_a_refresh_request(
+    pinned_pull: tuple[_Stand, TestClient],
+) -> None:
+    _stand, client = pinned_pull
+    assert client.get(_REFRESH_ROUTE).status_code == 405
+    for content, status in ((b"[]", 400), (b"{", 400), (b'{"x": "' + b"y" * 2000 + b'"}', 413)):
+        refused = client.post(_REFRESH_ROUTE, content=content, headers=_JSON)
+        assert (refused.status_code, refused.json()["code"]) == (status, "invalid_request")
+    # The application's own guards: another origin, a body not declared as JSON, and a
+    # page for a pin the server no longer serves.
+    other = {**_JSON, "origin": "https://example.invalid"}
+    assert client.post(_REFRESH_ROUTE, json={}, headers=other).status_code == 403
+    plain = {"content-type": "text/plain"}
+    assert client.post(_REFRESH_ROUTE, content=b"{}", headers=plain).status_code == 415
+    outdated = client.post(_REFRESH_ROUTE, json={}, headers={**_JSON, GENERATION_HEADER: "999999"})
+    assert (outdated.status_code, outdated.json()["code"]) == (409, "pin_changed")
+
+
+def _move_pull_head(stand: _Stand, commit: str) -> None:
+    subprocess.run(
+        [
+            "git",
+            "--git-dir",
+            str(stand.tmp_path / "github-pull-origin.git"),
+            "update-ref",
+            "refs/pull/7/head",
+            commit,
+        ],
+        check=True,
+        capture_output=True,
+        env=git_env(stand.tmp_path),
+    )
+
+
+def _answering_head(stand: _Stand, head: str) -> dict[str, Any]:
+    """The scenario, with pull request 7's head at *head* and no checks on it yet."""
+
+    answers = scenario(stand.origin)
+    path = "repos/octo/demo/pulls/7"
+    body = answers["api"][path]["body"]
+    answers = _api(answers, path, ok(path, {**body, "head": {**body["head"], "sha": head}}))
+    for part, empty in (
+        ("check-runs", {"total_count": 0, "check_runs": []}),
+        ("status", {"state": "pending", "statuses": []}),
+    ):
+        listed = page(f"repos/octo/demo/commits/{head}/{part}")
+        answers = _api(answers, listed, ok(listed, empty))
+    return answers
+
+
+def _serve(url: str) -> Any:
+    with (
+        patch("metabrowser.cli.serve._QuietForceExitServer") as server_class,
+        patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
+    ):
+        result = CliRunner().invoke(_app, [url, "--no-open"])
+    if result.exit_code == 0:
+        assert server_class.call_args.args[0].app is app
+    return result
+
+
+def test_a_served_pull_request_pins_its_head_and_refreshes_beside_the_mirror(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Serve mode: the cold read pins the head, the pull route answers, a refresh runs in
+    the coordinator, and a newer head is offered as ``latest`` rather than switched to."""
+
+    monkeypatch.setattr("metabrowser.cli.git_pin_cli.stop_on_interrupt", lambda: None)
+    # The session's freshness window reads the wall clock, so records do too here.
+    monkeypatch.setattr(pulls, "utc_now", lambda: datetime.now(UTC).replace(microsecond=0))
+    earlier, head = stand.origin["fork_earlier"], stand.origin["fork_head"]
+    _move_pull_head(stand, earlier)
+    stand.answer(_answering_head(stand, earlier))
+    try:
+        result = _serve(f"{CANONICAL}/pull/7")
+        assert result.exit_code == 0, result.output
+        assert f"Revision: {earlier} (refs/pull/7/head)\n" in result.stdout
+        with TestClient(app) as client:
+            status = _settle(client)
+            assert (status["pin"], status["pull_request"], status["stale"]) == (earlier, 7, False)
+            envelope = client.get("/api/plugin/github/pull").json()
+            assert (envelope["state"], envelope["pin"]) == ("current", earlier)
+            assert envelope["record"]["pull"]["head"]["sha"] == earlier
+
+            _move_pull_head(stand, head)
+            stand.answer(scenario(stand.origin))
+            started = client.post(_REFRESH_ROUTE, json={}, headers=_JSON)
+            assert started.status_code == 202 and started.json()["pull"]["refreshing"] is True
+            status = _settle(client)
+            assert (status["pin"], status["latest"]) == (earlier, head)
+            envelope = client.get("/api/plugin/github/pull").json()
+            assert envelope["last_refresh"]["outcome"] == "succeeded"
+            assert (envelope["pin"], envelope["record"]["pull"]["head"]["sha"]) == (earlier, head)
+
+            # Taking the offer switches by the pull request's ref, as the page does.
+            taken = client.post("/api/source/pin", json={"ref": "refs/pull/7/head"}, headers=_JSON)
+            assert taken.status_code == 200, taken.text
+            assert taken.json()["status"]["pin"] == head
+
+            # The record's age alone makes the served source stale.
+            session = mirror_session(app)
+            served = None if session is None else session.companion
+            assert isinstance(served, ServedPull)
+            served.fetched_at = "2020-01-01T00:00:00Z"
+            served._last_attempt = None  # pyright: ignore[reportPrivateUsage]
+            assert client.get("/api/source/status").json()["stale"] is True
+    finally:
+        serve_mirror(None)
+        reset_source_session()
+        git_repo.clear_repo_cache()

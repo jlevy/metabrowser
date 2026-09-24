@@ -197,7 +197,7 @@ Error: [CWD]/missing is not a directory
 
 ```console
 $ metab https://example.com/owner/repo.git --walk 2>&1
-Error: https Git sources are not opened yet (https://example.com/owner/repo.git). Serve a local directory, or acquire a file:// or https:// source with --no-serve.
+Error: --walk runs the filesystem inventory walker, and a Git source has no filesystem to walk (https://example.com/owner/repo.git). Read a pinned tree with --api '/api/tree?depth=N', or --walk a local directory.
 ? 1
 ```
 

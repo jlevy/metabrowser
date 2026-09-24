@@ -11,7 +11,8 @@ env:
 before: >-
   uv --config-file "$TRYSCRIPT_TEST_DIR/../../uv.toml" run --frozen --no-sync
   --project "$TRYSCRIPT_TEST_DIR/../.." python "$TRYSCRIPT_TEST_DIR/../github_pull_fixture.py" .
-  > fixture.log 2>&1
+  > fixture.log 2>&1 &&
+  printf '{}\n' > refresh.json
 ---
 # Golden tests: pull-request data from the cache
 
@@ -57,6 +58,8 @@ status: 200
   "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
   "fetched_at": "2026-09-17T12:00:00Z",
   "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": null,
   "comparison_route": "/api/plugin/diff/comparison?left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base",
   "record": {
     "schema_version": 1,
@@ -494,6 +497,8 @@ status: 200
   "pin": "0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd",
   "fetched_at": "2026-09-17T12:00:00Z",
   "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": null,
   "comparison_route": "/api/plugin/diff/comparison?left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&base_policy=merge_base",
   "record": {
     "schema_version": 1,
@@ -623,6 +628,8 @@ status: 200
   "pin": "f7c5a9918657080d6aeb455902615b6e17df760a",
   "fetched_at": "2026-09-17T12:00:00Z",
   "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": null,
   "comparison_route": "/api/plugin/diff/comparison?left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base",
   "record": {
     "schema_version": 1,
@@ -803,6 +810,8 @@ status: 200
   "pin": null,
   "fetched_at": null,
   "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": null,
   "comparison_route": null,
   "record": null
 }
@@ -830,6 +839,8 @@ status: 200
   "pin": "c691256511d05858850bc7684ae062fea0d41132",
   "fetched_at": null,
   "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": null,
   "comparison_route": null,
   "record": null
 }
@@ -851,6 +862,8 @@ status: 200
   "pin": "c691256511d05858850bc7684ae062fea0d41132",
   "fetched_at": null,
   "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": null,
   "comparison_route": null,
   "record": null
 }
@@ -872,10 +885,98 @@ status: 200
   "pin": "c691256511d05858850bc7684ae062fea0d41132",
   "fetched_at": null,
   "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": null,
   "comparison_route": null,
   "record": null
 }
 ? 0
+```
+
+## Test: the source status names the served pull request
+
+The pin is `refs/pull/7/head`, so status reads its tip as `latest`. The source is
+`stale` when the mirror or the pull request’s record is older than the freshness window,
+as both are here. A one-shot command reports this and fetches nothing.
+
+```console
+$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/7 --api /api/source/status | grep -E '"(ref|latest|refreshing|stale|pull_request)"'
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+  "ref": "refs/pull/7/head",
+  "latest": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+  "refreshing": false,
+  "stale": true,
+  "pull_request": 7,
+? 0
+```
+
+## Test: a refresh of the served pull request returns at once
+
+`pull-refresh` starts the pull request’s refresh in the refresh coordinator and answers
+`202` without waiting for it, with the envelope as of that moment, so `refreshing` is
+true. The one-shot command then lets the refresh finish; here `gh` fails, which leaves
+the record as it was.
+
+```console
+$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/7 --api /api/plugin/github/pull-refresh --data refresh.json | grep -E '^(api|status|  "refresh"|    "(state|number|refreshing|last_refresh)")'
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+api: /api/plugin/github/pull-refresh
+status: 202
+  "refresh": "started",
+    "state": "stale",
+    "number": 7,
+    "refreshing": true,
+    "last_refresh": null,
+? 0
+```
+
+With no record cached the envelope is `pending` rather than `absent` while the refresh
+runs.
+
+```console
+$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/14 --api /api/plugin/github/pull-refresh --data refresh.json | grep -E '^(api|status|  "refresh"|    "(state|reason|number|refreshing)")'
+selection: pull_request
+pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
+pull_request: 14 (not opened: pull request 14 of https://github.com/octo/demo: gh exited 1 without an HTTP response (gh_failed); the pin is the default branch)
+api: /api/plugin/github/pull-refresh
+status: 202
+  "refresh": "started",
+    "state": "pending",
+    "reason": null,
+    "number": 14,
+    "refreshing": true,
+? 0
+```
+
+A URL that selects no pull request has nothing to refresh, and a GET cannot start a
+refresh.
+
+```console
+$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo --api /api/plugin/github/pull-refresh --data refresh.json
+api: /api/plugin/github/pull-refresh
+status: 409
+{
+  "error": "this server serves no pull request",
+  "code": "no_pull_request"
+}
+Error: /api/plugin/github/pull-refresh returned HTTP 409
+? 1
+```
+
+```console
+$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/7 --api /api/plugin/github/pull-refresh
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+api: /api/plugin/github/pull-refresh
+status: 405
+Method Not Allowed
+Error: /api/plugin/github/pull-refresh returned HTTP 405
+? 1
 ```
 
 ## Test: the cache still reads the source as published

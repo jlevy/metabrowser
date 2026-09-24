@@ -18,8 +18,8 @@ import pytest
 from metabrowser.builtin_plugins.github.gh import GhError, gh_executable, run_gh
 from metabrowser.builtin_plugins.github.provider import MAX_FIRST_CLONE_KB, GithubProvider
 from metabrowser.cache.acquire import RepositoryTooLargeError
+from metabrowser.cache.origin import describe_remote_failure
 from metabrowser.cache.providers import installed_providers, repository_context_for
-from metabrowser.cache.remote import describe_remote_failure
 from metabrowser.cache.urls import GitSource
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="the fake gh is a POSIX shell script")
@@ -65,10 +65,14 @@ def test_a_repository_over_the_limit_is_refused_before_cloning(
     message = str(refused.value)
     assert message.startswith("https://github.com/octo/demo is too large to clone")
     assert f"{MAX_FIRST_CLONE_KB + 1:,} KB" in message and "(too_large)" in message
+    # Pinned to github.com: a user signed in only to an Enterprise host must not send
+    # this repository name, or that host's token, anywhere but github.com.
     assert (fake_gh.parent / "gh-log.args").read_text().split() == [
         "api",
         "--hostname",
         "github.com",
+        "--method",
+        "GET",
         "repos/octo/demo",
         "--jq",
         ".size",

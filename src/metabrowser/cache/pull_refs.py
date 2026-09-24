@@ -8,23 +8,36 @@ writes, so its merge base is computed against the base branch as it is now, as G
 computes Files changed. A closed or merged pull request's comparison starts from the
 API's ``base.sha`` instead, fetched by ID when the mirror does not have it.
 
-Every fetch is a network command on an acquisition-grade Git: :func:`remote_git_args`,
-the isolated acquisition policy, its own process group, and the Git floor, all in
-:func:`fetch_into_store`. Nothing here writes a record or takes a cache lock; the
-refresh coordinator's fetch side lock and stale-lock cleanup wrap
-:func:`fetch_into_store`.
+Every fetch is a network command on an acquisition-grade Git, all in
+:func:`fetch_into_store`: :func:`~metabrowser.cache.origin.origin_git_args`, the
+isolated acquisition policy, its own process group, and the Git floor, under the store's
+fetch side lock with the leftovers of a killed fetch removed first, as the mirror update
+does. Nothing here writes a record or takes a hierarchy lock.
 """
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import functools
+import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Final, Literal
 
 from metabrowser.cache import acquire
+from metabrowser.cache.locks import (
+    CacheLock,
+    LockBusyError,
+    LockOrder,
+    lock_order,
+    require_no_hierarchy_locks,
+    run_lock_section,
+    store_fetch_lock,
+)
+from metabrowser.cache.origin import BRANCH_MIRROR_PREFIX, classify_remote_failure, origin_git_args
 from metabrowser.cache.paths import MAX_PULL_REQUEST_NUMBER
-from metabrowser.cache.remote import classify_remote_failure, remote_git_args
-from metabrowser.cache.resolve import BRANCH_REF_PREFIX, is_valid_ref_name
+from metabrowser.cache.resolve import is_valid_ref_name
+from metabrowser.cache.update import remove_interrupted_fetch_leftovers
 from metabrowser.git.process import (
     ACQUISITION_POLICY,
     STORE_READ_POLICY,
@@ -35,11 +48,24 @@ from metabrowser.git.process import (
     run_git,
 )
 from metabrowser.git.wire import is_full_revision
+from metabrowser.home import PrivateStorageError
 
 if TYPE_CHECKING:
     from metabrowser.cache.acquire import PublishedSource
 
-type PullFetchFailure = Literal["not_found_or_private", "network_error", "fetch_failed"]
+log = logging.getLogger(__name__)
+
+# How often a pull request's fetch tries the store's fetch lock again while another
+# refresh holds it, and for how long. The mirror update that usually holds it moves
+# nothing new in 135-170 ms over file:// and a few seconds over https (measured for
+# step 4 of the thin-mirror plan); a minute covers a slow one, after which the pull
+# request reports that the store is being refreshed elsewhere rather than wait on.
+FETCH_LOCK_RETRY_S: Final = 0.25
+FETCH_LOCK_WAIT_S: Final = 60.0
+
+type PullFetchFailure = Literal[
+    "not_found_or_private", "network_error", "fetch_failed", "refreshing_elsewhere"
+]
 
 
 class PullRefError(Exception):
@@ -79,32 +105,82 @@ async def _read(published: PublishedSource, args: list[str]) -> bytes:
     return await run_git(args, target=_target(published), policy=STORE_READ_POLICY)
 
 
+def _claim_fetch_lock(published: PublishedSource, owner: LockOrder) -> CacheLock:
+    return store_fetch_lock(published.home, published.store_key, order=owner)
+
+
+def _release(lock: CacheLock) -> None:
+    lock.release()
+
+
+async def _take_fetch_lock(published: PublishedSource) -> CacheLock:
+    """The store's fetch side lock, tried again while another refresh holds it.
+
+    The lock is never waited on in a thread: each try is without blocking, and between
+    tries this coroutine sleeps. Raises :class:`LockBusyError` after
+    :data:`FETCH_LOCK_WAIT_S`.
+    """
+
+    waited = 0.0
+    while True:
+        try:
+            return await run_lock_section(
+                functools.partial(_claim_fetch_lock, published, lock_order()), release=_release
+            )
+        except LockBusyError:
+            if waited >= FETCH_LOCK_WAIT_S:
+                raise
+        await asyncio.sleep(FETCH_LOCK_RETRY_S)
+        waited += FETCH_LOCK_RETRY_S
+
+
 async def fetch_into_store(published: PublishedSource, specs: list[str]) -> None:
     """``git fetch --atomic`` *specs* from the source's origin into its published store.
 
-    Every fetch this module makes is this one command, the pull-request ref and the
-    base branch with it, or one commit by ID; the refresh coordinator's fetch side lock
-    and its stale ``*.lock`` cleanup belong around this call, as around the mirror
-    update. ``--atomic`` writes every ref or none, after the objects.
+    Every fetch this module makes is this one command: the pull-request ref and the base
+    branch with it, or one commit by ID. It holds the store's fetch side lock, as the
+    mirror update does, and Git inherits the lock's descriptor so the lock stays held for
+    as long as any Git it started runs. Under it, what a killed fetch left in the store
+    is removed first. The origin is named by the URL its source was acquired from, with
+    that URL's arguments: the protocol allowlist, the stall bound, and for github.com the
+    ``gh`` credential helper. ``--atomic`` writes every ref or none, after the objects.
     """
 
+    require_no_hierarchy_locks("a pull request's fetch")
     # Through the acquisition module, so the Git floor and the origin URL have one seam
     # each for every command that fetches into a store.
     await asyncio.to_thread(acquire.require_acquisition_git)
     remote_url = acquire.remote_url_for(published.source)
-    await run_git(
-        [
-            *remote_git_args(remote_url),
-            "fetch",
-            "--atomic",
-            "--no-tags",
-            "--no-write-fetch-head",
-            "origin",
-            *specs,
-        ],
-        target=_target(published),
-        policy=ACQUISITION_POLICY,
-    )
+    lock = await _take_fetch_lock(published)
+    try:
+        cleanup = asyncio.ensure_future(
+            asyncio.to_thread(remove_interrupted_fetch_leftovers, published.git_dir)
+        )
+        try:
+            removed = await asyncio.shield(cleanup)
+        except asyncio.CancelledError:
+            # The lock is released on the way out, so the removal must finish first.
+            with contextlib.suppress(asyncio.CancelledError):
+                await cleanup
+            raise
+        if removed:
+            log.debug("removed files an interrupted fetch left in a store: %s", removed)
+        await run_git(
+            [
+                *origin_git_args(remote_url),
+                "fetch",
+                "--atomic",
+                "--no-tags",
+                "--no-write-fetch-head",
+                remote_url,
+                *specs,
+            ],
+            target=_target(published),
+            policy=ACQUISITION_POLICY,
+            pass_fds=(lock.descriptor,),
+        )
+    finally:
+        lock.release()
 
 
 async def _fetch(published: PublishedSource, specs: list[str]) -> None:
@@ -112,6 +188,14 @@ async def _fetch(published: PublishedSource, specs: list[str]) -> None:
 
     try:
         await fetch_into_store(published, specs)
+    except LockBusyError as exc:
+        raise PullRefError(
+            "refreshing_elsewhere", "another refresh of the mirror kept its fetch lock"
+        ) from exc
+    except (PrivateStorageError, OSError) as exc:
+        # The lock file could not be opened: the cache is not the owner-only directory
+        # it must be, or the disk refused. The mirror update reports the same.
+        raise PullRefError("fetch_failed", "the store's fetch lock could not be taken") from exc
     except GitTimeoutError as exc:
         raise PullRefError("network_error", "Git did not finish the fetch in time") from exc
     except GitCommandError as exc:
@@ -163,7 +247,7 @@ async def fetch_pull_head(
     ref = pull_head_ref(number)
     specs = [f"+{ref}:{ref}"]
     if base_branch is not None and is_valid_ref_name(base_branch):
-        specs.append(f"+refs/heads/{base_branch}:{BRANCH_REF_PREFIX}{base_branch}")
+        specs.append(f"+refs/heads/{base_branch}:{BRANCH_MIRROR_PREFIX}{base_branch}")
     await _fetch(published, specs)
     return await ref_commit(published, ref)
 
@@ -194,7 +278,7 @@ async def comparison_endpoints(
     base_commit: str | None = None
     base_from: Literal["base_branch", "base_sha"] = "base_sha"
     if open_pull and base_branch is not None and is_valid_ref_name(base_branch):
-        base_commit = await ref_commit(published, BRANCH_REF_PREFIX + base_branch)
+        base_commit = await ref_commit(published, BRANCH_MIRROR_PREFIX + base_branch)
         if base_commit is not None:
             base_from = "base_branch"
     if base_commit is None:

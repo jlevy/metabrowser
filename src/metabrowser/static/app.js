@@ -245,6 +245,64 @@ function pathBaseHtml(path) {
   return `<span class="path"><span class="path-base">${esc(base || trimmed)}</span></span>`;
 }
 
+/**
+ * Settle the navigation heading once the tree has loaded. A folder shows the
+ * served root's name from the tree payload. A pinned revision keeps the heading
+ * the server rendered from its session, its ref and short commit: the tree's
+ * root there is the empty GitPath, which has no name to show.
+ */
+function renderServedRootHeading(pathEl, root) {
+  if (pathEl && !isGitRevisionSource()) {
+    pathEl.innerHTML = pathBaseHtml(root);
+  }
+}
+
+/**
+ * The served root's file count, size, and newest mtime, from its top-level rows.
+ * Same shape as a folder tooltip: the served root reads as "just another
+ * folder", the top-most one. Count and size are null while a directory's
+ * aggregate is still pending.
+ *
+ * A symlink counts the way the server's own tallies count it, so the heading
+ * agrees with /api/rollup. On a pinned revision a link is a blob, one file of
+ * its stored size; under a served folder it is not followed and counts for
+ * nothing.
+ */
+function rootTallyFromTopLevel(tree) {
+  var linksAreFiles = isGitRevisionSource();
+  var totalSize = 0;
+  var totalFiles = 0;
+  var newestMtime = 0;
+  var hasPendingAggregate = false;
+  for (var i = 0; i < tree.length; i++) {
+    var n = tree[i];
+    if (n.type === "dir") {
+      if (
+        n.total_size === null ||
+        n.total_size === undefined ||
+        n.total_files === null ||
+        n.total_files === undefined
+      ) {
+        hasPendingAggregate = true;
+      } else {
+        totalSize += n.total_size;
+        totalFiles += n.total_files;
+      }
+    } else if (n.type === "file" || (linksAreFiles && n.type === "symlink")) {
+      totalSize += n.size || 0;
+      totalFiles += 1;
+    }
+    if ((n.mtime || 0) > newestMtime) {
+      newestMtime = n.mtime || 0;
+    }
+  }
+  return {
+    files: hasPendingAggregate ? null : totalFiles,
+    size: hasPendingAggregate ? null : totalSize,
+    newestMtime: newestMtime,
+  };
+}
+
 // The served root, absolute, from the one element that carries it.
 function servedRoot() {
   return queryHtml(".header-path")?.dataset.servedRoot || "";
@@ -1019,40 +1077,11 @@ async function loadTree(options = {}) {
       }
       knownFileCatalog?.observeInitialTree(data.tree);
       var pathEl = queryHtml(".header-path");
-      if (pathEl) {
-        pathEl.innerHTML = pathBaseHtml(data.root);
-      }
-      // Aggregate root size + file count + newest-mtime from top-level
-      // children. Same shape as a folder tooltip — the served root reads
-      // as "just another folder", the top-most one.
-      var totalSize = 0;
-      var totalFiles = 0;
-      var newestMtime = 0;
-      var hasPendingAggregate = false;
-      for (var i = 0; i < data.tree.length; i++) {
-        var n = data.tree[i];
-        if (n.type === "dir") {
-          if (
-            n.total_size === null ||
-            n.total_size === undefined ||
-            n.total_files === null ||
-            n.total_files === undefined
-          ) {
-            hasPendingAggregate = true;
-          } else {
-            totalSize += n.total_size;
-            totalFiles += n.total_files;
-          }
-        } else if (n.type === "file") {
-          totalSize += n.size || 0;
-          totalFiles += 1;
-        }
-        if ((n.mtime || 0) > newestMtime) {
-          newestMtime = n.mtime || 0;
-        }
-      }
-      var summaryFiles = hasPendingAggregate ? null : totalFiles;
-      var summarySize = hasPendingAggregate ? null : totalSize;
+      renderServedRootHeading(pathEl, data.root);
+      var rootTally = rootTallyFromTopLevel(data.tree);
+      var newestMtime = rootTally.newestMtime;
+      var summaryFiles = rootTally.files;
+      var summarySize = rootTally.size;
       // Per-entry pending check above isn't enough: a partial scan can finalize
       // every visible top-level dir before the walker is done, leaving the
       // summary at a stale "known but incomplete" value. The envelope-level
@@ -7896,6 +7925,22 @@ async function initDeferredShellTools() {
   document.documentElement.dataset.shellToolsReady = "true";
 }
 
+/**
+ * A served mirror's freshness row: when it was fetched and an offer when a refresh
+ * moved the pinned ref. Only a pin has one, and it is fetched on demand after the
+ * first tree request, so neither a folder nor the first rows ever wait for it.
+ * static/source-freshness.js owns every decision; this only mounts it.
+ */
+async function startSourceFreshness() {
+  var element = document.getElementById("source-freshness");
+  var assets = window.MetabrowserAssets;
+  if (!isGitRevisionSource() || !element || !assets) {
+    return;
+  }
+  await assets.ensureAsset("source-freshness");
+  window.MetabrowserSourceFreshness?.mount(element);
+}
+
 // app.js is the last core script in the body, so the tree container and every
 // cache used by its renderer are initialized here. Paint the server-carried
 // rows now instead of waiting for DOMContentLoaded. The authoritative request
@@ -7937,6 +7982,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       console.error("metabrowser shell tools: init failed", { url: location.pathname }, error);
     })
     .finally(settleCommitRoutePreview);
+  startSourceFreshness().catch((error) => {
+    console.error("metabrowser source freshness: init failed", error);
+  });
   if (filesPanelUsesRecentSource()) {
     loadRecent(currentRecentFilterCursor());
   }

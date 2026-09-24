@@ -1,11 +1,12 @@
 """The built-in repository providers and the few places core asks them anything.
 
 Core code names no provider and never branches on one. It asks the providers listed
-here, through :class:`RepositoryProvider`, for five things: URL reducers for the root
+here, through :class:`RepositoryProvider`, for six things: URL reducers for the root
 argument, extra Git configuration for a remote URL (a credential helper), a check to run
-before a first clone, the ``repository_context`` of a mirrored source, and the commit a
-pull-request URL pins. The list is fixed, as the built-in browser plugin directories
-are; there is no public registration surface for the alpha.
+before a first clone, the ``repository_context`` of a mirrored source, the commit a
+pull-request URL pins, and the pull request a server keeps fresh beside the mirror. The
+list is fixed, as the built-in browser plugin directories are; there is no public
+registration surface for the alpha.
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ from typing import TYPE_CHECKING, Literal, Protocol
 if TYPE_CHECKING:
     from metabrowser.cache.acquire import PublishedSource
     from metabrowser.cache.urls import GitSource, ProviderUrlReducer
+    from metabrowser.mirror_refresh import CompanionRefresh
     from metabrowser.repository_context import RepositoryContext
 
 type PullRequestFetch = Literal["if_missing", "always"]
@@ -84,6 +86,15 @@ class RepositoryProvider(Protocol):
         """
         ...
 
+    async def served_pull_request(
+        self, published: PublishedSource, number: int
+    ) -> CompanionRefresh | None:
+        """What a server keeps fresh for pull request *number* of *published*.
+
+        Return ``None`` for a source this provider does not own. It reads no network.
+        """
+        ...
+
 
 @cache
 def installed_providers() -> tuple[RepositoryProvider, ...]:
@@ -130,9 +141,8 @@ def repository_context_for(
 ) -> RepositoryContext | None:
     """The ``repository_context`` of a pin of *source_url*, or ``None``.
 
-    The integration point for serving a pin: the shell's pre-paint context comes from
-    here for a Git revision subject, as :func:`discover_repository_context` supplies it
-    for a served checkout.
+    A served mirror answers the shell's pre-paint context from here for a Git revision
+    subject, as :func:`discover_repository_context` does for a served checkout.
     """
 
     for provider in installed_providers():
@@ -156,6 +166,18 @@ async def open_pull_request(
     )
 
 
+async def served_pull_request_for(
+    published: PublishedSource, number: int
+) -> CompanionRefresh | None:
+    """The pull request a server serves beside the mirror, from the provider that owns it."""
+
+    for provider in installed_providers():
+        served = await provider.served_pull_request(published, number)
+        if served is not None:
+            return served
+    return None
+
+
 __all__ = [
     "PullRequestFetch",
     "PullRequestPin",
@@ -166,6 +188,7 @@ __all__ = [
     "open_pull_request",
     "provider_credential_hint",
     "provider_git_config",
+    "served_pull_request_for",
     "repository_context_for",
     "url_reducers",
 ]

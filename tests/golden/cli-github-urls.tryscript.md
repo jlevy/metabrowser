@@ -37,31 +37,31 @@ HTTPS.
 
 ```console
 $ METABROWSER_HOME=$PWD/home metab https://www.github.com/Octo/Demo.git/ --walk
-Error: https Git sources are not opened yet (https://github.com/octo/demo). Serve a local directory, or acquire a file:// or https:// source with --no-serve.
+Error: --walk runs the filesystem inventory walker, and a Git source has no filesystem to walk (https://github.com/octo/demo). Read a pinned tree with --api '/api/tree?depth=N', or --walk a local directory.
 ? 1
 ```
 
 ```console
 $ METABROWSER_HOME=$PWD/home metab 'https://github.com:443/octo/demo?tab=readme-ov-file#readme' --walk
-Error: https Git sources are not opened yet (https://github.com/octo/demo). Serve a local directory, or acquire a file:// or https:// source with --no-serve.
+Error: --walk runs the filesystem inventory walker, and a Git source has no filesystem to walk (https://github.com/octo/demo). Read a pinned tree with --api '/api/tree?depth=N', or --walk a local directory.
 ? 1
 ```
 
 ```console
 $ METABROWSER_HOME=$PWD/home metab git@github.com:octo/demo.git --walk
-Error: https Git sources are not opened yet (https://github.com/octo/demo). Serve a local directory, or acquire a file:// or https:// source with --no-serve.
+Error: --walk runs the filesystem inventory walker, and a Git source has no filesystem to walk (https://github.com/octo/demo). Read a pinned tree with --api '/api/tree?depth=N', or --walk a local directory.
 ? 1
 ```
 
 ```console
 $ METABROWSER_HOME=$PWD/home metab 'https://github.com/octo/demo/blob/release/v1/docs/a.md?plain=1#L10C5-L20C8' --walk
-Error: https Git sources are not opened yet (https://github.com/octo/demo). Serve a local directory, or acquire a file:// or https:// source with --no-serve.
+Error: --walk runs the filesystem inventory walker, and a Git source has no filesystem to walk (https://github.com/octo/demo). Read a pinned tree with --api '/api/tree?depth=N', or --walk a local directory.
 ? 1
 ```
 
 ```console
 $ METABROWSER_HOME=$PWD/home metab https://raw.githubusercontent.com/octo/demo/refs/heads/topic/a.md --walk
-Error: https Git sources are not opened yet (https://github.com/octo/demo). Serve a local directory, or acquire a file:// or https:// source with --no-serve.
+Error: --walk runs the filesystem inventory walker, and a Git source has no filesystem to walk (https://github.com/octo/demo). Read a pinned tree with --api '/api/tree?depth=N', or --walk a local directory.
 ? 1
 ```
 
@@ -151,7 +151,7 @@ Error: invalid ROOT (invalid_pull_request): a pull request URL names a positive 
 
 ```console
 $ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/commit/not-hex --no-serve
-Error: invalid ROOT (invalid_commit_id): a commit URL names a hexadecimal commit ID; open the repository at https://github.com/octo/demo
+Error: invalid ROOT (invalid_commit_id): a commit URL names a commit ID of 7 to 64 hexadecimal digits; open the repository at https://github.com/octo/demo
 ? 1
 ```
 

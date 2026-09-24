@@ -84,34 +84,62 @@ Plugin SDK:
 GitHub URLs and HTTPS:
 
 - A GitHub URL copied from the browser opens the repository it names:
-  `metab https://github.com/owner/repo --no-serve` clones it into the cache, and
-  `--show` and `--api` inspect it in-process.
-  `/tree/…`, `/blob/…` (with `#L10`, `#L10-L20`, or `#L10C5-L20C8` and `?plain=1`),
-  `/commit/<id>`, `/pull/<n>/commits/<id>`, and `raw.githubusercontent.com` file URLs
-  pin the commit they point at; the mirror decides where a branch name containing `/`
-  ends, preferring a branch, then a tag, then a full or abbreviated commit ID.
-  `--no-serve` prints the selection after the identity lines, and `--show` and `--api`
-  print it on stderr. A `/pull/<n>` URL pins the pull request’s head; see below.
-  Every spelling of a repository — `.git`, a trailing slash, `www.`, letter case, and
-  `git@github.com:owner/repo.git` — is one source, `https://github.com/owner/repo`.
-  Other github.com pages, `http://`, and GitHub’s own top-level pages are refused with a
-  typed reason and a message that offers the repository URL; tracking parameters are
-  dropped and never echoed.
-  A ref, commit, or path the mirror does not have is reported as `ref_not_found`,
-  `commit_not_found`, or `path_not_found`; these modes read the mirror as it is and do
-  not fetch.
+  `metab https://github.com/owner/repo` clones it into the cache and serves it, pinned
+  and untrusted like any acquired source; `--no-serve` only clones it, and `--show` and
+  `--api` inspect it in-process.
+  Serving a `/blob/` or `/tree/` URL opens the browser at that file or folder, with the
+  `#L10-L20` anchor kept in the address, and the banner names the ref, the selection,
+  and a pull request’s number; `/api/source/status` reports that number as
+  `pull_request`. `/tree/…`, `/blob/…` (with `#L10`, `#L10-L20`, or `#L10C5-L20C8` and
+  `?plain=1`), `/commit/<id>`, `/pull/<n>/commits/<id>`, and `raw.githubusercontent.com`
+  file URLs pin the commit they point at; the mirror decides where a branch name
+  containing `/` ends, preferring a branch, then a tag, then a full or abbreviated
+  commit ID. `--no-serve` prints the selection after the identity lines, and `--show`
+  and `--api` print it on stderr.
+  A `/pull/<n>` URL pins the pull request’s head; see below.
+  Ref names match exactly, including letter case, and `HEAD` names the default branch;
+  on a case-insensitive filesystem, a repository whose branch or tag names differ only
+  in case is refused as `ref_case_collision` rather than risk pinning the wrong commit.
+  Every spelling of a repository — one trailing `.git`, a trailing slash, `www.`, letter
+  case, and `git@github.com:owner/repo.git` — is one source,
+  `https://github.com/owner/repo`. Other github.com pages, `http://`, and GitHub’s own
+  top-level pages are refused with a typed reason and a message that offers the
+  repository URL; tracking parameters are dropped and never echoed.
+  A C1 control character in a path, such as `%C2%9B`, is shown as U+FFFD like C0, so an
+  error message cannot send a terminal an escape sequence.
+  A ref, commit, or path the mirror does not have is reported by `--no-serve`, `--show`,
+  and `--api` as `ref_not_found`, `commit_not_found`, or `path_not_found`; those modes
+  read the mirror as it is and do not fetch.
+  A server instead serves the default branch, fetches once in the background, and
+  switches to the selection if the fetch brings it, under a new session generation like
+  any pin switch, so a page opened meanwhile is offered a reload and its data requests
+  are refused with `pin_changed`; `/api/source/status` reports `selection_state` as
+  `pending`, then `found` or `not_found`. In a server, `POST /api/source/pin` for a
+  branch, tag, or commit the mirror lacks likewise answers `202` with
+  `selection_pending` and fetches once; asked again after that fetch it switches or
+  answers `404`. A commit ID in a URL or a pin request has 7 to 64 hexadecimal digits.
+  github.com links inside a rendered README of a served GitHub mirror open inside the
+  pin, as they already did for a served checkout of the repository.
 
 - `https://` sources are acquired, anonymously for a public repository.
   When `gh` is installed it is Git’s credential helper for `https://github.com` only,
   after every configured helper is cleared, so `gh auth login` opens a private
   repository and no other host is offered a GitHub token.
   A failed https acquisition names its cause: `not_found_or_private`,
-  `network_unreachable`, `tls_failed`, `timed_out`, or `too_large`, the last when `gh`
-  reports a repository too large to clone within the acquisition deadline.
-  A transfer slower than 1000 bytes per second for 30 seconds is treated as stalled, and
-  an origin that does not answer the first request within 30 seconds times out rather
-  than waiting for curl’s five-minute connect timeout.
+  `network_unreachable`, `connection_interrupted`, `tls_failed`, `timed_out`,
+  `server_error`, `rate_limited`, `proxy_auth_required`, or `too_large`, the last when
+  `gh` reports a repository too large to clone within the acquisition deadline.
+  The size check asks github.com only, whatever host `GH_HOST` names.
+  Git runs with `HOME=/dev/null` while it acquires, so curl reads no `~/.netrc`; `gh`
+  alone is given the real home, without `GH_DEBUG`, `GH_HOST`, or `GH_REPO`. A transfer
+  slower than 1000 bytes per second for 30 seconds is treated as stalled, and an origin
+  that does not answer the first request within 30 seconds times out rather than waiting
+  for curl’s five-minute connect timeout.
   On a terminal, a first clone reports its phases and elapsed time.
+  A served mirror refreshes from the same URL with the same arguments, including the
+  prune and single retry after a ref that cannot be locked, and a refresh’s outcome, in
+  the status and in the store’s `state.yml`, carries the same names, plus
+  `ref_case_collision` where a case-insensitive filesystem cannot hold two refs apart.
 
 - Pull-request data:
   `metab https://github.com/owner/repo/pull/<n> --api /api/plugin/github/pull` reads the
@@ -131,6 +159,14 @@ GitHub URLs and HTTPS:
   the pin stays at its head and the report adds why the refresh failed; without one, a
   `/pull/<n>` URL pins the default branch and a `/pull/<n>/commits/<id>` URL the commit,
   as before pull-request data existed, and the `pull_request` line says why.
+  Serving a pull-request URL serves its head and keeps the record fresh beside the
+  mirror, in the same refresh jobs: a stale record makes the source `stale`, so it is
+  refreshed when serving starts and when a stale page becomes visible, and
+  `POST /api/plugin/github/pull-refresh` starts or joins its refresh and returns at
+  once. `/api/plugin/github/pull` adds `refreshing` and `last_refresh`, and answers
+  `pending` while the first record is being read.
+  A newer head is offered as the source’s `latest`, and `/api/source/pin` accepts
+  `refs/pull/<n>/head` to take it.
   Each cause is named: `gh_missing`, `gh_too_old`, `not_logged_in`, `rate_limited` with
   the reset time when GitHub gives one, `not_found_or_private`, `network_error`,
   `account_changed`, `head_mismatch`, `gh_failed` for an answer that cannot be read,
@@ -141,10 +177,13 @@ GitHub URLs and HTTPS:
   an `http://` link is left empty, and the list is marked incomplete.
   Lists and text are bounded per pull request, and a cut is reported, never silent.
 
-- A terminal hangup now cancels an acquisition the way Ctrl-C does: Git and every helper
-  it started are stopped, staging is removed, and `metab` exits with status 129. A
-  cancellation that arrives while Git is still starting also stops the helpers it
+- A terminal hangup or `SIGTERM` now cancels an acquisition the way Ctrl-C does: Git and
+  every helper it started are stopped, staging is removed, and `metab` exits with status
+  129 or 143. A hangup that was already ignored, as under `nohup`, stays ignored.
+  A cancellation that arrives while Git is still starting also stops the helpers it
   already forked, rather than only `git` itself.
+  While a Git source is served, a hangup stops the server as Ctrl-C does, killing a
+  running refresh’s Git first, and exits 129.
 
 Repository cache:
 
@@ -173,10 +212,12 @@ Repository cache:
   state against an empty throwaway root so cache inspection cannot expose origin objects
   through `/api/tree`. `metab file://… --show PATH` and non-cache `--api` acquire or
   reuse the store, pin the default revision, and inspect that `GitRevisionSubject`
-  in-process. Serving, walking, and `--check-api` still refuse Git sources, and nothing
-  binds a port. ssh stays closed.
-  Those pin modes report acquisition failures with the same messages as `--no-serve`,
-  and a Git failure while opening the pin is also path-free.
+  in-process, and `--check-api` runs its navigation scenario on that pin, where the live
+  filter’s `unsupported_for_subject` answer is the pass.
+  `--walk` refuses a Git source: the walker reads a filesystem, and a pin’s complete
+  listing is `/api/tree`. None of these binds a port.
+  ssh stays closed. Those pin modes report acquisition failures with the same messages as
+  `--no-serve`, and a Git failure while opening the pin is also path-free.
   A pin’s `/api/tree` lists directories before files, as a folder listing does.
   A pinned blob larger than the 16 MiB whole-read limit is classified from a bounded
   window and paged in the text and byte views like a large file on disk, instead of
@@ -186,6 +227,92 @@ Repository cache:
   No store read fetches from the origin.
   A pin always runs under the untrusted profile: `METAB_ACTIVE_CONTENT=1` and
   `METAB_ALLOW_EDITS=1` do not lift it, and `--allow-edits` on a pin is an error.
+
+- `metab file://…` serves the acquired source in the browser, pinned to the commit its
+  default branch named at the store’s last fetch, until Ctrl-C. Every page reads from
+  the store; only the background refresh below reaches the origin.
+  The banner names the source and prints a `Revision:` line with the full commit and
+  branch. `--path` deep-links a path within the pin, spelled as `--show` accepts it, and
+  prints a directory’s address with a trailing slash.
+  If the pin cannot be opened again when the server starts, the command prints the same
+  path-free error as `--show` and exits 1 rather than a traceback.
+  The tree, file views, Markdown and its images, JSON, images, history, commit detail,
+  and diffs all read from the store.
+  The navigation heading shows the branch and short commit; its tooltip and the file
+  header show the full commit.
+  A served pin always runs under the untrusted profile, exactly as `--show` and `--api`
+  do, and HTML offers only its source.
+  Its `/api/cache/…` routes answer `unsupported_for_subject`, so nothing about other
+  cached sources is served beside acquired content.
+  The `/raw/<path>` form answers the same way, because its only consumer is the HTML
+  preview a pin never offers; Markdown images resolve within the pin through
+  `/raw?path=`. A served `file://` pin has no `repository_context`.
+
+- `metab ROOT` exits non-zero when the server’s startup fails, instead of reporting
+  success for a server that never listened.
+
+- New `GET /api/source/status` reports what the server serves: the subject kind, the
+  session generation, and on a Git pin its full commit (`pin`), the store ref it was
+  resolved from (`ref`), and that ref’s branch or tag name (`ref_name`). Reach it with
+  `metab <root> --api /api/source/status`. On a served mirror it also reports freshness:
+  the commit the pinned ref names in the mirror now (`latest`), `last_fetch_at`, the
+  last operation and its typed outcome (`last_outcome`), `refreshing`, `stale`, and
+  whether the origin still had the pinned ref at the last fetch (`ref_on_origin`), all
+  from server memory so polling runs no Git.
+  The outcome is recorded in the store by name, so a restarted server reports it too.
+  It sends an ETag and answers an unchanged `If-None-Match` with 304.
+
+- A served `file://` mirror refreshes in the background and never makes a page wait.
+  `metab file://…` starts one refresh when the mirror’s last fetch is older than a
+  minute. New `POST /api/source/refresh` starts a refresh, or joins the one running, and
+  answers 202 at once.
+  A refresh is one `git fetch --prune --atomic` of every branch and tag: every ref moves
+  together or none does, a branch or tag deleted upstream leaves the mirror, and no
+  object is removed, so a commit that was pinned stays readable after a force-push or a
+  deleted branch. A branch replaced by a directory of branches (`side` then `side/x`), or
+  renamed only in case on a case-insensitive file system, no longer wedges every later
+  refresh: the stale ref is pruned on its own and the fetch runs again.
+  A refresh another process is running is reported as `refreshing_elsewhere` instead of
+  waited on, and a served page follows it until it ends.
+  A fetch’s Git holds the store’s fetch lock for as long as it runs, so a server killed
+  mid-fetch leaves no second writer in the store, and Ctrl-C stops the fetch before the
+  server exits. Files a killed fetch left behind are removed before the next one, and a
+  missing origin, a failed fetch, or a detached origin HEAD is a typed outcome in the
+  status while the pinned revision keeps serving.
+  Reach it with `metab file://… --api /api/source/refresh --data <file with {}>`; that
+  one command waits for the refresh it asked for, prints the status after it, and exits
+  1 unless the fetch ran or another process’s refresh is running.
+  No other one-shot command fetches.
+
+- New `POST /api/source/pin` switches what a server serves to another branch, tag, or
+  commit of the same mirror: `{"ref": "feature"}`, `{"ref": "v1"}`, or
+  `{"oid": "<full or at least 7-digit commit ID>"}`. A name is tried as a branch, then a
+  tag, then a commit ID, and is looked up in the mirror alone; revision syntax such as
+  `:/text`, `@{…}`, and `^{/…}` is refused rather than evaluated.
+  The old revision’s readers are released, the new one is served under a new session
+  generation, and the answer carries the new status.
+  Both new routes are POST routes with a JSON body behind the existing same-origin
+  guard, so content in a served page cannot reach them with a link, an image, or a form;
+  on a folder they answer `unsupported_for_subject`.
+
+- A page on a served mirror shows when the mirror was last fetched at the foot of the
+  navigation pane, polls quietly while it is visible, and asks for one refresh when it
+  opens or becomes visible on a stale mirror.
+  When a refresh moves the pinned branch it offers the commit the branch now names,
+  usually a newer one, and accepting switches the pin and reloads the view.
+  When another tab switched the pin, even before the page’s first poll, it offers a
+  reload, and the page’s data requests are refused with `pin_changed` rather than
+  answered from the new pin, so one page never mixes two revisions.
+  A failed refresh reads as a warning there, not as an error in the page.
+  The row repaints only when what it says changes, and announces its state and offer to
+  a screen reader, not its age.
+
+- The Git panel no longer rebuilds a different history under the rows on screen when the
+  refs its walk was fingerprinted by moved, as a refresh, a pin switched in another tab,
+  or a commit in a served checkout does.
+  It keeps the rows, stops paging, and says “History changed since this list loaded”
+  with a Reload history action.
+  An expired history session still rebuilds silently, because nothing changed.
 
 - A timed-out or cancelled acquisition kills Git’s whole process group, including the
   helpers it forks, rather than only the `git` process.
@@ -342,7 +469,7 @@ Content source:
   Blob listings carry `cat-file` info sizes so `min_size` can filter; trees and gitlinks
   stay unsized. Recursive `ls-tree -r` tallies fill directory `total_files` /
   `total_size` and the Git `/api/rollup` tree.
-  Inventory open, archive containers, and serving acquired Git are not switched yet.
+  Inventory open and archive containers are not switched yet.
 
 - The content-trust profile applies to a Git pin.
   `--untrusted`, `--no-active-content`, and `--allow-edits` take effect on `--show` and

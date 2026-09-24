@@ -47,6 +47,8 @@ def _refused(value: str) -> RejectedRoot:
         "git@github.com:Octo/Demo",
         "ssh://git@github.com/octo/demo.git",
         "ssh://git@github.com:22/octo/demo",
+        "ssh://git@www.github.com/octo/demo.git",
+        "git@www.github.com:octo/demo.git",
     ],
 )
 def test_repository_spellings_share_one_canonical_source(value: str) -> None:
@@ -94,6 +96,14 @@ def test_repository_spellings_share_one_canonical_source(value: str) -> None:
                 kind="blob",
                 ref_and_path=(b"main", b"README.md"),
                 lines=LineSelection(start=10, end=20, start_column=5, end_column=8),
+            ),
+        ),
+        (
+            "https://github.com/octo/demo/blob/main/README.md#L10C8-L10C5",
+            RepositorySelection(
+                kind="blob",
+                ref_and_path=(b"main", b"README.md"),
+                lines=LineSelection(start=10, end=10, start_column=5, end_column=8),
             ),
         ),
         (
@@ -175,7 +185,8 @@ def test_web_url_shapes_carry_their_selection(value: str, expected: RepositorySe
         ("https://github.com/octo/demo/blob/main", "unsupported_github_url", "a ref and a file"),
         ("https://github.com/octo/demo/commit/xyz", "invalid_commit_id", CANONICAL),
         ("https://github.com/octo/demo/commit/abc", "invalid_commit_id", CANONICAL),
-        ("https://github.com/octo/demo/commit/abcd/x", "unsupported_github_url", CANONICAL),
+        ("https://github.com/octo/demo/commit/abcdef", "invalid_commit_id", "7 to 64"),
+        ("https://github.com/octo/demo/commit/abcdef0/x", "unsupported_github_url", CANONICAL),
         ("https://github.com/octo/demo/pull/0", "invalid_pull_request", CANONICAL),
         ("https://github.com/octo/demo/pull/x", "invalid_pull_request", CANONICAL),
         ("https://github.com/octo/demo/pull/12/checks", "unsupported_github_url", CANONICAL),
@@ -242,6 +253,25 @@ def test_query_parameters_are_dropped_and_never_echoed() -> None:
 )
 def test_other_hosts_and_transports_are_not_claimed(value: str) -> None:
     assert GithubUrlReducer().reduce(value) is None
+
+
+def test_exactly_one_trailing_git_is_removed() -> None:
+    assert _source("https://github.com/octo/demo.git.git").normalized == f"{CANONICAL}.git"
+    assert _source("git@github.com:octo/demo.GIT").normalized == CANONICAL
+    assert _refused("https://github.com/octo/.git").reason == "invalid_repository"
+
+
+def test_raw_url_refusals_do_not_name_github_com() -> None:
+    for value in (
+        "https://raw.githubusercontent.com/settings/x/main/a.md",
+        "https://raw.githubusercontent.com/settings",
+        "https://raw.githubusercontent.com/octo",
+    ):
+        refused = _refused(value)
+        assert "github.com/" not in (refused.detail or ""), value
+    assert _refused("https://raw.githubusercontent.com/settings/x/main/a.md").reason == (
+        "reserved_owner"
+    )
 
 
 def test_the_fragment_spelling_round_trips() -> None:

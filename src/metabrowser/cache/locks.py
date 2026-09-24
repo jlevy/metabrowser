@@ -14,8 +14,13 @@ and never re-acquires one it holds; :class:`LockOrder` refuses anything else bef
 descriptor is opened. Network work and long-running Git processes call
 :func:`require_no_hierarchy_locks` first.
 
-Side locks sit outside the order. A staging entry lock marks one owner's liveness and is
-only ever tried without blocking.
+Side locks sit outside the order and are only ever tried without blocking. A staging
+entry lock marks one owner's liveness. A store's fetch lock marks the one refresh that may
+fetch into that published store; it is held across network work, which is why it cannot be
+a hierarchy lock. The Git processes that write the store inherit its descriptor, so it
+stays held for as long as any of them runs, even after the process that took it has
+died, and a second refresh that finds it busy reports that another refresh is running
+rather than waiting.
 
 No lock protects a reader. A published store is never changed in place: nothing runs
 ``gc``, ``prune``, or ``repack`` on it, and a reader reaches it only through a source
@@ -109,6 +114,7 @@ class LockKind(StrEnum):
     REPOSITORY_STORE = "repository_store"
     PROVIDER_RESOURCE = "provider_resource"
     STAGING_ENTRY = "staging_entry"
+    STORE_FETCH = "store_fetch"
 
 
 HIERARCHY_RANKS: Final[dict[LockKind, int]] = {
@@ -261,6 +267,18 @@ class CacheLock:
     @property
     def path(self) -> Path:
         return self.home / self.relative_path
+
+    @property
+    def descriptor(self) -> int:
+        """The descriptor the ``flock`` lives on, to hand to a child that must hold it.
+
+        A child that inherits it holds the same lock for as long as it keeps the
+        descriptor open, even after this process releases or dies.
+        """
+
+        if self._fd is None:
+            raise LockOrderError(f"the {self.kind.value} lock is not held")
+        return self._fd
 
     def release(self) -> None:
         """Release the lock; releasing twice is a no-op."""
@@ -585,6 +603,26 @@ def staging_entry_lock(home: Path, entry: str, *, order: LockOrder | None = None
     return _entry_lock(home, LockKind.STAGING_ENTRY, "staging", entry, order=order)
 
 
+def store_fetch_lock(home: Path, store_key: str, *, order: LockOrder | None = None) -> CacheLock:
+    """Try the fetch side lock of one published store without blocking.
+
+    Held by the one refresh fetching into the store, across its network work, so it
+    sits outside the hierarchy and is never waited on: :class:`LockBusyError` means
+    another holder is refreshing the store now. *order* is as for
+    :func:`staging_entry_lock`.
+    """
+
+    _require(is_store_key(store_key), "store key")
+    return _acquire(
+        home,
+        LockKind.STORE_FETCH,
+        store_key,
+        f"{LOCKS_DIRECTORY}/stores/{store_key}.fetch.lock",
+        blocking=False,
+        order=order,
+    )
+
+
 def is_entry_name(value: str) -> bool:
     """Whether *value* is a valid staging entry name."""
 
@@ -612,4 +650,5 @@ __all__ = [
     "require_no_hierarchy_locks",
     "source_alias_lock",
     "staging_entry_lock",
+    "store_fetch_lock",
 ]

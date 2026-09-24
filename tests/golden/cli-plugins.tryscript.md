@@ -24,7 +24,7 @@ agent-log      builtin  agent-log   3      charts
 binary         builtin  -           1      chunk
 diff           builtin  diff        1      document,children,comparison
 folder         builtin  -           2      -
-github         builtin  -           0      pull
+github         builtin  -           0      pull,pull-refresh
 html           builtin  html        2      -
 image          builtin  -           1      -
 markdown       builtin  markdown    2      -
@@ -121,7 +121,8 @@ $ metab --plugins --json
       "views": [],
       "view_count": 0,
       "data_hooks": [
-        "pull"
+        "pull",
+        "pull-refresh"
       ],
       "disabled_data_hooks": []
     },

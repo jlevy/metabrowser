@@ -771,6 +771,31 @@ async function loadModule() {
   );
   check("dispose cancels pending scroll", frames.size === 0);
 
+  // On a pinned GitHub mirror the served tree is addressed by GitPath wire, so a
+  // localized github.com link is too, and a tree link keeps its trailing slash.
+  const githubPinBlob = new FakeElement("a", {
+    href: `https://github.com/example/docs/blob/main/docs/guide.md#L3-L4`,
+  });
+  const githubPinTree = new FakeElement("a", {
+    href: "https://github.com/example/docs/tree/main/docs",
+  });
+  const githubPinContainer = new FakeContainer([githubPinBlob, githubPinTree]);
+  const githubPinHandle = module.enhanceRenderedLinks(
+    githubPinContainer,
+    "g1-UkVBRE1FLm1k",
+    { ...mb, sourceKind: () => "git_revision" },
+    { cancel: () => {}, eventTarget: new FakeEventTarget(), schedule: () => 0 },
+  );
+  check(
+    "pinned GitHub blob link localized to a GitPath wire",
+    githubPinBlob.getAttribute("href") === "/view/g1-ZG9jcw/g1-Z3VpZGUubWQ#L3-L4",
+  );
+  check(
+    "pinned GitHub tree link keeps its trailing slash",
+    githubPinTree.getAttribute("href") === "/view/g1-ZG9jcw/",
+  );
+  githubPinHandle.dispose();
+
   // A large rendered document: most elements are neither links nor ids, and
   // the container exposes a real-DOM TreeWalker. Every in-document navigation
   // must still scroll, however many came before it.

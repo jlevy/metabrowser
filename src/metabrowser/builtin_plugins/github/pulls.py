@@ -125,6 +125,7 @@ type PullDataState = Literal[
     "account_changed",
     "head_mismatch",
     "fetch_failed",
+    "refreshing_elsewhere",
     "git_failed",
     "record_too_large",
     "cache_unwritable",
@@ -680,6 +681,8 @@ def _fetch_failure(exc: PullRefError) -> PullDataError:
         return PullDataError("not_found_or_private", str(exc))
     if exc.state == "network_error":
         return PullDataError("network_error", str(exc))
+    if exc.state == "refreshing_elsewhere":
+        return PullDataError("refreshing_elsewhere", str(exc))
     return PullDataError("fetch_failed", str(exc))
 
 

@@ -40,8 +40,8 @@ chrome empty rather than pending.
 Markdown and wiki destinations encode authored segments
 as GitPath wires. An LFS pointer is the stored pointer bytes;
 a blob the tree names but the store lacks is ``object_unavailable``.
-The CLI can attach a ``file://`` pin for ``--show`` and ``--api``.
-Serving acquired Git over a listening port stays on a later bead.
+The CLI attaches a ``file://`` pin for ``--show``, ``--api``, and ``--check-api``,
+and serve mode opens one through the application lifespan.
 """
 
 from __future__ import annotations
@@ -161,10 +161,14 @@ class GitBatchProtocolError(GitError):
 
 
 def display_segment(segment: bytes) -> str:
-    """Replacement-safe UTF-8. C0 and DEL become U+FFFD so chrome cannot wrap."""
+    """Replacement-safe UTF-8. C0, DEL, and C1 become U+FFFD.
+
+    Chrome cannot wrap on them, and a terminal cannot be sent an escape sequence: C1
+    includes U+009B, a one-character CSI, which a URL can spell as ``%C2%9B``.
+    """
 
     text = segment.decode("utf-8", "replace")
-    return "".join("\ufffd" if ord(ch) < 32 or ch == "\x7f" else ch for ch in text)
+    return "".join("\ufffd" if ord(ch) < 0x20 or 0x7F <= ord(ch) <= 0x9F else ch for ch in text)
 
 
 def _b64encode(raw: bytes) -> str:
@@ -1420,7 +1424,12 @@ class _GitBlobReader:
 
 
 class GitRevisionSubject:
-    """A pinned full-OID tree over a worktree-free store."""
+    """A pinned full-OID tree over a worktree-free store.
+
+    ``ref`` is the label the pin was resolved from, such as
+    ``refs/remotes/origin/topic``, when one is known. It records what was asked for
+    and is never read back to find the commit: every read uses ``commit_oid``.
+    """
 
     kind = RepositorySubjectKind.git_revision.value
 
@@ -1431,9 +1440,11 @@ class GitRevisionSubject:
         tree_oid: str,
         content: GitTreeSource,
         store_identity: str,
+        ref: str | None = None,
     ) -> None:
         self._identity = f"{store_identity}:{commit_oid}"
         self._commit_oid = commit_oid
+        self._ref = ref
         self._tree_oid = tree_oid
         self._content = content
         self._capabilities = GIT_REVISION_CAPABILITIES
@@ -1449,6 +1460,10 @@ class GitRevisionSubject:
     @property
     def tree_oid(self) -> str:
         return self._tree_oid
+
+    @property
+    def ref(self) -> str | None:
+        return self._ref
 
     @property
     def capabilities(self) -> SourceCapabilities:
@@ -1474,14 +1489,43 @@ class GitRevisionSubject:
         await self._content.aclose()
 
 
+def ref_branch_name(ref: str | None) -> str | None:
+    """The origin's branch name for a mirrored branch ref, else ``None`` (a tag, a commit)."""
+
+    prefix = "refs/remotes/origin/"
+    if ref is None or not ref.startswith(prefix) or len(ref) == len(prefix):
+        return None
+    return ref.removeprefix(prefix)
+
+
+def ref_short_name(ref: str | None) -> str | None:
+    """The name a reader knows a mirror ref by: ``topic`` for ``refs/remotes/origin/topic``.
+
+    A store mirrors its origin's branches under ``refs/remotes/origin/`` and its tags
+    under ``refs/tags/``; stripping that prefix gives the name the origin uses. Any
+    other ref keeps its full spelling rather than being guessed at.
+    """
+
+    if ref is None:
+        return None
+    for prefix in ("refs/remotes/origin/", "refs/tags/", "refs/heads/"):
+        if ref.startswith(prefix) and len(ref) > len(prefix):
+            return ref.removeprefix(prefix)
+    return ref
+
+
 async def git_revision_subject(
     *,
     target: GitCommandTarget,
     commit_oid: str,
     store_identity: str,
     max_blob_bytes: int = TEXT_PREVIEW_REQUEST_MAX_BYTES,
+    ref: str | None = None,
 ) -> GitRevisionSubject:
-    """Pin a commit's tree after proving the tree object is present."""
+    """Pin a commit's tree after proving the tree object is present.
+
+    *ref* labels the pin (see :class:`GitRevisionSubject`); it is not resolved.
+    """
 
     if not isinstance(target, RepositoryStoreTarget):
         raise GitPathError("GitRevisionSubject requires a RepositoryStoreTarget")
@@ -1503,6 +1547,7 @@ async def git_revision_subject(
         tree_oid=tree_oid,
         content=source,
         store_identity=store_identity,
+        ref=ref,
     )
 
 
@@ -1526,6 +1571,8 @@ __all__ = [
     "follow_git_symlinks",
     "git_revision_subject",
     "read_store_blob",
+    "ref_branch_name",
+    "ref_short_name",
     "require_full_oid",
     "resolve_git_blob_entry",
     "split_git_container_wire",

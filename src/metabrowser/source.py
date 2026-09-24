@@ -5,18 +5,23 @@ attach here; GitPath and blob batch readers stay in ``git.tree_source``.
 Git discovery, history, refs, commit detail, file, raw, tree, diffs, and KPress honor
 a pinned revision. ``InventoryCoordinator.open_subject`` accepts a Git pin without
 opening a filesystem walker. The CLI can ``--show`` / ``--api`` a ``file://``
-pin in-process. Serving acquired Git and opening https/ssh stay later.
+pin in-process, and serve mode hands the server an opener through
+:func:`serve_subject_opener` so the application lifespan opens the pin in its own
+event loop and closes it at shutdown. Within one repository,
+:func:`replace_owned_subject` switches the served pin to another commit: it attaches the
+new subject under a new generation and closes the one it replaced. Opening https/ssh
+stays later.
 """
 
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Generator
-from contextlib import contextmanager
+from collections.abc import AsyncGenerator, Awaitable, Callable, Generator
+from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
-from typing import IO, TYPE_CHECKING, Protocol, runtime_checkable
+from typing import IO, Protocol, runtime_checkable
 
 from strif import file_mtime_hash
 
@@ -25,9 +30,6 @@ from metabrowser.content_errors import ContentReadError, ContentUnavailableError
 from metabrowser.gz_io import ArtifactCompressionError, ArtifactPath
 from metabrowser.inventory_engine.contract import canonical_inventory_path, native_inventory_path
 from metabrowser.paths_safe import _is_within, _relativize, register_root_callback
-
-if TYPE_CHECKING:
-    from metabrowser.cache.acquire import PublishedSource
 
 
 class RepositorySubjectKind(StrEnum):
@@ -246,6 +248,16 @@ class RepositorySubject(Protocol):
     def filesystem_root(self) -> Path | None: ...
 
 
+class ClosableRepositorySubject(RepositorySubject, Protocol):
+    """A subject that owns resources, such as Git processes, until it is closed."""
+
+    async def aclose(self) -> None: ...
+
+
+SubjectOpener = Callable[[], Awaitable[ClosableRepositorySubject]]
+"""Opens the subject a server serves, in the event loop that will serve it."""
+
+
 # Copying a decompressed stream forward to reach an offset. A compressed
 # artifact's stream is not seekable, so reaching offset N costs decompressing N
 # bytes; see the binary plugin's sidekick for the measurements that make that
@@ -461,16 +473,11 @@ class SourceLease:
 
 @dataclass(slots=True)
 class SourceSession:
-    """The one active subject for this server/browser process.
-
-    ``published`` is the cached source a pinned revision was opened from, carrying the
-    URL's selection (a pull request, for one), or ``None`` for a filesystem root.
-    """
+    """The one active subject for this server/browser process."""
 
     subject: RepositorySubject
     generation: int
     lease: SourceLease
-    published: PublishedSource | None = None
 
     @property
     def content(self) -> ContentSource:
@@ -492,17 +499,33 @@ class SourceSession:
         }
 
 
+class SubjectOpenError(Exception):
+    """The served subject did not open. The message names no path and is fit to print."""
+
+
+class SubjectNotOpenError(RuntimeError):
+    """A subject is configured to be served, and none is open to answer this request.
+
+    Only a request made outside the application lifespan meets it: before startup,
+    after shutdown, or from a client that never ran the lifespan. Falling back to
+    the filesystem root there would serve the working directory in place of the pin.
+    """
+
+    def __init__(self) -> None:
+        super().__init__("the served subject is not open")
+
+
 _session: SourceSession | None = None
 _generation = 0
+_subject_opener: SubjectOpener | None = None
+_open_failure: SubjectOpenError | None = None
+# The served subject this process opened and must close: the pin the lifespan or a
+# one-shot CLI mode opened, or the one a pin switch replaced it with.
+_owned_subject: ClosableRepositorySubject | None = None
 
 
-def attach_subject(
-    subject: RepositorySubject, *, published: PublishedSource | None = None
-) -> SourceSession:
-    """Install `subject` as the sole active session, releasing any previous lease.
-
-    *published* names the cached source a pinned subject came from.
-    """
+def attach_subject(subject: RepositorySubject) -> SourceSession:
+    """Install `subject` as the sole active session, releasing any previous lease."""
 
     global _session, _generation
     if _session is not None:
@@ -512,28 +535,125 @@ def attach_subject(
         subject=subject,
         generation=_generation,
         lease=SourceLease(generation=_generation),
-        published=published,
     )
     return _session
 
 
+def attach_owned_subject(subject: ClosableRepositorySubject) -> SourceSession:
+    """Serve *subject*, which this process opened and closes with :func:`close_owned_subject`."""
+
+    global _owned_subject
+    session = attach_subject(subject)
+    _owned_subject = subject
+    return session
+
+
+async def replace_owned_subject(subject: ClosableRepositorySubject) -> SourceSession:
+    """Serve *subject* in place of the owned subject, then close the one it replaced.
+
+    The new subject is attached first, so every request that starts afterwards reads it
+    under the new generation. Closing the old one releases only its share of the
+    per-store reader pool: a request still reading the old pin from the same store
+    finishes on readers the new pin keeps alive.
+    """
+
+    previous = _owned_subject
+    session = attach_owned_subject(subject)
+    if previous is not None and previous is not subject:
+        await previous.aclose()
+    return session
+
+
+async def close_owned_subject() -> None:
+    """Detach the owned subject if it is still served, and close it. A no-op without one."""
+
+    global _owned_subject, _session
+    subject, _owned_subject = _owned_subject, None
+    if subject is None:
+        return
+    if _session is not None and _session.subject is subject:
+        _session.close()
+        _session = None
+    await subject.aclose()
+
+
 def get_source_session() -> SourceSession:
-    """Return the active session, wrapping `ROOT_DIR` if nothing is attached yet."""
+    """Return the active session, wrapping `ROOT_DIR` if nothing is attached yet.
+
+    While an opener is configured, only the lifespan attaches the subject, so a
+    request with none attached raises :class:`SubjectNotOpenError` instead.
+    """
 
     global _session
     if _session is None:
+        if _subject_opener is not None:
+            raise SubjectNotOpenError
         return attach_subject(AttachedFilesystemSubject(paths_safe.ROOT_DIR))
     return _session
 
 
 def reset_source_session() -> None:
-    """Drop the process session. Tests restore a filesystem root afterwards."""
+    """Drop the process session and any served opener. Tests restore a root afterwards."""
 
-    global _session, _generation
+    global _session, _generation, _subject_opener, _open_failure, _owned_subject
     if _session is not None:
         _session.close()
     _session = None
     _generation = 0
+    _subject_opener = None
+    _open_failure = None
+    _owned_subject = None
+
+
+def serve_subject_opener(opener: SubjectOpener | None) -> None:
+    """Serve the subject *opener* returns instead of the filesystem root, or stop.
+
+    A pinned revision's batch readers are processes bound to the event loop that
+    started them, so a server cannot be handed a subject opened in another loop.
+    The application lifespan calls the opener in the serving loop at startup,
+    attaches what it returns, and closes it at shutdown; see :func:`lifespan_subject`.
+    Setting a filesystem root clears the opener.
+    """
+
+    global _subject_opener, _open_failure
+    _subject_opener = opener
+    _open_failure = None
+
+
+def subject_open_failure() -> SubjectOpenError | None:
+    """Why the configured subject failed to open at the last startup, if it did."""
+
+    return _open_failure
+
+
+@asynccontextmanager
+async def lifespan_subject() -> AsyncGenerator[SourceSession | None]:
+    """Open, attach, and at exit close the served subject, when one is configured.
+
+    Without an opener this does nothing, and the filesystem root attaches lazily as
+    before. Each entry opens a fresh subject, so a server that starts again after a
+    shutdown reads through new processes and a new session generation. An opener
+    that fails raises :class:`SubjectOpenError`, which is recorded for
+    :func:`subject_open_failure` so a server can report it without a traceback.
+    """
+
+    global _open_failure
+    opener = _subject_opener
+    if opener is None:
+        yield None
+        return
+    _open_failure = None
+    try:
+        subject = await opener()
+    except SubjectOpenError as exc:
+        _open_failure = exc
+        raise
+    session = attach_owned_subject(subject)
+    try:
+        yield session
+    finally:
+        # Whichever pin is served now: a pin switch may have replaced the one opened here.
+        await close_owned_subject()
 
 
 def session_filesystem_root() -> Path:
@@ -652,6 +772,9 @@ async def read_content_window(ref: ContentRef, *, offset: int = 0, max_bytes: in
 
 
 def _sync_filesystem_subject() -> None:
+    global _subject_opener
+    # Choosing a filesystem root is choosing to serve it.
+    _subject_opener = None
     attach_subject(AttachedFilesystemSubject(paths_safe.ROOT_DIR))
 
 
@@ -662,6 +785,7 @@ __all__ = [
     "FILESYSTEM_CAPABILITIES",
     "MAX_CONTAINER_INNER_DEPTH",
     "AttachedFilesystemSubject",
+    "ClosableRepositorySubject",
     "ContentHandle",
     "ContentReadError",
     "ContentReader",
@@ -676,12 +800,19 @@ __all__ = [
     "SourceCapabilities",
     "SourceLease",
     "SourceSession",
+    "SubjectOpener",
+    "SubjectNotOpenError",
+    "SubjectOpenError",
     "UnsupportedSourceCapabilityError",
+    "attach_owned_subject",
     "attach_subject",
+    "close_owned_subject",
     "get_source_session",
+    "lifespan_subject",
     "open_content",
     "read_artifact_window",
     "read_content_window",
+    "replace_owned_subject",
     "require_filesystem_hooks",
     "require_filter_capabilities",
     "require_source_capability",
@@ -689,8 +820,10 @@ __all__ = [
     "resolve_content",
     "resolve_content_container",
     "resolve_session_identity",
+    "serve_subject_opener",
     "session_filesystem_root",
     "source_capabilities",
     "stat_content",
+    "subject_open_failure",
     "unsupported_source_payload",
 ]

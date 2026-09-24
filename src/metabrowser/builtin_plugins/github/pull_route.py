@@ -1,26 +1,23 @@
-"""The envelope ``GET /api/plugin/github/pull`` answers, built from the cache alone.
+"""The envelope the pull routes answer, built from the cache and memory alone.
 
 It never runs gh or Git and never waits on the network, so a page opens as fast offline
-as online. It reads the record of the pull request the served URL selected, bounded,
-and reports one of:
+as online. The served pull request is the :class:`ServedPull` the CLI handed the server
+with the mirror, reached through the application's mirror session, so it is the same in
+a one-shot command and a server. It reports one of:
 
 - ``absent``: nothing to show, with a ``reason``: the served URL selects no pull
   request (``no_pull_request``), or no usable record is cached (``not_cached``,
   ``schema_mismatch``, ``unreadable``);
 - ``pending``: no record yet, and a refresh is running;
-- ``current``: a record fetched within :data:`PULL_FRESH_S`;
+- ``current``: a record fetched within the refresh coordinator's freshness window;
 - ``stale``: an older record, still shown.
 
-``pin`` is the commit the server serves; the record's ``pull.head.sha`` and
-``comparison_route`` name the head the record was read at. They differ when the URL
-selected a commit inside the pull request, and when a refresh found a newer head than
-the pin, which a page offers to switch to rather than switching under a reader.
-
-Only a refresh fetches. Its integration point is the background refresh coordinator,
-which runs :func:`~metabrowser.builtin_plugins.github.pulls.refresh_pull_request`
-keyed by the store and the pull-request number, answers ``pending`` through
-``refreshing`` below, and adds the ``POST`` route that starts or joins it. Until then
-the CLI fetches: see :mod:`metabrowser.builtin_plugins.github.pulls`.
+``refreshing`` says whether the pull request's refresh job is running, and
+``last_refresh`` how this server's last one ended. ``pin`` is the commit the server
+serves; the record's ``pull.head.sha`` and ``comparison_route`` name the head the record
+was read at. They differ when the URL selected a commit inside the pull request, and
+when a refresh found a newer head than the pin, which status reports as ``latest`` for
+the page to offer rather than switching under a reader.
 """
 
 from __future__ import annotations
@@ -39,13 +36,11 @@ from metabrowser.builtin_plugins.github.pull_record import (
     RecordAbsence,
     read_pull_record,
 )
+from metabrowser.builtin_plugins.github.served_pull import PullRefreshOutcome, ServedPull
 from metabrowser.cache.paths import source_pull_record
 from metabrowser.git.tree_source import GitRevisionSubject
-from metabrowser.source import SourceSession
-
-# How long a record reads as current. The plan's freshness default is about a minute;
-# the refresh coordinator owns the tuned window and replaces this when it lands.
-PULL_FRESH_S: Final[float] = 60.0
+from metabrowser.mirror_refresh import FRESHNESS_WINDOW_S, MirrorSession
+from metabrowser.source import RepositorySubject
 
 type PullState = Literal["absent", "pending", "current", "stale"]
 type PullAbsence = Literal["no_pull_request"] | RecordAbsence
@@ -61,6 +56,8 @@ class PullEnvelope(TypedDict):
     pin: str | None
     fetched_at: str | None
     fresh_for_s: float
+    refreshing: bool
+    last_refresh: PullRefreshOutcome | None
     comparison_route: str | None
     record: dict[str, Any] | None
 
@@ -77,7 +74,7 @@ def pull_state(
     if not isinstance(record, PullRecord):
         return ("pending", None) if refreshing else ("absent", record)
     age = now - _parse_stamp(record.fetched_at)
-    return ("current" if age <= timedelta(seconds=PULL_FRESH_S) else "stale"), None
+    return ("current" if age <= timedelta(seconds=FRESHNESS_WINDOW_S) else "stale"), None
 
 
 def comparison_route(record: PullRecord) -> str | None:
@@ -92,28 +89,19 @@ def comparison_route(record: PullRecord) -> str | None:
     )
 
 
-def _envelope(
-    state: PullState,
-    reason: PullAbsence | None,
-    *,
-    source: str | None = None,
-    number: int | None = None,
-    pin: str | None = None,
-    record: PullRecord | None = None,
-    dumped: dict[str, Any] | None = None,
-) -> PullEnvelope:
-    if record is not None and dumped is None:
-        dumped = record.model_dump(mode="json")
+def _absent() -> PullEnvelope:
     return PullEnvelope(
-        state=state,
-        reason=reason,
-        source=source,
-        number=number,
-        pin=pin,
-        fetched_at=None if record is None else record.fetched_at,
-        fresh_for_s=PULL_FRESH_S,
-        comparison_route=None if record is None else comparison_route(record),
-        record=None if record is None else dumped,
+        state="absent",
+        reason="no_pull_request",
+        source=None,
+        number=None,
+        pin=None,
+        fetched_at=None,
+        fresh_for_s=FRESHNESS_WINDOW_S,
+        refreshing=False,
+        last_refresh=None,
+        comparison_route=None,
+        record=None,
     )
 
 
@@ -165,36 +153,75 @@ def cached_pull_record(
     return record, dumped
 
 
-def served_pull_envelope(session: SourceSession) -> PullEnvelope:
-    """The envelope for *session*'s pull request. Blocking and bounded; run it off the loop."""
+def served_pull_of(mirror: MirrorSession | None) -> ServedPull | None:
+    """The pull request the mirror session serves beside the mirror, if any."""
 
-    published = session.published
-    selection = None if published is None else published.source.selection
-    number = None if selection is None else selection.pull_request
-    if published is None or number is None:
-        return _envelope("absent", "no_pull_request")
-    subject = session.subject
-    pin = subject.commit_oid if isinstance(subject, GitRevisionSubject) else None
-    record, dumped = cached_pull_record(published.home, published.slug, number)
+    companion = None if mirror is None else mirror.companion
+    return companion if isinstance(companion, ServedPull) else None
+
+
+@dataclass(frozen=True, slots=True)
+class ServedPullView:
+    """What the envelope needs from memory, read on the event loop that owns it.
+
+    The refresh job changes these on the loop, so a handler reads them there, before it
+    reads the record in a thread, and the answer describes one moment.
+    """
+
+    served: ServedPull
+    pin: str | None
+    refreshing: bool
+    last_refresh: PullRefreshOutcome | None
+
+
+def served_pull_view(
+    mirror: MirrorSession | None, subject: RepositorySubject
+) -> ServedPullView | None:
+    """The served pull request's in-memory state, or ``None`` when none is served."""
+
+    served = served_pull_of(mirror)
+    if mirror is None or served is None:
+        return None
+    return ServedPullView(
+        served=served,
+        pin=subject.commit_oid if isinstance(subject, GitRevisionSubject) else None,
+        refreshing=mirror.companion_refreshing(),
+        last_refresh=served.last,
+    )
+
+
+def served_pull_envelope(view: ServedPullView | None) -> PullEnvelope:
+    """The envelope for the served pull request. Blocking and bounded; run it off the loop."""
+
+    if view is None:
+        return _absent()
+    published = view.served.published
+    record, dumped = cached_pull_record(published.home, published.slug, view.served.number)
     # Through the module, so records and their age share one clock seam.
-    state, absence = pull_state(record, now=pulls.utc_now())
-    return _envelope(
-        state,
-        absence,
+    state, absence = pull_state(record, now=pulls.utc_now(), refreshing=view.refreshing)
+    return PullEnvelope(
+        state=state,
+        reason=absence,
         source=published.source.normalized,
-        number=number,
-        pin=pin,
-        record=record if isinstance(record, PullRecord) else None,
-        dumped=dumped,
+        number=view.served.number,
+        pin=view.pin,
+        fetched_at=record.fetched_at if isinstance(record, PullRecord) else None,
+        fresh_for_s=FRESHNESS_WINDOW_S,
+        refreshing=view.refreshing,
+        last_refresh=view.last_refresh,
+        comparison_route=comparison_route(record) if isinstance(record, PullRecord) else None,
+        record=dumped if isinstance(record, PullRecord) else None,
     )
 
 
 __all__ = [
-    "PULL_FRESH_S",
     "PullEnvelope",
     "PullState",
+    "ServedPullView",
     "cached_pull_record",
     "comparison_route",
     "pull_state",
     "served_pull_envelope",
+    "served_pull_of",
+    "served_pull_view",
 ]

@@ -6,8 +6,8 @@ sdk_version = "0.6"
 
 # GitHub support: the URL reducer, the gh credential helper, and pull-request records
 # reach core through metabrowser.cache.providers, not this manifest. The manifest only
-# mounts the pull-request data route. It declares no kind or view yet, so the shell
-# never loads index.js; the pull-request page arrives with its view.
+# mounts the pull-request routes. It declares no kind or view yet, so the shell never
+# loads index.js; the pull-request page arrives with its view.
 
 # The served pull request's cached record, with a typed absent, pending, current, or
 # stale state. Answers from the cache alone; only a refresh fetches.
@@ -15,3 +15,10 @@ sdk_version = "0.6"
 route = "pull"
 sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_handler"
 methods = ["GET"]
+
+# Start or join the served pull request's refresh in the refresh coordinator. A POST
+# with a JSON object body, behind the same-origin guard; it returns at once.
+[[data_hook]]
+route = "pull-refresh"
+sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_refresh_handler"
+methods = ["POST"]
