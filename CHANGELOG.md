@@ -233,16 +233,16 @@ GitHub URLs and HTTPS:
 - Pull-request page: serving a pull-request URL now opens its page at `/pull/<n>`, the
   way github.com shows it: title, state (open, draft, merged, or closed), github.com’s
   header line (“author wants to merge 2 commits into base from head”, and once merged
-  “merger merged 2 commits into base from head”), times, labels, merge status (unknown
-  until GitHub has computed it), the description, a conversation of comments and reviews
-  in time order with review states, review comments with their file, line, and diff
-  hunk, checks and statuses with links to their details, and notes for anything the
-  record cut or could not read.
-  The Checks summary counts each check run and commit status under one of: success;
-  failure (a run that failed, timed out, needs action, or failed to start, and a status
-  of failure or error); cancelled; skipped; stale; neutral; pending (a run not yet
-  completed, whatever its status, and a pending status); and unknown (a completed run
-  with no conclusion, or a conclusion or state GitHub does not document).
+  “merger merged 2 commits into base from head”, or “merged 2 commits into …” when the
+  record names no merger), times, labels, merge status (unknown until GitHub has
+  computed it), the description, a conversation of comments and reviews in time order
+  with review states, review comments with their file, line, and diff hunk, checks and
+  statuses with links to their details, and notes for anything the record cut or could
+  not read. The Checks summary counts each check run and commit status under one of:
+  success; failure (a run that failed, timed out, needs action, or failed to start, and
+  a status of failure or error); cancelled; skipped; stale; neutral; pending (a run not
+  yet completed, whatever its status, and a pending status); and unknown (a completed
+  run with no conclusion, or a conclusion or state GitHub does not document).
   `/pull/<n>/files` is its Files changed, the diff view over the record’s merge-base
   comparison. The page reads only the cached record, so it opens instantly and offline;
   it says how old the record is and who read it, offers a refresh when it is stale,

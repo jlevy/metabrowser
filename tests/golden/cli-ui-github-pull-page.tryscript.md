@@ -28,7 +28,8 @@ observer is played by asking for parts in reading order.
 `states` is the header in github.com’s words and the checks as GitHub counts them for
 the open pull request and for the stand-in’s merged and closed ones, which the same
 server answered: “wants to merge” with the commit count until it is merged, then the
-account that merged it, and skipped checks apart from neutral ones.
+account that merged it, or no one when the record names no merger, and skipped checks
+apart from neutral ones.
 The last lines show a page for a number the server does not serve, which links a
 rendered text keeps (made absolute against the pull request’s github.com page, http and
 https only), and the `/view/` address a review comment’s file opens at.
@@ -649,6 +650,13 @@ $ node tests/dom/github-pull-page-session.js
       "checks": {
         "success": 2,
         "pending": 1
+      }
+    },
+    "merged_unattributed": {
+      "header": "Say more in the guide #8 [Merged] merged 1 commit into topic from guide-more",
+      "checks": {
+        "success": 2,
+        "skipped": 1
       }
     }
   },

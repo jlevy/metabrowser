@@ -14,7 +14,7 @@ Markdown, switched the pin to the head the record names, went stale, refreshed t
 record with the same text, and refreshed again to one with a hostile comment, recorded
 both as the hook answers it and as KPress alone renders it. The same server then served
 pull requests 8 and 9, merged and closed, and read each once, for the header's wording
-in those states and a skipped check. The first test here replays that story and fails
+in those states and a skipped check, then read 8 again once GitHub named no merger. The first test here replays that story and fails
 when the recording no longer matches.
 
 The clock is fixed, so fetch times are literal. Entity tags are the session's own, since
@@ -301,6 +301,17 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
                 client.post(_REFRESH, json={}, headers=_JSON)
                 _settle(client)
                 recorded[name] = _answer(client.get(_PULL))
+
+            # GitHub then answers pull request 8 with no merger, and a refresh reads it.
+            merged_path = "repos/octo/demo/pulls/8"
+            unattributed = {**answers["api"][merged_path]["body"], "merged_by": None}
+            answers["api"][merged_path] = ok(merged_path, unattributed)
+            for name, value in install_fake_gh(tmp_path, answers).items():
+                monkeypatch.setenv(name, value)
+            session.companion = served_pull(published, 8)
+            client.post(_REFRESH, json={}, headers=_JSON)
+            _settle(client)
+            recorded["merged_unattributed"] = _answer(client.get(_PULL))
     finally:
         serve_mirror(None)
         reset_source_session()
@@ -349,6 +360,8 @@ def test_recording_is_what_a_served_pull_request_answers(
     assert conclusions == ["success", "skipped"]
     closed = recorded["closed"]["body"]["record"]["pull"]
     assert (closed["state"], closed["merged"], closed["commits"]) == ("closed", False, 1)
+    unattributed = recorded["merged_unattributed"]["body"]["record"]["pull"]
+    assert (unattributed["merged"], unattributed["merged_by"]) == (True, None)
     rendered = json.dumps(recorded, indent=2, ensure_ascii=False) + "\n"
     if os.environ.get("GOLDEN_UPDATE") == "1":
         FIXTURE.write_text(rendered, encoding="utf-8")
@@ -394,5 +407,10 @@ def test_the_session_runs_on_the_recording() -> None:
     assert "] forker wants to merge 2 commits into topic from forker:" in states["open"]["header"]
     assert "] octo merged 1 commit into topic from guide-more" in states["merged"]["header"]
     assert "[Closed] ghost wants to merge 1 commit into topic from" in states["closed"]["header"]
+    # With no merger named, nobody is credited.
+    assert (
+        "[Merged] merged 1 commit into topic from guide-more"
+        in states["merged_unattributed"]["header"]
+    )
     # A check run and the commit status succeeded; the other run was skipped.
     assert states["merged"]["checks"] == {"success": 2, "skipped": 1}

@@ -139,7 +139,7 @@ const TRUNCATED = Object.freeze({
  *   failure: string | null,
  *   pull: null | {
  *     title: string, number: number, state: string, stateLabel: string, author: string,
- *     actor: string, action: string,
+ *     actor: string | null, action: string,
  *     base: string, head: string, htmlUrl: string, created: string, updated: string,
  *     closed: string | null, closedLabel: string | null, labels: string[],
  *     merge: {state: string, label: string} | null, text: string, truncated: boolean,
@@ -495,7 +495,14 @@ export function describePull(envelope, page) {
     author: who(pull.author),
     // github.com's words: "<merger> merged 6 commits into <base> from <head>", and for
     // an open, draft, or closed pull request "<author> wants to merge 1 commit into".
-    actor: state === "merged" ? who(pull.merged_by) : who(pull.author),
+    // An account GitHub deleted is its "ghost"; a record that names no merger at all
+    // says only "merged 6 commits into", rather than crediting anyone.
+    actor:
+      state !== "merged"
+        ? who(pull.author)
+        : typeof pull.merged_by === "string" && pull.merged_by
+          ? pull.merged_by
+          : null,
     action: `${state === "merged" ? "merged" : "wants to merge"}${count} into`,
     base: sideName(pull.base, repository),
     head: sideName(pull.head, repository),
@@ -1192,8 +1199,8 @@ export function mountPullPage(container, ctx, mb) {
         h("div", { class: "github-pull-meta" }, [
           badge(pull.state, pull.stateLabel),
           h("span", {}, [
-            h("strong", {}, [pull.actor]),
-            ` ${pull.action} `,
+            pull.actor === null ? null : h("strong", {}, [pull.actor]),
+            `${pull.actor === null ? "" : " "}${pull.action} `,
             h("code", {}, [pull.base]),
             " from ",
             h("code", {}, [pull.head]),

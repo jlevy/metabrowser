@@ -2086,5 +2086,118 @@
         "unavailable": {}
       }
     }
+  },
+  "merged_unattributed": {
+    "status": 200,
+    "etag": "\"pull-11\"",
+    "body": {
+      "state": "current",
+      "reason": null,
+      "source": "https://github.com/octo/demo",
+      "number": 8,
+      "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+      "fetched_at": "2026-09-17T12:06:00Z",
+      "fresh_for_s": 60.0,
+      "refreshing": false,
+      "last_refresh": {
+        "outcome": "succeeded",
+        "message": null,
+        "reset_at": null,
+        "at": "2026-09-17T12:06:00Z"
+      },
+      "comparison_route": "/api/plugin/diff/comparison?left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=8ae27617c9c475851b67ee69433d008836d112ba&base_policy=merge_base",
+      "record": {
+        "schema_version": 2,
+        "source": "https://github.com/octo/demo",
+        "number": 8,
+        "fetched_at": "2026-09-17T12:06:00Z",
+        "reader": "gh:octo-reader",
+        "etags": {
+          "repos/octo/demo/pulls/8": "W/\"d4c7f16b7d5126e94fd3fee697ef05898079e1b4f8be5ac5d1ac076cdf5c999e\"",
+          "repos/octo/demo/issues/8/comments?per_page=100&page=1": "W/\"2b4c95bd77989d40c5a1b37e2d2a079777a5c3ef305c8e09bc705054e03d760d\"",
+          "repos/octo/demo/pulls/8/reviews?per_page=100&page=1": "W/\"16fba7b3f3bc6d7027a457cf94c165e22e0b7abf9028c07fe23cc83bc0a1581e\"",
+          "repos/octo/demo/pulls/8/comments?per_page=100&page=1": "W/\"f73d9aff466a7b2f5242a55272b78820afe30d2c875a17ab2d2d861e74765899\"",
+          "repos/octo/demo/commits/8ae27617c9c475851b67ee69433d008836d112ba/check-runs?per_page=100&page=1": "W/\"0cb8bbcee0a6ee3c06f25c8fc9cdce86b50e0d8df2dee462c7898591527ed61b\"",
+          "repos/octo/demo/commits/8ae27617c9c475851b67ee69433d008836d112ba/status?per_page=100&page=1": "W/\"0e146adb4edd448e9ceb49815073dcb595e6c0fce4e3c9d125329c8de5e4f9bf\""
+        },
+        "pull": {
+          "number": 8,
+          "title": "Say more in the guide",
+          "body": "",
+          "body_truncated": false,
+          "state": "closed",
+          "draft": false,
+          "merged": true,
+          "merged_by": null,
+          "commits": 1,
+          "merge_commit_sha": "c691256511d05858850bc7684ae062fea0d41132",
+          "mergeable": "unknown",
+          "labels": [],
+          "author": "maintainer",
+          "created_at": "2026-09-16T10:57:23Z",
+          "updated_at": "2026-09-16T17:39:01Z",
+          "merged_at": "2026-09-16T18:00:00Z",
+          "closed_at": "2026-09-16T18:00:00Z",
+          "base": {
+            "ref": "topic",
+            "sha": "07b55f07793d9ed4e9f3e130c4414d979137bc53",
+            "repository": "octo/demo"
+          },
+          "head": {
+            "ref": "guide-more",
+            "sha": "8ae27617c9c475851b67ee69433d008836d112ba",
+            "repository": "octo/demo"
+          },
+          "html_url": "https://github.com/octo/demo/pull/8"
+        },
+        "issue_comments": [],
+        "reviews": [],
+        "review_comments": [],
+        "check_runs": [
+          {
+            "id": 51401654787,
+            "name": "tests (3.13)",
+            "status": "completed",
+            "conclusion": "success",
+            "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+            "app": "GitHub Actions"
+          },
+          {
+            "id": 51401654788,
+            "name": "docs",
+            "status": "completed",
+            "conclusion": "skipped",
+            "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+            "app": "GitHub Actions"
+          }
+        ],
+        "status": {
+          "state": "success",
+          "statuses": [
+            {
+              "context": "docs/readthedocs.org:demo",
+              "state": "success",
+              "description": "Read the Docs build succeeded!",
+              "target_url": "https://demo--7.org.readthedocs.build/en/7/"
+            }
+          ]
+        },
+        "comparison": {
+          "base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
+          "head": "8ae27617c9c475851b67ee69433d008836d112ba",
+          "base_commit": "07b55f07793d9ed4e9f3e130c4414d979137bc53",
+          "base_from": "base_sha"
+        },
+        "truncated": {
+          "issue_comments": false,
+          "reviews": false,
+          "review_comments": false,
+          "check_runs": false,
+          "statuses": false,
+          "text": false
+        },
+        "unavailable": {}
+      }
+    }
   }
 }

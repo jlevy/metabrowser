@@ -54,7 +54,7 @@ function summarize(model) {
     header:
       pull === null
         ? null
-        : `${pull.title} #${pull.number} [${pull.stateLabel}] ${pull.actor} ${pull.action} ${pull.base} from ${pull.head}`,
+        : `${pull.title} #${pull.number} [${pull.stateLabel}] ${pull.actor === null ? "" : `${pull.actor} `}${pull.action} ${pull.base} from ${pull.head}`,
     labels: pull === null ? [] : pull.labels,
     merge: pull?.merge?.label ?? null,
     timeline: model.timeline.map(
@@ -420,6 +420,7 @@ async function main() {
       ["open", recorded.current.body],
       ["merged", recorded.merged.body],
       ["closed", recorded.closed.body],
+      ["merged_unattributed", recorded.merged_unattributed.body],
     ].map(([name, body]) => {
       const model = runtime.describePull(body, {
         number: body.number,
