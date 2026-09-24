@@ -72,7 +72,8 @@ def _stand_in(monkeypatch: pytest.MonkeyPatch, origin: Path) -> None:
 
 
 def _add_unicode_branch(origin: Path) -> None:
-    """``unicode``: the first commit plus ``docs/雪.md``, a path a person pastes raw.
+    """``unicode``: the first commit plus ``docs/雪.md``, a path a person pastes raw,
+    and ``docs/a<U+202E>b.md``, whose name holds a right-to-left override.
 
     The shared origin's commit IDs are pinned by every GitHub golden, so the name lives
     on a branch of its own, written with a fixed committer and date.
@@ -81,7 +82,10 @@ def _add_unicode_branch(origin: Path) -> None:
     stream = _commit(
         "refs/heads/unicode",
         "a name outside ASCII",
-        {"docs/雪.md".encode(): b"# Snow\n"},
+        {
+            "docs/雪.md".encode(): b"# Snow\n",
+            f"docs/a{chr(0x202E)}b.md".encode(): b"# Override\n",
+        },
         parent=FIRST_COMMIT,
         when=1767236400,
     )
@@ -133,6 +137,8 @@ OPENED: list[list[str]] = [
     [f"{RAW}/topic/docs/My Notes.md", "--no-serve"],
     [f"{REPO}/blob/unicode/docs/雪.md#L1", "--no-serve"],
     [f"{REPO}/blob/unicode/docs/%E9%9B%AA.md#L1", "--no-serve"],
+    # A name holding a right-to-left override prints it as U+FFFD.
+    [f"{REPO}/blob/unicode/docs/a%E2%80%AEb.md", "--no-serve"],
 ]
 # The raw spellings above, each with the encoded one it must equal.
 RAW_AND_ENCODED: list[tuple[str, str]] = [
@@ -148,7 +154,9 @@ REFUSED: list[list[str]] = [
     [f"{REPO}/pull/7/commits/abcdef0", "--api", "/api/git/repo"],
     # GitHub refs are case-sensitive, whatever this filesystem is.
     [f"{REPO}/tree/TOPIC", "--no-serve"],
-    # U+009B, a one-character CSI, reaches the message as U+FFFD.
+    # U+009B, a one-character CSI, and U+202E, which reverses the text after it, reach
+    # the message as U+FFFD.
+    [f"{REPO}/blob/topic/docs/%E2%80%AE2J.md", "--no-serve"],
     [f"{REPO}/blob/topic/docs/%C2%9B2J.md", "--no-serve"],
 ]
 
@@ -203,8 +211,12 @@ def test_golden_github_urls_open_through_a_local_stand_in(
         in by_command[f"{REPO}/blob/topic/docs/My Notes.md --no-serve"].stdout
     )
     assert "\u009b" not in refused[-1][1].stderr and "\ufffd2J.md" in refused[-1][1].stderr
+    override = by_command[f"{REPO}/blob/unicode/docs/a%E2%80%AEb.md --no-serve"].stdout
+    assert "path: docs/a\ufffdb.md\n" in override
+    assert "\ufffd2J.md is not in" in refused[-2][1].stderr
 
     rendered = "".join(_block(args, result) for args, result in [*opened, *refused])
+    assert chr(0x202E) not in rendered and chr(0x9B) not in rendered
     assert str(tmp_path) not in rendered and str(home) not in rendered
     assert "file://" not in rendered
     check_golden("cli-github-url-open.txt", rendered)

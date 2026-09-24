@@ -794,3 +794,14 @@ def test_display_replaces_every_control_character_a_terminal_acts_on() -> None:
     assert display_segment("a\u009b2Jb\u0085c".encode()) == "a\ufffd2Jb\ufffdc"
     # Printable text outside ASCII, including a no-break space, is kept.
     assert display_segment("\u65e5\u672c \u00a0x".encode()) == "\u65e5\u672c \u00a0x"
+
+
+def test_display_replaces_format_characters_that_reorder_or_hide_text() -> None:
+    """A right-to-left override, zero-width characters, and the other Cf characters."""
+
+    for point in (0x202E, 0x2066, 0x200B, 0x200D, 0xFEFF, 0x00AD, 0x0600, 0xE0001):
+        shown = display_segment(f"a{chr(point)}b.md".encode())
+        assert shown == "a\ufffdb.md", hex(point)
+    # A variation selector and a combining mark are not format characters and stay.
+    kept = f"e{chr(0x301)}{chr(0x2764)}{chr(0xFE0F)}.md"
+    assert display_segment(kept.encode()) == kept

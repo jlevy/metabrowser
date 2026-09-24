@@ -131,10 +131,12 @@ GitHub URLs and HTTPS:
   So are a trailing space, which a browser strips, control characters, named by code
   point, and a `%` that starts no percent escape, with the hint to write a literal `%`
   as `%25`. A C1 control character in a path, such as `%C2%9B`, is shown as U+FFFD like
-  C0, so an error message cannot send a terminal an escape sequence.
-  A ref, commit, or path the mirror does not have is reported by `--no-serve`, `--show`,
-  and `--api` as `ref_not_found`, `commit_not_found`, or `path_not_found`; those modes
-  read the mirror as it is and do not fetch.
+  C0, so an error message cannot send a terminal an escape sequence, and so is a format
+  character such as a right-to-left override (`%E2%80%AE`) or a zero-width space, on the
+  `path:` line, in errors, and in a pinned tree’s file names, so a name cannot pass for
+  another. A ref, commit, or path the mirror does not have is reported by `--no-serve`,
+  `--show`, and `--api` as `ref_not_found`, `commit_not_found`, or `path_not_found`;
+  those modes read the mirror as it is and do not fetch.
   A server instead serves the default branch, fetches once in the background, and
   switches to the selection if the fetch brings it, like any pin switch; a page opened
   meanwhile then goes to the selection’s address, line anchor included, which status
