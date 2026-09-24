@@ -34,6 +34,17 @@
   const OUTCOME_DETAIL = Object.freeze({
     origin_unavailable: "The origin could not be read.",
     fetch_failed: "The fetch from the origin failed.",
+    not_found_or_private:
+      "The origin says the repository does not exist, or it is private and the credentials offered do not open it.",
+    network_unreachable: "The origin's host could not be reached.",
+    connection_interrupted: "The connection to the origin was interrupted.",
+    tls_failed: "The secure connection to the origin failed.",
+    timed_out: "The origin did not answer, or stopped sending, in time.",
+    server_error: "The origin answered with a server error.",
+    rate_limited: "The origin is limiting requests; try again later.",
+    proxy_auth_required: "The proxy between here and the origin asked for credentials.",
+    ref_case_collision:
+      "The origin has branches or tags whose names differ only in letter case, which this file system cannot keep apart, so no ref moved.",
     validation_failed: "The origin's default branch did not arrive in the mirror as a commit.",
     default_branch_unknown:
       "The origin's HEAD names no branch, so the mirror keeps the default branch it had.",
@@ -134,6 +145,30 @@
   }
 
   /**
+   * Where a page should go when a URL selection it was opened for has arrived. Pure.
+   *
+   * A page opened while the selection waited for its fetch shows the default branch.
+   * Once the server serves the selection, that page goes to the selection's address,
+   * line anchor included. A page already showing the served pin stays.
+   *
+   * @param {MetabrowserSourceStatus | null} status
+   * @param {MetabrowserSourcePage | null} shown
+   * @returns {string | null}
+   */
+  function selectionToOpen(status, shown) {
+    if (
+      status === null ||
+      shown === null ||
+      status.selection_state !== "found" ||
+      typeof status.selection_href !== "string" ||
+      !status.selection_href.startsWith("/view/")
+    ) {
+      return null;
+    }
+    return status.pin !== shown.pin || status.ref !== shown.ref ? status.selection_href : null;
+  }
+
+  /**
    * @param {unknown} value
    * @returns {value is MetabrowserSourceStatus}
    */
@@ -181,6 +216,8 @@
     // (its origin is gone) must not ask again on every poll.
     let refreshAskedWhileVisible = false;
     let switching = false;
+    // A page goes to a selection that arrived at most once.
+    let openedSelection = false;
     /** @type {string | null} */
     let error = null;
 
@@ -218,6 +255,11 @@
       status = next;
       if (shown === null && next.pin !== null) {
         shown = { pin: next.pin, ref: next.ref };
+      }
+      const href = selectionToOpen(next, shown);
+      if (href !== null && !openedSelection) {
+        openedSelection = true;
+        deps.navigate(href);
       }
     }
 
@@ -482,6 +524,7 @@
         isVisible: () => document.visibilityState === "visible",
         render: (model) => paint(element, model, actions, live),
         reload: () => window.location.reload(),
+        navigate: (href) => window.location.assign(href),
       },
       { shown: window.METABROWSER_SOURCE_PIN ?? null },
     );
@@ -513,5 +556,6 @@
     describe,
     mount,
     relativeAge,
+    selectionToOpen,
   });
 })();

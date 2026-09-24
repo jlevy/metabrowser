@@ -78,6 +78,7 @@ class SourceStatus(TypedDict):
     stale: bool
     pull_request: int | None
     selection_state: SelectionState | None
+    selection_href: str | None
 
 
 def source_status(mirror: MirrorSession | None = None) -> SourceStatus:

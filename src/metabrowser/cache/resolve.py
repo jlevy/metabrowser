@@ -49,6 +49,7 @@ from metabrowser.git.wire import is_full_revision
 from metabrowser.mirror_refresh import (
     AmbiguousSelectionError,
     InvalidSelectionError,
+    SelectionNotACommitError,
     SelectionNotFoundError,
 )
 
@@ -371,11 +372,17 @@ async def _pin_commit_id(target: RepositoryStoreTarget, text: str) -> str:
         )
     if resolved.reason == "commit_ambiguous":
         raise AmbiguousSelectionError("that abbreviated commit ID matches several commits")
+    if resolved.reason == "not_a_commit":
+        raise SelectionNotACommitError("that ID names an object in the mirror that is not a commit")
     raise SelectionNotFoundError("no commit with that ID is in the mirror")
 
 
 async def resolve_pin(
-    target: RepositoryStoreTarget, *, ref: str | None = None, oid: str | None = None
+    target: RepositoryStoreTarget,
+    *,
+    ref: str | None = None,
+    oid: str | None = None,
+    default_ref: str | None = None,
 ) -> ResolvedPin:
     """The commit a pin request names in the mirror, and the ref it came through.
 
@@ -383,7 +390,9 @@ async def resolve_pin(
     then as a tag, and then, when it is hexadecimal, as a commit ID; a full name must
     be under ``refs/remotes/origin/`` or ``refs/tags/``, the only refs a mirror holds.
     *oid* is only a commit ID, full or abbreviated to at least seven digits. A commit
-    pinned by ID has no ref. Raises a
+    pinned by ID has no ref. ``HEAD`` is the default branch, *default_ref*, as in a URL.
+    A name the mirror holds that is not a commit, such as a tag of a tree, is refused
+    at once, as URL opening refuses it. Raises a
     :class:`~metabrowser.mirror_refresh.SelectionError`; Git failures other than "not
     there" propagate as :class:`~metabrowser.git.process.GitError`.
     """
@@ -395,13 +404,17 @@ async def resolve_pin(
     assert ref is not None
     if not ref:
         raise InvalidSelectionError("the ref is empty")
-    if ref.startswith("refs/"):
+    if ref == "HEAD":
+        if default_ref is None:
+            raise SelectionNotFoundError("the mirror has recorded no default branch")
+        candidates: tuple[str, ...] = (default_ref,)
+    elif ref.startswith("refs/"):
         if not ref.startswith((BRANCH_MIRROR_PREFIX, TAG_PREFIX)):
             raise InvalidSelectionError(
                 "only the origin's branches (refs/remotes/origin/…) and tags (refs/tags/…) "
                 "can be pinned"
             )
-        candidates: tuple[str, ...] = (ref,)
+        candidates = (ref,)
     else:
         candidates = (BRANCH_MIRROR_PREFIX + ref, TAG_PREFIX + ref)
     is_hex = _COMMIT_ID.fullmatch(ref.lower()) is not None
@@ -409,9 +422,14 @@ async def resolve_pin(
         exact = await _exact_refs(target, list(candidates))
         for candidate in candidates:
             found = exact.get(candidate)
-            commit = None if found is None else await _peeled_commit(target, found)
-            if commit is not None:
-                return ResolvedPin(commit_oid=commit, ref=candidate)
+            if found is None:
+                continue
+            commit = await _peeled_commit(target, found)
+            if commit is None:
+                raise SelectionNotACommitError(
+                    "that name is in the mirror but does not name a commit"
+                )
+            return ResolvedPin(commit_oid=commit, ref=candidate)
     elif not is_hex:
         raise InvalidSelectionError("the ref is not a valid Git ref name")
     if is_hex:

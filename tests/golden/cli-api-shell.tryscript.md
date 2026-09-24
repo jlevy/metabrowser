@@ -124,7 +124,8 @@ status: 200
   "refreshing": false,
   "stale": false,
   "pull_request": null,
-  "selection_state": null
+  "selection_state": null,
+  "selection_href": null
 }
 ? 0
 ```

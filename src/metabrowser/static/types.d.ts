@@ -2121,7 +2121,8 @@ declare global {
     refreshing: boolean;
     stale: boolean;
     pull_request: number | null;
-    selection_state: "pending" | "found" | "not_found" | null;
+    selection_state: "pending" | "found" | "not_found" | "fetch_failed" | "superseded" | null;
+    selection_href: string | null;
   };
 
   /** The pin and ref a page was rendered for. */
@@ -2155,6 +2156,7 @@ declare global {
     isVisible(): boolean;
     render(model: MetabrowserSourceFreshnessModel): void;
     reload(): void;
+    navigate(href: string): void;
   };
 
   type MetabrowserSourceFreshnessController = Readonly<{
@@ -2187,6 +2189,10 @@ declare global {
     ): MetabrowserSourceFreshnessModel;
     mount(element: HTMLElement): MetabrowserSourceFreshnessController;
     relativeAge(iso: string | null, nowMs: number): string;
+    selectionToOpen(
+      status: MetabrowserSourceStatus | null,
+      shown: MetabrowserSourcePage | null,
+    ): string | null;
   }>;
 
   type MetabrowserGitHistoryWindowRuntime = {

@@ -161,7 +161,9 @@ async def _select(source: GitSource, *, allow_pending: bool) -> _Selected:
     """Acquire *source*, then resolve its URL selection in the mirror.
 
     With *allow_pending*, a ref or commit a fetch could bring is not an error: the
-    default branch is selected and ``pending`` is set.
+    default branch is selected and ``pending`` is set. A mirror this call just cloned
+    was fetched a moment ago, so there a missing selection is not found at once rather
+    than waiting on a second fetch.
     """
 
     published = await acquire_for_cli(source)
@@ -172,7 +174,7 @@ async def _select(source: GitSource, *, allow_pending: bool) -> _Selected:
         )
     resolution = await resolve_in_mirror(published, selection)
     if isinstance(resolution, UnresolvedSelection):
-        if allow_pending and resolution.needs_fetch:
+        if allow_pending and resolution.needs_fetch and not published.fetched:
             return _Selected(
                 published, published.default_revision, published.default_remote_ref, None, True
             )
@@ -238,7 +240,9 @@ async def _open_pin(selected: _Selected) -> GitRevisionSubject:
 
 
 @asynccontextmanager
-async def _one_shot_pin(source: GitSource) -> AsyncGenerator[PublishedSource]:
+async def _one_shot_pin(
+    source: GitSource, *, refresh_requested: bool = False
+) -> AsyncGenerator[PublishedSource]:
     """Serve the selected pin in this process for one command, then close it.
 
     The store is also served as a mirror without a refresh of its own, so a one-shot
@@ -246,18 +250,35 @@ async def _one_shot_pin(source: GitSource) -> AsyncGenerator[PublishedSource]:
     Whatever pin is served at the end -- the selected one, or one a
     ``POST /api/source/pin`` switched to -- is closed. The selection is reported on
     stderr, so the route's envelope on stdout stays the only thing a pipe reads.
+
+    With *refresh_requested*, the command's own request is that refresh, so a URL
+    selection the mirror lacks waits for it as it would in a server: the default
+    branch is served, and the selection once the fetch brings it.
     """
 
-    selected = await _select(source, allow_pending=False)
+    selected = await _select(source, allow_pending=refresh_requested)
     # One command is one session: nothing a server configured earlier in this process
     # opens a second pin beside this one, and the generation starts at 1.
     reset_source_session()
     try:
         attach_owned_subject(await _open_pin(selected))
-        serve_mirror(StoreMirror.from_published(selected.published))
-        if source.selection is not None and selected.resolved is not None:
-            for line in selection_lines(source.selection, selected.resolved):
+        selection = source.selection
+        serve_mirror(
+            StoreMirror.from_published(selected.published),
+            pending_selection=(
+                pending_selection_opener(selected.published, selection)
+                if selected.pending and selection is not None
+                else None
+            ),
+        )
+        if selection is not None and selected.resolved is not None:
+            for line in selection_lines(selection, selected.resolved):
                 typer.echo(line, err=True)
+        elif selection is not None and selected.pending:
+            typer.echo(
+                f"selection: {selection.kind} (not in the mirror yet; the refresh fetches it)",
+                err=True,
+            )
         yield selected.published
     finally:
         serve_mirror(None)
@@ -322,8 +343,12 @@ def run_pin_api(
     apply_log_level(log_level)
     from metabrowser.cli.api_cli import aissue_on_active_session
 
+    # The one route that fetches, asked with a body: a selection the mirror lacks waits
+    # for that refresh instead of failing before it can run.
+    refresh_requested = data is not None and route.split("?", 1)[0] == "/api/source/refresh"
+
     async def _run() -> None:
-        async with _one_shot_pin(source) as published:
+        async with _one_shot_pin(source, refresh_requested=refresh_requested) as published:
             await aissue_on_active_session(
                 route=route,
                 fmt=fmt,

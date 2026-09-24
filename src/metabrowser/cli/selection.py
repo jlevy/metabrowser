@@ -10,7 +10,6 @@ the server for that is :func:`pending_selection_opener`.
 from __future__ import annotations
 
 import logging
-from collections.abc import Awaitable, Callable
 from typing import Final
 
 from metabrowser.cache.acquire import PublishedSource
@@ -25,6 +24,7 @@ from metabrowser.cli.common import maybe_cli_logging
 from metabrowser.errors import CLIError
 from metabrowser.git.process import GitError, repository_store_target
 from metabrowser.git.tree_source import GitPath, GitRevisionSubject, display_segment
+from metabrowser.mirror_refresh import OpenedSelection, SelectionOpener
 from metabrowser.view_routes import VIEW_ROUTE_PREFIX
 
 LOG = logging.getLogger(__name__)
@@ -130,14 +130,15 @@ async def resolve_and_check_for_cli(
 
 def pending_selection_opener(
     published: PublishedSource, selection: RepositorySelection
-) -> Callable[[], Awaitable[GitRevisionSubject | None]]:
-    """What serve mode asks after its background fetch: the selection's pin, or ``None``.
+) -> SelectionOpener:
+    """What the server asks after the fetch a selection waited for: its pin, or ``None``.
 
     ``None`` means the selection is still not in the mirror, or its path is not at the
-    commit it names. The subject is opened in the serving loop, labelled with its ref.
+    commit it names. The subject is opened in the serving loop, labelled with its ref,
+    with the ``/view/`` address the selection opens at.
     """
 
-    async def open_selection() -> GitRevisionSubject | None:
+    async def open_selection() -> OpenedSelection | None:
         resolution = await resolve_selection(
             repository_store_target(git_dir=published.git_dir),
             selection,
@@ -159,7 +160,7 @@ def pending_selection_opener(
         ):
             await subject.aclose()
             return None
-        return subject
+        return OpenedSelection(subject, selection_view_href(selection, resolution))
 
     return open_selection
 

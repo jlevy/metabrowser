@@ -208,7 +208,7 @@ def test_a_test_that_installs_no_gh_reaches_only_the_failing_stand_in() -> None:
 
     found = gh_executable()
     log = Path(os.environ[GH_GUARD_LOG_ENV])
-    assert found == str(log.parent / "gh")
+    assert found is not None and found == str(log.parent / "gh")
     before = log.read_text(encoding="utf-8") if log.exists() else ""
     ran = subprocess.run([found, "auth", "status"], capture_output=True, check=False)
     assert ran.returncode == 1 and b"not available to tests" in ran.stderr

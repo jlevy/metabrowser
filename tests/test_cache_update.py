@@ -30,6 +30,7 @@ from metabrowser.cache.paths import store_record
 from metabrowser.cache.records import REPOSITORY_STORE_STATE_CONTRACT_ID, RepositoryStoreState
 from metabrowser.cache.repository_store import open_revision
 from metabrowser.cache.resolve import is_valid_ref_name, ref_tip, resolve_pin
+from metabrowser.cache.served_mirror import StoreMirror
 from metabrowser.cache.update import (
     RefreshOutcome,
     remove_interrupted_fetch_leftovers,
@@ -44,6 +45,7 @@ from metabrowser.git.process import (
 from metabrowser.mirror_refresh import (
     AmbiguousSelectionError,
     InvalidSelectionError,
+    SelectionNotACommitError,
     SelectionNotFoundError,
 )
 from tests.test_cache_acquire import _allow_installed_git, _file_source, _git, _git_env
@@ -831,9 +833,45 @@ def test_selections_that_cannot_be_pinned_are_typed(
 
 
 def test_a_commit_id_naming_a_tree_is_not_a_commit(mirror: _Mirror) -> None:
+    """Answered at once, as URL opening answers it: no fetch changes what an ID names."""
+
     tree = _rev_parse(mirror.work, "HEAD^{tree}")
-    with pytest.raises(SelectionNotFoundError):
+    with pytest.raises(SelectionNotACommitError):
         asyncio.run(resolve_pin(mirror.target, oid=tree))
+
+
+def test_a_tag_of_a_tree_is_not_a_commit_and_head_is_the_default_branch(
+    mirror: _Mirror,
+) -> None:
+    """The pin route resolves as URL opening does, through the one resolver."""
+
+    _git(mirror.work, "tag", "tree-tag", "HEAD^{tree}")
+    mirror.push("tree-tag")
+    assert _update(mirror) is RefreshOutcome.succeeded
+    with pytest.raises(SelectionNotACommitError):
+        asyncio.run(resolve_pin(mirror.target, ref="tree-tag"))
+    head = asyncio.run(
+        resolve_pin(mirror.target, ref="HEAD", default_ref="refs/remotes/origin/topic")
+    )
+    assert (head.commit_oid, head.ref) == (
+        mirror.published.default_revision,
+        "refs/remotes/origin/topic",
+    )
+    with pytest.raises(SelectionNotFoundError):
+        asyncio.run(resolve_pin(mirror.target, ref="HEAD"))
+    served = StoreMirror.from_published(mirror.published)
+
+    async def open_head() -> tuple[str, str | None]:
+        subject = await served.open_selection(ref="HEAD", oid=None)
+        try:
+            return subject.commit_oid, subject.ref
+        finally:
+            await subject.aclose()
+
+    assert asyncio.run(open_head()) == (
+        mirror.published.default_revision,
+        "refs/remotes/origin/topic",
+    )
 
 
 def test_an_abbreviation_matching_several_commits_is_ambiguous(

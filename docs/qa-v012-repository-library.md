@@ -913,7 +913,7 @@ was acquired or served, or a served pin ran a script).
 | --- | --- |
 | ssh acquire and serve | Closed; refuse is the test |
 | A branch and tag selector in the browser | Not built; pin by name through `POST /api/source/pin` (5.6) |
-| The browser’s view of a pending URL selection | `/api/source/status` reports `selection_state`; the page shows only the reload offer when the fetch finds it |
+| The browser’s view of a pending URL selection | The row shows the refresh; a page opened while the selection waited goes to it when the fetch finds it, and shows no message for `not_found` or `fetch_failed` beyond the refresh outcome |
 | Line highlighting for `#L10-L20` | `mb-rlf3`; the anchor stays in the address |
 | Pull-request data and page | Later steps; a `/pull/<n>` URL opens the default branch and reports the number |
 | Hosted-review / GitHub PR slice | Separate beads; not on these tips |

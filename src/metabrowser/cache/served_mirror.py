@@ -14,7 +14,7 @@ from pathlib import Path
 
 from metabrowser.cache import acquire
 from metabrowser.cache.acquire import PublishedSource
-from metabrowser.cache.atomic import read_record
+from metabrowser.cache.atomic import RecordError, read_record
 from metabrowser.cache.locks import LockBusyError, store_fetch_lock
 from metabrowser.cache.paths import store_directory, store_record
 from metabrowser.cache.providers import repository_context_for
@@ -25,6 +25,7 @@ from metabrowser.cache.update import update_store
 from metabrowser.cache.urls import GitSource
 from metabrowser.git.process import RepositoryStoreTarget, repository_store_target
 from metabrowser.git.tree_source import GitRevisionSubject
+from metabrowser.home import PrivateStorageError
 from metabrowser.mirror_refresh import RecordedFreshness, RefreshResult
 from metabrowser.repository_context import RepositoryContext
 
@@ -60,7 +61,8 @@ class StoreMirror:
         )
 
     async def open_selection(self, *, ref: str | None, oid: str | None) -> GitRevisionSubject:
-        resolved = await resolve_pin(self._target(), ref=ref, oid=oid)
+        default_ref = await asyncio.to_thread(self._default_ref) if ref == "HEAD" else None
+        resolved = await resolve_pin(self._target(), ref=ref, oid=oid, default_ref=default_ref)
         return await open_revision(
             home=self.home,
             store_key=self.store_key,
@@ -74,6 +76,18 @@ class StoreMirror:
             self.home, self.store_key, remote_url=acquire.remote_url_for(self.source)
         )
         return RefreshResult(outcome=update.outcome.value, at=update.at)
+
+    def _default_ref(self) -> str | None:
+        try:
+            state = read_record(
+                self.home,
+                store_record(self.store_key, "state.yml"),
+                REPOSITORY_STORE_STATE_CONTRACT_ID,
+                shared="keep",
+            )
+        except (RecordError, PrivateStorageError, OSError):
+            return None
+        return state.default_remote_ref if isinstance(state, RepositoryStoreState) else None
 
     async def recorded_freshness(self) -> RecordedFreshness:
         return await asyncio.to_thread(self._read_state)

@@ -54,7 +54,8 @@ status: 200
   "refreshing": false,
   "stale": true,
   "pull_request": null,
-  "selection_state": null
+  "selection_state": null,
+  "selection_href": null
 }
 ? 0
 ```
@@ -88,7 +89,8 @@ status: 200
     "refreshing": false,
     "stale": true,
     "pull_request": null,
-    "selection_state": null
+    "selection_state": null,
+    "selection_href": null
   }
 }
 ? 0
@@ -120,7 +122,8 @@ status: 200
     "refreshing": false,
     "stale": true,
     "pull_request": null,
-    "selection_state": null
+    "selection_state": null,
+    "selection_href": null
   }
 }
 ? 0
@@ -154,7 +157,8 @@ status: 200
     "refreshing": false,
     "stale": true,
     "pull_request": null,
-    "selection_state": null
+    "selection_state": null,
+    "selection_href": null
   }
 }
 ? 0
@@ -186,7 +190,8 @@ status: 200
     "refreshing": false,
     "stale": true,
     "pull_request": null,
-    "selection_state": null
+    "selection_state": null,
+    "selection_href": null
   }
 }
 ? 0
@@ -259,7 +264,8 @@ status: 202
     "refreshing": true,
     "stale": true,
     "pull_request": null,
-    "selection_state": null
+    "selection_state": null,
+    "selection_href": null
   }
 }
 after: /api/source/status
@@ -282,7 +288,8 @@ status: 200
   "refreshing": false,
   "stale": true,
   "pull_request": null,
-  "selection_state": null
+  "selection_state": null,
+  "selection_href": null
 }
 ? 0
 ```

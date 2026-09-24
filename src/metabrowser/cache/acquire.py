@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import dataclasses
 import functools
 import logging
 import os
@@ -453,7 +454,11 @@ async def acquire_into_staging(
 
 @dataclass(frozen=True, slots=True)
 class PublishedSource:
-    """A published source alias naming one immutable repository store."""
+    """A published source alias naming one immutable repository store.
+
+    ``fetched`` is true when the call that returned it fetched the store from the origin
+    just now, so a ref the mirror lacks is not one a second fetch would bring.
+    """
 
     home: Path
     slug: str
@@ -465,6 +470,7 @@ class PublishedSource:
     object_format: ObjectFormat
     default_remote_ref: str
     default_revision: str
+    fetched: bool = field(default=False, compare=False)
 
 
 def _touch_last_opened(published: PublishedSource) -> None:
@@ -810,7 +816,7 @@ async def acquire_source(
     _report(on_phase, "publishing")
     published = await run_lock_section(functools.partial(_publish_and_touch, staged))
     _report(on_phase, "done")
-    return published
+    return dataclasses.replace(published, fetched=True)
 
 
 def _find_or_open_cache(

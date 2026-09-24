@@ -205,8 +205,13 @@ not in it is reported as `ref_not_found` or `commit_not_found` rather than fetch
 a path that is not at the pinned commit is `path_not_found`. Each exits with status 1,
 but the acquisition before it succeeded, so the source stays published.
 A server instead serves the default branch, fetches once in the background, and switches
-to the selection if that fetch brings it; `/api/source/status` reports `selection_state`
-as `pending`, then `found` or `not_found`.
+to the selection if that fetch brings it, and a page opened meanwhile goes there;
+`/api/source/status` reports `selection_state` as `pending`, then `found` or
+`not_found`, or `fetch_failed` when the fetch could not run, and `superseded` after a
+pin switch. A mirror the same command just cloned is not fetched again, so there the
+selection is `ref_not_found` at once.
+`--api /api/source/refresh --data <file with {}>` is the one-shot command that waits for
+its selection’s fetch.
 
 Public repositories are cloned anonymously.
 When `gh` is installed, it is Git’s credential helper for `https://github.com` and for
