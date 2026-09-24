@@ -8,6 +8,8 @@ nothing in the environment does.
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import os
 from dataclasses import dataclass
 
@@ -144,4 +146,52 @@ def raw_sandbox_csp(*, active_content: bool) -> str:
 
     return " ".join(
         token for token in _RAW_SANDBOX_TOKENS if active_content or token != "allow-scripts"
+    )
+
+
+# Inline event handlers the application's own markup uses, by their exact text: the
+# file header's print button, the partial-content notice's Load more, and an agent log's
+# event toggle. The shell's policy for an untrusted source runs these, and no other
+# inline handler, through 'unsafe-hashes'.
+SHELL_INLINE_HANDLERS: tuple[str, ...] = (
+    "printActiveView()",
+    "loadMoreCurrentText()",
+    "toggleEvent(this)",
+)
+
+
+def _script_hash(source: str) -> str:
+    digest = hashlib.sha256(source.encode("utf-8")).digest()
+    return f"'sha256-{base64.b64encode(digest).decode('ascii')}'"
+
+
+def untrusted_shell_csp(nonce: str) -> str:
+    """The Content-Security-Policy of the application page when active content is off.
+
+    Rendered Markdown is already reduced to an allowlist before it reaches the page
+    (:mod:`metabrowser.inert_html`); this is the second line. Everything the page loads
+    comes from this server: its scripts (the shell's inline ones by *nonce*, and its own
+    inline handlers by hash), styles, fonts, images (and ``data:`` images its stylesheet
+    draws with), requests, and the Markdown worker. Frames are this server's alone, for
+    its sandboxed ``/raw`` document; plugins, ``<base>``, and form submission are off.
+    Inline ``style`` attributes stay allowed because the application writes them; an
+    outside ``url()`` inside one is still an image the image rule refuses.
+    """
+
+    handlers = " ".join(_script_hash(handler) for handler in SHELL_INLINE_HANDLERS)
+    return "; ".join(
+        (
+            "default-src 'self'",
+            f"script-src 'self' 'nonce-{nonce}' 'unsafe-hashes' {handlers}",
+            "style-src 'self'",
+            "style-src-attr 'unsafe-inline'",
+            "img-src 'self' data:",
+            "font-src 'self'",
+            "connect-src 'self'",
+            "worker-src 'self'",
+            "frame-src 'self'",
+            "object-src 'none'",
+            "base-uri 'none'",
+            "form-action 'none'",
+        )
     )

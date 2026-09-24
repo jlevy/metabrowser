@@ -43,6 +43,7 @@ import datetime as _dt
 import json as _json
 import logging
 import os
+import secrets
 import sys
 import time
 from collections.abc import AsyncIterator, Mapping, MutableMapping
@@ -77,7 +78,7 @@ from metabrowser.activity import ACTIVITY_POLL_INTERVAL_MS
 from metabrowser.build_version import display_version_line
 from metabrowser.builtin_plugins.html.detect import sniff_full_page_html
 from metabrowser.cache.routes import CACHE_ROUTES
-from metabrowser.capabilities import get_capabilities, raw_sandbox_csp
+from metabrowser.capabilities import get_capabilities, raw_sandbox_csp, untrusted_shell_csp
 
 # Cache invalidator: clear_charts_cache is invoked by the root-change
 # handler so chart memos don't stick across served-root swaps.
@@ -1675,7 +1676,13 @@ async def index(request: Request) -> HTMLResponse:
   {optional_assets_block}
 </body>
 </html>"""
-    return HTMLResponse(html)
+    if get_capabilities().active_content:
+        return HTMLResponse(html)
+    # An untrusted source: the page runs only what this server wrote. Every inline script
+    # of the shell carries this response's nonce (capabilities.untrusted_shell_csp).
+    nonce = secrets.token_urlsafe(18)
+    html = html.replace("<script>", f'<script nonce="{nonce}">')
+    return HTMLResponse(html, headers={"Content-Security-Policy": untrusted_shell_csp(nonce)})
 
 
 async def view_shell(request: Request) -> Response:

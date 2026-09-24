@@ -168,3 +168,32 @@ def test_harden_is_idempotent() -> None:
     for base in (None, PR_PAGE):
         once = harden(_kpress(HOSTILE_README), base)
         assert harden(once, base) == once
+
+
+FIXTURE_README = REPO_ROOT / "tests" / "fixtures" / "untrusted-markdown" / "README.md"
+SESSION_TREE = REPO_ROOT / "tests" / "fixtures" / "inert-html-kpress-tree.json"
+SESSION_JS = REPO_ROOT / "tests" / "dom" / "inert-html-session.js"
+
+
+def test_the_session_plays_what_kpress_renders_of_the_hostile_readme() -> None:
+    """``tests/dom/inert-html-session.js`` runs on KPress's render of the fixture README.
+
+    The tree is Python's HTML parse of that render, recorded so the session never runs on
+    markup a test wrote by hand; this fails when KPress renders it differently. Regenerate
+    with GOLDEN_UPDATE=1, then update tests/golden/cli-ui-inert-markdown.tryscript.md.
+    """
+
+    import os
+
+    tree = html_tree(_kpress(FIXTURE_README.read_text(encoding="utf-8")))
+    recorded = json.dumps(tree, indent=1, ensure_ascii=False) + "\n"
+    if os.environ.get("GOLDEN_UPDATE") == "1":
+        SESSION_TREE.write_text(recorded, encoding="utf-8")
+    assert SESSION_TREE.read_text(encoding="utf-8") == recorded
+    result = subprocess.run(
+        ["node", str(SESSION_JS)], capture_output=True, text=True, timeout=60, check=True
+    )
+    transcript = json.loads(result.stdout)
+    assert allowlist_violations(transcript["document"], images=True) == []
+    assert allowlist_violations(transcript["comment"]) == []
+    assert transcript["inertRender"] == {"inert": True, "trusted": False}
