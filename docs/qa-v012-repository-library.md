@@ -926,6 +926,15 @@ address.
 8. Stop the server and serve pull request 9 (`--serve 9 8475`): **spam** is **Closed**,
    from `spam (deleted fork)` into `topic`, with no conversation, and Files changed
    compares from the recorded `base.sha`.
+9. A hostile comment. Stop the server, add `HOSTILE_COMMENT` from
+   `tests/github_pull_fixture.py` to pull request 7’s comments in
+   `"${QA_PR}/fake-gh-scenario.json"` (rebuild that entry with the fixture’s `ok()`, so
+   its entity tag changes), and serve 7 again with the browser’s network panel open.
+   Once the freshness row’s refresh brings it, scroll to the comment.
+   It shows as plain paragraphs, links, and text only: **build badge** is a link to the
+   image, `x` a link, and `video`, `copy`, `fake dialog`, and `styled` plain text; no
+   dialog covers the page; and the network panel shows no request to any origin but
+   `127.0.0.1`, no `/kpress-static/` script, and no iframe.
 
 **Pass:** every step as described; no console errors; no request leaves `127.0.0.1`
 except the check and status links you click, which open in a new tab.
