@@ -214,6 +214,9 @@ GitHub URLs and HTTPS:
   shows a quiet loading state while the first record is fetched, and updates the
   conversation and checks in place when a refresh brings a new record, while the diff
   stays on what it showed and offers a newer head.
+  When the served code is not the head the record names, as when the pull request could
+  not be opened at startup and serving fell back to the default branch, the page offers
+  to switch to the head (`refs/pull/<n>/head`) and reloads on it.
   Descriptions and comments render as Markdown through KPress’s sanitized mode, one text
   at a time as it scrolls into view, never from GitHub’s own HTML; links open on GitHub
   in a new tab, and only `http` and `https` links are kept.

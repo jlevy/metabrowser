@@ -8,8 +8,10 @@ transcript. So that the conversation is the real server's and not envelopes a te
 wrote by hand, its responses come from ``tests/fixtures/github-pull-page-responses.json``:
 what the in-process application answered while it served pull request 7 of
 ``tests/github_pull_fixture.py``'s stand-in, with a fake ``gh`` replaying scrubbed real
-responses. The page opened with nothing cached, fetched the record, read its Markdown,
-went stale, and refreshed to a record with one more comment. The first test here replays
+responses. Serving began on the default branch, as it does when the pull request cannot
+be opened at startup. The page opened with nothing cached, fetched the record, read its
+Markdown, switched the pin to the head the record names, went stale, and refreshed to a
+record with one more comment. The first test here replays
 that story and fails when the recording no longer matches.
 
 The clock is fixed, so fetch times are literal. Entity tags are the session's own, since
@@ -45,7 +47,6 @@ from starlette.testclient import TestClient
 from metabrowser.builtin_plugins.github import pulls
 from metabrowser.builtin_plugins.github.served_pull import ServedPull, served_pull
 from metabrowser.cache.acquire import acquire_source
-from metabrowser.cache.pull_refs import fetch_pull_head
 from metabrowser.cache.repository_store import open_revision
 from metabrowser.cache.served_mirror import StoreMirror
 from metabrowser.cache.urls import GitSource, RepositorySelection
@@ -56,6 +57,7 @@ from metabrowser.server import app
 from metabrowser.source import attach_subject, reset_source_session
 from tests.github_pull_fixture import (
     CANONICAL,
+    DEFAULT_BRANCH,
     FETCHED_AT,
     build_origin,
     install_fake_gh,
@@ -73,6 +75,7 @@ _JSON = {"content-type": "application/json"}
 _PULL = "/api/plugin/github/pull"
 _REFRESH = "/api/plugin/github/pull-refresh"
 _MARKDOWN = "/api/plugin/github/pull-markdown"
+_PIN = "/api/source/pin"
 _PROSE = re.compile(r'<div class="kpress-prose[^"]*">(.*)</div></div></article>', re.S)
 
 pytestmark = [
@@ -86,6 +89,25 @@ def _answer(response: Any) -> dict[str, Any]:
 
     body = None if response.status_code == 304 else response.json()
     return {"status": response.status_code, "etag": response.headers.get("etag"), "body": body}
+
+
+def _switch(response: Any) -> dict[str, Any]:
+    """A pin switch as the page reads it: the status and the pin now served.
+
+    The rest of its status envelope carries wall-clock fetch times.
+    """
+
+    body = response.json()
+    status = body.get("status") or {}
+    return {
+        "status": response.status_code,
+        "etag": None,
+        "body": {
+            "changed": body.get("changed"),
+            "pin": status.get("pin"),
+            "ref": status.get("ref"),
+        },
+    }
 
 
 def _markdown(response: Any) -> dict[str, Any]:
@@ -145,16 +167,16 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         selection=RepositorySelection(kind="pull_request", pull_request=7),
     )
     published = asyncio.run(acquire_source(source, home=home))
-    # The head arrives as the CLI brings it, through GitHub's own ref; no record yet.
-    assert asyncio.run(fetch_pull_head(published, 7)) == origin["fork_head"]
+    # The pull request could not be opened when serving began, as when gh is missing,
+    # so the pin fell back to the default branch; its head arrives with the first record.
 
     async def _pin() -> GitRevisionSubject:
         subject = await open_revision(
             home=published.home,
             store_key=published.store_key,
-            commit_oid=origin["fork_head"],
+            commit_oid=origin["topic"],
             store_identity=published.store_id,
-            ref="refs/pull/7/head",
+            ref=f"refs/remotes/origin/{DEFAULT_BRANCH}",
         )
         await subject.aclose()
         return subject
@@ -203,6 +225,11 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             recorded["markdown missing"] = _answer(
                 client.get(_MARKDOWN, params={"part": "issue_comment/1"})
             )
+            # The record names a head the fallback pin is not; the page offers it.
+            recorded["switch_to_head"] = _switch(
+                client.post(_PIN, json={"ref": "refs/pull/7/head"}, headers=_JSON)
+            )
+            recorded["on_head"] = _answer(client.get(_PULL))
 
             # Five minutes on, the record is stale; a refresh reads one more comment.
             clock[0] = FETCHED_AT + timedelta(minutes=5)
@@ -250,6 +277,11 @@ def test_recording_is_what_a_served_pull_request_answers(
     assert recorded["current"]["body"]["state"] == "current"
     assert "<strong>two</strong>" in recorded["markdown body"]["body"]["html"]
     assert recorded["markdown missing"]["status"] == 404
+    current = recorded["current"]["body"]
+    assert current["pin"] != current["record"]["pull"]["head"]["sha"], "the pin fell back"
+    switched = recorded["switch_to_head"]
+    assert (switched["status"], switched["body"]["ref"]) == (200, "refs/pull/7/head")
+    assert recorded["on_head"]["body"]["pin"] == current["record"]["pull"]["head"]["sha"]
     assert recorded["stale"]["body"]["state"] == "stale"
     assert recorded["stale_refreshing"]["body"]["refreshing"] is True
     refreshed = recorded["refreshed"]["body"]
@@ -280,3 +312,9 @@ def test_the_session_runs_on_the_recording() -> None:
     refreshed = steps["the refresh brought another comment"]["paint"]
     assert [item.split(" ")[0] for item in refreshed["timeline"]][-1] == "comment"
     assert steps["a render of the older record is dropped"]["markdown"] == []
+    offer = steps["the record arrives"]["paint"]["headOffer"]
+    assert offer.endswith("[Switch to the head] -> refs/pull/7/head")
+    switched = steps["switch the pin to the head the record names"]
+    assert switched["requests"] == ['POST /api/source/pin {"ref":"refs/pull/7/head"}']
+    assert switched["reloads"] == 1
+    assert steps["reloaded on the head, nothing is offered"]["paint"]["headOffer"] is None

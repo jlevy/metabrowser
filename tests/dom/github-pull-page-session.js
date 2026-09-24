@@ -1,16 +1,18 @@
 // Browserless session: the served pull request's page, driven through the production
 // browser code.
 //
-// The page talks to the server through three GitHub plugin routes. Every response here
-// is one the in-process application gave while it served pull request 7 of the
-// stand-in in tests/github_pull_fixture.py, recorded in
+// The page talks to the server through three GitHub plugin routes and the pin route.
+// Every response here is one the in-process application gave while it served pull
+// request 7 of the stand-in in tests/github_pull_fixture.py, from its default branch
+// until the page switched to the head, recorded in
 // tests/fixtures/github-pull-page-responses.json. tests/test_github_pull_page_session.py
 // replays that story and fails when the recording drifts, so this session never runs on
 // an envelope a test wrote by hand.
 //
 // builtin_plugins/github/pull-page.js loads whole, as the shell loads the plugin: its
 // describePull decides what the page shows, and createPullController owns polling, the
-// refresh, the tab, and asking for Markdown one part at a time. Timers, the clock,
+// refresh, the switch to the head, the tab, and asking for Markdown one part at a time.
+// Timers, the clock,
 // visibility, and paint are injected; the browser glue's IntersectionObserver is played
 // by asking for parts in reading order. Each step prints the requests the page made, the
 // timer it left, how many times it painted, what it would paint, and which parts it
@@ -64,6 +66,10 @@ function summarize(model) {
             items: model.checks.items.map((item) => `[${item.label}] ${item.name} -> ${item.url}`),
           },
     notes: model.notes,
+    headOffer:
+      model.headOffer === null
+        ? null
+        : `${model.headOffer.text} [Switch to the head] -> ${model.headOffer.ref}`,
     comparison:
       model.comparison === null
         ? null
@@ -85,14 +91,15 @@ function createPage(runtime, options) {
   let visible = true;
   let paints = [];
   let rendered = [];
-  const server = { pull: null, refresh: [], markdown: new Map(), held: [] };
+  let reloads = 0;
+  const server = { pull: null, refresh: [], pin: [], markdown: new Map(), held: [] };
   const clock = { now: Date.parse("2026-09-17T12:00:30Z") };
 
   const deps = {
     async request(method, route, requestOptions) {
       if (method === "POST") {
         log.push(`POST ${route} ${JSON.stringify(requestOptions.body)}`);
-        const answer = server.refresh.shift();
+        const answer = (route === "/api/source/pin" ? server.pin : server.refresh).shift();
         assert(answer, `no scripted answer for POST ${route}`);
         return answer;
       }
@@ -130,6 +137,9 @@ function createPage(runtime, options) {
     renderMarkdown(part, body) {
       rendered.push({ part, html: body.html });
     },
+    reload() {
+      reloads += 1;
+    },
   };
   const controller = runtime.createPullController(deps, options);
 
@@ -156,6 +166,7 @@ function createPage(runtime, options) {
       log.length = 0;
       paints = [];
       rendered = [];
+      reloads = 0;
       await action();
       await settle();
       const [timer] = [...timers.values()];
@@ -173,6 +184,9 @@ function createPage(runtime, options) {
                 : timer.delayMs,
         paints: paints.length,
       };
+      if (reloads > 0) {
+        entry.reloads = reloads;
+      }
       if (paints.length > 0) {
         entry.paint = summarize(paints[paints.length - 1]);
       }
@@ -241,6 +255,15 @@ async function main() {
       await page.releaseMarkdown();
     }),
   );
+
+  // Serving began on the default branch, because the pull request could not be opened
+  // then; the record now names its head, which the page offers and the pin route takes.
+  server.pin.push(recorded.switch_to_head);
+  steps.push(
+    await page.step("switch the pin to the head the record names", () => controller.switchToHead()),
+  );
+  server.pull = recorded.on_head;
+  steps.push(await page.step("reloaded on the head, nothing is offered", async () => page.fire()));
 
   steps.push(await page.step("open Files changed", async () => controller.setTab("files")));
   steps.push(await page.step("back to the conversation", async () => controller.setTab("")));

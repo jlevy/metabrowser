@@ -54,6 +54,7 @@ $ node tests/dom/github-pull-page-session.js
         "reviewComments": [],
         "checks": null,
         "notes": [],
+        "headOffer": null,
         "comparison": null
       },
       "markdown": []
@@ -88,6 +89,7 @@ $ node tests/dom/github-pull-page-session.js
         "reviewComments": [],
         "checks": null,
         "notes": [],
+        "headOffer": null,
         "comparison": null
       },
       "markdown": []
@@ -141,7 +143,8 @@ $ node tests/dom/github-pull-page-session.js
           ]
         },
         "notes": [],
-        "comparison": "f92fd713acd5...85fcb2fa9e77"
+        "headOffer": "This page's code is c691256511d0, not the pull request's head 85fcb2fa9e77. [Switch to the head] -> refs/pull/7/head",
+        "comparison": "f92fd713acd5...85fcb2fa9e77 (head moved)"
       },
       "markdown": []
     },
@@ -196,6 +199,61 @@ $ node tests/dom/github-pull-page-session.js
       "markdown": []
     },
     {
+      "step": "switch the pin to the head the record names",
+      "requests": [
+        "POST /api/source/pin {\"ref\":\"refs/pull/7/head\"}"
+      ],
+      "timer": "slow",
+      "paints": 0,
+      "reloads": 1,
+      "markdown": []
+    },
+    {
+      "step": "reloaded on the head, nothing is offered",
+      "requests": [
+        "GET /api/plugin/github/pull (If-None-Match)"
+      ],
+      "timer": "slow",
+      "paints": 1,
+      "paint": {
+        "status": "current",
+        "tab": "conversation",
+        "message": null,
+        "canRefresh": false,
+        "freshness": "Fetched just now by gh:octo-reader",
+        "failure": null,
+        "header": "Count to two in the app #7 [Open] forker: topic <- forker:count-to-two",
+        "labels": [
+          "enhancement"
+        ],
+        "merge": "No conflicts with the base branch",
+        "timeline": [
+          "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
+          "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
+          "review maintainer [approved] 2026-09-16T17:36:02Z review/3279967139"
+        ],
+        "reviewComments": [
+          "src/app.txt:outdated maintainer +hunk",
+          "src/app.txt:2 forker (reply) +hunk"
+        ],
+        "checks": {
+          "counts": {
+            "success": 2,
+            "pending": 1
+          },
+          "items": [
+            "[success] tests (3.13) -> https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+            "[in progress] docs -> https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+            "[success] docs/readthedocs.org:demo -> https://demo--7.org.readthedocs.build/en/7/"
+          ]
+        },
+        "notes": [],
+        "headOffer": null,
+        "comparison": "f92fd713acd5...85fcb2fa9e77"
+      },
+      "markdown": []
+    },
+    {
       "step": "open Files changed",
       "requests": [],
       "timer": "slow",
@@ -233,6 +291,7 @@ $ node tests/dom/github-pull-page-session.js
           ]
         },
         "notes": [],
+        "headOffer": null,
         "comparison": "f92fd713acd5...85fcb2fa9e77"
       },
       "markdown": []
@@ -275,6 +334,7 @@ $ node tests/dom/github-pull-page-session.js
           ]
         },
         "notes": [],
+        "headOffer": null,
         "comparison": "f92fd713acd5...85fcb2fa9e77"
       },
       "markdown": []
@@ -319,6 +379,7 @@ $ node tests/dom/github-pull-page-session.js
           ]
         },
         "notes": [],
+        "headOffer": null,
         "comparison": "f92fd713acd5...85fcb2fa9e77"
       },
       "markdown": []
@@ -363,6 +424,7 @@ $ node tests/dom/github-pull-page-session.js
           ]
         },
         "notes": [],
+        "headOffer": null,
         "comparison": "f92fd713acd5...85fcb2fa9e77"
       },
       "markdown": []
@@ -417,6 +479,7 @@ $ node tests/dom/github-pull-page-session.js
           ]
         },
         "notes": [],
+        "headOffer": null,
         "comparison": "f92fd713acd5...85fcb2fa9e77"
       },
       "markdown": []
@@ -504,7 +567,8 @@ $ node tests/dom/github-pull-page-session.js
           ]
         },
         "notes": [],
-        "comparison": "f92fd713acd5...85fcb2fa9e77"
+        "headOffer": "This page's code is c691256511d0, not the pull request's head 85fcb2fa9e77. [Switch to the head] -> refs/pull/7/head",
+        "comparison": "f92fd713acd5...85fcb2fa9e77 (head moved)"
       },
       "markdown": []
     }

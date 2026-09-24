@@ -6,7 +6,8 @@
 // polling that route while the page is visible (quickly while a refresh runs or the
 // record is pending, slowly otherwise, with If-None-Match so an unchanged answer is a
 // 304), the refresh a stale page offers (`POST /api/plugin/github/pull-refresh`), the
-// tab, and the Markdown of each text, asked for one part at a time from
+// switch to the pull request's head when the pin is elsewhere (`POST /api/source/pin`),
+// the tab, and the Markdown of each text, asked for one part at a time from
 // `GET /api/plugin/github/pull-markdown` and kept only for the record it was rendered
 // from. `mountPullPage` is the browser glue: real fetch, timers, and paint.
 // tests/dom/github-pull-page-session.js runs the same functions from the command line.
@@ -30,6 +31,7 @@ export const MARKDOWN_CONCURRENCY = 2;
 const PULL_ROUTE = "/api/plugin/github/pull";
 const REFRESH_ROUTE = "/api/plugin/github/pull-refresh";
 const MARKDOWN_ROUTE = "/api/plugin/github/pull-markdown";
+const PIN_ROUTE = "/api/source/pin";
 export const TABS = Object.freeze(["", "files"]);
 
 /** @type {Readonly<Record<string, string>>} */
@@ -142,6 +144,7 @@ const TRUNCATED = Object.freeze({
  *   checks: {counts: Record<string, number>, items: CheckItem[]} | null,
  *   notes: string[],
  *   comparison: {left: string, right: string, headMoved: boolean} | null,
+ *   headOffer: {ref: string, head: string, pin: string, text: string} | null,
  * }} PullModel
  */
 
@@ -401,6 +404,7 @@ export function describePull(envelope, page) {
     checks: null,
     notes: [],
     comparison: null,
+    headOffer: null,
   };
   if (envelope === null) {
     // Nothing read yet: the page shows a spinner, and an error once a read failed.
@@ -461,6 +465,19 @@ export function describePull(envelope, page) {
   model.reviewComments = reviewComments(record);
   model.checks = checks(record);
   model.notes = notes(record);
+  const head = text(pull.head?.sha);
+  if (envelope.pin !== null && head !== "" && envelope.pin !== head) {
+    // The served code is not the head this record names: the pull request could not be
+    // opened when serving began and the pin fell back to the default branch or a commit,
+    // or a refresh found a newer head. The head is GitHub's own ref, which the refresh
+    // fetched, so the page offers to serve it rather than switching under the reader.
+    model.headOffer = {
+      ref: `refs/pull/${pull.number}/head`,
+      head,
+      pin: envelope.pin,
+      text: `This page's code is ${envelope.pin.slice(0, 12)}, not the pull request's head ${head.slice(0, 12)}.`,
+    };
+  }
   const comparison = record.comparison;
   if (comparison && typeof comparison.base === "string" && typeof comparison.head === "string") {
     model.comparison = {
@@ -500,6 +517,7 @@ function isEnvelope(value) {
  *   isVisible(): boolean,
  *   render(model: PullModel): void,
  *   renderMarkdown(part: string, rendered: Record<string, any>): void,
+ *   reload(): void,
  * }} PullDependencies
  */
 
@@ -642,6 +660,38 @@ export function createPullController(deps, options) {
     }
   }
 
+  let switching = false;
+
+  /**
+   * Serve the pull request's head, which the page offers when the pin is elsewhere, and
+   * reload so every view shows it. `POST /api/source/pin` is the freshness row's own
+   * switch; a refusal says why and the page stays as it was.
+   */
+  async function switchToHead() {
+    const offer = model().headOffer;
+    if (disposed || switching || offer === null) {
+      return;
+    }
+    switching = true;
+    try {
+      const response = await deps.request("POST", PIN_ROUTE, { body: { ref: offer.ref } });
+      if (response.status === 200) {
+        deps.reload();
+        return;
+      }
+      const body = /** @type {{code?: unknown} | null} */ (response.body);
+      const code = body !== null && typeof body.code === "string" ? body.code : "";
+      error = `Could not switch to the head (${code || `HTTP ${response.status}`}).`;
+    } catch {
+      error = "The switch request failed.";
+    } finally {
+      switching = false;
+    }
+    if (!disposed) {
+      render();
+    }
+  }
+
   /** @param {string} next */
   function setTab(next) {
     if (disposed || !TABS.includes(next)) {
@@ -728,6 +778,7 @@ export function createPullController(deps, options) {
     },
     poll: () => poll(),
     requestRefresh,
+    switchToHead,
     requestMarkdown,
     setTab,
     onVisibilityChange,
@@ -1043,6 +1094,13 @@ export function mountPullPage(container, ctx, mb) {
       refresh.addEventListener("click", () => void controller.requestRefresh());
       status.append(refresh);
     }
+    if (model.headOffer !== null) {
+      const button = h("button", { type: "button", class: "btn github-pull-switch" }, [
+        "Switch to the head",
+      ]);
+      button.addEventListener("click", () => void controller.switchToHead());
+      status.append(h("span", { class: "github-pull-offer" }, [model.headOffer.text, " ", button]));
+    }
     children.push(status);
     if (model.pull !== null) {
       const tabs = h("div", { class: "github-pull-tabs", role: "tablist" });
@@ -1314,6 +1372,7 @@ export function mountPullPage(container, ctx, mb) {
       now: () => Date.now(),
       isVisible: () => document.visibilityState === "visible",
       render: paint,
+      reload: () => window.location.reload(),
       renderMarkdown,
     },
     { number, tab: typeof ctx.tab === "string" ? ctx.tab : "" },

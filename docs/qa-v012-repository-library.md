@@ -916,7 +916,13 @@ address.
 6. Click **Refresh** while the record is stale.
    The status line reads `Refreshing…` and then `Fetched just now by gh:octo-reader`;
    the conversation does not flicker or jump.
-7. Open `/pull/8`. The page says `This server serves pull request #7.`
+7. Open `/pull/8`. The page says `This server serves pull request #7.` When the pin is
+   not the head the record names, as when the pull request could not be opened at
+   startup and serving fell back to the default branch, the status line says
+   `This page's code is …, not the pull request's head …` with **Switch to the head**,
+   which reloads the page on `refs/pull/7/head`. The stand-in opens the pull request at
+   startup, so this case is played by
+   `tests/golden/cli-ui-github-pull-page.tryscript.md` rather than by hand.
 8. Stop the server and serve pull request 9 (`--serve 9 8475`): **spam** is **Closed**,
    from `spam (deleted fork)` into `topic`, with no conversation, and Files changed
    compares from the recorded `base.sha`.
