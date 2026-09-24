@@ -198,7 +198,7 @@ Any other github.com page, `http://`, and GitHub’s own top-level pages are ref
 a message that names the shape and offers the repository URL.
 
 With no mode flag the source is served, and the browser opens at the file or folder the
-URL names, with a `#L10-L20` anchor kept in the address.
+URL names, with a `#L10-L20` anchor kept in the address and those lines highlighted.
 `--no-serve`, `--show`, and `--api` read the mirror as it is: a ref or commit that is
 not in it is reported as `ref_not_found` or `commit_not_found` rather than fetched, and
 a path that is not at the pinned commit is `path_not_found`. Each exits with status 1,
