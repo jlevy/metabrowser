@@ -383,6 +383,30 @@ def _require_no_lazy_fetch(target: GitCommandTarget | None, policy: GitProcessPo
         raise ValueError(f"Git policy {policy.name!r} would allow lazy fetch in a repository store")
 
 
+# Git processes started as the leaders of their own process groups and not yet reaped.
+# They outlive a Python process that exits without unwinding, because they are in
+# another group, so a command that must stop at once kills them first; see
+# :func:`kill_live_process_groups`.
+_LIVE_PROCESS_GROUPS: set[int] = set()
+
+
+def kill_live_process_groups() -> None:
+    """Kill every Git process group this process started and has not yet reaped.
+
+    Safe to call from a signal handler just before ``os._exit``: it only signals.
+    A group killed here leaves what an interrupted Git leaves, which the next fetch
+    cleans up under the store's fetch lock.
+    """
+
+    for pid in tuple(_LIVE_PROCESS_GROUPS):
+        with contextlib.suppress(ProcessLookupError, PermissionError):
+            os.killpg(pid, signal.SIGKILL)
+
+
+def _reaped(proc: asyncio.subprocess.Process) -> None:
+    _LIVE_PROCESS_GROUPS.discard(proc.pid)
+
+
 def git_environment(policy: GitProcessPolicy | None = None) -> dict[str, str]:
     """Environment for a git child process.
 
@@ -463,6 +487,7 @@ async def run_git(
     policy: GitProcessPolicy | None = None,
     timeout_s: float | None = None,
     max_bytes: int | None = None,
+    pass_fds: Sequence[int] = (),
 ) -> bytes:
     """Run ``git`` with *args* in *cwd* and return raw stdout.
 
@@ -474,12 +499,14 @@ async def run_git(
     Pass *target* for a core-constructed repository; *cwd* remains the
     path used by local-worktree readers. *timeout_s* and *max_bytes*
     override the selected policy when a caller already named a bound.
+    *pass_fds* are descriptors Git inherits, such as a lock it must hold for
+    as long as it runs, even if this process dies first.
 
     Raises :class:`GitUnavailableError`, :class:`GitTimeoutError`,
     :class:`GitOutputTooLargeError`, or :class:`GitCommandError`.
     """
     chosen = policy if policy is not None else _default_policy(target)
-    proc = await spawn_git_process(args, cwd=cwd, target=target, policy=chosen)
+    proc = await spawn_git_process(args, cwd=cwd, target=target, policy=chosen, pass_fds=pass_fds)
     timeout = chosen.timeout_s if timeout_s is None else timeout_s
     max_bytes = chosen.max_bytes if max_bytes is None else max_bytes
 
@@ -493,6 +520,7 @@ async def run_git(
             asyncio.gather(stdout_task, stderr_task, proc.wait()),
             timeout=timeout,
         )
+        _reaped(proc)
     except TimeoutError:
         stdout_task.cancel()
         stderr_task.cancel()
@@ -555,6 +583,7 @@ async def spawn_git_process(
     target: GitCommandTarget | None = None,
     policy: GitProcessPolicy | None = None,
     pipe_stdin: bool = False,
+    pass_fds: Sequence[int] = (),
 ) -> asyncio.subprocess.Process:
     """Start a sanitized Git process whose streams the caller owns.
 
@@ -593,8 +622,10 @@ async def spawn_git_process(
         # the parent: Git looks at the working directory and no higher. Resolved,
         # because Git compares the ceiling against its physical working directory.
         env["GIT_CEILING_DIRECTORIES"] = str(Path(work_cwd).resolve().parent)
-    spawn = asyncio.ensure_future(
-        asyncio.create_subprocess_exec(
+    own_group = chosen.own_process_group and os.name == "posix"
+
+    async def spawn_and_register() -> asyncio.subprocess.Process:
+        proc = await asyncio.create_subprocess_exec(
             *argv,
             cwd=work_cwd,
             stdin=_stdin_for_policy(chosen, pipe_stdin=pipe_stdin),
@@ -602,9 +633,15 @@ async def spawn_git_process(
             stderr=asyncio.subprocess.PIPE,
             env=env,
             umask=child_umask,
-            start_new_session=chosen.own_process_group and os.name == "posix",
+            start_new_session=own_group,
+            pass_fds=tuple(pass_fds),
         )
-    )
+        # Registered as soon as it exists, so a stop that cannot unwind kills it too.
+        if own_group:
+            _LIVE_PROCESS_GROUPS.add(proc.pid)
+        return proc
+
+    spawn = asyncio.ensure_future(spawn_and_register())
     try:
         return await asyncio.shield(spawn)
     except asyncio.CancelledError:
@@ -676,6 +713,7 @@ async def terminate_git_process(proc: asyncio.subprocess.Process) -> None:
     leaves a zombie for the lifetime of the server.
     """
     if proc.returncode is not None:
+        _reaped(proc)
         return
     # The process may exit between the returncode check and the signal.
     with contextlib.suppress(ProcessLookupError):
@@ -688,6 +726,7 @@ async def terminate_git_process(proc: asyncio.subprocess.Process) -> None:
     # original failure with a cancellation from the cleanup path.
     with contextlib.suppress(asyncio.CancelledError):
         await proc.wait()
+    _reaped(proc)
 
 
 def _leads_its_own_group(pid: int) -> bool:
@@ -822,6 +861,7 @@ __all__ = [
     "failure_detail",
     "git_environment",
     "git_executable",
+    "kill_live_process_groups",
     "parse_git_version",
     "parsed_git_version_as_fixture",
     "repository_store_target",

@@ -5,17 +5,22 @@ a request wait on the network. Network work runs as background jobs that a reque
 starts or joins and then returns: the :class:`RefreshCoordinator` on the application
 state keeps one job per key (a store key today; a store and pull request later) so
 concurrent requests join the running one, and a semaphore bounds how many run at once.
-A job outlives the request that started it, its failures become typed outcomes rather
-than exceptions, and the application lifespan cancels whatever is still running at
-shutdown.
+A job outlives the request that started it, and its failures become typed outcomes
+rather than exceptions. A graceful shutdown cancels whatever is still running through the
+application lifespan, which kills each job's Git; a Ctrl-C exits at once instead, after
+:func:`metabrowser.git.process.kill_live_process_groups` has killed them. A server that
+is killed outright cannot do either, and its Git keeps the store's fetch lock until it
+exits, so nothing else writes or cleans the store under it.
 
 :class:`MirrorSession` ties the served mirror to that coordinator and to the source
 session. It answers what ``GET /api/source/status`` reports about freshness from
 memory -- the tip of the pinned ref as last observed, the last fetch time and outcome,
 whether a refresh is running -- so the status route runs no Git and reads no store. The
-observations are taken again when a job finishes and when the pin changes. Switching
-the pin resolves a selection in the mirror, opens the new subject, and replaces the
-served one under a new generation.
+observations are taken again when a job finishes and when the pin changes, one at a
+time, so a pin switch during a refresh cannot leave the other ref's tip behind. When a
+refresh finds another process refreshing the store, a served mirror follows that one
+and observes the store again once it ends. Switching the pin resolves a selection in
+the mirror, opens the new subject, and replaces the served one under a new generation.
 
 This module holds no cache or Git code of its own. The CLI hands the server a
 :class:`ServedMirror` implementation (``cache/served_mirror.py``) through
@@ -25,6 +30,7 @@ This module holds no cache or Git code of its own. The CLI hands the server a
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
@@ -32,6 +38,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, ClassVar, Final, Literal, Protocol, TypedDict
 
+from metabrowser.git.process import GIT_ACQUISITION_TIMEOUT_S
 from metabrowser.git.tree_source import GitRevisionSubject
 from metabrowser.paths_safe import register_root_callback
 from metabrowser.repository_context import RepositoryContext
@@ -53,6 +60,11 @@ FRESHNESS_WINDOW_S: Final = 60.0
 # pull request's refresh proceed beside its repository's without letting a burst of
 # requests open unbounded connections to one host.
 MAX_CONCURRENT_REFRESHES: Final = 2
+# How often a served mirror checks whether another process's refresh has ended, and for
+# how long at most: that process's own fetch deadline. A check tries a lock file, so it
+# is cheap; a second keeps the page's label a second behind the other process at worst.
+ELSEWHERE_POLL_S: Final = 1.0
+ELSEWHERE_WAIT_S: Final = GIT_ACQUISITION_TIMEOUT_S
 
 type StartedOrJoined = Literal["started", "joined"]
 
@@ -139,6 +151,10 @@ class ServedMirror(Protocol):
         """The commit *ref* names in the mirror now, or ``None`` when it is gone."""
         ...
 
+    async def refresh_running_elsewhere(self) -> bool:
+        """Whether a refresh of this mirror is running now, in any process."""
+        ...
+
     def repository_context(self, *, revision: str, branch: str | None) -> RepositoryContext | None:
         """What lets rendered links into this mirror's hosted repository open locally.
 
@@ -161,16 +177,18 @@ class FreshnessFields(TypedDict):
 
     ``refreshable`` says whether the refresh and pin routes act on this server's
     subject. ``latest`` is the commit the pinned ref names in the mirror as last
-    observed: equal to the pin when nothing moved, different when a refresh brought
-    newer commits, and ``None`` without a ref or after the origin deleted it.
-    ``pull_request`` is the number a served pull-request URL named, kept until its data
-    is served. ``selection_state`` follows a URL selection the mirror did not have
-    when serving began: ``pending`` while one background fetch runs, then ``found``
-    (and served) or ``not_found``; ``None`` when there was none.
+    observed: equal to the pin when nothing moved, different when a refresh moved the
+    ref, and ``None`` otherwise. ``ref_on_origin`` tells those apart: ``False`` when the
+    origin no longer had the ref at the last fetch, ``None`` when there is no ref or it
+    has not been observed. ``pull_request`` is the number a served pull-request URL
+    named, kept until its data is served. ``selection_state`` follows a URL selection
+    the mirror did not have when serving began: ``pending`` while one background fetch
+    runs, then ``found`` (and served) or ``not_found``; ``None`` when there was none.
     """
 
     refreshable: bool
     latest: str | None
+    ref_on_origin: bool | None
     last_fetch_at: str | None
     last_outcome: LastOutcome | None
     refreshing: bool
@@ -182,6 +200,7 @@ class FreshnessFields(TypedDict):
 UNSERVED_FRESHNESS: Final[FreshnessFields] = {
     "refreshable": False,
     "latest": None,
+    "ref_on_origin": None,
     "last_fetch_at": None,
     "last_outcome": None,
     "refreshing": False,
@@ -196,6 +215,10 @@ UNSERVED_FRESHNESS: Final[FreshnessFields] = {
 MAX_REMEMBERED_MISSES: Final = 64
 
 type SelectionOpener = Callable[[], Awaitable[GitRevisionSubject | None]]
+
+
+# Outcomes after which the store holds what the origin had: the fetch ran.
+_FETCHED_OUTCOMES: Final = frozenset({"succeeded", "default_branch_unknown"})
 
 
 def _now_utc() -> datetime:
@@ -231,14 +254,22 @@ class RefreshCoordinator:
         job = self._jobs.get(key)
         return job is not None and not job.done()
 
-    def start(self, key: str, work: Callable[[], Awaitable[None]]) -> StartedOrJoined:
-        """Start *work* for *key*, or join the job already running for it."""
+    def start(
+        self, key: str, work: Callable[[], Awaitable[None]], *, network: bool = True
+    ) -> StartedOrJoined:
+        """Start *work* for *key*, or join the job already running for it.
+
+        A *network* job waits for one of the limited slots; a job that only watches
+        local state, such as following another process's refresh, does not take one.
+        """
 
         if self.running(key):
             return "joined"
         if self._closed:
             raise RuntimeError("the refresh coordinator is closed")
-        job = asyncio.create_task(self._run(work), name=f"metabrowser-refresh:{key[:16]}")
+        job = asyncio.create_task(
+            self._run(work, network=network), name=f"metabrowser-refresh:{key[:24]}"
+        )
         self._jobs[key] = job
 
         def forget(done: asyncio.Task[None]) -> None:
@@ -248,8 +279,8 @@ class RefreshCoordinator:
         job.add_done_callback(forget)
         return "started"
 
-    async def _run(self, work: Callable[[], Awaitable[None]]) -> None:
-        async with self._semaphore:
+    async def _run(self, work: Callable[[], Awaitable[None]], *, network: bool) -> None:
+        async with self._semaphore if network else contextlib.nullcontext():
             try:
                 await work()
             except asyncio.CancelledError:
@@ -285,6 +316,7 @@ class MirrorSession:
         coordinator: RefreshCoordinator,
         *,
         window_s: float = FRESHNESS_WINDOW_S,
+        follow_elsewhere: bool = False,
         pull_request: int | None = None,
         pending_selection: SelectionOpener | None = None,
         fetch_on_miss: bool = False,
@@ -293,6 +325,7 @@ class MirrorSession:
         self._fetch_on_miss = fetch_on_miss
         self._coordinator = coordinator
         self._window_s = window_s
+        self._follow_elsewhere = follow_elsewhere
         self._pull_request = pull_request
         self._pending_selection = pending_selection
         self._selection_state: SelectionState | None = (
@@ -317,14 +350,14 @@ class MirrorSession:
         await self._observe_tip()
 
     async def _observe_tip(self) -> None:
-        subject = _served_revision()
-        if subject is None or subject.ref is None:
-            self._tip = None
-            return
-        tip = await self.mirror.ref_tip(subject.ref)
-        # A pin switch during the lookup recorded its own ref's tip; keep that one.
-        if _served_revision() is subject:
-            self._tip = (subject.ref, tip)
+        # One observation or switch at a time: a refresh that ends while a switch is
+        # resolving observes the new pin's ref after it, never the old one over it.
+        async with self._pin_lock:
+            subject = _served_revision()
+            if subject is None or subject.ref is None:
+                self._tip = None
+                return
+            self._tip = (subject.ref, await self.mirror.ref_tip(subject.ref))
 
     def last_fetch_at(self) -> str | None:
         recorded = self._recorded.last_fetch_at
@@ -346,38 +379,57 @@ class MirrorSession:
         """The freshness half of the status envelope, from memory alone."""
 
         latest: str | None = None
+        on_origin: bool | None = None
         if self._tip is not None and subject.ref is not None and self._tip[0] == subject.ref:
             latest = self._tip[1]
+            on_origin = latest is not None
         return {
             "refreshable": True,
             "latest": latest,
+            "ref_on_origin": on_origin,
             "last_fetch_at": self.last_fetch_at(),
             "last_outcome": self._last_outcome(),
-            "refreshing": self._coordinator.running(self.mirror.key),
+            "refreshing": self.refreshing(),
             "stale": self.is_stale(),
             "pull_request": self._pull_request,
             "selection_state": self._selection_state,
         }
 
+    def refreshing(self) -> bool:
+        """Whether this server is refreshing, or following another process's refresh."""
+
+        return self._coordinator.running(self.mirror.key) or self._coordinator.running(
+            self._elsewhere_key
+        )
+
+    @property
+    def _elsewhere_key(self) -> str:
+        return f"{self.mirror.key}:elsewhere"
+
     def _last_outcome(self) -> LastOutcome | None:
-        if self._last_result is not None:
-            return {
-                "operation": "refresh",
-                "outcome": self._last_result.outcome,
-                "at": self._last_result.at,
-            }
+        """The newer of this process's last refresh and the store's recorded operation.
+
+        Another process's refresh writes the record after this one reported that it was
+        refreshing elsewhere, and a record this process wrote is no newer than its own
+        result, so the later timestamp wins.
+        """
+
         recorded = self._recorded
+        from_record: LastOutcome | None = None
         if (
-            recorded.last_operation is None
-            or recorded.last_outcome is None
-            or recorded.last_outcome_at is None
+            recorded.last_operation is not None
+            and recorded.last_outcome is not None
+            and recorded.last_outcome_at is not None
         ):
-            return None
-        return {
-            "operation": recorded.last_operation,
-            "outcome": recorded.last_outcome,
-            "at": recorded.last_outcome_at,
-        }
+            from_record = {
+                "operation": recorded.last_operation,
+                "outcome": recorded.last_outcome,
+                "at": recorded.last_outcome_at,
+            }
+        result = self._last_result
+        if result is None or (from_record is not None and from_record["at"] > result.at):
+            return from_record
+        return {"operation": "refresh", "outcome": result.outcome, "at": result.at}
 
     # ── Refresh ─────────────────────────────────────────────────
 
@@ -396,8 +448,23 @@ class MirrorSession:
             log.exception("refreshing the served mirror failed")
             result = RefreshResult("failed", _utc_timestamp())
         self._last_result = result
-        if result.outcome == "succeeded":
+        if result.outcome in _FETCHED_OUTCOMES:
             self._last_success_at = result.at
+        # Another process's refresh is the fetch a waiting selection needs; follow it.
+        following = result.outcome == "refreshing_elsewhere" and self._follow_elsewhere
+        if not following:
+            await self._after_fetch()
+        try:
+            await self.observe()
+        except Exception:
+            # The fetch already ended; only the report of it is behind.
+            log.warning("could not observe the mirror after a refresh", exc_info=True)
+        if following:
+            self._coordinator.start(self._elsewhere_key, self._follow, network=False)
+
+    async def _after_fetch(self) -> None:
+        """Serve a waiting URL selection if the fetch brought it, and count the fetch."""
+
         try:
             await self._open_pending_selection()
         except Exception:
@@ -405,11 +472,25 @@ class MirrorSession:
             log.warning("could not open the requested selection after a refresh", exc_info=True)
         finally:
             self._refreshes_ended += 1
+
+    async def _follow(self) -> None:
+        """Wait for another process's refresh to end, then observe the store again.
+
+        Without this, a server that found the store busy would report the old tip and
+        fetch time until its own next refresh.
+        """
+
+        waited = 0.0
+        while waited < ELSEWHERE_WAIT_S:
+            await asyncio.sleep(ELSEWHERE_POLL_S)
+            waited += ELSEWHERE_POLL_S
+            if not await self.mirror.refresh_running_elsewhere():
+                break
+        await self._after_fetch()
         try:
             await self.observe()
         except Exception:
-            # The fetch already ended; only the report of it is behind.
-            log.warning("could not observe the mirror after a refresh", exc_info=True)
+            log.warning("could not observe the mirror after another refresh", exc_info=True)
 
     async def _open_pending_selection(self) -> None:
         """After the fetch a URL selection waited for: serve it, or say it is not there."""
@@ -475,11 +556,7 @@ class MirrorSession:
         """Pending while the fetch for *key* is still to run or running, then not found."""
 
         seen_at = self._misses.get(key)
-        if (
-            seen_at is not None
-            and seen_at < self._refreshes_ended
-            and not self._coordinator.running(self.mirror.key)
-        ):
+        if seen_at is not None and seen_at < self._refreshes_ended and not self.refreshing():
             del self._misses[key]
             return not_found
         if seen_at is None:
@@ -500,7 +577,7 @@ def _served_revision() -> GitRevisionSubject | None:
 @dataclass(frozen=True, slots=True)
 class _ServedMirrorConfig:
     mirror: ServedMirror
-    refresh_when_stale: bool
+    serving: bool
     pull_request: int | None
     pending_selection: SelectionOpener | None
 
@@ -511,17 +588,18 @@ _served_mirror: _ServedMirrorConfig | None = None
 def serve_mirror(
     mirror: ServedMirror | None,
     *,
-    refresh_when_stale: bool = False,
+    serving: bool = False,
     pull_request: int | None = None,
     pending_selection: SelectionOpener | None = None,
 ) -> None:
     """Tell the next application lifespan which mirror it serves, or that it serves none.
 
-    *refresh_when_stale* starts one background refresh when the lifespan opens a mirror
-    whose last fetch is older than :data:`FRESHNESS_WINDOW_S`. Serve mode passes it;
-    one-shot ``--show`` and ``--api`` do not, so they never start network work that
-    the command did not ask for; the same flag lets a pin request for a ref or commit
-    the mirror lacks fetch once. *pull_request* is reported by status.
+    *serving* is serve mode: the lifespan starts one background refresh when it opens a
+    mirror whose last fetch is older than :data:`FRESHNESS_WINDOW_S`, a refresh that
+    finds another process refreshing follows it until it ends, and a pin request for a
+    ref or commit the mirror lacks fetches once. One-shot ``--show`` and ``--api`` pass
+    none of it, so they never start work the command did not ask for, and a one-shot
+    refresh ends when its own attempt does. *pull_request* is reported by status.
     *pending_selection* opens a URL selection the mirror did not have yet: the lifespan
     starts one refresh for it, and the pin switches to it if that fetch brings it.
     """
@@ -530,7 +608,7 @@ def serve_mirror(
     _served_mirror = (
         None
         if mirror is None
-        else _ServedMirrorConfig(mirror, refresh_when_stale, pull_request, pending_selection)
+        else _ServedMirrorConfig(mirror, serving, pull_request, pending_selection)
     )
 
 
@@ -572,9 +650,10 @@ async def lifespan_refresh(app: Any) -> AsyncGenerator[None]:
             session = MirrorSession(
                 config.mirror,
                 coordinator,
+                follow_elsewhere=config.serving,
                 pull_request=config.pull_request,
                 pending_selection=config.pending_selection,
-                fetch_on_miss=config.refresh_when_stale,
+                fetch_on_miss=config.serving,
             )
             try:
                 await session.observe()
@@ -583,7 +662,7 @@ async def lifespan_refresh(app: Any) -> AsyncGenerator[None]:
             app.state.source_mirror = session
             if config.pending_selection is not None:
                 session.start_pending_selection()
-            elif config.refresh_when_stale and session.is_stale():
+            elif config.serving and session.is_stale():
                 session.request_refresh()
         yield
     finally:

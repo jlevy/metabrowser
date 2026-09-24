@@ -177,6 +177,7 @@ status: 200
   "ref_name": "topic",
   "refreshable": true,
   "latest": "8653ceb4d5ca69e2e7e3b39d04645b3820233854",
+  "ref_on_origin": true,
   "last_fetch_at": "<TIME>",
   "last_outcome": {
     "operation": "acquire",

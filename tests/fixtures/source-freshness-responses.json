@@ -7,6 +7,7 @@
     "ref_name": "topic",
     "refreshable": true,
     "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "ref_on_origin": true,
     "last_fetch_at": "2026-09-17T12:00:05Z",
     "last_outcome": {
       "operation": "acquire",
@@ -28,6 +29,7 @@
       "ref_name": "topic",
       "refreshable": true,
       "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+      "ref_on_origin": true,
       "last_fetch_at": "2026-09-17T12:00:05Z",
       "last_outcome": {
         "operation": "acquire",
@@ -48,6 +50,7 @@
     "ref_name": "topic",
     "refreshable": true,
     "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+    "ref_on_origin": true,
     "last_fetch_at": "2026-09-23T12:00:00Z",
     "last_outcome": {
       "operation": "refresh",
@@ -76,6 +79,7 @@
       "ref_name": "topic",
       "refreshable": true,
       "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+      "ref_on_origin": true,
       "last_fetch_at": "2026-09-23T12:00:00Z",
       "last_outcome": {
         "operation": "refresh",
@@ -96,6 +100,7 @@
     "ref_name": "topic",
     "refreshable": true,
     "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+    "ref_on_origin": true,
     "last_fetch_at": "2026-09-23T12:00:00Z",
     "last_outcome": {
       "operation": "refresh",
@@ -106,6 +111,17 @@
     "stale": false,
     "pull_request": null,
     "selection_state": null
+  },
+  "pin_changed": {
+    "status": 409,
+    "headers": {
+      "x-metabrowser-pin-changed": "2"
+    },
+    "body": {
+      "error": "the server now serves another revision; reload the page",
+      "code": "pin_changed",
+      "generation": 2
+    }
   },
   "pin_refused": {
     "status": 404,
@@ -122,6 +138,7 @@
     "ref_name": "topic",
     "refreshable": true,
     "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+    "ref_on_origin": true,
     "last_fetch_at": "2026-09-23T12:00:00Z",
     "last_outcome": {
       "operation": "refresh",
@@ -141,10 +158,11 @@
     "ref_name": "topic",
     "refreshable": true,
     "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+    "ref_on_origin": true,
     "last_fetch_at": "2026-09-17T12:00:05Z",
     "last_outcome": {
       "operation": "refresh",
-      "outcome": "failed",
+      "outcome": "origin_unavailable",
       "at": "2026-09-17T12:00:05Z"
     },
     "refreshing": false,
@@ -162,10 +180,11 @@
       "ref_name": "topic",
       "refreshable": true,
       "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+      "ref_on_origin": true,
       "last_fetch_at": "2026-09-17T12:00:05Z",
       "last_outcome": {
         "operation": "refresh",
-        "outcome": "failed",
+        "outcome": "origin_unavailable",
         "at": "2026-09-17T12:00:05Z"
       },
       "refreshing": true,
@@ -182,6 +201,7 @@
     "ref_name": "topic",
     "refreshable": true,
     "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+    "ref_on_origin": true,
     "last_fetch_at": "2026-09-17T12:00:05Z",
     "last_outcome": {
       "operation": "refresh",

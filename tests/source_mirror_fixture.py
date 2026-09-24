@@ -9,15 +9,21 @@ Run as a script, it builds below one directory:
 - ``home``: an application home that acquired ``file://<directory>/origin.git``. Its
   store's recorded fetch is then set to a fixed time with the production writer under
   the store lock, so the status envelope is literal.
-- the JSON request bodies the transcript posts.
+- the JSON request bodies the transcript posts;
+- with ``--hold-fetch-lock``, a detached process that holds the store's fetch lock, as
+  another server's refresh would, and writes its process ID to ``holder.pid``. It lets
+  go when the transcript's ``after`` step stops it, when ``origin.git`` is gone, or
+  after five minutes, whichever is first.
 
 Acquisition checks the installed Git against the security floor, and CI's Git is below
 it. The transcript's commands only open the cached store, which a cache hit does without
 the floor, so this fixture stands in for an acquisition an admitted Git performed and
 patches the floor for that one call, as the in-process acquisition tests do. A refresh
-the transcript requests checks the floor itself.
+the transcript requests checks the floor itself, after the fetch lock: the held lock makes
+that refresh report another process refreshing whatever Git the machine has, which a
+transcript run on CI's Git and on an admitted one must agree on.
 
-    source_mirror_fixture.py <directory>
+    source_mirror_fixture.py <directory> [--hold-fetch-lock]
 """
 
 from __future__ import annotations
@@ -27,12 +33,13 @@ import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Final
 
 from metabrowser.cache import acquire
 from metabrowser.cache.atomic import write_record_atomic
-from metabrowser.cache.locks import repository_store_lock
+from metabrowser.cache.locks import repository_store_lock, store_fetch_lock
 from metabrowser.cache.paths import store_record
 from metabrowser.cache.records import (
     REPOSITORY_STORE_STATE_CONTRACT_ID,
@@ -148,13 +155,53 @@ def write_bodies(directory: Path, origin: Path) -> None:
         (directory / name).write_text(json.dumps(body) + "\n", encoding="utf-8")
 
 
-def build_all(directory: Path) -> None:
+_HOLDER: Final = """
+import fcntl, os, sys, time
+fd = os.open(sys.argv[1], os.O_RDWR)
+fcntl.flock(fd, fcntl.LOCK_EX)
+with open(sys.argv[3], "w") as marker:
+    marker.write(str(os.getpid()))
+deadline = time.monotonic() + 300
+while os.path.exists(sys.argv[2]) and time.monotonic() < deadline:
+    time.sleep(0.5)
+"""
+
+
+def hold_fetch_lock(directory: Path) -> None:
+    """Hold the store's fetch lock from a detached process, as another refresh would."""
+
+    home = directory / "home"
+    (key,) = [entry.name for entry in (home / "cache" / "repository-stores").iterdir()]
+    # Created and released through the production path, so the file is the lock file.
+    with store_fetch_lock(home, key) as lock:
+        lock_path = lock.path
+    marker = directory / "holder.pid"
+    subprocess.Popen(
+        [sys.executable, "-c", _HOLDER, str(lock_path), str(directory / "origin.git"), str(marker)],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    deadline = time.monotonic() + 30
+    while not marker.exists() or not marker.read_text(encoding="utf-8"):
+        if time.monotonic() > deadline:
+            raise SystemExit("the fetch-lock holder did not start")
+        time.sleep(0.05)
+
+
+def build_all(directory: Path, *, hold_lock: bool = False) -> None:
     origin = build_origin(directory)
     build_home(directory, origin)
     write_bodies(directory, origin)
+    if hold_lock:
+        hold_fetch_lock(directory)
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        raise SystemExit("usage: source_mirror_fixture.py <directory>")
-    build_all(Path(sys.argv[1]).resolve())
+    arguments = sys.argv[1:]
+    hold = "--hold-fetch-lock" in arguments
+    positional = [argument for argument in arguments if argument != "--hold-fetch-lock"]
+    if len(positional) != 1:
+        raise SystemExit("usage: source_mirror_fixture.py <directory> [--hold-fetch-lock]")
+    build_all(Path(positional[0]).resolve(), hold_lock=hold)

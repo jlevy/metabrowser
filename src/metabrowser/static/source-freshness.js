@@ -7,7 +7,8 @@
 // nothing is refreshing, opening or revealing the page asks for one background
 // refresh; the page never waits for it. When a refresh moves the pinned ref, the
 // label offers the newer commit, and accepting switches the pin and reloads the view.
-// When another tab switched the pin, the label offers a reload instead.
+// When the server serves another pin than the one the page was rendered for -- another
+// tab switched it, or a data request came back `pin_changed` -- it offers a reload.
 //
 // Every decision lives here without a DOM: `describe` turns a status into what the
 // label says and offers, and `createController` owns polling, visibility, and the
@@ -26,11 +27,16 @@
   const REFRESH_ROUTE = "/api/source/refresh";
   const PIN_ROUTE = "/api/source/pin";
 
+  // Refresh outcomes that are not failures: the fetch ran, or another process's is running.
+  const QUIET_OUTCOMES = new Set(["succeeded", "default_branch_unknown", "refreshing_elsewhere"]);
+
   /** @type {Readonly<Record<string, string>>} */
   const OUTCOME_DETAIL = Object.freeze({
     origin_unavailable: "The origin could not be read.",
     fetch_failed: "The fetch from the origin failed.",
-    validation_failed: "The origin's default branch did not arrive as a commit.",
+    validation_failed: "The origin's default branch did not arrive in the mirror as a commit.",
+    default_branch_unknown:
+      "The origin's HEAD names no branch, so the mirror keeps the default branch it had.",
     unsupported_git: "The installed Git is older than the version Metabrowser fetches with.",
     store_unavailable: "The mirror could not be opened.",
     refreshing_elsewhere: "Another Metabrowser process is refreshing this mirror.",
@@ -80,10 +86,7 @@
     const age = relativeAge(status.last_fetch_at, page.nowMs);
     const outcome = status.last_outcome;
     const failed =
-      outcome !== null &&
-      outcome.operation === "refresh" &&
-      outcome.outcome !== "succeeded" &&
-      outcome.outcome !== "refreshing_elsewhere";
+      outcome !== null && outcome.operation === "refresh" && !QUIET_OUTCOMES.has(outcome.outcome);
     /** @type {MetabrowserSourceFreshnessModel["tone"]} */
     let tone = status.stale ? "stale" : "quiet";
     let label = `Fetched ${age}`;
@@ -98,6 +101,8 @@
       detail = `${OUTCOME_DETAIL[outcome.outcome] ?? OUTCOME_DETAIL.failed} The pinned revision is still served from the mirror.`;
     } else if (outcome !== null && outcome.outcome === "refreshing_elsewhere") {
       detail = `${OUTCOME_DETAIL.refreshing_elsewhere} It was last fetched here ${age}.`;
+    } else if (outcome !== null && outcome.outcome === "default_branch_unknown") {
+      detail = `${detail} ${OUTCOME_DETAIL.default_branch_unknown}`;
     }
     /** @type {MetabrowserSourceOffer | null} */
     let offer = null;
@@ -121,7 +126,7 @@
         text: `${status.ref_name ?? status.ref} is now at ${status.latest.slice(0, 12)}`,
         button: "Switch",
       };
-    } else if (status.ref !== null && status.latest === null && !status.refreshing) {
+    } else if (status.ref !== null && status.ref_on_origin === false && !status.refreshing) {
       detail = `${detail} ${status.ref_name ?? status.ref} is no longer on the origin; its commits stay readable here.`;
     }
     return { visible: true, tone, label, detail, offer, error };
@@ -148,15 +153,23 @@
   /**
    * The polling and action state machine for one page.
    *
+   * *options.generation* is the session generation the page was rendered for, which the
+   * server writes into a pin's page; without it the first status answered stands in.
+   *
    * @param {MetabrowserSourceFreshnessDependencies} deps
+   * @param {{generation?: number | null}} [options]
    */
-  function createController(deps) {
+  function createController(deps, options = {}) {
     /** @type {MetabrowserSourceStatus | null} */
     let status = null;
     /** @type {string | null} */
     let etag = null;
     /** @type {number | null} */
-    let pageGeneration = null;
+    let pageGeneration = options.generation ?? null;
+    // What was last painted, so an unchanged status repaints nothing: a live region
+    // that repaints announces again, and focus on its button would be lost.
+    /** @type {string | null} */
+    let painted = null;
     /** @type {unknown} */
     let timer = null;
     let polling = false;
@@ -169,7 +182,13 @@
     let error = null;
 
     function render() {
-      deps.render(describe(status, { generation: pageGeneration, nowMs: deps.now(), error }));
+      const model = describe(status, { generation: pageGeneration, nowMs: deps.now(), error });
+      const key = JSON.stringify(model);
+      if (key === painted) {
+        return;
+      }
+      painted = key;
+      deps.render(model);
     }
 
     function clearTimer() {
@@ -325,19 +344,55 @@
   }
 
   /**
-   * Paint one model into the label element. Browser only.
+   * What a screen reader is told when the row changes: its state and offer, not the age,
+   * which changes every minute and is read from the label on demand.
+   *
+   * @param {MetabrowserSourceFreshnessModel} model
+   */
+  function announcement(model) {
+    if (!model.visible) {
+      return "";
+    }
+    const parts = [];
+    if (model.tone === "refreshing" || model.tone === "warning") {
+      parts.push(model.label);
+    }
+    if (model.offer !== null) {
+      parts.push(model.offer.text);
+    }
+    if (model.error !== null) {
+      parts.push(model.error);
+    }
+    return parts.join(". ");
+  }
+
+  /**
+   * Paint one model into the row. Browser only.
+   *
+   * The row itself is not a live region; one visually hidden span announces
+   * {@link announcement} when it changes. Focus on the offer's button survives a repaint.
    *
    * @param {HTMLElement} element
    * @param {MetabrowserSourceFreshnessModel} model
    * @param {{refresh(): void, accept(): void}} actions
+   * @param {HTMLElement} live
    */
-  function paint(element, model, actions) {
+  function paint(element, model, actions, live) {
+    const announced = announcement(model);
+    if (live.textContent !== announced) {
+      live.textContent = announced;
+    }
     element.hidden = !model.visible;
     element.dataset.tone = model.tone;
     if (!model.visible) {
-      element.replaceChildren();
+      element.replaceChildren(live);
       return;
     }
+    const focused = document.activeElement;
+    const refocus =
+      focused instanceof HTMLElement && element.contains(focused)
+        ? focused.className.split(" ").find((name) => name.startsWith("source-freshness-"))
+        : undefined;
     const label = document.createElement("button");
     label.type = "button";
     label.className = "source-freshness-label";
@@ -367,7 +422,13 @@
       failure.textContent = model.error;
       children.push(failure);
     }
-    element.replaceChildren(...children);
+    element.replaceChildren(...children, live);
+    if (refocus) {
+      const target = element.querySelector(`.${refocus}`);
+      if (target instanceof HTMLElement) {
+        target.focus();
+      }
+    }
   }
 
   /**
@@ -382,41 +443,53 @@
       refresh: () => void controller?.requestRefresh(),
       accept: () => void controller?.acceptOffer(),
     };
-    controller = createController({
-      async request(method, route, options) {
-        /** @type {Record<string, string>} */
-        const headers = {};
-        if (method === "GET" && options.etag) {
-          headers["if-none-match"] = options.etag;
-        }
-        if (method === "POST") {
-          headers["content-type"] = "application/json";
-        }
-        const response = await fetch(route, {
-          method,
-          headers,
-          cache: "no-store",
-          body: method === "POST" ? JSON.stringify(options.body ?? {}) : undefined,
-        });
-        let body = null;
-        if (response.status !== 304) {
-          try {
-            body = await response.json();
-          } catch {
-            body = null;
+    const live = document.createElement("span");
+    live.className = "sr-only";
+    live.setAttribute("aria-live", "polite");
+    controller = createController(
+      {
+        async request(method, route, options) {
+          /** @type {Record<string, string>} */
+          const headers = {};
+          if (method === "GET" && options.etag) {
+            headers["if-none-match"] = options.etag;
           }
-        }
-        return { status: response.status, etag: response.headers.get("etag"), body };
+          if (method === "POST") {
+            headers["content-type"] = "application/json";
+          }
+          const response = await fetch(route, {
+            method,
+            headers,
+            cache: "no-store",
+            body: method === "POST" ? JSON.stringify(options.body ?? {}) : undefined,
+          });
+          let body = null;
+          if (response.status !== 304) {
+            try {
+              body = await response.json();
+            } catch {
+              body = null;
+            }
+          }
+          return { status: response.status, etag: response.headers.get("etag"), body };
+        },
+        schedule: (callback, delayMs) => window.setTimeout(callback, delayMs),
+        cancel: (handle) => window.clearTimeout(/** @type {number} */ (handle)),
+        now: () => Date.now(),
+        isVisible: () => document.visibilityState === "visible",
+        render: (model) => paint(element, model, actions, live),
+        reload: () => window.location.reload(),
       },
-      schedule: (callback, delayMs) => window.setTimeout(callback, delayMs),
-      cancel: (handle) => window.clearTimeout(/** @type {number} */ (handle)),
-      now: () => Date.now(),
-      isVisible: () => document.visibilityState === "visible",
-      render: (model) => paint(element, model, actions),
-      reload: () => window.location.reload(),
-    });
+      { generation: window.METABROWSER_SOURCE_GENERATION ?? null },
+    );
     const listening = new AbortController();
     document.addEventListener("visibilitychange", controller.onVisibilityChange, {
+      signal: listening.signal,
+    });
+    // A data request refused as pin_changed: ask the status route now, not at the next
+    // slow poll, so the reload offer appears while the refusal is on screen.
+    const polled = controller;
+    window.addEventListener("metabrowser:pin-changed", () => void polled.poll(), {
       signal: listening.signal,
     });
     void controller.start();

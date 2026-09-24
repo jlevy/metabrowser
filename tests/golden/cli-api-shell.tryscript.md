@@ -118,6 +118,7 @@ status: 200
   "ref_name": null,
   "refreshable": false,
   "latest": null,
+  "ref_on_origin": null,
   "last_fetch_at": null,
   "last_outcome": null,
   "refreshing": false,

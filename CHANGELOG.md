@@ -134,9 +134,10 @@ GitHub URLs and HTTPS:
   that does not answer the first request within 30 seconds times out rather than waiting
   for curl’s five-minute connect timeout.
   On a terminal, a first clone reports its phases and elapsed time.
-  A served mirror refreshes from the same URL with the same arguments, and a refresh’s
-  outcome carries the same names, plus `ref_case_collision` where a case-insensitive
-  filesystem cannot hold two refs apart.
+  A served mirror refreshes from the same URL with the same arguments, including the
+  prune and single retry after a ref that cannot be locked, and a refresh’s outcome, in
+  the status and in the store’s `state.yml`, carries the same names, plus
+  `ref_case_collision` where a case-insensitive filesystem cannot hold two refs apart.
 
 - A terminal hangup or `SIGTERM` now cancels an acquisition the way Ctrl-C does: Git and
   every helper it started are stopped, staging is removed, and `metab` exits with status
@@ -215,8 +216,10 @@ Repository cache:
   resolved from (`ref`), and that ref’s branch or tag name (`ref_name`). Reach it with
   `metab <root> --api /api/source/status`. On a served mirror it also reports freshness:
   the commit the pinned ref names in the mirror now (`latest`), `last_fetch_at`, the
-  last operation and its typed outcome (`last_outcome`), `refreshing`, and `stale`, all
+  last operation and its typed outcome (`last_outcome`), `refreshing`, `stale`, and
+  whether the origin still had the pinned ref at the last fetch (`ref_on_origin`), all
   from server memory so polling runs no Git.
+  The outcome is recorded in the store by name, so a restarted server reports it too.
   It sends an ETag and answers an unchanged `If-None-Match` with 304.
 
 - A served `file://` mirror refreshes in the background and never makes a page wait.
@@ -226,13 +229,20 @@ Repository cache:
   A refresh is one `git fetch --prune --atomic` of every branch and tag: every ref moves
   together or none does, a branch or tag deleted upstream leaves the mirror, and no
   object is removed, so a commit that was pinned stays readable after a force-push or a
-  deleted branch. A refresh another process is running is reported as
-  `refreshing_elsewhere` instead of waited on, lock files a killed fetch left behind are
-  removed before the next one, and a missing origin or a failed fetch is a typed outcome
-  in the status while the pinned revision keeps serving.
+  deleted branch. A branch replaced by a directory of branches (`side` then `side/x`), or
+  renamed only in case on a case-insensitive file system, no longer wedges every later
+  refresh: the stale ref is pruned on its own and the fetch runs again.
+  A refresh another process is running is reported as `refreshing_elsewhere` instead of
+  waited on, and a served page follows it until it ends.
+  A fetch’s Git holds the store’s fetch lock for as long as it runs, so a server killed
+  mid-fetch leaves no second writer in the store, and Ctrl-C stops the fetch before the
+  server exits. Files a killed fetch left behind are removed before the next one, and a
+  missing origin, a failed fetch, or a detached origin HEAD is a typed outcome in the
+  status while the pinned revision keeps serving.
   Reach it with `metab file://… --api /api/source/refresh --data <file with {}>`; that
-  one command waits for the refresh it asked for before exiting, and no other one-shot
-  command fetches.
+  one command waits for the refresh it asked for, prints the status after it, and exits
+  1 unless the fetch ran or another process’s refresh is running.
+  No other one-shot command fetches.
 
 - New `POST /api/source/pin` switches what a server serves to another branch, tag, or
   commit of the same mirror: `{"ref": "feature"}`, `{"ref": "v1"}`, or
@@ -250,8 +260,12 @@ Repository cache:
   opens or becomes visible on a stale mirror.
   When a refresh moves the pinned branch it offers the commit the branch now names,
   usually a newer one, and accepting switches the pin and reloads the view.
-  When another tab switched the pin, it offers a reload.
+  When another tab switched the pin, even before the page’s first poll, it offers a
+  reload, and the page’s data requests are refused with `pin_changed` rather than
+  answered from the new pin, so one page never mixes two revisions.
   A failed refresh reads as a warning there, not as an error in the page.
+  The row repaints only when what it says changes, and announces its state and offer to
+  a screen reader, not its age.
 
 - The Git panel no longer rebuilds a different history under the rows on screen when the
   refs its walk was fingerprinted by moved, as a refresh, a pin switched in another tab,

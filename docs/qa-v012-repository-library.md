@@ -200,6 +200,7 @@ uv --config-file uv.toml run --frozen pytest \
   tests/test_cache_update.py \
   tests/test_source_refresh.py \
   tests/test_cli_git_refresh_golden.py \
+  tests/test_refresh_signals.py \
   tests/test_source_freshness_session.py \
   tests/test_source_kind_session.py
 ```
@@ -223,6 +224,9 @@ isolation sweep over every registered GET route.
 force-push that keeps the old commit readable, a deleted branch pruned by name and
 readable by ID, a fetch lock another process holds, stale lock files, a fetch cancelled
 mid-transfer, and a removed origin.
+`tests/test_refresh_signals.py` runs the real command and interrupts a refresh
+mid-fetch: Ctrl-C leaves no Git running and the fetch lock free, and a killed server’s
+Git keeps the lock until it exits; it needs an admitted Git and skips below the floor.
 `tests/test_source_refresh.py` drives the served routes over HTTP, including the
 newer-revision offer and switch, joined refreshes, refresh on open, shutdown
 cancellation, and the cross-origin, form, and GET refusals.
@@ -761,8 +765,13 @@ Open `http://127.0.0.1:8474/view/` and keep it open.
    Within a few seconds the row offers `<branch> is now at <short commit>` with
    **Switch**; the page itself has not changed.
 
-3. Click **Switch**. The page reloads, the heading shows the new short commit, and the
-   Git tab lists `QA newer commit` first.
+3. Before switching, open the same address in a second tab.
+   Click **Switch** in the first.
+   The page reloads, the heading shows the new short commit, and the Git tab lists
+   `QA newer commit` first.
+   In the second tab, open another file: the request is refused as `pin_changed` and the
+   row offers **Reload** at once, instead of showing the new commit’s file under the old
+   heading.
 
 4. From the second terminal, check the routes and their guard:
 

@@ -256,6 +256,21 @@ def fetched_ref_names(porcelain: bytes) -> tuple[str, ...]:
     return tuple(names)
 
 
+def mirror_prune_args(remote_url: str) -> list[str]:
+    """Delete the mirror refs whose branch or tag the origin no longer has, and nothing else.
+
+    ``remote prune`` maps the origin's refs through the same refspecs a fetch uses,
+    passed as configuration because the store configures none. It names the store's
+    ``origin`` remote, whose URL acquisition wrote, and gets *remote_url*'s arguments,
+    so the credential helper is the fetch's. It only deletes, so a refresh runs it
+    before the atomic fetch when one transaction cannot both delete ``side`` and create
+    ``side/x``.
+    """
+
+    refspecs = [arg for spec in MIRROR_REFSPECS for arg in ("-c", f"remote.origin.fetch={spec}")]
+    return [*origin_git_args(remote_url), *refspecs, "remote", "prune", "origin"]
+
+
 def parse_symref_head(stdout: bytes) -> tuple[str | None, str]:
     """The ref the origin's HEAD names, if any, and the object ID it resolves to.
 
@@ -329,6 +344,7 @@ __all__ = [
     "fetched_ref_names",
     "ls_remote_head_args",
     "mirror_fetch_args",
+    "mirror_prune_args",
     "origin_git_args",
     "parse_symref_head",
     "remote_tracking_ref",

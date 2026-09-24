@@ -213,7 +213,12 @@ from metabrowser.source import (
     session_filesystem_root,
     unsupported_source_payload,
 )
-from metabrowser.source_routes import SOURCE_ROUTES, SourceStatus, source_status
+from metabrowser.source_routes import (
+    SOURCE_ROUTES,
+    SourceGenerationGuard,
+    SourceStatus,
+    source_status,
+)
 from metabrowser.sse import api_stream
 from metabrowser.tree import (
     _IGNORE_CACHE,
@@ -542,6 +547,11 @@ STATIC_DIR: Path = Path(__file__).parent / "static"
 _DOCUMENT_WIDTH_SCRIPT = STATIC_DIR.joinpath("document-width.js").read_text(encoding="utf-8")
 if "</script" in _DOCUMENT_WIDTH_SCRIPT.lower():
     raise RuntimeError("document-width.js cannot be safely embedded in the index shell")
+# A pin's page names its session generation on every data request, and must before any
+# script fetches, so the wrapper is inline on a pin and absent from a folder's page.
+_SOURCE_GENERATION_SCRIPT = STATIC_DIR.joinpath("source-generation.js").read_text(encoding="utf-8")
+if "</script" in _SOURCE_GENERATION_SCRIPT.lower():
+    raise RuntimeError("source-generation.js cannot be safely embedded in the index shell")
 
 _SLOW_SERVER_REQUEST_MS = int(
     os.environ.get(
@@ -1249,8 +1259,7 @@ async def index(request: Request) -> HTMLResponse:
     repository_context_json = _json.dumps(repository_context).replace("<", "\\u003c")
     # A pin's freshness row, filled by static/source-freshness.js. A folder has none.
     source_freshness_row = (
-        '\n      <div class="source-freshness" id="source-freshness" role="status"'
-        ' aria-live="polite" hidden></div>'
+        '\n      <div class="source-freshness" id="source-freshness" hidden></div>'
         if git_pin
         else ""
     )
@@ -1304,6 +1313,14 @@ async def index(request: Request) -> HTMLResponse:
         f"<script>window.METABROWSER_SOURCE_KIND={source_kind_json};</script>"
         f"<script>window.METABROWSER_REPOSITORY_CONTEXT={repository_context_json};</script>"
     )
+    if git_pin:
+        # The generation the page is rendered for, which its data requests name, and
+        # against which the freshness row notices a switch made before its first poll.
+        repository_context_block += (
+            f"<script>window.METABROWSER_SOURCE_GENERATION="
+            f"{get_source_session().generation};</script>"
+            f"<script>{_SOURCE_GENERATION_SCRIPT}</script>"
+        )
     # Read preferences from host-only cookies (not localStorage): cookies
     # ignore the port, so the choice is shared across every metabrowser instance
     # on this host (each folder server lands on its own port). Runs before the
@@ -3903,6 +3920,9 @@ middleware = [
     # inner layer never got to shape — still leaves ``/raw`` sandboxed.
     Middleware(_RawTrustHeaderMiddleware),
     Middleware(_HostValidationMiddleware),
+    # Inside the origin checks: a page showing a pin the server has since switched away
+    # from is refused with a typed pin_changed rather than answered from the new pin.
+    Middleware(SourceGenerationGuard),
     Middleware(_SlowRequestLogMiddleware),
     Middleware(GZipMiddleware, minimum_size=1024, compresslevel=6),
 ]

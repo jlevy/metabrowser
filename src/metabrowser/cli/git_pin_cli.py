@@ -475,7 +475,7 @@ def _serve_selected(selected: _Selected) -> None:
     serve_subject_opener(_serving_opener(selected))
     serve_mirror(
         StoreMirror.from_published(selected.published),
-        refresh_when_stale=True,
+        serving=True,
         pull_request=selection.pull_request if selection is not None else None,
         pending_selection=(
             pending_selection_opener(selected.published, selection)

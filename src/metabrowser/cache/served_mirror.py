@@ -15,6 +15,7 @@ from pathlib import Path
 from metabrowser.cache import acquire
 from metabrowser.cache.acquire import PublishedSource
 from metabrowser.cache.atomic import read_record
+from metabrowser.cache.locks import LockBusyError, store_fetch_lock
 from metabrowser.cache.paths import store_directory, store_record
 from metabrowser.cache.providers import repository_context_for
 from metabrowser.cache.records import REPOSITORY_STORE_STATE_CONTRACT_ID, RepositoryStoreState
@@ -101,6 +102,18 @@ class StoreMirror:
 
     def repository_context(self, *, revision: str, branch: str | None) -> RepositoryContext | None:
         return repository_context_for(self.source.normalized, revision=revision, branch=branch)
+
+    async def refresh_running_elsewhere(self) -> bool:
+        return await asyncio.to_thread(self._fetch_lock_busy)
+
+    def _fetch_lock_busy(self) -> bool:
+        # Taken and dropped at once: a refresh that starts in that instant elsewhere
+        # reports this process as refreshing, which is harmless and rare.
+        try:
+            with store_fetch_lock(self.home, self.store_key):
+                return False
+        except LockBusyError:
+            return True
 
 
 __all__ = ["StoreMirror"]

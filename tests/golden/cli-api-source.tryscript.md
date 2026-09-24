@@ -11,7 +11,8 @@ before: >-
   unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX GIT_NAMESPACE GIT_CEILING_DIRECTORIES &&
   uv --config-file "$TRYSCRIPT_TEST_DIR/../../uv.toml" run --frozen --no-sync
   --project "$TRYSCRIPT_TEST_DIR/../.." python "$TRYSCRIPT_TEST_DIR/../source_mirror_fixture.py" .
-  > fixture.log 2>&1
+  --hold-fetch-lock > fixture.log 2>&1
+after: kill "$(cat holder.pid)" 2>/dev/null || true
 ---
 # Golden tests: a served mirror’s status, refresh, and pin through `--api`
 
@@ -43,6 +44,7 @@ status: 200
   "ref_name": "topic",
   "refreshable": true,
   "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+  "ref_on_origin": true,
   "last_fetch_at": "2026-09-17T12:00:05Z",
   "last_outcome": {
     "operation": "acquire",
@@ -76,6 +78,7 @@ status: 200
     "ref_name": "feature",
     "refreshable": true,
     "latest": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+    "ref_on_origin": true,
     "last_fetch_at": "2026-09-17T12:00:05Z",
     "last_outcome": {
       "operation": "acquire",
@@ -107,6 +110,7 @@ status: 200
     "ref_name": "v1",
     "refreshable": true,
     "latest": "fcb9d63c3c8533d1b929861f451a066e6d4f2d9e",
+    "ref_on_origin": true,
     "last_fetch_at": "2026-09-17T12:00:05Z",
     "last_outcome": {
       "operation": "acquire",
@@ -140,6 +144,7 @@ status: 200
     "ref_name": null,
     "refreshable": true,
     "latest": null,
+    "ref_on_origin": null,
     "last_fetch_at": "2026-09-17T12:00:05Z",
     "last_outcome": {
       "operation": "acquire",
@@ -171,6 +176,7 @@ status: 200
     "ref_name": "topic",
     "refreshable": true,
     "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "ref_on_origin": true,
     "last_fetch_at": "2026-09-17T12:00:05Z",
     "last_outcome": {
       "operation": "acquire",
@@ -217,12 +223,17 @@ Error: /api/source/pin returned HTTP 400
 ? 1
 ```
 
-## Test: a refresh starts in the background and the request returns at once
+## Test: a refresh another process is running is reported, not waited on
 
-The answer is the envelope as the refresh starts.
-The command then waits for the refresh it asked for before it exits; what that refresh
-did is recorded in the in-process transcript `cli-git-refresh.txt`, because CI’s Git is
-below the floor a fetch requires.
+The fixture holds the store’s fetch lock from another process, as a second server’s
+refresh would. The request still starts a refresh and returns at once with the envelope
+as it starts; the command then waits for the refresh it asked for and prints the status
+after it. That refresh found the lock held, so it reports `refreshing_elsewhere` and
+fetches nothing, and the command exits 0 because a refresh is under way.
+The lock is tried before the installed Git is checked, so this answer is the same on
+every machine; refreshes that fetch, and one that fails and exits 1, are recorded
+in-process in `cli-git-refresh.txt`, because CI’s Git is below the floor a fetch
+requires.
 
 ```console
 $ METABROWSER_HOME=$PWD/home metab file://$PWD/origin.git --api /api/source/refresh --data refresh.json
@@ -238,6 +249,7 @@ status: 202
     "ref_name": "topic",
     "refreshable": true,
     "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "ref_on_origin": true,
     "last_fetch_at": "2026-09-17T12:00:05Z",
     "last_outcome": {
       "operation": "acquire",
@@ -249,6 +261,28 @@ status: 202
     "pull_request": null,
     "selection_state": null
   }
+}
+after: /api/source/status
+status: 200
+{
+  "subject": "git_revision",
+  "generation": 1,
+  "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+  "ref": "refs/remotes/origin/topic",
+  "ref_name": "topic",
+  "refreshable": true,
+  "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+  "ref_on_origin": true,
+  "last_fetch_at": "2026-09-17T12:00:05Z",
+  "last_outcome": {
+    "operation": "refresh",
+    "outcome": "refreshing_elsewhere",
+    "at": "[..]"
+  },
+  "refreshing": false,
+  "stale": true,
+  "pull_request": null,
+  "selection_state": null
 }
 ? 0
 ```
