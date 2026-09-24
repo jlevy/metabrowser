@@ -357,6 +357,16 @@ function splitAuthoredTarget(authoredTarget) {
 }
 
 /**
+ * A decoded path segment as a served folder's inventory spells it: `%` is `%25` and, on
+ * POSIX, a backslash is `%5C`.
+ *
+ * @param {string} segment
+ */
+function inventoryName(segment) {
+  return segment.replaceAll("%", "%25").replaceAll("\\", "%5C");
+}
+
+/**
  * @param {string} sourcePath
  * @param {PreparedSourcePath | null} preparedSource
  * @param {string} encodedPath
@@ -372,6 +382,7 @@ function resolveLogicalPath(sourcePath, preparedSource, encodedPath) {
     return "";
   }
   const trailingSlash = relative.endsWith("/");
+  const gitSource = preparedSource?.sourceKind === "git_revision";
   const segments = [];
   let parentPops = 0;
   const rawSegments = relative.split("/");
@@ -391,7 +402,10 @@ function resolveLogicalPath(sourcePath, preparedSource, encodedPath) {
     if (segment.includes("/")) {
       return unsafe("encoded-path-separator");
     }
-    if (segment.includes("\\")) {
+    // An escaped backslash (`%5C`; a literal one never reaches here) names a served
+    // folder's file whose POSIX name holds one, which the inventory spells `%5C`. A Git
+    // pin's paths never hold one, and its routes refuse it.
+    if (gitSource && segment.includes("\\")) {
       return unsafe("backslash-path");
     }
     if (segment.includes("\0")) {
@@ -413,10 +427,9 @@ function resolveLogicalPath(sourcePath, preparedSource, encodedPath) {
     }
     segments.push(segment);
   }
-  const gitSource = preparedSource?.sourceKind === "git_revision";
   const authored = gitSource
     ? encodeGitPathAuthored(segments)
-    : segments.map((segment) => segment.replaceAll("%", "%25")).join("/");
+    : segments.map(inventoryName).join("/");
   let base = "";
   if (!rooted) {
     if (!preparedSource) {
