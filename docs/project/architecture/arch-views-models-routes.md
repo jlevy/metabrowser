@@ -211,13 +211,13 @@ in its sanitized mode and answers only the resulting HTML, with the record’s
 `fetched_at` and the part: `body`, or `issue_comment/<id>`, `review/<id>`, or
 `review_comment/<id>`. It never fetches; a part the record lacks is `unknown_part`.
 KPress keeps what a document of its own may use, so the hook reduces that HTML to an
-allowlist (`builtin_plugins/github/pull_html.py`): plain text markup (paragraphs,
-headings, emphasis, code, quotes, lists, tables, details, `div`, `span`) with no
-attributes but a link’s `href` (http or https, absolute against the pull request’s
-github.com page, in a new tab), `ol[start]`, a table cell’s `colspan`, `rowspan`, and
-`align`, and `details[open]`. Scripts, styles, SVG, MathML, media, frames, forms, and
-stylesheets go with their content; an image becomes a link to it; any other tag is
-unwrapped to its text.
+allowlist (`src/metabrowser/inert_html.py`, with links made absolute against the pull
+request’s page): plain text markup (paragraphs, headings, emphasis, code, quotes, lists,
+tables, details, `div`, `span`) with no attributes but a link’s `href` (http or https,
+absolute against the pull request’s github.com page, in a new tab), `ol[start]`, a table
+cell’s `colspan`, `rowspan`, and `align`, and `details[open]`. Scripts, styles, SVG,
+MathML, media, frames, forms, and stylesheets go with their content; an image becomes a
+link to it; any other tag is unwrapped to its text.
 KPress’s asset list is not sent, so no script KPress adds for a text’s content loads.
 The page applies the same allowlist again, rebuilding the nodes it inserts.
 See

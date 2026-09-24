@@ -13,6 +13,9 @@ tree routes, `file://` and `https://` acquisition of full clones into a shared,
 read-only repository store, and the GitHub URL reducer are implemented; `metab` opens a
 pin in-process for `--show`, non-cache `--api`, and `--check-api`, at the commit its URL
 selects, and serves it over HTTP under the forced untrusted profile.
+Under that profile its Markdown renders inert, reduced to an allowlist of plain markup
+on the server and again in the page, and the page carries a Content-Security-Policy; see
+[SECURITY.md](../../../SECURITY.md#content-trust-model).
 A served store refreshes from its origin in the background, and a server can switch its
 pin to another branch, tag, or commit of the same store.
 Pull-request records are implemented: a pull-request URL pins the pull request’s head,

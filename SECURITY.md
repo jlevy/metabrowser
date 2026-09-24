@@ -61,6 +61,39 @@ KPress in its sanitized mode, which strips scripts, event-handler attributes, an
 Plugin discovery never treats the served root as a plugin source (see
 [plugin trust](docs/plugins.md)).
 
+KPress’s sanitized mode is a document renderer’s policy, and it keeps what a document of
+its own may use: stylesheets, images, SVG and its `url()` paint servers, classes the
+application styles, `data-*` attributes KPress’s own scripts act on, and `id` and
+`name`. Inside the application page each of those is an attack from a document a reader
+did not write.
+So when active content is off — every served mirror, where a fork’s author
+controls the head’s Markdown, and a folder served with `--untrusted` — and for every
+pull-request comment, Markdown reaches the page only as an allowlist of plain markup,
+applied twice: on the server by `src/metabrowser/inert_html.py`, and in the page by
+`static/inert-html.js`, which parses the HTML into an inert `<template>` and inserts
+only nodes rebuilt from the allowlist.
+The allowlist keeps paragraphs, headings, emphasis, code, quotes, lists, tables, and
+details, links, and images inside the served tree; no class, `id`, `name`, `data-*`,
+style, or event attribute; and no SVG, MathML, media, stylesheet, frame, form, or
+script. An outside image becomes a link to it, a link keeps only an `http`, `https`, or
+in-document address and opens outside the page in a new tab with no opener or referrer,
+and no KPress script is loaded for such a document: the render’s asset list keeps only
+its stylesheets. A trusted folder keeps KPress’s rich rendering.
+
+With active content off the application page also carries a Content-Security-Policy, a
+second line behind the allowlist.
+It runs only what this server wrote — scripts from its own origin, the shell’s inline
+scripts by a nonce fresh on every response, and the application’s three inline handlers
+by hash — and loads styles, fonts, images (with `data:` images its stylesheet draws),
+requests, and the Markdown worker from its own origin alone.
+Frames come from its own origin only, for the sandboxed `/raw` document; plugins,
+`<base>`, and form submission are off.
+Inline `style` attributes stay allowed because the application writes them; an outside
+`url()` in one is still an image the policy refuses.
+`capabilities.untrusted_shell_csp` is the policy, and `tests/test_untrusted_markdown.py`
+pins it and fails when the application writes an inline handler the policy does not
+name.
+
 Content responses through `/raw` and `/raw/{path}` are sandboxed on the wire.
 Every raw response — including gzip passthrough, SVG, HTML, and error bodies — carries
 `Content-Security-Policy: sandbox allow-scripts allow-popups allow-forms allow-downloads`
@@ -89,7 +122,8 @@ check stops fire-and-forget invocation.
 `--untrusted` (`METAB_UNTRUSTED=1`) is the conservative content-trust profile: it
 disables active content and keeps mutations off.
 `--no-active-content` (`METAB_ACTIVE_CONTENT=0`) is the individual switch that drops
-`allow-scripts` from the raw sandbox.
+`allow-scripts` from the raw sandbox, renders Markdown inert, and sends the page’s
+Content-Security-Policy.
 `--allow-edits` (`METAB_ALLOW_EDITS=1`) publishes `mutations: true`; no write route
 consumes that flag yet.
 Individual flags override the profile.
