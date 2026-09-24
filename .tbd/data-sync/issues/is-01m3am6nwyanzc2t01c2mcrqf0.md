@@ -3,16 +3,20 @@ type: is
 id: is-01m3am6nwyanzc2t01c2mcrqf0
 title: A pasted GitHub URL with a raw Unicode character or space is refused without a recovery hint
 kind: bug
-status: open
+status: in_progress
 priority: 3
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+delegate: claude-code@spud10.local
 labels:
   - release:v0.12.0
 dependencies: []
 parent_id: is-01m36k3w9vgwy97c9hcj2sqrs5
+hold: null
+hold_until: null
 created_at: 2026-09-24T21:12:35.485Z
-updated_at: 2026-09-24T21:12:35.485Z
+updated_at: 2026-09-24T21:28:20.258Z
+started_at: 2026-09-24T21:28:20.257Z
 ---
 Found during the v0.12 alpha acceptance (mb-gnr9) on the integrated stack (PR #241; installed wheel 0.11.1.dev400+250a10c4).
 
