@@ -3,16 +3,20 @@ type: is
 id: is-01m3awjb0pgvy42f8k9435jwe1
 title: Path errors print default-ignorable characters such as U+3164 raw
 kind: bug
-status: open
+status: in_progress
 priority: 4
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+delegate: claude-code@spud10.local
 labels:
   - release:v0.12.0
 dependencies: []
 parent_id: is-01m36k3w9vgwy97c9hcj2sqrs5
+hold: null
+hold_until: null
 created_at: 2026-09-24T23:38:46.165Z
-updated_at: 2026-09-24T23:38:46.165Z
+updated_at: 2026-09-24T23:49:52.541Z
+started_at: 2026-09-24T23:49:52.540Z
 ---
 Found in the v0.12 acceptance rerun on PR #243 (head 7d91c8f4, installed wheel 0.11.1.dev412+7d91c8f4), row M02b.
 
