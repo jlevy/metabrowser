@@ -7630,8 +7630,8 @@ function disposePullRequestPage() {
  * @param {{number: number, tab: string}} route
  */
 async function showPullRequestPage(route) {
-  var shown = pullRequestPage;
-  if (shown && shown.number === route.number && isPreviewClaimCurrent(shown.claim)) {
+  var shown = shownPullRequestPage();
+  if (shown && shown.number === route.number) {
     shown.handle?.setTab?.(route.tab);
     return { status: "opened" };
   }
@@ -7690,13 +7690,28 @@ async function showPullRequestPage(route) {
   return { status: "opened" };
 }
 
-// Back and forward between a page's tabs change no navigation target, so the
-// navigation controller does not see them; the page's own route does.
-window.addEventListener("popstate", () => {
-  var route = window.MetabrowserNavigationRoute.parsePull(window.location.pathname);
+// The page that holds the pane, or null once anything else claimed it.
+function shownPullRequestPage() {
   var shown = pullRequestPage;
-  if (route && shown && shown.number === route.number && isPreviewClaimCurrent(shown.claim)) {
-    shown.handle?.setTab?.(route.tab);
+  return shown && isPreviewClaimCurrent(shown.claim) ? shown : null;
+}
+
+// Back and forward can land on a pull-request route without changing a navigation
+// target -- between a page's tabs, or onto an entry a commit replaced -- so the
+// navigation controller does not see them; pullHistoryAction decides.
+// This listener is added as app.js loads, before the controller starts and adds its own,
+// so it reads the target the controller held before this landing.
+window.addEventListener("popstate", () => {
+  var shown = shownPullRequestPage();
+  var landing = window.MetabrowserNavigationRoute.pullHistoryAction(
+    window.location.pathname,
+    shown ? shown.number : null,
+    navigationController.current() !== null,
+  );
+  if (landing?.action === "tab") {
+    shown?.handle?.setTab?.(landing.tab);
+  } else if (landing?.action === "mount") {
+    void showPullRequestPage({ number: landing.number, tab: landing.tab });
   }
 });
 

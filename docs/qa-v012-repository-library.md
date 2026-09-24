@@ -899,10 +899,10 @@ address.
    2026-09-17, so it first adds `may be out of date` and offers **Refresh**, and the
    freshness row at the foot of the navigation pane refreshes on its own and links
    **Pull request #7**.
-2. The description renders as Markdown (**two** in bold), after a moment as plain text.
-   The conversation lists, in time order, maintainer’s **reviewed** review, the comment
-   `Thanks. CI is green; one question inline.`, and the **approved** review
-   `Looks right.`
+2. The description shows as plain text at first, then after a moment as Markdown
+   (**two** in bold). The conversation lists, in time order, maintainer’s **reviewed**
+   review, the comment `Thanks. CI is green; one question inline.`, and the **approved**
+   review `Looks right.`
 3. **Review comments (2)** shows `src/app.txt` with an **outdated** badge and its diff
    hunk, then forker’s reply on `src/app.txt:2`. **Checks** reads
    `2 success · 1 pending`, with `tests (3.13)`, `docs` (in progress), and the Read the
@@ -931,8 +931,10 @@ address.
 except the check and status links you click, which open in a new tab.
 
 **Fail:** a text of the pull request rendered as HTML other than through the Markdown
-renderer; a link that opens in the same tab or keeps an opener; a `javascript:` link; a
-diff that moves to a newer head on its own; a blank page on a reload or back.
+renderer; an image, stylesheet, or other resource from a comment loading, or an `id`
+from one in the page; a link that opens in the same tab or keeps an opener; a
+`javascript:` link; a diff that moves to a newer head on its own; a blank page on a
+reload or back.
 
 With the network, a signed-in `gh`, and a Git the floor admits (read-only), open a real
 public pull request, for example `pallets/markupsafe#507`, and repeat steps 1 to 6:

@@ -13,9 +13,13 @@
 // tests/dom/github-pull-page-session.js runs the same functions from the command line.
 //
 // All text is the pull request's own and untrusted. Paint writes it with textContent;
-// only KPress's sanitized Markdown HTML is parsed, and its links are made absolute
-// against the pull request's github.com page, kept only for http(s), and opened in a
-// new tab with rel="noopener noreferrer".
+// only KPress's sanitized Markdown HTML is parsed, and it is made inert twice, by the
+// hook on the server (pull_html.py) and by `neutralizeFragment` in an inert template
+// before insertion: nothing in it loads, embeds, restyles, or names an element -- no
+// stylesheet, style, image, media, frame, form, SVG use, `id`, or `name` -- an image
+// becomes a link to it, and a link is made absolute against the pull request's
+// github.com page, kept only for http(s), and opened in a new tab with
+// rel="noopener noreferrer".
 
 // The same intervals as the freshness row (static/source-freshness.js), measured there:
 // one second while a refresh runs makes its end visible promptly, and thirty seconds
@@ -585,8 +589,22 @@ export function createPullController(deps, options) {
     );
   }
 
-  /** @param {PullEnvelope} next */
-  function accept(next) {
+  // Every request that answers an envelope is numbered when it is sent. A slow poll sent
+  // before a refresh started must not replace the refresh's answer when it lands after
+  // it, so an answer older than the one the page shows is dropped.
+  let sent = 0;
+  let shownRequest = 0;
+
+  /**
+   * @param {PullEnvelope} next
+   * @param {number} request The number of the request that answered it.
+   * @returns {boolean} Whether the page now shows it.
+   */
+  function accept(next, request) {
+    if (request < shownRequest) {
+      return false;
+    }
+    shownRequest = request;
     envelope = next;
     const fetchedAt = next.record === null ? null : next.fetched_at;
     if (fetchedAt !== markdownFor) {
@@ -597,6 +615,7 @@ export function createPullController(deps, options) {
       asked.clear();
       queue.length = 0;
     }
+    return true;
   }
 
   /**
@@ -610,14 +629,16 @@ export function createPullController(deps, options) {
       return;
     }
     polling = true;
+    const request = ++sent;
     try {
       const response = await deps.request("GET", PULL_ROUTE, { etag });
       if (disposed) {
         return;
       }
       if (response.status === 200 && isEnvelope(response.body)) {
-        accept(response.body);
-        etag = response.etag;
+        if (accept(response.body, request)) {
+          etag = response.etag;
+        }
         error = null;
       } else if (response.status === 304) {
         error = null;
@@ -639,11 +660,12 @@ export function createPullController(deps, options) {
     if (disposed || !model().canRefresh) {
       return;
     }
+    const request = ++sent;
     try {
       const response = await deps.request("POST", REFRESH_ROUTE, { body: {} });
       const body = /** @type {{pull?: unknown, error?: unknown} | null} */ (response.body);
       if (response.status === 202 && body !== null && isEnvelope(body.pull)) {
-        accept(body.pull);
+        accept(body.pull, request);
         // The answer changed; the next poll must not be answered by a 304.
         etag = null;
         error = null;
@@ -842,6 +864,171 @@ export function safeLink(href, base) {
   }
 }
 
+// Elements removed with their content and attributes removed from every element before a
+// text's Markdown is inserted; kept in step with builtin_plugins/github/pull_html.py,
+// which applies them first on the server. They load, embed, restyle, or submit, or they
+// name an element for a script to find.
+export const DROPPED_ELEMENTS = Object.freeze([
+  "audio",
+  "base",
+  "embed",
+  "form",
+  "iframe",
+  "image",
+  "link",
+  "meta",
+  "noscript",
+  "object",
+  "script",
+  "source",
+  "style",
+  "symbol",
+  "template",
+  "title",
+  "track",
+  "use",
+  "video",
+]);
+export const DROPPED_ATTRIBUTES = Object.freeze([
+  "action",
+  "background",
+  "data",
+  "formaction",
+  "href",
+  "id",
+  "lowsrc",
+  "name",
+  "poster",
+  "rel",
+  "src",
+  "srcset",
+  "style",
+  "target",
+  "xlink:href",
+]);
+
+/**
+ * What an image in a text becomes: a link to it, never the image. Pure.
+ *
+ * @param {string | null} src
+ * @param {string | null} alt
+ * @param {string} base
+ */
+export function imageLink(src, alt, base) {
+  return { href: safeLink(src, base), text: (alt ?? "").trim() || "image" };
+}
+
+/**
+ * Make parsed Markdown inert before it is inserted: drop what loads or names itself,
+ * turn images into links, and keep a link only for http(s), opening in a new tab with
+ * no opener or referrer. *root* is a template's content, where nothing has loaded.
+ *
+ * @param {ParentNode} root
+ * @param {Pick<Document, "createElement">} doc
+ * @param {string} base The pull request's github.com page, for relative links.
+ */
+export function neutralizeFragment(root, doc, base) {
+  for (const element of Array.from(root.querySelectorAll("*"))) {
+    const tag = element.tagName.toLowerCase();
+    const sprite = tag === "svg" && /display:\s*none/.test(element.getAttribute("style") ?? "");
+    if (DROPPED_ELEMENTS.includes(tag) || sprite) {
+      element.remove();
+      continue;
+    }
+    if (tag === "img") {
+      const image = imageLink(element.getAttribute("src"), element.getAttribute("alt"), base);
+      const replacement = doc.createElement(image.href === null ? "span" : "a");
+      replacement.setAttribute("class", "github-pull-image");
+      if (image.href !== null) {
+        replacement.setAttribute("href", image.href);
+        replacement.setAttribute("target", "_blank");
+        replacement.setAttribute("rel", "noopener noreferrer");
+      }
+      replacement.textContent = image.text;
+      element.replaceWith(replacement);
+      continue;
+    }
+    const href = tag === "a" ? safeLink(element.getAttribute("href"), base) : null;
+    for (const name of element.getAttributeNames()) {
+      if (DROPPED_ATTRIBUTES.includes(name) || name.startsWith("on")) {
+        element.removeAttribute(name);
+      }
+    }
+    if (href !== null) {
+      element.setAttribute("href", href);
+      element.setAttribute("target", "_blank");
+      element.setAttribute("rel", "noopener noreferrer");
+    }
+  }
+}
+
+/**
+ * What Files changed does with the record's comparison. Pure.
+ *
+ * The diff keeps the comparison it was opened on: a record read at a newer head offers
+ * it rather than changing the diff under the reader.
+ *
+ * @param {{left: string, right: string} | null} mounted The comparison the diff shows.
+ * @param {{left: string, right: string} | null} comparison The record's.
+ * @returns {"unavailable" | "mount" | "keep" | "offer"}
+ */
+export function filesAction(mounted, comparison) {
+  if (comparison === null) {
+    return "unavailable";
+  }
+  if (mounted === null) {
+    return "mount";
+  }
+  return mounted.left === comparison.left && mounted.right === comparison.right ? "keep" : "offer";
+}
+
+/**
+ * What the conversation shows, as one comparable string. Pure.
+ *
+ * @param {PullModel} model
+ */
+export function conversationKey(model) {
+  return JSON.stringify([
+    model.pull,
+    model.timeline,
+    model.reviewComments,
+    model.checks,
+    model.notes,
+  ]);
+}
+
+/**
+ * What the conversation does when the page paints. Pure.
+ *
+ * It rebuilds only when what it shows changed, so the header's age ticking over does not
+ * rebuild the comments under the reader. A refresh that changed no text keeps what is
+ * rendered and asks again for the texts still plain, whose renders of the older record
+ * were dropped.
+ *
+ * @param {{key: string, recordAt: string | null}} previous
+ * @param {{key: string, recordAt: string | null}} next
+ * @returns {"repaint" | "reask" | "keep"}
+ */
+export function conversationAction(previous, next) {
+  if (previous.key !== next.key) {
+    return "repaint";
+  }
+  return previous.recordAt !== next.recordAt ? "reask" : "keep";
+}
+
+/**
+ * Whether a click on a link is the page's to handle: a modified or middle click opens
+ * the link's own address the browser's way.
+ *
+ * @param {Event} event
+ */
+function isPlainClick(event) {
+  return !(
+    event instanceof MouseEvent &&
+    (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
+  );
+}
+
 /**
  * @param {string} tag
  * @param {Record<string, string>} [attributes]
@@ -980,24 +1167,13 @@ export function mountPullPage(container, ctx, mb) {
       void mb.loadKpressAssets(assets).catch(() => {});
     }
     const holder = h("div", { class: "github-pull-markdown metabrowser-kpress-host" });
-    // KPress's Markdown HTML, sanitized in its untrusted mode on the server; GitHub's
-    // own body_html is never used.
-    holder.innerHTML = String(rendered.html);
-    const base = shown?.pull?.htmlUrl ?? "";
-    for (const link of holder.querySelectorAll("a[href]")) {
-      const raw = link.getAttribute("href") ?? "";
-      if (raw.startsWith("#")) {
-        continue;
-      }
-      const safe = safeLink(raw, base);
-      if (safe === null) {
-        link.removeAttribute("href");
-        continue;
-      }
-      link.setAttribute("href", safe);
-      link.setAttribute("target", "_blank");
-      link.setAttribute("rel", "noopener noreferrer");
-    }
+    // KPress's Markdown HTML, sanitized on the server and hardened there by the hook;
+    // GitHub's own body_html is never used. A template's content is inert -- nothing in
+    // it loads or runs -- so the same rules apply again before any of it is inserted.
+    const template = document.createElement("template");
+    template.innerHTML = String(rendered.html);
+    neutralizeFragment(template.content, document, shown?.pull?.htmlUrl ?? "");
+    holder.replaceChildren(template.content);
     plain.replaceWith(holder);
   }
 
@@ -1011,10 +1187,7 @@ export function mountPullPage(container, ctx, mb) {
       h("code", {}, [line === null ? path : `${path}:${line}`]),
     ]);
     link.addEventListener("click", (event) => {
-      if (
-        event instanceof MouseEvent &&
-        (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey)
-      ) {
+      if (!isPlainClick(event)) {
         return;
       }
       event.preventDefault();
@@ -1120,6 +1293,9 @@ export function mountPullPage(container, ctx, mb) {
           [label],
         );
         button.addEventListener("click", (event) => {
+          if (!isPlainClick(event)) {
+            return;
+          }
           event.preventDefault();
           openTab(id);
         });
@@ -1265,7 +1441,8 @@ export function mountPullPage(container, ctx, mb) {
   /** @param {PullModel} model */
   function paintFiles(model) {
     const comparison = model.comparison;
-    if (comparison === null) {
+    const action = filesAction(diffFor, comparison);
+    if (comparison === null || action === "unavailable") {
       disposeDiff();
       body.replaceChildren(
         h("p", { class: "github-pull-note" }, [
@@ -1274,11 +1451,9 @@ export function mountPullPage(container, ctx, mb) {
       );
       return;
     }
-    // The diff keeps the comparison it was opened on; a record read at a newer head
-    // offers it rather than changing the diff under the reader.
-    if (diffFor === null) {
+    if (action === "mount") {
       void mountDiff(comparison);
-    } else if (diffFor.right !== comparison.right || diffFor.left !== comparison.left) {
+    } else if (action === "offer") {
       const offer = h("button", { type: "button", class: "btn github-pull-newer" }, [
         "Show the newer changes",
       ]);
@@ -1311,21 +1486,15 @@ export function mountPullPage(container, ctx, mb) {
       return;
     }
     disposeDiff();
-    // The conversation repaints only when what it shows changed, so the age in the
-    // header ticking over does not rebuild the comments under the reader.
-    const key = JSON.stringify([
-      model.pull,
-      model.timeline,
-      model.reviewComments,
-      model.checks,
-      model.notes,
-    ]);
-    if (key !== bodyKey) {
-      bodyKey = key;
+    const key = conversationKey(model);
+    const action = conversationAction(
+      { key: bodyKey, recordAt: markdownRecord },
+      { key, recordAt: model.recordAt },
+    );
+    bodyKey = key;
+    if (action === "repaint") {
       paintConversation(model);
-    } else if (model.recordAt !== markdownRecord) {
-      // A refresh that changed none of the text: what is rendered stays, and what is
-      // still plain is asked for again from the new record.
+    } else if (action === "reask") {
       for (const [part, element] of texts) {
         if (element.querySelector(":scope > .github-pull-plain") === null) {
           continue;

@@ -218,9 +218,12 @@ GitHub URLs and HTTPS:
   not be opened at startup and serving fell back to the default branch, the page offers
   to switch to the head (`refs/pull/<n>/head`) and reloads on it.
   Descriptions and comments render as Markdown through KPress’s sanitized mode, one text
-  at a time as it scrolls into view, never from GitHub’s own HTML; links open on GitHub
-  in a new tab, and only `http` and `https` links are kept.
-  A review comment’s file opens at the served head, at its line.
+  at a time as it scrolls into view, never from GitHub’s own HTML. The page then makes
+  that HTML inert, on the server and again before inserting it: stylesheets, styles,
+  media, frames, forms, SVG `<use>`, and every `id` and `name` are removed, so a comment
+  cannot restyle the page, load anything, or clobber a global; an image is a link to it
+  rather than loaded; and links open on GitHub in a new tab, only `http` and `https`
+  ones kept. A review comment’s file opens at the served head, at its line.
   The freshness row links to the page, and back, forward, and reload keep its tab.
   `metab <pr-url> --show /pull/<n>[/files]` reports the page’s kind and a summary of its
   record, and `/api/plugin/github/pull-markdown?part=…` answers the rendered text of the

@@ -115,6 +115,32 @@
   }
 
   /**
+   * What the shell does when history lands on *pathname*. Pure.
+   *
+   * *shown* is the pull request whose page holds the pane, or null, and *heldTarget*
+   * whether the navigation controller holds a `/view/` target. A pull-request route is
+   * no target, so the controller applies a landing on one only when it held a target
+   * before, and then mounts the page itself. Otherwise -- back and forward between a
+   * page's tabs, or onto an entry a commit replaced while the page was shown -- this
+   * route decides: the page shown for the same number switches its tab, and anything
+   * else mounts the page.
+   *
+   * @param {string} pathname
+   * @param {number | null} shown
+   * @param {boolean} heldTarget
+   * @returns {Readonly<{action: "tab", tab: string} | {action: "mount", number: number, tab: string}> | null}
+   */
+  function pullHistoryAction(pathname, shown, heldTarget) {
+    const route = parsePull(pathname);
+    if (route === null || heldTarget) {
+      return null;
+    }
+    return route.number === shown
+      ? Object.freeze({ action: "tab", tab: route.tab })
+      : Object.freeze({ action: "mount", number: route.number, tab: route.tab });
+  }
+
+  /**
    * @typedef {object} NavigationTarget
    * @property {string} path Served-root-relative logical path, or empty for root.
    * @property {string=} query Serialized query metadata without `?`.
@@ -1164,6 +1190,7 @@
     parse,
     parseCommit,
     parsePull,
+    pullHistoryAction,
     pullHref,
     replaceFileSnapshot,
     requestFailure,

@@ -106,6 +106,34 @@ for (const [number, tab] of [
   check(`reject invalid pull-request href ${number}/${tab}`, rejected);
 }
 
+// History landing on a pull-request route: the shown page switches its tab; a page a
+// commit or file replaced in the meantime is mounted again; a landing the navigation
+// controller applies itself, because it held a /view/ target, is left to it.
+equal(
+  "back between a page's tabs switches the tab",
+  route.pullHistoryAction("/pull/7/files", 7, false),
+  {
+    action: "tab",
+    tab: "files",
+  },
+);
+equal(
+  "back onto a page whose pane a commit took mounts it",
+  route.pullHistoryAction("/pull/7", null, false),
+  { action: "mount", number: 7, tab: "" },
+);
+equal(
+  "back onto another pull request's page mounts it",
+  route.pullHistoryAction("/pull/7/files", 8, false),
+  { action: "mount", number: 7, tab: "files" },
+);
+equal(
+  "back from a file view is the controller's",
+  route.pullHistoryAction("/pull/7", null, true),
+  null,
+);
+equal("back onto a view route is not a page's", route.pullHistoryAction("/view/", 7, false), null);
+
 equal("root href", route.href({ path: "" }), "/view/");
 equal("folder href keeps its slash", route.href({ path: "docs/" }), "/view/docs/");
 equal(

@@ -48,15 +48,17 @@ async def pull_handler(request: Request) -> Response:
 
     from metabrowser.builtin_plugins.github.pull_route import (
         envelope_etag,
+        record_stamp,
         served_pull_envelope,
         served_pull_view,
     )
 
     view = served_pull_view(mirror_session(request.app), get_source_session().subject)
+    stamp = await asyncio.to_thread(record_stamp, view)
     envelope = await asyncio.to_thread(served_pull_envelope, view)
     if view is not None:
         view.served.saw_record(envelope["fetched_at"])
-    etag = envelope_etag(envelope)
+    etag = envelope_etag(envelope, stamp)
     headers = {**_NO_STORE, "etag": etag}
     if matches_if_none_match(request, etag):
         return Response(status_code=304, headers=headers)

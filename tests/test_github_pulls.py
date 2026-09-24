@@ -647,13 +647,52 @@ def test_the_markdown_route_never_trusts_raw_html_in_a_text(
 
     hostile = (
         "Hi <script>alert(1)</script><img src=x onerror=alert(1)>"
-        ' <a href="javascript:alert(1)">x</a> <iframe src="https://example.com"></iframe>'
+        ' <a href="javascript:alert(1)">x</a> <iframe src="https://example.com"></iframe>\n\n'
+        # What KPress's sanitized mode keeps, and the page must not load or be named by.
+        '<link rel="stylesheet" href="http://127.0.0.1:9/evil.css"><style>p{}</style>\n'
+        '<img src="https://example.com/badge.png" alt="badge"> <a id="x" name="y" href="/z">z</a>\n'
+        '<svg><use href="#kpress-icon-copy"></use></svg><form action="https://e.x/"><input'
+        ' name="q" src="https://e.x/i.png"></form><video src="https://e.x/v.mp4"></video>\n'
     )
     monkeypatch.setattr(pull_markdown, "part_text", lambda _record, _part: hostile)
     _stand, client = pinned_pull
     html = client.get("/api/plugin/github/pull-markdown", params={"part": "body"}).json()["html"]
-    for forbidden in ("<script", "onerror", "javascript:", "<iframe"):
-        assert forbidden not in html
+    for forbidden in (
+        "<script",
+        "onerror",
+        "javascript:",
+        "<iframe",
+        "<link",
+        "<style",
+        "<img",
+        "<use",
+        "<symbol",
+        "<form",
+        "<video",
+        " id=",
+        " name=",
+        " src=",
+        "evil.css",
+    ):
+        assert forbidden not in html, forbidden
+    # An image is a link to it, and a relative link is GitHub's, both in a new tab.
+    assert (
+        '<a class="github-pull-image" href="https://example.com/badge.png" target="_blank"'
+        ' rel="noopener noreferrer">badge</a>'
+    ) in html
+    assert '<a href="https://github.com/z" target="_blank" rel="noopener noreferrer">z</a>' in html
+
+
+def test_harden_is_idempotent_and_keeps_text() -> None:
+    from metabrowser.builtin_plugins.github.pull_html import harden
+
+    base = "https://github.com/o/r/pull/1"
+    once = harden('<p>a &amp; b &lt;c&gt; <code>x</code></p><img alt="&quot;q&quot;">', base)
+    assert (
+        once
+        == '<p>a &amp; b &lt;c&gt; <code>x</code></p><span class="github-pull-image">"q"</span>'
+    )
+    assert harden(once, base) == once
 
 
 # ── Review hardening: degraded parts, oversized pages, and typed failures ──

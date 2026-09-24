@@ -218,6 +218,13 @@ type MetabrowserNavigationRouteRuntime = Readonly<{
   parse(pathname: string, search?: string, hash?: string): MetabrowserNavigationTarget | null;
   parseCommit(pathname: string): Readonly<{ revision: string; file: string }> | null;
   parsePull(pathname: string): Readonly<{ number: number; tab: string }> | null;
+  pullHistoryAction(
+    pathname: string,
+    shown: number | null,
+    heldTarget: boolean,
+  ): Readonly<
+    { action: "tab"; tab: string } | { action: "mount"; number: number; tab: string }
+  > | null;
   pullHref(number: number, tab?: string): string;
   replaceFileSnapshot(
     previous: Map<string, Record<string, unknown>>,

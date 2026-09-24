@@ -10,8 +10,9 @@ what the in-process application answered while it served pull request 7 of
 ``tests/github_pull_fixture.py``'s stand-in, with a fake ``gh`` replaying scrubbed real
 responses. Serving began on the default branch, as it does when the pull request cannot
 be opened at startup. The page opened with nothing cached, fetched the record, read its
-Markdown, switched the pin to the head the record names, went stale, and refreshed to a
-record with one more comment. The first test here replays
+Markdown, switched the pin to the head the record names, went stale, refreshed to a
+record with the same text, and refreshed again to one with a hostile comment, recorded
+both as the hook answers it and as KPress alone renders it. The first test here replays
 that story and fails when the recording no longer matches.
 
 The clock is fixed, so fetch times are literal. Entity tags are the session's own, since
@@ -44,6 +45,7 @@ from typing import Any
 import pytest
 from starlette.testclient import TestClient
 
+from metabrowser import kpress_adapter
 from metabrowser.builtin_plugins.github import pulls
 from metabrowser.builtin_plugins.github.served_pull import ServedPull, served_pull
 from metabrowser.cache.acquire import acquire_source
@@ -77,6 +79,16 @@ _REFRESH = "/api/plugin/github/pull-refresh"
 _MARKDOWN = "/api/plugin/github/pull-markdown"
 _PIN = "/api/source/pin"
 _PROSE = re.compile(r'<div class="kpress-prose[^"]*">(.*)</div></div></article>', re.S)
+# A comment with markup KPress's sanitized mode keeps -- a stylesheet, images, an `id`
+# and `name`, an SVG `<use>`, a form -- and one it removes, a `<style>`.
+HOSTILE_COMMENT = (
+    "Rebased on `topic`; see [the docs](docs/new.md).\n\n"
+    '<link rel="stylesheet" href="http://127.0.0.1:9/evil.css"><style>body{display:none}</style>\n'
+    '<img src="https://example.com/badge.png" alt="build badge"> <img src="javascript:alert(1)">\n'
+    '<a id="metabrowser" name="settings" href="https://example.com/x">x</a>\n'
+    '<svg><use href="#kpress-icon-copy"></use></svg>\n'
+    '<form action="https://example.com/steal"><input name="q"></form>\n'
+)
 
 pytestmark = [
     pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required"),
@@ -110,16 +122,37 @@ def _switch(response: Any) -> dict[str, Any]:
     }
 
 
+def _prose(html: str) -> str:
+    match = _PROSE.search(html)
+    assert match is not None, "KPress no longer wraps rendered text in kpress-prose"
+    return match.group(1)
+
+
+def _kpress_render(text: str) -> str:
+    """KPress's own sanitized HTML of *text*, rendered as the hook renders it."""
+
+    return str(
+        kpress_adapter.render_kpress_view(
+            source_text=text,
+            source_path="pull-7-hostile.md",
+            kind="markdown",
+            view="document",
+            ext=".md",
+            mtime_hash="hostile",
+            size=len(text.encode()),
+            include_toc="off",
+        )["html"]
+    )
+
+
 def _markdown(response: Any) -> dict[str, Any]:
     answer = _answer(response)
     body = answer["body"]
-    match = _PROSE.search(body["html"])
-    assert match is not None, "KPress no longer wraps rendered text in kpress-prose"
     answer["body"] = {
         "number": body["number"],
         "fetched_at": body["fetched_at"],
         "part": body["part"],
-        "html": match.group(1),
+        "html": _prose(body["html"]),
     }
     return answer
 
@@ -231,31 +264,45 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             )
             recorded["on_head"] = _answer(client.get(_PULL))
 
-            # Five minutes on, the record is stale; a refresh reads one more comment.
+            # Five minutes on, the record is stale; a refresh finds nothing changed.
             clock[0] = FETCHED_AT + timedelta(minutes=5)
             recorded["stale"] = _answer(client.get(_PULL))
+            release.clear()
+            recorded["refresh_again"] = _answer(client.post(_REFRESH, json={}, headers=_JSON))
+            recorded["stale_refreshing"] = _answer(client.get(_PULL))
+            release.set()
+            _settle(client)
+            recorded["refreshed_unchanged"] = _answer(client.get(_PULL))
+
+            # A minute later a refresh reads one more comment, which carries markup
+            # KPress's sanitized mode keeps and the page must not load.
+            clock[0] = FETCHED_AT + timedelta(minutes=6)
             comments_path = page("repos/octo/demo/issues/7/comments")
             comments = copy.deepcopy(answers["api"][comments_path]["body"])
             added = {
                 **comments[0],
                 "id": comments[0]["id"] + 1,
                 "user": {"login": "forker"},
-                "body": "Rebased on `topic`; see [the docs](docs/new.md).",
+                "body": HOSTILE_COMMENT,
                 "created_at": "2026-09-17T12:03:00Z",
                 "updated_at": "2026-09-17T12:03:00Z",
             }
             answers["api"][comments_path] = ok(comments_path, [*comments, added])
             for name, value in install_fake_gh(tmp_path, answers).items():
                 monkeypatch.setenv(name, value)
-            release.clear()
-            recorded["refresh_again"] = _answer(client.post(_REFRESH, json={}, headers=_JSON))
-            recorded["stale_refreshing"] = _answer(client.get(_PULL))
-            release.set()
+            recorded["refresh_third"] = _answer(client.post(_REFRESH, json={}, headers=_JSON))
             _settle(client)
             recorded["refreshed"] = _answer(client.get(_PULL))
             recorded["markdown added"] = _markdown(
                 client.get(_MARKDOWN, params={"part": f"issue_comment/{added['id']}"})
             )
+            # What KPress alone makes of the same text, before the hook hardens it: the
+            # input the page's own defense, neutralizeFragment, is played on.
+            recorded["kpress added"] = {
+                "status": 200,
+                "etag": None,
+                "body": {"html": _prose(_kpress_render(HOSTILE_COMMENT))},
+            }
     finally:
         serve_mirror(None)
         reset_source_session()
@@ -288,6 +335,26 @@ def test_recording_is_what_a_served_pull_request_answers(
     assert refreshed["state"] == "current"
     assert len(refreshed["record"]["issue_comments"]) == 2
     assert datetime.fromisoformat(refreshed["fetched_at"]) > FETCHED_AT
+    unchanged = recorded["refreshed_unchanged"]["body"]
+    assert unchanged["fetched_at"] != recorded["stale"]["body"]["fetched_at"]
+    assert (
+        unchanged["record"]["issue_comments"]
+        == recorded["stale"]["body"]["record"]["issue_comments"]
+    )
+    kept = recorded["kpress added"]["body"]["html"]
+    assert "<link" in kept and "<img" in kept and ' id="' in kept, "KPress alone keeps them"
+    hardened = recorded["markdown added"]["body"]["html"]
+    for forbidden in (
+        "<link",
+        "<img",
+        "<style",
+        "<use",
+        "<form",
+        ' id="',
+        ' name="',
+        "javascript:",
+    ):
+        assert forbidden not in hardened, forbidden
     rendered = json.dumps(recorded, indent=2, ensure_ascii=False) + "\n"
     if os.environ.get("GOLDEN_UPDATE") == "1":
         FIXTURE.write_text(rendered, encoding="utf-8")
@@ -309,8 +376,20 @@ def test_the_session_runs_on_the_recording() -> None:
     assert steps["open with nothing cached"]["paint"]["canRefresh"] is True
     assert steps["the record arrives"]["paint"]["status"] == "current"
     assert steps["an unchanged answer is a 304"]["paints"] == 0
-    refreshed = steps["the refresh brought another comment"]["paint"]
-    assert [item.split(" ")[0] for item in refreshed["timeline"]][-1] == "comment"
+    refreshed = steps["another refresh brought a comment full of markup"]
+    assert [item.split(" ")[0] for item in refreshed["paint"]["timeline"]][-1] == "comment"
+    assert refreshed["conversation"] == "repaint"
+    unchanged = steps["a refresh that changed no text keeps the conversation"]
+    assert unchanged["conversation"] == "reask"
+    transcript = json.loads(result.stdout)
+    for inert in (
+        steps["the hook sends the comment inert"]["markdown"][0],
+        *transcript["pageDefense"],
+    ):
+        for forbidden in ("<link", "<img", "<use", "<form", ' id="', ' name="', "javascript:"):
+            assert forbidden not in inert
+    assert any("build badge</a>" in line for line in transcript["pageDefense"])
+    assert transcript["filesChanged"][2] == "open on an older head: offer"
     assert steps["a render of the older record is dropped"]["markdown"] == []
     offer = steps["the record arrives"]["paint"]["headOffer"]
     assert offer.endswith("[Switch to the head] -> refs/pull/7/head")

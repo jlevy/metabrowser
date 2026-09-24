@@ -217,14 +217,27 @@ def served_pull_envelope(view: ServedPullView | None) -> PullEnvelope:
     )
 
 
-def envelope_etag(envelope: PullEnvelope) -> str:
+def record_stamp(view: ServedPullView | None) -> tuple[int, int, int] | None:
+    """The served record file's inode, modification time in nanoseconds, and size."""
+
+    if view is None:
+        return None
+    published = view.served.published
+    return _file_stamp(published.home, published.slug, view.served.number)
+
+
+def envelope_etag(envelope: PullEnvelope, stamp: tuple[int, int, int] | None) -> str:
     """An entity tag for *envelope* that never serializes the record.
 
-    Every field but the record is in it, and a new record always brings a new
-    ``fetched_at``, so the tag changes exactly when the answer does.
+    Every field but the record is in it, and so is *stamp*, the record file's
+    :func:`record_stamp`: a record is replaced atomically, which changes its inode, so
+    two records written within the same second of ``fetched_at`` still differ. Read the
+    stamp before the envelope; a record replaced in between then gets a tag the next
+    request no longer matches, and is sent again rather than taken as unchanged.
     """
 
     fields = {name: value for name, value in envelope.items() if name != "record"}
+    fields["record_stamp"] = list(stamp) if stamp is not None else None
     digest = hashlib.sha256(json.dumps(fields, sort_keys=True).encode()).hexdigest()
     return build_scoped_etag(f"pull-{digest[:32]}")
 
@@ -232,6 +245,7 @@ def envelope_etag(envelope: PullEnvelope) -> str:
 __all__ = [
     "PullEnvelope",
     "envelope_etag",
+    "record_stamp",
     "PullState",
     "ServedPullView",
     "cached_pull_record",

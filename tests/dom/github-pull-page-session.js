@@ -76,6 +76,118 @@ function summarize(model) {
   };
 }
 
+// ── A small element tree for neutralizeFragment ───────────────────
+//
+// The page parses a text's HTML into an inert template and makes it inert with
+// neutralizeFragment before inserting it. The session plays the template with this tree,
+// built from KPress's own serialized output, which is well formed: quoted attributes,
+// explicit end tags, and no void end tags.
+
+const VOID = new Set(["br", "hr", "img", "input", "link", "meta", "source", "wbr"]);
+
+class FakeElement {
+  constructor(tagName) {
+    this.tagName = tagName.toUpperCase();
+    this.attributes = new Map();
+    this.children = [];
+    this.parent = null;
+  }
+  getAttribute(name) {
+    return this.attributes.has(name) ? this.attributes.get(name) : null;
+  }
+  getAttributeNames() {
+    return [...this.attributes.keys()];
+  }
+  setAttribute(name, value) {
+    this.attributes.set(name, String(value));
+  }
+  removeAttribute(name) {
+    this.attributes.delete(name);
+  }
+  set textContent(value) {
+    this.children = [String(value)];
+  }
+  append(child) {
+    if (typeof child !== "string") {
+      child.parent = this;
+    }
+    this.children.push(child);
+  }
+  remove() {
+    this.replaceWith();
+  }
+  replaceWith(...nodes) {
+    const siblings = this.parent?.children;
+    if (siblings) {
+      const at = siblings.indexOf(this);
+      for (const node of nodes) {
+        node.parent = this.parent;
+      }
+      siblings.splice(at, 1, ...nodes);
+    }
+    this.parent = null;
+  }
+  querySelectorAll(selector) {
+    assert(selector === "*", `the fake tree answers only "*", not ${selector}`);
+    const found = [];
+    const walk = (node) => {
+      for (const child of node.children) {
+        if (typeof child !== "string") {
+          found.push(child);
+          walk(child);
+        }
+      }
+    };
+    walk(this);
+    return found;
+  }
+}
+
+function parseFragment(html) {
+  const root = new FakeElement("#fragment");
+  let open = root;
+  const token =
+    /<!--[\s\S]*?-->|<\/([\w:-]+)\s*>|<([\w:-]+)((?:\s+[^\s=>/]+(?:="[^"]*")?)*)\s*\/?>|[^<]+/g;
+  for (const match of html.matchAll(token)) {
+    const [whole, closing, opening, attributes] = match;
+    if (whole.startsWith("<!--")) {
+      continue;
+    }
+    if (closing) {
+      open = open.parent ?? root;
+    } else if (opening) {
+      const element = new FakeElement(opening);
+      for (const [, name, value] of (attributes ?? "").matchAll(/([^\s=]+)(?:="([^"]*)")?/g)) {
+        element.setAttribute(name, (value ?? "").replaceAll("&amp;", "&"));
+      }
+      open.append(element);
+      if (!VOID.has(opening.toLowerCase())) {
+        open = element;
+      }
+    } else {
+      open.append(whole);
+    }
+  }
+  return root;
+}
+
+function serialize(node) {
+  return node.children
+    .map((child) => {
+      if (typeof child === "string") {
+        return child;
+      }
+      const tag = child.tagName.toLowerCase();
+      const attributes = [...child.attributes]
+        .map(([name, value]) => ` ${name}="${value}"`)
+        .join("");
+      return VOID.has(tag)
+        ? `<${tag}${attributes}>`
+        : `<${tag}${attributes}>${serialize(child)}</${tag}>`;
+    })
+    .join("");
+}
+
 /**
  * A scripted server and injected browser facilities for one page.
  *
@@ -91,6 +203,8 @@ function createPage(runtime, options) {
   let paints = [];
   let rendered = [];
   let reloads = 0;
+  // What the conversation last painted, to run the page's own paint decision on each paint.
+  let conversation = { key: "", recordAt: null };
   const server = { pull: null, refresh: [], pin: [], markdown: new Map(), held: [] };
   const clock = { now: Date.parse("2026-09-17T12:00:30Z") };
 
@@ -187,7 +301,13 @@ function createPage(runtime, options) {
         entry.reloads = reloads;
       }
       if (paints.length > 0) {
-        entry.paint = summarize(paints[paints.length - 1]);
+        const last = paints[paints.length - 1];
+        entry.paint = summarize(last);
+        if (last.pull !== null && last.tab === "") {
+          const next = { key: runtime.conversationKey(last), recordAt: last.recordAt };
+          entry.conversation = runtime.conversationAction(conversation, next);
+          conversation = next;
+        }
       }
       entry.markdown = rendered.map((item) => `${item.part}: ${item.html.trim()}`);
       if (snapshot.inFlight > 0 || snapshot.queued.length > 0) {
@@ -276,8 +396,12 @@ async function main() {
   server.pull = recorded.stale_refreshing;
   steps.push(await page.step("still refreshing", async () => page.fire()));
 
-  server.pull = recorded.refreshed;
-  steps.push(await page.step("the refresh brought another comment", async () => page.fire()));
+  server.pull = recorded.refreshed_unchanged;
+  steps.push(
+    await page.step("a refresh that changed no text keeps the conversation", async () =>
+      page.fire(),
+    ),
+  );
   // The body's render was made from the older record; answered now, it is dropped.
   steps.push(
     await page.step("a render of the older record is dropped", async () => {
@@ -285,9 +409,14 @@ async function main() {
       await page.releaseMarkdown();
     }),
   );
+  // Another tab refreshed it; the page learns of the new record from its poll.
+  server.pull = recorded.refreshed;
+  steps.push(
+    await page.step("another refresh brought a comment full of markup", async () => page.fire()),
+  );
   server.markdown.set(`issue_comment/${added}`, recorded["markdown added"]);
   steps.push(
-    await page.step("the new comment renders", async () => {
+    await page.step("the hook sends the comment inert", async () => {
       controller.requestMarkdown(`issue_comment/${added}`);
       await page.releaseMarkdown();
     }),
@@ -329,6 +458,27 @@ async function main() {
     "//evil.example/x",
   ].map((href) => ({ href, followed: runtime.safeLink(href, base) }));
 
+  // The page's own defense, played on what KPress alone made of the hostile comment: the
+  // template the page parses it into, made inert before anything is inserted.
+  const kept = parseFragment(recorded["kpress added"].body.html);
+  runtime.neutralizeFragment(kept, { createElement: (tag) => new FakeElement(tag) }, base);
+  const inert = serialize(kept);
+  for (const forbidden of ["<link", "<img", "<use", "<form", ' id="', ' name="', "javascript:"]) {
+    assert(!inert.includes(forbidden), `the page kept ${forbidden}`);
+  }
+
+  // Files changed keeps the diff it opened: a record whose comparison moved offers it.
+  // The diff opened before the switch compared the base with the pin served then.
+  const comparison = recorded.current.body.record.comparison;
+  const recordComparison = { left: comparison.base, right: comparison.head };
+  const openedOnPin = { left: comparison.base, right: recorded.current.body.pin };
+  const files = [
+    ["nothing open yet", null, recordComparison],
+    ["open on the record's comparison", recordComparison, recordComparison],
+    ["open on an older head", openedOnPin, recordComparison],
+    ["no comparison in the record", recordComparison, null],
+  ].map(([when, mounted, next]) => `${when}: ${runtime.filesAction(mounted, next)}`);
+
   console.log(
     JSON.stringify(
       {
@@ -336,6 +486,8 @@ async function main() {
         otherNumber: { status: other.status, message: other.message },
         links,
         wire: runtime.gitPathWire("src/app.txt"),
+        pageDefense: inert.split("\n").filter((line) => line.trim() !== ""),
+        filesChanged: files,
       },
       null,
       2,

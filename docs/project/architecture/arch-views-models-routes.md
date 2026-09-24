@@ -209,7 +209,13 @@ pull-request page polls it as cheaply as the status route.
 `github/pull-markdown?part=<part>` renders one text of the cached record through KPress
 in its sanitized mode and answers KPress’s render envelope with the record’s
 `fetched_at` and the part: `body`, or `issue_comment/<id>`, `review/<id>`, or
-`review_comment/<id>`. It never fetches; a part the record lacks is `unknown_part`. See
+`review_comment/<id>`. It never fetches; a part the record lacks is `unknown_part`.
+KPress keeps what a document of its own may load, so the hook then makes the HTML inert
+(`builtin_plugins/github/pull_html.py`): stylesheets, styles, media, frames, forms, SVG
+`<use>`, and `id` and `name` attributes go, an image becomes a link to it, and a link is
+kept only for `http` and `https`, absolute against the pull request’s github.com page.
+The page applies the same rules again before inserting it.
+See
 [Pull-request records](arch-repository-sources-and-provider-mirrors.md#pull-request-records).
 
 The hosted-review slice registers these exact proposed resource routes with the browser
@@ -411,7 +417,9 @@ SSE transport whose emitted snapshot is already owned by its data routes.
 | `source.stale-pin-guard` | interaction | `static/source-pin-guard.js#guardFetch`, `static/source-pin-guard.js#guardedRequest` | `/api/file`, `/api/tree`, `/api/source/status` | `node tests/dom/source-freshness-session.js` | `cli-ui-source-freshness.tryscript.md` |
 | `git.history-stale-cursor` | interaction | `static/git-history-window.js#classifyPageFailure` | `/api/git/log` | `node tests/dom/source-freshness-session.js` | `cli-ui-source-freshness.tryscript.md` |
 | `github.pull-page` | interaction | `builtin_plugins/github/pull-page.js#describePull`, `builtin_plugins/github/pull-page.js#createPullController` | `/api/plugin/github/pull`, `/api/plugin/github/pull-refresh`, `/api/plugin/github/pull-markdown`, `/api/source/pin` | `node tests/dom/github-pull-page-session.js` | `cli-ui-github-pull-page.tryscript.md` |
-| `github.pull-page-links` | interaction | `builtin_plugins/github/pull-page.js#safeLink`, `builtin_plugins/github/pull-page.js#gitPathWire` | `/api/plugin/github/pull-markdown` | `node tests/dom/github-pull-page-session.js` | `cli-ui-github-pull-page.tryscript.md` |
+| `github.pull-page-inert-markup` | interaction | `builtin_plugins/github/pull-page.js#neutralizeFragment`, `builtin_plugins/github/pull-page.js#imageLink`, `builtin_plugins/github/pull-page.js#safeLink`, `builtin_plugins/github/pull-page.js#gitPathWire` | `/api/plugin/github/pull-markdown` | `node tests/dom/github-pull-page-session.js` | `cli-ui-github-pull-page.tryscript.md` |
+| `github.pull-page-paint-decisions` | interaction | `builtin_plugins/github/pull-page.js#conversationAction`, `builtin_plugins/github/pull-page.js#conversationKey`, `builtin_plugins/github/pull-page.js#filesAction` | `/api/plugin/github/pull` | `node tests/dom/github-pull-page-session.js` | `cli-ui-github-pull-page.tryscript.md` |
+| `navigation.pull-page-history` | interaction | `static/navigation.js#pullHistoryAction` | `local-only` | `node tests/dom/navigation-route-behavior.js` | `cli-ui-navigation.tryscript.md` |
 | `assets.on-demand-load-recovery` | interaction | `static/asset-loader.js#ensureAsset`, `static/asset-loader.js#ensureScript` | `local-only` | `node tests/dom/asset-loader-behavior.js` | `cli-ui-navigation.tryscript.md` |
 | `source.incremental-cache-transaction` | interaction | `static/source-append.js#requestOwnsPreview`, `static/source-append.js#commitChunkCache` | `/api/file` | `node tests/dom/source-append-navigation-session.js` | `cli-ui-file-lifecycle.tryscript.md` |
 | `agent-log.chart-request-ownership` | interaction | `builtin_plugins/agent_log/index.js#renderCharts` | `/api/file`, `/api/plugin/agent-log/charts` | `node tests/dom/agent-log-plugin-behavior.js` | `cli-ui-agent-log-charts.tryscript.md` |
@@ -432,7 +440,7 @@ SSE transport whose emitted snapshot is already owned by its data routes.
 | `html.full-page-escape` | interaction | `builtin_plugins/html/index.js#createFullPageBar` | `/api/file` | `node tests/dom/html-preview-session.js` | `cli-ui-html-preview.tryscript.md` |
 | `document.reading-width` | interaction | `static/document-width.js#apply` | `local-only` | `node tests/dom/document-width-session.js` | `cli-ui-document-width.tryscript.md` |
 | `navigation.filter-layout` | paint-exempt | `static/styles.css` | `local-only` | — | CSS geometry and disclosure motion require rendered layout; focused selectors and accessibility state are pinned in `tests/test_browser_filter_ui.py` and `tests/test_tree_keyboard_integration.py` |
-| `github.pull-page-paint` | paint-exempt | `builtin_plugins/github/pull-page.js#mountPullPage` | `local-only` | — | DOM building, the visibility observer that asks for a text’s Markdown when it scrolls into view, and mounting the diff view need a rendered page; so do the shell’s `/pull/` glue in `app.js`, which claims the pane and moves between tabs with `history.pushState` and `popstate`, and the freshness row’s pull-request link. What the page shows and asks for is decided by the session’s owners; the route grammar, the shell and plugin wiring for the `pull-request` kind, and the rule that only sanitized Markdown is parsed as HTML are pinned in `tests/test_pull_page_route.py`, and the browser walkthrough is in the v0.12 QA runbook |
+| `github.pull-page-paint` | paint-exempt | `builtin_plugins/github/pull-page.js#mountPullPage` | `local-only` | — | Building the page’s DOM, observing which texts scroll into view, loading KPress’s stylesheets, mounting the diff view, and the shell’s `app.js` calls that claim the pane and call `history.pushState` need a rendered page. Every decision they act on is a session owner above: the history action (`navigation.pull-page-history`), whether the conversation repaints or asks again and what Files changed keeps (`github.pull-page-paint-decisions`), and what of a text’s HTML is inserted (`github.pull-page-inert-markup`). The route grammar, the shell and plugin wiring for the `pull-request` kind, and that only an inert template is parsed are pinned in `tests/test_pull_page_route.py`; the browser walkthrough is in the v0.12 QA runbook |
 
 ### Planned v0.12 hosted-review functional rows
 

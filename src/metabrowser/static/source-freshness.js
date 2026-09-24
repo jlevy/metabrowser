@@ -498,7 +498,8 @@
       pull.className = "source-freshness-pull";
       pull.href = model.pull.href;
       pull.textContent = model.pull.text;
-      if (window.location.pathname.startsWith(model.pull.href)) {
+      const here = window.location.pathname;
+      if (here === model.pull.href || here.startsWith(`${model.pull.href}/`)) {
         pull.setAttribute("aria-current", "page");
       }
       children.push(pull);

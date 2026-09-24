@@ -146,6 +146,7 @@ $ node tests/dom/github-pull-page-session.js
         "headOffer": "This page's code is c691256511d0, not the pull request's head 85fcb2fa9e77. [Switch to the head] -> refs/pull/7/head",
         "comparison": "f92fd713acd5...85fcb2fa9e77 (head moved)"
       },
+      "conversation": "repaint",
       "markdown": []
     },
     {
@@ -251,6 +252,7 @@ $ node tests/dom/github-pull-page-session.js
         "headOffer": null,
         "comparison": "f92fd713acd5...85fcb2fa9e77"
       },
+      "conversation": "keep",
       "markdown": []
     },
     {
@@ -337,6 +339,7 @@ $ node tests/dom/github-pull-page-session.js
         "headOffer": null,
         "comparison": "f92fd713acd5...85fcb2fa9e77"
       },
+      "conversation": "keep",
       "markdown": []
     },
     {
@@ -382,6 +385,7 @@ $ node tests/dom/github-pull-page-session.js
         "headOffer": null,
         "comparison": "f92fd713acd5...85fcb2fa9e77"
       },
+      "conversation": "keep",
       "markdown": []
     },
     {
@@ -427,6 +431,7 @@ $ node tests/dom/github-pull-page-session.js
         "headOffer": null,
         "comparison": "f92fd713acd5...85fcb2fa9e77"
       },
+      "conversation": "keep",
       "markdown": []
     },
     {
@@ -439,7 +444,62 @@ $ node tests/dom/github-pull-page-session.js
       "markdown": []
     },
     {
-      "step": "the refresh brought another comment",
+      "step": "a refresh that changed no text keeps the conversation",
+      "requests": [
+        "GET /api/plugin/github/pull (If-None-Match)"
+      ],
+      "timer": "slow",
+      "paints": 1,
+      "paint": {
+        "status": "current",
+        "tab": "conversation",
+        "message": null,
+        "canRefresh": false,
+        "freshness": "Fetched just now by gh:octo-reader",
+        "failure": null,
+        "header": "Count to two in the app #7 [Open] forker: topic <- forker:count-to-two",
+        "labels": [
+          "enhancement"
+        ],
+        "merge": "No conflicts with the base branch",
+        "timeline": [
+          "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
+          "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
+          "review maintainer [approved] 2026-09-16T17:36:02Z review/3279967139"
+        ],
+        "reviewComments": [
+          "src/app.txt:outdated maintainer +hunk",
+          "src/app.txt:2 forker (reply) +hunk"
+        ],
+        "checks": {
+          "counts": {
+            "success": 2,
+            "pending": 1
+          },
+          "items": [
+            "[success] tests (3.13) -> https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+            "[in progress] docs -> https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+            "[success] docs/readthedocs.org:demo -> https://demo--7.org.readthedocs.build/en/7/"
+          ]
+        },
+        "notes": [],
+        "headOffer": null,
+        "comparison": "f92fd713acd5...85fcb2fa9e77"
+      },
+      "conversation": "reask",
+      "markdown": []
+    },
+    {
+      "step": "a render of the older record is dropped",
+      "requests": [
+        "GET /api/plugin/github/pull-markdown?part=body"
+      ],
+      "timer": "slow",
+      "paints": 0,
+      "markdown": []
+    },
+    {
+      "step": "another refresh brought a comment full of markup",
       "requests": [
         "GET /api/plugin/github/pull (If-None-Match)"
       ],
@@ -482,26 +542,18 @@ $ node tests/dom/github-pull-page-session.js
         "headOffer": null,
         "comparison": "f92fd713acd5...85fcb2fa9e77"
       },
+      "conversation": "repaint",
       "markdown": []
     },
     {
-      "step": "a render of the older record is dropped",
-      "requests": [
-        "GET /api/plugin/github/pull-markdown?part=body"
-      ],
-      "timer": "slow",
-      "paints": 0,
-      "markdown": []
-    },
-    {
-      "step": "the new comment renders",
+      "step": "the hook sends the comment inert",
       "requests": [
         "GET /api/plugin/github/pull-markdown?part=issue_comment%2F3341937856"
       ],
       "timer": "slow",
       "paints": 0,
       "markdown": [
-        "issue_comment/3341937856: <p>Rebased on <code>topic</code>; see <a href=\"docs/new.md\">the docs</a>.</p>"
+        "issue_comment/3341937856: <p>Rebased on <code>topic</code>; see <a href=\"https://github.com/octo/demo/pull/docs/new.md\" target=\"_blank\" rel=\"noopener noreferrer\">the docs</a>.</p>\n\n<a class=\"github-pull-image\" href=\"https://example.com/badge.png\" target=\"_blank\" rel=\"noopener noreferrer\">build badge</a> <span class=\"github-pull-image\">image</span>\n<a href=\"https://example.com/x\" target=\"_blank\" rel=\"noopener noreferrer\">x</a>\n<svg></svg>\n<input>"
       ]
     },
     {
@@ -599,7 +651,20 @@ $ node tests/dom/github-pull-page-session.js
       "followed": "https://evil.example/x"
     }
   ],
-  "wire": "g1-c3Jj/g1-YXBwLnR4dA"
+  "wire": "g1-c3Jj/g1-YXBwLnR4dA",
+  "pageDefense": [
+    "<p>Rebased on <code>topic</code>; see <a href=\"https://github.com/octo/demo/pull/docs/new.md\" target=\"_blank\" rel=\"noopener noreferrer\">the docs</a>.</p>",
+    "<a class=\"github-pull-image\" href=\"https://example.com/badge.png\" target=\"_blank\" rel=\"noopener noreferrer\">build badge</a> <span class=\"github-pull-image\">image</span>",
+    "<a href=\"https://example.com/x\" target=\"_blank\" rel=\"noopener noreferrer\">x</a>",
+    "<svg></svg>",
+    "<input>"
+  ],
+  "filesChanged": [
+    "nothing open yet: mount",
+    "open on the record's comparison: keep",
+    "open on an older head: offer",
+    "no comparison in the record: unavailable"
+  ]
 }
 ? 0
 ```
