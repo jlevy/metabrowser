@@ -5168,6 +5168,7 @@ async function loadMoreCurrentText() {
         document,
         window.metabrowser?.renderTextLoadMoreFooter?.(nextCached) || "",
       );
+      window.MetabrowserSourceLineAnchors.refresh(document, nextCached);
       commitTextChunkCache(path, previewClaim, cached, nextCached, requested);
     } else {
       await renderFile(nextCached, undefined, previewClaim, {

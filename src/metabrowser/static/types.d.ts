@@ -427,6 +427,37 @@ type MetabrowserResourceContextRuntime = Readonly<{
   }>;
 }>;
 
+type MetabrowserSourceLineAnchorState = Readonly<{
+  status: "none" | "shown" | "partial" | "not-loaded" | "past-end";
+  start: number;
+  end: number;
+  message: string;
+}>;
+
+type MetabrowserSourceLineAnchorsRuntime = Readonly<{
+  countLines(text: string): number;
+  describe(
+    fragment: string | null | undefined,
+    loaded: Readonly<{ lines: number; truncated: boolean }>,
+  ): MetabrowserSourceLineAnchorState;
+  gutterHtml(text: string): string;
+  lineAt(offsetY: number, lineHeight: number, lines: number): number;
+  mount(
+    host: ParentNode,
+    options: {
+      path: string;
+      truncated: boolean;
+      navigation: Readonly<{
+        current(): MetabrowserNavigationTarget | null;
+        open(target: MetabrowserNavigationTarget, options: { replace: boolean }): Promise<void>;
+      }> | null;
+    },
+  ): void;
+  nextFragment(current: string | null | undefined, line: number, extend: boolean): string;
+  parse(fragment: string | null | undefined): Readonly<{ start: number; end: number }> | null;
+  refresh(root: ParentNode, loaded: { content_truncated?: boolean }): void;
+}>;
+
 type MetabrowserSourceAppendRuntime = Readonly<{
   appendSourceText(root: ParentNode | null, text: string): boolean;
   commitChunkCache(options: {
@@ -2458,6 +2489,7 @@ declare global {
     MetabrowserTreeFilterModel: MetabrowserTreeFilterModel;
     MetabrowserTreeKeyboardNavigation: MetabrowserTreeKeyboardRuntime;
     MetabrowserSourceAppend: MetabrowserSourceAppendRuntime;
+    MetabrowserSourceLineAnchors: MetabrowserSourceLineAnchorsRuntime;
     MetabrowserSourceFreshness?: MetabrowserSourceFreshnessRuntime;
     MetabrowserInertHtml?: MetabrowserInertHtmlRuntime;
     MetabrowserSourcePinGuard?: Readonly<{

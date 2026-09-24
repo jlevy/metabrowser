@@ -1873,11 +1873,19 @@
       );
       languageClass = language ? `language-${language}` : "plaintext";
     }
+    // Line numbers and #L anchors: source-line-anchors.js is an eager script before
+    // this one, because the gutter is part of the first paint.
+    const lineAnchors = global.MetabrowserSourceLineAnchors;
     const code =
-      `<pre class="code-block"><code class="${languageClass}">` +
-      `${escapeHtml(content)}</code></pre>`;
+      `<pre class="code-block metabrowser-source-lines">${lineAnchors.gutterHtml(content)}` +
+      `<code class="${languageClass}">${escapeHtml(content)}</code></pre>`;
     container.classList.add("metabrowser-source-host");
     container.innerHTML = truncationWarning + wrapWithCopy(code) + loadMoreFooter;
+    lineAnchors.mount(container, {
+      path: typeof data.path === "string" ? data.path : "",
+      truncated: !!data.content_truncated,
+      navigation: global.MetabrowserNavigationRoute?.navigation ?? null,
+    });
   }
 
   // Delegated click handler for copyable content and explicit identifiers.

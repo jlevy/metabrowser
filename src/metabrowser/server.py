@@ -1268,6 +1268,7 @@ async def index(request: Request) -> HTMLResponse:
     view_state_url = _static_asset_url("view-state.js")
     navigation_url = _static_asset_url("navigation.js")
     source_append_url = _static_asset_url("source-append.js")
+    source_line_anchors_url = _static_asset_url("source-line-anchors.js")
     file_type_taxonomy_url = _static_asset_url("file-type-taxonomy.js")
     plugin_sdk_url = _static_asset_url("plugin-sdk.js")
     view_composition_url = _static_asset_url("view-composition.js")
@@ -1706,6 +1707,7 @@ async def index(request: Request) -> HTMLResponse:
   <script src="{view_state_url}"></script>
   <script src="{navigation_url}"></script>
   <script src="{file_type_taxonomy_url}"></script>
+  <script src="{source_line_anchors_url}"></script>
   <script src="{plugin_sdk_url}"></script>
   <script src="{perf_url}"></script>
   <script src="{filter_state_url}"></script>
