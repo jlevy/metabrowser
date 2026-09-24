@@ -35,7 +35,11 @@ HOSTILE_README = (
     # References to the application rather than the tree, and a bare web scheme.
     "[api](/api/tree) [dots](/./api/tree) [escaped](/%61pi/tree) [debug](/_debug/tasks)"
     " [query](?q=1) [raw](/raw?path=evil.html) ![raw image](/raw?path=x.png)"
-    " [bare](https:evil.test/no-slashes) [one slash](HTTPS:/one.test/x)\n"
+    " [bare](https:evil.test/no-slashes) [one slash](HTTPS:/one.test/x)\n\n"
+    # The same routes behind escaped dots and separators.
+    '<a href="/%2e%2e/raw?path=evil.js">dotdot</a> <a href="/.%2E/raw?x">dot2e</a>'
+    ' <a href="/api%2ftree">slash</a> <a href="/%5capi/tree">back</a>'
+    ' <img src="/%2e%2e/api/tree" alt="dotimg"> <img src="/.%2E/raw?path=x.png" alt="dot2eimg">\n'
 )
 
 # Runs the production sanitizer on a tree read from stdin and prints the rebuilt markup.
@@ -170,9 +174,21 @@ def test_a_document_keeps_its_own_references_and_turns_outside_images_into_links
 
 def test_a_document_never_names_the_application_or_a_bare_scheme_ambiguously() -> None:
     inert = harden(_kpress(HOSTILE_README))
-    for text in ("api", "dots", "escaped", "debug", "query", "raw"):
+    for text in (
+        "api",
+        "dots",
+        "escaped",
+        "debug",
+        "query",
+        "raw",
+        "dotdot",
+        "dot2e",
+        "slash",
+        "back",
+    ):
         assert f"<a>{text}</a>" in inert, text
-    assert "<span>raw image</span>" in inert
+    for text in ("raw image", "dotimg", "dot2eimg"):
+        assert f"<span>{text}</span>" in inert, text
     assert '<a href="https://evil.test/no-slashes" target="_blank"' in inert
     assert '<a href="https://one.test/x" target="_blank"' in inert
     # In a pull request's comment, a bare https: shares the page's scheme and is relative.

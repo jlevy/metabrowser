@@ -15,6 +15,8 @@ Rebased on `topic`; see [the docs](docs/new.md).
 
 [api](/api/tree) [dots](/./api/tree) [escaped](/%61pi/tree) [debug](/_debug/tasks) [query](?q=1) [raw](/raw?path=evil.html) ![raw image](/raw?path=x.png) [bare](https:evil.test/no-slashes) [one slash](HTTPS:/one.test/x)
 
+<a href="/%2e%2e/raw?path=evil.js">dotdot</a> <a href="/.%2E/raw?x">dot2e</a> <a href="/api%2ftree">slash</a> <a href="/%5capi/tree">back</a> <img src="/%2e%2e/api/tree" alt="dotimg"> <img src="/.%2E/raw?path=x.png" alt="dot2eimg">
+
 ## Section
 
 text

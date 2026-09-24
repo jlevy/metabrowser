@@ -1755,6 +1755,118 @@
        },
        "\n",
        {
+        "tag": "p",
+        "attrs": [],
+        "children": [
+         {
+          "tag": "a",
+          "attrs": [
+           [
+            "href",
+            "/%2e%2e/raw?path=evil.js"
+           ]
+          ],
+          "children": [
+           "dotdot"
+          ]
+         },
+         " ",
+         {
+          "tag": "a",
+          "attrs": [
+           [
+            "href",
+            "/.%2E/raw?x"
+           ]
+          ],
+          "children": [
+           "dot2e"
+          ]
+         },
+         " ",
+         {
+          "tag": "a",
+          "attrs": [
+           [
+            "href",
+            "/api%2ftree"
+           ]
+          ],
+          "children": [
+           "slash"
+          ]
+         },
+         " ",
+         {
+          "tag": "a",
+          "attrs": [
+           [
+            "href",
+            "/%5capi/tree"
+           ]
+          ],
+          "children": [
+           "back"
+          ]
+         },
+         " ",
+         {
+          "tag": "img",
+          "attrs": [
+           [
+            "src",
+            "/%2e%2e/api/tree"
+           ],
+           [
+            "alt",
+            "dotimg"
+           ],
+           [
+            "class",
+            "kpress-image"
+           ],
+           [
+            "data-kpress-image",
+            "true"
+           ],
+           [
+            "loading",
+            "lazy"
+           ]
+          ],
+          "children": []
+         },
+         " ",
+         {
+          "tag": "img",
+          "attrs": [
+           [
+            "src",
+            "/.%2E/raw?path=x.png"
+           ],
+           [
+            "alt",
+            "dot2eimg"
+           ],
+           [
+            "class",
+            "kpress-image"
+           ],
+           [
+            "data-kpress-image",
+            "true"
+           ],
+           [
+            "loading",
+            "lazy"
+           ]
+          ],
+          "children": []
+         }
+        ]
+       },
+       "\n",
+       {
         "tag": "h2",
         "attrs": [
          [

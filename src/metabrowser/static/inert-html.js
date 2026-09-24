@@ -118,6 +118,9 @@
   // The application's own routes, which a document inside the served tree never names:
   // fetching or following one from untrusted markup reaches the application.
   const RESERVED = /^\/(?:api|_debug|raw)(?:[/?#]|$)/i;
+  // An escaped slash or backslash, which the server's router reads as a separator; a
+  // document inside the served tree has no reason to write one.
+  const ENCODED_SEPARATOR = /%(?:2f|5c)/i;
   // An http(s) address written without its two slashes, which a browser reads as
   // absolute unless the page it sits in shares the scheme.
   const BARE_WEB_SCHEME = /^(https?):(?![/\\]{2})/i;
@@ -137,14 +140,16 @@
     if (cleaned === "" || SCHEME.test(cleaned) || OTHER_ORIGIN.test(cleaned)) {
       return false;
     }
-    if (cleaned.startsWith("?")) {
+    if (cleaned.startsWith("?") || ENCODED_SEPARATOR.test(cleaned)) {
       return false;
     }
     if (cleaned.startsWith("/") || cleaned.startsWith("\\")) {
-      // As a browser reads it: backslashes as slashes, dot segments resolved.
+      // As a browser reads it: an escaped dot is a dot in a dot segment, backslashes
+      // are slashes, and dot segments are resolved.
       let path;
       try {
-        path = new URL(cleaned.replaceAll("\\", "/"), "http://page.invalid/").pathname;
+        const dotted = cleaned.replace(/%2e/gi, ".").replaceAll("\\", "/");
+        path = new URL(dotted, "http://page.invalid/").pathname;
       } catch {
         return false;
       }

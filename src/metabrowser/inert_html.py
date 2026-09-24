@@ -159,6 +159,12 @@ def _clean(href: str) -> str:
 # The application's own routes, which a document inside the served tree never names:
 # fetching or following one from untrusted markup reaches the application, not the tree.
 _RESERVED: Final = re.compile(r"^/(?:api|_debug|raw)(?:[/?#]|$)", re.IGNORECASE)
+# An escaped dot, which a browser's URL parser reads as a dot in a dot segment, and an
+# escaped slash or backslash, which the server's router reads as a separator. A document
+# inside the served tree has no reason to write either.
+_ENCODED_DOT: Final = re.compile(r"%2e", re.IGNORECASE)
+_DOT_SEGMENT: Final = re.compile(r"^(?:\.|%2e){1,2}$", re.IGNORECASE)
+_ENCODED_SEPARATOR: Final = re.compile(r"%(?:2f|5c)", re.IGNORECASE)
 # An http(s) address written without its two slashes, which a browser reads as absolute
 # unless the page it sits in shares the scheme.
 _BARE_WEB_SCHEME: Final = re.compile(r"^(https?):(?![/\\]{2})", re.IGNORECASE)
@@ -176,14 +182,33 @@ def is_inside(href: str | None) -> bool:
     cleaned = _clean(href)
     if not cleaned or _SCHEME.match(cleaned) or _OTHER_ORIGIN.match(cleaned):
         return False
-    if cleaned.startswith("?"):
+    if cleaned.startswith("?") or _ENCODED_SEPARATOR.search(cleaned):
         return False
     if cleaned.startswith(("/", "\\")):
-        # As a browser would: backslashes as slashes, dot segments resolved, escapes read.
-        path = urlsplit(urljoin("http://page.invalid/", cleaned.replace("\\", "/"))).path
+        # As a browser would: an escaped dot is a dot in a dot segment, backslashes are
+        # slashes, dot segments are resolved, and the server reads the other escapes.
+        dotted = _ENCODED_DOT.sub(".", cleaned).replace("\\", "/")
+        path = urlsplit(urljoin("http://page.invalid/", dotted)).path
         if _RESERVED.match(unquote(path)):
             return False
     return True
+
+
+def _dot_segments(href: str) -> str:
+    """*href* with each escaped dot segment (``%2e``, ``.%2e``, ...) read as a dot segment.
+
+    A browser's URL parser does this before it resolves dot segments; ``urljoin`` does
+    not, so without it the two would resolve ``/%2e%2e/x`` differently.
+    """
+
+    path, *rest = re.split(r"([?#])", href, maxsplit=1)
+    segments = [
+        ("." if len(_ENCODED_DOT.sub(".", segment)) == 1 else "..")
+        if _DOT_SEGMENT.match(segment)
+        else segment
+        for segment in path.split("/")
+    ]
+    return "/".join(segments) + "".join(rest)
 
 
 def _spelled_out(href: str, base: str | None) -> str:
@@ -215,7 +240,7 @@ def outside_link(href: str | None, base: str | None) -> str | None:
         return None
     try:
         # A browser reads a backslash as a slash in an http(s) address; so does this.
-        absolute = urljoin(base or "https:", cleaned.replace("\\", "/"))
+        absolute = urljoin(base or "https:", _dot_segments(cleaned.replace("\\", "/")))
         scheme = urlsplit(absolute).scheme
     except ValueError:
         return None
