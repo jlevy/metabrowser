@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import pytest
 
-from metabrowser.builtin_plugins.github import urls
 from metabrowser.builtin_plugins.github.urls import GithubUrlReducer, parse_repository_url
 from metabrowser.cache.urls import (
     GitSource,
@@ -13,6 +12,7 @@ from metabrowser.cache.urls import (
     RepositorySelection,
     classify_root_argument,
 )
+from metabrowser.invisible_chars import DEFAULT_IGNORABLE
 
 CANONICAL = "https://github.com/octo/demo"
 _REDUCERS = (GithubUrlReducer(),)
@@ -413,7 +413,7 @@ def test_a_literal_percent_written_as_25_opens() -> None:
 
 
 def test_the_default_ignorable_table_is_sorted_and_disjoint() -> None:
-    ranges = urls._DEFAULT_IGNORABLE
+    ranges = DEFAULT_IGNORABLE
     assert all(low <= high for low, high in ranges)
     assert all(ranges[i][1] < ranges[i + 1][0] for i in range(len(ranges) - 1))
     # Unicode 17.0 counts 4,174 default-ignorable code points.

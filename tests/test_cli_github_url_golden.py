@@ -158,6 +158,11 @@ REFUSED: list[list[str]] = [
     # the message as U+FFFD.
     [f"{REPO}/blob/topic/docs/%E2%80%AE2J.md", "--no-serve"],
     [f"{REPO}/blob/topic/docs/%C2%9B2J.md", "--no-serve"],
+    # The reducer's hint for a raw U+3164 HANGUL FILLER, which most fonts draw as
+    # nothing: its encoded spelling reaches the message as U+FFFD, as does U+2800, the
+    # blank braille pattern, rather than reading as README.md or README .md.
+    [f"{REPO}/blob/topic/README%E3%85%A4.md", "--no-serve"],
+    [f"{REPO}/blob/topic/README%E2%A0%80.md", "--no-serve"],
 ]
 
 
@@ -210,13 +215,17 @@ def test_golden_github_urls_open_through_a_local_stand_in(
         "path: docs/My Notes.md\n"
         in by_command[f"{REPO}/blob/topic/docs/My Notes.md --no-serve"].stdout
     )
-    assert "\u009b" not in refused[-1][1].stderr and "\ufffd2J.md" in refused[-1][1].stderr
+    assert "\u009b" not in refused[-3][1].stderr and "\ufffd2J.md" in refused[-3][1].stderr
     override = by_command[f"{REPO}/blob/unicode/docs/a%E2%80%AEb.md --no-serve"].stdout
     assert "path: docs/a\ufffdb.md\n" in override
-    assert "\ufffd2J.md is not in" in refused[-2][1].stderr
+    assert "\ufffd2J.md is not in" in refused[-4][1].stderr
+    for _args, result in refused[-2:]:
+        assert "Error: README\ufffd.md is not in " in result.stderr
+        assert "(path_not_found)" in result.stderr
 
     rendered = "".join(_block(args, result) for args, result in [*opened, *refused])
     assert chr(0x202E) not in rendered and chr(0x9B) not in rendered
+    assert chr(0x3164) not in rendered and chr(0x2800) not in rendered
     assert str(tmp_path) not in rendered and str(home) not in rendered
     assert "file://" not in rendered
     check_golden("cli-github-url-open.txt", rendered)

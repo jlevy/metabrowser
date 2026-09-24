@@ -802,6 +802,19 @@ def test_display_replaces_format_characters_that_reorder_or_hide_text() -> None:
     for point in (0x202E, 0x2066, 0x200B, 0x200D, 0xFEFF, 0x00AD, 0x0600, 0xE0001):
         shown = display_segment(f"a{chr(point)}b.md".encode())
         assert shown == "a\ufffdb.md", hex(point)
-    # A variation selector and a combining mark are not format characters and stay.
-    kept = f"e{chr(0x301)}{chr(0x2764)}{chr(0xFE0F)}.md"
+    # A combining mark is not a format character and stays.
+    kept = f"e{chr(0x301)}{chr(0x2764)}.md"
     assert display_segment(kept.encode()) == kept
+
+
+def test_display_replaces_characters_drawn_as_nothing_or_as_a_space() -> None:
+    """Default-ignorable characters that are not Cf, and the blank braille pattern.
+
+    The Hangul fillers are letters (Lo), the variation selectors and the combining
+    grapheme joiner are marks (Mn), and U+2800 is a symbol (So); each is drawn as
+    nothing or as a space, so ``README<U+3164>.md`` would read as ``README.md``.
+    """
+
+    for point in (0x3164, 0x115F, 0xFFA0, 0x034F, 0xFE0F, 0xE0100, 0x2800):
+        shown = display_segment(f"README{chr(point)}.md".encode())
+        assert shown == "README\ufffd.md", hex(point)

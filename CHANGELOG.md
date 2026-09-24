@@ -132,7 +132,9 @@ GitHub URLs and HTTPS:
   point, and a `%` that starts no percent escape, with the hint to write a literal `%`
   as `%25`. A C1 control character in a path, such as `%C2%9B`, is shown as U+FFFD like
   C0, so an error message cannot send a terminal an escape sequence, and so is a format
-  character such as a right-to-left override (`%E2%80%AE`) or a zero-width space, on the
+  character such as a right-to-left override (`%E2%80%AE`) or a zero-width space, and a
+  character drawn as nothing or as a space, such as the Hangul filler U+3164
+  (`%E3%85%A4`), a variation selector, or the blank braille pattern U+2800, on the
   `path:` line, in errors, and in a pinned tree’s file names, so a name cannot pass for
   another. A ref, commit, or path the mirror does not have is reported by `--no-serve`,
   `--show`, and `--api` as `ref_not_found`, `commit_not_found`, or `path_not_found`;
