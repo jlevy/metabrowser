@@ -1861,8 +1861,10 @@
    *
    * `options.parts` shows the text in consecutive code blocks under one gutter, each
    * highlighted in its own language, such as a Markdown file's YAML front matter and
-   * its body. The parts must join to the content exactly; a large file, whose text is
-   * not highlighted, or parts that do not join to the content, show as one block.
+   * its body. The parts must join to the content, and every part but the last must end
+   * with a newline. The text shows as one block instead when the parts do not, when the
+   * file is too large to highlight, and when only part of it is loaded, because Load
+   * more appends to the one block.
    *
    * @param {HTMLElement} container
    * @param {Record<string, unknown> & {content?: string, ext?: string}} data
@@ -1892,6 +1894,7 @@
     const given = Array.isArray(options.parts) ? options.parts : [];
     const parts =
       !large &&
+      !data.content_truncated &&
       given.length > 1 &&
       given.map((part) => normalize(part.text)).join("") === text &&
       given.slice(0, -1).every((part) => normalize(part.text).endsWith("\n"))

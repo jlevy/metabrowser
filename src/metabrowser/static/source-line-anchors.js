@@ -58,6 +58,8 @@
    *   gutter: HTMLElement,
    *   notice: HTMLElement | null,
    *   status: HTMLElement,
+   *   statusText: string,
+   *   statusLive: boolean,
    *   target: HTMLElement | null,
    *   path: string,
    *   loaded: LoadedText,
@@ -278,9 +280,11 @@
    * @param {string} text
    */
   function gutterHtml(text) {
+    const lines = countLines(text);
     return (
       '<span class="source-line-numbers" role="slider" tabindex="0" aria-label="Line numbers" ' +
-      `aria-orientation="vertical" aria-valuemin="1">${gutterText(countLines(text))}</span>`
+      `aria-orientation="vertical" aria-valuemin="1" aria-valuemax="${Math.max(1, lines)}" ` +
+      `aria-valuenow="1" aria-valuetext="No line anchored">${gutterText(lines)}</span>`
     );
   }
 
@@ -415,7 +419,10 @@
     view.gutter.setAttribute("aria-valuenow", String(lit ? moving : 1));
     view.gutter.setAttribute("aria-valuetext", spoken(view.state));
     const focused = view.pre.ownerDocument.activeElement === view.gutter;
-    view.status.textContent = lit && !focused ? `${spoken(view.state)} highlighted.` : "";
+    view.statusText = lit && !focused ? `${spoken(view.state)} highlighted.` : "";
+    if (view.statusLive) {
+      view.status.textContent = view.statusText;
+    }
   }
 
   /** @param {View} view */
@@ -506,6 +513,23 @@
   }
 
   /**
+   * The nearest element above a view that scrolls vertically, or null.
+   *
+   * @param {HTMLElement} pre
+   * @returns {HTMLElement | null}
+   */
+  function scrollingPane(pre) {
+    const frame = pre.ownerDocument.defaultView;
+    for (let node = pre.parentElement; node; node = node.parentElement) {
+      const overflow = frame?.getComputedStyle(node).overflowY;
+      if ((overflow === "auto" || overflow === "scroll") && node.scrollHeight > node.clientHeight) {
+        return node;
+      }
+    }
+    return null;
+  }
+
+  /**
    * @param {View} view
    * @param {KeyboardEvent} event
    */
@@ -513,13 +537,17 @@
     if (event.altKey || event.ctrlKey || event.metaKey) {
       return;
     }
+    // A page is what the pane that scrolls the view shows, or the window when the
+    // page itself scrolls; the first line in view is the one at that pane's top.
     const pitch = linePitch(view);
-    const top = view.gutter.getBoundingClientRect().top;
-    const height = global.innerHeight;
+    const pane = scrollingPane(view.pre);
+    const height = pane ? pane.clientHeight : global.innerHeight;
+    const above =
+      (pane ? pane.getBoundingClientRect().top : 0) - view.gutter.getBoundingClientRect().top;
     const step = keyStep(view.applied, view.focus, event.key, event.shiftKey, {
       lines: view.loaded.lines,
       page: pitch > 0 && height > 0 ? Math.floor(height / pitch) - 1 : 1,
-      origin: pitch > 0 && top < 0 ? lineAt(-top, pitch, view.loaded.lines) : 1,
+      origin: pitch > 0 && above > 0 ? lineAt(above, pitch, view.loaded.lines) : 1,
     });
     if (!step) {
       return;
@@ -563,6 +591,8 @@
       gutter,
       notice: null,
       status,
+      statusText: "",
+      statusLive: false,
       target: null,
       path: options.path,
       loaded: Object.freeze({ lines: layoutParts(pre), truncated: options.truncated }),
@@ -574,6 +604,12 @@
       observer: null,
     };
     views.add(view);
+    // A live region created and filled in one task is not announced, so the status
+    // line takes its first words in a later task, and every change after that at once.
+    global.setTimeout(() => {
+      view.statusLive = true;
+      view.status.textContent = view.statusText;
+    }, 0);
     if (typeof global.ResizeObserver === "function") {
       // Zoom, a late web font, or a tab shown for the first time changes the line
       // box; measure again so the highlight stays on its lines.

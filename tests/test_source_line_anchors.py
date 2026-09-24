@@ -130,12 +130,19 @@ def test_browser_and_reducer_read_plain_the_same_way() -> None:
 
 def test_an_anchored_address_opens_the_source_view() -> None:
     # The shell asks for the view the address names when it opens a file; an explicit
-    # view from plugin navigation still wins.
+    # view from plugin navigation still wins. tests/dom/preview-pane-state-session.js
+    # runs this; Load more's full render, which no session runs, keeps the active tab.
     app = (STATIC / "app.js").read_text(encoding="utf-8")
     assert (
         "context.viewId || window.MetabrowserSourceLineAnchors.preferredView(target) || undefined"
         in app
     )
+    load_more = app[app.index("async function loadMoreCurrentText(") :]
+    load_more = load_more[: load_more.index("\n}\n")]
+    assert 'var activeView = document.getElementById("preview-pane")?.dataset.activeView;' in (
+        load_more
+    )
+    assert "await renderFile(nextCached, activeView || undefined, previewClaim, {" in load_more
 
 
 def test_gutter_and_highlight_use_the_code_line_box() -> None:

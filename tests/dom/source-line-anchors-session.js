@@ -248,7 +248,7 @@ class FakeSourceHost extends FakeElement {
       detach(node);
     }
     const source =
-      /(<code data-mb-copy-payload class="no-highlight" hidden>[^<]*<\/code>)?<pre class="([^"]+)"><span class="source-line-numbers"([^>]*)>([^<]*)<\/span>((?:<code class="[^"]+">[^<]*<\/code>)+)<\/pre>/.exec(
+      /(?:<code data-mb-copy-payload class="no-highlight" hidden>([^<]*)<\/code>)?<pre class="([^"]+)"><span class="source-line-numbers"([^>]*)>([^<]*)<\/span>((?:<code class="[^"]+">[^<]*<\/code>)+)<\/pre>/.exec(
         markup,
       );
     if (!source) {
@@ -260,9 +260,10 @@ class FakeSourceHost extends FakeElement {
       );
     }
     const wrap = this.appendChild(new FakeElement("div", "content-copy-wrap"));
-    if (source[1]) {
+    if (source[1] !== undefined) {
       const payload = wrap.appendChild(new FakeElement("code", "no-highlight"));
       payload.setAttribute("data-mb-copy-payload", "");
+      payload.appendChild(new FakeText(unescapeHtml(source[1])));
     }
     const pre = wrap.appendChild(new FakeElement("pre", source[2]));
     const gutter = pre.appendChild(new FakeElement("span", "source-line-numbers"));
@@ -288,6 +289,10 @@ class FakeSourceHost extends FakeElement {
 
 const pane = new FakeElement("main", "preview-pane");
 pane.connected = true;
+// The pane scrolls the view and shows twenty rendered lines at the first zoom; the
+// window is taller, so a page measured from the window would be wrong.
+pane.clientHeight = 20.5 * renderedLinePx;
+pane.scrollHeight = 1_000_000;
 
 const fakeDocument = {
   activeElement: null,
@@ -326,8 +331,8 @@ const sandbox = {
   console,
   document: fakeDocument,
   fetch: () => Promise.reject(new Error("fetch unavailable in the line-anchor session")),
-  // Twenty rendered lines fit in the window, so a page is nineteen.
-  innerHeight: 20.5 * renderedLinePx,
+  innerHeight: 60 * renderedLinePx,
+  getComputedStyle: (node) => ({ overflowY: node === pane ? "auto" : "visible" }),
   ResizeObserver: class {
     constructor(callback) {
       this.callback = callback;
@@ -345,7 +350,7 @@ const sandbox = {
   METABROWSER_SETTINGS: {
     SYNTAX_HIGHLIGHT_MAX_BYTES: 512 * 1024,
     SYNTAX_LANGUAGE_BY_BASENAME: {},
-    SYNTAX_LANGUAGE_BY_EXTENSION: {},
+    SYNTAX_LANGUAGE_BY_EXTENSION: { ".md": "markdown" },
   },
   setInterval,
   setTimeout,
@@ -563,7 +568,7 @@ const controller = route.createController({
 });
 route.attachController(controller);
 
-const settle = () => new Promise((resolve) => setImmediate(resolve));
+const settle = () => new Promise((resolve) => setTimeout(() => setImmediate(resolve), 0));
 
 function snapshot(step) {
   const pre = host.querySelector("pre.metabrowser-source-lines");
@@ -691,6 +696,8 @@ async function main() {
   steps.push(snapshot("Load more renders the view again"));
   anchors.refresh(fakeDocument, { content_truncated: false });
   steps.push(snapshot("the refresh after that render"));
+  await settle();
+  steps.push(snapshot("a task later, the status line speaks"));
 
   // The keyboard: Tab reaches the gutter, and keys move and extend the anchor. The
   // focused gutter's own value is what a screen reader announces, so the status line
@@ -732,11 +739,14 @@ async function main() {
   const shownHost = host;
   host = stage.appendChild(new FakeSourceHost("div", "content-body"));
   sandbox.metabrowser.renderSourceView(host, fullContent());
+  await settle();
   steps.push(snapshot("a view rendered into the inert stage"));
   stage.remove();
   host = pane.appendChild(new FakeSourceHost("div", "content-body"));
   sandbox.metabrowser.renderSourceView(host, fullContent());
   steps.push(snapshot("a Source tab shown for the first time"));
+  await settle();
+  steps.push(snapshot("a task later, the status line speaks"));
   host.remove();
   host = shownHost;
 
@@ -757,7 +767,50 @@ async function main() {
     ...snapshot("a Markdown file with front matter at #L4-L5"),
     parts: markdownPre.styleValues.get("--mb-source-parts") ?? null,
     markdownParts,
-    copyPayload: host.querySelector("code.no-highlight")?.getAttribute("data-mb-copy-payload"),
+    copyPayloadIsTheText:
+      host.querySelector("code.no-highlight")?.textContent === markdownText.replace(/\r\n?/g, "\n"),
+  });
+
+  // Part of a Markdown file with front matter is loaded: one block, which Load more
+  // appends to, so the front matter never takes the body's text.
+  host.remove();
+  host = pane.appendChild(new FakeSourceHost("div", "content-body"));
+  const markdownHead = "---\ntitle: Guide\n---\n# Guide\n";
+  const markdownTail = "\nMore text.\n";
+  markdown.renderMarkdownSource(
+    host,
+    {
+      raw: {
+        path: "docs/guide.md",
+        ext: ".md",
+        size: Buffer.byteLength(markdownHead + markdownTail),
+        bytes_read: Buffer.byteLength(markdownHead),
+        content: markdownHead,
+        content_bytes: Buffer.byteLength(markdownHead),
+        content_truncated: true,
+      },
+    },
+    sandbox.metabrowser,
+  );
+  await settle();
+  const blocks = () =>
+    host
+      .querySelector("pre.metabrowser-source-lines")
+      .childNodes.filter((node) => node.tagName === "CODE")
+      .map((code) => ({ className: code.className, text: code.textContent }));
+  steps.push({
+    ...snapshot("part of a Markdown file with front matter at #L4-L5"),
+    markdownParts: blocks(),
+  });
+  const markdownAppended = sandbox.MetabrowserSourceAppend.appendSourceText(
+    fakeDocument,
+    markdownTail,
+  );
+  anchors.refresh(fakeDocument, { content_truncated: false });
+  steps.push({
+    ...snapshot("Load more appends the rest of the Markdown file"),
+    appended: markdownAppended,
+    markdownParts: blocks(),
   });
   host.remove();
   host = pane.appendChild(new FakeSourceHost("div", "content-body"));
@@ -766,6 +819,7 @@ async function main() {
     { raw: { path: "docs/guide.md", ext: ".md", content: "---\nunclosed: true\n# Guide\n" } },
     sandbox.metabrowser,
   );
+  await settle();
   steps.push({
     ...snapshot("a Markdown file whose front matter never closes"),
     markdownParts: host

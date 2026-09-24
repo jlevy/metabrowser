@@ -161,7 +161,8 @@ The inventory stream’s `onopen` retries only a selection that failed as unreac
 because `selectFile` claims before its first `await`, a duplicate open does not retry
 twice. The startup settle shows the prompt only for a `/commit/` route no Git view
 claimed. An address with a line anchor or `plain=1` opens its file in the Source view,
-and any other fragment or query in the file’s default view.
+and any other fragment or query in the file’s default view; a line anchor added to the
+file already shown selects its Source tab without loading the file again.
 
 ```console
 $ node tests/dom/preview-pane-state-session.js
@@ -690,7 +691,10 @@ $ node tests/dom/preview-pane-state-session.js
         "notes.md: default view",
         "other.md: default view"
       ],
-      "fragments": 6
+      "tabClicks": [
+        "notes.md: source"
+      ],
+      "fragments": 7
     }
   }
 }

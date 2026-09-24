@@ -26,12 +26,16 @@ It also pins the keyboard and the rest of the reader’s path.
 The gutter is a vertical slider that Tab reaches: arrow keys, Page Up, Page Down, Home,
 and End move the anchor, Shift extends it from the range’s moving end, and each key
 replaces the address and brings the moved line into view.
+Paging measures the pane that scrolls the view, not the window.
 Its spoken value names the highlighted lines, and a status line says them when the
-anchor changes while the gutter does not have focus.
+anchor changes while the gutter does not have focus; a new view’s status line takes its
+first words a task after it mounts, so a screen reader announces them.
 An address with a line anchor or `plain=1` asks for the Source view, a view rendered
 into the shell’s inert stage waits for the fragment event while a Source tab shown for
 the first time scrolls to the anchor at once, and a Markdown file’s Source tab shows its
-front matter and body as YAML and Markdown blocks under one gutter.
+front matter and body as YAML and Markdown blocks under one gutter, whose copy payload
+is the file’s text. When only part of that file is loaded, it is one block, so Load more
+appends the rest to it rather than to the front matter.
 
 ```console
 $ node tests/dom/source-line-anchors-session.js
@@ -379,7 +383,7 @@ $ node tests/dom/source-line-anchors-session.js
       "address": "/view/src/big.py#L70",
       "gutter": "1–100",
       "value": "70 of 100: Line 70",
-      "status": "Line 70 highlighted.",
+      "status": "",
       "highlighted": "70–70",
       "scrollTarget": "present",
       "linePitch": "21.484375px",
@@ -394,6 +398,18 @@ $ node tests/dom/source-line-anchors-session.js
     },
     {
       "step": "the refresh after that render",
+      "address": "/view/src/big.py#L70",
+      "gutter": "1–100",
+      "value": "70 of 100: Line 70",
+      "status": "",
+      "highlighted": "70–70",
+      "scrollTarget": "present",
+      "linePitch": "21.484375px",
+      "notice": null,
+      "scrolls": []
+    },
+    {
+      "step": "a task later, the status line speaks",
       "address": "/view/src/big.py#L70",
       "gutter": "1–100",
       "value": "70 of 100: Line 70",
@@ -652,7 +668,7 @@ $ node tests/dom/source-line-anchors-session.js
       "address": "/view/src/big.py#L5",
       "gutter": "1–100",
       "value": "5 of 100: Line 5",
-      "status": "Line 5 highlighted.",
+      "status": "",
       "highlighted": "5–5",
       "scrollTarget": "present",
       "linePitch": "21.484375px",
@@ -664,6 +680,18 @@ $ node tests/dom/source-line-anchors-session.js
           "inline": "nearest"
         }
       ]
+    },
+    {
+      "step": "a task later, the status line speaks",
+      "address": "/view/src/big.py#L5",
+      "gutter": "1–100",
+      "value": "5 of 100: Line 5",
+      "status": "Line 5 highlighted.",
+      "highlighted": "5–5",
+      "scrollTarget": "present",
+      "linePitch": "21.484375px",
+      "notice": null,
+      "scrolls": []
     },
     {
       "step": "a Markdown file with front matter at #L4-L5",
@@ -695,7 +723,53 @@ $ node tests/dom/source-line-anchors-session.js
           "lineOffset": "3"
         }
       ],
-      "copyPayload": ""
+      "copyPayloadIsTheText": true
+    },
+    {
+      "step": "part of a Markdown file with front matter at #L4-L5",
+      "address": "/view/docs/guide.md#L4-L5",
+      "gutter": "1–4",
+      "value": "4 of 4: Line 4",
+      "status": "Line 4 highlighted.",
+      "highlighted": "4–4",
+      "scrollTarget": "present",
+      "linePitch": "21.484375px",
+      "notice": {
+        "role": "status",
+        "text": "Lines 4–5 continue past the part of this file loaded so far (lines 1–4). Load more to see the rest."
+      },
+      "scrolls": [
+        {
+          "line": 4,
+          "block": "center",
+          "inline": "nearest"
+        }
+      ],
+      "markdownParts": [
+        {
+          "className": "language-markdown",
+          "text": "---\ntitle: Guide\n---\n# Guide\n"
+        }
+      ]
+    },
+    {
+      "step": "Load more appends the rest of the Markdown file",
+      "address": "/view/docs/guide.md#L4-L5",
+      "gutter": "1–6",
+      "value": "4 of 6: Lines 4–5",
+      "status": "Lines 4–5 highlighted.",
+      "highlighted": "4–5",
+      "scrollTarget": "present",
+      "linePitch": "21.484375px",
+      "notice": null,
+      "scrolls": [],
+      "appended": true,
+      "markdownParts": [
+        {
+          "className": "language-markdown",
+          "text": "---\ntitle: Guide\n---\n# Guide\n\nMore text.\n"
+        }
+      ]
     },
     {
       "step": "a Markdown file whose front matter never closes",
@@ -712,7 +786,7 @@ $ node tests/dom/source-line-anchors-session.js
       },
       "scrolls": [],
       "markdownParts": [
-        "plaintext"
+        "language-markdown"
       ]
     }
   ],
