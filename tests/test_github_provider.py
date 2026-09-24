@@ -51,6 +51,8 @@ def fake_gh(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("GH_DEBUG", "api")
     monkeypatch.setenv("GH_HOST", "enterprise.example.com")
     monkeypatch.setenv("GH_REPO", "other/repo")
+    monkeypatch.setenv("CLICOLOR_FORCE", "1")
+    monkeypatch.setenv("GH_FORCE_TTY", "1")
     return tmp_path / "gh-log"
 
 
@@ -92,6 +94,7 @@ def test_gh_runs_isolated_with_no_stdin(fake_gh: Path, monkeypatch: pytest.Monke
     assert env["GH_NO_UPDATE_NOTIFIER"] == "1"
     assert env["NO_COLOR"] == "1"
     assert "GH_DEBUG" not in env and "GH_HOST" not in env and "GH_REPO" not in env
+    assert "CLICOLOR_FORCE" not in env and "GH_FORCE_TTY" not in env
     assert (fake_gh.parent / "gh-log.stdin").read_text() == ""
 
 

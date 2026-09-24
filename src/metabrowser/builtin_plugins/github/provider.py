@@ -48,8 +48,17 @@ def _single_quoted(text: str) -> str:
 
 
 # The helper runs as ``sh -c '<command> get'`` in acquisition Git's environment, which
-# keeps every non-Git variable. These would redirect or log gh; they are cleared for it.
-HELPER_UNSET_ENV: Final[tuple[str, ...]] = ("GH_DEBUG", "GH_HOST", "GH_REPO", "GH_PAGER", "DEBUG")
+# keeps every non-Git variable. These would redirect or log gh, or make it write colour
+# or terminal output into the credential answer Git parses; they are cleared for it.
+HELPER_UNSET_ENV: Final[tuple[str, ...]] = (
+    "GH_DEBUG",
+    "GH_HOST",
+    "GH_REPO",
+    "GH_PAGER",
+    "DEBUG",
+    "CLICOLOR_FORCE",
+    "GH_FORCE_TTY",
+)
 HELPER_SET_ENV: Final[tuple[tuple[str, str], ...]] = (
     ("GH_PROMPT_DISABLED", "1"),
     ("GH_NO_UPDATE_NOTIFIER", "1"),

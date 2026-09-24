@@ -139,7 +139,8 @@ def test_the_provider_adds_the_helper_only_for_github_remotes(
         "credential.helper=",
         "-c",
         "credential.https://github.com.helper=!unset GH_DEBUG GH_HOST GH_REPO GH_PAGER "
-        "DEBUG; GH_PROMPT_DISABLED=1 GH_NO_UPDATE_NOTIFIER=1 NO_COLOR=1 "
+        "DEBUG CLICOLOR_FORCE GH_FORCE_TTY; GH_PROMPT_DISABLED=1 GH_NO_UPDATE_NOTIFIER=1 "
+        "NO_COLOR=1 "
         f"HOME='/srv/o'\"'\"'neil' {quoted} auth git-credential",
     )
     # Every network command gets it, after the protocol allowlist and stall bound.
@@ -166,7 +167,7 @@ def test_the_acquisition_environment_asks_gh_the_same_way(
     monkeypatch.setattr(github_provider, "gh_executable", lambda: str(gh))
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(_user_config(tmp_path)))
     monkeypatch.setenv("HOME", str(real_home))
-    for name in ("GH_DEBUG", "GH_HOST", "GH_REPO", "GH_PAGER"):
+    for name in ("GH_DEBUG", "GH_HOST", "GH_REPO", "GH_PAGER", "CLICOLOR_FORCE", "GH_FORCE_TTY"):
         monkeypatch.setenv(name, "leaked")
     assert git_environment(ACQUISITION_POLICY)["HOME"] == os.devnull
 
@@ -186,8 +187,31 @@ def test_the_acquisition_environment_asks_gh_the_same_way(
     seen = _gh_env(tmp_path)
     assert seen["HOME"] == str(real_home)
     assert seen["GH_PROMPT_DISABLED"] == "1" and seen["GH_NO_UPDATE_NOTIFIER"] == "1"
-    assert not {"GH_DEBUG", "GH_HOST", "GH_REPO", "GH_PAGER"} & seen.keys()
+    leaked = {"GH_DEBUG", "GH_HOST", "GH_REPO", "GH_PAGER", "CLICOLOR_FORCE", "GH_FORCE_TTY"}
+    assert not leaked & seen.keys()
     other = fill(origin_git_args("https://example.com/octo/demo.git"), "example.com")
     assert other.returncode != 0
     assert GH_SENTINEL.encode() not in other.stdout
     assert USER_SENTINEL.encode() not in other.stdout
+
+
+@pytest.mark.skipif(os.name != "posix", reason="the stand-in gh is a shell script")
+def test_a_test_that_installs_no_gh_reaches_only_the_failing_stand_in() -> None:
+    """tests/conftest.py puts a failing gh first on PATH for every test but the live one.
+
+    gh is looked up on every call, so no module can have found the real one first; the
+    stand-in logs the call and fails, and nothing is read from a keychain.
+    """
+
+    from metabrowser.builtin_plugins.github.gh import gh_executable
+    from tests.conftest import GH_GUARD_LOG_ENV
+
+    found = gh_executable()
+    log = Path(os.environ[GH_GUARD_LOG_ENV])
+    assert found == str(log.parent / "gh")
+    before = log.read_text(encoding="utf-8") if log.exists() else ""
+    ran = subprocess.run([found, "auth", "status"], capture_output=True, check=False)
+    assert ran.returncode == 1 and b"not available to tests" in ran.stderr
+    logged = log.read_text(encoding="utf-8")[len(before) :]
+    assert "test_a_test_that_installs_no_gh_reaches_only_the_failing_stand_in" in logged
+    assert logged.rstrip("\n").endswith("\tauth status")

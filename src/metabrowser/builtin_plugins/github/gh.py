@@ -2,7 +2,7 @@
 
 ``gh`` owns GitHub authentication; Metabrowser never reads, stores, or logs a token.
 Every run gets no stdin, prompts and update checks off, no colour, and no inherited
-``GH_DEBUG``, ``GH_HOST``, or ``GH_REPO``; a deadline and an output cap; and its own
+``GH_DEBUG``, ``GH_HOST``, ``GH_REPO``, ``CLICOLOR_FORCE``, or ``GH_FORCE_TTY``; a deadline and an output cap; and its own
 process group, so a timeout or cancellation kills anything it started. Its stdout is
 never logged, because it can be private repository data.
 """
@@ -27,7 +27,16 @@ GH_TIMEOUT_S: Final[float] = 15.0
 GH_MAX_BYTES: Final[int] = 256 * 1024
 _READ_CHUNK_BYTES: Final[int] = 64 * 1024
 _STDERR_MAX_BYTES: Final[int] = 16 * 1024
-_DROPPED_ENV: Final[tuple[str, ...]] = ("GH_DEBUG", "GH_HOST", "GH_REPO", "GH_PAGER", "DEBUG")
+# Redirect or log gh, or force colour or terminal output into what is parsed.
+_DROPPED_ENV: Final[tuple[str, ...]] = (
+    "GH_DEBUG",
+    "GH_HOST",
+    "GH_REPO",
+    "GH_PAGER",
+    "DEBUG",
+    "CLICOLOR_FORCE",
+    "GH_FORCE_TTY",
+)
 
 
 class GhError(Exception):

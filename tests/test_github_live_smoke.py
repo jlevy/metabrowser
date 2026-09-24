@@ -39,6 +39,7 @@ from tests.admitted_git import require_admitted_git
 LIVE_ENV = "METABROWSER_LIVE_GITHUB"
 
 pytestmark = [
+    pytest.mark.live_github,
     pytest.mark.skipif(os.environ.get(LIVE_ENV) != "1", reason=f"set {LIVE_ENV}=1 to run"),
     pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only"),
     # Clones over a real network; the suite's 60 s default is for local work.
