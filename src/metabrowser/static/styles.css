@@ -2186,7 +2186,7 @@ html.theme-anim .menu {
 }
 .source-ref-selector-commit {
   color: var(--muted);
-  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 .source-ref-selector-note,
 .source-ref-selector-error {
