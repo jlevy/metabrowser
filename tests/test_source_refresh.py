@@ -37,7 +37,13 @@ from metabrowser.cache.records import (
 from metabrowser.cache.update import RefreshOutcome, StoreUpdate
 from metabrowser.cli.main import _app
 from metabrowser.git.tree_source import GitPath, GitRevisionSubject, store_batch_reader_count
-from metabrowser.mirror_refresh import RefreshCoordinator
+from metabrowser.mirror_refresh import (
+    LastOutcome,
+    MirrorSession,
+    RecordedFreshness,
+    RefreshCoordinator,
+    RefreshResult,
+)
 from metabrowser.source import (
     SubjectNotOpenError,
     attach_owned_subject,
@@ -523,6 +529,48 @@ def test_the_coordinator_bounds_concurrent_jobs_across_keys() -> None:
     assert answers == ["started", "started", "started", "joined", "started"]
 
 
+class _BusyMirror:
+    """A mirror whose store another process refreshed and recorded in the same second."""
+
+    key = "store"
+
+    def __init__(self, at: str) -> None:
+        self.at = at
+
+    async def open_selection(self, *, ref: str | None, oid: str | None) -> GitRevisionSubject:
+        raise AssertionError("not reached")
+
+    async def refresh(self) -> RefreshResult:
+        return RefreshResult("refreshing_elsewhere", self.at)
+
+    async def recorded_freshness(self) -> RecordedFreshness:
+        return RecordedFreshness(self.at, "refresh", "succeeded", self.at)
+
+    async def ref_tip(self, ref: str) -> str | None:
+        return None
+
+    async def refresh_running_elsewhere(self) -> bool:
+        return False
+
+
+def test_a_record_from_the_same_second_outranks_a_busy_result() -> None:
+    """Timestamps have one-second resolution; the other process's record wins a tie."""
+
+    async def scenario() -> LastOutcome | None:
+        coordinator = RefreshCoordinator()
+        session = MirrorSession(_BusyMirror(_FUTURE), coordinator)
+        session.request_refresh()
+        await coordinator.drain(timeout_s=5)
+        await coordinator.aclose()
+        return session._last_outcome()
+
+    assert asyncio.run(scenario()) == {
+        "operation": "refresh",
+        "outcome": "succeeded",
+        "at": _FUTURE,
+    }
+
+
 # ── The shell ────────────────────────────────────────────────────────
 
 
@@ -746,6 +794,10 @@ def test_a_server_follows_a_refresh_another_process_is_running(
     followed = _settle(served)
     assert followed["latest"] == newer
     assert followed["refreshing"] is False
+    # The other refresh has ended and wrote no record, so the busy result is gone and
+    # the record reports what was there before.
+    assert followed["last_outcome"]["outcome"] == "succeeded"
+    assert followed["last_outcome"]["operation"] == "acquire"
 
 
 def test_a_detached_origin_head_is_a_quiet_outcome(served: TestClient, origin: _Origin) -> None:
