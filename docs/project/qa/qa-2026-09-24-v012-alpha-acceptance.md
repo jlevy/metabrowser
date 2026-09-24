@@ -4,6 +4,7 @@
 findings filed as beads.
 M10b, M12, and M13 were not run because the thin-mirror plan defers them.
 This record is evidence for the landing decision (`mb-n2ro`), not that decision.
+The failed rows were rerun on the fixes in #243; see [Rerun on #243](#rerun-on-243).
 
 The procedure is the manual matrix in the
 [alpha testing plan](../specs/active/plan-2026-09-22-v012-alpha-testing.md), adapted to
@@ -410,6 +411,153 @@ renders as text with no address, as the runbook documents.
   sandboxed frame.
 - There was no private fixture, so authorized private access and revoked access were not
   run.
+
+## Rerun on #243
+
+The rows that failed above were rerun on
+[#243](https://github.com/jlevy/metabrowser/pull/243), which fixes `mb-ddbe`, `mb-tals`,
+and `mb-5wqg` on top of #241, with a smoke pass of M01 and M05 on the new wheel.
+
+| Item | Value |
+| --- | --- |
+| Head (`codex/v012-acceptance-fixes`) | `7d91c8f4a655d32070370d26408419d0970f4671` |
+| Base (`codex/v012-acceptance`, #241) | `948861c42281f522941071da6011fbcf95fe9525` |
+| `main` | `6c278f3f9e10aebcb34a207035aee7768a1bba0e` |
+| Wheel | `metabrowser-0.11.1.dev412+7d91c8f4-py3-none-any.whl` from `make build`, whose distribution checks pass |
+| Platform | macOS 26.5.2 (25F84), arm64; load average 44–89 |
+| Tools | Git 2.50.1, gh 2.98.0, uv 0.12.8, Python 3.14.7, Node 24.19.0, KPress 0.3.5 |
+| Browser | The Claude desktop browser pane, Chrome 152.0.7977.130 |
+| Observation time | 2026-09-24, 23:11–23:39 UTC |
+
+The method is the one above: a clean uv-managed Python 3.14 environment in `<scratch>`
+with dependencies from `uv export --frozen --no-dev` and `UV_EXCLUDE_NEWER="14 days"`,
+the installed `metab` entry point, one fresh application home and cache, and
+`sandbox-exec -f offline.sb` for offline rows.
+Servers ran on ports 8721–8729. Every gh call was a read-only GET of public data.
+
+The browser pane was hidden again.
+Screenshots worked, but each one showed the page as it was one step earlier, and the
+page advanced its frames only while screenshots were taken.
+Geometry and state were therefore read through the page’s JavaScript after a screenshot.
+The toggle, backdrop, and TOC entries were clicked as real clicks.
+
+| Row | Action | Expected | Actual | Result |
+| --- | --- | --- | --- | --- |
+| M02b raw forms | `--no-serve` on blob, `#L1`, `?plain=1#L1-L2`, tree, and raw-host URLs, with `雪.md` and `space name.md` unencoded | Each opens as its encoded spelling would | All ten open with the expected `selection`, `path`, `lines`, and `plain`; raw and encoded output are byte-identical | Pass |
+| M02b refusals | U+202E, U+3164, a lone `%`, a tab, U+00A0, and a trailing space | Refused with the code point and the encoded spelling | Each exits 1 with its code, names the code point, and gives the spelling or a fix | Pass |
+| M02b encoded | The spellings the refusals give | The reducer accepts them | `100%25.md` opens `100%.md`; `%E2%80%AE` and `%E3%85%A4` reach `path_not_found` | Pass; see `mb-1bpe` |
+| M07 open | `jlevy/metabrowser#234` | github.com’s header | “jlevy wants to merge 10 commits into codex/v012-pr-view from codex/v012-inert-markdown”, the same words as github.com | Pass |
+| M07 merged | `cli/cli#14128` | Merger and “merged” | “babakks merged 6 commits into trunk from bagtoad/probable-funicular”, the same as github.com | Pass |
+| M07 closed | `cli/cli#14502`, `encode/httpx#3783` | “wants to merge” with the Closed badge | Matches, except that the base lacks its owner for a head in a fork | Pass; see `mb-v8sb` |
+| M07 checks | #14128 (skipped), #3783 (cancelled) | Skipped and cancelled counted apart from neutral | “13 success · 13 skipped” and “1 failure · 4 cancelled”, with muted badges | Pass |
+| TOC narrow | 1000 px light and dark in a trusted folder; 760 px dark in a mirror | The toggle is reachable at every depth | Toggle stays at (312, 16) and is hit-testable at every depth once shown, to the end | Pass |
+| TOC drawer | Toggle clicked at the end of the document | The drawer covers only the pane | Drawer inside the pane; backdrop equals the pane; the tree is undimmed; backdrop and entry close it | Pass |
+| TOC wide | 1700 px, light and dark, trusted and mirror, old CSS emulated | Unchanged | Rail sticky at 96, then 32; toggle hidden; rects identical to the old layout | Pass |
+| Frame contents | Image, HTML Preview, Source `#L`, Git commit diff at 1000 px | Laid out inside the frame | All inside the pane; the HTML frame lays out but does not paint (below) | Pass |
+| M01 smoke | The manual corpus | Each kind in its view | Markdown, source, Tree, log, image, and split diff render; no console errors | Pass |
+| M05 smoke | Warm, then offline restart | Same content; honest offline state | Same content and `--show`; refresh `network_unreachable`; the server keeps its pin | Pass |
+| M03b | Open a changed file at base or head from a diff | — | Not run: awaiting decision (`mb-zb5t`) | Not run |
+| M08b | Open a changed file at base or head from Files changed | — | Not run: awaiting decision (`mb-zb5t`) | Not run |
+
+**M02b.** The raw forms were run on a cold home against `jlevy/metabrowser` at `main`
+and at `codex/v012-markdown-anchors` (`edef33c5`). The tree form was
+`/tree/main/tests/fixtures/obsidian-vault/Notes/space note.md`, and the raw host was
+tried with and without `refs/heads/`. The refusal texts were:
+
+- `non_ascii`: “the URL contains U+202E, an invisible character; if it belongs in the
+  address, write it as %E2%80%AE”, and the same for U+3164 with `%E3%85%A4`.
+- `invalid_percent_encoding`: “the URL has a % not followed by two hexadecimal digits;
+  write a literal % as %25”.
+- `control_or_whitespace`: “the URL contains U+0009, a control character”, and for
+  U+00A0 “a whitespace character; if it belongs in the address, write it as %C2%A0”. A
+  trailing space gives “the URL ends with a space; remove it”.
+
+Following the U+202E hint prints the missing path with U+FFFD in place of the override.
+Following the U+3164 hint prints the filler raw, because it is a letter (Lo), not a
+format character. Filed as `mb-1bpe` (P4).
+
+**M07.** On github.com, a pull request from a fork names the base with its owner (“into
+cli:trunk”, “into encode:master”). Metabrowser writes “into trunk” and “into master”,
+and qualifies only the head.
+Filed as `mb-v8sb` (P4). Same-repository pull requests match word for word.
+`encode/httpx#3783` was chosen because its head has four `cancelled` runs and one
+`failure`. None of the last 80 `cli/cli` pull requests had a cancelled run.
+
+**TOC drawer (`mb-ddbe`).** The document was `docs/qa-v012-repository-library.md`,
+served from this checkout as a trusted folder, where KPress’s scripts load, and as a
+GitHub mirror of this branch, which uses the inert TOC.
+
+- At 1000 px the pane is 700 px wide.
+  In light, the toggle stayed at (312, 16), 32 × 32, at scroll depths 0, 2000, 12414,
+  and the end, 24028, and `elementFromPoint` at its centre hit it each time.
+  In dark it was measured at the end, with the same result.
+- Opened from the end, the drawer was at (316, 64), 668 × 362, and the backdrop was
+  exactly the pane (300, 0, 700 × 800). A point in the file tree hit the tree.
+  A backdrop click closed the drawer.
+  Clicking “Phase 4: file:// Acquire and the Pin” set the fragment, scrolled that
+  heading to the pane’s top, and closed the drawer.
+- In the mirror at 760 px, dark, the pane is 460 px wide.
+  Before any scroll the toggle was at (312, 16) but not yet shown (opacity 0). At 3000,
+  15000, and the end, 31055, it stayed at (312, 16) and was hit-testable, fading in to
+  opacity 1. The drawer was 428 × 704 inside the pane.
+  An entry set `#user-content-44-pin---api-with-g1--wires` and closed the drawer.
+- At 1700 px the rail is sticky, at y = 96 at the top and y = 32 after 5000 px, and the
+  toggle is `display: none`. The old rule was restored in the page
+  (`.preview-pane { transform: translateZ(0) }`, with none on the frame).
+  The rail, the prose, the `h1`, and `scrollHeight` were identical at both depths in all
+  four combinations of theme and source.
+
+Inside the new frame:
+
+- `images/metabrowser-overview.jpg` scales to 652 × 367 inside the pane.
+- `src/metabrowser/cli/main.py#L300-L305` scrolls the range into view, and the gutter
+  reads “Lines 300–305”.
+- `docs/development.md?plain=1#L120` opens the Source tab at line 120 with the gutter.
+- The Git tab lists history.
+  Commit `7d91c8f4` shows its split diff in the pane, and no element extends past the
+  pane’s right edge.
+- The HTML Preview frame of `explorations/diff-layout/benchmark.html` fills the pane
+  below the tabs. As in the first run, this browser refused to load it
+  (`net::ERR_BLOCKED_BY_CLIENT`). `/raw/…` answers 200 with its sandbox header.
+
+**M01 smoke.** `--show` gives the expected kind and views for all seven fixtures.
+In the browser:
+
+- `overview.md` renders through KPress with Document and Source tabs;
+- `example.py` is highlighted with the gutter;
+- `record.json` opens as a Tree;
+- `events.jsonl` opens as a log of 3 events;
+- `status.svg` opens as an image;
+- `syntax-layouts.diff` shows 5 files in split view.
+
+No console errors appeared.
+
+**M05 smoke.** `octocat/Hello-World` was warmed online and then run with the network
+blocked. Offline:
+
+- `--no-serve` exits 0 at `7fd1a60b`, and `--show README` is identical to the online
+  run.
+- The `/api/file` envelope for `g1-UkVBRE1F` (“Hello World!”) is byte-identical to the
+  online one.
+- An explicit `/api/source/refresh` ends `network_unreachable` and exits 1.
+- `octocat/Spoon-Knife`, which is not cached, answers `network_unreachable`, and
+  “nothing was published”.
+- A server started offline keeps its pin, highlights `#L1`, and labels itself “Refresh
+  failed · fetched 1 min ago”.
+- A server started offline at an unfetched commit (`b99406db`, a pull-request head)
+  reports `selection_state: fetch_failed` and “Address not fetched”.
+
+One observation was outside the rows.
+Navigating a served page to `/commit/<oid>` for a commit the mirror lacks shows “Could
+not load this commit.”
+It was not checked whether this predates #243.
+
+### New Findings
+
+| Bead | Priority | Summary |
+| --- | --- | --- |
+| `mb-v8sb` | P4 | The pull-request header omits the base’s owner when the head is in a fork |
+| `mb-1bpe` | P4 | Path errors print default-ignorable characters such as U+3164 raw |
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
