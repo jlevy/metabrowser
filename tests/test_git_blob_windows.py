@@ -12,7 +12,9 @@ from __future__ import annotations
 import asyncio
 import json
 import shutil
+import subprocess
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -306,3 +308,72 @@ def test_a_jsonl_blob_past_the_parser_ceiling_reports_it_like_the_filesystem(
 def test_the_fixture_blobs_all_exceed_the_ceiling() -> None:
     for body in (_LINES, _FRONTMATTER, _JSONL, _PNG_HEADER, _BINARY):
         assert len(body) > _CEILING
+
+
+# ── Load more on a pin, through the production client ──────────────
+
+_LOAD_MORE_SESSION = Path(__file__).resolve().parent / "dom" / "load-more-notice-session.js"
+
+
+def _load_more_step(cached: dict[str, Any], chunk: dict[str, Any]) -> dict[str, Any]:
+    """Merge one window the way the shell does and render its notices (browserless)."""
+
+    result = subprocess.run(
+        [
+            "node",
+            str(_LOAD_MORE_SESSION),
+            str(_LOAD_MORE_SESSION.parents[2]),
+            json.dumps({"cached": cached, "chunk": chunk}),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    return json.loads(result.stdout)
+
+
+@pytest.mark.parametrize("max_blob_bytes", [None, _CEILING], ids=["whole", "past-ceiling"])
+def test_load_more_on_a_pin_advances_the_notice_and_the_cursor(
+    tmp_path: Path, max_blob_bytes: int | None
+) -> None:
+    """A pin's window reports the cursor past it, as the filesystem does.
+
+    It once reported the window's length, so after Load more the notice kept the first
+    window's figure ("Showing 2.0 MB of 15.2 MB") and the next Load more re-read from
+    there, repeating content. Each step here is the shell's own merge and notice.
+    """
+
+    if shutil.which("node") is None:
+        pytest.skip("node not available")
+    store, commit = _store(tmp_path)
+    step = 16
+
+    async def run() -> None:
+        async with _pinned_client(store, commit, max_blob_bytes=max_blob_bytes) as (client, _s):
+
+            async def window(offset: int) -> dict[str, Any]:
+                params = {"path": _wire(b"lines.txt"), "offset": str(offset), "limit": str(step)}
+                response = await client.get("/api/file", params=params)
+                assert response.status_code == 200, response.text
+                return response.json()
+
+            cached = await window(0)
+            assert cached["size"] == len(_LINES)
+            readouts: list[str] = []
+            for _ in range(2):
+                offset = cached["bytes_read"]
+                assert isinstance(offset, int)
+                chunk = await window(offset)
+                assert chunk["content_offset"] == offset
+                assert chunk["bytes_read"] == offset + chunk["content_bytes"]
+                merged = _load_more_step(cached, chunk)
+                assert merged["top"] == merged["bottom"]
+                readouts.append(str(merged["top"]))
+                cached = merged["next"]
+            assert cached["content"] == _LINES[: 3 * step].decode()
+            # The total is the blob's size either way; the ceiling bounds only the reads.
+            assert readouts == ["Showing 32 B of 10.2 KB.", "Showing 48 B of 10.2 KB."]
+
+    asyncio.run(run())

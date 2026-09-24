@@ -974,7 +974,8 @@ def test_git_text_preview_windows_match_filesystem_highlight_bound(tmp_path: Pat
             assert nxt.status_code == 200
             nxt_body = nxt.json()
             assert nxt_body["content_offset"] == SYNTAX_HIGHLIGHT_MAX_BYTES
-            assert nxt_body["bytes_read"] == 123
+            assert nxt_body["content_bytes"] == 123
+            assert nxt_body["bytes_read"] == SYNTAX_HIGHLIGHT_MAX_BYTES + 123
             assert nxt_body["content_truncated"] is False
 
             txt = await client.get("/api/file", params={"path": _wire(b"big.txt")})

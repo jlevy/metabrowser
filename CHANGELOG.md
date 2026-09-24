@@ -608,6 +608,12 @@ Fixes:
   A literal backslash in a `/view/` URL is refused, and Windows, where a backslash is a
   separator, is unchanged.
 
+- Load more on a large text file in a pin advances its notice and continues the text.
+  A pin’s later window reported its own length as `bytes_read`, where the filesystem
+  reports the cursor past the window, so after Load more the notice kept reading
+  “Showing 2.0 MB of 15.2 MB” and the next Load more read from 2.0 MB again, repeating
+  text. `/api/file` on a pin now reports the cursor, as a served folder does.
+
 ## 0.11.0
 
 Content trust:

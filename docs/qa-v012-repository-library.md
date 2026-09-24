@@ -760,11 +760,16 @@ Open `http://127.0.0.1:8471/view/` in a browser, with its developer tools open.
    Reloading that `/commit/…` address reopens the same commit.
 7. Reload a `/view/g1-…` address, use back and forward, and open a copied link in a
    second tab: the same file and revision open each time.
+8. A text file over 2 MB (commit one to a scratch origin if the pinned repository has
+   none) opens with “Showing 2.0 MB of …” above and below.
+   Each Load more raises that figure in both notices, and the text continues where it
+   stopped rather than repeating.
 
 **Pass:** Every step as described; no console errors; no request leaves `127.0.0.1`.
 
 **Fail:** A blank heading, a different commit anywhere, a Preview tab on HTML, a broken
-image, or a request to another host.
+image, a partial-content notice that keeps its figure after Load more, or a request to
+another host.
 
 ### 5.4 Reopen with the origin gone (M05)
 
