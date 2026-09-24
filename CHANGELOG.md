@@ -9,7 +9,7 @@ Plugin contracts:
 - Installed Python distributions can register versioned artifact contracts and resource
   publication profiles through the new `metabrowser.capabilities.v1` entry-point group.
   Contract discovery is separate from browser plugin manifests and operator plugin
-  directories, so it does not create a static asset root or change browser SDK 0.6.
+  directories, so it does not create a static asset root or change the browser SDK.
 
 - Hosted Review Format installs enforced SoftSchema contracts for its provider,
   change-request, review, check, and activity records.
@@ -41,14 +41,15 @@ Plugin contracts:
 
 Plugin SDK:
 
-- A copy control a plugin builds without `wrapWithCopy` needs the page’s owner mark:
-  `mb.ownDelegate(element)` sets it on an element, and `mb.delegateOwnerAttribute()`
-  returns it for markup.
-  `wrapWithCopy` and `partialNoticeHtml` add it themselves.
-  Without the mark the shared copy and Load more listeners ignore the element, as they
-  ignore the same markup written by a document.
-  The browser SDK stays 0.6: the documented helpers keep working unchanged, and the two
-  functions are additions.
+- **Breaking:** `PLUGIN_SDK_VERSION` is now `0.7`. The shared copy and Load more
+  listeners act only on a control carrying the page’s owner mark, so a plugin that wrote
+  the documented `data-mb-copy`, `data-mb-copy-text`, and `data-mb-copy-label` markup by
+  hand now gets a button that silently does nothing (see Content trust below for why).
+  To migrate, set `sdk_version = "0.7"` and stamp each copy control the plugin builds
+  itself: `mb.ownDelegate(element)` on an element, or `mb.delegateOwnerAttribute()`
+  spliced into markup.
+  Controls from `wrapWithCopy` and `partialNoticeHtml` are stamped already and need no
+  change. A manifest left at `0.6` is refused when it loads.
 
 - `window.metabrowser.sourceKind()` reports whether the served tree is a filesystem root
   or a `git_revision` pin.
@@ -56,8 +57,8 @@ Plugin SDK:
   from `g1-` filenames, so a tracked file literally named `g1-notes.md` is a name rather
   than an identity to decode.
   Built-in views read the kind through this accessor rather than a page global.
-  The browser SDK stays 0.6: `sourceKind()` is an addition, and a plugin that never asks
-  sees the filesystem answer it saw before.
+  `sourceKind()` is an addition, and a plugin that never asks sees the filesystem answer
+  it saw before.
 
 - `mb.sizeHtml(undefined)` now renders nothing instead of a pending skeleton.
   `null` still means “this aggregate is still being computed” and keeps its skeleton
@@ -84,8 +85,8 @@ Plugin SDK:
   for a missing object, an oversized blob, an unreadable compressed stream, and a
   timeout alike. The four built-in data hooks — binary bytes, structured parse, agent-log
   charts, and diff documents — now read this way and no longer branch on the source
-  kind. The browser SDK stays 0.6: these are additions to the Python helper surface and
-  no manifest, kind, or `window.metabrowser` call changes.
+  kind. These are additions to the Python helper surface; no manifest, kind, or
+  `window.metabrowser` call changes.
   `content_source()`, added earlier in this unreleased series and never part of a
   release, is gone: it handed a hook the raw active source, which is what the content
   reader replaces.

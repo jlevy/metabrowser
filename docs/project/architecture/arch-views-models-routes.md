@@ -236,7 +236,7 @@ address in the same implementation changes:
 ### Planned plugin registration surfaces
 
 Browser and route declarations are additive installed-plugin capabilities only if
-existing SDK 0.6 manifests and JavaScript calls keep their signatures and behavior.
+existing SDK 0.7 manifests and JavaScript calls keep their signatures and behavior.
 They still require plugin-author documentation and a changelog entry.
 An existing browser-contract change instead bumps `PLUGIN_SDK_VERSION` and every
 built-in manifest in one commit, with no compatibility layer.

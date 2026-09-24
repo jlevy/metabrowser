@@ -2,7 +2,7 @@
 name = "image"
 display_name = "Image"
 version = "0.0.1"
-sdk_version = "0.6"
+sdk_version = "0.7"
 
 # Image extensions are classified by metabrowser.server because that decision
 # precedes the text/binary content fallback. The manifest owns the view and its

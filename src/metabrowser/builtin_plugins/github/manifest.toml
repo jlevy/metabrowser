@@ -2,7 +2,7 @@
 name = "github"
 display_name = "GitHub"
 version = "0.0.1"
-sdk_version = "0.6"
+sdk_version = "0.7"
 
 # GitHub support: the URL reducer, the gh credential helper, and pull-request records
 # reach core through metabrowser.cache.providers, not this manifest. The manifest mounts
