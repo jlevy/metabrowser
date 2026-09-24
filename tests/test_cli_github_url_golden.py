@@ -38,7 +38,7 @@ import pytest
 from metabrowser.cache.urls import GitSource
 from metabrowser.git.tree_source import GitPath
 from tests.git_pin_harness import git_env
-from tests.github_origin import FIRST_COMMIT, SECOND_COMMIT, github_origin
+from tests.github_origin import FIRST_COMMIT, SECOND_COMMIT, _commit, github_origin
 from tests.test_cli_cache_acquire_golden import _isolate, _strip_logs
 from tests.test_cli_git_pin_golden import _Invocation, _run
 from tests.test_cli_golden import check_golden
@@ -69,6 +69,29 @@ def _stand_in(monkeypatch: pytest.MonkeyPatch, origin: Path) -> None:
     gh.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
     gh.chmod(0o755)
     monkeypatch.setenv("PATH", f"{failing}{os.pathsep}{os.environ.get('PATH', '')}")
+
+
+def _add_unicode_branch(origin: Path) -> None:
+    """``unicode``: the first commit plus ``docs/雪.md``, a path a person pastes raw.
+
+    The shared origin's commit IDs are pinned by every GitHub golden, so the name lives
+    on a branch of its own, written with a fixed committer and date.
+    """
+
+    stream = _commit(
+        "refs/heads/unicode",
+        "a name outside ASCII",
+        {"docs/雪.md".encode(): b"# Snow\n"},
+        parent=FIRST_COMMIT,
+        when=1767236400,
+    )
+    subprocess.run(
+        ["git", "--git-dir", str(origin), "fast-import", "--quiet"],
+        check=True,
+        capture_output=True,
+        input=stream + b"done\n",
+        env=git_env(origin.parent),
+    )
 
 
 def _quoted(argument: str) -> str:
@@ -103,6 +126,19 @@ OPENED: list[list[str]] = [
     [f"{REPO}/tree/v1.0", "--api", "/api/tree?depth=1"],
     [f"{REPO}/pull/7", "--api", "/api/git/repo"],
     [f"{REPO}/blob/HEAD/docs/guide.md", "--no-serve"],
+    # Pasted as an address bar shows it, and as a browser sends it: each raw spelling
+    # opens what its encoded one opens (RAW_AND_ENCODED).
+    [f"{REPO}/blob/topic/docs/My Notes.md", "--no-serve"],
+    [f"{REPO}/blob/topic/docs/My%20Notes.md", "--no-serve"],
+    [f"{RAW}/topic/docs/My Notes.md", "--no-serve"],
+    [f"{REPO}/blob/unicode/docs/雪.md#L1", "--no-serve"],
+    [f"{REPO}/blob/unicode/docs/%E9%9B%AA.md#L1", "--no-serve"],
+]
+# The raw spellings above, each with the encoded one it must equal.
+RAW_AND_ENCODED: list[tuple[str, str]] = [
+    (f"{REPO}/blob/topic/docs/My Notes.md", f"{REPO}/blob/topic/docs/My%20Notes.md"),
+    (f"{RAW}/topic/docs/My Notes.md", f"{RAW}/topic/docs/My%20Notes.md"),
+    (f"{REPO}/blob/unicode/docs/雪.md#L1", f"{REPO}/blob/unicode/docs/%E9%9B%AA.md#L1"),
 ]
 REFUSED: list[list[str]] = [
     [f"{REPO}/tree/nope/docs", "--no-serve"],
@@ -122,6 +158,7 @@ def test_golden_github_urls_open_through_a_local_stand_in(
 ) -> None:
     home = _isolate(tmp_path, monkeypatch)
     origin = github_origin(tmp_path)
+    _add_unicode_branch(origin)
     _stand_in(monkeypatch, origin)
 
     opened = [(args, _run(args)) for args in OPENED]
@@ -153,6 +190,18 @@ def test_golden_github_urls_open_through_a_local_stand_in(
 
     head = by_command[f"{REPO}/blob/HEAD/docs/guide.md --no-serve"].stdout
     assert f"pin: {FIRST_COMMIT} (default branch topic)\npath: docs/guide.md\n" in head
+    for raw, encoded in RAW_AND_ENCODED:
+        pasted = by_command[f"{raw} --no-serve"]
+        assert (pasted.stdout, pasted.stderr) == (
+            by_command[f"{encoded} --no-serve"].stdout,
+            by_command[f"{encoded} --no-serve"].stderr,
+        ), raw
+    snow = by_command[f"{REPO}/blob/unicode/docs/雪.md#L1 --no-serve"].stdout
+    assert "(branch unicode)\npath: docs/雪.md\nlines: L1\n" in snow
+    assert (
+        "path: docs/My Notes.md\n"
+        in by_command[f"{REPO}/blob/topic/docs/My Notes.md --no-serve"].stdout
+    )
     assert "\u009b" not in refused[-1][1].stderr and "\ufffd2J.md" in refused[-1][1].stderr
 
     rendered = "".join(_block(args, result) for args, result in [*opened, *refused])

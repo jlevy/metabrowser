@@ -120,6 +120,12 @@ GitHub URLs and HTTPS:
   `https://github.com/owner/repo`. Other github.com pages, `http://`, and GitHub’s own
   top-level pages are refused with a typed reason and a message that offers the
   repository URL; tracking parameters are dropped and never echoed.
+  A URL pasted as an address bar shows it, with a raw space or a character outside ASCII
+  such as `docs/雪.md` or `space name.md`, opens what its percent-encoded spelling opens:
+  as a browser does, the space and the character are sent percent-encoded as UTF-8.
+  Whitespace other than a space and invisible formatting characters, such as a
+  right-to-left override, are refused with their code point and the encoded spelling to
+  use, and a trailing space, which a browser strips, is refused.
   A C1 control character in a path, such as `%C2%9B`, is shown as U+FFFD like C0, so an
   error message cannot send a terminal an escape sequence.
   A ref, commit, or path the mirror does not have is reported by `--no-serve`, `--show`,

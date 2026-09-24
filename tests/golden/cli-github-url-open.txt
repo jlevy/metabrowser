@@ -304,6 +304,63 @@ selection: blob
 pin: 523f476bbcbde731f18dec9d6875df8fe8db13f3 (default branch topic)
 path: docs/guide.md
 --- stderr ---
+# metab 'https://github.com/octo/demo/blob/topic/docs/My Notes.md' --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
+selection: blob
+pin: 523f476bbcbde731f18dec9d6875df8fe8db13f3 (branch topic)
+path: docs/My Notes.md
+--- stderr ---
+# metab https://github.com/octo/demo/blob/topic/docs/My%20Notes.md --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
+selection: blob
+pin: 523f476bbcbde731f18dec9d6875df8fe8db13f3 (branch topic)
+path: docs/My Notes.md
+--- stderr ---
+# metab 'https://raw.githubusercontent.com/octo/demo/topic/docs/My Notes.md' --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
+selection: blob
+pin: 523f476bbcbde731f18dec9d6875df8fe8db13f3 (branch topic)
+path: docs/My Notes.md
+--- stderr ---
+# metab 'https://github.com/octo/demo/blob/unicode/docs/雪.md#L1' --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
+selection: blob
+pin: 68c5879cf5f6e797b2d5d4af3720666426e2b968 (branch unicode)
+path: docs/雪.md
+lines: L1
+--- stderr ---
+# metab 'https://github.com/octo/demo/blob/unicode/docs/%E9%9B%AA.md#L1' --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
+selection: blob
+pin: 68c5879cf5f6e797b2d5d4af3720666426e2b968 (branch unicode)
+path: docs/雪.md
+lines: L1
+--- stderr ---
 # metab https://github.com/octo/demo/tree/nope/docs --no-serve
 exit: 1
 --- stdout ---

@@ -97,6 +97,11 @@ It claims only `github.com` and `raw.githubusercontent.com`.
 - The canonical source is `https://github.com/<owner>/<repo>` with owner and repository
   lowercased and `.git` removed, so URL variants share one mirror.
 - Tracking and display query parameters are dropped.
+- A web URL is read as a browser sends it: a space or a visible character outside ASCII
+  in its path, query, or fragment is percent-encoded as UTF-8, so a pasted `…/docs/雪.md`
+  opens what `…/docs/%E9%9B%AA.md` opens (decided 2026-09-24, `mb-tals`). Controls,
+  other whitespace, invisible formatting characters, and a trailing space stay refused,
+  with the encoded spelling where one exists.
 - Other `https://` and `file://` Git URLs need no reducer, clone anonymously, and open
   their default branch.
 

@@ -557,9 +557,10 @@ with a local origin standing in for `https://github.com/octo/demo`, and pins the
 in `tests/golden/cli-github-url-open.txt`. Read the transcript rather than rerunning it:
 every spelling of the repository prints one slug and store; `/tree/release/v1/docs` pins
 the `release/v1` branch; `/blob/…?plain=1#L3-L4` reports `lines` and `plain`; a branch
-named `523f` wins over the commit whose ID starts with those digits; and a missing ref,
-commit, or path is `ref_not_found`, `commit_not_found`, or `path_not_found`.
-Pull-request URLs are 4.10.
+named `523f` wins over the commit whose ID starts with those digits; a path pasted with
+a raw space or a character outside ASCII (`docs/My Notes.md`, `docs/雪.md`) opens the
+same file and pin as its percent-encoded spelling; and a missing ref, commit, or path is
+`ref_not_found`, `commit_not_found`, or `path_not_found`. Pull-request URLs are 4.10.
 
 ```shell
 uv --config-file uv.toml run --frozen pytest tests/test_cli_github_url_golden.py \

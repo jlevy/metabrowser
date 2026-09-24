@@ -22,13 +22,26 @@ grammar never sees a claimed URL, so this module repeats its control-character,
 non-ASCII, backslash, and credentials checks before anything else. Query parameters
 other than ``plain=1`` and fragments other than a line anchor are dropped, and no
 refusal repeats the argument.
+
+A web URL is read as a browser sends it. A person pastes the decoded form an address
+bar shows, such as ``…/docs/雪.md`` or ``…/space name.md``, and a browser sends a
+space or a character outside ASCII in a path, query, or fragment percent-encoded as
+UTF-8 (the WHATWG URL Standard's path, query, and fragment percent-encode sets); GitHub
+answers both spellings alike, so both open the same selection. Characters an address bar
+keeps encoded are still refused, since a raw one did not come from it and cannot be
+seen: controls, whitespace other than a space, invisible format characters such as
+bidirectional overrides, and a trailing space, which a browser strips. The refusal names
+the character by code point and, for whitespace and a formatting character, gives the
+encoded spelling to use if it belongs in the address. SSH addresses are not browser URLs
+and keep the generic checks.
 """
 
 from __future__ import annotations
 
 import re
 import string
-from dataclasses import dataclass
+import unicodedata
+from dataclasses import dataclass, replace
 from typing import Final
 
 from metabrowser.cache.urls import (
@@ -54,6 +67,11 @@ _LINE_ANCHOR = re.compile(
     r"^L([1-9][0-9]{0,8})(?:C([1-9][0-9]{0,8}))?(?:-L([1-9][0-9]{0,8})(?:C([1-9][0-9]{0,8}))?)?$"
 )
 _HEX: Final = frozenset(string.hexdigits)
+# Unicode categories of the characters outside ASCII a web URL may not hold raw, beside
+# whitespace: controls, format characters (bidirectional overrides, zero-width joiners,
+# the soft hyphen), and lone surrogates, which stand for argument bytes that are not
+# UTF-8.
+_HIDDEN_CATEGORIES: Final = frozenset({"Cc", "Cf", "Cs"})
 
 # Top-level github.com pages whose first path segment would otherwise read as an owner.
 # GitHub does not allow an account with these names.
@@ -158,15 +176,25 @@ class _Refuse(Exception):
 
 @dataclass(frozen=True, slots=True)
 class _Claimed:
-    """A URL whose host this reducer owns, split but not yet validated."""
+    """A URL whose host this reducer owns, split but not yet validated.
+
+    ``authority`` is the text between ``//`` and the path, as given.
+    """
 
     scheme: str
+    authority: str
     userinfo: str | None
     host: str
     port: str | None
     path: str
     query: str
     fragment: str
+
+    @property
+    def web(self) -> bool:
+        """A URL a browser opens, as opposed to an SSH address."""
+
+        return self.scheme in {"https", "http"}
 
 
 def _split_url(value: str) -> _Claimed | None:
@@ -189,22 +217,91 @@ def _split_url(value: str) -> _Claimed | None:
             return None
         before_fragment, _, fragment = tail.partition("#")
         path, _, query = before_fragment.partition("?")
-        return _Claimed(scheme, userinfo, host, port if separator else None, path, query, fragment)
+        return _Claimed(
+            scheme, authority, userinfo, host, port if separator else None, path, query, fragment
+        )
     scp = _SCP.match(value)
     if scp is None or scp.group("host").lower() not in _WEB_HOSTS:
         return None
-    return _Claimed("scp", scp.group("user"), CANONICAL_HOST, None, scp.group("path"), "", "")
+    authority = f"{scp.group('user')}@{scp.group('host')}"
+    return _Claimed(
+        "scp", authority, scp.group("user"), CANONICAL_HOST, None, scp.group("path"), "", ""
+    )
 
 
-def _common_checks(value: str) -> None:
-    """The generic grammar's character checks, which a claimed URL never reaches."""
+def _escaped(ch: str) -> str:
+    """*ch* percent-encoded as UTF-8, as a browser sends it."""
 
-    if any(ord(ch) < 0x20 or ord(ch) == 0x7F or ch.isspace() for ch in value):
+    return "".join(f"%{byte:02X}" for byte in ch.encode())
+
+
+def _control_or_whitespace(ch: str) -> bool:
+    return ord(ch) < 0x20 or ord(ch) == 0x7F or ch.isspace()
+
+
+def _hidden(ch: str) -> _Refuse:
+    """The refusal of *ch*, a character outside ASCII a browser would not show raw."""
+
+    point = f"U+{ord(ch):04X}"
+    category = unicodedata.category(ch)
+    if category == "Cs":
+        # An argument that is not UTF-8 reaches Python as lone surrogates.
+        return _Refuse("non_ascii", "the URL is not valid UTF-8")
+    code = "control_or_whitespace" if ch.isspace() else "non_ascii"
+    if category == "Cc":
+        return _Refuse(code, f"the URL contains {point}, a control character")
+    kind = "a whitespace character" if ch.isspace() else "an invisible formatting character"
+    return _Refuse(
+        code,
+        f"the URL contains {point}, {kind}; if it belongs in the address, "
+        f"write it as {_escaped(ch)}",
+    )
+
+
+def _common_checks(value: str, claimed: _Claimed) -> None:
+    """The generic grammar's character checks, which a claimed URL never reaches.
+
+    A web URL's path, query, and fragment may also hold a space, other than a trailing
+    one, and a visible character outside ASCII: :func:`_browser_encoded` sends them as
+    a browser does.
+    """
+
+    strict = claimed.authority if claimed.web else value
+    tail = claimed.path + claimed.query + claimed.fragment if claimed.web else ""
+    if any(_control_or_whitespace(ch) for ch in strict):
         raise _Refuse("control_or_whitespace", "the URL contains a control character or space")
-    if any(ord(ch) > 0x7F for ch in value):
+    for ch in tail:
+        if ord(ch) < 0x20 or ord(ch) == 0x7F:
+            raise _Refuse("control_or_whitespace", "the URL contains a control character")
+        if ch != " " and ch.isspace():
+            raise _hidden(ch)
+    if value.endswith(" "):
+        raise _Refuse("control_or_whitespace", "the URL ends with a space; remove it")
+    if any(ord(ch) > 0x7F for ch in strict):
         raise _Refuse("non_ascii", "the URL contains a character outside ASCII")
+    for ch in tail:
+        if ord(ch) > 0x7F and unicodedata.category(ch) in _HIDDEN_CATEGORIES:
+            raise _hidden(ch)
     if "\\" in value:
         raise _Refuse("backslash", "the URL contains a backslash")
+
+
+def _browser_encoded(claimed: _Claimed) -> _Claimed:
+    """*claimed* with each space and character outside ASCII percent-encoded as UTF-8.
+
+    What a browser sends for the path, query, and fragment a person pasted, so the raw
+    and the encoded spelling of one URL reduce to the same selection.
+    """
+
+    def encode(text: str) -> str:
+        return "".join(_escaped(ch) if ch == " " or ord(ch) > 0x7F else ch for ch in text)
+
+    return replace(
+        claimed,
+        path=encode(claimed.path),
+        query=encode(claimed.query),
+        fragment=encode(claimed.fragment),
+    )
 
 
 def _segments(path: str) -> list[str]:
@@ -359,8 +456,10 @@ def _pull_selection(args: list[str], repo_url: str) -> RepositorySelection:
 
 
 def _reduce_claimed(value: str, claimed: _Claimed) -> ReducerOutcome:
-    _common_checks(value)
-    if claimed.scheme in {"https", "http"} and claimed.userinfo is not None:
+    _common_checks(value, claimed)
+    if claimed.web:
+        claimed = _browser_encoded(claimed)
+    if claimed.web and claimed.userinfo is not None:
         raise _Refuse("credentials_in_url", "the URL carries credentials")
     if claimed.scheme in {"ssh", "scp"}:
         if claimed.userinfo is not None and ":" in claimed.userinfo:

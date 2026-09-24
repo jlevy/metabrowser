@@ -216,14 +216,21 @@ def test_other_shapes_are_refused_with_a_typed_reason(value: str, reason: str, d
         ("https://ghp_secret@github.com/octo/demo", "credentials_in_url"),
         ("https://user:ghp_secret@github.com/octo/demo", "credentials_in_url"),
         (
-            "https://raw.githubusercontent.com/octo/demo/main/a?token=ghp_secret#L1 x",
+            "https://raw.githubusercontent.com/octo/demo/main/a?token=ghp_secret#L1\tx",
             "control_or_whitespace",
         ),
+        (
+            "https://github.com/octo/demo/blob/main/a.md?token=ghp_secret‮",
+            "non_ascii",
+        ),
         ("ssh://git:ghp_secret@github.com/octo/demo.git", "credentials_in_url"),
-        ("https://github.com/octo/demo/blob/main/a b.md", "control_or_whitespace"),
         ("https://github.com/octo/demo\n", "control_or_whitespace"),
-        ("https://github.com/octo/démo", "non_ascii"),
+        ("https://github.com:44 3/octo/demo", "control_or_whitespace"),
         ("https://github.com/octo\\demo", "backslash"),
+        # SSH addresses are not browser URLs: a raw space or letter outside ASCII stays
+        # refused, as the generic grammar refuses it.
+        ("git@github.com:octo/my demo.git", "control_or_whitespace"),
+        ("ssh://git@github.com/octo/démo.git", "non_ascii"),
     ],
 )
 def test_the_generic_checks_run_before_the_reducer_parses(value: str, reason: str) -> None:
@@ -232,6 +239,110 @@ def test_the_generic_checks_run_before_the_reducer_parses(value: str, reason: st
     # A refusal never repeats the argument, so a token in it stays out of the terminal.
     assert "ghp_secret" not in (refused.detail or "")
     assert "token" not in (refused.detail or "")
+
+
+@pytest.mark.parametrize(
+    ("raw", "encoded"),
+    [
+        (
+            "https://github.com/octo/demo/blob/main/docs/雪.md#L1",
+            "https://github.com/octo/demo/blob/main/docs/%E9%9B%AA.md#L1",
+        ),
+        (
+            "https://github.com/octo/demo/blob/main/space name.md",
+            "https://github.com/octo/demo/blob/main/space%20name.md",
+        ),
+        (
+            "https://github.com/octo/demo/tree/雪/a b",
+            "https://github.com/octo/demo/tree/%E9%9B%AA/a%20b",
+        ),
+        (
+            "https://raw.githubusercontent.com/octo/demo/main/docs/résumé notes.md",
+            "https://raw.githubusercontent.com/octo/demo/main/docs/r%C3%A9sum%C3%A9%20notes.md",
+        ),
+        (
+            "https://github.com/octo/demo/blob/main/😀.md?plain=1&q=a b#L2-L3",
+            "https://github.com/octo/demo/blob/main/%F0%9F%98%80.md?plain=1&q=a%20b#L2-L3",
+        ),
+        # An address bar shows these decoded too; they are not whitespace or invisible.
+        (
+            "https://github.com/octo/demo/blob/main/́.md",
+            "https://github.com/octo/demo/blob/main/%EE%80%80%CC%81.md",
+        ),
+    ],
+)
+def test_a_raw_web_url_is_read_as_a_browser_sends_it(raw: str, encoded: str) -> None:
+    pasted, sent = _source(raw), _source(encoded)
+    assert pasted.normalized == sent.normalized == CANONICAL
+    assert pasted.selection == sent.selection
+    assert pasted.selection is not None and pasted.selection.kind != "repository"
+
+
+@pytest.mark.parametrize(
+    ("value", "reason", "detail"),
+    [
+        (
+            "https://github.com/octo/demo/blob/main/a b.md",
+            "control_or_whitespace",
+            "the URL contains U+00A0, a whitespace character; if it belongs in the address, "
+            "write it as %C2%A0",
+        ),
+        (
+            "https://github.com/octo/demo/blob/main/a　b.md",
+            "control_or_whitespace",
+            "the URL contains U+3000, a whitespace character; if it belongs in the address, "
+            "write it as %E3%80%80",
+        ),
+        (
+            "https://github.com/octo/demo/blob/main/a‮b.md",
+            "non_ascii",
+            "the URL contains U+202E, an invisible formatting character; if it belongs in "
+            "the address, write it as %E2%80%AE",
+        ),
+        (
+            "https://github.com/octo/demo/blob/main/a‍b.md",
+            "non_ascii",
+            "the URL contains U+200D, an invisible formatting character; if it belongs in "
+            "the address, write it as %E2%80%8D",
+        ),
+        (
+            "https://github.com/octo/demo/blob/main/a\u009bb.md",
+            "non_ascii",
+            "the URL contains U+009B, a control character",
+        ),
+        (
+            "https://github.com/octo/demo/blob/main/a\u0085b.md",
+            "control_or_whitespace",
+            "the URL contains U+0085, a control character",
+        ),
+        (
+            "https://github.com/octo/demo/blob/main/a\tb.md",
+            "control_or_whitespace",
+            "the URL contains a control character",
+        ),
+        # Bytes that are not UTF-8 reach Python as lone surrogates.
+        (
+            "https://github.com/octo/demo/blob/main/a\udce9b.md",
+            "non_ascii",
+            "the URL is not valid UTF-8",
+        ),
+        (
+            "https://github.com/octo/demo/blob/main/a.md ",
+            "control_or_whitespace",
+            "the URL ends with a space; remove it",
+        ),
+        (
+            "https://github.com/octo/démo",
+            "invalid_repository",
+            "the repository name is not a GitHub repository name",
+        ),
+    ],
+)
+def test_raw_characters_a_browser_would_not_show_are_refused_by_code_point(
+    value: str, reason: str, detail: str
+) -> None:
+    refused = _refused(value)
+    assert (refused.reason, refused.detail) == (reason, detail)
 
 
 def test_query_parameters_are_dropped_and_never_echoed() -> None:
