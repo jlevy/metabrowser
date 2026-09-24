@@ -369,6 +369,18 @@ Repository cache:
   The row repaints only when what it says changes, and announces its state and offer to
   a screen reader, not its age.
 
+- A page on a served mirror has a branch and tag selector: a compact button under the
+  navigation header names the served ref, and opening it lists the mirror’s branches,
+  the default first, or its tags, newest first, with a filter box.
+  Choosing one serves it and reloads the view on the same file or folder when the new
+  revision has it, or at the root otherwise.
+  The list comes from the new `GET /api/source/refs?kind=branch|tag&q=&limit=`, which
+  reads the mirror alone, never the network: `q` is a case-insensitive name fragment,
+  `limit` is clamped to 1–1000 (default 100), and `total` and `truncated` say how many
+  matched. A tag of a tree or of another tag is not listed.
+  `POST /api/source/pin` also takes the page’s address as `"view"` and answers
+  `view_href`, where that page goes on the new revision.
+
 - The Git panel no longer rebuilds a different history under the rows on screen when the
   refs its walk was fingerprinted by moved, as a refresh, a pin switched in another tab,
   or a commit in a served checkout does.
