@@ -215,7 +215,7 @@ from metabrowser.source import (
 )
 from metabrowser.source_routes import (
     SOURCE_ROUTES,
-    SourceGenerationGuard,
+    SourcePinGuard,
     SourceStatus,
     source_status,
 )
@@ -547,11 +547,11 @@ STATIC_DIR: Path = Path(__file__).parent / "static"
 _DOCUMENT_WIDTH_SCRIPT = STATIC_DIR.joinpath("document-width.js").read_text(encoding="utf-8")
 if "</script" in _DOCUMENT_WIDTH_SCRIPT.lower():
     raise RuntimeError("document-width.js cannot be safely embedded in the index shell")
-# A pin's page names its session generation on every data request, and must before any
-# script fetches, so the wrapper is inline on a pin and absent from a folder's page.
-_SOURCE_GENERATION_SCRIPT = STATIC_DIR.joinpath("source-generation.js").read_text(encoding="utf-8")
-if "</script" in _SOURCE_GENERATION_SCRIPT.lower():
-    raise RuntimeError("source-generation.js cannot be safely embedded in the index shell")
+# A pin's page names its commit on every data request, and must before any script
+# fetches, so the wrapper is inline on a pin and absent from a folder's page.
+_SOURCE_PIN_GUARD_SCRIPT = STATIC_DIR.joinpath("source-pin-guard.js").read_text(encoding="utf-8")
+if "</script" in _SOURCE_PIN_GUARD_SCRIPT.lower():
+    raise RuntimeError("source-pin-guard.js cannot be safely embedded in the index shell")
 
 _SLOW_SERVER_REQUEST_MS = int(
     os.environ.get(
@@ -1307,13 +1307,16 @@ async def index(request: Request) -> HTMLResponse:
         f"<script>window.METABROWSER_SOURCE_KIND={source_kind_json};</script>"
         f"<script>window.METABROWSER_REPOSITORY_CONTEXT={repository_context_json};</script>"
     )
-    if git_pin:
-        # The generation the page is rendered for, which its data requests name, and
-        # against which the freshness row notices a switch made before its first poll.
+    if isinstance(subject, GitRevisionSubject):
+        # The commit and ref the page is rendered for: its data requests name the commit,
+        # and the freshness row compares both with what the server serves, so a switch
+        # or a restart onto another pin before its first poll still offers a reload.
+        page_pin = _json.dumps({"pin": subject.commit_oid, "ref": subject.ref}).replace(
+            "<", "\\u003c"
+        )
         repository_context_block += (
-            f"<script>window.METABROWSER_SOURCE_GENERATION="
-            f"{get_source_session().generation};</script>"
-            f"<script>{_SOURCE_GENERATION_SCRIPT}</script>"
+            f"<script>window.METABROWSER_SOURCE_PIN={page_pin};</script>"
+            f"<script>{_SOURCE_PIN_GUARD_SCRIPT}</script>"
         )
     # Read preferences from host-only cookies (not localStorage): cookies
     # ignore the port, so the choice is shared across every metabrowser instance
@@ -3916,7 +3919,7 @@ middleware = [
     Middleware(_HostValidationMiddleware),
     # Inside the origin checks: a page showing a pin the server has since switched away
     # from is refused with a typed pin_changed rather than answered from the new pin.
-    Middleware(SourceGenerationGuard),
+    Middleware(SourcePinGuard),
     Middleware(_SlowRequestLogMiddleware),
     Middleware(GZipMiddleware, minimum_size=1024, compresslevel=6),
 ]

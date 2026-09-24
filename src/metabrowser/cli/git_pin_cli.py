@@ -176,6 +176,9 @@ async def _file_pin(source: GitSource) -> AsyncGenerator[PublishedSource]:
     """
 
     published = await acquire_for_cli(source)
+    # One command is one session: nothing a server configured earlier in this process
+    # opens a second pin beside this one, and the generation starts at 1.
+    reset_source_session()
     try:
         attach_owned_subject(await _open_pin(published))
         serve_mirror(StoreMirror.from_published(published))

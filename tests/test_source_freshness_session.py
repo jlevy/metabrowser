@@ -194,7 +194,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             refused_read = client.get(
                 "/api/tree",
                 params={"depth": "1"},
-                headers={"x-metabrowser-generation": str(recorded["refreshed"]["generation"])},
+                headers={"x-metabrowser-pin": recorded["refreshed"]["pin"]},
             )
             assert refused_read.status_code == 409
             recorded["pin_changed"] = {
@@ -251,6 +251,10 @@ def test_recording_is_what_a_served_mirror_answers(
     )
 
 
+def transcript_pin_after_switch() -> str:
+    return json.loads(FIXTURE.read_text(encoding="utf-8"))["after_switch"]["pin"]
+
+
 def test_the_session_runs_on_the_recording() -> None:
     if shutil.which("node") is None:
         pytest.skip("node not available")
@@ -275,12 +279,7 @@ def test_the_session_runs_on_the_recording() -> None:
     assert history["a refresh moved the refs"] == "stale"
     assert by_name["an unchanged status is a 304"]["repaints"] == 0
     assert by_name["switched before the first poll"]["paint"]["offer"].endswith("[Reload]")
-    generation = transcript["generation"]
-    assert [row["generation"] for row in generation["sent"]] == [
-        str(generation["page"]),
-        None,
-        None,
-        str(generation["page"]),
-    ]
-    assert generation["answered"][-1] == 409
-    assert generation["reported"] == [generation["page"] + 1]
+    guard = transcript["guard"]
+    assert [row["pin"] for row in guard["sent"]] == [guard["page"], None, None, guard["page"]]
+    assert guard["answered"][-1] == 409
+    assert guard["reported"] == [transcript_pin_after_switch()]

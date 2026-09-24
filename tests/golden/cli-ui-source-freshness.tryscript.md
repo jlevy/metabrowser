@@ -12,11 +12,11 @@ newer commit when a refresh moved the pinned ref, and switches the pin with
 `POST /api/source/pin`. The Git panel turns a history cursor a refresh invalidated into
 a typed stale state with a reload action.
 
-A page on a pin also names the generation it was rendered for on its data requests, and
-a request refused as `pin_changed` makes the row ask the status route at once.
+A page on a pin also names the commit it shows on its data requests, and a request
+refused as `pin_changed` makes the row ask the status route at once.
 
 This browserless session loads the production `static/source-freshness.js`,
-`static/source-generation.js`, and `static/git-history-window.js` and plays the server’s
+`static/source-pin-guard.js`, and `static/git-history-window.js` and plays the server’s
 side from `tests/fixtures/source-freshness-responses.json`: what the in-process
 application answered while a real mirror went stale, refreshed, gained a newer commit,
 switched its pin, lost its origin, and invalidated an open all-branch history cursor.
@@ -271,24 +271,24 @@ $ node tests/dom/source-freshness-session.js
       }
     }
   ],
-  "generation": {
-    "page": 1,
+  "guard": {
+    "page": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
     "sent": [
       {
         "url": "/api/file?path=g1-UkVBRE1FLm1k",
-        "generation": "1"
+        "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb"
       },
       {
         "url": "/api/source/status",
-        "generation": null
+        "pin": null
       },
       {
         "url": "http://elsewhere.example/api/file",
-        "generation": null
+        "pin": null
       },
       {
         "url": "/api/tree?depth=1",
-        "generation": "1"
+        "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb"
       }
     ],
     "answered": [
@@ -298,7 +298,7 @@ $ node tests/dom/source-freshness-session.js
       409
     ],
     "reported": [
-      2
+      "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531"
     ]
   },
   "history": [

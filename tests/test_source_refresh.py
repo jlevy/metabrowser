@@ -11,6 +11,7 @@ alone in the admitted-Git CI job.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import shutil
 import subprocess
@@ -601,44 +602,77 @@ def test_a_switch_attaches_the_new_pin_before_it_closes_the_old() -> None:
 # ── Review fixes ─────────────────────────────────────────────────────
 
 
-def test_a_page_for_an_older_generation_is_refused_as_pin_changed(
+def test_a_page_for_another_pin_is_refused_as_pin_changed(
     served: TestClient, origin: _Origin
 ) -> None:
     """A tab still showing the old pin never reads the new pin's files into its page."""
 
     shell = served.get("/view/").text
-    generation = served.get("/api/source/status").json()["generation"]
-    assert f"window.METABROWSER_SOURCE_GENERATION={generation};" in shell
-    assert "window.MetabrowserSourceGeneration = Object.freeze(" in shell
+    page = {"pin": origin.second, "ref": "refs/remotes/origin/topic"}
+    assert f"window.METABROWSER_SOURCE_PIN={json.dumps(page)};" in shell
+    assert "window.MetabrowserSourcePinGuard = Object.freeze(" in shell
     tree = {"depth": "1"}
-    assert served.get("/api/tree", params=tree, headers=_generation(generation)).status_code == 200
+    assert served.get("/api/tree", params=tree, headers=_pin(origin.second)).status_code == 200
 
     assert _post(served, "/api/source/pin", {"oid": origin.first}).json()["changed"]
-    refused = served.get("/api/tree", params=tree, headers=_generation(generation))
+    refused = served.get("/api/tree", params=tree, headers=_pin(origin.second))
     assert refused.status_code == 409
     assert refused.json()["code"] == "pin_changed"
-    assert refused.json()["generation"] == generation + 1
-    assert refused.headers["x-metabrowser-pin-changed"] == str(generation + 1)
-    # The source routes are how a page finds the new generation, so they answer.
-    exempt = served.get("/api/source/status", headers=_generation(generation))
+    assert refused.json()["pin"] == origin.first
+    assert refused.headers["x-metabrowser-pin-changed"] == origin.first
+    # The source routes are how a page finds what is served, so they answer.
+    exempt = served.get("/api/source/status", headers=_pin(origin.second))
     assert exempt.status_code == 200
-    # A request that names no generation, as curl and metab --api send, is served.
+    # A request that names no pin, as curl and metab --api send, is served.
     assert served.get("/api/tree", params=tree).status_code == 200
+    assert served.get("/api/tree", params=tree, headers=_pin(origin.first)).status_code == 200
+    # Switching back to the pin a page shows makes its requests good again.
+    assert _post(served, "/api/source/pin", {"ref": "topic"}).json()["changed"]
+    assert served.get("/api/tree", params=tree, headers=_pin(origin.second)).status_code == 200
+
+
+def test_a_page_left_open_across_a_restart_onto_another_pin_is_refused(
+    tmp_path: Path, origin: _Origin
+) -> None:
+    """Every server process counts generations from 1, so the commit is the token."""
+
+    assert _serve(origin.url).exit_code == 0
+    with TestClient(server.app) as client:
+        before = client.get("/api/source/status").json()
+    newer = _push_commit(origin, "NEW.md", "# New\n", "third")
+    body = tmp_path / "refresh.json"
+    body.write_text("{}\n", encoding="utf-8")
     assert (
-        served.get("/api/tree", params=tree, headers=_generation(generation + 1)).status_code == 200
+        runner.invoke(
+            _app, [origin.url, "--api", "/api/source/refresh", "--data", str(body)]
+        ).exit_code
+        == 0
     )
+    reset_source_session()
+    assert _serve(origin.url).exit_code == 0
+    with TestClient(server.app) as client:
+        after = client.get("/api/source/status").json()
+        stale = client.get("/api/tree", params={"depth": "1"}, headers=_pin(before["pin"]))
+    assert after["generation"] == before["generation"]
+    assert after["pin"] == newer != before["pin"]
+    assert stale.status_code == 409
+    assert stale.headers["x-metabrowser-pin-changed"] == newer
 
 
-def _generation(value: int) -> dict[str, str]:
-    return {"x-metabrowser-generation": str(value)}
+def _pin(value: str) -> dict[str, str]:
+    return {"x-metabrowser-pin": value}
 
 
-def test_a_folder_page_names_no_generation(tmp_path: Path) -> None:
+def test_a_folder_page_names_no_pin_and_refuses_a_pin_pages_requests(tmp_path: Path) -> None:
     server._set_root_dir(tmp_path)
     with TestClient(server.app) as client:
         shell = client.get("/view/").text
-    assert "METABROWSER_SOURCE_GENERATION" not in shell
-    assert "MetabrowserSourceGeneration" not in shell
+        from_a_pin_page = client.get("/api/tree", headers=_pin("0" * 40))
+    assert "METABROWSER_SOURCE_PIN" not in shell
+    assert "MetabrowserSourcePinGuard" not in shell
+    # A tab left from a pin, now talking to a server that serves a folder.
+    assert from_a_pin_page.status_code == 409
+    assert from_a_pin_page.headers["x-metabrowser-pin-changed"] == ""
 
 
 def test_latest_tells_a_deleted_ref_from_an_unobserved_one(

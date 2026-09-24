@@ -75,7 +75,8 @@
    * What the label says and offers for one status. Pure.
    *
    * @param {MetabrowserSourceStatus | null} status
-   * @param {{generation: number | null, nowMs: number, error?: string | null}} page
+   * @param {{shown: MetabrowserSourcePage | null, nowMs: number, error?: string | null}} page
+   *   *shown* is the pin and ref the page was rendered for.
    * @returns {MetabrowserSourceFreshnessModel}
    */
   function describe(status, page) {
@@ -106,7 +107,7 @@
     }
     /** @type {MetabrowserSourceOffer | null} */
     let offer = null;
-    if (page.generation !== null && status.generation !== page.generation) {
+    if (page.shown !== null && (status.pin !== page.shown.pin || status.ref !== page.shown.ref)) {
       offer = {
         kind: "reload",
         text: "The server now serves another revision",
@@ -153,19 +154,21 @@
   /**
    * The polling and action state machine for one page.
    *
-   * *options.generation* is the session generation the page was rendered for, which the
-   * server writes into a pin's page; without it the first status answered stands in.
+   * *options.shown* is the pin and ref the page was rendered for, which the server
+   * writes into a pin's page; without it the first status answered stands in. They are
+   * compared rather than the session generation, which counts from 1 again in every
+   * server process, so a page left open across a restart onto another pin notices.
    *
    * @param {MetabrowserSourceFreshnessDependencies} deps
-   * @param {{generation?: number | null}} [options]
+   * @param {{shown?: MetabrowserSourcePage | null}} [options]
    */
   function createController(deps, options = {}) {
     /** @type {MetabrowserSourceStatus | null} */
     let status = null;
     /** @type {string | null} */
     let etag = null;
-    /** @type {number | null} */
-    let pageGeneration = options.generation ?? null;
+    /** @type {MetabrowserSourcePage | null} */
+    let shown = options.shown ?? null;
     // What was last painted, so an unchanged status repaints nothing: a live region
     // that repaints announces again, and focus on its button would be lost.
     /** @type {string | null} */
@@ -182,7 +185,7 @@
     let error = null;
 
     function render() {
-      const model = describe(status, { generation: pageGeneration, nowMs: deps.now(), error });
+      const model = describe(status, { shown, nowMs: deps.now(), error });
       const key = JSON.stringify(model);
       if (key === painted) {
         return;
@@ -213,8 +216,8 @@
     /** @param {MetabrowserSourceStatus} next */
     function accept(next) {
       status = next;
-      if (pageGeneration === null) {
-        pageGeneration = next.generation;
+      if (shown === null && next.pin !== null) {
+        shown = { pin: next.pin, ref: next.ref };
       }
     }
 
@@ -279,7 +282,7 @@
     }
 
     async function acceptOffer() {
-      const model = describe(status, { generation: pageGeneration, nowMs: deps.now() });
+      const model = describe(status, { shown, nowMs: deps.now() });
       const offer = model.offer;
       if (disposed || switching || offer === null) {
         return;
@@ -335,7 +338,7 @@
       snapshot: () => ({
         status,
         etag,
-        pageGeneration,
+        shown,
         timerPending: timer !== null,
         refreshAskedWhileVisible,
         error,
@@ -480,7 +483,7 @@
         render: (model) => paint(element, model, actions, live),
         reload: () => window.location.reload(),
       },
-      { generation: window.METABROWSER_SOURCE_GENERATION ?? null },
+      { shown: window.METABROWSER_SOURCE_PIN ?? null },
     );
     const listening = new AbortController();
     document.addEventListener("visibilitychange", controller.onVisibilityChange, {

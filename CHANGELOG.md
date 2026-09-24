@@ -197,9 +197,12 @@ Repository cache:
   opens or becomes visible on a stale mirror.
   When a refresh moves the pinned branch it offers the commit the branch now names,
   usually a newer one, and accepting switches the pin and reloads the view.
-  When another tab switched the pin, even before the page’s first poll, it offers a
-  reload, and the page’s data requests are refused with `pin_changed` rather than
-  answered from the new pin, so one page never mixes two revisions.
+  When another tab switched the pin, or the server restarted onto another commit, even
+  before the page’s first poll, it offers a reload.
+  The page’s data requests name the commit it shows and are refused with `pin_changed`
+  rather than answered from another commit.
+  Images and raw documents the page loads directly are not checked, so a stale page can
+  still show one of those from the new pin until it reloads.
   A failed refresh reads as a warning there, not as an error in the page.
   The row repaints only when what it says changes, and announces its state and offer to
   a screen reader, not its age.
