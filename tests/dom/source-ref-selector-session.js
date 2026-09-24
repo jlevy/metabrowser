@@ -29,7 +29,15 @@ function assert(condition, message) {
 }
 
 function loadProductionModule() {
-  const context = { window: {}, console, JSON, Object, Promise, URLSearchParams };
+  const context = {
+    window: {},
+    AbortController,
+    console,
+    JSON,
+    Object,
+    Promise,
+    URLSearchParams,
+  };
   context.window.window = context.window;
   vm.createContext(context);
   const file = path.join(staticDir, "source-ref-selector.js");
@@ -60,12 +68,22 @@ function createPage(page) {
   let model = null;
 
   const deps = {
-    request(method, route, body) {
-      log.push(
-        body === undefined ? `${method} ${route}` : `${method} ${route} ${JSON.stringify(body)}`,
-      );
-      return new Promise((resolve) => {
-        waiting.push({ route, resolve });
+    request(method, route, body, signal) {
+      const line =
+        body === undefined ? `${method} ${route}` : `${method} ${route} ${JSON.stringify(body)}`;
+      log.push(line);
+      return new Promise((resolve, reject) => {
+        const request = { route, resolve };
+        waiting.push(request);
+        // As fetch does: an aborted request settles at once with an AbortError.
+        signal?.addEventListener("abort", () => {
+          const at = waiting.indexOf(request);
+          if (at >= 0) {
+            waiting.splice(at, 1);
+            log.push(`aborted ${line}`);
+            reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
+          }
+        });
       });
     },
     schedule(callback, delayMs) {
@@ -172,14 +190,13 @@ async function run() {
   await page.answer(recorded.filtered);
   steps.push(page.observe("the pause asks once"));
 
-  // Two filters in flight: the answer to the older one arrives last and is dropped.
+  // A filter asked while another is on its way aborts the older request.
   selector.setQuery("zzz");
   await page.fireTimer();
   selector.setQuery("feat");
   await page.fireTimer();
-  await page.answer(recorded.filtered, 1);
-  await page.answer(recorded.nothing);
-  steps.push(page.observe("an older answer does not replace a newer one"));
+  await page.answer(recorded.filtered);
+  steps.push(page.observe("a newer filter aborts the older request"));
 
   selector.setQuery("zzz");
   await page.fireTimer();
@@ -211,12 +228,11 @@ async function run() {
   selector.close();
   steps.push(page.observe("closing"));
 
-  // Closing drops an answer still on its way.
+  // Closing aborts a request still on its way.
   const reopened = selector.open();
   selector.close();
-  await page.answer(recorded.branches);
   await reopened;
-  steps.push(page.observe("an answer after closing is dropped"));
+  steps.push(page.observe("closing aborts the request on its way"));
 
   const reopenedAgain = selector.open();
   await page.answer(recorded.branches);
@@ -279,7 +295,25 @@ async function run() {
     { pin: branches.pin, ref: null },
   ].map((shown) => selectorRuntime.describe({ ...emptyState(), shown }).button);
 
-  return { steps, labels };
+  // Where a key moves focus in a list of three rows; -1 is the filter box.
+  const keys = [];
+  for (const [key, from] of [
+    ["ArrowDown", -1],
+    ["ArrowUp", -1],
+    ["Home", -1],
+    ["ArrowDown", 0],
+    ["ArrowDown", 2],
+    ["ArrowUp", 0],
+    ["ArrowUp", 2],
+    ["Home", 2],
+    ["End", 0],
+    ["Enter", 1],
+  ]) {
+    keys.push(`${key} from ${from}: ${selectorRuntime.moveRow(key, from, 3)}`);
+  }
+  keys.push(`ArrowDown from -1 in an empty list: ${selectorRuntime.moveRow("ArrowDown", -1, 0)}`);
+
+  return { steps, labels, keys };
 }
 
 function emptyState() {

@@ -71,9 +71,16 @@ log = logging.getLogger(__name__)
 # room for the JSON around it and an address a few levels deep.
 MAX_SOURCE_REQUEST_BYTES: Final = 4 * 1024
 # Refs one listing answers. The selector shows a page of plain rows and narrows by the
-# filter box rather than scrolling far: a hundred rows is a few kilobytes of JSON, and
-# the listing's cost is one ``for-each-ref`` of the namespace whatever the page size.
-# A caller's limit is clamped to the range, as the ``/api/git/`` routes clamp theirs.
+# filter box rather than scrolling far: a hundred rows is a few kilobytes of JSON. A
+# caller's limit is clamped to the range, as the ``/api/git/`` routes clamp theirs.
+# The listing's cost is one ``for-each-ref`` of the whole namespace whatever the page
+# size or filter, so it grows with the mirror's refs, not with ``limit``. Measured on
+# 2026-09-24, macOS, Git 2.50.1, under a load average above 20: over 3,000 branches the
+# ``for-each-ref`` took 0.23-0.26 s with loose refs and 0.13 s packed, and the review
+# measured 0.25-0.36 s per route call loose and 0.11 s packed. The browser asks after a
+# pause in typing and aborts a request a newer filter replaces, so a reader typing
+# costs about one listing per pause. No answer is memoized, since the refs change
+# whenever a fetch ends; the pause and the abort bound the calls instead.
 REFS_DEFAULT_LIMIT: Final = 100
 REFS_MAX_LIMIT: Final = 1000
 # The filter is a name fragment; a ref name longer than this is not one a reader types.

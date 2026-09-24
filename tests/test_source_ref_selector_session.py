@@ -1,7 +1,8 @@
 """The ref selector session runs production browser code on what a served mirror answers.
 
 ``tests/dom/source-ref-selector-session.js`` drives ``static/source-ref-selector.js`` --
-opening, the filter's pause, stale answers, the branch and tag lists, and switching --
+opening, the filter's pause, aborted requests, the branch and tag lists, switching,
+and where arrow keys move focus --
 through a scripted conversation, and
 ``tests/golden/cli-ui-source-ref-selector.tryscript.md`` pins its transcript. So that the
 conversation is the real server's and not envelopes a test wrote by hand, its responses
@@ -173,4 +174,12 @@ def test_the_session_runs_on_the_recording() -> None:
     assert by_name["a ref gone from the mirror says so"]["paint"]["error"] == (
         "That ref is no longer in the mirror."
     )
-    assert by_name["an older answer does not replace a newer one"]["paint"]["query"] == "feat"
+    aborted = by_name["a newer filter aborts the older request"]
+    assert aborted["requests"] == [
+        "GET /api/source/refs?kind=branch&q=zzz",
+        "aborted GET /api/source/refs?kind=branch&q=zzz",
+        "GET /api/source/refs?kind=branch&q=feat",
+    ]
+    assert aborted["paint"]["query"] == "feat" and aborted["paint"]["error"] is None
+    closed = by_name["closing aborts the request on its way"]
+    assert closed["requests"][-1].startswith("aborted GET") and closed["paint"]["open"] is False

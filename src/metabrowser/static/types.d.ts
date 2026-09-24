@@ -2302,6 +2302,7 @@ declare global {
       method: "GET" | "POST",
       route: string,
       body?: Record<string, string>,
+      signal?: AbortSignal,
     ): Promise<MetabrowserSourceResponse>;
     schedule(callback: () => void, delayMs: number): unknown;
     cancel(handle: unknown): void;
@@ -2342,6 +2343,7 @@ declare global {
     ): MetabrowserSourceRefSelector;
     describe(state: MetabrowserSourceRefSelectorState): MetabrowserSourceRefSelectorModel;
     mount(element: HTMLElement): MetabrowserSourceRefSelector;
+    moveRow(key: string, index: number, count: number): number | null;
     shownLabel(shown: MetabrowserSourcePage | null): { kind: string; name: string };
   }>;
 

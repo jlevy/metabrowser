@@ -9,7 +9,7 @@ env:
 A page on a served mirror’s pin shows a compact button naming the ref it was rendered
 for. Opening it lists the mirror’s branches or tags from `/api/source/refs`, the default
 branch first and the served ref marked; the filter box asks again after a pause in
-typing, and an answer to an older filter never replaces a newer one.
+typing, and a newer filter, or closing the list, aborts a request still on its way.
 Choosing a ref switches the served pin with `POST /api/source/pin`, naming the page’s
 `/view/` address so the answer says where the page goes: the same file when the new
 revision has it, else the root.
@@ -22,7 +22,8 @@ drifts. Timers and paint are injected, and each request waits for the step to an
 each step records the requests the selector made, whether a filter pause is pending,
 what it would paint, and where it navigated.
 `labels` is what the button says for a page on a tag, a pull request’s head, and a
-commit with no ref.
+commit with no ref; `keys` is where an arrow, Home, or End key moves focus in a list of
+three rows, `-1` being the filter box and `null` a key the list leaves alone.
 
 ```console
 $ node tests/dom/source-ref-selector-session.js
@@ -114,9 +115,10 @@ $ node tests/dom/source-ref-selector-session.js
       }
     },
     {
-      "step": "an older answer does not replace a newer one",
+      "step": "a newer filter aborts the older request",
       "requests": [
         "GET /api/source/refs?kind=branch&q=zzz",
+        "aborted GET /api/source/refs?kind=branch&q=zzz",
         "GET /api/source/refs?kind=branch&q=feat"
       ],
       "filterPending": false,
@@ -221,9 +223,10 @@ $ node tests/dom/source-ref-selector-session.js
       }
     },
     {
-      "step": "an answer after closing is dropped",
+      "step": "closing aborts the request on its way",
       "requests": [
-        "GET /api/source/refs?kind=branch"
+        "GET /api/source/refs?kind=branch",
+        "aborted GET /api/source/refs?kind=branch"
       ],
       "filterPending": false,
       "paint": {
@@ -348,6 +351,19 @@ $ node tests/dom/source-ref-selector-session.js
     "Tag: v1",
     "Pull request: #7",
     "Commit: 42382ea2303b"
+  ],
+  "keys": [
+    "ArrowDown from -1: 0",
+    "ArrowUp from -1: null",
+    "Home from -1: null",
+    "ArrowDown from 0: 1",
+    "ArrowDown from 2: 2",
+    "ArrowUp from 0: -1",
+    "ArrowUp from 2: 1",
+    "Home from 2: 0",
+    "End from 0: 2",
+    "Enter from 1: null",
+    "ArrowDown from -1 in an empty list: null"
   ]
 }
 ? 0

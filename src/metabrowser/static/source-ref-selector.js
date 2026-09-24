@@ -114,6 +114,40 @@
   }
 
   /**
+   * Where a key moves focus among the list's rows. Pure.
+   *
+   * *index* is the focused row, or -1 for the filter box; the answer is the row to
+   * focus, -1 for the filter box, or `null` when the key does not move focus there.
+   * Down from the filter box enters the list and up from the first row leaves it;
+   * Home and End jump within the list but are left to the filter box's own caret.
+   *
+   * @param {string} key
+   * @param {number} index
+   * @param {number} count
+   * @returns {number | null}
+   */
+  function moveRow(key, index, count) {
+    if (count === 0) {
+      return null;
+    }
+    if (index < 0) {
+      return key === "ArrowDown" ? 0 : null;
+    }
+    switch (key) {
+      case "ArrowDown":
+        return Math.min(index + 1, count - 1);
+      case "ArrowUp":
+        return index - 1;
+      case "Home":
+        return 0;
+      case "End":
+        return count - 1;
+      default:
+        return null;
+    }
+  }
+
+  /**
    * Why a switch was refused, the way the selector says it.
    *
    * @param {number} status
@@ -156,8 +190,12 @@
       error: null,
     };
     // Each listing request takes the next number; only the newest one's answer counts,
-    // so a slow answer to an older filter never replaces a newer one.
+    // so a slow answer to an older filter never replaces a newer one. A newer request,
+    // closing, or disposal also aborts the older one, so the server is not left reading
+    // refs for a list nobody will see.
     let requested = 0;
+    /** @type {AbortController | null} */
+    let inflight = null;
     /** @type {unknown} */
     let filterTimer = null;
     let disposed = false;
@@ -175,10 +213,18 @@
       }
     }
 
+    function abortInflight() {
+      inflight?.abort();
+      inflight = null;
+    }
+
     async function load() {
       clearFilterTimer();
+      abortInflight();
       requested += 1;
       const ticket = requested;
+      const controller = new AbortController();
+      inflight = controller;
       state.loading = true;
       render();
       const params = new URLSearchParams({ kind: state.kind });
@@ -190,7 +236,12 @@
       /** @type {string | null} */
       let error = null;
       try {
-        const response = await deps.request("GET", `${REFS_ROUTE}?${params}`);
+        const response = await deps.request(
+          "GET",
+          `${REFS_ROUTE}?${params}`,
+          undefined,
+          controller.signal,
+        );
         if (response.status === 200 && isListing(response.body)) {
           listing = response.body;
         } else {
@@ -202,6 +253,7 @@
       if (disposed || ticket !== requested) {
         return;
       }
+      inflight = null;
       state.loading = false;
       state.listing = listing;
       state.error = error;
@@ -223,6 +275,7 @@
       }
       clearFilterTimer();
       // An answer still on its way belongs to a list nobody is looking at.
+      abortInflight();
       requested += 1;
       state.open = false;
       state.loading = false;
@@ -313,6 +366,7 @@
     function dispose() {
       disposed = true;
       clearFilterTimer();
+      abortInflight();
     }
 
     render();
@@ -356,12 +410,17 @@
       parts.filter.value = model.query;
     }
     parts.list.setAttribute("aria-busy", String(model.loading || model.switching));
-    const items = model.rows.map((row) => {
+    // One row takes Tab at a time: the served one, else the first. Arrow keys move
+    // among the rest.
+    const current = model.rows.findIndex((row) => row.current);
+    const roving = current >= 0 ? current : 0;
+    const items = model.rows.map((row, index) => {
       const item = document.createElement("li");
       const button = document.createElement("button");
       button.type = "button";
       button.className = "menu-item source-ref-selector-row";
       button.disabled = model.switching;
+      button.tabIndex = index === roving ? 0 : -1;
       if (row.current) {
         button.setAttribute("aria-current", "true");
       }
@@ -380,6 +439,16 @@
       commit.textContent = row.commit;
       button.append(commit);
       button.addEventListener("click", () => choose(row.ref));
+      // The row's name is cut short with an ellipsis when it is wider than the list;
+      // the tooltip then carries the whole name. pointerenter comes before the
+      // mouseenter the shell's tooltip listens for.
+      button.addEventListener("pointerenter", () => {
+        if (name.scrollWidth > name.clientWidth) {
+          button.dataset.tipText = row.name;
+        } else {
+          delete button.dataset.tipText;
+        }
+      });
       item.append(button);
       return item;
     });
@@ -451,9 +520,10 @@
     const choose = (/** @type {string} */ ref) => void selector?.choose(ref);
     selector = createSelector(
       {
-        async request(method, route, body) {
+        async request(method, route, body, signal) {
           const response = await fetch(route, {
             method,
+            signal,
             headers: method === "POST" ? { "content-type": "application/json" } : {},
             cache: "no-store",
             body: method === "POST" ? JSON.stringify(body ?? {}) : undefined,
@@ -497,13 +567,75 @@
     parts.filter.addEventListener("input", () => mounted.setQuery(parts.filter.value), {
       signal,
     });
-    element.addEventListener(
+    const rows = () =>
+      /** @type {HTMLButtonElement[]} */ ([...parts.list.querySelectorAll("button")]);
+    // While the list is open, Escape closes it from anywhere on the page and Tab stays
+    // inside it, wrapping at either end, as in a dialog.
+    document.addEventListener(
       "keydown",
       (event) => {
-        if (event.key === "Escape" && !parts.panel.hidden) {
+        if (parts.panel.hidden) {
+          return;
+        }
+        if (event.key === "Escape") {
           event.preventDefault();
           mounted.close();
           parts.toggle.focus();
+          return;
+        }
+        if (event.key !== "Tab") {
+          return;
+        }
+        /** @type {HTMLElement[]} */
+        const stops = [
+          ...Object.values(parts.tabs),
+          parts.filter,
+          ...rows().filter((row) => row.tabIndex === 0 && !row.disabled),
+        ];
+        const at = stops.indexOf(/** @type {HTMLElement} */ (document.activeElement));
+        const next = event.shiftKey
+          ? at <= 0
+            ? stops.length - 1
+            : at - 1
+          : at === -1 || at === stops.length - 1
+            ? 0
+            : at + 1;
+        event.preventDefault();
+        stops[next]?.focus();
+      },
+      { signal },
+    );
+    parts.panel.addEventListener(
+      "keydown",
+      (event) => {
+        const list = rows();
+        const index = list.indexOf(/** @type {HTMLButtonElement} */ (event.target));
+        if (index < 0 && event.target !== parts.filter) {
+          return;
+        }
+        const next = moveRow(event.key, index, list.length);
+        if (next === null) {
+          return;
+        }
+        event.preventDefault();
+        if (next < 0) {
+          parts.filter.focus();
+          return;
+        }
+        for (const [at, row] of list.entries()) {
+          row.tabIndex = at === next ? 0 : -1;
+        }
+        list[next]?.focus();
+      },
+      { signal },
+    );
+    // Focus that leaves the selector for another part of the page closes the list.
+    element.addEventListener(
+      "focusout",
+      (event) => {
+        const to = /** @type {Node | null} */ (event.relatedTarget);
+        if (!parts.panel.hidden && to !== null && !element.contains(to)) {
+          mounted.close();
         }
       },
       { signal },
@@ -534,6 +666,7 @@
     createSelector,
     describe,
     mount,
+    moveRow,
     shownLabel,
   });
 })();
