@@ -1,4 +1,4 @@
-import { findElementById, matchingDescendants } from "./dom-traversal.js";
+import { findElementById, MAX_ENHANCED_TARGETS, matchingDescendants } from "./dom-traversal.js";
 import { localizeGithubUrl } from "./github-localizer.js";
 import { createTrustedStandardLinkResolutionContext, gitPathWireForDisplayPath } from "./links.js";
 import { acquireMarkdownWorkerClient } from "./markdown-worker-client.js";
@@ -8,7 +8,6 @@ import {
 } from "./reconciliation-coordinator.js";
 import { enhanceWikiLinks } from "./wiki-enhancer.js";
 
-export const MAX_ENHANCED_TARGETS = 4096;
 const ENHANCEABLE_TARGET_SELECTOR =
   "a[href],img[src],audio[src],video[src],source[src],object[data],[data-mb-wiki-target]";
 const RESOURCE_ATTRIBUTES = Object.freeze([

@@ -11,7 +11,9 @@
 // gave it; a link or image past the enhancer's limit loses its address. A trusted
 // render is inserted as it always was, and enhanced after.
 
-import { MAX_ENHANCED_TARGETS } from "./link-enhancer.js";
+// From the leaf module, not the enhancer: the enhancer reaches this module through its
+// transclusions, and an import back would be a cycle.
+import { MAX_ENHANCED_TARGETS } from "./dom-traversal.js";
 
 /** @param {unknown} rendered */
 export function isInertRender(rendered) {
