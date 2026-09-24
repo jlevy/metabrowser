@@ -12,11 +12,11 @@ newer commit when a refresh moved the pinned ref, and switches the pin with
 `POST /api/source/pin`. The Git panel turns a history cursor a refresh invalidated into
 a typed stale state with a reload action.
 
-A page on a pin also names the generation it was rendered for on its data requests, and
-a request refused as `pin_changed` makes the row ask the status route at once.
+A page on a pin also names the commit it shows on its data requests, and a request
+refused as `pin_changed` makes the row ask the status route at once.
 
 This browserless session loads the production `static/source-freshness.js`,
-`static/source-generation.js`, and `static/git-history-window.js` and plays the server’s
+`static/source-pin-guard.js`, and `static/git-history-window.js` and plays the server’s
 side from `tests/fixtures/source-freshness-responses.json`: what the in-process
 application answered while a real mirror went stale, refreshed, gained a newer commit,
 switched its pin, lost its origin, and invalidated an open all-branch history cursor.
@@ -188,6 +188,58 @@ $ node tests/dom/source-freshness-session.js
       }
     },
     {
+      "step": "a URL selection waits for its fetch",
+      "requests": [
+        "GET /api/source/status",
+        "POST /api/source/refresh {}"
+      ],
+      "timer": "fast",
+      "reloads": 0,
+      "repaints": 1,
+      "paint": {
+        "label": "Refreshing…",
+        "tone": "refreshing",
+        "detail": "Fetching from the origin. The mirror was last fetched 6 d ago.",
+        "offer": "topic is now at 66f65bf1e89d [Switch] → refs/remotes/origin/topic",
+        "error": null
+      }
+    },
+    {
+      "step": "the fetch brought the selection; the page goes to it",
+      "requests": [
+        "GET /api/source/status"
+      ],
+      "timer": "slow",
+      "reloads": 0,
+      "repaints": 1,
+      "paint": {
+        "label": "Fetched 5 min ago",
+        "tone": "quiet",
+        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "offer": "The server now serves another revision [Reload]",
+        "error": null
+      },
+      "navigated": [
+        "/view/g1-UkVBRE1FLm1k#L1"
+      ]
+    },
+    {
+      "step": "a page goes to a selection once",
+      "requests": [
+        "GET /api/source/status If-None-Match: \"s2\""
+      ],
+      "timer": "slow",
+      "reloads": 0,
+      "repaints": 0,
+      "paint": {
+        "label": "Fetched 5 min ago",
+        "tone": "quiet",
+        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "offer": "The server now serves another revision [Reload]",
+        "error": null
+      }
+    },
+    {
       "step": "a refresh failed; the pin is still served",
       "requests": [
         "GET /api/source/status"
@@ -271,24 +323,24 @@ $ node tests/dom/source-freshness-session.js
       }
     }
   ],
-  "generation": {
-    "page": 1,
+  "guard": {
+    "page": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
     "sent": [
       {
         "url": "/api/file?path=g1-UkVBRE1FLm1k",
-        "generation": "1"
+        "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb"
       },
       {
         "url": "/api/source/status",
-        "generation": null
+        "pin": null
       },
       {
         "url": "http://elsewhere.example/api/file",
-        "generation": null
+        "pin": null
       },
       {
         "url": "/api/tree?depth=1",
-        "generation": "1"
+        "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb"
       }
     ],
     "answered": [
@@ -298,7 +350,7 @@ $ node tests/dom/source-freshness-session.js
       409
     ],
     "reported": [
-      2
+      "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531"
     ]
   },
   "history": [

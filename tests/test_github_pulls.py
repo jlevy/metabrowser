@@ -72,7 +72,7 @@ from metabrowser.mirror_refresh import (
 )
 from metabrowser.server import app
 from metabrowser.source import attach_subject, reset_source_session
-from metabrowser.source_routes import GENERATION_HEADER
+from metabrowser.source_routes import PIN_HEADER
 from tests.git_pin_harness import git_env
 from tests.github_pull_fixture import (
     CANONICAL,
@@ -979,7 +979,7 @@ def test_the_refresh_route_refuses_what_is_not_a_refresh_request(
     assert client.post(_REFRESH_ROUTE, json={}, headers=other).status_code == 403
     plain = {"content-type": "text/plain"}
     assert client.post(_REFRESH_ROUTE, content=b"{}", headers=plain).status_code == 415
-    outdated = client.post(_REFRESH_ROUTE, json={}, headers={**_JSON, GENERATION_HEADER: "999999"})
+    outdated = client.post(_REFRESH_ROUTE, json={}, headers={**_JSON, PIN_HEADER: "0" * 40})
     assert (outdated.status_code, outdated.json()["code"]) == (409, "pin_changed")
 
 

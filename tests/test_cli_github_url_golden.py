@@ -28,12 +28,16 @@ Regenerate after an intended change with:
 from __future__ import annotations
 
 import os
+import re
 import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
 
 from metabrowser.cache.urls import GitSource
+from metabrowser.git.tree_source import GitPath
+from tests.git_pin_harness import git_env
 from tests.github_origin import FIRST_COMMIT, SECOND_COMMIT, github_origin
 from tests.test_cli_cache_acquire_golden import _isolate, _strip_logs
 from tests.test_cli_git_pin_golden import _Invocation, _run
@@ -155,3 +159,59 @@ def test_golden_github_urls_open_through_a_local_stand_in(
     assert str(tmp_path) not in rendered and str(home) not in rendered
     assert "file://" not in rendered
     check_golden("cli-github-url-open.txt", rendered)
+
+
+_ISO_TIME = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
+
+
+def _add_branch(origin: Path, name: str, commit: str) -> None:
+    subprocess.run(
+        ["git", "--git-dir", str(origin), "update-ref", f"refs/heads/{name}", commit],
+        check=True,
+        env=git_env(origin.parent),
+    )
+
+
+def test_golden_a_selection_waits_for_the_refresh_it_asked_for(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A URL selection the mirror lacks, reached through the one route that fetches.
+
+    ``--api /api/source/refresh`` with a body is the request that fetches, so the
+    selection waits for it as it would in a server: the answer is ``202`` with
+    ``selection_state`` ``pending`` while the default branch is served, and the status
+    after the refresh is ``found`` with the selection served and its address, or
+    ``not_found``, or ``fetch_failed`` when the fetch could not run.
+    """
+
+    home = _isolate(tmp_path, monkeypatch)
+    origin = github_origin(tmp_path)
+    _stand_in(monkeypatch, origin)
+    assert _run([REPO, "--no-serve"]).exit_code == 0
+    _add_branch(origin, "later", SECOND_COMMIT)
+    body = tmp_path / "refresh.json"
+    body.write_text("{}\n", encoding="utf-8")
+
+    def refresh(url: str) -> tuple[list[str], _Invocation]:
+        return [url, "--api", "/api/source/refresh", "--data", body.name], _run(
+            [url, "--api", "/api/source/refresh", "--data", str(body)]
+        )
+
+    found = refresh(f"{REPO}/blob/later/docs/v1.md#L1-L2")
+    missing = refresh(f"{REPO}/tree/never/docs")
+    origin.rename(tmp_path / "origin-away.git")
+    failed = refresh(f"{REPO}/tree/gone/docs")
+
+    assert found[1].exit_code == 0, found[1].stderr
+    assert '"selection_state": "pending"' in found[1].stdout
+    assert '"selection_state": "found"' in found[1].stdout
+    assert f'"pin": "{SECOND_COMMIT}"' in found[1].stdout
+    wire = GitPath.from_display("docs/v1.md").to_wire()
+    assert f'"selection_href": "/view/{wire}#L1-L2"' in found[1].stdout
+    assert missing[1].exit_code == 0 and '"selection_state": "not_found"' in missing[1].stdout
+    assert failed[1].exit_code == 1 and '"selection_state": "fetch_failed"' in failed[1].stdout
+
+    rendered = "".join(_block(args, result) for args, result in (found, missing, failed))
+    rendered = _ISO_TIME.sub("<TIME>", rendered)
+    assert str(tmp_path) not in rendered and str(home) not in rendered
+    check_golden("cli-github-url-waits.txt", rendered)

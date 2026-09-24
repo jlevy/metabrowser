@@ -82,6 +82,10 @@ _INDEX_DEPENDENT: tuple[str, ...] = (
 _REFRESH_ROUTE = "/api/source/refresh"
 _STATUS_ROUTE = "/api/source/status"
 _REFRESH_ENDED_WELL = frozenset({"succeeded", "default_branch_unknown", "refreshing_elsewhere"})
+# How long a one-shot command waits for that refresh: one Git deadline. A refresh that
+# prunes and fetches again can run longer; the command then says it did not finish, and
+# leaving stops it, as a server's shutdown does.
+_REFRESH_DRAIN_S = GIT_ACQUISITION_TIMEOUT_S
 
 
 def _render(payload: Any, fmt: str) -> str:
@@ -119,7 +123,7 @@ async def _issue(
         # Leaving the client shuts the application down, which cancels background work.
         # The only background work a one-shot command has is a refresh its own request
         # asked for, and that is the work the command exists to do, so let it finish.
-        await drain_refreshes(app, timeout_s=GIT_ACQUISITION_TIMEOUT_S)
+        await drain_refreshes(app, timeout_s=_REFRESH_DRAIN_S)
         after: ApiResponse | None = None
         if body and route.split("?", 1)[0] == _REFRESH_ROUTE and response.status_code == 202:
             after = await client.get(_STATUS_ROUTE)
@@ -153,17 +157,21 @@ def _echo_envelope(
         typer.echo(_render(normalize_payload(payload, ctx), fmt))
 
 
-def _refresh_outcome(after: ApiResponse) -> str | None:
-    """The outcome of the refresh a one-shot command waited for, from the final status."""
+def _refresh_outcome(after: ApiResponse) -> tuple[bool, str | None]:
+    """Whether the refresh a one-shot command waited for is still running, and its outcome."""
 
     try:
-        outcome = after.json().get("last_outcome")
-    except (ValueError, AttributeError):
-        return None
+        status = after.json()
+    except ValueError:
+        return False, None
+    if not isinstance(status, dict):
+        return False, None
+    running = status.get("refreshing") is True
+    outcome = status.get("last_outcome")
     if isinstance(outcome, dict) and outcome.get("operation") == "refresh":
         value = outcome.get("outcome")
-        return value if isinstance(value, str) else None
-    return None
+        return running, value if isinstance(value, str) else None
+    return running, None
 
 
 def _emit_api_response(
@@ -191,7 +199,11 @@ def _emit_api_response(
         raise CLIError(f"{route} returned HTTP {response.status_code}")
     if after is not None:
         _echo_envelope("after", _STATUS_ROUTE, after, ctx, fmt)
-        outcome = _refresh_outcome(after)
+        running, outcome = _refresh_outcome(after)
+        if running:
+            raise CLIError(
+                f"the refresh did not finish within {_REFRESH_DRAIN_S:g}s and was stopped"
+            )
         if outcome is not None and outcome not in _REFRESH_ENDED_WELL:
             raise CLIError(f"the refresh ended with {outcome}")
 

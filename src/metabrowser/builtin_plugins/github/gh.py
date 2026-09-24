@@ -2,10 +2,10 @@
 
 ``gh`` owns GitHub authentication; Metabrowser never reads, stores, or logs a token.
 Every run gets no stdin, prompts and update checks off, no colour, and no inherited
-``GH_DEBUG``, ``GH_HOST``, or ``GH_REPO``; a deadline and an output cap; and its own
-process group, so a timeout or cancellation kills anything it started. Its stdout is
-never logged, because it can be private repository data or, for ``auth status``, the
-account's scopes.
+``GH_DEBUG``, ``GH_HOST``, ``GH_REPO``, ``CLICOLOR_FORCE``, or ``GH_FORCE_TTY``; a
+deadline and an output cap; and its own process group, so a timeout or cancellation
+kills anything it started. Its stdout is never logged, because it can be private
+repository data or, for ``auth status``, the account's scopes.
 
 :func:`gh_api` issues one ``gh api --hostname github.com --include`` request and returns
 the status, headers, and body; :func:`gh_account` reads the active github.com login.

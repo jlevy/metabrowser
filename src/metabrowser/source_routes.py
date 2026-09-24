@@ -78,6 +78,7 @@ class SourceStatus(TypedDict):
     stale: bool
     pull_request: int | None
     selection_state: SelectionState | None
+    selection_href: str | None
 
 
 def source_status(mirror: MirrorSession | None = None) -> SourceStatus:
@@ -240,23 +241,26 @@ async def api_source_pin(request: Request) -> JSONResponse:
     return JSONResponse({"changed": changed, "status": dict(source_status(mirror))})
 
 
-# A page on a pin names the session generation it was rendered for on every data
-# request (static/source-generation.js). A request that names an older generation is
-# from a page showing a pin the server no longer serves, and is refused rather than
-# answered from the new pin, which would mix two revisions on one page.
-GENERATION_HEADER: Final = "x-metabrowser-generation"
+# A page on a pin names the commit it was rendered for on every data request
+# (static/source-pin-guard.js). A request that names another commit than the one served
+# is from a page showing a pin the server no longer serves -- switched since, or served
+# by an earlier run of the server -- and is refused rather than answered from the new
+# pin, which would mix two revisions on one page. The commit, not the session
+# generation, is the token: a generation counts from 1 again in every process.
+PIN_HEADER: Final = "x-metabrowser-pin"
 PIN_CHANGED_HEADER: Final = "x-metabrowser-pin-changed"
-_GENERATION_EXEMPT_PREFIX: Final = "/api/source/"
+_PIN_EXEMPT_PREFIX: Final = "/api/source/"
 
 
-class SourceGenerationGuard:
-    """Refuse an ``/api`` request made for a generation the server no longer serves.
+class SourcePinGuard:
+    """Refuse an ``/api`` request made for a commit the server does not serve.
 
-    Only a request that names a generation is checked, so ``curl``, ``metab --api``,
-    and a folder page, which send none, are unaffected. The ``/api/source/`` routes are
-    exempt: a page learns the new generation from the status route and switches through
-    the pin route. The refusal is ``409 pin_changed`` with the current generation in
-    :data:`PIN_CHANGED_HEADER`, which the page reads without consuming the body.
+    Only a request that names a commit is checked, so ``curl``, ``metab --api``, and a
+    folder page, which send none, are unaffected. The ``/api/source/`` routes are
+    exempt: a page learns what is served from the status route and switches through
+    the pin route. The refusal is ``409 pin_changed`` with the served commit, or an
+    empty value when a folder is served, in :data:`PIN_CHANGED_HEADER`, which the page
+    reads without consuming the body.
     """
 
     def __init__(self, app: Any) -> None:
@@ -264,17 +268,17 @@ class SourceGenerationGuard:
 
     async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
         if scope.get("type") == "http" and _guarded(scope):
-            claimed = _header(scope, GENERATION_HEADER.encode())
-            current = _current_generation()
-            if claimed is not None and current is not None and claimed != str(current):
+            claimed = _header(scope, PIN_HEADER.encode())
+            current = _served_pin() if claimed is not None else None
+            if claimed is not None and current is not None and claimed != current:
                 response = JSONResponse(
                     {
                         "error": "the server now serves another revision; reload the page",
                         "code": "pin_changed",
-                        "generation": current,
+                        "pin": current or None,
                     },
                     status_code=409,
-                    headers={PIN_CHANGED_HEADER: str(current), "cache-control": "no-store"},
+                    headers={PIN_CHANGED_HEADER: current, "cache-control": "no-store"},
                 )
                 await response(scope, receive, send)
                 return
@@ -286,7 +290,7 @@ def _guarded(scope: dict[str, Any]) -> bool:
     root_path = str(scope.get("root_path") or "")
     if root_path and path.startswith(root_path):
         path = path[len(root_path) :]
-    return path.startswith("/api/") and not path.startswith(_GENERATION_EXEMPT_PREFIX)
+    return path.startswith("/api/") and not path.startswith(_PIN_EXEMPT_PREFIX)
 
 
 def _header(scope: dict[str, Any], name: bytes) -> str | None:
@@ -296,11 +300,14 @@ def _header(scope: dict[str, Any], name: bytes) -> str | None:
     return None
 
 
-def _current_generation() -> int | None:
+def _served_pin() -> str | None:
+    """The served commit, ``""`` for a folder, or ``None`` when nothing is open yet."""
+
     try:
-        return get_source_session().generation
+        subject = get_source_session().subject
     except SubjectNotOpenError:
         return None
+    return subject.commit_oid if isinstance(subject, GitRevisionSubject) else ""
 
 
 SOURCE_ROUTES = [
@@ -311,11 +318,11 @@ SOURCE_ROUTES = [
 
 
 __all__ = [
-    "GENERATION_HEADER",
     "MAX_SOURCE_REQUEST_BYTES",
     "PIN_CHANGED_HEADER",
+    "PIN_HEADER",
     "SOURCE_ROUTES",
-    "SourceGenerationGuard",
+    "SourcePinGuard",
     "SourceStatus",
     "api_source_pin",
     "api_source_refresh",

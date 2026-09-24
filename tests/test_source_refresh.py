@@ -11,6 +11,7 @@ alone in the admitted-Git CI job.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import shutil
 import subprocess
@@ -36,7 +37,14 @@ from metabrowser.cache.records import (
 from metabrowser.cache.update import RefreshOutcome, StoreUpdate
 from metabrowser.cli.main import _app
 from metabrowser.git.tree_source import GitPath, GitRevisionSubject, store_batch_reader_count
-from metabrowser.mirror_refresh import RefreshCoordinator
+from metabrowser.mirror_refresh import (
+    LastOutcome,
+    MirrorSession,
+    RecordedFreshness,
+    RefreshCoordinator,
+    RefreshResult,
+)
+from metabrowser.repository_context import RepositoryContext
 from metabrowser.source import (
     SubjectNotOpenError,
     attach_owned_subject,
@@ -368,6 +376,26 @@ def test_one_shot_api_finishes_the_refresh_it_was_asked_for(
     assert f'"pin": "{newer}"' in after.stdout
 
 
+def test_one_shot_api_fails_when_the_refresh_outlasts_its_wait(
+    tmp_path: Path, origin: _Origin, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def slow_update(home: Path, store_key: str, *, remote_url: str) -> StoreUpdate:
+        await asyncio.sleep(60)
+        return StoreUpdate(RefreshOutcome.succeeded, _FUTURE)
+
+    monkeypatch.setattr("metabrowser.cache.served_mirror.update_store", slow_update)
+    monkeypatch.setattr("metabrowser.cli.api_cli._REFRESH_DRAIN_S", 0.2)
+    body = tmp_path / "refresh.json"
+    body.write_text("{}\n", encoding="utf-8")
+    started = time.monotonic()
+    result = runner.invoke(_app, [origin.url, "--api", "/api/source/refresh", "--data", str(body)])
+    # Leaving stopped the refresh instead of waiting for it.
+    assert time.monotonic() - started < 30
+    assert result.exit_code != 0
+    assert '"refreshing": true' in result.stdout
+    assert str(result.exception) == "the refresh did not finish within 0.2s and was stopped"
+
+
 # ── Pin switching ────────────────────────────────────────────────────
 
 
@@ -392,6 +420,9 @@ def test_pin_selections_resolve_in_the_mirror_and_refusals_are_typed(
     cases: list[tuple[Any, int, str]] = [
         ({"ref": ":/first"}, 400, "invalid_selection"),
         ({"ref": "topic@{1}"}, 400, "invalid_selection"),
+        # A trailing newline is not part of a commit ID, whatever ``$`` would accept.
+        ({"oid": origin.first[:7] + "\n"}, 400, "invalid_selection"),
+        ({"ref": origin.first[:7] + "\n"}, 400, "invalid_selection"),
         ({"ref": "refs/heads/topic"}, 400, "invalid_selection"),
         ({"ref": "topic", "oid": origin.first}, 400, "invalid_selection"),
         ({}, 400, "invalid_selection"),
@@ -552,6 +583,57 @@ def test_the_coordinator_bounds_concurrent_jobs_across_keys() -> None:
     assert answers == ["started", "started", "started", "joined", "started"]
 
 
+class _BusyMirror:
+    """A mirror whose store another process refreshed and recorded in the same second."""
+
+    key = "store"
+
+    def __init__(self, at: str) -> None:
+        self.at = at
+
+    async def open_selection(self, *, ref: str | None, oid: str | None) -> GitRevisionSubject:
+        raise AssertionError("not reached")
+
+    async def refresh(self) -> RefreshResult:
+        return RefreshResult("refreshing_elsewhere", self.at)
+
+    async def recorded_freshness(self) -> RecordedFreshness:
+        return RecordedFreshness(self.at, "refresh", "succeeded", self.at)
+
+    async def ref_tip(self, ref: str) -> str | None:
+        return None
+
+    async def refresh_running_elsewhere(self) -> bool:
+        return False
+
+    def repository_context(self, *, revision: str, branch: str | None) -> RepositoryContext | None:
+        return None
+
+
+@pytest.mark.parametrize(
+    ("written", "shown"),
+    [("after the busy result", "succeeded"), ("before the busy result", "refreshing_elsewhere")],
+)
+def test_a_same_second_record_outranks_a_busy_result_only_when_newer(
+    written: str, shown: str
+) -> None:
+    """Timestamps have one-second resolution, so a tie goes to a record that changed."""
+
+    async def scenario() -> LastOutcome | None:
+        coordinator = RefreshCoordinator()
+        session = MirrorSession(_BusyMirror(_FUTURE), coordinator)
+        if written == "before the busy result":
+            await session.observe()
+        session.request_refresh()
+        await coordinator.drain(timeout_s=5)
+        await coordinator.aclose()
+        return session._last_outcome()
+
+    outcome = asyncio.run(scenario())
+    assert outcome is not None
+    assert (outcome["outcome"], outcome["at"]) == (shown, _FUTURE)
+
+
 # ── The shell ────────────────────────────────────────────────────────
 
 
@@ -631,44 +713,77 @@ def test_a_switch_attaches_the_new_pin_before_it_closes_the_old() -> None:
 # ── Review fixes ─────────────────────────────────────────────────────
 
 
-def test_a_page_for_an_older_generation_is_refused_as_pin_changed(
+def test_a_page_for_another_pin_is_refused_as_pin_changed(
     served: TestClient, origin: _Origin
 ) -> None:
     """A tab still showing the old pin never reads the new pin's files into its page."""
 
     shell = served.get("/view/").text
-    generation = served.get("/api/source/status").json()["generation"]
-    assert f"window.METABROWSER_SOURCE_GENERATION={generation};" in shell
-    assert "window.MetabrowserSourceGeneration = Object.freeze(" in shell
+    page = {"pin": origin.second, "ref": "refs/remotes/origin/topic"}
+    assert f"window.METABROWSER_SOURCE_PIN={json.dumps(page)};" in shell
+    assert "window.MetabrowserSourcePinGuard = Object.freeze(" in shell
     tree = {"depth": "1"}
-    assert served.get("/api/tree", params=tree, headers=_generation(generation)).status_code == 200
+    assert served.get("/api/tree", params=tree, headers=_pin(origin.second)).status_code == 200
 
     assert _post(served, "/api/source/pin", {"oid": origin.first}).json()["changed"]
-    refused = served.get("/api/tree", params=tree, headers=_generation(generation))
+    refused = served.get("/api/tree", params=tree, headers=_pin(origin.second))
     assert refused.status_code == 409
     assert refused.json()["code"] == "pin_changed"
-    assert refused.json()["generation"] == generation + 1
-    assert refused.headers["x-metabrowser-pin-changed"] == str(generation + 1)
-    # The source routes are how a page finds the new generation, so they answer.
-    exempt = served.get("/api/source/status", headers=_generation(generation))
+    assert refused.json()["pin"] == origin.first
+    assert refused.headers["x-metabrowser-pin-changed"] == origin.first
+    # The source routes are how a page finds what is served, so they answer.
+    exempt = served.get("/api/source/status", headers=_pin(origin.second))
     assert exempt.status_code == 200
-    # A request that names no generation, as curl and metab --api send, is served.
+    # A request that names no pin, as curl and metab --api send, is served.
     assert served.get("/api/tree", params=tree).status_code == 200
+    assert served.get("/api/tree", params=tree, headers=_pin(origin.first)).status_code == 200
+    # Switching back to the pin a page shows makes its requests good again.
+    assert _post(served, "/api/source/pin", {"ref": "topic"}).json()["changed"]
+    assert served.get("/api/tree", params=tree, headers=_pin(origin.second)).status_code == 200
+
+
+def test_a_page_left_open_across_a_restart_onto_another_pin_is_refused(
+    tmp_path: Path, origin: _Origin
+) -> None:
+    """Every server process counts generations from 1, so the commit is the token."""
+
+    assert _serve(origin.url).exit_code == 0
+    with TestClient(server.app) as client:
+        before = client.get("/api/source/status").json()
+    newer = _push_commit(origin, "NEW.md", "# New\n", "third")
+    body = tmp_path / "refresh.json"
+    body.write_text("{}\n", encoding="utf-8")
     assert (
-        served.get("/api/tree", params=tree, headers=_generation(generation + 1)).status_code == 200
+        runner.invoke(
+            _app, [origin.url, "--api", "/api/source/refresh", "--data", str(body)]
+        ).exit_code
+        == 0
     )
+    reset_source_session()
+    assert _serve(origin.url).exit_code == 0
+    with TestClient(server.app) as client:
+        after = client.get("/api/source/status").json()
+        stale = client.get("/api/tree", params={"depth": "1"}, headers=_pin(before["pin"]))
+    assert after["generation"] == before["generation"]
+    assert after["pin"] == newer != before["pin"]
+    assert stale.status_code == 409
+    assert stale.headers["x-metabrowser-pin-changed"] == newer
 
 
-def _generation(value: int) -> dict[str, str]:
-    return {"x-metabrowser-generation": str(value)}
+def _pin(value: str) -> dict[str, str]:
+    return {"x-metabrowser-pin": value}
 
 
-def test_a_folder_page_names_no_generation(tmp_path: Path) -> None:
+def test_a_folder_page_names_no_pin_and_refuses_a_pin_pages_requests(tmp_path: Path) -> None:
     server._set_root_dir(tmp_path)
     with TestClient(server.app) as client:
         shell = client.get("/view/").text
-    assert "METABROWSER_SOURCE_GENERATION" not in shell
-    assert "MetabrowserSourceGeneration" not in shell
+        from_a_pin_page = client.get("/api/tree", headers=_pin("0" * 40))
+    assert "METABROWSER_SOURCE_PIN" not in shell
+    assert "MetabrowserSourcePinGuard" not in shell
+    # A tab left from a pin, now talking to a server that serves a folder.
+    assert from_a_pin_page.status_code == 409
+    assert from_a_pin_page.headers["x-metabrowser-pin-changed"] == ""
 
 
 def test_latest_tells_a_deleted_ref_from_an_unobserved_one(
@@ -742,6 +857,10 @@ def test_a_server_follows_a_refresh_another_process_is_running(
     followed = _settle(served)
     assert followed["latest"] == newer
     assert followed["refreshing"] is False
+    # The other refresh has ended and wrote no record, so the busy result is gone and
+    # the record reports what was there before.
+    assert followed["last_outcome"]["outcome"] == "succeeded"
+    assert followed["last_outcome"]["operation"] == "acquire"
 
 
 def test_a_detached_origin_head_is_a_quiet_outcome(served: TestClient, origin: _Origin) -> None:

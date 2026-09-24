@@ -146,7 +146,23 @@ def _group_alive(pgid: int) -> bool:
         os.killpg(pgid, 0)
     except ProcessLookupError:
         return False
+    except PermissionError:
+        # The group ended and its ID now belongs to another user's process group.
+        return False
     return True
+
+
+def _mirror_tip(stale: _Stale) -> str:
+    ref = stale.published.default_remote_ref
+    assert ref is not None
+    listed = subprocess.run(
+        ["git", "--git-dir", str(stale.published.git_dir), "rev-parse", "--verify", ref],
+        capture_output=True,
+        text=True,
+        check=True,
+        env={name: value for name, value in os.environ.items() if not name.startswith("GIT_")},
+    )
+    return listed.stdout.strip()
 
 
 def _wait_for_group_to_end(pgid: int, *, timeout_s: float) -> None:
@@ -169,6 +185,7 @@ def test_ctrl_c_or_a_hangup_kills_the_refresh_fetch_and_frees_its_lock(
     server = _serve(stale)
     try:
         pgid = _fetch_group(stale, server)
+        assert _group_alive(pgid), "the fetch finished before the server was stopped"
         server.send_signal(stop)
         assert server.wait(timeout=30) == status
         # SIGKILL is delivered at once, but reaping the group can take a moment.
@@ -178,6 +195,8 @@ def test_ctrl_c_or_a_hangup_kills_the_refresh_fetch_and_frees_its_lock(
             server.kill()
             server.wait()
     home, key = stale.published.home, stale.published.store_key
+    # The atomic fetch was killed before its transaction, so no ref moved.
+    assert _mirror_tip(stale) == stale.published.default_revision
     with store_fetch_lock(home, key):
         pass
     # What the killed fetch left is removed under the lock, and the next refresh works.

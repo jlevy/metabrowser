@@ -111,15 +111,26 @@ GitHub URLs and HTTPS:
   and `--api` as `ref_not_found`, `commit_not_found`, or `path_not_found`; those modes
   read the mirror as it is and do not fetch.
   A server instead serves the default branch, fetches once in the background, and
-  switches to the selection if the fetch brings it, under a new session generation like
-  any pin switch, so a page opened meanwhile is offered a reload and its data requests
-  are refused with `pin_changed`; `/api/source/status` reports `selection_state` as
-  `pending`, then `found` or `not_found`. In a server, `POST /api/source/pin` for a
-  branch, tag, or commit the mirror lacks likewise answers `202` with
-  `selection_pending` and fetches once; asked again after that fetch it switches or
-  answers `404`. A commit ID in a URL or a pin request has 7 to 64 hexadecimal digits.
-  github.com links inside a rendered README of a served GitHub mirror open inside the
-  pin, as they already did for a served checkout of the repository.
+  switches to the selection if the fetch brings it, like any pin switch; a page opened
+  meanwhile then goes to the selection’s address, line anchor included, which status
+  reports as `selection_href`. `/api/source/status` reports `selection_state` as
+  `pending`, then `found` or `not_found`; `fetch_failed` when the fetch could not run,
+  in which case the next refresh tries again; and `superseded` once a pin switch serves
+  something else, which a waiting selection then never undoes.
+  A mirror cloned by the same command has just been fetched, so there a missing
+  selection is not found at once.
+  One-shot `--api /api/source/refresh --data …` also waits for the refresh it asks for
+  and reports the selection after it.
+  In a server, `POST /api/source/pin` for a branch, tag, or commit the mirror lacks
+  likewise answers `202` with `selection_pending` and fetches once; asked again after
+  that fetch it switches, answers `404`, or answers `502` `selection_fetch_failed` when
+  the fetch could not run.
+  The pin route resolves as URL opening does: `HEAD` is the default branch, and a name
+  that is not a commit, such as a tag of a tree, answers `409` `not_a_commit` at once
+  rather than fetching.
+  A commit ID in a URL or a pin request has 7 to 64 hexadecimal digits, and a trailing
+  newline is not one. github.com links inside a rendered README of a served GitHub mirror
+  open inside the pin, as they already did for a served checkout of the repository.
 
 - `https://` sources are acquired, anonymously for a public repository.
   When `gh` is installed it is Git’s credential helper for `https://github.com` only,
@@ -131,15 +142,20 @@ GitHub URLs and HTTPS:
   `gh` reports a repository too large to clone within the acquisition deadline.
   The size check asks github.com only, whatever host `GH_HOST` names.
   Git runs with `HOME=/dev/null` while it acquires, so curl reads no `~/.netrc`; `gh`
-  alone is given the real home, without `GH_DEBUG`, `GH_HOST`, or `GH_REPO`. A transfer
-  slower than 1000 bytes per second for 30 seconds is treated as stalled, and an origin
-  that does not answer the first request within 30 seconds times out rather than waiting
-  for curl’s five-minute connect timeout.
-  On a terminal, a first clone reports its phases and elapsed time.
+  alone is given the real home, without `GH_DEBUG`, `GH_HOST`, `GH_REPO`,
+  `CLICOLOR_FORCE`, or `GH_FORCE_TTY`. A transfer slower than 1000 bytes per second for
+  30 seconds is treated as stalled, and an origin that does not answer the first request
+  within 30 seconds times out rather than waiting for curl’s five-minute connect
+  timeout. On a terminal, a first clone reports its phases and elapsed time.
   A served mirror refreshes from the same URL with the same arguments, including the
   prune and single retry after a ref that cannot be locked, and a refresh’s outcome, in
   the status and in the store’s `state.yml`, carries the same names, plus
   `ref_case_collision` where a case-insensitive filesystem cannot hold two refs apart.
+  Git does not always refuse that fetch: given `SAME` beside an unchanged `same`, it
+  writes `SAME` into `same`’s file and succeeds, repointing `same`. A refresh on such a
+  filesystem checks the store holds every ref the fetch wrote under its exact name, and
+  otherwise puts every ref back and reports `ref_case_collision`, so no pin resolves to
+  the twin’s commit.
 
 - Pull-request data:
   `metab https://github.com/owner/repo/pull/<n> --api /api/plugin/github/pull` reads the
@@ -280,9 +296,9 @@ Repository cache:
   missing origin, a failed fetch, or a detached origin HEAD is a typed outcome in the
   status while the pinned revision keeps serving.
   Reach it with `metab file://… --api /api/source/refresh --data <file with {}>`; that
-  one command waits for the refresh it asked for, prints the status after it, and exits
-  1 unless the fetch ran or another process’s refresh is running.
-  No other one-shot command fetches.
+  one command waits up to one Git deadline for the refresh it asked for, prints the
+  status after it, and exits 1 unless the fetch ran or another process’s refresh is
+  running. No other one-shot command fetches.
 
 - New `POST /api/source/pin` switches what a server serves to another branch, tag, or
   commit of the same mirror: `{"ref": "feature"}`, `{"ref": "v1"}`, or
@@ -300,9 +316,12 @@ Repository cache:
   opens or becomes visible on a stale mirror.
   When a refresh moves the pinned branch it offers the commit the branch now names,
   usually a newer one, and accepting switches the pin and reloads the view.
-  When another tab switched the pin, even before the page’s first poll, it offers a
-  reload, and the page’s data requests are refused with `pin_changed` rather than
-  answered from the new pin, so one page never mixes two revisions.
+  When another tab switched the pin, or the server restarted onto another commit, even
+  before the page’s first poll, it offers a reload.
+  The page’s data requests name the commit it shows and are refused with `pin_changed`
+  rather than answered from another commit.
+  Images and raw documents the page loads directly are not checked, so a stale page can
+  still show one of those from the new pin until it reloads.
   A failed refresh reads as a warning there, not as an error in the page.
   The row repaints only when what it says changes, and announces its state and offer to
   a screen reader, not its age.

@@ -148,7 +148,8 @@ metab file:///path/to/origin.git --api /api/source/pin --data pin.json
 ```
 
 The refresh command waits for the fetch it asked for, prints the status after it under
-`after:`, and exits 1 when the refresh failed; it exits 0 when the fetch ran, or when
+`after:`, and exits 1 when the refresh failed, or when it had not finished within one
+Git deadline, in which case leaving stops it; it exits 0 when the fetch ran, or when
 another process was already refreshing the mirror.
 No other one-shot command fetches.
 A pin switch through `--api` lasts for that one command, because each command is its own
@@ -203,8 +204,13 @@ not in it is reported as `ref_not_found` or `commit_not_found` rather than fetch
 a path that is not at the pinned commit is `path_not_found`. Each exits with status 1,
 but the acquisition before it succeeded, so the source stays published.
 A server instead serves the default branch, fetches once in the background, and switches
-to the selection if that fetch brings it; `/api/source/status` reports `selection_state`
-as `pending`, then `found` or `not_found`.
+to the selection if that fetch brings it, and a page opened meanwhile goes there;
+`/api/source/status` reports `selection_state` as `pending`, then `found` or
+`not_found`, or `fetch_failed` when the fetch could not run, and `superseded` after a
+pin switch. A mirror the same command just cloned is not fetched again, so there the
+selection is `ref_not_found` at once.
+`--api /api/source/refresh --data <file with {}>` is the one-shot command that waits for
+its selection’s fetch.
 
 Public repositories are cloned anonymously.
 When `gh` is installed, it is Git’s credential helper for `https://github.com` and for
@@ -310,6 +316,8 @@ source, and none changes another source already in the cache.
 - **A repository whose branch or tag names differ only in letter case** (`Feature` and
   `feature`) is refused as `ref_case_collision` on a case-insensitive filesystem, such
   as macOS’s default, which cannot hold both.
+  A served mirror whose origin gains such a twin later reports the same outcome for its
+  refresh and keeps every ref where it was.
 - **An acquisition that is interrupted**, by Ctrl-C, by the terminal hanging up, or by
   `SIGTERM`, stops Git and every helper it started, and leaves nothing visible, because
   the source is published last, after its store.

@@ -11,7 +11,7 @@ coordinator and returns ``202`` at once, never waiting on the network. It starts
 so it is a ``POST`` with a JSON object body: the application's same-origin guard and its
 JSON content-type rule keep content inside an untrusted page from reaching it with a
 link, an image, or a form, and a page for a pin the server no longer serves is refused
-``pin_changed`` by the generation guard. Plugin data routes are one path segment, so the
+``pin_changed`` by the pin guard. Plugin data routes are one path segment, so the
 refresh is ``pull-refresh`` beside ``pull``.
 """
 

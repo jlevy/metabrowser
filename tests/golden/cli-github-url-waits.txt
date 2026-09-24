@@ -1,0 +1,163 @@
+# metab 'https://github.com/octo/demo/blob/later/docs/v1.md#L1-L2' --api /api/source/refresh --data refresh.json
+exit: 0
+--- stdout ---
+api: /api/source/refresh
+status: 202
+{
+  "refresh": "started",
+  "status": {
+    "subject": "git_revision",
+    "generation": 1,
+    "pin": "523f476bbcbde731f18dec9d6875df8fe8db13f3",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "refreshable": true,
+    "latest": "523f476bbcbde731f18dec9d6875df8fe8db13f3",
+    "ref_on_origin": true,
+    "last_fetch_at": "<TIME>",
+    "last_outcome": {
+      "operation": "acquire",
+      "outcome": "succeeded",
+      "at": "<TIME>"
+    },
+    "refreshing": true,
+    "stale": false,
+    "pull_request": null,
+    "selection_state": "pending",
+    "selection_href": null
+  }
+}
+after: /api/source/status
+status: 200
+{
+  "subject": "git_revision",
+  "generation": 2,
+  "pin": "89e0fadf1d6368c47b9363ff7df0cd26b48d67df",
+  "ref": "refs/remotes/origin/later",
+  "ref_name": "later",
+  "refreshable": true,
+  "latest": "89e0fadf1d6368c47b9363ff7df0cd26b48d67df",
+  "ref_on_origin": true,
+  "last_fetch_at": "<TIME>",
+  "last_outcome": {
+    "operation": "refresh",
+    "outcome": "succeeded",
+    "at": "<TIME>"
+  },
+  "refreshing": false,
+  "stale": false,
+  "pull_request": null,
+  "selection_state": "found",
+  "selection_href": "/view/g1-ZG9jcw/g1-djEubWQ#L1-L2"
+}
+--- stderr ---
+selection: blob (not in the mirror yet; the refresh fetches it)
+# metab https://github.com/octo/demo/tree/never/docs --api /api/source/refresh --data refresh.json
+exit: 0
+--- stdout ---
+api: /api/source/refresh
+status: 202
+{
+  "refresh": "started",
+  "status": {
+    "subject": "git_revision",
+    "generation": 1,
+    "pin": "523f476bbcbde731f18dec9d6875df8fe8db13f3",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "refreshable": true,
+    "latest": "523f476bbcbde731f18dec9d6875df8fe8db13f3",
+    "ref_on_origin": true,
+    "last_fetch_at": "<TIME>",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "succeeded",
+      "at": "<TIME>"
+    },
+    "refreshing": true,
+    "stale": false,
+    "pull_request": null,
+    "selection_state": "pending",
+    "selection_href": null
+  }
+}
+after: /api/source/status
+status: 200
+{
+  "subject": "git_revision",
+  "generation": 1,
+  "pin": "523f476bbcbde731f18dec9d6875df8fe8db13f3",
+  "ref": "refs/remotes/origin/topic",
+  "ref_name": "topic",
+  "refreshable": true,
+  "latest": "523f476bbcbde731f18dec9d6875df8fe8db13f3",
+  "ref_on_origin": true,
+  "last_fetch_at": "<TIME>",
+  "last_outcome": {
+    "operation": "refresh",
+    "outcome": "succeeded",
+    "at": "<TIME>"
+  },
+  "refreshing": false,
+  "stale": false,
+  "pull_request": null,
+  "selection_state": "not_found",
+  "selection_href": null
+}
+--- stderr ---
+selection: tree (not in the mirror yet; the refresh fetches it)
+# metab https://github.com/octo/demo/tree/gone/docs --api /api/source/refresh --data refresh.json
+exit: 1
+--- stdout ---
+api: /api/source/refresh
+status: 202
+{
+  "refresh": "started",
+  "status": {
+    "subject": "git_revision",
+    "generation": 1,
+    "pin": "523f476bbcbde731f18dec9d6875df8fe8db13f3",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "refreshable": true,
+    "latest": "523f476bbcbde731f18dec9d6875df8fe8db13f3",
+    "ref_on_origin": true,
+    "last_fetch_at": "<TIME>",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "succeeded",
+      "at": "<TIME>"
+    },
+    "refreshing": true,
+    "stale": false,
+    "pull_request": null,
+    "selection_state": "pending",
+    "selection_href": null
+  }
+}
+after: /api/source/status
+status: 200
+{
+  "subject": "git_revision",
+  "generation": 1,
+  "pin": "523f476bbcbde731f18dec9d6875df8fe8db13f3",
+  "ref": "refs/remotes/origin/topic",
+  "ref_name": "topic",
+  "refreshable": true,
+  "latest": "523f476bbcbde731f18dec9d6875df8fe8db13f3",
+  "ref_on_origin": true,
+  "last_fetch_at": "<TIME>",
+  "last_outcome": {
+    "operation": "refresh",
+    "outcome": "origin_unavailable",
+    "at": "<TIME>"
+  },
+  "refreshing": false,
+  "stale": false,
+  "pull_request": null,
+  "selection_state": "fetch_failed",
+  "selection_href": null
+}
+--- stderr ---
+selection: tree (not in the mirror yet; the refresh fetches it)
+Error: the refresh ended with origin_unavailable

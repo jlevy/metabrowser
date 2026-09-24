@@ -224,7 +224,8 @@ isolation sweep over every registered GET route.
 `tests/test_cache_update.py` refreshes real stores from real origins: new commits, a
 force-push that keeps the old commit readable, a deleted branch pruned by name and
 readable by ID, a fetch lock another process holds, stale lock files, a fetch cancelled
-mid-transfer, and a removed origin.
+mid-transfer, a removed origin, and on a case-insensitive filesystem a ref the fetch
+folded into its case twin, which is put back and reported as `ref_case_collision`.
 `tests/test_refresh_signals.py` runs the real command and interrupts a refresh
 mid-fetch: Ctrl-C or a terminal hangup leaves no Git running and the fetch lock free,
 and a killed server’s Git keeps the lock until it exits; it needs an admitted Git and
@@ -965,7 +966,7 @@ was acquired or served, or a served pin ran a script).
 | --- | --- |
 | ssh acquire and serve | Closed; refuse is the test |
 | A branch and tag selector in the browser | Not built; pin by name through `POST /api/source/pin` (5.6) |
-| The browser’s view of a pending URL selection | `/api/source/status` reports `selection_state`; the page shows only the reload offer when the fetch finds it |
+| The browser’s view of a pending URL selection | The row shows the refresh; a page opened while the selection waited goes to it when the fetch finds it, and shows no message for `not_found` or `fetch_failed` beyond the refresh outcome |
 | Line highlighting for `#L10-L20` | `mb-rlf3`; the anchor stays in the address |
 | Pull-request page | Later steps; pull-request data is read through `--api` and served beside the pin (4.10) |
 | Hosted-review / GitHub PR slice | Separate beads; not on these tips |

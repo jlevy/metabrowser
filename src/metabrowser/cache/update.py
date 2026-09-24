@@ -6,8 +6,14 @@ observe which branch the origin's HEAD names, then fetch every branch and tag wi
 upstream leaves the mirror, and no object is ever removed, so a commit a reader has
 pinned stays readable after a force-push or a deleted branch. One atomic transaction
 cannot delete ``side`` and create ``side/x``, or on a case-insensitive file system
-rename ``Topic`` to ``topic``; when Git reports that ref-lock conflict, the stale refs
-are pruned on their own and the atomic fetch is tried once more.
+rename ``Topic`` to ``topic``. Git words that refusal differently for loose refs,
+packed refs, and reftable, and a long fetch can push it past the bounded stderr, so
+any failure of the atomic fetch is followed by pruning the stale refs on their own and
+one more try; a failure that was not a clash costs one more round trip. On a
+case-insensitive file system Git can also succeed wrongly, writing ``SAME`` into the
+loose file of an unchanged ``same``; there the refs are listed before the fetch and
+checked after it, and a fold, or a clash the retry still meets, puts every ref back
+and is reported as ``ref_case_collision``.
 
 Locks follow ``tests/fixtures/repository-cache/state-machines.json`` (``store_refresh``):
 
@@ -58,7 +64,7 @@ from metabrowser.cache.origin import (
     REMOTE_PROBE_TIMEOUT_S,
     OriginHeadError,
     classify_remote_failure,
-    fetched_ref_names,
+    fetched_refs,
     ls_remote_head_args,
     mirror_fetch_args,
     mirror_prune_args,
@@ -73,7 +79,7 @@ from metabrowser.cache.records import (
     StoreOperation,
     canonical_now,
 )
-from metabrowser.cache.resolve import case_colliding_refs, ref_tip, store_ignores_case
+from metabrowser.cache.resolve import folded_refs, mirror_refs, ref_tip, store_ignores_case
 from metabrowser.git.process import (
     ACQUISITION_POLICY,
     GitCommandError,
@@ -101,9 +107,9 @@ _STALE_REF_LOCK_SUFFIX: Final = ".lock"
 _TEMPORARY_PACK_PREFIXES: Final = ("tmp_pack_", "tmp_idx_", "tmp_rev_")
 _TEMPORARY_OBJECT_PREFIX: Final = "tmp_obj_"
 _LOOSE_OBJECT_DIRECTORY: Final = re.compile(r"[0-9a-f]{2}")
-# How Git refuses a ref transaction whose lock it cannot take: a directory/file
-# conflict (``side`` and ``side/x``) or a case-only rename on a case-insensitive file
-# system. Git runs under LC_ALL=C, so this is its own untranslated text.
+# How Git refuses a ref transaction whose lock it cannot take, in the loose-ref files
+# backend under LC_ALL=C. Only used to tell a case collision from other failures on a
+# case-insensitive store, whose refs are loose files; any failure is retried after a prune.
 _REF_LOCK_CONFLICT: Final = re.compile(r"cannot lock ref")
 
 
@@ -118,7 +124,9 @@ class RefreshOutcome(StrEnum):
     refreshing_elsewhere = "refreshing_elsewhere"
     # ls-remote could not read the origin, for a reason Git's text does not name.
     origin_unavailable = "origin_unavailable"
-    # The fetch itself failed, for a reason Git's text does not name. No ref moved.
+    # The fetch itself failed, for a reason Git's text does not name. No ref moved except
+    # stale refs pruned before a second try, and then the record keeps a default branch
+    # the mirror still has.
     fetch_failed = "fetch_failed"
     # Named failures, as ``cache/origin.py`` classifies Git's text. No ref moved.
     not_found_or_private = "not_found_or_private"
@@ -170,8 +178,9 @@ _RECORDED: Final[dict[RefreshOutcome, RecordedOutcome]] = {
 class StoreUpdate:
     """One refresh's outcome, when it ended, and the default branch it observed.
 
-    ``default_remote_ref`` and ``default_revision`` are set only when the refresh
-    fetched; ``at`` is also the new last-fetch time then.
+    ``default_remote_ref`` and ``default_revision`` are set when the refresh fetched,
+    and ``at`` is also the new last-fetch time then. They are also set by a failed
+    fetch after a prune deleted refs, because the record must then name what is left.
     """
 
     outcome: RefreshOutcome
@@ -234,6 +243,15 @@ def _release(lock: CacheLock) -> None:
     lock.release()
 
 
+class _FetchFailedError(Exception):
+    """The atomic fetch failed; ``pruned`` says whether a prune ran, even in part, first."""
+
+    def __init__(self, cause: GitError, *, pruned: bool) -> None:
+        super().__init__(str(cause))
+        self.cause = cause
+        self.pruned = pruned
+
+
 def _named(exc: GitError, remote_url: str, fallback: RefreshOutcome) -> RefreshOutcome:
     """The outcome Git's error text names for an https origin, else *fallback*.
 
@@ -252,19 +270,20 @@ def _named(exc: GitError, remote_url: str, fallback: RefreshOutcome) -> RefreshO
 
 
 async def _fetch_atomically(target: RepositoryStoreTarget, remote_url: str, lock_fd: int) -> bytes:
-    """Fetch every branch and tag in one transaction, pruning separately on a ref clash.
+    """Fetch every branch and tag in one transaction, pruning separately and retrying once.
 
-    Returns the fetch's ``--porcelain`` output. Raises :class:`GitError` when the fetch
-    fails, including after the one retry.
+    Returns the fetch's ``--porcelain`` output. Raises :class:`_FetchFailedError` when
+    the fetch fails after the one retry, or when the prune itself fails.
     """
 
     fetch = mirror_fetch_args(remote_url, prune=True)
     try:
         return await run_git(fetch, target=target, policy=ACQUISITION_POLICY, pass_fds=(lock_fd,))
     except GitCommandError as exc:
-        if _REF_LOCK_CONFLICT.search(exc.stderr_summary) is None:
-            raise
-        log.debug("a stale ref blocks the atomic fetch; pruning it first: %s", failure_detail(exc))
+        log.debug("the atomic fetch failed; pruning stale refs, then once more: %s", _detail(exc))
+    except GitError as exc:
+        raise _FetchFailedError(exc, pruned=False) from exc
+    try:
         # Deletions only, so nothing in it can clash; then the transaction runs again.
         await run_git(
             mirror_prune_args(remote_url),
@@ -272,7 +291,45 @@ async def _fetch_atomically(target: RepositoryStoreTarget, remote_url: str, lock
             policy=ACQUISITION_POLICY,
             pass_fds=(lock_fd,),
         )
+    except GitError as exc:
+        # A prune deletes one ref at a time, so a failed one may have deleted some.
+        raise _FetchFailedError(exc, pruned=True) from exc
+    try:
         return await run_git(fetch, target=target, policy=ACQUISITION_POLICY, pass_fds=(lock_fd,))
+    except GitError as exc:
+        raise _FetchFailedError(exc, pruned=True) from exc
+
+
+async def _restore_refs(
+    target: RepositoryStoreTarget, before: dict[str, str], lock_fd: int
+) -> None:
+    """Put every branch and tag back as *before* lists them, one ``update-ref`` at a time.
+
+    Names the store lists now and did not before are deleted first: on a
+    case-insensitive filesystem one of them may be the file a name in *before* was folded
+    into. Then each name in *before* is set to its old object, which the store still has
+    because nothing removes objects. Each command checks nothing it did not just read,
+    under the fetch lock no other writer holds. A failure is logged and leaves the rest
+    for the next refresh, which restores again.
+    """
+
+    try:
+        held = await mirror_refs(target)
+        commands = [
+            ["update-ref", "--no-deref", "-d", name, held[name]]
+            for name in sorted(set(held) - set(before))
+        ]
+        commands += [
+            ["update-ref", "--no-deref", name, oid]
+            for name, oid in sorted(before.items())
+            if held.get(name) != oid
+        ]
+        for command in commands:
+            await run_git(command, target=target, policy=ACQUISITION_POLICY, pass_fds=(lock_fd,))
+    except GitError as exc:
+        log.warning(
+            "could not put the store's refs back after a case fold: %s", failure_detail(exc)
+        )
 
 
 async def _fetch(
@@ -302,22 +359,45 @@ async def _fetch(
     except OriginHeadError as exc:
         log.debug("refresh could not read the origin: %s", _detail(exc))
         return StoreUpdate(RefreshOutcome.origin_unavailable, canonical_now())
+    # On a case-insensitive filesystem, what the store held before is kept, so a fetch
+    # that folded two refs into one file can be undone; see ``folded_refs``.
+    before = await mirror_refs(target) if await store_ignores_case(target) else None
     try:
         updated = await _fetch_atomically(target, remote_url, lock_fd)
-    except GitError as exc:
-        log.debug("refresh fetch failed: %s", failure_detail(exc))
+    except _FetchFailedError as exc:
+        cause = exc.cause
+        log.debug("refresh fetch failed: %s", _detail(cause))
         # Still a ref-lock clash after pruning, on a case-insensitive filesystem: the
         # origin has two refs that differ only in case, which one loose file cannot hold.
+        # The prune before the retry is undone too, so no ref moved.
         if (
-            isinstance(exc, GitCommandError)
-            and _REF_LOCK_CONFLICT.search(exc.stderr_summary) is not None
-            and await store_ignores_case(target)
+            before is not None
+            and isinstance(cause, GitCommandError)
+            and _REF_LOCK_CONFLICT.search(cause.stderr_summary) is not None
         ):
+            await _restore_refs(target, before, lock_fd)
             return StoreUpdate(RefreshOutcome.ref_case_collision, canonical_now())
-        return StoreUpdate(_named(exc, remote_url, RefreshOutcome.fetch_failed), canonical_now())
-    if case_colliding_refs(fetched_ref_names(updated)) and await store_ignores_case(target):
-        log.warning("refresh fetched refs that differ only in letter case")
-        return StoreUpdate(RefreshOutcome.ref_case_collision, canonical_now())
+        outcome = _named(cause, remote_url, RefreshOutcome.fetch_failed)
+        if not exc.pruned:
+            return StoreUpdate(outcome, canonical_now())
+        # A prune ran, at least in part, before the fetch failed: record the first of
+        # the origin's default branch and the one recorded before that is still there.
+        for ref in (remote_tracking_ref(head_ref), previous_ref):
+            tip = await ref_tip(target, ref) if ref is not None else None
+            if tip is not None:
+                return StoreUpdate(
+                    outcome, canonical_now(), default_remote_ref=ref, default_revision=tip
+                )
+        return StoreUpdate(outcome, canonical_now())
+    if before is not None:
+        folded = folded_refs(fetched_refs(updated), await mirror_refs(target))
+        if folded:
+            log.warning(
+                "refresh fetched refs that differ only in letter case; putting every ref back: %s",
+                ", ".join(folded[:4]),
+            )
+            await _restore_refs(target, before, lock_fd)
+            return StoreUpdate(RefreshOutcome.ref_case_collision, canonical_now())
     default_remote_ref = remote_tracking_ref(head_ref)
     outcome = RefreshOutcome.succeeded
     if default_remote_ref is None:
@@ -350,9 +430,10 @@ def _detail(exc: Exception) -> str:
 def _record(home: Path, store_key: str, update: StoreUpdate) -> None:
     """Rewrite ``state.yml`` under the store lock; synchronous and blocking.
 
-    A fetch records the fetch time and, when it observed one, the default branch and
-    its commit. A recorded failure keeps all three. Either way the outcome is recorded
-    by name, so a later start reports it as this one did.
+    A fetch records the fetch time. Any refresh that observed the default branch and
+    its commit records them -- a fetch, or a failed retry after a prune moved refs --
+    and otherwise keeps the ones recorded before. Either way the outcome is recorded by
+    name, so a later start reports it as this one did.
     """
 
     relative = store_record(store_key, "state.yml")
@@ -361,7 +442,7 @@ def _record(home: Path, store_key: str, update: StoreUpdate) -> None:
         if not isinstance(previous, RepositoryStoreState):
             raise RecordError("state.yml did not validate", home / relative)
         fetched = update.outcome in _FETCHED
-        observed = fetched and update.default_remote_ref is not None
+        observed = update.default_remote_ref is not None
         state = RepositoryStoreState(
             default_remote_ref=(
                 update.default_remote_ref if observed else previous.default_remote_ref
@@ -431,9 +512,11 @@ async def update_store(home: Path, store_key: str, *, remote_url: str) -> StoreU
         try:
             removed = await asyncio.shield(cleanup)
         except asyncio.CancelledError:
-            # The lock is released on the way out, so the removal must finish first.
-            with contextlib.suppress(asyncio.CancelledError):
-                await cleanup
+            # The lock is released on the way out, so the removal must finish first,
+            # however many times the refresh is cancelled while it runs.
+            while not cleanup.done():
+                with contextlib.suppress(asyncio.CancelledError):
+                    await asyncio.shield(cleanup)
             raise
         if removed:
             log.debug("removed files an interrupted fetch left in a store: %s", removed)

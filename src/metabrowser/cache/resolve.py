@@ -31,7 +31,7 @@ from __future__ import annotations
 import bisect
 import re
 import unicodedata
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Final, Literal
 
@@ -49,6 +49,7 @@ from metabrowser.git.wire import is_full_revision
 from metabrowser.mirror_refresh import (
     AmbiguousSelectionError,
     InvalidSelectionError,
+    SelectionNotACommitError,
     SelectionNotFoundError,
 )
 
@@ -67,7 +68,8 @@ _REF_NAME_MAX_BYTES: Final = 1024
 _REF_FORMAT: Final = "%(refname)%00%(objectname)%00%(objecttype)%00%(*objectname)%00%(*objecttype)"
 # Seven hexadecimal digits is the shortest commit ID Git abbreviates to by default and
 # the shortest a GitHub URL shows; anything shorter matches too much to mean one commit.
-_COMMIT_ID = re.compile(r"^[0-9a-f]{7,64}$")
+# Always ``fullmatch``: ``$`` also matches before a trailing newline.
+_COMMIT_ID = re.compile(r"[0-9a-f]{7,64}")
 _REF_FORBIDDEN = frozenset(" ~^:?*[\\\x7f")
 # The one ref a mirror holds beyond its origin's branches and tags, fetched with a pull
 # request, whose number follows the GitHub URL grammar.
@@ -173,6 +175,23 @@ def case_colliding_refs(names: Iterable[str]) -> tuple[str, ...]:
     return tuple(sorted(colliding))
 
 
+def folded_refs(written: Mapping[str, str], held: Mapping[str, str]) -> tuple[str, ...]:
+    """Refs a fetch wrote that the store does not hold as written, and refs it cannot hold apart.
+
+    *written* is what ``fetch --porcelain`` reports it wrote, name to object; *held* is
+    every ref the store lists by exact name afterwards. On a case-insensitive
+    filesystem a loose ref is a file, so a fetch that writes ``SAME`` beside an
+    unchanged ``same`` writes into ``same``'s file: Git reports ``SAME`` written, the
+    store lists only ``same``, now naming ``SAME``'s commit, and nothing fails. A
+    written ref the store does not list at that object is such a fold. A loose ref
+    whose name folds onto a packed one shadows it on every read, so names in *held*
+    that collide count too. Sorted; empty when the store holds exactly what was written.
+    """
+
+    folded = {name for name, oid in written.items() if held.get(name) != oid}
+    return tuple(sorted(folded.union(case_colliding_refs(held))))
+
+
 def describe_case_collision(colliding: tuple[str, ...]) -> str:
     """What a case collision is, naming a few of the refs, for a user message."""
 
@@ -255,6 +274,27 @@ async def _exact_refs(target: RepositoryStoreTarget, refs: list[str]) -> dict[st
     return found
 
 
+async def mirror_refs(target: RepositoryStoreTarget) -> dict[str, str]:
+    """Every branch and tag the store holds, by the exact name it lists, with its object."""
+
+    out = await _git(
+        target,
+        [
+            "for-each-ref",
+            "--format=%(refname)%00%(objectname)",
+            "--",
+            BRANCH_MIRROR_PREFIX,
+            TAG_PREFIX,
+        ],
+    )
+    held: dict[str, str] = {}
+    for line in out.split(b"\n"):
+        fields = line.decode("utf-8", "surrogateescape").split("\0")
+        if len(fields) == 2 and is_full_revision(fields[1]):
+            held[fields[0]] = fields[1]
+    return held
+
+
 async def _peeled_commit(target: RepositoryStoreTarget, ref: _RefObject) -> str | None:
     """The commit a ref names, through any chain of annotated tags, or ``None``."""
 
@@ -285,7 +325,7 @@ async def resolve_commit_id(
     """Expand a full or abbreviated hexadecimal commit ID that the store has."""
 
     text = commit_id.lower()
-    if not _COMMIT_ID.match(text):
+    if not _COMMIT_ID.fullmatch(text):
         return UnresolvedSelection("invalid_ref")
     try:
         listed = await _git(target, ["rev-parse", f"--disambiguate={text}"])
@@ -335,11 +375,17 @@ async def _pin_commit_id(target: RepositoryStoreTarget, text: str) -> str:
         )
     if resolved.reason == "commit_ambiguous":
         raise AmbiguousSelectionError("that abbreviated commit ID matches several commits")
+    if resolved.reason == "not_a_commit":
+        raise SelectionNotACommitError("that ID names an object in the mirror that is not a commit")
     raise SelectionNotFoundError("no commit with that ID is in the mirror")
 
 
 async def resolve_pin(
-    target: RepositoryStoreTarget, *, ref: str | None = None, oid: str | None = None
+    target: RepositoryStoreTarget,
+    *,
+    ref: str | None = None,
+    oid: str | None = None,
+    default_ref: str | None = None,
 ) -> ResolvedPin:
     """The commit a pin request names in the mirror, and the ref it came through.
 
@@ -348,7 +394,9 @@ async def resolve_pin(
     be under ``refs/remotes/origin/`` or ``refs/tags/``, or be a pull request's
     ``refs/pull/<n>/head``: the only refs a mirror holds.
     *oid* is only a commit ID, full or abbreviated to at least seven digits. A commit
-    pinned by ID has no ref. Raises a
+    pinned by ID has no ref. ``HEAD`` is the default branch, *default_ref*, as in a URL.
+    A name the mirror holds that is not a commit, such as a tag of a tree, is refused
+    at once, as URL opening refuses it. Raises a
     :class:`~metabrowser.mirror_refresh.SelectionError`; Git failures other than "not
     there" propagate as :class:`~metabrowser.git.process.GitError`.
     """
@@ -360,23 +408,32 @@ async def resolve_pin(
     assert ref is not None
     if not ref:
         raise InvalidSelectionError("the ref is empty")
-    if ref.startswith("refs/"):
+    if ref == "HEAD":
+        if default_ref is None:
+            raise SelectionNotFoundError("the mirror has recorded no default branch")
+        candidates: tuple[str, ...] = (default_ref,)
+    elif ref.startswith("refs/"):
         if not ref.startswith((BRANCH_MIRROR_PREFIX, TAG_PREFIX)) and not _PULL_HEAD.match(ref):
             raise InvalidSelectionError(
                 "only the origin's branches (refs/remotes/origin/…), tags (refs/tags/…), "
                 "and pull-request heads (refs/pull/<n>/head) can be pinned"
             )
-        candidates: tuple[str, ...] = (ref,)
+        candidates = (ref,)
     else:
         candidates = (BRANCH_MIRROR_PREFIX + ref, TAG_PREFIX + ref)
-    is_hex = _COMMIT_ID.match(ref.lower()) is not None
+    is_hex = _COMMIT_ID.fullmatch(ref.lower()) is not None
     if all(is_valid_ref_name(candidate) for candidate in candidates):
         exact = await _exact_refs(target, list(candidates))
         for candidate in candidates:
             found = exact.get(candidate)
-            commit = None if found is None else await _peeled_commit(target, found)
-            if commit is not None:
-                return ResolvedPin(commit_oid=commit, ref=candidate)
+            if found is None:
+                continue
+            commit = await _peeled_commit(target, found)
+            if commit is None:
+                raise SelectionNotACommitError(
+                    "that name is in the mirror but does not name a commit"
+                )
+            return ResolvedPin(commit_oid=commit, ref=candidate)
     elif not is_hex:
         raise InvalidSelectionError("the ref is not a valid Git ref name")
     if is_hex:
@@ -427,7 +484,7 @@ async def resolve_ref_and_path(
             first = rest[0].decode("ascii")
         except UnicodeDecodeError:
             first = ""
-        if _COMMIT_ID.match(first.lower()):
+        if _COMMIT_ID.fullmatch(first.lower()):
             resolved = await resolve_commit_id(target, first)
             if isinstance(resolved, ResolvedSelection):
                 return ResolvedSelection(
@@ -479,7 +536,9 @@ __all__ = [
     "UnresolvedSelection",
     "case_colliding_refs",
     "describe_case_collision",
+    "folded_refs",
     "is_valid_ref_name",
+    "mirror_refs",
     "ref_candidates",
     "ref_tip",
     "resolve_commit_id",
