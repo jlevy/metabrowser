@@ -297,6 +297,28 @@ async function run() {
     controller.dispose();
   }
 
+  // A page whose address the fetch did not bring, and one whose fetch could not run:
+  // the row says so, and the second offers to fetch again.
+  {
+    const page = createPage();
+    const controller = freshness.createController(page.deps);
+    page.setStatus(recorded.selection_not_found);
+    await controller.start();
+    steps.push(page.observe("the address is not on the origin"));
+    controller.dispose();
+  }
+  {
+    const page = createPage();
+    const controller = freshness.createController(page.deps);
+    page.setStatus(recorded.selection_fetch_failed);
+    await controller.start();
+    steps.push(page.observe("the address could not be fetched"));
+    page.answerPost("/api/source/refresh", 202, recorded.selection_retry_started);
+    await controller.acceptOffer();
+    steps.push(page.observe("retry the address"));
+    controller.dispose();
+  }
+
   // A refresh that failed.
   {
     const page = createPage();
