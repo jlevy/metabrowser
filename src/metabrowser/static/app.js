@@ -5175,6 +5175,7 @@ async function loadMoreCurrentText() {
         isCurrent: () => textChunkRequestOwnsPreview(path, previewClaim, cached),
         onCommit: () => {
           commitTextChunkCache(path, previewClaim, cached, nextCached, requested);
+          window.MetabrowserSourceLineAnchors.refresh(document, nextCached);
         },
       });
     }

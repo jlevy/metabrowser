@@ -10,11 +10,12 @@
 //
 // The fragment is the only state: `describe` turns it and what the view has loaded
 // into what to highlight and what to say, and `nextFragment` turns a click into the
-// next fragment. Neither touches the DOM. The gutter and the highlight are painted
-// by CSS from two custom properties, in line-height units, so this file measures
-// nothing except where a click landed. A large file shows only its first part until
-// Load more; a line past that part is reported as not loaded rather than guessed at,
-// and becomes the anchor once Load more reaches it.
+// next fragment. Neither touches the DOM. CSS paints the highlight from the anchored
+// lines and the measured height of one line, which is the gutter's height over its
+// line count: rendered line boxes are rounded, so a position computed in `lh` units
+// drifts off its line far down a large file. A large file shows only its first part
+// until Load more; a line past that part is reported as not loaded rather than guessed
+// at, and becomes the anchor, scrolled to, once Load more reaches it.
 //
 // tests/dom/source-line-anchors-session.js runs these functions, and the DOM glue
 // against a small fake document, from the command line.
@@ -50,6 +51,7 @@
    *   applied: string,
    *   clicked: string,
    *   state: AnchorState,
+   *   observer: ResizeObserver | null,
    * }} View
    */
 
@@ -186,6 +188,12 @@
   /** @type {Set<View>} */
   const views = new Set();
 
+  // The anchor a view could not show because Load more had not reached it. Load more
+  // either appends to the view or renders it again; either way `refresh` follows and
+  // scrolls to the anchor once it is there. One file is shown at a time, so one slot.
+  /** @type {{path: string, fragment: string} | null} */
+  let awaiting = null;
+
   /** @param {string} path */
   function filePath(path) {
     return path.endsWith("/") ? path.slice(0, -1) : path;
@@ -208,6 +216,7 @@
   function prune() {
     for (const view of views) {
       if (!view.pre.isConnected) {
+        view.observer?.disconnect();
         views.delete(view);
       }
     }
@@ -230,6 +239,31 @@
     view.notice.textContent = view.state.message;
   }
 
+  /**
+   * The rendered height of one line. The gutter is one text node of the code's line
+   * boxes, so its height over its line count is exact where `1lh` is not: at 110% zoom
+   * a band placed in `lh` units is 32 lines off by line 40,000.
+   *
+   * @param {View} view
+   */
+  function linePitch(view) {
+    const height = view.gutter.getBoundingClientRect().height;
+    return view.loaded.lines > 0 && height > 0 ? height / view.loaded.lines : 0;
+  }
+
+  /** @param {View} view */
+  function measure(view) {
+    const pitch = linePitch(view);
+    if (pitch > 0) {
+      view.pre.style.setProperty("--mb-line-pitch", `${pitch}px`);
+    }
+  }
+
+  /** @param {View} view */
+  function reveal(view) {
+    view.target?.scrollIntoView({ block: "center", inline: "nearest" });
+  }
+
   /** @param {View} view */
   function paintHighlight(view) {
     const { status, start, end } = view.state;
@@ -250,6 +284,7 @@
       view.gutter.appendChild(target);
       view.target = target;
     }
+    measure(view);
   }
 
   /**
@@ -263,10 +298,15 @@
   function apply(view, fragment, scroll) {
     view.applied = fragment;
     view.state = describe(fragment, view.loaded);
+    if (view.state.status === "not-loaded") {
+      awaiting = { path: filePath(view.path), fragment };
+    } else if (scroll && awaiting?.path === filePath(view.path)) {
+      awaiting = null;
+    }
     paintHighlight(view);
     paintNotice(view);
-    if (scroll && view.target) {
-      view.target.scrollIntoView({ block: "center", inline: "nearest" });
+    if (scroll) {
+      reveal(view);
     }
   }
 
@@ -278,9 +318,7 @@
     if (event.button !== 0 || event.target !== view.gutter) {
       return;
     }
-    const style = view.gutter.ownerDocument.defaultView?.getComputedStyle(view.gutter);
-    const lineHeight = Number.parseFloat(style?.lineHeight || "");
-    const line = lineAt(event.offsetY, lineHeight, view.loaded.lines);
+    const line = lineAt(event.offsetY, linePitch(view), view.loaded.lines);
     if (!line) {
       return;
     }
@@ -337,8 +375,19 @@
       applied: "",
       clicked: "",
       state: describe("", { lines: 0, truncated: false }),
+      observer: null,
     };
     views.add(view);
+    if (typeof global.ResizeObserver === "function") {
+      // Zoom, a late web font, or a tab shown for the first time changes the line
+      // box; measure again so the highlight stays on its lines.
+      view.observer = new global.ResizeObserver(() => {
+        if (view.target) {
+          measure(view);
+        }
+      });
+      view.observer.observe(gutter);
+    }
     // A shift-click would otherwise extend the page's text selection to the gutter.
     gutter.addEventListener("mousedown", (event) => {
       if (event.shiftKey) {
@@ -350,8 +399,9 @@
   }
 
   /**
-   * Bring the views under `root` in line with text Load more appended: renumber the
-   * gutter and reapply the anchor, scrolling to it if it has just been reached.
+   * Bring the views under `root` in line with what Load more loaded, whether it
+   * appended to the view or rendered it again: renumber the gutter and reapply the
+   * anchor, scrolling to it if it has just been reached.
    *
    * @param {ParentNode} root
    * @param {{content_truncated?: boolean}} loaded The cache value after the append.
@@ -372,9 +422,13 @@
           view.gutter.prepend(view.pre.ownerDocument.createTextNode(gutterText(lines)));
         }
       }
-      const reached = view.state.status === "not-loaded";
       view.loaded = Object.freeze({ lines, truncated: !!loaded.content_truncated });
-      apply(view, view.applied, reached);
+      const reached = awaiting?.path === filePath(view.path) && awaiting.fragment === view.applied;
+      apply(view, view.applied, false);
+      if (reached && view.state.status !== "not-loaded") {
+        awaiting = null;
+        reveal(view);
+      }
     }
   }
 

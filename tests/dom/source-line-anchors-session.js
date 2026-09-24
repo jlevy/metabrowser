@@ -5,15 +5,25 @@
 // and history, and renders a source view through the SDK's renderSourceView into a
 // small fake document. Then it takes the paths a reader takes: open a partly loaded
 // file at #L60, Load more, click a line number, shift-click a range, edit the fragment,
-// anchor columns, anchor past the end, and clear the fragment. Each step prints the
-// address, the gutter, the highlighted lines, the notice, and any scroll.
+// anchor columns, change the zoom, anchor past the end, clear the fragment, and reach an
+// anchor through Load more's full re-render. Each step prints the address, the gutter,
+// the highlighted lines, the measured line pitch, the notice, and any scroll.
+//
+// A fake layout gives each rendered line a rounded height that differs from the
+// computed `1lh`, as a browser's layout does. The highlight is placed by the pitch the
+// production code measures from the gutter, so a regression to `lh` arithmetic shows
+// here as the wrong pitch.
 
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
 const repoRoot = path.resolve(__dirname, "../..");
+// A 13px font at line-height 1.5 computes to 19.5px, but line boxes are laid out at
+// 1/64 px; zoom changes the rounding again.
 const LINE_HEIGHT_PX = 19.5;
+let renderedLinePx = 19.53125;
+const resizeObservers = [];
 
 // ── A small fake document: just the element surface the production code uses ──
 
@@ -199,6 +209,12 @@ class FakeElement {
   getClientRects() {
     return this.isConnected ? [{}] : [];
   }
+  getBoundingClientRect() {
+    // Only the gutter is measured: one text node of rendered line boxes.
+    const lines =
+      this.firstChild?.nodeType === 3 ? this.firstChild.nodeValue.split("\n").length : 0;
+    return { height: this.isConnected ? lines * renderedLinePx : 0 };
+  }
   scrollIntoView(options) {
     const pre = this.closest("pre.metabrowser-source-lines");
     scrollLog.push({ line: Number(pre?.styleValues.get("--mb-line-first")), ...options });
@@ -288,7 +304,19 @@ const sandbox = {
   console,
   document: fakeDocument,
   fetch: () => Promise.reject(new Error("fetch unavailable in the line-anchor session")),
-  getComputedStyle: () => ({ lineHeight: `${LINE_HEIGHT_PX}px` }),
+  ResizeObserver: class {
+    constructor(callback) {
+      this.callback = callback;
+      this.targets = [];
+      resizeObservers.push(this);
+    }
+    observe(target) {
+      this.targets.push(target);
+    }
+    disconnect() {
+      this.targets = [];
+    }
+  },
   location: { origin: "http://localhost" },
   METABROWSER_SETTINGS: {
     SYNTAX_HIGHLIGHT_MAX_BYTES: 512 * 1024,
@@ -393,24 +421,40 @@ const rest = numbered(41, 100);
 const totalBytes = Buffer.byteLength(firstPart + rest);
 const route = sandbox.MetabrowserNavigationRoute;
 const location = { pathname: "/view/src/app.py", search: "", hash: "#L60" };
+const historyWrites = [];
+function writeHistory(kind, href) {
+  const url = new URL(href, "http://localhost");
+  location.pathname = url.pathname;
+  location.search = url.search;
+  location.hash = url.hash;
+  historyWrites.push(`${kind} ${href}`);
+}
+// Line anchors only ever replace the entry; opening another file pushes one.
 const history = {
   replaceState(_state, _title, href) {
-    const url = new URL(href, "http://localhost");
-    location.pathname = url.pathname;
-    location.search = url.search;
-    location.hash = url.hash;
+    writeHistory("replace", href);
   },
-  pushState() {
-    throw new Error("line anchors never push history entries");
+  pushState(_state, _title, href) {
+    writeHistory("push", href);
   },
 };
 
 let host = null;
+const fullContent = () => ({
+  path: "src/big.py",
+  ext: ".py",
+  size: totalBytes,
+  bytes_read: totalBytes,
+  content: firstPart + rest,
+  content_bytes: totalBytes,
+  content_truncated: false,
+});
 const controller = route.createController({
   // What app.js's applyNavigationTarget does for a file: open it when the path
   // changes, then deliver the target's fragment to whatever the pane shows.
   apply(target, context) {
     if (context.pathChanged) {
+      host?.remove();
       host = new FakeSourceHost("div", "content-body");
       pane.appendChild(host);
       sandbox.metabrowser.renderSourceView(host, {
@@ -451,6 +495,7 @@ function snapshot(step) {
       ? `${pre.styleValues.get("--mb-line-first")}–${pre.styleValues.get("--mb-line-last")}`
       : null,
     scrollTarget: gutter.querySelector(".source-line-anchor-target") ? "present" : null,
+    linePitch: pre.styleValues.get("--mb-line-pitch") ?? null,
     notice: notice ? { role: notice.getAttribute("role"), text: notice.textContent } : null,
     scrolls: scrollLog.splice(0),
   };
@@ -459,7 +504,7 @@ function snapshot(step) {
 function clickLine(line, shiftKey) {
   const gutter = host.querySelector(".source-line-numbers");
   gutter.dispatch("mousedown", { button: 0, shiftKey });
-  gutter.dispatch("click", { button: 0, offsetY: (line - 0.5) * LINE_HEIGHT_PX, shiftKey });
+  gutter.dispatch("click", { button: 0, offsetY: (line - 0.5) * renderedLinePx, shiftKey });
 }
 
 async function popTo(hash) {
@@ -501,6 +546,17 @@ async function main() {
   await popTo("#L5C3-L7C9");
   steps.push(snapshot("a column anchor"));
 
+  renderedLinePx = 21.484375;
+  for (const observer of resizeObservers) {
+    if (observer.targets.some((target) => target.isConnected)) {
+      observer.callback([]);
+    }
+  }
+  steps.push(snapshot("the zoom changes the rendered line height"));
+  clickLine(90, false);
+  await settle();
+  steps.push(snapshot("click line 90 at the new zoom"));
+
   await popTo("#L150");
   steps.push(snapshot("a line past the end"));
 
@@ -514,8 +570,31 @@ async function main() {
   await popTo("");
   steps.push(snapshot("the fragment is removed"));
 
+  // Load more renders a syntax-highlighted view again rather than appending to it;
+  // app.js then refreshes the anchors, which scroll to the anchor it has just reached.
+  await controller.open({ path: "src/big.py", fragment: "L70" });
+  await settle();
+  steps.push(snapshot("open another file at #L70 with lines 1–40 loaded"));
+  const reloaded = new FakeSourceHost("div", "content-body");
+  host.before(reloaded);
+  host.remove();
+  host = reloaded;
+  sandbox.metabrowser.renderSourceView(host, fullContent());
+  steps.push(snapshot("Load more renders the view again"));
+  anchors.refresh(fakeDocument, { content_truncated: false });
+  steps.push(snapshot("the refresh after that render"));
+
+  const crlf = new FakeSourceHost("div", "content-body");
+  pane.appendChild(crlf);
+  sandbox.metabrowser.renderSourceView(crlf, { path: "crlf.txt", content: "one\r\ntwo\rthree\n" });
+  const crlfPre = crlf.querySelector("pre.metabrowser-source-lines");
+  const crlfLines = {
+    gutter: crlfPre.querySelector(".source-line-numbers").firstChild.nodeValue,
+    code: crlfPre.querySelector("code").textContent,
+  };
+
   process.stdout.write(
-    `${JSON.stringify({ grammar, lineCounts, describe, clicks, lineAt, steps }, null, 2)}\n`,
+    `${JSON.stringify({ grammar, lineCounts, describe, clicks, lineAt, steps, crlfLines, historyWrites }, null, 2)}\n`,
   );
 }
 

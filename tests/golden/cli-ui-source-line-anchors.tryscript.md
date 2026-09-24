@@ -15,7 +15,12 @@ The reader’s session opens a partly loaded file at a line past the loaded part
 more, clicks and shift-clicks line numbers, edits the fragment, anchors columns and a
 line past the end, and clears the fragment.
 Clicks replace the address and never scroll; an edited fragment, or an anchor that Load
-more has just reached, scrolls its first line into view once.
+more has just reached by appending or by rendering the view again, scrolls its first
+line into view once.
+The fake layout rounds each line’s height away from the computed `1lh`, as a browser
+does, so the line pitch the highlight is placed by must be the one measured from the
+gutter, and a zoom change measures it again.
+Text with CR and CRLF line endings numbers the lines the browser shows.
 
 ```console
 $ node tests/dom/source-line-anchors-session.js
@@ -114,6 +119,7 @@ $ node tests/dom/source-line-anchors-session.js
       "gutter": "1–40",
       "highlighted": null,
       "scrollTarget": null,
+      "linePitch": null,
       "notice": {
         "role": "status",
         "text": "Line 60 is past the part of this file loaded so far (lines 1–40). Load more to reach it."
@@ -126,6 +132,7 @@ $ node tests/dom/source-line-anchors-session.js
       "gutter": "1–100",
       "highlighted": "60–60",
       "scrollTarget": "present",
+      "linePitch": "19.53125px",
       "notice": null,
       "scrolls": [
         {
@@ -142,6 +149,7 @@ $ node tests/dom/source-line-anchors-session.js
       "gutter": "1–100",
       "highlighted": "3–3",
       "scrollTarget": "present",
+      "linePitch": "19.53125px",
       "notice": null,
       "scrolls": []
     },
@@ -151,6 +159,7 @@ $ node tests/dom/source-line-anchors-session.js
       "gutter": "1–100",
       "highlighted": "3–9",
       "scrollTarget": "present",
+      "linePitch": "19.53125px",
       "notice": null,
       "scrolls": []
     },
@@ -160,6 +169,7 @@ $ node tests/dom/source-line-anchors-session.js
       "gutter": "1–100",
       "highlighted": "1–3",
       "scrollTarget": "present",
+      "linePitch": "19.53125px",
       "notice": null,
       "scrolls": []
     },
@@ -169,6 +179,7 @@ $ node tests/dom/source-line-anchors-session.js
       "gutter": "1–100",
       "highlighted": "10–20",
       "scrollTarget": "present",
+      "linePitch": "19.53125px",
       "notice": null,
       "scrolls": [
         {
@@ -184,6 +195,7 @@ $ node tests/dom/source-line-anchors-session.js
       "gutter": "1–100",
       "highlighted": "5–7",
       "scrollTarget": "present",
+      "linePitch": "19.53125px",
       "notice": null,
       "scrolls": [
         {
@@ -194,11 +206,32 @@ $ node tests/dom/source-line-anchors-session.js
       ]
     },
     {
+      "step": "the zoom changes the rendered line height",
+      "address": "/view/src/app.py#L5C3-L7C9",
+      "gutter": "1–100",
+      "highlighted": "5–7",
+      "scrollTarget": "present",
+      "linePitch": "21.484375px",
+      "notice": null,
+      "scrolls": []
+    },
+    {
+      "step": "click line 90 at the new zoom",
+      "address": "/view/src/app.py#L90",
+      "gutter": "1–100",
+      "highlighted": "90–90",
+      "scrollTarget": "present",
+      "linePitch": "21.484375px",
+      "notice": null,
+      "scrolls": []
+    },
+    {
       "step": "a line past the end",
       "address": "/view/src/app.py#L150",
       "gutter": "1–100",
       "highlighted": null,
       "scrollTarget": null,
+      "linePitch": "21.484375px",
       "notice": {
         "role": "status",
         "text": "Line 150 is past the end of this file, which has 100 lines."
@@ -211,6 +244,7 @@ $ node tests/dom/source-line-anchors-session.js
       "gutter": "1–100",
       "highlighted": null,
       "scrollTarget": null,
+      "linePitch": "21.484375px",
       "notice": {
         "role": "status",
         "text": "Line 150 is past the end of this file, which has 100 lines."
@@ -223,9 +257,60 @@ $ node tests/dom/source-line-anchors-session.js
       "gutter": "1–100",
       "highlighted": null,
       "scrollTarget": null,
+      "linePitch": "21.484375px",
       "notice": null,
       "scrolls": []
+    },
+    {
+      "step": "open another file at #L70 with lines 1–40 loaded",
+      "address": "/view/src/big.py#L70",
+      "gutter": "1–40",
+      "highlighted": null,
+      "scrollTarget": null,
+      "linePitch": null,
+      "notice": {
+        "role": "status",
+        "text": "Line 70 is past the part of this file loaded so far (lines 1–40). Load more to reach it."
+      },
+      "scrolls": []
+    },
+    {
+      "step": "Load more renders the view again",
+      "address": "/view/src/big.py#L70",
+      "gutter": "1–100",
+      "highlighted": "70–70",
+      "scrollTarget": "present",
+      "linePitch": "21.484375px",
+      "notice": null,
+      "scrolls": []
+    },
+    {
+      "step": "the refresh after that render",
+      "address": "/view/src/big.py#L70",
+      "gutter": "1–100",
+      "highlighted": "70–70",
+      "scrollTarget": "present",
+      "linePitch": "21.484375px",
+      "notice": null,
+      "scrolls": [
+        {
+          "line": 70,
+          "block": "center",
+          "inline": "nearest"
+        }
+      ]
     }
+  ],
+  "crlfLines": {
+    "gutter": "1\n2\n3",
+    "code": "one\ntwo\nthree\n"
+  },
+  "historyWrites": [
+    "replace /view/src/app.py#L3",
+    "replace /view/src/app.py#L3-L9",
+    "replace /view/src/app.py#L1-L3",
+    "replace /view/src/app.py#L90",
+    "push /view/src/big.py#L70"
   ]
 }
 ```

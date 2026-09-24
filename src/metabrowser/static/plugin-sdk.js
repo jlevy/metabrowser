@@ -1875,10 +1875,12 @@
     }
     // Line numbers and #L anchors: source-line-anchors.js is an eager script before
     // this one, because the gutter is part of the first paint.
+    // The HTML parser turns CR and CRLF into LF, so the gutter counts the same text.
     const lineAnchors = global.MetabrowserSourceLineAnchors;
+    const text = content.replace(/\r\n?/g, "\n");
     const code =
-      `<pre class="code-block metabrowser-source-lines">${lineAnchors.gutterHtml(content)}` +
-      `<code class="${languageClass}">${escapeHtml(content)}</code></pre>`;
+      `<pre class="code-block metabrowser-source-lines">${lineAnchors.gutterHtml(text)}` +
+      `<code class="${languageClass}">${escapeHtml(text)}</code></pre>`;
     container.classList.add("metabrowser-source-host");
     container.innerHTML = truncationWarning + wrapWithCopy(code) + loadMoreFooter;
     lineAnchors.mount(container, {

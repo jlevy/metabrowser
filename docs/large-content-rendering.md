@@ -214,8 +214,11 @@ node beside the code, in the code’s font and line height, so it costs one more
 Building the numbers is 2–4 ms for 4 MiB (56,680 lines); laying the gutter out adds
 about 35 ms to a 2 MiB first window (28,340 lines), 135 ms against 100 ms without it,
 measured in Chrome on 2026-09-24 on a loaded machine.
-The anchored lines are painted by CSS in `lh` units from two custom properties, so no
-script measures a line.
+The highlight for anchored lines is placed by the height of one rendered line, the
+gutter’s height over its line count, measured again when a `ResizeObserver` sees the
+gutter change size. A multiple of `1lh` drifts, because line boxes are laid out at
+rounded heights: with a 13.1 px code font the `lh` position of line 40,000 is 3 lines
+off while the measured one stays on its line.
 
 **One authority per limit.** Sizes live in `settings.py` and reach the client through
 `window.METABROWSER_SETTINGS`. A constant restated on both sides of the boundary drifts.
