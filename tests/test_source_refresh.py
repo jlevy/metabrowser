@@ -43,6 +43,7 @@ from metabrowser.mirror_refresh import (
     RecordedFreshness,
     RefreshCoordinator,
     RefreshResult,
+    followed_outcome,
 )
 from metabrowser.repository_context import RepositoryContext
 from metabrowser.source import (
@@ -871,3 +872,21 @@ def test_a_detached_origin_head_is_a_quiet_outcome(served: TestClient, origin: _
     assert status["ref"] == "refs/remotes/origin/topic"
     assert status["latest"] == origin.second
     assert status["stale"] is False
+
+
+def test_a_followed_refresh_counts_only_if_it_wrote_its_record() -> None:
+    """A refresh another process ran that was killed writes no record; the old one is not it."""
+
+    busy_at = "2026-09-24T10:00:05Z"
+    newer = RecordedFreshness(busy_at, "refresh", "succeeded", "2026-09-24T10:00:09Z")
+    same_second = RecordedFreshness(busy_at, "refresh", "not_found_or_private", busy_at)
+    older = RecordedFreshness(
+        "2026-09-24T09:00:00Z", "refresh", "succeeded", "2026-09-24T09:00:00Z"
+    )
+    assert followed_outcome(newer, since=busy_at, ended=True) == "succeeded"
+    assert followed_outcome(same_second, since=busy_at, ended=True) == "not_found_or_private"
+    assert followed_outcome(older, since=busy_at, ended=True) == "failed"
+    assert followed_outcome(newer, since=busy_at, ended=False) == "failed"
+    assert followed_outcome(
+        RecordedFreshness(None, None, None, None), since=busy_at, ended=True
+    ) == ("failed")

@@ -292,3 +292,44 @@ def test_a_selection_missing_from_a_fresh_clone_is_not_found_at_once(origin: Pat
     result = _serve(f"{REPO}/tree/never/docs")
     assert result.exit_code == 1
     assert "(ref_not_found)" in str(result.exception)
+
+
+def test_a_no_op_pin_switch_still_supersedes_a_waiting_selection(
+    origin: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Pinning what is already served is still the reader's choice."""
+
+    assert _serve(REPO).exit_code == 0
+    reset_source_session()
+    _push_branch(origin, tmp_path, "later")
+    fetch_may_run = _gate(monkeypatch)
+    assert _serve(f"{REPO}/tree/later/docs").exit_code == 0
+    with TestClient(server.app) as client:
+        same = _pin(client, {"ref": "topic"})
+        assert same.status_code == 200 and same.json()["changed"] is False
+        assert same.json()["status"]["selection_state"] == "superseded"
+        fetch_may_run.set()
+        status = _settle(client)
+        assert (status["pin"], status["selection_state"]) == (FIRST_COMMIT, "superseded")
+
+
+def test_a_miss_is_judged_by_the_fetches_since_it_not_by_the_last_one(
+    origin: Path, tmp_path: Path
+) -> None:
+    """A fetch ran after the first miss, so a later failed fetch does not make it 502."""
+
+    assert _serve(REPO).exit_code == 0
+    reset_source_session()
+    assert _serve(REPO).exit_code == 0
+    with TestClient(server.app) as client:
+        _settle(client)
+        assert _pin(client, {"ref": "first-miss"}).status_code == 202
+        _settle(client)
+        origin.rename(tmp_path / "origin-away.git")
+        assert _pin(client, {"ref": "second-miss"}).status_code == 202
+        failed = _settle(client)
+        assert failed["last_outcome"]["outcome"] == "origin_unavailable"
+        first = _pin(client, {"ref": "first-miss"})
+        assert (first.status_code, first.json()["code"]) == (404, "selection_not_found")
+        second = _pin(client, {"ref": "second-miss"})
+        assert (second.status_code, second.json()["code"]) == (502, "selection_fetch_failed")
