@@ -5,9 +5,9 @@ version = "0.0.1"
 sdk_version = "0.6"
 
 # GitHub support: the URL reducer, the gh credential helper, and pull-request records
-# reach core through metabrowser.cache.providers, not this manifest. The manifest only
-# mounts the pull-request routes. It declares no kind or view yet, so the shell never
-# loads index.js; the pull-request page arrives with its view.
+# reach core through metabrowser.cache.providers, not this manifest. The manifest mounts
+# the pull-request routes and the pull-request page's view, which is all the shell loads
+# index.js for.
 
 # The served pull request's cached record, with a typed absent, pending, current, or
 # stale state. Answers from the cache alone; only a refresh fetches.
@@ -22,3 +22,20 @@ methods = ["GET"]
 route = "pull-refresh"
 sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_refresh_handler"
 methods = ["POST"]
+
+# One text of the served pull request's cached record -- its description or one
+# comment or review -- rendered as Markdown through KPress in its sanitized mode.
+[[data_hook]]
+route = "pull-markdown"
+sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_markdown_handler"
+methods = ["GET"]
+
+# The served pull request's page at /pull/<n>[/files]. No file is ever this kind: the
+# shell selects it for the pull-request route and mounts this view there.
+[[view]]
+kind = "pull-request"
+id = "pull-request"
+label = "Pull request"
+default = true
+container_class = "content-body github-pull-host"
+render_runtime = "client"

@@ -78,9 +78,11 @@ from tests.git_pin_harness import git_env
 from tests.github_pull_fixture import (
     CANONICAL,
     FETCHED_AT,
+    HOSTILE_COMMENT,
     READER,
     Origin,
     account,
+    allowlist_violations,
     build_origin,
     install_fake_gh,
     ok,
@@ -594,6 +596,93 @@ def test_the_pull_route_reports_a_missing_record(pinned_pull: tuple[_Stand, Test
     )
     stand.refresh(7)
     assert client.get("/api/plugin/github/pull").json()["state"] == "current"
+
+
+def test_the_pull_route_answers_an_unchanged_record_with_a_304(
+    pinned_pull: tuple[_Stand, TestClient],
+) -> None:
+    stand, client = pinned_pull
+    first = client.get("/api/plugin/github/pull")
+    etag = first.headers["etag"]
+    unchanged = client.get("/api/plugin/github/pull", headers={"if-none-match": etag})
+    assert (unchanged.status_code, unchanged.content) == (304, b"")
+    assert unchanged.headers["cache-control"] == "no-store"
+    # Aging past the freshness window changes the state, and so the tag.
+    stand.monkeypatch.setattr(
+        pulls, "utc_now", lambda: FETCHED_AT + timedelta(seconds=FRESHNESS_WINDOW_S + 1)
+    )
+    aged = client.get("/api/plugin/github/pull", headers={"if-none-match": etag})
+    assert (aged.status_code, aged.json()["state"]) == (200, "stale")
+    assert aged.headers["etag"] != etag
+
+
+def test_the_markdown_route_renders_one_part_of_the_record(
+    pinned_pull: tuple[_Stand, TestClient],
+) -> None:
+    stand, client = pinned_pull
+    record = client.get("/api/plugin/github/pull").json()["record"]
+    body = client.get("/api/plugin/github/pull-markdown", params={"part": "body"})
+    assert body.status_code == 200
+    rendered = body.json()
+    assert (rendered["part"], rendered["fetched_at"]) == ("body", record["fetched_at"])
+    assert "<strong>two</strong>" in rendered["html"]
+    review = record["reviews"][1]
+    answer = client.get(
+        "/api/plugin/github/pull-markdown", params={"part": f"review/{review['id']}"}
+    )
+    assert "Looks right." in answer.json()["html"]
+    for part, status_code, code in (
+        ("", 400, "invalid_part"),
+        ("pull/7", 400, "invalid_part"),
+        ("review/1", 404, "unknown_part"),
+    ):
+        refused = client.get("/api/plugin/github/pull-markdown", params={"part": part})
+        assert (refused.status_code, refused.json()["code"]) == (status_code, code)
+    (stand.published.home / source_pull_record(stand.published.slug, 7)).unlink()
+    missing = client.get("/api/plugin/github/pull-markdown", params={"part": "body"})
+    assert (missing.status_code, missing.json()["code"]) == (404, "not_cached")
+
+
+def test_the_markdown_route_answers_only_allowlisted_markup(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.builtin_plugins.github import pull_markdown
+
+    monkeypatch.setattr(pull_markdown, "part_text", lambda _record, _part: HOSTILE_COMMENT)
+    _stand, client = pinned_pull
+    answer = client.get("/api/plugin/github/pull-markdown", params={"part": "body"}).json()
+    # No asset list: KPress adds scripts for what a text contains, and none may load.
+    assert set(answer) == {"number", "fetched_at", "part", "html"}
+    html = answer["html"]
+    assert allowlist_violations(html) == []
+    for gone in ("url(", "javascript:", "evil.css", "e.x/", "dQw4w9WgXcQ", "modal-overlay"):
+        assert gone not in html, gone
+    # The Markdown survives; an image is a link to it; a relative link is GitHub's.
+    assert "<code>topic</code>" in html
+    assert (
+        '<a href="https://example.com/badge.png" target="_blank" rel="noopener noreferrer">'
+        "build badge</a>"
+    ) in html
+    assert '<a href="https://github.com/octo/demo/pull/docs/new.md" target="_blank"' in html
+
+
+def test_harden_keeps_the_allowlist_and_is_idempotent() -> None:
+    from metabrowser.builtin_plugins.github.pull_html import harden
+
+    base = "https://github.com/o/r/pull/1"
+    source = (
+        '<p class="x">a &amp; b &lt;c&gt; <code class="language-py">x</code></p>'
+        '<img alt="&quot;q&quot;"><ol start="3" id="o"><li>i</li></ol>'
+        '<table><tr><td colspan="2" rowspan="100" align="CENTER" style="x">t</td></tr></table>'
+        '<details open data-x="1"><summary>s</summary>d</details><custom-tag>kept text</custom-tag>'
+    )
+    once = harden(source, base)
+    assert once == (
+        '<p>a &amp; b &lt;c&gt; <code>x</code></p><span>"q"</span><ol start="3"><li>i</li></ol>'
+        '<table><tr><td colspan="2" align="center">t</td></tr></table>'
+        "<details open><summary>s</summary>d</details>kept text"
+    )
+    assert harden(once, base) == once
 
 
 # ── Review hardening: degraded parts, oversized pages, and typed failures ──

@@ -458,6 +458,14 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/plugin/github/pull-markdown",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/plugin/github/pull-refresh",
       "methods": [
         "POST"
@@ -588,6 +596,14 @@ status: 200
       "kind": "browser"
     },
     {
+      "path": "/pull/{rest:path}",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "browser"
+    },
+    {
       "path": "/view/{path:path}",
       "methods": [
         "GET",
@@ -612,7 +628,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 45
+  "count": 47
 }
 ? 0
 ```

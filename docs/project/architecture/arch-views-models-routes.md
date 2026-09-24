@@ -70,6 +70,7 @@ Built-in kinds, as registered by the manifests in `src/metabrowser/builtin_plugi
 | `unknown-jsonl` | Other `.jsonl` | Log, Raw JSON | File envelope |
 | `image` | Browser image extensions | Image | File envelope; raw asset |
 | `binary` | Non-text files | Bytes | Bounded byte-chunk hook |
+| `pull-request` | No file; the shell selects it for `/pull/<n>[/files]` | Pull request | `github/pull` envelope; `github/pull-markdown` per text; `diff/comparison` for Files changed |
 
 Two kinds are also **containers** — folder-like entries whose children are addressable
 (see [nav containers](arch-nav-containers.md)): `folder` (children are files and
@@ -147,6 +148,7 @@ the sources that produce them.
 | `/view/<container>/<inner>` | One entry inside a container file | Implemented. On a Git pin the container address is a `GitPath` prefix and the inner is a host path |
 | `/commit/<rev>` | A commit’s change set against its first parent | Implemented |
 | `/commit/<rev>/<inner>` | One file’s diff inside that change set | Route parses; the panel restores the commit, not yet the file |
+| `/pull/<n>[/files]` | The served pull request’s page: its conversation, or its Files changed | Implemented. The shell mounts the view a plugin registers for the `pull-request` kind (the GitHub plugin’s); a number other than the served pull request’s shows why it has nothing |
 | `/compare/<base>..<head>[/<inner>]` | An explicit comparison (`...` for merge base) | Specified, not built |
 | `/hosted/<provider-kind>/<instance-key>/<repository-key>/<resource-kind>/<resource-key>[/<inner>]` | A provider-neutral hosted resource and optional addressed child; typed atom keys encode the instance and opaque IDs canonically | Proposed for v0.12.0 in `mb-xzj3`, `mb-6mle`, `mb-83w0`, and `mb-81p5`; the first kind is `change-request` |
 
@@ -180,12 +182,13 @@ reservation and its invariants, is in
 
 Plugin hooks currently registered: `diff/document`, `diff/children`, `diff/comparison`,
 `folder/*`, `binary/chunk`, `agent-log/charts`, `structured/parsed`, `github/pull`,
-`github/pull-refresh`. On a `GitRevisionSubject`, `diff/comparison` honors the pin
-through `GitLocation` and `GitDiffSource.content` reads blobs through the shared
-cat-file pool; patch `document`/`children`, `binary/chunk`, `structured/parsed`, and
-`agent-log/charts` honor `GitPath` and follow in-tree relative symlink blobs.
-`diff/comparison?left=&right=` takes `base_policy=direct` (the default) or `merge_base`,
-and reports it in the document.
+`github/pull-refresh`, `github/pull-markdown`. On a `GitRevisionSubject`,
+`diff/comparison` honors the pin through `GitLocation` and `GitDiffSource.content` reads
+blobs through the shared cat-file pool; patch `document`/`children`, `binary/chunk`,
+`structured/parsed`, and `agent-log/charts` honor `GitPath` and follow in-tree relative
+symlink blobs.
+`diff/comparison?left=&right=` takes `base_policy=direct` (the default) or
+`merge_base`, and reports it in the document.
 
 `github/pull` answers the served pull request’s cached record from the cache alone:
 `absent` (with `no_pull_request`, `not_cached`, `schema_mismatch`, or `unreadable`),
@@ -200,6 +203,23 @@ answers `202` at once, naming `github/pull` as its `status_route`, which a one-s
 `--api` prints after the refresh ends, exiting 1 when it failed; it is a POST with a
 JSON object body for the same reason `/api/source/refresh` is, and plugin data routes
 are one path segment, hence the name.
+`github/pull` also sends an entity tag over everything but the record, which changes
+only with `fetched_at`, and answers a matching `If-None-Match` with `304`, so the
+pull-request page polls it as cheaply as the status route.
+`github/pull-markdown?part=<part>` renders one text of the cached record through KPress
+in its sanitized mode and answers only the resulting HTML, with the record’s
+`fetched_at` and the part: `body`, or `issue_comment/<id>`, `review/<id>`, or
+`review_comment/<id>`. It never fetches; a part the record lacks is `unknown_part`.
+KPress keeps what a document of its own may use, so the hook reduces that HTML to an
+allowlist (`builtin_plugins/github/pull_html.py`): plain text markup (paragraphs,
+headings, emphasis, code, quotes, lists, tables, details, `div`, `span`) with no
+attributes but a link’s `href` (http or https, absolute against the pull request’s
+github.com page, in a new tab), `ol[start]`, a table cell’s `colspan`, `rowspan`, and
+`align`, and `details[open]`. Scripts, styles, SVG, MathML, media, frames, forms, and
+stylesheets go with their content; an image becomes a link to it; any other tag is
+unwrapped to its text.
+KPress’s asset list is not sent, so no script KPress adds for a text’s content loads.
+The page applies the same allowlist again, rebuilding the nodes it inserts.
 See
 [Pull-request records](arch-repository-sources-and-provider-mirrors.md#pull-request-records).
 
@@ -285,9 +305,11 @@ or kind arrives with transcript evidence or the build fails.
 | `/api/plugin/diff/comparison` | covered | `--api` | `cli-api-plugins.tryscript.md`, `cli-api-git.tryscript.md`, `cli-github-pull.tryscript.md` |
 | `/api/plugin/github/pull` | covered | `--api` | `cli-github-pull.tryscript.md` |
 | `/api/plugin/github/pull-refresh` | covered | `--api` | `cli-github-pull.tryscript.md` |
+| `/api/plugin/github/pull-markdown` | covered | `--api` | `cli-github-pull.tryscript.md` |
 | `/api/plugin/structured/parsed` | covered | `--api` | `cli-api-plugins.tryscript.md` |
 | `/view` | covered | `--show PATH`, `--show /view/...` | `cli-show.tryscript.md` |
 | `/commit` | covered | `--show /commit/<rev>[/<inner>]` | `cli-api-git.tryscript.md` |
+| `/pull` | covered | `--show /pull/<n>[/files]` | `cli-github-pull.tryscript.md` |
 | `/api/events` | exempt | — | streaming; the response never terminates, so there is no envelope to pin |
 | `/raw` | exempt | — | asset serving; the query form and `/raw/{path}` share one resolver and send the file’s bytes plus sandbox headers, covered by `tests/test_raw_passthrough.py`, `tests/test_content_trust.py`, `tests/test_raw_path_route.py`, and, on a served Git pin, `tests/test_serve_pin.py` |
 | `/_debug/tasks` | exempt | — | opt-in diagnostic, not a surface the browser reads |
@@ -391,7 +413,7 @@ SSE transport whose emitted snapshot is already owned by its data routes.
 | `navigation.preview-pane-states` | interaction | `static/navigation.js#createPreviewPaneLifecycle`, `static/navigation.js#requestFailure`, `static/navigation.js#responseBodyFailure`, `static/navigation.js#settleFileSelectionFailure`, `static/navigation.js#openFailureOutcome`, `static/navigation.js#createController` | `/api/file`, `transport-exempt:/api/events` | `node tests/dom/preview-pane-state-session.js` | `cli-ui-file-lifecycle.tryscript.md` |
 | `navigation.inventory-snapshot-replacement` | interaction | `static/navigation.js#replaceFileSnapshot` | `transport-exempt:/api/events` | `node tests/dom/file-navigation-lazy-asset-session.js` | `cli-ui-file-lifecycle.tryscript.md` |
 | `navigation.catalog-continuity` | interaction | `static/catalog-feed.js#create` | `/api/catalog`, `transport-exempt:/api/events` | `node tests/dom/catalog-feed-behavior.js` | `cli-ui-navigation.tryscript.md` |
-| `navigation.route-identity` | interaction | `static/navigation.js#href`, `static/navigation.js#parse`, `static/navigation.js#commitHref`, `static/navigation.js#parseCommit`, `static/navigation.js#displayPath` | `/api/file`, `/api/plugin/diff/comparison` | `node tests/dom/navigation-route-behavior.js` | `cli-ui-navigation.tryscript.md` |
+| `navigation.route-identity` | interaction | `static/navigation.js#href`, `static/navigation.js#parse`, `static/navigation.js#commitHref`, `static/navigation.js#parseCommit`, `static/navigation.js#pullHref`, `static/navigation.js#parsePull`, `static/navigation.js#displayPath` | `/api/file`, `/api/plugin/diff/comparison` | `node tests/dom/navigation-route-behavior.js` | `cli-ui-navigation.tryscript.md` |
 | `navigation.served-source-kind` | interaction | `static/plugin-sdk.js#sourceKind`, `static/navigation.js#displayPath` | `/view`, `/api/tree` | `node tests/dom/source-kind-session.js` | `cli-ui-source-kind.tryscript.md` |
 | `source.pinned-revision` | data | `/api/source/status` | `owned-route` | `metab shellroot --api /api/source/status` | `cli-api-shell.tryscript.md` |
 | `source.mirror-freshness` | interaction | `static/source-freshness.js#createController`, `static/source-freshness.js#describe` | `/api/source/status`, `/api/source/refresh` | `node tests/dom/source-freshness-session.js` | `cli-ui-source-freshness.tryscript.md` |
@@ -399,6 +421,10 @@ SSE transport whose emitted snapshot is already owned by its data routes.
 | `source.newer-revision-offer` | interaction | `static/source-freshness.js#describe`, `static/source-freshness.js#acceptOffer` | `/api/source/status`, `/api/source/pin` | `node tests/dom/source-freshness-session.js` | `cli-ui-source-freshness.tryscript.md` |
 | `source.stale-pin-guard` | interaction | `static/source-pin-guard.js#guardFetch`, `static/source-pin-guard.js#guardedRequest` | `/api/file`, `/api/tree`, `/api/source/status` | `node tests/dom/source-freshness-session.js` | `cli-ui-source-freshness.tryscript.md` |
 | `git.history-stale-cursor` | interaction | `static/git-history-window.js#classifyPageFailure` | `/api/git/log` | `node tests/dom/source-freshness-session.js` | `cli-ui-source-freshness.tryscript.md` |
+| `github.pull-page` | interaction | `builtin_plugins/github/pull-page.js#describePull`, `builtin_plugins/github/pull-page.js#createPullController` | `/api/plugin/github/pull`, `/api/plugin/github/pull-refresh`, `/api/plugin/github/pull-markdown`, `/api/source/pin` | `node tests/dom/github-pull-page-session.js` | `cli-ui-github-pull-page.tryscript.md` |
+| `github.pull-page-inert-markup` | interaction | `builtin_plugins/github/pull-page.js#sanitizeNodes`, `builtin_plugins/github/pull-page.js#allowedAttributes`, `builtin_plugins/github/pull-page.js#imageLink`, `builtin_plugins/github/pull-page.js#safeLink`, `builtin_plugins/github/pull-page.js#gitPathWire` | `/api/plugin/github/pull-markdown` | `node tests/dom/github-pull-page-session.js` | `cli-ui-github-pull-page.tryscript.md` |
+| `github.pull-page-paint-decisions` | interaction | `builtin_plugins/github/pull-page.js#conversationAction`, `builtin_plugins/github/pull-page.js#conversationKey`, `builtin_plugins/github/pull-page.js#filesAction` | `/api/plugin/github/pull` | `node tests/dom/github-pull-page-session.js` | `cli-ui-github-pull-page.tryscript.md` |
+| `navigation.pull-page-history` | interaction | `static/navigation.js#pullHistoryAction` | `local-only` | `node tests/dom/navigation-route-behavior.js` | `cli-ui-navigation.tryscript.md` |
 | `assets.on-demand-load-recovery` | interaction | `static/asset-loader.js#ensureAsset`, `static/asset-loader.js#ensureScript` | `local-only` | `node tests/dom/asset-loader-behavior.js` | `cli-ui-navigation.tryscript.md` |
 | `source.incremental-cache-transaction` | interaction | `static/source-append.js#requestOwnsPreview`, `static/source-append.js#commitChunkCache` | `/api/file` | `node tests/dom/source-append-navigation-session.js` | `cli-ui-file-lifecycle.tryscript.md` |
 | `agent-log.chart-request-ownership` | interaction | `builtin_plugins/agent_log/index.js#renderCharts` | `/api/file`, `/api/plugin/agent-log/charts` | `node tests/dom/agent-log-plugin-behavior.js` | `cli-ui-agent-log-charts.tryscript.md` |
@@ -419,6 +445,7 @@ SSE transport whose emitted snapshot is already owned by its data routes.
 | `html.full-page-escape` | interaction | `builtin_plugins/html/index.js#createFullPageBar` | `/api/file` | `node tests/dom/html-preview-session.js` | `cli-ui-html-preview.tryscript.md` |
 | `document.reading-width` | interaction | `static/document-width.js#apply` | `local-only` | `node tests/dom/document-width-session.js` | `cli-ui-document-width.tryscript.md` |
 | `navigation.filter-layout` | paint-exempt | `static/styles.css` | `local-only` | — | CSS geometry and disclosure motion require rendered layout; focused selectors and accessibility state are pinned in `tests/test_browser_filter_ui.py` and `tests/test_tree_keyboard_integration.py` |
+| `github.pull-page-paint` | paint-exempt | `builtin_plugins/github/pull-page.js#mountPullPage` | `local-only` | — | Building the page’s DOM, observing which texts scroll into view, loading KPress’s stylesheets, mounting the diff view, and the shell’s `app.js` calls that claim the pane and call `history.pushState` need a rendered page. Every decision they act on is a session owner above: the history action (`navigation.pull-page-history`), whether the conversation repaints or asks again and what Files changed keeps (`github.pull-page-paint-decisions`), and what of a text’s HTML is inserted (`github.pull-page-inert-markup`). The route grammar, the shell and plugin wiring for the `pull-request` kind, and that only an inert template is parsed are pinned in `tests/test_pull_page_route.py`; the browser walkthrough is in the v0.12 QA runbook |
 
 ### Planned v0.12 hosted-review functional rows
 

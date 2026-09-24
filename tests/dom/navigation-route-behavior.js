@@ -83,6 +83,57 @@ for (const revision of ["", ".bad", "bad ref", "x".repeat(257)]) {
   check(`reject invalid commit revision ${JSON.stringify(revision)}`, rejected);
 }
 
+equal("pull-request page href", route.pullHref(7), "/pull/7");
+equal("pull-request Files changed href", route.pullHref(7, "files"), "/pull/7/files");
+equal("pull-request page parses", route.parsePull("/pull/7"), { number: 7, tab: "" });
+equal("pull-request tab parses with a trailing slash", route.parsePull("/pull/7/files/"), {
+  number: 7,
+  tab: "files",
+});
+for (const pathname of ["/pull/0", "/pull/07", "/pull/7/commits", "/pull/7/files/x", "/pull/x"]) {
+  equal(`reject pull-request route ${pathname}`, route.parsePull(pathname), null);
+}
+for (const [number, tab] of [
+  [0, ""],
+  [7, "commits"],
+]) {
+  let rejected = false;
+  try {
+    route.pullHref(number, tab);
+  } catch (error) {
+    rejected = error instanceof TypeError;
+  }
+  check(`reject invalid pull-request href ${number}/${tab}`, rejected);
+}
+
+// History landing on a pull-request route: the shown page switches its tab; a page a
+// commit or file replaced in the meantime is mounted again; a landing the navigation
+// controller applies itself, because it held a /view/ target, is left to it.
+equal(
+  "back between a page's tabs switches the tab",
+  route.pullHistoryAction("/pull/7/files", 7, false),
+  {
+    action: "tab",
+    tab: "files",
+  },
+);
+equal(
+  "back onto a page whose pane a commit took mounts it",
+  route.pullHistoryAction("/pull/7", null, false),
+  { action: "mount", number: 7, tab: "" },
+);
+equal(
+  "back onto another pull request's page mounts it",
+  route.pullHistoryAction("/pull/7/files", 8, false),
+  { action: "mount", number: 7, tab: "files" },
+);
+equal(
+  "back from a file view is the controller's",
+  route.pullHistoryAction("/pull/7", null, true),
+  null,
+);
+equal("back onto a view route is not a page's", route.pullHistoryAction("/view/", 7, false), null);
+
 equal("root href", route.href({ path: "" }), "/view/");
 equal("folder href keeps its slash", route.href({ path: "docs/" }), "/view/docs/");
 equal(

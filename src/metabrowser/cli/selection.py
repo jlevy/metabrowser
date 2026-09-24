@@ -40,7 +40,7 @@ from metabrowser.errors import CLIError
 from metabrowser.git.process import GitError, repository_store_target
 from metabrowser.git.tree_source import GitPath, GitRevisionSubject, display_segment
 from metabrowser.mirror_refresh import OpenedSelection, SelectionOpener
-from metabrowser.view_routes import VIEW_ROUTE_PREFIX
+from metabrowser.view_routes import VIEW_ROUTE_PREFIX, format_pull_href
 
 LOG = logging.getLogger(__name__)
 
@@ -229,11 +229,15 @@ def pending_selection_opener(
 
 
 def selection_view_href(selection: RepositorySelection, resolved: ResolvedSelection) -> str:
-    """The `/view/` address a served URL selection opens at, with its line anchor.
+    """The address a served URL selection opens at.
 
-    The browser keeps the fragment; highlighting the lines is separate work.
+    A file or folder opens at its `/view/` address, with its line anchor; the browser
+    keeps the fragment, and highlighting the lines is separate work. A pull request
+    opens at its page, `/pull/<n>`.
     """
 
+    if selection.kind == "pull_request" and selection.pull_request is not None:
+        return format_pull_href(selection.pull_request)
     if selection.kind not in {"tree", "blob"} or not resolved.path:
         return VIEW_ROUTE_PREFIX
     href = VIEW_ROUTE_PREFIX + GitPath(resolved.path).to_wire()

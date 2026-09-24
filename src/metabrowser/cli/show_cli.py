@@ -38,11 +38,14 @@ from metabrowser.inventory_engine.contract import (
 from metabrowser.normalize import NormalizeContext, normalize_payload
 from metabrowser.view_routes import (
     COMMIT_ROUTE_PREFIX,
+    PULL_ROUTE_PREFIX,
     VIEW_ROUTE_PREFIX,
     decode_safe_commit_route,
+    decode_safe_pull_route,
     decode_safe_view_path,
     format_commit_href,
     format_inventory_view_href,
+    format_pull_href,
 )
 
 if TYPE_CHECKING:
@@ -132,6 +135,57 @@ def _describe_comparison(payload: dict[str, Any], inner: str) -> str:
         parts.append(f"file={inner}")
     detail = " ".join(parts) if parts else "no summary fields"
     return f"comparison envelope; {detail}"
+
+
+def _require_served_pull(payload: dict[str, Any], number: int, display_path: str) -> None:
+    """Refuse a pull-request page for a number this server does not serve.
+
+    The page says the same: it shows only the served pull request's record.
+    """
+
+    served = payload.get("number")
+    if served is None:
+        raise CLIError(f"{display_path}: this source serves no pull request")
+    if served != number:
+        raise CLIError(f"{display_path}: this source serves pull request {served}")
+
+
+def _describe_pull(payload: dict[str, Any], tab: str) -> str:
+    """Summarize the pull envelope the page renders: its state and what the record holds."""
+
+    parts = [f"state={payload.get('state')}"]
+    if payload.get("reason") is not None:
+        parts.append(f"reason={payload['reason']}")
+    record = payload.get("record")
+    if isinstance(record, dict):
+        pull = record.get("pull")
+        if isinstance(pull, dict):
+            parts.append(f"pull_state={_pull_display_state(pull)}")
+        parts.append(f"fetched_at={record.get('fetched_at')}")
+        parts.append(f"reader={record.get('reader')}")
+        for name in ("issue_comments", "reviews", "review_comments", "check_runs"):
+            items = record.get(name)
+            parts.append(f"{name}={len(items) if isinstance(items, list) else 0}")
+        status = record.get("status")
+        statuses = status.get("statuses") if isinstance(status, dict) else None
+        parts.append(f"statuses={len(statuses) if isinstance(statuses, list) else 0}")
+        unavailable = record.get("unavailable")
+        if isinstance(unavailable, dict) and unavailable:
+            parts.append("unavailable=" + ",".join(sorted(str(key) for key in unavailable)))
+    parts.append(f"tab={tab or 'conversation'}")
+    if tab == "files":
+        parts.append(f"comparison_route={payload.get('comparison_route')}")
+    return "pull envelope; " + " ".join(parts)
+
+
+def _pull_display_state(pull: dict[str, Any]) -> str:
+    """The state badge GitHub shows: merged and draft before open and closed."""
+
+    if pull.get("merged"):
+        return "merged"
+    if pull.get("state") == "open" and pull.get("draft"):
+        return "draft"
+    return str(pull.get("state"))
 
 
 def _display_selection(path: str) -> str:
@@ -283,12 +337,17 @@ async def ashow_active(
     from metabrowser import server
 
     commit = None
+    pull: tuple[int, str] | None = None
     native_selection: str | None = None
     git_wire: str | None = None
     git_candidates: list[str] = []
     if path.startswith(COMMIT_ROUTE_PREFIX):
         commit = decode_safe_commit_route(_encoded_route(path, display_path))
         if commit is None:
+            raise CLIError(f"{display_path} is not a route this grammar accepts")
+    elif path.startswith(PULL_ROUTE_PREFIX):
+        pull = decode_safe_pull_route(_encoded_route(path, display_path))
+        if pull is None:
             raise CLIError(f"{display_path} is not a route this grammar accepts")
 
     if commit is not None:
@@ -297,6 +356,11 @@ async def ashow_active(
         if inner:
             params["file"] = inner
         route = "/api/plugin/diff/comparison"
+        needs_index = False
+    elif pull is not None:
+        # The page renders the served pull request's cached record, which the GitHub
+        # plugin's pull route answers; Files changed is the comparison it names.
+        route, params = "/api/plugin/github/pull", {}
         needs_index = False
     elif filesystem_root is None:
         from metabrowser.git.content_routes import decode_git_view_path
@@ -377,6 +441,13 @@ async def ashow_active(
         # registered ones rather than a second list that could drift from them.
         views: Any = server._views_for_kind("diff")
         model = _describe_comparison(payload, inner)
+    elif pull is not None:
+        number, tab = pull
+        _require_served_pull(payload, number, display_path)
+        shown_route = format_pull_href(number, tab)
+        kind = "pull-request"
+        views = server._views_for_kind(kind)
+        model = _describe_pull(payload, tab)
     elif git_wire is not None:
         identity = payload.get("path", git_wire)
         if not isinstance(identity, str):

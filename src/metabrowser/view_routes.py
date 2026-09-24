@@ -16,6 +16,12 @@ from metabrowser.paths_safe import _safe_path
 
 VIEW_ROUTE_PREFIX = "/view/"
 COMMIT_ROUTE_PREFIX = "/commit/"
+PULL_ROUTE_PREFIX = "/pull/"
+# The tabs of a pull-request page after its number: the conversation is the page
+# itself, and `files` is its Files changed, spelled as github.com spells it.
+PULL_ROUTE_TABS = ("", "files")
+# A pull-request number as the GitHub URL reducer admits one.
+_PULL_NUMBER = re.compile(r"^[1-9][0-9]{0,9}$")
 _VIEW_ROUTE_PREFIX_BYTES = VIEW_ROUTE_PREFIX.encode()
 _MALFORMED_ESCAPE = re.compile(rb"%(?![0-9A-Fa-f]{2})")
 # A revision as it may appear in a route: an oid, or a ref name git
@@ -167,6 +173,45 @@ def decode_safe_commit_route(raw_path: bytes) -> tuple[str, str] | None:
     if any(segment in ("", ".", "..") for segment in inner_segments):
         return None
     return revision, "/".join(inner_segments)
+
+
+def format_pull_href(number: int, tab: str = "") -> str:
+    """Return the served pull request's page, ``/pull/<n>`` or ``/pull/<n>/files``."""
+
+    if _PULL_NUMBER.fullmatch(str(number)) is None or tab not in PULL_ROUTE_TABS:
+        raise ValueError("pull route requires a pull-request number and a known tab")
+    return f"{PULL_ROUTE_PREFIX}{number}" + (f"/{tab}" if tab else "")
+
+
+def decode_safe_pull_route(raw_path: bytes) -> tuple[int, str] | None:
+    """Decode ``/pull/<n>[/files]`` into (number, tab), or ``None``.
+
+    The page belongs to the pull request the server serves; which one that is, and
+    whether it is cached, is the pull route's answer, not this gate's. A trailing slash
+    names the same page.
+    """
+
+    if not raw_path.startswith(PULL_ROUTE_PREFIX.encode()):
+        return None
+    segments = raw_path[len(PULL_ROUTE_PREFIX) :].split(b"/")
+    if len(segments) > 1 and segments[-1] == b"":
+        segments.pop()
+    if len(segments) > 2:
+        return None
+    try:
+        number, tab = (
+            segments[0].decode("ascii"),
+            (segments[1].decode("ascii") if len(segments) == 2 else ""),
+        )
+    except UnicodeDecodeError:
+        return None
+    if (
+        _PULL_NUMBER.fullmatch(number) is None
+        or tab not in PULL_ROUTE_TABS
+        or (len(segments) == 2 and not tab)
+    ):
+        return None
+    return int(number), tab
 
 
 def _validate_logical_segments(segments: list[str]) -> None:
