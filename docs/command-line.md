@@ -144,6 +144,8 @@ for it and answers `404` at once.
 A pin request may also name the page’s address, as in
 `{"ref": "feature", "view": "/view/…"}`; the answer’s `view_href` is then that address
 when the new revision has the entry, or `/view/` when it does not.
+The address is checked before anything switches: it must be percent-encoded ASCII, as a
+page’s own pathname is, and a query or fragment is dropped.
 `/api/source/refs?kind=branch` (or `kind=tag`) lists what the selector offers, with `q`
 for a case-insensitive name fragment and `limit` for the page size (default 100, at most
 1000); `total` and `truncated` say how many matched.

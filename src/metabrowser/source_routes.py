@@ -35,6 +35,7 @@ from metabrowser.git.tree_source import (
     GitPathError,
     GitRevisionSubject,
     ref_short_name,
+    resolve_git_blob_entry,
     split_git_container_wire,
 )
 from metabrowser.http_caching import build_scoped_etag, etag_headers, matches_if_none_match
@@ -51,12 +52,17 @@ from metabrowser.mirror_refresh import (
     mirror_session,
 )
 from metabrowser.source import (
+    MAX_CONTAINER_INNER_DEPTH,
     SubjectNotOpenError,
     UnsupportedSourceCapabilityError,
     get_source_session,
     unsupported_source_payload,
 )
-from metabrowser.view_routes import VIEW_ROUTE_PREFIX, decode_view_logical_path
+from metabrowser.view_routes import (
+    VIEW_ROUTE_PREFIX,
+    decode_view_logical_path,
+    format_view_href,
+)
 
 log = logging.getLogger(__name__)
 
@@ -326,34 +332,56 @@ def _selection(body: dict[str, Any]) -> tuple[str | None, str | None, str | None
         raise _BadRequestError('give exactly one of "ref" and "oid"')
     if not isinstance(ref if ref is not None else oid, str):
         raise _BadRequestError("the selection must be a string")
-    if view is not None and not (isinstance(view, str) and view.startswith(VIEW_ROUTE_PREFIX)):
+    return cast(str | None, ref), cast(str | None, oid), _view_identity(view)
+
+
+def _view_identity(view: object) -> str | None:
+    """The identity a page's ``/view/`` address names; ``""`` for the root.
+
+    ``None`` when the request names no address. Decided before the pin switches, so a
+    request that cannot be answered is refused with nothing changed. A page sends its
+    ``location.pathname``, which is percent-encoded ASCII, so anything else is refused;
+    a query or fragment is dropped, and an address that does not decode, as a stale or
+    hand-written one may not, reads as the root.
+    """
+
+    if view is None:
+        return None
+    if not (isinstance(view, str) and view.isascii() and view.startswith(VIEW_ROUTE_PREFIX)):
         raise _BadRequestError('"view" is a /view/ address')
-    return cast(str | None, ref), cast(str | None, oid), view
+    raw = view.split("?", 1)[0].split("#", 1)[0]
+    if len(raw) > len(VIEW_ROUTE_PREFIX):
+        raw = raw.removesuffix("/")
+    return decode_view_logical_path(raw.encode("ascii")) or ""
 
 
-async def view_on_pin(subject: GitRevisionSubject, view: str) -> str:
-    """Where a page at the ``/view/`` address *view* goes on *subject*.
+async def view_on_pin(subject: GitRevisionSubject, identity: str) -> str:
+    """Where a page showing the ``/view/`` *identity* goes on *subject*.
 
     The same entry, in its canonical spelling, when the revision has it; otherwise the
     root, ``/view/``. An entry inside a container file keeps its address when the
-    container is there. A line anchor or query is not part of *view* and is not kept:
-    the lines may differ on another revision.
+    revision has that file and the inner path is within the container depth bound; the
+    view then answers for the inner entry as it would for any link. A line anchor or
+    query is not kept: the lines may differ on another revision.
     """
 
-    raw = view.removesuffix("/") if len(view) > len(VIEW_ROUTE_PREFIX) else view
-    logical = decode_view_logical_path(raw.encode("utf-8", "surrogateescape"))
-    if not logical:
+    if not identity:
         return VIEW_ROUTE_PREFIX
     try:
-        git_path, inner = split_git_container_wire(logical)
+        git_path, inner = split_git_container_wire(identity)
+        if not git_path.segments:
+            return VIEW_ROUTE_PREFIX
+        if inner:
+            if inner.count("/") + 1 > MAX_CONTAINER_INNER_DEPTH:
+                return VIEW_ROUTE_PREFIX
+            container = await resolve_git_blob_entry(subject.tree_source, git_path)
+            return VIEW_ROUTE_PREFIX if container is None else format_view_href(identity)
         entry = await subject.tree_source.resolve_path(git_path)
-    except (GitPathError, ContentReadError) as exc:
+    except (GitPathError, ContentReadError, ValueError) as exc:
         log.debug("the page's address is not in the new pin: %s", exc)
         return VIEW_ROUTE_PREFIX
-    if entry is None or not git_path.segments:
+    if entry is None:
         return VIEW_ROUTE_PREFIX
-    if inner:
-        return raw
     return VIEW_ROUTE_PREFIX + git_path.to_wire() + ("/" if entry.is_tree else "")
 
 
