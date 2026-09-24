@@ -9,6 +9,7 @@ else the root. ``tests/golden/cli-api-source.tryscript.md`` pins the envelopes.
 
 from __future__ import annotations
 
+import asyncio
 import shutil
 import subprocess
 from collections.abc import Iterator
@@ -19,10 +20,13 @@ import pytest
 from starlette.testclient import TestClient
 
 from metabrowser import server
-from metabrowser.git.tree_source import GitPath
-from metabrowser.source import reset_source_session
+from metabrowser.cache.acquire import acquire_source
+from metabrowser.cache.repository_store import open_revision
+from metabrowser.git.tree_source import GitPath, GitRevisionSubject
+from metabrowser.mirror_refresh import serve_mirror
+from metabrowser.source import reset_source_session, serve_subject_opener
 from metabrowser.source_routes import REFS_DEFAULT_LIMIT, REFS_MAX_QUERY_CHARS
-from tests.test_cache_acquire import _git, _git_env
+from tests.test_cache_acquire import _file_source, _git, _git_env
 from tests.test_serve_pin import _home, _Origin, _origin, _serve, posix_only
 
 pytestmark = [
@@ -208,3 +212,43 @@ def test_a_switch_without_a_view_answers_no_href(served: TestClient) -> None:
     response = served.post("/api/source/pin", json={"ref": "feature"}, headers=_JSON)
     assert response.status_code == 200
     assert "view_href" not in response.json()
+
+
+# ── The shell ────────────────────────────────────────────────────────
+
+
+def test_a_mirror_pin_shell_has_the_selector_loaded_on_demand(served: TestClient) -> None:
+    shell = served.get("/view/").text
+    assert '<div class="source-ref-selector" id="source-ref-selector" hidden></div>' in shell
+    bundles = shell[shell.index("window.METABROWSER_ASSET_BUNDLES=") :]
+    bundles = bundles[: bundles.index("</script>")]
+    assert '"source-ref-selector": [{"src": "/static/source-ref-selector.js' in bundles
+    # On demand, never eager: no blocking script tag names it.
+    assert '<script src="/static/source-ref-selector.js' not in shell
+
+
+def test_a_pin_without_a_mirror_and_a_folder_have_no_selector(
+    tmp_path: Path, origin: _Origin
+) -> None:
+    published = asyncio.run(acquire_source(_file_source(origin.path), home=tmp_path / "home"))
+
+    async def opener() -> GitRevisionSubject:
+        return await open_revision(
+            home=published.home,
+            store_key=published.store_key,
+            commit_oid=published.default_revision,
+            store_identity=published.store_id,
+            ref=published.default_remote_ref,
+        )
+
+    serve_mirror(None)
+    serve_subject_opener(opener)
+    with TestClient(server.app) as client:
+        pin_shell = client.get("/view/").text
+        refs = client.get("/api/source/refs")
+    assert 'id="source-freshness"' in pin_shell
+    assert 'id="source-ref-selector"' not in pin_shell
+    assert refs.status_code == 409
+    server._set_root_dir(tmp_path)
+    with TestClient(server.app) as client:
+        assert 'id="source-ref-selector"' not in client.get("/view/").text

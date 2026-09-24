@@ -2243,6 +2243,108 @@ declare global {
     ): string | null;
   }>;
 
+  type MetabrowserSourceRefKind = "branch" | "tag";
+
+  /** One row of `GET /api/source/refs`. */
+  type MetabrowserSourceRef = {
+    name: string;
+    ref: string;
+    commit: string;
+    default: boolean;
+    current: boolean;
+  };
+
+  /** One answer of `GET /api/source/refs`. */
+  type MetabrowserSourceRefListing = {
+    kind: MetabrowserSourceRefKind;
+    query: string;
+    limit: number;
+    pin: string;
+    ref: string | null;
+    total: number;
+    truncated: boolean;
+    refs: MetabrowserSourceRef[];
+  };
+
+  /** What the ref selector holds; see static/source-ref-selector.js. */
+  type MetabrowserSourceRefSelectorState = {
+    shown: MetabrowserSourcePage | null;
+    open: boolean;
+    kind: MetabrowserSourceRefKind;
+    query: string;
+    listing: MetabrowserSourceRefListing | null;
+    loading: boolean;
+    switching: boolean;
+    error: string | null;
+  };
+
+  /** What the ref selector shows for one state. */
+  type MetabrowserSourceRefSelectorModel = {
+    button: string;
+    open: boolean;
+    kind: MetabrowserSourceRefKind;
+    query: string;
+    loading: boolean;
+    switching: boolean;
+    rows: Array<{
+      name: string;
+      ref: string;
+      commit: string;
+      default: boolean;
+      current: boolean;
+    }>;
+    note: string;
+    error: string | null;
+  };
+
+  type MetabrowserSourceRefSelectorDependencies = {
+    request(
+      method: "GET" | "POST",
+      route: string,
+      body?: Record<string, string>,
+    ): Promise<MetabrowserSourceResponse>;
+    schedule(callback: () => void, delayMs: number): unknown;
+    cancel(handle: unknown): void;
+    render(model: MetabrowserSourceRefSelectorModel): void;
+    navigate(href: string): void;
+    /** The page's own pathname, sent so a switch can keep it. */
+    currentView(): string | null;
+  };
+
+  /** The elements the ref selector paints into. */
+  type MetabrowserSourceRefSelectorParts = {
+    root: HTMLElement;
+    toggle: HTMLButtonElement;
+    panel: HTMLElement;
+    tabs: Record<MetabrowserSourceRefKind, HTMLButtonElement>;
+    filter: HTMLInputElement;
+    list: HTMLElement;
+    note: HTMLElement;
+    error: HTMLElement;
+  };
+
+  type MetabrowserSourceRefSelector = Readonly<{
+    open(): Promise<void>;
+    close(): void;
+    toggle(): Promise<void>;
+    setKind(kind: MetabrowserSourceRefKind): Promise<void>;
+    setQuery(query: string): void;
+    choose(ref: string): Promise<void>;
+    dispose(): void;
+    snapshot(): MetabrowserSourceRefSelectorState & { filterPending: boolean };
+  }>;
+
+  type MetabrowserSourceRefSelectorRuntime = Readonly<{
+    FILTER_DELAY_MS: number;
+    createSelector(
+      deps: MetabrowserSourceRefSelectorDependencies,
+      options?: { shown?: MetabrowserSourcePage | null },
+    ): MetabrowserSourceRefSelector;
+    describe(state: MetabrowserSourceRefSelectorState): MetabrowserSourceRefSelectorModel;
+    mount(element: HTMLElement): MetabrowserSourceRefSelector;
+    shownLabel(shown: MetabrowserSourcePage | null): { kind: string; name: string };
+  }>;
+
   type MetabrowserGitHistoryWindowRuntime = {
     classifyPageFailure(failure: {
       status: number;
@@ -2459,6 +2561,7 @@ declare global {
     MetabrowserTreeKeyboardNavigation: MetabrowserTreeKeyboardRuntime;
     MetabrowserSourceAppend: MetabrowserSourceAppendRuntime;
     MetabrowserSourceFreshness?: MetabrowserSourceFreshnessRuntime;
+    MetabrowserSourceRefSelector?: MetabrowserSourceRefSelectorRuntime;
     MetabrowserInertHtml?: MetabrowserInertHtmlRuntime;
     MetabrowserSourcePinGuard?: Readonly<{
       PIN_CHANGED_HEADER: string;
