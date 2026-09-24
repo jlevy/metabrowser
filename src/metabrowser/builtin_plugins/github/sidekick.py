@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Final
 
 from starlette.responses import JSONResponse, Response
 
+from metabrowser.http_caching import matches_if_none_match
 from metabrowser.mirror_refresh import mirror_session
 from metabrowser.source import get_source_session
 
@@ -54,7 +55,7 @@ async def pull_handler(request: Request) -> Response:
     envelope = await asyncio.to_thread(served_pull_envelope, view)
     etag = envelope_etag(envelope)
     headers = {**_NO_STORE, "etag": etag}
-    if request.headers.get("if-none-match") == etag:
+    if matches_if_none_match(request, etag):
         return Response(status_code=304, headers=headers)
     return JSONResponse(dict(envelope), headers=headers)
 

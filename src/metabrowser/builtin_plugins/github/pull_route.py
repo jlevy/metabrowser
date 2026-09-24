@@ -41,6 +41,7 @@ from metabrowser.builtin_plugins.github.pull_record import (
 from metabrowser.builtin_plugins.github.served_pull import PullRefreshOutcome, ServedPull
 from metabrowser.cache.paths import source_pull_record
 from metabrowser.git.tree_source import GitRevisionSubject
+from metabrowser.http_caching import build_scoped_etag
 from metabrowser.mirror_refresh import FRESHNESS_WINDOW_S, MirrorSession
 from metabrowser.source import RepositorySubject
 
@@ -225,7 +226,7 @@ def envelope_etag(envelope: PullEnvelope) -> str:
 
     fields = {name: value for name, value in envelope.items() if name != "record"}
     digest = hashlib.sha256(json.dumps(fields, sort_keys=True).encode()).hexdigest()
-    return f'"{digest[:32]}"'
+    return build_scoped_etag(f"pull-{digest[:32]}")
 
 
 __all__ = [

@@ -1,7 +1,7 @@
 {
   "absent": {
     "status": 200,
-    "etag": "\"c25bf9b0dc9df1af85b68b6afb8ad187\"",
+    "etag": "\"pull-1\"",
     "body": {
       "state": "absent",
       "reason": "not_cached",
@@ -18,7 +18,7 @@
   },
   "absent_unchanged": {
     "status": 304,
-    "etag": "\"c25bf9b0dc9df1af85b68b6afb8ad187\"",
+    "etag": "\"pull-1\"",
     "body": null
   },
   "refresh_started": {
@@ -43,7 +43,7 @@
   },
   "pending": {
     "status": 200,
-    "etag": "\"1a52e97e2ccbabb7eb19202b9643be10\"",
+    "etag": "\"pull-2\"",
     "body": {
       "state": "pending",
       "reason": null,
@@ -60,7 +60,7 @@
   },
   "current": {
     "status": 200,
-    "etag": "\"c5288477ab3a283599cfdd6597ac3fb4\"",
+    "etag": "\"pull-3\"",
     "body": {
       "state": "current",
       "reason": null,
@@ -290,7 +290,7 @@
   },
   "stale": {
     "status": 200,
-    "etag": "\"49f6907ebeafe5cb14790d98ca88b325\"",
+    "etag": "\"pull-4\"",
     "body": {
       "state": "stale",
       "reason": null,
@@ -657,7 +657,7 @@
   },
   "stale_refreshing": {
     "status": 200,
-    "etag": "\"370a2fef3a59746b3cdefa587581631d\"",
+    "etag": "\"pull-5\"",
     "body": {
       "state": "stale",
       "reason": null,
@@ -839,7 +839,7 @@
   },
   "refreshed": {
     "status": 200,
-    "etag": "\"5286614dbffff8a37db001bf526c7987\"",
+    "etag": "\"pull-6\"",
     "body": {
       "state": "current",
       "reason": null,

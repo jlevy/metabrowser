@@ -273,4 +273,4 @@ def test_git_commit_staging_has_one_shell_owned_atomic_handoff() -> None:
     assert "renderPreviewNode(stage, previewClaim)" in select
     assert select.index("beginDiffPreparation") < select.index("renderPreviewNode")
     assert "ctx.raw === undefined" in diff
-    assert "showSummary: !revision" in diff
+    assert "showSummary: !ctx.revision" in diff

@@ -21,9 +21,10 @@
 // otherwise bounds how late a page learns of a refresh another tab started.
 export const FAST_POLL_MS = 1000;
 export const SLOW_POLL_MS = 30000;
-// Markdown renders asked for at once. A render is one bounded body through KPress,
-// a few milliseconds on the server; two keep a long conversation filling in without
-// queueing ahead of the page's other requests.
+// Markdown renders asked for at once. A render is one bounded body through KPress:
+// 4 to 7 ms warm for a short comment (KPress 0.3.5, measured 2026-09-24 in-process on a
+// loaded development machine), and a text scrolls into view before it is asked for, so
+// two keep a long conversation filling in without queueing ahead of the page's polls.
 export const MARKDOWN_CONCURRENCY = 2;
 
 const PULL_ROUTE = "/api/plugin/github/pull";
@@ -123,7 +124,7 @@ const TRUNCATED = Object.freeze({
  * @typedef {{
  *   number: number,
  *   tab: string,
- *   status: "absent" | "pending" | "current" | "stale" | "other_number" | "unavailable",
+ *   status: "loading" | "absent" | "pending" | "current" | "stale" | "other_number" | "unavailable",
  *   recordAt: string | null,
  *   message: string | null,
  *   refreshing: boolean,
@@ -402,7 +403,8 @@ export function describePull(envelope, page) {
     comparison: null,
   };
   if (envelope === null) {
-    model.message = model.message ?? "Loading the pull request…";
+    // Nothing read yet: the page shows a spinner, and an error once a read failed.
+    model.status = page.error ? "unavailable" : "loading";
     return model;
   }
   if (envelope.number !== null && envelope.number !== page.number) {
@@ -890,7 +892,11 @@ export function mountPullPage(container, ctx, mb) {
   function textBlock(part, value, truncated) {
     const element = h("div", { class: "github-pull-text", "data-part": part });
     if (value.trim() === "") {
-      element.append(h("p", { class: "github-pull-empty" }, ["No description provided."]));
+      element.append(
+        h("p", { class: "github-pull-empty" }, [
+          part === "body" ? "No description provided." : "No text.",
+        ]),
+      );
       return element;
     }
     element.append(h("div", { class: "github-pull-plain" }, [value]));
@@ -1015,6 +1021,15 @@ export function mountPullPage(container, ctx, mb) {
     const status = h("div", { class: "github-pull-status", "data-status": model.status }, [
       model.freshness,
     ]);
+    if (model.status === "loading" || model.status === "pending") {
+      // A quiet spinner, named for a screen reader; the pending message says why.
+      const name = document.createElement("span");
+      name.className = "sr-only";
+      name.textContent = "Loading the pull request";
+      status.append(
+        h("div", { class: "loading mb-delayed-loading" }, [h("div", { class: "spinner" }), name]),
+      );
+    }
     if (model.message !== null) {
       status.append(h("span", { class: "github-pull-message" }, [model.message]));
     }

@@ -12,9 +12,10 @@ responses. The page opened with nothing cached, fetched the record, read its Mar
 went stale, and refreshed to a record with one more comment. The first test here replays
 that story and fails when the recording no longer matches.
 
-The clock is fixed, so fetch times are literal. Only the Markdown is cut down to the
-rendered text: KPress's icon sprite and asset manifest are KPress's contract, pinned by
-its own render goldens, and would tie this recording to its version.
+The clock is fixed, so fetch times are literal. Entity tags are the session's own, since
+the server's are scoped to the build; which answers share one is kept. The Markdown is
+cut down to the rendered text: KPress's icon sprite and asset manifest are KPress's
+contract, pinned by its own render goldens, and would tie this recording to its version.
 
 Regenerate the recording after an intended change, then the transcript:
 
@@ -99,6 +100,21 @@ def _markdown(response: Any) -> dict[str, Any]:
         "html": match.group(1),
     }
     return answer
+
+
+def _session_tags(recorded: dict[str, Any]) -> dict[str, Any]:
+    """Replace the server's entity tags with the session's own, keeping which are equal.
+
+    The server's tags are scoped to the build, which changes with every version, so the
+    recording would drift on each release; what the page relies on is only which answers
+    carry the same tag.
+    """
+
+    own: dict[str, str] = {}
+    for answer in recorded.values():
+        if answer["etag"] is not None:
+            answer["etag"] = own.setdefault(answer["etag"], f'"pull-{len(own) + 1}"')
+    return recorded
 
 
 def _settle(client: TestClient) -> None:
@@ -217,7 +233,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         serve_mirror(None)
         reset_source_session()
         git_repo.clear_repo_cache()
-    return recorded
+    return _session_tags(recorded)
 
 
 def test_recording_is_what_a_served_pull_request_answers(
