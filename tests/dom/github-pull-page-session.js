@@ -12,11 +12,10 @@
 // builtin_plugins/github/pull-page.js loads whole, as the shell loads the plugin: its
 // describePull decides what the page shows, and createPullController owns polling, the
 // refresh, the switch to the head, the tab, and asking for Markdown one part at a time.
-// Timers, the clock,
-// visibility, and paint are injected; the browser glue's IntersectionObserver is played
-// by asking for parts in reading order. Each step prints the requests the page made, the
-// timer it left, how many times it painted, what it would paint, and which parts it
-// rendered as Markdown.
+// Timers, the clock, visibility, and paint are injected; the browser glue's
+// IntersectionObserver is played by asking for parts in reading order. Each step prints
+// the requests the page made, the timer it left, how many times it painted, what it
+// would paint, whether it reloaded, and which parts it rendered as Markdown.
 
 const fs = require("node:fs");
 const path = require("node:path");
