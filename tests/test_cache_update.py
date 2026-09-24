@@ -485,6 +485,33 @@ def test_a_ref_folded_into_its_case_twin_is_put_back_and_reported(mirror: _Mirro
         assert asyncio.run(ref_tip(mirror.target, "refs/remotes/origin/same")) == first
         assert asyncio.run(resolve_pin(mirror.target, ref="same")).commit_oid == first
 
+    # A restore Git refuses leaves refs moved: they are named, and the tip stays.
+    import metabrowser.cache.update as update_module
+
+    real_run_git = update_module.run_git
+
+    async def refuse_restores(args: list[str], **kwargs: Any) -> bytes:
+        if "update-ref" in args:
+            raise GitCommandError(args, 128, "fatal: refused for the test")
+        return await real_run_git(args, **kwargs)
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(update_module, "run_git", refuse_restores)
+        update = asyncio.run(
+            update_store(
+                mirror.published.home,
+                mirror.published.store_key,
+                remote_url=mirror.published.source.normalized,
+            )
+        )
+    assert update.outcome is RefreshOutcome.ref_case_collision
+    assert "refs/remotes/origin/same" in update.unrestored
+    assert mirror.state().default_revision == before_state.default_revision
+    # The moved refs are the store's state now, so later refreshes cannot put them back,
+    # but they keep reporting the collision rather than landing silently.
+    assert _update(mirror) is RefreshOutcome.ref_case_collision
+    assert mirror.state().last_operation.outcome == "ref_case_collision"
+
     _git(mirror.origin, "update-ref", "-d", "refs/heads/SAME")
     assert _update(mirror) is RefreshOutcome.succeeded
     refs = _refs(mirror.published.git_dir)
@@ -536,6 +563,44 @@ def test_a_store_read_that_fails_around_the_fetch_is_an_outcome_not_an_exception
     before = mirror.state()
     assert _update(mirror) is RefreshOutcome.failed
     assert mirror.state() == before
+
+
+def test_a_refused_ref_transaction_is_applied_a_ref_at_a_time(mirror: _Mirror) -> None:
+    """Two names folding onto one lock file refuse a transaction; the rest still land."""
+
+    import metabrowser.cache.update as update_module
+
+    tip = mirror.published.default_revision
+    lines = [
+        f"update refs/remotes/origin/kept {tip}\n",
+        f"update refs/remotes/origin/bad {'1' * 40}\n",
+    ]
+    with store_fetch_lock(mirror.published.home, mirror.published.store_key) as lock:
+        asyncio.run(update_module._apply_ref_batch(mirror.target, lines, lock.descriptor))
+    refs = _refs(mirror.published.git_dir)
+    assert refs["refs/remotes/origin/kept"] == tip
+    assert "refs/remotes/origin/bad" not in refs
+
+
+def test_work_that_must_finish_finishes_however_often_it_is_cancelled() -> None:
+    import metabrowser.cache.update as update_module
+
+    finished: list[bool] = []
+
+    async def work() -> None:
+        await asyncio.sleep(0.05)
+        finished.append(True)
+
+    async def scenario() -> None:
+        job = asyncio.ensure_future(update_module._finish_despite_cancel(work()))
+        for _ in range(3):
+            await asyncio.sleep(0.005)
+            job.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await job
+
+    asyncio.run(scenario())
+    assert finished == [True]
 
 
 def test_a_detached_origin_head_still_fetches_and_keeps_the_default_branch(

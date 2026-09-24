@@ -7,6 +7,7 @@ A fake mirror and a fake companion drive the real :class:`MirrorSession` and
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Iterator
 from datetime import UTC, datetime
 
 import pytest
@@ -19,8 +20,17 @@ from metabrowser.mirror_refresh import (
     RefreshResult,
 )
 from metabrowser.repository_context import RepositoryContext
+from metabrowser.source import reset_source_session
 
 _OLD = "2020-01-01T00:00:00Z"
+
+
+@pytest.fixture(autouse=True)
+def _no_session_left() -> Iterator[None]:  # pyright: ignore[reportUnusedFunction]
+    """Observing reads the process's source session; leave none behind for later tests."""
+
+    yield
+    reset_source_session()
 
 
 def _now() -> str:
@@ -117,22 +127,29 @@ def test_the_mirror_waits_its_turn_behind_the_pull_requests_fetch() -> None:
 
 
 @pytest.mark.parametrize(
-    ("mirror_fresh", "pull_stale", "for_selection", "expected"),
+    ("serving", "mirror_fresh", "pull_stale", "for_selection", "expected"),
     [
-        (True, True, False, ["pull start", "pull end"]),
-        (False, False, False, ["mirror"]),
-        (False, True, False, ["mirror", "pull start", "pull end"]),
-        (True, True, True, ["mirror"]),
+        (True, True, True, False, ["pull start", "pull end"]),
+        (True, False, False, False, ["mirror"]),
+        (True, False, True, False, ["mirror", "pull start", "pull end"]),
+        (True, True, True, True, ["mirror"]),
+        # A one-shot command asked for the mirror's refresh, fresh or not.
+        (False, True, True, False, ["mirror", "pull start", "pull end"]),
     ],
 )
 def test_a_refresh_fetches_only_what_is_stale_and_a_pin_miss_only_the_mirror(
-    mirror_fresh: bool, pull_stale: bool, for_selection: bool, expected: list[str]
+    serving: bool, mirror_fresh: bool, pull_stale: bool, for_selection: bool, expected: list[str]
 ) -> None:
     async def scenario() -> list[str]:
         events: list[str] = []
         coordinator = RefreshCoordinator()
         mirror = _Mirror(events, fetched_at=_now() if mirror_fresh else _OLD)
-        session = MirrorSession(mirror, coordinator, companion=_Companion(events, stale=pull_stale))
+        session = MirrorSession(
+            mirror,
+            coordinator,
+            fetch_on_miss=serving,
+            companion=_Companion(events, stale=pull_stale),
+        )
         await session.observe()
         session.request_refresh(for_selection=for_selection)
         await _settle(coordinator)

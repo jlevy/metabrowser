@@ -148,12 +148,19 @@ class RefreshResult:
 
 @dataclass(frozen=True, slots=True)
 class RecordedFreshness:
-    """What the mirror's own record says about its last fetch and operation."""
+    """What the mirror's own record says about its last fetch and operation.
+
+    ``record_stamp`` identifies the record file as read -- its inode and nanosecond
+    modification time, both new on every atomic rewrite -- so a caller can tell a
+    rewrite apart from a record written earlier in the same second; ``None`` when the
+    mirror cannot say.
+    """
 
     last_fetch_at: str | None
     last_operation: str | None
     last_outcome: str | None
     last_outcome_at: str | None
+    record_stamp: tuple[int, int] | None = None
 
 
 class ServedMirror(Protocol):
@@ -301,20 +308,35 @@ def _parse_timestamp(value: str) -> datetime | None:
         return None
 
 
-def followed_outcome(recorded: RecordedFreshness, *, since: str, ended: bool) -> str:
+def followed_outcome(
+    recorded: RecordedFreshness,
+    *,
+    baseline: RecordedFreshness | None,
+    since: str,
+    ended: bool,
+) -> str:
     """The outcome of another process's refresh that this one waited for.
 
-    *since* is when this process found the store busy. Only a record written at or after
-    it can be that refresh's: a refresh that was killed or cancelled writes none, and the
-    record then still says what an earlier operation did. Otherwise, or when the wait
-    ran out before the other refresh ended, the answer is ``failed``, which says nothing
-    about the origin: a selection waiting on it stays waiting for the next refresh.
+    *baseline* is the record as read just before this process tried the store and found
+    it busy, at *since*. Only a record rewritten after that can be the other refresh's:
+    one that was killed or cancelled writes none, and the record then still says what
+    an earlier operation did. The record's file stamp tells a rewrite apart even within
+    the same second; without stamps, only a record from a later second counts.
+    Otherwise, or when the wait ran out before the other refresh ended, the answer is
+    ``failed``, which says nothing about the origin: a selection waiting on it stays
+    waiting for the next refresh.
     """
 
-    at = recorded.last_outcome_at
-    if not ended or recorded.last_outcome is None or at is None or at < since:
+    if not ended or recorded.last_outcome is None:
         return "failed"
-    return recorded.last_outcome
+    stamp = recorded.record_stamp
+    before = baseline.record_stamp if baseline is not None else None
+    if stamp is not None and before is not None:
+        rewritten = stamp != before
+    else:
+        at = recorded.last_outcome_at
+        rewritten = at is not None and at > since
+    return recorded.last_outcome if rewritten else "failed"
 
 
 class RefreshCoordinator:
@@ -553,13 +575,15 @@ class MirrorSession:
 
         A URL selection still waiting, as after a fetch that failed, waits for this one.
         The data served beside the mirror is refreshed as its own job when it is stale,
-        and when only it is stale, only it is refreshed. *for_selection* is the fetch a
-        pin the mirror lacks waits for: the mirror's alone.
+        and in a server, when only it is stale, only it is refreshed. *for_selection* is
+        the fetch a pin the mirror lacks waits for: the mirror's alone.
         """
 
         now = _now_utc()
         companion_stale = not for_selection and self._companion_stale(now)
-        if companion_stale and self._pending_selection is None and not self._mirror_stale(now):
+        # Only a server skips a fresh mirror; a one-shot command asked for its refresh.
+        skip_mirror = self._fetch_on_miss and self._pending_selection is None
+        if companion_stale and skip_mirror and not self._mirror_stale(now):
             return self.request_companion_refresh() or "joined"
         started = self._coordinator.start(self.mirror.key, self._refresh_job)
         if self._pending_selection is not None:
@@ -598,6 +622,9 @@ class MirrorSession:
             log.warning("could not observe the mirror after a refresh", exc_info=True)
 
     async def _refresh_job(self) -> None:
+        # The record as it was before this attempt, to tell whether another process's
+        # refresh this one may follow rewrote it.
+        baseline = await self._read_baseline() if self._follow_elsewhere else None
         try:
             async with self._fetch_turn:
                 result = await self.mirror.refresh()
@@ -621,7 +648,7 @@ class MirrorSession:
             log.warning("could not observe the mirror after a refresh", exc_info=True)
         if following:
             self._coordinator.start(
-                self._elsewhere_key, partial(self._follow, result), network=False
+                self._elsewhere_key, partial(self._follow, result, baseline), network=False
             )
 
     async def _after_fetch(self, outcome: str) -> None:
@@ -645,7 +672,14 @@ class MirrorSession:
             self._last_fetch_outcome = outcome
             self._refreshes_ended += 1
 
-    async def _follow(self, busy: RefreshResult) -> None:
+    async def _read_baseline(self) -> RecordedFreshness | None:
+        try:
+            return await self.mirror.recorded_freshness()
+        except Exception:
+            log.debug("could not read the mirror's record before a refresh", exc_info=True)
+            return None
+
+    async def _follow(self, busy: RefreshResult, baseline: RecordedFreshness | None) -> None:
         """Wait for another process's refresh to end, then observe the store again.
 
         Without this, a server that found the store busy would report the old tip and
@@ -667,7 +701,9 @@ class MirrorSession:
             await self.observe()
         except Exception:
             log.warning("could not observe the mirror after another refresh", exc_info=True)
-        await self._after_fetch(followed_outcome(self._recorded, since=busy.at, ended=ended))
+        await self._after_fetch(
+            followed_outcome(self._recorded, baseline=baseline, since=busy.at, ended=ended)
+        )
         if ended and self._last_result is busy:
             self._last_result = None
 
@@ -747,7 +783,8 @@ class MirrorSession:
         """Pending while the fetch for *key* is still to run or running, then not found."""
 
         seen = self._misses.get(key)
-        if seen is not None and seen[0] < self._refreshes_ended and not self.refreshing():
+        waiting = self.refreshing() or self.companion_refreshing()
+        if seen is not None and seen[0] < self._refreshes_ended and not waiting:
             del self._misses[key]
             # Not found only if a fetch ran to the end since the miss, not merely ended.
             if self._fetches_ran == seen[1]:
@@ -757,7 +794,12 @@ class MirrorSession:
             if len(self._misses) >= MAX_REMEMBERED_MISSES:
                 self._misses.pop(next(iter(self._misses)))
             self._misses[key] = (self._refreshes_ended, self._fetches_ran)
-        return SelectionPendingError(self.request_refresh(for_selection=True))
+        started = self.request_refresh(for_selection=True)
+        if key[1] is not None and self.companion is not None:
+            # A commit the mirror lacks may be a newer one of the pull request served
+            # beside it, which only that refresh fetches; a branch or tag never is.
+            self.request_companion_refresh()
+        return SelectionPendingError(started)
 
 
 def _served_revision() -> GitRevisionSubject | None:

@@ -179,7 +179,12 @@ def _echo_envelope(
 
 
 def _refresh_outcome(after: ApiResponse) -> tuple[bool, str | None]:
-    """Whether the refresh a one-shot command waited for is still running, and its outcome."""
+    """Whether the refresh a one-shot command waited for is still running, and its outcome.
+
+    The outcome is ``None`` when it ended well: for the mirror, a fetch that ran or
+    another process's refresh still running; for a plugin's refresh (``last_refresh``),
+    only ``succeeded``, since one that found the store busy did not refresh anything.
+    """
 
     try:
         status = after.json()
@@ -191,12 +196,15 @@ def _refresh_outcome(after: ApiResponse) -> tuple[bool, str | None]:
     outcome = status.get("last_outcome")
     if isinstance(outcome, dict) and outcome.get("operation") == "refresh":
         value = outcome.get("outcome")
-        return running, value if isinstance(value, str) else None
-    # A plugin's refresh reports its own last one as ``last_refresh``.
+        if not isinstance(value, str) or value in _REFRESH_ENDED_WELL:
+            return running, None
+        return running, value
     refresh = status.get("last_refresh")
     if isinstance(refresh, dict):
         value = refresh.get("outcome")
-        return running, value if isinstance(value, str) else None
+        if not isinstance(value, str) or value == "succeeded":
+            return running, None
+        return running, value
     return running, None
 
 
@@ -231,7 +239,7 @@ def _emit_api_response(
             raise CLIError(
                 f"the refresh did not finish within {_REFRESH_DRAIN_S:g}s and was stopped"
             )
-        if outcome is not None and outcome not in _REFRESH_ENDED_WELL:
+        if outcome is not None:
             raise CLIError(f"the refresh ended with {outcome}")
 
 

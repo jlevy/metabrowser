@@ -16,10 +16,18 @@ below, on public pull requests read with ``gh api`` on 2026-09-23.
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Final, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    ValidationError,
+    field_validator,
+)
 
 from metabrowser.cache.atomic import RecordError, read_bytes_bounded
 from metabrowser.cache.paths import (
@@ -462,6 +470,14 @@ class PullRefreshStamp(_Model):
     reset_at: Timestamp | None = None
     at: Timestamp
 
+    @field_validator("reset_at", "at")
+    @classmethod
+    def _a_real_moment(cls, value: str | None) -> str | None:
+        # The pattern admits a month 13 or a minute 61; only a real moment is kept.
+        if value is not None:
+            datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ")
+        return value
+
 
 def write_pull_refresh(home: Path, slug: str, number: int, stamp: PullRefreshStamp) -> None:
     """Publish *stamp* atomically beside the record. Blocking; run it off the event loop."""
@@ -480,7 +496,8 @@ def read_pull_refresh(home: Path, slug: str, number: int) -> PullRefreshStamp | 
             home, source_pull_refresh(slug, number), max_bytes=MAX_PULL_REFRESH_BYTES
         )
         return PullRefreshStamp.model_validate_json(data)
-    except (FileNotFoundError, RecordError, PrivateStorageError, OSError, ValidationError):
+    except (FileNotFoundError, RecordError, PrivateStorageError, OSError, ValueError):
+        # ValueError covers pydantic's ValidationError: anything unusable is no stamp.
         return None
 
 

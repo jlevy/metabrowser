@@ -18,7 +18,6 @@ does. Nothing here writes a record or takes a hierarchy lock.
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import functools
 import logging
 from dataclasses import dataclass
@@ -47,7 +46,11 @@ from metabrowser.cache.resolve import (
     mirror_refs,
     store_ignores_case,
 )
-from metabrowser.cache.update import remove_interrupted_fetch_leftovers, restore_mirror_refs
+from metabrowser.cache.update import (
+    finish_despite_cancel,
+    remove_interrupted_fetch_leftovers,
+    restore_mirror_refs,
+)
 from metabrowser.git.process import (
     ACQUISITION_POLICY,
     STORE_READ_POLICY,
@@ -80,7 +83,14 @@ type PullFetchFailure = Literal[
 
 
 class RefCaseCollisionError(Exception):
-    """The fetch folded a branch into one whose name differs only in case; refs are back."""
+    """The fetch folded a branch into one whose name differs only in case.
+
+    Every branch and tag was put back but ``unrestored``, which the next refresh restores.
+    """
+
+    def __init__(self, unrestored: tuple[str, ...] = ()) -> None:
+        super().__init__("a fetch folded refs that differ only in letter case")
+        self.unrestored = unrestored
 
 
 class PullRefError(Exception):
@@ -168,18 +178,10 @@ async def fetch_into_store(published: PublishedSource, specs: list[str]) -> None
     remote_url = acquire.remote_url_for(published.source)
     lock = await _take_fetch_lock(published)
     try:
-        cleanup = asyncio.ensure_future(
+        # To the end even when cancelled: the lock is released on the way out.
+        removed = await finish_despite_cancel(
             asyncio.to_thread(remove_interrupted_fetch_leftovers, published.git_dir)
         )
-        try:
-            removed = await asyncio.shield(cleanup)
-        except asyncio.CancelledError:
-            # The lock is released on the way out, so the removal must finish first,
-            # however many times the fetch is cancelled while it runs.
-            while not cleanup.done():
-                with contextlib.suppress(asyncio.CancelledError):
-                    await asyncio.shield(cleanup)
-            raise
         if removed:
             log.debug("removed files an interrupted fetch left in a store: %s", removed)
         target = _target(published)
@@ -202,22 +204,41 @@ async def fetch_into_store(published: PublishedSource, specs: list[str]) -> None
             pass_fds=(lock.descriptor,),
         )
         if before is not None:
-            branches = {
-                name: oid
-                for name, oid in fetched_refs(written).items()
-                if name.startswith(BRANCH_MIRROR_PREFIX)
-            }
-            try:
-                held = await mirror_refs(target)
-            except GitError:
-                # Unchecked refs could be folded ones; nothing that cannot be checked stays.
-                await restore_mirror_refs(target, before, lock.descriptor)
-                raise
-            if folded_refs(before=before, written=branches, pruned=(), held=held):
-                await restore_mirror_refs(target, before, lock.descriptor)
-                raise RefCaseCollisionError
+            # Checked and undone to the end even when cancelled: the lock is released
+            # on the way out, and a fold must not stay in the store.
+            await finish_despite_cancel(_undo_a_fold(target, before, written, lock.descriptor))
     finally:
         lock.release()
+
+
+async def _undo_a_fold(
+    target: RepositoryStoreTarget, before: dict[str, str], written: bytes, lock_fd: int
+) -> None:
+    """Put every branch and tag back if the fetch folded a branch into another.
+
+    Raises :class:`RefCaseCollisionError` naming any ref that could not be put back, and
+    re-raises a failure to list the store after restoring, since unchecked refs could be
+    folded ones.
+    """
+
+    branches = {
+        name: oid
+        for name, oid in fetched_refs(written).items()
+        if name.startswith(BRANCH_MIRROR_PREFIX)
+    }
+    try:
+        held = await mirror_refs(target)
+    except GitError:
+        await restore_mirror_refs(target, before, lock_fd)
+        raise
+    if folded_refs(before=before, written=branches, pruned=(), held=held):
+        unrestored = await restore_mirror_refs(target, before, lock_fd)
+        if unrestored:
+            log.warning(
+                "a pull request's fetch folded refs, and these could not be put back: %s",
+                ", ".join(unrestored[:8]),
+            )
+        raise RefCaseCollisionError(unrestored)
 
 
 async def _fetch(published: PublishedSource, specs: list[str]) -> None:
@@ -279,6 +300,23 @@ async def has_commit(published: PublishedSource, oid: str) -> bool:
     return kind.strip() == b"commit"
 
 
+async def base_branch_usable(published: PublishedSource, base_branch: str) -> bool:
+    """Whether the base branch may be fetched into, and compared from, the mirror's ref.
+
+    On a case-insensitive filesystem only when the store lists it under exactly that
+    name. One it lists under another spelling (``Feature/x`` kept as ``feature/x``
+    beside ``feature/y``) shares that ref's file, so writing it would pass for a fold;
+    the comparison then starts from the API's ``base.sha`` instead.
+    """
+
+    if not is_valid_ref_name(base_branch):
+        return False
+    target = _target(published)
+    if not await store_ignores_case(target):
+        return True
+    return BRANCH_MIRROR_PREFIX + base_branch in await mirror_refs(target)
+
+
 async def fetch_pull_head(
     published: PublishedSource, number: int, *, base_branch: str | None = None
 ) -> str | None:
@@ -289,7 +327,7 @@ async def fetch_pull_head(
 
     ref = pull_head_ref(number)
     specs = [f"+{ref}:{ref}"]
-    if base_branch is not None and is_valid_ref_name(base_branch):
+    if base_branch is not None and await base_branch_usable(published, base_branch):
         specs.append(f"+refs/heads/{base_branch}:{BRANCH_MIRROR_PREFIX}{base_branch}")
     await _fetch(published, specs)
     return await ref_commit(published, ref)
@@ -320,7 +358,7 @@ async def comparison_endpoints(
 
     base_commit: str | None = None
     base_from: Literal["base_branch", "base_sha"] = "base_sha"
-    if open_pull and base_branch is not None and is_valid_ref_name(base_branch):
+    if open_pull and base_branch is not None and await base_branch_usable(published, base_branch):
         base_commit = await ref_commit(published, BRANCH_MIRROR_PREFIX + base_branch)
         if base_commit is not None:
             base_from = "base_branch"
@@ -343,6 +381,7 @@ __all__ = [
     "PullFetchFailure",
     "PullRefError",
     "RefCaseCollisionError",
+    "base_branch_usable",
     "comparison_endpoints",
     "fetch_commit",
     "fetch_into_store",
