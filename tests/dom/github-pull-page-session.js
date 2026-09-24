@@ -450,7 +450,7 @@ async function main() {
     JSON.stringify(
       {
         steps,
-        otherNumber: { status: other.status, message: other.message },
+        otherNumber: { status: other.status, message: other.message, served: other.served },
         links,
         wire: runtime.gitPathWire("src/app.txt"),
         pageDefense: inert,

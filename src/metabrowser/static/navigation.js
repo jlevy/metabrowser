@@ -141,6 +141,123 @@
   }
 
   /**
+   * The shell's host for the served pull request's page. It decides what a
+   * `/pull/<n>[/files]` route does to the pane -- switch the shown page's tab, or claim
+   * the pane and mount a page -- keeps the page's tab in the URL, and disposes a render
+   * a later claim superseded. The shell supplies the pane and the history; nothing here
+   * touches the DOM.
+   *
+   * *claim* claims the pane and returns its token; the shell's claim calls `dispose`, so
+   * whatever claims the pane next replaces the page. *mount* loads and renders the page
+   * for a claim and resolves to its handle, or to null when nothing was mounted (the
+   * claim was superseded, or no plugin renders the page); the page gets `open` to move
+   * to a tab or to another pull request's page.
+   *
+   * @template {{setTab?: (tab: string) => void, dispose?: () => void}} Handle
+   * @param {{
+   *   claim: () => number,
+   *   isCurrent: (claim: number) => boolean,
+   *   mount: (
+   *     claim: number,
+   *     route: Readonly<{number: number, tab: string}>,
+   *     open: (route: {number: number, tab: string}) => Promise<{status: string}>,
+   *   ) => Promise<Handle | null | undefined>,
+   *   pathname: () => string,
+   *   pushHref: (href: string) => void,
+   * }} deps
+   */
+  function createPullPageHost(deps) {
+    /** @type {{number: number, claim: number, handle: Handle | null} | null} */
+    let page = null;
+
+    // The page that holds the pane, or null once anything else claimed it or while it
+    // is still mounting.
+    function shown() {
+      return page !== null && page.handle !== null && deps.isCurrent(page.claim) ? page : null;
+    }
+
+    function dispose() {
+      const held = page;
+      page = null;
+      try {
+        held?.handle?.dispose?.();
+      } catch (error) {
+        console.error("pull-request page dispose error:", error);
+      }
+    }
+
+    /**
+     * Show a route's page, or switch its tab when that page is already shown.
+     *
+     * @param {Readonly<{number: number, tab: string}>} route
+     * @returns {Promise<{status: "opened" | "cancelled"}>}
+     */
+    async function show(route) {
+      const current = shown();
+      if (current !== null && current.number === route.number) {
+        current.handle?.setTab?.(route.tab);
+        return { status: "opened" };
+      }
+      const claim = deps.claim();
+      /** @type {NonNullable<typeof page>} */
+      const mine = { number: route.number, claim, handle: null };
+      page = mine;
+      const handle = await deps.mount(claim, route, open);
+      if (page !== mine || !deps.isCurrent(claim)) {
+        handle?.dispose?.();
+        return { status: "cancelled" };
+      }
+      if (!handle) {
+        // Nothing holds the pane, so the next route to this page mounts it again.
+        page = null;
+        return { status: "opened" };
+      }
+      mine.handle = handle;
+      return { status: "opened" };
+    }
+
+    /**
+     * Go to a page's tab or another pull request's page. A tab is a selection within
+     * the page, so it owns the URL (Browser URL Grammar) and back and forward move
+     * between tabs.
+     *
+     * @param {{number: number, tab: string}} route
+     */
+    function open(route) {
+      const href = pullHref(route.number, route.tab);
+      if (deps.pathname() !== href) {
+        deps.pushHref(href);
+      }
+      return show(Object.freeze({ number: route.number, tab: route.tab }));
+    }
+
+    /**
+     * Apply a history landing that `pullHistoryAction` says is the page's.
+     *
+     * @param {string} pathname
+     * @param {boolean} heldTarget
+     */
+    function onHistory(pathname, heldTarget) {
+      const current = shown();
+      const landing = pullHistoryAction(pathname, current ? current.number : null, heldTarget);
+      if (landing?.action === "tab") {
+        current?.handle?.setTab?.(landing.tab);
+      } else if (landing?.action === "mount") {
+        void show(Object.freeze({ number: landing.number, tab: landing.tab }));
+      }
+      return landing;
+    }
+
+    return Object.freeze({
+      dispose,
+      onHistory,
+      open,
+      show,
+      shown: () => shown()?.number ?? null,
+    });
+  }
+
+  /**
    * @typedef {object} NavigationTarget
    * @property {string} path Served-root-relative logical path, or empty for root.
    * @property {string=} query Serialized query metadata without `?`.
@@ -1182,6 +1299,7 @@
     createController,
     createFileRevalidationTracker,
     createPreviewPaneLifecycle,
+    createPullPageHost,
     displayPath,
     href,
     navigation,

@@ -310,7 +310,6 @@ const SHELL_FUNCTIONS = [
   "boundMapSize",
   "cancelPendingFilePreviewStage",
   "clearPreviewNavigationState",
-  "disposePullRequestPage",
   "claimPreview",
   "isPreviewClaimCurrent",
   "previewPlaceholderHtml",
@@ -333,7 +332,7 @@ const SHELL_FUNCTIONS = [
 
 const shellSource = [
   appDeclaration(/^var previewPane = [^\n]*;$/m, "preview pane"),
-  appDeclaration(/^var pullRequestPage = null;$/m, "pull-request page"),
+  appDeclaration(/^var pullPageHost = [\s\S]*?^\}\);$/m, "pull-request page host"),
   appDeclaration(/^var navigationController = [\s\S]*?^\}\);$/m, "navigation controller"),
   ...SHELL_FUNCTIONS.map((name) =>
     appDeclaration(

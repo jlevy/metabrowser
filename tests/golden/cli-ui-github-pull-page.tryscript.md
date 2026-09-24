@@ -627,7 +627,8 @@ $ node tests/dom/github-pull-page-session.js
   ],
   "otherNumber": {
     "status": "other_number",
-    "message": "This server serves pull request #7."
+    "message": "This server serves pull request #7.",
+    "served": 7
   },
   "links": [
     {

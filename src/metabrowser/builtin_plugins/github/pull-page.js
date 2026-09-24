@@ -149,6 +149,7 @@ const TRUNCATED = Object.freeze({
  *   notes: string[],
  *   comparison: {left: string, right: string, headMoved: boolean} | null,
  *   headOffer: {ref: string, head: string, pin: string, text: string} | null,
+ *   served: number | null,
  * }} PullModel
  */
 
@@ -409,6 +410,7 @@ export function describePull(envelope, page) {
     notes: [],
     comparison: null,
     headOffer: null,
+    served: null,
   };
   if (envelope === null) {
     // Nothing read yet: the page shows a spinner, and an error once a read failed.
@@ -418,6 +420,7 @@ export function describePull(envelope, page) {
   if (envelope.number !== null && envelope.number !== page.number) {
     model.status = "other_number";
     model.message = `This server serves pull request #${envelope.number}.`;
+    model.served = envelope.number;
     return model;
   }
   model.status = envelope.state;
@@ -983,7 +986,7 @@ function outside(href, base, children, className = "") {
  */
 export function mountPullPage(container, ctx, mb) {
   const number = typeof ctx.number === "number" ? ctx.number : 0;
-  const openTab = typeof ctx.openTab === "function" ? ctx.openTab : () => {};
+  const open = typeof ctx.open === "function" ? ctx.open : () => {};
   container.classList.add("github-pull");
   const header = h("div", { class: "github-pull-header" });
   const body = h("div", { class: "github-pull-body" });
@@ -1103,6 +1106,30 @@ export function mountPullPage(container, ctx, mb) {
     return link;
   }
 
+  /**
+   * A link to a tab of this page or to another pull request's page. A plain click stays
+   * in the app: the shell's `open` puts the route in the URL and shows it.
+   *
+   * @param {{number: number, tab: string}} route
+   * @param {string} className
+   * @param {Array<Node | string>} children
+   */
+  function pageLink(route, className, children) {
+    const link = h(
+      "a",
+      { href: `/pull/${route.number}${route.tab ? `/${route.tab}` : ""}`, class: className },
+      children,
+    );
+    link.addEventListener("click", (event) => {
+      if (!isPlainClick(event)) {
+        return;
+      }
+      event.preventDefault();
+      void open(route);
+    });
+    return link;
+  }
+
   /** @param {string} state @param {string} label @param {string} [kind] */
   const badge = (state, label, kind = "state") =>
     h("span", { class: `github-pull-badge github-pull-${kind}`, "data-state": state }, [label]);
@@ -1164,6 +1191,13 @@ export function mountPullPage(container, ctx, mb) {
     if (model.message !== null) {
       status.append(h("span", { class: "github-pull-message" }, [model.message]));
     }
+    if (model.served !== null) {
+      status.append(
+        pageLink({ number: model.served, tab: model.tab }, "github-pull-served", [
+          `Open pull request #${model.served}`,
+        ]),
+      );
+    }
     if (model.failure !== null) {
       status.append(h("span", { class: "github-pull-failure" }, [model.failure]));
     }
@@ -1188,24 +1222,9 @@ export function mountPullPage(container, ctx, mb) {
         ["", "Conversation"],
         ["files", "Files changed"],
       ]) {
-        const selected = model.tab === id;
-        const button = h(
-          "a",
-          {
-            href: `/pull/${model.number}${id ? `/${id}` : ""}`,
-            role: "tab",
-            class: "github-pull-tab",
-            "aria-selected": String(selected),
-          },
-          [label],
-        );
-        button.addEventListener("click", (event) => {
-          if (!isPlainClick(event)) {
-            return;
-          }
-          event.preventDefault();
-          openTab(id);
-        });
+        const button = pageLink({ number: model.number, tab: id }, "github-pull-tab", [label]);
+        button.setAttribute("role", "tab");
+        button.setAttribute("aria-selected", String(model.tab === id));
         tabs.append(button);
       }
       children.push(tabs);
