@@ -130,9 +130,9 @@ status: 200
 ? 0
 ```
 
-## Test: a folder has no mirror to refresh or pin
+## Test: a folder has no mirror to refresh, pin, or list refs from
 
-Both routes answer a typed `unsupported_for_subject` naming what the folder lacks.
+Each route answers a typed `unsupported_for_subject` naming what the folder lacks.
 
 ```console
 $ metab shellroot --api /api/source/refresh --data refresh.json
@@ -157,6 +157,19 @@ status: 409
   "capability": "pin"
 }
 Error: /api/source/pin returned HTTP 409
+? 1
+```
+
+```console
+$ metab shellroot --api /api/source/refs
+api: /api/source/refs
+status: 409
+{
+  "error": "source does not support refs",
+  "code": "unsupported_for_subject",
+  "capability": "refs"
+}
+Error: /api/source/refs returned HTTP 409
 ? 1
 ```
 
@@ -519,6 +532,14 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/source/refs",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/source/status",
       "methods": [
         "GET",
@@ -628,7 +649,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 47
+  "count": 48
 }
 ? 0
 ```
