@@ -647,6 +647,7 @@ $ node tests/dom/navigation-route-behavior.js
     "Windows native URL for unicode؀.txt",
     "Windows identity from /view/unicode%D8%80.txt",
     "Windows rejects an encoded backslash",
+    "a pin refuses an encoded backslash in a container inner",
     "reject unrelated route",
     "reject missing canonical root slash",
     "reject malformed escape",

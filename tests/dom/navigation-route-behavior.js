@@ -291,6 +291,15 @@ for (const [identity, url] of [
 // Windows reads a backslash as a separator, so no Windows identity holds one.
 equal("Windows rejects an encoded backslash", route.parse("/view/a%5Cb.md"), null);
 sandbox.METABROWSER_PATH_ENCODING = "bytes";
+// A Git pin's wires and container inners never hold a backslash; only a served
+// folder's inventory escapes one.
+sandbox.METABROWSER_SOURCE_KIND = "git_revision";
+equal(
+  "a pin refuses an encoded backslash in a container inner",
+  route.parse("/view/g1-YQ/x%5Cy"),
+  null,
+);
+delete sandbox.METABROWSER_SOURCE_KIND;
 
 for (const [name, pathname] of [
   ["unrelated route", "/api/tree"],

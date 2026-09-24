@@ -78,12 +78,16 @@ def format_commit_href(revision: str, inner_path: str = "") -> str:
     )
 
 
-def decode_view_logical_path(raw_path: bytes) -> str | None:
+def decode_view_logical_path(raw_path: bytes, *, native: bool = False) -> str | None:
     """Decode one raw ``/view/`` path without filesystem containment.
 
     The result is the slash-joined logical identity. A filesystem session still
     has to pass :func:`decode_safe_view_path`. A Git revision session uses
     that identity as a ``GitPath`` wire, optionally plus a container inner.
+
+    ``native`` is the served-folder reading, whose POSIX filenames may hold an
+    encoded backslash (see :func:`_validate_logical_segments`). A Git wire and its
+    container inner never do, so they keep refusing it.
     """
 
     if not raw_path.startswith(_VIEW_ROUTE_PREFIX_BYTES):
@@ -97,10 +101,10 @@ def decode_view_logical_path(raw_path: bytes) -> str | None:
             if _MALFORMED_ESCAPE.search(raw_segment) or b"\\" in raw_segment:
                 return None
             decoded = unquote_to_bytes(raw_segment)
-            if b"/" in decoded or b"\0" in decoded or (b"\\" in decoded and os.name == "nt"):
+            if b"/" in decoded or b"\0" in decoded:
                 return None
             decoded_segments.append(_native_route_segment(decoded))
-        _validate_logical_segments(decoded_segments, native=True)
+        _validate_logical_segments(decoded_segments, native=native)
     except (UnicodeDecodeError, ValueError):
         return None
     return "/".join(decoded_segments)
@@ -116,7 +120,7 @@ def decode_safe_view_path(raw_path: bytes) -> str | None:
     paths beneath the root are safe and remain valid shell destinations.
     """
 
-    logical_path = decode_view_logical_path(raw_path)
+    logical_path = decode_view_logical_path(raw_path, native=True)
     if logical_path is None:
         return None
     return logical_path if _safe_path(logical_path) is not None else None
@@ -222,7 +226,7 @@ def _validate_logical_segments(segments: list[str], *, native: bool = False) -> 
     ``native`` segments are served-tree filenames. POSIX allows a backslash in one and
     the inventory escapes it as ``%5C``, so the route codec carries it (as ``%5C``) to
     stay total over the inventory; Windows reads it as a separator, so there it stays
-    refused, as it does in a commit route's Git path.
+    refused, as it does in a commit route's Git path and a Git pin's view wire.
     """
 
     final_index = len(segments) - 1

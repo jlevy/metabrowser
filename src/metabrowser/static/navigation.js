@@ -495,14 +495,19 @@
     }
   }
 
-  /** Apply the inventory's escapes to decoded URL text: `%` is `%25`, and on POSIX a
-   * backslash is `%5C`, as `canonical_inventory_name` spells them.
+  /** Apply the inventory's escapes to decoded URL text: `%` is `%25`, and in a POSIX
+   * served folder a backslash is `%5C`, as `canonical_inventory_name` spells them. A Git
+   * pin's wires and container inners never hold one, so there it stays and `parse`
+   * refuses it.
    * @param {string} decoded
    * @returns {string}
    */
   function escapeDecoded(decoded) {
     const escaped = decoded.replaceAll("%", "%25");
-    return window.METABROWSER_PATH_ENCODING === "utf16" ? escaped : escaped.replaceAll("\\", "%5C");
+    return window.METABROWSER_PATH_ENCODING === "utf16" ||
+      window.METABROWSER_SOURCE_KIND === "git_revision"
+      ? escaped
+      : escaped.replaceAll("\\", "%5C");
   }
 
   /** @param {string} value @param {string} prefix */
