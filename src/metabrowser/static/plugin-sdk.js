@@ -1873,11 +1873,21 @@
       );
       languageClass = language ? `language-${language}` : "plaintext";
     }
+    // Line numbers and #L anchors: source-line-anchors.js is an eager script before
+    // this one, because the gutter is part of the first paint.
+    // The HTML parser turns CR and CRLF into LF, so the gutter counts the same text.
+    const lineAnchors = global.MetabrowserSourceLineAnchors;
+    const text = content.replace(/\r\n?/g, "\n");
     const code =
-      `<pre class="code-block"><code class="${languageClass}">` +
-      `${escapeHtml(content)}</code></pre>`;
+      `<pre class="code-block metabrowser-source-lines">${lineAnchors.gutterHtml(text)}` +
+      `<code class="${languageClass}">${escapeHtml(text)}</code></pre>`;
     container.classList.add("metabrowser-source-host");
     container.innerHTML = truncationWarning + wrapWithCopy(code) + loadMoreFooter;
+    lineAnchors.mount(container, {
+      path: typeof data.path === "string" ? data.path : "",
+      truncated: !!data.content_truncated,
+      navigation: global.MetabrowserNavigationRoute?.navigation ?? null,
+    });
   }
 
   // Delegated click handler for copyable content and explicit identifiers.

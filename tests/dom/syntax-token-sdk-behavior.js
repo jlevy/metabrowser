@@ -97,6 +97,7 @@ function loadSdk(sandbox) {
     "resource-context.js",
     "view-state.js",
     "navigation.js",
+    "source-line-anchors.js",
   ]) {
     load(sandbox, `src/metabrowser/static/${filename}`);
   }
@@ -147,6 +148,7 @@ async function main() {
       },
     },
     innerHTML: "",
+    querySelector: () => null,
   };
   ready.metabrowser.renderSourceView(sourceContainer, {
     content: "const literal = '<script>';",

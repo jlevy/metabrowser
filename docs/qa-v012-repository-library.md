@@ -593,7 +593,7 @@ curl -s -X POST -H 'Content-Type: application/json' -d '{}' \
 then `Revision: <commit> (master)` and `Selection: blob README#L1`. Status names
 `"ref_name": "master"`; the refresh answers `202`, and status soon reports
 `"last_outcome"` with `"operation": "refresh"` and `"outcome": "succeeded"`. Opening the
-printed address shows the README.
+printed address shows the README with line 1 highlighted.
 
 **Fail:** A token prompt; a message containing Git’s own error text or a local path; a
 second clone on the cache hit; a refresh outcome other than `succeeded` on a working
@@ -747,11 +747,20 @@ Open `http://127.0.0.1:8471/view/` in a browser, with its developer tools open.
    Reloading that `/commit/…` address reopens the same commit.
 7. Reload a `/view/g1-…` address, use back and forward, and open a copied link in a
    second tab: the same file and revision open each time.
+8. Open `pyproject.toml` with `#L10-L20` added to its address.
+   Line numbers run beside the code, lines 10–20 are highlighted, and line 10 is
+   scrolled into view. Click line number 5: the address ends in `#L5`, the page does not
+   scroll, and Back leaves the file rather than returning to `#L10-L20`. Shift-click
+   line number 12: the address ends in `#L5-L12` and those lines are highlighted.
+   Edit the address to `#L30` and press Enter: line 30 is highlighted and scrolled to.
+   Edit it to `#L99999`: no line is highlighted, and a notice says the line is past the
+   end of the file and how many lines it has.
+   Copy the address into a second tab: the same lines are highlighted there.
 
 **Pass:** Every step as described; no console errors; no request leaves `127.0.0.1`.
 
 **Fail:** A blank heading, a different commit anywhere, a Preview tab on HTML, a broken
-image, or a request to another host.
+image, a line number beside the wrong line, or a request to another host.
 
 ### 5.4 Reopen with the origin gone (M05)
 
@@ -912,7 +921,8 @@ address.
    `topic`. Reload: the page opens on Files changed.
    Back: the conversation.
 5. Click `src/app.txt:2`. The file opens at `/view/g1-c3Jj/g1-YXBwLnR4dA#L2` from the
-   served head, `one` and `two`. Back returns to the pull-request page.
+   served head, `one` and `two`, with line 2 highlighted.
+   Back returns to the pull-request page.
 6. Click **Refresh** while the record is stale.
    The status line reads `Refreshing…` and then `Fetched just now by gh:octo-reader`;
    the conversation does not flicker or jump.
@@ -1089,7 +1099,6 @@ was acquired or served, or a served pin ran a script).
 | ssh acquire and serve | Closed; refuse is the test |
 | A branch and tag selector in the browser | Not built; pin by name through `POST /api/source/pin` (5.6) |
 | The browser’s view of a pending URL selection | A page opened while the selection waited goes to it when the fetch finds it; the freshness row says when it is not on the origin or could not be fetched, and offers a Retry for the second |
-| Line highlighting for `#L10-L20` | `mb-rlf3`; the anchor stays in the address |
 | Pull-request page | Later steps; pull-request data is read through `--api` and served beside the pin (4.10) |
 | Hosted-review / GitHub PR slice | Separate beads; not on these tips |
 | Archive containers | `mb-380k` |

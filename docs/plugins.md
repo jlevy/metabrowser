@@ -419,7 +419,8 @@ Useful helpers include:
 - `escapeHtml(value)` for carefully constructed HTML strings;
 - `wrapWithCopy(html)` for a standard copy-button frame;
 - `renderSourceView(container, data)` for the standard bounded, copyable Source surface,
-  including truncation controls and the shared language mapping;
+  including truncation controls, the shared language mapping, a line-number gutter, and
+  `#L10`-style line anchors;
 - `langForExtension(ext)` for the language ID backed by the host’s vendored grammar
   registry, or an empty string when the source should remain plain;
 - `langForPath(pathOrName, ext)` for the same decision with extensionless names such as

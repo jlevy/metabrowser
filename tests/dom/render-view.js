@@ -84,6 +84,10 @@ function load(filepath, label) {
 }
 
 load(path.join(repoRoot, "src/metabrowser/static/navigation.js"), "navigation.js");
+load(
+  path.join(repoRoot, "src/metabrowser/static/source-line-anchors.js"),
+  "source-line-anchors.js",
+);
 load(path.join(repoRoot, "src/metabrowser/static/plugin-sdk.js"), "plugin-sdk.js");
 load(path.join(repoRoot, "src/metabrowser/static/filter-controls.js"), "filter-controls.js");
 load(path.join(repoRoot, "src/metabrowser/static/icons.js"), "icons.js");
