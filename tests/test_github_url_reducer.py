@@ -220,7 +220,7 @@ def test_other_shapes_are_refused_with_a_typed_reason(value: str, reason: str, d
             "control_or_whitespace",
         ),
         (
-            "https://github.com/octo/demo/blob/main/a.md?token=ghp_secret‮",
+            "https://github.com/octo/demo/blob/main/a.md?token=ghp_secret\u202e",
             "non_ascii",
         ),
         ("ssh://git:ghp_secret@github.com/octo/demo.git", "credentials_in_url"),
@@ -266,7 +266,7 @@ def test_the_generic_checks_run_before_the_reducer_parses(value: str, reason: st
         ),
         # An address bar shows these decoded too; they are not whitespace or invisible.
         (
-            "https://github.com/octo/demo/blob/main/́.md",
+            "https://github.com/octo/demo/blob/main/\ue000\u0301.md",
             "https://github.com/octo/demo/blob/main/%EE%80%80%CC%81.md",
         ),
     ],
@@ -282,25 +282,25 @@ def test_a_raw_web_url_is_read_as_a_browser_sends_it(raw: str, encoded: str) -> 
     ("value", "reason", "detail"),
     [
         (
-            "https://github.com/octo/demo/blob/main/a b.md",
+            "https://github.com/octo/demo/blob/main/a\u00a0b.md",
             "control_or_whitespace",
             "the URL contains U+00A0, a whitespace character; if it belongs in the address, "
             "write it as %C2%A0",
         ),
         (
-            "https://github.com/octo/demo/blob/main/a　b.md",
+            "https://github.com/octo/demo/blob/main/a\u3000b.md",
             "control_or_whitespace",
             "the URL contains U+3000, a whitespace character; if it belongs in the address, "
             "write it as %E3%80%80",
         ),
         (
-            "https://github.com/octo/demo/blob/main/a‮b.md",
+            "https://github.com/octo/demo/blob/main/a\u202eb.md",
             "non_ascii",
             "the URL contains U+202E, an invisible formatting character; if it belongs in "
             "the address, write it as %E2%80%AE",
         ),
         (
-            "https://github.com/octo/demo/blob/main/a‍b.md",
+            "https://github.com/octo/demo/blob/main/a\u200db.md",
             "non_ascii",
             "the URL contains U+200D, an invisible formatting character; if it belongs in "
             "the address, write it as %E2%80%8D",
