@@ -87,6 +87,12 @@ links to the document that covers each in depth.
   — review of the six-round load-time work, its eight findings and their fixes, plus
   principles and candidate hypotheses for the rounds after it
 
+## QA Runs
+
+- [v0.12 alpha acceptance on the integrated stack](qa/qa-2026-09-24-v012-alpha-acceptance.md)
+  — installed-wheel run of the manual matrix and the round-2 features, with build
+  identity, per-row results, and the beads filed for its findings
+
 ## Done Plans
 
 - [CLI parity and golden coverage](specs/done/plan-2026-08-21-cli-parity-and-golden-coverage.md)
