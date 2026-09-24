@@ -30,7 +30,9 @@ only what is listed here and drops the rest.
   ``#name``, becomes ``#user-content-name`` to reach it. The prefix keeps every such
   ``id`` out of the application's names: an ``id`` is also a ``window`` property, and
   nothing the page or the SDK reads begins with ``user-content-``
-  (``tests/test_inert_html.py`` checks the sources).
+  (``tests/test_inert_html.py`` checks the sources). The page keeps the anchors made
+  here, so this Python's Unicode tables decide every slug; a character newer than
+  github-slugger's tables (Unicode 13) can still slug differently than on github.com.
 
 ``static/inert-html.js`` applies the same rules in the browser (``sanitizeNodes``), and
 ``tests/test_inert_html.py`` proves the two allowlists are the same.
@@ -40,6 +42,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from collections import Counter
 from html import escape
 from html.parser import HTMLParser
 from typing import Final
@@ -459,15 +462,22 @@ class _Hardener(HTMLParser):
             self._text(data)
 
     def anchor_headings(self) -> dict[str, str]:
-        """Give each heading its anchor, in document order; the ids they replace."""
+        """Give each heading its anchor, in document order; the ids they replace.
+
+        Only an id one heading alone had is mapped, the empty one included (KPress gives
+        its first heading with an empty slug ``id=""``): a document that repeats an id
+        -- a raw heading written with the id KPress gives a Markdown heading -- cannot
+        say which heading it names, so neither is mapped.
+        """
 
         anchors = _Anchors()
+        written = Counter(h.original for h in self.headings if h.original is not None)
         replaced: dict[str, str] = {}
         for heading in self.headings:
             anchor = anchors.anchor("".join(heading.text))
             self.out[heading.index] = f'<{heading.tag} id="{escape(anchor)}">'
-            if heading.original:
-                replaced.setdefault(heading.original, anchor)
+            if heading.original is not None and written[heading.original] == 1:
+                replaced[heading.original] = anchor
         return replaced
 
 

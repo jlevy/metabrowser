@@ -8,8 +8,9 @@
 // drew one. `buildInertToc` draws it from those entries in KPress's markup, so KPress's
 // stylesheets place it in the side rail or the narrow drawer, and `wireInertToc` runs
 // what KPress's toc.js would: the entry for the section at the reading line is active,
-// and the narrow toggle opens and closes the drawer. The entry titles are the
-// document's text; they only ever become text nodes.
+// the narrow toggle opens and closes the drawer, and an entry opens its heading through
+// the page's navigation, so the link enhancer's limit is left to the document's own
+// links. The entry titles are the document's text; they only ever become text nodes.
 
 import { findElementById } from "./dom-traversal.js";
 import { selectTocTargetAtReadingLine } from "./toc-intersection-fallback.js";
@@ -96,10 +97,12 @@ export function buildInertToc(doc, entries) {
 
 /**
  * Run the table of contents `buildInertToc` drew in *article*: the entry for the section
- * at the reading line is active, and the narrow toggle opens and closes the drawer.
+ * at the reading line is active, the narrow toggle opens and closes the drawer, and a
+ * plain click on an entry calls *open* with its heading's anchor.
  *
  * @param {Element} article
  * @param {{
+ *   open?: (fragment: string) => void,
  *   cancel?: (handle: number) => void,
  *   schedule?: (callback: FrameRequestCallback) => number,
  *   windowTarget?: Pick<Window, "addEventListener" | "removeEventListener" | "innerHeight" | "scrollY">,
@@ -186,9 +189,21 @@ export function wireInertToc(article, options = {}) {
     on(backdrop, "click", () => setExpanded(false));
   }
   for (const link of links) {
-    on(link, "click", () => {
+    on(link, "click", (event) => {
       setActive(link);
       setExpanded(false);
+      const click = /** @type {MouseEvent} */ (event);
+      if (
+        options.open &&
+        click.button === 0 &&
+        !click.altKey &&
+        !click.ctrlKey &&
+        !click.metaKey &&
+        !click.shiftKey
+      ) {
+        event.preventDefault();
+        options.open((link.getAttribute("href") ?? "").slice(1));
+      }
     });
   }
   update();

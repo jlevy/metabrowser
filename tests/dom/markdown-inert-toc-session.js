@@ -45,10 +45,21 @@ class Listeners {
   removeEventListener(type, listener) {
     this.listeners.get(type)?.delete(listener);
   }
-  dispatch(type) {
+  dispatch(type, init = {}) {
+    const event = {
+      type,
+      target: this,
+      button: 0,
+      defaultPrevented: false,
+      preventDefault() {
+        this.defaultPrevented = true;
+      },
+      ...init,
+    };
     for (const listener of [...(this.listeners.get(type) ?? [])]) {
-      listener({ type, target: this });
+      listener(event);
     }
+    return event;
   }
   count() {
     return [...this.listeners.values()].reduce((total, set) => total + set.size, 0);
@@ -233,10 +244,14 @@ async function main() {
   const target = new Element("div", pageDocument);
   viewport.append(target);
 
+  // The link enhancer sees the prose alone, so the table of contents takes none of its
+  // limit from the document's own links.
+  const enhanced = [];
   await render.placeRendered(
     target,
     { html: "", inert: true, toc: recorded.toc, model: { headings: recorded.headings } },
     mb,
+    (root) => enhanced.push(root),
   );
   const article = render.inertArticle(target);
   assert(article, "the inert article is the render's container's child");
@@ -282,7 +297,9 @@ async function main() {
   const windowTarget = new Listeners();
   windowTarget.innerHeight = 800;
   windowTarget.scrollY = 0;
+  const opened = [];
   const dispose = render.wireInertToc(article, {
+    open: (fragment) => opened.push(fragment),
     schedule: (callback) => frames.push(callback),
     cancel: () => {},
     windowTarget,
@@ -291,6 +308,11 @@ async function main() {
     headingIds: headings.map((heading) => heading.getAttribute("id")),
     layout: article.querySelector(".kpress-doc-layout").className,
     entries: entries(article),
+    enhancerRoot: enhanced.map((root) => ({
+      className: root.className,
+      tocLinks: root.querySelectorAll("a.toc-link").length,
+      links: root.querySelectorAll("a[href]").length,
+    })),
     withoutToc: plain.querySelector(".kpress-toc") === null,
     forgedEntries: entries(render.inertArticle(forged)),
     atTop: state(article, viewport),
@@ -316,8 +338,18 @@ async function main() {
   const troubleshooting = article
     .querySelectorAll("a.toc-link")
     .find((link) => link.getAttribute("href") === "#user-content-troubleshooting");
-  troubleshooting.dispatch("click");
-  transcript.entryClicked = state(article, viewport);
+  const plainClick = troubleshooting.dispatch("click");
+  transcript.entryClicked = {
+    ...state(article, viewport),
+    opened: [...opened],
+    defaultPrevented: plainClick.defaultPrevented,
+  };
+  // A modified click (a new tab) is the browser's; the page does not navigate.
+  const modifiedClick = troubleshooting.dispatch("click", { metaKey: true });
+  transcript.modifiedClick = {
+    opened: [...opened],
+    defaultPrevented: modifiedClick.defaultPrevented,
+  };
   toggle.dispatch("click");
   article.querySelector(".kpress-toc-backdrop").dispatch("click");
   transcript.backdropClicked = state(article, viewport);

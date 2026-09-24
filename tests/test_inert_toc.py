@@ -98,6 +98,30 @@ def test_an_inert_render_without_a_table_of_contents_says_so() -> None:
     assert "kept" in inert["html"]
 
 
+def test_an_entry_names_only_the_heading_kpress_gave_its_id() -> None:
+    """A raw heading written with the id KPress gives a Markdown heading does not take
+    that heading's entry: the id names no one heading, so the entry is left out. The
+    first heading with an empty slug, which KPress gives ``id=""``, keeps its entry."""
+
+    text = "\n\n".join(
+        [
+            "# Guide",
+            "## \U0001f680",
+            "## \U0001f389",
+            '<h2 id="install">Evil</h2>',
+            "## Install",
+            "## Usage",
+        ]
+    )
+    inert = kpress_adapter.inert_render(_render(text, "on"))
+    assert [(entry["title"], entry["href"]) for entry in inert["model"]["headings"]] == [
+        ("\U0001f680", "#user-content-"),
+        ("\U0001f389", "#user-content--1"),
+        ("Usage", "#user-content-usage"),
+    ]
+    assert 'id="user-content-evil"' in inert["html"]
+
+
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not available")
 def test_the_session_plays_the_recorded_inert_render() -> None:
     """``tests/dom/markdown-inert-toc-session.js`` runs on the inert render recorded in
@@ -132,4 +156,7 @@ def test_the_session_plays_the_recorded_inert_render() -> None:
         "text": "Install",
     }
     assert transcript["scrolled"]["active"] == "#user-content-constructor"
+    assert transcript["enhancerRoot"] == [{"className": "kpress-prose", "tocLinks": 0, "links": 3}]
+    assert transcript["entryClicked"]["opened"] == ["user-content-troubleshooting"]
+    assert transcript["modifiedClick"]["defaultPrevented"] is False
     assert transcript["disposed"]["listeners"] == 0

@@ -487,16 +487,6 @@ Content trust:
 
 Content source:
 
-- In a trusted served folder, a Markdown link to a file whose POSIX name holds a
-  backslash now opens it.
-  Markdown writes the backslash escaped (`[notes](a\b.md)` links to `a%5Cb.md`, as on
-  GitHub), and the link resolver and the published-route adapter now spell it `%5C`, as
-  the inventory does, instead of refusing the link.
-  In a Git pin such a link is still refused, and a literal backslash in a link’s
-  address, which a browser reads as a separator, still is everywhere; under the
-  untrusted profile the inert allowlist drops an escaped backslash from any reference.
-  Wiki links refuse a backslash as before.
-
 - The server now has one active repository subject per process.
   An attached local folder is `AttachedFilesystemSubject`. File, raw, tree, container,
   and event routes read through its `ContentSource`, and inventory open goes through
@@ -644,6 +634,16 @@ Fixes:
   shows its real name.
   A literal backslash in a `/view/` URL is refused, and Windows, where a backslash is a
   separator, is unchanged.
+
+- In a trusted served folder, a Markdown link to a file whose POSIX name holds a
+  backslash now opens it.
+  Markdown writes the backslash escaped (`[notes](a\b.md)` links to `a%5Cb.md`, as on
+  GitHub), and the link resolver and the published-route adapter now spell it `%5C`, as
+  the inventory does, instead of refusing the link.
+  In a Git pin such a link is still refused, and a literal backslash in a link’s
+  address, which a browser reads as a separator, still is everywhere; under the
+  untrusted profile the inert allowlist drops an escaped backslash from any reference.
+  Wiki links refuse a backslash as before.
 
 - Load more on a large text file in a pin advances its notice and continues the text.
   A pin’s later window reported its own length as `bytes_read`, where the filesystem

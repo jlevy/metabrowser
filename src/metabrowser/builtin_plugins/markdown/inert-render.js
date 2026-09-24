@@ -61,7 +61,9 @@ export function dropUnadmittedTargets(root) {
  * @param {{html: string, inert?: boolean, toc?: boolean, model?: {headings?: unknown}}} rendered
  * @param {MetabrowserPublicSdk} mb
  * @param {((root: HTMLElement) => T) | null} [enhance] Resolves the render's links and
- *   images under *root*. For an inert render it runs before the page adopts the nodes.
+ *   images under *root*. For an inert render it runs before the page adopts the nodes,
+ *   on the prose alone: the page's table of contents, which navigates by itself
+ *   (inert-toc.js), takes none of the enhancer's limit from the document's own links.
  * @returns {Promise<T | null>}
  */
 export async function placeRendered(target, rendered, mb, enhance = null) {
@@ -95,9 +97,9 @@ export async function placeRendered(target, rendered, mb, enhance = null) {
   }
   layout.append(prose);
   article.append(layout);
-  dropUnadmittedTargets(article);
+  dropUnadmittedTargets(prose);
   const enhanced = enhance
-    ? enhance(/** @type {HTMLElement} */ (/** @type {unknown} */ (article)))
+    ? enhance(/** @type {HTMLElement} */ (/** @type {unknown} */ (prose)))
     : null;
   target.replaceChildren(article);
   return enhanced;

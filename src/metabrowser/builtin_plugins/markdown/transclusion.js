@@ -455,7 +455,13 @@ export function mountWikiTransclusion(container, sourceElement, resolved, mb, op
       nestedHandle = nested || null;
       const inert = inertArticle(aside);
       disposeToc = inert
-        ? wireInertToc(inert)
+        ? wireInertToc(inert, {
+            open: (fragment) => {
+              void mb.navigation.open({ path: resolved.path, fragment }).catch((error) => {
+                console.warn("Could not open the table of contents entry", error);
+              });
+            },
+          })
         : initTocWithIntersectionFallback(() => mb.kpressInitToc?.(aside) || null);
     } catch (error) {
       if (disposed || options.signal?.aborted) {

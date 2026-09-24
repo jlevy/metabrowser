@@ -10,7 +10,9 @@
 // class, name, data, style, or event attribute survives, nor any SVG, MathML, media,
 // stylesheet, frame, or form, and no id the document wrote: in a document inside the
 // served tree each heading gets the anchor github.com would give it, `user-content-`
-// and the slug of its text, and a `#name` link becomes `#user-content-name`.
+// and the slug of its text, and a `#name` link becomes `#user-content-name`. The server
+// makes the anchors; a heading keeps the one it arrives with, which can only name that
+// namespace, so the page and the server agree whatever Unicode version each slugs by.
 //
 // Loaded on demand (`ensureAsset("inert-html")`) by the views that render untrusted
 // Markdown: the pull-request page and repository Markdown under the untrusted profile.
@@ -116,12 +118,24 @@
     return text.toLowerCase().replace(SLUG_DROPS, "").replaceAll(" ", "-");
   }
 
-  /** GitHub's numbering of repeated slugs (github-slugger): `a`, `a-1`, `a-2`. */
+  /**
+   * GitHub's numbering of repeated slugs (github-slugger): `a`, `a-1`, `a-2`. A heading
+   * that arrives with an anchor -- the server made it (inert_html.py), and its Unicode
+   * tables, not the browser's, decide the slug -- keeps it the first time it is seen;
+   * it can only name the anchor namespace.
+   */
   function createAnchors() {
     /** @type {Map<string, number>} */
     const seen = new Map();
-    /** @param {string} text */
-    return (text) => {
+    /** @param {string} text @param {string | null} arrived */
+    return (text, arrived) => {
+      if (arrived?.startsWith(ANCHOR_PREFIX)) {
+        const kept = arrived.slice(ANCHOR_PREFIX.length);
+        if (!seen.has(kept)) {
+          seen.set(kept, 0);
+          return arrived;
+        }
+      }
       const original = headingSlug(text);
       let result = original;
       while (seen.has(result)) {
@@ -376,12 +390,12 @@
     const out = rebuild(nodes, doc, base, headings, []);
     const anchor = createAnchors();
     for (const heading of headings) {
-      heading.element.setAttribute("id", anchor(heading.text.join("")));
+      heading.element.setAttribute("id", anchor(heading.text.join(""), heading.arrived));
     }
     return out;
   }
 
-  /** @typedef {{element: Element, text: string[]}} Heading */
+  /** @typedef {{element: Element, arrived: string | null, text: string[]}} Heading */
 
   /**
    * @param {ArrayLike<Node>} nodes
@@ -439,7 +453,8 @@
       const clean = element(doc, tag, allowedAttributes(tag, read, base));
       let inside = open;
       if (base === null && HEADINGS.includes(tag)) {
-        const heading = { element: clean, text: [] };
+        /** @type {Heading} */
+        const heading = { element: clean, arrived: read("id"), text: [] };
         headings.push(heading);
         inside = [...open, heading];
       }

@@ -14,7 +14,9 @@ headings’ `user-content-` anchors.
 The page draws its own table of contents from those entries in KPress’s markup, so
 KPress’s stylesheets place it in the side rail or the narrow drawer, and runs it: the
 entry for the section at the reading line is active, the narrow toggle opens and closes
-the drawer, and an entry click closes it.
+the drawer, and an entry click closes it and opens the heading through the page’s
+navigation (a modified click is the browser’s). The link enhancer resolves the prose
+alone, so the table of contents takes none of its limit from the document’s own links.
 
 This browserless session runs the production `builtin_plugins/markdown/inert-render.js`
 and `builtin_plugins/markdown/inert-toc.js`, and `static/inert-html.js` on the inert
@@ -66,6 +68,13 @@ $ node tests/dom/markdown-inert-toc-session.js
       "text": "Troubleshooting"
     }
   ],
+  "enhancerRoot": [
+    {
+      "className": "kpress-prose",
+      "tocLinks": 0,
+      "links": 3
+    }
+  ],
   "withoutToc": true,
   "forgedEntries": [
     {
@@ -109,7 +118,17 @@ $ node tests/dom/markdown-inert-toc-session.js
     "expanded": "false",
     "drawerOpen": false,
     "backdropVisible": false,
-    "toggleShown": true
+    "toggleShown": true,
+    "opened": [
+      "user-content-troubleshooting"
+    ],
+    "defaultPrevented": true
+  },
+  "modifiedClick": {
+    "opened": [
+      "user-content-troubleshooting"
+    ],
+    "defaultPrevented": false
   },
   "backdropClicked": {
     "scrollTop": 3900,

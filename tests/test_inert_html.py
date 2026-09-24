@@ -344,10 +344,40 @@ def test_both_sides_slug_the_same() -> None:
 
 def test_harden_document_maps_the_ids_it_replaces() -> None:
     html, replaced = inert_html.harden_document(
-        '<h1 id="title">T</h1><h2 id="part">Part</h2><h2 id="part">Part</h2><h3>No id</h3>'
+        '<h1 id="title">T</h1><h2 id="">\U0001f680</h2><h2 id="part">Part</h2>'
+        '<h2 id="part">Part</h2><h3>No id</h3>'
     )
-    assert replaced == {"title": "user-content-t", "part": "user-content-part"}
+    # The empty id KPress gives a heading with an empty slug is mapped; a repeated id
+    # names no one heading, so neither is.
+    assert replaced == {"title": "user-content-t", "": "user-content-"}
     assert '<h2 id="user-content-part-1">' in html
+
+
+def test_the_page_keeps_the_servers_anchors() -> None:
+    """The server's Unicode tables decide a slug: the page keeps each anchor it arrives
+    with, once, so a character one side knows and the other does not cannot split them.
+    A heading arriving with no anchor, or one already used, gets its own."""
+
+    import unicodedata
+
+    # A Sidetic letter (Unicode 17), unassigned in this Python's tables if they are older
+    # than node's: the server drops it from the slug, and a newer browser would keep it.
+    unknown = next(
+        (chr(c) for c in range(0x10940, 0x10960) if unicodedata.category(chr(c)) == "Cn"),
+        "x",
+    )
+    server = harden(_kpress(f"# Guide\n\n## Sidetic {unknown}\n\n## Sidetic\n"))
+    assert _tokens(_node({"tree": html_tree(server), "base": None})) == _tokens(server)
+    arrived = (
+        '<h2 id="user-content-kept">Kept</h2><h2 id="user-content-kept">Again</h2>'
+        '<h2 id="elsewhere">Made</h2>'
+    )
+    page = _node({"tree": html_tree(arrived), "base": None})
+    assert [value for _tag, value in _heading_ids(page)] == [
+        "user-content-kept",
+        "user-content-again",
+        "user-content-made",
+    ]
 
 
 def _heading_ids(html: str) -> list[tuple[str, str]]:

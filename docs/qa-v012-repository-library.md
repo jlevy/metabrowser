@@ -1058,9 +1058,10 @@ uv --config-file uv.toml run --frozen metab "file://${QA_TOC}/origin.git" --no-o
 5. Narrow the window until the rail folds away and scroll down: the toggle appears; it
    opens the drawer, and an entry or the backdrop closes it.
 6. Serve the working folder as a trusted folder (`metab "${QA_TOC}/work"`): **odd**
-   opens `a\b.md` (this needs the inventory to name a POSIX backslash `%5C`). In the
-   mirror, and in the folder served with `--untrusted`, **odd** is text with no address:
-   the inert allowlist drops an escaped backslash.
+   opens `a\b.md` (the tree lists it as `a%5Cb.md`;
+   `tests/test_markdown_backslash_links.py` runs this end to end).
+   In the mirror, and in the folder served with `--untrusted`, **odd** is text with no
+   address: the inert allowlist drops an escaped backslash.
 
 **Pass:** every step as described.
 

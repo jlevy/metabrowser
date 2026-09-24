@@ -218,7 +218,15 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
       // An inert render's table of contents is the page's own; a trusted one's is KPress's.
       const inert = inertArticle(container);
       disposeToc = inert
-        ? wireInertToc(inert)
+        ? wireInertToc(inert, {
+            open: (fragment) => {
+              if (path) {
+                void mb.navigation.open({ path, fragment }).catch((error) => {
+                  console.warn("Could not open the table of contents entry", error);
+                });
+              }
+            },
+          })
         : initTocWithIntersectionFallback(() => mb.kpressInitToc(container));
     } catch (error) {
       if (!disposed && !mb.errors.isAbortError(error)) {
