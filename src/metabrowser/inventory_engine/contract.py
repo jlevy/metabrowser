@@ -330,6 +330,12 @@ def native_inventory_name(name: str) -> str | None:
     only meaningful against the platform whose names it was built from.
     """
 
+    if _POSIX_BYTES and "\\" in name:
+        # The forward function escapes every POSIX backslash, so an unescaped one is
+        # outside its image. Passing it through would give `a\\b.txt` a second
+        # identity beside `a%5Cb.txt`, reachable only by a caller that skipped the
+        # escape.
+        return None
     if "%" not in name:
         return name
     out: list[str] = []
