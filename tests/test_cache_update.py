@@ -307,10 +307,11 @@ def test_a_packed_stale_ref_clash_is_pruned(mirror: _Mirror) -> None:
     assert _refs(mirror.published.git_dir)["refs/remotes/origin/side/x"] == nested
 
 
+@pytest.mark.parametrize("failing", ["fetch", "prune"])
 def test_a_retry_that_fails_after_pruning_records_the_refs_as_they_are(
-    mirror: _Mirror, monkeypatch: pytest.MonkeyPatch
+    mirror: _Mirror, monkeypatch: pytest.MonkeyPatch, failing: str
 ) -> None:
-    """The prune moved refs, so the record may not claim that nothing moved."""
+    """A prune, even a failed one, may move refs, so the record says what is left."""
 
     import metabrowser.cache.update as update_module
 
@@ -320,21 +321,22 @@ def test_a_retry_that_fails_after_pruning_records_the_refs_as_they_are(
     mirror.push("topic")
     mirror.push("--delete", "stale")
     real_run_git = update_module.run_git
-    fetches = 0
+    calls: list[str] = []
 
-    async def failing_fetch(args: list[str], **kwargs: Any) -> bytes:
-        nonlocal fetches
-        if "fetch" in args:
-            fetches += 1
-            raise GitCommandError(args, 1, "fatal: the transfer failed")
+    async def failing_step(args: list[str], **kwargs: Any) -> bytes:
+        step = "fetch" if "fetch" in args else "prune" if "prune" in args else None
+        if step is not None:
+            calls.append(step)
+        if step == "fetch" or step == failing:
+            raise GitCommandError(args, 1, f"fatal: the {step} failed")
         return await real_run_git(args, **kwargs)
 
-    monkeypatch.setattr(update_module, "run_git", failing_fetch)
+    monkeypatch.setattr(update_module, "run_git", failing_step)
     before = mirror.state()
 
     assert _update(mirror) is RefreshOutcome.fetch_failed
 
-    assert fetches == 2
+    assert calls == (["fetch", "prune", "fetch"] if failing == "fetch" else ["fetch", "prune"])
     state = mirror.state()
     assert state.last_operation.outcome == "fetch_failed"
     assert state.last_fetch_at == before.last_fetch_at

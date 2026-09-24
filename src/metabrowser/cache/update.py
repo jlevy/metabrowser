@@ -109,9 +109,9 @@ class RefreshOutcome(StrEnum):
     refreshing_elsewhere = "refreshing_elsewhere"
     # ls-remote could not read the origin: moved, deleted, or unreachable.
     origin_unavailable = "origin_unavailable"
-    # The fetch itself failed or was stopped at its deadline, twice. No ref moved except
-    # stale refs pruned before the second try, and then the record keeps a default
-    # branch the mirror still has.
+    # The fetch itself failed or was stopped at its deadline. No ref moved except stale
+    # refs pruned before a second try, and then the record keeps a default branch the
+    # mirror still has.
     fetch_failed = "fetch_failed"
     # The origin's default branch did not arrive as a commit.
     validation_failed = "validation_failed"
@@ -142,8 +142,9 @@ _RECORDED: Final[dict[RefreshOutcome, RecordedOutcome]] = {
 class StoreUpdate:
     """One refresh's outcome, when it ended, and the default branch it observed.
 
-    ``default_remote_ref`` and ``default_revision`` are set only when the refresh
-    fetched; ``at`` is also the new last-fetch time then.
+    ``default_remote_ref`` and ``default_revision`` are set when the refresh fetched,
+    and ``at`` is also the new last-fetch time then. They are also set by a failed
+    fetch after a prune deleted refs, because the record must then name what is left.
     """
 
     outcome: RefreshOutcome
@@ -207,7 +208,7 @@ def _release(lock: CacheLock) -> None:
 
 
 class _FetchFailedError(Exception):
-    """The atomic fetch failed; ``pruned`` says whether stale refs were deleted first."""
+    """The atomic fetch failed; ``pruned`` says whether a prune ran, even in part, first."""
 
     def __init__(self, cause: GitError, *, pruned: bool) -> None:
         super().__init__(str(cause))
@@ -236,7 +237,8 @@ async def _fetch_atomically(target: RepositoryStoreTarget, lock_fd: int) -> None
             mirror_prune_args(), target=target, policy=ACQUISITION_POLICY, pass_fds=(lock_fd,)
         )
     except GitError as exc:
-        raise _FetchFailedError(exc, pruned=False) from exc
+        # A prune deletes one ref at a time, so a failed one may have deleted some.
+        raise _FetchFailedError(exc, pruned=True) from exc
     try:
         await run_git(fetch, target=target, policy=ACQUISITION_POLICY, pass_fds=(lock_fd,))
     except GitError as exc:
@@ -267,8 +269,8 @@ async def _fetch(
         log.debug("refresh fetch failed: %s", _detail(exc.cause))
         if not exc.pruned:
             return StoreUpdate(RefreshOutcome.fetch_failed, canonical_now())
-        # The prune deleted refs before the retry failed: record the first of the
-        # origin's default branch and the one recorded before that the mirror still has.
+        # A prune ran, at least in part, before the fetch failed: record the first of
+        # the origin's default branch and the one recorded before that is still there.
         for ref in (remote_tracking_ref(head_ref), previous_ref):
             tip = await ref_tip(target, ref) if ref is not None else None
             if tip is not None:
