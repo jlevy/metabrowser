@@ -396,8 +396,10 @@ Provider web locators such as PR numbers or slash-containing release tags remain
 open selections until acquisition resolves their stable provider object identity; they
 are never inserted raw into this path.
 
-The query slot is currently carried verbatim and never interpreted: it exists so a query
-an author wrote, such as GitHub’s `?plain=1`, survives resolution unchanged.
+The query slot is carried verbatim: it exists so a query an author wrote survives
+resolution unchanged.
+The shell reads one document key, GitHub’s `plain=1`, for what it means on github.com:
+open the file’s Source view, as a `#L` line anchor also does.
 
 That makes the query the one component with two authorities in it, so it is the one
 component that needs a reserved namespace.

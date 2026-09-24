@@ -261,7 +261,17 @@ Source views:
   A large file’s anchor past the part loaded so far says so and names Load more; once
   Load more reaches the line, it is highlighted and scrolled to.
   An anchor past the end of the file says how many lines the file has.
-  The Markdown Source tab and the rendered views have no line anchors yet.
+- An address with a line anchor, or with GitHub’s `?plain=1`, opens the file in its
+  Source view, so a GitHub `blob` URL for a Markdown file with `#L10` or `?plain=1`
+  shows its source with those lines highlighted; a served `blob` URL keeps `?plain=1` in
+  the address. The Markdown Source tab has line numbers and anchors, with front matter
+  highlighted as YAML and the body as Markdown beside one column of numbers.
+- The line numbers are reachable from the keyboard: Tab focuses them, the arrow keys,
+  Page Up, Page Down, Home, and End move the anchor, and Shift extends it to a range.
+  A screen reader announces the highlighted lines as the anchor moves and when an
+  address sets it.
+- Opening a Source tab for the first time scrolls to the address’s line anchor, as
+  opening the file does.
 
 Repository cache:
 
