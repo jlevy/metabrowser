@@ -61,6 +61,10 @@ MAX_REVIEW_COMMENTS: Final = 1000
 MAX_CHECK_RUNS: Final = 300
 MAX_STATUSES: Final = 100
 MAX_LABELS: Final = 100
+# A commit count past this is not a real pull request's: GitHub lists at most 250 of a
+# pull request's commits but counts them all, and no cap on that count is documented.
+# A larger or negative count from the API is left out rather than refused.
+MAX_PULL_COMMITS: Final = 1_000_000
 API_PAGE_SIZE: Final = 100
 
 # Text, in UTF-8 bytes. The largest body measured was a 60,830-byte bot comment
@@ -123,7 +127,7 @@ class PullRequest(_Model):
     draft: bool
     merged: bool
     merged_by: Login | None
-    commits: Annotated[int, Field(ge=0)] | None
+    commits: Annotated[int, Field(ge=0, le=MAX_PULL_COMMITS)] | None
     merge_commit_sha: Sha | None
     mergeable: Mergeable
     labels: tuple[Short, ...] = Field(max_length=MAX_LABELS)

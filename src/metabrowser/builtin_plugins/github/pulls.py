@@ -56,6 +56,7 @@ from metabrowser.builtin_plugins.github.pull_record import (
     MAX_DIFF_HUNK_BYTES,
     MAX_ISSUE_COMMENTS,
     MAX_LABELS,
+    MAX_PULL_COMMITS,
     MAX_REVIEW_COMMENTS,
     MAX_REVIEWS,
     MAX_STATUSES,
@@ -198,8 +199,10 @@ def _int(value: object) -> int | None:
 
 
 def _count(value: object) -> int | None:
+    """A commit count within the record's bound, or ``None``."""
+
     number = _int(value)
-    return number if number is not None and number >= 0 else None
+    return number if number is not None and 0 <= number <= MAX_PULL_COMMITS else None
 
 
 def _required_int(value: object) -> int:
