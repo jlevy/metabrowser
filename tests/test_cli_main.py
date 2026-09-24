@@ -38,6 +38,7 @@ from metabrowser.cli.serve import (
     _run_until_interrupted,
     _shutdown_noise_filter,
     _stop_now,
+    stop_on_interrupt,
 )
 from metabrowser.dotenv import load_dotenv_chain
 from metabrowser.errors import CLIError
@@ -532,6 +533,46 @@ def test_one_interrupt_announces_and_stops() -> None:
         assert b"Stopping" in _STOPPING_NOTICE
     finally:
         uvicorn_logger.setLevel(original_level)
+
+
+@pytest.mark.skipif(not hasattr(signal, "SIGHUP"), reason="the platform has no SIGHUP")
+def test_a_hangup_while_serving_a_mirror_stops_like_ctrl_c_with_its_own_status() -> None:
+    """A mirror's refresh Git is outside the terminal's group, so only the server
+    hears a hangup; at its default action the server would die and leave Git
+    fetching. ``stop_on_interrupt`` routes it through ``_stop_now``, which kills
+    the live Git groups and exits 129, the status a shell reports for a hangup."""
+    previous_int = signal.getsignal(signal.SIGINT)
+    previous_hup = signal.getsignal(signal.SIGHUP)
+    try:
+        signal.signal(signal.SIGHUP, signal.SIG_DFL)
+        stop_on_interrupt()
+        assert signal.getsignal(signal.SIGINT) is _stop_now
+        assert signal.getsignal(signal.SIGHUP) is _stop_now
+        with (
+            patch("metabrowser.cli.serve.os.write"),
+            patch("metabrowser.cli.serve.kill_live_process_groups") as kill_groups,
+            patch("metabrowser.cli.serve.os._exit") as hard_exit,
+        ):
+            _stop_now(signal.SIGHUP, None)
+        kill_groups.assert_called_once_with()
+        hard_exit.assert_called_once_with(129)
+    finally:
+        signal.signal(signal.SIGINT, previous_int)
+        signal.signal(signal.SIGHUP, previous_hup)
+
+
+@pytest.mark.skipif(not hasattr(signal, "SIGHUP"), reason="the platform has no SIGHUP")
+def test_a_hangup_ignored_on_entry_stays_ignored_while_serving() -> None:
+    """``nohup metab <url>`` keeps serving after the terminal closes."""
+    previous_int = signal.getsignal(signal.SIGINT)
+    previous_hup = signal.getsignal(signal.SIGHUP)
+    try:
+        signal.signal(signal.SIGHUP, signal.SIG_IGN)
+        stop_on_interrupt()
+        assert signal.getsignal(signal.SIGHUP) == signal.SIG_IGN
+    finally:
+        signal.signal(signal.SIGINT, previous_int)
+        signal.signal(signal.SIGHUP, previous_hup)
 
 
 def test_serving_installs_a_stopping_handler_for_uvicorn_to_restore() -> None:

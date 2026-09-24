@@ -271,9 +271,10 @@ source, and none changes another source already in the cache.
   `SIGTERM`, stops Git and every helper it started, and leaves nothing visible, because
   the source is published last, after its store.
   A hangup exits with status 129 and `SIGTERM` with 143; under `nohup`, a hangup is
-  ignored as it asks. The next acquisition removes the abandoned staging entry, fetches
-  again, and reuses a store that was already published.
-  Nothing deletes a published store.
+  ignored as it asks. While the source is served, a hangup stops the server as Ctrl-C
+  does, killing a running refresh’s Git first, and exits 129. The next acquisition
+  removes the abandoned staging entry, fetches again, and reuses a store that was
+  already published. Nothing deletes a published store.
 
 Refusals that concern the application home say how to repair it:
 

@@ -225,8 +225,9 @@ force-push that keeps the old commit readable, a deleted branch pruned by name a
 readable by ID, a fetch lock another process holds, stale lock files, a fetch cancelled
 mid-transfer, and a removed origin.
 `tests/test_refresh_signals.py` runs the real command and interrupts a refresh
-mid-fetch: Ctrl-C leaves no Git running and the fetch lock free, and a killed server’s
-Git keeps the lock until it exits; it needs an admitted Git and skips below the floor.
+mid-fetch: Ctrl-C or a terminal hangup leaves no Git running and the fetch lock free,
+and a killed server’s Git keeps the lock until it exits; it needs an admitted Git and
+skips below the floor.
 `tests/test_source_refresh.py` drives the served routes over HTTP, including the
 newer-revision offer and switch, joined refreshes, refresh on open, shutdown
 cancellation, and the cross-origin, form, and GET refusals.

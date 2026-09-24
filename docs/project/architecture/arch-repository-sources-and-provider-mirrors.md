@@ -279,8 +279,10 @@ subprocess boundary: no inherited `GIT_*` variable, no system or global configur
 terminal prompting disabled, and hooks off.
 Git runs in its own process group, so a timeout, Ctrl-C, a terminal hangup, or `SIGTERM`
 kills the helpers it forks as well, including a cancellation that arrives while Git is
-still starting. Acquisition never inherits an attached checkout’s remote or credential
-helper.
+still starting. Being outside the terminal’s foreground group, a serving refresh’s Git
+does not hear a hangup itself, so the server takes a hangup as it takes Ctrl-C: it kills
+the live Git process groups and exits.
+Acquisition never inherits an attached checkout’s remote or credential helper.
 
 ### Git path and blob semantics
 

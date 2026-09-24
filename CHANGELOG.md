@@ -144,6 +144,8 @@ GitHub URLs and HTTPS:
   129 or 143. A hangup that was already ignored, as under `nohup`, stays ignored.
   A cancellation that arrives while Git is still starting also stops the helpers it
   already forked, rather than only `git` itself.
+  While a Git source is served, a hangup stops the server as Ctrl-C does, killing a
+  running refresh’s Git first, and exits 129.
 
 Repository cache:
 

@@ -1,4 +1,4 @@
-"""A refresh's Git under real signals: Ctrl-C kills it, and a killed server's Git keeps its lock.
+"""A refresh's Git under real signals: Ctrl-C or a hangup kills it; a killed server's does not.
 
 A refresh's ``git fetch`` runs in its own process group, so exiting the server does
 not stop it by itself. These tests run the real ``metab`` command as a separate
@@ -8,7 +8,7 @@ arrives:
 
 - Ctrl-C (SIGINT) takes the immediate-exit path, which kills the fetch's process group
   before the interpreter exits, so no Git is left writing the store and its fetch lock
-  is free;
+  is free. A terminal hangup (SIGHUP) takes the same path, exiting 129;
 - SIGKILL cannot run any handler, so the fetch outlives the server. It inherited the
   fetch lock's descriptor, so the lock stays held until it exits and no other process
   can start a refresh, or clean up files, under a live writer.
@@ -156,12 +156,21 @@ def _wait_for_group_to_end(pgid: int, *, timeout_s: float) -> None:
         time.sleep(0.02)
 
 
-def test_ctrl_c_kills_the_refresh_fetch_and_frees_its_lock(stale: _Stale) -> None:
+@pytest.mark.parametrize(
+    ("stop", "status"),
+    [(signal.SIGINT, 130), (signal.SIGHUP, 129)],
+    ids=["ctrl-c", "hangup"],
+)
+def test_ctrl_c_or_a_hangup_kills_the_refresh_fetch_and_frees_its_lock(
+    stale: _Stale, stop: signal.Signals, status: int
+) -> None:
+    """A hangup reaches only the server, since the fetch left the terminal's group."""
+
     server = _serve(stale)
     try:
         pgid = _fetch_group(stale, server)
-        server.send_signal(signal.SIGINT)
-        assert server.wait(timeout=30) == 130
+        server.send_signal(stop)
+        assert server.wait(timeout=30) == status
         # SIGKILL is delivered at once, but reaping the group can take a moment.
         _wait_for_group_to_end(pgid, timeout_s=5)
     finally:
