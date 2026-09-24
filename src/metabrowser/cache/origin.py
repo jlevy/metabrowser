@@ -59,10 +59,12 @@ def mirror_fetch_args(*, remote: str = "origin", prune: bool) -> list[str]:
     refresh passes ``prune`` for ``--prune --atomic``: a branch or tag deleted upstream
     leaves the mirror, and every ref updates together or none does, so a killed or
     failed fetch never leaves some refs moved and others not. Objects written before a
-    failure stay, which is harmless because nothing references them yet.
+    failure stay, which is harmless because nothing references them yet. ``--quiet``
+    keeps stderr to Git's errors, which a refresh with thousands of new refs would
+    otherwise push past the bounded capture.
     """
 
-    flags = ["--prune", "--atomic"] if prune else []
+    flags = ["--prune", "--atomic", "--quiet"] if prune else []
     return [
         *origin_protocol_args(),
         "fetch",

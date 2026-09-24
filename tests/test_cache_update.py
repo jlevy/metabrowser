@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import textwrap
+import threading
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,7 +25,7 @@ import pytest
 
 from metabrowser.cache.acquire import PublishedSource, acquire_file_source
 from metabrowser.cache.atomic import read_record
-from metabrowser.cache.locks import held_locks, store_fetch_lock
+from metabrowser.cache.locks import LockBusyError, held_locks, store_fetch_lock
 from metabrowser.cache.paths import store_record
 from metabrowser.cache.records import REPOSITORY_STORE_STATE_CONTRACT_ID, RepositoryStoreState
 from metabrowser.cache.repository_store import (
@@ -40,6 +41,7 @@ from metabrowser.cache.update import (
     update_store,
 )
 from metabrowser.git.process import (
+    GitCommandError,
     RepositoryStoreTarget,
     UnsupportedGitVersionError,
     repository_store_target,
@@ -255,6 +257,131 @@ def test_a_branch_replaced_by_a_directory_of_branches_does_not_wedge_the_mirror(
     assert refs["refs/remotes/origin/side/x"] == nested
     assert mirror.state().last_operation.outcome == "succeeded"
     assert _update(mirror) is RefreshOutcome.succeeded
+
+
+def _replace_side_with_side_x(mirror: _Mirror) -> str:
+    """Refresh with a ``side`` branch, then delete it upstream and push ``side/x``."""
+
+    _git(mirror.work, "branch", "side")
+    mirror.push("side")
+    assert _update(mirror) is RefreshOutcome.succeeded
+    mirror.push("--delete", "side")
+    _git(mirror.work, "branch", "-D", "side")
+    _git(mirror.work, "switch", "-q", "-c", "side/x")
+    nested = mirror.commit("x.txt", "nested\n", "nested branch")
+    mirror.push("side/x")
+    return nested
+
+
+def test_a_clash_among_thousands_of_new_refs_still_prunes_and_retries(mirror: _Mirror) -> None:
+    """Git's refusal need not be in stderr's first bytes, or worded one way: any fails."""
+
+    nested = _replace_side_with_side_x(mirror)
+    head = _rev_parse(mirror.work, "HEAD")
+    subprocess.run(
+        ["git", "-C", str(mirror.work), "update-ref", "--stdin"],
+        input="".join(f"create refs/heads/bulk/{index:04d} {head}\n" for index in range(2000)),
+        text=True,
+        check=True,
+        env=_git_env(mirror.work),
+    )
+    mirror.push("refs/heads/bulk/*:refs/heads/bulk/*")
+
+    assert _update(mirror) is RefreshOutcome.succeeded
+
+    refs = _refs(mirror.published.git_dir)
+    assert refs["refs/remotes/origin/side/x"] == nested
+    assert "refs/remotes/origin/side" not in refs
+    assert sum(name.startswith("refs/remotes/origin/bulk/") for name in refs) == 2000
+
+
+def test_a_packed_stale_ref_clash_is_pruned(mirror: _Mirror) -> None:
+    """A packed ``side`` is refused with other words than a loose one."""
+
+    nested = _replace_side_with_side_x(mirror)
+    _git(mirror.published.git_dir, "pack-refs", "--all")
+    assert not (mirror.published.git_dir / "refs" / "remotes" / "origin" / "side").exists()
+
+    assert _update(mirror) is RefreshOutcome.succeeded
+
+    assert _refs(mirror.published.git_dir)["refs/remotes/origin/side/x"] == nested
+
+
+def test_a_retry_that_fails_after_pruning_records_the_refs_as_they_are(
+    mirror: _Mirror, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The prune moved refs, so the record may not claim that nothing moved."""
+
+    import metabrowser.cache.update as update_module
+
+    _git(mirror.work, "branch", "stale")
+    mirror.push("stale")
+    newer = mirror.commit("b.txt", "second\n", "second")
+    mirror.push("topic")
+    mirror.push("--delete", "stale")
+    real_run_git = update_module.run_git
+    fetches = 0
+
+    async def failing_fetch(args: list[str], **kwargs: Any) -> bytes:
+        nonlocal fetches
+        if "fetch" in args:
+            fetches += 1
+            raise GitCommandError(args, 1, "fatal: the transfer failed")
+        return await real_run_git(args, **kwargs)
+
+    monkeypatch.setattr(update_module, "run_git", failing_fetch)
+    before = mirror.state()
+
+    assert _update(mirror) is RefreshOutcome.fetch_failed
+
+    assert fetches == 2
+    state = mirror.state()
+    assert state.last_operation.outcome == "fetch_failed"
+    assert state.last_fetch_at == before.last_fetch_at
+    # Nothing new arrived, so the default branch is still at the commit the mirror has.
+    assert state.default_remote_ref == "refs/remotes/origin/topic"
+    assert state.default_revision == before.default_revision != newer
+
+
+def test_cleanup_finishes_before_the_lock_goes_however_often_it_is_cancelled(
+    mirror: _Mirror, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import metabrowser.cache.update as update_module
+
+    started = threading.Event()
+    release = threading.Event()
+
+    def slow_cleanup(git_dir: Path) -> tuple[str, ...]:
+        started.set()
+        release.wait(30)
+        return ()
+
+    monkeypatch.setattr(update_module, "remove_interrupted_fetch_leftovers", slow_cleanup)
+    home, key = mirror.published.home, mirror.published.store_key
+
+    async def scenario() -> bool:
+        job = asyncio.ensure_future(update_store(home, key))
+        await asyncio.to_thread(started.wait, 30)
+        for _ in range(3):
+            job.cancel()
+            await asyncio.sleep(0.05)
+        # Cancelled three times, and the cleanup still runs, so the lock is still held.
+        held = await asyncio.to_thread(_fetch_lock_busy, home, key)
+        release.set()
+        with contextlib.suppress(asyncio.CancelledError):
+            await job
+        return held
+
+    assert asyncio.run(scenario()) is True
+    assert _fetch_lock_busy(home, key) is False
+
+
+def _fetch_lock_busy(home: Path, key: str) -> bool:
+    try:
+        with store_fetch_lock(home, key):
+            return False
+    except LockBusyError:
+        return True
 
 
 def _case_insensitive(directory: Path) -> bool:
