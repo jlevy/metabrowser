@@ -70,6 +70,9 @@ def _answer(response: Any) -> dict[str, Any]:
 
 
 def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+    # The recording pins session generations, so start from a fresh session: an earlier
+    # test that renders the shell (server.index) opens one and leaves it behind.
+    reset_source_session()
     monkeypatch.setenv("METABROWSER_HOME", str(tmp_path / "home"))
     _allow_installed_git(monkeypatch)
     origin = build_origin(tmp_path)
