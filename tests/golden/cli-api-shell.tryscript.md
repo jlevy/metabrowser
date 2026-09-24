@@ -450,6 +450,21 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/plugin/github/pull",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/github/pull-refresh",
+      "methods": [
+        "POST"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/plugin/structured/parsed",
       "methods": [
         "GET",
@@ -597,7 +612,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 43
+  "count": 45
 }
 ? 0
 ```

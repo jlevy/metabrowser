@@ -665,9 +665,15 @@ async def update_store(home: Path, store_key: str, *, remote_url: str) -> StoreU
         fetch_lock.release()
 
 
+# The same restore and cancellation shield, for a pull request's fetch into the store.
+restore_mirror_refs = _restore_refs
+finish_despite_cancel = _finish_despite_cancel
+
 __all__ = [
     "RefreshOutcome",
     "StoreUpdate",
+    "finish_despite_cancel",
     "remove_interrupted_fetch_leftovers",
+    "restore_mirror_refs",
     "update_store",
 ]

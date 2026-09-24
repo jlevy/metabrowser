@@ -45,6 +45,7 @@ from metabrowser.diff.format import (
     Totals,
 )
 from metabrowser.git.process import (
+    GitCommandError,
     GitError,
     GitLocation,
     RepositoryStoreTarget,
@@ -154,7 +155,15 @@ class GitDiffSource:
             left = await self._rev_parse(str(intent["left"]))
             right = await self._rev_parse(str(intent["right"]))
             if base_policy is BasePolicy.merge_base:
-                out = await run_git_at(["merge-base", left, right], self._location)
+                try:
+                    out = await run_git_at(["merge-base", left, right], self._location)
+                except GitCommandError as exc:
+                    # Exit status 1 is Git's answer for histories with no common commit.
+                    if exc.returncode != 1:
+                        raise
+                    raise DiffSourceError(
+                        "these two commits share no history, so they have no merge base"
+                    ) from exc
                 left = out.decode("ascii").strip()
         comparison_id = "git:" + sha256(f"{left}..{right}".encode()).hexdigest()[:16]
         return ResolvedComparison(

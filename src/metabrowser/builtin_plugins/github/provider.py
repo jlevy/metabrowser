@@ -1,4 +1,5 @@
-"""The GitHub repository provider: reducer, ``gh`` credential helper, size check, context.
+"""The GitHub repository provider: reducer, ``gh`` credential helper, size check, context,
+the head a pull-request URL pins, and the pull request a server serves.
 
 Core reaches this class only through
 :class:`~metabrowser.cache.providers.RepositoryProvider`.
@@ -6,23 +7,30 @@ Core reaches this class only through
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from typing import TYPE_CHECKING, Final
 
 from metabrowser.builtin_plugins.github.gh import GhError, gh_executable, run_gh
+from metabrowser.builtin_plugins.github.pulls import PullDataError, open_pull_request
+from metabrowser.builtin_plugins.github.served_pull import served_pull
 from metabrowser.builtin_plugins.github.urls import (
     CANONICAL_HOST,
     GithubUrlReducer,
     parse_repository_url,
 )
 from metabrowser.cache.acquire import RepositoryTooLargeError
+from metabrowser.cache.providers import PullRequestUnavailableError
 from metabrowser.git.process import GIT_ACQUISITION_TIMEOUT_S
 from metabrowser.git.wire import is_full_revision
 from metabrowser.repository_context import RepositoryContext
 
 if TYPE_CHECKING:
+    from metabrowser.cache.acquire import PublishedSource
+    from metabrowser.cache.providers import PullRequestFetch, PullRequestPin
     from metabrowser.cache.urls import GitSource, ProviderUrlReducer
+    from metabrowser.mirror_refresh import CompanionRefresh
 
 log = logging.getLogger(__name__)
 
@@ -94,6 +102,16 @@ def _is_github_remote(url: str) -> bool:
     return url.startswith(_GITHUB_HTTPS)
 
 
+def _unavailable(published: PublishedSource, number: int, exc: PullDataError) -> str:
+    """``<what failed> (<state>)``, naming the pull request, for the CLI to print."""
+
+    text = str(exc)
+    where = f"pull request {number} of {published.source.normalized}"
+    if where not in text:
+        text = f"{where}: {text}"
+    return f"{text} ({exc.state})"
+
+
 class GithubProvider:
     """The built-in :class:`~metabrowser.cache.providers.RepositoryProvider` for GitHub."""
 
@@ -157,6 +175,25 @@ class GithubProvider:
                     f"{GIT_ACQUISITION_TIMEOUT_S:g} s"
                 ),
             )
+
+    async def pull_request(
+        self, published: PublishedSource, number: int, *, fetch: PullRequestFetch
+    ) -> PullRequestPin | None:
+        if parse_repository_url(published.source.normalized) is None:
+            return None
+        try:
+            return await open_pull_request(published, number, fetch=fetch)
+        except PullDataError as exc:
+            raise PullRequestUnavailableError(
+                exc.state, _unavailable(published, number, exc)
+            ) from exc
+
+    async def served_pull_request(
+        self, published: PublishedSource, number: int
+    ) -> CompanionRefresh | None:
+        if parse_repository_url(published.source.normalized) is None:
+            return None
+        return await asyncio.to_thread(served_pull, published, number)
 
     def repository_context(
         self, source_url: str, *, revision: str, branch: str | None

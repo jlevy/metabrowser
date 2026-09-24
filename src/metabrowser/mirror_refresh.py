@@ -3,8 +3,10 @@
 A server serving a repository mirror answers every page from the mirror and never makes
 a request wait on the network. Network work runs as background jobs that a request
 starts or joins and then returns: the :class:`RefreshCoordinator` on the application
-state keeps one job per key (a store key today; a store and pull request later) so
-concurrent requests join the running one, and a semaphore bounds how many run at once.
+state keeps one job per key (a store key, or for a pull request's record the store key
+and its number) so concurrent requests join the running one, and a semaphore bounds how
+many run at once. A :class:`CompanionRefresh` is data a provider serves beside the
+mirror, refreshed with it under its own key.
 A job outlives the request that started it, and its failures become typed outcomes
 rather than exceptions. A graceful shutdown cancels whatever is still running through the
 application lifespan, which kills each job's Git; a Ctrl-C exits at once instead, after
@@ -194,6 +196,28 @@ class ServedMirror(Protocol):
 
         Supplied by a provider for a repository it hosts; ``None`` otherwise.
         """
+        ...
+
+
+class CompanionRefresh(Protocol):
+    """Data served beside the mirror that a provider keeps fresh: a pull request's record.
+
+    It is refreshed with the mirror, under its own key in the same coordinator, and
+    counts toward the mirror's staleness, so the rules that keep a served page fresh
+    keep it fresh too. :meth:`refresh` names every failure as an outcome it keeps.
+    """
+
+    @property
+    def key(self) -> str:
+        """The single-flight key of its refresh, distinct from the mirror's."""
+        ...
+
+    def is_stale(self, now: datetime, *, window_s: float) -> bool:
+        """Whether it is older than *window_s* at *now*, from memory alone."""
+        ...
+
+    async def refresh(self) -> None:
+        """Fetch it again; failures become outcomes rather than exceptions."""
         ...
 
 
@@ -399,8 +423,10 @@ class MirrorSession:
         pull_request: int | None = None,
         pending_selection: SelectionOpener | None = None,
         fetch_on_miss: bool = False,
+        companion: CompanionRefresh | None = None,
     ) -> None:
         self.mirror = mirror
+        self.companion = companion
         self._fetch_on_miss = fetch_on_miss
         self._coordinator = coordinator
         self._window_s = window_s
@@ -427,6 +453,10 @@ class MirrorSession:
         self._last_success_at: str | None = None
         self._tip: tuple[str, str | None] | None = None
         self._pin_lock = asyncio.Lock()
+        # The mirror's refresh and the pull request's each fetch into the store under its
+        # fetch lock; within this server they take turns here first, so neither finds
+        # the other holding it and reports a refresh running elsewhere.
+        self._fetch_turn = asyncio.Lock()
 
     # ── Observation ─────────────────────────────────────────────
 
@@ -455,12 +485,20 @@ class MirrorSession:
         return max(recorded, self._last_success_at)
 
     def is_stale(self, now: datetime | None = None) -> bool:
+        """Whether the mirror, or the data served beside it, is older than the window."""
+
+        moment_now = now or _now_utc()
+        return self._companion_stale(moment_now) or self._mirror_stale(moment_now)
+
+    def _companion_stale(self, now: datetime) -> bool:
+        return self.companion is not None and self.companion.is_stale(now, window_s=self._window_s)
+
+    def _mirror_stale(self, now: datetime) -> bool:
         fetched = self.last_fetch_at()
         moment = _parse_timestamp(fetched) if fetched is not None else None
         if moment is None:
             return True
-        elapsed = ((now or _now_utc()) - moment).total_seconds()
-        return elapsed > self._window_s
+        return (now - moment).total_seconds() > self._window_s
 
     def freshness_fields(self, subject: GitRevisionSubject) -> FreshnessFields:
         """The freshness half of the status envelope, from memory alone."""
@@ -476,7 +514,7 @@ class MirrorSession:
             "ref_on_origin": on_origin,
             "last_fetch_at": self.last_fetch_at(),
             "last_outcome": self._last_outcome(),
-            "refreshing": self.refreshing(),
+            "refreshing": self.refreshing() or self.companion_refreshing(),
             "stale": self.is_stale(),
             "pull_request": self._pull_request,
             "selection_state": self._selection_state,
@@ -532,23 +570,64 @@ class MirrorSession:
 
     # ── Refresh ─────────────────────────────────────────────────
 
-    def request_refresh(self) -> StartedOrJoined:
+    def request_refresh(self, *, for_selection: bool = False) -> StartedOrJoined:
         """Start a background refresh of the mirror, or join the one running.
 
         A URL selection still waiting, as after a fetch that failed, waits for this one.
+        The data served beside the mirror is refreshed as its own job when it is stale,
+        and in a server, when only it is stale, only it is refreshed. *for_selection* is
+        the fetch a pin the mirror lacks waits for: the mirror's alone.
         """
 
+        now = _now_utc()
+        companion_stale = not for_selection and self._companion_stale(now)
+        # Only a server skips a fresh mirror; a one-shot command asked for its refresh.
+        skip_mirror = self._fetch_on_miss and self._pending_selection is None
+        if companion_stale and skip_mirror and not self._mirror_stale(now):
+            return self.request_companion_refresh() or "joined"
         started = self._coordinator.start(self.mirror.key, self._refresh_job)
         if self._pending_selection is not None:
             self._selection_state = "pending"
+        if companion_stale:
+            self.request_companion_refresh()
         return started
+
+    def request_companion_refresh(self) -> StartedOrJoined | None:
+        """Start or join the refresh of the data served beside the mirror, if there is any."""
+
+        companion = self.companion
+        if companion is None:
+            return None
+        return self._coordinator.start(companion.key, self._companion_job)
+
+    def companion_refreshing(self) -> bool:
+        return self.companion is not None and self._coordinator.running(self.companion.key)
+
+    async def _companion_job(self) -> None:
+        companion = self.companion
+        if companion is None:
+            return
+        try:
+            async with self._fetch_turn:
+                await companion.refresh()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception("refreshing the data served beside the mirror failed")
+        try:
+            # Its fetch can move a ref the pin was resolved from, such as a pull
+            # request's head, which status then reports as newer.
+            await self.observe()
+        except Exception:
+            log.warning("could not observe the mirror after a refresh", exc_info=True)
 
     async def _refresh_job(self) -> None:
         # The record as it was before this attempt, to tell whether another process's
         # refresh this one may follow rewrote it.
         baseline = await self._read_baseline() if self._follow_elsewhere else None
         try:
-            result = await self.mirror.refresh()
+            async with self._fetch_turn:
+                result = await self.mirror.refresh()
         except asyncio.CancelledError:
             self._set_result(RefreshResult("cancelled", _utc_timestamp()))
             raise
@@ -704,7 +783,8 @@ class MirrorSession:
         """Pending while the fetch for *key* is still to run or running, then not found."""
 
         seen = self._misses.get(key)
-        if seen is not None and seen[0] < self._refreshes_ended and not self.refreshing():
+        waiting = self.refreshing() or self.companion_refreshing()
+        if seen is not None and seen[0] < self._refreshes_ended and not waiting:
             del self._misses[key]
             # Not found only if a fetch ran to the end since the miss, not merely ended.
             if self._fetches_ran == seen[1]:
@@ -714,7 +794,12 @@ class MirrorSession:
             if len(self._misses) >= MAX_REMEMBERED_MISSES:
                 self._misses.pop(next(iter(self._misses)))
             self._misses[key] = (self._refreshes_ended, self._fetches_ran)
-        return SelectionPendingError(self.request_refresh())
+        started = self.request_refresh(for_selection=True)
+        if key[1] is not None and self.companion is not None:
+            # A commit the mirror lacks may be a newer one of the pull request served
+            # beside it, which only that refresh fetches; a branch or tag never is.
+            self.request_companion_refresh()
+        return SelectionPendingError(started)
 
 
 def _served_revision() -> GitRevisionSubject | None:
@@ -731,6 +816,7 @@ class _ServedMirrorConfig:
     serving: bool
     pull_request: int | None
     pending_selection: SelectionOpener | None
+    companion: CompanionRefresh | None
 
 
 _served_mirror: _ServedMirrorConfig | None = None
@@ -742,6 +828,7 @@ def serve_mirror(
     serving: bool = False,
     pull_request: int | None = None,
     pending_selection: SelectionOpener | None = None,
+    companion: CompanionRefresh | None = None,
 ) -> None:
     """Tell the next application lifespan which mirror it serves, or that it serves none.
 
@@ -754,13 +841,15 @@ def serve_mirror(
     *pending_selection* opens a URL selection the mirror did not have yet: in serve mode
     the lifespan starts one refresh for it, a one-shot command waits for the refresh it
     asks for, and the pin switches to it if that fetch brings it.
+    *companion* is data a provider serves beside the mirror, such as a pull request's
+    record: it is refreshed with the mirror and counts toward its staleness.
     """
 
     global _served_mirror
     _served_mirror = (
         None
         if mirror is None
-        else _ServedMirrorConfig(mirror, serving, pull_request, pending_selection)
+        else _ServedMirrorConfig(mirror, serving, pull_request, pending_selection, companion)
     )
 
 
@@ -806,6 +895,7 @@ async def lifespan_refresh(app: Any) -> AsyncGenerator[None]:
                 pull_request=config.pull_request,
                 pending_selection=config.pending_selection,
                 fetch_on_miss=config.serving,
+                companion=config.companion,
             )
             try:
                 await session.observe()
@@ -837,6 +927,7 @@ __all__ = [
     "MAX_CONCURRENT_REFRESHES",
     "UNSERVED_FRESHNESS",
     "AmbiguousSelectionError",
+    "CompanionRefresh",
     "FreshnessFields",
     "InvalidSelectionError",
     "LastOutcome",

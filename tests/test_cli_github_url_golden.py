@@ -11,6 +11,10 @@ does, with two substitutions and nothing else:
   helper (both are covered in ``tests/test_github_provider.py`` and
   ``tests/test_github_credentials.py``).
 
+Pull-request URLs run against a ``gh`` that fails every command, so they show the
+fallback to what the mirror answers without pull-request data. Reading that data is
+``tests/test_cli_github_pull_golden.py``, with a fake ``gh`` that answers.
+
 The Git floor is patched as in the other acquisition goldens, because CI's Git is below
 it. Real HTTPS is the opt-in live smoke test, ``tests/test_github_live_smoke.py``.
 Refusals that stop at classification need no Git and run as a subprocess in
@@ -57,6 +61,14 @@ def _stand_in(monkeypatch: pytest.MonkeyPatch, origin: Path) -> None:
 
     monkeypatch.setattr("metabrowser.cache.acquire.remote_url_for", remote_url_for)
     monkeypatch.setattr("metabrowser.builtin_plugins.github.provider.gh_executable", lambda: None)
+    # Every other gh run finds one that fails first on PATH, so nothing here can reach
+    # the gh a developer has signed in.
+    failing = origin.parent / "failing-gh"
+    failing.mkdir(exist_ok=True)
+    gh = failing / "gh"
+    gh.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+    gh.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{failing}{os.pathsep}{os.environ.get('PATH', '')}")
 
 
 def _quoted(argument: str) -> str:
@@ -134,7 +146,8 @@ def test_golden_github_urls_open_through_a_local_stand_in(
     assert "utm_source" not in anchored.stdout
     assert "(branch 523f)" in by_command[f"{REPO}/tree/523f/docs --no-serve"].stdout
     pull = by_command[f"{REPO}/pull/7 --api /api/git/repo"]
-    assert "pull_request: 7" in pull.stderr and FIRST_COMMIT in pull.stdout
+    assert "pull_request: 7 (not opened: " in pull.stderr and FIRST_COMMIT in pull.stdout
+    assert "(gh_failed); the pin is the default branch)" in pull.stderr
     pinned = by_command[f"{REPO}/tree/release/v1 --api /api/git/repo"]
     assert f'"revision": "{SECOND_COMMIT}"' in pinned.stdout
 

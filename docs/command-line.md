@@ -192,8 +192,7 @@ exactly, including letter case, and `HEAD` names the default branch.
 `--no-serve` prints what the URL selected after the identity lines (`selection`, `pin`,
 `path`, and `lines` for a `#L10`, `#L10-L20`, or `#L10C5-L20C8` anchor), and `--show`
 and `--api` print the same lines on stderr and pin that commit.
-A `/pull/<n>` URL opens the default branch for now and reports the number; pull-request
-data arrives in a later release.
+A `/pull/<n>` URL pins the pull request’s head; see [Pull requests](#pull-requests).
 Query parameters other than `?plain=1` are dropped.
 Any other github.com page, `http://`, and GitHub’s own top-level pages are refused with
 a message that names the shape and offers the repository URL.
@@ -222,6 +221,50 @@ runs with `HOME=/dev/null`, so curl does not read `~/.netrc`. With `gh` installe
 first clone is also refused before it starts when GitHub reports the repository too
 large to finish within the acquisition deadline.
 On a terminal, a first clone reports each phase and the time elapsed.
+
+### Pull requests
+
+A pull-request URL pins the pull request’s head commit and reads its data:
+
+```shell
+metab https://github.com/owner/repo/pull/123 --api /api/plugin/github/pull
+metab https://github.com/owner/repo/pull/123/files --show README.md
+metab https://github.com/owner/repo/pull/123 --no-serve
+```
+
+The first `--show` or `--api` of a pull request reads it with `gh api` (the description,
+conversation, reviews, review comments, check runs, and statuses), fetches its commits
+through GitHub’s `refs/pull/<n>/head`, a fork’s included, and caches the record.
+Later ones answer from that cache without running `gh` or reaching the network, so they
+work offline. `--no-serve` refreshes the record, sending the ETags it holds so an
+unchanged part costs GitHub nothing against the rate limit.
+A `/pull/<n>/commits/<id>` URL pins that commit, which can be a fork’s.
+
+`/api/plugin/github/pull` reports the record with a state: `current` within a minute of
+its fetch, `stale` after, or `absent` with a reason.
+Its `comparison_route` is Files changed, the merge base of the base branch and the head
+to the head, as GitHub shows it; issue it with `--api` to get the diff.
+
+`metab <pull-request URL>` without `--no-serve` serves the head and keeps the record
+fresh beside the mirror: a stale one is refreshed when serving starts and when a stale
+page becomes visible, and `POST /api/plugin/github/pull-refresh` (a JSON object body)
+refreshes it on request and returns at once, with `pending` while no record exists yet.
+A newer head is offered as the source’s `latest` rather than switched to.
+
+Reading pull requests needs `gh` 2.81.0 or newer, signed in with `gh auth login`,
+because `gh api` refuses requests while signed out.
+A pull request that cannot be read does not fail the command.
+With a record cached, the pin stays at the record’s head and the `pull_request` line
+adds why the refresh failed.
+Without one, `/pull/<n>` pins the default branch and `/pull/<n>/commits/<id>` pins that
+commit if the mirror has it, and the `pull_request` line says why: `gh_missing`,
+`gh_too_old`, `not_logged_in`, `rate_limited` with the time the limit resets when GitHub
+gives one, `not_found_or_private`, `network_error`, `account_changed` when the active
+account changed during the read, `head_mismatch` when the pull request kept moving,
+`gh_failed` for an answer that cannot be read, `fetch_failed` or `git_failed` when Git
+failed, `record_too_large`, or `cache_unwritable`. Check runs or statuses GitHub
+refuses, and a comparison whose base cannot be fetched, are listed in the record’s
+`unavailable`, and the rest of the record stands.
 
 `--api /api/cache/…` on a `file://` URL acquires as a side effect, then issues the route
 against an empty throwaway directory so cache inspection cannot expose origin objects

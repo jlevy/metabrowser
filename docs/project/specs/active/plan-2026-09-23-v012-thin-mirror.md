@@ -325,8 +325,11 @@ Settled by measurement during implementation, each with a documented default:
 - First-clone time and size limits for large repositories.
 - Disk growth with no object deletion; `repack -a -d --keep-unreachable` consolidates
   packs without deleting objects if lookups slow down.
-- Bounds on pull-request records.
-- The minimum `gh` version for `auth status --json`.
+- Bounds on pull-request records: settled in `builtin_plugins/github/pull_record.py`,
+  measured on ten public pull requests.
+- The minimum `gh` version for `auth status --json`: 2.81.0, the release that added it.
+  The reader is never `anonymous` in practice, because `gh api` refuses requests while
+  signed out (checked with gh 2.98.0).
 
 Step 4 set the freshness window and the browser’s polling intervals over `file://`; each
 default and its measurement sits beside its constant, `FRESHNESS_WINDOW_S` in

@@ -33,7 +33,11 @@ from metabrowser.cache.urls import GitSource
 from metabrowser.cli.asgi_client import INDEX_READY_TIMEOUT_S
 from metabrowser.cli.common import apply_log_level, maybe_cli_logging
 from metabrowser.cli.hangup import run_cancelling_on_hangup
-from metabrowser.cli.selection import resolve_and_check_for_cli, selection_lines
+from metabrowser.cli.selection import (
+    open_pull_for_cli,
+    resolve_and_check_for_cli,
+    selection_lines,
+)
 from metabrowser.errors import CLIError
 from metabrowser.git.process import (
     GIT_ACQUISITION_TIMEOUT_S,
@@ -160,9 +164,18 @@ def run_no_serve(root: Path | GitSource, *, log_level: str = "") -> None:
     typer.echo(f"revision: {published.default_revision}")
     if root.selection is not None:
         # After the identity lines: the store is published even when the URL's ref is
-        # not in it, and the error that follows says so.
-        resolved = run_cancelling_on_hangup(resolve_and_check_for_cli(published, root.selection))
-        for line in selection_lines(root.selection, resolved):
+        # not in it, and the error that follows says so. A URL inside a pull request
+        # refreshes its record: this is the command that writes the cache.
+        selection = root.selection
+        pull = None
+        if selection.pull_request is not None:
+            pull = run_cancelling_on_hangup(
+                open_pull_for_cli(published, selection.pull_request, fetch="always")
+            )
+        resolved = run_cancelling_on_hangup(
+            resolve_and_check_for_cli(published, selection, pull=pull)
+        )
+        for line in selection_lines(selection, resolved, pull=pull):
             typer.echo(line)
 
 

@@ -11,11 +11,11 @@ address is a ``GitPath`` ``g1-`` prefix; the inner path is the remainder.
 ``GET /api/plugin/diff/children?path=<rel>`` lists the change entries as
 nav-tree child rows for the container affordance.
 
-``GET /api/plugin/diff/comparison?revision=<rev>`` (or ``?left=&right=``)
-serves the same document for a Git comparison at the active subject's
-``GitLocation``, so the history view renders diffs through this plugin's
-view instead of growing a diff surface of its own. A pinned revision
-does not need a working tree.
+``GET /api/plugin/diff/comparison?revision=<rev>`` (or
+``?left=&right=[&base_policy=merge_base]``) serves the same document for
+a Git comparison at the active subject's ``GitLocation``, so the history
+view renders diffs through this plugin's view instead of growing a diff
+surface of its own. A pinned revision does not need a working tree.
 
 The patch handlers read through the content reader, which serves an attached
 folder and a pinned revision alike and keeps the blocking part off the event
@@ -35,6 +35,7 @@ from metabrowser.diff.adapters.git import GitDiffSource
 from metabrowser.diff.adapters.patch_file import MAX_PATCH_BYTES, parse_unified_patch
 from metabrowser.diff.format import (
     Availability,
+    BasePolicy,
     ChangeSetDocument,
     ChangeSetManifest,
     FileChange,
@@ -64,6 +65,9 @@ _PATCH_EXTS = (".patch", ".diff")
 # cover ordinary commits whole; measured against this repository's own
 # history, where the 95th-percentile commit touches far fewer files.
 MAX_HYDRATED_FILES = 50
+
+# A revision compares against its first parent; only two endpoints choose a base.
+_TWO_ENDPOINT_POLICIES = frozenset({BasePolicy.direct.value, BasePolicy.merge_base.value})
 
 
 def _error(kind: str, message: str, status: int, *, path: str) -> JSONResponse:
@@ -162,8 +166,10 @@ async def comparison_handler(request: Request) -> JSONResponse:
 
     ``?revision=<rev>`` compares a commit against its first parent — the
     same resolution ``metab --diff REV`` performs. ``?left=&right=``
-    compares two endpoints. Hunks are hydrated up to a bound; the rest
-    stay ``deferred``, which the renderer states rather than eliding.
+    compares two endpoints, directly or, with ``&base_policy=merge_base``,
+    from their merge base, as a pull request's Files changed does. Hunks are
+    hydrated up to a bound; the rest stay ``deferred``, which the renderer
+    states rather than eliding.
     ``&file=<path>`` narrows to one change and hydrates it regardless of
     the bound — the deferred sections' on-demand loader.
     On a pinned revision, ``HEAD`` is that object id.
@@ -172,10 +178,18 @@ async def comparison_handler(request: Request) -> JSONResponse:
     wanted_file = request.query_params.get("file", "").strip()
     left = request.query_params.get("left", "").strip()
     right = request.query_params.get("right", "").strip()
+    base_policy = request.query_params.get("base_policy", "").strip()
+    if base_policy and (revision or base_policy not in _TWO_ENDPOINT_POLICIES):
+        return _error(
+            "diff_comparison",
+            "base_policy is direct or merge_base, and only for a left and right comparison.",
+            400,
+            path=revision or f"{left}..{right}",
+        )
     if revision:
         intent: dict[str, Any] = {"revision": revision}
     elif left and right:
-        intent = {"left": left, "right": right}
+        intent = {"left": left, "right": right, "base_policy": base_policy or "direct"}
     else:
         return _error(
             "diff_comparison",

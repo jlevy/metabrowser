@@ -5,14 +5,29 @@ mirror does not have as not found rather than fetching, which keeps transcripts
 deterministic. Serve mode instead serves the default branch, fetches once in the
 background, and switches to the selection if the fetch brought it; the opener it hands
 the server for that is :func:`pending_selection_opener`.
+
+A URL inside a pull request is the exception. Its record is opened first, through the
+provider that owns the source (:func:`open_pull_for_cli`): from the cache when a usable
+record is there, with no call to gh or the network, and otherwise fetched once, which
+also brings the pull request's commits, a fork's included, into the store;
+``--no-serve`` fetches it every time. A pull-request URL then pins the head, labelled
+``refs/pull/<n>/head``. When the pull request cannot be opened, the URL falls back to
+what it pins without pull-request data -- the default branch, or the commit a commit URL
+names if the mirror has it -- and the ``pull_request`` line says why.
 """
 
 from __future__ import annotations
 
 import logging
-from typing import Final
+from dataclasses import dataclass
 
 from metabrowser.cache.acquire import PublishedSource
+from metabrowser.cache.providers import (
+    PullRequestFetch,
+    PullRequestPin,
+    PullRequestUnavailableError,
+    open_pull_request,
+)
 from metabrowser.cache.repository_store import open_revision
 from metabrowser.cache.resolve import (
     ResolvedSelection,
@@ -29,7 +44,45 @@ from metabrowser.view_routes import VIEW_ROUTE_PREFIX
 
 LOG = logging.getLogger(__name__)
 
-_PULL_REQUEST_NOTE: Final = "pull-request data is not fetched yet"
+
+@dataclass(frozen=True, slots=True)
+class PullOpen:
+    """A pull request a URL names: its pin, or why it could not be opened."""
+
+    number: int
+    pin: PullRequestPin | None
+    unavailable: str | None
+
+    def resolution(self) -> ResolvedSelection | None:
+        """The pull request's head as a resolved selection, when it opened."""
+
+        if self.pin is None:
+            return None
+        return ResolvedSelection(
+            via="pull_request", name=str(self.number), ref=self.pin.ref, commit=self.pin.head
+        )
+
+    def note(self, *, fallback: bool) -> str:
+        """What the ``pull_request`` line and banner say about it."""
+
+        if self.pin is not None:
+            return self.pin.summary
+        where = "; the pin is the default branch" if fallback else ""
+        return f"not opened: {self.unavailable}{where}"
+
+
+async def open_pull_for_cli(
+    published: PublishedSource, number: int, *, fetch: PullRequestFetch
+) -> PullOpen:
+    """Open pull request *number*; a failure is kept as the reason, never raised."""
+
+    with maybe_cli_logging():
+        try:
+            pin = await open_pull_request(published, number, fetch=fetch)
+        except PullRequestUnavailableError as exc:
+            LOG.debug("pull request %s could not be opened: %s", number, exc)
+            return PullOpen(number=number, pin=None, unavailable=str(exc))
+    return PullOpen(number=number, pin=pin, unavailable=None)
 
 
 def unresolved_message(
@@ -76,13 +129,23 @@ async def resolve_in_mirror(
 
 
 async def resolve_for_cli(
-    published: PublishedSource, selection: RepositorySelection
+    published: PublishedSource, selection: RepositorySelection, *, pull: PullOpen | None = None
 ) -> ResolvedSelection:
-    """Resolve *selection* in the published store, or raise a path-free ``CLIError``."""
+    """Resolve *selection* in the published store, or raise a path-free ``CLIError``.
 
+    *pull* is the pull request the URL names, already opened: its head when it opened
+    and the URL names the pull request itself, and otherwise the mirror's answer.
+    """
+
+    head = None if pull is None or selection.kind != "pull_request" else pull.resolution()
+    if head is not None:
+        return head
     resolution = await resolve_in_mirror(published, selection)
     if isinstance(resolution, UnresolvedSelection):
-        raise CLIError(unresolved_message(published.source.normalized, selection, resolution))
+        message = unresolved_message(published.source.normalized, selection, resolution)
+        if pull is not None and pull.unavailable is not None:
+            message += f"; {pull.unavailable}"
+        raise CLIError(message)
     return resolution
 
 
@@ -101,11 +164,11 @@ async def require_selected_path(
 
 
 async def resolve_and_check_for_cli(
-    published: PublishedSource, selection: RepositorySelection
+    published: PublishedSource, selection: RepositorySelection, *, pull: PullOpen | None = None
 ) -> ResolvedSelection:
     """Resolve *selection*, then prove its path is in the pinned tree and let go of it."""
 
-    resolved = await resolve_for_cli(published, selection)
+    resolved = await resolve_for_cli(published, selection, pull=pull)
     if not resolved.path:
         return resolved
     try:
@@ -193,10 +256,14 @@ def _pin_label(resolved: ResolvedSelection) -> str:
         return f"default branch {name}"
     if resolved.via == "commit":
         return "commit"
+    if resolved.via == "pull_request":
+        return f"pull request {name} head"
     return f"{resolved.via} {name}"
 
 
-def selection_lines(selection: RepositorySelection, resolved: ResolvedSelection) -> list[str]:
+def selection_lines(
+    selection: RepositorySelection, resolved: ResolvedSelection, *, pull: PullOpen | None = None
+) -> list[str]:
     """``key: value`` lines naming what the URL selected; none for a bare repository URL."""
 
     if selection.kind == "repository":
@@ -208,16 +275,17 @@ def selection_lines(selection: RepositorySelection, resolved: ResolvedSelection)
         lines.append(f"lines: {selection.lines.fragment()}")
     if selection.plain:
         lines.append("plain: true")
-    if selection.pull_request is not None:
-        note = _PULL_REQUEST_NOTE
-        if selection.kind == "pull_request":
-            note += "; the pin is the default branch"
-        lines.append(f"pull_request: {selection.pull_request} ({note})")
+    if pull is not None:
+        note = pull.note(fallback=selection.kind == "pull_request")
+        lines.append(f"pull_request: {pull.number} ({note})")
     return lines
 
 
 def selection_banner(
-    selection: RepositorySelection | None, resolved: ResolvedSelection | None
+    selection: RepositorySelection | None,
+    resolved: ResolvedSelection | None,
+    *,
+    pull: PullOpen | None = None,
 ) -> list[str]:
     """Serve mode's banner lines for a URL selection; *resolved* is ``None`` while pending."""
 
@@ -233,12 +301,15 @@ def selection_banner(
         where = GitPath(resolved.path).display() if resolved.path else ""
         anchor = f"#{selection.lines.fragment()}" if selection.lines is not None else ""
         lines.append(f"Selection: {selection.kind} {where}{anchor}".rstrip())
-    if selection.pull_request is not None:
-        lines.append(f"Pull request: {selection.pull_request} ({_PULL_REQUEST_NOTE})")
+    if pull is not None:
+        note = pull.note(fallback=selection.kind == "pull_request")
+        lines.append(f"Pull request: {pull.number} ({note})")
     return lines
 
 
 __all__ = [
+    "PullOpen",
+    "open_pull_for_cli",
     "pending_selection_opener",
     "require_selected_path",
     "resolve_and_check_for_cli",

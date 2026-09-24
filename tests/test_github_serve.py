@@ -58,7 +58,11 @@ def origin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
         return local if source.normalized == REPO else source.normalized
 
     monkeypatch.setattr("metabrowser.cache.acquire.remote_url_for", remote_url_for)
+    # No gh at all, rather than conftest's failing stand-in: the provider imports the
+    # lookup by name, and a pull request's reads go through the gh module's own, so
+    # both are cleared and a pull request is gh_missing.
     monkeypatch.setattr("metabrowser.builtin_plugins.github.provider.gh_executable", lambda: None)
+    monkeypatch.setattr("metabrowser.builtin_plugins.github.gh.gh_executable", lambda: None)
     monkeypatch.setattr("metabrowser.cli.git_pin_cli.stop_on_interrupt", lambda: None)
     yield built
     reset_source_session()
@@ -110,13 +114,15 @@ def test_a_blob_url_serves_its_branch_and_opens_at_the_file_and_lines(origin: Pa
         assert '"branch": "release/v1"' in context.group(1)
 
 
-def test_a_pull_request_url_serves_the_default_branch_and_reports_the_number(
+def test_a_pull_request_it_cannot_open_serves_the_default_branch_and_says_why(
     origin: Path,
 ) -> None:
     result = _serve(f"{REPO}/pull/7/files")
     assert result.exit_code == 0, result.output
     assert f"Revision: {FIRST_COMMIT} (topic)\n" in result.stdout
-    assert "Pull request: 7 (pull-request data is not fetched yet)\n" in result.stdout
+    note = next(line for line in result.stdout.splitlines() if line.startswith("Pull request:"))
+    assert note.startswith(f"Pull request: 7 (not opened: pull request 7 of {REPO}: ")
+    assert note.endswith("(gh_missing); the pin is the default branch)")
     with TestClient(server.app) as client:
         status = client.get("/api/source/status").json()
         assert (status["pin"], status["pull_request"]) == (FIRST_COMMIT, 7)

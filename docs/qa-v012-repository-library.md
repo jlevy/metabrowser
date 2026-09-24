@@ -83,7 +83,8 @@ Landing is tracked by `mb-n2ro`.
 - **ssh stays closed.** It is not acquired and not opened.
 - **`file://` and `https://` are the origins acquired**, including GitHub web URLs,
   which the GitHub reducer rewrites to `https://github.com/<owner>/<repo>`. A bare
-  filesystem path is never rewritten into a clone URL. Only Phase 4.8 uses the network.
+  filesystem path is never rewritten into a clone URL. Only Phase 4.8 and the live half
+  of 4.10 use the network.
 - **Nothing binds a port** on `--no-serve`, `--show`, `--api`, or `--check-api`.
   “Serving” in the output is a failure on those modes.
 - **A served pin is always untrusted.** `metab file://…` or `metab https://…` with no
@@ -537,9 +538,9 @@ with a local origin standing in for `https://github.com/octo/demo`, and pins the
 in `tests/golden/cli-github-url-open.txt`. Read the transcript rather than rerunning it:
 every spelling of the repository prints one slug and store; `/tree/release/v1/docs` pins
 the `release/v1` branch; `/blob/…?plain=1#L3-L4` reports `lines` and `plain`; a branch
-named `523f` wins over the commit whose ID starts with those digits; `/pull/7` pins the
-default branch and reports `pull_request: 7`; and a missing ref, commit, or path is
-`ref_not_found`, `commit_not_found`, or `path_not_found`.
+named `523f` wins over the commit whose ID starts with those digits; and a missing ref,
+commit, or path is `ref_not_found`, `commit_not_found`, or `path_not_found`.
+Pull-request URLs are 4.10.
 
 ```shell
 uv --config-file uv.toml run --frozen pytest tests/test_cli_github_url_golden.py \
@@ -611,6 +612,58 @@ terminal does not stop the clone.
 `tests/test_acquire_stall_and_hangup.py` asserts all three without a terminal.
 
 **Fail:** An orphaned Git process still fetching; a staging entry left behind.
+
+### 4.10 Pull-request data
+
+Without the network, read the two transcripts rather than rerunning them:
+`tests/golden/cli-github-pull.tryscript.md` reads four cached pull requests (open from a
+fork, merged, closed with its fork deleted, and a draft) with no `gh` at all, and
+`tests/golden/cli-github-pull-refresh.txt` fetches, refreshes, and refuses them through
+a fake `gh`, listing every `gh` call after each command.
+
+```shell
+uv --config-file uv.toml run --frozen pytest tests/test_github_pulls.py \
+  tests/test_cli_github_pull_golden.py
+npx --no-install tryscript run tests/golden/cli-github-pull.tryscript.md
+```
+
+**Pass:** All pass. In the refresh transcript, the first open of `/pull/7` runs
+`gh auth status`, six `gh api` reads, and `gh auth status` again; `--no-serve` sends
+`If-None-Match` on all six; a cached read runs no `gh`; and each failure exits 0 with
+its typed state on the `pull_request` line (`not_found_or_private`, `not_logged_in`,
+`gh_too_old`, `rate_limited`, `network_error`, `account_changed`, `head_mismatch`,
+`gh_missing`), pinned at the cached head when there is a record and at the default
+branch when there is none.
+In `cli-github-url-open.txt`, `/pull/7` pins the default branch and
+`/pull/7/commits/89e0fad` that commit when `gh` fails, as before pull-request data.
+In `cli-github-pull.tryscript.md`, pull requests 12, 13, and 14 answer `absent` with
+`schema_mismatch`, `unreadable`, and `not_cached`. `/api/source/status` on `/pull/7`
+names `refs/pull/7/head` and `pull_request: 7`; `pull-refresh` answers `202` with
+`refreshing: true` (`pending` for 14), `409 no_pull_request` for a repository URL, and
+`405` for a GET. In `tests/test_github_pulls.py`, a served `/pull/7` pins its head, a
+refresh through `pull-refresh` runs as one coordinator job that a second request joins,
+a newer head behind `refs/pull/7/head` is offered as `latest` and taken through
+`/api/source/pin`, and a held fetch lock ends in `refreshing_elsewhere`.
+
+With the network, a signed-in `gh` 2.81.0 or newer, and a Git the floor admits
+(read-only; nothing is written to GitHub):
+
+```shell
+METABROWSER_LIVE_GITHUB=1 uv --config-file uv.toml run --frozen pytest -rs \
+  tests/test_github_pull_live_smoke.py
+uv --config-file uv.toml run --frozen metab \
+  https://github.com/pallets/markupsafe/pull/507 --api /api/plugin/github/pull
+```
+
+**Pass:** The smoke test’s Files changed matches GitHub’s file list for merged fork pull
+request 507 and for an open pull request.
+The command prints `pin: <head> (pull request 507 head)` and
+`pull_request: 507 (merged; fetched … by gh:<login>)` on stderr, then a `current` record
+whose `comparison.base_from` is `base_sha`. Run again, it answers from the cache.
+
+**Fail:** A `gh` call on a cached read; a token, scope, or `gh` output in a message; a
+record whose Files changed differs from GitHub’s; a failure without its typed state; a
+traceback.
 
 ## Phase 5: Serve the Pin (T1 Browser Subset, No Network)
 
@@ -915,7 +968,7 @@ was acquired or served, or a served pin ran a script).
 | A branch and tag selector in the browser | Not built; pin by name through `POST /api/source/pin` (5.6) |
 | The browser’s view of a pending URL selection | A page opened while the selection waited goes to it when the fetch finds it; the freshness row says when it is not on the origin or could not be fetched, and offers a Retry for the second |
 | Line highlighting for `#L10-L20` | `mb-rlf3`; the anchor stays in the address |
-| Pull-request data and page | Later steps; a `/pull/<n>` URL opens the default branch and reports the number |
+| Pull-request page | Later steps; pull-request data is read through `--api` and served beside the pin (4.10) |
 | Hosted-review / GitHub PR slice | Separate beads; not on these tips |
 | Archive containers | `mb-380k` |
 | Real browser HTML preview | Needs a browser; Phase 6.3 is optional and header-level. A pin never offers preview |

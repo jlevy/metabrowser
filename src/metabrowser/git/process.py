@@ -422,6 +422,22 @@ def _reaped(proc: asyncio.subprocess.Process) -> None:
         del _LIVE_PROCESS_GROUPS[proc.pid]
 
 
+def track_process_group(proc: asyncio.subprocess.Process) -> None:
+    """Have :func:`kill_live_process_groups` kill *proc*'s group, as it kills Git's.
+
+    For another tool run the way Git is, as the leader of its own process group, such
+    as ``gh``; call :func:`forget_process_group` once it is reaped.
+    """
+
+    _register_group(proc)
+
+
+def forget_process_group(proc: asyncio.subprocess.Process) -> None:
+    """Stop tracking a group :func:`track_process_group` registered."""
+
+    _reaped(proc)
+
+
 def git_environment(policy: GitProcessPolicy | None = None) -> dict[str, str]:
     """Environment for a git child process.
 
@@ -896,6 +912,7 @@ __all__ = [
     "failure_detail",
     "git_environment",
     "git_executable",
+    "forget_process_group",
     "kill_live_process_groups",
     "parse_git_version",
     "parsed_git_version_as_fixture",
@@ -906,4 +923,5 @@ __all__ = [
     "spawn_git_at",
     "spawn_git_process",
     "terminate_git_process",
+    "track_process_group",
 ]

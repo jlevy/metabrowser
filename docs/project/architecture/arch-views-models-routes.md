@@ -168,7 +168,7 @@ reservation and its invariants, is in
 | `/api/activity`, `/api/stream` | Live inventory and JSONL tail for sources with a filesystem root; unavailable for immutable Git trees rather than the lifespan folder |
 | `/api/git/repo`, `/api/git/refs`, `/api/git/summary`, `/api/git/log`, `/api/git/commit/<rev>` | Read-only Git history for the Git panel; log pages use bounded, replayable server sessions, opaque page cursors, and versioned graph-boundary checkpoints. The boundary and its rules are in [Git and comparison sources](arch-git-and-comparison-sources.md) |
 | `/api/cache/layout`, `/api/cache/sources`, `/api/cache/source/<slug>`, `/api/cache/stores` | Read-only logical state of the repository cache: layout and config formats, abandoned staging entries, source identity with alias generation and publication, and store records with the aliases that name them. They resolve `METABROWSER_HOME` per request without creating it, read without locks and without repairing a shared entry, page in key order, and never report a cache path, pack file, or Git internal. Wire shapes are in `cache/wire.py`. A server serving a Git pin answers them with `unsupported_for_subject` (409), so nothing about other cached sources is served beside acquired content |
-| `/api/source/status` | What this server serves: the subject kind and session generation, and on a `GitRevisionSubject` the full commit it is pinned to (`pin`), the store ref that commit was resolved from (`ref`), and the name the origin knows that ref by (`ref_name`); all three are null on a folder. On a served mirror it also reports freshness from server memory, so polling it runs no Git and reads no store: `refreshable`, the commit the pinned ref names in the mirror now (`latest`), whether the origin still had that ref at the last fetch (`ref_on_origin`: false when it deleted it, null for a pin by commit ID or a ref not yet observed), `last_fetch_at`, `last_outcome` (operation, typed outcome by name, time, from this process or the store’s record, whichever is newer), `refreshing`, and `stale` (older than the one-minute freshness window), plus `pull_request`, the number a served pull-request URL named, `selection_state`, which follows a URL selection the mirror lacked when serving began (`pending` until a fetch for it ends, then `found` and served, `not_found`, or `fetch_failed` when that fetch did not run; `superseded` after a pin switch), and `selection_href`, where a found selection opens. `cli-github-url-waits.txt` pins the pending, found, not-found, and fetch-failed sequence through `metab <url> --api /api/source/refresh --data …`, the one-shot request that fetches; `tests/test_github_serve.py` covers a server, a superseding switch, and the retry after a failed fetch. It sends an ETag and answers `If-None-Match` with 304. The navigation heading on a pin renders from the same envelope. Its checked evidence includes a pin: `cli-api-source.tryscript.md` opens a cached mirror, which needs no acquisition floor, so it runs on CI’s Git; acquiring and serving one are pinned in-process by `cli-git-pin.txt` and `tests/test_serve_pin.py` |
+| `/api/source/status` | What this server serves: the subject kind and session generation, and on a `GitRevisionSubject` the full commit it is pinned to (`pin`), the store ref that commit was resolved from (`ref`), and the name the origin knows that ref by (`ref_name`); all three are null on a folder. On a served mirror it also reports freshness from server memory, so polling it runs no Git and reads no store: `refreshable`, the commit the pinned ref names in the mirror now (`latest`), whether the origin still had that ref at the last fetch (`ref_on_origin`: false when it deleted it, null for a pin by commit ID or a ref not yet observed), `last_fetch_at`, `last_outcome` (operation, typed outcome by name, time, from this process or the store’s record, whichever is newer), `refreshing`, and `stale` (older than the one-minute freshness window), both of which cover a served pull request’s record as well as the mirror, plus `pull_request`, the number a served pull-request URL named, `selection_state`, which follows a URL selection the mirror lacked when serving began (`pending` until a fetch for it ends, then `found` and served, `not_found`, or `fetch_failed` when that fetch did not run; `superseded` after a pin switch), and `selection_href`, where a found selection opens. `cli-github-url-waits.txt` pins the pending, found, not-found, and fetch-failed sequence through `metab <url> --api /api/source/refresh --data …`, the one-shot request that fetches; `tests/test_github_serve.py` covers a server, a superseding switch, and the retry after a failed fetch. It sends an ETag and answers `If-None-Match` with 304. The navigation heading on a pin renders from the same envelope. Its checked evidence includes a pin: `cli-api-source.tryscript.md` opens a cached mirror, which needs no acquisition floor, so it runs on CI’s Git; acquiring and serving one are pinned in-process by `cli-git-pin.txt` and `tests/test_serve_pin.py` |
 | `/api/source/refresh` | `POST` with a JSON body: start a background refresh of the served mirror, or join the one running, and answer 202 at once with `refresh` (`started` or `joined`) and the status. The refresh is one `fetch --prune --atomic` under the store’s fetch side lock; its typed outcome appears in the status, never as a request error. A folder, or a pin with no mirror, answers `unsupported_for_subject` (409). A one-shot `--api` waits for the refresh it started, prints the status after it, and exits 1 unless the fetch ran or another process’s refresh is running; nothing else in a one-shot command fetches. A page on a pin sends the commit it shows in `x-metabrowser-pin` on every other `/api/` request, and a request for a commit the server does not serve, after a switch or a restart onto another pin, answers `pin_changed` (409); loads that are not `fetch` calls, such as `/raw` images, are not checked |
 | `/api/source/pin` | `POST` with `{"ref": …}` or `{"oid": …}`: resolve a branch, then a tag, then a commit ID in the mirror alone, never through revision syntax, and serve it: the old tree source is closed and the new one attached under a new generation. Answers `changed` and the new status; `invalid_selection` (400), `selection_not_found` (404), `ambiguous_selection` (409), or `unsupported_for_subject` (409) otherwise. `HEAD` is the default branch, and a name the mirror holds that is not a commit answers `not_a_commit` (409) at once, as URL opening does. In a server, a selection the mirror lacks answers `selection_pending` (202) with `refresh` and the status, and starts one background fetch; asked again after it ends, it switches, answers 404, or answers `selection_fetch_failed` (502) when that fetch did not run. `--api` never fetches for it, so the transcripts pin the 404; the 202 path is asserted by `tests/test_source_refresh.py` |
 | `/api/kpress/render`, `/api/kpress/export` | Document rendering and export. On a `GitRevisionSubject`, render reads a `GitPath` blob, uses the object id as the cache key, and passes the GitPath wire as `source_path`; export stays mutation-gated and unavailable |
@@ -179,11 +179,29 @@ reservation and its invariants, is in
 | `/_debug/tasks`, `/_debug/inventory` | Opt-in local task and inventory-provider diagnostics when `METABROWSER_DEBUG=1` |
 
 Plugin hooks currently registered: `diff/document`, `diff/children`, `diff/comparison`,
-`folder/*`, `binary/chunk`, `agent-log/charts`, `structured/parsed`. On a
-`GitRevisionSubject`, `diff/comparison` honors the pin through `GitLocation` and
-`GitDiffSource.content` reads blobs through the shared cat-file pool; patch
-`document`/`children`, `binary/chunk`, `structured/parsed`, and `agent-log/charts` honor
-`GitPath` and follow in-tree relative symlink blobs.
+`folder/*`, `binary/chunk`, `agent-log/charts`, `structured/parsed`, `github/pull`,
+`github/pull-refresh`. On a `GitRevisionSubject`, `diff/comparison` honors the pin
+through `GitLocation` and `GitDiffSource.content` reads blobs through the shared
+cat-file pool; patch `document`/`children`, `binary/chunk`, `structured/parsed`, and
+`agent-log/charts` honor `GitPath` and follow in-tree relative symlink blobs.
+`diff/comparison?left=&right=` takes `base_policy=direct` (the default) or `merge_base`,
+and reports it in the document.
+
+`github/pull` answers the served pull request’s cached record from the cache alone:
+`absent` (with `no_pull_request`, `not_cached`, `schema_mismatch`, or `unreadable`),
+`pending` (no record yet, and a refresh is running), `current`, or `stale`, plus the
+pin, `refreshing`, how this server’s last refresh of it ended (`last_refresh`), and
+`comparison_route`, the `diff/comparison` of the record’s merge-base endpoints.
+The pin is the served commit and can differ from the record’s head: a commit URL inside
+the pull request pins that commit, and a refresh can find a newer head than the pin.
+A record is fetched only by a refresh.
+`POST github/pull-refresh` starts or joins that refresh in the refresh coordinator and
+answers `202` at once, naming `github/pull` as its `status_route`, which a one-shot
+`--api` prints after the refresh ends, exiting 1 when it failed; it is a POST with a
+JSON object body for the same reason `/api/source/refresh` is, and plugin data routes
+are one path segment, hence the name.
+See
+[Pull-request records](arch-repository-sources-and-provider-mirrors.md#pull-request-records).
 
 The hosted-review slice registers these exact proposed resource routes with the browser
 address in the same implementation changes:
@@ -264,7 +282,9 @@ or kind arrives with transcript evidence or the build fails.
 | `/api/plugin/binary/chunk` | covered | `--api` | `cli-api-plugins.tryscript.md` |
 | `/api/plugin/diff/document` | covered | `--api` | `cli-api-plugins.tryscript.md` |
 | `/api/plugin/diff/children` | covered | `--api` | `cli-api-plugins.tryscript.md` |
-| `/api/plugin/diff/comparison` | covered | `--api` | `cli-api-plugins.tryscript.md`, `cli-api-git.tryscript.md` |
+| `/api/plugin/diff/comparison` | covered | `--api` | `cli-api-plugins.tryscript.md`, `cli-api-git.tryscript.md`, `cli-github-pull.tryscript.md` |
+| `/api/plugin/github/pull` | covered | `--api` | `cli-github-pull.tryscript.md` |
+| `/api/plugin/github/pull-refresh` | covered | `--api` | `cli-github-pull.tryscript.md` |
 | `/api/plugin/structured/parsed` | covered | `--api` | `cli-api-plugins.tryscript.md` |
 | `/view` | covered | `--show PATH`, `--show /view/...` | `cli-show.tryscript.md` |
 | `/commit` | covered | `--show /commit/<rev>[/<inner>]` | `cli-api-git.tryscript.md` |

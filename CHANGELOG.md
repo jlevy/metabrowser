@@ -96,12 +96,12 @@ GitHub URLs and HTTPS:
   containing `/` ends, preferring a branch, then a tag, then a full or abbreviated
   commit ID. `--no-serve` prints the selection after the identity lines, and `--show`
   and `--api` print it on stderr.
-  A `/pull/<n>` URL opens the default branch and reports the number until pull-request
-  data arrives. Ref names match exactly, including letter case, and `HEAD` names the
-  default branch; on a case-insensitive filesystem, a repository whose branch or tag
-  names differ only in case is refused as `ref_case_collision` rather than risk pinning
-  the wrong commit. Every spelling of a repository — one trailing `.git`, a trailing
-  slash, `www.`, letter case, and `git@github.com:owner/repo.git` — is one source,
+  A `/pull/<n>` URL pins the pull request’s head; see below.
+  Ref names match exactly, including letter case, and `HEAD` names the default branch;
+  on a case-insensitive filesystem, a repository whose branch or tag names differ only
+  in case is refused as `ref_case_collision` rather than risk pinning the wrong commit.
+  Every spelling of a repository — one trailing `.git`, a trailing slash, `www.`, letter
+  case, and `git@github.com:owner/repo.git` — is one source,
   `https://github.com/owner/repo`. Other github.com pages, `http://`, and GitHub’s own
   top-level pages are refused with a typed reason and a message that offers the
   repository URL; tracking parameters are dropped and never echoed.
@@ -158,6 +158,49 @@ GitHub URLs and HTTPS:
   filesystem checks the store holds every ref the fetch wrote under its exact name, and
   otherwise puts every ref back and reports `ref_case_collision`, so no pin resolves to
   the twin’s commit.
+
+- Pull-request data:
+  `metab https://github.com/owner/repo/pull/<n> --api /api/plugin/github/pull` reads the
+  pull request with `gh api` (its description, labels, state, merge status,
+  conversation, reviews, review comments, check runs, and statuses), fetches its commits
+  through GitHub’s `refs/pull/<n>/head`, a fork’s included, pins the head commit, and
+  prints the record. The record is cached as one JSON file per pull request, so later
+  `--show` and `--api` answer from the cache without running `gh` or reaching the
+  network; `--no-serve` refreshes it, with conditional requests that GitHub does not
+  count against the rate limit when nothing changed.
+  The record names Files changed as two pinned commits, the merge base and the head, as
+  GitHub computes it, and `/api/plugin/diff/comparison` now honors
+  `base_policy=merge_base` for such a comparison.
+  Reading pull requests needs `gh` 2.81.0 or newer signed in to github.com, because
+  `gh api` refuses unauthenticated requests.
+  A pull request that cannot be read does not stop the command: with a cached record,
+  the pin stays at its head and the report adds why the refresh failed; without one, a
+  `/pull/<n>` URL pins the default branch and a `/pull/<n>/commits/<id>` URL the commit,
+  as before pull-request data existed, and the `pull_request` line says why.
+  Serving a pull-request URL serves its head and keeps the record fresh beside the
+  mirror, in the same refresh jobs: a stale record makes the source `stale`, so it is
+  refreshed when serving starts and when a stale page becomes visible, and
+  `POST /api/plugin/github/pull-refresh` starts or joins its refresh and returns at
+  once. `/api/plugin/github/pull` adds `refreshing` and `last_refresh`, and answers
+  `pending` while the first record is being read.
+  A newer head is offered as the source’s `latest`, and `/api/source/pin` accepts
+  `refs/pull/<n>/head` to take it.
+  Only the stale one of the mirror and the record is refreshed, a pin the mirror lacks
+  never runs `gh`, and how the last refresh ended is kept beside the record, so a later
+  command reports it and does not ask `gh` again within the minute.
+  A one-shot `--api /api/plugin/github/pull-refresh` waits for the refresh, prints the
+  record after it, and exits 1 when it failed.
+  A `/pull/<n>/commits/<id>` URL naming a commit newer than the cached record refreshes
+  the pull request to reach it.
+  Each cause is named: `gh_missing`, `gh_too_old`, `not_logged_in`, `rate_limited` with
+  the reset time when GitHub gives one, `not_found_or_private`, `network_error`,
+  `account_changed`, `head_mismatch`, `gh_failed` for an answer that cannot be read,
+  `fetch_failed` and `git_failed` for Git, `record_too_large`, `cache_unwritable`, and
+  `not_github`. Check runs or statuses GitHub refuses, and a comparison whose base
+  cannot be fetched, leave the rest of the record standing and are listed in its
+  `unavailable`; an item that cannot be read or is too large for one page is left out,
+  an `http://` link is left empty, and the list is marked incomplete.
+  Lists and text are bounded per pull request, and a cut is reported, never silent.
 
 - A terminal hangup or `SIGTERM` now cancels an acquisition the way Ctrl-C does: Git and
   every helper it started are stopped, staging is removed, and `metab` exits with status

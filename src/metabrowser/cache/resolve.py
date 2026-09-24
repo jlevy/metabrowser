@@ -71,8 +71,11 @@ _REF_FORMAT: Final = "%(refname)%00%(objectname)%00%(objecttype)%00%(*objectname
 # Always ``fullmatch``: ``$`` also matches before a trailing newline.
 _COMMIT_ID = re.compile(r"[0-9a-f]{7,64}")
 _REF_FORBIDDEN = frozenset(" ~^:?*[\\\x7f")
+# The one ref a mirror holds beyond its origin's branches and tags, fetched with a pull
+# request, whose number follows the GitHub URL grammar.
+_PULL_HEAD = re.compile(r"refs/pull/[1-9][0-9]{0,9}/head")
 
-type ResolvedVia = Literal["default", "branch", "tag", "commit"]
+type ResolvedVia = Literal["default", "branch", "tag", "commit", "pull_request"]
 type UnresolvedReason = Literal[
     "ref_not_found", "commit_not_found", "commit_ambiguous", "not_a_commit", "invalid_ref"
 ]
@@ -418,7 +421,8 @@ async def resolve_pin(
 
     Exactly one of *ref* and *oid* is given. A short ref name is tried as a branch,
     then as a tag, and then, when it is hexadecimal, as a commit ID; a full name must
-    be under ``refs/remotes/origin/`` or ``refs/tags/``, the only refs a mirror holds.
+    be under ``refs/remotes/origin/`` or ``refs/tags/``, or be a pull request's
+    ``refs/pull/<n>/head``: the only refs a mirror holds.
     *oid* is only a commit ID, full or abbreviated to at least seven digits. A commit
     pinned by ID has no ref. ``HEAD`` is the default branch, *default_ref*, as in a URL.
     A name the mirror holds that is not a commit, such as a tag of a tree, is refused
@@ -439,10 +443,10 @@ async def resolve_pin(
             raise SelectionNotFoundError("the mirror has recorded no default branch")
         candidates: tuple[str, ...] = (default_ref,)
     elif ref.startswith("refs/"):
-        if not ref.startswith((BRANCH_MIRROR_PREFIX, TAG_PREFIX)):
+        if not ref.startswith((BRANCH_MIRROR_PREFIX, TAG_PREFIX)) and not _PULL_HEAD.fullmatch(ref):
             raise InvalidSelectionError(
-                "only the origin's branches (refs/remotes/origin/…) and tags (refs/tags/…) "
-                "can be pinned"
+                "only the origin's branches (refs/remotes/origin/…), tags (refs/tags/…), "
+                "and pull-request heads (refs/pull/<n>/head) can be pinned"
             )
         candidates = (ref,)
     else:

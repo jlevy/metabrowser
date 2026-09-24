@@ -98,7 +98,7 @@ store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
 selection: pull_request
 pin: 523f476bbcbde731f18dec9d6875df8fe8db13f3 (default branch topic)
-pull_request: 7 (pull-request data is not fetched yet; the pin is the default branch)
+pull_request: 7 (not opened: pull request 7 of https://github.com/octo/demo: gh exited 1 without an HTTP response (gh_failed); the pin is the default branch)
 --- stderr ---
 # metab https://github.com/octo/demo/pull/7/commits/89e0fad --no-serve
 exit: 0
@@ -109,7 +109,7 @@ store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
 selection: commit
 pin: 89e0fadf1d6368c47b9363ff7df0cd26b48d67df (commit)
-pull_request: 7 (pull-request data is not fetched yet)
+pull_request: 7 (not opened: pull request 7 of https://github.com/octo/demo: gh exited 1 without an HTTP response (gh_failed))
 --- stderr ---
 # metab https://raw.githubusercontent.com/octo/demo/refs/heads/release/v1/docs/v1.md --no-serve
 exit: 0
@@ -292,7 +292,7 @@ status: 200
 --- stderr ---
 selection: pull_request
 pin: 523f476bbcbde731f18dec9d6875df8fe8db13f3 (default branch topic)
-pull_request: 7 (pull-request data is not fetched yet; the pin is the default branch)
+pull_request: 7 (not opened: pull request 7 of https://github.com/octo/demo: gh exited 1 without an HTTP response (gh_failed); the pin is the default branch)
 # metab https://github.com/octo/demo/blob/HEAD/docs/guide.md --no-serve
 exit: 0
 --- stdout ---
@@ -340,7 +340,7 @@ Error: the URL names an object in https://github.com/octo/demo that is not a com
 exit: 1
 --- stdout ---
 --- stderr ---
-Error: the mirror of https://github.com/octo/demo has no commit abcdef0 (commit_not_found)
+Error: the mirror of https://github.com/octo/demo has no commit abcdef0 (commit_not_found); pull request 7 of https://github.com/octo/demo: gh exited 1 without an HTTP response (gh_failed)
 # metab https://github.com/octo/demo/tree/TOPIC --no-serve
 exit: 1
 --- stdout ---

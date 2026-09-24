@@ -24,6 +24,7 @@ agent-log      builtin  agent-log   3      charts
 binary         builtin  -           1      chunk
 diff           builtin  diff        1      document,children,comparison
 folder         builtin  -           2      -
+github         builtin  -           0      pull,pull-refresh
 html           builtin  html        2      -
 image          builtin  -           1      -
 markdown       builtin  markdown    2      -
@@ -108,6 +109,21 @@ $ metab --plugins --json
       ],
       "view_count": 2,
       "data_hooks": [],
+      "disabled_data_hooks": []
+    },
+    {
+      "name": "github",
+      "display_name": "GitHub",
+      "version": "0.0.1",
+      "source": "builtin",
+      "static_root": "[BUILTIN]/github",
+      "kinds": [],
+      "views": [],
+      "view_count": 0,
+      "data_hooks": [
+        "pull",
+        "pull-refresh"
+      ],
       "disabled_data_hooks": []
     },
     {
@@ -334,7 +350,7 @@ $ metab --plugin markdown --json
 
 ```console
 $ metab --doctor
-metab --doctor: 10 plugin(s), 3 capability provider(s), 22 contract(s), 2 profile(s) OK
+metab --doctor: 11 plugin(s), 3 capability provider(s), 22 contract(s), 2 profile(s) OK
 ? 0
 ```
 
@@ -344,7 +360,7 @@ metab --doctor: 10 plugin(s), 3 capability provider(s), 22 contract(s), 2 profil
 $ metab --doctor --json
 {
   "ok": true,
-  "plugin_count": 10,
+  "plugin_count": 11,
   "capability_provider_count": 3,
   "artifact_contract_count": 22,
   "resource_profile_count": 2,
