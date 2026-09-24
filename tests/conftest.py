@@ -61,18 +61,24 @@ def _gh_guard_bin(tmp_path_factory: pytest.TempPathFactory) -> tuple[str, str]: 
 
 @pytest.fixture(autouse=True)
 def _no_real_gh(  # pyright: ignore[reportUnusedFunction]
-    request: pytest.FixtureRequest,
-    monkeypatch: pytest.MonkeyPatch,
-    _gh_guard_bin: tuple[str, str],
-) -> None:
-    """Put the failing stand-in gh first on PATH, except for the opt-in live smoke test."""
+    request: pytest.FixtureRequest, _gh_guard_bin: tuple[str, str]
+) -> Generator[None, None, None]:
+    """Put the failing stand-in gh first on PATH, except for the opt-in live smoke test.
+
+    Its own ``MonkeyPatch``, not the ``monkeypatch`` fixture: requesting that here would
+    set it up before every module's own autouse fixtures, so a test's patches would be
+    undone only after those fixtures' teardown had run against them.
+    """
 
     live = request.node.get_closest_marker("live_github") is not None
     if live and os.environ.get("METABROWSER_LIVE_GITHUB") == "1":
+        yield
         return
     directory, log = _gh_guard_bin
-    monkeypatch.setenv("PATH", directory + os.pathsep + os.environ.get("PATH", ""))
-    monkeypatch.setenv(GH_GUARD_LOG_ENV, log)
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setenv("PATH", directory + os.pathsep + os.environ.get("PATH", ""))
+        patch.setenv(GH_GUARD_LOG_ENV, log)
+        yield
 
 
 def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter) -> None:
