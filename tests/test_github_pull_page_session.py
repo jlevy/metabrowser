@@ -404,9 +404,14 @@ def test_the_session_runs_on_the_recording() -> None:
     # The header says what github.com says in each state, and skipped checks are
     # counted apart from neutral ones.
     states = transcript["states"]
-    assert "] forker wants to merge 2 commits into topic from forker:" in states["open"]["header"]
+    assert (
+        "] forker wants to merge 2 commits into octo:topic from forker:" in states["open"]["header"]
+    )
     assert "] octo merged 1 commit into topic from guide-more" in states["merged"]["header"]
-    assert "[Closed] ghost wants to merge 1 commit into topic from" in states["closed"]["header"]
+    assert (
+        "[Closed] ghost wants to merge 1 commit into octo:topic from spam (deleted fork)"
+        in states["closed"]["header"]
+    )
     # With no merger named, nobody is credited.
     assert (
         "[Merged] merged 1 commit into topic from guide-more"

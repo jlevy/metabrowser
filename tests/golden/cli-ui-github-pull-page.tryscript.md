@@ -30,6 +30,9 @@ the open pull request and for the stand-in’s merged and closed ones, which the
 server answered: “wants to merge” with the commit count until it is merged, then the
 account that merged it, or no one when the record names no merger, and skipped checks
 apart from neutral ones.
+Pull requests 7 and 9 come from forks, so both sides carry their owner, as in
+github.com’s “into cli:trunk from 00200200:fix/…”; pull request 8 is from the same
+repository, so both sides are bare branch names.
 The last lines show a page for a number the server does not serve, which links a
 rendered text keeps (made absolute against the pull request’s github.com page, http and
 https only), and the `/view/` address a review comment’s file opens at.
@@ -122,7 +125,7 @@ $ node tests/dom/github-pull-page-session.js
         "canRefresh": false,
         "freshness": "Fetched just now by gh:octo-reader",
         "failure": null,
-        "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into topic from forker:count-to-two",
+        "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
           "enhancement"
         ],
@@ -228,7 +231,7 @@ $ node tests/dom/github-pull-page-session.js
         "canRefresh": false,
         "freshness": "Fetched just now by gh:octo-reader",
         "failure": null,
-        "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into topic from forker:count-to-two",
+        "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
           "enhancement"
         ],
@@ -272,7 +275,7 @@ $ node tests/dom/github-pull-page-session.js
         "canRefresh": false,
         "freshness": "Fetched just now by gh:octo-reader",
         "failure": null,
-        "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into topic from forker:count-to-two",
+        "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
           "enhancement"
         ],
@@ -315,7 +318,7 @@ $ node tests/dom/github-pull-page-session.js
         "canRefresh": false,
         "freshness": "Fetched just now by gh:octo-reader",
         "failure": null,
-        "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into topic from forker:count-to-two",
+        "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
           "enhancement"
         ],
@@ -361,7 +364,7 @@ $ node tests/dom/github-pull-page-session.js
         "canRefresh": true,
         "freshness": "Fetched 5 min ago by gh:octo-reader · may be out of date",
         "failure": null,
-        "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into topic from forker:count-to-two",
+        "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
           "enhancement"
         ],
@@ -407,7 +410,7 @@ $ node tests/dom/github-pull-page-session.js
         "canRefresh": false,
         "freshness": "Refreshing… · fetched 5 min ago by gh:octo-reader",
         "failure": null,
-        "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into topic from forker:count-to-two",
+        "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
           "enhancement"
         ],
@@ -462,7 +465,7 @@ $ node tests/dom/github-pull-page-session.js
         "canRefresh": false,
         "freshness": "Fetched just now by gh:octo-reader",
         "failure": null,
-        "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into topic from forker:count-to-two",
+        "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
           "enhancement"
         ],
@@ -517,7 +520,7 @@ $ node tests/dom/github-pull-page-session.js
         "canRefresh": false,
         "freshness": "Fetched just now by gh:octo-reader",
         "failure": null,
-        "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into topic from forker:count-to-two",
+        "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
           "enhancement"
         ],
@@ -598,7 +601,7 @@ $ node tests/dom/github-pull-page-session.js
         "canRefresh": false,
         "freshness": "Fetched just now by gh:octo-reader",
         "failure": null,
-        "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into topic from forker:count-to-two",
+        "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
           "enhancement"
         ],
@@ -632,7 +635,7 @@ $ node tests/dom/github-pull-page-session.js
   ],
   "states": {
     "open": {
-      "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into topic from forker:count-to-two",
+      "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
       "checks": {
         "success": 2,
         "pending": 1
@@ -646,7 +649,7 @@ $ node tests/dom/github-pull-page-session.js
       }
     },
     "closed": {
-      "header": "spam #9 [Closed] ghost wants to merge 1 commit into topic from spam (deleted fork)",
+      "header": "spam #9 [Closed] ghost wants to merge 1 commit into octo:topic from spam (deleted fork)",
       "checks": {
         "success": 2,
         "pending": 1
