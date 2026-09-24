@@ -734,9 +734,12 @@ def test_main_view_address_dims_the_root_and_leaves_no_dead_segment() -> None:
 
     js = _read_app_js()
     fn_start = js.index("function headerAddressHtml(path, isFile)")
-    fn_block = js[fn_start : fn_start + 1400]
+    fn_block = js[fn_start : fn_start + 1600]
     assert 'class="file-header-root"' in fn_block
     assert 'class="folder-crumb folder-crumb-root" data-nav-dir=""' in fn_block
+    # Every crumb is an owner-marked control; the click delegate ignores unmarked
+    # copies a document could write (tests/dom/shell-delegate-owner-session.js).
+    assert fn_block.count("${ownedControlAttr()}") == 2
     # The final component navigates too — as a file when it names one.
     assert 'last && isFile ? "data-nav-file" : "data-nav-dir"' in fn_block
     assert "folder-crumb-current" in fn_block

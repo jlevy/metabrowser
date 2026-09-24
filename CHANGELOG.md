@@ -41,6 +41,15 @@ Plugin contracts:
 
 Plugin SDK:
 
+- A copy control a plugin builds without `wrapWithCopy` needs the page’s owner mark:
+  `mb.ownDelegate(element)` sets it on an element, and `mb.delegateOwnerAttribute()`
+  returns it for markup.
+  `wrapWithCopy` and `partialNoticeHtml` add it themselves.
+  Without the mark the shared copy and Load more listeners ignore the element, as they
+  ignore the same markup written by a document.
+  The browser SDK stays 0.6: the documented helpers keep working unchanged, and the two
+  functions are additions.
+
 - `window.metabrowser.sourceKind()` reports whether the served tree is a filesystem root
   or a `git_revision` pin.
   Markdown link and wiki resolution use that kind instead of inferring GitPath encoding
@@ -457,6 +466,15 @@ Content trust:
   the button the notice built: the shell’s text loader by default.
   `partialNoticeHtml`’s `action` string no longer becomes an inline handler; a view that
   continues its own content passes `action: null` and wires its own listener.
+
+- The application’s document-wide handlers act only on controls the page created.
+  A trusted folder’s Markdown keeps class, `id`, and `data-*`, so a document could write
+  `data-mb-copy="text"` with its own `data-mb-copy-text` and replace the clipboard on a
+  click, or spell an address crumb (`data-nav-dir`, `data-nav-file`), the print button,
+  or a Load more button.
+  The copy, Load more, crumb, parent-folder, and print handlers now require
+  `data-mb-owner` with a value drawn when the page loads, which a document written
+  earlier cannot carry, and the tooltip ignores a rendered document’s `data-tip-text`.
 
 Content source:
 

@@ -65,12 +65,15 @@ KPress’s sanitized mode is a document renderer’s policy, and it keeps what a
 its own may use: stylesheets, images, SVG and its `url()` paint servers, classes the
 application styles, `data-*` attributes KPress’s own scripts act on, and `id` and
 `name`. Inside the application page each of those is an attack from a document a reader
-did not write.
-So when active content is off — every served mirror, where a fork’s author
-controls the head’s Markdown, and a folder served with `--untrusted` — and for every
-pull-request comment, Markdown reaches the page only as an allowlist of plain markup,
-applied twice: on the server by `src/metabrowser/inert_html.py`, and in the page by
-`static/inert-html.js`, which parses the HTML into an inert `<template>` and inserts
+did not write. A trusted folder keeps them, so the application’s document-wide handlers
+do not read them as its own: the copy, Load more, address-crumb, and print handlers act
+only on an element carrying `data-mb-owner` with a value drawn when the page loads,
+which a document written earlier cannot spell, and the tooltip ignores a rendered
+document’s markup. So when active content is off — every served mirror, where a fork’s
+author controls the head’s Markdown, and a folder served with `--untrusted` — and for
+every pull-request comment, Markdown reaches the page only as an allowlist of plain
+markup, applied twice: on the server by `src/metabrowser/inert_html.py`, and in the page
+by `static/inert-html.js`, which parses the HTML into an inert `<template>` and inserts
 only nodes rebuilt from the allowlist.
 The allowlist keeps paragraphs, headings, emphasis, code, quotes, lists, tables, and
 details, links, and images inside the served tree; no class, `id`, `name`, `data-*`,

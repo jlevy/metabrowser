@@ -419,6 +419,10 @@ Useful helpers include:
 - `render(template, data)` for auto-escaped Mustache templates;
 - `escapeHtml(value)` for carefully constructed HTML strings;
 - `wrapWithCopy(html)` for a standard copy-button frame;
+- `ownDelegate(element)` and `delegateOwnerAttribute()` for a copy control built without
+  `wrapWithCopy`: the shared copy listener acts only on an element carrying the page’s
+  owner mark, because a trusted folder’s Markdown can write the same `data-mb-copy`
+  markup;
 - `renderSourceView(container, data)` for the standard bounded, copyable Source surface,
   including truncation controls and the shared language mapping;
 - `langForExtension(ext)` for the language ID backed by the host’s vendored grammar

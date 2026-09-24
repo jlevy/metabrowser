@@ -19,6 +19,7 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {(data: Record<string, unknown>) => boolean} isLargeTextPreview
  * @property {(source: string, language: string, options?: {signal?: AbortSignal, inputBytes?: number}) => Promise<MetabrowserSyntaxTokenLines | null>} highlightSyntax
  * @property {(pathOrName: string) => string} langForPath
+ * @property {(<T extends Element>(element: T) => T) | undefined} [ownDelegate]
  * @property {NonNullable<MetabrowserPublicSdk["filterControls"]> | undefined} [filterControls]
  * @property {Pick<MetabrowserPublicSdk["perf"], "measure" | "measureAsync"> | undefined} [perf]
  * @property {{get: <T>(name: string, fallback: T) => T, set: (name: string, value: unknown) => boolean} | undefined} [prefs]
@@ -854,9 +855,10 @@ function cancelFoldMaterializations(state) {
  * @param {Record<string, unknown>} change
  * @param {string} toggleId
  * @param {string} bodyId
+ * @param {DiffViewApi | undefined} api
  * @returns {{bar: HTMLElement, toggle: HTMLElement}}
  */
-function renderFileBar(change, toggleId, bodyId) {
+function renderFileBar(change, toggleId, bodyId, api) {
   const { letter, label, notes } = fileChangeLabel(change);
   const bar = el("div", "diff-file-bar");
   const toggle = el("button", "diff-file-toggle expanded");
@@ -896,6 +898,7 @@ function renderFileBar(change, toggleId, bodyId) {
     copy.setAttribute("data-mb-copy", "text");
     copy.setAttribute("data-mb-copy-text", String(side.path));
     copy.setAttribute("data-mb-copy-label", "Copy path");
+    api?.ownDelegate?.(copy);
     copy.setAttribute("data-tip-text", "Copy path");
     copy.setAttribute("title", "Copy path");
     copy.setAttribute("aria-label", "Copy path");
@@ -1232,7 +1235,7 @@ function renderFileSection(change, patch, context, view) {
   const bodyId = `diff-file-body-${sectionSequence}`;
   const section = el("section", "diff-file");
   section.setAttribute("aria-labelledby", toggleId);
-  const { bar, toggle } = renderFileBar(change, toggleId, bodyId);
+  const { bar, toggle } = renderFileBar(change, toggleId, bodyId, view.api);
   const body = el("div", "diff-file-body");
   body.setAttribute("id", bodyId);
   section.append(bar, body);

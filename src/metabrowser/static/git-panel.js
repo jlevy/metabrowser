@@ -296,6 +296,7 @@
       html +=
         '<button class="icon-btn icon-btn-reveal git-commit-revision-copy" type="button"' +
         ` data-mb-copy="text" data-mb-copy-text="${escapeHtml(commit.id)}"` +
+        (sdk()?.delegateOwnerAttribute() ?? "") +
         ' data-mb-copy-label="Copy revision" data-tip-text="Copy revision"' +
         ` aria-label="Copy revision">${copyIcon()}</button>`;
     }

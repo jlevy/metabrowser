@@ -1133,6 +1133,9 @@ Explicit values use `data-mb-copy="text"`, carry their escaped payload in
 `data-mb-copy-text`, and name the resting action in `data-mb-copy-label`,
 `data-tip-text`, and `aria-label`. Source blocks use the same SDK delegate in `wrap`
 mode. Do not add a component-local clipboard listener or inline handler.
+Every such control carries the page’s owner mark (`mb.ownDelegate(element)` or
+`mb.delegateOwnerAttribute()` in markup; `wrapWithCopy` adds it): the delegate ignores
+an unmarked one, because a trusted folder’s Markdown can write the same attributes.
 The shared delegate owns successful, failed, and reset feedback, while the containing
 row owns when an `.icon-btn-reveal` becomes visible.
 Keep the button in the Tab order even while it is visually quiet.
