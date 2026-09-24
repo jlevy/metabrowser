@@ -180,31 +180,42 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
         signal: controller.signal,
         sourceText: wiki?.changed ? wiki.source : undefined,
       });
-      if (!disposed && !controller.signal.aborted) {
-        await placeRendered(container, rendered, mb);
+      if (disposed || controller.signal.aborted) {
+        return;
       }
-      if (!disposed && !controller.signal.aborted) {
-        const diagnostics = [
-          ...preparationDiagnostics,
-          ...(wiki?.diagnostics || []),
-          ...(rendered.diagnostics || []),
-        ];
-        if (ctx.path) {
-          const links = enhanceRenderedLinks(container, ctx.path, mb, {
-            signal: controller.signal,
-            workerClient,
-            // The rendered document is its own ancestor, so a note that embeds
-            // itself is a cycle at the first embed rather than the second.
-            transclusionChain: Object.freeze([transclusionKey(ctx.path)]),
-          });
-          disposeLinks = links.dispose;
-          if (links.admissionTruncated) {
-            diagnostics.push(MARKDOWN_LINK_LIMIT_DIAGNOSTIC);
-          }
+      const path = ctx.path;
+      const links = await placeRendered(
+        container,
+        rendered,
+        mb,
+        path
+          ? (root) =>
+              enhanceRenderedLinks(root, path, mb, {
+                signal: controller.signal,
+                workerClient,
+                // The rendered document is its own ancestor, so a note that embeds
+                // itself is a cycle at the first embed rather than the second.
+                transclusionChain: Object.freeze([transclusionKey(path)]),
+              })
+          : null,
+      );
+      if (disposed || controller.signal.aborted) {
+        links?.dispose?.();
+        return;
+      }
+      const diagnostics = [
+        ...preparationDiagnostics,
+        ...(wiki?.diagnostics || []),
+        ...(rendered.diagnostics || []),
+      ];
+      if (links) {
+        disposeLinks = links.dispose;
+        if (links.admissionTruncated) {
+          diagnostics.push(MARKDOWN_LINK_LIMIT_DIAGNOSTIC);
         }
-        injectDiagnostics(container, diagnostics, mb);
-        disposeToc = initTocWithIntersectionFallback(() => mb.kpressInitToc(container));
       }
+      injectDiagnostics(container, diagnostics, mb);
+      disposeToc = initTocWithIntersectionFallback(() => mb.kpressInitToc(container));
     } catch (error) {
       if (!disposed && !mb.errors.isAbortError(error)) {
         container.innerHTML = renderKpressError(error, mb);

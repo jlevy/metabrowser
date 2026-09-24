@@ -8,7 +8,7 @@ import {
 } from "./reconciliation-coordinator.js";
 import { enhanceWikiLinks } from "./wiki-enhancer.js";
 
-const MAX_ENHANCED_TARGETS = 4096;
+export const MAX_ENHANCED_TARGETS = 4096;
 const ENHANCEABLE_TARGET_SELECTOR =
   "a[href],img[src],audio[src],video[src],source[src],object[data],[data-mb-wiki-target]";
 const RESOURCE_ATTRIBUTES = Object.freeze([

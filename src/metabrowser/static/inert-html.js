@@ -115,8 +115,17 @@
   // Two slashes or backslashes in any mix begin another origin's address.
   const OTHER_ORIGIN = /^[/\\]{2}/;
 
+  // The application's own routes, which a document inside the served tree never names:
+  // fetching or following one from untrusted markup reaches the application.
+  const RESERVED = /^\/(?:api|_debug|raw)(?:[/?#]|$)/i;
+  // An http(s) address written without its two slashes, which a browser reads as
+  // absolute unless the page it sits in shares the scheme.
+  const BARE_WEB_SCHEME = /^(https?):(?![/\\]{2})/i;
+
   /**
    * Whether *href* is a reference inside the served tree: a relative path or fragment.
+   * A query alone, and a root-relative path to the application's own routes (`/api`,
+   * `/_debug`, `/raw`, however spelled), are not.
    *
    * @param {string | null} href
    */
@@ -125,7 +134,50 @@
       return false;
     }
     const cleaned = clean(href);
-    return cleaned !== "" && !SCHEME.test(cleaned) && !OTHER_ORIGIN.test(cleaned);
+    if (cleaned === "" || SCHEME.test(cleaned) || OTHER_ORIGIN.test(cleaned)) {
+      return false;
+    }
+    if (cleaned.startsWith("?")) {
+      return false;
+    }
+    if (cleaned.startsWith("/") || cleaned.startsWith("\\")) {
+      // As a browser reads it: backslashes as slashes, dot segments resolved.
+      let path;
+      try {
+        path = new URL(cleaned.replaceAll("\\", "/"), "http://page.invalid/").pathname;
+      } catch {
+        return false;
+      }
+      let decoded = path;
+      try {
+        decoded = decodeURIComponent(path);
+      } catch {
+        // A malformed escape is read as written, as the server reads it.
+      }
+      if (RESERVED.test(decoded)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * *href* with a bare `https:` or `http:` given its two slashes, as a browser reads it
+   * when the page does not share the scheme.
+   *
+   * @param {string} href
+   * @param {string | null} base
+   */
+  function spelledOut(href, base) {
+    const bare = BARE_WEB_SCHEME.exec(href);
+    if (bare === null) {
+      return href;
+    }
+    const scheme = bare[1].toLowerCase();
+    if (base !== null && new URL(base).protocol === `${scheme}:`) {
+      return href;
+    }
+    return `${scheme}://${href.slice(bare[0].length).replace(/^[/\\]+/, "")}`;
   }
 
   /**
@@ -140,7 +192,7 @@
     if (!href) {
       return null;
     }
-    const cleaned = clean(href);
+    const cleaned = spelledOut(clean(href), base);
     if (base === null && !SCHEME.test(cleaned) && !OTHER_ORIGIN.test(cleaned)) {
       return null;
     }
@@ -303,7 +355,8 @@
   }
 
   /**
-   * Parse *html* into an inert template and rebuild it from the allowlist. Browser only.
+   * Parse *html* into an inert template and rebuild it from the allowlist, in a detached
+   * document. Browser only.
    *
    * @param {string} html
    * @param {string | null} base
@@ -312,7 +365,10 @@
   function sanitizeHtml(html, base) {
     const template = document.createElement("template");
     template.innerHTML = html;
-    return sanitizeNodes(template.content.childNodes, document, base);
+    // Built in a document of their own: an image there loads nothing until the page
+    // adopts it, after its caller has resolved or dropped its address.
+    const scratch = document.implementation.createHTMLDocument("");
+    return sanitizeNodes(template.content.childNodes, scratch, base);
   }
 
   window.MetabrowserInertHtml = Object.freeze({

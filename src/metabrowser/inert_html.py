@@ -34,7 +34,7 @@ import re
 from html import escape
 from html.parser import HTMLParser
 from typing import Final
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import unquote, urljoin, urlsplit
 
 ALLOWED_TAGS: Final = frozenset(
     {
@@ -156,13 +156,50 @@ def _clean(href: str) -> str:
     return _URL_NOISE.sub("", href).strip(_EDGE)
 
 
+# The application's own routes, which a document inside the served tree never names:
+# fetching or following one from untrusted markup reaches the application, not the tree.
+_RESERVED: Final = re.compile(r"^/(?:api|_debug|raw)(?:[/?#]|$)", re.IGNORECASE)
+# An http(s) address written without its two slashes, which a browser reads as absolute
+# unless the page it sits in shares the scheme.
+_BARE_WEB_SCHEME: Final = re.compile(r"^(https?):(?![/\\]{2})", re.IGNORECASE)
+
+
 def is_inside(href: str | None) -> bool:
-    """Whether *href* is a reference inside the served tree: a relative path or fragment."""
+    """Whether *href* is a reference inside the served tree: a relative path or fragment.
+
+    A query alone, and a root-relative path to the application's own routes (``/api``,
+    ``/_debug``, ``/raw``, however spelled), are not: they address the application.
+    """
 
     if not href:
         return False
     cleaned = _clean(href)
-    return bool(cleaned) and not _SCHEME.match(cleaned) and not _OTHER_ORIGIN.match(cleaned)
+    if not cleaned or _SCHEME.match(cleaned) or _OTHER_ORIGIN.match(cleaned):
+        return False
+    if cleaned.startswith("?"):
+        return False
+    if cleaned.startswith(("/", "\\")):
+        # As a browser would: backslashes as slashes, dot segments resolved, escapes read.
+        path = urlsplit(urljoin("http://page.invalid/", cleaned.replace("\\", "/"))).path
+        if _RESERVED.match(unquote(path)):
+            return False
+    return True
+
+
+def _spelled_out(href: str, base: str | None) -> str:
+    """*href* with a bare ``https:`` or ``http:`` given its two slashes, as a browser reads it.
+
+    A browser reads ``https:host/path`` as absolute unless the page shares the scheme,
+    where it is relative; spelling it out makes the address mean the same on both sides.
+    """
+
+    bare = _BARE_WEB_SCHEME.match(href)
+    if bare is None:
+        return href
+    scheme = bare.group(1).lower()
+    if base is not None and urlsplit(base).scheme.lower() == scheme:
+        return href
+    return f"{scheme}://" + href[bare.end() :].lstrip("/\\")
 
 
 def outside_link(href: str | None, base: str | None) -> str | None:
@@ -173,7 +210,7 @@ def outside_link(href: str | None, base: str | None) -> str | None:
 
     if not href:
         return None
-    cleaned = _clean(href)
+    cleaned = _spelled_out(_clean(href), base)
     if base is None and not (_SCHEME.match(cleaned) or _OTHER_ORIGIN.match(cleaned)):
         return None
     try:

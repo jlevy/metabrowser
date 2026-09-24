@@ -31,7 +31,11 @@ HOSTILE_README = (
     HOSTILE_COMMENT + "\n![diagram](docs/diagram.png) ![tracker](https://example.com/t.gif)"
     ' <img src="//example.com/p.gif"> <img src="data:image/png;base64,AAAA">\n\n'
     "[Guide](docs/guide.md) [Top](#readme) [Up](../x.md)"
-    ' <a href="java\tscript:alert(1)">tab</a> <a href="\\\\example.com/x">slashes</a>\n'
+    ' <a href="java\tscript:alert(1)">tab</a> <a href="\\\\example.com/x">slashes</a>\n\n'
+    # References to the application rather than the tree, and a bare web scheme.
+    "[api](/api/tree) [dots](/./api/tree) [escaped](/%61pi/tree) [debug](/_debug/tasks)"
+    " [query](?q=1) [raw](/raw?path=evil.html) ![raw image](/raw?path=x.png)"
+    " [bare](https:evil.test/no-slashes) [one slash](HTTPS:/one.test/x)\n"
 )
 
 # Runs the production sanitizer on a tree read from stdin and prints the rebuilt markup.
@@ -162,6 +166,18 @@ def test_a_document_keeps_its_own_references_and_turns_outside_images_into_links
         '<a href="https://example.com/x" target="_blank" rel="noopener noreferrer">slashes</a>'
         in inert
     )
+
+
+def test_a_document_never_names_the_application_or_a_bare_scheme_ambiguously() -> None:
+    inert = harden(_kpress(HOSTILE_README))
+    for text in ("api", "dots", "escaped", "debug", "query", "raw"):
+        assert f"<a>{text}</a>" in inert, text
+    assert "<span>raw image</span>" in inert
+    assert '<a href="https://evil.test/no-slashes" target="_blank"' in inert
+    assert '<a href="https://one.test/x" target="_blank"' in inert
+    # In a pull request's comment, a bare https: shares the page's scheme and is relative.
+    comment = harden(_kpress("[bare](https:evil.test/no-slashes)"), PR_PAGE)
+    assert 'href="https://github.com/octo/demo/pull/evil.test/no-slashes"' in comment
 
 
 def test_harden_is_idempotent() -> None:

@@ -1618,6 +1618,143 @@
        },
        "\n",
        {
+        "tag": "p",
+        "attrs": [],
+        "children": [
+         {
+          "tag": "a",
+          "attrs": [
+           [
+            "href",
+            "/api/tree"
+           ]
+          ],
+          "children": [
+           "api"
+          ]
+         },
+         " ",
+         {
+          "tag": "a",
+          "attrs": [
+           [
+            "href",
+            "/./api/tree"
+           ]
+          ],
+          "children": [
+           "dots"
+          ]
+         },
+         " ",
+         {
+          "tag": "a",
+          "attrs": [
+           [
+            "href",
+            "/%61pi/tree"
+           ]
+          ],
+          "children": [
+           "escaped"
+          ]
+         },
+         " ",
+         {
+          "tag": "a",
+          "attrs": [
+           [
+            "href",
+            "/_debug/tasks"
+           ]
+          ],
+          "children": [
+           "debug"
+          ]
+         },
+         " ",
+         {
+          "tag": "a",
+          "attrs": [
+           [
+            "href",
+            "?q=1"
+           ]
+          ],
+          "children": [
+           "query"
+          ]
+         },
+         " ",
+         {
+          "tag": "a",
+          "attrs": [
+           [
+            "href",
+            "/raw?path=evil.html"
+           ]
+          ],
+          "children": [
+           "raw"
+          ]
+         },
+         " ",
+         {
+          "tag": "img",
+          "attrs": [
+           [
+            "src",
+            "/raw?path=x.png"
+           ],
+           [
+            "alt",
+            "raw image"
+           ],
+           [
+            "class",
+            "kpress-image"
+           ],
+           [
+            "data-kpress-image",
+            "true"
+           ],
+           [
+            "loading",
+            "lazy"
+           ]
+          ],
+          "children": []
+         },
+         " ",
+         {
+          "tag": "a",
+          "attrs": [
+           [
+            "href",
+            "https:evil.test/no-slashes"
+           ]
+          ],
+          "children": [
+           "bare"
+          ]
+         },
+         " ",
+         {
+          "tag": "a",
+          "attrs": [
+           [
+            "href",
+            "HTTPS:/one.test/x"
+           ]
+          ],
+          "children": [
+           "one slash"
+          ]
+         }
+        ]
+       },
+       "\n",
+       {
         "tag": "h2",
         "attrs": [
          [

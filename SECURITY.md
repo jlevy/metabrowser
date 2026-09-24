@@ -82,17 +82,33 @@ its stylesheets. A trusted folder keeps KPress’s rich rendering.
 
 With active content off the application page also carries a Content-Security-Policy, a
 second line behind the allowlist.
-It runs only what this server wrote — scripts from its own origin, the shell’s inline
-scripts by a nonce fresh on every response, and the application’s three inline handlers
-by hash — and loads styles, fonts, images (with `data:` images its stylesheet draws),
-requests, and the Markdown worker from its own origin alone.
-Frames come from its own origin only, for the sandboxed `/raw` document; plugins,
-`<base>`, and form submission are off.
-Inline `style` attributes stay allowed because the application writes them; an outside
-`url()` in one is still an image the policy refuses.
+Scripts run only from the application’s own static paths, `/static/` and
+`/plugin-static/`, and the shell’s inline scripts only by a nonce fresh on every
+response; no inline event handler runs, and the application writes none.
+The browsed tree’s own files, served under `/raw`, are never among them.
+Stylesheets come from those paths and `/kpress-static/`, the Markdown worker from
+`/plugin-static/`, and images (with the `data:` images the stylesheet draws, and the
+repository’s own images through `/raw`), fonts, and requests from this origin.
+The page frames nothing, since the untrusted profile removes the HTML preview, its only
+frame, and nothing may frame it (`frame-ancestors 'none'` and `X-Frame-Options: DENY`);
+plugins, `<base>`, and form submission are off.
+`style-src-attr 'unsafe-inline'` keeps inline `style` attributes, because the
+application writes them for layout; an outside `url()` in one is still an image the
+image rule refuses, and untrusted Markdown carries no `style` attribute at all.
 `capabilities.untrusted_shell_csp` is the policy, and `tests/test_untrusted_markdown.py`
-pins it and fails when the application writes an inline handler the policy does not
-name.
+pins it and fails when the application writes an inline handler.
+
+In the same profile `/raw` never serves a browsed file as code: a request whose
+`Sec-Fetch-Dest` is a script, stylesheet, worker, or worklet is refused with 403, and a
+JavaScript or CSS file is sent as `text/plain` with `nosniff`, which no browser runs or
+applies, for a browser that sends no fetch metadata.
+
+In an inert render, references to the application rather than the tree — a query alone,
+or a root-relative `/api`, `/_debug`, or `/raw` address however spelled — lose their
+address, and so does any link or image past the link enhancer’s limit.
+The enhancer resolves the rest in a detached document before the page adopts it, so an
+image loads only the address it gave.
+Wiki links and embeds, which travel as `data-*` attributes, become plain text.
 
 Content responses through `/raw` and `/raw/{path}` are sandboxed on the wire.
 Every raw response — including gzip passthrough, SVG, HTML, and error bodies — carries

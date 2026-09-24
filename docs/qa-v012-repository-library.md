@@ -984,7 +984,11 @@ uv --config-file uv.toml run --frozen metab "file://${QA_README}/origin.git" --n
    is refused by `img-src`, and no other policy violation is reported.
 4. Open `README.md` itself, then **Guide**: the relative link opens `docs/guide.md` at
    the pin.
-5. Serve the same folder as a trusted local folder (`metab "${QA_README}/work"`): the
+5. In the console, the repository’s own files are not code:
+   `document.head.append(Object.assign(document.createElement("script"), {src: "/raw?path=g1-ZG9jcw%2Fg1-Z3VpZGUubWQ"}))`
+   (any browsed file) is refused by `script-src`, and `/raw` answers such a request 403.
+   Wiki links and embeds in a mirrored document show as plain text.
+6. Serve the same folder as a trusted local folder (`metab "${QA_README}/work"`): the
    README renders with KPress’s full styling, and the response carries no policy.
 
 **Pass:** every step as described.

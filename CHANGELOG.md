@@ -436,11 +436,25 @@ Content trust:
   The pull-request page uses the same allowlist, now in core
   (`src/metabrowser/inert_html.py`, `static/inert-html.js`).
 
-- With active content off the application page carries a Content-Security-Policy: only
-  this server’s scripts run (its inline ones by a per-response nonce, its three inline
-  handlers by hash), and styles, fonts, images, requests, and the Markdown worker load
-  from this server alone; frames only from it, and no plugins, `<base>`, or form
-  submission. See SECURITY.md.
+- With active content off the application page carries a Content-Security-Policy:
+  scripts run only from the application’s `/static/` and `/plugin-static/` paths and the
+  shell’s inline scripts by a per-response nonce, never from the browsed tree’s `/raw`
+  files; stylesheets, fonts, images, requests, and the Markdown worker load from this
+  server alone; the page frames nothing and nothing may frame it
+  (`X-Frame-Options: DENY`); and no plugins, `<base>`, or form submission.
+  `/raw` refuses a browsed file requested as a script, stylesheet, worker, or worklet,
+  and sends JavaScript and CSS as `text/plain`. See SECURITY.md.
+
+- In an inert render, a query alone and root-relative `/api`, `/_debug`, and `/raw`
+  references lose their address, as does any link or image past the link enhancer’s
+  limit; images resolve before the page loads them; and Obsidian wiki links and embeds
+  show as plain text.
+
+- The application writes no inline event handlers: the file header’s print button, the
+  structured view’s copy button, an agent log’s event toggle, and the partial-content
+  notice’s Load more use delegated listeners.
+  `partialNoticeHtml`’s `action` runs a global function named as `name()` (the default
+  is the shell’s Load more); any other string no longer becomes an inline handler.
 
 Content source:
 

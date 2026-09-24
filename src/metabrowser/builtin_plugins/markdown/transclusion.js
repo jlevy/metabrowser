@@ -439,18 +439,20 @@ export function mountWikiTransclusion(container, sourceElement, resolved, mb, op
       if (!live()) {
         return;
       }
-      await placeRendered(aside, rendered, mb);
+      const nested = await placeRendered(aside, rendered, mb, (root) =>
+        options.enhanceNested?.(root, resolved.path, {
+          budget,
+          chain: claim.chain,
+          signal: controller.signal,
+        }),
+      );
       if (!live()) {
+        nested?.dispose?.();
         return;
       }
       aside.setAttribute("aria-busy", "false");
       aside.setAttribute("data-metabrowser-transclusion-status", "ready");
-      nestedHandle =
-        options.enhanceNested?.(aside, resolved.path, {
-          budget,
-          chain: claim.chain,
-          signal: controller.signal,
-        }) || null;
+      nestedHandle = nested || null;
       disposeToc = initTocWithIntersectionFallback(() => mb.kpressInitToc?.(aside) || null);
     } catch (error) {
       if (disposed || options.signal?.aborted) {

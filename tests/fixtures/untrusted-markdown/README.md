@@ -13,6 +13,8 @@ Rebased on `topic`; see [the docs](docs/new.md).
 
 [Guide](docs/guide.md) [Top](#readme) [Up](../x.md) <a href="java	script:alert(1)">tab</a> <a href="\\example.com/x">slashes</a>
 
+[api](/api/tree) [dots](/./api/tree) [escaped](/%61pi/tree) [debug](/_debug/tasks) [query](?q=1) [raw](/raw?path=evil.html) ![raw image](/raw?path=x.png) [bare](https:evil.test/no-slashes) [one slash](HTTPS:/one.test/x)
+
 ## Section
 
 text
