@@ -279,6 +279,23 @@ async def has_commit(published: PublishedSource, oid: str) -> bool:
     return kind.strip() == b"commit"
 
 
+async def base_branch_usable(published: PublishedSource, base_branch: str) -> bool:
+    """Whether the base branch may be fetched into, and compared from, the mirror's ref.
+
+    On a case-insensitive filesystem only when the store lists it under exactly that
+    name. One it lists under another spelling (``Feature/x`` kept as ``feature/x``
+    beside ``feature/y``) shares that ref's file, so writing it would pass for a fold;
+    the comparison then starts from the API's ``base.sha`` instead.
+    """
+
+    if not is_valid_ref_name(base_branch):
+        return False
+    target = _target(published)
+    if not await store_ignores_case(target):
+        return True
+    return BRANCH_MIRROR_PREFIX + base_branch in await mirror_refs(target)
+
+
 async def fetch_pull_head(
     published: PublishedSource, number: int, *, base_branch: str | None = None
 ) -> str | None:
@@ -289,7 +306,7 @@ async def fetch_pull_head(
 
     ref = pull_head_ref(number)
     specs = [f"+{ref}:{ref}"]
-    if base_branch is not None and is_valid_ref_name(base_branch):
+    if base_branch is not None and await base_branch_usable(published, base_branch):
         specs.append(f"+refs/heads/{base_branch}:{BRANCH_MIRROR_PREFIX}{base_branch}")
     await _fetch(published, specs)
     return await ref_commit(published, ref)
@@ -320,7 +337,7 @@ async def comparison_endpoints(
 
     base_commit: str | None = None
     base_from: Literal["base_branch", "base_sha"] = "base_sha"
-    if open_pull and base_branch is not None and is_valid_ref_name(base_branch):
+    if open_pull and base_branch is not None and await base_branch_usable(published, base_branch):
         base_commit = await ref_commit(published, BRANCH_MIRROR_PREFIX + base_branch)
         if base_commit is not None:
             base_from = "base_branch"
@@ -343,6 +360,7 @@ __all__ = [
     "PullFetchFailure",
     "PullRefError",
     "RefCaseCollisionError",
+    "base_branch_usable",
     "comparison_endpoints",
     "fetch_commit",
     "fetch_into_store",

@@ -553,13 +553,15 @@ class MirrorSession:
 
         A URL selection still waiting, as after a fetch that failed, waits for this one.
         The data served beside the mirror is refreshed as its own job when it is stale,
-        and when only it is stale, only it is refreshed. *for_selection* is the fetch a
-        pin the mirror lacks waits for: the mirror's alone.
+        and in a server, when only it is stale, only it is refreshed. *for_selection* is
+        the fetch a pin the mirror lacks waits for: the mirror's alone.
         """
 
         now = _now_utc()
         companion_stale = not for_selection and self._companion_stale(now)
-        if companion_stale and self._pending_selection is None and not self._mirror_stale(now):
+        # Only a server skips a fresh mirror; a one-shot command asked for its refresh.
+        skip_mirror = self._fetch_on_miss and self._pending_selection is None
+        if companion_stale and skip_mirror and not self._mirror_stale(now):
             return self.request_companion_refresh() or "joined"
         started = self._coordinator.start(self.mirror.key, self._refresh_job)
         if self._pending_selection is not None:
@@ -747,7 +749,8 @@ class MirrorSession:
         """Pending while the fetch for *key* is still to run or running, then not found."""
 
         seen = self._misses.get(key)
-        if seen is not None and seen[0] < self._refreshes_ended and not self.refreshing():
+        waiting = self.refreshing() or self.companion_refreshing()
+        if seen is not None and seen[0] < self._refreshes_ended and not waiting:
             del self._misses[key]
             # Not found only if a fetch ran to the end since the miss, not merely ended.
             if self._fetches_ran == seen[1]:
@@ -757,7 +760,12 @@ class MirrorSession:
             if len(self._misses) >= MAX_REMEMBERED_MISSES:
                 self._misses.pop(next(iter(self._misses)))
             self._misses[key] = (self._refreshes_ended, self._fetches_ran)
-        return SelectionPendingError(self.request_refresh(for_selection=True))
+        started = self.request_refresh(for_selection=True)
+        if key[1] is not None and self.companion is not None:
+            # A commit the mirror lacks may be a newer one of the pull request served
+            # beside it, which only that refresh fetches; a branch or tag never is.
+            self.request_companion_refresh()
+        return SelectionPendingError(started)
 
 
 def _served_revision() -> GitRevisionSubject | None:

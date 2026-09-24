@@ -44,6 +44,7 @@ from metabrowser.builtin_plugins.github.pull_record import (
     cut_text,
     escaped_size,
     read_pull_record,
+    read_pull_refresh,
     serialize_pull_record,
     write_pull_record,
 )
@@ -54,10 +55,10 @@ from metabrowser.cache import pull_refs
 from metabrowser.cache.acquire import PublishedSource, acquire_source
 from metabrowser.cache.layout import open_cache
 from metabrowser.cache.locks import LockBusyError, store_fetch_lock
-from metabrowser.cache.paths import source_pull_record
+from metabrowser.cache.paths import source_pull_record, source_pull_refresh
 from metabrowser.cache.pull_refs import ref_commit
 from metabrowser.cache.repository_store import open_revision
-from metabrowser.cache.resolve import resolve_pin
+from metabrowser.cache.resolve import resolve_pin, store_ignores_case
 from metabrowser.cache.served_mirror import StoreMirror
 from metabrowser.cache.urls import GitSource, RepositorySelection
 from metabrowser.cli.main import _app
@@ -1158,3 +1159,135 @@ def test_how_the_last_refresh_ended_is_kept_for_the_next_command(
     window = FRESHNESS_WINDOW_S
     assert not kept.is_stale(later, window_s=window)
     assert kept.is_stale(later + timedelta(seconds=window + 1), window_s=window)
+
+
+# ── final review: case folds, bad stamps, one-shot judgment, commit pins ──
+
+
+def test_a_base_branch_the_store_spells_otherwise_is_neither_fetched_nor_compared_from(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``Feature/x`` kept as ``feature/x``: writing it would pass for a fold, so base.sha."""
+
+    async def ignores_case(target: Any) -> bool:
+        return True
+
+    async def listed(target: Any) -> dict[str, str]:
+        return {"refs/remotes/origin/feature/x": stand.origin["base"]}
+
+    specs: list[list[str]] = []
+    git = pull_refs.run_git
+
+    async def recording(args: list[str], **kwargs: Any) -> bytes:
+        if "fetch" in args:
+            specs.append([arg for arg in args if arg.startswith("+")])
+        return await git(args, **kwargs)
+
+    monkeypatch.setattr(pull_refs, "store_ignores_case", ignores_case)
+    monkeypatch.setattr(pull_refs, "mirror_refs", listed)
+    monkeypatch.setattr(pull_refs, "run_git", recording)
+    published = stand.published
+    assert not asyncio.run(pull_refs.base_branch_usable(published, "Feature/x"))
+    assert asyncio.run(pull_refs.base_branch_usable(published, "feature/x"))
+    head = asyncio.run(pull_refs.fetch_pull_head(published, 7, base_branch="Feature/x"))
+    assert head == stand.origin["fork_head"]
+    assert specs == [["+refs/pull/7/head:refs/pull/7/head"]]
+    endpoints = asyncio.run(
+        pull_refs.comparison_endpoints(
+            published,
+            head=stand.origin["fork_head"],
+            base_sha=stand.origin["topic"],
+            base_branch="Feature/x",
+            open_pull=True,
+        )
+    )
+    assert endpoints.base_from == "base_sha"
+
+
+def test_a_base_branch_folded_on_disk_does_not_fail_the_record(stand: _Stand) -> None:
+    """On a case-insensitive filesystem only: the store keeps ``Feature/x`` as ``feature/x``."""
+
+    target = repository_store_target(git_dir=stand.published.git_dir)
+    if not asyncio.run(store_ignores_case(target)):
+        pytest.skip("the store's filesystem tells letter case apart")
+    env = git_env(stand.tmp_path)
+    store = str(stand.published.git_dir)
+    origin = str(stand.tmp_path / "github-pull-origin.git")
+    topic, base = stand.origin["topic"], stand.origin["base"]
+    for git_dir, ref, oid in (
+        (store, "refs/remotes/origin/feature/y", base),
+        (store, "refs/remotes/origin/feature/x", base),
+        (origin, "refs/heads/Feature/x", topic),
+    ):
+        subprocess.run(
+            ["git", "--git-dir", git_dir, "update-ref", ref, oid],
+            check=True,
+            capture_output=True,
+            env=env,
+        )
+    answers = scenario(stand.origin)
+    path = "repos/octo/demo/pulls/7"
+    body = answers["api"][path]["body"]
+    moved = {**body, "base": {**body["base"], "ref": "Feature/x", "sha": topic}}
+    stand.answer(_api(answers, path, ok(path, moved)))
+    record = stand.refresh(7)
+    assert record.comparison is not None and record.comparison.base_from == "base_sha"
+
+
+def test_an_unusable_refresh_stamp_is_no_stamp(stand: _Stand) -> None:
+    stand.refresh(7)
+    home, slug = stand.published.home, stand.published.slug
+    stamp = home / source_pull_refresh(slug, 7)
+    stamp.write_text('{"outcome": "succeeded", "at": "2026-13-45T25:61:61Z"}', encoding="utf-8")
+    assert read_pull_refresh(home, slug, 7) is None
+    served = served_pull(stand.published, 7)
+    assert served.last is None and served.fetched_at == "2026-09-17T12:00:00Z"
+
+
+@pytest.mark.parametrize(
+    ("status", "outcome"),
+    [
+        ({"last_refresh": {"outcome": "succeeded"}}, None),
+        ({"last_refresh": {"outcome": "refreshing_elsewhere"}}, "refreshing_elsewhere"),
+        ({"last_outcome": {"operation": "refresh", "outcome": "refreshing_elsewhere"}}, None),
+        ({"last_outcome": {"operation": "refresh", "outcome": "fetch_failed"}}, "fetch_failed"),
+    ],
+)
+def test_a_one_shot_refresh_is_judged_by_its_own_outcome(
+    status: dict[str, Any], outcome: str | None
+) -> None:
+    from metabrowser.cli import api_cli
+    from metabrowser.cli.asgi_client import ApiResponse
+
+    after = ApiResponse(200, json.dumps({"refreshing": False, **status}).encode())
+    judged = api_cli._refresh_outcome(after)  # pyright: ignore[reportPrivateUsage]
+    assert judged == (False, outcome)
+
+
+def test_a_served_pull_requests_newer_commit_is_fetched_for_a_pin(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A server asked to pin a fork commit newer than the record refreshes the PR too."""
+
+    monkeypatch.setattr("metabrowser.cli.git_pin_cli.stop_on_interrupt", lambda: None)
+    monkeypatch.setattr(pulls, "utc_now", lambda: datetime.now(UTC).replace(microsecond=0))
+    earlier, head = stand.origin["fork_earlier"], stand.origin["fork_head"]
+    _move_pull_head(stand, earlier)
+    stand.answer(_answering_head(stand, earlier))
+    try:
+        result = _serve(f"{CANONICAL}/pull/7")
+        assert result.exit_code == 0, result.output
+        with TestClient(app) as client:
+            _settle(client)
+            _move_pull_head(stand, head)
+            stand.answer(scenario(stand.origin))
+            asked = client.post("/api/source/pin", json={"oid": head}, headers=_JSON)
+            assert asked.status_code == 202, asked.text
+            _settle(client)
+            taken = client.post("/api/source/pin", json={"oid": head}, headers=_JSON)
+            assert taken.status_code == 200, taken.text
+            assert taken.json()["status"]["pin"] == head
+    finally:
+        serve_mirror(None)
+        reset_source_session()
+        git_repo.clear_repo_cache()
