@@ -403,6 +403,19 @@ Optional filesystem walk (large tree; not required for the pin lane):
 uv --config-file uv.toml run --frozen metab . --walk --max-depth 1
 ```
 
+A filename with a backslash (POSIX only) lists and opens instead of failing the index:
+
+```shell
+QA_BS="$(mktemp -d)" && printf 'x\n' > "$QA_BS/a\\b.txt"
+uv --config-file uv.toml run --frozen metab "$QA_BS" --api /api/tree
+uv --config-file uv.toml run --frozen metab "$QA_BS" --api '/api/file?path=a%255Cb.txt'
+rm -r "$QA_BS"
+```
+
+**Pass:** both are HTTP 200; the tree lists `"path": "a%5Cb.txt"`, and in a served
+browser the row reads `a\b.txt` and opens at `/view/a%5Cb.txt`. **Fail:** HTTP 500 or
+`dirty path must be a canonical POSIX-relative path`.
+
 ## Phase 4: `file://` Acquire and the Pin
 
 Skip the acquire/pin commands when Phase 2.4 already refused below-floor Git.

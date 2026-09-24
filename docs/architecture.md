@@ -365,8 +365,9 @@ Route invariants:
   `/commit/<rev>` is the whole change set.
 - A served-tree path has a canonical lossless URL spelling.
   The route formatter uses ordinary UTF-8 percent encoding for Unicode, `%25` for a
-  literal percent, uppercase `%XX` for POSIX filename bytes that are not UTF-8, and the
-  browser codec’s WTF-8 spelling for a Windows unpaired UTF-16 code unit.
+  literal percent, `%5C` for a POSIX filename’s backslash (a literal backslash is
+  refused), uppercase `%XX` for POSIX filename bytes that are not UTF-8, and the browser
+  codec’s WTF-8 spelling for a Windows unpaired UTF-16 code unit.
   The server restores the platform path before its ordinary containment and symlink
   checks, so total filename identity does not weaken the served-root boundary.
 - Every selection the shell can make has a URL, and reloading it restores that

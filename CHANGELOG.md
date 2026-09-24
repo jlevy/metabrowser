@@ -598,6 +598,16 @@ Content source:
   A store target read without a named policy gets the same policy, and whole-tree blob
   sizes are read in chunks that each get the batch deadline.
 
+Fixes:
+
+- A served folder holding a filename with a backslash, which POSIX allows, no longer
+  fails its whole index: the index progress route errored and the tree answered HTTP
+  500\. The inventory now escapes the backslash as `%5C`, as it escapes a literal `%` as
+  `%25`, so the file lists, opens, and has a `/view/` URL (`/view/a%5Cb.txt`); the tree
+  shows its real name.
+  A literal backslash in a `/view/` URL is refused, and Windows, where a backslash is a
+  separator, is unchanged.
+
 ## 0.11.0
 
 Content trust:

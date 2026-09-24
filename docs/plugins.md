@@ -63,7 +63,8 @@ SDK 0.6 uses the inventory’s escaped relative paths in API requests, browser n
 and catalog records.
 Keep a received `path` unchanged when passing it to another API. A literal percent sign
 in a native filename is `%25` in its identity; for example, `100%.md` has identity
-`100%25.md`. Undecodable platform bytes also have lossless escapes.
+`100%25.md`. On POSIX a backslash in a filename is `%5C`, and undecodable platform bytes
+also have lossless escapes.
 The browser’s navigation API converts these identities to human-facing `/view/` URLs.
 
 Python sidekicks use `resolve_path()` or `resolve_directory()` to cross from an identity

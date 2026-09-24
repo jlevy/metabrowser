@@ -40,7 +40,7 @@ def format_view_href(logical_path: str) -> str:
     spelling already used by the browser codec.
     """
 
-    _validate_logical_segments(logical_path.split("/"))
+    _validate_logical_segments(logical_path.split("/"), native=True)
     return VIEW_ROUTE_PREFIX + "/".join(
         quote_from_bytes(_route_segment_bytes(segment), safe="")
         for segment in logical_path.split("/")
@@ -92,13 +92,15 @@ def decode_view_logical_path(raw_path: bytes) -> str | None:
     decoded_segments: list[str] = []
     try:
         for raw_segment in raw_segments:
-            if _MALFORMED_ESCAPE.search(raw_segment):
+            # A literal backslash is never the canonical spelling (the formatter
+            # writes `%5C`), and a browser would have read it as a separator.
+            if _MALFORMED_ESCAPE.search(raw_segment) or b"\\" in raw_segment:
                 return None
             decoded = unquote_to_bytes(raw_segment)
-            if any(forbidden in decoded for forbidden in (b"/", b"\\", b"\0")):
+            if b"/" in decoded or b"\0" in decoded or (b"\\" in decoded and os.name == "nt"):
                 return None
             decoded_segments.append(_native_route_segment(decoded))
-        _validate_logical_segments(decoded_segments)
+        _validate_logical_segments(decoded_segments, native=True)
     except (UnicodeDecodeError, ValueError):
         return None
     return "/".join(decoded_segments)
@@ -214,8 +216,14 @@ def decode_safe_pull_route(raw_path: bytes) -> tuple[int, str] | None:
     return int(number), tab
 
 
-def _validate_logical_segments(segments: list[str]) -> None:
-    """Require the root, a normalized path, or a single trailing folder slash."""
+def _validate_logical_segments(segments: list[str], *, native: bool = False) -> None:
+    """Require the root, a normalized path, or a single trailing folder slash.
+
+    ``native`` segments are served-tree filenames. POSIX allows a backslash in one and
+    the inventory escapes it as ``%5C``, so the route codec carries it (as ``%5C``) to
+    stay total over the inventory; Windows reads it as a separator, so there it stays
+    refused, as it does in a commit route's Git path.
+    """
 
     final_index = len(segments) - 1
     for index, segment in enumerate(segments):
@@ -223,7 +231,7 @@ def _validate_logical_segments(segments: list[str]) -> None:
         if (
             (not segment and not trailing_folder_slash)
             or segment in {".", ".."}
-            or "\\" in segment
+            or ("\\" in segment and (not native or os.name == "nt"))
             or "\0" in segment
         ):
             raise ValueError("view path must be normalized and served-root-relative")
