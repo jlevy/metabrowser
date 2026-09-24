@@ -979,6 +979,118 @@ Error: /api/plugin/github/pull-refresh returned HTTP 405
 ? 1
 ```
 
+## Test: the pull-request page is the served pull request’s record
+
+`/pull/<n>` is the page a served pull-request URL opens at, and `/pull/<n>/files` its
+Files changed, the comparison the record names.
+`--show` reports the kind and view the shell mounts there and summarizes the record the
+page renders.
+
+```console
+$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/7 --show /pull/7
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+show: /pull/7
+route: /pull/7
+kind: pull-request
+views: pull-request (default)
+model: pull envelope; state=stale pull_state=open fetched_at=2026-09-17T12:00:00Z reader=gh:octo-reader issue_comments=1 reviews=2 review_comments=2 check_runs=2 statuses=1 tab=conversation
+? 0
+```
+
+```console
+$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/9 --show /pull/9/files
+selection: pull_request
+pin: 0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd (pull request 9 head)
+pull_request: 9 (closed; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+show: /pull/9/files
+route: /pull/9/files
+kind: pull-request
+views: pull-request (default)
+model: pull envelope; state=stale pull_state=closed fetched_at=2026-09-17T12:00:00Z reader=gh:octo-reader issue_comments=0 reviews=0 review_comments=0 check_runs=2 statuses=1 tab=files comparison_route=/api/plugin/diff/comparison?left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&base_policy=merge_base
+? 0
+```
+
+A page for another number, or on a source that serves no pull request, is refused, as
+the page itself says.
+
+```console
+$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/7 --show /pull/8
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+Error: /pull/8: this source serves pull request 7
+? 1
+```
+
+```console
+$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo --show /pull/7
+Error: /pull/7: this source serves no pull request
+? 1
+```
+
+## Test: the page’s text is Markdown rendered from the cached record
+
+`pull-markdown` renders one text of the record through KPress in its sanitized mode: the
+description (`body`), or one comment, review, or review comment by ID. The answer is the
+KPress render envelope with the record’s fetch time and the part, cut here to those
+fields and the rendered emphasis.
+
+```console
+$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/pull-markdown?part=body' | grep -E '^  "(number|fetched_at|part|type)"|^status'
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+status: 200
+  "number": 7,
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "part": "body",
+  "type": "kpress-rendered-document",
+? 0
+```
+
+```console
+$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/pull-markdown?part=body' | grep -o '<strong>two</strong>'
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+<strong>two</strong>
+? 0
+```
+
+A part the record does not hold, or one that is not a part’s name, is refused.
+
+```console
+$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/pull-markdown?part=review/1'
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+api: /api/plugin/github/pull-markdown?part=review/1
+status: 404
+{
+  "error": "the record has no such part",
+  "code": "unknown_part"
+}
+Error: /api/plugin/github/pull-markdown?part=review/1 returned HTTP 404
+? 1
+```
+
+```console
+$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/pull-markdown?part=../body'
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+api: /api/plugin/github/pull-markdown?part=../body
+status: 400
+{
+  "error": "name a part of the pull request",
+  "code": "invalid_part"
+}
+Error: /api/plugin/github/pull-markdown?part=../body returned HTTP 400
+? 1
+```
+
 ## Test: the cache still reads the source as published
 
 The pull-request records live beside the source’s own records, where nothing reads them

@@ -83,6 +83,29 @@ for (const revision of ["", ".bad", "bad ref", "x".repeat(257)]) {
   check(`reject invalid commit revision ${JSON.stringify(revision)}`, rejected);
 }
 
+equal("pull-request page href", route.pullHref(7), "/pull/7");
+equal("pull-request Files changed href", route.pullHref(7, "files"), "/pull/7/files");
+equal("pull-request page parses", route.parsePull("/pull/7"), { number: 7, tab: "" });
+equal("pull-request tab parses with a trailing slash", route.parsePull("/pull/7/files/"), {
+  number: 7,
+  tab: "files",
+});
+for (const pathname of ["/pull/0", "/pull/07", "/pull/7/commits", "/pull/7/files/x", "/pull/x"]) {
+  equal(`reject pull-request route ${pathname}`, route.parsePull(pathname), null);
+}
+for (const [number, tab] of [
+  [0, ""],
+  [7, "commits"],
+]) {
+  let rejected = false;
+  try {
+    route.pullHref(number, tab);
+  } catch (error) {
+    rejected = error instanceof TypeError;
+  }
+  check(`reject invalid pull-request href ${number}/${tab}`, rejected);
+}
+
 equal("root href", route.href({ path: "" }), "/view/");
 equal("folder href keeps its slash", route.href({ path: "docs/" }), "/view/docs/");
 equal(

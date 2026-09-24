@@ -595,6 +595,67 @@ def test_the_pull_route_reports_a_missing_record(pinned_pull: tuple[_Stand, Test
     assert client.get("/api/plugin/github/pull").json()["state"] == "current"
 
 
+def test_the_pull_route_answers_an_unchanged_record_with_a_304(
+    pinned_pull: tuple[_Stand, TestClient],
+) -> None:
+    stand, client = pinned_pull
+    first = client.get("/api/plugin/github/pull")
+    etag = first.headers["etag"]
+    unchanged = client.get("/api/plugin/github/pull", headers={"if-none-match": etag})
+    assert (unchanged.status_code, unchanged.content) == (304, b"")
+    assert unchanged.headers["cache-control"] == "no-store"
+    # Aging past the freshness window changes the state, and so the tag.
+    stand.monkeypatch.setattr(
+        pulls, "utc_now", lambda: FETCHED_AT + timedelta(seconds=FRESHNESS_WINDOW_S + 1)
+    )
+    aged = client.get("/api/plugin/github/pull", headers={"if-none-match": etag})
+    assert (aged.status_code, aged.json()["state"]) == (200, "stale")
+    assert aged.headers["etag"] != etag
+
+
+def test_the_markdown_route_renders_one_part_of_the_record(
+    pinned_pull: tuple[_Stand, TestClient],
+) -> None:
+    stand, client = pinned_pull
+    record = client.get("/api/plugin/github/pull").json()["record"]
+    body = client.get("/api/plugin/github/pull-markdown", params={"part": "body"})
+    assert body.status_code == 200
+    rendered = body.json()
+    assert (rendered["part"], rendered["fetched_at"]) == ("body", record["fetched_at"])
+    assert "<strong>two</strong>" in rendered["html"]
+    review = record["reviews"][1]
+    answer = client.get(
+        "/api/plugin/github/pull-markdown", params={"part": f"review/{review['id']}"}
+    )
+    assert "Looks right." in answer.json()["html"]
+    for part, status_code, code in (
+        ("", 400, "invalid_part"),
+        ("pull/7", 400, "invalid_part"),
+        ("review/1", 404, "unknown_part"),
+    ):
+        refused = client.get("/api/plugin/github/pull-markdown", params={"part": part})
+        assert (refused.status_code, refused.json()["code"]) == (status_code, code)
+    (stand.published.home / source_pull_record(stand.published.slug, 7)).unlink()
+    missing = client.get("/api/plugin/github/pull-markdown", params={"part": "body"})
+    assert (missing.status_code, missing.json()["code"]) == (404, "not_cached")
+
+
+def test_the_markdown_route_never_trusts_raw_html_in_a_text(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.builtin_plugins.github import pull_markdown
+
+    hostile = (
+        "Hi <script>alert(1)</script><img src=x onerror=alert(1)>"
+        ' <a href="javascript:alert(1)">x</a> <iframe src="https://example.com"></iframe>'
+    )
+    monkeypatch.setattr(pull_markdown, "part_text", lambda _record, _part: hostile)
+    _stand, client = pinned_pull
+    html = client.get("/api/plugin/github/pull-markdown", params={"part": "body"}).json()["html"]
+    for forbidden in ("<script", "onerror", "javascript:", "<iframe"):
+        assert forbidden not in html
+
+
 # ── Review hardening: degraded parts, oversized pages, and typed failures ──
 
 

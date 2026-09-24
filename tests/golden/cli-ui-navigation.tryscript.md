@@ -583,6 +583,17 @@ $ node tests/dom/navigation-route-behavior.js
     "reject invalid commit revision \".bad\"",
     "reject invalid commit revision \"bad ref\"",
     "reject invalid commit revision \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"",
+    "pull-request page href",
+    "pull-request Files changed href",
+    "pull-request page parses",
+    "pull-request tab parses with a trailing slash",
+    "reject pull-request route /pull/0",
+    "reject pull-request route /pull/07",
+    "reject pull-request route /pull/7/commits",
+    "reject pull-request route /pull/7/files/x",
+    "reject pull-request route /pull/x",
+    "reject invalid pull-request href 0/",
+    "reject invalid pull-request href 7/commits",
     "root href",
     "folder href keeps its slash",
     "path segments encode independently",
@@ -660,6 +671,7 @@ $ node tests/dom/navigation-route-behavior.js
     "a hash-only landing applies no target"
   ]
 }
+? 0
 ```
 
 The asset loader session pins lazy construction, dependency order, concurrent request
