@@ -93,6 +93,14 @@ class StoreMirror:
         return await asyncio.to_thread(self._read_state)
 
     def _read_state(self) -> RecordedFreshness:
+        # Stamped before the read: a rewrite between the two only makes the stamp older
+        # than the content, which a later comparison still sees as a change.
+        relative = store_record(self.store_key, "state.yml")
+        try:
+            status = (self.home / relative).stat()
+            stamp: tuple[int, int] | None = (status.st_ino, status.st_mtime_ns)
+        except OSError:
+            stamp = None
         # "keep": a served store may live in a home this process cannot repair, and a
         # status read must never change it.
         state = read_record(
@@ -109,6 +117,7 @@ class StoreMirror:
             last_operation=operation.kind,
             last_outcome=operation.outcome,
             last_outcome_at=operation.at,
+            record_stamp=stamp,
         )
 
     async def ref_tip(self, ref: str) -> str | None:
