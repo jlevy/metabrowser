@@ -111,6 +111,14 @@ async function loadModule() {
       "utf8",
     )
     .replace('"./toc-intersection-fallback.js"', JSON.stringify(tocFallbackUrl))
+    .replace(
+      '"./inert-render.js"',
+      JSON.stringify(
+        require("node:url").pathToFileURL(
+          path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/inert-render.js"),
+        ).href,
+      ),
+    )
     .replace('"./markdown-worker-client.js"', JSON.stringify(workerUrl));
   const [transclusion, parser] = await Promise.all([
     import(`data:text/javascript;base64,${Buffer.from(source).toString("base64")}`),

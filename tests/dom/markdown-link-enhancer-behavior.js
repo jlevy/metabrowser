@@ -210,6 +210,14 @@ async function loadModule() {
       "utf8",
     )
     .replace('"./toc-intersection-fallback.js"', JSON.stringify(tocFallbackUrl))
+    .replace(
+      '"./inert-render.js"',
+      JSON.stringify(
+        require("node:url").pathToFileURL(
+          path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/inert-render.js"),
+        ).href,
+      ),
+    )
     .replace('"./markdown-worker-client.js"', JSON.stringify(workerUrl))
     .replace('"./wiki-parser.js"', JSON.stringify(wikiParserUrl));
   const transclusionUrl = `data:text/javascript;base64,${Buffer.from(transclusionSource).toString("base64")}`;
