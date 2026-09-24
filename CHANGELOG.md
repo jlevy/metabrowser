@@ -122,12 +122,16 @@ GitHub URLs and HTTPS:
   repository URL; tracking parameters are dropped and never echoed.
   A URL pasted as an address bar shows it, with a raw space or a character outside ASCII
   such as `docs/雪.md` or `space name.md`, opens what its percent-encoded spelling opens:
-  as a browser does, the space and the character are sent percent-encoded as UTF-8.
-  Whitespace other than a space and invisible formatting characters, such as a
-  right-to-left override, are refused with their code point and the encoded spelling to
-  use, and a trailing space, which a browser strips, is refused.
-  A C1 control character in a path, such as `%C2%9B`, is shown as U+FFFD like C0, so an
-  error message cannot send a terminal an escape sequence.
+  as a browser does, the space and the character are sent percent-encoded as UTF-8. A
+  character a reader cannot see or tell from a space is refused with its code point and
+  the encoded spelling to use: whitespace other than a space, format characters such as
+  a right-to-left override, Unicode’s default-ignorable characters such as the Hangul
+  filler U+3164 and variation selectors, the blank braille pattern U+2800, and
+  unassigned and private-use code points.
+  So are a trailing space, which a browser strips, control characters, named by code
+  point, and a `%` that starts no percent escape, with the hint to write a literal `%`
+  as `%25`. A C1 control character in a path, such as `%C2%9B`, is shown as U+FFFD like
+  C0, so an error message cannot send a terminal an escape sequence.
   A ref, commit, or path the mirror does not have is reported by `--no-serve`, `--show`,
   and `--api` as `ref_not_found`, `commit_not_found`, or `path_not_found`; those modes
   read the mirror as it is and do not fetch.

@@ -165,7 +165,7 @@ Error: invalid ROOT (credentials_in_url): the URL carries credentials
 
 ```console
 $ METABROWSER_HOME=$PWD/home metab git@github.com:octo/'my demo'.git --no-serve
-Error: invalid ROOT (control_or_whitespace): the URL contains a control character or space
+Error: invalid ROOT (control_or_whitespace): the URL contains U+0020, a space
 ? 1
 ```
 
@@ -208,9 +208,10 @@ Error: invalid ROOT (invalid_repository): the repository name is not a GitHub re
 ? 1
 ```
 
-A character an address bar would not show raw is refused by code point with the spelling
-to use if it belongs in the address: whitespace other than a space and invisible
-formatting characters.
+A character no one can see, or cannot tell from a space, is refused by code point with
+the spelling to use if it belongs in the address: whitespace other than a space,
+invisible characters such as a right-to-left override or the Hangul filler, which makes
+`README<U+3164>.md` read as `README.md`, and unassigned and private-use code points.
 A trailing space, which a browser strips, and control characters are refused.
 
 ```console
@@ -221,7 +222,19 @@ Error: invalid ROOT (control_or_whitespace): the URL contains U+00A0, a whitespa
 
 ```console
 $ METABROWSER_HOME=$PWD/home metab "https://github.com/octo/demo/blob/topic/a$(printf '\342\200\256')b.md" --no-serve
-Error: invalid ROOT (non_ascii): the URL contains U+202E, an invisible formatting character; if it belongs in the address, write it as %E2%80%AE
+Error: invalid ROOT (non_ascii): the URL contains U+202E, an invisible character; if it belongs in the address, write it as %E2%80%AE
+? 1
+```
+
+```console
+$ METABROWSER_HOME=$PWD/home metab "https://github.com/octo/demo/blob/topic/README$(printf '\343\205\244').md" --no-serve
+Error: invalid ROOT (non_ascii): the URL contains U+3164, an invisible character; if it belongs in the address, write it as %E3%85%A4
+? 1
+```
+
+```console
+$ METABROWSER_HOME=$PWD/home metab "https://github.com/octo/demo/blob/topic/a$(printf '\356\200\200')b.md" --no-serve
+Error: invalid ROOT (non_ascii): the URL contains U+E000, a private-use character; if it belongs in the address, write it as %EE%80%80
 ? 1
 ```
 
@@ -233,7 +246,16 @@ Error: invalid ROOT (control_or_whitespace): the URL ends with a space; remove i
 
 ```console
 $ METABROWSER_HOME=$PWD/home metab "https://github.com/octo/demo/blob/topic/a$(printf '\t')b.md" --no-serve
-Error: invalid ROOT (control_or_whitespace): the URL contains a control character
+Error: invalid ROOT (control_or_whitespace): the URL contains U+0009, a control character
+? 1
+```
+
+A `%` that starts no percent escape is refused: a browser sends it as it is and leaves
+its meaning to the server, so a literal `%` is written `%25`.
+
+```console
+$ METABROWSER_HOME=$PWD/home metab 'https://github.com/octo/demo/blob/topic/100%.md' --no-serve
+Error: invalid ROOT (invalid_percent_encoding): the URL has a % not followed by two hexadecimal digits; write a literal % as %25
 ? 1
 ```
 

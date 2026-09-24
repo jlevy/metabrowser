@@ -27,13 +27,21 @@ A web URL is read as a browser sends it. A person pastes the decoded form an add
 bar shows, such as ``…/docs/雪.md`` or ``…/space name.md``, and a browser sends a
 space or a character outside ASCII in a path, query, or fragment percent-encoded as
 UTF-8 (the WHATWG URL Standard's path, query, and fragment percent-encode sets); GitHub
-answers both spellings alike, so both open the same selection. Characters an address bar
-keeps encoded are still refused, since a raw one did not come from it and cannot be
-seen: controls, whitespace other than a space, invisible format characters such as
-bidirectional overrides, and a trailing space, which a browser strips. The refusal names
-the character by code point and, for whitespace and a formatting character, gives the
-encoded spelling to use if it belongs in the address. SSH addresses are not browser URLs
-and keep the generic checks.
+answers both spellings alike, so both open the same selection. A character that cannot
+be seen, or that a reader cannot tell apart from a space, is still refused, since a
+name holding one passes for another (``README<U+3164>.md`` reads as ``README.md``):
+controls, whitespace other than a space, format characters such as bidirectional
+overrides, default-ignorable characters such as fillers and variation selectors, the
+blank braille pattern, and unassigned and private-use code points; so is a trailing
+space, which a browser strips, and a ``%`` that starts no percent escape, which a
+browser leaves for the server to read. Every character refusal names the code point
+and, in a web URL's path, query, or fragment, the encoded spelling to use if the
+character belongs in the address. SSH addresses are not browser URLs and keep the
+generic checks.
+
+Which code points are unassigned is the running Python's Unicode database: one assigned
+in a later Unicode version is refused under an older Python until it is written
+percent-encoded.
 """
 
 from __future__ import annotations
@@ -67,11 +75,32 @@ _LINE_ANCHOR = re.compile(
     r"^L([1-9][0-9]{0,8})(?:C([1-9][0-9]{0,8}))?(?:-L([1-9][0-9]{0,8})(?:C([1-9][0-9]{0,8}))?)?$"
 )
 _HEX: Final = frozenset(string.hexdigits)
-# Unicode categories of the characters outside ASCII a web URL may not hold raw, beside
-# whitespace: controls, format characters (bidirectional overrides, zero-width joiners,
-# the soft hyphen), and lone surrogates, which stand for argument bytes that are not
-# UTF-8.
-_HIDDEN_CATEGORIES: Final = frozenset({"Cc", "Cf", "Cs"})
+# Default_Ignorable_Code_Point, from Unicode 17.0's DerivedCoreProperties.txt, as ICU
+# 78.3 reports it (Node 24's `\p{Default_Ignorable_Code_Point}`): characters a renderer
+# shows as nothing, such as U+034F COMBINING GRAPHEME JOINER, the Hangul fillers
+# U+115F, U+1160, U+3164, and U+FFA0, and the variation selectors U+FE00..U+FE0F.
+_DEFAULT_IGNORABLE: Final[tuple[tuple[int, int], ...]] = (
+    (0x00AD, 0x00AD),
+    (0x034F, 0x034F),
+    (0x061C, 0x061C),
+    (0x115F, 0x1160),
+    (0x17B4, 0x17B5),
+    (0x180B, 0x180F),
+    (0x200B, 0x200F),
+    (0x202A, 0x202E),
+    (0x2060, 0x206F),
+    (0x3164, 0x3164),
+    (0xFE00, 0xFE0F),
+    (0xFEFF, 0xFEFF),
+    (0xFFA0, 0xFFA0),
+    (0xFFF0, 0xFFF8),
+    (0x1BCA0, 0x1BCA3),
+    (0x1D173, 0x1D17A),
+    (0xE0000, 0xE0FFF),
+)
+# U+2800 BRAILLE PATTERN BLANK is a symbol, not default-ignorable, but a cell with no dots
+# is drawn as a space.
+_BLANK: Final = 0x2800
 
 # Top-level github.com pages whose first path segment would otherwise read as an owner.
 # GitHub does not allow an account with these names.
@@ -235,14 +264,28 @@ def _escaped(ch: str) -> str:
     return "".join(f"%{byte:02X}" for byte in ch.encode())
 
 
-def _control_or_whitespace(ch: str) -> bool:
-    return ord(ch) < 0x20 or ord(ch) == 0x7F or ch.isspace()
+def _invisible(ch: str) -> bool:
+    point = ord(ch)
+    return point == _BLANK or any(low <= point <= high for low, high in _DEFAULT_IGNORABLE)
 
 
-def _hidden(ch: str) -> _Refuse:
-    """The refusal of *ch*, a character outside ASCII a browser would not show raw."""
+def _refusal(ch: str, *, encodable: bool) -> _Refuse | None:
+    """Why *ch* may not appear raw in the URL, or ``None`` when it may.
+
+    *encodable* is true in a web URL's path, query, and fragment, where a space and a
+    visible character outside ASCII are sent percent-encoded; elsewhere both are refused,
+    as the generic grammar refuses them.
+    """
 
     point = f"U+{ord(ch):04X}"
+    if ch == " ":
+        if encodable:
+            return None
+        return _Refuse("control_or_whitespace", f"the URL contains {point}, a space")
+    if ord(ch) < 0x20 or ord(ch) == 0x7F:
+        return _Refuse("control_or_whitespace", f"the URL contains {point}, a control character")
+    if ord(ch) < 0x7F:
+        return None
     category = unicodedata.category(ch)
     if category == "Cs":
         # An argument that is not UTF-8 reaches Python as lone surrogates.
@@ -250,12 +293,22 @@ def _hidden(ch: str) -> _Refuse:
     code = "control_or_whitespace" if ch.isspace() else "non_ascii"
     if category == "Cc":
         return _Refuse(code, f"the URL contains {point}, a control character")
-    kind = "a whitespace character" if ch.isspace() else "an invisible formatting character"
-    return _Refuse(
-        code,
-        f"the URL contains {point}, {kind}; if it belongs in the address, "
-        f"write it as {_escaped(ch)}",
-    )
+    if ch.isspace():
+        kind = "a whitespace character"
+    elif not encodable:
+        kind = "a character outside ASCII"
+    elif category == "Cf" or _invisible(ch):
+        kind = "an invisible character"
+    elif category == "Cn":
+        kind = "an unassigned character"
+    elif category == "Co":
+        kind = "a private-use character"
+    else:
+        return None
+    detail = f"the URL contains {point}, {kind}"
+    if encodable:
+        detail += f"; if it belongs in the address, write it as {_escaped(ch)}"
+    return _Refuse(code, detail)
 
 
 def _common_checks(value: str, claimed: _Claimed) -> None:
@@ -268,20 +321,12 @@ def _common_checks(value: str, claimed: _Claimed) -> None:
 
     strict = claimed.authority if claimed.web else value
     tail = claimed.path + claimed.query + claimed.fragment if claimed.web else ""
-    if any(_control_or_whitespace(ch) for ch in strict):
-        raise _Refuse("control_or_whitespace", "the URL contains a control character or space")
-    for ch in tail:
-        if ord(ch) < 0x20 or ord(ch) == 0x7F:
-            raise _Refuse("control_or_whitespace", "the URL contains a control character")
-        if ch != " " and ch.isspace():
-            raise _hidden(ch)
+    for text, encodable in ((strict, False), (tail, True)):
+        for ch in text:
+            if (refused := _refusal(ch, encodable=encodable)) is not None:
+                raise refused
     if value.endswith(" "):
         raise _Refuse("control_or_whitespace", "the URL ends with a space; remove it")
-    if any(ord(ch) > 0x7F for ch in strict):
-        raise _Refuse("non_ascii", "the URL contains a character outside ASCII")
-    for ch in tail:
-        if ord(ch) > 0x7F and unicodedata.category(ch) in _HIDDEN_CATEGORIES:
-            raise _hidden(ch)
     if "\\" in value:
         raise _Refuse("backslash", "the URL contains a backslash")
 
@@ -350,7 +395,13 @@ def _decode_segment(segment: str) -> bytes:
         if ch == "%":
             digits = segment[index + 1 : index + 3]
             if len(digits) != 2 or not set(digits) <= _HEX:
-                raise _Refuse("invalid_percent_encoding", "the URL has a malformed percent escape")
+                # A browser leaves such a % as it is and the server decides what it means;
+                # a literal one is %25, which GitHub's own links use.
+                raise _Refuse(
+                    "invalid_percent_encoding",
+                    "the URL has a % not followed by two hexadecimal digits; "
+                    "write a literal % as %25",
+                )
             byte = int(digits, 16)
             if byte < 0x20 or byte == 0x7F:
                 raise _Refuse("control_or_whitespace", "the URL path encodes a control character")
