@@ -3,9 +3,9 @@ type: is
 id: is-01m36k3xm77y33seww2jbwwb69
 title: "GitHub URL open: reducer plugin, HTTPS with gh helper, ref/path split, line anchors"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 labels:
   - release:v0.12.0
@@ -14,7 +14,11 @@ dependencies:
     target: is-01m36k3y0t6fvtqhskx3cqxx95
 parent_id: is-01m36k3w9vgwy97c9hcj2sqrs5
 created_at: 2026-09-23T07:36:38.789Z
-updated_at: 2026-09-24T08:01:45.500Z
+updated_at: 2026-09-24T10:21:04.830Z
+closed_at: 2026-09-24T10:21:04.815Z
+close_reason: "GitHub URL open: PR #231 (codex/v012-github-url-open, head b605dd9f, above #230). Reducer plugin, HTTPS with the scoped gh helper, unified origin args and resolver, serve mode for GitHub URLs, pending selections, case-fold detection and restore, prune-and-retry, measured stall bound (closes mb-rati), SIGHUP/SIGTERM handling (closes mb-163x). Four independent review rounds; every finding fixed. CI green on all nine checks. Known limit: a decomposed-Unicode branch name on macOS hits a Git-internal prune and fetch disagreement after the first refresh (documented)."
+resolution: null
+duplicate_of: null
 ---
 Delivery step 5 of the thin-mirror plan. GitHub reducer in builtin_plugins/github through classify_root_argument(reducers=), with the URL grammar, canonical identity and refusals from the plan and network-free goldens for every shape. HTTPS fetch with the scoped gh credential helper when gh is present; error classification; measured stall bound (mb-rati); ref and path split without rev-parse (branch, tag, commit ID precedence); line anchors; SIGHUP handling (mb-163x); size check before a first clone. Opt-in live smoke on a public repository. Independent review, make verify, green CI.
 

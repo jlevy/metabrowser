@@ -3,9 +3,9 @@ type: is
 id: is-01m2zvd5k0t82m1ajtmknrdpa9
 title: "Phase 1B-a: measured initial-acquisition stall bound"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 5
+version: 6
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 labels:
   - release:v0.12.0
@@ -16,7 +16,11 @@ dependencies:
     target: is-01m36k3xm77y33seww2jbwwb69
 parent_id: is-01kzsb4jnyd56wy89xmztkmz2m
 created_at: 2026-09-20T16:46:49.439Z
-updated_at: 2026-09-23T07:37:24.862Z
+updated_at: 2026-09-24T10:21:05.143Z
+closed_at: 2026-09-24T10:21:05.142Z
+close_reason: "Measured in PR #231: http.lowSpeedLimit=1000 for 30 s after connect, plus a separate 30 s first-request deadline because curl's low-speed bound does not cover a stalled TLS handshake. Measurements recorded beside the constants."
+resolution: null
+duplicate_of: null
 ---
 Phase 1B-a of docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md (heading at line 1774) still has this item unchecked: measure initial acquisition of a large or bitmap-less repository against a stalled or slow server and choose its low-speed bound. Until that bound is measured, user-driven job cancellation is the only guard.
 
