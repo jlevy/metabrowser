@@ -6125,21 +6125,6 @@ document.addEventListener("click", (e) => {
   }
 });
 
-// biome-ignore lint/correctness/noUnusedVariables: referenced from generated HTML.
-function copyContent(btn) {
-  var container = btn.closest(".content-copy-wrap");
-  var code = container?.querySelector("code");
-  var text = code ? code.textContent : "";
-  navigator.clipboard.writeText(text).then(() => {
-    btn.classList.add("copied");
-    btn.dataset.tipText = "Copied!";
-    setTimeout(() => {
-      btn.classList.remove("copied");
-      btn.dataset.tipText = "Copy content";
-    }, 1500);
-  });
-}
-
 // ── Tab switching ───────────────────────────────────────────────
 
 /** @param {ParentNode} [root] */
