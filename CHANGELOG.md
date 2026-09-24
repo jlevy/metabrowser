@@ -111,13 +111,13 @@ GitHub URLs and HTTPS:
   and `--api` as `ref_not_found`, `commit_not_found`, or `path_not_found`; those modes
   read the mirror as it is and do not fetch.
   A server instead serves the default branch, fetches once in the background, and
-  switches to the selection if the fetch brings it, under a new session generation like
-  any pin switch, so a page opened meanwhile is offered a reload and its data requests
-  are refused with `pin_changed`; `/api/source/status` reports `selection_state` as
-  `pending`, then `found` or `not_found`. In a server, `POST /api/source/pin` for a
-  branch, tag, or commit the mirror lacks likewise answers `202` with
-  `selection_pending` and fetches once; asked again after that fetch it switches or
-  answers `404`. A commit ID in a URL or a pin request has 7 to 64 hexadecimal digits.
+  switches to the selection if the fetch brings it, like any pin switch, so a page
+  opened meanwhile is offered a reload and its data requests are refused with
+  `pin_changed`; `/api/source/status` reports `selection_state` as `pending`, then
+  `found` or `not_found`. In a server, `POST /api/source/pin` for a branch, tag, or
+  commit the mirror lacks likewise answers `202` with `selection_pending` and fetches
+  once; asked again after that fetch it switches or answers `404`. A commit ID in a URL
+  or a pin request has 7 to 64 hexadecimal digits.
   github.com links inside a rendered README of a served GitHub mirror open inside the
   pin, as they already did for a served checkout of the repository.
 
@@ -249,9 +249,9 @@ Repository cache:
   missing origin, a failed fetch, or a detached origin HEAD is a typed outcome in the
   status while the pinned revision keeps serving.
   Reach it with `metab file://… --api /api/source/refresh --data <file with {}>`; that
-  one command waits for the refresh it asked for, prints the status after it, and exits
-  1 unless the fetch ran or another process’s refresh is running.
-  No other one-shot command fetches.
+  one command waits up to one Git deadline for the refresh it asked for, prints the
+  status after it, and exits 1 unless the fetch ran or another process’s refresh is
+  running. No other one-shot command fetches.
 
 - New `POST /api/source/pin` switches what a server serves to another branch, tag, or
   commit of the same mirror: `{"ref": "feature"}`, `{"ref": "v1"}`, or
@@ -269,9 +269,12 @@ Repository cache:
   opens or becomes visible on a stale mirror.
   When a refresh moves the pinned branch it offers the commit the branch now names,
   usually a newer one, and accepting switches the pin and reloads the view.
-  When another tab switched the pin, even before the page’s first poll, it offers a
-  reload, and the page’s data requests are refused with `pin_changed` rather than
-  answered from the new pin, so one page never mixes two revisions.
+  When another tab switched the pin, or the server restarted onto another commit, even
+  before the page’s first poll, it offers a reload.
+  The page’s data requests name the commit it shows and are refused with `pin_changed`
+  rather than answered from another commit.
+  Images and raw documents the page loads directly are not checked, so a stale page can
+  still show one of those from the new pin until it reloads.
   A failed refresh reads as a warning there, not as an error in the page.
   The row repaints only when what it says changes, and announces its state and offer to
   a screen reader, not its age.

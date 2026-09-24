@@ -2124,6 +2124,9 @@ declare global {
     selection_state: "pending" | "found" | "not_found" | null;
   };
 
+  /** The pin and ref a page was rendered for. */
+  type MetabrowserSourcePage = { pin: string; ref: string | null };
+
   type MetabrowserSourceOffer =
     | { kind: "switch"; ref: string; latest: string; text: string; button: string }
     | { kind: "reload"; text: string; button: string };
@@ -2164,7 +2167,7 @@ declare global {
     snapshot(): {
       status: MetabrowserSourceStatus | null;
       etag: string | null;
-      pageGeneration: number | null;
+      shown: MetabrowserSourcePage | null;
       timerPending: boolean;
       refreshAskedWhileVisible: boolean;
       error: string | null;
@@ -2176,11 +2179,11 @@ declare global {
     SLOW_POLL_MS: number;
     createController(
       deps: MetabrowserSourceFreshnessDependencies,
-      options?: { generation?: number | null },
+      options?: { shown?: MetabrowserSourcePage | null },
     ): MetabrowserSourceFreshnessController;
     describe(
       status: MetabrowserSourceStatus | null,
-      page: { generation: number | null; nowMs: number; error?: string | null },
+      page: { shown: MetabrowserSourcePage | null; nowMs: number; error?: string | null },
     ): MetabrowserSourceFreshnessModel;
     mount(element: HTMLElement): MetabrowserSourceFreshnessController;
     relativeAge(iso: string | null, nowMs: number): string;
@@ -2402,19 +2405,19 @@ declare global {
     MetabrowserTreeKeyboardNavigation: MetabrowserTreeKeyboardRuntime;
     MetabrowserSourceAppend: MetabrowserSourceAppendRuntime;
     MetabrowserSourceFreshness?: MetabrowserSourceFreshnessRuntime;
-    MetabrowserSourceGeneration?: Readonly<{
-      GENERATION_HEADER: string;
+    MetabrowserSourcePinGuard?: Readonly<{
       PIN_CHANGED_HEADER: string;
+      PIN_HEADER: string;
       guardFetch(
         fetchImpl: typeof fetch,
-        generation: number,
+        pin: string,
         base: () => string,
-        onPinChanged: (served: number) => void,
+        onPinChanged: (served: string) => void,
       ): typeof fetch;
       guardedRequest(url: string, base: string): boolean;
     }>;
-    /** The session generation a pin's page was rendered for; absent on a folder. */
-    METABROWSER_SOURCE_GENERATION?: number;
+    /** The pin and ref a pin's page was rendered for; absent on a folder. */
+    METABROWSER_SOURCE_PIN?: MetabrowserSourcePage;
     MetabrowserViewState: MetabrowserViewStateRuntime;
     MetabrowserViewComposition: MetabrowserViewCompositionRuntime;
     MetabrowserTreemapLayout: MetabrowserTreemapLayoutApi;

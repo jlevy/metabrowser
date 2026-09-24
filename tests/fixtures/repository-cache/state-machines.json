@@ -472,6 +472,12 @@
         },
         { "name": "fetching", "visible": true, "terminal": false, "on_crash": "fetch_interrupted" },
         { "name": "pruning", "visible": true, "terminal": false, "on_crash": "prune_interrupted" },
+        {
+          "name": "refetching",
+          "visible": true,
+          "terminal": false,
+          "on_crash": "fetch_interrupted"
+        },
         { "name": "fetched", "visible": true, "terminal": false, "on_crash": "record_behind" },
         { "name": "recorded", "visible": true, "terminal": true },
         { "name": "failure_recorded", "visible": true, "terminal": true },
@@ -529,19 +535,11 @@
         },
         {
           "from": "fetching",
-          "event": "ref_lock_conflict",
+          "event": "fetch_refused",
           "to": "pruning",
           "holds": ["store_fetch"],
           "network": false,
-          "effect": "One transaction cannot delete side and create side/x, or rename Topic to topic on a case-insensitive file system; Git refuses it and no ref moves."
-        },
-        {
-          "from": "pruning",
-          "event": "stale_refs_pruned",
-          "to": "fetching",
-          "holds": ["store_fetch"],
-          "network": true,
-          "effect": "git remote prune with the mirror refspecs deletes the refs whose branch or tag the origin no longer has, and nothing else; the atomic fetch then runs once more."
+          "effect": "Git ran and failed, and no ref moved. One transaction cannot delete side and create side/x, or rename Topic to topic on a case-insensitive file system, and Git words that refusal differently for loose refs, packed refs, and reftable, or pushes it past the bounded stderr, so every such failure is followed by the prune."
         },
         {
           "from": "fetching",
@@ -549,7 +547,55 @@
           "to": "failure_recorded",
           "holds": ["repository_store", "store_fetch"],
           "network": false,
-          "effect": "No ref moved, because the fetch is atomic; under the store lock, state.yml records the failed refresh."
+          "effect": "Git could not start or was stopped at its deadline, which a prune cannot help. No ref moved, because the fetch is atomic; under the store lock, state.yml records the failed refresh and keeps the previous fetch time and default revision."
+        },
+        {
+          "from": "pruning",
+          "event": "stale_refs_pruned",
+          "to": "refetching",
+          "holds": ["store_fetch"],
+          "network": true,
+          "effect": "git remote prune with the mirror refspecs deletes the refs whose branch or tag the origin no longer has, and nothing else; the atomic fetch then runs once more."
+        },
+        {
+          "from": "pruning",
+          "event": "prune_failed",
+          "to": "failure_recorded",
+          "holds": ["repository_store", "store_fetch"],
+          "network": false,
+          "effect": "The prune may have deleted some stale refs before it failed. Under the store lock, state.yml records the failed refresh with the origin's default branch or the one recorded before, whichever the mirror still has, and keeps the previous fetch time."
+        },
+        {
+          "from": "pruning",
+          "event": "cancelled",
+          "to": "cancelled",
+          "holds": ["store_fetch"],
+          "network": false,
+          "effect": "Git's process group is killed; each ref deletion is whole, stale refs already deleted stay deleted, and the record is left as it was."
+        },
+        {
+          "from": "refetching",
+          "event": "fetch_succeeded",
+          "to": "fetched",
+          "holds": ["store_fetch"],
+          "network": false,
+          "effect": "With the stale refs gone, every branch and tag moved together. No object was removed."
+        },
+        {
+          "from": "refetching",
+          "event": "fetch_failed",
+          "to": "failure_recorded",
+          "holds": ["repository_store", "store_fetch"],
+          "network": false,
+          "effect": "The second transaction moved no ref, but the prune deleted stale refs. Under the store lock, state.yml records the failed refresh with the origin's default branch or the one recorded before, whichever the mirror still has, and keeps the previous fetch time."
+        },
+        {
+          "from": "refetching",
+          "event": "cancelled",
+          "to": "cancelled",
+          "holds": ["store_fetch"],
+          "network": false,
+          "effect": "Git's process group is killed; the second transaction moved every ref or none, stale refs the prune deleted stay deleted, and the record is left as it was."
         },
         {
           "from": "fetching",
@@ -722,12 +768,41 @@
         "remove_stale_locks",
         "lookup_remote_head",
         "fetch_started",
-        "ref_lock_conflict",
+        "fetch_refused",
         "stale_refs_pruned",
         "fetch_succeeded",
         "record_written"
       ],
       "expected_final": "recorded",
+      "expected_visible": true
+    },
+    {
+      "id": "refresh-retry-fails-after-pruning",
+      "machine": "store_refresh",
+      "events": [
+        "take_fetch_lock",
+        "remove_stale_locks",
+        "lookup_remote_head",
+        "fetch_started",
+        "fetch_refused",
+        "stale_refs_pruned",
+        "fetch_failed"
+      ],
+      "expected_final": "failure_recorded",
+      "expected_visible": true
+    },
+    {
+      "id": "refresh-crash-during-prune",
+      "machine": "store_refresh",
+      "events": [
+        "take_fetch_lock",
+        "remove_stale_locks",
+        "lookup_remote_head",
+        "fetch_started",
+        "fetch_refused",
+        "crash"
+      ],
+      "expected_final": "prune_interrupted",
       "expected_visible": true
     }
   ]

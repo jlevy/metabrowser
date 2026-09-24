@@ -36,6 +36,7 @@ from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from functools import partial
 from typing import Any, ClassVar, Final, Literal, Protocol, TypedDict
 
 from metabrowser.git.process import GIT_ACQUISITION_TIMEOUT_S
@@ -337,6 +338,8 @@ class MirrorSession:
         self._misses: dict[tuple[str | None, str | None], int] = {}
         self._recorded = RecordedFreshness(None, None, None, None)
         self._last_result: RefreshResult | None = None
+        # The record as last observed when that result was set, to break a tie.
+        self._recorded_with_result: RecordedFreshness | None = None
         self._last_success_at: str | None = None
         self._tip: tuple[str, str | None] | None = None
         self._pin_lock = asyncio.Lock()
@@ -411,7 +414,9 @@ class MirrorSession:
 
         Another process's refresh writes the record after this one reported that it was
         refreshing elsewhere, and a record this process wrote is no newer than its own
-        result, so the later timestamp wins.
+        result, so the later timestamp wins. Timestamps have one-second resolution, so a
+        tie goes to the record only when it changed after the result was set: a record
+        from before it, such as the acquisition a moment earlier, does not hide it.
         """
 
         recorded = self._recorded
@@ -427,9 +432,18 @@ class MirrorSession:
                 "at": recorded.last_outcome_at,
             }
         result = self._last_result
-        if result is None or (from_record is not None and from_record["at"] > result.at):
+        if result is None:
+            return from_record
+        if from_record is not None and (
+            from_record["at"] > result.at
+            or (from_record["at"] == result.at and recorded != self._recorded_with_result)
+        ):
             return from_record
         return {"operation": "refresh", "outcome": result.outcome, "at": result.at}
+
+    def _set_result(self, result: RefreshResult) -> None:
+        self._last_result = result
+        self._recorded_with_result = self._recorded
 
     # ── Refresh ─────────────────────────────────────────────────
 
@@ -442,12 +456,12 @@ class MirrorSession:
         try:
             result = await self.mirror.refresh()
         except asyncio.CancelledError:
-            self._last_result = RefreshResult("cancelled", _utc_timestamp())
+            self._set_result(RefreshResult("cancelled", _utc_timestamp()))
             raise
         except Exception:
             log.exception("refreshing the served mirror failed")
             result = RefreshResult("failed", _utc_timestamp())
-        self._last_result = result
+        self._set_result(result)
         if result.outcome in _FETCHED_OUTCOMES:
             self._last_success_at = result.at
         # Another process's refresh is the fetch a waiting selection needs; follow it.
@@ -460,7 +474,9 @@ class MirrorSession:
             # The fetch already ended; only the report of it is behind.
             log.warning("could not observe the mirror after a refresh", exc_info=True)
         if following:
-            self._coordinator.start(self._elsewhere_key, self._follow, network=False)
+            self._coordinator.start(
+                self._elsewhere_key, partial(self._follow, result), network=False
+            )
 
     async def _after_fetch(self) -> None:
         """Serve a waiting URL selection if the fetch brought it, and count the fetch."""
@@ -473,24 +489,31 @@ class MirrorSession:
         finally:
             self._refreshes_ended += 1
 
-    async def _follow(self) -> None:
+    async def _follow(self, busy: RefreshResult) -> None:
         """Wait for another process's refresh to end, then observe the store again.
 
         Without this, a server that found the store busy would report the old tip and
-        fetch time until its own next refresh.
+        fetch time until its own next refresh. Once the other refresh has ended, *busy*
+        is no longer true, so it stops being this process's last outcome; the record
+        then reports what the other refresh wrote, or what was there before when it
+        wrote nothing.
         """
 
         waited = 0.0
+        ended = False
         while waited < ELSEWHERE_WAIT_S:
             await asyncio.sleep(ELSEWHERE_POLL_S)
             waited += ELSEWHERE_POLL_S
             if not await self.mirror.refresh_running_elsewhere():
+                ended = True
                 break
         await self._after_fetch()
         try:
             await self.observe()
         except Exception:
             log.warning("could not observe the mirror after another refresh", exc_info=True)
+        if ended and self._last_result is busy:
+            self._last_result = None
 
     async def _open_pending_selection(self) -> None:
         """After the fetch a URL selection waited for: serve it, or say it is not there."""

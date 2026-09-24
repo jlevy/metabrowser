@@ -226,7 +226,10 @@ def mirror_fetch_args(remote_url: str, *, prune: bool) -> list[str]:
     ``--prune --atomic``: a branch or tag deleted upstream leaves the mirror, and every
     ref updates together or none does, so a killed or failed fetch never leaves some
     refs moved and others not. Objects written before a failure stay, which is
-    harmless because nothing references them yet.
+    harmless because nothing references them yet. With ``--porcelain`` a ref update
+    goes to stdout rather than stderr, so a refresh with thousands of new refs keeps
+    stderr to Git's errors; ``--quiet`` would do that too, but it also silences the
+    porcelain listing a refresh checks its refs against.
     """
 
     flags = ["--prune", "--atomic"] if prune else []

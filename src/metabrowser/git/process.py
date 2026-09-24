@@ -387,7 +387,9 @@ def _require_no_lazy_fetch(target: GitCommandTarget | None, policy: GitProcessPo
 # They outlive a Python process that exits without unwinding, because they are in
 # another group, so a command that must stop at once kills them first; see
 # :func:`kill_live_process_groups`.
-_LIVE_PROCESS_GROUPS: set[int] = set()
+# Kept by process ID with the ``Process`` itself, whose ``returncode`` is set once the
+# child is reaped, by its owner or by asyncio: from then on its ID may be reused.
+_LIVE_PROCESS_GROUPS: dict[int, asyncio.subprocess.Process] = {}
 
 
 def kill_live_process_groups() -> None:
@@ -395,16 +397,29 @@ def kill_live_process_groups() -> None:
 
     Safe to call from a signal handler just before ``os._exit``: it only signals.
     A group killed here leaves what an interrupted Git leaves, which the next fetch
-    cleans up under the store's fetch lock.
+    cleans up under the store's fetch lock. A reaped child is skipped, because its
+    group ID may already belong to an unrelated process.
     """
 
-    for pid in tuple(_LIVE_PROCESS_GROUPS):
+    for pid, proc in tuple(_LIVE_PROCESS_GROUPS.items()):
+        if proc.returncode is not None:
+            continue
         with contextlib.suppress(ProcessLookupError, PermissionError):
             os.killpg(pid, signal.SIGKILL)
 
 
+def _register_group(proc: asyncio.subprocess.Process) -> None:
+    # A streaming owner may reap its child with ``wait()`` alone; forget those here so
+    # the registry holds only children that may still be running.
+    for pid, known in tuple(_LIVE_PROCESS_GROUPS.items()):
+        if known.returncode is not None:
+            del _LIVE_PROCESS_GROUPS[pid]
+    _LIVE_PROCESS_GROUPS[proc.pid] = proc
+
+
 def _reaped(proc: asyncio.subprocess.Process) -> None:
-    _LIVE_PROCESS_GROUPS.discard(proc.pid)
+    if _LIVE_PROCESS_GROUPS.get(proc.pid) is proc:
+        del _LIVE_PROCESS_GROUPS[proc.pid]
 
 
 def git_environment(policy: GitProcessPolicy | None = None) -> dict[str, str]:
@@ -528,11 +543,12 @@ async def run_git(
         raise GitTimeoutError(
             f"git {' '.join(args)} exceeded {timeout:g}s and was terminated"
         ) from None
-    except asyncio.CancelledError:
+    except BaseException:
         # A genuine cancellation — the client disconnected, or the server
-        # is shutting down. Reap the child so it cannot outlive the
-        # request, then let the cancellation continue to propagate;
-        # converting it to a GitError would swallow the shutdown signal.
+        # is shutting down — or anything else that stopped the wait. Reap the
+        # child so it cannot outlive the request, then let the exception
+        # continue to propagate; converting a cancellation to a GitError
+        # would swallow the shutdown signal.
         stdout_task.cancel()
         stderr_task.cancel()
         await terminate_git_process(proc)
@@ -638,7 +654,7 @@ async def spawn_git_process(
         )
         # Registered as soon as it exists, so a stop that cannot unwind kills it too.
         if own_group:
-            _LIVE_PROCESS_GROUPS.add(proc.pid)
+            _register_group(proc)
         return proc
 
     spawn = asyncio.ensure_future(spawn_and_register())

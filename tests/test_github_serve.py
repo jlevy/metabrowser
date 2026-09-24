@@ -9,7 +9,6 @@ while nothing leaves the machine. The GitHub provider sees no ``gh``.
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 import re
 import shutil
@@ -32,7 +31,7 @@ from metabrowser.cli.main import _app
 from metabrowser.git.tree_source import GitPath
 from metabrowser.mirror_refresh import RefreshResult
 from metabrowser.source import reset_source_session
-from metabrowser.source_routes import GENERATION_HEADER, PIN_CHANGED_HEADER
+from metabrowser.source_routes import PIN_CHANGED_HEADER, PIN_HEADER
 from tests.git_pin_harness import git_env
 from tests.github_origin import FIRST_COMMIT, SECOND_COMMIT, github_origin
 from tests.test_cache_acquire import _allow_installed_git
@@ -144,9 +143,9 @@ def test_a_selection_the_mirror_lacks_is_fetched_once_then_served(
 ) -> None:
     """The first open acquires; a branch pushed later is fetched in the background.
 
-    Serving the selection once the fetch brings it is a pin switch like any other: it
-    takes a new session generation, so a page rendered for the default pin while the
-    fetch ran is refused as ``pin_changed`` rather than reading the new pin's files.
+    Serving the selection once the fetch brings it is a pin switch like any other, so a
+    page rendered for the default pin while the fetch ran is refused as ``pin_changed``
+    rather than reading the new pin's files.
     """
 
     assert _serve(REPO).exit_code == 0
@@ -168,22 +167,18 @@ def test_a_selection_the_mirror_lacks_is_fetched_once_then_served(
     with TestClient(server.app) as client:
         waiting = client.get("/api/source/status").json()
         assert (waiting["selection_state"], waiting["pin"]) == ("pending", FIRST_COMMIT)
-        page = waiting["generation"]
         shell = client.get("/view/").text
-        assert f"window.METABROWSER_SOURCE_GENERATION={json.dumps(page)};" in shell
+        assert f'"pin": "{FIRST_COMMIT}"' in shell
         fetch_may_run.set()
         status = _settle(client)
         assert status["selection_state"] == "found"
         assert (status["pin"], status["ref_name"]) == (later, "later")
-        # Whatever form the generation takes, the switch changed it, and the guard
-        # refuses the page's with the one now served.
-        served = status["generation"]
-        assert served != page
-        stale_page = {GENERATION_HEADER: str(page)}
+        # The switch is a pin switch like any other: a page rendered for the default
+        # branch names the commit it shows, and the guard refuses it with the new one.
+        stale_page = {PIN_HEADER: FIRST_COMMIT}
         refused = client.get("/api/tree", params={"depth": "1"}, headers=stale_page)
         assert refused.status_code == 409 and refused.json()["code"] == "pin_changed"
-        assert refused.json()["generation"] == served
-        assert refused.headers[PIN_CHANGED_HEADER] == str(served)
+        assert refused.headers[PIN_CHANGED_HEADER] == later
 
 
 def test_a_selection_no_fetch_brings_is_reported_not_found(origin: Path) -> None:
@@ -192,11 +187,12 @@ def test_a_selection_no_fetch_brings_is_reported_not_found(origin: Path) -> None
     result = _serve(f"{REPO}/tree/never/docs")
     assert result.exit_code == 0, result.output
     with TestClient(server.app) as client:
-        page = client.get("/api/source/status").json()["generation"]
         status = _settle(client)
         assert status["selection_state"] == "not_found"
         # Nothing was switched, so a page rendered for the default pin stays current.
-        assert (status["pin"], status["generation"]) == (FIRST_COMMIT, page)
+        assert status["pin"] == FIRST_COMMIT
+        page = {PIN_HEADER: FIRST_COMMIT}
+        assert client.get("/api/tree", params={"depth": "1"}, headers=page).status_code == 200
 
 
 def test_one_shot_modes_still_refuse_a_missing_selection(origin: Path) -> None:

@@ -115,12 +115,12 @@
   "pin_changed": {
     "status": 409,
     "headers": {
-      "x-metabrowser-pin-changed": "2"
+      "x-metabrowser-pin-changed": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531"
     },
     "body": {
       "error": "the server now serves another revision; reload the page",
       "code": "pin_changed",
-      "generation": 2
+      "pin": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531"
     }
   },
   "pin_refused": {
