@@ -8,10 +8,13 @@ while nothing leaves the machine. The GitHub provider sees no ``gh``.
 
 from __future__ import annotations
 
+import asyncio
+import json
 import os
 import re
 import shutil
 import subprocess
+import threading
 import time
 from collections.abc import Iterator
 from pathlib import Path
@@ -23,10 +26,13 @@ from starlette.testclient import TestClient
 from typer.testing import CliRunner
 
 from metabrowser import server
+from metabrowser.cache.served_mirror import StoreMirror
 from metabrowser.cache.urls import GitSource
 from metabrowser.cli.main import _app
 from metabrowser.git.tree_source import GitPath
+from metabrowser.mirror_refresh import RefreshResult
 from metabrowser.source import reset_source_session
+from metabrowser.source_routes import GENERATION_HEADER, PIN_CHANGED_HEADER
 from tests.git_pin_harness import git_env
 from tests.github_origin import FIRST_COMMIT, SECOND_COMMIT, github_origin
 from tests.test_cache_acquire import _allow_installed_git
@@ -134,22 +140,50 @@ def _push_branch(origin: Path, tmp_path: Path, name: str) -> str:
 
 
 def test_a_selection_the_mirror_lacks_is_fetched_once_then_served(
-    origin: Path, tmp_path: Path
+    origin: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The first open acquires; a branch pushed later is fetched in the background."""
+    """The first open acquires; a branch pushed later is fetched in the background.
+
+    Serving the selection once the fetch brings it is a pin switch like any other: it
+    takes a new session generation, so a page rendered for the default pin while the
+    fetch ran is refused as ``pin_changed`` rather than reading the new pin's files.
+    """
 
     assert _serve(REPO).exit_code == 0
     reset_source_session()
     later = _push_branch(origin, tmp_path, "later")
+    fetch_may_run = threading.Event()
+    real_refresh = StoreMirror.refresh
+
+    async def gated_refresh(mirror: StoreMirror) -> RefreshResult:
+        await asyncio.to_thread(fetch_may_run.wait, 30)
+        return await real_refresh(mirror)
+
+    monkeypatch.setattr(StoreMirror, "refresh", gated_refresh)
 
     result = _serve(f"{REPO}/tree/later/docs")
     assert result.exit_code == 0, result.output
     assert f"Revision: {FIRST_COMMIT} (topic)\n" in result.stdout
     assert "Selection: tree not in the mirror yet" in result.stdout
     with TestClient(server.app) as client:
+        waiting = client.get("/api/source/status").json()
+        assert (waiting["selection_state"], waiting["pin"]) == ("pending", FIRST_COMMIT)
+        page = waiting["generation"]
+        shell = client.get("/view/").text
+        assert f"window.METABROWSER_SOURCE_GENERATION={json.dumps(page)};" in shell
+        fetch_may_run.set()
         status = _settle(client)
         assert status["selection_state"] == "found"
         assert (status["pin"], status["ref_name"]) == (later, "later")
+        # Whatever form the generation takes, the switch changed it, and the guard
+        # refuses the page's with the one now served.
+        served = status["generation"]
+        assert served != page
+        stale_page = {GENERATION_HEADER: str(page)}
+        refused = client.get("/api/tree", params={"depth": "1"}, headers=stale_page)
+        assert refused.status_code == 409 and refused.json()["code"] == "pin_changed"
+        assert refused.json()["generation"] == served
+        assert refused.headers[PIN_CHANGED_HEADER] == str(served)
 
 
 def test_a_selection_no_fetch_brings_is_reported_not_found(origin: Path) -> None:
@@ -158,9 +192,11 @@ def test_a_selection_no_fetch_brings_is_reported_not_found(origin: Path) -> None
     result = _serve(f"{REPO}/tree/never/docs")
     assert result.exit_code == 0, result.output
     with TestClient(server.app) as client:
+        page = client.get("/api/source/status").json()["generation"]
         status = _settle(client)
         assert status["selection_state"] == "not_found"
-        assert status["pin"] == FIRST_COMMIT
+        # Nothing was switched, so a page rendered for the default pin stays current.
+        assert (status["pin"], status["generation"]) == (FIRST_COMMIT, page)
 
 
 def test_one_shot_modes_still_refuse_a_missing_selection(origin: Path) -> None:

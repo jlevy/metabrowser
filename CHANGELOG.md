@@ -111,13 +111,15 @@ GitHub URLs and HTTPS:
   and `--api` as `ref_not_found`, `commit_not_found`, or `path_not_found`; those modes
   read the mirror as it is and do not fetch.
   A server instead serves the default branch, fetches once in the background, and
-  switches to the selection if the fetch brings it; `/api/source/status` reports
-  `selection_state` as `pending`, then `found` or `not_found`. In a server,
-  `POST /api/source/pin` for a branch, tag, or commit the mirror lacks likewise answers
-  `202` with `selection_pending` and fetches once; asked again after that fetch it
-  switches or answers `404`. A commit ID in a URL or a pin request has 7 to 64
-  hexadecimal digits. github.com links inside a rendered README of a served GitHub mirror
-  open inside the pin, as they already did for a served checkout of the repository.
+  switches to the selection if the fetch brings it, under a new session generation like
+  any pin switch, so a page opened meanwhile is offered a reload and its data requests
+  are refused with `pin_changed`; `/api/source/status` reports `selection_state` as
+  `pending`, then `found` or `not_found`. In a server, `POST /api/source/pin` for a
+  branch, tag, or commit the mirror lacks likewise answers `202` with
+  `selection_pending` and fetches once; asked again after that fetch it switches or
+  answers `404`. A commit ID in a URL or a pin request has 7 to 64 hexadecimal digits.
+  github.com links inside a rendered README of a served GitHub mirror open inside the
+  pin, as they already did for a served checkout of the repository.
 
 - `https://` sources are acquired, anonymously for a public repository.
   When `gh` is installed it is Git’s credential helper for `https://github.com` only,
