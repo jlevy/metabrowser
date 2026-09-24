@@ -476,6 +476,8 @@ Content trust:
   The copy, Load more, crumb, parent-folder, and print handlers now require
   `data-mb-owner` with a value drawn when the page loads, which a document written
   earlier cannot carry, and the tooltip ignores a rendered document’s `data-tip-text`.
+  The header’s print button no longer has an `id` (`print-view-btn`), so a label naming
+  it could not click it with its mark; SECURITY.md lists what the mark does not cover.
 
 Content source:
 

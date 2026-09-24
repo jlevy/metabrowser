@@ -3,7 +3,7 @@
 //
 // A trusted folder's Markdown keeps class, id, and data-* through KPress, so a
 // document can spell the shell's control markup: an address crumb's
-// `data-nav-dir` / `data-nav-file`, the header's `#print-view-btn`, a
+// `data-nav-dir` / `data-nav-file`, the header's `.file-header-print`, a
 // `data-tip-text` label. The action delegates act only on an element carrying the
 // SDK's per-page owner mark; the tooltip ignores a rendered document's markup.
 //
@@ -191,6 +191,12 @@ check(
     JSON.stringify(["Served root", "docs", "docs/a%b.md"]),
 );
 check("the root crumb carries a 32-hex owner mark", /^[0-9a-f]{32}$/.test(owner || ""));
+// A document's `<label for=…>` clicks the element with that id, and the click would
+// carry a real control's stamp, so no stamped control has an id to name.
+check(
+  "no shell control has an id a label could name",
+  [...fileHeader, ...folderHeader].every((element) => !element.hasAttribute("id")),
+);
 check(
   "every shell control carries the same mark",
   [...fileHeader, ...folderHeader].every(
@@ -210,7 +216,7 @@ const host = new FakeElement({ class: "content-body metabrowser-kpress-host md-b
 const authoredMarkup = (mark) =>
   `<button type="button" class="folder-crumb" data-nav-dir="private"${mark}>x</button>` +
   `<button type="button" class="folder-crumb" data-nav-file="private/key.md"${mark}>x</button>` +
-  `<button class="icon-btn" id="print-view-btn" type="button"${mark}>x</button>` +
+  `<button class="icon-btn file-header-print" id="print-view-btn" type="button"${mark}>x</button>` +
   `<button type="button" data-tip-text="Verified by Metabrowser"${mark}>x</button>`;
 const authored = [
   ...buttons(authoredMarkup(""), host),

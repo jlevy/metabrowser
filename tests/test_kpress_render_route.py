@@ -557,3 +557,32 @@ def test_kpress_adapter_builds_runtime_request(monkeypatch) -> None:
     assert seen[0].kwargs["frontmatter"] == {"title": "One"}
     assert seen[0].kwargs["asset_url_prefix"] == "/kpress-static/"
     assert seen[0].kwargs["host"] == "metabrowser"
+
+
+def test_trusted_kpress_render_drops_a_label_that_could_click_a_shell_control(
+    tmp_path: Path,
+) -> None:
+    """A trusted folder keeps class, id, and data-*, but KPress removes `<label>`.
+
+    A `<label for=…>` click is a synthetic click on the named element, which would carry
+    a stamped shell control's owner mark (see tests/dom/shell-delegate-owner-session.js).
+    The shell gives stamped controls no id; this pins the second layer, so a KPress
+    change that starts keeping labels is noticed here.
+    """
+
+    server._set_root_dir(tmp_path)
+    (tmp_path / "doc.md").write_text(
+        '# T\n\n<label for="print-view-btn">Print</label>\n\n<label>Wrap <b>x</b></label>\n'
+    )
+    try:
+        response = TestClient(server.app).get(
+            "/api/kpress/render", params={"path": "doc.md", "view": "rendered"}
+        )
+    finally:
+        server._set_root_dir(Path())
+    assert response.status_code == 200
+    body = response.json()
+    assert body.get("inert") is not True
+    assert "<label" not in body["html"]
+    assert "for=" not in body["html"]
+    assert "Print" in body["html"]

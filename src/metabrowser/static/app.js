@@ -5512,7 +5512,7 @@ function renderFolderHeader(data) {
     upButton +
     `<span class="file-header-path folder-breadcrumb">${headerAddressHtml(path, false)}</span>` +
     summary +
-    `<button class="icon-btn file-header-icon file-header-print" id="print-view-btn" type="button"${ownedControlAttr()} data-tip-text="Print view" aria-label="Print view" hidden>` +
+    `<button class="icon-btn file-header-icon file-header-print" type="button"${ownedControlAttr()} data-tip-text="Print view" aria-label="Print view" hidden>` +
     (ICONS.print || "") +
     "</button>" +
     "</div>"
@@ -5665,8 +5665,14 @@ function viewMetaAttrs(view) {
   return attrs;
 }
 
+// The header's print button, found by class and owner mark. It carries no `id`: a
+// document's `<label for=…>` would otherwise click it, and its stamp would pass.
+function shellPrintButton() {
+  return Array.from(queryHtmlAll(".file-header-print")).find((btn) => isOwnedControl(btn)) || null;
+}
+
 function updatePrintButton(printable) {
-  var btn = document.getElementById("print-view-btn");
+  var btn = shellPrintButton();
   if (!btn) {
     return;
   }
@@ -5740,7 +5746,10 @@ window.MetabrowserPluginHost?.registerLoadMoreAction?.("loadMoreCurrentText", lo
 // policy for an untrusted source runs no inline handler.
 /** @param {Event} event */
 function onPrintViewClick(event) {
-  if (event.target instanceof Element && isOwnedControl(event.target.closest("#print-view-btn"))) {
+  if (
+    event.target instanceof Element &&
+    isOwnedControl(event.target.closest(".file-header-print"))
+  ) {
     printActiveView();
   }
 }
@@ -5896,7 +5905,7 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
           html += badges;
           html += sizeHtml(data.size, "file-header-size");
           html +=
-            `<button class="icon-btn file-header-icon file-header-print" id="print-view-btn" type="button"${ownedControlAttr()} data-tip-text="Print view" aria-label="Print view" hidden>` +
+            `<button class="icon-btn file-header-icon file-header-print" type="button"${ownedControlAttr()} data-tip-text="Print view" aria-label="Print view" hidden>` +
             (ICONS.print || "") +
             "</button>";
           html += "</div>";
