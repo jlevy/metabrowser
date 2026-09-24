@@ -906,10 +906,14 @@
   function loadMoreButtonHtml(position, action) {
     // `action: null` means the caller wires its own listener — a view that
     // tracks its own offsets cannot be continued by the shell's text loader.
-    const onclick = action === null ? "" : ` onclick="${action || "loadMoreCurrentText()"}"`;
+    // Otherwise the SDK's delegated listener runs the action: the shell's text
+    // loader, or a global function named as "name()". No inline handler is
+    // written, so the page policy for an untrusted source needs none.
+    const named = typeof action === "string" && action ? action : "loadMoreCurrentText()";
+    const handler = action === null ? "" : ` data-mb-load-more="${escapeHtml(named)}"`;
     return (
       `<button class="btn metabrowser-load-more" type="button" data-position="${position}"` +
-      `${onclick} data-tip-text="Load more of this file">Load more</button>`
+      `${handler} data-tip-text="Load more of this file">Load more</button>`
     );
   }
 
@@ -1933,6 +1937,15 @@
         var btn = target.closest("[data-mb-copy]");
         if (btn) {
           _handleCopyClick(btn);
+          return;
+        }
+        // Load more: the action a notice named, a global function called with no
+        // arguments (see loadMoreButtonHtml).
+        var more = target.closest("[data-mb-load-more]");
+        var call =
+          more && /^([A-Za-z_$][\w$]*)\(\)$/.exec(more.getAttribute("data-mb-load-more") || "");
+        if (call && typeof global[call[1]] === "function") {
+          global[call[1]]();
         }
       });
     }

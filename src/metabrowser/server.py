@@ -43,6 +43,7 @@ import datetime as _dt
 import json as _json
 import logging
 import os
+import re
 import secrets
 import sys
 import time
@@ -50,7 +51,7 @@ from collections.abc import AsyncIterator, Mapping, MutableMapping
 from contextlib import asynccontextmanager
 from html import escape as html_escape
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, TextIO, cast
+from typing import TYPE_CHECKING, Any, Final, TextIO, cast
 from urllib.parse import quote
 
 from starlette.applications import Starlette
@@ -902,6 +903,37 @@ class _HostValidationMiddleware:
         await self.app(scope, receive, send)
 
 
+# Fetch destinations that run or apply what they load. Under the untrusted profile /raw
+# refuses them, so no page -- the application's included -- takes a browsed file as code.
+_CODE_DESTINATIONS: Final = frozenset(
+    {
+        b"script",
+        b"style",
+        b"worker",
+        b"sharedworker",
+        b"serviceworker",
+        b"audioworklet",
+        b"paintworklet",
+    }
+)
+# Media types a browser runs or applies as code. Under the untrusted profile /raw sends
+# them as text/plain, which with nosniff no browser takes as a script or stylesheet, for a
+# browser that does not send Sec-Fetch-Dest.
+_SCRIPT_CAPABLE: Final = re.compile(
+    r"^\s*(?:text|application)/(?:x-)?(?:javascript|ecmascript|jscript|livescript|css)\b",
+    re.IGNORECASE,
+)
+
+
+def _request_header(scope: Mapping[str, Any], name: bytes) -> bytes:
+    """One request header's value, lowercased, or empty."""
+
+    for key, value in scope.get("headers") or ():
+        if key.lower() == name:
+            return bytes(value).strip().lower()
+    return b""
+
+
 class _RawTrustHeaderMiddleware:
     """Sandbox every ``/raw`` response, whichever layer produced it.
 
@@ -943,6 +975,7 @@ class _RawTrustHeaderMiddleware:
             return
 
         started = False
+        active_content = get_capabilities().active_content
 
         # ``MutableMapping``, not ``dict``: this wrapper is handed to
         # ``Response.__call__`` below, whose ``Send`` alias is written
@@ -952,11 +985,21 @@ class _RawTrustHeaderMiddleware:
             if message.get("type") == "http.response.start":
                 started = True
                 headers = MutableHeaders(scope=message)
-                headers["Content-Security-Policy"] = raw_sandbox_csp(
-                    active_content=get_capabilities().active_content
-                )
+                headers["Content-Security-Policy"] = raw_sandbox_csp(active_content=active_content)
                 headers["X-Content-Type-Options"] = "nosniff"
+                if not active_content and _SCRIPT_CAPABLE.match(headers.get("content-type", "")):
+                    # A browsed script or stylesheet is text to a reader, never code.
+                    headers["Content-Type"] = "text/plain; charset=utf-8"
             await send(message)
+
+        if not active_content and _request_header(scope, b"sec-fetch-dest") in _CODE_DESTINATIONS:
+            # Under the untrusted profile a browsed file is never a script, stylesheet,
+            # or worker of any page, the application's included: its own static paths
+            # are the only code it runs (capabilities.untrusted_shell_csp).
+            await PlainTextResponse("A browsed file is not loaded as code here.", status_code=403)(
+                scope, receive, send_sandboxed
+            )
+            return
 
         try:
             await self.app(scope, receive, send_sandboxed)
@@ -1682,7 +1725,14 @@ async def index(request: Request) -> HTMLResponse:
     # of the shell carries this response's nonce (capabilities.untrusted_shell_csp).
     nonce = secrets.token_urlsafe(18)
     html = html.replace("<script>", f'<script nonce="{nonce}">')
-    return HTMLResponse(html, headers={"Content-Security-Policy": untrusted_shell_csp(nonce)})
+    origin = f"{request.url.scheme}://{request.url.netloc}"
+    return HTMLResponse(
+        html,
+        headers={
+            "Content-Security-Policy": untrusted_shell_csp(nonce, origin),
+            "X-Frame-Options": "DENY",
+        },
+    )
 
 
 async def view_shell(request: Request) -> Response:

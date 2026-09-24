@@ -8,8 +8,6 @@ nothing in the environment does.
 
 from __future__ import annotations
 
-import base64
-import hashlib
 import os
 from dataclasses import dataclass
 
@@ -149,47 +147,38 @@ def raw_sandbox_csp(*, active_content: bool) -> str:
     )
 
 
-# Inline event handlers the application's own markup uses, by their exact text: the
-# file header's print button, the partial-content notice's Load more, and an agent log's
-# event toggle. The shell's policy for an untrusted source runs these, and no other
-# inline handler, through 'unsafe-hashes'.
-SHELL_INLINE_HANDLERS: tuple[str, ...] = (
-    "printActiveView()",
-    "loadMoreCurrentText()",
-    "toggleEvent(this)",
-)
-
-
-def _script_hash(source: str) -> str:
-    digest = hashlib.sha256(source.encode("utf-8")).digest()
-    return f"'sha256-{base64.b64encode(digest).decode('ascii')}'"
-
-
-def untrusted_shell_csp(nonce: str) -> str:
+def untrusted_shell_csp(nonce: str, origin: str) -> str:
     """The Content-Security-Policy of the application page when active content is off.
 
     Rendered Markdown is already reduced to an allowlist before it reaches the page
-    (:mod:`metabrowser.inert_html`); this is the second line. Everything the page loads
-    comes from this server: its scripts (the shell's inline ones by *nonce*, and its own
-    inline handlers by hash), styles, fonts, images (and ``data:`` images its stylesheet
-    draws with), requests, and the Markdown worker. Frames are this server's alone, for
-    its sandboxed ``/raw`` document; plugins, ``<base>``, and form submission are off.
-    Inline ``style`` attributes stay allowed because the application writes them; an
-    outside ``url()`` inside one is still an image the image rule refuses.
+    (:mod:`metabrowser.inert_html`); this is the second line. Scripts run only from the
+    application's own static paths on *origin* -- ``/static/`` and ``/plugin-static/``,
+    never ``/raw``, where the browsed repository's own files are -- and the shell's
+    inline scripts only by *nonce*; no inline handler runs. Stylesheets come from those
+    paths and ``/kpress-static/``; the Markdown worker from ``/plugin-static/``. Images,
+    fonts, and requests stay on this origin (images include ``data:`` ones the
+    stylesheet draws and the repository's own through ``/raw``). The page frames nothing
+    -- the untrusted profile removes the HTML preview, its only frame -- is framed by
+    nothing, and has no plugins, ``<base>``, or form submission. Inline ``style``
+    attributes stay allowed because the application writes them; an outside ``url()``
+    inside one is still an image the image rule refuses.
     """
 
-    handlers = " ".join(_script_hash(handler) for handler in SHELL_INLINE_HANDLERS)
+    static = f"{origin}/static/"
+    plugins = f"{origin}/plugin-static/"
+    kpress = f"{origin}/kpress-static/"
     return "; ".join(
         (
             "default-src 'self'",
-            f"script-src 'self' 'nonce-{nonce}' 'unsafe-hashes' {handlers}",
-            "style-src 'self'",
+            f"script-src 'nonce-{nonce}' {static} {plugins}",
+            f"style-src {static} {plugins} {kpress}",
             "style-src-attr 'unsafe-inline'",
             "img-src 'self' data:",
             "font-src 'self'",
             "connect-src 'self'",
-            "worker-src 'self'",
-            "frame-src 'self'",
+            f"worker-src {plugins}",
+            "frame-src 'none'",
+            "frame-ancestors 'none'",
             "object-src 'none'",
             "base-uri 'none'",
             "form-action 'none'",

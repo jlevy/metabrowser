@@ -146,7 +146,7 @@
       '"' +
       (visible ? "" : ' style="display: none;"') +
       ">" +
-      '<div class="log-event-header" onclick="toggleEvent(this)">' +
+      '<div class="log-event-header">' +
       mb.icons.chevron +
       kindHtml +
       '<span class="log-event-summary" data-tip-text="' +
@@ -369,7 +369,24 @@
     logViewStates.set(container, state);
     mb.perf.measure("renderAgentLog:log", () => {
       container.innerHTML = renderLogHtml(ctx.raw, state);
-      state.unbind = bindFilterBar(container, state);
+      const unbindFilters = bindFilterBar(container, state);
+      // One delegated listener opens an event, rather than an inline handler on each
+      // header: the page policy for an untrusted source runs no inline handler.
+      const toggle = (event) => {
+        const target = event.target;
+        const header =
+          target && typeof target.closest === "function"
+            ? target.closest(".log-event-header")
+            : null;
+        if (header && container.contains(header)) {
+          window.toggleEvent(header);
+        }
+      };
+      container.addEventListener("click", toggle);
+      state.unbind = () => {
+        unbindFilters?.();
+        container.removeEventListener("click", toggle);
+      };
     });
   }
 

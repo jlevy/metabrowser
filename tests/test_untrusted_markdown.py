@@ -23,7 +23,6 @@ from starlette.testclient import TestClient
 from metabrowser import server
 from metabrowser.capabilities import (
     DEFAULT_CAPABILITIES,
-    SHELL_INLINE_HANDLERS,
     Capabilities,
     set_capabilities,
     untrusted_shell_csp,
@@ -100,34 +99,91 @@ def test_the_untrusted_shell_runs_only_this_servers_scripts(untrusted: None) -> 
     policy = first.headers["content-security-policy"]
     nonce = re.search(r"'nonce-([^']+)'", policy)
     assert nonce is not None
-    assert policy == untrusted_shell_csp(nonce.group(1))
+    assert policy == untrusted_shell_csp(nonce.group(1), "http://testserver")
+    assert first.headers["x-frame-options"] == "DENY"
     # A fresh nonce per response, carried by every inline script of the shell.
     assert nonce.group(1) not in second.headers["content-security-policy"]
     inline = re.findall(r"<script(?![^>]*\bsrc=)([^>]*)>", first.text)
     assert inline and all(f'nonce="{nonce.group(1)}"' in attrs for attrs in inline)
+    # Code only from the application's own static paths: never /raw, never inline.
+    assert (
+        f"script-src 'nonce-{nonce.group(1)}' http://testserver/static/"
+        " http://testserver/plugin-static/;"
+    ) in policy
+    assert "'unsafe-hashes'" not in policy and "script-src 'self'" not in policy
     for directive in (
+        "style-src http://testserver/static/ http://testserver/plugin-static/"
+        " http://testserver/kpress-static/",
         "img-src 'self' data:",
         "connect-src 'self'",
+        "worker-src http://testserver/plugin-static/",
+        "frame-src 'none'",
+        "frame-ancestors 'none'",
         "object-src 'none'",
         "base-uri 'none'",
         "form-action 'none'",
-        "style-src 'self'",
     ):
         assert directive in policy
 
 
-def test_the_policy_allows_exactly_the_inline_handlers_the_application_writes() -> None:
-    """Every inline handler in the browser sources is one the policy hashes, and each is used.
+def test_raw_never_serves_a_browsed_file_as_code_when_untrusted(
+    tmp_path: Path, untrusted: None
+) -> None:
+    (tmp_path / "evil.js").write_text("alert(1)\n")
+    (tmp_path / "evil.css").write_text("body{display:none}\n")
+    (tmp_path / "page.html").write_text("<p>x</p>\n")
+    server._set_root_dir(tmp_path)  # pyright: ignore[reportPrivateUsage]
+    with TestClient(app) as client:
+        for path, destination in (
+            ("evil.js", "script"),
+            ("evil.css", "style"),
+            ("evil.js", "worker"),
+            ("evil.js", "serviceworker"),
+        ):
+            refused = client.get(
+                "/raw", params={"path": path}, headers={"sec-fetch-dest": destination}
+            )
+            assert refused.status_code == 403, (path, destination)
+            assert "sandbox" in refused.headers["content-security-policy"]
+        # Read as a document, or by a browser that names no destination, it is text.
+        for path in ("evil.js", "evil.css"):
+            text = client.get("/raw", params={"path": path})
+            assert text.status_code == 200
+            assert text.headers["content-type"].startswith("text/plain")
+            assert text.headers["x-content-type-options"] == "nosniff"
+        page = client.get(
+            "/raw", params={"path": "page.html"}, headers={"sec-fetch-dest": "document"}
+        )
+        assert page.status_code == 200 and page.headers["content-type"].startswith("text/html")
 
-    A new inline handler would be refused under the untrusted profile; this names it.
+
+def test_a_trusted_folders_raw_scripts_are_unchanged(tmp_path: Path) -> None:
+    (tmp_path / "tool.js").write_text("console.log(1)\n")
+    server._set_root_dir(tmp_path)  # pyright: ignore[reportPrivateUsage]
+    with TestClient(app) as client:
+        answer = client.get(
+            "/raw", params={"path": "tool.js"}, headers={"sec-fetch-dest": "script"}
+        )
+    assert answer.status_code == 200
+    assert "javascript" in answer.headers["content-type"]
+
+
+def test_the_application_writes_no_inline_handler() -> None:
+    """The page policy for an untrusted source runs no inline handler, so none may exist.
+
+    It catches handler attributes written into markup, set with ``setAttribute``, or
+    assigned a string; a function assigned to a handler property is not inline code.
     """
 
-    written: set[str] = set()
+    found: list[str] = []
     for path in SOURCES:
         if "vendor" in path.parts:
             continue
         source = path.read_text(encoding="utf-8")
-        written |= set(re.findall(r'\son[a-z]+="([^"$]+)"', source))
-        # The partial-content notice writes its handler from a default action.
-        written |= set(re.findall(r'onclick="\$\{action \|\| "([^"]+)"\}"', source))
-    assert written == set(SHELL_INLINE_HANDLERS)
+        for pattern in (
+            r"\son[a-z]+=[\"'\\]",
+            r"setAttribute\(\s*[\"'`]on[a-z]+",
+            r"\.on[a-z]+\s*=\s*[\"'`]",
+        ):
+            found += [f"{path.name}: {match}" for match in re.findall(pattern, source)]
+    assert found == []
