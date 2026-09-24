@@ -35,6 +35,8 @@ from metabrowser.mirror_refresh import (
     LastOutcome,
     MirrorSession,
     SelectionError,
+    SelectionPendingError,
+    SelectionState,
     mirror_session,
 )
 from metabrowser.source import (
@@ -74,6 +76,9 @@ class SourceStatus(TypedDict):
     last_outcome: LastOutcome | None
     refreshing: bool
     stale: bool
+    pull_request: int | None
+    selection_state: SelectionState | None
+    selection_href: str | None
 
 
 def source_status(mirror: MirrorSession | None = None) -> SourceStatus:
@@ -199,6 +204,9 @@ async def api_source_pin(request: Request) -> JSONResponse:
 
     The body is ``{"ref": "<branch or tag>"}`` or ``{"oid": "<commit ID>"}``. The
     selection is resolved in the mirror alone: a branch, then a tag, then a commit ID.
+    In a server, one the mirror lacks answers ``202`` with ``selection_pending`` and
+    starts one background fetch; asking again after it ends answers the switch or
+    ``404``.
     On success the old tree source is closed, the new one attached under a new session
     generation, and ``status`` is the new envelope; ``changed`` is false when the
     selection names what is already served.
@@ -213,6 +221,16 @@ async def api_source_pin(request: Request) -> JSONResponse:
         return JSONResponse(unsupported_source_payload(exc), status_code=409)
     try:
         changed, _session = await mirror.switch_pin(ref=ref, oid=oid)
+    except SelectionPendingError as exc:
+        return JSONResponse(
+            {
+                "error": str(exc),
+                "code": exc.code,
+                "refresh": exc.refresh,
+                "status": dict(source_status(mirror)),
+            },
+            status_code=exc.http_status,
+        )
     except SelectionError as exc:
         return _error(str(exc), exc.code, exc.http_status)
     except ContentReadError as exc:

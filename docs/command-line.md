@@ -19,11 +19,12 @@ metab ROOT [MODE] [OPTIONS]
 ```
 
 `ROOT` is the directory to serve, or a single file to open directly.
-A clone URL (`https://…`, `ssh://…`, `git@host:path`, or `file://…`) is a Git source,
-not a local path. `file://` is acquired with `--no-serve`, and also as a side effect of
-serving it, `--show`, `--api`, or `--check-api`. https and ssh stay closed.
-`metab file://…` serves the default branch’s commit as first acquired, pinned; `--show`,
-`--api`, and `--check-api` inspect that pin in-process without binding a port.
+A clone URL (`https://…`, `ssh://…`, `git@host:path`, or `file://…`) or a GitHub web URL
+is a Git source, not a local path.
+`https://` and `file://` sources are acquired with `--no-serve`, and also as a side
+effect of serving them, `--show`, `--api`, or `--check-api`; ssh stays closed.
+`metab <source>` serves the commit its URL selects, or its default branch’s, pinned;
+`--show`, `--api`, and `--check-api` inspect that pin in-process without binding a port.
 Acquired content always runs under the untrusted profile.
 A bare filesystem path is never treated as a clone origin.
 With no mode flag, `metab ROOT` starts the server and opens a browser, the way `open`
@@ -131,6 +132,9 @@ cached sources is served beside it; inspect the cache with
 `POST /api/source/refresh` starts a refresh, or joins the running one, and answers at
 once. `POST /api/source/pin` switches the served commit to a branch, a tag, or a commit
 ID in the mirror, with a JSON body such as `{"ref": "feature"}` or `{"oid": "3f2a9c1"}`.
+In a server, one the mirror lacks answers `202` with `selection_pending` and fetches
+once; asked again after that fetch, it switches or answers `404`. `--api` never fetches
+for it and answers `404` at once.
 Each is a POST with a JSON body behind the same-origin guard, so a link inside a served
 page cannot start one.
 The same routes work in-process:
@@ -153,11 +157,11 @@ server; the next one serves the default branch again.
 
 ## Acquiring a Git source: `--no-serve`
 
-`file://` is the only origin this release acquires.
-`--no-serve` fetches every object of it into the repository cache under
-`METABROWSER_HOME` (default `~/.metabrowser`) and prints the source slug, store
-identity, and revision, without binding a port or opening a browser.
+`--no-serve` fetches every object of an `https://` or `file://` source into the
+repository cache under `METABROWSER_HOME` (default `~/.metabrowser`) and prints the
+source slug, store identity, and revision, without binding a port or opening a browser.
 The store is a complete, read-only clone, so later reads never need the origin.
+ssh stays closed.
 
 ```shell
 metab file:///path/to/origin.git --no-serve
@@ -165,6 +169,59 @@ metab file:///path/to/origin.git --api /api/cache/layout
 metab file:///path/to/origin.git --show README
 metab file:///path/to/origin.git --api /api/tree
 ```
+
+### GitHub URLs
+
+A GitHub URL copied from the browser opens the repository it names, pinned where it
+points:
+
+```shell
+metab https://github.com/owner/repo
+metab https://github.com/owner/repo --no-serve
+metab 'https://github.com/owner/repo/blob/release/v1/docs/guide.md#L10-L20' --no-serve
+metab https://github.com/owner/repo/tree/v1.0 --api /api/tree
+metab https://github.com/owner/repo/commit/1a2b3c4 --show README.md
+```
+
+Every spelling of one repository — `.git`, a trailing slash, `www.`, any letter case,
+`git@github.com:owner/repo.git`, and `raw.githubusercontent.com` file URLs — is one
+source, `https://github.com/owner/repo`, and one store.
+A `/tree/` or `/blob/` URL may name a branch whose name contains `/`; the mirror decides
+where the ref ends, preferring a branch, then a tag, then a commit ID. Ref names match
+exactly, including letter case, and `HEAD` names the default branch.
+`--no-serve` prints what the URL selected after the identity lines (`selection`, `pin`,
+`path`, and `lines` for a `#L10`, `#L10-L20`, or `#L10C5-L20C8` anchor), and `--show`
+and `--api` print the same lines on stderr and pin that commit.
+A `/pull/<n>` URL opens the default branch for now and reports the number; pull-request
+data arrives in a later release.
+Query parameters other than `?plain=1` are dropped.
+Any other github.com page, `http://`, and GitHub’s own top-level pages are refused with
+a message that names the shape and offers the repository URL.
+
+With no mode flag the source is served, and the browser opens at the file or folder the
+URL names, with a `#L10-L20` anchor kept in the address.
+`--no-serve`, `--show`, and `--api` read the mirror as it is: a ref or commit that is
+not in it is reported as `ref_not_found` or `commit_not_found` rather than fetched, and
+a path that is not at the pinned commit is `path_not_found`. Each exits with status 1,
+but the acquisition before it succeeded, so the source stays published.
+A server instead serves the default branch, fetches once in the background, and switches
+to the selection if that fetch brings it, and a page opened meanwhile goes there;
+`/api/source/status` reports `selection_state` as `pending`, then `found` or
+`not_found`, or `fetch_failed` when the fetch could not run, and `superseded` after a
+pin switch. A mirror the same command just cloned is not fetched again, so there the
+selection is `ref_not_found` at once.
+`--api /api/source/refresh --data <file with {}>` is the one-shot command that waits for
+its selection’s fetch.
+
+Public repositories are cloned anonymously.
+When `gh` is installed, it is Git’s credential helper for `https://github.com` and for
+nothing else, so a private repository opens once `gh auth login` has signed in an
+account that can read it; Metabrowser never reads or stores a token.
+No other credential source applies: your Git credential helpers are cleared, and Git
+runs with `HOME=/dev/null`, so curl does not read `~/.netrc`. With `gh` installed, a
+first clone is also refused before it starts when GitHub reports the repository too
+large to finish within the acquisition deadline.
+On a terminal, a first clone reports each phase and the time elapsed.
 
 `--api /api/cache/…` on a `file://` URL acquires as a side effect, then issues the route
 against an empty throwaway directory so cache inspection cannot expose origin objects
@@ -176,7 +233,7 @@ Nothing binds a port.
 `unsupported_for_subject` is the expected answer.
 `--walk` refuses a Git source: the walker reads a filesystem, and
 `--api '/api/tree?depth=N'` lists a pinned tree.
-https and ssh URLs stay closed.
+ssh URLs stay closed.
 A second `--no-serve` of the same `file://` source reuses the published store.
 That cache hit reads only the application home: it runs no Git, does not need the
 origin, and works against a home the current user cannot write.
@@ -206,11 +263,26 @@ source, and none changes another source already in the cache.
   repository, a repository with no commits, or one whose `HEAD` is not a branch —
   publishes nothing. A source that is itself a partial clone missing objects says so;
   clone it fully first.
-- **An acquisition that is interrupted** leaves nothing visible, because the source is
-  published last, after its store.
-  The next acquisition removes the abandoned staging entry, fetches again, and reuses a
-  store that was already published.
-  Nothing deletes a published store.
+  An https origin names why, in parentheses: `not_found_or_private`,
+  `network_unreachable`, `connection_interrupted`, `tls_failed`, `timed_out`,
+  `server_error`, `rate_limited`, `proxy_auth_required`, or `too_large`. `timed_out`
+  means the origin gave no answer to its first request within 30 seconds, or a transfer
+  moved less than 1000 bytes per second for 30 seconds; a clone that keeps making
+  progress is never stopped for taking long, only at the 900-second acquisition
+  deadline.
+- **A repository whose branch or tag names differ only in letter case** (`Feature` and
+  `feature`) is refused as `ref_case_collision` on a case-insensitive filesystem, such
+  as macOS’s default, which cannot hold both.
+  A served mirror whose origin gains such a twin later reports the same outcome for its
+  refresh and keeps every ref where it was.
+- **An acquisition that is interrupted**, by Ctrl-C, by the terminal hanging up, or by
+  `SIGTERM`, stops Git and every helper it started, and leaves nothing visible, because
+  the source is published last, after its store.
+  A hangup exits with status 129 and `SIGTERM` with 143; under `nohup`, a hangup is
+  ignored as it asks. While the source is served, a hangup stops the server as Ctrl-C
+  does, killing a running refresh’s Git first, and exits 129. The next acquisition
+  removes the abandoned staging entry, fetches again, and reuses a store that was
+  already published. Nothing deletes a published store.
 
 Refusals that concern the application home say how to repair it:
 

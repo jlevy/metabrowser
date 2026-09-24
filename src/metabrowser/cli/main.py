@@ -11,6 +11,7 @@ macOS. Every other operation is a mode flag on the same command:
     metab . --check-api                # exercise navigation APIs, no browser
     metab file:///path/to/repo.git            # serve a Git source, pinned, untrusted
     metab file:///path/to/repo.git --no-serve  # acquire into the cache, no server
+    metab https://github.com/owner/repo/blob/main/README.md --show README.md
     metab --remote example-host --path /srv/shared-files  # SSH-tunnel a remote host
     metab --plugins                    # what's discovered?
     metab --plugin example             # one plugin's manifest
@@ -308,13 +309,15 @@ def _classified_root(ctx: typer.Context, root: str | None, mode: str) -> Path | 
     assert root is not None
     if _is_plain_local_root(root):
         return Path(root)
+    from metabrowser.cache.providers import url_reducers
     from metabrowser.cache.urls import LocalPath, RejectedRoot, classify_root_argument
 
-    classified = classify_root_argument(root)
+    classified = classify_root_argument(root, reducers=url_reducers())
     if isinstance(classified, LocalPath):
         return Path(classified.value)
     if isinstance(classified, RejectedRoot):
-        raise CLIError(f"invalid ROOT ({classified.reason})")
+        detail = f": {classified.detail}" if classified.detail else ""
+        raise CLIError(f"invalid ROOT ({classified.reason}){detail}")
     return classified
 
 
@@ -330,8 +333,8 @@ def _git_source_closed_message(source: GitSource, *, mode: str) -> str:
         )
     return (
         f"{source.transport} Git sources are not opened yet "
-        f"({source.normalized}) by {_MODE_LABELS[mode]}. Serve a file:// source or a "
-        "local directory, or acquire a file:// source with --no-serve."
+        f"({source.normalized}) by {_MODE_LABELS[mode]}. Serve, --show, or --api a "
+        "file:// or https:// source, or acquire one with --no-serve; ssh stays closed."
     )
 
 
@@ -376,9 +379,10 @@ def _metab(
         None,
         help=(
             "Root directory to serve, check, or walk; a file may be served directly. "
-            "https, ssh, and file:// clone URLs are Git sources, not local paths. "
-            "A file:// source is acquired into the cache and opened at its default "
-            "branch's commit, always untrusted; --no-serve only acquires it. "
+            "https, ssh, and file:// clone URLs and GitHub web URLs are Git sources, "
+            "not local paths. An https:// or file:// source is acquired into the cache "
+            "and opened at the commit its URL selects, or its default branch's, always "
+            "untrusted; --no-serve only acquires it; ssh stays closed. "
             "With no ROOT and no mode, prints help."
         ),
         show_default=False,
@@ -444,7 +448,7 @@ def _metab(
     no_serve: bool = typer.Option(
         False,
         "--no-serve",
-        help="Acquire a file:// Git source into the cache without starting a server.",
+        help="Acquire a file:// or https:// Git source into the cache without starting a server.",
         rich_help_panel=_PANEL_MODES,
     ),
     remote: str | None = typer.Option(
@@ -703,9 +707,10 @@ def _metab(
     Data modes read the same server the browser reads, without a browser or a
     listening port: --api issues one route, --show reports the four layers
     behind one selection, --walk dumps the inventory, --diff shows a change
-    set. A file:// Git source is served, shown, or checked at its default
-    branch's commit under the untrusted profile; --no-serve only acquires it
-    into the cache. Diagnostics: --check-api, --plugins, --plugin, --doctor.
+    set. A file:// or https:// Git source, or a GitHub web URL, is served, shown,
+    or checked at the commit it selects under the untrusted profile; --no-serve
+    only acquires it into the cache. Diagnostics: --check-api, --plugins,
+    --plugin, --doctor.
     Remote serving: --remote.
     """
     mode = _resolve_mode(

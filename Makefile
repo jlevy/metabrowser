@@ -89,9 +89,13 @@ lint-check:
 	$(UV_RUN) python -m devtools.check_parity
 	$(FLOWMARK) --auto --check .
 
+# The tryscript goldens run with a failing gh first on PATH (tests/no-real-gh/gh), so
+# none reaches a developer's signed-in gh; pytest has the same guard in tests/conftest.py.
+TRYSCRIPT := PATH="$(CURDIR)/tests/no-real-gh:$$PATH" npx --no-install tryscript
+
 test:
 	$(UV_RUN) pytest
-	npx --no-install tryscript run 'tests/golden/*.tryscript.md'
+	$(TRYSCRIPT) run 'tests/golden/*.tryscript.md'
 
 # Acquisition and store-read tests on a real Git the acquisition floor admits,
 # with nothing patched. They skip on a Git below the floor. The CI admitted-git
@@ -115,7 +119,11 @@ ADMITTED_GIT_TESTS := \
 	tests/test_git_store_read_policy.py \
 	tests/test_git_tree_source.py \
 	tests/test_git_revision_content_routes.py \
-	tests/test_git_revision_diff.py
+	tests/test_git_revision_diff.py \
+	tests/test_cache_resolve.py \
+	tests/test_cli_github_url_golden.py \
+	tests/test_acquire_stall_and_hangup.py \
+	tests/test_acquire_phases.py
 
 test-admitted-git:
 	$(UV_RUN) pytest -rs $(ADMITTED_GIT_TESTS)
@@ -124,19 +132,19 @@ test-admitted-git:
 # tryscript rewrites changed blocks with literal output, golden_fixup.py
 # restores the elision patterns, and the pytest goldens (serve banners,
 # file:// acquire and recovery, file:// pin and its serve banner, refresh and pin
-# switching, live acquire) are rewritten in place. The served source-kind shell and
-# a served mirror's responses are recorded first because tryscript sessions read
-# them. Review the diff before committing.
+# switching, live acquire, GitHub URL open) are rewritten in place. The served
+# source-kind shell and a served mirror's responses are recorded first because
+# tryscript sessions read them. Review the diff before committing.
 golden-update:
 	GOLDEN_UPDATE=1 $(UV_RUN) pytest tests/test_source_kind_session.py \
 		tests/test_source_freshness_session.py
-	npx --no-install tryscript run --update 'tests/golden/*.tryscript.md' || true
+	$(TRYSCRIPT) run --update 'tests/golden/*.tryscript.md' || true
 	$(UV_RUN) python devtools/golden_fixup.py
-	npx --no-install tryscript run 'tests/golden/*.tryscript.md'
+	$(TRYSCRIPT) run 'tests/golden/*.tryscript.md'
 	GOLDEN_UPDATE=1 $(UV_RUN) pytest tests/test_cli_golden.py tests/test_cli_cache_acquire_golden.py \
 		tests/test_cli_cache_recovery_golden.py tests/test_cli_git_pin_golden.py \
 		tests/test_cli_git_refresh_golden.py tests/test_cli_live_acquire_golden.py \
-		tests/test_serve_pin.py
+		tests/test_serve_pin.py tests/test_cli_github_url_golden.py
 
 audit:
 	bash devtools/npm_audit.sh

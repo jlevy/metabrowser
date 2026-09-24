@@ -125,7 +125,7 @@ def build_home(directory: Path, origin: Path) -> None:
         raise SystemExit("the origin did not classify as a Git source")
     # The floor this stands in for; see the module docstring.
     acquire.require_acquisition_git = lambda: (2, 50, 1)
-    published = asyncio.run(acquire.acquire_file_source(classified, home=directory / "home"))
+    published = asyncio.run(acquire.acquire_source(classified, home=directory / "home"))
     with repository_store_lock(published.home, published.store_key):
         write_record_atomic(
             published.home,

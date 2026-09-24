@@ -29,6 +29,73 @@ for _name in _REPO_PINNING_GIT_VARS:
     os.environ.pop(_name, None)
 
 
+# No test reaches the gh a developer is signed in to. A real ``gh auth git-credential``,
+# ``gh auth status``, or ``gh api`` call reads the keychain and can print or send a
+# token, so every test runs with a failing stand-in first on PATH, which each call
+# looks gh up on. The stand-in logs each call, with the test that made it, to
+# GH_GUARD_LOG, and the terminal summary reports them. A test that needs gh installs
+# its own fake later, which comes first; only the opt-in live smoke test, marked
+# ``live_github`` and run with METABROWSER_LIVE_GITHUB=1, sees the real one.
+_FAKE_GH = """#!/bin/sh
+printf '%s\\t%s\\n' "${PYTEST_CURRENT_TEST:-unknown}" "$*" >> "$METABROWSER_TEST_GH_LOG"
+echo "gh is not available to tests; install a fake gh for this test" >&2
+exit 1
+"""
+GH_GUARD_LOG_ENV = "METABROWSER_TEST_GH_LOG"
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    config.addinivalue_line(
+        "markers", "live_github: an opt-in test that talks to github.com with the real gh"
+    )
+
+
+@pytest.fixture(scope="session")
+def _gh_guard_bin(tmp_path_factory: pytest.TempPathFactory) -> tuple[str, str]:  # pyright: ignore[reportUnusedFunction]
+    directory = tmp_path_factory.mktemp("no-real-gh")
+    gh = directory / "gh"
+    gh.write_text(_FAKE_GH, encoding="utf-8")
+    gh.chmod(0o755)
+    return str(directory), str(directory / "calls.log")
+
+
+@pytest.fixture(autouse=True)
+def _no_real_gh(  # pyright: ignore[reportUnusedFunction]
+    request: pytest.FixtureRequest, _gh_guard_bin: tuple[str, str]
+) -> Generator[None, None, None]:
+    """Put the failing stand-in gh first on PATH, except for the opt-in live smoke test.
+
+    Its own ``MonkeyPatch``, not the ``monkeypatch`` fixture: requesting that here would
+    set it up before every module's own autouse fixtures, so a test's patches would be
+    undone only after those fixtures' teardown had run against them.
+    """
+
+    live = request.node.get_closest_marker("live_github") is not None
+    if live and os.environ.get("METABROWSER_LIVE_GITHUB") == "1":
+        yield
+        return
+    directory, log = _gh_guard_bin
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setenv("PATH", directory + os.pathsep + os.environ.get("PATH", ""))
+        patch.setenv(GH_GUARD_LOG_ENV, log)
+        yield
+
+
+def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter) -> None:
+    """Say which tests would have run gh, so a new one is noticed."""
+
+    basetemp = terminalreporter.config._tmp_path_factory.getbasetemp()  # pyright: ignore[reportAttributeAccessIssue]
+    # pytest also links ``no-real-ghcurrent`` to the numbered directory; read each once.
+    logs = {log.resolve() for log in basetemp.glob("no-real-gh*/calls.log")}
+    calls = [line for log in sorted(logs) for line in log.read_text(encoding="utf-8").splitlines()]
+    if calls:
+        tests = sorted({line.split("\t", 1)[0].rsplit(" ", 1)[0] for line in calls})
+        terminalreporter.write_line(
+            f"gh guard: {len(calls)} gh call(s) reached the failing stand-in, "
+            f"from {len(tests)} test(s): " + ", ".join(tests)
+        )
+
+
 @pytest.fixture(autouse=True)
 def _reset_capabilities() -> Generator[None, None, None]:  # pyright: ignore[reportUnusedFunction]
     """Keep the process capability block isolated between tests."""

@@ -14,8 +14,8 @@ import pytest
 from metabrowser.cache import acquire as acquire_module
 from metabrowser.cache.acquire import (
     AliasConflictError,
-    acquire_file_source,
     acquire_into_staging,
+    acquire_source,
     publish_from_staging,
 )
 from metabrowser.cache.atomic import write_record_atomic
@@ -56,20 +56,24 @@ def test_a_second_acquire_reuses_the_store_without_fetching(
     origin = _origin(tmp_path)
     home = tmp_path / "home"
     source = _file_source(origin)
-    first = asyncio.run(acquire_file_source(source, home=home))
+    first = asyncio.run(acquire_source(source, home=home))
     fetches = 0
     real_run = acquire_module._run
 
     async def counting_run(
-        args: list[str], *, cwd: Path | None = None, git_dir: Path | None = None
+        args: list[str],
+        *,
+        cwd: Path | None = None,
+        git_dir: Path | None = None,
+        timeout_s: float | None = None,
     ) -> bytes:
         nonlocal fetches
         if "fetch" in args:
             fetches += 1
-        return await real_run(args, cwd=cwd, git_dir=git_dir)
+        return await real_run(args, cwd=cwd, git_dir=git_dir, timeout_s=timeout_s)
 
     monkeypatch.setattr(acquire_module, "_run", counting_run)
-    second = asyncio.run(acquire_file_source(source, home=home))
+    second = asyncio.run(acquire_source(source, home=home))
     assert fetches == 0
     assert second.store_key == first.store_key
     assert second.slug == first.slug
@@ -85,7 +89,7 @@ def test_an_alias_that_names_a_different_store_is_left_in_place(
     origin = _origin(tmp_path)
     home = tmp_path / "home"
     source = _file_source(origin)
-    published = asyncio.run(acquire_file_source(source, home=home))
+    published = asyncio.run(acquire_source(source, home=home))
     other_store = "sha256:" + "ab" * 32
     write_record_atomic(
         home,
@@ -100,7 +104,7 @@ def test_an_alias_that_names_a_different_store_is_left_in_place(
         replace=True,
     )
     with pytest.raises(AliasConflictError):
-        asyncio.run(acquire_file_source(source, home=home))
+        asyncio.run(acquire_source(source, home=home))
     alias = (home / source_record(published.slug, "store-alias.yml")).read_text(encoding="utf-8")
     assert other_store in alias
     assert (home / source_record(published.slug, "source.yml")).is_file()
@@ -124,7 +128,7 @@ def test_a_store_left_unreferenced_is_kept_and_reused_by_the_next_acquire(
     open_cache(home)
     assert published.git_dir.stat().st_ino == store_inode
 
-    again = asyncio.run(acquire_file_source(source, home=home))
+    again = asyncio.run(acquire_source(source, home=home))
     assert again == published
     assert published.git_dir.stat().st_ino == store_inode
     assert list((home / STAGING).iterdir()) == []
@@ -182,7 +186,7 @@ def test_the_store_and_its_alias_are_published_under_both_locks(
     source = _file_source(_origin(tmp_path))
     seen = _record_publication_locks(monkeypatch)
 
-    published = asyncio.run(acquire_file_source(source, home=home))
+    published = asyncio.run(acquire_source(source, home=home))
 
     both = frozenset(
         {
@@ -205,11 +209,11 @@ def test_an_alias_written_into_an_existing_source_is_under_both_locks(
     _allow_installed_git(monkeypatch)
     home = tmp_path / "home"
     source = _file_source(_origin(tmp_path))
-    published = asyncio.run(acquire_file_source(source, home=home))
+    published = asyncio.run(acquire_source(source, home=home))
     (home / source_record(published.slug, "store-alias.yml")).unlink()
     seen = _record_publication_locks(monkeypatch)
 
-    assert asyncio.run(acquire_file_source(source, home=home)) == published
+    assert asyncio.run(acquire_source(source, home=home)) == published
 
     both = frozenset(
         {

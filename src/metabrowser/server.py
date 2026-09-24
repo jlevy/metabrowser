@@ -109,7 +109,7 @@ from metabrowser.git.content_routes import (
 )
 from metabrowser.git.history import close_history_sessions
 from metabrowser.git.routes import GIT_ROUTES
-from metabrowser.git.tree_source import GitRevisionSubject
+from metabrowser.git.tree_source import GitRevisionSubject, ref_branch_name
 from metabrowser.gz_io import (
     ArtifactCompressionError,
     ArtifactDecompressionLimitError,
@@ -157,7 +157,7 @@ from metabrowser.inventory_engine.tree_page_assembly import (
 )
 from metabrowser.inventory_rollup import RollupOptions, RollupRank
 from metabrowser.jsonl_view import _parse_jsonl_file
-from metabrowser.mirror_refresh import lifespan_refresh
+from metabrowser.mirror_refresh import lifespan_refresh, mirror_session
 
 # Document rendering is delegated through the KPress adapter and built-in plugin route.
 # KPress is the sole Markdown-to-HTML renderer; raw source remains a separate view.
@@ -1194,10 +1194,16 @@ async def index(request: Request) -> HTMLResponse:
         pin_oid = subject.commit_oid
         initial_path = _pin_label_html(source_status())
         initial_root = html_escape(pin_oid, quote=True)
-        # A file:// mirror names no hosted repository, and core holds no provider
-        # URL grammar. GitHub mirrors get theirs from the GitHub plugin, planned for
-        # step 5 of the thin-mirror plan; until then a pin has none.
-        repository_context = None
+        # Core holds no provider URL grammar: the served mirror asks the installed
+        # providers, and only a hosted repository's has an answer (a GitHub mirror's
+        # comes from the GitHub plugin). A file:// mirror, or a pin with no mirror,
+        # has none.
+        mirror = mirror_session(request.app)
+        repository_context = (
+            mirror.mirror.repository_context(revision=pin_oid, branch=ref_branch_name(subject.ref))
+            if mirror is not None
+            else None
+        )
     else:
         initial_path = _initial_path_html()
         initial_root = html_escape(_display_root_str(), quote=True)

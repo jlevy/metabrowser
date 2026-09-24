@@ -52,7 +52,10 @@ status: 200
     "at": "2026-09-17T12:00:05Z"
   },
   "refreshing": false,
-  "stale": true
+  "stale": true,
+  "pull_request": null,
+  "selection_state": null,
+  "selection_href": null
 }
 ? 0
 ```
@@ -84,7 +87,10 @@ status: 200
       "at": "2026-09-17T12:00:05Z"
     },
     "refreshing": false,
-    "stale": true
+    "stale": true,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
   }
 }
 ? 0
@@ -114,7 +120,10 @@ status: 200
       "at": "2026-09-17T12:00:05Z"
     },
     "refreshing": false,
-    "stale": true
+    "stale": true,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
   }
 }
 ? 0
@@ -146,7 +155,10 @@ status: 200
       "at": "2026-09-17T12:00:05Z"
     },
     "refreshing": false,
-    "stale": true
+    "stale": true,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
   }
 }
 ? 0
@@ -176,7 +188,10 @@ status: 200
       "at": "2026-09-17T12:00:05Z"
     },
     "refreshing": false,
-    "stale": true
+    "stale": true,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
   }
 }
 ? 0
@@ -247,7 +262,10 @@ status: 202
       "at": "2026-09-17T12:00:05Z"
     },
     "refreshing": true,
-    "stale": true
+    "stale": true,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
   }
 }
 after: /api/source/status
@@ -268,7 +286,10 @@ status: 200
     "at": "[..]"
   },
   "refreshing": false,
-  "stale": true
+  "stale": true,
+  "pull_request": null,
+  "selection_state": null,
+  "selection_href": null
 }
 ? 0
 ```

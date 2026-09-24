@@ -15,7 +15,10 @@
       "at": "2026-09-17T12:00:05Z"
     },
     "refreshing": false,
-    "stale": true
+    "stale": true,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
   },
   "refresh_started": {
     "refresh": "started",
@@ -35,7 +38,10 @@
         "at": "2026-09-17T12:00:05Z"
       },
       "refreshing": true,
-      "stale": true
+      "stale": true,
+      "pull_request": null,
+      "selection_state": null,
+      "selection_href": null
     }
   },
   "refreshed": {
@@ -54,7 +60,10 @@
       "at": "2026-09-23T12:00:00Z"
     },
     "refreshing": false,
-    "stale": false
+    "stale": false,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
   },
   "history_stale": {
     "status": 409,
@@ -81,7 +90,10 @@
         "at": "2026-09-23T12:00:00Z"
       },
       "refreshing": false,
-      "stale": false
+      "stale": false,
+      "pull_request": null,
+      "selection_state": null,
+      "selection_href": null
     }
   },
   "after_switch": {
@@ -100,7 +112,10 @@
       "at": "2026-09-23T12:00:00Z"
     },
     "refreshing": false,
-    "stale": false
+    "stale": false,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
   },
   "pin_changed": {
     "status": 409,
@@ -136,7 +151,10 @@
       "at": "2026-09-23T12:00:00Z"
     },
     "refreshing": false,
-    "stale": false
+    "stale": false,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
   },
   "unreachable": {
     "subject": "git_revision",
@@ -154,7 +172,10 @@
       "at": "2026-09-17T12:00:05Z"
     },
     "refreshing": false,
-    "stale": true
+    "stale": true,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
   },
   "unreachable_started": {
     "refresh": "started",
@@ -174,7 +195,10 @@
         "at": "2026-09-17T12:00:05Z"
       },
       "refreshing": true,
-      "stale": true
+      "stale": true,
+      "pull_request": null,
+      "selection_state": null,
+      "selection_href": null
     }
   },
   "unreachable_after": {
@@ -193,6 +217,141 @@
       "at": "2026-09-23T12:00:00Z"
     },
     "refreshing": false,
-    "stale": true
+    "stale": true,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  },
+  "selection_pending": {
+    "subject": "git_revision",
+    "generation": 4,
+    "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "refreshable": true,
+    "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-17T12:00:05Z",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "origin_unavailable",
+      "at": "2026-09-23T12:00:00Z"
+    },
+    "refreshing": false,
+    "stale": true,
+    "pull_request": null,
+    "selection_state": "pending",
+    "selection_href": null
+  },
+  "selection_refresh_started": {
+    "refresh": "started",
+    "status": {
+      "subject": "git_revision",
+      "generation": 4,
+      "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+      "ref": "refs/remotes/origin/topic",
+      "ref_name": "topic",
+      "refreshable": true,
+      "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+      "ref_on_origin": true,
+      "last_fetch_at": "2026-09-17T12:00:05Z",
+      "last_outcome": {
+        "operation": "refresh",
+        "outcome": "origin_unavailable",
+        "at": "2026-09-23T12:00:00Z"
+      },
+      "refreshing": true,
+      "stale": true,
+      "pull_request": null,
+      "selection_state": "pending",
+      "selection_href": null
+    }
+  },
+  "selection_found": {
+    "subject": "git_revision",
+    "generation": 5,
+    "pin": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+    "ref": "refs/remotes/origin/later",
+    "ref_name": "later",
+    "refreshable": true,
+    "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-23T12:00:00Z",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "succeeded",
+      "at": "2026-09-23T12:00:00Z"
+    },
+    "refreshing": false,
+    "stale": false,
+    "pull_request": null,
+    "selection_state": "found",
+    "selection_href": "/view/g1-UkVBRE1FLm1k#L1"
+  },
+  "selection_not_found": {
+    "subject": "git_revision",
+    "generation": 6,
+    "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "refreshable": true,
+    "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-23T12:00:00Z",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "succeeded",
+      "at": "2026-09-23T12:00:00Z"
+    },
+    "refreshing": false,
+    "stale": false,
+    "pull_request": null,
+    "selection_state": "not_found",
+    "selection_href": null
+  },
+  "selection_fetch_failed": {
+    "subject": "git_revision",
+    "generation": 7,
+    "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "refreshable": true,
+    "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-23T12:00:00Z",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "origin_unavailable",
+      "at": "2026-09-23T12:00:00Z"
+    },
+    "refreshing": false,
+    "stale": false,
+    "pull_request": null,
+    "selection_state": "fetch_failed",
+    "selection_href": null
+  },
+  "selection_retry_started": {
+    "refresh": "started",
+    "status": {
+      "subject": "git_revision",
+      "generation": 7,
+      "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+      "ref": "refs/remotes/origin/topic",
+      "ref_name": "topic",
+      "refreshable": true,
+      "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+      "ref_on_origin": true,
+      "last_fetch_at": "2026-09-23T12:00:00Z",
+      "last_outcome": {
+        "operation": "refresh",
+        "outcome": "origin_unavailable",
+        "at": "2026-09-23T12:00:00Z"
+      },
+      "refreshing": true,
+      "stale": false,
+      "pull_request": null,
+      "selection_state": "pending",
+      "selection_href": null
+    }
   }
 }

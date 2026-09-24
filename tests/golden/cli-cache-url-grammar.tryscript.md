@@ -21,44 +21,40 @@ refusal reason, through the acquisition modes.
 
 No command reaches Git or the network, so this runs as a subprocess on any Git version.
 A refused input stops at classification.
-An accepted https or ssh source is normalized and then refused by acquisition before Git
-runs. An accepted `file://` source is shown through `--walk`, which refuses Git sources
-before acquisition; serving or acquiring one needs a Git at or above the floor, so those
-sessions are in `tests/test_cli_cache_acquire_golden.py` and
-`tests/test_cli_cache_recovery_golden.py`.
+An accepted https or `file://` source is normalized and shown through `--walk`, which
+refuses a Git source before acquiring it; an accepted ssh source is normalized and then
+refused by acquisition before Git runs.
+Serving or acquiring one needs a Git at or above the floor, so those sessions are in
+`tests/test_cli_cache_acquire_golden.py` and `tests/test_cli_cache_recovery_golden.py`.
+GitHub URLs are claimed by the GitHub reducer first; their transcript is
+`cli-github-urls.tryscript.md`.
 
 A refusal names its reason and never repeats the argument, so a credential or query in a
 rejected URL does not reach the terminal.
 Every command names an application home in the sandbox, and the last test shows that
 none of them created it.
 
-## Test: https sources are normalized, then refused by acquisition
+## Test: https sources are normalized
 
 The scheme and host fold to lowercase, the default port and a trailing slash are
 dropped, and an encoded unreserved character is decoded.
 The path keeps its case.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab HTTPS://Example.COM:443/Owner/Repo.git/ --no-serve
-Error: https Git sources are not acquired yet (https://example.com/Owner/Repo.git)
+$ METABROWSER_HOME=$PWD/home metab HTTPS://Example.COM:443/Owner/Repo.git/ --walk
+Error: --walk runs the filesystem inventory walker, and a Git source has no filesystem to walk (https://example.com/Owner/Repo.git). Read a pinned tree with --api '/api/tree?depth=N', or --walk a local directory.
 ? 1
 ```
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab https://example.com/owner/%72epo.git --no-serve
-Error: https Git sources are not acquired yet (https://example.com/owner/repo.git)
+$ METABROWSER_HOME=$PWD/home metab https://example.com/owner/%72epo.git --walk
+Error: --walk runs the filesystem inventory walker, and a Git source has no filesystem to walk (https://example.com/owner/repo.git). Read a pinned tree with --api '/api/tree?depth=N', or --walk a local directory.
 ? 1
 ```
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab 'https://[2001:DB8::1]:8443/repo.git' --no-serve
-Error: https Git sources are not acquired yet (https://[2001:db8::1]:8443/repo.git)
-? 1
-```
-
-```console
-$ METABROWSER_HOME=$PWD/home metab https://example.com/owner/repo.git --api /api/cache/sources
-Error: https Git sources are not acquired yet (https://example.com/owner/repo.git)
+$ METABROWSER_HOME=$PWD/home metab 'https://[2001:DB8::1]:8443/repo.git' --walk
+Error: --walk runs the filesystem inventory walker, and a Git source has no filesystem to walk (https://[2001:db8::1]:8443/repo.git). Read a pinned tree with --api '/api/tree?depth=N', or --walk a local directory.
 ? 1
 ```
 
@@ -110,13 +106,13 @@ path, and `--no-serve` has nothing to acquire.
 
 ```console
 $ METABROWSER_HOME=$PWD/home metab /srv/git/repo.git --no-serve
-Error: ROOT is a local path; --no-serve acquires a file:// Git source
+Error: ROOT is a local path; --no-serve acquires a file:// or https:// Git source
 ? 1
 ```
 
 ```console
 $ METABROWSER_HOME=$PWD/home metab example.com:owner/repo.git --no-serve
-Error: ROOT is a local path; --no-serve acquires a file:// Git source
+Error: ROOT is a local path; --no-serve acquires a file:// or https:// Git source
 ? 1
 ```
 

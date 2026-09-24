@@ -38,6 +38,7 @@ from metabrowser.cli.serve import (
     _run_until_interrupted,
     _shutdown_noise_filter,
     _stop_now,
+    stop_on_interrupt,
 )
 from metabrowser.dotenv import load_dotenv_chain
 from metabrowser.errors import CLIError
@@ -534,6 +535,46 @@ def test_one_interrupt_announces_and_stops() -> None:
         uvicorn_logger.setLevel(original_level)
 
 
+@pytest.mark.skipif(not hasattr(signal, "SIGHUP"), reason="the platform has no SIGHUP")
+def test_a_hangup_while_serving_a_mirror_stops_like_ctrl_c_with_its_own_status() -> None:
+    """A mirror's refresh Git is outside the terminal's group, so only the server
+    hears a hangup; at its default action the server would die and leave Git
+    fetching. ``stop_on_interrupt`` routes it through ``_stop_now``, which kills
+    the live Git groups and exits 129, the status a shell reports for a hangup."""
+    previous_int = signal.getsignal(signal.SIGINT)
+    previous_hup = signal.getsignal(signal.SIGHUP)
+    try:
+        signal.signal(signal.SIGHUP, signal.SIG_DFL)
+        stop_on_interrupt()
+        assert signal.getsignal(signal.SIGINT) is _stop_now
+        assert signal.getsignal(signal.SIGHUP) is _stop_now
+        with (
+            patch("metabrowser.cli.serve.os.write"),
+            patch("metabrowser.cli.serve.kill_live_process_groups") as kill_groups,
+            patch("metabrowser.cli.serve.os._exit") as hard_exit,
+        ):
+            _stop_now(signal.SIGHUP, None)
+        kill_groups.assert_called_once_with()
+        hard_exit.assert_called_once_with(129)
+    finally:
+        signal.signal(signal.SIGINT, previous_int)
+        signal.signal(signal.SIGHUP, previous_hup)
+
+
+@pytest.mark.skipif(not hasattr(signal, "SIGHUP"), reason="the platform has no SIGHUP")
+def test_a_hangup_ignored_on_entry_stays_ignored_while_serving() -> None:
+    """``nohup metab <url>`` keeps serving after the terminal closes."""
+    previous_int = signal.getsignal(signal.SIGINT)
+    previous_hup = signal.getsignal(signal.SIGHUP)
+    try:
+        signal.signal(signal.SIGHUP, signal.SIG_IGN)
+        stop_on_interrupt()
+        assert signal.getsignal(signal.SIGHUP) == signal.SIG_IGN
+    finally:
+        signal.signal(signal.SIGINT, previous_int)
+        signal.signal(signal.SIGHUP, previous_hup)
+
+
 def test_serving_installs_a_stopping_handler_for_uvicorn_to_restore() -> None:
     """Uvicorn saves the handler in place when ``run()`` starts, restores it on
     the way out, and re-raises the signal it captured.
@@ -864,14 +905,14 @@ def test_cli_file_url_is_a_git_source_and_is_not_walked(
     assert not home.exists()
 
 
-def test_cli_https_clone_url_is_a_git_source_and_is_not_served(
+def test_cli_ssh_clone_url_is_a_git_source_and_is_not_served(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     home = tmp_path / "home"
     monkeypatch.setenv("METABROWSER_HOME", str(home))
-    result = runner.invoke(_app, ["https://example.com/owner/repo.git", "--no-open"])
+    result = runner.invoke(_app, ["ssh://git@example.com/owner/repo.git", "--no-open"])
     assert isinstance(result.exception, CLIError)
-    assert "https Git sources are not served yet" in str(result.exception)
+    assert "ssh Git sources are not served yet" in str(result.exception)
     assert not home.exists()
 
 

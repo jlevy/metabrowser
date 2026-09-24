@@ -9,12 +9,13 @@ code and from this document.
 **Status:** Partly implemented.
 Repository subjects, `SourceSession`, capabilities, the attached-filesystem content
 source, `GitCommandTarget`, the immutable Git tree source with `GitPath` file, raw, and
-tree routes, and `file://` acquisition of full clones into a shared, read-only
-repository store are implemented; `metab` opens a `file://` pin in-process for `--show`,
-non-cache `--api`, and `--check-api`, and serves it over HTTP under the forced untrusted
-profile. A served store refreshes from its `file://` origin in the background, and a
-server can switch its pin to another branch, tag, or commit of the same store.
-`https` acquisition and pull-request data remain planned, and
+tree routes, `file://` and `https://` acquisition of full clones into a shared,
+read-only repository store, and the GitHub URL reducer are implemented; `metab` opens a
+pin in-process for `--show`, non-cache `--api`, and `--check-api`, at the commit its URL
+selects, and serves it over HTTP under the forced untrusted profile.
+A served store refreshes from its origin in the background, and a server can switch its
+pin to another branch, tag, or commit of the same store.
+Pull-request data remains planned, and
 [Thin Mirror for Git and GitHub Browsing](../specs/active/plan-2026-09-23-v012-thin-mirror.md)
 replaces the planned parts of this document wherever they disagree.
 It retired blobless clones and convergence, private subject refs, revision leases,
@@ -249,16 +250,54 @@ exact OIDs.
 
 ### Fetch and credentials
 
-Only `file://` is fetched: acquisition, and refresh of a published store.
-A refresh is `ls-remote --symref -- origin HEAD` for the default branch, then
-`fetch --prune --atomic --no-write-fetch-head` of every branch and tag, so every ref
-moves together or none does and a branch or tag deleted upstream leaves the mirror while
-its commits stay. `cache/origin.py` builds both commands’ arguments for acquisition and
-refresh alike; the thin-mirror plan adds HTTPS there, with `gh` as the only credential
-helper for a private fetch.
-Every fetch runs in the isolated Git environment of `git/process.py`, the only Git
-subprocess boundary: no inherited `GIT_*` variable, no system or global configuration,
-terminal prompting disabled, and hooks off.
+`file://` and `https://` are fetched: acquisition, and refresh of a published store.
+A refresh is `ls-remote --symref` of the origin’s URL for the default branch, then
+`fetch --prune --atomic --no-write-fetch-head` of every branch and tag from that URL, so
+every ref moves together or none does and a branch or tag deleted upstream leaves the
+mirror while its commits stay.
+`cache/origin.py` builds both commands for acquisition and refresh alike: a protocol
+allowlist of `file` and `https`, a low-speed stall bound measured beside its constant,
+and whatever a provider adds for that URL. The GitHub provider adds `gh` as the only
+credential helper, scoped to `https://github.com` after every configured helper is
+cleared, so Git asks it only after a server challenge and public repositories stay
+anonymous. Acquisition and refresh Git run with `HOME=/dev/null`, because curl reads
+`$HOME/.netrc` and Git cannot turn that off; `gh` alone is given the real home in its
+helper command, and the `GH_*` variables that would redirect or log it are cleared
+there. The first command against an https origin has its own deadline, because curl’s
+low-speed bound does not cover a TLS handshake that never completes; the fetch has none,
+so a clone that is making progress is stopped only at the acquisition deadline.
+Failures read as typed states (`not_found_or_private`, `network_unreachable`,
+`connection_interrupted`, `tls_failed`, `timed_out`, `server_error`, `rate_limited`,
+`proxy_auth_required`, `too_large`) and never as Git’s own text; a refresh reports the
+same names as its outcome.
+Ref names resolve by exact, case-sensitive match against the names the store holds.
+On a case-insensitive filesystem two origin refs that differ only in case are one loose
+file, so acquisition refuses such an origin as `ref_case_collision` rather than publish
+a ref that names the other’s commit, and a refresh reports the same outcome.
+A refresh cannot rely on Git failing: when the origin gains `SAME` beside an unchanged
+`same`, the atomic fetch writes `SAME` into `same`’s file and succeeds.
+So on such a filesystem a refresh lists the store’s refs before it fetches, and
+afterwards checks what a fold breaks (`cache/resolve.py`: `folded_refs`): a ref the
+fetch neither wrote nor pruned must still name its old object, and every ref it wrote
+must be held at that object under a name the filesystem folds to the same one.
+Names are compared as the filesystem does, because it respells without moving anything:
+`Feature/x` written into an existing `feature/` directory lists as `feature/x`, and Git
+lists a decomposed name precomposed.
+The check and any restore run to the end even when the refresh is cancelled, and a
+cancelled refresh on such a filesystem puts the refs back as they were before it.
+A restore is two `update-ref --stdin` transactions, retried a ref at a time when one is
+refused; refs it still cannot put back are logged by name, and the refresh reports
+`ref_case_collision` rather than success, without moving the recorded tip.
+If it does not, every ref is put back as it was, objects being kept, and the outcome is
+`ref_case_collision` with neither the recorded fetch time nor the default branch’s
+commit moved. Every fetch runs in the isolated Git environment of `git/process.py`, the
+only Git subprocess boundary: no inherited `GIT_*` variable, no system or global
+configuration, terminal prompting disabled, and hooks off.
+Git runs in its own process group, so a timeout, Ctrl-C, a terminal hangup, or `SIGTERM`
+kills the helpers it forks as well, including a cancellation that arrives while Git is
+still starting. Being outside the terminal’s foreground group, a serving refresh’s Git
+does not hear a hangup itself, so the server takes a hangup as it takes Ctrl-C: it kills
+the live Git process groups and exits.
 Acquisition never inherits an attached checkout’s remote or credential helper.
 
 ### Git path and blob semantics
@@ -465,10 +504,12 @@ in [Views, Models, and Routes](arch-views-models-routes.md).
 | Plugin content reader | `plugin_api.py`: `resolve_content`, `resolve_content_container`, `stat_content`, `read_content_window`, `ContentRef`, `ContentStat`, `ContentWindow`; `source.py`: `FilesystemContentSource.open_ref`, `read_artifact_window`; `git/tree_source.py`: `GitTreeSource.open_ref`, `blob_logical_ext`; `content_errors.py`: `ContentReadError`, `ContentUnavailableError` | One bounded, source-agnostic read for plugin data hooks over an opaque `ContentRef`, with every read taking an explicit byte maximum and no unbounded variant, filesystem work in the thread pool and pinned reads through the pooled `cat-file` actors, and one catchable failure family carrying the `code` and `http_status` the pinned routes answer with. The four built-in data hooks that read bytes hold no Git import and no source-kind branch |
 | Plugin and route bridge | `plugin_api.py`: `open_content`, `source_capabilities`, `require_source_capability`, filesystem-only path helpers; `server.py`, `events_route.py`, `git/routes.py`, `git/content_routes.py`, `git/repo.py`, `git/history.py`; `diff/adapters/git.py`: `GitDiffSource`; `builtin_plugins/diff/sidekick.py`: comparison, document, and children hooks; `builtin_plugins/binary/sidekick.py`: chunk hook; `builtin_plugins/structured`: parsed hook; `builtin_plugins/agent_log/sidekick.py`: charts hook; `plugin_loader/classify.py`: `classify_identity` | Resolve the active content-source handle rather than assuming the global root is a `Path`; capability-gate recency, ignore, watcher, activity, mutation, and Git listing sizes; honor a pinned `GitRevisionSubject` on Git collection, file, raw, tree, rollup, catalog, index status, capabilities, tree filter tallies, tree summary, filtered tree totals, include_ignored no-op, tree depth, file envelope ext, markdown frontmatter, text preview window, in-tree symlink follow including plugin sidekicks, diff-comparison including `GitDiffSource.content`, KPress, patch-file container, binary-chunk, identity-and-content-kind, structured-parsed, and agent-log routes, and image preview; keep route, CLI, and golden parity |
 | Revision tree | `git/tree_source.py`: `GitPath`, `GitTreeSource`, `GitRevisionSubject`, `list_tree`, `read_blob`; shared per-store `cat-file --batch-command --buffer` pool (`MAX_BATCH_READERS_PER_STORE`); `git/content_routes.py`: file, raw, tree, catalog, `split_git_container_wire`, and extension plugin kinds | Enumerate NUL-framed byte-safe full-OID trees and read size-gated blobs from a `RepositoryStoreTarget` with no materialization. `GitPath` wires are the identity on every route that accepts one, and blob kinds come from extension, basename, sniffed adapter, and bounded JSON/YAML/frontmatter mappings. The per-route projections are in [Git and Comparison Sources](arch-git-and-comparison-sources.md) |
-| Repository store | `cache/repository_store.py`: `open_revision`; `cache/records.py`: source aliases and store state; `cache/acquire.py`: `acquire_file_source`; `cache/reclaim.py`: staging sweep | `open_revision` checks that a commit is in the published store and returns its `GitRevisionSubject`, writing nothing and holding no lock. Acquisition fetches every object of a `file://` source and publishes the store and its alias under the alias and store locks. Nothing deletes a published store |
-| Serving a pin | `source.py`: `serve_subject_opener`, `lifespan_subject`, `attach_owned_subject`, `close_owned_subject`; `server.py`: `_lifespan`, `_pin_label_html`; `cli/git_pin_cli.py`: `run_serve_pin`; `source_routes.py`: `source_status` | Serve mode acquires, proves the default pin opens, and hands the server an opener, because a pin’s batch readers belong to the event loop that started them. The application lifespan opens the pin in the serving loop before the inventory reads the subject, attaches it, and closes whichever pin is served at shutdown; each start opens a fresh pin. `/api/source/status` and the navigation heading report the pin and the ref it was resolved from. On a served pin the cache routes and the `/raw/<path>` form answer `unsupported_for_subject`, and the untrusted profile is forced |
-| Refresh and pin switching | `cache/origin.py`: `ls_remote_head_args`, `mirror_fetch_args`; `cache/update.py`: `update_store`, `remove_interrupted_fetch_leftovers`; `cache/locks.py`: `store_fetch_lock`; `cache/repository_store.py`: `resolve_pin`, `ref_tip`; `cache/served_mirror.py`: `StoreMirror`; `mirror_refresh.py`: `RefreshCoordinator`, `MirrorSession`, `serve_mirror`, `lifespan_refresh`; `source.py`: `replace_owned_subject`; `source_routes.py`: `api_source_refresh`, `api_source_pin`; `static/source-freshness.js` | One fetch per refresh under the store’s fetch side lock, with typed outcomes. The coordinator keeps background jobs on the application state keyed by store key, joins concurrent requests, runs at most two at once, and cancels them at shutdown. Status freshness is answered from memory. A selection resolves in the mirror alone through `show-ref --verify` candidates (branch, then tag, then commit ID) and replaces the served subject under a new generation, attaching the new subject before closing the old, so no request meets a moment with nothing served. The lifespan’s opener is left alone, so a restart serves the pin the banner announced. Serve mode refreshes a stale mirror once at startup and follows a refresh another process is running until it ends; one-shot modes never fetch unless asked. Any failure of the atomic fetch is followed by a prune of stale refs on their own and one more try, which clears a ref clash (`side` becoming `side/x`, a case-only rename) however Git words it. A page on a pin names the commit it shows on its `fetch` data requests (`static/source-pin-guard.js`), and `SourcePinGuard` refuses another commit with `pin_changed`; the commit rather than the session generation is the token because a generation restarts at 1 in every server process |
+| Repository store | `cache/repository_store.py`: `open_revision`; `cache/records.py`: source aliases and store state; `cache/acquire.py`: `acquire_source`; `cache/reclaim.py`: staging sweep | `open_revision` checks that a commit is in the published store and returns its `GitRevisionSubject`, writing nothing and holding no lock. Acquisition fetches every object of a `file://` or `https://` source and publishes the store and its alias under the alias and store locks. Nothing deletes a published store |
+| Serving a pin | `source.py`: `serve_subject_opener`, `lifespan_subject`, `attach_owned_subject`, `close_owned_subject`; `server.py`: `_lifespan`, `_pin_label_html`; `cli/git_pin_cli.py`: `run_serve_pin`; `source_routes.py`: `source_status` | Serve mode acquires, resolves what the URL selects, proves that pin opens, and hands the server an opener, because a pin’s batch readers belong to the event loop that started them. The application lifespan opens the pin in the serving loop before the inventory reads the subject, attaches it, and closes whichever pin is served at shutdown; each start opens a fresh pin. `/api/source/status` and the navigation heading report the pin and the ref it was resolved from, and a pull-request URL’s number. On a served pin the cache routes and the `/raw/<path>` form answer `unsupported_for_subject`, and the untrusted profile is forced |
+| Refresh and pin switching | `cache/origin.py`: `ls_remote_head_args`, `mirror_fetch_args`, `mirror_prune_args`, `classify_remote_failure`; `cache/update.py`: `update_store`, `remove_interrupted_fetch_leftovers`; `cache/locks.py`: `store_fetch_lock`; `cache/resolve.py`: `resolve_pin`, `resolve_selection`, `ref_tip`; `cache/served_mirror.py`: `StoreMirror`; `mirror_refresh.py`: `RefreshCoordinator`, `MirrorSession`, `serve_mirror`, `lifespan_refresh`; `source.py`: `replace_owned_subject`; `source_routes.py`: `api_source_refresh`, `api_source_pin`, `SourcePinGuard`; `static/source-freshness.js`, `static/source-pin-guard.js` | One fetch per refresh under the store’s fetch side lock, from the source’s URL, with typed outcomes, which the Git processes inherit so it stays held while any of them runs. The coordinator keeps background jobs on the application state keyed by store key, joins concurrent requests, runs at most two at once, and cancels them at shutdown; a Ctrl-C kills their process groups before it exits. Status freshness is answered from memory. One resolver serves URL opening and the pin route: exact ref names from one `for-each-ref` (branch, then tag, then commit ID). A pin replaces the served subject under a new generation, attaching the new subject before closing the old, so no request meets a moment with nothing served. In a server, a selection the mirror lacks starts one background fetch and answers `selection_pending`, then the switch or not found; a URL selection the mirror lacked at startup is served when that fetch brings it, under a new generation like any switch. The lifespan’s opener is left alone, so a restart serves the pin the banner announced. Serve mode refreshes a stale mirror once at startup and follows a refresh another process is running until it ends; one-shot modes never fetch unless asked. Any failure of the atomic fetch is followed by a prune of stale refs on their own and one more try, which clears a ref clash (`side` becoming `side/x`, a case-only rename) however Git words it; a clash that remains on a case-insensitive store, or a fetch that folded one ref into its case twin, puts every ref back and is `ref_case_collision`. A page on a pin names the commit it shows on its `fetch` data requests (`static/source-pin-guard.js`), and `SourcePinGuard` refuses another commit with `pin_changed`; the commit rather than the session generation is the token because a generation restarts at 1 in every server process |
 | Remote discovery | `repository_context.py`: `discover_repository_context` | Read a checkout’s `origin` remote and `HEAD` without running Git, so a provider candidate can be recognized before any network work |
+| Providers and GitHub URLs | `cache/providers.py`: `RepositoryProvider`, `url_reducers`, `provider_git_config`, `check_first_clone`, `repository_context_for`; `builtin_plugins/github/`: `GithubUrlReducer`, `GithubProvider`, `run_gh`; `cache/urls.py`: `RepositorySelection`, `ReducerRejection` | Core names no provider. The GitHub reducer turns web, raw, and SSH URLs into the canonical source plus a selection, or a typed refusal; the provider supplies the `gh` credential helper, the first-clone size check, and a mirror’s `repository_context` |
+| Ref and path resolution | `cache/resolve.py`: `ref_candidates`, `resolve_ref_and_path`, `resolve_commit_id`, `resolve_selection` | Split a URL’s ref-and-path by what the mirror has, with `show-ref --verify` per candidate and no user text in `rev-parse` revision syntax; report whether one fetch could change a miss |
 | File and raw routes | `view_routes.py`, `server.py`, `git/content_routes.py`, `plugin_api.py`; `static/navigation.js`: `displayPath` | Resolve the active content-source handle rather than assuming the global root is a `Path`; Git subjects use `GitPath` wire identities for `/view/`, file, raw, tree, KPress, patch-file containers, identity-and-content plugin kinds, structured parsed, agent-log JSONL, and image preview; Markdown and wiki links on a pin encode authored segments as `GitPath` wires; SPA path chrome decodes those wires to display names (C0 and invalid UTF-8 become U+FFFD); retain route, CLI, and golden parity for filesystem browsing |
 
 ### Planned seams
@@ -479,7 +520,7 @@ lacks.
 
 | Area | Planned boundary | Responsibility |
 | --- | --- | --- |
-| HTTPS acquisition and refresh | `cache/origin.py`: the transport allowlist and credential arguments; `cache/acquire.py` | Clone `https` sources and refresh them through the `file://` refresh path, with `gh` as the credential helper for a private fetch; the [thin-mirror plan](../specs/active/plan-2026-09-23-v012-thin-mirror.md) owns the design |
+| Pull-request data | The GitHub plugin | A pull-request URL opens the default branch and reports the number; its records and page belong to the next steps of the [thin-mirror plan](../specs/active/plan-2026-09-23-v012-thin-mirror.md) |
 | Source attachments | A neutral provider-resources module for source binding and local-availability records | Map local and managed sources to stable provider repository identity without storing local paths or requiring a cache entry. `ProviderBinding`, `LocalGitObjectAvailability`, `AuthorizationContextRef`, and `authorization_context_key` live today in `builtin_plugins/hosted_review/models.py` and move under `mb-s0gv` |
 | Provider mirror | `provider_resources/store.py`: `stage_snapshot`, `publish_manifest`, `read_current`, `read_last_complete`, `lease_snapshot`, `reclaim_snapshots` | Publish one repository-scoped, auth-scoped mirror reused by every attachment. The package holds only `profiles.py` today |
 | Provider ports | `plugin_api.py`: opaque `GitFetchCredentialLease`, `provider_fetch_authorization_context`, `RepositoryContentPort.open_subject`, `RepositoryObjectJobPort.request_selected_refs`, `ProviderResourceStorePort.stage`, `publish`, `read`, `lease` | Inject narrow cancellable capabilities with typed unavailable, authorization, stale-generation, and publication failures; selected-ref requests carry a non-secret context plus an unforgeable registry handle, never tokens, unrestricted sources, core stores, or paths |
@@ -600,14 +641,16 @@ Still open, with owners:
   defers until after the alpha;
 - lock, rename, and case semantics beyond macOS: CI runs only on Linux, so Phase 1A adds
   a runtime probe at application-home setup that refuses a home whose locks or
-  no-replace publication do not behave as frozen.
-  On a case-insensitive file system an origin with two branches that differ only in case
-  (`Foo` and `foo`) cannot be mirrored with loose refs, and every refresh of it ends
-  `fetch_failed`, because the prune and the second fetch do not change that; the outcome
-  does not yet name the cause;
-- the initial-acquisition stall bound (Phase 1B-a); and
+  no-replace publication do not behave as frozen;
+- an origin ref whose name is decomposed (NFD) on a macOS store: the first refresh
+  lands, but Git’s `remote prune` precomposes the name while `fetch --prune` does not,
+  so later refreshes meet a ref-lock clash and report `ref_case_collision`; and
 - whether distribution Git builds that backport the security fixes under an older
   version string are admitted (Phase 1B-a).
+
+The initial-acquisition stall bound, the first-request deadline, and the first-clone
+size limit were measured on 2026-09-23; each measurement is recorded beside its constant
+in `cache/origin.py` and `builtin_plugins/github/provider.py`.
 
 These choices may tune cost.
 They may not introduce shared working-tree state, make a local checkout cache authority,

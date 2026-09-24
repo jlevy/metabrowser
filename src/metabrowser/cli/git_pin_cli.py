@@ -1,19 +1,26 @@
 """Open a pinned Git revision for the CLI: in-process inspection or serving.
 
-``file://`` is acquired or reused, then ``open_revision`` pins the default
-commit. ``--show`` and ``--api`` attach its ``GitRevisionSubject`` and drive
-the same ASGI stack the browser uses without binding a port. Serve mode proves
-the pin opens, then hands the server an opener so the application lifespan
-opens it again in the serving event loop and closes it at shutdown. Every
-mode also hands the server the store as a mirror, so ``/api/source/status``
-reports freshness and ``/api/source/refresh`` and ``/api/source/pin`` act on
-it; only serve mode refreshes a stale mirror on its own. Every mode runs under
-the forced untrusted profile. https and ssh stay closed.
+A ``file://`` or ``https://`` source, or a GitHub web URL, is acquired or reused, the
+commit its URL selects is resolved in the mirror (its default branch's commit when it
+selects none), and ``open_revision`` pins it. ``--show``, ``--api``, and
+``--check-api`` attach its ``GitRevisionSubject`` and drive the same ASGI stack the
+browser uses without binding a port, and report the selection on stderr. Serve mode
+proves the pin opens, then hands the server an opener so the application lifespan opens
+it again in the serving event loop and closes it at shutdown, and opens the browser at
+the selected path. Every mode also hands the server the store as a mirror, so
+``/api/source/status`` reports freshness and ``/api/source/refresh`` and
+``/api/source/pin`` act on it; only serve mode refreshes a stale mirror on its own.
+
+A ref or commit the mirror does not have stops a one-shot mode, which never fetches.
+Serve mode serves the default branch instead, fetches once in the background, and
+switches to the selection if the fetch brought it; ``/api/source/status`` reports that
+as ``selection_state``. Every mode runs under the forced untrusted profile, and a
+terminal hangup or ``SIGTERM`` during acquisition cancels it like Ctrl-C. ssh stays
+closed.
 """
 
 from __future__ import annotations
 
-import asyncio
 import functools
 import logging
 from collections.abc import AsyncGenerator, Awaitable, Callable
@@ -21,14 +28,27 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
+import typer
+
 from metabrowser.cache.acquire import PublishedSource
 from metabrowser.cache.repository_store import open_revision
+from metabrowser.cache.resolve import ResolvedSelection, UnresolvedSelection
 from metabrowser.cache.served_mirror import StoreMirror
-from metabrowser.cache.urls import GitSource
+from metabrowser.cache.urls import GitSource, RepositorySelection
 from metabrowser.cli.acquire_cli import _ACQUIRE_CLI_ERRORS, acquire_for_cli
 from metabrowser.cli.asgi_client import INDEX_READY_TIMEOUT_S
 from metabrowser.cli.common import apply_log_level, maybe_cli_logging
+from metabrowser.cli.hangup import run_cancelling_on_hangup
 from metabrowser.cli.plugin_paths import apply_extra_plugin_dirs
+from metabrowser.cli.selection import (
+    pending_selection_opener,
+    require_selected_path,
+    resolve_in_mirror,
+    selection_banner,
+    selection_lines,
+    selection_view_href,
+    unresolved_message,
+)
 from metabrowser.cli.serve import serve_until_interrupted, stop_on_interrupt
 from metabrowser.cli.show_cli import git_wire_candidates
 from metabrowser.dotenv import load_dotenv_chain
@@ -92,25 +112,25 @@ def _require_untrusted_profile(*, allow_edits: bool) -> None:
         )
 
 
-def _require_file_source(source: GitSource, *, mode: str) -> None:
-    if source.transport == "file":
+def _require_acquired_transport(source: GitSource, *, mode: str) -> None:
+    if source.transport in {"file", "https"}:
         return
     if mode == "check-api":
         raise CLIError(
             f"{source.transport} Git sources are not opened yet "
-            f"({source.normalized}). Check a local directory or a file:// source."
+            f"({source.normalized}). Check a local directory or a file:// or https:// source."
         )
     if mode == "show":
         raise CLIError(
             f"{source.transport} Git sources are not opened yet "
-            f"({source.normalized}). Show a local directory, or acquire a "
-            "file:// source and --show a path on that pin."
+            f"({source.normalized}). Show a local directory, or --show a path "
+            "on a file:// or https:// source."
         )
     if mode == "serve":
         raise CLIError(
             f"{source.transport} Git sources are not served yet "
-            f"({source.normalized}). Serve a file:// source or a local directory; "
-            "https and ssh stay closed."
+            f"({source.normalized}). Serve a file:// or https:// source or a local "
+            "directory; ssh stays closed."
         )
     raise CLIError(
         f"{source.transport} Git sources are not served yet "
@@ -118,20 +138,65 @@ def _require_file_source(source: GitSource, *, mode: str) -> None:
     )
 
 
-def _revision_opener(published: PublishedSource) -> Callable[[], Awaitable[GitRevisionSubject]]:
-    """Open the default pin of *published*, labelled with the ref it came from."""
+@dataclass(frozen=True, slots=True)
+class _Selected:
+    """A published source and the commit its URL selects in the mirror.
 
+    ``resolved`` is ``None`` for a source with no URL selection and for a selection the
+    mirror does not have yet (``pending``), when the default branch is served.
+    """
+
+    published: PublishedSource
+    commit: str
+    ref: str | None
+    resolved: ResolvedSelection | None
+    pending: bool
+
+    @property
+    def selection(self) -> RepositorySelection | None:
+        return self.published.source.selection
+
+
+async def _select(source: GitSource, *, allow_pending: bool) -> _Selected:
+    """Acquire *source*, then resolve its URL selection in the mirror.
+
+    With *allow_pending*, a ref or commit a fetch could bring is not an error: the
+    default branch is selected and ``pending`` is set. A mirror this call just cloned
+    was fetched a moment ago, so there a missing selection is not found at once rather
+    than waiting on a second fetch.
+    """
+
+    published = await acquire_for_cli(source)
+    selection = source.selection
+    if selection is None or selection.kind == "repository":
+        return _Selected(
+            published, published.default_revision, published.default_remote_ref, None, False
+        )
+    resolution = await resolve_in_mirror(published, selection)
+    if isinstance(resolution, UnresolvedSelection):
+        if allow_pending and resolution.needs_fetch and not published.fetched:
+            return _Selected(
+                published, published.default_revision, published.default_remote_ref, None, True
+            )
+        raise CLIError(unresolved_message(published.source.normalized, selection, resolution))
+    return _Selected(published, resolution.commit, resolution.ref, resolution, False)
+
+
+def _revision_opener(selected: _Selected) -> Callable[[], Awaitable[GitRevisionSubject]]:
+    """Open the selected pin, labelled with the ref it came from."""
+
+    published = selected.published
     return functools.partial(
         open_revision,
         home=published.home,
         store_key=published.store_key,
-        commit_oid=published.default_revision,
+        commit_oid=selected.commit,
         store_identity=published.store_id,
-        ref=published.default_remote_ref,
+        ref=selected.ref,
     )
 
 
-def _serving_opener(published: PublishedSource) -> Callable[[], Awaitable[GitRevisionSubject]]:
+def _serving_opener(selected: _Selected) -> Callable[[], Awaitable[GitRevisionSubject]]:
     """The opener the server's lifespan calls, failing with the same path-free message.
 
     Serve mode has opened the pin once already, but the lifespan reads the store again
@@ -141,7 +206,7 @@ def _serving_opener(published: PublishedSource) -> Callable[[], Awaitable[GitRev
     kept out of the exception, so no traceback Starlette formats can carry a path.
     """
 
-    opener = _revision_opener(published)
+    opener = _revision_opener(selected)
 
     async def open_to_serve() -> GitRevisionSubject:
         try:
@@ -153,36 +218,68 @@ def _serving_opener(published: PublishedSource) -> Callable[[], Awaitable[GitRev
     return open_to_serve
 
 
-async def _open_pin(published: PublishedSource) -> GitRevisionSubject:
-    """Open the default pin, mapping failures to a path-free ``CLIError``."""
+async def _open_pin(selected: _Selected) -> GitRevisionSubject:
+    """Open the selected pin and prove its path, mapping failures to ``CLIError``."""
 
     # Before the server module attaches its handler: see ``acquire_for_cli``.
     with maybe_cli_logging():
         try:
-            return await _revision_opener(published)()
+            subject = await _revision_opener(selected)()
         except _PIN_CLI_ERRORS as exc:
             LOG.debug("opening the pinned revision failed: %s", exc)
             raise CLIError(_pin_failure_message(exc)) from exc
+    if selected.resolved is not None:
+        try:
+            await require_selected_path(
+                subject, selected.published.source.normalized, selected.resolved
+            )
+        except BaseException:
+            await subject.aclose()
+            raise
+    return subject
 
 
 @asynccontextmanager
-async def _file_pin(source: GitSource) -> AsyncGenerator[PublishedSource]:
-    """Serve the default pin in this process for one command, then close it.
+async def _one_shot_pin(
+    source: GitSource, *, refresh_requested: bool = False
+) -> AsyncGenerator[PublishedSource]:
+    """Serve the selected pin in this process for one command, then close it.
 
     The store is also served as a mirror without a refresh of its own, so a one-shot
     command reaches the network only through an explicit ``POST /api/source/refresh``.
-    Whatever pin is served at the end -- the default, or one a ``POST /api/source/pin``
-    switched to -- is closed.
+    Whatever pin is served at the end -- the selected one, or one a
+    ``POST /api/source/pin`` switched to -- is closed. The selection is reported on
+    stderr, so the route's envelope on stdout stays the only thing a pipe reads.
+
+    With *refresh_requested*, the command's own request is that refresh, so a URL
+    selection the mirror lacks waits for it as it would in a server: the default
+    branch is served, and the selection once the fetch brings it.
     """
 
-    published = await acquire_for_cli(source)
+    selected = await _select(source, allow_pending=refresh_requested)
     # One command is one session: nothing a server configured earlier in this process
     # opens a second pin beside this one, and the generation starts at 1.
     reset_source_session()
     try:
-        attach_owned_subject(await _open_pin(published))
-        serve_mirror(StoreMirror.from_published(published))
-        yield published
+        attach_owned_subject(await _open_pin(selected))
+        selection = source.selection
+        serve_mirror(
+            StoreMirror.from_published(selected.published),
+            pending_selection=(
+                pending_selection_opener(selected.published, selection)
+                if selected.pending and selection is not None
+                else None
+            ),
+        )
+        if selection is not None and selected.resolved is not None:
+            for line in selection_lines(selection, selected.resolved):
+                typer.echo(line, err=True)
+        elif selection is not None and selected.pending:
+            typer.echo(
+                f"selection: {selection.kind} (not in the mirror yet; the refresh fetches it)",
+                err=True,
+            )
+        yield selected.published
     finally:
         serve_mirror(None)
         await close_owned_subject()
@@ -200,15 +297,15 @@ def run_show_after_acquire(
     no_active_content: bool = False,
     allow_edits: bool = False,
 ) -> None:
-    """Acquire a ``file://`` source, attach its default pin, and ``--show``."""
+    """Acquire a source, attach the pin its URL selects, and ``--show``."""
 
-    _require_file_source(source, mode="show")
+    _require_acquired_transport(source, mode="show")
     _require_untrusted_profile(allow_edits=allow_edits)
     apply_log_level(log_level)
     from metabrowser.cli.show_cli import ashow_active
 
     async def _run() -> None:
-        async with _file_pin(source) as published:
+        async with _one_shot_pin(source) as published:
             await ashow_active(
                 path=path,
                 fmt=fmt,
@@ -222,7 +319,7 @@ def run_show_after_acquire(
                 allow_edits=False,
             )
 
-    asyncio.run(_run())
+    run_cancelling_on_hangup(_run())
 
 
 def run_pin_api(
@@ -237,17 +334,21 @@ def run_pin_api(
     no_active_content: bool = False,
     allow_edits: bool = False,
 ) -> None:
-    """Acquire a ``file://`` source, attach its default pin, and ``--api``."""
+    """Acquire a source, attach the pin its URL selects, and ``--api``."""
 
     if not route.startswith("/api/"):
         raise CLIError(f"route must begin with /api/; got {route}")
-    _require_file_source(source, mode="api")
+    _require_acquired_transport(source, mode="api")
     _require_untrusted_profile(allow_edits=allow_edits)
     apply_log_level(log_level)
     from metabrowser.cli.api_cli import aissue_on_active_session
 
+    # The one route that fetches, asked with a body: a selection the mirror lacks waits
+    # for that refresh instead of failing before it can run.
+    refresh_requested = data is not None and route.split("?", 1)[0] == "/api/source/refresh"
+
     async def _run() -> None:
-        async with _file_pin(source) as published:
+        async with _one_shot_pin(source, refresh_requested=refresh_requested) as published:
             await aissue_on_active_session(
                 route=route,
                 fmt=fmt,
@@ -261,7 +362,7 @@ def run_pin_api(
                 allow_edits=False,
             )
 
-    asyncio.run(_run())
+    run_cancelling_on_hangup(_run())
 
 
 def run_pin_api_check(
@@ -273,9 +374,9 @@ def run_pin_api_check(
     no_active_content: bool = False,
     allow_edits: bool = False,
 ) -> None:
-    """Acquire a ``file://`` source, attach its default pin, and ``--check-api``."""
+    """Acquire a source, attach the pin its URL selects, and ``--check-api``."""
 
-    _require_file_source(source, mode="check-api")
+    _require_acquired_transport(source, mode="check-api")
     _require_untrusted_profile(allow_edits=allow_edits)
     load_dotenv_chain()
     from metabrowser.capabilities import apply_capabilities
@@ -286,33 +387,39 @@ def run_pin_api_check(
     apply_extra_plugin_dirs(plugins_dir)
 
     async def _run() -> None:
-        async with _file_pin(source):
+        async with _one_shot_pin(source):
             await arun_api_check_active(label=source.normalized, index_timeout_s=index_timeout_s)
 
-    asyncio.run(_run())
+    run_cancelling_on_hangup(_run())
 
 
 @dataclass(frozen=True, slots=True)
 class _ServablePin:
-    """A published source whose default pin opened, and the selection to launch at."""
+    """A selected pin that opened, and the address to launch the browser at."""
 
-    published: PublishedSource
+    selected: _Selected
     view_href: str
 
 
 async def _prove_servable(source: GitSource, *, path: str) -> _ServablePin:
-    """Acquire, open the pin once, and resolve ``--path`` in it, then close it.
+    """Acquire, open the selected pin once, and resolve where to open, then close it.
 
     The subject is not kept: its batch readers belong to this event loop, and the
     server runs its own. Opening here reports a failure with the same path-free
     message as ``--show`` and ``--api``, before anything is printed or bound.
+    ``--path`` wins over the URL's own path.
     """
 
-    published = await acquire_for_cli(source)
-    subject = await _open_pin(published)
+    selected = await _select(source, allow_pending=True)
+    subject = await _open_pin(selected)
     try:
-        view_href = await _selection_href(subject, path) if path else VIEW_ROUTE_PREFIX
-        return _ServablePin(published=published, view_href=view_href)
+        if path:
+            view_href = await _selection_href(subject, path)
+        elif source.selection is not None and selected.resolved is not None:
+            view_href = selection_view_href(source.selection, selected.resolved)
+        else:
+            view_href = VIEW_ROUTE_PREFIX
+        return _ServablePin(selected=selected, view_href=view_href)
     finally:
         await subject.aclose()
 
@@ -353,15 +460,15 @@ def run_serve_pin(
     no_active_content: bool = False,
     allow_edits: bool = False,
 ) -> None:
-    """Acquire a ``file://`` source and serve its default pin until interrupted.
+    """Acquire a source and serve the pin its URL selects until interrupted.
 
     The untrusted profile is forced exactly as for ``--show`` and ``--api``:
     ``--untrusted`` is implied, an environment enable is ignored, and
-    ``--allow-edits`` is refused. The banner names the source and the pinned
-    commit with the ref it was resolved from.
+    ``--allow-edits`` is refused. The banner names the source, the pinned commit with
+    the ref it was resolved from, and what the URL selected, including a pull request.
     """
 
-    _require_file_source(source, mode="serve")
+    _require_acquired_transport(source, mode="serve")
     _require_untrusted_profile(allow_edits=allow_edits)
     # Dotenv first, as in filesystem serve mode, so a file-supplied log level
     # reaches the first log line. A dotenv file contributes only its allowlist.
@@ -371,26 +478,36 @@ def run_serve_pin(
     apply_capabilities(untrusted=True, no_active_content=no_active_content, allow_edits=False)
     apply_log_level(log_level)
     apply_extra_plugin_dirs(plugins_dir)
-    # Acquisition reacts to Ctrl-C as it does under --no-serve: staging is
-    # abandoned and the command exits 130. Only then does serving take over.
-    servable = asyncio.run(_prove_servable(source, path=path))
+    # Acquisition reacts to Ctrl-C, a hangup, and SIGTERM as it does under --no-serve:
+    # staging is abandoned and the command exits. Only then does serving take over.
+    servable = run_cancelling_on_hangup(_prove_servable(source, path=path))
     stop_on_interrupt()
-    published = servable.published
-    ref = ref_short_name(published.default_remote_ref)
-    revision = published.default_revision + (f" ({ref})" if ref else "")
+    selected = servable.selected
+    ref = ref_short_name(selected.ref)
+    revision = selected.commit + (f" ({ref})" if ref else "")
     serve_until_interrupted(
-        served=published.source.normalized,
+        served=selected.published.source.normalized,
         view_href=servable.view_href,
         host=host,
         port=port,
         no_open=no_open,
-        attach=functools.partial(_serve_published, published),
-        banner=(f"Revision: {revision}",),
+        attach=functools.partial(_serve_selected, selected),
+        banner=(f"Revision: {revision}", *selection_banner(selected.selection, selected.resolved)),
     )
 
 
-def _serve_published(published: PublishedSource) -> None:
+def _serve_selected(selected: _Selected) -> None:
     """Hand the server the pin to open and the mirror to keep fresh."""
 
-    serve_subject_opener(_serving_opener(published))
-    serve_mirror(StoreMirror.from_published(published), serving=True)
+    selection = selected.selection
+    serve_subject_opener(_serving_opener(selected))
+    serve_mirror(
+        StoreMirror.from_published(selected.published),
+        serving=True,
+        pull_request=selection.pull_request if selection is not None else None,
+        pending_selection=(
+            pending_selection_opener(selected.published, selection)
+            if selected.pending and selection is not None
+            else None
+        ),
+    )

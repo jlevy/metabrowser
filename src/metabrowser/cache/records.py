@@ -248,6 +248,15 @@ type RecordedOutcome = Literal[
     "origin_unavailable",
     "fetch_failed",
     "validation_failed",
+    "not_found_or_private",
+    "network_unreachable",
+    "connection_interrupted",
+    "tls_failed",
+    "timed_out",
+    "server_error",
+    "rate_limited",
+    "proxy_auth_required",
+    "ref_case_collision",
 ]
 
 
@@ -256,8 +265,11 @@ class StoreOperation(_MachineRecord):
 
     A refresh records its typed outcome, so a later start reports what happened rather
     than a bare failure. ``default_branch_unknown`` fetched everything but found no
-    branch at the origin's HEAD. An outcome that says why no fetch ran in one process,
-    such as another process refreshing the store, is not recorded.
+    branch at the origin's HEAD. An https origin's failure is named by what Git
+    reported (``not_found_or_private`` through ``proxy_auth_required``), and
+    ``ref_case_collision`` names an origin whose refs differ only in letter case on a
+    case-insensitive store. An outcome that says why no fetch ran in one process, such
+    as another process refreshing the store, is not recorded.
     """
 
     kind: Literal["acquire", "refresh"]

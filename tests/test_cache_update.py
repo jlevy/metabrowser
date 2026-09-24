@@ -23,18 +23,14 @@ from typing import Any
 
 import pytest
 
-from metabrowser.cache.acquire import PublishedSource, acquire_file_source
+from metabrowser.cache.acquire import PublishedSource, acquire_source
 from metabrowser.cache.atomic import read_record
 from metabrowser.cache.locks import LockBusyError, held_locks, store_fetch_lock
 from metabrowser.cache.paths import store_record
 from metabrowser.cache.records import REPOSITORY_STORE_STATE_CONTRACT_ID, RepositoryStoreState
-from metabrowser.cache.repository_store import (
-    is_valid_ref_name,
-    mirror_ref_candidates,
-    open_revision,
-    ref_tip,
-    resolve_pin,
-)
+from metabrowser.cache.repository_store import open_revision
+from metabrowser.cache.resolve import is_valid_ref_name, ref_tip, resolve_pin
+from metabrowser.cache.served_mirror import StoreMirror
 from metabrowser.cache.update import (
     RefreshOutcome,
     remove_interrupted_fetch_leftovers,
@@ -49,6 +45,7 @@ from metabrowser.git.process import (
 from metabrowser.mirror_refresh import (
     AmbiguousSelectionError,
     InvalidSelectionError,
+    SelectionNotACommitError,
     SelectionNotFoundError,
 )
 from tests.test_cache_acquire import _allow_installed_git, _file_source, _git, _git_env
@@ -131,12 +128,18 @@ def mirror(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[_Mirror]
     _git(work, "tag", "-a", "v1", "-m", "release one")
     origin = tmp_path / "origin.git"
     _git(work, "clone", "-q", "--bare", "--template=", "--", str(work), str(origin))
-    published = asyncio.run(acquire_file_source(_file_source(origin), home=tmp_path / "home"))
+    published = asyncio.run(acquire_source(_file_source(origin), home=tmp_path / "home"))
     yield _Mirror(work=work, origin=origin, published=published)
 
 
 def _update(mirror: _Mirror) -> RefreshOutcome:
-    return asyncio.run(update_store(mirror.published.home, mirror.published.store_key)).outcome
+    return asyncio.run(
+        update_store(
+            mirror.published.home,
+            mirror.published.store_key,
+            remote_url=mirror.published.source.normalized,
+        )
+    ).outcome
 
 
 # ── The update operation ─────────────────────────────────────────────
@@ -147,7 +150,13 @@ def test_a_refresh_brings_new_commits_and_records_them(mirror: _Mirror) -> None:
     newer = mirror.commit("b.txt", "second\n", "second")
     mirror.push("topic")
 
-    update = asyncio.run(update_store(mirror.published.home, mirror.published.store_key))
+    update = asyncio.run(
+        update_store(
+            mirror.published.home,
+            mirror.published.store_key,
+            remote_url=mirror.published.source.normalized,
+        )
+    )
 
     assert update.outcome is RefreshOutcome.succeeded
     assert update.default_remote_ref == "refs/remotes/origin/topic"
@@ -234,6 +243,9 @@ def test_a_branch_replaced_by_a_directory_of_branches_does_not_wedge_the_mirror(
     _git(mirror.work, "switch", "-q", "-c", "side/x")
     nested = mirror.commit("x.txt", "nested\n", "nested branch")
     mirror.push("side/x")
+    # Every command a refresh runs names the URL it was given, the prune included, so
+    # what the store configures as its origin decides nothing.
+    _git(mirror.published.git_dir, "config", "remote.origin.url", "file:///nonexistent.git")
     import metabrowser.cache.update as update_module
 
     real_run_git = update_module.run_git
@@ -250,7 +262,7 @@ def test_a_branch_replaced_by_a_directory_of_branches_does_not_wedge_the_mirror(
     # The atomic fetch refused, the prune ran on its own, and the fetch ran again.
     fetches = [command for command in commands if " fetch " in f" {command} "]
     assert len(fetches) == 2
-    assert any("remote prune origin" in command for command in commands)
+    assert any("remote prune metabrowser-origin" in command for command in commands)
     monkeypatch.setattr(update_module, "run_git", real_run_git)
     refs = _refs(mirror.published.git_dir)
     assert "refs/remotes/origin/side" not in refs
@@ -362,7 +374,9 @@ def test_cleanup_finishes_before_the_lock_goes_however_often_it_is_cancelled(
     home, key = mirror.published.home, mirror.published.store_key
 
     async def scenario() -> bool:
-        job = asyncio.ensure_future(update_store(home, key))
+        job = asyncio.ensure_future(
+            update_store(home, key, remote_url=mirror.published.source.normalized)
+        )
         await asyncio.to_thread(started.wait, 30)
         for _ in range(3):
             job.cancel()
@@ -414,6 +428,181 @@ def test_a_case_only_branch_rename_does_not_wedge_the_mirror(mirror: _Mirror) ->
     assert "refs/remotes/origin/Topic2" not in refs
 
 
+def _add_packed_ref(git_dir: Path, name: str, oid: str) -> None:
+    """Give a bare origin *name* in ``packed-refs``, where it can differ only in case.
+
+    A packed-refs file is text, so it holds ``refs/heads/SAME`` beside
+    ``refs/heads/same`` on any filesystem, as a GitHub origin does. Every ref is packed
+    first, so no loose file can shadow either, and the new line keeps the file sorted.
+    """
+
+    _git(git_dir, "pack-refs", "--all", "--prune")
+    packed = git_dir / "packed-refs"
+    lines = packed.read_text(encoding="utf-8").splitlines(keepends=True)
+    entry = f"{oid} {name}\n"
+    at = next(
+        (
+            index
+            for index, line in enumerate(lines)
+            if not line.startswith(("#", "^")) and line.split(" ", 1)[1].rstrip("\n") > name
+        ),
+        len(lines),
+    )
+    packed.write_text("".join([*lines[:at], entry, *lines[at:]]), encoding="utf-8")
+
+
+def test_a_ref_folded_into_its_case_twin_is_put_back_and_reported(mirror: _Mirror) -> None:
+    """``SAME`` added beside an unchanged ``same``: one loose file cannot hold both.
+
+    Git writes ``SAME`` into ``same``'s file and reports success, which would repoint
+    ``same`` at ``SAME``'s commit. The refresh sees the store does not hold what the
+    fetch wrote, puts every ref back, including a branch that legitimately moved, and
+    reports ``ref_case_collision`` without moving the recorded fetch or tip. It stays
+    that way until the origin drops the twin.
+    """
+
+    if not _case_insensitive(mirror.published.git_dir):
+        pytest.skip("the file system is case-sensitive, so both refs have their own file")
+    _git(mirror.work, "branch", "same")
+    mirror.push("same")
+    assert _update(mirror) is RefreshOutcome.succeeded
+    before_refs = _refs(mirror.published.git_dir)
+    before_state = mirror.state()
+    first = before_refs["refs/remotes/origin/same"]
+    newer = mirror.commit("b.txt", "second\n", "second")
+    mirror.push("topic")
+    _add_packed_ref(mirror.origin, "refs/heads/SAME", newer)
+
+    for _attempt in range(2):
+        assert _update(mirror) is RefreshOutcome.ref_case_collision
+        assert _refs(mirror.published.git_dir) == before_refs
+        state = mirror.state()
+        assert state.last_operation.outcome == "ref_case_collision"
+        assert (state.last_fetch_at, state.default_revision) == (
+            before_state.last_fetch_at,
+            before_state.default_revision,
+        )
+        assert asyncio.run(ref_tip(mirror.target, "refs/remotes/origin/same")) == first
+        assert asyncio.run(resolve_pin(mirror.target, ref="same")).commit_oid == first
+
+    # A restore Git refuses leaves refs moved: they are named, and the tip stays.
+    import metabrowser.cache.update as update_module
+
+    real_run_git = update_module.run_git
+
+    async def refuse_restores(args: list[str], **kwargs: Any) -> bytes:
+        if "update-ref" in args:
+            raise GitCommandError(args, 128, "fatal: refused for the test")
+        return await real_run_git(args, **kwargs)
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(update_module, "run_git", refuse_restores)
+        update = asyncio.run(
+            update_store(
+                mirror.published.home,
+                mirror.published.store_key,
+                remote_url=mirror.published.source.normalized,
+            )
+        )
+    assert update.outcome is RefreshOutcome.ref_case_collision
+    assert "refs/remotes/origin/same" in update.unrestored
+    assert mirror.state().default_revision == before_state.default_revision
+    # The moved refs are the store's state now, so later refreshes cannot put them back,
+    # but they keep reporting the collision rather than landing silently.
+    assert _update(mirror) is RefreshOutcome.ref_case_collision
+    assert mirror.state().last_operation.outcome == "ref_case_collision"
+
+    _git(mirror.origin, "update-ref", "-d", "refs/heads/SAME")
+    assert _update(mirror) is RefreshOutcome.succeeded
+    refs = _refs(mirror.published.git_dir)
+    assert refs["refs/remotes/origin/topic"] == newer
+    assert refs["refs/remotes/origin/same"] == first
+    assert "refs/remotes/origin/SAME" not in refs
+
+
+def test_refs_the_filesystem_spells_differently_are_not_folds(mirror: _Mirror) -> None:
+    """A case-insensitive, normalization-insensitive filesystem respells, and that is all.
+
+    ``Feature/x`` is written into the existing ``feature/`` directory and lists as
+    ``feature/x``; a decomposed ``zürich`` lists precomposed. Neither moves another ref,
+    so the refresh lands rather than reporting ``ref_case_collision``.
+    """
+
+    if not _case_insensitive(mirror.published.git_dir):
+        pytest.skip("the file system is case-sensitive, so every name keeps its spelling")
+    _git(mirror.work, "branch", "feature/y")
+    mirror.push("feature/y")
+    assert _update(mirror) is RefreshOutcome.succeeded
+    newer = mirror.commit("b.txt", "second\n", "second")
+    mirror.push("topic")
+    _add_packed_ref(mirror.origin, "refs/heads/Feature/x", newer)
+    for _attempt in range(2):
+        assert _update(mirror) is RefreshOutcome.succeeded
+        refs = _refs(mirror.published.git_dir)
+        assert refs["refs/remotes/origin/topic"] == newer
+        assert refs["refs/remotes/origin/feature/y"] == mirror.published.default_revision
+        assert refs["refs/remotes/origin/feature/x"] == newer
+    # Only the first refresh: after it, Git's own prune and fetch disagree about a
+    # decomposed name on such a filesystem (see the architecture document).
+    _add_packed_ref(mirror.origin, "refs/heads/zu\u0308rich", newer)
+    assert _update(mirror) is RefreshOutcome.succeeded
+    assert mirror.state().last_operation.outcome == "succeeded"
+
+
+def test_a_store_read_that_fails_around_the_fetch_is_an_outcome_not_an_exception(
+    mirror: _Mirror, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """update_store reports every failure; a Git read of the store is one of them."""
+
+    import metabrowser.cache.update as update_module
+
+    async def unreadable(target: RepositoryStoreTarget) -> bool:
+        raise GitCommandError(["config"], 128, "fatal: not a git repository")
+
+    monkeypatch.setattr(update_module, "store_ignores_case", unreadable)
+    before = mirror.state()
+    assert _update(mirror) is RefreshOutcome.failed
+    assert mirror.state() == before
+
+
+def test_a_refused_ref_transaction_is_applied_a_ref_at_a_time(mirror: _Mirror) -> None:
+    """Two names folding onto one lock file refuse a transaction; the rest still land."""
+
+    import metabrowser.cache.update as update_module
+
+    tip = mirror.published.default_revision
+    lines = [
+        f"update refs/remotes/origin/kept {tip}\n",
+        f"update refs/remotes/origin/bad {'1' * 40}\n",
+    ]
+    with store_fetch_lock(mirror.published.home, mirror.published.store_key) as lock:
+        asyncio.run(update_module._apply_ref_batch(mirror.target, lines, lock.descriptor))
+    refs = _refs(mirror.published.git_dir)
+    assert refs["refs/remotes/origin/kept"] == tip
+    assert "refs/remotes/origin/bad" not in refs
+
+
+def test_work_that_must_finish_finishes_however_often_it_is_cancelled() -> None:
+    import metabrowser.cache.update as update_module
+
+    finished: list[bool] = []
+
+    async def work() -> None:
+        await asyncio.sleep(0.05)
+        finished.append(True)
+
+    async def scenario() -> None:
+        job = asyncio.ensure_future(update_module._finish_despite_cancel(work()))
+        for _ in range(3):
+            await asyncio.sleep(0.005)
+            job.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await job
+
+    asyncio.run(scenario())
+    assert finished == [True]
+
+
 def test_a_detached_origin_head_still_fetches_and_keeps_the_default_branch(
     mirror: _Mirror,
 ) -> None:
@@ -429,7 +618,13 @@ def test_a_detached_origin_head_still_fetches_and_keeps_the_default_branch(
     _git(mirror.origin, "update-ref", "--no-deref", "HEAD", detached)
     before = mirror.state()
 
-    update = asyncio.run(update_store(mirror.published.home, mirror.published.store_key))
+    update = asyncio.run(
+        update_store(
+            mirror.published.home,
+            mirror.published.store_key,
+            remote_url=mirror.published.source.normalized,
+        )
+    )
 
     assert update.outcome is RefreshOutcome.default_branch_unknown
     state = mirror.state()
@@ -455,7 +650,13 @@ def test_a_removed_origin_is_a_typed_failure_that_keeps_the_last_fetch(
     refs = _refs(mirror.published.git_dir)
     shutil.rmtree(mirror.origin)
 
-    update = asyncio.run(update_store(mirror.published.home, mirror.published.store_key))
+    update = asyncio.run(
+        update_store(
+            mirror.published.home,
+            mirror.published.store_key,
+            remote_url=mirror.published.source.normalized,
+        )
+    )
 
     assert update.outcome is RefreshOutcome.origin_unavailable
     state = mirror.state()
@@ -609,7 +810,13 @@ def test_a_cancelled_fetch_leaves_the_mirror_consistent(
             return await real_run_git(args, **kwargs)
 
         monkeypatch.setattr(update_module, "run_git", observed)
-        job = asyncio.ensure_future(update_store(mirror.published.home, mirror.published.store_key))
+        job = asyncio.ensure_future(
+            update_store(
+                mirror.published.home,
+                mirror.published.store_key,
+                remote_url=mirror.published.source.normalized,
+            )
+        )
         await asyncio.wait_for(fetching.wait(), timeout=30)
         # Long enough for Git to be transferring, far shorter than the transfer.
         await asyncio.sleep(0.02)
@@ -672,22 +879,14 @@ def test_a_cancelled_fetch_leaves_the_mirror_consistent(
         ("refs/remotes/origin/del\x7f", False),
         ("refs/remotes/origin/\ud800", False),
         ("refs/remotes/origin/" + "x" * 1100, False),
-        ("HEAD", False),
+        # One rule set for full and short names; a short name is looked up under the
+        # mirror's namespaces, never as HEAD itself.
+        ("HEAD", True),
+        ("@", False),
     ],
 )
 def test_ref_names_follow_the_git_ref_name_rules(name: str, valid: bool) -> None:
     assert is_valid_ref_name(name) is valid
-
-
-def test_ref_candidates_are_a_branch_then_a_tag_and_only_mirror_namespaces() -> None:
-    assert mirror_ref_candidates("topic") == ("refs/remotes/origin/topic", "refs/tags/topic")
-    assert mirror_ref_candidates("refs/tags/v1") == ("refs/tags/v1",)
-    with pytest.raises(InvalidSelectionError):
-        mirror_ref_candidates("refs/heads/topic")
-    with pytest.raises(InvalidSelectionError):
-        mirror_ref_candidates(":/text")
-    with pytest.raises(InvalidSelectionError):
-        mirror_ref_candidates("HEAD@{1}")
 
 
 def test_a_branch_wins_over_a_tag_of_the_same_name_and_tags_peel(mirror: _Mirror) -> None:
@@ -727,6 +926,8 @@ def test_a_commit_id_resolves_full_abbreviated_and_through_ref_text(mirror: _Mir
         (":/first", None, InvalidSelectionError),
         ("topic@{1}", None, InvalidSelectionError),
         ("topic^{/first}", None, InvalidSelectionError),
+        ("refs/heads/topic", None, InvalidSelectionError),
+        ("HEAD@{1}", None, InvalidSelectionError),
         ("nope", None, SelectionNotFoundError),
         (None, "abc", InvalidSelectionError),
         (None, "not-hex-at-all", InvalidSelectionError),
@@ -742,9 +943,50 @@ def test_selections_that_cannot_be_pinned_are_typed(
 
 
 def test_a_commit_id_naming_a_tree_is_not_a_commit(mirror: _Mirror) -> None:
+    """Answered at once, as URL opening answers it: no fetch changes what an ID names."""
+
     tree = _rev_parse(mirror.work, "HEAD^{tree}")
-    with pytest.raises(SelectionNotFoundError):
+    with pytest.raises(SelectionNotACommitError):
         asyncio.run(resolve_pin(mirror.target, oid=tree))
+
+
+def test_a_tag_of_a_tree_is_not_a_commit_and_head_is_the_default_branch(
+    mirror: _Mirror,
+) -> None:
+    """The pin route resolves as URL opening does, through the one resolver."""
+
+    _git(mirror.work, "tag", "tree-tag", "HEAD^{tree}")
+    # A tag of a tree whose name is also a commit ID: the commit is what it names.
+    commit = mirror.published.default_revision
+    _git(mirror.work, "tag", commit[:9], "HEAD^{tree}")
+    mirror.push("tree-tag", commit[:9])
+    assert _update(mirror) is RefreshOutcome.succeeded
+    with pytest.raises(SelectionNotACommitError):
+        asyncio.run(resolve_pin(mirror.target, ref="tree-tag"))
+    by_id = asyncio.run(resolve_pin(mirror.target, ref=commit[:9]))
+    assert (by_id.commit_oid, by_id.ref) == (commit, None)
+    head = asyncio.run(
+        resolve_pin(mirror.target, ref="HEAD", default_ref="refs/remotes/origin/topic")
+    )
+    assert (head.commit_oid, head.ref) == (
+        mirror.published.default_revision,
+        "refs/remotes/origin/topic",
+    )
+    with pytest.raises(SelectionNotFoundError):
+        asyncio.run(resolve_pin(mirror.target, ref="HEAD"))
+    served = StoreMirror.from_published(mirror.published)
+
+    async def open_head() -> tuple[str, str | None]:
+        subject = await served.open_selection(ref="HEAD", oid=None)
+        try:
+            return subject.commit_oid, subject.ref
+        finally:
+            await subject.aclose()
+
+    assert asyncio.run(open_head()) == (
+        mirror.published.default_revision,
+        "refs/remotes/origin/topic",
+    )
 
 
 def test_an_abbreviation_matching_several_commits_is_ambiguous(
@@ -756,15 +998,15 @@ def test_an_abbreviation_matching_several_commits_is_ambiguous(
     newer = mirror.commit("b.txt", "second\n", "second")
     mirror.push("topic")
     assert _update(mirror) is RefreshOutcome.succeeded
-    import metabrowser.cache.repository_store as repository_store
+    import metabrowser.cache.resolve as resolve
 
-    real_run_git = repository_store.run_git
+    real_run_git = resolve.run_git
 
     async def listing(args: list[str], **kwargs: object) -> bytes:
         if any(arg.startswith("--disambiguate=") for arg in args):
             return f"{commit}\n{newer}\n".encode()
         return await real_run_git(args, **kwargs)  # type: ignore[arg-type]
 
-    monkeypatch.setattr(repository_store, "run_git", listing)
+    monkeypatch.setattr(resolve, "run_git", listing)
     with pytest.raises(AmbiguousSelectionError):
         asyncio.run(resolve_pin(mirror.target, oid=commit[:7]))

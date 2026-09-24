@@ -80,18 +80,19 @@ Landing is tracked by `mb-n2ro`.
   and `tests/fixtures/repository-cache/git-version-gates.json`). Ubuntu’s
   `git version 2.43.0` is below the floor: it must refuse acquire and **must not create
   the application home**. Do not weaken the floor to make a local run pass.
-- **https and ssh stay closed.** They are not acquired and not opened.
-- **`file://` is the only origin the current foundation acquires.** A bare filesystem
-  path is never rewritten into a clone URL.
+- **ssh stays closed.** It is not acquired and not opened.
+- **`file://` and `https://` are the origins acquired**, including GitHub web URLs,
+  which the GitHub reducer rewrites to `https://github.com/<owner>/<repo>`. A bare
+  filesystem path is never rewritten into a clone URL. Only Phase 4.8 uses the network.
 - **Nothing binds a port** on `--no-serve`, `--show`, `--api`, or `--check-api`.
   “Serving” in the output is a failure on those modes.
-- **A served pin is `file://` only and always untrusted.** `metab file://…` with no mode
-  flag acquires or reuses the store and serves the default branch’s commit; https and
-  ssh refuse. Serving a **local filesystem** root (v0.10) is a different product and is
-  in scope for the regression steps below.
+- **A served pin is always untrusted.** `metab file://…` or `metab https://…` with no
+  mode flag acquires or reuses the store and serves the commit its URL selects; ssh
+  refuses. Serving a **local filesystem** root (v0.10) is a different product and is in
+  scope for the regression steps below.
 - **Only a server, or an explicit refresh request, fetches.** A served mirror refreshes
-  from its `file://` origin in the background; `--show`, `--api`, and `--check-api`
-  never fetch unless the command is `--api /api/source/refresh`.
+  from its origin in the background; `--show`, `--api`, and `--check-api` never fetch
+  unless the command is `--api /api/source/refresh`.
 - **Investigate every test failure.** Watch-backend and overlay-dependent failures
   require a recorded cause and comparable CI evidence.
   Do not regenerate goldens to conceal a host difference or count a failed local
@@ -161,9 +162,10 @@ uv --config-file uv.toml run --frozen metab --help
 ```
 
 **Pass:** Help lists `--no-serve`, `--show`, `--api`, `--walk`, and `--check-api`.
-`--no-serve` is described as acquiring a `file://` Git source without starting a server.
+`--no-serve` is described as acquiring a `file://` or `https://` Git source, or a GitHub
+web URL, without starting a server.
 
-**Fail:** Missing `--no-serve`, or help that claims https/ssh acquire or serve.
+**Fail:** Missing `--no-serve`, or help that claims ssh acquire or serve.
 
 ## Phase 1: Automated Tests (Repository Library Tip)
 
@@ -178,6 +180,13 @@ uv --config-file uv.toml run --frozen pytest \
   tests/test_cli_cache_acquire_golden.py \
   tests/test_cli_cache_recovery_golden.py \
   tests/test_cli_no_serve_surface.py \
+  tests/test_cli_github_url_golden.py \
+  tests/test_github_url_reducer.py \
+  tests/test_github_credentials.py \
+  tests/test_github_provider.py \
+  tests/test_cache_resolve.py \
+  tests/test_cache_remote.py \
+  tests/test_acquire_stall_and_hangup.py \
   tests/test_cache_acquire.py \
   tests/test_cache_urls.py \
   tests/test_cache_layout.py \
@@ -214,10 +223,12 @@ isolation sweep over every registered GET route.
 `tests/test_cache_update.py` refreshes real stores from real origins: new commits, a
 force-push that keeps the old commit readable, a deleted branch pruned by name and
 readable by ID, a fetch lock another process holds, stale lock files, a fetch cancelled
-mid-transfer, and a removed origin.
+mid-transfer, a removed origin, and on a case-insensitive filesystem a ref the fetch
+folded into its case twin, which is put back and reported as `ref_case_collision`.
 `tests/test_refresh_signals.py` runs the real command and interrupts a refresh
-mid-fetch: Ctrl-C leaves no Git running and the fetch lock free, and a killed server’s
-Git keeps the lock until it exits; it needs an admitted Git and skips below the floor.
+mid-fetch: Ctrl-C or a terminal hangup leaves no Git running and the fetch lock free,
+and a killed server’s Git keeps the lock until it exits; it needs an admitted Git and
+skips below the floor.
 `tests/test_source_refresh.py` drives the served routes over HTTP, including the
 newer-revision offer and switch, joined refreshes, refresh on open, shutdown
 cancellation, and the cross-origin, form, and GET refusals.
@@ -247,51 +258,70 @@ After each refuse, the scratch home must still be absent.
 test ! -e "${METABROWSER_HOME}"
 ```
 
-### 2.1 https and ssh are not acquired
+### 2.1 ssh is not acquired
 
 ```shell
 uv --config-file uv.toml run --frozen metab \
-  'https://example.com/owner/repo.git' --no-serve; echo "exit:$?"
-uv --config-file uv.toml run --frozen metab \
   'ssh://git@example.com/owner/repo.git' --no-serve; echo "exit:$?"
 uv --config-file uv.toml run --frozen metab \
-  'https://example.com/owner/repo.git' --api /api/cache/layout; echo "exit:$?"
+  'ssh://git@example.com/owner/repo.git' --api /api/cache/layout; echo "exit:$?"
 ```
 
 **Pass:** Non-zero exit.
-stderr contains `https Git sources are not acquired yet` or
-`ssh Git sources are not acquired yet`. No `acquired:`. No `Serving`.
+stderr contains `ssh Git sources are not acquired yet`. No `acquired:`. No `Serving`.
 `test ! -e "${METABROWSER_HOME}"` still holds.
 
 **Fail:** Acquire proceeds; home is created; a 500; a wrong transport in the message
 (for example “not served” on `--no-serve`).
 
-### 2.2 https and ssh are not opened as a pin
+### 2.2 ssh is not opened as a pin
 
 ```shell
 uv --config-file uv.toml run --frozen metab \
-  'https://example.com/owner/repo.git' --show README.md; echo "exit:$?"
+  'ssh://git@example.com/owner/repo.git' --show README.md; echo "exit:$?"
 uv --config-file uv.toml run --frozen metab \
-  'https://example.com/owner/repo.git' --api /api/tree; echo "exit:$?"
+  'ssh://git@example.com/owner/repo.git' --api /api/tree; echo "exit:$?"
 ```
 
 **Pass:** Non-zero exit.
-`--show` says `https Git sources are not opened yet`. `--api /api/tree` says
-`https Git sources are not served yet`. `${METABROWSER_HOME}` is still absent.
+`--show` says `ssh Git sources are not opened yet`. `--api /api/tree` says
+`ssh Git sources are not served yet`. `${METABROWSER_HOME}` is still absent.
 
 **Fail:** Home created; pin attached; message claims the source was acquired.
 
-### 2.3 https and ssh are not served; `--walk` and `--allow-edits` refuse a pin
+### 2.2a GitHub URL shapes that are refused
+
+```shell
+for url in \
+  'https://github.com/octo/demo/issues/5' \
+  'http://github.com/octo/demo' \
+  'https://github.com/settings/profile' \
+  'https://ghp_example@github.com/octo/demo' \
+  'https://github.com/octo/demo/pull/0'; do
+  uv --config-file uv.toml run --frozen metab "$url" --no-serve; echo "exit:$?"
+done
+test ! -e "${METABROWSER_HOME}"
+```
+
+**Pass:** Each exits 1 with `invalid ROOT (<reason>): <message>`:
+`unsupported_github_url` offering `https://github.com/octo/demo`, `insecure_http`,
+`reserved_owner`, `credentials_in_url`, and `invalid_pull_request`. No message repeats
+`ghp_example`. The home is still absent.
+`tests/golden/cli-github-urls.tryscript.md` pins the full set.
+
+**Fail:** A refused URL reaches Git or the network; a token echoed; the home created.
+
+### 2.3 ssh is not served; `--walk` and `--allow-edits` refuse a pin
 
 ```shell
 uv --config-file uv.toml run --frozen metab \
-  'https://example.com/owner/repo.git' --no-open; echo "exit:$?"
+  'ssh://git@example.com/owner/repo.git' --no-open; echo "exit:$?"
 uv --config-file uv.toml run --frozen metab "${FILE_URL}" --walk; echo "exit:$?"
 uv --config-file uv.toml run --frozen metab "${FILE_URL}" --no-open --allow-edits; echo "exit:$?"
 ```
 
 **Pass:** Non-zero exit.
-https serve: `https Git sources are not served yet` and “https and ssh stay closed.”
+ssh serve: `ssh Git sources are not served yet` and “ssh stays closed.”
 Walk: `--walk runs the filesystem inventory walker` and names
 `--api '/api/tree?depth=N'`. `--allow-edits`:
 `--allow-edits is not available on an acquired Git source`. Nothing listens.
@@ -499,6 +529,88 @@ uv --config-file uv.toml run --frozen metab "${FILE_URL}" --check-api; echo "exi
 `index: done`, `final nav` and `filtered nav` rows, and `result: pass`. Nothing listens.
 
 **Fail:** `result: fail`; a 200 live filter with invented recency; `Serving`.
+
+### 4.7 GitHub URLs without the network
+
+`tests/test_cli_github_url_golden.py` opens every accepted GitHub URL shape end to end
+with a local origin standing in for `https://github.com/octo/demo`, and pins the result
+in `tests/golden/cli-github-url-open.txt`. Read the transcript rather than rerunning it:
+every spelling of the repository prints one slug and store; `/tree/release/v1/docs` pins
+the `release/v1` branch; `/blob/…?plain=1#L3-L4` reports `lines` and `plain`; a branch
+named `523f` wins over the commit whose ID starts with those digits; `/pull/7` pins the
+default branch and reports `pull_request: 7`; and a missing ref, commit, or path is
+`ref_not_found`, `commit_not_found`, or `path_not_found`.
+
+```shell
+uv --config-file uv.toml run --frozen pytest tests/test_cli_github_url_golden.py \
+  tests/test_github_credentials.py tests/test_acquire_stall_and_hangup.py -rs
+```
+
+**Pass:** All pass; the credential test shows `gh` answering only for
+`https://github.com` and the user’s own helper cleared; the stall test fails a stalled
+origin as `timed_out`; the hangup and SIGTERM tests exit 129 and 143 with no Git helper
+left running, an ignored hangup stays ignored, and the installed-CLI hangup test skips
+below the Git floor.
+
+**Fail:** Any failure; a golden regenerated without an intended change.
+
+### 4.8 GitHub URLs over HTTPS (network, opt-in)
+
+Skip on a floor-refusing Git and record the skip.
+Read-only: nothing here writes to GitHub.
+
+```shell
+METABROWSER_LIVE_GITHUB=1 uv --config-file uv.toml run --frozen pytest -rs \
+  tests/test_github_live_smoke.py
+uv --config-file uv.toml run --frozen metab \
+  'https://github.com/octocat/Hello-World/blob/master/README#L1' --no-serve
+uv --config-file uv.toml run --frozen metab \
+  https://github.com/octocat/Hello-World --api /api/git/repo
+```
+
+**Pass:** The smoke test passes.
+The first command prints `acquired: https://github.com/octocat/hello-world`, then
+`selection: blob`, a `pin:` on `branch master`, `path: README`, and `lines: L1`. The
+second answers from the cache with the same revision and no clone.
+On a terminal, the first clone reports its phases and elapsed time on stderr.
+A signed-in `gh` is used only for github.com, and a public repository needs none.
+The smoke test calls the real `gh` only for the read-only size check; its clones run
+with a fake `gh` that answers nothing.
+
+Then serve the same repository at a file, from a terminal you keep open:
+
+```shell
+uv --config-file uv.toml run --frozen metab \
+  'https://github.com/octocat/Hello-World/blob/master/README#L1' --no-open --port 8475
+curl -s http://127.0.0.1:8475/api/source/status; echo
+curl -s -X POST -H 'Content-Type: application/json' -d '{}' \
+  http://127.0.0.1:8475/api/source/refresh; echo
+```
+
+**Pass:** The banner prints
+`Serving https://github.com/octocat/hello-world at http://127.0.0.1:8475/view/g1-UkVBRE1F#L1`,
+then `Revision: <commit> (master)` and `Selection: blob README#L1`. Status names
+`"ref_name": "master"`; the refresh answers `202`, and status soon reports
+`"last_outcome"` with `"operation": "refresh"` and `"outcome": "succeeded"`. Opening the
+printed address shows the README.
+
+**Fail:** A token prompt; a message containing Git’s own error text or a local path; a
+second clone on the cache hit; a refresh outcome other than `succeeded` on a working
+network.
+
+### 4.9 A terminal hangup cancels a first clone
+
+Start a first clone of a large public repository in a terminal you can close, then close
+the terminal while it reports `fetching every object`.
+
+**Pass:** No `git` or `git-remote-https` process for that URL remains
+(`ps -A -o pid,args | grep remote-https`), and the scratch home’s `cache/staging` is
+empty after the next `metab` command.
+`kill <pid>` (SIGTERM) behaves the same and exits 143; under `nohup`, closing the
+terminal does not stop the clone.
+`tests/test_acquire_stall_and_hangup.py` asserts all three without a terminal.
+
+**Fail:** An orphaned Git process still fetching; a staging entry left behind.
 
 ## Phase 5: Serve the Pin (T1 Browser Subset, No Network)
 
@@ -794,15 +906,16 @@ Record it as untested, not as a pass.
 ## Phase 7: What This Runbook Cannot Test
 
 These are documented product gaps or environment limits.
-Do **not** file beads for them unless the run shows **wrong** behavior (for example,
-https was acquired or served, or a served pin ran a script).
+Do **not** file beads for them unless the run shows **wrong** behavior (for example, ssh
+was acquired or served, or a served pin ran a script).
 
 | Item | Why it is out of scope here |
 | --- | --- |
-| https / ssh acquire | Closed until a later phase; refuse is the test |
-| Serving https or ssh sources | Later thin-mirror steps; https and ssh refuse |
+| ssh acquire and serve | Closed; refuse is the test |
 | A branch and tag selector in the browser | Not built; pin by name through `POST /api/source/pin` (5.6) |
-| A `repository_context` for a served pin | Supplied for GitHub mirrors by the GitHub plugin in a later step; a `file://` pin has none |
+| The browser’s view of a pending URL selection | A page opened while the selection waited goes to it when the fetch finds it; the freshness row says when it is not on the origin or could not be fetched, and offers a Retry for the second |
+| Line highlighting for `#L10-L20` | `mb-rlf3`; the anchor stays in the address |
+| Pull-request data and page | Later steps; a `/pull/<n>` URL opens the default branch and reports the number |
 | Hosted-review / GitHub PR slice | Separate beads; not on these tips |
 | Archive containers | `mb-380k` |
 | Real browser HTML preview | Needs a browser; Phase 6.3 is optional and header-level. A pin never offers preview |
@@ -822,8 +935,11 @@ While executing, treat these as bugs if they happen:
   lacks the sandbox or carries `allow-scripts`, or whose pages request another host
 - A refresh that moves the page without **Switch**, blocks a request, or leaves a ref
   half-updated; a commit a reader pinned that becomes unreadable after a refresh
-- Application home created on a refuse (https, ssh, walk, `--allow-edits`, below-floor
-  Git)
+- Application home created on a refuse (ssh, a refused GitHub URL, walk,
+  `--allow-edits`, below-floor Git)
+- A GitHub token offered to a host other than github.com, or a token or query string
+  echoed in an error
+- An orphaned Git process after Ctrl-C, a terminal hangup, or `SIGTERM`
 - Filesystem `--show` failing on this repository’s real paths
 - Pin `--show` / `--api` failing on those same paths when Git meets the floor
 - Cache inspect exposing origin objects through `/api/tree` on a cache route

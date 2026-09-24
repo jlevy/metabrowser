@@ -102,6 +102,48 @@ def test_acquisition_cancellation_kills_the_helper_git_forked(tmp_path: Path) ->
         _kill_leftover(helper)
 
 
+def test_a_cancellation_while_git_is_starting_kills_its_helpers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The cancellation lands after the child exists but before the spawn returns it.
+
+    asyncio's own cleanup for an interrupted ``create_subprocess_exec`` kills only the
+    ``git`` process, which leaves the helpers it already forked running. The spawn is
+    held open here, after the real process started, until the cancellation arrives,
+    which is the window a terminal hangup hit about one run in four.
+    """
+
+    pid_file = tmp_path / "helper.pid"
+    real_spawn = asyncio.create_subprocess_exec
+    spawned = asyncio.Event()
+
+    async def slow_spawn(*args: Any, **kwargs: Any) -> asyncio.subprocess.Process:
+        proc = await real_spawn(*args, **kwargs)
+        spawned.set()
+        await asyncio.to_thread(_wait_for_pid, pid_file)
+        await asyncio.sleep(0.2)
+        return proc
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", slow_spawn)
+
+    async def cancel_while_spawning() -> None:
+        task = asyncio.ensure_future(
+            run_git(_alias_args(pid_file), cwd=tmp_path, policy=ACQUISITION_POLICY)
+        )
+        await spawned.wait()
+        await asyncio.to_thread(_wait_for_pid, pid_file)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(asyncio.wait_for(cancel_while_spawning(), timeout=30))
+    helper = _wait_for_pid(pid_file)
+    try:
+        assert _gone_within(helper), "a helper outlived a cancellation during spawn"
+    finally:
+        _kill_leftover(helper)
+
+
 def test_read_policy_keeps_git_in_the_callers_process_group(tmp_path: Path) -> None:
     """Request-path reads stay in the foreground group so terminal Ctrl-C still reaches them."""
 

@@ -37,7 +37,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from metabrowser import server
-from metabrowser.cache.acquire import PublishedSource, acquire_file_source
+from metabrowser.cache.acquire import PublishedSource, acquire_source
 from metabrowser.cache.atomic import write_record_atomic
 from metabrowser.cache.locks import repository_store_lock
 from metabrowser.cache.paths import store_record
@@ -48,6 +48,8 @@ from metabrowser.cache.records import (
 )
 from metabrowser.cache.repository_store import open_revision
 from metabrowser.cache.served_mirror import StoreMirror
+from metabrowser.cache.urls import LineSelection, RepositorySelection
+from metabrowser.cli.selection import pending_selection_opener
 from metabrowser.git.tree_source import GitRevisionSubject
 from metabrowser.mirror_refresh import serve_mirror
 from metabrowser.source import reset_source_session, serve_subject_opener
@@ -148,7 +150,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     monkeypatch.setenv("METABROWSER_HOME", str(tmp_path / "home"))
     _allow_installed_git(monkeypatch)
     origin = build_origin(tmp_path)
-    published = asyncio.run(acquire_file_source(_file_source(origin), home=tmp_path / "home"))
+    published = asyncio.run(acquire_source(_file_source(origin), home=tmp_path / "home"))
     _write_state(
         published, operation=StoreOperation(kind="acquire", outcome="succeeded", at=FETCHED_AT)
     )
@@ -206,7 +208,8 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             }
             refused = client.post("/api/source/pin", json={"ref": "gone"}, headers=_JSON)
             recorded["pin_refused"] = {"status": refused.status_code, "body": refused.json()}
-            shutil.rmtree(origin)
+            away = tmp_path / "origin-away.git"
+            shutil.move(origin, away)
             assert client.post("/api/source/refresh", json={}, headers=_JSON).status_code == 202
             recorded["failed"] = _settle(client)
         # A later start on a mirror last fetched long ago whose origin is gone: every
@@ -221,6 +224,40 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             assert started.status_code == 202
             recorded["unreachable_started"] = started.json()
             recorded["unreachable_after"] = _settle(client)
+        # A URL selection the mirror lacked when the page opened: a branch the origin
+        # gained since, served once the refresh the page asks for brings it.
+        shutil.move(away, origin)
+        _git(origin, "branch", "later", recorded["refreshed"]["latest"])
+        selection = RepositorySelection(
+            kind="blob", ref_and_path=(b"later", b"README.md"), lines=LineSelection(1, 1)
+        )
+        serve_mirror(
+            StoreMirror.from_published(published),
+            pending_selection=pending_selection_opener(published, selection),
+        )
+        with TestClient(server.app) as client:
+            recorded["selection_pending"] = client.get("/api/source/status").json()
+            started = client.post("/api/source/refresh", json={}, headers=_JSON)
+            assert started.status_code == 202
+            recorded["selection_refresh_started"] = started.json()
+            recorded["selection_found"] = _settle(client)
+        # One the fetch does not bring, then one whose fetch cannot run.
+        for name, key in (("never", "selection_not_found"), ("gone", "selection_fetch_failed")):
+            if key == "selection_fetch_failed":
+                shutil.move(origin, away)
+            missing = RepositorySelection(kind="tree", ref_and_path=(name.encode(),))
+            serve_mirror(
+                StoreMirror.from_published(published),
+                pending_selection=pending_selection_opener(published, missing),
+            )
+            with TestClient(server.app) as client:
+                assert client.post("/api/source/refresh", json={}, headers=_JSON).status_code == 202
+                recorded[key] = _settle(client)
+                if key == "selection_fetch_failed":
+                    retried = client.post("/api/source/refresh", json={}, headers=_JSON)
+                    assert retried.status_code == 202
+                    recorded["selection_retry_started"] = retried.json()
+                    _settle(client)
     finally:
         serve_mirror(None)
         reset_source_session()
@@ -241,6 +278,13 @@ def test_recording_is_what_a_served_mirror_answers(
     assert recorded["unreachable"]["stale"] is True
     assert recorded["unreachable_after"]["stale"] is True
     assert recorded["unreachable_after"]["last_outcome"]["outcome"] == "origin_unavailable"
+    assert recorded["selection_pending"]["selection_state"] == "pending"
+    found = recorded["selection_found"]
+    assert (found["selection_state"], found["ref_name"]) == ("found", "later")
+    assert found["selection_href"].endswith("#L1")
+    assert recorded["selection_not_found"]["selection_state"] == "not_found"
+    assert recorded["selection_fetch_failed"]["selection_state"] == "fetch_failed"
+    assert recorded["selection_retry_started"]["status"]["selection_state"] == "pending"
     rendered = json.dumps(recorded, indent=2, ensure_ascii=False) + "\n"
     if os.environ.get("GOLDEN_UPDATE") == "1":
         FIXTURE.write_text(rendered, encoding="utf-8")
@@ -283,3 +327,15 @@ def test_the_session_runs_on_the_recording() -> None:
     assert [row["pin"] for row in guard["sent"]] == [guard["page"], None, None, guard["page"]]
     assert guard["answered"][-1] == 409
     assert guard["reported"] == [transcript_pin_after_switch()]
+    # A page opened while its URL selection waited goes to the selection once, anchor kept.
+    recording = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    arrived = by_name["the fetch brought the selection; the page goes to it"]
+    assert arrived["navigated"] == [recording["selection_found"]["selection_href"]]
+    assert arrived["navigated"][0].endswith("#L1")
+    assert "navigated" not in by_name["a URL selection waits for its fetch"]
+    assert "navigated" not in by_name["a page goes to a selection once"]
+    # The row says what became of the address, and offers a retry when its fetch failed.
+    assert by_name["the address is not on the origin"]["paint"]["tone"] == "warning"
+    failed = by_name["the address could not be fetched"]["paint"]
+    assert failed["tone"] == "warning" and failed["offer"] == "Fetch the address again [Retry]"
+    assert by_name["retry the address"]["requests"] == ["POST /api/source/refresh {}"]

@@ -345,6 +345,15 @@
       "expect": "valid"
     },
     {
+      "name": "store-state-records-a-named-https-failure",
+      "record": "store_state",
+      "changes": [
+        { "path": ["last_operation", "kind"], "value": "refresh" },
+        { "path": ["last_operation", "outcome"], "value": "ref_case_collision" }
+      ],
+      "expect": "valid"
+    },
+    {
       "name": "store-state-rejects-an-unnamed-failure",
       "record": "store_state",
       "changes": [

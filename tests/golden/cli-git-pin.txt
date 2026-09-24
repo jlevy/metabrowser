@@ -185,7 +185,10 @@ status: 200
     "at": "<TIME>"
   },
   "refreshing": false,
-  "stale": false
+  "stale": false,
+  "pull_request": null,
+  "selection_state": null,
+  "selection_href": null
 }
 --- stderr ---
 # metab file://<ORIGIN> --api /api/tree?depth=0

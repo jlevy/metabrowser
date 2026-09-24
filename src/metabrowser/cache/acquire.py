@@ -1,22 +1,26 @@
 """Acquire a classified Git source into an isolated worktree-free store.
 
-A ``file://`` URL is fetched through Git's pack transport into staging, every
-object and not a partial clone, then published as a complete store and a source
-alias. Nothing later removes objects from a store. This module does not serve
-content. The CLI acquires through ``--no-serve`` and ``--api /api/cache/…``;
-https and ssh stay closed. A bare path never reaches here.
+A ``file://`` or ``https://`` URL is fetched into staging, every object and not a
+partial clone, then published as a complete store and a source alias. Nothing later
+removes objects from a store. This module does not serve content. The CLI acquires
+through ``--no-serve``, ``--api``, and ``--show``; ssh stays closed. A bare path never
+reaches here. Both commands against the origin are built by
+:mod:`metabrowser.cache.origin`: the protocol allowlist, the measured stall bound, and a
+provider's credential helper.
 """
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
+import dataclasses
 import functools
 import logging
 import os
 import re
 import secrets
 import shutil
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final, Self
@@ -42,7 +46,12 @@ from metabrowser.cache.locks import (
     staging_entry_lock,
 )
 from metabrowser.cache.origin import (
+    REMOTE_PROBE_TIMEOUT_S,
     OriginHeadError,
+    RemoteFailureState,
+    classify_remote_failure,
+    describe_remote_failure,
+    fetched_ref_names,
     ls_remote_head_args,
     mirror_fetch_args,
     parse_symref_head,
@@ -55,6 +64,7 @@ from metabrowser.cache.paths import (
     store_directory,
     store_record,
 )
+from metabrowser.cache.providers import check_first_clone
 from metabrowser.cache.records import (
     REPOSITORY_SOURCE_CONTRACT_ID,
     REPOSITORY_SOURCE_STATE_CONTRACT_ID,
@@ -70,10 +80,16 @@ from metabrowser.cache.records import (
     StoreOperation,
     canonical_now,
 )
+from metabrowser.cache.resolve import (
+    case_colliding_refs,
+    describe_case_collision,
+    store_ignores_case,
+)
 from metabrowser.cache.urls import GitSource
 from metabrowser.git.process import (
     ACQUISITION_POLICY,
     GitCommandError,
+    GitTimeoutError,
     repository_store_target,
     require_acquisition_git,
     run_git,
@@ -82,6 +98,7 @@ from metabrowser.home import PrivateStorageError, SharedEntryPolicy, ensure_priv
 
 log = logging.getLogger(__name__)
 
+_ACQUIRED_TRANSPORTS: Final[frozenset[str]] = frozenset({"file", "https"})
 _STORE_CONFIG: Final[tuple[tuple[str, str], ...]] = (
     ("maintenance.auto", "false"),
     ("gc.auto", "0"),
@@ -118,6 +135,76 @@ class ValidationFailedError(AcquisitionError):
 
 class AliasConflictError(AcquisitionError):
     """The source already names a different store; the existing alias was left in place."""
+
+
+class RemoteAccessError(AcquisitionError):
+    """Git could not reach or read an https origin; ``state`` names why.
+
+    The message names the source URL and the state, never Git's own error text.
+    """
+
+    def __init__(self, state: RemoteFailureState, source_url: str, *, detail: str = "") -> None:
+        super().__init__(describe_remote_failure(state, source_url, detail=detail))
+        self.state: RemoteFailureState = state
+
+
+class RepositoryTooLargeError(RemoteAccessError):
+    """A provider refused a first clone that could not finish within the deadline."""
+
+    def __init__(self, source_url: str, *, detail: str) -> None:
+        super().__init__("too_large", source_url, detail=detail)
+
+
+type PhaseReporter = Callable[[str], None]
+
+
+def remote_url_for(source: GitSource) -> str:
+    """The URL Git fetches *source* from: its normalized URL.
+
+    A seam, not a policy: tests stand a local ``file://`` origin in for a provider URL
+    here, so the canonical source identity stays the provider's.
+    """
+
+    return source.normalized
+
+
+def _classified(source: GitSource, exc: GitCommandError) -> RemoteAccessError | None:
+    """A typed failure for an https origin whose error text Git classifies.
+
+    Only https: a ``file://`` failure's text names local paths, which could match.
+    """
+
+    if source.transport != "https":
+        return None
+    state = classify_remote_failure(exc.stderr_summary)
+    return None if state is None else RemoteAccessError(state, source.normalized)
+
+
+class RefCaseCollisionError(ValidationFailedError):
+    """The origin has refs a case-insensitive store cannot hold apart."""
+
+    state: Final = "ref_case_collision"
+
+
+async def _refuse_case_collisions(git_dir: Path, names: tuple[str, ...]) -> None:
+    """Refuse a store whose refs a case-insensitive filesystem folded together.
+
+    On such a filesystem ``refs/remotes/origin/Feature`` and ``…/feature`` are one loose
+    file: a non-atomic fetch keeps whichever it wrote last under the first name, and the
+    other name resolves to it too, so a URL could pin the wrong commit. Nothing is
+    published; a refresh reports the same state for its own fetch.
+    """
+
+    colliding = case_colliding_refs(names)
+    if colliding and await store_ignores_case(repository_store_target(git_dir=git_dir)):
+        raise RefCaseCollisionError(
+            f"the source {describe_case_collision(colliding)}; nothing was published"
+        )
+
+
+def _report(on_phase: PhaseReporter | None, phase: str) -> None:
+    if on_phase is not None:
+        on_phase(phase)
 
 
 @dataclass(slots=True)
@@ -205,15 +292,24 @@ async def _abandon_off_loop(claim: _StagingClaim) -> None:
     await asyncio.shield(asyncio.ensure_future(asyncio.to_thread(claim.abandon)))
 
 
-async def _run(args: list[str], *, cwd: Path | None = None, git_dir: Path | None = None) -> bytes:
+async def _run(
+    args: list[str],
+    *,
+    cwd: Path | None = None,
+    git_dir: Path | None = None,
+    timeout_s: float | None = None,
+) -> bytes:
     require_no_hierarchy_locks("git")
     if git_dir is not None:
         return await run_git(
-            args, target=repository_store_target(git_dir=git_dir), policy=ACQUISITION_POLICY
+            args,
+            target=repository_store_target(git_dir=git_dir),
+            policy=ACQUISITION_POLICY,
+            timeout_s=timeout_s,
         )
     if cwd is None:
         raise TypeError("cwd or git_dir is required")
-    return await run_git(args, cwd=cwd, policy=ACQUISITION_POLICY)
+    return await run_git(args, cwd=cwd, policy=ACQUISITION_POLICY, timeout_s=timeout_s)
 
 
 async def _require_ref_at(git_dir: Path, ref: str, revision: str) -> None:
@@ -231,16 +327,23 @@ async def _require_ref_at(git_dir: Path, ref: str, revision: str) -> None:
         raise ValidationFailedError("the default branch does not resolve to the observed HEAD")
 
 
-async def acquire_into_staging(source: GitSource, *, home: Path) -> StagingAcquisition:
+async def acquire_into_staging(
+    source: GitSource, *, home: Path, on_phase: PhaseReporter | None = None
+) -> StagingAcquisition:
     """Fetch *source* into a new staging store and validate it.
 
-    Only ``file://`` sources are acquired here. The returned object holds the
-    staging liveness lock until :meth:`StagingAcquisition.abandon`.
+    ``file://`` and ``https://`` sources are acquired here. The returned object holds
+    the staging liveness lock until :meth:`StagingAcquisition.abandon`. *on_phase* is
+    told each phase as it starts.
     """
-    if source.transport != "file":
+    if source.transport not in _ACQUIRED_TRANSPORTS:
         raise AcquisitionError(
             f"{source.transport} Git sources are not acquired yet ({source.normalized})"
         )
+    remote_url = remote_url_for(source)
+    # Only https has a first-request deadline: curl's stall bound does not cover a TLS
+    # handshake that never completes. A local origin keeps the acquisition deadline.
+    probe_timeout_s = REMOTE_PROBE_TIMEOUT_S if source.transport == "https" else None
     claim = await run_lock_section(
         functools.partial(_open_and_claim_staging, home, lock_order()),
         release=_StagingClaim.abandon,
@@ -252,12 +355,25 @@ async def acquire_into_staging(source: GitSource, *, home: Path) -> StagingAcqui
     staging = home / staging_entry(entry)
     git_dir = staging / "repository.git"
     try:
+        _report(on_phase, "reading the default branch")
         try:
-            observed = await _run(ls_remote_head_args(source.normalized), cwd=staging)
+            observed = await _run(
+                ls_remote_head_args(remote_url),
+                cwd=staging,
+                timeout_s=probe_timeout_s,
+            )
+        except GitTimeoutError as exc:
+            if source.transport != "https":
+                raise
+            raise RemoteAccessError(
+                "timed_out",
+                source.normalized,
+                detail=f"no answer within {REMOTE_PROBE_TIMEOUT_S:g} s",
+            ) from exc
         except GitCommandError as exc:
             # ls-remote itself failed: the path is missing, is not a repository, or
             # cannot be read. A readable source without HEAD is refused below.
-            raise RemoteUnavailableError(
+            raise _classified(source, exc) or RemoteUnavailableError(
                 "the source could not be read as a Git repository; nothing was published"
             ) from exc
         try:
@@ -285,17 +401,22 @@ async def acquire_into_staging(source: GitSource, *, home: Path) -> StagingAcqui
         )
         for key, value in _STORE_CONFIG:
             await _run(["config", key, value], git_dir=git_dir)
-        await _run(["config", "remote.origin.url", source.normalized], git_dir=git_dir)
+        await _run(["config", "remote.origin.url", remote_url], git_dir=git_dir)
+        _report(on_phase, "fetching every object")
         try:
             # Every object: a published store is complete, so no read ever needs the
             # origin again, and an origin that would honor a filter is not asked to.
-            await _run(mirror_fetch_args(prune=False), git_dir=git_dir)
+            updated = await _run(mirror_fetch_args(remote_url, prune=False), git_dir=git_dir)
         except GitCommandError as exc:
             if _PARTIAL_CLONE_SOURCE.search(exc.stderr_summary):
                 raise PartialCloneSourceError(
                     "the source is a partial clone missing objects; clone it fully first"
                 ) from exc
-            raise FetchFailedError("the fetch into staging failed") from exc
+            raise _classified(source, exc) or FetchFailedError(
+                "the fetch into staging failed"
+            ) from exc
+        _report(on_phase, "validating")
+        await _refuse_case_collisions(git_dir, fetched_ref_names(updated))
         try:
             kind = (await _run(["cat-file", "-t", revision], git_dir=git_dir)).strip()
             object_format_raw = (
@@ -333,7 +454,11 @@ async def acquire_into_staging(source: GitSource, *, home: Path) -> StagingAcqui
 
 @dataclass(frozen=True, slots=True)
 class PublishedSource:
-    """A published source alias naming one immutable repository store."""
+    """A published source alias naming one immutable repository store.
+
+    ``fetched`` is true when the call that returned it fetched the store from the origin
+    just now, so a ref the mirror lacks is not one a second fetch would bring.
+    """
 
     home: Path
     slug: str
@@ -345,6 +470,7 @@ class PublishedSource:
     object_format: ObjectFormat
     default_remote_ref: str
     default_revision: str
+    fetched: bool = field(default=False, compare=False)
 
 
 def _touch_last_opened(published: PublishedSource) -> None:
@@ -637,7 +763,7 @@ def publish_from_staging(staged: StagingAcquisition) -> PublishedSource:
 
     Synchronous and blocking: it takes the alias lock and the store lock, each of which
     may wait on another process. Async callers run it in a worker thread, as
-    :func:`acquire_file_source` does.
+    :func:`acquire_source` does.
     """
 
     if staged.default_remote_ref is None:
@@ -655,36 +781,56 @@ def publish_from_staging(staged: StagingAcquisition) -> PublishedSource:
         staged.abandon()
 
 
-async def acquire_file_source(source: GitSource, *, home: Path) -> PublishedSource:
-    """Return a published ``file://`` source, fetching only on a cache miss.
+async def acquire_source(
+    source: GitSource, *, home: Path, on_phase: PhaseReporter | None = None
+) -> PublishedSource:
+    """Return a published ``file://`` or ``https://`` source, fetching only on a miss.
 
     A hit inspects an existing home without fetching or opening the cache, so it
-    does not require the acquisition Git floor or owner-write on the home. It may
-    try to record ``last_opened_at``; a failed write is dropped and the hit still
-    returns. A miss checks the Git floor before ``open_cache``, so a below-floor
-    refuse does not create the application home or complete an empty directory
-    into an ``f01`` skeleton. A miss that is allowed to fetch then opens the
-    cache (and sweeps staging) and fetches. A future layout is refused before any
-    write.
+    does not require the acquisition Git floor or owner-write on the home, and it
+    makes no network request. It may try to record ``last_opened_at``; a failed write
+    is dropped and the hit still returns. A miss checks the Git floor and then lets
+    each provider refuse the first clone (the GitHub provider's size check) before
+    ``open_cache``, so neither refusal creates the application home or completes an
+    empty directory into an ``f01`` skeleton. A miss that is allowed to fetch then
+    opens the cache (and sweeps staging) and fetches, telling *on_phase* each phase
+    as it starts. A future layout is refused before any write.
     """
 
-    if source.transport != "file":
+    if source.transport not in _ACQUIRED_TRANSPORTS:
         raise AcquisitionError(
             f"{source.transport} Git sources are not acquired yet ({source.normalized})"
         )
     # Every step that reads the home, takes a cache lock, or sweeps runs in a worker
     # thread; the event loop only awaits Git processes and those threads.
+    found, home = await run_lock_section(
+        functools.partial(_find_or_open_cache, source, home, open_on_miss=False)
+    )
+    if found is not None:
+        return found
+    await check_first_clone(source)
     found, home = await run_lock_section(functools.partial(_find_or_open_cache, source, home))
     if found is not None:
         return found
-    staged = await acquire_into_staging(source, home=home)
-    return await run_lock_section(functools.partial(_publish_and_touch, staged))
+    staged = await acquire_into_staging(source, home=home, on_phase=on_phase)
+    _report(on_phase, "publishing")
+    published = await run_lock_section(functools.partial(_publish_and_touch, staged))
+    _report(on_phase, "done")
+    return dataclasses.replace(published, fetched=True)
 
 
-def _find_or_open_cache(source: GitSource, home: Path) -> tuple[PublishedSource | None, Path]:
-    """Return a cache hit, or open the cache for a miss; synchronous and blocking."""
+def _find_or_open_cache(
+    source: GitSource, home: Path, *, open_on_miss: bool = True
+) -> tuple[PublishedSource | None, Path]:
+    """Return a cache hit, or open the cache for a miss; synchronous and blocking.
+
+    With *open_on_miss* false, a miss only checks the Git floor and opens nothing, so a
+    below-floor Git is refused before any provider check reaches the network.
+    """
 
     if not home.exists():
+        if not open_on_miss:
+            require_acquisition_git()
         return None, home
     try:
         layout = read_layout(home, shared="keep")
@@ -697,6 +843,8 @@ def _find_or_open_cache(source: GitSource, home: Path) -> tuple[PublishedSource 
             _touch_last_opened(found)
             return found, home
     require_acquisition_git()
+    if not open_on_miss:
+        return None, home
     cache = open_cache(home)
     home = cache.home
     found = _find_published(source, home)
@@ -716,11 +864,16 @@ __all__ = [
     "AliasConflictError",
     "FetchFailedError",
     "PartialCloneSourceError",
+    "PhaseReporter",
     "PublishedSource",
+    "RefCaseCollisionError",
+    "RemoteAccessError",
     "RemoteUnavailableError",
+    "RepositoryTooLargeError",
     "StagingAcquisition",
     "ValidationFailedError",
-    "acquire_file_source",
     "acquire_into_staging",
+    "acquire_source",
     "publish_from_staging",
+    "remote_url_for",
 ]

@@ -23,7 +23,7 @@ from pathlib import Path
 
 import pytest
 
-from metabrowser.cache.acquire import acquire_file_source
+from metabrowser.cache.acquire import acquire_source
 from metabrowser.cache.locks import (
     CacheLock,
     LockOrderError,
@@ -201,7 +201,7 @@ def test_acquisition_waits_for_the_home_lock_without_blocking_the_loop(
 
     _allow_installed_git(monkeypatch)
     home = tmp_path / "home"
-    asyncio.run(acquire_file_source(_file_source(_origin(tmp_path)), home=home))
+    asyncio.run(acquire_source(_file_source(_origin(tmp_path)), home=home))
     other = tmp_path / "other"
     other.mkdir()
     other_source = _file_source(_origin(other))
@@ -209,7 +209,7 @@ def test_acquisition_waits_for_the_home_lock_without_blocking_the_loop(
     try:
 
         async def scenario() -> str:
-            waiting = asyncio.create_task(acquire_file_source(other_source, home=home))
+            waiting = asyncio.create_task(acquire_source(other_source, home=home))
             assert await _ticks_while_pending(waiting) == TICKS
             assert not waiting.done()
             assert holder.release() == "asked"
@@ -237,7 +237,7 @@ def test_a_cancelled_acquisition_behind_a_busy_home_stops_promptly(
 
     _allow_installed_git(monkeypatch)
     home = tmp_path / "home"
-    asyncio.run(acquire_file_source(_file_source(_origin(tmp_path)), home=home))
+    asyncio.run(acquire_source(_file_source(_origin(tmp_path)), home=home))
     other = tmp_path / "other"
     other.mkdir()
     other_source = _file_source(_origin(other))
@@ -245,7 +245,7 @@ def test_a_cancelled_acquisition_behind_a_busy_home_stops_promptly(
     try:
 
         async def scenario() -> None:
-            waiting = asyncio.create_task(acquire_file_source(other_source, home=home))
+            waiting = asyncio.create_task(acquire_source(other_source, home=home))
             assert await _ticks_while_pending(waiting) == TICKS
             waiting.cancel()
             with pytest.raises(asyncio.CancelledError):

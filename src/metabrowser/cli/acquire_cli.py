@@ -1,30 +1,39 @@
-"""Acquire a classified ``file://`` source from the CLI without serving it.
+"""Acquire a classified ``file://`` or ``https://`` source from the CLI without serving it.
 
-``--no-serve`` publishes into the application home and prints logical identity.
-``--api /api/cache/…`` acquires as a side effect, then issues the route against an
-empty throwaway root so cache inspection cannot expose origin objects through
-``/api/tree``. Non-cache ``--api`` / ``--show`` of a ``file://`` pin is
-``git_pin_cli``. https and ssh stay closed. Acquired content is never served
-on a listening port.
+``--no-serve`` publishes into the application home and prints logical identity, plus
+what a provider web URL pointed at. ``--api /api/cache/…`` acquires as a side effect,
+then issues the route against an empty throwaway root so cache inspection cannot expose
+origin objects through ``/api/tree``. Non-cache ``--api`` / ``--show`` of a pin is
+``git_pin_cli``. ssh stays closed. Acquired content is never served on a listening port.
+A first clone reports its phases on a terminal, and a terminal hangup cancels it like
+Ctrl-C.
 """
 
 from __future__ import annotations
 
-import asyncio
 import logging
+import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Final
 
 import typer
 
-from metabrowser.cache.acquire import AcquisitionError, PublishedSource, acquire_file_source
+from metabrowser.cache.acquire import (
+    AcquisitionError,
+    PhaseReporter,
+    PublishedSource,
+    acquire_source,
+)
 from metabrowser.cache.atomic import RecordError
 from metabrowser.cache.layout import FutureLayoutFormatError, LayoutError
 from metabrowser.cache.locks import LockBusyError
 from metabrowser.cache.urls import GitSource
 from metabrowser.cli.asgi_client import INDEX_READY_TIMEOUT_S
 from metabrowser.cli.common import apply_log_level, maybe_cli_logging
+from metabrowser.cli.hangup import run_cancelling_on_hangup
+from metabrowser.cli.selection import resolve_and_check_for_cli, selection_lines
 from metabrowser.errors import CLIError
 from metabrowser.git.process import (
     GIT_ACQUISITION_TIMEOUT_S,
@@ -91,6 +100,24 @@ def _is_cache_inspect_route(route: str) -> bool:
     return is_cache_inspect_route(route)
 
 
+def terminal_phase_reporter(source: GitSource) -> PhaseReporter | None:
+    """Report a first clone's phases and elapsed time on stderr, when it is a terminal.
+
+    Like Git's own progress, nothing is written to a pipe or a file, so a captured
+    transcript is unchanged by how long a clone took.
+    """
+
+    if not sys.stderr.isatty():
+        return None
+    started = time.monotonic()
+
+    def report(phase: str) -> None:
+        elapsed = time.monotonic() - started
+        typer.echo(f"cloning {source.normalized}: {phase} ({elapsed:.1f} s)", err=True)
+
+    return report
+
+
 async def acquire_for_cli(source: GitSource) -> PublishedSource:
     """Publish *source* into ``METABROWSER_HOME``, mapping failures to ``CLIError``.
 
@@ -102,7 +129,9 @@ async def acquire_for_cli(source: GitSource) -> PublishedSource:
         # The server's handler is not attached yet on these paths, so an explicit
         # ``--log-level`` needs its own, or Git's failure text is never printed.
         with maybe_cli_logging():
-            return await acquire_file_source(source, home=application_home())
+            return await acquire_source(
+                source, home=application_home(), on_phase=terminal_phase_reporter(source)
+            )
     except _ACQUIRE_CLI_ERRORS as exc:
         raise CLIError(str(exc)) from exc
     except RecordError as exc:
@@ -115,20 +144,26 @@ async def acquire_for_cli(source: GitSource) -> PublishedSource:
 def acquire_published_source(source: GitSource) -> PublishedSource:
     """Publish *source* into ``METABROWSER_HOME`` and return the alias."""
 
-    return asyncio.run(acquire_for_cli(source))
+    return run_cancelling_on_hangup(acquire_for_cli(source))
 
 
 def run_no_serve(root: Path | GitSource, *, log_level: str = "") -> None:
-    """Acquire a ``file://`` Git source and print its slug, store, and revision."""
+    """Acquire a Git source and print its slug, store, revision, and URL selection."""
 
     apply_log_level(log_level)
     if isinstance(root, Path):
-        raise CLIError("ROOT is a local path; --no-serve acquires a file:// Git source")
+        raise CLIError("ROOT is a local path; --no-serve acquires a file:// or https:// Git source")
     published = acquire_published_source(root)
     typer.echo(f"acquired: {published.source.normalized}")
     typer.echo(f"slug: {published.slug}")
     typer.echo(f"store: {published.store_id}")
     typer.echo(f"revision: {published.default_revision}")
+    if root.selection is not None:
+        # After the identity lines: the store is published even when the URL's ref is
+        # not in it, and the error that follows says so.
+        resolved = run_cancelling_on_hangup(resolve_and_check_for_cli(published, root.selection))
+        for line in selection_lines(root.selection, resolved):
+            typer.echo(line)
 
 
 def run_api_after_acquire(

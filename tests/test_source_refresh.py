@@ -43,7 +43,9 @@ from metabrowser.mirror_refresh import (
     RecordedFreshness,
     RefreshCoordinator,
     RefreshResult,
+    followed_outcome,
 )
+from metabrowser.repository_context import RepositoryContext
 from metabrowser.source import (
     SubjectNotOpenError,
     attach_owned_subject,
@@ -267,7 +269,7 @@ def test_concurrent_refresh_requests_join_one_fetch(
     calls: list[str] = []
     release = threading.Event()
 
-    async def held_update(home: Path, store_key: str) -> StoreUpdate:
+    async def held_update(home: Path, store_key: str, *, remote_url: str) -> StoreUpdate:
         calls.append(store_key)
         await asyncio.to_thread(release.wait, 30)
         return StoreUpdate(RefreshOutcome.succeeded, _FUTURE)
@@ -307,8 +309,10 @@ def test_the_shutdown_cancels_a_running_refresh(
     origin: _Origin, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     ended: list[str] = []
+    fetching = threading.Event()
 
-    async def endless_update(home: Path, store_key: str) -> StoreUpdate:
+    async def endless_update(home: Path, store_key: str, *, remote_url: str) -> StoreUpdate:
+        fetching.set()
         try:
             await asyncio.sleep(3600)
         except asyncio.CancelledError:
@@ -321,6 +325,9 @@ def test_the_shutdown_cancels_a_running_refresh(
     with TestClient(server.app) as client:
         assert _post(client, "/api/source/refresh").json()["refresh"] == "started"
         assert client.get("/api/source/status").json()["refreshing"] is True
+        # The job reads the store record before it fetches; shut down only once the
+        # fetch itself is running, so the cancellation lands inside it.
+        assert fetching.wait(10)
     assert ended == ["cancelled"]
 
 
@@ -378,7 +385,7 @@ def test_one_shot_api_finishes_the_refresh_it_was_asked_for(
 def test_one_shot_api_fails_when_the_refresh_outlasts_its_wait(
     tmp_path: Path, origin: _Origin, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    async def slow_update(home: Path, store_key: str) -> StoreUpdate:
+    async def slow_update(home: Path, store_key: str, *, remote_url: str) -> StoreUpdate:
         await asyncio.sleep(60)
         return StoreUpdate(RefreshOutcome.succeeded, _FUTURE)
 
@@ -405,11 +412,23 @@ def test_pin_selections_resolve_in_the_mirror_and_refusals_are_typed(
     assert by_prefix.status_code == 200
     assert by_prefix.json()["status"]["pin"] == origin.first
 
+    # A server fetches once for a selection its mirror lacks, then answers not found.
+    for missing in ({"ref": "nope"}, {"oid": "0" * 40}):
+        pending = served.post("/api/source/pin", json=missing, headers=_JSON)
+        assert pending.status_code == 202, missing
+        assert pending.json()["code"] == "selection_pending"
+        assert pending.json()["refresh"] in {"started", "joined"}
+        _settle(served)
+        gone = served.post("/api/source/pin", json=missing, headers=_JSON)
+        assert gone.status_code == 404, missing
+        assert gone.json()["code"] == "selection_not_found"
+
     cases: list[tuple[Any, int, str]] = [
-        ({"ref": "nope"}, 404, "selection_not_found"),
-        ({"oid": "0" * 40}, 404, "selection_not_found"),
         ({"ref": ":/first"}, 400, "invalid_selection"),
         ({"ref": "topic@{1}"}, 400, "invalid_selection"),
+        # A trailing newline is not part of a commit ID, whatever ``$`` would accept.
+        ({"oid": origin.first[:7] + "\n"}, 400, "invalid_selection"),
+        ({"ref": origin.first[:7] + "\n"}, 400, "invalid_selection"),
         ({"ref": "refs/heads/topic"}, 400, "invalid_selection"),
         ({"ref": "topic", "oid": origin.first}, 400, "invalid_selection"),
         ({}, 400, "invalid_selection"),
@@ -429,6 +448,27 @@ def test_pin_selections_resolve_in_the_mirror_and_refusals_are_typed(
     assert oversized.status_code == 413
     # None of those changed what is served.
     assert served.get("/api/source/status").json()["pin"] == origin.first
+
+
+def test_a_branch_pushed_after_serving_began_is_fetched_once_and_served(
+    served: TestClient, origin: _Origin
+) -> None:
+    work = _work(origin)
+    _git(work, "checkout", "-q", "-b", "later")
+    (work / "later.txt").write_text("later\n", encoding="utf-8")
+    _git(work, "add", "later.txt")
+    _git(work, "commit", "-qm", "later")
+    _git(work, "push", "-q", str(origin.path), "later")
+    later = _rev(work)
+
+    pending = _post(served, "/api/source/pin", {"ref": "later"})
+    assert pending.status_code == 202
+    assert pending.json()["code"] == "selection_pending"
+    _settle(served)
+    switched = _post(served, "/api/source/pin", {"ref": "later"})
+    assert switched.status_code == 200, switched.json()
+    status = switched.json()["status"]
+    assert (status["pin"], status["ref_name"]) == (later, "later")
 
 
 def test_a_switched_pin_is_the_one_closed_at_shutdown(origin: _Origin) -> None:
@@ -571,6 +611,9 @@ class _BusyMirror:
 
     async def refresh_running_elsewhere(self) -> bool:
         return False
+
+    def repository_context(self, *, revision: str, branch: str | None) -> RepositoryContext | None:
+        return None
 
 
 @pytest.mark.parametrize(
@@ -834,3 +877,30 @@ def test_a_detached_origin_head_is_a_quiet_outcome(served: TestClient, origin: _
     assert status["ref"] == "refs/remotes/origin/topic"
     assert status["latest"] == origin.second
     assert status["stale"] is False
+
+
+def test_a_followed_refresh_counts_only_if_it_wrote_its_record() -> None:
+    """A refresh another process ran that was killed writes no record; the old one is not it.
+
+    The record file's stamp tells a rewrite apart even within one second; without
+    stamps only a record from a later second counts.
+    """
+
+    busy_at = "2026-09-24T10:00:05Z"
+    before = RecordedFreshness(busy_at, "refresh", "succeeded", busy_at, (7, 1_000))
+    rewritten = RecordedFreshness(busy_at, "refresh", "not_found_or_private", busy_at, (8, 1_500))
+
+    def follow(recorded: RecordedFreshness, *, ended: bool = True) -> str:
+        return followed_outcome(recorded, baseline=before, since=busy_at, ended=ended)
+
+    # The same second, told apart by the stamp: a rewrite counts, the earlier record not.
+    assert follow(rewritten) == "not_found_or_private"
+    assert follow(before) == "failed"
+    assert follow(rewritten, ended=False) == "failed"
+    # Without stamps, a same-second record is not trusted; a later one is.
+    unstamped = RecordedFreshness(busy_at, "refresh", "succeeded", busy_at)
+    later = RecordedFreshness(busy_at, "refresh", "succeeded", "2026-09-24T10:00:06Z")
+    assert followed_outcome(unstamped, baseline=None, since=busy_at, ended=True) == "failed"
+    assert followed_outcome(later, baseline=None, since=busy_at, ended=True) == "succeeded"
+    empty = RecordedFreshness(None, None, None, None)
+    assert followed_outcome(empty, baseline=None, since=busy_at, ended=True) == "failed"

@@ -453,6 +453,18 @@ function encodeGitPathAuthored(names) {
 }
 
 /**
+ * The GitPath wire of a slash-separated display path, keeping a trailing slash.
+ *
+ * @param {string} path
+ */
+export function gitPathWireForDisplayPath(path) {
+  const trailingSlash = path.endsWith("/");
+  const names = path.split("/").filter((name) => name !== "");
+  const wire = encodeGitPathAuthored(names);
+  return trailingSlash && wire ? `${wire}/` : wire;
+}
+
+/**
  * @param {string | undefined} serialized
  * @param {boolean} decode
  * @returns {string | undefined | ResolvedTarget}

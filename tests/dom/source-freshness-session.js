@@ -81,6 +81,7 @@ function createPage() {
   let nextTimer = 1;
   let visible = true;
   let reloads = 0;
+  const navigated = [];
   let renders = 0;
   let model = null;
   const postAnswers = { "/api/source/refresh": [], "/api/source/pin": [] };
@@ -127,6 +128,9 @@ function createPage() {
     reload() {
       reloads += 1;
     },
+    navigate(href) {
+      navigated.push(href);
+    },
   };
 
   return {
@@ -158,7 +162,7 @@ function createPage() {
               : String(pending[0].delayMs);
       const painted = renders;
       renders = 0;
-      return {
+      const observed = {
         step,
         requests: log.splice(0),
         timer,
@@ -166,6 +170,11 @@ function createPage() {
         repaints: painted,
         paint: paintOf(model),
       };
+      // Only a page a selection arrived for navigates; the other steps omit the key.
+      if (navigated.length > 0) {
+        observed.navigated = navigated.splice(0);
+      }
+      return observed;
     },
   };
 }
@@ -265,6 +274,48 @@ async function run() {
     page.setStatus(recorded.after_switch);
     await controller.start();
     steps.push(page.observe("switched before the first poll"));
+    controller.dispose();
+  }
+
+  // A page opened on the default branch while the URL's selection waited for its fetch:
+  // once the fetch brings it and the server serves it, the page goes to its address.
+  {
+    const page = createPage();
+    const pending = recorded.selection_pending;
+    const controller = freshness.createController(page.deps, {
+      shown: { pin: pending.pin, ref: pending.ref },
+    });
+    page.setStatus(pending);
+    page.answerPost("/api/source/refresh", 202, recorded.selection_refresh_started);
+    await controller.start();
+    steps.push(page.observe("a URL selection waits for its fetch"));
+    page.setStatus(recorded.selection_found);
+    await page.fireTimer();
+    steps.push(page.observe("the fetch brought the selection; the page goes to it"));
+    await page.fireTimer();
+    steps.push(page.observe("a page goes to a selection once"));
+    controller.dispose();
+  }
+
+  // A page whose address the fetch did not bring, and one whose fetch could not run:
+  // the row says so, and the second offers to fetch again.
+  {
+    const page = createPage();
+    const controller = freshness.createController(page.deps);
+    page.setStatus(recorded.selection_not_found);
+    await controller.start();
+    steps.push(page.observe("the address is not on the origin"));
+    controller.dispose();
+  }
+  {
+    const page = createPage();
+    const controller = freshness.createController(page.deps);
+    page.setStatus(recorded.selection_fetch_failed);
+    await controller.start();
+    steps.push(page.observe("the address could not be fetched"));
+    page.answerPost("/api/source/refresh", 202, recorded.selection_retry_started);
+    await controller.acceptOffer();
+    steps.push(page.observe("retry the address"));
     controller.dispose();
   }
 

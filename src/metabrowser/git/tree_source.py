@@ -161,10 +161,14 @@ class GitBatchProtocolError(GitError):
 
 
 def display_segment(segment: bytes) -> str:
-    """Replacement-safe UTF-8. C0 and DEL become U+FFFD so chrome cannot wrap."""
+    """Replacement-safe UTF-8. C0, DEL, and C1 become U+FFFD.
+
+    Chrome cannot wrap on them, and a terminal cannot be sent an escape sequence: C1
+    includes U+009B, a one-character CSI, which a URL can spell as ``%C2%9B``.
+    """
 
     text = segment.decode("utf-8", "replace")
-    return "".join("\ufffd" if ord(ch) < 32 or ch == "\x7f" else ch for ch in text)
+    return "".join("\ufffd" if ord(ch) < 0x20 or 0x7F <= ord(ch) <= 0x9F else ch for ch in text)
 
 
 def _b64encode(raw: bytes) -> str:
@@ -1485,6 +1489,15 @@ class GitRevisionSubject:
         await self._content.aclose()
 
 
+def ref_branch_name(ref: str | None) -> str | None:
+    """The origin's branch name for a mirrored branch ref, else ``None`` (a tag, a commit)."""
+
+    prefix = "refs/remotes/origin/"
+    if ref is None or not ref.startswith(prefix) or len(ref) == len(prefix):
+        return None
+    return ref.removeprefix(prefix)
+
+
 def ref_short_name(ref: str | None) -> str | None:
     """The name a reader knows a mirror ref by: ``topic`` for ``refs/remotes/origin/topic``.
 
@@ -1558,6 +1571,7 @@ __all__ = [
     "follow_git_symlinks",
     "git_revision_subject",
     "read_store_blob",
+    "ref_branch_name",
     "ref_short_name",
     "require_full_oid",
     "resolve_git_blob_entry",

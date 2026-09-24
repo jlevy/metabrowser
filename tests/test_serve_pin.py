@@ -32,7 +32,7 @@ from starlette.testclient import TestClient
 from typer.testing import CliRunner
 
 from metabrowser import server
-from metabrowser.cache.acquire import PublishedSource, acquire_file_source
+from metabrowser.cache.acquire import PublishedSource, acquire_source
 from metabrowser.cache.repository_store import open_revision
 from metabrowser.capabilities import get_capabilities
 from metabrowser.cli.main import _app, _run_cli
@@ -336,7 +336,7 @@ def test_a_folder_whose_startup_fails_exits_non_zero(
 
 
 def _published(tmp_path: Path, origin: _Origin) -> PublishedSource:
-    return asyncio.run(acquire_file_source(_file_source(origin.path), home=tmp_path / "home"))
+    return asyncio.run(acquire_source(_file_source(origin.path), home=tmp_path / "home"))
 
 
 def _counting_opener(
@@ -593,7 +593,7 @@ def test_a_served_pin_reads_nothing_outside_its_own_store(
     # The diagnostic routes answer only when enabled, so enable them for the sweep.
     monkeypatch.setenv("METABROWSER_DEBUG", "1")
     other = _second_source(tmp_path)
-    asyncio.run(acquire_file_source(_file_source(other.path), home=home))
+    asyncio.run(acquire_source(_file_source(other.path), home=home))
     cwd = tmp_path / "cwd"
     cwd.mkdir()
     (cwd / "canary.md").write_text(f"{_WORKING_DIRECTORY_CANARY}\n", encoding="utf-8")

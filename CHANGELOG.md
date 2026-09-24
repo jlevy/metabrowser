@@ -81,6 +81,92 @@ Plugin SDK:
   release, is gone: it handed a hook the raw active source, which is what the content
   reader replaces.
 
+GitHub URLs and HTTPS:
+
+- A GitHub URL copied from the browser opens the repository it names:
+  `metab https://github.com/owner/repo` clones it into the cache and serves it, pinned
+  and untrusted like any acquired source; `--no-serve` only clones it, and `--show` and
+  `--api` inspect it in-process.
+  Serving a `/blob/` or `/tree/` URL opens the browser at that file or folder, with the
+  `#L10-L20` anchor kept in the address, and the banner names the ref, the selection,
+  and a pull request’s number; `/api/source/status` reports that number as
+  `pull_request`. `/tree/…`, `/blob/…` (with `#L10`, `#L10-L20`, or `#L10C5-L20C8` and
+  `?plain=1`), `/commit/<id>`, `/pull/<n>/commits/<id>`, and `raw.githubusercontent.com`
+  file URLs pin the commit they point at; the mirror decides where a branch name
+  containing `/` ends, preferring a branch, then a tag, then a full or abbreviated
+  commit ID. `--no-serve` prints the selection after the identity lines, and `--show`
+  and `--api` print it on stderr.
+  A `/pull/<n>` URL opens the default branch and reports the number until pull-request
+  data arrives. Ref names match exactly, including letter case, and `HEAD` names the
+  default branch; on a case-insensitive filesystem, a repository whose branch or tag
+  names differ only in case is refused as `ref_case_collision` rather than risk pinning
+  the wrong commit. Every spelling of a repository — one trailing `.git`, a trailing
+  slash, `www.`, letter case, and `git@github.com:owner/repo.git` — is one source,
+  `https://github.com/owner/repo`. Other github.com pages, `http://`, and GitHub’s own
+  top-level pages are refused with a typed reason and a message that offers the
+  repository URL; tracking parameters are dropped and never echoed.
+  A C1 control character in a path, such as `%C2%9B`, is shown as U+FFFD like C0, so an
+  error message cannot send a terminal an escape sequence.
+  A ref, commit, or path the mirror does not have is reported by `--no-serve`, `--show`,
+  and `--api` as `ref_not_found`, `commit_not_found`, or `path_not_found`; those modes
+  read the mirror as it is and do not fetch.
+  A server instead serves the default branch, fetches once in the background, and
+  switches to the selection if the fetch brings it, like any pin switch; a page opened
+  meanwhile then goes to the selection’s address, line anchor included, which status
+  reports as `selection_href`. Until then the page’s freshness row says the address is
+  still being fetched, is not on the origin, or could not be fetched, with a Retry.
+  `/api/source/status` reports `selection_state` as `pending`, then `found` or
+  `not_found`; `fetch_failed` when the fetch could not run, in which case the next
+  refresh tries again; and `superseded` once a pin switch serves something else, which a
+  waiting selection then never undoes.
+  A mirror cloned by the same command has just been fetched, so there a missing
+  selection is not found at once.
+  One-shot `--api /api/source/refresh --data …` also waits for the refresh it asks for
+  and reports the selection after it.
+  In a server, `POST /api/source/pin` for a branch, tag, or commit the mirror lacks
+  likewise answers `202` with `selection_pending` and fetches once; asked again after
+  that fetch it switches, answers `404`, or answers `502` `selection_fetch_failed` when
+  the fetch could not run.
+  The pin route resolves as URL opening does: `HEAD` is the default branch, and a name
+  that is not a commit, such as a tag of a tree, answers `409` `not_a_commit` at once
+  rather than fetching.
+  A commit ID in a URL or a pin request has 7 to 64 hexadecimal digits, and a trailing
+  newline is not one. github.com links inside a rendered README of a served GitHub mirror
+  open inside the pin, as they already did for a served checkout of the repository.
+
+- `https://` sources are acquired, anonymously for a public repository.
+  When `gh` is installed it is Git’s credential helper for `https://github.com` only,
+  after every configured helper is cleared, so `gh auth login` opens a private
+  repository and no other host is offered a GitHub token.
+  A failed https acquisition names its cause: `not_found_or_private`,
+  `network_unreachable`, `connection_interrupted`, `tls_failed`, `timed_out`,
+  `server_error`, `rate_limited`, `proxy_auth_required`, or `too_large`, the last when
+  `gh` reports a repository too large to clone within the acquisition deadline.
+  The size check asks github.com only, whatever host `GH_HOST` names.
+  Git runs with `HOME=/dev/null` while it acquires, so curl reads no `~/.netrc`; `gh`
+  alone is given the real home, without `GH_DEBUG`, `GH_HOST`, `GH_REPO`,
+  `CLICOLOR_FORCE`, or `GH_FORCE_TTY`. A transfer slower than 1000 bytes per second for
+  30 seconds is treated as stalled, and an origin that does not answer the first request
+  within 30 seconds times out rather than waiting for curl’s five-minute connect
+  timeout. On a terminal, a first clone reports its phases and elapsed time.
+  A served mirror refreshes from the same URL with the same arguments, including the
+  prune and single retry after a ref that cannot be locked, and a refresh’s outcome, in
+  the status and in the store’s `state.yml`, carries the same names, plus
+  `ref_case_collision` where a case-insensitive filesystem cannot hold two refs apart.
+  Git does not always refuse that fetch: given `SAME` beside an unchanged `same`, it
+  writes `SAME` into `same`’s file and succeeds, repointing `same`. A refresh on such a
+  filesystem checks the store holds every ref the fetch wrote under its exact name, and
+  otherwise puts every ref back and reports `ref_case_collision`, so no pin resolves to
+  the twin’s commit.
+
+- A terminal hangup or `SIGTERM` now cancels an acquisition the way Ctrl-C does: Git and
+  every helper it started are stopped, staging is removed, and `metab` exits with status
+  129 or 143. A hangup that was already ignored, as under `nohup`, stays ignored.
+  A cancellation that arrives while Git is still starting also stops the helpers it
+  already forked, rather than only `git` itself.
+  While a Git source is served, a hangup stops the server as Ctrl-C does, killing a
+  running refresh’s Git first, and exits 129.
+
 Repository cache:
 
 - New read-only routes `/api/cache/layout`, `/api/cache/sources`,
@@ -97,7 +183,7 @@ Repository cache:
   most; no response reports a cache path, pack file, or Git internal.
 
 - The CLI classifies `ROOT` as a string before any path is constructed.
-  A bare local path is still served; `https` and `ssh` clone URLs stay closed.
+  A bare local path is still served; `ssh` clone URLs stay closed.
   `file://` is the only way to ask for a local origin to be acquired — a bare
   `/path/to/repo` is never rewritten into one — and `ext::` remote-helper syntax is
   rejected. `metab file://… --no-serve` fetches into the cache and prints slug, store
@@ -112,9 +198,8 @@ Repository cache:
   filter’s `unsupported_for_subject` answer is the pass.
   `--walk` refuses a Git source: the walker reads a filesystem, and a pin’s complete
   listing is `/api/tree`. None of these binds a port.
-  https and ssh stay closed.
-  Those pin modes report acquisition failures with the same messages as `--no-serve`,
-  and a Git failure while opening the pin is also path-free.
+  ssh stays closed. Those pin modes report acquisition failures with the same messages as
+  `--no-serve`, and a Git failure while opening the pin is also path-free.
   A pin’s `/api/tree` lists directories before files, as a folder listing does.
   A pinned blob larger than the 16 MiB whole-read limit is classified from a bounded
   window and paged in the text and byte views like a large file on disk, instead of

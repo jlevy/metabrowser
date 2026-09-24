@@ -26,6 +26,7 @@ import uvicorn
 from metabrowser.build_version import build_state
 from metabrowser.cli.common import apply_log_level, validate_contained_path
 from metabrowser.cli.exit_codes import INTERRUPTED_EXIT_CODE
+from metabrowser.cli.hangup import HANGUP_EXIT_STATUS
 from metabrowser.cli.http_readiness import wait_for_http_ok_then
 from metabrowser.cli.plugin_paths import apply_extra_plugin_dirs
 from metabrowser.dotenv import load_dotenv_chain as _load_dotenv_chain
@@ -96,6 +97,9 @@ def _subject_open_failure_filter(_record: logging.LogRecord) -> bool:
 _STOPPING_NOTICE = b"Stopping Metabrowser.\n"
 
 
+_HANGUP: signal.Signals | None = getattr(signal, "SIGHUP", None)
+
+
 def _write_stopping_notice() -> None:
     """Announce the interrupt with a raw write to stderr.
 
@@ -109,7 +113,7 @@ def _write_stopping_notice() -> None:
         os.write(2, _STOPPING_NOTICE)
 
 
-def _stop_now(_sig: int, _frame: FrameType | None) -> NoReturn:
+def _stop_now(sig: int, _frame: FrameType | None) -> NoReturn:
     """Stop the process on the spot, reporting the interrupt exit code.
 
     This is a local, single-user, read-only file browser. There are no
@@ -121,11 +125,12 @@ def _stop_now(_sig: int, _frame: FrameType | None) -> NoReturn:
 
     A background refresh's Git runs in its own process group, which exiting
     here would leave running, so those groups are killed first. What a killed
-    fetch leaves in its store is removed by the next refresh.
+    fetch leaves in its store is removed by the next refresh. A terminal hangup
+    that lands here exits with the status a shell reports for it.
     """
     _write_stopping_notice()
     kill_live_process_groups()
-    os._exit(INTERRUPTED_EXIT_CODE)
+    os._exit(HANGUP_EXIT_STATUS if sig == _HANGUP else INTERRUPTED_EXIT_CODE)
 
 
 class _QuietForceExitServer(uvicorn.Server):
@@ -274,13 +279,22 @@ def run_serve(
 
 
 def stop_on_interrupt() -> None:
-    """From here to process exit, one Ctrl-C stops the process; see ``_stop_now``.
+    """From here to process exit, Ctrl-C or a hangup stops the process; see ``_stop_now``.
 
     For a mode that does work of its own before serving, such as acquiring a Git
     source, and installs the handler once that work is done.
+
+    Such a mode serves a mirror whose refresh runs Git in its own process group,
+    outside the terminal's foreground group, so a terminal hangup reaches only this
+    process. At its default action the process would die at once and leave that Git
+    fetching, so a hangup takes the same path as Ctrl-C. A hangup ignored on entry,
+    as under ``nohup``, stays ignored. ``SIGTERM`` is uvicorn's: a graceful shutdown
+    whose lifespan cancels the refresh, which kills its Git.
     """
 
     signal.signal(signal.SIGINT, _stop_now)
+    if _HANGUP is not None and signal.getsignal(_HANGUP) != signal.SIG_IGN:
+        signal.signal(_HANGUP, _stop_now)
 
 
 def serve_until_interrupted(

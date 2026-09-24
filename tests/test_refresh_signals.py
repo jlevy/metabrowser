@@ -1,4 +1,4 @@
-"""A refresh's Git under real signals: Ctrl-C kills it, and a killed server's Git keeps its lock.
+"""A refresh's Git under real signals: Ctrl-C or a hangup kills it; a killed server's does not.
 
 A refresh's ``git fetch`` runs in its own process group, so exiting the server does
 not stop it by itself. These tests run the real ``metab`` command as a separate
@@ -8,7 +8,7 @@ arrives:
 
 - Ctrl-C (SIGINT) takes the immediate-exit path, which kills the fetch's process group
   before the interpreter exits, so no Git is left writing the store and its fetch lock
-  is free;
+  is free. A terminal hangup (SIGHUP) takes the same path, exiting 129;
 - SIGKILL cannot run any handler, so the fetch outlives the server. It inherited the
   fetch lock's descriptor, so the lock stays held until it exits and no other process
   can start a refresh, or clean up files, under a live writer.
@@ -33,7 +33,7 @@ from pathlib import Path
 
 import pytest
 
-from metabrowser.cache.acquire import PublishedSource, acquire_file_source
+from metabrowser.cache.acquire import PublishedSource, acquire_source
 from metabrowser.cache.atomic import write_record_atomic
 from metabrowser.cache.locks import LockBusyError, repository_store_lock, store_fetch_lock
 from metabrowser.cache.paths import store_record
@@ -83,7 +83,7 @@ def stale(tmp_path: Path) -> Iterator[_Stale]:
     _git(work, "commit", "-qm", "small")
     origin = tmp_path / "origin.git"
     _git(work, "clone", "-q", "--bare", "--template=", "--", str(work), str(origin))
-    published = asyncio.run(acquire_file_source(_file_source(origin), home=tmp_path / "home"))
+    published = asyncio.run(acquire_source(_file_source(origin), home=tmp_path / "home"))
     (work / "large.bin").write_bytes(os.urandom(_LARGE_OBJECT_BYTES))
     _git(work, "add", "large.bin")
     _git(work, "commit", "-qm", "large")
@@ -133,6 +133,14 @@ def _fetch_group(stale: _Stale, server: subprocess.Popen[bytes]) -> int:
     raise AssertionError("the server never started its refresh fetch")
 
 
+def _refresh(stale: _Stale) -> RefreshOutcome:
+    published = stale.published
+    update = update_store(
+        published.home, published.store_key, remote_url=published.source.normalized
+    )
+    return asyncio.run(update).outcome
+
+
 def _group_alive(pgid: int) -> bool:
     try:
         os.killpg(pgid, 0)
@@ -164,13 +172,22 @@ def _wait_for_group_to_end(pgid: int, *, timeout_s: float) -> None:
         time.sleep(0.02)
 
 
-def test_ctrl_c_kills_the_refresh_fetch_and_frees_its_lock(stale: _Stale) -> None:
+@pytest.mark.parametrize(
+    ("stop", "status"),
+    [(signal.SIGINT, 130), (signal.SIGHUP, 129)],
+    ids=["ctrl-c", "hangup"],
+)
+def test_ctrl_c_or_a_hangup_kills_the_refresh_fetch_and_frees_its_lock(
+    stale: _Stale, stop: signal.Signals, status: int
+) -> None:
+    """A hangup reaches only the server, since the fetch left the terminal's group."""
+
     server = _serve(stale)
     try:
         pgid = _fetch_group(stale, server)
-        assert _group_alive(pgid), "the fetch finished before the server was interrupted"
-        server.send_signal(signal.SIGINT)
-        assert server.wait(timeout=30) == 130
+        assert _group_alive(pgid), "the fetch finished before the server was stopped"
+        server.send_signal(stop)
+        assert server.wait(timeout=30) == status
         # SIGKILL is delivered at once, but reaping the group can take a moment.
         _wait_for_group_to_end(pgid, timeout_s=5)
     finally:
@@ -183,7 +200,7 @@ def test_ctrl_c_kills_the_refresh_fetch_and_frees_its_lock(stale: _Stale) -> Non
     with store_fetch_lock(home, key):
         pass
     # What the killed fetch left is removed under the lock, and the next refresh works.
-    assert asyncio.run(update_store(home, key)).outcome is RefreshOutcome.succeeded
+    assert _refresh(stale) is RefreshOutcome.succeeded
 
 
 def test_a_killed_servers_fetch_keeps_the_lock_until_it_exits(stale: _Stale) -> None:
@@ -197,8 +214,8 @@ def test_a_killed_servers_fetch_keeps_the_lock_until_it_exits(stale: _Stale) -> 
     # other process can refresh, or clean up, under it.
     with pytest.raises(LockBusyError):
         store_fetch_lock(home, key)
-    assert asyncio.run(update_store(home, key)).outcome is RefreshOutcome.refreshing_elsewhere
+    assert _refresh(stale) is RefreshOutcome.refreshing_elsewhere
     _wait_for_group_to_end(pgid, timeout_s=120)
     with store_fetch_lock(home, key):
         pass
-    assert asyncio.run(update_store(home, key)).outcome is RefreshOutcome.succeeded
+    assert _refresh(stale) is RefreshOutcome.succeeded

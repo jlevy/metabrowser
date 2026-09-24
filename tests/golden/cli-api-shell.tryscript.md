@@ -122,7 +122,10 @@ status: 200
   "last_fetch_at": null,
   "last_outcome": null,
   "refreshing": false,
-  "stale": false
+  "stale": false,
+  "pull_request": null,
+  "selection_state": null,
+  "selection_href": null
 }
 ? 0
 ```

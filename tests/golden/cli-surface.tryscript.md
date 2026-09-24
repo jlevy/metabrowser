@@ -34,18 +34,20 @@ $ metab --help
  Data modes read the same server the browser reads, without a browser or a
  listening port: --api issues one route, --show reports the four layers
  behind one selection, --walk dumps the inventory, --diff shows a change
- set. A file:// Git source is served, shown, or checked at its default
- branch's commit under the untrusted profile; --no-serve only acquires it
- into the cache. Diagnostics: --check-api, --plugins, --plugin, --doctor.
+ set. A file:// or https:// Git source, or a GitHub web URL, is served, shown,
+ or checked at the commit it selects under the untrusted profile; --no-serve
+ only acquires it into the cache. Diagnostics: --check-api, --plugins,
+ --plugin, --doctor.
  Remote serving: --remote.
 
 ╭─ Arguments ──────────────────────────────────────────────────────────────────╮
 │   [root]      TEXT  Root directory to serve, check, or walk; a file may be   │
-│                     served directly. https, ssh, and file:// clone URLs are  │
-│                     Git sources, not local paths. A file:// source is        │
-│                     acquired into the cache and opened at its default        │
-│                     branch's commit, always untrusted; --no-serve only       │
-│                     acquires it. With no ROOT and no mode, prints help.      │
+│                     served directly. https, ssh, and file:// clone URLs and  │
+│                     GitHub web URLs are Git sources, not local paths. An     │
+│                     https:// or file:// source is acquired into the cache    │
+│                     and opened at the commit its URL selects, or its default │
+│                     branch's, always untrusted; --no-serve only acquires it; │
+│                     ssh stays closed. With no ROOT and no mode, prints help. │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Options ────────────────────────────────────────────────────────────────────╮
 │ --version          Show the installed version and exit.                      │
@@ -64,8 +66,8 @@ $ metab --help
 │                           kind, views, and a model summary.                  │
 │ --check-api               Run the navigation API scenario without a browser  │
 │                           or listening port.                                 │
-│ --no-serve                Acquire a file:// Git source into the cache        │
-│                           without starting a server.                         │
+│ --no-serve                Acquire a file:// or https:// Git source into the  │
+│                           cache without starting a server.                   │
 │ --remote           HOST   SSH into HOST, start metab there, and tunnel it to │
 │                           localhost. Pass the remote directory with --path.  │
 │ --plugins                 List every discovered plugin.                      │

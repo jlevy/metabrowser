@@ -34,6 +34,17 @@
   const OUTCOME_DETAIL = Object.freeze({
     origin_unavailable: "The origin could not be read.",
     fetch_failed: "The fetch from the origin failed.",
+    not_found_or_private:
+      "The origin says the repository does not exist, or it is private and the credentials offered do not open it.",
+    network_unreachable: "The origin's host could not be reached.",
+    connection_interrupted: "The connection to the origin was interrupted.",
+    tls_failed: "The secure connection to the origin failed.",
+    timed_out: "The origin did not answer, or stopped sending, in time.",
+    server_error: "The origin answered with a server error.",
+    rate_limited: "The origin is limiting requests; try again later.",
+    proxy_auth_required: "The proxy between here and the origin asked for credentials.",
+    ref_case_collision:
+      "The origin has branches or tags whose names differ only in letter case, which this file system cannot keep apart, so no ref moved.",
     validation_failed: "The origin's default branch did not arrive in the mirror as a commit.",
     default_branch_unknown:
       "The origin's HEAD names no branch, so the mirror keeps the default branch it had.",
@@ -42,6 +53,18 @@
     refreshing_elsewhere: "Another Metabrowser process is refreshing this mirror.",
     cancelled: "The refresh was stopped before it finished.",
     failed: "The refresh failed.",
+  });
+
+  // What the row says about the address a page was opened at, while the server serves
+  // the default branch in its place.
+  /** @type {Readonly<Record<string, string>>} */
+  const SELECTION_DETAIL = Object.freeze({
+    pending:
+      "The address this page was opened at is not in the mirror yet; it opens when the fetch brings it.",
+    not_found:
+      "The address this page was opened at is not on the origin, so the default branch is shown.",
+    fetch_failed:
+      "The address this page was opened at could not be fetched, so the default branch is shown.",
   });
 
   /**
@@ -105,6 +128,20 @@
     } else if (outcome !== null && outcome.outcome === "default_branch_unknown") {
       detail = `${detail} ${OUTCOME_DETAIL.default_branch_unknown}`;
     }
+    const selection = status.selection_state ?? null;
+    const retrySelection = selection === "fetch_failed" && !status.refreshing;
+    if (selection === "pending") {
+      detail = `${detail} ${SELECTION_DETAIL.pending}`;
+    } else if (selection === "not_found") {
+      tone = "warning";
+      label = `Address not found · fetched ${age}`;
+      detail = SELECTION_DETAIL.not_found;
+    } else if (retrySelection) {
+      tone = "warning";
+      label = `Address not fetched · fetched ${age}`;
+      const why = outcome !== null ? (OUTCOME_DETAIL[outcome.outcome] ?? "") : "";
+      detail = `${SELECTION_DETAIL.fetch_failed} ${why}`.trim();
+    }
     /** @type {MetabrowserSourceOffer | null} */
     let offer = null;
     if (page.shown !== null && (status.pin !== page.shown.pin || status.ref !== page.shown.ref)) {
@@ -113,6 +150,8 @@
         text: "The server now serves another revision",
         button: "Reload",
       };
+    } else if (retrySelection) {
+      offer = { kind: "retry", text: "Fetch the address again", button: "Retry" };
     } else if (
       status.ref !== null &&
       status.latest !== null &&
@@ -131,6 +170,30 @@
       detail = `${detail} ${status.ref_name ?? status.ref} is no longer on the origin; its commits stay readable here.`;
     }
     return { visible: true, tone, label, detail, offer, error };
+  }
+
+  /**
+   * Where a page should go when a URL selection it was opened for has arrived. Pure.
+   *
+   * A page opened while the selection waited for its fetch shows the default branch.
+   * Once the server serves the selection, that page goes to the selection's address,
+   * line anchor included. A page already showing the served pin stays.
+   *
+   * @param {MetabrowserSourceStatus | null} status
+   * @param {MetabrowserSourcePage | null} shown
+   * @returns {string | null}
+   */
+  function selectionToOpen(status, shown) {
+    if (
+      status === null ||
+      shown === null ||
+      status.selection_state !== "found" ||
+      typeof status.selection_href !== "string" ||
+      !status.selection_href.startsWith("/view/")
+    ) {
+      return null;
+    }
+    return status.pin !== shown.pin || status.ref !== shown.ref ? status.selection_href : null;
   }
 
   /**
@@ -181,6 +244,8 @@
     // (its origin is gone) must not ask again on every poll.
     let refreshAskedWhileVisible = false;
     let switching = false;
+    // A page goes to a selection that arrived at most once.
+    let openedSelection = false;
     /** @type {string | null} */
     let error = null;
 
@@ -218,6 +283,11 @@
       status = next;
       if (shown === null && next.pin !== null) {
         shown = { pin: next.pin, ref: next.ref };
+      }
+      const href = selectionToOpen(next, shown);
+      if (href !== null && !openedSelection) {
+        openedSelection = true;
+        deps.navigate(href);
       }
     }
 
@@ -289,6 +359,10 @@
       }
       if (offer.kind === "reload") {
         deps.reload();
+        return;
+      }
+      if (offer.kind === "retry") {
+        await requestRefresh();
         return;
       }
       switching = true;
@@ -482,6 +556,7 @@
         isVisible: () => document.visibilityState === "visible",
         render: (model) => paint(element, model, actions, live),
         reload: () => window.location.reload(),
+        navigate: (href) => window.location.assign(href),
       },
       { shown: window.METABROWSER_SOURCE_PIN ?? null },
     );
@@ -513,5 +588,6 @@
     describe,
     mount,
     relativeAge,
+    selectionToOpen,
   });
 })();

@@ -1,13 +1,18 @@
-"""CLI surface for --no-serve: mode selection, local paths, and fail-closed remotes."""
+"""CLI surface for --no-serve: mode selection, local paths, and fail-closed remotes.
+
+https and file:// are acquired; ssh stays closed.
+"""
 
 from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from metabrowser.cli.main import _app
 from metabrowser.errors import CLIError
+from tests.test_cache_acquire import _allow_installed_git
 from tests.test_cli_main import _plain_output
 
 runner = CliRunner()
@@ -50,10 +55,22 @@ def test_no_serve_rejects_a_local_path(tmp_path: Path) -> None:
     assert "file://" in str(result.exception)
 
 
-def test_https_no_serve_is_not_acquired() -> None:
-    result = runner.invoke(_app, ["https://example.com/owner/repo.git", "--no-serve"])
+def test_https_no_serve_names_an_unreachable_origin_by_its_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """https is acquired now; a closed local port answers without any network."""
+
+    _allow_installed_git(monkeypatch)
+    home = tmp_path / "home"
+    monkeypatch.setenv("METABROWSER_HOME", str(home))
+    result = runner.invoke(_app, ["https://127.0.0.1:1/owner/repo.git", "--no-serve"])
     assert isinstance(result.exception, CLIError)
-    assert "https Git sources are not acquired yet" in str(result.exception)
+    assert str(result.exception) == (
+        "https://127.0.0.1:1/owner/repo.git could not be reached; check the network "
+        "connection (network_unreachable); nothing was published"
+    )
+    staging = home / "cache" / "staging"
+    assert not staging.is_dir() or list(staging.iterdir()) == []
 
 
 def test_ssh_no_serve_is_not_acquired() -> None:
@@ -62,9 +79,9 @@ def test_ssh_no_serve_is_not_acquired() -> None:
     assert "ssh Git sources are not acquired yet" in str(result.exception)
 
 
-def test_https_api_cache_is_not_acquired() -> None:
+def test_ssh_api_cache_is_not_acquired() -> None:
     result = runner.invoke(
-        _app, ["https://example.com/owner/repo.git", "--api", "/api/cache/layout"]
+        _app, ["ssh://git@example.com/owner/repo.git", "--api", "/api/cache/layout"]
     )
     assert isinstance(result.exception, CLIError)
-    assert "https Git sources are not acquired yet" in str(result.exception)
+    assert "ssh Git sources are not acquired yet" in str(result.exception)

@@ -28,7 +28,7 @@ import pytest
 from httpx2 import Response
 
 from metabrowser.cache import acquire as acquire_module
-from metabrowser.cache.acquire import PublishedSource, acquire_file_source
+from metabrowser.cache.acquire import PublishedSource, acquire_source
 from metabrowser.cache.urls import GitSource, classify_root_argument
 from metabrowser.git.process import repository_store_target
 from metabrowser.git.tree_source import GitPath, git_revision_subject
@@ -129,7 +129,7 @@ def _origin(tmp_path: Path) -> _Origin:
 def _cold_acquire(tmp_path: Path) -> tuple[_Origin, PublishedSource]:
     require_admitted_git()
     origin = _origin(tmp_path)
-    published = asyncio.run(acquire_file_source(_file_source(origin.path), home=tmp_path / "home"))
+    published = asyncio.run(acquire_source(_file_source(origin.path), home=tmp_path / "home"))
     assert published.default_revision == origin.second
     store = published.git_dir
     listing = _store_git(store, "rev-list", "--objects", "--missing=print", "--all")
@@ -191,7 +191,7 @@ def test_a_warm_open_reuses_the_store_without_running_git(
         raise AssertionError("a cache hit runs no Git")
 
     monkeypatch.setattr(acquire_module, "_run", no_git)
-    again = asyncio.run(acquire_file_source(_file_source(origin.path), home=tmp_path / "home"))
+    again = asyncio.run(acquire_source(_file_source(origin.path), home=tmp_path / "home"))
     assert again == published
     assert _objects(published.git_dir) == before
 

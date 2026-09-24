@@ -2120,6 +2120,9 @@ declare global {
     last_outcome: { operation: string; outcome: string; at: string } | null;
     refreshing: boolean;
     stale: boolean;
+    pull_request: number | null;
+    selection_state: "pending" | "found" | "not_found" | "fetch_failed" | "superseded" | null;
+    selection_href: string | null;
   };
 
   /** The pin and ref a page was rendered for. */
@@ -2127,7 +2130,8 @@ declare global {
 
   type MetabrowserSourceOffer =
     | { kind: "switch"; ref: string; latest: string; text: string; button: string }
-    | { kind: "reload"; text: string; button: string };
+    | { kind: "reload"; text: string; button: string }
+    | { kind: "retry"; text: string; button: string };
 
   /** What the freshness label says and offers; see static/source-freshness.js. */
   type MetabrowserSourceFreshnessModel = {
@@ -2153,6 +2157,7 @@ declare global {
     isVisible(): boolean;
     render(model: MetabrowserSourceFreshnessModel): void;
     reload(): void;
+    navigate(href: string): void;
   };
 
   type MetabrowserSourceFreshnessController = Readonly<{
@@ -2185,6 +2190,10 @@ declare global {
     ): MetabrowserSourceFreshnessModel;
     mount(element: HTMLElement): MetabrowserSourceFreshnessController;
     relativeAge(iso: string | null, nowMs: number): string;
+    selectionToOpen(
+      status: MetabrowserSourceStatus | null,
+      shown: MetabrowserSourcePage | null,
+    ): string | null;
   }>;
 
   type MetabrowserGitHistoryWindowRuntime = {

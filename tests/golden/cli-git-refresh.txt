@@ -19,7 +19,10 @@ status: 200
     "at": "<TIME>"
   },
   "refreshing": false,
-  "stale": false
+  "stale": false,
+  "pull_request": null,
+  "selection_state": null,
+  "selection_href": null
 }
 --- stderr ---
 # metab file://<ORIGIN> --api /api/source/refresh --data refresh.json
@@ -45,7 +48,10 @@ status: 202
       "at": "<TIME>"
     },
     "refreshing": true,
-    "stale": false
+    "stale": false,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
   }
 }
 after: /api/source/status
@@ -66,7 +72,10 @@ status: 200
     "at": "<TIME>"
   },
   "refreshing": false,
-  "stale": false
+  "stale": false,
+  "pull_request": null,
+  "selection_state": null,
+  "selection_href": null
 }
 --- stderr ---
 # metab file://<ORIGIN> --api /api/source/status
@@ -90,7 +99,10 @@ status: 200
     "at": "<TIME>"
   },
   "refreshing": false,
-  "stale": false
+  "stale": false,
+  "pull_request": null,
+  "selection_state": null,
+  "selection_href": null
 }
 --- stderr ---
 # metab file://<ORIGIN> --api /api/source/pin --data pin-second.json
@@ -116,7 +128,10 @@ status: 200
       "at": "<TIME>"
     },
     "refreshing": false,
-    "stale": false
+    "stale": false,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
   }
 }
 --- stderr ---
@@ -143,7 +158,10 @@ status: 200
       "at": "<TIME>"
     },
     "refreshing": false,
-    "stale": false
+    "stale": false,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
   }
 }
 --- stderr ---
@@ -181,7 +199,10 @@ status: 200
       "at": "<TIME>"
     },
     "refreshing": false,
-    "stale": false
+    "stale": false,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
   }
 }
 --- stderr ---
@@ -208,7 +229,10 @@ status: 202
       "at": "<TIME>"
     },
     "refreshing": true,
-    "stale": false
+    "stale": false,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
   }
 }
 after: /api/source/status
@@ -229,7 +253,10 @@ status: 200
     "at": "<TIME>"
   },
   "refreshing": false,
-  "stale": false
+  "stale": false,
+  "pull_request": null,
+  "selection_state": null,
+  "selection_href": null
 }
 --- stderr ---
 Error: the refresh ended with origin_unavailable
@@ -254,6 +281,9 @@ status: 200
     "at": "<TIME>"
   },
   "refreshing": false,
-  "stale": false
+  "stale": false,
+  "pull_request": null,
+  "selection_state": null,
+  "selection_href": null
 }
 --- stderr ---

@@ -130,6 +130,13 @@ READ_POLICY: Final[GitProcessPolicy] = GitProcessPolicy(
     isolate_user_config=False,
     no_lazy_fetch=False,
 )
+# Acquisition Git runs with HOME=/dev/null. User and XDG Git configuration are already
+# isolated; what HOME still reached was curl's optional ``$HOME/.netrc``, which Git
+# enables and cannot turn off, so a netrc entry would answer an origin's challenge
+# before any credential helper Metabrowser chose. Measured 2026-09-23 against a local
+# server answering 401: with a netrc in HOME, curl retried with its credentials; with
+# HOME=/dev/null it sent none. A credential helper that needs the real home (``gh``)
+# is given it in its own command.
 ACQUISITION_POLICY: Final[GitProcessPolicy] = GitProcessPolicy(
     name="acquisition",
     timeout_s=GIT_ACQUISITION_TIMEOUT_S,
@@ -139,7 +146,7 @@ ACQUISITION_POLICY: Final[GitProcessPolicy] = GitProcessPolicy(
     isolate_user_config=True,
     no_lazy_fetch=True,
     ssh_batch=True,
-    extra_env={"GCM_INTERACTIVE": "never", "LC_ALL": "C"},
+    extra_env={"GCM_INTERACTIVE": "never", "LC_ALL": "C", "HOME": os.devnull},
     own_process_group=True,
 )
 # Request-path reads of a published store: ``ls-tree``, ``rev-parse``, ``log``,
@@ -496,6 +503,7 @@ async def run_git(
     timeout_s: float | None = None,
     max_bytes: int | None = None,
     pass_fds: Sequence[int] = (),
+    stdin_bytes: bytes | None = None,
 ) -> bytes:
     """Run ``git`` with *args* in *cwd* and return raw stdout.
 
@@ -508,13 +516,21 @@ async def run_git(
     path used by local-worktree readers. *timeout_s* and *max_bytes*
     override the selected policy when a caller already named a bound.
     *pass_fds* are descriptors Git inherits, such as a lock it must hold for
-    as long as it runs, even if this process dies first.
+    as long as it runs, even if this process dies first. *stdin_bytes* is written
+    to Git's stdin, which is then closed, as ``update-ref --stdin`` reads it.
 
     Raises :class:`GitUnavailableError`, :class:`GitTimeoutError`,
     :class:`GitOutputTooLargeError`, or :class:`GitCommandError`.
     """
     chosen = policy if policy is not None else _default_policy(target)
-    proc = await spawn_git_process(args, cwd=cwd, target=target, policy=chosen, pass_fds=pass_fds)
+    proc = await spawn_git_process(
+        args,
+        cwd=cwd,
+        target=target,
+        policy=chosen,
+        pass_fds=pass_fds,
+        pipe_stdin=stdin_bytes is not None,
+    )
     timeout = chosen.timeout_s if timeout_s is None else timeout_s
     max_bytes = chosen.max_bytes if max_bytes is None else max_bytes
 
@@ -523,9 +539,19 @@ async def run_git(
     # reading, which a repository with a lot of output will do.
     stdout_task = asyncio.ensure_future(_read_capped(proc.stdout, max_bytes))
     stderr_task = asyncio.ensure_future(_read_capped(proc.stderr, _STDERR_MAX_BYTES))
+
+    async def feed_stdin() -> None:
+        if stdin_bytes is None or proc.stdin is None:
+            return
+        # A Git that exits early closes its end; its exit status says why.
+        with contextlib.suppress(BrokenPipeError, ConnectionResetError):
+            proc.stdin.write(stdin_bytes)
+            await proc.stdin.drain()
+        proc.stdin.close()
+
     try:
-        (stdout, overflowed), (stderr, _), returncode = await asyncio.wait_for(
-            asyncio.gather(stdout_task, stderr_task, proc.wait()),
+        _fed, (stdout, overflowed), (stderr, _), returncode = await asyncio.wait_for(
+            asyncio.gather(feed_stdin(), stdout_task, stderr_task, proc.wait()),
             timeout=timeout,
         )
         _reaped(proc)
@@ -632,7 +658,8 @@ async def spawn_git_process(
         # because Git compares the ceiling against its physical working directory.
         env["GIT_CEILING_DIRECTORIES"] = str(Path(work_cwd).resolve().parent)
     own_group = chosen.own_process_group and os.name == "posix"
-    try:
+
+    async def spawn_and_register() -> asyncio.subprocess.Process:
         proc = await asyncio.create_subprocess_exec(
             *argv,
             cwd=work_cwd,
@@ -644,14 +671,36 @@ async def spawn_git_process(
             start_new_session=own_group,
             pass_fds=tuple(pass_fds),
         )
+        # Registered as soon as it exists, so a stop that cannot unwind kills it too.
+        if own_group:
+            _register_group(proc)
+        return proc
+
+    spawn = asyncio.ensure_future(spawn_and_register())
+    try:
+        return await asyncio.shield(spawn)
+    except asyncio.CancelledError:
+        # Cancelled while the child was starting. The child may already have forked
+        # helpers, and asyncio's own cleanup would kill only ``git``; finish the
+        # spawn, then kill the whole group before the cancellation continues.
+        await _kill_when_spawned(spawn)
+        raise
     except OSError as exc:
         # Spawn itself failed — a missing cwd, a permissions problem, or
         # process-table exhaustion. Nothing downstream can distinguish
         # these usefully, so they collapse into one typed failure.
         raise GitUnavailableError(f"could not run git: {exc}") from exc
-    if own_group:
-        _register_group(proc)
-    return proc
+
+
+async def _kill_when_spawned(spawn: asyncio.Future[asyncio.subprocess.Process]) -> None:
+    """Wait out a spawn that a cancellation interrupted, then kill what it started."""
+
+    while not spawn.done():
+        with contextlib.suppress(asyncio.CancelledError):
+            await asyncio.wait({spawn})
+    if spawn.cancelled() or spawn.exception() is not None:
+        return
+    await terminate_git_process(spawn.result())
 
 
 async def run_git_at(
