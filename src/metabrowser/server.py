@@ -157,6 +157,7 @@ from metabrowser.inventory_engine.tree_page_assembly import (
 )
 from metabrowser.inventory_rollup import RollupOptions, RollupRank
 from metabrowser.jsonl_view import _parse_jsonl_file
+from metabrowser.mirror_refresh import lifespan_refresh
 
 # Document rendering is delegated through the KPress adapter and built-in plugin route.
 # KPress is the sole Markdown-to-HTML renderer; raw source remains a separate view.
@@ -212,7 +213,12 @@ from metabrowser.source import (
     session_filesystem_root,
     unsupported_source_payload,
 )
-from metabrowser.source_routes import SOURCE_ROUTES, SourceStatus, source_status
+from metabrowser.source_routes import (
+    SOURCE_ROUTES,
+    SourcePinGuard,
+    SourceStatus,
+    source_status,
+)
 from metabrowser.sse import api_stream
 from metabrowser.tree import (
     _IGNORE_CACHE,
@@ -541,6 +547,11 @@ STATIC_DIR: Path = Path(__file__).parent / "static"
 _DOCUMENT_WIDTH_SCRIPT = STATIC_DIR.joinpath("document-width.js").read_text(encoding="utf-8")
 if "</script" in _DOCUMENT_WIDTH_SCRIPT.lower():
     raise RuntimeError("document-width.js cannot be safely embedded in the index shell")
+# A pin's page names its commit on every data request, and must before any script
+# fetches, so the wrapper is inline on a pin and absent from a folder's page.
+_SOURCE_PIN_GUARD_SCRIPT = STATIC_DIR.joinpath("source-pin-guard.js").read_text(encoding="utf-8")
+if "</script" in _SOURCE_PIN_GUARD_SCRIPT.lower():
+    raise RuntimeError("source-pin-guard.js cannot be safely embedded in the index shell")
 
 _SLOW_SERVER_REQUEST_MS = int(
     os.environ.get(
@@ -1228,6 +1239,7 @@ async def index(request: Request) -> HTMLResponse:
     git_graph_url = _static_asset_url("git-graph.js")
     git_history_window_url = _static_asset_url("git-history-window.js")
     git_panel_url = _static_asset_url("git-panel.js")
+    source_freshness_url = _static_asset_url("source-freshness.js")
     app_url = _static_asset_url("app.js")
     perf_url = _static_asset_url("perf.js")
     # Inject the client-visible settings dict before any app code
@@ -1239,6 +1251,12 @@ async def index(request: Request) -> HTMLResponse:
         f"<script>window.METABROWSER_CONTAINER_EXTS={_json.dumps(_container_exts())};</script>"
     )
     repository_context_json = _json.dumps(repository_context).replace("<", "\\u003c")
+    # A pin's freshness row, filled by static/source-freshness.js. A folder has none.
+    source_freshness_row = (
+        '\n      <div class="source-freshness" id="source-freshness" hidden></div>'
+        if git_pin
+        else ""
+    )
     source_kind_json = _json.dumps("git_revision" if git_pin else "filesystem")
     # The tree's first rows, inlined. Without this the reader waits for a round
     # trip the server did not have to make them take: time to first row is
@@ -1289,6 +1307,17 @@ async def index(request: Request) -> HTMLResponse:
         f"<script>window.METABROWSER_SOURCE_KIND={source_kind_json};</script>"
         f"<script>window.METABROWSER_REPOSITORY_CONTEXT={repository_context_json};</script>"
     )
+    if isinstance(subject, GitRevisionSubject):
+        # The commit and ref the page is rendered for: its data requests name the commit,
+        # and the freshness row compares both with what the server serves, so a switch
+        # or a restart onto another pin before its first poll still offers a reload.
+        page_pin = _json.dumps({"pin": subject.commit_oid, "ref": subject.ref}).replace(
+            "<", "\\u003c"
+        )
+        repository_context_block += (
+            f"<script>window.METABROWSER_SOURCE_PIN={page_pin};</script>"
+            f"<script>{_SOURCE_PIN_GUARD_SCRIPT}</script>"
+        )
     # Read preferences from host-only cookies (not localStorage): cookies
     # ignore the port, so the choice is shared across every metabrowser instance
     # on this host (each folder server lands on its own port). Runs before the
@@ -1382,6 +1411,10 @@ async def index(request: Request) -> HTMLResponse:
         # first tree is usable. renderFile awaits this bundle and rechecks its
         # ownership claim before preparing or mounting a view.
         "view-composition": [{"src": view_composition_url}],
+        # Only a served mirror has freshness to show, so a folder never fetches
+        # this; a pin starts it after the first tree request settles, and the
+        # label it paints is a quiet row the page does not wait for.
+        "source-freshness": [{"src": source_freshness_url}],
         "source-append": [{"src": source_append_url}],
         "chart": [
             {"src": _static_asset_url("vendor/chart.umd.min.js"), "provides": "Chart"},
@@ -1584,7 +1617,7 @@ async def index(request: Request) -> HTMLResponse:
       <div class="index-progress" id="index-progress" role="status" aria-live="polite" hidden>
         <span class="index-progress-spinner" aria-hidden="true"></span>
         <span class="index-progress-text">Scanning…</span>
-      </div>
+      </div>{source_freshness_row}
     </div>
     <div class="resize-handle" id="tree-resize"></div>
     <!-- Every route that serves this shell selects something: /view/ names a
@@ -3868,7 +3901,8 @@ routes = [
     # Read-only logical cache state for CLI parity. The table imports the cache and
     # the application home only inside a cache request; see ``metabrowser.cache.routes``.
     *CACHE_ROUTES,
-    # What this server serves: the subject and, on a pin, its commit and ref.
+    # What this server serves: the subject and, on a pin, its commit, ref, and
+    # freshness, plus the POST routes that refresh the mirror and switch the pin.
     *SOURCE_ROUTES,
     *build_plugin_routes(_LOADED_PLUGINS),
 ]
@@ -3883,6 +3917,9 @@ middleware = [
     # inner layer never got to shape — still leaves ``/raw`` sandboxed.
     Middleware(_RawTrustHeaderMiddleware),
     Middleware(_HostValidationMiddleware),
+    # Inside the origin checks: a page showing a pin the server has since switched away
+    # from is refused with a typed pin_changed rather than answered from the new pin.
+    Middleware(SourcePinGuard),
     Middleware(_SlowRequestLogMiddleware),
     Middleware(GZipMiddleware, minimum_size=1024, compresslevel=6),
 ]
@@ -3913,10 +3950,12 @@ def _inventory_root_provider() -> object:
 @asynccontextmanager  # pyright: ignore[reportDeprecated]
 async def _lifespan(app: Starlette) -> AsyncIterator[None]:
     # A served pin attaches before the inventory opens, which reads the active
-    # subject, and closes after it, so nothing still reads its Git processes.
+    # subject, and closes after it, so nothing still reads its Git processes. The
+    # refresh jobs start once the pin is attached and are cancelled before it closes.
     async with (
         lifespan_subject(),
         build_lifespan(app=app, root_provider=_inventory_root_provider),
+        lifespan_refresh(app),
     ):
         try:
             yield

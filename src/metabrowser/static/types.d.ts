@@ -2106,7 +2106,93 @@ declare global {
     readonly segmentCapacity: number;
   }>;
 
+  /** One answer of `GET /api/source/status`. */
+  type MetabrowserSourceStatus = {
+    subject: string;
+    generation: number;
+    pin: string | null;
+    ref: string | null;
+    ref_name: string | null;
+    refreshable: boolean;
+    latest: string | null;
+    ref_on_origin: boolean | null;
+    last_fetch_at: string | null;
+    last_outcome: { operation: string; outcome: string; at: string } | null;
+    refreshing: boolean;
+    stale: boolean;
+  };
+
+  /** The pin and ref a page was rendered for. */
+  type MetabrowserSourcePage = { pin: string; ref: string | null };
+
+  type MetabrowserSourceOffer =
+    | { kind: "switch"; ref: string; latest: string; text: string; button: string }
+    | { kind: "reload"; text: string; button: string };
+
+  /** What the freshness label says and offers; see static/source-freshness.js. */
+  type MetabrowserSourceFreshnessModel = {
+    visible: boolean;
+    tone: "quiet" | "stale" | "refreshing" | "warning";
+    label: string;
+    detail: string;
+    offer: MetabrowserSourceOffer | null;
+    error: string | null;
+  };
+
+  type MetabrowserSourceResponse = { status: number; etag: string | null; body: unknown };
+
+  type MetabrowserSourceFreshnessDependencies = {
+    request(
+      method: "GET" | "POST",
+      route: string,
+      options: { etag?: string | null; body?: unknown },
+    ): Promise<MetabrowserSourceResponse>;
+    schedule(callback: () => void, delayMs: number): unknown;
+    cancel(handle: unknown): void;
+    now(): number;
+    isVisible(): boolean;
+    render(model: MetabrowserSourceFreshnessModel): void;
+    reload(): void;
+  };
+
+  type MetabrowserSourceFreshnessController = Readonly<{
+    start(): Promise<void>;
+    poll(): Promise<void>;
+    requestRefresh(): Promise<void>;
+    acceptOffer(): Promise<void>;
+    onVisibilityChange(): void;
+    dispose(): void;
+    snapshot(): {
+      status: MetabrowserSourceStatus | null;
+      etag: string | null;
+      shown: MetabrowserSourcePage | null;
+      timerPending: boolean;
+      refreshAskedWhileVisible: boolean;
+      error: string | null;
+    };
+  }>;
+
+  type MetabrowserSourceFreshnessRuntime = Readonly<{
+    FAST_POLL_MS: number;
+    SLOW_POLL_MS: number;
+    createController(
+      deps: MetabrowserSourceFreshnessDependencies,
+      options?: { shown?: MetabrowserSourcePage | null },
+    ): MetabrowserSourceFreshnessController;
+    describe(
+      status: MetabrowserSourceStatus | null,
+      page: { shown: MetabrowserSourcePage | null; nowMs: number; error?: string | null },
+    ): MetabrowserSourceFreshnessModel;
+    mount(element: HTMLElement): MetabrowserSourceFreshnessController;
+    relativeAge(iso: string | null, nowMs: number): string;
+  }>;
+
   type MetabrowserGitHistoryWindowRuntime = {
+    classifyPageFailure(failure: {
+      status: number;
+      code: string | null;
+      initial: boolean;
+    }): "stale" | "recover" | "failed";
     createPageCache(options: {
       maxPages: number;
       onEvict?: (page: MetabrowserGitHistoryPage) => void;
@@ -2316,6 +2402,20 @@ declare global {
     MetabrowserTreeFilterModel: MetabrowserTreeFilterModel;
     MetabrowserTreeKeyboardNavigation: MetabrowserTreeKeyboardRuntime;
     MetabrowserSourceAppend: MetabrowserSourceAppendRuntime;
+    MetabrowserSourceFreshness?: MetabrowserSourceFreshnessRuntime;
+    MetabrowserSourcePinGuard?: Readonly<{
+      PIN_CHANGED_HEADER: string;
+      PIN_HEADER: string;
+      guardFetch(
+        fetchImpl: typeof fetch,
+        pin: string,
+        base: () => string,
+        onPinChanged: (served: string) => void,
+      ): typeof fetch;
+      guardedRequest(url: string, base: string): boolean;
+    }>;
+    /** The pin and ref a pin's page was rendered for; absent on a folder. */
+    METABROWSER_SOURCE_PIN?: MetabrowserSourcePage;
     MetabrowserViewState: MetabrowserViewStateRuntime;
     MetabrowserViewComposition: MetabrowserViewCompositionRuntime;
     MetabrowserTreemapLayout: MetabrowserTreemapLayoutApi;

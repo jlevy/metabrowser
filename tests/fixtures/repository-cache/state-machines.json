@@ -45,6 +45,13 @@
         "path": "cache/locks/staging/<entry>.lock",
         "acquisition": "taken before cache/staging/<entry>/ is created and held by its one owner for the entry's whole life, including network work; every other process only tries it without blocking",
         "why_outside_the_hierarchy": "It is a liveness marker nobody waits on, so holding it across network work cannot block another operation."
+      },
+      {
+        "name": "store_fetch",
+        "mode": "exclusive",
+        "path": "cache/locks/stores/<store-key>.fetch.lock",
+        "acquisition": "tried without blocking by a refresh of a published store and held through its network work, stale-lock cleanup, and the record rewrite; the Git processes that write the store inherit its descriptor, so it stays held while any of them runs, even after the process that took it has died; a refresh that finds it busy reports that another process is refreshing the store and does not wait",
+        "why_outside_the_hierarchy": "It is held across network work, which no hierarchy lock may be, and nobody waits on it. The store lock is still taken under it, briefly, to rewrite state.yml."
       }
     ],
     "rules": [
@@ -58,7 +65,8 @@
       "Nothing deletes a published store. A store no alias names stays in place until an acquisition of its source reuses it; only the startup sweep of abandoned staging entries deletes anything.",
       "Lock files live under cache/locks/ and are never inside a directory that publication or the sweep renames or deletes.",
       "After acquiring any lock, the holder compares the locked descriptor's fstat with the path's lstat (device and inode) and releases and retries on a mismatch, because a sweep may have removed and recreated the lock file.",
-      "Liveness is decided by trying the entry's lock, not by age: a crashed holder releases within milliseconds, while no age can distinguish a slow clone from a dead one."
+      "Liveness is decided by trying the entry's lock, not by age: a crashed holder releases within milliseconds, while no age can distinguish a slow clone from a dead one.",
+      "A refresh fetches into a published store only while it holds that store's fetch lock, and the Git processes that write the store inherit that lock, so it is held for exactly as long as a writer lives. Stale packed-refs.lock and refs/**.lock files and temporary objects and packs a killed Git left behind are therefore removed under it before the next fetch. Its fetch updates every ref atomically or none, a stale ref that clashes with that transaction is pruned in a separate deleting step first, and only the record rewrite that follows takes the store lock."
     ],
     "sequences": [
       {
@@ -175,6 +183,18 @@
     "sweep_restarts": {
       "visible_after": "unchanged",
       "action": "The sweep is idempotent and runs again at the next startup."
+    },
+    "fetch_interrupted": {
+      "visible_after": "unchanged",
+      "action": "The atomic fetch moved every ref or none, and objects it wrote stay unreferenced. A killed Git can leave packed-refs.lock, refs/**.lock, a temporary loose object, or a temporary pack; the next refresh removes them under the store's fetch lock before it fetches, which it can take only once no Git from the interrupted refresh is alive. state.yml still records the previous fetch."
+    },
+    "prune_interrupted": {
+      "visible_after": "unchanged",
+      "action": "Some refs whose branch or tag the origin deleted are gone and others are not; each deletion is whole, and no commit is removed. The next refresh prunes the rest."
+    },
+    "record_behind": {
+      "visible_after": "unchanged",
+      "action": "The refs moved but state.yml still names the previous default revision and fetch time. Nothing reads the record to find a commit, and the next refresh rewrites it."
     }
   },
   "machines": [
@@ -420,6 +440,196 @@
           "effect": "Every listed entry was skipped or removed."
         }
       ]
+    },
+    {
+      "name": "store_refresh",
+      "owner_phase": "thin-mirror-4",
+      "initial": "published",
+      "states": [
+        {
+          "name": "published",
+          "visible": true,
+          "terminal": false,
+          "on_crash": "nothing_to_recover"
+        },
+        {
+          "name": "fetch_locked",
+          "visible": true,
+          "terminal": false,
+          "on_crash": "nothing_to_recover"
+        },
+        {
+          "name": "locks_cleaned",
+          "visible": true,
+          "terminal": false,
+          "on_crash": "nothing_to_recover"
+        },
+        {
+          "name": "head_observed",
+          "visible": true,
+          "terminal": false,
+          "on_crash": "nothing_to_recover"
+        },
+        { "name": "fetching", "visible": true, "terminal": false, "on_crash": "fetch_interrupted" },
+        { "name": "pruning", "visible": true, "terminal": false, "on_crash": "prune_interrupted" },
+        {
+          "name": "refetching",
+          "visible": true,
+          "terminal": false,
+          "on_crash": "fetch_interrupted"
+        },
+        { "name": "fetched", "visible": true, "terminal": false, "on_crash": "record_behind" },
+        { "name": "recorded", "visible": true, "terminal": true },
+        { "name": "failure_recorded", "visible": true, "terminal": true },
+        { "name": "refreshing_elsewhere", "visible": true, "terminal": true },
+        { "name": "cancelled", "visible": true, "terminal": true }
+      ],
+      "transitions": [
+        {
+          "from": "published",
+          "event": "take_fetch_lock",
+          "to": "fetch_locked",
+          "holds": ["store_fetch"],
+          "network": false,
+          "effect": "Try cache/locks/stores/<store-key>.fetch.lock without blocking."
+        },
+        {
+          "from": "published",
+          "event": "fetch_lock_busy",
+          "to": "refreshing_elsewhere",
+          "holds": [],
+          "network": false,
+          "effect": "Another holder is refreshing the store; report it and fetch nothing."
+        },
+        {
+          "from": "fetch_locked",
+          "event": "remove_stale_locks",
+          "to": "locks_cleaned",
+          "holds": ["store_fetch"],
+          "network": false,
+          "effect": "Remove packed-refs.lock, refs/**.lock, temporary loose objects, and temporary packs a killed Git left in the store. Every writer of the store holds this lock, through the descriptor it inherited, so none of them is live."
+        },
+        {
+          "from": "locks_cleaned",
+          "event": "lookup_remote_head",
+          "to": "head_observed",
+          "holds": ["store_fetch"],
+          "network": true,
+          "effect": "git ls-remote --symref -- origin HEAD records which branch the origin's HEAD names."
+        },
+        {
+          "from": "locks_cleaned",
+          "event": "remote_unavailable",
+          "to": "failure_recorded",
+          "holds": ["repository_store", "store_fetch"],
+          "network": false,
+          "effect": "Typed failure; under the store lock, state.yml records a failed refresh and keeps the previous fetch time and default revision."
+        },
+        {
+          "from": "head_observed",
+          "event": "fetch_started",
+          "to": "fetching",
+          "holds": ["store_fetch"],
+          "network": true,
+          "effect": "git fetch --prune --atomic --no-write-fetch-head origin with the branch and tag refspecs, in Git's own process group, holding the inherited fetch lock."
+        },
+        {
+          "from": "fetching",
+          "event": "fetch_refused",
+          "to": "pruning",
+          "holds": ["store_fetch"],
+          "network": false,
+          "effect": "Git ran and failed, and no ref moved. One transaction cannot delete side and create side/x, or rename Topic to topic on a case-insensitive file system, and Git words that refusal differently for loose refs, packed refs, and reftable, or pushes it past the bounded stderr, so every such failure is followed by the prune."
+        },
+        {
+          "from": "fetching",
+          "event": "fetch_failed",
+          "to": "failure_recorded",
+          "holds": ["repository_store", "store_fetch"],
+          "network": false,
+          "effect": "Git could not start or was stopped at its deadline, which a prune cannot help. No ref moved, because the fetch is atomic; under the store lock, state.yml records the failed refresh and keeps the previous fetch time and default revision."
+        },
+        {
+          "from": "pruning",
+          "event": "stale_refs_pruned",
+          "to": "refetching",
+          "holds": ["store_fetch"],
+          "network": true,
+          "effect": "git remote prune with the mirror refspecs deletes the refs whose branch or tag the origin no longer has, and nothing else; the atomic fetch then runs once more."
+        },
+        {
+          "from": "pruning",
+          "event": "prune_failed",
+          "to": "failure_recorded",
+          "holds": ["repository_store", "store_fetch"],
+          "network": false,
+          "effect": "The prune may have deleted some stale refs before it failed. Under the store lock, state.yml records the failed refresh with the origin's default branch or the one recorded before, whichever the mirror still has, and keeps the previous fetch time."
+        },
+        {
+          "from": "pruning",
+          "event": "cancelled",
+          "to": "cancelled",
+          "holds": ["store_fetch"],
+          "network": false,
+          "effect": "Git's process group is killed; each ref deletion is whole, stale refs already deleted stay deleted, and the record is left as it was."
+        },
+        {
+          "from": "refetching",
+          "event": "fetch_succeeded",
+          "to": "fetched",
+          "holds": ["store_fetch"],
+          "network": false,
+          "effect": "With the stale refs gone, every branch and tag moved together. No object was removed."
+        },
+        {
+          "from": "refetching",
+          "event": "fetch_failed",
+          "to": "failure_recorded",
+          "holds": ["repository_store", "store_fetch"],
+          "network": false,
+          "effect": "The second transaction moved no ref, but the prune deleted stale refs. Under the store lock, state.yml records the failed refresh with the origin's default branch or the one recorded before, whichever the mirror still has, and keeps the previous fetch time."
+        },
+        {
+          "from": "refetching",
+          "event": "cancelled",
+          "to": "cancelled",
+          "holds": ["store_fetch"],
+          "network": false,
+          "effect": "Git's process group is killed; the second transaction moved every ref or none, stale refs the prune deleted stay deleted, and the record is left as it was."
+        },
+        {
+          "from": "fetching",
+          "event": "cancelled",
+          "to": "cancelled",
+          "holds": ["store_fetch"],
+          "network": false,
+          "effect": "Git's process group is killed, by the lifespan's cancellation or by the command's immediate exit; the atomic fetch moved every ref or none, and the record is left as it was."
+        },
+        {
+          "from": "fetching",
+          "event": "fetch_succeeded",
+          "to": "fetched",
+          "holds": ["store_fetch"],
+          "network": false,
+          "effect": "Every branch and tag moved together; branches and tags deleted upstream were pruned. No object was removed."
+        },
+        {
+          "from": "fetched",
+          "event": "validation_failed",
+          "to": "failure_recorded",
+          "holds": ["repository_store", "store_fetch"],
+          "network": false,
+          "effect": "The origin's default branch is missing from the mirror or is not a commit; the failure is recorded under the store lock."
+        },
+        {
+          "from": "fetched",
+          "event": "record_written",
+          "to": "recorded",
+          "holds": ["repository_store", "store_fetch"],
+          "network": false,
+          "effect": "Under the store lock, state.yml gets the default branch, its commit, the fetch time, and the succeeded outcome; then both locks are released."
+        }
+      ]
     }
   ],
   "scenarios": [
@@ -495,6 +705,105 @@
       ],
       "expected_final": "done",
       "expected_visible": false
+    },
+    {
+      "id": "refresh-succeeds",
+      "machine": "store_refresh",
+      "events": [
+        "take_fetch_lock",
+        "remove_stale_locks",
+        "lookup_remote_head",
+        "fetch_started",
+        "fetch_succeeded",
+        "record_written"
+      ],
+      "expected_final": "recorded",
+      "expected_visible": true
+    },
+    {
+      "id": "refresh-busy-elsewhere",
+      "machine": "store_refresh",
+      "events": ["fetch_lock_busy"],
+      "expected_final": "refreshing_elsewhere",
+      "expected_visible": true
+    },
+    {
+      "id": "refresh-origin-gone",
+      "machine": "store_refresh",
+      "events": ["take_fetch_lock", "remove_stale_locks", "remote_unavailable"],
+      "expected_final": "failure_recorded",
+      "expected_visible": true
+    },
+    {
+      "id": "refresh-crash-during-fetch",
+      "machine": "store_refresh",
+      "events": [
+        "take_fetch_lock",
+        "remove_stale_locks",
+        "lookup_remote_head",
+        "fetch_started",
+        "crash"
+      ],
+      "expected_final": "fetch_interrupted",
+      "expected_visible": true
+    },
+    {
+      "id": "refresh-cancelled",
+      "machine": "store_refresh",
+      "events": [
+        "take_fetch_lock",
+        "remove_stale_locks",
+        "lookup_remote_head",
+        "fetch_started",
+        "cancelled"
+      ],
+      "expected_final": "cancelled",
+      "expected_visible": true
+    },
+    {
+      "id": "refresh-prunes-a-clashing-ref",
+      "machine": "store_refresh",
+      "events": [
+        "take_fetch_lock",
+        "remove_stale_locks",
+        "lookup_remote_head",
+        "fetch_started",
+        "fetch_refused",
+        "stale_refs_pruned",
+        "fetch_succeeded",
+        "record_written"
+      ],
+      "expected_final": "recorded",
+      "expected_visible": true
+    },
+    {
+      "id": "refresh-retry-fails-after-pruning",
+      "machine": "store_refresh",
+      "events": [
+        "take_fetch_lock",
+        "remove_stale_locks",
+        "lookup_remote_head",
+        "fetch_started",
+        "fetch_refused",
+        "stale_refs_pruned",
+        "fetch_failed"
+      ],
+      "expected_final": "failure_recorded",
+      "expected_visible": true
+    },
+    {
+      "id": "refresh-crash-during-prune",
+      "machine": "store_refresh",
+      "events": [
+        "take_fetch_lock",
+        "remove_stale_locks",
+        "lookup_remote_head",
+        "fetch_started",
+        "fetch_refused",
+        "crash"
+      ],
+      "expected_final": "prune_interrupted",
+      "expected_visible": true
     }
   ]
 }

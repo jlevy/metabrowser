@@ -7925,6 +7925,22 @@ async function initDeferredShellTools() {
   document.documentElement.dataset.shellToolsReady = "true";
 }
 
+/**
+ * A served mirror's freshness row: when it was fetched and an offer when a refresh
+ * moved the pinned ref. Only a pin has one, and it is fetched on demand after the
+ * first tree request, so neither a folder nor the first rows ever wait for it.
+ * static/source-freshness.js owns every decision; this only mounts it.
+ */
+async function startSourceFreshness() {
+  var element = document.getElementById("source-freshness");
+  var assets = window.MetabrowserAssets;
+  if (!isGitRevisionSource() || !element || !assets) {
+    return;
+  }
+  await assets.ensureAsset("source-freshness");
+  window.MetabrowserSourceFreshness?.mount(element);
+}
+
 // app.js is the last core script in the body, so the tree container and every
 // cache used by its renderer are initialized here. Paint the server-carried
 // rows now instead of waiting for DOMContentLoaded. The authoritative request
@@ -7966,6 +7982,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       console.error("metabrowser shell tools: init failed", { url: location.pathname }, error);
     })
     .finally(settleCommitRoutePreview);
+  startSourceFreshness().catch((error) => {
+    console.error("metabrowser source freshness: init failed", error);
+  });
   if (filesPanelUsesRecentSource()) {
     loadRecent(currentRecentFilterCursor());
   }

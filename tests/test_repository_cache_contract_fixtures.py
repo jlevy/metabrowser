@@ -361,6 +361,10 @@ def test_lock_files_are_where_the_fixture_places_them(tmp_path: Path) -> None:
             {"<store-key>": store},
         ),
         "staging_entry": (lambda: locks.staging_entry_lock(home, "e1"), {"<entry>": "e1"}),
+        "store_fetch": (
+            lambda: locks.store_fetch_lock(home, store),
+            {"<store-key>": store},
+        ),
     }
     for name, (acquire, placeholders) in acquisitions.items():
         expected = templates[name]

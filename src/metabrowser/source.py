@@ -7,7 +7,10 @@ a pinned revision. ``InventoryCoordinator.open_subject`` accepts a Git pin witho
 opening a filesystem walker. The CLI can ``--show`` / ``--api`` a ``file://``
 pin in-process, and serve mode hands the server an opener through
 :func:`serve_subject_opener` so the application lifespan opens the pin in its own
-event loop and closes it at shutdown. Opening https/ssh stays later.
+event loop and closes it at shutdown. Within one repository,
+:func:`replace_owned_subject` switches the served pin to another commit: it attaches the
+new subject under a new generation and closes the one it replaced. Opening https/ssh
+stays later.
 """
 
 from __future__ import annotations
@@ -516,6 +519,9 @@ _session: SourceSession | None = None
 _generation = 0
 _subject_opener: SubjectOpener | None = None
 _open_failure: SubjectOpenError | None = None
+# The served subject this process opened and must close: the pin the lifespan or a
+# one-shot CLI mode opened, or the one a pin switch replaced it with.
+_owned_subject: ClosableRepositorySubject | None = None
 
 
 def attach_subject(subject: RepositorySubject) -> SourceSession:
@@ -533,17 +539,42 @@ def attach_subject(subject: RepositorySubject) -> SourceSession:
     return _session
 
 
-def detach_session(session: SourceSession) -> None:
-    """Release *session* if it is still the active one; a newer attach is left alone.
+def attach_owned_subject(subject: ClosableRepositorySubject) -> SourceSession:
+    """Serve *subject*, which this process opened and closes with :func:`close_owned_subject`."""
 
-    The generation counter keeps counting, so a later attach in the same process
-    never reuses a generation a client may still hold.
+    global _owned_subject
+    session = attach_subject(subject)
+    _owned_subject = subject
+    return session
+
+
+async def replace_owned_subject(subject: ClosableRepositorySubject) -> SourceSession:
+    """Serve *subject* in place of the owned subject, then close the one it replaced.
+
+    The new subject is attached first, so every request that starts afterwards reads it
+    under the new generation. Closing the old one releases only its share of the
+    per-store reader pool: a request still reading the old pin from the same store
+    finishes on readers the new pin keeps alive.
     """
 
-    global _session
-    if _session is session:
-        session.close()
+    previous = _owned_subject
+    session = attach_owned_subject(subject)
+    if previous is not None and previous is not subject:
+        await previous.aclose()
+    return session
+
+
+async def close_owned_subject() -> None:
+    """Detach the owned subject if it is still served, and close it. A no-op without one."""
+
+    global _owned_subject, _session
+    subject, _owned_subject = _owned_subject, None
+    if subject is None:
+        return
+    if _session is not None and _session.subject is subject:
+        _session.close()
         _session = None
+    await subject.aclose()
 
 
 def get_source_session() -> SourceSession:
@@ -564,13 +595,14 @@ def get_source_session() -> SourceSession:
 def reset_source_session() -> None:
     """Drop the process session and any served opener. Tests restore a root afterwards."""
 
-    global _session, _generation, _subject_opener, _open_failure
+    global _session, _generation, _subject_opener, _open_failure, _owned_subject
     if _session is not None:
         _session.close()
     _session = None
     _generation = 0
     _subject_opener = None
     _open_failure = None
+    _owned_subject = None
 
 
 def serve_subject_opener(opener: SubjectOpener | None) -> None:
@@ -616,12 +648,12 @@ async def lifespan_subject() -> AsyncGenerator[SourceSession | None]:
     except SubjectOpenError as exc:
         _open_failure = exc
         raise
-    session = attach_subject(subject)
+    session = attach_owned_subject(subject)
     try:
         yield session
     finally:
-        detach_session(session)
-        await subject.aclose()
+        # Whichever pin is served now: a pin switch may have replaced the one opened here.
+        await close_owned_subject()
 
 
 def session_filesystem_root() -> Path:
@@ -772,13 +804,15 @@ __all__ = [
     "SubjectNotOpenError",
     "SubjectOpenError",
     "UnsupportedSourceCapabilityError",
+    "attach_owned_subject",
     "attach_subject",
-    "detach_session",
+    "close_owned_subject",
     "get_source_session",
     "lifespan_subject",
     "open_content",
     "read_artifact_window",
     "read_content_window",
+    "replace_owned_subject",
     "require_filesystem_hooks",
     "require_filter_capabilities",
     "require_source_capability",

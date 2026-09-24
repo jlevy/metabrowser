@@ -18,7 +18,6 @@ import re
 import secrets
 import shutil
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final, Self
 
@@ -42,6 +41,13 @@ from metabrowser.cache.locks import (
     source_alias_lock,
     staging_entry_lock,
 )
+from metabrowser.cache.origin import (
+    OriginHeadError,
+    ls_remote_head_args,
+    mirror_fetch_args,
+    parse_symref_head,
+    remote_tracking_ref,
+)
 from metabrowser.cache.paths import (
     source_directory,
     source_record,
@@ -62,6 +68,7 @@ from metabrowser.cache.records import (
     RepositoryStoreState,
     StoreAcquisition,
     StoreOperation,
+    canonical_now,
 )
 from metabrowser.cache.urls import GitSource
 from metabrowser.git.process import (
@@ -71,17 +78,10 @@ from metabrowser.git.process import (
     require_acquisition_git,
     run_git,
 )
-from metabrowser.git.wire import is_full_revision
 from metabrowser.home import PrivateStorageError, SharedEntryPolicy, ensure_private_directory
 
 log = logging.getLogger(__name__)
 
-_PROTOCOL: Final[tuple[str, ...]] = (
-    "-c",
-    "protocol.allow=never",
-    "-c",
-    "protocol.file.allow=always",
-)
 _STORE_CONFIG: Final[tuple[tuple[str, str], ...]] = (
     ("maintenance.auto", "false"),
     ("gc.auto", "0"),
@@ -216,30 +216,6 @@ async def _run(args: list[str], *, cwd: Path | None = None, git_dir: Path | None
     return await run_git(args, cwd=cwd, policy=ACQUISITION_POLICY)
 
 
-def _parse_symref_head(stdout: bytes) -> tuple[str | None, str]:
-    # The ``HEAD`` pattern also matches any ref whose last component is HEAD, such as
-    # a clone's ``refs/remotes/origin/HEAD``. Only the ref named exactly HEAD counts.
-    ref: str | None = None
-    oid: str | None = None
-    for line in stdout.decode("ascii", errors="replace").splitlines():
-        payload, _, name = line.partition("\t")
-        if name != "HEAD":
-            continue
-        if payload.startswith("ref:"):
-            ref = payload.removeprefix("ref:").strip()
-        else:
-            oid = payload.strip()
-    if oid is None or not is_full_revision(oid):
-        raise RemoteUnavailableError("the source did not advertise HEAD")
-    return ref, oid
-
-
-def _remote_tracking_ref(head_ref: str | None) -> str | None:
-    if head_ref is None or not head_ref.startswith("refs/heads/"):
-        return None
-    return "refs/remotes/origin/" + head_ref.removeprefix("refs/heads/")
-
-
 async def _require_ref_at(git_dir: Path, ref: str, revision: str) -> None:
     """Refuse a record whose branch is not the pinned commit in the fetched store.
 
@@ -277,18 +253,18 @@ async def acquire_into_staging(source: GitSource, *, home: Path) -> StagingAcqui
     git_dir = staging / "repository.git"
     try:
         try:
-            observed = await _run(
-                [*_PROTOCOL, "ls-remote", "--symref", "--", source.normalized, "HEAD"],
-                cwd=staging,
-            )
+            observed = await _run(ls_remote_head_args(source.normalized), cwd=staging)
         except GitCommandError as exc:
             # ls-remote itself failed: the path is missing, is not a repository, or
             # cannot be read. A readable source without HEAD is refused below.
             raise RemoteUnavailableError(
                 "the source could not be read as a Git repository; nothing was published"
             ) from exc
-        head_ref, revision = _parse_symref_head(observed)
-        default_remote_ref = _remote_tracking_ref(head_ref)
+        try:
+            head_ref, revision = parse_symref_head(observed)
+        except OriginHeadError as exc:
+            raise RemoteUnavailableError(str(exc)) from exc
+        default_remote_ref = remote_tracking_ref(head_ref)
         if default_remote_ref is None:
             # Publication needs a branch. Refuse here, before the fetch is paid for.
             raise ValidationFailedError("the source HEAD is not a branch")
@@ -313,17 +289,7 @@ async def acquire_into_staging(source: GitSource, *, home: Path) -> StagingAcqui
         try:
             # Every object: a published store is complete, so no read ever needs the
             # origin again, and an origin that would honor a filter is not asked to.
-            await _run(
-                [
-                    *_PROTOCOL,
-                    "fetch",
-                    "--no-write-fetch-head",
-                    "origin",
-                    "+refs/heads/*:refs/remotes/origin/*",
-                    "+refs/tags/*:refs/tags/*",
-                ],
-                git_dir=git_dir,
-            )
+            await _run(mirror_fetch_args(prune=False), git_dir=git_dir)
         except GitCommandError as exc:
             if _PARTIAL_CLONE_SOURCE.search(exc.stderr_summary):
                 raise PartialCloneSourceError(
@@ -381,10 +347,6 @@ class PublishedSource:
     default_revision: str
 
 
-def _canonical_now() -> str:
-    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
 def _touch_last_opened(published: PublishedSource) -> None:
     """Best-effort recency. A failed write must not fail the open."""
 
@@ -393,7 +355,7 @@ def _touch_last_opened(published: PublishedSource) -> None:
             write_record_atomic(
                 published.home,
                 source_record(published.slug, "state.yml"),
-                RepositorySourceState(last_opened_at=_canonical_now()),
+                RepositorySourceState(last_opened_at=canonical_now()),
                 REPOSITORY_SOURCE_STATE_CONTRACT_ID,
             )
     except (LockBusyError, PrivateStorageError, OSError):
@@ -683,7 +645,7 @@ def publish_from_staging(staged: StagingAcquisition) -> PublishedSource:
         raise ValidationFailedError("the source HEAD is not a branch")
     store_id = repository_store_id(staged.source_id, staged.object_format)
     key = store_key(store_id)
-    at = _canonical_now()
+    at = canonical_now()
     try:
         _write_store_records(staged, store_id, at)
         return _publish_store_and_alias(staged, store_id, key, at)

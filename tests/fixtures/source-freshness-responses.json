@@ -1,0 +1,198 @@
+{
+  "stale": {
+    "subject": "git_revision",
+    "generation": 1,
+    "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "refreshable": true,
+    "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-17T12:00:05Z",
+    "last_outcome": {
+      "operation": "acquire",
+      "outcome": "succeeded",
+      "at": "2026-09-17T12:00:05Z"
+    },
+    "refreshing": false,
+    "stale": true
+  },
+  "refresh_started": {
+    "refresh": "started",
+    "status": {
+      "subject": "git_revision",
+      "generation": 1,
+      "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+      "ref": "refs/remotes/origin/topic",
+      "ref_name": "topic",
+      "refreshable": true,
+      "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+      "ref_on_origin": true,
+      "last_fetch_at": "2026-09-17T12:00:05Z",
+      "last_outcome": {
+        "operation": "acquire",
+        "outcome": "succeeded",
+        "at": "2026-09-17T12:00:05Z"
+      },
+      "refreshing": true,
+      "stale": true
+    }
+  },
+  "refreshed": {
+    "subject": "git_revision",
+    "generation": 1,
+    "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "refreshable": true,
+    "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-23T12:00:00Z",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "succeeded",
+      "at": "2026-09-23T12:00:00Z"
+    },
+    "refreshing": false,
+    "stale": false
+  },
+  "history_stale": {
+    "status": 409,
+    "body": {
+      "error": "git history changed; refresh required",
+      "code": "history_stale"
+    }
+  },
+  "switched": {
+    "changed": true,
+    "status": {
+      "subject": "git_revision",
+      "generation": 2,
+      "pin": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+      "ref": "refs/remotes/origin/topic",
+      "ref_name": "topic",
+      "refreshable": true,
+      "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+      "ref_on_origin": true,
+      "last_fetch_at": "2026-09-23T12:00:00Z",
+      "last_outcome": {
+        "operation": "refresh",
+        "outcome": "succeeded",
+        "at": "2026-09-23T12:00:00Z"
+      },
+      "refreshing": false,
+      "stale": false
+    }
+  },
+  "after_switch": {
+    "subject": "git_revision",
+    "generation": 2,
+    "pin": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "refreshable": true,
+    "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-23T12:00:00Z",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "succeeded",
+      "at": "2026-09-23T12:00:00Z"
+    },
+    "refreshing": false,
+    "stale": false
+  },
+  "pin_changed": {
+    "status": 409,
+    "headers": {
+      "x-metabrowser-pin-changed": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531"
+    },
+    "body": {
+      "error": "the server now serves another revision; reload the page",
+      "code": "pin_changed",
+      "pin": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531"
+    }
+  },
+  "pin_refused": {
+    "status": 404,
+    "body": {
+      "error": "no branch or tag with that name is in the mirror",
+      "code": "selection_not_found"
+    }
+  },
+  "failed": {
+    "subject": "git_revision",
+    "generation": 2,
+    "pin": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "refreshable": true,
+    "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-23T12:00:00Z",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "origin_unavailable",
+      "at": "2026-09-23T12:00:00Z"
+    },
+    "refreshing": false,
+    "stale": false
+  },
+  "unreachable": {
+    "subject": "git_revision",
+    "generation": 3,
+    "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "refreshable": true,
+    "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-17T12:00:05Z",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "origin_unavailable",
+      "at": "2026-09-17T12:00:05Z"
+    },
+    "refreshing": false,
+    "stale": true
+  },
+  "unreachable_started": {
+    "refresh": "started",
+    "status": {
+      "subject": "git_revision",
+      "generation": 3,
+      "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+      "ref": "refs/remotes/origin/topic",
+      "ref_name": "topic",
+      "refreshable": true,
+      "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+      "ref_on_origin": true,
+      "last_fetch_at": "2026-09-17T12:00:05Z",
+      "last_outcome": {
+        "operation": "refresh",
+        "outcome": "origin_unavailable",
+        "at": "2026-09-17T12:00:05Z"
+      },
+      "refreshing": true,
+      "stale": true
+    }
+  },
+  "unreachable_after": {
+    "subject": "git_revision",
+    "generation": 3,
+    "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "refreshable": true,
+    "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-17T12:00:05Z",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "origin_unavailable",
+      "at": "2026-09-23T12:00:00Z"
+    },
+    "refreshing": false,
+    "stale": true
+  }
+}

@@ -95,6 +95,8 @@ def _allow_installed_git(monkeypatch: pytest.MonkeyPatch) -> tuple[int, int, int
     if version is None:
         pytest.skip("git version is unparseable")
     monkeypatch.setattr("metabrowser.cache.acquire.require_acquisition_git", lambda: version)
+    # A refresh fetches from the same untrusted origin, so it checks the same floor.
+    monkeypatch.setattr("metabrowser.cache.update.require_acquisition_git", lambda: version)
     return version
 
 

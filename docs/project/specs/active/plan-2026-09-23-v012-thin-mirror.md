@@ -328,6 +328,11 @@ Settled by measurement during implementation, each with a documented default:
 - Bounds on pull-request records.
 - The minimum `gh` version for `auth status --json`.
 
+Step 4 set the freshness window and the browser’s polling intervals over `file://`; each
+default and its measurement sits beside its constant, `FRESHNESS_WINDOW_S` in
+`mirror_refresh.py` and `FAST_POLL_MS` and `SLOW_POLL_MS` in
+`static/source-freshness.js`. HTTPS may tune them in step 5.
+
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
 -->

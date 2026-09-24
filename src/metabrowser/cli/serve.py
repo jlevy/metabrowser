@@ -30,6 +30,7 @@ from metabrowser.cli.http_readiness import wait_for_http_ok_then
 from metabrowser.cli.plugin_paths import apply_extra_plugin_dirs
 from metabrowser.dotenv import load_dotenv_chain as _load_dotenv_chain
 from metabrowser.errors import CLIError
+from metabrowser.git.process import kill_live_process_groups
 from metabrowser.server_utils import find_available_local_port, port_search_range
 from metabrowser.source import subject_open_failure
 from metabrowser.view_routes import format_view_href
@@ -117,8 +118,13 @@ def _stop_now(_sig: int, _frame: FrameType | None) -> NoReturn:
     it immediately rather than starting a shutdown the reader then waits
     on. Anything still connected is a browser tab that sees its socket
     close, which is what stopping the server means.
+
+    A background refresh's Git runs in its own process group, which exiting
+    here would leave running, so those groups are killed first. What a killed
+    fetch leaves in its store is removed by the next refresh.
     """
     _write_stopping_notice()
+    kill_live_process_groups()
     os._exit(INTERRUPTED_EXIT_CODE)
 
 

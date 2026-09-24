@@ -542,6 +542,7 @@ def test_locks_module_exports_every_side_lock() -> None:
         "repository_store",
         "provider_resource",
         "staging_entry",
+        "store_fetch",
     }
     assert locks.HIERARCHY_RANKS == {
         LockKind.HOME: 1,

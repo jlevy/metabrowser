@@ -10,9 +10,23 @@ $defs:
     minLength: 6
     pattern: ^refs/[!-~]+$
     type: string
+  RecordedOutcome:
+    enum:
+    - succeeded
+    - default_branch_unknown
+    - origin_unavailable
+    - fetch_failed
+    - validation_failed
+    type: string
   StoreOperation:
     additionalProperties: false
-    description: The last Git operation that finished against a store.
+    description: |-
+      The last Git operation that finished against a store, and how, by name.
+
+      A refresh records its typed outcome, so a later start reports what happened rather
+      than a bare failure. ``default_branch_unknown`` fetched everything but found no
+      branch at the origin's HEAD. An outcome that says why no fetch ran in one process,
+      such as another process refreshing the store, is not recorded.
     properties:
       at:
         $ref: '#/$defs/CanonicalTimestamp'
@@ -23,12 +37,7 @@ $defs:
         title: Kind
         type: string
       outcome:
-        enum:
-        - succeeded
-        - failed
-        - cancelled
-        title: Outcome
-        type: string
+        $ref: '#/$defs/RecordedOutcome'
     required:
     - at
     - kind
@@ -62,4 +71,4 @@ title: RepositoryStoreState
 type: object
 x-softschema:
   contract: com.github.jlevy.metabrowser.cache:RepositoryStoreState/v1
-  schema_sha256: 42bd40acd414a927465d0fc60fab9f73f659aa9a2c3c6466c7eaf29382f61532
+  schema_sha256: 2670f54b9aacda75b601730c2b69ad58ab093906296d1f35536d211257c71635

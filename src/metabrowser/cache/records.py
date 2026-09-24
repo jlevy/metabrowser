@@ -15,7 +15,7 @@ to a store; each ``state.yml`` holds what changes.
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated, Any, Final, Literal, Self, cast
 
 from pydantic import (
@@ -65,6 +65,12 @@ _CREDENTIAL_KEY_RE: Final = re.compile(
     r"api[_-]?key|private[_-]?key|access[_-]?key)$",
     re.IGNORECASE,
 )
+
+
+def canonical_now() -> str:
+    """The current time in the canonical RFC 3339 UTC spelling every record uses."""
+
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _require_timestamp(value: str) -> str:
@@ -236,11 +242,26 @@ class RepositoryStore(_MachineRecord):
     acquisition: StoreAcquisition
 
 
+type RecordedOutcome = Literal[
+    "succeeded",
+    "default_branch_unknown",
+    "origin_unavailable",
+    "fetch_failed",
+    "validation_failed",
+]
+
+
 class StoreOperation(_MachineRecord):
-    """The last Git operation that finished against a store."""
+    """The last Git operation that finished against a store, and how, by name.
+
+    A refresh records its typed outcome, so a later start reports what happened rather
+    than a bare failure. ``default_branch_unknown`` fetched everything but found no
+    branch at the origin's HEAD. An outcome that says why no fetch ran in one process,
+    such as another process refreshing the store, is not recorded.
+    """
 
     kind: Literal["acquire", "refresh"]
-    outcome: Literal["succeeded", "failed", "cancelled"]
+    outcome: RecordedOutcome
     at: CanonicalTimestamp
 
 
@@ -272,6 +293,7 @@ __all__ = [
     "ApplicationConfig",
     "CacheLayout",
     "ConfigUpgrade",
+    "RecordedOutcome",
     "RepositorySource",
     "RepositorySourceState",
     "RepositoryStore",
@@ -279,4 +301,5 @@ __all__ = [
     "RepositoryStoreState",
     "StoreAcquisition",
     "StoreOperation",
+    "canonical_now",
 ]

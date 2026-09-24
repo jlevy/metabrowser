@@ -326,6 +326,10 @@ def test_golden_multi_entry_pin_show_and_api(
     assert status["pin"] == PIN_ORIGIN_REVISION
     assert status["ref"] == f"refs/remotes/origin/{PIN_ORIGIN_BRANCH}"
     assert status["ref_name"] == PIN_ORIGIN_BRANCH
+    # A one-shot command serves the store as a mirror but never refreshes it itself.
+    assert status["refreshable"] is True and status["refreshing"] is False
+    assert status["latest"] == PIN_ORIGIN_REVISION
+    assert status["last_outcome"]["operation"] == "acquire"
     # The live filter's typed refusal is the pin's honest answer, so the check passes.
     assert "live filter: 409; unsupported_for_subject" in checked.stdout
     assert "result: pass" in checked.stdout
@@ -426,7 +430,9 @@ def test_golden_multi_entry_pin_show_and_api(
                     f"file://<ORIGIN> --api {_shell(route)}",
                     answered[route],
                     origin_url=url,
-                    api=False,
+                    # The status envelope carries the acquisition's wall-clock times,
+                    # which no fixture can pin; every other route's answer is literal.
+                    api=route == "/api/source/status",
                 )
                 for route in routes
             ),
