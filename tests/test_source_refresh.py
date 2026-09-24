@@ -392,6 +392,9 @@ def test_pin_selections_resolve_in_the_mirror_and_refusals_are_typed(
     cases: list[tuple[Any, int, str]] = [
         ({"ref": ":/first"}, 400, "invalid_selection"),
         ({"ref": "topic@{1}"}, 400, "invalid_selection"),
+        # A trailing newline is not part of a commit ID, whatever ``$`` would accept.
+        ({"oid": origin.first[:7] + "\n"}, 400, "invalid_selection"),
+        ({"ref": origin.first[:7] + "\n"}, 400, "invalid_selection"),
         ({"ref": "refs/heads/topic"}, 400, "invalid_selection"),
         ({"ref": "topic", "oid": origin.first}, 400, "invalid_selection"),
         ({}, 400, "invalid_selection"),

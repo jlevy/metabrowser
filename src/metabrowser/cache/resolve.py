@@ -67,7 +67,8 @@ _REF_NAME_MAX_BYTES: Final = 1024
 _REF_FORMAT: Final = "%(refname)%00%(objectname)%00%(objecttype)%00%(*objectname)%00%(*objecttype)"
 # Seven hexadecimal digits is the shortest commit ID Git abbreviates to by default and
 # the shortest a GitHub URL shows; anything shorter matches too much to mean one commit.
-_COMMIT_ID = re.compile(r"^[0-9a-f]{7,64}$")
+# Always ``fullmatch``: ``$`` also matches before a trailing newline.
+_COMMIT_ID = re.compile(r"[0-9a-f]{7,64}")
 _REF_FORBIDDEN = frozenset(" ~^:?*[\\\x7f")
 
 type ResolvedVia = Literal["default", "branch", "tag", "commit"]
@@ -320,7 +321,7 @@ async def resolve_commit_id(
     """Expand a full or abbreviated hexadecimal commit ID that the store has."""
 
     text = commit_id.lower()
-    if not _COMMIT_ID.match(text):
+    if not _COMMIT_ID.fullmatch(text):
         return UnresolvedSelection("invalid_ref")
     try:
         listed = await _git(target, ["rev-parse", f"--disambiguate={text}"])
@@ -403,7 +404,7 @@ async def resolve_pin(
         candidates: tuple[str, ...] = (ref,)
     else:
         candidates = (BRANCH_MIRROR_PREFIX + ref, TAG_PREFIX + ref)
-    is_hex = _COMMIT_ID.match(ref.lower()) is not None
+    is_hex = _COMMIT_ID.fullmatch(ref.lower()) is not None
     if all(is_valid_ref_name(candidate) for candidate in candidates):
         exact = await _exact_refs(target, list(candidates))
         for candidate in candidates:
@@ -461,7 +462,7 @@ async def resolve_ref_and_path(
             first = rest[0].decode("ascii")
         except UnicodeDecodeError:
             first = ""
-        if _COMMIT_ID.match(first.lower()):
+        if _COMMIT_ID.fullmatch(first.lower()):
             resolved = await resolve_commit_id(target, first)
             if isinstance(resolved, ResolvedSelection):
                 return ResolvedSelection(

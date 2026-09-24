@@ -185,6 +185,8 @@ def test_missing_refs_and_commits_ask_for_one_fetch(mirror: PublishedSource) -> 
     tree = asyncio.run(resolve_commit_id(target, "5a2a414f"))
     assert isinstance(tree, UnresolvedSelection)
     assert tree.reason == "not_a_commit" and not tree.needs_fetch
+    newline = asyncio.run(resolve_commit_id(target, FIRST_COMMIT[:7] + "\n"))
+    assert newline == UnresolvedSelection("invalid_ref")
 
 
 @pytest.mark.parametrize(
