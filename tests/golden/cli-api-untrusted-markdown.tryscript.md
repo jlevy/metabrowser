@@ -27,10 +27,31 @@ stylesheets and the files they use stay in its assets.
 
 ## Test: an untrusted README renders inert
 
+The render is marked `inert`, and every tag and attribute left in its HTML is one the
+allowlist keeps: plain text markup, links (`href`, and `target` and `rel` on one that
+leaves the page), and the repository image (`src`, `alt`).
+
 ```console
-$ metab hostile --untrusted --api '/api/kpress/render?path=README.md&view=document' | grep -E '^  "(html|inert)":'
-  "html": "\n<div><div><h1>Hostile readme</h1>\n<p>Rebased on <code>topic</code>; see <a href=\"docs/new.md\">the docs</a>.</p>\n\n<a href=\"https://example.com/badge.png\" target=\"_blank\" rel=\"noopener noreferrer\">build badge</a> <span>image</span>\n<a href=\"https://example.com/x\" target=\"_blank\" rel=\"noopener noreferrer\">x</a>\n\n<div>video</div><span>copy</span><div>fake dialog</div><p>styled</p>\n\n<p><img src=\"docs/diagram.png\" alt=\"diagram\"> <a href=\"https://example.com/t.gif\" target=\"_blank\" rel=\"noopener noreferrer\">tracker</a> <a href=\"https://example.com/p.gif\" target=\"_blank\" rel=\"noopener noreferrer\">image</a> <span>image</span></p>\n<p><a href=\"docs/guide.md\">Guide</a> <a href=\"#readme\">Top</a> <a href=\"../x.md\">Up</a> <a>tab</a> <a href=\"https://example.com/x\" target=\"_blank\" rel=\"noopener noreferrer\">slashes</a></p>\n<h2>Section</h2>\n<p>text</p></div></div>",
+$ metab hostile --untrusted --api '/api/kpress/render?path=README.md&view=document' | grep -E '^  "inert":'
   "inert": true
+? 0
+```
+
+```console
+$ metab hostile --untrusted --api '/api/kpress/render?path=README.md&view=document' | grep -E '^  "html":' | grep -oE '<[a-z0-9]+|[ ][a-z-]+=' | sort -u
+ alt=
+ href=
+ rel=
+ src=
+ target=
+<a
+<code
+<div
+<h1
+<h2
+<img
+<p
+<span
 ? 0
 ```
 
