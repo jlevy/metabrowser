@@ -1,0 +1,235 @@
+{
+  "views": {
+    "readme": "/view/g1-UkVBRE1FLm1k",
+    "notes": "/view/g1-Tk9URVMubWQ"
+  },
+  "branches": {
+    "status": 200,
+    "body": {
+      "kind": "branch",
+      "query": "",
+      "limit": 100,
+      "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+      "ref": "refs/remotes/origin/topic",
+      "total": 2,
+      "truncated": false,
+      "refs": [
+        {
+          "name": "topic",
+          "ref": "refs/remotes/origin/topic",
+          "commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+          "default": true,
+          "current": true
+        },
+        {
+          "name": "feature",
+          "ref": "refs/remotes/origin/feature",
+          "commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+          "default": false,
+          "current": false
+        }
+      ]
+    }
+  },
+  "tags": {
+    "status": 200,
+    "body": {
+      "kind": "tag",
+      "query": "",
+      "limit": 100,
+      "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+      "ref": "refs/remotes/origin/topic",
+      "total": 1,
+      "truncated": false,
+      "refs": [
+        {
+          "name": "v1",
+          "ref": "refs/tags/v1",
+          "commit": "fcb9d63c3c8533d1b929861f451a066e6d4f2d9e",
+          "default": false,
+          "current": false
+        }
+      ]
+    }
+  },
+  "filtered": {
+    "status": 200,
+    "body": {
+      "kind": "branch",
+      "query": "feat",
+      "limit": 100,
+      "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+      "ref": "refs/remotes/origin/topic",
+      "total": 1,
+      "truncated": false,
+      "refs": [
+        {
+          "name": "feature",
+          "ref": "refs/remotes/origin/feature",
+          "commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+          "default": false,
+          "current": false
+        }
+      ]
+    }
+  },
+  "nothing": {
+    "status": 200,
+    "body": {
+      "kind": "branch",
+      "query": "zzz",
+      "limit": 100,
+      "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+      "ref": "refs/remotes/origin/topic",
+      "total": 0,
+      "truncated": false,
+      "refs": []
+    }
+  },
+  "page": {
+    "status": 200,
+    "body": {
+      "kind": "branch",
+      "query": "",
+      "limit": 1,
+      "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+      "ref": "refs/remotes/origin/topic",
+      "total": 2,
+      "truncated": true,
+      "refs": [
+        {
+          "name": "topic",
+          "ref": "refs/remotes/origin/topic",
+          "commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+          "default": true,
+          "current": true
+        }
+      ]
+    }
+  },
+  "refused": {
+    "status": 400,
+    "body": {
+      "error": "\"kind\" is \"branch\" or \"tag\"",
+      "code": "invalid_request"
+    }
+  },
+  "switch_away": {
+    "status": 200,
+    "body": {
+      "changed": true,
+      "status": {
+        "subject": "git_revision",
+        "generation": 2,
+        "pin": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+        "ref": "refs/remotes/origin/feature",
+        "ref_name": "feature",
+        "refreshable": true,
+        "latest": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+        "ref_on_origin": true,
+        "last_fetch_at": "2026-09-17T12:00:05Z",
+        "last_outcome": {
+          "operation": "acquire",
+          "outcome": "succeeded",
+          "at": "2026-09-17T12:00:05Z"
+        },
+        "refreshing": false,
+        "stale": true,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      },
+      "view_href": "/view/"
+    }
+  },
+  "switch_keep": {
+    "status": 200,
+    "body": {
+      "changed": true,
+      "status": {
+        "subject": "git_revision",
+        "generation": 3,
+        "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+        "ref": "refs/remotes/origin/topic",
+        "ref_name": "topic",
+        "refreshable": true,
+        "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+        "ref_on_origin": true,
+        "last_fetch_at": "2026-09-17T12:00:05Z",
+        "last_outcome": {
+          "operation": "acquire",
+          "outcome": "succeeded",
+          "at": "2026-09-17T12:00:05Z"
+        },
+        "refreshing": false,
+        "stale": true,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      },
+      "view_href": "/view/g1-UkVBRE1FLm1k"
+    }
+  },
+  "switch_same": {
+    "status": 200,
+    "body": {
+      "changed": false,
+      "status": {
+        "subject": "git_revision",
+        "generation": 3,
+        "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+        "ref": "refs/remotes/origin/topic",
+        "ref_name": "topic",
+        "refreshable": true,
+        "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+        "ref_on_origin": true,
+        "last_fetch_at": "2026-09-17T12:00:05Z",
+        "last_outcome": {
+          "operation": "acquire",
+          "outcome": "succeeded",
+          "at": "2026-09-17T12:00:05Z"
+        },
+        "refreshing": false,
+        "stale": true,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      },
+      "view_href": "/view/g1-UkVBRE1FLm1k"
+    }
+  },
+  "switch_no_view": {
+    "status": 200,
+    "body": {
+      "changed": true,
+      "status": {
+        "subject": "git_revision",
+        "generation": 4,
+        "pin": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+        "ref": "refs/remotes/origin/feature",
+        "ref_name": "feature",
+        "refreshable": true,
+        "latest": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+        "ref_on_origin": true,
+        "last_fetch_at": "2026-09-17T12:00:05Z",
+        "last_outcome": {
+          "operation": "acquire",
+          "outcome": "succeeded",
+          "at": "2026-09-17T12:00:05Z"
+        },
+        "refreshing": false,
+        "stale": true,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      }
+    }
+  },
+  "switch_missing": {
+    "status": 404,
+    "body": {
+      "error": "no branch or tag with that name is in the mirror",
+      "code": "selection_not_found"
+    }
+  }
+}

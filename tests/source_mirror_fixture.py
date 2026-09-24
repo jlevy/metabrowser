@@ -47,6 +47,7 @@ from metabrowser.cache.records import (
     StoreOperation,
 )
 from metabrowser.cache.urls import GitSource, classify_root_argument
+from metabrowser.git.tree_source import GitPath
 
 FETCHED_AT: Final = "2026-09-17T12:00:05Z"
 _IDENTITY: Final = b"Mirror <mirror@example.invalid>"
@@ -150,6 +151,16 @@ def write_bodies(directory: Path, origin: Path) -> None:
         "pin-same.json": {"ref": "topic"},
         "pin-missing.json": {"ref": "gone"},
         "pin-syntax.json": {"ref": ":/first"},
+        # What the ref selector posts: the full ref it listed and the page's address.
+        # README.md is on every branch; NOTES.md only on topic.
+        "pin-feature-view.json": {
+            "ref": "refs/remotes/origin/feature",
+            "view": "/view/" + GitPath.from_display("README.md").to_wire(),
+        },
+        "pin-feature-away.json": {
+            "ref": "refs/remotes/origin/feature",
+            "view": "/view/" + GitPath.from_display("NOTES.md").to_wire(),
+        },
     }
     for name, body in bodies.items():
         (directory / name).write_text(json.dumps(body) + "\n", encoding="utf-8")

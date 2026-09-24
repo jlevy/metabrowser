@@ -14,8 +14,10 @@ import pytest
 
 from metabrowser.git.tree_source import GitRevisionSubject
 from metabrowser.mirror_refresh import (
+    MirrorRef,
     MirrorSession,
     RecordedFreshness,
+    RefKind,
     RefreshCoordinator,
     RefreshResult,
 )
@@ -69,6 +71,9 @@ class _Mirror:
 
     async def ref_tip(self, ref: str) -> str | None:
         return None
+
+    async def list_refs(self, kind: RefKind) -> tuple[MirrorRef, ...]:
+        raise AssertionError("not reached")
 
     async def refresh_running_elsewhere(self) -> bool:
         return False

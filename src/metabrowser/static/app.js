@@ -8101,6 +8101,21 @@ async function startSourceFreshness() {
   window.MetabrowserSourceFreshness?.mount(element);
 }
 
+/**
+ * A served mirror's branch and tag selector. The server renders its element only for
+ * a pin with a mirror; the module is fetched on demand after the first tree request,
+ * and static/source-ref-selector.js owns every decision; this only mounts it.
+ */
+async function startSourceRefSelector() {
+  var element = document.getElementById("source-ref-selector");
+  var assets = window.MetabrowserAssets;
+  if (!isGitRevisionSource() || !element || !assets) {
+    return;
+  }
+  await assets.ensureAsset("source-ref-selector");
+  window.MetabrowserSourceRefSelector?.mount(element);
+}
+
 // app.js is the last core script in the body, so the tree container and every
 // cache used by its renderer are initialized here. Paint the server-carried
 // rows now instead of waiting for DOMContentLoaded. The authoritative request
@@ -8144,6 +8159,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     .finally(settleCommitRoutePreview);
   startSourceFreshness().catch((error) => {
     console.error("metabrowser source freshness: init failed", error);
+  });
+  startSourceRefSelector().catch((error) => {
+    console.error("metabrowser ref selector: init failed", error);
   });
   if (filesPanelUsesRecentSource()) {
     loadRecent(currentRecentFilterCursor());

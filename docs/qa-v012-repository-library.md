@@ -203,6 +203,8 @@ uv --config-file uv.toml run --frozen pytest \
   tests/test_cli_git_refresh_golden.py \
   tests/test_refresh_signals.py \
   tests/test_source_freshness_session.py \
+  tests/test_source_refs.py \
+  tests/test_source_ref_selector_session.py \
   tests/test_source_kind_session.py
 ```
 
@@ -235,6 +237,10 @@ newer-revision offer and switch, joined refreshes, refresh on open, shutdown
 cancellation, and the cross-origin, form, and GET refusals.
 `cli-git-refresh.txt` and `cli-ui-source-freshness.tryscript.md` pin the refresh and
 switch transcripts and the browser’s freshness session.
+`tests/test_source_refs.py` lists a real mirror’s branches and tags through
+`/api/source/refs` and checks the address a switch keeps; the ref selector’s browserless
+session and `cli-ui-source-ref-selector.tryscript.md` replay responses recorded from a
+real mirror.
 
 **Fail:** A failed assertion, a 500-shaped CLI envelope, or a golden update performed
 without an intended product change.
@@ -1068,6 +1074,61 @@ uv --config-file uv.toml run --frozen metab "file://${QA_TOC}/origin.git" --no-o
 **Fail:** a flat list of entries in the document, an `id` the document wrote, an entry
 or link that does not scroll, or a KPress script loaded for the mirror.
 
+### 5.10 Switch branch or tag from the selector (no network)
+
+Use the server from 5.6, or start it again the same way, with the origin in place.
+From a second terminal, give the origin a branch without one file and a tag:
+
+```shell
+git -C "${QA_WORK}/work" switch -q -c qa-side
+git -C "${QA_WORK}/work" rm -q README.md
+git -C "${QA_WORK}/work" commit -q -m "QA side without the README"
+git -C "${QA_WORK}/work" tag qa-tag HEAD~1
+git -C "${QA_WORK}/work" push -q "${QA_WORK}/origin.git" qa-side qa-tag
+git -C "${QA_WORK}/work" switch -q -
+```
+
+1. Click the fetched label at the foot of the navigation pane and wait for
+   `Fetched just now`: the selector reads the mirror, so it shows only what a fetch
+   brought.
+
+2. The button under the navigation header reads `Branch: <default branch>`. Open it: the
+   default branch is first with a `default` badge and is bold as the served one;
+   `qa-side` is listed with its short commit.
+   **Tags** lists `qa-tag`, newest tags first.
+
+3. Type `side` in the filter: after a short pause only `qa-side` remains.
+   Type `no-such-ref`: the list says no branches match.
+   **Escape** closes the list and returns focus to the button; clicking elsewhere closes
+   it too.
+
+4. Open `README.md`, open the selector, and choose **Tags** then `qa-tag`: the page
+   reloads on `README.md`, the button reads `Tag: qa-tag`, and the heading shows the
+   tag’s commit.
+
+5. Choose the branch `qa-side`: `README.md` is not on it, so the page reloads at the
+   root. Choose the default branch again from a folder that exists on both: the page
+   stays in that folder.
+
+6. From the second terminal, check the listing and its bounds:
+
+   ```shell
+   BASE=http://127.0.0.1:8474
+   curl -s "$BASE/api/source/refs?kind=tag&q=QA" ; echo
+   curl -s "$BASE/api/source/refs?limit=1" ; echo
+   curl -s -o /dev/null -w '%{http_code}\n' "$BASE/api/source/refs?kind=commit"
+   ```
+
+   **Pass:** the tag filter finds `qa-tag` regardless of case; `limit=1` answers one
+   branch with `truncated: true` and the full `total`; the unknown kind answers `400`.
+
+**Pass:** every step as described; the network panel shows `/api/source/refs` only after
+the selector opens, and no request leaves `127.0.0.1`.
+
+**Fail:** the list is empty after a fetch that brought refs; the served ref is not
+marked; a switch keeps an address the new revision lacks, or drops one it has; the page
+changes before a ref is chosen; a request fetches from the origin.
+
 ## Phase 6: HTML Trust on the Integration Tip
 
 The selected integration tip must include the merged HTML trust implementation:
@@ -1158,7 +1219,6 @@ was acquired or served, or a served pin ran a script).
 | Item | Why it is out of scope here |
 | --- | --- |
 | ssh acquire and serve | Closed; refuse is the test |
-| A branch and tag selector in the browser | Not built; pin by name through `POST /api/source/pin` (5.6) |
 | The browser’s view of a pending URL selection | A page opened while the selection waited goes to it when the fetch finds it; the freshness row says when it is not on the origin or could not be fetched, and offers a Retry for the second |
 | Line highlighting for `#L10-L20` | `mb-rlf3`; the anchor stays in the address |
 | Pull-request page | Later steps; pull-request data is read through `--api` and served beside the pin (4.10) |
