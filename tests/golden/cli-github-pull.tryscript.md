@@ -67,13 +67,13 @@ status: 200
   },
   "comparison_route": "/api/plugin/diff/comparison?left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base",
   "record": {
-    "schema_version": 1,
+    "schema_version": 2,
     "source": "https://github.com/octo/demo",
     "number": 7,
     "fetched_at": "2026-09-17T12:00:00Z",
     "reader": "gh:octo-reader",
     "etags": {
-      "repos/octo/demo/pulls/7": "W/\"865983808811b03c59b073a9a553cdda8094f3bc07611317ea924210341c8089\"",
+      "repos/octo/demo/pulls/7": "W/\"f9a5f87d7f2672e1b7757f36509de5ce7f8731429fe6cbfc7f672b160f1edb2b\"",
       "repos/octo/demo/issues/7/comments?per_page=100&page=1": "W/\"129ba5d41c7ad9dc46b0ecc3d92124b83747ed95e5ff5422603eb05b99399608\"",
       "repos/octo/demo/pulls/7/reviews?per_page=100&page=1": "W/\"553dbffc68c21141af1083cb13e8be39e4138e90d4011da721d679e7853c5e9d\"",
       "repos/octo/demo/pulls/7/comments?per_page=100&page=1": "W/\"b4ca741eae91bcff3445421bd4f16ee7b2ae05d25fa979346f04a378ee3bd6cc\"",
@@ -88,6 +88,8 @@ status: 200
       "state": "open",
       "draft": false,
       "merged": false,
+      "merged_by": null,
+      "commits": 2,
       "merge_commit_sha": null,
       "mergeable": "mergeable",
       "labels": [
@@ -511,13 +513,13 @@ status: 200
   },
   "comparison_route": "/api/plugin/diff/comparison?left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&base_policy=merge_base",
   "record": {
-    "schema_version": 1,
+    "schema_version": 2,
     "source": "https://github.com/octo/demo",
     "number": 9,
     "fetched_at": "2026-09-17T12:00:00Z",
     "reader": "gh:octo-reader",
     "etags": {
-      "repos/octo/demo/pulls/9": "W/\"83ce79bd9830fa4ab7967fc4d84b8e996e7fa0bcd9ff1d369c6f136815a2eff8\"",
+      "repos/octo/demo/pulls/9": "W/\"a178168d2a4d92e37b78ec5fd832dbb8b7eedbb34fd1ed80970d56e688875753\"",
       "repos/octo/demo/issues/9/comments?per_page=100&page=1": "W/\"8e3fb7499c48198e2722d4bf87b6c307d9dd9f38dc4d767cb6d084933715125a\"",
       "repos/octo/demo/pulls/9/reviews?per_page=100&page=1": "W/\"7f0bc5191955ee595d16f9154007d0dc93786fa2ababd3d3aeb87531c7dbc19a\"",
       "repos/octo/demo/pulls/9/comments?per_page=100&page=1": "W/\"d3923abb607ffe393dc70a9b0bb679b48cf6c97b158f065d3879327d52e2bbe4\"",
@@ -532,6 +534,8 @@ status: 200
       "state": "closed",
       "draft": false,
       "merged": false,
+      "merged_by": null,
+      "commits": 1,
       "merge_commit_sha": null,
       "mergeable": "unknown",
       "labels": [
@@ -647,13 +651,13 @@ status: 200
   },
   "comparison_route": "/api/plugin/diff/comparison?left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base",
   "record": {
-    "schema_version": 1,
+    "schema_version": 2,
     "source": "https://github.com/octo/demo",
     "number": 7,
     "fetched_at": "2026-09-17T12:00:00Z",
     "reader": "gh:octo-reader",
     "etags": {
-      "repos/octo/demo/pulls/7": "W/\"865983808811b03c59b073a9a553cdda8094f3bc07611317ea924210341c8089\"",
+      "repos/octo/demo/pulls/7": "W/\"f9a5f87d7f2672e1b7757f36509de5ce7f8731429fe6cbfc7f672b160f1edb2b\"",
       "repos/octo/demo/issues/7/comments?per_page=100&page=1": "W/\"129ba5d41c7ad9dc46b0ecc3d92124b83747ed95e5ff5422603eb05b99399608\"",
       "repos/octo/demo/pulls/7/reviews?per_page=100&page=1": "W/\"553dbffc68c21141af1083cb13e8be39e4138e90d4011da721d679e7853c5e9d\"",
       "repos/octo/demo/pulls/7/comments?per_page=100&page=1": "W/\"b4ca741eae91bcff3445421bd4f16ee7b2ae05d25fa979346f04a378ee3bd6cc\"",
@@ -668,6 +672,8 @@ status: 200
       "state": "open",
       "draft": false,
       "merged": false,
+      "merged_by": null,
+      "commits": 2,
       "merge_commit_sha": null,
       "mergeable": "mergeable",
       "labels": [

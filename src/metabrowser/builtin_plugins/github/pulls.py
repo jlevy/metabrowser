@@ -197,6 +197,11 @@ def _int(value: object) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
+def _count(value: object) -> int | None:
+    number = _int(value)
+    return number if number is not None and number >= 0 else None
+
+
 def _required_int(value: object) -> int:
     number = _int(value)
     if number is None:
@@ -247,6 +252,8 @@ def _pull(value: object, number: int) -> PullRequest:
         state=item["state"],
         draft=item.get("draft") is True,
         merged=item.get("merged") is True,
+        merged_by=_login(item.get("merged_by")),
+        commits=_count(item.get("commits")),
         merge_commit_sha=_sha(item.get("merge_commit_sha")),
         mergeable="mergeable"
         if mergeable is True

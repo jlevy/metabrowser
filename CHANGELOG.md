@@ -182,13 +182,14 @@ GitHub URLs and HTTPS:
 
 - Pull-request data:
   `metab https://github.com/owner/repo/pull/<n> --api /api/plugin/github/pull` reads the
-  pull request with `gh api` (its description, labels, state, merge status,
-  conversation, reviews, review comments, check runs, and statuses), fetches its commits
-  through GitHub’s `refs/pull/<n>/head`, a fork’s included, pins the head commit, and
-  prints the record. The record is cached as one JSON file per pull request, so later
-  `--show` and `--api` answer from the cache without running `gh` or reaching the
-  network; `--no-serve` refreshes it, with conditional requests that GitHub does not
-  count against the rate limit when nothing changed.
+  pull request with `gh api` (its description, labels, state, merge status, commit
+  count, who merged it, conversation, reviews, review comments, check runs, and
+  statuses), fetches its commits through GitHub’s `refs/pull/<n>/head`, a fork’s
+  included, pins the head commit, and prints the record.
+  The record is cached as one JSON file per pull request, so later `--show` and `--api`
+  answer from the cache without running `gh` or reaching the network; `--no-serve`
+  refreshes it, with conditional requests that GitHub does not count against the rate
+  limit when nothing changed.
   The record names Files changed as two pinned commits, the merge base and the head, as
   GitHub computes it, and `/api/plugin/diff/comparison` now honors
   `base_policy=merge_base` for such a comparison.
@@ -224,17 +225,20 @@ GitHub URLs and HTTPS:
   Lists and text are bounded per pull request, and a cut is reported, never silent.
 
 - Pull-request page: serving a pull-request URL now opens its page at `/pull/<n>`, the
-  way github.com shows it: title, state (open, draft, merged, or closed), author, base
-  and head branches, times, labels, merge status (unknown until GitHub has computed it),
-  the description, a conversation of comments and reviews in time order with review
-  states, review comments with their file, line, and diff hunk, checks and statuses with
-  links to their details, and notes for anything the record cut or could not read.
-  `/pull/<n>/files` is its Files changed, the diff view over the record’s merge-base
-  comparison. The page reads only the cached record, so it opens instantly and offline;
-  it says how old the record is and who read it, offers a refresh when it is stale,
-  shows a quiet loading state while the first record is fetched, and updates the
-  conversation and checks in place when a refresh brings a new record, while the diff
-  stays on what it showed and offers a newer head.
+  way github.com shows it: title, state (open, draft, merged, or closed), github.com’s
+  header line (“author wants to merge 2 commits into base from head”, and once merged
+  “merger merged 2 commits into base from head”), times, labels, merge status (unknown
+  until GitHub has computed it), the description, a conversation of comments and reviews
+  in time order with review states, review comments with their file, line, and diff
+  hunk, checks and statuses with links to their details and counted as GitHub counts
+  them, skipped apart from neutral, and notes for anything the record cut or could not
+  read. `/pull/<n>/files` is its Files changed, the diff view over the record’s
+  merge-base comparison.
+  The page reads only the cached record, so it opens instantly and offline; it says how
+  old the record is and who read it, offers a refresh when it is stale, shows a quiet
+  loading state while the first record is fetched, and updates the conversation and
+  checks in place when a refresh brings a new record, while the diff stays on what it
+  showed and offers a newer head.
   When the served code is not the head the record names, as when the pull request could
   not be opened at startup and serving fell back to the default branch, the page offers
   to switch to the head (`refs/pull/<n>/head`) and reloads on it.

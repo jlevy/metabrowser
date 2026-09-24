@@ -42,7 +42,8 @@ from metabrowser.home import (
     write_private_file_atomic,
 )
 
-PULL_RECORD_SCHEMA: Final = 1
+# 2 added the pull request's commit count and who merged it.
+PULL_RECORD_SCHEMA: Final = 2
 
 # Measured on ten public pull requests (octocat/Hello-World#1, cli/cli#14462,
 # kubernetes/kubernetes#18085 and #102884, rust-lang/rust#69864, #137944, and #162519,
@@ -107,7 +108,12 @@ class PullSide(_Model):
 
 
 class PullRequest(_Model):
-    """The pull request itself. ``mergeable`` is ``unknown`` while GitHub computes it."""
+    """The pull request itself. ``mergeable`` is ``unknown`` while GitHub computes it.
+
+    ``commits`` is how many commits GitHub counts in it and ``merged_by`` who merged it,
+    which the page's header names as github.com's does; either is ``None`` when the
+    API's answer lacks it.
+    """
 
     number: int = Field(ge=1)
     title: str
@@ -116,6 +122,8 @@ class PullRequest(_Model):
     state: Literal["open", "closed"]
     draft: bool
     merged: bool
+    merged_by: Login | None
+    commits: Annotated[int, Field(ge=0)] | None
     merge_commit_sha: Sha | None
     mergeable: Mergeable
     labels: tuple[Short, ...] = Field(max_length=MAX_LABELS)

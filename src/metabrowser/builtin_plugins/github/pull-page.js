@@ -139,6 +139,7 @@ const TRUNCATED = Object.freeze({
  *   failure: string | null,
  *   pull: null | {
  *     title: string, number: number, state: string, stateLabel: string, author: string,
+ *     actor: string, action: string,
  *     base: string, head: string, htmlUrl: string, created: string, updated: string,
  *     closed: string | null, closedLabel: string | null, labels: string[],
  *     merge: {state: string, label: string} | null, text: string, truncated: boolean,
@@ -192,13 +193,17 @@ function who(login) {
 }
 
 /**
- * The tone a check's result paints with: success, failure, pending, or neutral.
+ * The tone a check's result paints with and is counted under: success, failure,
+ * pending, skipped, or neutral. GitHub counts skipped checks apart from neutral ones.
  *
  * @param {string | null} result
  */
 function checkTone(result) {
   if (result === "success") {
     return "success";
+  }
+  if (result === "skipped") {
+    return "skipped";
   }
   if (
     result === "failure" ||
@@ -450,12 +455,18 @@ export function describePull(envelope, page) {
   const repository = text(pull.base?.repository);
   const state = displayState(pull);
   const merge = state === "open" || state === "draft" ? text(pull.mergeable) || "unknown" : null;
+  const commits = typeof pull.commits === "number" ? pull.commits : null;
+  const count = commits === null ? "" : ` ${commits} commit${commits === 1 ? "" : "s"}`;
   model.pull = {
     title: text(pull.title),
     number: pull.number,
     state,
     stateLabel: state[0].toUpperCase() + state.slice(1),
     author: who(pull.author),
+    // github.com's words: "<merger> merged 6 commits into <base> from <head>", and for
+    // an open, draft, or closed pull request "<author> wants to merge 1 commit into".
+    actor: state === "merged" ? who(pull.merged_by) : who(pull.author),
+    action: `${state === "merged" ? "merged" : "wants to merge"}${count} into`,
     base: sideName(pull.base, repository),
     head: sideName(pull.head, repository),
     htmlUrl: text(pull.html_url),
@@ -1151,8 +1162,8 @@ export function mountPullPage(container, ctx, mb) {
         h("div", { class: "github-pull-meta" }, [
           badge(pull.state, pull.stateLabel),
           h("span", {}, [
-            h("strong", {}, [pull.author]),
-            ` wants to merge into `,
+            h("strong", {}, [pull.actor]),
+            ` ${pull.action} `,
             h("code", {}, [pull.base]),
             " from ",
             h("code", {}, [pull.head]),

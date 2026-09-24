@@ -939,8 +939,8 @@ The banner prints
 address.
 
 1. The page shows **Count to two in the app #7** with an **Open** badge,
-   `forker wants to merge into topic from forker:count-to-two`, the opened and updated
-   times, **View on GitHub**, **Browse code**, and the `enhancement` label.
+   `forker wants to merge 2 commits into topic from forker:count-to-two`, the opened and
+   updated times, **View on GitHub**, **Browse code**, and the `enhancement` label.
    The status line reads `Fetched … by gh:octo-reader`; the records were fetched on
    2026-09-17, so it first adds `may be out of date` and offers **Refresh**, and the
    freshness row at the foot of the navigation pane refreshes on its own and links
@@ -974,8 +974,14 @@ address.
    startup, so this case is played by
    `tests/golden/cli-ui-github-pull-page.tryscript.md` rather than by hand.
 8. Stop the server and serve pull request 9 (`--serve 9 8475`): **spam** is **Closed**,
-   from `spam (deleted fork)` into `topic`, with no conversation, and Files changed
-   compares from the recorded `base.sha`.
+   and the header reads
+   `ghost wants to merge 1 commit into topic from spam (deleted fork)`, as github.com
+   words a closed pull request; there is no conversation, and Files changed compares
+   from the recorded `base.sha`. Serve pull request 8 (`--serve 8 8475`): **Say more in
+   the guide** is **Merged**, the header reads
+   `octo merged 1 commit into topic from guide-more`, naming who merged it rather than
+   its author, and **Checks** reads `2 success · 1 skipped`, with `docs` labeled
+   skipped.
 9. A hostile comment. Stop the server, add `HOSTILE_COMMENT` from
    `tests/github_pull_fixture.py` to pull request 7’s comments in
    `"${QA_PR}/fake-gh-scenario.json"` (rebuild that entry with the fixture’s `ok()`, so

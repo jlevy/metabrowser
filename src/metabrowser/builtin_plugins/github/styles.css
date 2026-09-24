@@ -60,6 +60,7 @@
 }
 .github-pull-badge[data-state="draft"],
 .github-pull-badge[data-state="neutral"],
+.github-pull-badge[data-state="skipped"],
 .github-pull-badge[data-state="outdated"],
 .github-pull-badge[data-state="COMMENTED"],
 .github-pull-badge[data-state="DISMISSED"] {

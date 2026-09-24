@@ -7,7 +7,7 @@ so every commit ID is the same on every machine. It stands in for
 | PR | Shape | Head | Base the comparison starts from |
 | --- | --- | --- | --- |
 | 7 | open, from a fork | ``fork_head``, reachable only through ``refs/pull/7/head`` | the mirror's ``topic`` |
-| 8 | merged, same repository | ``merged_head``, merged into ``topic`` | ``base.sha``, ``topic`` before the merge |
+| 8 | merged by another account, same repository, one check skipped | ``merged_head``, merged into ``topic`` | ``base.sha``, ``topic`` before the merge |
 | 9 | closed, fork deleted | ``closed_head`` | ``base.sha``, a commit no mirrored ref reaches |
 | 10 | open draft, same repository | ``draft_head`` on ``wip`` | the mirror's ``topic`` |
 
@@ -304,6 +304,9 @@ def pull_bodies(origin: Origin) -> dict[int, dict[str, Any]]:
         number=8,
         state="closed",
         merged=True,
+        # Merged by someone other than its author, as github.com's header then says.
+        merged_by={"login": "octo"},
+        commits=1,
         mergeable=None,
         merge_commit_sha=origin["topic"],
         title="Say more in the guide",
@@ -324,11 +327,22 @@ def pull_bodies(origin: Origin) -> dict[int, dict[str, Any]]:
             "repo": {"full_name": "octo/demo"},
         },
     )
-    pulls[8] = {**merged, "issue_comments": [], "reviews": [], "review_comments": []}
+    # Its docs job was skipped, as cli/cli#14128's 13 skipped runs were: GitHub counts
+    # skipped checks apart from neutral ones.
+    merged_checks = copy.deepcopy(fork["check_runs"])
+    merged_checks["check_runs"][1].update(status="completed", conclusion="skipped")
+    pulls[8] = {
+        **merged,
+        "issue_comments": [],
+        "reviews": [],
+        "review_comments": [],
+        "check_runs": merged_checks,
+    }
     closed = copy.deepcopy(fork)
     closed["pull"].update(
         number=9,
         state="closed",
+        commits=1,
         mergeable=None,
         title="spam",
         body=None,
@@ -344,6 +358,7 @@ def pull_bodies(origin: Origin) -> dict[int, dict[str, Any]]:
     draft["pull"].update(
         number=10,
         draft=True,
+        commits=1,
         mergeable=False,
         title="WIP: draft the next page",
         body="Not ready.",
