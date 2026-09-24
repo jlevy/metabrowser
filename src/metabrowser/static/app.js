@@ -3613,6 +3613,9 @@ function clearPreviewNavigationState(preview) {
  */
 function claimPreview(owner, selection) {
   cancelPendingFilePreviewStage();
+  // Whatever claims the pane next replaces the pull-request page, including a page
+  // for another pull request; only a tab change keeps it (showPullRequestPage).
+  disposePullRequestPage();
   const preview = document.getElementById("preview-pane");
   if (preview) {
     clearPreviewNavigationState(preview);
@@ -7601,6 +7604,102 @@ function deliverNavigationFragment(target) {
   );
 }
 
+// ── Pull-request page ──────────────────────────────────────────
+//
+// /pull/<n>[/files] is the served pull request's address space. Its page is the view a
+// plugin registers for the `pull-request` kind, the GitHub plugin's; the shell claims
+// the pane, loads that plugin, and keeps the page's tab in the URL. The view owns
+// everything else: fetching the record, polling, refreshing, and Files changed.
+
+/** @type {{number: number, claim: number, handle: {setTab?: (tab: string) => void, dispose?: () => void} | null} | null} */
+var pullRequestPage = null;
+
+function disposePullRequestPage() {
+  var page = pullRequestPage;
+  pullRequestPage = null;
+  try {
+    page?.handle?.dispose?.();
+  } catch (error) {
+    console.error("pull-request page dispose error:", error);
+  }
+}
+
+/**
+ * Show the served pull request's page, or switch its tab when it is already shown.
+ *
+ * @param {{number: number, tab: string}} route
+ */
+async function showPullRequestPage(route) {
+  var shown = pullRequestPage;
+  if (shown && shown.number === route.number && isPreviewClaimCurrent(shown.claim)) {
+    shown.handle?.setTab?.(route.tab);
+    return { status: "opened" };
+  }
+  closeLiveStream();
+  currentPath = "";
+  setSelectedPath(null);
+  var claim = claimPreview("pull-request");
+  stopFolderHeaderSubscription();
+  var sdk = window.metabrowser;
+  var view = null;
+  try {
+    await sdk.ensureKindAssets("pull-request");
+    view = sdk.getRegisteredView("pull-request", "pull-request");
+  } catch (error) {
+    console.error("metabrowser: the pull-request page could not load", error);
+  }
+  if (!isPreviewClaimCurrent(claim)) {
+    return { status: "cancelled" };
+  }
+  if (!view) {
+    renderPreviewHtml(
+      '<div class="preview-empty">No plugin renders pull-request pages here.</div>',
+      claim,
+    );
+    return { status: "opened" };
+  }
+  var host = document.createElement("div");
+  host.className = "content-body pull-request-host";
+  renderPreviewNode(host, claim);
+  /** @type {NonNullable<typeof pullRequestPage>} */
+  var page = { number: route.number, claim: claim, handle: null };
+  pullRequestPage = page;
+  var routes = window.MetabrowserNavigationRoute;
+  var handle =
+    /** @type {{setTab?: (tab: string) => void, dispose?: () => void} | null | undefined} */ (
+      await view.render(host, {
+        kind: "pull-request",
+        number: route.number,
+        tab: route.tab,
+        // A tab is a selection within the page, so it owns the URL (Browser URL
+        // Grammar) and back and forward move between tabs.
+        openTab: (/** @type {string} */ tab) => {
+          var href = routes.pullHref(route.number, tab);
+          if (window.location.pathname !== href) {
+            window.history.pushState(null, "", href);
+          }
+          page.handle?.setTab?.(tab);
+        },
+      })
+    );
+  if (pullRequestPage !== page || !isPreviewClaimCurrent(claim)) {
+    handle?.dispose?.();
+    return { status: "cancelled" };
+  }
+  page.handle = handle || null;
+  return { status: "opened" };
+}
+
+// Back and forward between a page's tabs change no navigation target, so the
+// navigation controller does not see them; the page's own route does.
+window.addEventListener("popstate", () => {
+  var route = window.MetabrowserNavigationRoute.parsePull(window.location.pathname);
+  var shown = pullRequestPage;
+  if (route && shown && shown.number === route.number && isPreviewClaimCurrent(shown.claim)) {
+    shown.handle?.setTab?.(route.tab);
+  }
+});
+
 async function applyNavigationTarget(target, context) {
   if (!target) {
     // A null target usually means "no selection". A /commit/ URL is a
@@ -7609,6 +7708,10 @@ async function applyNavigationTarget(target, context) {
     // with its empty landing state.
     if (window.MetabrowserNavigationRoute.parseCommit(window.location.pathname)) {
       return { status: "cancelled" };
+    }
+    var pullRoute = window.MetabrowserNavigationRoute.parsePull(window.location.pathname);
+    if (pullRoute) {
+      return showPullRequestPage(pullRoute);
     }
     showNavigationLanding();
     return { status: "cancelled" };

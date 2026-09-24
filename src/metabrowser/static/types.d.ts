@@ -3,6 +3,13 @@ type MetabrowserRenderContext = {
   path?: string;
   /** A Git revision, when a surface asks a view for a comparison rather than a file. */
   revision?: string;
+  /** Two endpoints, when a surface asks the diff view for a comparison between them. */
+  comparison?: { left: string; right: string; base_policy: "direct" | "merge_base" };
+  /** The served pull request's page: its number, the tab its route names, and how it
+   *  asks the shell to put another tab in the URL. */
+  number?: number;
+  tab?: string;
+  openTab?: (tab: string) => void;
   raw?: unknown;
 };
 
@@ -210,6 +217,8 @@ type MetabrowserNavigationRouteRuntime = Readonly<{
   normalizeTarget(target: MetabrowserNavigationTarget): MetabrowserNavigationTarget;
   parse(pathname: string, search?: string, hash?: string): MetabrowserNavigationTarget | null;
   parseCommit(pathname: string): Readonly<{ revision: string; file: string }> | null;
+  parsePull(pathname: string): Readonly<{ number: number; tab: string }> | null;
+  pullHref(number: number, tab?: string): string;
   replaceFileSnapshot(
     previous: Map<string, Record<string, unknown>>,
     entries: Array<Record<string, unknown> & { path: string }>,
@@ -2140,6 +2149,8 @@ declare global {
     detail: string;
     offer: MetabrowserSourceOffer | null;
     error: string | null;
+    /** The served pull request's page, when the served URL named one. */
+    pull: { href: string; text: string } | null;
   };
 
   type MetabrowserSourceResponse = { status: number; etag: string | null; body: unknown };

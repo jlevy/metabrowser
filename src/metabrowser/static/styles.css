@@ -2139,6 +2139,14 @@ html.theme-anim .menu {
 .source-freshness-error {
   color: var(--status-warning-strong);
 }
+.source-freshness-pull {
+  color: var(--link);
+  text-decoration: none;
+}
+.source-freshness-pull:hover,
+.source-freshness-pull[aria-current="page"] {
+  text-decoration: underline;
+}
 
 /* ── Resize handle ───────────────────────────────────────────── */
 

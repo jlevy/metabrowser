@@ -21,7 +21,7 @@ import asyncio
 import json
 from typing import TYPE_CHECKING, Final
 
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 
 from metabrowser.mirror_refresh import mirror_session
 from metabrowser.source import get_source_session
@@ -35,17 +35,41 @@ _NO_STORE: Final = {"cache-control": "no-store"}
 MAX_REFRESH_REQUEST_BYTES: Final = 1024
 
 
-async def pull_handler(request: Request) -> JSONResponse:
-    """``GET /api/plugin/github/pull`` — see :mod:`.pull_route`."""
+async def pull_handler(request: Request) -> Response:
+    """``GET /api/plugin/github/pull`` — see :mod:`.pull_route`.
+
+    The answer carries an entity tag, and a request whose ``If-None-Match`` names it is
+    answered ``304`` without the record, so a page can poll it as cheaply as the status
+    route. The tag covers everything but the record, which changes only with
+    ``fetched_at``.
+    """
 
     from metabrowser.builtin_plugins.github.pull_route import (
+        envelope_etag,
         served_pull_envelope,
         served_pull_view,
     )
 
     view = served_pull_view(mirror_session(request.app), get_source_session().subject)
     envelope = await asyncio.to_thread(served_pull_envelope, view)
-    return JSONResponse(dict(envelope), headers=_NO_STORE)
+    etag = envelope_etag(envelope)
+    headers = {**_NO_STORE, "etag": etag}
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers=headers)
+    return JSONResponse(dict(envelope), headers=headers)
+
+
+async def pull_markdown_handler(request: Request) -> JSONResponse:
+    """``GET /api/plugin/github/pull-markdown?part=<part>`` — see :mod:`.pull_markdown`."""
+
+    from metabrowser.builtin_plugins.github.pull_markdown import render_part
+    from metabrowser.builtin_plugins.github.pull_route import served_pull_view
+
+    view = served_pull_view(mirror_session(request.app), get_source_session().subject)
+    status_code, body = await asyncio.to_thread(
+        render_part, view, request.query_params.get("part", "")
+    )
+    return JSONResponse(body, status_code=status_code, headers=_NO_STORE)
 
 
 async def _body_problem(request: Request) -> tuple[str, int] | None:
@@ -107,4 +131,9 @@ async def pull_refresh_handler(request: Request) -> JSONResponse:
     )
 
 
-__all__ = ["MAX_REFRESH_REQUEST_BYTES", "pull_handler", "pull_refresh_handler"]
+__all__ = [
+    "MAX_REFRESH_REQUEST_BYTES",
+    "pull_handler",
+    "pull_markdown_handler",
+    "pull_refresh_handler",
+]

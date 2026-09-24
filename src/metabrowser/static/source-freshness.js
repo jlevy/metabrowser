@@ -93,7 +93,15 @@
   function describe(status, page) {
     const error = page.error ?? null;
     if (status === null || status.subject !== "git_revision" || !status.refreshable) {
-      return { visible: false, tone: "quiet", label: "", detail: "", offer: null, error };
+      return {
+        visible: false,
+        tone: "quiet",
+        label: "",
+        detail: "",
+        offer: null,
+        error,
+        pull: null,
+      };
     }
     const age = relativeAge(status.last_fetch_at, page.nowMs);
     const outcome = status.last_outcome;
@@ -141,7 +149,12 @@
     } else if (status.ref !== null && status.ref_on_origin === false && !status.refreshing) {
       detail = `${detail} ${status.ref_name ?? status.ref} is no longer on the origin; its commits stay readable here.`;
     }
-    return { visible: true, tone, label, detail, offer, error };
+    // The served pull request's page is one link away from every page on its pin.
+    const pull =
+      typeof status.pull_request === "number"
+        ? { href: `/pull/${status.pull_request}`, text: `Pull request #${status.pull_request}` }
+        : null;
+    return { visible: true, tone, label, detail, offer, error, pull };
   }
 
   /**
@@ -161,7 +174,7 @@
       shown === null ||
       status.selection_state !== "found" ||
       typeof status.selection_href !== "string" ||
-      !status.selection_href.startsWith("/view/")
+      !(status.selection_href.startsWith("/view/") || status.selection_href.startsWith("/pull/"))
     ) {
       return null;
     }
@@ -448,6 +461,16 @@
     label.addEventListener("click", actions.refresh);
     /** @type {HTMLElement[]} */
     const children = [label];
+    if (model.pull !== null) {
+      const pull = document.createElement("a");
+      pull.className = "source-freshness-pull";
+      pull.href = model.pull.href;
+      pull.textContent = model.pull.text;
+      if (window.location.pathname.startsWith(model.pull.href)) {
+        pull.setAttribute("aria-current", "page");
+      }
+      children.push(pull);
+    }
     if (model.offer !== null) {
       const offer = document.createElement("span");
       offer.className = "source-freshness-offer";

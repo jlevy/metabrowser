@@ -68,6 +68,52 @@
     }
   }
 
+  const PULL_PREFIX = "/pull/";
+  // Keep aligned with view_routes._PULL_NUMBER and PULL_ROUTE_TABS.
+  const PULL_NUMBER_PATTERN = /^[1-9][0-9]{0,9}$/;
+  const PULL_TABS = Object.freeze(["", "files"]);
+
+  /**
+   * Encode the served pull request's page: `/pull/<n>` for its conversation,
+   * `/pull/<n>/files` for its Files changed.
+   *
+   * @param {number} number
+   * @param {string} [tab]
+   * @returns {string}
+   */
+  function pullHref(number, tab = "") {
+    if (!PULL_NUMBER_PATTERN.test(String(number)) || !PULL_TABS.includes(tab)) {
+      throw new TypeError("pull route requires a pull-request number and a known tab");
+    }
+    return `${PULL_PREFIX}${number}${tab ? `/${tab}` : ""}`;
+  }
+
+  /**
+   * Parse a pull-request page route, or null when the location is not one.
+   *
+   * @param {string} pathname
+   * @returns {Readonly<{number: number, tab: string}> | null}
+   */
+  function parsePull(pathname) {
+    if (typeof pathname !== "string" || !pathname.startsWith(PULL_PREFIX)) {
+      return null;
+    }
+    const segments = pathname.slice(PULL_PREFIX.length).split("/");
+    if (segments.length > 1 && segments[segments.length - 1] === "") {
+      segments.pop();
+    }
+    const [number, tab = ""] = segments;
+    if (
+      segments.length > 2 ||
+      !PULL_NUMBER_PATTERN.test(number) ||
+      !PULL_TABS.includes(tab) ||
+      (segments.length === 2 && !tab)
+    ) {
+      return null;
+    }
+    return Object.freeze({ number: Number(number), tab });
+  }
+
   /**
    * @typedef {object} NavigationTarget
    * @property {string} path Served-root-relative logical path, or empty for root.
@@ -1117,6 +1163,8 @@
     openFailureOutcome,
     parse,
     parseCommit,
+    parsePull,
+    pullHref,
     replaceFileSnapshot,
     requestFailure,
     responseBodyFailure,

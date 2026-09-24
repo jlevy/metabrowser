@@ -246,6 +246,7 @@ from metabrowser.tree_filter import (
 from metabrowser.view_routes import (
     VIEW_ROUTE_PREFIX,
     decode_safe_commit_route,
+    decode_safe_pull_route,
     decode_safe_view_path,
 )
 
@@ -1627,9 +1628,10 @@ async def index(request: Request) -> HTMLResponse:
     </div>
     <div class="resize-handle" id="tree-resize"></div>
     <!-- Every route that serves this shell selects something: /view/ names a
-         file or folder (the bare origin redirects to the served root), and
-         /commit/ names a revision. So the pane ships loading, never a prompt to
-         select a file. It is navigation.js's starting placeholder. -->
+         file or folder (the bare origin redirects to the served root),
+         /commit/ names a revision, and /pull/ the served pull request. So the
+         pane ships loading, never a prompt to select a file. It is
+         navigation.js's starting placeholder. -->
     <div class="preview-pane" id="preview-pane" data-kpress-viewport tabindex="-1">
       <div class="loading mb-delayed-loading"><div class="spinner"></div><span
         class="sr-only">Loading preview…</span></div>
@@ -1700,6 +1702,20 @@ async def commit_shell(request: Request) -> Response:
     raw_path = request.scope.get("raw_path")
     if not isinstance(raw_path, bytes) or decode_safe_commit_route(raw_path) is None:
         return PlainTextResponse("Invalid commit route.", status_code=400)
+    return await index(request)
+
+
+async def pull_shell(request: Request) -> Response:
+    """Serve the SPA shell for ``/pull/<n>[/files]``, the served pull request's page.
+
+    A pull request is its own address space, like a commit: the page is not a path in
+    the served tree. The view that renders it is the one a plugin registers for the
+    `pull-request` kind; the pull route says whether this server serves that number.
+    """
+
+    raw_path = request.scope.get("raw_path")
+    if not isinstance(raw_path, bytes) or decode_safe_pull_route(raw_path) is None:
+        return PlainTextResponse("Invalid pull-request route.", status_code=400)
     return await index(request)
 
 
@@ -3885,6 +3901,7 @@ routes = [
     Route("/", root_redirect),
     Route("/view/{path:path}", view_shell),
     Route("/commit/{rest:path}", commit_shell),
+    Route("/pull/{rest:path}", pull_shell),
     Route("/api/tree", api_tree),
     Route("/api/rollup", api_rollup),
     Route("/api/recent", api_recent),

@@ -1,0 +1,158 @@
+/* The served pull request's page (pull-page.js). Colors are design tokens. */
+
+.github-pull {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 20px 32px;
+  max-width: 1100px;
+  color: var(--text);
+}
+.github-pull-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.github-pull-title {
+  margin: 0;
+  font-size: 1.5em;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.github-pull-number,
+.github-pull-quiet {
+  color: var(--muted);
+  font-weight: normal;
+}
+.github-pull-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+.github-pull-meta code,
+.github-pull-card-head code {
+  overflow-wrap: anywhere;
+}
+.github-pull-badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border: 1px solid currentcolor;
+  border-radius: 999px;
+  font-size: var(--ui-small-font-size);
+  white-space: nowrap;
+}
+.github-pull-badge[data-state="open"],
+.github-pull-badge[data-state="success"],
+.github-pull-badge[data-state="APPROVED"] {
+  color: var(--status-success);
+}
+.github-pull-badge[data-state="merged"] {
+  color: var(--status-info);
+}
+.github-pull-badge[data-state="closed"],
+.github-pull-badge[data-state="failure"],
+.github-pull-badge[data-state="CHANGES_REQUESTED"] {
+  color: var(--status-error);
+}
+.github-pull-badge[data-state="pending"] {
+  color: var(--status-warning);
+}
+.github-pull-badge[data-state="draft"],
+.github-pull-badge[data-state="neutral"],
+.github-pull-badge[data-state="outdated"],
+.github-pull-badge[data-state="COMMENTED"],
+.github-pull-badge[data-state="DISMISSED"] {
+  color: var(--muted);
+}
+.github-pull-labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.github-pull-label {
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: var(--ui-small-font-size);
+}
+.github-pull-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+}
+.github-pull-failure {
+  color: var(--status-warning-strong);
+}
+.github-pull-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.github-pull-tab {
+  padding: 6px 12px;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  text-decoration: none;
+}
+.github-pull-tab[aria-selected="true"] {
+  border-bottom-color: var(--link);
+  color: var(--text);
+}
+.github-pull-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.github-pull-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-chrome);
+  overflow: hidden;
+}
+.github-pull-card-head {
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--sidebar-bg);
+  font-size: var(--ui-small-font-size);
+}
+.github-pull-reply {
+  margin-left: 24px;
+}
+.github-pull-text {
+  padding: 8px 12px;
+}
+.github-pull-plain {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.github-pull-empty,
+.github-pull-note {
+  margin: 0;
+  color: var(--muted);
+  font-style: italic;
+}
+.github-pull-hunk {
+  margin: 0;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  font-size: var(--ui-small-font-size);
+}
+.github-pull-section h2 {
+  margin: 8px 0;
+  font-size: 1.1em;
+}
+.github-pull-checks {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.github-pull-checks li {
+  padding: 3px 0;
+}
+.github-pull-merge[data-state="conflicting"] {
+  color: var(--status-error);
+}

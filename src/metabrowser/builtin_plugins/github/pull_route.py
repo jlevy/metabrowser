@@ -22,6 +22,8 @@ the page to offer rather than switching under a reader.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import stat
 import threading
@@ -214,8 +216,21 @@ def served_pull_envelope(view: ServedPullView | None) -> PullEnvelope:
     )
 
 
+def envelope_etag(envelope: PullEnvelope) -> str:
+    """An entity tag for *envelope* that never serializes the record.
+
+    Every field but the record is in it, and a new record always brings a new
+    ``fetched_at``, so the tag changes exactly when the answer does.
+    """
+
+    fields = {name: value for name, value in envelope.items() if name != "record"}
+    digest = hashlib.sha256(json.dumps(fields, sort_keys=True).encode()).hexdigest()
+    return f'"{digest[:32]}"'
+
+
 __all__ = [
     "PullEnvelope",
+    "envelope_etag",
     "PullState",
     "ServedPullView",
     "cached_pull_record",
