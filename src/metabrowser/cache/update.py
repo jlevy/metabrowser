@@ -43,6 +43,7 @@ import functools
 import logging
 import os
 import re
+from collections.abc import Awaitable
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -182,12 +183,15 @@ class StoreUpdate:
     ``default_remote_ref`` and ``default_revision`` are set when the refresh fetched,
     and ``at`` is also the new last-fetch time then. They are also set by a failed
     fetch after a prune deleted refs, because the record must then name what is left.
+    ``unrestored`` names refs a case fold moved that could not be put back; the outcome
+    is then ``ref_case_collision`` and the recorded tip does not move.
     """
 
     outcome: RefreshOutcome
     at: str
     default_remote_ref: str | None = None
     default_revision: str | None = None
+    unrestored: tuple[str, ...] = ()
 
 
 def remove_interrupted_fetch_leftovers(git_dir: Path) -> tuple[str, ...]:
@@ -327,6 +331,54 @@ async def _fetch_atomically(
     return _Fetched(porcelain, baseline)
 
 
+async def _apply_ref_batch(target: RepositoryStoreTarget, batch: list[str], lock_fd: int) -> None:
+    """Apply ``update-ref --stdin`` lines in one transaction, or one at a time if it fails.
+
+    Two names that fold onto one lock file cannot be in one transaction, so a refused
+    batch is retried line by line; a line that still fails is logged and left for the
+    caller's listing to report.
+    """
+
+    def run(lines: list[str]) -> Awaitable[bytes]:
+        return run_git(
+            ["update-ref", "--no-deref", "--stdin"],
+            target=target,
+            policy=ACQUISITION_POLICY,
+            pass_fds=(lock_fd,),
+            stdin_bytes="".join(lines).encode("utf-8", "surrogateescape"),
+        )
+
+    if not batch:
+        return
+    try:
+        await run(batch)
+        return
+    except GitCommandError as exc:
+        log.debug("a ref transaction was refused; applying it a ref at a time: %s", _detail(exc))
+    for line in batch:
+        try:
+            await run([line])
+        except GitCommandError as exc:
+            log.warning("could not put one ref back: %s", _detail(exc))
+
+
+async def _finish_despite_cancel[T](work: Awaitable[T]) -> T:
+    """Run *work* to the end even if the caller is cancelled meanwhile, then re-raise.
+
+    For work that must not stop half done under the fetch lock: removing what a killed
+    fetch left, and checking and undoing a case fold.
+    """
+
+    task = asyncio.ensure_future(work)
+    try:
+        return await asyncio.shield(task)
+    except asyncio.CancelledError:
+        while not task.done():
+            with contextlib.suppress(asyncio.CancelledError):
+                await asyncio.shield(task)
+        raise
+
+
 async def _restore_refs(
     target: RepositoryStoreTarget, before: dict[str, str], lock_fd: int
 ) -> tuple[str, ...]:
@@ -351,14 +403,7 @@ async def _restore_refs(
             if held.get(name) != oid
         ]
         for batch in (deletions, updates):
-            if batch:
-                await run_git(
-                    ["update-ref", "--no-deref", "--stdin"],
-                    target=target,
-                    policy=ACQUISITION_POLICY,
-                    pass_fds=(lock_fd,),
-                    stdin_bytes="".join(batch).encode("utf-8", "surrogateescape"),
-                )
+            await _apply_ref_batch(target, batch, lock_fd)
         held = await mirror_refs(target)
     except GitError as exc:
         log.warning("could not put the store's refs back after a case fold: %s", _detail(exc))
@@ -372,6 +417,46 @@ async def _restore_refs(
     if moved:
         log.warning("after a case fold these refs are still moved: %s", ", ".join(moved[:8]))
     return moved
+
+
+def _collision(unrestored: tuple[str, ...]) -> StoreUpdate:
+    """``ref_case_collision``, naming any ref a fold moved that could not be put back."""
+
+    if unrestored:
+        log.error(
+            "refs a case fold moved could not be put back and may name a twin's commit: %s",
+            ", ".join(unrestored[:8]),
+        )
+    return StoreUpdate(RefreshOutcome.ref_case_collision, canonical_now(), unrestored=unrestored)
+
+
+async def _check_for_folds(
+    target: RepositoryStoreTarget, before: dict[str, str], fetched: _Fetched, lock_fd: int
+) -> StoreUpdate | None:
+    """``None`` when the fetch folded nothing; otherwise the refs go back first."""
+
+    assert fetched.baseline is not None
+    try:
+        folded = folded_refs(
+            before=fetched.baseline,
+            written=fetched_refs(fetched.porcelain),
+            pruned=pruned_ref_names(fetched.porcelain),
+            held=await mirror_refs(target),
+        )
+    except GitError as exc:
+        # Unchecked refs could be folded ones; nothing that cannot be checked stays.
+        log.warning("could not check the refs a refresh wrote: %s", _detail(exc))
+        unrestored = await _restore_refs(target, before, lock_fd)
+        if unrestored:
+            return _collision(unrestored)
+        return StoreUpdate(RefreshOutcome.failed, canonical_now())
+    if not folded:
+        return None
+    log.warning(
+        "refresh fetched refs that differ only in letter case; putting every ref back: %s",
+        ", ".join(folded[:4]),
+    )
+    return _collision(await _restore_refs(target, before, lock_fd))
 
 
 async def _fetch(
@@ -406,6 +491,12 @@ async def _fetch(
     before = await mirror_refs(target) if await store_ignores_case(target) else None
     try:
         fetched = await _fetch_atomically(target, remote_url, lock_fd, before)
+    except asyncio.CancelledError:
+        # Stopped as the fetch ended: it may have landed and folded. Nothing a cancelled
+        # refresh did stays, so the refs go back as they were before it began.
+        if before is not None:
+            await _finish_despite_cancel(_restore_refs(target, before, lock_fd))
+        raise
     except _FetchFailedError as exc:
         cause = exc.cause
         log.debug("refresh fetch failed: %s", _detail(cause))
@@ -417,8 +508,8 @@ async def _fetch(
             and isinstance(cause, GitCommandError)
             and _REF_LOCK_CONFLICT.search(cause.stderr_summary) is not None
         ):
-            await _restore_refs(target, before, lock_fd)
-            return StoreUpdate(RefreshOutcome.ref_case_collision, canonical_now())
+            unrestored = await _finish_despite_cancel(_restore_refs(target, before, lock_fd))
+            return _collision(unrestored)
         outcome = _named(cause, remote_url, RefreshOutcome.fetch_failed)
         if not exc.pruned:
             return StoreUpdate(outcome, canonical_now())
@@ -432,25 +523,10 @@ async def _fetch(
                 )
         return StoreUpdate(outcome, canonical_now())
     if before is not None and fetched.baseline is not None:
-        try:
-            folded = folded_refs(
-                before=fetched.baseline,
-                written=fetched_refs(fetched.porcelain),
-                pruned=pruned_ref_names(fetched.porcelain),
-                held=await mirror_refs(target),
-            )
-        except GitError as exc:
-            # Unchecked refs could be folded ones; nothing that cannot be checked stays.
-            log.warning("could not check the refs a refresh wrote: %s", _detail(exc))
-            await _restore_refs(target, before, lock_fd)
-            return StoreUpdate(RefreshOutcome.failed, canonical_now())
-        if folded:
-            log.warning(
-                "refresh fetched refs that differ only in letter case; putting every ref back: %s",
-                ", ".join(folded[:4]),
-            )
-            await _restore_refs(target, before, lock_fd)
-            return StoreUpdate(RefreshOutcome.ref_case_collision, canonical_now())
+        # Checked and, when folded, undone to the end, whatever cancels the refresh.
+        verdict = await _finish_despite_cancel(_check_for_folds(target, before, fetched, lock_fd))
+        if verdict is not None:
+            return verdict
     default_remote_ref = remote_tracking_ref(head_ref)
     outcome = RefreshOutcome.succeeded
     if default_remote_ref is None:
@@ -559,18 +635,11 @@ async def update_store(home: Path, store_key: str, *, remote_url: str) -> StoreU
         except UnsupportedGitVersionError as exc:
             log.info("refresh skipped: %s", exc)
             return StoreUpdate(RefreshOutcome.unsupported_git, canonical_now())
-        cleanup = asyncio.ensure_future(
+        # The lock is released on the way out, so the removal must finish first,
+        # however many times the refresh is cancelled while it runs.
+        removed = await _finish_despite_cancel(
             asyncio.to_thread(remove_interrupted_fetch_leftovers, target.git_dir)
         )
-        try:
-            removed = await asyncio.shield(cleanup)
-        except asyncio.CancelledError:
-            # The lock is released on the way out, so the removal must finish first,
-            # however many times the refresh is cancelled while it runs.
-            while not cleanup.done():
-                with contextlib.suppress(asyncio.CancelledError):
-                    await asyncio.shield(cleanup)
-            raise
         if removed:
             log.debug("removed files an interrupted fetch left in a store: %s", removed)
         previous_ref = await asyncio.to_thread(_previous_default_ref, home, store_key)
