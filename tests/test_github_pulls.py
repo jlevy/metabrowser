@@ -1119,7 +1119,7 @@ def test_a_base_branch_folded_by_case_is_put_back(
         restored.append(before)
 
     monkeypatch.setattr(pull_refs, "store_ignores_case", ignores_case)
-    monkeypatch.setattr(pull_refs, "folded_refs", lambda written, held: ("refs/remotes/origin/x",))
+    monkeypatch.setattr(pull_refs, "folded_refs", lambda **_: ("refs/remotes/origin/x",))
     monkeypatch.setattr(pull_refs, "restore_mirror_refs", restore)
     with pytest.raises(PullDataError) as folded:
         stand.refresh(7)

@@ -2130,7 +2130,8 @@ declare global {
 
   type MetabrowserSourceOffer =
     | { kind: "switch"; ref: string; latest: string; text: string; button: string }
-    | { kind: "reload"; text: string; button: string };
+    | { kind: "reload"; text: string; button: string }
+    | { kind: "retry"; text: string; button: string };
 
   /** What the freshness label says and offers; see static/source-freshness.js. */
   type MetabrowserSourceFreshnessModel = {

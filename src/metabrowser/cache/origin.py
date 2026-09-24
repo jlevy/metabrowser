@@ -261,6 +261,17 @@ def fetched_refs(porcelain: bytes) -> dict[str, str]:
     return written
 
 
+def pruned_ref_names(porcelain: bytes) -> tuple[str, ...]:
+    """The refs a ``fetch --porcelain --prune`` deleted: those whose new object ID is zeros."""
+
+    names: list[str] = []
+    for line in porcelain.split(b"\n"):
+        fields = line[2:].split(b" ")
+        if len(line) > 2 and len(fields) == 3 and fields[1] and not fields[1].strip(b"0"):
+            names.append(fields[2].decode("utf-8", "surrogateescape"))
+    return tuple(names)
+
+
 def fetched_ref_names(porcelain: bytes) -> tuple[str, ...]:
     """The names of the refs a ``fetch --porcelain`` wrote; see :func:`fetched_refs`."""
 
@@ -367,6 +378,7 @@ __all__ = [
     "describe_remote_failure",
     "fetched_ref_names",
     "fetched_refs",
+    "pruned_ref_names",
     "ls_remote_head_args",
     "mirror_fetch_args",
     "mirror_prune_args",

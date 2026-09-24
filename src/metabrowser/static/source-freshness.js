@@ -55,6 +55,18 @@
     failed: "The refresh failed.",
   });
 
+  // What the row says about the address a page was opened at, while the server serves
+  // the default branch in its place.
+  /** @type {Readonly<Record<string, string>>} */
+  const SELECTION_DETAIL = Object.freeze({
+    pending:
+      "The address this page was opened at is not in the mirror yet; it opens when the fetch brings it.",
+    not_found:
+      "The address this page was opened at is not on the origin, so the default branch is shown.",
+    fetch_failed:
+      "The address this page was opened at could not be fetched, so the default branch is shown.",
+  });
+
   /**
    * How long ago an ISO timestamp was, the way a quiet label says it.
    *
@@ -116,6 +128,20 @@
     } else if (outcome !== null && outcome.outcome === "default_branch_unknown") {
       detail = `${detail} ${OUTCOME_DETAIL.default_branch_unknown}`;
     }
+    const selection = status.selection_state ?? null;
+    const retrySelection = selection === "fetch_failed" && !status.refreshing;
+    if (selection === "pending") {
+      detail = `${detail} ${SELECTION_DETAIL.pending}`;
+    } else if (selection === "not_found") {
+      tone = "warning";
+      label = `Address not found · fetched ${age}`;
+      detail = SELECTION_DETAIL.not_found;
+    } else if (retrySelection) {
+      tone = "warning";
+      label = `Address not fetched · fetched ${age}`;
+      const why = outcome !== null ? (OUTCOME_DETAIL[outcome.outcome] ?? "") : "";
+      detail = `${SELECTION_DETAIL.fetch_failed} ${why}`.trim();
+    }
     /** @type {MetabrowserSourceOffer | null} */
     let offer = null;
     if (page.shown !== null && (status.pin !== page.shown.pin || status.ref !== page.shown.ref)) {
@@ -124,6 +150,8 @@
         text: "The server now serves another revision",
         button: "Reload",
       };
+    } else if (retrySelection) {
+      offer = { kind: "retry", text: "Fetch the address again", button: "Retry" };
     } else if (
       status.ref !== null &&
       status.latest !== null &&
@@ -331,6 +359,10 @@
       }
       if (offer.kind === "reload") {
         deps.reload();
+        return;
+      }
+      if (offer.kind === "retry") {
+        await requestRefresh();
         return;
       }
       switching = true;

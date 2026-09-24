@@ -113,10 +113,12 @@ GitHub URLs and HTTPS:
   A server instead serves the default branch, fetches once in the background, and
   switches to the selection if the fetch brings it, like any pin switch; a page opened
   meanwhile then goes to the selection’s address, line anchor included, which status
-  reports as `selection_href`. `/api/source/status` reports `selection_state` as
-  `pending`, then `found` or `not_found`; `fetch_failed` when the fetch could not run,
-  in which case the next refresh tries again; and `superseded` once a pin switch serves
-  something else, which a waiting selection then never undoes.
+  reports as `selection_href`. Until then the page’s freshness row says the address is
+  still being fetched, is not on the origin, or could not be fetched, with a Retry.
+  `/api/source/status` reports `selection_state` as `pending`, then `found` or
+  `not_found`; `fetch_failed` when the fetch could not run, in which case the next
+  refresh tries again; and `superseded` once a pin switch serves something else, which a
+  waiting selection then never undoes.
   A mirror cloned by the same command has just been fetched, so there a missing
   selection is not found at once.
   One-shot `--api /api/source/refresh --data …` also waits for the refresh it asks for

@@ -966,7 +966,7 @@ was acquired or served, or a served pin ran a script).
 | --- | --- |
 | ssh acquire and serve | Closed; refuse is the test |
 | A branch and tag selector in the browser | Not built; pin by name through `POST /api/source/pin` (5.6) |
-| The browser’s view of a pending URL selection | The row shows the refresh; a page opened while the selection waited goes to it when the fetch finds it, and shows no message for `not_found` or `fetch_failed` beyond the refresh outcome |
+| The browser’s view of a pending URL selection | A page opened while the selection waited goes to it when the fetch finds it; the freshness row says when it is not on the origin or could not be fetched, and offers a Retry for the second |
 | Line highlighting for `#L10-L20` | `mb-rlf3`; the anchor stays in the address |
 | Pull-request page | Later steps; pull-request data is read through `--api` and served beside the pin (4.10) |
 | Hosted-review / GitHub PR slice | Separate beads; not on these tips |

@@ -52,6 +52,7 @@ from metabrowser.git.process import (
     ACQUISITION_POLICY,
     STORE_READ_POLICY,
     GitCommandError,
+    GitError,
     GitTimeoutError,
     RepositoryStoreTarget,
     repository_store_target,
@@ -206,7 +207,13 @@ async def fetch_into_store(published: PublishedSource, specs: list[str]) -> None
                 for name, oid in fetched_refs(written).items()
                 if name.startswith(BRANCH_MIRROR_PREFIX)
             }
-            if folded_refs(branches, await mirror_refs(target)):
+            try:
+                held = await mirror_refs(target)
+            except GitError:
+                # Unchecked refs could be folded ones; nothing that cannot be checked stays.
+                await restore_mirror_refs(target, before, lock.descriptor)
+                raise
+            if folded_refs(before=before, written=branches, pruned=(), held=held):
                 await restore_mirror_refs(target, before, lock.descriptor)
                 raise RefCaseCollisionError
     finally:
