@@ -236,15 +236,19 @@ GitHub URLs and HTTPS:
   “merger merged 2 commits into base from head”), times, labels, merge status (unknown
   until GitHub has computed it), the description, a conversation of comments and reviews
   in time order with review states, review comments with their file, line, and diff
-  hunk, checks and statuses with links to their details and counted as GitHub counts
-  them, skipped apart from neutral, and notes for anything the record cut or could not
-  read. `/pull/<n>/files` is its Files changed, the diff view over the record’s
-  merge-base comparison.
-  The page reads only the cached record, so it opens instantly and offline; it says how
-  old the record is and who read it, offers a refresh when it is stale, shows a quiet
-  loading state while the first record is fetched, and updates the conversation and
-  checks in place when a refresh brings a new record, while the diff stays on what it
-  showed and offers a newer head.
+  hunk, checks and statuses with links to their details, and notes for anything the
+  record cut or could not read.
+  The Checks summary counts each check run and commit status under one of: success;
+  failure (a run that failed, timed out, needs action, or failed to start, and a status
+  of failure or error); cancelled; skipped; stale; neutral; pending (a run not yet
+  completed, whatever its status, and a pending status); and unknown (a completed run
+  with no conclusion, or a conclusion or state GitHub does not document).
+  `/pull/<n>/files` is its Files changed, the diff view over the record’s merge-base
+  comparison. The page reads only the cached record, so it opens instantly and offline;
+  it says how old the record is and who read it, offers a refresh when it is stale,
+  shows a quiet loading state while the first record is fetched, and updates the
+  conversation and checks in place when a refresh brings a new record, while the diff
+  stays on what it showed and offers a newer head.
   When the served code is not the head the record names, as when the pull request could
   not be opened at startup and serving fell back to the default branch, the page offers
   to switch to the head (`refs/pull/<n>/head`) and reloads on it.

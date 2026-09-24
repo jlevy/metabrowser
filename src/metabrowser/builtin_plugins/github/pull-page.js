@@ -192,32 +192,66 @@ function who(login) {
   return typeof login === "string" && login ? login : "ghost";
 }
 
+// The tone a completed check run's conclusion is painted with and counted under. As
+// github.com's Checks page does (read 2026-09-24 on pytorch/pytorch#198558: "This job
+// was cancelled", "was skipped", "failed", "This check was neutral"), a cancelled,
+// skipped, or stale run is its own count, apart from neutral.
+/** @type {Readonly<Record<string, string>>} */
+const CONCLUSION_TONES = Object.freeze({
+  success: "success",
+  failure: "failure",
+  timed_out: "failure",
+  action_required: "failure",
+  startup_failure: "failure",
+  cancelled: "cancelled",
+  skipped: "skipped",
+  stale: "stale",
+  neutral: "neutral",
+});
+
+// The tone of a commit status's state.
+/** @type {Readonly<Record<string, string>>} */
+const STATUS_TONES = Object.freeze({
+  success: "success",
+  failure: "failure",
+  error: "failure",
+  pending: "pending",
+});
+
 /**
- * The tone a check's result paints with and is counted under: success, failure,
- * pending, skipped, or neutral. GitHub counts skipped checks apart from neutral ones.
+ * How one check run is labeled and counted. A run that has not completed (queued,
+ * in_progress, waiting, requested, pending, or no status at all) is pending; a completed
+ * run is its conclusion's tone, and `unknown` when GitHub gave none or one it does not
+ * document.
  *
- * @param {string | null} result
+ * @param {Record<string, any>} run
+ * @returns {{tone: string, label: string}}
  */
-function checkTone(result) {
-  if (result === "success") {
-    return "success";
+export function checkRunResult(run) {
+  const status = text(run.status);
+  if (status !== "completed") {
+    return { tone: "pending", label: (status || "pending").replaceAll("_", " ") };
   }
-  if (result === "skipped") {
-    return "skipped";
+  const conclusion = text(run.conclusion);
+  if (!Object.hasOwn(CONCLUSION_TONES, conclusion)) {
+    return { tone: "unknown", label: conclusion.replaceAll("_", " ") || "no conclusion" };
   }
-  if (
-    result === "failure" ||
-    result === "error" ||
-    result === "timed_out" ||
-    result === "action_required" ||
-    result === "startup_failure"
-  ) {
-    return "failure";
+  return { tone: CONCLUSION_TONES[conclusion], label: conclusion.replaceAll("_", " ") };
+}
+
+/**
+ * How one commit status is labeled and counted: its state's tone, and `unknown` for a
+ * state GitHub does not document.
+ *
+ * @param {Record<string, any>} status
+ * @returns {{tone: string, label: string}}
+ */
+export function commitStatusResult(status) {
+  const state = text(status.state);
+  if (!Object.hasOwn(STATUS_TONES, state)) {
+    return { tone: "unknown", label: state || "unknown" };
   }
-  if (result === null || result === "pending" || result === "queued" || result === "in_progress") {
-    return "pending";
-  }
-  return "neutral";
+  return { tone: STATUS_TONES[state], label: state };
 }
 
 /** @param {Record<string, any>} pull */
@@ -337,22 +371,18 @@ function checks(record) {
   /** @type {CheckItem[]} */
   const items = [];
   for (const run of list(record.check_runs)) {
-    const result = run.status === "completed" ? (run.conclusion ?? "neutral") : text(run.status);
     items.push({
       name: text(run.name),
       detail: typeof run.app === "string" ? run.app : null,
-      tone: checkTone(result),
-      label: result.replaceAll("_", " "),
+      ...checkRunResult(run),
       url: typeof run.details_url === "string" ? run.details_url : null,
     });
   }
   for (const status of list(record.status?.statuses)) {
-    const state = text(status.state);
     items.push({
       name: text(status.context),
       detail: typeof status.description === "string" ? status.description : null,
-      tone: checkTone(state),
-      label: state,
+      ...commitStatusResult(status),
       url: typeof status.target_url === "string" ? status.target_url : null,
     });
   }
