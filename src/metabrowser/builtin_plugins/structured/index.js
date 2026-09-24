@@ -76,7 +76,7 @@
         return renderSourceFallback(container, ctx);
       }
       // Wrap so the host's copy-as-YAML button frames the tree.
-      // copyContent reads from a hidden <code> child; we stash the
+      // The copy delegate reads a hidden <code> child; we stash the
       // canonical YAML there.
       const wrapper = window.document.createElement("div");
       wrapper.className = "content-copy-wrap";

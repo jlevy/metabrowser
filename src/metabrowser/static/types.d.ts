@@ -6,10 +6,10 @@ type MetabrowserRenderContext = {
   /** Two endpoints, when a surface asks the diff view for a comparison between them. */
   comparison?: { left: string; right: string; base_policy: "direct" | "merge_base" };
   /** The served pull request's page: its number, the tab its route names, and how it
-   *  asks the shell to put another tab in the URL. */
+   *  asks the shell to open a tab, or another pull request's page, in the URL. */
   number?: number;
   tab?: string;
-  openTab?: (tab: string) => void;
+  open?: (route: { number: number; tab: string }) => unknown;
   raw?: unknown;
 };
 
@@ -201,6 +201,30 @@ type MetabrowserNavigationRouteRuntime = Readonly<{
   }): "cancelled" | "file" | "folder";
   createFileRevalidationTracker(maxEntries: number): MetabrowserFileRevalidationTracker;
   createPreviewPaneLifecycle(): MetabrowserPreviewPaneLifecycle;
+  createPullPageHost<Handle extends { setTab?(tab: string): void; dispose?(): void }>(deps: {
+    claim(): number;
+    isCurrent(claim: number): boolean;
+    mount(
+      claim: number,
+      route: Readonly<{ number: number; tab: string }>,
+      open: (route: { number: number; tab: string }) => Promise<{ status: string }>,
+    ): Promise<Handle | null | undefined>;
+    pathname(): string;
+    pushHref(href: string): void;
+  }): Readonly<{
+    dispose(): void;
+    onHistory(
+      pathname: string,
+      heldTarget: boolean,
+    ): Readonly<
+      { action: "tab"; tab: string } | { action: "mount"; number: number; tab: string }
+    > | null;
+    open(route: { number: number; tab: string }): Promise<{ status: "opened" | "cancelled" }>;
+    show(
+      route: Readonly<{ number: number; tab: string }>,
+    ): Promise<{ status: "opened" | "cancelled" }>;
+    shown(): number | null;
+  }>;
   createController(options: {
     apply(
       target: MetabrowserNavigationTarget | null,

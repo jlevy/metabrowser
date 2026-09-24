@@ -240,6 +240,8 @@ GitHub URLs and HTTPS:
   `http` and `https` ones kept, and code blocks show as plain text without highlighting.
   A review comment’s file opens at the served head, at its line.
   The freshness row links to the page, and back, forward, and reload keep its tab.
+  The page for a number the server does not serve links to the served pull request’s
+  page, on the same tab.
   `metab <pr-url> --show /pull/<n>[/files]` reports the page’s kind and a summary of its
   record, and `/api/plugin/github/pull-markdown?part=…` answers the allowlisted HTML of
   the description (`body`) or one comment, review, or review comment, and nothing else

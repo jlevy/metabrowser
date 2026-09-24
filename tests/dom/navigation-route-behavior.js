@@ -367,7 +367,161 @@ function makeBrowser(pathname, search = "", hash = "") {
   return { eventTarget, history, listeners, location, setUrl, writes };
 }
 
+// The shell's pull-request page host, driven with the shell's own wiring: a claim of
+// the pane disposes the page first (claimPreview), and a claim is current until the
+// next one. Every pane, history, and page effect lands in one log.
+function makePullShell(pathname) {
+  const log = [];
+  const location = { pathname };
+  const mounts = [];
+  let claims = 0;
+  let host = null;
+  function claimPane(owner) {
+    host.dispose();
+    claims += 1;
+    log.push(`claim ${claims} (${owner})`);
+    return claims;
+  }
+  host = route.createPullPageHost({
+    claim: () => claimPane("pull-request"),
+    isCurrent: (claim) => claim === claims,
+    mount(claim, landing, open) {
+      log.push(`mount /pull/${landing.number}${landing.tab ? `/${landing.tab}` : ""}`);
+      let resolve;
+      const rendered = new Promise((settle) => {
+        resolve = settle;
+      });
+      mounts.push({ claim, open, resolve });
+      return rendered;
+    },
+    pathname: () => location.pathname,
+    pushHref(href) {
+      location.pathname = href;
+      log.push(`push ${href}`);
+    },
+  });
+  const page = (number) => ({
+    setTab: (tab) => log.push(`#${number} tab "${tab}"`),
+    dispose: () => log.push(`#${number} disposed`),
+  });
+  const tick = () => new Promise((resolve) => setImmediate(resolve));
+  return { claimPane, host, location, log, mounts, page, tick };
+}
+
 (async () => {
+  {
+    // A landing mounts the page; its tabs and back and forward switch the tab of the
+    // page that holds the pane without claiming it again.
+    const shell = makePullShell("/pull/7");
+    const shown = shell.host.show({ number: 7, tab: "" });
+    equal("a page is not shown while it mounts", shell.host.shown(), null);
+    shell.mounts[0].resolve(shell.page(7));
+    equal("a mounted page opens", await shown, { status: "opened" });
+    equal("the mounted page is shown", shell.host.shown(), 7);
+    equal("a tab link opens the tab", await shell.mounts[0].open({ number: 7, tab: "files" }), {
+      status: "opened",
+    });
+    equal(
+      "the shown page's route opens without a push",
+      await shell.host.open({ number: 7, tab: "files" }),
+      {
+        status: "opened",
+      },
+    );
+    shell.location.pathname = "/pull/7";
+    shell.host.onHistory("/pull/7", false);
+    equal(
+      "a landing the controller applies is left to it",
+      shell.host.onHistory("/pull/7/files", true),
+      null,
+    );
+    equal("a tab keeps the page and puts the tab in the URL", shell.log, [
+      "claim 1 (pull-request)",
+      "mount /pull/7",
+      "push /pull/7/files",
+      '#7 tab "files"',
+      '#7 tab "files"',
+      '#7 tab ""',
+    ]);
+  }
+
+  {
+    // The page for a number the server does not serve links to the served one: opening
+    // it puts that route in the URL and replaces the page.
+    const shell = makePullShell("/pull/8/files");
+    const first = shell.host.show({ number: 8, tab: "files" });
+    shell.mounts[0].resolve(shell.page(8));
+    await first;
+    const served = shell.mounts[0].open({ number: 7, tab: "files" });
+    shell.mounts[1].resolve(shell.page(7));
+    equal("the served pull request's page opens", await served, { status: "opened" });
+    equal("the served pull request's page replaces the other", shell.log, [
+      "claim 1 (pull-request)",
+      "mount /pull/8/files",
+      "push /pull/7/files",
+      "#8 disposed",
+      "claim 2 (pull-request)",
+      "mount /pull/7/files",
+    ]);
+    equal("the served pull request is shown", shell.host.shown(), 7);
+  }
+
+  {
+    // A claim that lands while a page mounts supersedes it: the late page is disposed
+    // and never shown. A second route while the first mounts claims again.
+    const shell = makePullShell("/pull/7");
+    const first = shell.host.show({ number: 7, tab: "" });
+    const second = shell.host.show({ number: 7, tab: "files" });
+    shell.mounts[0].resolve(shell.page(7));
+    equal("a page a later route superseded is cancelled", await first, { status: "cancelled" });
+    shell.claimPane("file");
+    shell.mounts[1].resolve(shell.page(7));
+    equal("a page a file claim superseded is cancelled", await second, { status: "cancelled" });
+    equal("a superseded page is never shown", shell.host.shown(), null);
+    equal("superseded pages are disposed as they arrive", shell.log, [
+      "claim 1 (pull-request)",
+      "mount /pull/7",
+      "claim 2 (pull-request)",
+      "mount /pull/7/files",
+      "#7 disposed",
+      "claim 3 (file)",
+      "#7 disposed",
+    ]);
+  }
+
+  {
+    // Once something else holds the pane, or no plugin mounted a page, the same route
+    // mounts the page again instead of switching the tab of a page nobody sees.
+    const shell = makePullShell("/pull/7");
+    const shown = shell.host.show({ number: 7, tab: "" });
+    shell.mounts[0].resolve(shell.page(7));
+    await shown;
+    shell.claimPane("commit");
+    equal("a page another claim replaced is not shown", shell.host.shown(), null);
+    equal("back onto a replaced page mounts it", shell.host.onHistory("/pull/7", false), {
+      action: "mount",
+      number: 7,
+      tab: "",
+    });
+    await shell.tick();
+    shell.mounts[1].resolve(null);
+    await shell.tick();
+    equal("no plugin leaves no page shown", shell.host.shown(), null);
+    const again = shell.host.show({ number: 7, tab: "" });
+    shell.mounts[2].resolve(shell.page(7));
+    await again;
+    equal("a replaced or unmounted page mounts again", shell.log, [
+      "claim 1 (pull-request)",
+      "mount /pull/7",
+      "#7 disposed",
+      "claim 2 (commit)",
+      "claim 3 (pull-request)",
+      "mount /pull/7",
+      "claim 4 (pull-request)",
+      "mount /pull/7",
+    ]);
+  }
+
   {
     const browser = makeBrowser("/view/docs/start.md", "?plain=1", "#intro");
     const applied = [];

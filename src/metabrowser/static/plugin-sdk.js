@@ -1831,9 +1831,8 @@
 
   function wrapWithCopy(innerHtml) {
     // A delegated click listener (installed once at SDK init) handles
-    // .content-copy-btn clicks — no inline handler needed. If the
-    // shell's global copyContent exists it is called for full feedback;
-    // otherwise the delegate falls back to clipboard.writeText.
+    // .content-copy-btn clicks and copies the wrapped <code> text; no
+    // inline handler is needed.
     return (
       '<div class="content-copy-wrap">' +
       '<button class="icon-btn icon-btn-reveal icon-btn-overlay content-copy-btn"' +
