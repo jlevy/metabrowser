@@ -177,9 +177,9 @@ Repository cache:
   missing origin, a failed fetch, or a detached origin HEAD is a typed outcome in the
   status while the pinned revision keeps serving.
   Reach it with `metab file://… --api /api/source/refresh --data <file with {}>`; that
-  one command waits for the refresh it asked for, prints the status after it, and exits
-  1 unless the fetch ran or another process’s refresh is running.
-  No other one-shot command fetches.
+  one command waits up to one Git deadline for the refresh it asked for, prints the
+  status after it, and exits 1 unless the fetch ran or another process’s refresh is
+  running. No other one-shot command fetches.
 
 - New `POST /api/source/pin` switches what a server serves to another branch, tag, or
   commit of the same mirror: `{"ref": "feature"}`, `{"ref": "v1"}`, or

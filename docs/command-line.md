@@ -144,7 +144,8 @@ metab file:///path/to/origin.git --api /api/source/pin --data pin.json
 ```
 
 The refresh command waits for the fetch it asked for, prints the status after it under
-`after:`, and exits 1 when the refresh failed; it exits 0 when the fetch ran, or when
+`after:`, and exits 1 when the refresh failed, or when it had not finished within one
+Git deadline, in which case leaving stops it; it exits 0 when the fetch ran, or when
 another process was already refreshing the mirror.
 No other one-shot command fetches.
 A pin switch through `--api` lasts for that one command, because each command is its own

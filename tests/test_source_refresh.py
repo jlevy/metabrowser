@@ -375,6 +375,26 @@ def test_one_shot_api_finishes_the_refresh_it_was_asked_for(
     assert f'"pin": "{newer}"' in after.stdout
 
 
+def test_one_shot_api_fails_when_the_refresh_outlasts_its_wait(
+    tmp_path: Path, origin: _Origin, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def slow_update(home: Path, store_key: str) -> StoreUpdate:
+        await asyncio.sleep(60)
+        return StoreUpdate(RefreshOutcome.succeeded, _FUTURE)
+
+    monkeypatch.setattr("metabrowser.cache.served_mirror.update_store", slow_update)
+    monkeypatch.setattr("metabrowser.cli.api_cli._REFRESH_DRAIN_S", 0.2)
+    body = tmp_path / "refresh.json"
+    body.write_text("{}\n", encoding="utf-8")
+    started = time.monotonic()
+    result = runner.invoke(_app, [origin.url, "--api", "/api/source/refresh", "--data", str(body)])
+    # Leaving stopped the refresh instead of waiting for it.
+    assert time.monotonic() - started < 30
+    assert result.exit_code != 0
+    assert '"refreshing": true' in result.stdout
+    assert str(result.exception) == "the refresh did not finish within 0.2s and was stopped"
+
+
 # ── Pin switching ────────────────────────────────────────────────────
 
 
