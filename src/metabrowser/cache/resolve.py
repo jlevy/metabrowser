@@ -73,7 +73,7 @@ _COMMIT_ID = re.compile(r"[0-9a-f]{7,64}")
 _REF_FORBIDDEN = frozenset(" ~^:?*[\\\x7f")
 # The one ref a mirror holds beyond its origin's branches and tags, fetched with a pull
 # request, whose number follows the GitHub URL grammar.
-_PULL_HEAD = re.compile(r"^refs/pull/[1-9][0-9]{0,9}/head$")
+_PULL_HEAD = re.compile(r"refs/pull/[1-9][0-9]{0,9}/head")
 
 type ResolvedVia = Literal["default", "branch", "tag", "commit", "pull_request"]
 type UnresolvedReason = Literal[
@@ -413,7 +413,7 @@ async def resolve_pin(
             raise SelectionNotFoundError("the mirror has recorded no default branch")
         candidates: tuple[str, ...] = (default_ref,)
     elif ref.startswith("refs/"):
-        if not ref.startswith((BRANCH_MIRROR_PREFIX, TAG_PREFIX)) and not _PULL_HEAD.match(ref):
+        if not ref.startswith((BRANCH_MIRROR_PREFIX, TAG_PREFIX)) and not _PULL_HEAD.fullmatch(ref):
             raise InvalidSelectionError(
                 "only the origin's branches (refs/remotes/origin/…), tags (refs/tags/…), "
                 "and pull-request heads (refs/pull/<n>/head) can be pinned"

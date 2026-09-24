@@ -300,7 +300,7 @@ async def _fetch_atomically(target: RepositoryStoreTarget, remote_url: str, lock
         raise _FetchFailedError(exc, pruned=True) from exc
 
 
-async def _restore_refs(
+async def restore_mirror_refs(
     target: RepositoryStoreTarget, before: dict[str, str], lock_fd: int
 ) -> None:
     """Put every branch and tag back as *before* lists them, one ``update-ref`` at a time.
@@ -375,7 +375,7 @@ async def _fetch(
             and isinstance(cause, GitCommandError)
             and _REF_LOCK_CONFLICT.search(cause.stderr_summary) is not None
         ):
-            await _restore_refs(target, before, lock_fd)
+            await restore_mirror_refs(target, before, lock_fd)
             return StoreUpdate(RefreshOutcome.ref_case_collision, canonical_now())
         outcome = _named(cause, remote_url, RefreshOutcome.fetch_failed)
         if not exc.pruned:
@@ -396,7 +396,7 @@ async def _fetch(
                 "refresh fetched refs that differ only in letter case; putting every ref back: %s",
                 ", ".join(folded[:4]),
             )
-            await _restore_refs(target, before, lock_fd)
+            await restore_mirror_refs(target, before, lock_fd)
             return StoreUpdate(RefreshOutcome.ref_case_collision, canonical_now())
     default_remote_ref = remote_tracking_ref(head_ref)
     outcome = RefreshOutcome.succeeded
@@ -541,5 +541,6 @@ __all__ = [
     "RefreshOutcome",
     "StoreUpdate",
     "remove_interrupted_fetch_leftovers",
+    "restore_mirror_refs",
     "update_store",
 ]
