@@ -1116,8 +1116,9 @@ def test_a_base_branch_folded_by_case_is_put_back(
     async def ignores_case(target: Any) -> bool:
         return True
 
-    async def restore(target: Any, before: dict[str, str], lock_fd: int) -> None:
+    async def restore(target: Any, before: dict[str, str], lock_fd: int) -> tuple[str, ...]:
         restored.append(before)
+        return ()
 
     monkeypatch.setattr(pull_refs, "store_ignores_case", ignores_case)
     monkeypatch.setattr(pull_refs, "folded_refs", lambda **_: ("refs/remotes/origin/x",))

@@ -875,18 +875,27 @@ def test_a_detached_origin_head_is_a_quiet_outcome(served: TestClient, origin: _
 
 
 def test_a_followed_refresh_counts_only_if_it_wrote_its_record() -> None:
-    """A refresh another process ran that was killed writes no record; the old one is not it."""
+    """A refresh another process ran that was killed writes no record; the old one is not it.
+
+    The record file's stamp tells a rewrite apart even within one second; without
+    stamps only a record from a later second counts.
+    """
 
     busy_at = "2026-09-24T10:00:05Z"
-    newer = RecordedFreshness(busy_at, "refresh", "succeeded", "2026-09-24T10:00:09Z")
-    same_second = RecordedFreshness(busy_at, "refresh", "not_found_or_private", busy_at)
-    older = RecordedFreshness(
-        "2026-09-24T09:00:00Z", "refresh", "succeeded", "2026-09-24T09:00:00Z"
-    )
-    assert followed_outcome(newer, since=busy_at, ended=True) == "succeeded"
-    assert followed_outcome(same_second, since=busy_at, ended=True) == "not_found_or_private"
-    assert followed_outcome(older, since=busy_at, ended=True) == "failed"
-    assert followed_outcome(newer, since=busy_at, ended=False) == "failed"
-    assert followed_outcome(
-        RecordedFreshness(None, None, None, None), since=busy_at, ended=True
-    ) == ("failed")
+    before = RecordedFreshness(busy_at, "refresh", "succeeded", busy_at, (7, 1_000))
+    rewritten = RecordedFreshness(busy_at, "refresh", "not_found_or_private", busy_at, (8, 1_500))
+
+    def follow(recorded: RecordedFreshness, *, ended: bool = True) -> str:
+        return followed_outcome(recorded, baseline=before, since=busy_at, ended=ended)
+
+    # The same second, told apart by the stamp: a rewrite counts, the earlier record not.
+    assert follow(rewritten) == "not_found_or_private"
+    assert follow(before) == "failed"
+    assert follow(rewritten, ended=False) == "failed"
+    # Without stamps, a same-second record is not trusted; a later one is.
+    unstamped = RecordedFreshness(busy_at, "refresh", "succeeded", busy_at)
+    later = RecordedFreshness(busy_at, "refresh", "succeeded", "2026-09-24T10:00:06Z")
+    assert followed_outcome(unstamped, baseline=None, since=busy_at, ended=True) == "failed"
+    assert followed_outcome(later, baseline=None, since=busy_at, ended=True) == "succeeded"
+    empty = RecordedFreshness(None, None, None, None)
+    assert followed_outcome(empty, baseline=None, since=busy_at, ended=True) == "failed"

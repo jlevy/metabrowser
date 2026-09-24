@@ -286,6 +286,11 @@ must be held at that object under a name the filesystem folds to the same one.
 Names are compared as the filesystem does, because it respells without moving anything:
 `Feature/x` written into an existing `feature/` directory lists as `feature/x`, and Git
 lists a decomposed name precomposed.
+The check and any restore run to the end even when the refresh is cancelled, and a
+cancelled refresh on such a filesystem puts the refs back as they were before it.
+A restore is two `update-ref --stdin` transactions, retried a ref at a time when one is
+refused; refs it still cannot put back are logged by name, and the refresh reports
+`ref_case_collision` rather than success, without moving the recorded tip.
 If it does not, every ref is put back as it was, objects being kept, and the outcome is
 `ref_case_collision` with neither the recorded fetch time nor the default branch’s
 commit moved. Every fetch runs in the isolated Git environment of `git/process.py`, the
