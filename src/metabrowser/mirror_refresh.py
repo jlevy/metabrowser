@@ -285,6 +285,8 @@ class MirrorSession:
         self._follow_elsewhere = follow_elsewhere
         self._recorded = RecordedFreshness(None, None, None, None)
         self._last_result: RefreshResult | None = None
+        # The record as last observed when that result was set, to break a tie.
+        self._recorded_with_result: RecordedFreshness | None = None
         self._last_success_at: str | None = None
         self._tip: tuple[str, str | None] | None = None
         self._pin_lock = asyncio.Lock()
@@ -358,7 +360,8 @@ class MirrorSession:
         Another process's refresh writes the record after this one reported that it was
         refreshing elsewhere, and a record this process wrote is no newer than its own
         result, so the later timestamp wins. Timestamps have one-second resolution, so a
-        tie goes to the record: it is either this process's own result or a newer one.
+        tie goes to the record only when it changed after the result was set: a record
+        from before it, such as the acquisition a moment earlier, does not hide it.
         """
 
         recorded = self._recorded
@@ -374,9 +377,18 @@ class MirrorSession:
                 "at": recorded.last_outcome_at,
             }
         result = self._last_result
-        if result is None or (from_record is not None and from_record["at"] >= result.at):
+        if result is None:
+            return from_record
+        if from_record is not None and (
+            from_record["at"] > result.at
+            or (from_record["at"] == result.at and recorded != self._recorded_with_result)
+        ):
             return from_record
         return {"operation": "refresh", "outcome": result.outcome, "at": result.at}
+
+    def _set_result(self, result: RefreshResult) -> None:
+        self._last_result = result
+        self._recorded_with_result = self._recorded
 
     # ── Refresh ─────────────────────────────────────────────────
 
@@ -389,12 +401,12 @@ class MirrorSession:
         try:
             result = await self.mirror.refresh()
         except asyncio.CancelledError:
-            self._last_result = RefreshResult("cancelled", _utc_timestamp())
+            self._set_result(RefreshResult("cancelled", _utc_timestamp()))
             raise
         except Exception:
             log.exception("refreshing the served mirror failed")
             result = RefreshResult("failed", _utc_timestamp())
-        self._last_result = result
+        self._set_result(result)
         if result.outcome in _FETCHED_OUTCOMES:
             self._last_success_at = result.at
         try:

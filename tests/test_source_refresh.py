@@ -553,22 +553,28 @@ class _BusyMirror:
         return False
 
 
-def test_a_record_from_the_same_second_outranks_a_busy_result() -> None:
-    """Timestamps have one-second resolution; the other process's record wins a tie."""
+@pytest.mark.parametrize(
+    ("written", "shown"),
+    [("after the busy result", "succeeded"), ("before the busy result", "refreshing_elsewhere")],
+)
+def test_a_same_second_record_outranks_a_busy_result_only_when_newer(
+    written: str, shown: str
+) -> None:
+    """Timestamps have one-second resolution, so a tie goes to a record that changed."""
 
     async def scenario() -> LastOutcome | None:
         coordinator = RefreshCoordinator()
         session = MirrorSession(_BusyMirror(_FUTURE), coordinator)
+        if written == "before the busy result":
+            await session.observe()
         session.request_refresh()
         await coordinator.drain(timeout_s=5)
         await coordinator.aclose()
         return session._last_outcome()
 
-    assert asyncio.run(scenario()) == {
-        "operation": "refresh",
-        "outcome": "succeeded",
-        "at": _FUTURE,
-    }
+    outcome = asyncio.run(scenario())
+    assert outcome is not None
+    assert (outcome["outcome"], outcome["at"]) == (shown, _FUTURE)
 
 
 # ── The shell ────────────────────────────────────────────────────────
