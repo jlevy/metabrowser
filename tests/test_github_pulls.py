@@ -23,6 +23,7 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
+from pydantic import ValidationError
 from starlette.testclient import TestClient
 from typer.testing import CliRunner
 
@@ -39,7 +40,9 @@ from metabrowser.builtin_plugins.github.gh import (
 from metabrowser.builtin_plugins.github.pull_record import (
     MAX_BODY_BYTES,
     MAX_DIFF_HUNK_BYTES,
+    MAX_PULL_COMMITS,
     PullRecord,
+    PullRequest,
     apply_text_budget,
     cut_text,
     escaped_size,
@@ -1404,3 +1407,51 @@ def test_a_served_pull_requests_newer_commit_is_fetched_for_a_pin(
         serve_mirror(None)
         reset_source_session()
         git_repo.clear_repo_cache()
+
+
+@pytest.mark.parametrize(
+    ("value", "kept"),
+    [
+        (6, 6),
+        (0, 0),
+        (MAX_PULL_COMMITS, MAX_PULL_COMMITS),
+        (MAX_PULL_COMMITS + 1, None),
+        (-1, None),
+        (True, None),
+        ("6", None),
+        (None, None),
+    ],
+)
+def test_the_commit_count_is_kept_only_within_its_bound(value: object, kept: int | None) -> None:
+    assert pulls._count(value) == kept
+
+
+def test_the_record_refuses_a_commit_count_past_its_bound() -> None:
+    side = {"ref": "topic", "sha": "a" * 40, "repository": "octo/demo"}
+    pull = {
+        "number": 7,
+        "title": "t",
+        "body": "",
+        "body_truncated": False,
+        "state": "closed",
+        "draft": False,
+        "merged": True,
+        "merged_by": None,
+        "commits": MAX_PULL_COMMITS,
+        "merge_commit_sha": None,
+        "mergeable": "unknown",
+        "labels": [],
+        "author": "octo",
+        "created_at": "2026-09-17T12:00:00Z",
+        "updated_at": "2026-09-17T12:00:00Z",
+        "merged_at": "2026-09-17T12:00:00Z",
+        "closed_at": "2026-09-17T12:00:00Z",
+        "base": side,
+        "head": side,
+        "html_url": "https://github.com/octo/demo/pull/7",
+    }
+    assert PullRequest.model_validate(pull).commits == MAX_PULL_COMMITS
+    with pytest.raises(ValidationError):
+        PullRequest.model_validate({**pull, "commits": MAX_PULL_COMMITS + 1})
+    with pytest.raises(ValidationError):
+        PullRequest.model_validate({**pull, "commits": -1})

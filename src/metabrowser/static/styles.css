@@ -2336,11 +2336,17 @@ html[data-prose-font="sans"] {
      105" honest across both reading modes instead of only the default one. */
   --doc-char-advance: 0.4039;
 }
-.preview-pane {
+/* The frame: KPress's `.kpress-frame`, a non-scrolling wrapper of the scroll
+   pane (server.py). Its transform makes it the containing block for KPress's
+   `position: fixed` floating UI (TOC drawer, toggle, and backdrop, tooltips,
+   video, settings menu), so that UI covers the pane and never the left nav.
+   The transform must not sit on the scroller itself: fixed descendants of a
+   transformed scroller are laid out in its scrolled content and move with it,
+   so the drawer toggle scrolled away with the document (KPress 0.3.5
+   components.css states the same contract on `.kpress-viewport`). */
+.preview-frame {
   flex: 1;
   min-width: 0;
-  overflow-y: auto;
-  padding: 0;
   display: flex;
   flex-direction: column;
   /* The page floats above the nav: same stacking level as the tree pane but
@@ -2349,23 +2355,23 @@ html[data-prose-font="sans"] {
   position: relative;
   z-index: var(--z-pane);
   box-shadow: var(--shadow-pane-left);
+  transform: translateZ(0);
+}
+.preview-pane {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  /* Absolutely positioned content (.preview-file-stage) scrolls with it. */
+  position: relative;
   /* The KPress document viewport. Named `kpress-doc` so KPress's own
      `@container kpress-doc` TOC rules react to the pane's width (the window
-     also holds the file tree, so viewport queries would lie), and the
-     inline-size containment makes the pane the containing block for the TOC
-     drawer/toggle's `position: fixed` — pinning them to the pane, not the
-     window. The pane also carries `data-kpress-viewport` (set in server.py)
-     so KPress's toc.js resolves it as the scroll root. */
+     also holds the file tree, so viewport queries would lie). The pane also
+     carries `data-kpress-viewport` (set in server.py) so KPress's toc.js
+     resolves it as the scroll root. No transform here; see .preview-frame. */
   container: kpress-doc / inline-size;
-  /* Force the pane to be the containing block for KPress's `position: fixed`
-     floating UI (TOC drawer/toggle, tooltips, video, settings menu). The
-     `container-type` above should establish this, but not every engine honors
-     container containment for fixed descendants (only absolute), which lets the
-     TOC escape and overlay the left nav. A transform is the universally-honored
-     trigger; since the pane is an inner scroller that does not move with the
-     window, the floating UI stays pinned to the pane frame while content
-     scrolls beneath it. */
-  transform: translateZ(0);
 }
 .preview-pane:focus-visible {
   outline: 2px solid var(--link);
@@ -5128,6 +5134,7 @@ pre.code-block.metabrowser-source-lines > code {
   }
 
   .container,
+  .preview-frame,
   .preview-pane {
     display: block;
     width: auto;
@@ -5136,6 +5143,12 @@ pre.code-block.metabrowser-source-lines > code {
     overflow: visible;
     background: white;
     color: black;
+  }
+
+  /* A transformed ancestor breaks print fragmentation. */
+  .preview-frame {
+    transform: none;
+    box-shadow: none;
   }
 
   .preview-pane [data-tab-content] {

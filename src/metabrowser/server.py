@@ -1692,10 +1692,13 @@ async def index(request: Request) -> HTMLResponse:
          file or folder (the bare origin redirects to the served root),
          /commit/ names a revision, and /pull/ the served pull request. So the
          pane ships loading, never a prompt to select a file. It is
-         navigation.js's starting placeholder. -->
-    <div class="preview-pane" id="preview-pane" data-kpress-viewport tabindex="-1">
-      <div class="loading mb-delayed-loading"><div class="spinner"></div><span
-        class="sr-only">Loading preview…</span></div>
+         navigation.js's starting placeholder. The frame around it does not
+         scroll, so KPress's floating UI pins to it (see .preview-frame). -->
+    <div class="preview-frame kpress-frame">
+      <div class="preview-pane" id="preview-pane" data-kpress-viewport tabindex="-1">
+        <div class="loading mb-delayed-loading"><div class="spinner"></div><span
+          class="sr-only">Loading preview…</span></div>
+      </div>
     </div>
   </main>
   <!-- Core shell scripts are local and first-paint critical. Optional

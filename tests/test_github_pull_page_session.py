@@ -12,8 +12,10 @@ responses. Serving began on the default branch, as it does when the pull request
 be opened at startup. The page opened with nothing cached, fetched the record, read its
 Markdown, switched the pin to the head the record names, went stale, refreshed to a
 record with the same text, and refreshed again to one with a hostile comment, recorded
-both as the hook answers it and as KPress alone renders it. The first test here replays
-that story and fails when the recording no longer matches.
+both as the hook answers it and as KPress alone renders it. The same server then served
+pull requests 8 and 9, merged and closed, and read each once, for the header's wording
+in those states and a skipped check, then read 8 again once GitHub named no merger. The first test here replays that story and fails
+when the recording no longer matches.
 
 The clock is fixed, so fetch times are literal. Entity tags are the session's own, since
 the server's are scoped to the build; which answers share one is kept. The Markdown is
@@ -287,6 +289,29 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
                 "etag": None,
                 "body": {"tree": html_tree(_prose(_kpress_render(HOSTILE_COMMENT)))},
             }
+
+            # The same server, handed the stand-in's merged and then its closed pull
+            # request as the one it serves, as the CLI hands it one for a /pull/<n> URL,
+            # and each read once: what the header says in a state other than open. The
+            # server's batch readers belong to this session's event loop, so the answers
+            # are recorded here rather than from a second server.
+            assert session is not None
+            for number, name in ((8, "merged"), (9, "closed")):
+                session.companion = served_pull(published, number)
+                client.post(_REFRESH, json={}, headers=_JSON)
+                _settle(client)
+                recorded[name] = _answer(client.get(_PULL))
+
+            # GitHub then answers pull request 8 with no merger, and a refresh reads it.
+            merged_path = "repos/octo/demo/pulls/8"
+            unattributed = {**answers["api"][merged_path]["body"], "merged_by": None}
+            answers["api"][merged_path] = ok(merged_path, unattributed)
+            for name, value in install_fake_gh(tmp_path, answers).items():
+                monkeypatch.setenv(name, value)
+            session.companion = served_pull(published, 8)
+            client.post(_REFRESH, json={}, headers=_JSON)
+            _settle(client)
+            recorded["merged_unattributed"] = _answer(client.get(_PULL))
     finally:
         serve_mirror(None)
         reset_source_session()
@@ -329,6 +354,14 @@ def test_recording_is_what_a_served_pull_request_answers(
     for hazard in ('"link"', '"img"', '"svg"', '"data-kpress-video-id"', '"modal-overlay"'):
         assert hazard in kept, f"KPress alone no longer keeps {hazard}"
     assert allowlist_violations(recorded["markdown added"]["body"]["html"]) == []
+    merged = recorded["merged"]["body"]["record"]["pull"]
+    assert (merged["merged"], merged["merged_by"], merged["commits"]) == (True, "octo", 1)
+    conclusions = [run["conclusion"] for run in recorded["merged"]["body"]["record"]["check_runs"]]
+    assert conclusions == ["success", "skipped"]
+    closed = recorded["closed"]["body"]["record"]["pull"]
+    assert (closed["state"], closed["merged"], closed["commits"]) == ("closed", False, 1)
+    unattributed = recorded["merged_unattributed"]["body"]["record"]["pull"]
+    assert (unattributed["merged"], unattributed["merged_by"]) == (True, None)
     rendered = json.dumps(recorded, indent=2, ensure_ascii=False) + "\n"
     if os.environ.get("GOLDEN_UPDATE") == "1":
         FIXTURE.write_text(rendered, encoding="utf-8")
@@ -368,3 +401,16 @@ def test_the_session_runs_on_the_recording() -> None:
     assert switched["requests"] == ['POST /api/source/pin {"ref":"refs/pull/7/head"}']
     assert switched["reloads"] == 1
     assert steps["reloaded on the head, nothing is offered"]["paint"]["headOffer"] is None
+    # The header says what github.com says in each state, and skipped checks are
+    # counted apart from neutral ones.
+    states = transcript["states"]
+    assert "] forker wants to merge 2 commits into topic from forker:" in states["open"]["header"]
+    assert "] octo merged 1 commit into topic from guide-more" in states["merged"]["header"]
+    assert "[Closed] ghost wants to merge 1 commit into topic from" in states["closed"]["header"]
+    # With no merger named, nobody is credited.
+    assert (
+        "[Merged] merged 1 commit into topic from guide-more"
+        in states["merged_unattributed"]["header"]
+    )
+    # A check run and the commit status succeeded; the other run was skipped.
+    assert states["merged"]["checks"] == {"success": 2, "skipped": 1}

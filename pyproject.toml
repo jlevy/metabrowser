@@ -150,6 +150,10 @@ select = [
     "TID",
     "LOG",
     "G",
+    # A bidirectional control or zero-width space in source reads as something it is
+    # not; write such characters as escapes.
+    "PLE2502",
+    "PLE2515",
 ]
 ignore = [
     # Disable some rules that are overly pedantic. Add/remove as desired:

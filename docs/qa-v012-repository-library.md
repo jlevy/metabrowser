@@ -557,9 +557,10 @@ with a local origin standing in for `https://github.com/octo/demo`, and pins the
 in `tests/golden/cli-github-url-open.txt`. Read the transcript rather than rerunning it:
 every spelling of the repository prints one slug and store; `/tree/release/v1/docs` pins
 the `release/v1` branch; `/blob/…?plain=1#L3-L4` reports `lines` and `plain`; a branch
-named `523f` wins over the commit whose ID starts with those digits; and a missing ref,
-commit, or path is `ref_not_found`, `commit_not_found`, or `path_not_found`.
-Pull-request URLs are 4.10.
+named `523f` wins over the commit whose ID starts with those digits; a path pasted with
+a raw space or a character outside ASCII (`docs/My Notes.md`, `docs/雪.md`) opens the
+same file and pin as its percent-encoded spelling; and a missing ref, commit, or path is
+`ref_not_found`, `commit_not_found`, or `path_not_found`. Pull-request URLs are 4.10.
 
 ```shell
 uv --config-file uv.toml run --frozen pytest tests/test_cli_github_url_golden.py \
@@ -938,8 +939,8 @@ The banner prints
 address.
 
 1. The page shows **Count to two in the app #7** with an **Open** badge,
-   `forker wants to merge into topic from forker:count-to-two`, the opened and updated
-   times, **View on GitHub**, **Browse code**, and the `enhancement` label.
+   `forker wants to merge 2 commits into topic from forker:count-to-two`, the opened and
+   updated times, **View on GitHub**, **Browse code**, and the `enhancement` label.
    The status line reads `Fetched … by gh:octo-reader`; the records were fetched on
    2026-09-17, so it first adds `may be out of date` and offers **Refresh**, and the
    freshness row at the foot of the navigation pane refreshes on its own and links
@@ -973,8 +974,14 @@ address.
    startup, so this case is played by
    `tests/golden/cli-ui-github-pull-page.tryscript.md` rather than by hand.
 8. Stop the server and serve pull request 9 (`--serve 9 8475`): **spam** is **Closed**,
-   from `spam (deleted fork)` into `topic`, with no conversation, and Files changed
-   compares from the recorded `base.sha`.
+   and the header reads
+   `ghost wants to merge 1 commit into topic from spam (deleted fork)`, as github.com
+   words a closed pull request; there is no conversation, and Files changed compares
+   from the recorded `base.sha`. Serve pull request 8 (`--serve 8 8475`): **Say more in
+   the guide** is **Merged**, the header reads
+   `octo merged 1 commit into topic from guide-more`, naming who merged it rather than
+   its author, and **Checks** reads `2 success · 1 skipped`, with `docs` labeled
+   skipped.
 9. A hostile comment. Stop the server, add `HOSTILE_COMMENT` from
    `tests/github_pull_fixture.py` to pull request 7’s comments in
    `"${QA_PR}/fake-gh-scenario.json"` (rebuild that entry with the fixture’s `ok()`, so
@@ -1086,8 +1093,11 @@ uv --config-file uv.toml run --frozen metab "file://${QA_TOC}/origin.git" --no-o
 4. Click **install** and **again** in the first paragraph: each scrolls to its heading.
    Replace the address’s fragment with `#install` and reload: the page scrolls to
    **Install**, as github.com does.
-5. Narrow the window until the rail folds away and scroll down: the toggle appears; it
-   opens the drawer, and an entry or the backdrop closes it.
+5. Narrow the window until the rail folds away and scroll down to the end: the toggle
+   appears in the pane’s top-left corner and stays there at every depth.
+   From the end of the document it opens the drawer over the pane, not the file tree,
+   and an entry or the backdrop closes it.
+   Repeat in the trusted folder of step 6.
 6. Serve the working folder as a trusted folder (`metab "${QA_TOC}/work"`): **odd**
    opens `a\b.md` (the tree lists it as `a%5Cb.md`;
    `tests/test_markdown_backslash_links.py` runs this end to end).
@@ -1097,7 +1107,8 @@ uv --config-file uv.toml run --frozen metab "file://${QA_TOC}/origin.git" --no-o
 **Pass:** every step as described.
 
 **Fail:** a flat list of entries in the document, an `id` the document wrote, an entry
-or link that does not scroll, or a KPress script loaded for the mirror.
+or link that does not scroll, a toggle that scrolls away with the document, or a KPress
+script loaded for the mirror.
 
 ### 5.10 Switch branch or tag from the selector (no network)
 

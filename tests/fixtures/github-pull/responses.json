@@ -5,6 +5,8 @@
     "state": "open",
     "draft": false,
     "merged": false,
+    "merged_by": null,
+    "commits": 2,
     "merge_commit_sha": null,
     "mergeable": true,
     "title": "Count to two in the app",

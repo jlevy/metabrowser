@@ -120,11 +120,23 @@ GitHub URLs and HTTPS:
   `https://github.com/owner/repo`. Other github.com pages, `http://`, and GitHub’s own
   top-level pages are refused with a typed reason and a message that offers the
   repository URL; tracking parameters are dropped and never echoed.
-  A C1 control character in a path, such as `%C2%9B`, is shown as U+FFFD like C0, so an
-  error message cannot send a terminal an escape sequence.
-  A ref, commit, or path the mirror does not have is reported by `--no-serve`, `--show`,
-  and `--api` as `ref_not_found`, `commit_not_found`, or `path_not_found`; those modes
-  read the mirror as it is and do not fetch.
+  A URL pasted as an address bar shows it, with a raw space or a character outside ASCII
+  such as `docs/雪.md` or `space name.md`, opens what its percent-encoded spelling opens:
+  as a browser does, the space and the character are sent percent-encoded as UTF-8. A
+  character a reader cannot see or tell from a space is refused with its code point and
+  the encoded spelling to use: whitespace other than a space, format characters such as
+  a right-to-left override, Unicode’s default-ignorable characters such as the Hangul
+  filler U+3164 and variation selectors, the blank braille pattern U+2800, and
+  unassigned and private-use code points.
+  So are a trailing space, which a browser strips, control characters, named by code
+  point, and a `%` that starts no percent escape, with the hint to write a literal `%`
+  as `%25`. A C1 control character in a path, such as `%C2%9B`, is shown as U+FFFD like
+  C0, so an error message cannot send a terminal an escape sequence, and so is a format
+  character such as a right-to-left override (`%E2%80%AE`) or a zero-width space, on the
+  `path:` line, in errors, and in a pinned tree’s file names, so a name cannot pass for
+  another. A ref, commit, or path the mirror does not have is reported by `--no-serve`,
+  `--show`, and `--api` as `ref_not_found`, `commit_not_found`, or `path_not_found`;
+  those modes read the mirror as it is and do not fetch.
   A server instead serves the default branch, fetches once in the background, and
   switches to the selection if the fetch brings it, like any pin switch; a page opened
   meanwhile then goes to the selection’s address, line anchor included, which status
@@ -176,13 +188,14 @@ GitHub URLs and HTTPS:
 
 - Pull-request data:
   `metab https://github.com/owner/repo/pull/<n> --api /api/plugin/github/pull` reads the
-  pull request with `gh api` (its description, labels, state, merge status,
-  conversation, reviews, review comments, check runs, and statuses), fetches its commits
-  through GitHub’s `refs/pull/<n>/head`, a fork’s included, pins the head commit, and
-  prints the record. The record is cached as one JSON file per pull request, so later
-  `--show` and `--api` answer from the cache without running `gh` or reaching the
-  network; `--no-serve` refreshes it, with conditional requests that GitHub does not
-  count against the rate limit when nothing changed.
+  pull request with `gh api` (its description, labels, state, merge status, commit
+  count, who merged it, conversation, reviews, review comments, check runs, and
+  statuses), fetches its commits through GitHub’s `refs/pull/<n>/head`, a fork’s
+  included, pins the head commit, and prints the record.
+  The record is cached as one JSON file per pull request, so later `--show` and `--api`
+  answer from the cache without running `gh` or reaching the network; `--no-serve`
+  refreshes it, with conditional requests that GitHub does not count against the rate
+  limit when nothing changed.
   The record names Files changed as two pinned commits, the merge base and the head, as
   GitHub computes it, and `/api/plugin/diff/comparison` now honors
   `base_policy=merge_base` for such a comparison.
@@ -218,11 +231,18 @@ GitHub URLs and HTTPS:
   Lists and text are bounded per pull request, and a cut is reported, never silent.
 
 - Pull-request page: serving a pull-request URL now opens its page at `/pull/<n>`, the
-  way github.com shows it: title, state (open, draft, merged, or closed), author, base
-  and head branches, times, labels, merge status (unknown until GitHub has computed it),
-  the description, a conversation of comments and reviews in time order with review
-  states, review comments with their file, line, and diff hunk, checks and statuses with
-  links to their details, and notes for anything the record cut or could not read.
+  way github.com shows it: title, state (open, draft, merged, or closed), github.com’s
+  header line (“author wants to merge 2 commits into base from head”, and once merged
+  “merger merged 2 commits into base from head”, or “merged 2 commits into …” when the
+  record names no merger), times, labels, merge status (unknown until GitHub has
+  computed it), the description, a conversation of comments and reviews in time order
+  with review states, review comments with their file, line, and diff hunk, checks and
+  statuses with links to their details, and notes for anything the record cut or could
+  not read. The Checks summary counts each check run and commit status under one of:
+  success; failure (a run that failed, timed out, needs action, or failed to start, and
+  a status of failure or error); cancelled; skipped; stale; neutral; pending (a run not
+  yet completed, whatever its status, and a pending status); and unknown (a completed
+  run with no conclusion, or a conclusion or state GitHub does not document).
   `/pull/<n>/files` is its Files changed, the diff view over the record’s merge-base
   comparison. The page reads only the cached record, so it opens instantly and offline;
   it says how old the record is and who read it, offers a refresh when it is stale,
@@ -698,6 +718,13 @@ Fixes:
   reports the cursor past the window, so after Load more the notice kept reading
   “Showing 2.0 MB of 15.2 MB” and the next Load more read from 2.0 MB again, repeating
   text. `/api/file` on a pin now reports the cursor, as a served folder does.
+
+- In a pane too narrow for the Contents rail, the table-of-contents toggle now stays in
+  the pane’s top-left corner as the document scrolls, so the drawer opens from any
+  depth. It used to scroll away with the document, in a trusted folder and a mirror
+  alike, because the scrolling preview pane was also the box its fixed position pinned
+  to. The pane now scrolls inside a non-scrolling frame that holds the drawer, its
+  toggle, and its backdrop, as KPress’s embedding contract asks.
 
 ## 0.11.0
 

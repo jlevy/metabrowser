@@ -50,6 +50,7 @@ import asyncio
 import base64
 import re
 import threading
+import unicodedata
 from array import array
 from bisect import bisect_left
 from collections import OrderedDict
@@ -161,14 +162,25 @@ class GitBatchProtocolError(GitError):
 
 
 def display_segment(segment: bytes) -> str:
-    """Replacement-safe UTF-8. C0, DEL, and C1 become U+FFFD.
+    """Replacement-safe UTF-8. C0, DEL, C1, and format characters become U+FFFD.
 
-    Chrome cannot wrap on them, and a terminal cannot be sent an escape sequence: C1
-    includes U+009B, a one-character CSI, which a URL can spell as ``%C2%9B``.
+    Chrome cannot wrap on the controls, and a terminal cannot be sent an escape sequence:
+    C1 includes U+009B, a one-character CSI, which a URL can spell as ``%C2%9B``. A
+    format character (Unicode category Cf), such as U+202E RIGHT-TO-LEFT OVERRIDE or
+    U+200B ZERO WIDTH SPACE, reorders or hides what is shown around it without being
+    seen, so a name holding one could pass for another in a listing, a ``path:`` line,
+    or an error message. The wire form keeps every byte.
     """
 
     text = segment.decode("utf-8", "replace")
-    return "".join("\ufffd" if ord(ch) < 0x20 or 0x7F <= ord(ch) <= 0x9F else ch for ch in text)
+    if text.isascii() and text.isprintable():
+        return text
+    return "".join(
+        "\ufffd"
+        if ord(ch) < 0x20 or 0x7F <= ord(ch) <= 0x9F or unicodedata.category(ch) == "Cf"
+        else ch
+        for ch in text
+    )
 
 
 def _b64encode(raw: bytes) -> str:

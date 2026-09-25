@@ -54,7 +54,7 @@ function summarize(model) {
     header:
       pull === null
         ? null
-        : `${pull.title} #${pull.number} [${pull.stateLabel}] ${pull.author}: ${pull.base} <- ${pull.head}`,
+        : `${pull.title} #${pull.number} [${pull.stateLabel}] ${pull.actor === null ? "" : `${pull.actor} `}${pull.action} ${pull.base} from ${pull.head}`,
     labels: pull === null ? [] : pull.labels,
     merge: pull?.merge?.label ?? null,
     timeline: model.timeline.map(
@@ -413,6 +413,24 @@ async function main() {
     ),
   );
 
+  // What the header says, and how the checks are counted, for an open, a merged, and a
+  // closed pull request, each as the served server answered it.
+  const states = Object.fromEntries(
+    [
+      ["open", recorded.current.body],
+      ["merged", recorded.merged.body],
+      ["closed", recorded.closed.body],
+      ["merged_unattributed", recorded.merged_unattributed.body],
+    ].map(([name, body]) => {
+      const model = runtime.describePull(body, {
+        number: body.number,
+        tab: "",
+        nowMs: page.clock.now,
+      });
+      return [name, { header: summarize(model).header, checks: model.checks?.counts ?? null }];
+    }),
+  );
+
   // What a page for another number, and the links a rendered text keeps, would show.
   const other = runtime.describePull(recorded.current.body, {
     number: 8,
@@ -450,6 +468,7 @@ async function main() {
     JSON.stringify(
       {
         steps,
+        states,
         otherNumber: { status: other.status, message: other.message, served: other.served },
         links,
         wire: runtime.gitPathWire("src/app.txt"),
