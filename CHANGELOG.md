@@ -41,6 +41,11 @@ Plugin contracts:
 
 Plugin SDK:
 
+- `renderSourceView` renders a line-number gutter beside the code and wires line
+  anchors, so every view that uses it gets both.
+  The code is still the `<code>` inside `pre.code-block`, now beside a
+  `span.source-line-numbers`; the copy button still copies only the code.
+
 - `window.metabrowser.sourceKind()` reports whether the served tree is a filesystem root
   or a `git_revision` pin.
   Markdown link and wiki resolution use that kind instead of inferring GitPath encoding
@@ -88,14 +93,14 @@ GitHub URLs and HTTPS:
   and untrusted like any acquired source; `--no-serve` only clones it, and `--show` and
   `--api` inspect it in-process.
   Serving a `/blob/` or `/tree/` URL opens the browser at that file or folder, with the
-  `#L10-L20` anchor kept in the address, and the banner names the ref, the selection,
-  and a pull request’s number; `/api/source/status` reports that number as
-  `pull_request`. `/tree/…`, `/blob/…` (with `#L10`, `#L10-L20`, or `#L10C5-L20C8` and
-  `?plain=1`), `/commit/<id>`, `/pull/<n>/commits/<id>`, and `raw.githubusercontent.com`
-  file URLs pin the commit they point at; the mirror decides where a branch name
-  containing `/` ends, preferring a branch, then a tag, then a full or abbreviated
-  commit ID. `--no-serve` prints the selection after the identity lines, and `--show`
-  and `--api` print it on stderr.
+  `#L10-L20` anchor kept in the address and those lines highlighted, and the banner
+  names the ref, the selection, and a pull request’s number; `/api/source/status`
+  reports that number as `pull_request`. `/tree/…`, `/blob/…` (with `#L10`, `#L10-L20`,
+  or `#L10C5-L20C8` and `?plain=1`), `/commit/<id>`, `/pull/<n>/commits/<id>`, and
+  `raw.githubusercontent.com` file URLs pin the commit they point at; the mirror decides
+  where a branch name containing `/` ends, preferring a branch, then a tag, then a full
+  or abbreviated commit ID. `--no-serve` prints the selection after the identity lines,
+  and `--show` and `--api` print it on stderr.
   A `/pull/<n>` URL pins the pull request’s head; see below.
   Ref names match exactly, including letter case, and `HEAD` names the default branch;
   on a case-insensitive filesystem, a repository whose branch or tag names differ only
@@ -243,6 +248,32 @@ GitHub URLs and HTTPS:
   already forked, rather than only `git` itself.
   While a Git source is served, a hangup stops the server as Ctrl-C does, killing a
   running refresh’s Git first, and exits 129.
+
+Source views:
+
+- A text or source file’s Source view shows line numbers, and a `/view/` address ending
+  in `#L10`, `#L10-L20`, or `#L10C5-L20C8` highlights those lines and scrolls the first
+  one into view, when the file opens and whenever the fragment changes; columns are kept
+  but highlight whole lines.
+  Clicking a line number anchors that line and shift-clicking extends the anchor to a
+  range, replacing the address rather than adding a history entry, so a copied address
+  keeps the anchor. This works the same in a served folder and on a pin.
+  A large file’s anchor past the part loaded so far says so and names Load more; once
+  Load more reaches the line, it is highlighted and scrolled to.
+  An anchor past the end of the file says how many lines the file has.
+- An address with a line anchor, or with GitHub’s `?plain=1`, opens the file in its
+  Source view, and adding a line anchor to the address of the file already shown selects
+  its Source tab; Load more keeps the tab it was used in.
+  A GitHub `blob` URL for a Markdown file with `#L10` or `?plain=1` shows its source
+  with those lines highlighted; a served `blob` URL keeps `?plain=1` in the address.
+  The Markdown Source tab has line numbers and anchors, with front matter highlighted as
+  YAML and the body as Markdown beside one column of numbers.
+- The line numbers are reachable from the keyboard: Tab focuses them, the arrow keys,
+  Page Up, Page Down, Home, and End move the anchor, and Shift extends it to a range.
+  A screen reader announces the highlighted lines as the anchor moves and when an
+  address sets it.
+- Opening a Source tab for the first time scrolls to the address’s line anchor, as
+  opening the file does.
 
 Repository cache:
 

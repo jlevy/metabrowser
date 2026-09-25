@@ -231,9 +231,9 @@ def pending_selection_opener(
 def selection_view_href(selection: RepositorySelection, resolved: ResolvedSelection) -> str:
     """The address a served URL selection opens at.
 
-    A file or folder opens at its `/view/` address, with its line anchor; the browser
-    keeps the fragment, and highlighting the lines is separate work. A pull request
-    opens at its page, `/pull/<n>`.
+    A file or folder opens at its `/view/` address. A file keeps the URL's `plain=1`
+    and line anchor, either of which opens the file's Source view in the browser, where
+    the anchor highlights its lines. A pull request opens at its page, `/pull/<n>`.
     """
 
     if selection.kind == "pull_request" and selection.pull_request is not None:
@@ -243,6 +243,8 @@ def selection_view_href(selection: RepositorySelection, resolved: ResolvedSelect
     href = VIEW_ROUTE_PREFIX + GitPath(resolved.path).to_wire()
     if selection.kind == "tree":
         href += "/"
+    if selection.kind == "blob" and selection.plain:
+        href += "?plain=1"
     if selection.kind == "blob" and selection.lines is not None:
         href += "#" + selection.lines.fragment()
     return href

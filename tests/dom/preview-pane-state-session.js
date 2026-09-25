@@ -18,6 +18,9 @@ const navigationPath = path.join(repoRoot, "src/metabrowser/static/navigation.js
 const navigationSource = fs.readFileSync(navigationPath, "utf8");
 const appPath = path.join(repoRoot, "src/metabrowser/static/app.js");
 const appSource = fs.readFileSync(appPath, "utf8");
+// applyNavigationTarget asks the line-anchor module which view an address opens in.
+const lineAnchorsPath = path.join(repoRoot, "src/metabrowser/static/source-line-anchors.js");
+const lineAnchorsSource = fs.readFileSync(lineAnchorsPath, "utf8");
 
 // Shared with every sandbox so `instanceof` agrees across the realm boundary.
 const BUILTINS = {
@@ -327,6 +330,7 @@ const SHELL_FUNCTIONS = [
   "settleCommitRoutePreview",
   "retryUnreachablePreview",
   "deliverNavigationFragment",
+  "showPreviewTab",
   "applyNavigationTarget",
   "navigateToPath",
 ];
@@ -402,6 +406,17 @@ async function settle() {
  * request; the renderer double paints a view only for a current claim.
  */
 function createShell(pathname, network) {
+  /** @type {string[]} */
+  const renderedViews = [];
+  // The shown file's Source tab; a click selects it, as initTabs does.
+  /** @type {string[]} */
+  const tabClicks = [];
+  const sourceTab = fakeElement({
+    click() {
+      tabClicks.push(`${preview.dataset.renderedPath}: source`);
+      sourceTab.classList.add("active");
+    },
+  });
   const preview = fakeElement();
   const elements = new Map([
     ["preview-pane", preview],
@@ -452,7 +467,12 @@ function createShell(pathname, network) {
     ],
     navPanelsShown: new Set(["files"]),
     navScrollShadowUpdate: null,
-    queryHtml: (selector) => (selector === ".nav-tab-bar" ? navBar : null),
+    queryHtml: (selector) =>
+      selector === ".nav-tab-bar"
+        ? navBar
+        : selector === '#preview-pane > .tab-bar > .tab-btn[data-tab="source"]'
+          ? sourceTab
+          : null,
     queryHtmlAll: (selector) =>
       selector === ".tab-btn" ? tabButtons : selector === "[data-tab-content]" ? tabPanels : [],
     treePane: fakeElement(),
@@ -489,10 +509,13 @@ function createShell(pathname, network) {
     },
     loadViewComposition: async () => null,
     maybeOpenLiveStream() {},
-    renderFile: async (data, _viewId, claim) => {
+    renderFile: async (data, viewId, claim) => {
       if (!sandbox.isPreviewClaimCurrent(claim)) {
         return false;
       }
+      renderedViews.push(`${data.path}: ${viewId ?? "default view"}`);
+      preview.dataset.renderedPath = data.path;
+      sourceTab.classList.toggle("active", viewId === "source");
       preview.innerHTML = `<article class="rendered-view">${data.kind} ${data.path}</article>`;
       return true;
     },
@@ -529,6 +552,7 @@ function createShell(pathname, network) {
   });
   sandbox.fileNeedsRevalidate =
     sandbox.MetabrowserNavigationRoute.createFileRevalidationTracker(512);
+  vm.runInContext(lineAnchorsSource, sandbox, { filename: lineAnchorsPath });
   vm.runInContext(shellSource, sandbox, { filename: "app.js (preview pane functions)" });
   // What server.py ships in the pane before any script runs.
   preview.innerHTML = sandbox.previewPlaceholderHtml(sandbox.previewPane.placeholder(0));
@@ -569,6 +593,8 @@ function createShell(pathname, network) {
     outcome,
     pane,
     panelShows,
+    renderedViews,
+    tabClicks,
     sandbox,
     sources,
     tabs: () => tabPanels.map((panel) => `${panel.dataset.tabContent}:${panel.style.display}`),
@@ -797,6 +823,34 @@ async function startupSettle() {
   };
 }
 
+async function anchoredAddressesOpenSource() {
+  // An address with a line anchor or GitHub's `plain=1` opens the file in its Source
+  // view; any other fragment or query leaves the file's default view. A line anchor
+  // added to the file already shown selects its Source tab without loading it again.
+  const shell = createShell("/view/", (requested) =>
+    Promise.resolve(jsonResponse({ kind: requested ? "markdown" : "folder", path: requested })),
+  );
+  await shell.sandbox.navigationController.start();
+  await settle();
+  for (const target of [
+    { path: "README.md", fragment: "L3-L4" },
+    { path: "guide.md", query: "plain=1" },
+    { path: "notes.md", fragment: "install" },
+    { path: "notes.md", fragment: "L2" },
+    { path: "notes.md", fragment: "L5" },
+    { path: "other.md", query: "plain=10" },
+  ]) {
+    await shell.sandbox.navigationController.open(target);
+    await settle();
+  }
+  const files = shell.renderedViews.filter((entry) => !entry.startsWith(": "));
+  return {
+    renderedViews: files,
+    tabClicks: shell.tabClicks,
+    fragments: shell.counters.fragments,
+  };
+}
+
 async function shell() {
   const shipped = createShell("/view/", refusedFetch);
   return {
@@ -808,6 +862,7 @@ async function shell() {
     bodyReadFailure: await bodyReadFailure(),
     reconnectRetry: await reconnectRetry(),
     startupSettle: await startupSettle(),
+    anchoredAddressesOpenSource: await anchoredAddressesOpenSource(),
   };
 }
 

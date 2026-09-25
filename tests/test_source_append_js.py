@@ -100,8 +100,9 @@ def test_shell_appends_rather_than_rerendering() -> None:
     append_call = load_more.index("sourceAppend.appendSourceText")
     following = load_more[append_call : append_call + 1_200]
     # The fallback also asserts pane ownership: the Git panel renders into this
-    # same pane, so a late chunk must not repaint over it.
-    assert "await renderFile(nextCached, undefined, previewClaim" in following, (
+    # same pane, so a late chunk must not repaint over it. It keeps the active
+    # tab so a reader on the Source tab is not thrown back to the rendered view.
+    assert "await renderFile(nextCached, activeView || undefined, previewClaim" in following, (
         "the fallback render should remain reachable"
     )
     assert "onCommit:" in following
