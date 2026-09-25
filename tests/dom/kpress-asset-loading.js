@@ -1,5 +1,5 @@
 // KPress asset-loading shim — executes plugin-sdk.js in the same small
-// Node vm sandbox style as load-plugins.js/render-view.js, then exercises
+// Node vm sandbox style as load-plugins.js, then exercises
 // mb.fetchKpressRender against a fake /api/kpress/render response.
 //
 // Usage:
