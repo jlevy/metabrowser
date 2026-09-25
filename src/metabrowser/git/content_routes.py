@@ -621,13 +621,17 @@ def _git_text_preview_fields(
 
 
 def _git_text_fields(offset: int, limit: int, window: bytes, size: int) -> dict[str, Any]:
-    bytes_read = len(window)
+    # `bytes_read` is the cursor past this window, as the filesystem route reports it,
+    # not the window's length: Load more reads it as the next offset and as the
+    # notice's "Showing" figure. Reporting the length left a pin's notice at the first
+    # window's size after every Load more, and the next request re-read from there.
+    bytes_read = offset + len(window)
     return {
         "content": window.decode("utf-8", "replace"),
         "content_offset": offset,
-        "content_bytes": bytes_read,
+        "content_bytes": len(window),
         "bytes_read": bytes_read,
-        "content_truncated": offset + bytes_read < size,
+        "content_truncated": bytes_read < size,
         "content_preview_limit": limit,
         "content_max_preview_limit": TEXT_PREVIEW_REQUEST_MAX_BYTES,
         "highlight_disabled": (

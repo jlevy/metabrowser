@@ -191,6 +191,9 @@ for (const [identity, url] of [
   ["report%2520final.txt", "/view/report%2520final.txt"],
   ["d%251/雪.md", "/view/d%251/%E9%9B%AA.md"],
   ["bad%FF 雪%25.txt", "/view/bad%FF%20%E9%9B%AA%25.txt"],
+  // A POSIX backslash is escaped `%5C` in the inventory; a literal `%5C` is `%255C`.
+  ["a%5Cb.txt", "/view/a%5Cb.txt"],
+  ["%255C.md", "/view/%255C.md"],
 ]) {
   equal(`native URL for ${identity}`, route.href({ path: identity }), url);
   equal(`identity from ${url}`, route.parse(url), { path: identity });
@@ -199,6 +202,11 @@ equal(
   "display percent-looking filename literally",
   route.displayPath("a%2520%25.txt"),
   "a%20%.txt",
+);
+equal(
+  "display a POSIX backslash name and a literal %5C",
+  route.displayPath("a%5Cb/%255C.md"),
+  "a\\b/%5C.md",
 );
 equal(
   "display GitPath README wire",
@@ -280,14 +288,24 @@ for (const [identity, url] of [
   equal(`Windows native URL for ${identity}`, route.href({ path: identity }), url);
   equal(`Windows identity from ${url}`, route.parse(url), { path: identity });
 }
+// Windows reads a backslash as a separator, so no Windows identity holds one.
+equal("Windows rejects an encoded backslash", route.parse("/view/a%5Cb.md"), null);
 sandbox.METABROWSER_PATH_ENCODING = "bytes";
+// A Git pin's wires and container inners never hold a backslash; only a served
+// folder's inventory escapes one.
+sandbox.METABROWSER_SOURCE_KIND = "git_revision";
+equal(
+  "a pin refuses an encoded backslash in a container inner",
+  route.parse("/view/g1-YQ/x%5Cy"),
+  null,
+);
+delete sandbox.METABROWSER_SOURCE_KIND;
 
 for (const [name, pathname] of [
   ["unrelated route", "/api/tree"],
   ["missing canonical root slash", "/view"],
   ["malformed escape", "/view/a%2.md"],
   ["encoded slash", "/view/a%2Fb.md"],
-  ["encoded backslash", "/view/a%5Cb.md"],
   ["literal backslash", "/view/a\\b.md"],
   ["literal parent traversal", "/view/../secret.md"],
   ["encoded parent traversal", "/view/%2E%2E/secret.md"],

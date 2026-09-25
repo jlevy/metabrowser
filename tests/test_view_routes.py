@@ -81,3 +81,16 @@ def test_git_view_path_accepts_gitpath_wire_and_refuses_filesystem_spelling() ->
     assert decode_git_view_path(b"/view/docs/note.txt") is None
     assert decode_git_view_path(b"/view/../etc/passwd") is None
     assert decode_git_view_path(b"/view/g1-@@@@") is None
+
+
+def test_git_view_path_refuses_an_encoded_backslash() -> None:
+    """Only a served folder's inventory escapes a backslash; a pin's paths never hold one.
+
+    The served-folder route carries `%5C` on POSIX (see test_browser_navigation.py), and
+    that allowance must not reach a GitPath wire or a container inner beneath it.
+    """
+
+    patch = GitPath.from_segments(b"change.patch").to_wire()
+    assert decode_git_view_path(f"/view/{patch}/src%5Capp.py".encode()) is None
+    assert decode_git_view_path(f"/view/{patch}%5C".encode()) is None
+    assert decode_git_view_path(b"/view/g1-YQ/x%5Cy") is None

@@ -1132,10 +1132,18 @@ The Git commit header therefore shows the short revision and copies the full com
 Explicit values use `data-mb-copy="text"`, carry their escaped payload in
 `data-mb-copy-text`, and name the resting action in `data-mb-copy-label`,
 `data-tip-text`, and `aria-label`. Source blocks use the same SDK delegate in `wrap`
-mode. Do not add a component-local clipboard listener or inline handler.
-The shared delegate owns successful, failed, and reset feedback, while the containing
-row owns when an `.icon-btn-reveal` becomes visible.
-Keep the button in the Tab order even while it is visually quiet.
+mode through `wrapWithCopy`. Do not add a component-local clipboard listener or inline
+handler.
+
+Build every such control with the page’s owner stamp: `mb.ownDelegate(element)` on an
+element, or `mb.delegateOwnerAttribute()` spliced into markup (`wrapWithCopy` and
+`partialNoticeHtml` stamp their own buttons).
+The delegate ignores an unstamped control, silently, because a trusted folder’s Markdown
+keeps `data-*` and can write the same attributes; the stamp is a value drawn when the
+page loads, which no document can carry.
+This has been required since plugin SDK 0.7. The shared delegate owns successful,
+failed, and reset feedback, while the containing row owns when an `.icon-btn-reveal`
+becomes visible. Keep the button in the Tab order even while it is visually quiet.
 
 `test_copyable_identifiers_share_the_copy_contract` maintains the registered path,
 diff-file, and Git-revision consumers.

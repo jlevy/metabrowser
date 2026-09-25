@@ -51,8 +51,9 @@ every entry, and it does: the encoding is **total**.
 A path is canonical POSIX-relative, `/`-separated, and derived from the platform name by
 escaping. Bytes that are not valid UTF-8 become `%XX` with uppercase hexadecimal digits,
 and `%` itself becomes `%25` so that the mapping stays injective and two different names
-can never collide on one canonical form. Runs that are valid UTF-8 are preserved, so a
-name that is mostly readable stays mostly readable.
+can never collide on one canonical form. On POSIX a backslash is an ordinary filename
+byte that the canonical grammar refuses, so it becomes `%5C`. Runs that are valid UTF-8
+are preserved, so a name that is mostly readable stays mostly readable.
 
 This is a name, not an address. It orders rows and resumes pages; it is never joined onto
 a native path or handed to the filesystem.
@@ -241,7 +242,14 @@ def canonical_inventory_name(name: str) -> str:
 
     Total by construction: every name has one. Undecodable bytes become `%XX` with
     uppercase hexadecimal digits, `%` itself becomes `%25` so the mapping stays injective,
-    and everything else is preserved, so a mostly-readable name stays mostly readable.
+    a POSIX backslash becomes `%5C`, and everything else is preserved, so a
+    mostly-readable name stays mostly readable.
+
+    Besides `%`, the backslash is the only valid UTF-8 character escaped. POSIX allows
+    it in a name and the canonical grammar refuses it, because Windows reads it as a
+    separator; before this escape one such name in a served folder failed the whole
+    index at its first dirty-path check. Windows names cannot contain a backslash, so
+    that platform keeps the character and the grammar keeps refusing it.
 
     The platform branch mirrors how the name was decoded, and mirrors fdu. On POSIX,
     `os.scandir` decodes undecodable bytes with `surrogateescape`, mapping each byte to one
@@ -260,7 +268,7 @@ def canonical_inventory_name(name: str) -> str:
     # C-level: `%` is a substring scan, and encoding raises precisely on the surrogates
     # that mark an undecodable byte. A Python-level scan over every character of every
     # name in every page is the version of this that shows up in a profile.
-    if "%" not in name:
+    if "%" not in name and "\\" not in name:
         try:
             name.encode("utf-8")
         except UnicodeEncodeError:
@@ -272,6 +280,8 @@ def canonical_inventory_name(name: str) -> str:
         point = ord(character)
         if character == "%":
             out.append("%25")
+        elif character == "\\" and _POSIX_BYTES:
+            out.append("%5C")
         elif _POSIX_BYTES and 0xDC80 <= point <= 0xDCFF:
             out.append(f"%{point - 0xDC00:02X}")
         elif 0xD800 <= point <= 0xDFFF:
@@ -320,6 +330,12 @@ def native_inventory_name(name: str) -> str | None:
     only meaningful against the platform whose names it was built from.
     """
 
+    if _POSIX_BYTES and "\\" in name:
+        # The forward function escapes every POSIX backslash, so an unescaped one is
+        # outside its image. Passing it through would give `a\\b.txt` a second
+        # identity beside `a%5Cb.txt`, reachable only by a caller that skipped the
+        # escape.
+        return None
     if "%" not in name:
         return name
     out: list[str] = []
@@ -341,11 +357,14 @@ def native_inventory_name(name: str) -> str | None:
         if value == 0x25:
             out.append("%")
         elif _POSIX_BYTES:
-            if value < 0x80:
-                # The forward function never emits these: an ASCII byte is kept as
-                # itself, so nothing escaped produces one.
+            if value == 0x5C:
+                out.append("\\")
+            elif value < 0x80:
+                # The forward function never emits these: an ASCII byte other than
+                # the backslash is kept as itself, so nothing escaped produces one.
                 return None
-            out.append(chr(0xDC00 + value))
+            else:
+                out.append(chr(0xDC00 + value))
         elif 0xD8 <= value <= 0xDF:
             # A Windows unpaired surrogate is written big-endian as two escapes.
             if index + 3 > limit or name[index] != "%":

@@ -409,6 +409,19 @@ Optional filesystem walk (large tree; not required for the pin lane):
 uv --config-file uv.toml run --frozen metab . --walk --max-depth 1
 ```
 
+A filename with a backslash (POSIX only) lists and opens instead of failing the index:
+
+```shell
+QA_BS="$(mktemp -d)" && printf 'x\n' > "$QA_BS/a\\b.txt"
+uv --config-file uv.toml run --frozen metab "$QA_BS" --api /api/tree
+uv --config-file uv.toml run --frozen metab "$QA_BS" --api '/api/file?path=a%255Cb.txt'
+rm -r "$QA_BS"
+```
+
+**Pass:** both are HTTP 200; the tree lists `"path": "a%5Cb.txt"`, and in a served
+browser the row reads `a\b.txt` and opens at `/view/a%5Cb.txt`. **Fail:** HTTP 500 or
+`dirty path must be a canonical POSIX-relative path`.
+
 ## Phase 4: `file://` Acquire and the Pin
 
 Skip the acquire/pin commands when Phase 2.4 already refused below-floor Git.
@@ -753,7 +766,11 @@ Open `http://127.0.0.1:8471/view/` in a browser, with its developer tools open.
    Reloading that `/commit/…` address reopens the same commit.
 7. Reload a `/view/g1-…` address, use back and forward, and open a copied link in a
    second tab: the same file and revision open each time.
-8. Open `pyproject.toml` with `#L10-L20` added to its address.
+8. A text file over 2 MB (commit one to a scratch origin if the pinned repository has
+   none) opens with “Showing 2.0 MB of …” above and below.
+   Each Load more raises that figure in both notices, and the text continues where it
+   stopped rather than repeating.
+9. Open `pyproject.toml` with `#L10-L20` added to its address.
    Line numbers run beside the code, lines 10–20 are highlighted, and line 10 is
    scrolled into view. Click line number 5: the address ends in `#L5`, the page does not
    scroll, and Back leaves the file rather than returning to `#L10-L20`. Shift-click
@@ -762,23 +779,24 @@ Open `http://127.0.0.1:8471/view/` in a browser, with its developer tools open.
    Edit it to `#L99999`: no line is highlighted, and a notice says the line is past the
    end of the file and how many lines it has.
    Copy the address into a second tab: the same lines are highlighted there.
-9. Press Tab until the line numbers take focus, which draws a focus ring around them.
-   Down moves the anchor one line and the address follows it; Shift+Down twice extends
-   it to three lines; Page Down, Home, and End move it and bring the line into view.
-   With VoiceOver on, each key reads the highlighted lines, such as “Lines 30–32”.
-10. Open `README.md` with `#L3-L5` added to its address, then with `?plain=1` and no
+10. Press Tab until the line numbers take focus, which draws a focus ring around them.
+    Down moves the anchor one line and the address follows it; Shift+Down twice extends
+    it to three lines; Page Down, Home, and End move it and bring the line into view.
+    With VoiceOver on, each key reads the highlighted lines, such as “Lines 30–32”.
+11. Open `README.md` with `#L3-L5` added to its address, then with `?plain=1` and no
     anchor. Both open the Source tab rather than the document, and the first highlights
     lines 3–5. A Markdown file with front matter shows the front matter highlighted as
     YAML with the body’s numbering continuing below it, and an anchor in the body
     highlights the body’s lines.
-11. Open `package.json` (Tree), edit the address to end in `#L5`, then select the Source
+12. Open `package.json` (Tree), edit the address to end in `#L5`, then select the Source
     tab: line 5 is highlighted and scrolled into view.
 
 **Pass:** Every step as described; no console errors; no request leaves `127.0.0.1`.
 
 **Fail:** A blank heading, a different commit anywhere, a Preview tab on HTML, a broken
-image, a line number beside the wrong line, a Markdown anchor that opens the document,
-or a request to another host.
+image, a partial-content notice that keeps its figure after Load more, a line number
+beside the wrong line, a Markdown anchor that opens the document, or a request to
+another host.
 
 ### 5.4 Reopen with the origin gone (M05)
 

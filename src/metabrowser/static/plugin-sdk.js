@@ -317,9 +317,55 @@
     _loadMoreActions.set(name, action);
   }
 
+  // The document-wide delegates below (copy, Load more, and the shell's print and
+  // address controls) act only on an element application or plugin code created.
+  // No static marker can say so: a trusted folder's Markdown keeps class, id, and
+  // data-* through KPress, so it could spell any attribute this code writes and turn
+  // a click into a clipboard write or an application action. This value is drawn when
+  // the page loads, after every document was written, so authored markup cannot
+  // carry it. Web Crypto is always present in a browser; a browserless test realm
+  // may lack it, and there any value serves.
+  const _delegateOwner = (() => {
+    const bytes = new Uint8Array(16);
+    if (typeof global.crypto?.getRandomValues === "function") {
+      global.crypto.getRandomValues(bytes);
+    } else {
+      bytes.forEach((_byte, index) => {
+        bytes[index] = Math.floor(Math.random() * 256);
+      });
+    }
+    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  })();
+
+  /** Markup for a delegated control: ` data-mb-owner="…"`, set only by page code. */
+  function delegateOwnerAttribute() {
+    return ` data-mb-owner="${_delegateOwner}"`;
+  }
+
+  /**
+   * Mark an element page code created as a delegated control.
+   * @template {Element} T
+   * @param {T} element
+   * @returns {T}
+   */
+  function ownDelegate(element) {
+    element.setAttribute("data-mb-owner", _delegateOwner);
+    return element;
+  }
+
+  /** @param {Element | null | undefined} element */
+  function isOwnedDelegate(element) {
+    return (
+      !!element &&
+      typeof element.getAttribute === "function" &&
+      element.getAttribute("data-mb-owner") === _delegateOwner
+    );
+  }
+
   global.MetabrowserPluginHost = Object.freeze({
     attachFileCatalog,
     configureAssets,
+    isOwnedDelegate,
     loadPluginsForKind,
     registerLoadMoreAction,
   });
@@ -929,7 +975,8 @@
     const handler = action === null ? "" : ` data-mb-load-more="${escapeHtml(named)}"`;
     return (
       `<button class="btn metabrowser-load-more" type="button" data-position="${position}"` +
-      `${handler} data-tip-text="Load more of this file">Load more</button>`
+      `${handler}${delegateOwnerAttribute()} data-tip-text="Load more of this file">` +
+      "Load more</button>"
     );
   }
 
@@ -1789,7 +1836,9 @@
     return (
       '<div class="content-copy-wrap">' +
       '<button class="icon-btn icon-btn-reveal icon-btn-overlay content-copy-btn"' +
-      ' type="button" data-mb-copy="wrap" data-tip-text="Copy content" aria-label="Copy content">' +
+      ' type="button" data-mb-copy="wrap"' +
+      delegateOwnerAttribute() +
+      ' data-tip-text="Copy content" aria-label="Copy content">' +
       ICON_COPY +
       "</button>" +
       innerHtml +
@@ -1996,16 +2045,21 @@
         if (!target || typeof target.closest !== "function") {
           return;
         }
+        // Only a control page code created (see `_delegateOwner`): the same markup
+        // written by a document is ignored.
         var btn = target.closest("[data-mb-copy]");
         if (btn) {
-          _handleCopyClick(btn);
+          if (isOwnedDelegate(btn)) {
+            _handleCopyClick(btn);
+          }
           return;
         }
         // Load more: only a notice's own button, and only an action registered by
         // name (see registerLoadMoreAction); anything else in the page is ignored.
         var more = target.closest("button.metabrowser-load-more[data-mb-load-more]");
         var call =
-          more && /^([A-Za-z_$][\w$]*)\(\)$/.exec(more.getAttribute("data-mb-load-more") || "");
+          isOwnedDelegate(more) &&
+          /^([A-Za-z_$][\w$]*)\(\)$/.exec(more?.getAttribute("data-mb-load-more") || "");
         var registered = call ? _loadMoreActions.get(call[1]) : undefined;
         if (registered) {
           registered();
@@ -2086,6 +2140,8 @@
     isLargeTextPreview: isLargeTextPreview,
     highlightSyntax: highlightSyntax,
     wrapWithCopy: wrapWithCopy,
+    delegateOwnerAttribute: delegateOwnerAttribute,
+    ownDelegate: ownDelegate,
     icons: icons,
     perf: perf,
     prefs: prefs,

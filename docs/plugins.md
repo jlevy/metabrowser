@@ -59,11 +59,12 @@ error.
 
 ## Path Identity
 
-SDK 0.6 uses the inventory’s escaped relative paths in API requests, browser navigation
-and catalog records.
+Since SDK 0.6, the SDK uses the inventory’s escaped relative paths in API requests,
+browser navigation and catalog records.
 Keep a received `path` unchanged when passing it to another API. A literal percent sign
 in a native filename is `%25` in its identity; for example, `100%.md` has identity
-`100%25.md`. Undecodable platform bytes also have lossless escapes.
+`100%25.md`. On POSIX a backslash in a filename is `%5C`, and undecodable platform bytes
+also have lossless escapes.
 The browser’s navigation API converts these identities to human-facing `/view/` URLs.
 
 Python sidekicks use `resolve_path()` or `resolve_directory()` to cross from an identity
@@ -95,7 +96,7 @@ examples/
 name = "hello"
 display_name = "Hello"
 version = "0.1.0"
-sdk_version = "0.6"
+sdk_version = "0.7"
 
 [[kind]]
 id = "hello-document"
@@ -418,6 +419,10 @@ Useful helpers include:
 - `render(template, data)` for auto-escaped Mustache templates;
 - `escapeHtml(value)` for carefully constructed HTML strings;
 - `wrapWithCopy(html)` for a standard copy-button frame;
+- `ownDelegate(element)` and `delegateOwnerAttribute()` to stamp a copy control built
+  without `wrapWithCopy` (SDK 0.7): the shared copy listener acts only on an element
+  carrying the page’s owner mark, because a trusted folder’s Markdown can write the same
+  `data-mb-copy` markup, and it ignores an unstamped one without an error;
 - `renderSourceView(container, data, options)` for the standard bounded, copyable Source
   surface, including truncation controls, the shared language mapping, a line-number
   gutter, and `#L10`-style line anchors that the mouse and the keyboard set;
@@ -659,7 +664,7 @@ Note, heading, and named-block transclusions share depth, document, source-byte,
 abort, and disposal limits across the mounted document.
 Each embed’s elapsed-time limit starts when that embed begins loading, so an embed whose
 catalog resolution arrives late still receives its full allowance.
-SDK 0.6 does not expose Markdown graph analysis.
+The SDK does not expose Markdown graph analysis.
 Parsing Markdown a second time in the browser can diverge from KPress’s rendered
 document; a future graph surface therefore requires a server data route backed by a
 KPress-owned link-intent manifest.
@@ -823,7 +828,7 @@ list.
 Artifacts may repeat their contract, envelope, and enforced status, but the trusted
 caller selects the expected installed contract; artifact metadata cannot supply or
 select schemas, profiles, parsers, renderers, or Python imports.
-The versioned capability surface is independent of browser SDK 0.6.
+The versioned capability surface is independent of the browser SDK version.
 
 ### Plugin-Owned JSONL Adapters
 

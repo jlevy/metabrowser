@@ -450,6 +450,7 @@ let tooltipHideCount = 0;
 let comparisonResponder = async (revision) => ({ comparison_id: revision });
 sandbox.metabrowser = {
   icons: { copy: '<svg data-icon="copy"></svg>' },
+  delegateOwnerAttribute: () => ' data-mb-owner="page-owner"',
   tooltip: {
     show: (html, anchor) => shownTooltips.push({ html, anchor }),
     hide: () => {
@@ -836,6 +837,11 @@ async function run() {
     "detail: revision copies the full sha",
     previewHtml,
     `data-mb-copy-text="${SHA_A}"`,
+  );
+  assertContains(
+    "detail: revision copy carries the page's owner mark",
+    previewHtml,
+    `data-mb-copy-text="${SHA_A}" data-mb-owner="page-owner"`,
   );
   assertContains(
     "detail: revision copy has an accessible name",

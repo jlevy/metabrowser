@@ -1070,6 +1070,10 @@ type MetabrowserSdk = {
   sizeClass(value: number): "" | "size-large";
   sizeHtml(value: number | null | undefined, extraClass?: string): string;
   wrapWithCopy(html: string): string;
+  /** ` data-mb-owner="…"`: the per-page mark the copy and Load more delegates require. */
+  delegateOwnerAttribute(): string;
+  /** Set that mark on a delegated control page code created; returns the element. */
+  ownDelegate<T extends Element>(element: T): T;
   viewState: Readonly<{
     isActive(container: HTMLElement): boolean;
     subscribeActive(container: HTMLElement, listener: (active: boolean) => void): () => void;
@@ -1632,6 +1636,8 @@ type MetabrowserPluginHostRuntime = Readonly<{
   attachFileCatalog(catalog: MetabrowserKnownFileCatalogApi): () => void;
   /** The shell names a partial-content notice's Load more action; see plugin-sdk.js. */
   registerLoadMoreAction(name: string, action: () => unknown): void;
+  /** Whether page code marked this element as a delegated control; see plugin-sdk.js. */
+  isOwnedDelegate(element: Element | null | undefined): boolean;
   configureAssets(
     assetsByKind: Record<
       string,

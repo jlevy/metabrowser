@@ -7,6 +7,9 @@ proves the canonical identity has to be reversible: the escape publishes them as
 identities resolved to nothing at all -- the folder listed, the directory expanded to
 zero children, and an entry query reported the file absent while it sat on disk.
 
+The POSIX backslash is the same case one character over: the canonical grammar refuses it,
+so it publishes as ``%5C``, and before that escape one such name failed the whole index.
+
 The coverage is deliberately by *surface* rather than by assertion count. The store is
 keyed by the canonical identity, so a lookup that forgot to speak it does not raise --
 it silently finds nothing, and only a query that actually crosses the boundary shows it.
@@ -15,6 +18,7 @@ it silently finds nothing, and only a query that actually crosses the boundary s
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
 
 import pytest
@@ -42,6 +46,15 @@ PERCENT_NAMES = {
     "100%.md": "100%25.md",
     "%41": "%2541",
 }
+if os.name != "nt":
+    # A backslash is an ordinary POSIX filename byte; a Windows name cannot hold one.
+    PERCENT_NAMES.update(
+        {
+            "a\\b.txt": "a%5Cb.txt",
+            "%5C.md": "%255C.md",
+            "\\": "%5C",
+        }
+    )
 
 
 def _build_tree(root: Path) -> None:
@@ -258,6 +271,8 @@ def test_the_escape_inverts_over_every_short_name() -> None:
     from itertools import product
 
     alphabet = ("a", "%", "/", ".", "\udc80", "\udcff", "2", "5", "F", "0")
+    if os.name != "nt":
+        alphabet += ("\\", "C")
     checked = 0
     for length in range(5):
         for combination in product(alphabet, repeat=length):
@@ -280,3 +295,32 @@ def test_strings_outside_the_escapers_image_decode_to_none(value: str) -> None:
     """
 
     assert native_inventory_name(value) is None
+
+
+@pytest.mark.skipif(os.name == "nt", reason="a Windows name cannot hold a backslash")
+@pytest.mark.parametrize("value", ["\\", "a\\b.txt", "%5C\\", "d/a\\b"])
+def test_an_unescaped_posix_backslash_is_not_an_identity(value: str) -> None:
+    """The escaper spells every POSIX backslash `%5C`, so a bare one names nothing."""
+
+    assert native_inventory_name(value) is None
+
+
+@pytest.mark.skipif(os.name == "nt", reason="a Windows name cannot hold a backslash")
+def test_the_file_route_answers_only_the_escaped_backslash_identity(tmp_path: Path) -> None:
+    """`a%5Cb.txt` opens the file; the unescaped spelling is a miss, not a second name."""
+
+    from starlette.testclient import TestClient
+
+    from metabrowser import server
+
+    (tmp_path / "a\\b.txt").write_text("x")
+    server._set_root_dir(tmp_path)  # pyright: ignore[reportPrivateUsage]
+    try:
+        client = TestClient(server.app)
+        escaped = client.get("/api/file", params={"path": "a%5Cb.txt"})
+        unescaped = client.get("/api/file", params={"path": "a\\b.txt"})
+    finally:
+        server._set_root_dir(Path())  # pyright: ignore[reportPrivateUsage]
+    assert escaped.status_code == 200
+    assert escaped.json()["path"] == "a%5Cb.txt"
+    assert unescaped.status_code == 404

@@ -16,6 +16,7 @@ from metabrowser import server
 from metabrowser.cli.main import _app
 from metabrowser.view_routes import (
     decode_safe_view_path,
+    format_commit_href,
     format_inventory_view_href,
     format_view_href,
 )
@@ -90,7 +91,6 @@ def test_direct_view_routes_serve_the_shell_for_safe_targets(tmp_path: Path) -> 
     [
         "/view/%2E%2E/secret.md",
         "/view/a%2Fb.md",
-        "/view/a%5Cb.md",
         "/view/a%00b.md",
         "/view/a%2.md",
         "/view/docs//a.md",
@@ -121,6 +121,33 @@ def test_view_routes_round_trip_an_undecodable_posix_filename(tmp_path: Path) ->
     server._set_root_dir(tmp_path)
     try:
         response = TestClient(server.app).get("/view/a%FFb.md")
+    finally:
+        server._set_root_dir(Path())
+    assert response.status_code == 200
+    assert "<title>Metabrowser</title>" in response.text
+
+
+@pytest.mark.skipif(os.name == "nt", reason="a Windows name cannot hold a backslash")
+def test_view_routes_round_trip_a_posix_backslash_filename(tmp_path: Path) -> None:
+    """A backslash is an ordinary POSIX filename byte, escaped `%5C` in the inventory.
+
+    The route carries it so the codec stays total over the inventory. It is one
+    segment's byte, never a separator, so `..\\` cannot climb out of the root.
+    """
+
+    (tmp_path / "a\\b.md").write_text("x")
+    assert format_view_href("a\\b.md") == "/view/a%5Cb.md"
+    assert format_inventory_view_href("a%5Cb.md") == "/view/a%5Cb.md"
+    assert format_inventory_view_href("a%255Cb.md") == "/view/a%255Cb.md"
+    assert decode_safe_view_path(b"/view/a%5Cb.md") == "a\\b.md"
+    assert decode_safe_view_path(b"/view/..%5C..%5Csecret.md") == "..\\..\\secret.md"
+    assert decode_safe_view_path(b"/view/a\\b.md") is None
+    with pytest.raises(ValueError):
+        format_commit_href("main", "a\\b.md")
+
+    server._set_root_dir(tmp_path)
+    try:
+        response = TestClient(server.app).get("/view/a%5Cb.md")
     finally:
         server._set_root_dir(Path())
     assert response.status_code == 200
