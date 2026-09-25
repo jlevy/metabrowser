@@ -1268,6 +1268,7 @@ async def index(request: Request) -> HTMLResponse:
     view_state_url = _static_asset_url("view-state.js")
     navigation_url = _static_asset_url("navigation.js")
     source_append_url = _static_asset_url("source-append.js")
+    source_line_anchors_url = _static_asset_url("source-line-anchors.js")
     file_type_taxonomy_url = _static_asset_url("file-type-taxonomy.js")
     plugin_sdk_url = _static_asset_url("plugin-sdk.js")
     view_composition_url = _static_asset_url("view-composition.js")
@@ -1292,6 +1293,7 @@ async def index(request: Request) -> HTMLResponse:
     git_history_window_url = _static_asset_url("git-history-window.js")
     git_panel_url = _static_asset_url("git-panel.js")
     source_freshness_url = _static_asset_url("source-freshness.js")
+    source_ref_selector_url = _static_asset_url("source-ref-selector.js")
     app_url = _static_asset_url("app.js")
     perf_url = _static_asset_url("perf.js")
     # Inject the client-visible settings dict before any app code
@@ -1307,6 +1309,13 @@ async def index(request: Request) -> HTMLResponse:
     source_freshness_row = (
         '\n      <div class="source-freshness" id="source-freshness" hidden></div>'
         if git_pin
+        else ""
+    )
+    # A mirror's branch and tag selector, filled by static/source-ref-selector.js. Only a
+    # pin served from a mirror has other refs to switch to.
+    source_ref_selector_row = (
+        '\n      <div class="source-ref-selector" id="source-ref-selector" hidden></div>'
+        if git_pin and mirror_session(request.app) is not None
         else ""
     )
     source_kind_json = _json.dumps("git_revision" if git_pin else "filesystem")
@@ -1470,6 +1479,10 @@ async def index(request: Request) -> HTMLResponse:
         # this; a pin starts it after the first tree request settles, and the
         # label it paints is a quiet row the page does not wait for.
         "source-freshness": [{"src": source_freshness_url}],
+        # Only a pin served from a mirror has the selector; it is fetched after the
+        # first tree request settles, like the freshness row, and no request is made
+        # for the refs until a reader opens it.
+        "source-ref-selector": [{"src": source_ref_selector_url}],
         "source-append": [{"src": source_append_url}],
         "chart": [
             {"src": _static_asset_url("vendor/chart.umd.min.js"), "provides": "Chart"},
@@ -1648,7 +1661,7 @@ async def index(request: Request) -> HTMLResponse:
             <div class="menu-version">{version_line}</div>
           </div>
         </div>
-      </header>
+      </header>{source_ref_selector_row}
       <div class="tab-bar nav-tab-bar" role="tablist">
         <button class="tab-btn active" type="button" role="tab" data-tab="files" aria-selected="true">Files</button>
       </div>
@@ -1706,6 +1719,7 @@ async def index(request: Request) -> HTMLResponse:
   <script src="{view_state_url}"></script>
   <script src="{navigation_url}"></script>
   <script src="{file_type_taxonomy_url}"></script>
+  <script src="{source_line_anchors_url}"></script>
   <script src="{plugin_sdk_url}"></script>
   <script src="{perf_url}"></script>
   <script src="{filter_state_url}"></script>

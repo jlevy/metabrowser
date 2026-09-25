@@ -2086,6 +2086,118 @@ html.theme-anim .menu {
   white-space: nowrap;
 }
 
+/* A served mirror's branch and tag selector: one compact button under the
+   header naming the served ref, and a .menu panel below it listing the
+   mirror's branches or tags with a filter box. Only a pin with a mirror has
+   one. */
+.source-ref-selector[hidden] {
+  display: none;
+}
+.source-ref-selector {
+  position: relative;
+  flex: 0 0 auto;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--sidebar-bg);
+  font-size: var(--ui-small-font-size);
+}
+.source-ref-selector-toggle {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-chrome);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.source-ref-selector-toggle::after {
+  content: " \25BE";
+  color: var(--muted);
+}
+.source-ref-selector-toggle:hover,
+.source-ref-selector-toggle[aria-expanded="true"] {
+  background: var(--hover-bg);
+}
+.source-ref-selector-toggle:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+}
+.source-ref-selector-panel {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 12px;
+  right: 12px;
+  gap: 4px;
+}
+.source-ref-selector-panel[hidden] {
+  display: none;
+}
+.source-ref-selector-kinds {
+  display: flex;
+  gap: 4px;
+}
+.source-ref-selector-kind {
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-chrome);
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+.source-ref-selector-kind[aria-pressed="true"] {
+  border-color: var(--border);
+  color: var(--text);
+}
+.source-ref-selector-filter {
+  width: 100%;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-chrome);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+.source-ref-selector-list {
+  max-height: min(50vh, 320px);
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+.source-ref-selector-row[aria-current="true"] {
+  font-weight: var(--weight-medium);
+}
+.source-ref-selector-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.source-ref-selector-badge {
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-chrome);
+  color: var(--muted);
+}
+.source-ref-selector-commit {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.source-ref-selector-note,
+.source-ref-selector-error {
+  margin: 0;
+  padding: 2px 8px;
+  color: var(--muted);
+}
+.source-ref-selector-error {
+  color: var(--status-warning-strong);
+}
+
 /* A served mirror's freshness, at the foot of the navigation pane where a
    folder shows crawl progress: when it was last fetched, and an offer when a
    refresh moved the pinned ref. Quiet unless a refresh failed. */
@@ -3907,6 +4019,74 @@ pre.code-block code.hljs {
 .content-body > .code-block {
   --scrollbar-bg: var(--bg);
 }
+
+/* Source views: a gutter of line numbers beside the code, and GitHub-style line
+   anchors (static/source-line-anchors.js). The gutter is one text node in the
+   code's font and line height, so its numbers sit on the code's lines; the code
+   scrolls sideways on its own and the numbers stay put. The anchored lines are
+   painted from --mb-line-first and --mb-line-last times --mb-line-pitch, the
+   height of one rendered line that the script measures from the gutter; `1lh` is
+   only the fallback before a measurement, because rendered line boxes are rounded
+   and a multiple of `1lh` drifts off its line far down a large file. A view may
+   stack several code blocks, such as a Markdown file's front matter and its body,
+   beside one gutter; the script counts them in --mb-source-parts and offsets each
+   block's band by the lines above it in --mb-line-offset. */
+pre.code-block.metabrowser-source-lines {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  overflow: visible;
+}
+pre.code-block.metabrowser-source-lines > code {
+  grid-column: 2;
+  min-width: 0;
+  overflow-x: auto;
+}
+.source-line-numbers {
+  position: relative;
+  grid-column: 1;
+  grid-row: 1 / span var(--mb-source-parts, 1);
+  padding-right: 2ch;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--mono-block-font-size);
+  line-height: 1.5;
+  text-align: right;
+  white-space: pre;
+  cursor: pointer;
+  user-select: none;
+}
+.source-line-numbers:hover {
+  color: var(--text);
+}
+.source-line-numbers:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -2px;
+}
+/* The scroll target sits on the anchor's first line, or on the line a key moved to. */
+.source-line-anchor-target {
+  position: absolute;
+  top: calc((var(--mb-line-focus, var(--mb-line-first)) - 1) * var(--mb-line-pitch, 1lh));
+  left: 0;
+  width: 1px;
+  height: var(--mb-line-pitch, 1lh);
+  pointer-events: none;
+}
+.content-copy-wrap > pre.code-block.has-line-anchor > code,
+.content-copy-wrap > pre.code-block.has-line-anchor > .source-line-numbers {
+  background-image: linear-gradient(
+    transparent
+      calc((var(--mb-line-first) - 1 - var(--mb-line-offset, 0)) * var(--mb-line-pitch, 1lh)),
+    var(--highlight-bg) 0,
+    var(--highlight-bg)
+      calc((var(--mb-line-last) - var(--mb-line-offset, 0)) * var(--mb-line-pitch, 1lh)),
+    transparent 0
+  );
+  background-repeat: no-repeat;
+}
+.metabrowser-source-anchor-notice {
+  margin: 0 0 12px;
+}
 .log-event-raw .hljs {
   padding: 8px 12px;
 }
@@ -5006,6 +5186,16 @@ pre.code-block code.hljs {
 
   .kpress-print-surface {
     display: block;
+  }
+
+  /* Printed code wraps, so a separate column of numbers, or a band placed by line
+     number, would drift from its lines. */
+  .source-line-numbers {
+    display: none;
+  }
+
+  .content-copy-wrap > pre.code-block.has-line-anchor > code {
+    background-image: none;
   }
 }
 

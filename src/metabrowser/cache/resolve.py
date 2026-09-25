@@ -1,8 +1,8 @@
 """Resolve what a reader selects -- a URL's ref-and-path, a ref, a commit ID -- in a mirror.
 
 This is the one resolver: URL opening (:func:`resolve_selection`), the pin route
-(:func:`resolve_pin`), and the refresh and status reads (:func:`ref_tip`) all look refs
-up the same way.
+(:func:`resolve_pin`), the refresh and status reads (:func:`ref_tip`), and the branch
+and tag listing (:func:`list_mirror_refs`) all look refs up the same way.
 
 A URL such as ``…/tree/release/v1/docs`` cannot be split by reading it: the ref may be
 ``release``, ``release/v1``, or ``release/v1/docs``. Only the mirror knows, so each
@@ -49,6 +49,8 @@ from metabrowser.git.wire import is_full_revision
 from metabrowser.mirror_refresh import (
     AmbiguousSelectionError,
     InvalidSelectionError,
+    MirrorRef,
+    RefKind,
     SelectionNotACommitError,
     SelectionNotFoundError,
 )
@@ -325,6 +327,61 @@ async def mirror_refs(target: RepositoryStoreTarget) -> dict[str, str]:
     return held
 
 
+# Branches read in name order; tags newest first, as a release list reads, by the
+# tagger date of an annotated tag and the committer date of a lightweight one. The last
+# ``--sort`` is the primary key, so names break a tie between dates.
+# ``%(object)`` and ``%(type)`` are an annotated tag's own target, one level on every
+# Git version; both are empty for a ref that names a commit.
+_LIST_FORMAT: Final = "%(refname)%00%(objectname)%00%(objecttype)%00%(object)%00%(type)"
+_LIST_SORT: Final[Mapping[RefKind, tuple[str, ...]]] = {
+    "branch": ("--sort=refname",),
+    "tag": ("--sort=refname", "--sort=-creatordate"),
+}
+
+
+async def list_mirror_refs(
+    target: RepositoryStoreTarget, kind: RefKind, *, default_ref: str | None = None
+) -> tuple[MirrorRef, ...]:
+    """Every branch, or every tag, the store holds that names a commit, in one ``for-each-ref``.
+
+    The default branch, *default_ref*, comes first and is marked. A ref is listed when
+    it names a commit, or names an annotated tag whose own target is a commit. A tag of
+    a tree, a blob, or another tag is left out rather than peeled one process at a
+    time; the pin route still takes it by name. The target is read from the tag
+    object's own ``%(object)`` and ``%(type)``, which name exactly one level on every
+    Git version, where ``%(*objecttype)`` peels one level on older Git and the whole
+    chain on newer. A name that is not valid UTF-8 or not a valid ref name is left out
+    too: it could not be shown, or sent back to the pin route, as JSON text. The
+    listing is bounded by the store-read policy's output cap and deadline.
+    """
+
+    prefix = BRANCH_MIRROR_PREFIX if kind == "branch" else TAG_PREFIX
+    out = await _git(
+        target, ["for-each-ref", f"--format={_LIST_FORMAT}", *_LIST_SORT[kind], "--", prefix]
+    )
+    listed: list[MirrorRef] = []
+    for line in out.split(b"\n"):
+        try:
+            fields = line.decode("utf-8").split("\0")
+        except UnicodeDecodeError:
+            continue
+        if len(fields) != 5 or not fields[0].startswith(prefix):
+            continue
+        ref, oid, object_kind, target_oid, target_kind = fields
+        if object_kind == "commit":
+            commit = oid
+        elif object_kind == "tag" and target_kind == "commit":
+            commit = target_oid
+        else:
+            continue
+        if not is_full_revision(commit) or not is_valid_ref_name(ref):
+            continue
+        name = ref.removeprefix(prefix)
+        listed.append(MirrorRef(name=name, ref=ref, commit=commit, default=ref == default_ref))
+    listed.sort(key=lambda entry: not entry.default)
+    return tuple(listed)
+
+
 async def _peeled_commit(target: RepositoryStoreTarget, ref: _RefObject) -> str | None:
     """The commit a ref names, through any chain of annotated tags, or ``None``."""
 
@@ -580,6 +637,7 @@ __all__ = [
     "describe_case_collision",
     "folded_refs",
     "is_valid_ref_name",
+    "list_mirror_refs",
     "mirror_refs",
     "ref_candidates",
     "ref_tip",

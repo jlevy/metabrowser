@@ -51,6 +51,11 @@ Plugin SDK:
   Controls from `wrapWithCopy` and `partialNoticeHtml` are stamped already and need no
   change. A manifest left at `0.6` is refused when it loads.
 
+- `renderSourceView` renders a line-number gutter beside the code and wires line
+  anchors, so every view that uses it gets both.
+  The code is still the `<code>` inside `pre.code-block`, now beside a
+  `span.source-line-numbers`; the copy button still copies only the code.
+
 - `window.metabrowser.sourceKind()` reports whether the served tree is a filesystem root
   or a `git_revision` pin.
   Markdown link and wiki resolution use that kind instead of inferring GitPath encoding
@@ -98,14 +103,14 @@ GitHub URLs and HTTPS:
   and untrusted like any acquired source; `--no-serve` only clones it, and `--show` and
   `--api` inspect it in-process.
   Serving a `/blob/` or `/tree/` URL opens the browser at that file or folder, with the
-  `#L10-L20` anchor kept in the address, and the banner names the ref, the selection,
-  and a pull request’s number; `/api/source/status` reports that number as
-  `pull_request`. `/tree/…`, `/blob/…` (with `#L10`, `#L10-L20`, or `#L10C5-L20C8` and
-  `?plain=1`), `/commit/<id>`, `/pull/<n>/commits/<id>`, and `raw.githubusercontent.com`
-  file URLs pin the commit they point at; the mirror decides where a branch name
-  containing `/` ends, preferring a branch, then a tag, then a full or abbreviated
-  commit ID. `--no-serve` prints the selection after the identity lines, and `--show`
-  and `--api` print it on stderr.
+  `#L10-L20` anchor kept in the address and those lines highlighted, and the banner
+  names the ref, the selection, and a pull request’s number; `/api/source/status`
+  reports that number as `pull_request`. `/tree/…`, `/blob/…` (with `#L10`, `#L10-L20`,
+  or `#L10C5-L20C8` and `?plain=1`), `/commit/<id>`, `/pull/<n>/commits/<id>`, and
+  `raw.githubusercontent.com` file URLs pin the commit they point at; the mirror decides
+  where a branch name containing `/` ends, preferring a branch, then a tag, then a full
+  or abbreviated commit ID. `--no-serve` prints the selection after the identity lines,
+  and `--show` and `--api` print it on stderr.
   A `/pull/<n>` URL pins the pull request’s head; see below.
   Ref names match exactly, including letter case, and `HEAD` names the default branch;
   on a case-insensitive filesystem, a repository whose branch or tag names differ only
@@ -240,6 +245,8 @@ GitHub URLs and HTTPS:
   `http` and `https` ones kept, and code blocks show as plain text without highlighting.
   A review comment’s file opens at the served head, at its line.
   The freshness row links to the page, and back, forward, and reload keep its tab.
+  The page for a number the server does not serve links to the served pull request’s
+  page, on the same tab.
   `metab <pr-url> --show /pull/<n>[/files]` reports the page’s kind and a summary of its
   record, and `/api/plugin/github/pull-markdown?part=…` answers the allowlisted HTML of
   the description (`body`) or one comment, review, or review comment, and nothing else
@@ -253,6 +260,32 @@ GitHub URLs and HTTPS:
   already forked, rather than only `git` itself.
   While a Git source is served, a hangup stops the server as Ctrl-C does, killing a
   running refresh’s Git first, and exits 129.
+
+Source views:
+
+- A text or source file’s Source view shows line numbers, and a `/view/` address ending
+  in `#L10`, `#L10-L20`, or `#L10C5-L20C8` highlights those lines and scrolls the first
+  one into view, when the file opens and whenever the fragment changes; columns are kept
+  but highlight whole lines.
+  Clicking a line number anchors that line and shift-clicking extends the anchor to a
+  range, replacing the address rather than adding a history entry, so a copied address
+  keeps the anchor. This works the same in a served folder and on a pin.
+  A large file’s anchor past the part loaded so far says so and names Load more; once
+  Load more reaches the line, it is highlighted and scrolled to.
+  An anchor past the end of the file says how many lines the file has.
+- An address with a line anchor, or with GitHub’s `?plain=1`, opens the file in its
+  Source view, and adding a line anchor to the address of the file already shown selects
+  its Source tab; Load more keeps the tab it was used in.
+  A GitHub `blob` URL for a Markdown file with `#L10` or `?plain=1` shows its source
+  with those lines highlighted; a served `blob` URL keeps `?plain=1` in the address.
+  The Markdown Source tab has line numbers and anchors, with front matter highlighted as
+  YAML and the body as Markdown beside one column of numbers.
+- The line numbers are reachable from the keyboard: Tab focuses them, the arrow keys,
+  Page Up, Page Down, Home, and End move the anchor, and Shift extends it to a range.
+  A screen reader announces the highlighted lines as the anchor moves and when an
+  address sets it.
+- Opening a Source tab for the first time scrolls to the address’s line anchor, as
+  opening the file does.
 
 Repository cache:
 
@@ -378,6 +411,21 @@ Repository cache:
   A failed refresh reads as a warning there, not as an error in the page.
   The row repaints only when what it says changes, and announces its state and offer to
   a screen reader, not its age.
+
+- A page on a served mirror has a branch and tag selector: a compact button under the
+  navigation header names the served ref, and opening it lists the mirror’s branches,
+  the default first, or its tags, newest first, with a filter box.
+  Choosing one serves it and reloads the view on the same file or folder when the new
+  revision has it, or at the root otherwise.
+  The list comes from the new `GET /api/source/refs?kind=branch|tag&q=&limit=`, which
+  reads the mirror alone, never the network: `q` is a case-insensitive name fragment,
+  `limit` is clamped to 1–1000 (default 100), and `total` and `truncated` say how many
+  matched. A tag is listed when it names a commit, directly or as an annotated tag of
+  one; a tag of a tree, a blob, or another tag is not, on any Git version, and still
+  pins by name. `POST /api/source/pin` also takes the page’s address as `"view"` and
+  answers `view_href`, where that page goes on the new revision.
+  The address is checked before the switch: one that is not percent-encoded ASCII is
+  refused with nothing changed, and a query or fragment is dropped.
 
 - The Git panel no longer rebuilds a different history under the rows on screen when the
   refs its walk was fingerprinted by moved, as a refresh, a pin switched in another tab,

@@ -69,7 +69,6 @@ def test_generated_html_handlers_keep_their_global_names() -> None:
     assert "content-copy-btn" in sdk
     assert 'target.closest("[data-mb-copy]")' in sdk
     assert "_copyDelegationInstalled" in sdk
-    assert "function copyContent(btn)" in app
     # An agent log's event header opens through one delegated listener that calls the
     # shell's toggleEvent; no inline handler names it.
     assert "window.toggleEvent(header)" in agent_log

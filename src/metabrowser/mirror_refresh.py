@@ -138,6 +138,23 @@ class SelectionPendingError(SelectionError):
         self.refresh: StartedOrJoined = refresh
 
 
+type RefKind = Literal["branch", "tag"]
+
+
+@dataclass(frozen=True, slots=True)
+class MirrorRef:
+    """One branch or tag the mirror holds, and the commit it names.
+
+    ``name`` is the name the origin knows it by, ``ref`` the store ref a pin request
+    names it with, and ``default`` marks the origin's default branch.
+    """
+
+    name: str
+    ref: str
+    commit: str
+    default: bool = False
+
+
 @dataclass(frozen=True, slots=True)
 class RefreshResult:
     """How one refresh ended: a typed outcome code and when."""
@@ -185,6 +202,13 @@ class ServedMirror(Protocol):
 
     async def ref_tip(self, ref: str) -> str | None:
         """The commit *ref* names in the mirror now, or ``None`` when it is gone."""
+        ...
+
+    async def list_refs(self, kind: RefKind) -> tuple[MirrorRef, ...]:
+        """Every branch, or every tag, the mirror holds that names a commit.
+
+        Branches in name order with the default branch first; tags newest first.
+        """
         ...
 
     async def refresh_running_elsewhere(self) -> bool:
@@ -931,9 +955,11 @@ __all__ = [
     "FreshnessFields",
     "InvalidSelectionError",
     "LastOutcome",
+    "MirrorRef",
     "MirrorSession",
     "OpenedSelection",
     "RecordedFreshness",
+    "RefKind",
     "RefreshCoordinator",
     "RefreshResult",
     "SelectionError",

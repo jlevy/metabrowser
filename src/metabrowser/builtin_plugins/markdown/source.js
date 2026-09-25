@@ -1,37 +1,47 @@
-/** @param {Record<string, unknown>} data @param {MetabrowserPublicSdk} mb */
-export function renderMarkdownSourceHtml(data, mb) {
-  const warning = mb.renderTextTruncationWarning(data);
-  const footer = mb.renderTextLoadMoreFooter(data);
-  const content = typeof data.content === "string" ? data.content : "";
-  if (mb.isLargeTextPreview(data)) {
-    return `${warning}${mb.wrapWithCopy(`<pre class="code-block"><code class="plaintext no-highlight">${mb.escapeHtml(content)}</code></pre>`)}${footer}`;
+// The Markdown Source tab: the file's text in the shared source view, with its line
+// numbers and #L anchors. YAML front matter is highlighted as YAML and the body as
+// Markdown, as two code blocks under one gutter.
+
+/**
+ * The front matter and body of a Markdown file's text, or null when it has no
+ * complete front matter block.
+ *
+ * @param {string} content
+ * @returns {[string, string] | null}
+ */
+export function splitFrontMatter(content) {
+  if (!content.startsWith("---\n") && !content.startsWith("---\r\n")) {
+    return null;
   }
-  if (content.startsWith("---\n") || content.startsWith("---\r\n")) {
-    const lineBreak = content.startsWith("---\r\n") ? "\r\n" : "\n";
-    const closingDelimiter = `${lineBreak}---${lineBreak}`;
-    const end = content.indexOf(closingDelimiter, 3 + lineBreak.length);
-    if (end >= 0) {
-      const frontmatterEnd = end + closingDelimiter.length;
-      const frontmatter = content.slice(0, frontmatterEnd);
-      const body = content.slice(frontmatterEnd);
-      return `${warning}${mb.wrapWithCopy(
-        `<code data-mb-copy-payload class="no-highlight" hidden>${mb.escapeHtml(content)}</code>` +
-          `<pre class="code-block"><code class="language-yaml">${mb.escapeHtml(frontmatter)}</code></pre>` +
-          `<pre class="code-block"><code class="language-markdown">${mb.escapeHtml(body)}</code></pre>`,
-      )}${footer}`;
-    }
+  const lineBreak = content.startsWith("---\r\n") ? "\r\n" : "\n";
+  const closingDelimiter = `${lineBreak}---${lineBreak}`;
+  const end = content.indexOf(closingDelimiter, 3 + lineBreak.length);
+  if (end < 0) {
+    return null;
   }
-  return `${warning}${mb.wrapWithCopy(`<pre class="code-block"><code class="language-markdown">${mb.escapeHtml(content)}</code></pre>`)}${footer}`;
+  const frontMatterEnd = end + closingDelimiter.length;
+  return [content.slice(0, frontMatterEnd), content.slice(frontMatterEnd)];
 }
 
 /** @param {HTMLElement} container @param {{raw?: unknown}} ctx @param {MetabrowserPublicSdk} mb */
 export function renderMarkdownSource(container, ctx, mb) {
-  container.classList.add("metabrowser-source-host");
   mb.perf.measure("renderMarkdown:source", () => {
     const raw =
       ctx.raw && typeof ctx.raw === "object"
         ? /** @type {Record<string, unknown>} */ (ctx.raw)
         : {};
-    container.innerHTML = renderMarkdownSourceHtml(raw, mb);
+    const split = splitFrontMatter(typeof raw.content === "string" ? raw.content : "");
+    mb.renderSourceView(
+      container,
+      raw,
+      split
+        ? {
+            parts: [
+              { text: split[0], language: "yaml" },
+              { text: split[1], language: "markdown" },
+            ],
+          }
+        : {},
+    );
   });
 }

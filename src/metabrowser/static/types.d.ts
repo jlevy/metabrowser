@@ -6,10 +6,10 @@ type MetabrowserRenderContext = {
   /** Two endpoints, when a surface asks the diff view for a comparison between them. */
   comparison?: { left: string; right: string; base_policy: "direct" | "merge_base" };
   /** The served pull request's page: its number, the tab its route names, and how it
-   *  asks the shell to put another tab in the URL. */
+   *  asks the shell to open a tab, or another pull request's page, in the URL. */
   number?: number;
   tab?: string;
-  openTab?: (tab: string) => void;
+  open?: (route: { number: number; tab: string }) => unknown;
   raw?: unknown;
 };
 
@@ -201,6 +201,30 @@ type MetabrowserNavigationRouteRuntime = Readonly<{
   }): "cancelled" | "file" | "folder";
   createFileRevalidationTracker(maxEntries: number): MetabrowserFileRevalidationTracker;
   createPreviewPaneLifecycle(): MetabrowserPreviewPaneLifecycle;
+  createPullPageHost<Handle extends { setTab?(tab: string): void; dispose?(): void }>(deps: {
+    claim(): number;
+    isCurrent(claim: number): boolean;
+    mount(
+      claim: number,
+      route: Readonly<{ number: number; tab: string }>,
+      open: (route: { number: number; tab: string }) => Promise<{ status: string }>,
+    ): Promise<Handle | null | undefined>;
+    pathname(): string;
+    pushHref(href: string): void;
+  }): Readonly<{
+    dispose(): void;
+    onHistory(
+      pathname: string,
+      heldTarget: boolean,
+    ): Readonly<
+      { action: "tab"; tab: string } | { action: "mount"; number: number; tab: string }
+    > | null;
+    open(route: { number: number; tab: string }): Promise<{ status: "opened" | "cancelled" }>;
+    show(
+      route: Readonly<{ number: number; tab: string }>,
+    ): Promise<{ status: "opened" | "cancelled" }>;
+    shown(): number | null;
+  }>;
   createController(options: {
     apply(
       target: MetabrowserNavigationTarget | null,
@@ -425,6 +449,46 @@ type MetabrowserResourceContextRuntime = Readonly<{
     seed(path: string, value: T): void;
     subscribe(path: string, listener: (value: T) => void): () => void;
   }>;
+}>;
+
+type MetabrowserSourceLineAnchorState = Readonly<{
+  status: "none" | "shown" | "partial" | "not-loaded" | "past-end";
+  start: number;
+  end: number;
+  message: string;
+}>;
+
+type MetabrowserSourceLineAnchorsRuntime = Readonly<{
+  countLines(text: string): number;
+  describe(
+    fragment: string | null | undefined,
+    loaded: Readonly<{ lines: number; truncated: boolean }>,
+  ): MetabrowserSourceLineAnchorState;
+  gutterHtml(text: string): string;
+  keyStep(
+    current: string | null | undefined,
+    focus: number,
+    key: string,
+    extend: boolean,
+    layout: Readonly<{ lines: number; page: number; origin: number }>,
+  ): Readonly<{ fragment: string; focus: number }> | null;
+  lineAt(offsetY: number, lineHeight: number, lines: number): number;
+  mount(
+    host: ParentNode,
+    options: {
+      path: string;
+      truncated: boolean;
+      navigation: Readonly<{
+        current(): MetabrowserNavigationTarget | null;
+        open(target: MetabrowserNavigationTarget, options: { replace: boolean }): Promise<void>;
+      }> | null;
+    },
+  ): void;
+  nextFragment(current: string | null | undefined, line: number, extend: boolean): string;
+  parse(fragment: string | null | undefined): Readonly<{ start: number; end: number }> | null;
+  preferredView(target: MetabrowserNavigationTarget | null | undefined): "source" | null;
+  refresh(root: ParentNode, loaded: { content_truncated?: boolean }): void;
+  spoken(state: MetabrowserSourceLineAnchorState): string;
 }>;
 
 type MetabrowserSourceAppendRuntime = Readonly<{
@@ -990,6 +1054,7 @@ type MetabrowserSdk = {
   renderSourceView(
     container: HTMLElement,
     data: Record<string, unknown> & { content?: string; ext?: string },
+    options?: { parts?: ReadonlyArray<Readonly<{ text: string; language: string }>> },
   ): void;
   partialNoticeHtml(
     progress: { loaded: string; total: string },
@@ -2252,6 +2317,110 @@ declare global {
     ): string | null;
   }>;
 
+  type MetabrowserSourceRefKind = "branch" | "tag";
+
+  /** One row of `GET /api/source/refs`. */
+  type MetabrowserSourceRef = {
+    name: string;
+    ref: string;
+    commit: string;
+    default: boolean;
+    current: boolean;
+  };
+
+  /** One answer of `GET /api/source/refs`. */
+  type MetabrowserSourceRefListing = {
+    kind: MetabrowserSourceRefKind;
+    query: string;
+    limit: number;
+    pin: string;
+    ref: string | null;
+    total: number;
+    truncated: boolean;
+    refs: MetabrowserSourceRef[];
+  };
+
+  /** What the ref selector holds; see static/source-ref-selector.js. */
+  type MetabrowserSourceRefSelectorState = {
+    shown: MetabrowserSourcePage | null;
+    open: boolean;
+    kind: MetabrowserSourceRefKind;
+    query: string;
+    listing: MetabrowserSourceRefListing | null;
+    loading: boolean;
+    switching: boolean;
+    error: string | null;
+  };
+
+  /** What the ref selector shows for one state. */
+  type MetabrowserSourceRefSelectorModel = {
+    button: string;
+    open: boolean;
+    kind: MetabrowserSourceRefKind;
+    query: string;
+    loading: boolean;
+    switching: boolean;
+    rows: Array<{
+      name: string;
+      ref: string;
+      commit: string;
+      default: boolean;
+      current: boolean;
+    }>;
+    note: string;
+    error: string | null;
+  };
+
+  type MetabrowserSourceRefSelectorDependencies = {
+    request(
+      method: "GET" | "POST",
+      route: string,
+      body?: Record<string, string>,
+      signal?: AbortSignal,
+    ): Promise<MetabrowserSourceResponse>;
+    schedule(callback: () => void, delayMs: number): unknown;
+    cancel(handle: unknown): void;
+    render(model: MetabrowserSourceRefSelectorModel): void;
+    navigate(href: string): void;
+    /** The page's own pathname, sent so a switch can keep it. */
+    currentView(): string | null;
+  };
+
+  /** The elements the ref selector paints into. */
+  type MetabrowserSourceRefSelectorParts = {
+    root: HTMLElement;
+    toggle: HTMLButtonElement;
+    panel: HTMLElement;
+    tabs: Record<MetabrowserSourceRefKind, HTMLButtonElement>;
+    filter: HTMLInputElement;
+    list: HTMLElement;
+    note: HTMLElement;
+    error: HTMLElement;
+  };
+
+  type MetabrowserSourceRefSelector = Readonly<{
+    open(): Promise<void>;
+    close(): void;
+    toggle(): Promise<void>;
+    setKind(kind: MetabrowserSourceRefKind): Promise<void>;
+    setQuery(query: string): void;
+    choose(ref: string): Promise<void>;
+    dispose(): void;
+    snapshot(): MetabrowserSourceRefSelectorState & { filterPending: boolean };
+  }>;
+
+  type MetabrowserSourceRefSelectorRuntime = Readonly<{
+    FILTER_DELAY_MS: number;
+    createSelector(
+      deps: MetabrowserSourceRefSelectorDependencies,
+      options?: { shown?: MetabrowserSourcePage | null },
+    ): MetabrowserSourceRefSelector;
+    describe(state: MetabrowserSourceRefSelectorState): MetabrowserSourceRefSelectorModel;
+    mount(element: HTMLElement): MetabrowserSourceRefSelector;
+    moveRow(key: string, index: number, count: number): number | null;
+    shownLabel(shown: MetabrowserSourcePage | null): { kind: string; name: string };
+  }>;
+
   type MetabrowserGitHistoryWindowRuntime = {
     classifyPageFailure(failure: {
       status: number;
@@ -2467,7 +2636,9 @@ declare global {
     MetabrowserTreeFilterModel: MetabrowserTreeFilterModel;
     MetabrowserTreeKeyboardNavigation: MetabrowserTreeKeyboardRuntime;
     MetabrowserSourceAppend: MetabrowserSourceAppendRuntime;
+    MetabrowserSourceLineAnchors: MetabrowserSourceLineAnchorsRuntime;
     MetabrowserSourceFreshness?: MetabrowserSourceFreshnessRuntime;
+    MetabrowserSourceRefSelector?: MetabrowserSourceRefSelectorRuntime;
     MetabrowserInertHtml?: MetabrowserInertHtmlRuntime;
     MetabrowserSourcePinGuard?: Readonly<{
       PIN_CHANGED_HEADER: string;
