@@ -39,8 +39,10 @@ from metabrowser.cli.main import _app
 from metabrowser.git.tree_source import GitPath, GitRevisionSubject, store_batch_reader_count
 from metabrowser.mirror_refresh import (
     LastOutcome,
+    MirrorRef,
     MirrorSession,
     RecordedFreshness,
+    RefKind,
     RefreshCoordinator,
     RefreshResult,
     followed_outcome,
@@ -608,6 +610,9 @@ class _BusyMirror:
 
     async def ref_tip(self, ref: str) -> str | None:
         return None
+
+    async def list_refs(self, kind: RefKind) -> tuple[MirrorRef, ...]:
+        raise AssertionError("not reached")
 
     async def refresh_running_elsewhere(self) -> bool:
         return False
