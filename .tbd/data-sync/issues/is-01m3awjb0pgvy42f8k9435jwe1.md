@@ -3,9 +3,9 @@ type: is
 id: is-01m3awjb0pgvy42f8k9435jwe1
 title: Path errors print default-ignorable characters such as U+3164 raw
 kind: bug
-status: in_progress
+status: closed
 priority: 4
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 delegate: claude-code@spud10.local
 labels:
@@ -15,8 +15,12 @@ parent_id: is-01m36k3w9vgwy97c9hcj2sqrs5
 hold: null
 hold_until: null
 created_at: 2026-09-24T23:38:46.165Z
-updated_at: 2026-09-24T23:49:52.541Z
+updated_at: 2026-09-25T00:39:31.981Z
 started_at: 2026-09-24T23:49:52.540Z
+closed_at: 2026-09-25T00:39:31.979Z
+close_reason: "PR #244: shared invisible_chars (default-ignorables, blank braille) used by display_segment and the reducer; variation selectors kept when attached to a base; CI green"
+resolution: null
+duplicate_of: null
 ---
 Found in the v0.12 acceptance rerun on PR #243 (head 7d91c8f4, installed wheel 0.11.1.dev412+7d91c8f4), row M02b.
 

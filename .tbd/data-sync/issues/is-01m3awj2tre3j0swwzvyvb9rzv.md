@@ -3,9 +3,9 @@ type: is
 id: is-01m3awj2tre3j0swwzvyvb9rzv
 title: Pull-request header omits the base owner for a pull request from a fork
 kind: bug
-status: in_progress
+status: closed
 priority: 4
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 delegate: claude-code@spud10.local
 labels:
@@ -15,8 +15,12 @@ parent_id: is-01m36k3w9vgwy97c9hcj2sqrs5
 hold: null
 hold_until: null
 created_at: 2026-09-24T23:38:37.781Z
-updated_at: 2026-09-24T23:49:51.883Z
+updated_at: 2026-09-25T00:39:31.489Z
 started_at: 2026-09-24T23:49:51.877Z
+closed_at: 2026-09-25T00:39:31.486Z
+close_reason: "PR #244: both sides owner-qualified when head repo differs from base, as github.com; CI green"
+resolution: null
+duplicate_of: null
 ---
 Found in the v0.12 acceptance rerun on PR #243 (head 7d91c8f4, installed wheel 0.11.1.dev412+7d91c8f4), row M07 wording.
 
