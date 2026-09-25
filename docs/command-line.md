@@ -115,6 +115,12 @@ The foot of the navigation pane says when the mirror was last fetched; click it 
 refresh now. A refresh never moves the page under a reader: when it moves the pinned
 branch, the row offers the commit the branch now names, and **Switch** serves that
 commit and reloads the view.
+To serve another branch or tag, open the button under the navigation header that names
+the served ref. It lists the mirror’s branches, the default first, or its tags, newest
+first, and the filter box narrows either list by name; the list reads the mirror alone,
+so it shows what the last fetch brought.
+Choosing one serves it and reloads the view on the same file or folder when the new
+revision has it, or at the root when it does not.
 A switch lasts until the server stops; the next `metab file://…` serves the default
 branch again, as its banner says.
 A branch or tag deleted upstream leaves the mirror, but no commit does, so an older pin
@@ -135,6 +141,14 @@ ID in the mirror, with a JSON body such as `{"ref": "feature"}` or `{"oid": "3f2
 In a server, one the mirror lacks answers `202` with `selection_pending` and fetches
 once; asked again after that fetch, it switches or answers `404`. `--api` never fetches
 for it and answers `404` at once.
+A pin request may also name the page’s address, as in
+`{"ref": "feature", "view": "/view/…"}`; the answer’s `view_href` is then that address
+when the new revision has the entry, or `/view/` when it does not.
+The address is checked before anything switches: it must be percent-encoded ASCII, as a
+page’s own pathname is, and a query or fragment is dropped.
+`/api/source/refs?kind=branch` (or `kind=tag`) lists what the selector offers, with `q`
+for a case-insensitive name fragment and `limit` for the page size (default 100, at most
+1000); `total` and `truncated` say how many matched.
 Each is a POST with a JSON body behind the same-origin guard, so a link inside a served
 page cannot start one.
 The same routes work in-process:
@@ -143,6 +157,7 @@ The same routes work in-process:
 echo '{}' > refresh.json
 echo '{"ref": "feature"}' > pin.json
 metab file:///path/to/origin.git --api /api/source/status
+metab file:///path/to/origin.git --api "/api/source/refs?kind=tag"
 metab file:///path/to/origin.git --api /api/source/refresh --data refresh.json
 metab file:///path/to/origin.git --api /api/source/pin --data pin.json
 ```
@@ -198,7 +213,7 @@ Any other github.com page, `http://`, and GitHub’s own top-level pages are ref
 a message that names the shape and offers the repository URL.
 
 With no mode flag the source is served, and the browser opens at the file or folder the
-URL names, with a `#L10-L20` anchor kept in the address.
+URL names, with a `#L10-L20` anchor kept in the address and those lines highlighted.
 `--no-serve`, `--show`, and `--api` read the mirror as it is: a ref or commit that is
 not in it is reported as `ref_not_found` or `commit_not_found` rather than fetched, and
 a path that is not at the pinned commit is `path_not_found`. Each exits with status 1,

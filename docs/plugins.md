@@ -423,8 +423,13 @@ Useful helpers include:
   without `wrapWithCopy` (SDK 0.7): the shared copy listener acts only on an element
   carrying the page’s owner mark, because a trusted folder’s Markdown can write the same
   `data-mb-copy` markup, and it ignores an unstamped one without an error;
-- `renderSourceView(container, data)` for the standard bounded, copyable Source surface,
-  including truncation controls and the shared language mapping;
+- `renderSourceView(container, data, options)` for the standard bounded, copyable Source
+  surface, including truncation controls, the shared language mapping, a line-number
+  gutter, and `#L10`-style line anchors that the mouse and the keyboard set;
+  `options.parts`, a list of `{text, language}` that joins to the content and whose
+  every part but the last ends with a newline, shows the text as consecutive code blocks
+  under one gutter, each in its own language, as the Markdown Source tab does for front
+  matter; a file too large to highlight, or only partly loaded, shows as one block;
 - `langForExtension(ext)` for the language ID backed by the host’s vendored grammar
   registry, or an empty string when the source should remain plain;
 - `langForPath(pathOrName, ext)` for the same decision with extensionless names such as

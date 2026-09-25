@@ -666,6 +666,29 @@ def test_the_markdown_route_answers_only_allowlisted_markup(
     assert '<a href="https://github.com/octo/demo/pull/docs/new.md" target="_blank"' in html
 
 
+def test_the_markdown_route_drops_the_kpress_icon_sprite(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser import kpress_adapter
+
+    # KPress puts its icon sprite (several KB of SVG symbols) in every render. A long
+    # conversation must not carry one copy per text, so the route answers none.
+    raw: list[str] = []
+    render = kpress_adapter.render_kpress_view
+
+    def spy(**kwargs: Any) -> dict[str, Any]:
+        rendered = render(**kwargs)
+        raw.append(str(rendered["html"]))
+        return rendered
+
+    monkeypatch.setattr(kpress_adapter, "render_kpress_view", spy)
+    _stand, client = pinned_pull
+    html = client.get("/api/plugin/github/pull-markdown", params={"part": "body"}).json()["html"]
+    assert len(raw) == 1 and "<symbol" in raw[0]
+    for gone in ("<svg", "<symbol", "<use"):
+        assert gone not in html, gone
+
+
 def test_harden_keeps_the_allowlist_and_is_idempotent() -> None:
     from metabrowser.inert_html import harden
 

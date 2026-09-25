@@ -197,7 +197,7 @@ def test_golden_a_selection_waits_for_the_refresh_it_asked_for(
             [url, "--api", "/api/source/refresh", "--data", str(body)]
         )
 
-    found = refresh(f"{REPO}/blob/later/docs/v1.md#L1-L2")
+    found = refresh(f"{REPO}/blob/later/docs/v1.md?plain=1#L1-L2")
     missing = refresh(f"{REPO}/tree/never/docs")
     origin.rename(tmp_path / "origin-away.git")
     failed = refresh(f"{REPO}/tree/gone/docs")
@@ -207,7 +207,7 @@ def test_golden_a_selection_waits_for_the_refresh_it_asked_for(
     assert '"selection_state": "found"' in found[1].stdout
     assert f'"pin": "{SECOND_COMMIT}"' in found[1].stdout
     wire = GitPath.from_display("docs/v1.md").to_wire()
-    assert f'"selection_href": "/view/{wire}#L1-L2"' in found[1].stdout
+    assert f'"selection_href": "/view/{wire}?plain=1#L1-L2"' in found[1].stdout
     assert missing[1].exit_code == 0 and '"selection_state": "not_found"' in missing[1].stdout
     assert failed[1].exit_code == 1 and '"selection_state": "fetch_failed"' in failed[1].stdout
 

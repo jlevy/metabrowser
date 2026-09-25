@@ -273,7 +273,7 @@ def _decode_segment(segment: str) -> bytes:
 def _lines(fragment: str) -> LineSelection | None:
     """A GitHub line anchor, or ``None`` for any other fragment, which is dropped."""
 
-    match = _LINE_ANCHOR.match(fragment)
+    match = _LINE_ANCHOR.fullmatch(fragment)
     if match is None:
         return None
     start = int(match.group(1))

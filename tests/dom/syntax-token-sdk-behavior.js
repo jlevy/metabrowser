@@ -97,6 +97,7 @@ function loadSdk(sandbox) {
     "resource-context.js",
     "view-state.js",
     "navigation.js",
+    "source-line-anchors.js",
   ]) {
     load(sandbox, `src/metabrowser/static/${filename}`);
   }
@@ -147,6 +148,7 @@ async function main() {
       },
     },
     innerHTML: "",
+    querySelector: () => null,
   };
   ready.metabrowser.renderSourceView(sourceContainer, {
     content: "const literal = '<script>';",
@@ -182,20 +184,15 @@ async function main() {
   const markdownModule = await import(
     `data:text/javascript;base64,${Buffer.from(markdownSource).toString("base64")}`
   );
+  // The Markdown Source tab renders through the shared source view: front matter and
+  // body are YAML and Markdown blocks under one gutter, with one whole-text payload.
   const markdownText = "---\ntitle: Example\n---\n# Heading\n";
-  const markdownHtml = markdownModule.renderMarkdownSourceHtml(
-    { content: markdownText },
-    {
-      renderTextTruncationWarning: () => "TOP",
-      renderTextLoadMoreFooter: () => "BOTTOM",
-      isLargeTextPreview: () => false,
-      escapeHtml: (value) =>
-        String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;"),
-      wrapWithCopy: (html) => `<div>${html}</div>`,
-    },
+  markdownModule.renderMarkdownSource(
+    sourceContainer,
+    { raw: { content: markdownText, ext: ".md" } },
+    ready.metabrowser,
   );
-  check(markdownHtml.startsWith("TOP<div>"), "Markdown Source should retain its top notice");
-  check(markdownHtml.endsWith("</div>BOTTOM"), "Markdown Source should retain its footer");
+  const markdownHtml = sourceContainer.innerHTML;
   check(
     markdownHtml.includes(
       `<code data-mb-copy-payload class="no-highlight" hidden>${markdownText}</code>`,
@@ -203,28 +200,41 @@ async function main() {
     "frontmatter Source should retain one exact whole-document copy payload",
   );
   check(
-    markdownHtml.includes('<code class="language-yaml">---\ntitle: Example\n---\n</code>'),
-    "the YAML segment should retain the closing-delimiter newline",
+    markdownHtml.includes(
+      '<code class="language-yaml">---\ntitle: Example\n---\n</code><code class="language-markdown"># Heading\n</code></pre>',
+    ),
+    "the YAML block should end its closing-delimiter line and the Markdown block follow it",
+  );
+  check(
+    markdownHtml.includes(">1\n2\n3\n4</span>"),
+    "one gutter should number the front matter and the body together",
   );
   const markdownCrLf = "---\r\ntitle: Example\r\n---\r\n<script>\r\n";
-  const markdownCrLfHtml = markdownModule.renderMarkdownSourceHtml(
-    { content: markdownCrLf },
-    {
-      renderTextTruncationWarning: () => "",
-      renderTextLoadMoreFooter: () => "",
-      isLargeTextPreview: () => false,
-      escapeHtml: (value) =>
-        String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;"),
-      wrapWithCopy: (html) => html,
-    },
+  markdownModule.renderMarkdownSource(
+    sourceContainer,
+    { raw: { content: markdownCrLf, ext: ".md" } },
+    ready.metabrowser,
   );
   check(
-    markdownCrLfHtml.includes("---\r\ntitle: Example\r\n---\r\n</code>"),
-    "CRLF frontmatter should retain its exact line endings",
+    sourceContainer.innerHTML.includes(
+      '<code class="language-yaml">---\ntitle: Example\n---\n</code><code class="language-markdown">&lt;script&gt;\n</code>',
+    ),
+    "CRLF frontmatter should show the lines the browser parses, and escape the body",
   );
   check(
-    markdownCrLfHtml.includes("&lt;script&gt;\r\n") && !markdownCrLfHtml.includes("<script>\r\n"),
+    !sourceContainer.innerHTML.includes("<script>"),
     "frontmatter Source should escape its whole-document payload and visible body",
+  );
+  markdownModule.renderMarkdownSource(
+    sourceContainer,
+    { raw: { content: "---\nnever: closed\n", ext: ".md" } },
+    ready.metabrowser,
+  );
+  check(
+    sourceContainer.innerHTML.includes(
+      '<code class="language-markdown">---\nnever: closed\n</code>',
+    ) && !sourceContainer.innerHTML.includes("data-mb-copy-payload"),
+    "unclosed front matter should stay one Markdown block",
   );
 
   const source = "/* first line\n+ * second line */";

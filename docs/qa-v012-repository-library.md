@@ -203,6 +203,8 @@ uv --config-file uv.toml run --frozen pytest \
   tests/test_cli_git_refresh_golden.py \
   tests/test_refresh_signals.py \
   tests/test_source_freshness_session.py \
+  tests/test_source_refs.py \
+  tests/test_source_ref_selector_session.py \
   tests/test_source_kind_session.py
 ```
 
@@ -235,6 +237,10 @@ newer-revision offer and switch, joined refreshes, refresh on open, shutdown
 cancellation, and the cross-origin, form, and GET refusals.
 `cli-git-refresh.txt` and `cli-ui-source-freshness.tryscript.md` pin the refresh and
 switch transcripts and the browser’s freshness session.
+`tests/test_source_refs.py` lists a real mirror’s branches and tags through
+`/api/source/refs` and checks the address a switch keeps; the ref selector’s browserless
+session and `cli-ui-source-ref-selector.tryscript.md` replay responses recorded from a
+real mirror.
 
 **Fail:** A failed assertion, a 500-shaped CLI envelope, or a golden update performed
 without an intended product change.
@@ -606,7 +612,7 @@ curl -s -X POST -H 'Content-Type: application/json' -d '{}' \
 then `Revision: <commit> (master)` and `Selection: blob README#L1`. Status names
 `"ref_name": "master"`; the refresh answers `202`, and status soon reports
 `"last_outcome"` with `"operation": "refresh"` and `"outcome": "succeeded"`. Opening the
-printed address shows the README.
+printed address shows the README with line 1 highlighted.
 
 **Fail:** A token prompt; a message containing Git’s own error text or a local path; a
 second clone on the cache hit; a refresh outcome other than `succeeded` on a working
@@ -764,11 +770,32 @@ Open `http://127.0.0.1:8471/view/` in a browser, with its developer tools open.
    none) opens with “Showing 2.0 MB of …” above and below.
    Each Load more raises that figure in both notices, and the text continues where it
    stopped rather than repeating.
+9. Open `pyproject.toml` with `#L10-L20` added to its address.
+   Line numbers run beside the code, lines 10–20 are highlighted, and line 10 is
+   scrolled into view. Click line number 5: the address ends in `#L5`, the page does not
+   scroll, and Back leaves the file rather than returning to `#L10-L20`. Shift-click
+   line number 12: the address ends in `#L5-L12` and those lines are highlighted.
+   Edit the address to `#L30` and press Enter: line 30 is highlighted and scrolled to.
+   Edit it to `#L99999`: no line is highlighted, and a notice says the line is past the
+   end of the file and how many lines it has.
+   Copy the address into a second tab: the same lines are highlighted there.
+10. Press Tab until the line numbers take focus, which draws a focus ring around them.
+    Down moves the anchor one line and the address follows it; Shift+Down twice extends
+    it to three lines; Page Down, Home, and End move it and bring the line into view.
+    With VoiceOver on, each key reads the highlighted lines, such as “Lines 30–32”.
+11. Open `README.md` with `#L3-L5` added to its address, then with `?plain=1` and no
+    anchor. Both open the Source tab rather than the document, and the first highlights
+    lines 3–5. A Markdown file with front matter shows the front matter highlighted as
+    YAML with the body’s numbering continuing below it, and an anchor in the body
+    highlights the body’s lines.
+12. Open `package.json` (Tree), edit the address to end in `#L5`, then select the Source
+    tab: line 5 is highlighted and scrolled into view.
 
 **Pass:** Every step as described; no console errors; no request leaves `127.0.0.1`.
 
 **Fail:** A blank heading, a different commit anywhere, a Preview tab on HTML, a broken
-image, a partial-content notice that keeps its figure after Load more, or a request to
+image, a partial-content notice that keeps its figure after Load more, a line number
+beside the wrong line, a Markdown anchor that opens the document, or a request to
 another host.
 
 ### 5.4 Reopen with the origin gone (M05)
@@ -930,13 +957,17 @@ address.
    `topic`. Reload: the page opens on Files changed.
    Back: the conversation.
 5. Click `src/app.txt:2`. The file opens at `/view/g1-c3Jj/g1-YXBwLnR4dA#L2` from the
-   served head, `one` and `two`. Back returns to the pull-request page.
+   served head, `one` and `two`, with line 2 highlighted.
+   Back returns to the pull-request page.
 6. Click **Refresh** while the record is stale.
    The status line reads `Refreshing…` and then `Fetched just now by gh:octo-reader`;
    the conversation does not flicker or jump.
-7. Open `/pull/8`. The page says `This server serves pull request #7.` When the pin is
-   not the head the record names, as when the pull request could not be opened at
-   startup and serving fell back to the default branch, the status line says
+7. Open `/pull/8/files`. The page says `This server serves pull request #7.` with **Open
+   pull request #7**; click it.
+   The address becomes `/pull/7/files` without a reload and the page shows pull request
+   7’s Files changed; Back returns to `/pull/8/files`. When the pin is not the head the
+   record names, as when the pull request could not be opened at startup and serving
+   fell back to the default branch, the status line says
    `This page's code is …, not the pull request's head …` with **Switch to the head**,
    which reloads the page on `refs/pull/7/head`. The stand-in opens the pull request at
    startup, so this case is played by
@@ -1014,6 +1045,61 @@ uv --config-file uv.toml run --frozen metab "file://${QA_README}/origin.git" --n
 **Fail:** any request to another origin, a KPress script loaded for the mirror’s README,
 an iframe, a dialog over the page, a policy violation from the application itself, or a
 trusted folder that renders plainly.
+
+### 5.9 Switch branch or tag from the selector (no network)
+
+Use the server from 5.6, or start it again the same way, with the origin in place.
+From a second terminal, give the origin a branch without one file and a tag:
+
+```shell
+git -C "${QA_WORK}/work" switch -q -c qa-side
+git -C "${QA_WORK}/work" rm -q README.md
+git -C "${QA_WORK}/work" commit -q -m "QA side without the README"
+git -C "${QA_WORK}/work" tag qa-tag HEAD~1
+git -C "${QA_WORK}/work" push -q "${QA_WORK}/origin.git" qa-side qa-tag
+git -C "${QA_WORK}/work" switch -q -
+```
+
+1. Click the fetched label at the foot of the navigation pane and wait for
+   `Fetched just now`: the selector reads the mirror, so it shows only what a fetch
+   brought.
+
+2. The button under the navigation header reads `Branch: <default branch>`. Open it: the
+   default branch is first with a `default` badge and is bold as the served one;
+   `qa-side` is listed with its short commit.
+   **Tags** lists `qa-tag`, newest tags first.
+
+3. Type `side` in the filter: after a short pause only `qa-side` remains.
+   Type `no-such-ref`: the list says no branches match.
+   **Escape** closes the list and returns focus to the button; clicking elsewhere closes
+   it too.
+
+4. Open `README.md`, open the selector, and choose **Tags** then `qa-tag`: the page
+   reloads on `README.md`, the button reads `Tag: qa-tag`, and the heading shows the
+   tag’s commit.
+
+5. Choose the branch `qa-side`: `README.md` is not on it, so the page reloads at the
+   root. Choose the default branch again from a folder that exists on both: the page
+   stays in that folder.
+
+6. From the second terminal, check the listing and its bounds:
+
+   ```shell
+   BASE=http://127.0.0.1:8474
+   curl -s "$BASE/api/source/refs?kind=tag&q=QA" ; echo
+   curl -s "$BASE/api/source/refs?limit=1" ; echo
+   curl -s -o /dev/null -w '%{http_code}\n' "$BASE/api/source/refs?kind=commit"
+   ```
+
+   **Pass:** the tag filter finds `qa-tag` regardless of case; `limit=1` answers one
+   branch with `truncated: true` and the full `total`; the unknown kind answers `400`.
+
+**Pass:** every step as described; the network panel shows `/api/source/refs` only after
+the selector opens, and no request leaves `127.0.0.1`.
+
+**Fail:** the list is empty after a fetch that brought refs; the served ref is not
+marked; a switch keeps an address the new revision lacks, or drops one it has; the page
+changes before a ref is chosen; a request fetches from the origin.
 
 ## Phase 6: HTML Trust on the Integration Tip
 
@@ -1105,9 +1191,7 @@ was acquired or served, or a served pin ran a script).
 | Item | Why it is out of scope here |
 | --- | --- |
 | ssh acquire and serve | Closed; refuse is the test |
-| A branch and tag selector in the browser | Not built; pin by name through `POST /api/source/pin` (5.6) |
 | The browser’s view of a pending URL selection | A page opened while the selection waited goes to it when the fetch finds it; the freshness row says when it is not on the origin or could not be fetched, and offers a Retry for the second |
-| Line highlighting for `#L10-L20` | `mb-rlf3`; the anchor stays in the address |
 | Pull-request page | Later steps; pull-request data is read through `--api` and served beside the pin (4.10) |
 | Hosted-review / GitHub PR slice | Separate beads; not on these tips |
 | Archive containers | `mb-380k` |
