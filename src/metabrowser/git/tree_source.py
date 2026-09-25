@@ -77,6 +77,7 @@ from metabrowser.git.process import (
     terminate_git_process,
 )
 from metabrowser.git.wire import is_full_revision
+from metabrowser.invisible_chars import hidden_at
 from metabrowser.settings import INVENTORY_MAX_FILES, TEXT_PREVIEW_REQUEST_MAX_BYTES
 from metabrowser.source import (
     MAX_CONTAINER_INNER_DEPTH,
@@ -162,14 +163,18 @@ class GitBatchProtocolError(GitError):
 
 
 def display_segment(segment: bytes) -> str:
-    """Replacement-safe UTF-8. C0, DEL, C1, and format characters become U+FFFD.
+    """Replacement-safe UTF-8. C0, DEL, C1, format, and invisible characters become U+FFFD.
 
     Chrome cannot wrap on the controls, and a terminal cannot be sent an escape sequence:
     C1 includes U+009B, a one-character CSI, which a URL can spell as ``%C2%9B``. A
     format character (Unicode category Cf), such as U+202E RIGHT-TO-LEFT OVERRIDE or
     U+200B ZERO WIDTH SPACE, reorders or hides what is shown around it without being
-    seen, so a name holding one could pass for another in a listing, a ``path:`` line,
-    or an error message. The wire form keeps every byte.
+    seen, and a default-ignorable character such as U+3164 HANGUL FILLER, or the blank
+    braille pattern U+2800, is drawn as nothing or as a space; a name holding either
+    could pass for another in a listing, a ``path:`` line, or an error message. A
+    variation selector attached to a base, as in ``❤️.md``, is kept; one with no base,
+    as in ``README<U+FE0F>.md``, is not (see :mod:`metabrowser.invisible_chars`). The
+    wire form keeps every byte.
     """
 
     text = segment.decode("utf-8", "replace")
@@ -177,9 +182,12 @@ def display_segment(segment: bytes) -> str:
         return text
     return "".join(
         "\ufffd"
-        if ord(ch) < 0x20 or 0x7F <= ord(ch) <= 0x9F or unicodedata.category(ch) == "Cf"
+        if ord(ch) < 0x20
+        or 0x7F <= ord(ch) <= 0x9F
+        or unicodedata.category(ch) == "Cf"
+        or hidden_at(text, index)
         else ch
-        for ch in text
+        for index, ch in enumerate(text)
     )
 
 

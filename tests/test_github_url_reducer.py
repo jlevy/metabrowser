@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import pytest
 
-from metabrowser.builtin_plugins.github import urls
 from metabrowser.builtin_plugins.github.urls import GithubUrlReducer, parse_repository_url
 from metabrowser.cache.urls import (
     GitSource,
@@ -13,6 +12,7 @@ from metabrowser.cache.urls import (
     RepositorySelection,
     classify_root_argument,
 )
+from metabrowser.invisible_chars import DEFAULT_IGNORABLE
 
 CANONICAL = "https://github.com/octo/demo"
 _REDUCERS = (GithubUrlReducer(),)
@@ -270,6 +270,20 @@ def test_the_generic_checks_run_before_the_reducer_parses(value: str, reason: st
             f"https://github.com/octo/demo/blob/main/cafe{chr(0x301)}.md",
             "https://github.com/octo/demo/blob/main/cafe%CC%81.md",
         ),
+        # A variation selector attached to its base is part of the name: an emoji, a
+        # keycap, and an ideographic variation sequence.
+        (
+            f"https://github.com/octo/demo/blob/main/{chr(0x2764)}{chr(0xFE0F)}.md",
+            "https://github.com/octo/demo/blob/main/%E2%9D%A4%EF%B8%8F.md",
+        ),
+        (
+            f"https://github.com/octo/demo/blob/main/1{chr(0xFE0F)}{chr(0x20E3)}.md",
+            "https://github.com/octo/demo/blob/main/1%EF%B8%8F%E2%83%A3.md",
+        ),
+        (
+            f"https://github.com/octo/demo/blob/main/{chr(0x845B)}{chr(0xE0100)}.md",
+            "https://github.com/octo/demo/blob/main/%E8%91%9B%F3%A0%84%80.md",
+        ),
     ],
 )
 def test_a_raw_web_url_is_read_as_a_browser_sends_it(raw: str, encoded: str) -> None:
@@ -290,8 +304,9 @@ def test_a_raw_web_url_is_read_as_a_browser_sends_it(raw: str, encoded: str) -> 
         (0x202E, "non_ascii", "an invisible character"),
         (0x200D, "non_ascii", "an invisible character"),
         (0x0600, "non_ascii", "an invisible character"),
-        # Default-ignorable characters outside Cf: a Hangul filler, the combining grapheme
-        # joiner, a variation selector, and a tag-block code point.
+        # Default-ignorable characters outside Cf: a Hangul filler and the combining
+        # grapheme joiner; and variation selectors after an ASCII letter, which has no
+        # variation to select, so README<U+FE0F>.md reads as README.md.
         (0x3164, "non_ascii", "an invisible character"),
         (0x034F, "non_ascii", "an invisible character"),
         (0xFE0F, "non_ascii", "an invisible character"),
@@ -319,6 +334,22 @@ def test_a_character_no_one_can_see_is_refused_with_the_spelling_to_use(
     written = _source(f"https://github.com/octo/demo/blob/main/README{encoded}.md").selection
     assert written is not None
     assert written.ref_and_path == (b"main", f"README{chr(point)}.md".encode())
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        # No base: at the start of a segment, and after the selector already attached.
+        f"{chr(0xFE0F)}a.md",
+        f"{chr(0x2764)}{chr(0xFE0F)}{chr(0xFE0F)}.md",
+        # A digit that is not a keycap, since no U+20E3 follows.
+        f"1{chr(0xFE0F)}.md",
+    ],
+)
+def test_a_variation_selector_with_no_base_is_refused(name: str) -> None:
+    refused = _refused(f"https://github.com/octo/demo/blob/main/{name}")
+    assert refused.detail is not None
+    assert refused.detail.startswith("the URL contains U+FE0F, an invisible character; ")
 
 
 @pytest.mark.parametrize(
@@ -413,7 +444,7 @@ def test_a_literal_percent_written_as_25_opens() -> None:
 
 
 def test_the_default_ignorable_table_is_sorted_and_disjoint() -> None:
-    ranges = urls._DEFAULT_IGNORABLE
+    ranges = DEFAULT_IGNORABLE
     assert all(low <= high for low, high in ranges)
     assert all(ranges[i][1] < ranges[i + 1][0] for i in range(len(ranges) - 1))
     # Unicode 17.0 counts 4,174 default-ignorable code points.

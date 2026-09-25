@@ -126,17 +126,22 @@ GitHub URLs and HTTPS:
   character a reader cannot see or tell from a space is refused with its code point and
   the encoded spelling to use: whitespace other than a space, format characters such as
   a right-to-left override, Unicode’s default-ignorable characters such as the Hangul
-  filler U+3164 and variation selectors, the blank braille pattern U+2800, and
-  unassigned and private-use code points.
-  So are a trailing space, which a browser strips, control characters, named by code
-  point, and a `%` that starts no percent escape, with the hint to write a literal `%`
-  as `%25`. A C1 control character in a path, such as `%C2%9B`, is shown as U+FFFD like
-  C0, so an error message cannot send a terminal an escape sequence, and so is a format
-  character such as a right-to-left override (`%E2%80%AE`) or a zero-width space, on the
-  `path:` line, in errors, and in a pinned tree’s file names, so a name cannot pass for
-  another. A ref, commit, or path the mirror does not have is reported by `--no-serve`,
-  `--show`, and `--api` as `ref_not_found`, `commit_not_found`, or `path_not_found`;
-  those modes read the mirror as it is and do not fetch.
+  filler U+3164, the blank braille pattern U+2800, and unassigned and private-use code
+  points. A variation selector is default-ignorable too, but one attached to a visible
+  base is part of an emoji or ideographic name, so `docs/❤️.md` (U+2764 U+FE0F) opens
+  pasted raw; one with no base, such as `README<U+FE0F>.md` or a selector that begins a
+  name, is refused. So are a trailing space, which a browser strips, control characters,
+  named by code point, and a `%` that starts no percent escape, with the hint to write a
+  literal `%` as `%25`. A C1 control character in a path, such as `%C2%9B`, is shown as
+  U+FFFD like C0, so an error message cannot send a terminal an escape sequence, and so
+  is a format character such as a right-to-left override (`%E2%80%AE`) or a zero-width
+  space, and a character drawn as nothing or as a space, such as the Hangul filler
+  U+3164 (`%E3%85%A4`), a variation selector with no base, or the blank braille pattern
+  U+2800, on the `path:` line, in errors, and in a pinned tree’s file names, so a name
+  cannot pass for another.
+  A ref, commit, or path the mirror does not have is reported by `--no-serve`, `--show`,
+  and `--api` as `ref_not_found`, `commit_not_found`, or `path_not_found`; those modes
+  read the mirror as it is and do not fetch.
   A server instead serves the default branch, fetches once in the background, and
   switches to the selection if the fetch brings it, like any pin switch; a page opened
   meanwhile then goes to the selection’s address, line anchor included, which status
@@ -234,15 +239,16 @@ GitHub URLs and HTTPS:
   way github.com shows it: title, state (open, draft, merged, or closed), github.com’s
   header line (“author wants to merge 2 commits into base from head”, and once merged
   “merger merged 2 commits into base from head”, or “merged 2 commits into …” when the
-  record names no merger), times, labels, merge status (unknown until GitHub has
-  computed it), the description, a conversation of comments and reviews in time order
-  with review states, review comments with their file, line, and diff hunk, checks and
-  statuses with links to their details, and notes for anything the record cut or could
-  not read. The Checks summary counts each check run and commit status under one of:
-  success; failure (a run that failed, timed out, needs action, or failed to start, and
-  a status of failure or error); cancelled; skipped; stale; neutral; pending (a run not
-  yet completed, whatever its status, and a pending status); and unknown (a completed
-  run with no conclusion, or a conclusion or state GitHub does not document).
+  record names no merger; when the head is in a fork both sides carry their owner, as in
+  “into cli:trunk from 00200200:fix/…”), times, labels, merge status (unknown until
+  GitHub has computed it), the description, a conversation of comments and reviews in
+  time order with review states, review comments with their file, line, and diff hunk,
+  checks and statuses with links to their details, and notes for anything the record cut
+  or could not read. The Checks summary counts each check run and commit status under one
+  of: success; failure (a run that failed, timed out, needs action, or failed to start,
+  and a status of failure or error); cancelled; skipped; stale; neutral; pending (a run
+  not yet completed, whatever its status, and a pending status); and unknown (a
+  completed run with no conclusion, or a conclusion or state GitHub does not document).
   `/pull/<n>/files` is its Files changed, the diff view over the record’s merge-base
   comparison. The page reads only the cached record, so it opens instantly and offline;
   it says how old the record is and who read it, offers a refresh when it is stale,

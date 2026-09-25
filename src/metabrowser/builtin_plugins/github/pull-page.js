@@ -265,14 +265,22 @@ function displayState(pull) {
   return "closed";
 }
 
-/** @param {{ref?: unknown, repository?: unknown} | undefined} side @param {string} repository */
-function sideName(side, repository) {
+/**
+ * A side of the pull request as github.com's header names it: the bare branch when head
+ * and base are one repository, and `owner:branch` on both sides when they are not, as
+ * in "into cli:trunk from 00200200:fix/…". A head whose fork was deleted names no
+ * repository, so it differs from the base and the base is qualified too.
+ *
+ * @param {{ref?: unknown, repository?: unknown} | undefined} side
+ * @param {boolean} crossRepository
+ */
+function sideName(side, crossRepository) {
   const ref = text(side?.ref);
-  const owner = typeof side?.repository === "string" ? side.repository : null;
-  if (owner === null) {
+  const repository = typeof side?.repository === "string" ? side.repository : null;
+  if (repository === null) {
     return `${ref} (deleted fork)`;
   }
-  return owner === repository ? ref : `${owner.split("/")[0]}:${ref}`;
+  return crossRepository ? `${repository.split("/")[0]}:${ref}` : ref;
 }
 
 /**
@@ -482,7 +490,7 @@ export function describePull(envelope, page) {
     ? `Refreshing… · fetched ${age} by ${text(record.reader)}`
     : `Fetched ${age} by ${text(record.reader)}${envelope.state === "stale" ? " · may be out of date" : ""}`;
   const pull = record.pull ?? {};
-  const repository = text(pull.base?.repository);
+  const crossRepository = pull.head?.repository !== pull.base?.repository;
   const state = displayState(pull);
   const merge = state === "open" || state === "draft" ? text(pull.mergeable) || "unknown" : null;
   const commits = typeof pull.commits === "number" ? pull.commits : null;
@@ -504,8 +512,8 @@ export function describePull(envelope, page) {
           ? pull.merged_by
           : null,
     action: `${state === "merged" ? "merged" : "wants to merge"}${count} into`,
-    base: sideName(pull.base, repository),
-    head: sideName(pull.head, repository),
+    base: sideName(pull.base, crossRepository),
+    head: sideName(pull.head, crossRepository),
     htmlUrl: text(pull.html_url),
     created: text(pull.created_at),
     updated: text(pull.updated_at),

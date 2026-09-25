@@ -31,7 +31,8 @@ answers both spellings alike, so both open the same selection. A character that 
 be seen, or that a reader cannot tell apart from a space, is still refused, since a
 name holding one passes for another (``README<U+3164>.md`` reads as ``README.md``):
 controls, whitespace other than a space, format characters such as bidirectional
-overrides, default-ignorable characters such as fillers and variation selectors, the
+overrides, default-ignorable characters such as fillers and a variation selector with
+no base to attach to (one after an emoji, as in ``❤️.md``, is accepted), the
 blank braille pattern, and unassigned and private-use code points; so is a trailing
 space, which a browser strips, and a ``%`` that starts no percent escape, which a
 browser leaves for the server to read. Every character refusal names the code point
@@ -58,6 +59,7 @@ from metabrowser.cache.urls import (
     ReducerRejection,
     RepositorySelection,
 )
+from metabrowser.invisible_chars import hidden_at
 
 CANONICAL_HOST: Final = "github.com"
 _WEB_HOSTS: Final = frozenset({"github.com", "www.github.com"})
@@ -75,32 +77,6 @@ _LINE_ANCHOR = re.compile(
     r"^L([1-9][0-9]{0,8})(?:C([1-9][0-9]{0,8}))?(?:-L([1-9][0-9]{0,8})(?:C([1-9][0-9]{0,8}))?)?$"
 )
 _HEX: Final = frozenset(string.hexdigits)
-# Default_Ignorable_Code_Point, from Unicode 17.0's DerivedCoreProperties.txt, as ICU
-# 78.3 reports it (Node 24's `\p{Default_Ignorable_Code_Point}`): characters a renderer
-# shows as nothing, such as U+034F COMBINING GRAPHEME JOINER, the Hangul fillers
-# U+115F, U+1160, U+3164, and U+FFA0, and the variation selectors U+FE00..U+FE0F.
-_DEFAULT_IGNORABLE: Final[tuple[tuple[int, int], ...]] = (
-    (0x00AD, 0x00AD),
-    (0x034F, 0x034F),
-    (0x061C, 0x061C),
-    (0x115F, 0x1160),
-    (0x17B4, 0x17B5),
-    (0x180B, 0x180F),
-    (0x200B, 0x200F),
-    (0x202A, 0x202E),
-    (0x2060, 0x206F),
-    (0x3164, 0x3164),
-    (0xFE00, 0xFE0F),
-    (0xFEFF, 0xFEFF),
-    (0xFFA0, 0xFFA0),
-    (0xFFF0, 0xFFF8),
-    (0x1BCA0, 0x1BCA3),
-    (0x1D173, 0x1D17A),
-    (0xE0000, 0xE0FFF),
-)
-# U+2800 BRAILLE PATTERN BLANK is a symbol, not default-ignorable, but a cell with no dots
-# is drawn as a space.
-_BLANK: Final = 0x2800
 
 # Top-level github.com pages whose first path segment would otherwise read as an owner.
 # GitHub does not allow an account with these names.
@@ -264,19 +240,15 @@ def _escaped(ch: str) -> str:
     return "".join(f"%{byte:02X}" for byte in ch.encode())
 
 
-def _invisible(ch: str) -> bool:
-    point = ord(ch)
-    return point == _BLANK or any(low <= point <= high for low, high in _DEFAULT_IGNORABLE)
-
-
-def _refusal(ch: str, *, encodable: bool) -> _Refuse | None:
-    """Why *ch* may not appear raw in the URL, or ``None`` when it may.
+def _refusal(text: str, index: int, *, encodable: bool) -> _Refuse | None:
+    """Why ``text[index]`` may not appear raw in the URL, or ``None`` when it may.
 
     *encodable* is true in a web URL's path, query, and fragment, where a space and a
     visible character outside ASCII are sent percent-encoded; elsewhere both are refused,
     as the generic grammar refuses them.
     """
 
+    ch = text[index]
     point = f"U+{ord(ch):04X}"
     if ch == " ":
         if encodable:
@@ -297,7 +269,7 @@ def _refusal(ch: str, *, encodable: bool) -> _Refuse | None:
         kind = "a whitespace character"
     elif not encodable:
         kind = "a character outside ASCII"
-    elif category == "Cf" or _invisible(ch):
+    elif category == "Cf" or hidden_at(text, index):
         kind = "an invisible character"
     elif category == "Cn":
         kind = "an unassigned character"
@@ -322,8 +294,8 @@ def _common_checks(value: str, claimed: _Claimed) -> None:
     strict = claimed.authority if claimed.web else value
     tail = claimed.path + claimed.query + claimed.fragment if claimed.web else ""
     for text, encodable in ((strict, False), (tail, True)):
-        for ch in text:
-            if (refused := _refusal(ch, encodable=encodable)) is not None:
+        for index in range(len(text)):
+            if (refused := _refusal(text, index, encodable=encodable)) is not None:
                 raise refused
     if value.endswith(" "):
         raise _Refuse("control_or_whitespace", "the URL ends with a space; remove it")

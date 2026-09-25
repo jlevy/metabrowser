@@ -73,7 +73,8 @@ def _stand_in(monkeypatch: pytest.MonkeyPatch, origin: Path) -> None:
 
 def _add_unicode_branch(origin: Path) -> None:
     """``unicode``: the first commit plus ``docs/雪.md``, a path a person pastes raw,
-    and ``docs/a<U+202E>b.md``, whose name holds a right-to-left override.
+    ``docs/a<U+202E>b.md``, whose name holds a right-to-left override, and
+    ``docs/❤️.md``, an emoji whose variation selector U+FE0F is part of its name.
 
     The shared origin's commit IDs are pinned by every GitHub golden, so the name lives
     on a branch of its own, written with a fixed committer and date.
@@ -85,6 +86,7 @@ def _add_unicode_branch(origin: Path) -> None:
         {
             "docs/雪.md".encode(): b"# Snow\n",
             f"docs/a{chr(0x202E)}b.md".encode(): b"# Override\n",
+            f"docs/{chr(0x2764)}{chr(0xFE0F)}.md".encode(): b"# Heart\n",
         },
         parent=FIRST_COMMIT,
         when=1767236400,
@@ -111,6 +113,8 @@ def _block(args: list[str], result: _Invocation) -> str:
     )
 
 
+# U+2764 HEAVY BLACK HEART and U+FE0F VARIATION SELECTOR-16: the emoji ❤️.
+HEART = f"{chr(0x2764)}{chr(0xFE0F)}"
 OPENED: list[list[str]] = [
     [f"{REPO.replace('octo/demo', 'Octo/Demo')}.git", "--no-serve"],
     ["https://www.github.com/octo/demo/", "--no-serve"],
@@ -139,12 +143,16 @@ OPENED: list[list[str]] = [
     [f"{REPO}/blob/unicode/docs/%E9%9B%AA.md#L1", "--no-serve"],
     # A name holding a right-to-left override prints it as U+FFFD.
     [f"{REPO}/blob/unicode/docs/a%E2%80%AEb.md", "--no-serve"],
+    # An emoji name keeps its variation selector, pasted raw or encoded.
+    [f"{REPO}/blob/unicode/docs/{HEART}.md", "--no-serve"],
+    [f"{REPO}/blob/unicode/docs/%E2%9D%A4%EF%B8%8F.md", "--no-serve"],
 ]
 # The raw spellings above, each with the encoded one it must equal.
 RAW_AND_ENCODED: list[tuple[str, str]] = [
     (f"{REPO}/blob/topic/docs/My Notes.md", f"{REPO}/blob/topic/docs/My%20Notes.md"),
     (f"{RAW}/topic/docs/My Notes.md", f"{RAW}/topic/docs/My%20Notes.md"),
     (f"{REPO}/blob/unicode/docs/雪.md#L1", f"{REPO}/blob/unicode/docs/%E9%9B%AA.md#L1"),
+    (f"{REPO}/blob/unicode/docs/{HEART}.md", f"{REPO}/blob/unicode/docs/%E2%9D%A4%EF%B8%8F.md"),
 ]
 REFUSED: list[list[str]] = [
     [f"{REPO}/tree/nope/docs", "--no-serve"],
@@ -158,6 +166,14 @@ REFUSED: list[list[str]] = [
     # the message as U+FFFD.
     [f"{REPO}/blob/topic/docs/%E2%80%AE2J.md", "--no-serve"],
     [f"{REPO}/blob/topic/docs/%C2%9B2J.md", "--no-serve"],
+    # The reducer's hint for a raw U+3164 HANGUL FILLER, which most fonts draw as
+    # nothing: its encoded spelling reaches the message as U+FFFD, as does U+2800, the
+    # blank braille pattern, rather than reading as README.md or README .md.
+    [f"{REPO}/blob/topic/README%E3%85%A4.md", "--no-serve"],
+    [f"{REPO}/blob/topic/README%E2%A0%80.md", "--no-serve"],
+    # A variation selector with no base to attach to is drawn as nothing, so it does
+    # too; the one after an emoji above is kept.
+    [f"{REPO}/blob/topic/README%EF%B8%8F.md", "--no-serve"],
 ]
 
 
@@ -210,13 +226,19 @@ def test_golden_github_urls_open_through_a_local_stand_in(
         "path: docs/My Notes.md\n"
         in by_command[f"{REPO}/blob/topic/docs/My Notes.md --no-serve"].stdout
     )
-    assert "\u009b" not in refused[-1][1].stderr and "\ufffd2J.md" in refused[-1][1].stderr
+    assert "\u009b" not in refused[-4][1].stderr and "\ufffd2J.md" in refused[-4][1].stderr
     override = by_command[f"{REPO}/blob/unicode/docs/a%E2%80%AEb.md --no-serve"].stdout
     assert "path: docs/a\ufffdb.md\n" in override
-    assert "\ufffd2J.md is not in" in refused[-2][1].stderr
+    assert "\ufffd2J.md is not in" in refused[-5][1].stderr
+    for _args, result in refused[-3:]:
+        assert "Error: README\ufffd.md is not in " in result.stderr
+        assert "(path_not_found)" in result.stderr
 
     rendered = "".join(_block(args, result) for args, result in [*opened, *refused])
     assert chr(0x202E) not in rendered and chr(0x9B) not in rendered
+    assert chr(0x3164) not in rendered and chr(0x2800) not in rendered
+    heart = by_command[f"{REPO}/blob/unicode/docs/{HEART}.md --no-serve"].stdout
+    assert f"(branch unicode)\npath: docs/{HEART}.md\n" in heart
     assert str(tmp_path) not in rendered and str(home) not in rendered
     assert "file://" not in rendered
     check_golden("cli-github-url-open.txt", rendered)

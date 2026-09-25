@@ -345,7 +345,7 @@ slug: github-com--octo--demo--46386669dc01
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
 selection: blob
-pin: 1eec430364f120ed3f301eb9c7e8f53b8bd30d87 (branch unicode)
+pin: 722d29ccaa40b81210e6a316f1940d90087a8a8a (branch unicode)
 path: docs/雪.md
 lines: L1
 --- stderr ---
@@ -357,7 +357,7 @@ slug: github-com--octo--demo--46386669dc01
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
 selection: blob
-pin: 1eec430364f120ed3f301eb9c7e8f53b8bd30d87 (branch unicode)
+pin: 722d29ccaa40b81210e6a316f1940d90087a8a8a (branch unicode)
 path: docs/雪.md
 lines: L1
 --- stderr ---
@@ -369,8 +369,30 @@ slug: github-com--octo--demo--46386669dc01
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
 selection: blob
-pin: 1eec430364f120ed3f301eb9c7e8f53b8bd30d87 (branch unicode)
+pin: 722d29ccaa40b81210e6a316f1940d90087a8a8a (branch unicode)
 path: docs/a�b.md
+--- stderr ---
+# metab https://github.com/octo/demo/blob/unicode/docs/❤️.md --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
+selection: blob
+pin: 722d29ccaa40b81210e6a316f1940d90087a8a8a (branch unicode)
+path: docs/❤️.md
+--- stderr ---
+# metab https://github.com/octo/demo/blob/unicode/docs/%E2%9D%A4%EF%B8%8F.md --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
+selection: blob
+pin: 722d29ccaa40b81210e6a316f1940d90087a8a8a (branch unicode)
+path: docs/❤️.md
 --- stderr ---
 # metab https://github.com/octo/demo/tree/nope/docs --no-serve
 exit: 1
@@ -436,3 +458,30 @@ store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
 --- stderr ---
 Error: docs/�2J.md is not in https://github.com/octo/demo at topic (path_not_found)
+# metab https://github.com/octo/demo/blob/topic/README%E3%85%A4.md --no-serve
+exit: 1
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
+--- stderr ---
+Error: README�.md is not in https://github.com/octo/demo at topic (path_not_found)
+# metab https://github.com/octo/demo/blob/topic/README%E2%A0%80.md --no-serve
+exit: 1
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
+--- stderr ---
+Error: README�.md is not in https://github.com/octo/demo at topic (path_not_found)
+# metab https://github.com/octo/demo/blob/topic/README%EF%B8%8F.md --no-serve
+exit: 1
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
+--- stderr ---
+Error: README�.md is not in https://github.com/octo/demo at topic (path_not_found)
