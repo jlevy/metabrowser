@@ -5168,12 +5168,17 @@ async function loadMoreCurrentText() {
         document,
         window.metabrowser?.renderTextLoadMoreFooter?.(nextCached) || "",
       );
+      window.MetabrowserSourceLineAnchors.refresh(document, nextCached);
       commitTextChunkCache(path, previewClaim, cached, nextCached, requested);
     } else {
-      await renderFile(nextCached, undefined, previewClaim, {
+      // The render replaces the whole file view; it keeps the tab the reader is on,
+      // such as a Markdown file's Source tab that Load more is filling.
+      var activeView = document.getElementById("preview-pane")?.dataset.activeView;
+      await renderFile(nextCached, activeView || undefined, previewClaim, {
         isCurrent: () => textChunkRequestOwnsPreview(path, previewClaim, cached),
         onCommit: () => {
           commitTextChunkCache(path, previewClaim, cached, nextCached, requested);
+          window.MetabrowserSourceLineAnchors.refresh(document, nextCached);
         },
       });
     }
@@ -6126,6 +6131,24 @@ document.addEventListener("click", (e) => {
 });
 
 // ── Tab switching ───────────────────────────────────────────────
+
+/**
+ * Select a tab of the file the preview pane shows, as a click on it does, unless it is
+ * already selected. A file still loading, or a view it lacks, has no tab to select.
+ *
+ * @param {string} path
+ * @param {string | null} tabId
+ */
+function showPreviewTab(path, tabId) {
+  var preview = document.getElementById("preview-pane");
+  if (!tabId || !preview || preview.dataset.renderedPath !== path) {
+    return;
+  }
+  var button = queryHtml(`#preview-pane > .tab-bar > .tab-btn[data-tab="${tabId}"]`);
+  if (button && !button.classList.contains("active")) {
+    button.click();
+  }
+}
 
 /** @param {ParentNode} [root] */
 function initTabs(root = document) {
@@ -7682,6 +7705,8 @@ async function applyNavigationTarget(target, context) {
   // fragment alone. After a failure, or once the Git panel owns the pane,
   // opening the same path again is a retry and has to load it.
   if (!context.pathChanged && previewPane.holds(path)) {
+    // A line anchor added to the file shown opens its Source tab, as opening it does.
+    showPreviewTab(path, window.MetabrowserSourceLineAnchors.preferredView(target));
     deliverNavigationFragment(target);
     return {
       focusTarget: document.getElementById("preview-pane") || undefined,
@@ -7692,7 +7717,11 @@ async function applyNavigationTarget(target, context) {
   if (!context.isCurrent()) {
     return { status: "cancelled" };
   }
-  var outcome = await selectFile(path, context.viewId);
+  // An address that anchors lines or carries `plain=1` opens the file's Source view.
+  var outcome = await selectFile(
+    path,
+    context.viewId || window.MetabrowserSourceLineAnchors.preferredView(target) || undefined,
+  );
   if (outcome.status === "opened" && context.isCurrent()) {
     deliverNavigationFragment(navigationController.current() || target);
   }

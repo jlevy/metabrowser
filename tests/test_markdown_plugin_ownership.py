@@ -48,9 +48,9 @@ def test_index_js_uses_sdk_helpers_not_local_copies() -> None:
     is actually real — not just call back into app.js helpers."""
     src = _all_js()
     assert "mb.escapeHtml" in src
-    assert "mb.isLargeTextPreview" in src
-    assert "mb.wrapWithCopy" in src
-    assert "mb.renderTextTruncationWarning" in src
+    # The Source tab is the SDK's shared source view, which owns the large-file
+    # fallback, the truncation notices, and the copy frame.
+    assert "mb.renderSourceView" in src
     assert "mb.fetchKpressRender" in src
     assert "mb.perf.measure" in src
 
@@ -116,9 +116,13 @@ def test_rendered_view_uses_kpress_with_visible_error() -> None:
 
 
 def test_source_views_include_visible_truncation_warning() -> None:
-    src = _all_js()
-    assert "mb.renderTextTruncationWarning(data)" in src
-    assert "warning" in src
+    # The Source tab renders through the shared source view, whose markup leads with
+    # the truncation warning.
+    assert "mb.renderSourceView(" in (PLUGIN_DIR / "source.js").read_text(encoding="utf-8")
+    sdk = (PLUGIN_DIR.parent.parent / "static" / "plugin-sdk.js").read_text(encoding="utf-8")
+    render = sdk[sdk.index("function renderSourceView(") :]
+    assert "const truncationWarning = renderTextTruncationWarning(data);" in render
+    assert "container.innerHTML = truncationWarning + " in render
 
 
 def test_embedded_readme_suppresses_its_own_table_of_contents() -> None:

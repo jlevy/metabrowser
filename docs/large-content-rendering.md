@@ -208,6 +208,18 @@ entire loaded window as plain text once, then returns to incremental appends.
 This applies the degradation uniformly instead of leaving an arbitrary colored boundary
 on screen.
 
+**Number lines in one text node.** The source view’s line-number gutter is a single text
+node beside the code, in the code’s font and line height, so it costs one more
+`white-space: pre` surface rather than an element per line.
+Building the numbers is 2–4 ms for 4 MiB (56,680 lines); laying the gutter out adds
+about 35 ms to a 2 MiB first window (28,340 lines), 135 ms against 100 ms without it,
+measured in Chrome on 2026-09-24 on a loaded machine.
+The highlight for anchored lines is placed by the height of one rendered line, the
+gutter’s height over its line count, measured again when a `ResizeObserver` sees the
+gutter change size. A multiple of `1lh` drifts, because line boxes are laid out at
+rounded heights: with a 13.1 px code font the `lh` position of line 40,000 is 3 lines
+off while the measured one stays on its line.
+
 **One authority per limit.** Sizes live in `settings.py` and reach the client through
 `window.METABROWSER_SETTINGS`. A constant restated on both sides of the boundary drifts.
 

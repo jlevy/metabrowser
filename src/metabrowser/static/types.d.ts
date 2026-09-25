@@ -451,6 +451,46 @@ type MetabrowserResourceContextRuntime = Readonly<{
   }>;
 }>;
 
+type MetabrowserSourceLineAnchorState = Readonly<{
+  status: "none" | "shown" | "partial" | "not-loaded" | "past-end";
+  start: number;
+  end: number;
+  message: string;
+}>;
+
+type MetabrowserSourceLineAnchorsRuntime = Readonly<{
+  countLines(text: string): number;
+  describe(
+    fragment: string | null | undefined,
+    loaded: Readonly<{ lines: number; truncated: boolean }>,
+  ): MetabrowserSourceLineAnchorState;
+  gutterHtml(text: string): string;
+  keyStep(
+    current: string | null | undefined,
+    focus: number,
+    key: string,
+    extend: boolean,
+    layout: Readonly<{ lines: number; page: number; origin: number }>,
+  ): Readonly<{ fragment: string; focus: number }> | null;
+  lineAt(offsetY: number, lineHeight: number, lines: number): number;
+  mount(
+    host: ParentNode,
+    options: {
+      path: string;
+      truncated: boolean;
+      navigation: Readonly<{
+        current(): MetabrowserNavigationTarget | null;
+        open(target: MetabrowserNavigationTarget, options: { replace: boolean }): Promise<void>;
+      }> | null;
+    },
+  ): void;
+  nextFragment(current: string | null | undefined, line: number, extend: boolean): string;
+  parse(fragment: string | null | undefined): Readonly<{ start: number; end: number }> | null;
+  preferredView(target: MetabrowserNavigationTarget | null | undefined): "source" | null;
+  refresh(root: ParentNode, loaded: { content_truncated?: boolean }): void;
+  spoken(state: MetabrowserSourceLineAnchorState): string;
+}>;
+
 type MetabrowserSourceAppendRuntime = Readonly<{
   appendSourceText(root: ParentNode | null, text: string): boolean;
   commitChunkCache(options: {
@@ -1014,6 +1054,7 @@ type MetabrowserSdk = {
   renderSourceView(
     container: HTMLElement,
     data: Record<string, unknown> & { content?: string; ext?: string },
+    options?: { parts?: ReadonlyArray<Readonly<{ text: string; language: string }>> },
   ): void;
   partialNoticeHtml(
     progress: { loaded: string; total: string },
@@ -2586,6 +2627,7 @@ declare global {
     MetabrowserTreeFilterModel: MetabrowserTreeFilterModel;
     MetabrowserTreeKeyboardNavigation: MetabrowserTreeKeyboardRuntime;
     MetabrowserSourceAppend: MetabrowserSourceAppendRuntime;
+    MetabrowserSourceLineAnchors: MetabrowserSourceLineAnchorsRuntime;
     MetabrowserSourceFreshness?: MetabrowserSourceFreshnessRuntime;
     MetabrowserSourceRefSelector?: MetabrowserSourceRefSelectorRuntime;
     MetabrowserInertHtml?: MetabrowserInertHtmlRuntime;

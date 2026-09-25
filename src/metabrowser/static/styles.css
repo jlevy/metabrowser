@@ -4019,6 +4019,74 @@ pre.code-block code.hljs {
 .content-body > .code-block {
   --scrollbar-bg: var(--bg);
 }
+
+/* Source views: a gutter of line numbers beside the code, and GitHub-style line
+   anchors (static/source-line-anchors.js). The gutter is one text node in the
+   code's font and line height, so its numbers sit on the code's lines; the code
+   scrolls sideways on its own and the numbers stay put. The anchored lines are
+   painted from --mb-line-first and --mb-line-last times --mb-line-pitch, the
+   height of one rendered line that the script measures from the gutter; `1lh` is
+   only the fallback before a measurement, because rendered line boxes are rounded
+   and a multiple of `1lh` drifts off its line far down a large file. A view may
+   stack several code blocks, such as a Markdown file's front matter and its body,
+   beside one gutter; the script counts them in --mb-source-parts and offsets each
+   block's band by the lines above it in --mb-line-offset. */
+pre.code-block.metabrowser-source-lines {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  overflow: visible;
+}
+pre.code-block.metabrowser-source-lines > code {
+  grid-column: 2;
+  min-width: 0;
+  overflow-x: auto;
+}
+.source-line-numbers {
+  position: relative;
+  grid-column: 1;
+  grid-row: 1 / span var(--mb-source-parts, 1);
+  padding-right: 2ch;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--mono-block-font-size);
+  line-height: 1.5;
+  text-align: right;
+  white-space: pre;
+  cursor: pointer;
+  user-select: none;
+}
+.source-line-numbers:hover {
+  color: var(--text);
+}
+.source-line-numbers:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -2px;
+}
+/* The scroll target sits on the anchor's first line, or on the line a key moved to. */
+.source-line-anchor-target {
+  position: absolute;
+  top: calc((var(--mb-line-focus, var(--mb-line-first)) - 1) * var(--mb-line-pitch, 1lh));
+  left: 0;
+  width: 1px;
+  height: var(--mb-line-pitch, 1lh);
+  pointer-events: none;
+}
+.content-copy-wrap > pre.code-block.has-line-anchor > code,
+.content-copy-wrap > pre.code-block.has-line-anchor > .source-line-numbers {
+  background-image: linear-gradient(
+    transparent
+      calc((var(--mb-line-first) - 1 - var(--mb-line-offset, 0)) * var(--mb-line-pitch, 1lh)),
+    var(--highlight-bg) 0,
+    var(--highlight-bg)
+      calc((var(--mb-line-last) - var(--mb-line-offset, 0)) * var(--mb-line-pitch, 1lh)),
+    transparent 0
+  );
+  background-repeat: no-repeat;
+}
+.metabrowser-source-anchor-notice {
+  margin: 0 0 12px;
+}
 .log-event-raw .hljs {
   padding: 8px 12px;
 }
@@ -5118,6 +5186,16 @@ pre.code-block code.hljs {
 
   .kpress-print-surface {
     display: block;
+  }
+
+  /* Printed code wraps, so a separate column of numbers, or a band placed by line
+     number, would drift from its lines. */
+  .source-line-numbers {
+    display: none;
+  }
+
+  .content-copy-wrap > pre.code-block.has-line-anchor > code {
+    background-image: none;
   }
 }
 
