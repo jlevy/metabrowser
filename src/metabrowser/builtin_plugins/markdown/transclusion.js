@@ -1,4 +1,4 @@
-import { placeRendered } from "./inert-render.js";
+import { inertArticle, placeRendered, wireInertToc } from "./inert-render.js";
 import { acquireMarkdownWorkerClient } from "./markdown-worker-client.js";
 import { initTocWithIntersectionFallback } from "./toc-intersection-fallback.js";
 
@@ -453,7 +453,16 @@ export function mountWikiTransclusion(container, sourceElement, resolved, mb, op
       aside.setAttribute("aria-busy", "false");
       aside.setAttribute("data-metabrowser-transclusion-status", "ready");
       nestedHandle = nested || null;
-      disposeToc = initTocWithIntersectionFallback(() => mb.kpressInitToc?.(aside) || null);
+      const inert = inertArticle(aside);
+      disposeToc = inert
+        ? wireInertToc(inert, {
+            open: (fragment) => {
+              void mb.navigation.open({ path: resolved.path, fragment }).catch((error) => {
+                console.warn("Could not open the table of contents entry", error);
+              });
+            },
+          })
+        : initTocWithIntersectionFallback(() => mb.kpressInitToc?.(aside) || null);
     } catch (error) {
       if (disposed || options.signal?.aborted) {
         return;

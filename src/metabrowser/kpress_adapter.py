@@ -23,6 +23,7 @@ three things; see `docs/development.md`.
 
 from __future__ import annotations
 
+import re
 from functools import cache
 from importlib.metadata import version as distribution_version
 from pathlib import Path
@@ -240,6 +241,37 @@ def export_kpress_document(request: KPressExportRequest) -> dict[str, object]:
         raise KPressRenderError(str(exc)) from exc
 
 
+# KPress's table of contents -- its toggle, backdrop, and nav -- sits in the layout ahead
+# of the prose, where nothing the document wrote can be: titles in it are escaped.
+_KPRESS_PROSE = '<div class="kpress-prose'
+_KPRESS_TOC = re.compile(r"<button\b[^>]*\bdata-kpress-toc-toggle\b.*?</nav>", re.DOTALL)
+
+
+def _without_kpress_toc(html: str) -> tuple[str, bool]:
+    """*html* without KPress's table of contents, and whether it had one."""
+
+    prose = html.find(_KPRESS_PROSE)
+    if prose < 0:
+        return html, False
+    chrome, found = _KPRESS_TOC.subn("", html[:prose], count=1)
+    return chrome + html[prose:], found > 0
+
+
+def _anchored_headings(headings: object, anchors: dict[str, str]) -> list[dict[str, Any]]:
+    """KPress's table-of-contents entries, each pointing at its heading's anchor; an entry
+    whose heading has none is left out."""
+
+    entries: list[dict[str, Any]] = []
+    for entry in cast("list[object]", headings) if isinstance(headings, list) else []:
+        if not isinstance(entry, dict):
+            continue
+        href = str(cast("dict[str, object]", entry).get("href") or "")
+        anchor = anchors.get(href[1:]) if href.startswith("#") else None
+        if anchor is not None:
+            entries.append({**cast("dict[str, Any]", entry), "href": f"#{anchor}"})
+    return entries
+
+
 def inert_render(rendered: dict[str, Any]) -> dict[str, Any]:
     """*rendered* for a page that must not trust it: allowlisted HTML and no scripts.
 
@@ -250,12 +282,17 @@ def inert_render(rendered: dict[str, Any]) -> dict[str, Any]:
     contains, such as a video popover, and the document must not choose what the page
     loads. Stylesheets stay, and so does KPress's reading type. ``inert`` tells the page
     to apply the same allowlist again before inserting the HTML.
+
+    KPress's table of contents leaves the HTML too, since its script cannot run; ``toc``
+    says whether KPress drew one, and the model's ``headings`` -- its entries -- point at
+    the headings' ``user-content-`` anchors, for the page to draw its own from them.
     """
 
-    from metabrowser.inert_html import harden
+    from metabrowser.inert_html import harden_document
 
     inert = dict(rendered)
-    inert["html"] = harden(str(rendered.get("html", "")))
+    html, inert["toc"] = _without_kpress_toc(str(rendered.get("html", "")))
+    inert["html"], anchors = harden_document(html)
     assets = rendered.get("assets")
     if isinstance(assets, dict):
         kept = [
@@ -269,6 +306,11 @@ def inert_render(rendered: dict[str, Any]) -> dict[str, Any]:
     inert["widgets"] = {}
     model = rendered.get("model")
     if isinstance(model, dict):
-        inert["model"] = {**model, "widgets": {}}
+        model = cast("dict[str, Any]", model)
+        inert["model"] = {
+            **model,
+            "headings": _anchored_headings(model.get("headings"), anchors),
+            "widgets": {},
+        }
     inert["inert"] = True
     return inert

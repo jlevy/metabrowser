@@ -128,6 +128,20 @@
     },
     {
       "id": "encoded-backslash",
+      "canonicalUrl": "/view/docs/a%5Cb.md",
+      "intent": { "syntax": "markdown", "authoredTarget": "a%5Cb.md", "action": "navigate" },
+      "expected": { "status": "internal", "path": "docs/a%5Cb.md" }
+    },
+    {
+      "id": "encoded-backslash-and-percent",
+      "canonicalUrl": "/view/docs/100%25%5C.md",
+      "intent": { "syntax": "markdown", "authoredTarget": "100%25%5C.md", "action": "navigate" },
+      "expected": { "status": "internal", "path": "docs/100%25%5C.md" }
+    },
+    {
+      "id": "git-encoded-backslash",
+      "sourcePath": "g1-ZG9jcw/g1-Y3VycmVudC5tZA",
+      "sourceKind": "git_revision",
       "intent": { "syntax": "markdown", "authoredTarget": "a%5Cb.md", "action": "navigate" },
       "expected": { "status": "unsafe", "reason": "backslash-path" }
     },

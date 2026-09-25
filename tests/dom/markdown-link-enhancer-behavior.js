@@ -263,6 +263,8 @@ async function loadModule() {
   const remoteImage = new FakeElement("img", { src: "https://example.com/map.svg" });
   const unsafeImage = new FakeElement("img", { src: "data:image/png;base64,AA" });
   const heading = new FakeElement("h2", { id: "Install" });
+  // An inert render's heading anchor, which a GitHub address's `#usage` reaches.
+  const anchored = new FakeElement("h2", { id: "user-content-usage" });
   const container = new FakeContainer([
     sameDocument,
     internal,
@@ -276,6 +278,7 @@ async function loadModule() {
     remoteImage,
     unsafeImage,
     heading,
+    anchored,
   ]);
   const eventTarget = new FakeEventTarget();
   const frames = new Map();
@@ -360,6 +363,14 @@ async function loadModule() {
   }
   frames.clear();
   check("initial fragment after enhancement", heading.scrolled);
+  current = { path: "docs/readme.md", fragment: "usage" };
+  eventTarget.dispatch("metabrowser:navigation-fragment", { target: current });
+  for (const callback of [...frames.values()]) {
+    callback(0);
+  }
+  frames.clear();
+  check("a GitHub fragment reaches its user-content- anchor", anchored.scrolled);
+  current = { path: "docs/readme.md", fragment: "Install" };
   check(
     "configured published route href",
     published.getAttribute("href") === "/view/docs/published.md",

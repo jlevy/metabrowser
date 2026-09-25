@@ -1046,7 +1046,60 @@ uv --config-file uv.toml run --frozen metab "file://${QA_README}/origin.git" --n
 an iframe, a dialog over the page, a policy violation from the application itself, or a
 trusted folder that renders plainly.
 
-### 5.9 Switch branch or tag from the selector (no network)
+### 5.9 Heading anchors and the table of contents on a mirror (no network)
+
+A mirrored document gets github.com’s heading anchors and the page’s own table of
+contents, since no KPress script runs under the untrusted profile.
+Mirror a guide long enough to earn one, with a repeated heading and a raw heading
+carrying an `id` of its own, and a file whose POSIX name holds a backslash:
+
+```shell
+QA_TOC="$(mktemp -d "${TMPDIR:-/tmp}/mb-qa-toc.XXXXXX")"
+mkdir "${QA_TOC}/work"
+{
+  printf '# Guide\n\n[install](#install) [again](#usage-1) [odd](a%%5Cb.md)\n\n'
+  for title in Install Usage Configuration Troubleshooting; do
+    printf '## %s\n\n' "$title"
+    for _ in $(seq 100); do printf 'Words about %s. ' "$title"; done
+    printf '\n\n### Usage\n\nA nested section.\n\n'
+  done
+  printf '<h2 id="metabrowser">Raw heading</h2>\n'
+} > "${QA_TOC}/work/GUIDE.md"
+printf '# Odd name\n' > "${QA_TOC}/work/a\\b.md"
+git -C "${QA_TOC}/work" init -q -b main
+git -C "${QA_TOC}/work" add -A
+git -C "${QA_TOC}/work" -c user.name=QA -c user.email=qa@example.invalid commit -q -m qa
+git clone -q --bare "${QA_TOC}/work" "${QA_TOC}/origin.git"
+uv --config-file uv.toml run --frozen metab "file://${QA_TOC}/origin.git" --no-open --port 8480
+```
+
+1. Open `GUIDE.md` at a width that shows the side rail.
+   A **Contents** list sits beside the document: **Install**, **Usage**,
+   **Configuration**, and **Troubleshooting**, each with a nested **Usage**, and no
+   plain list of the same entries sits at the top of the document.
+2. Scroll: the entry for the section at the top quarter of the pane is highlighted.
+   Click **Troubleshooting**: the document scrolls to it and the address ends
+   `#user-content-troubleshooting`.
+3. In the console, `document.querySelectorAll("h1[id], h2[id], h3[id]")` lists only
+   `user-content-` ids, the repeated heading as `user-content-usage-1`, and
+   `document.getElementById("metabrowser")` is `null`.
+4. Click **install** and **again** in the first paragraph: each scrolls to its heading.
+   Replace the address’s fragment with `#install` and reload: the page scrolls to
+   **Install**, as github.com does.
+5. Narrow the window until the rail folds away and scroll down: the toggle appears; it
+   opens the drawer, and an entry or the backdrop closes it.
+6. Serve the working folder as a trusted folder (`metab "${QA_TOC}/work"`): **odd**
+   opens `a\b.md` (the tree lists it as `a%5Cb.md`;
+   `tests/test_markdown_backslash_links.py` runs this end to end).
+   In the mirror, and in the folder served with `--untrusted`, **odd** is text with no
+   address: the inert allowlist drops an escaped backslash.
+
+**Pass:** every step as described.
+
+**Fail:** a flat list of entries in the document, an `id` the document wrote, an entry
+or link that does not scroll, or a KPress script loaded for the mirror.
+
+### 5.10 Switch branch or tag from the selector (no network)
 
 Use the server from 5.6, or start it again the same way, with the origin in place.
 From a second terminal, give the origin a branch without one file and a tag:

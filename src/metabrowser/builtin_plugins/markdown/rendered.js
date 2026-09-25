@@ -1,4 +1,4 @@
-import { placeRendered } from "./inert-render.js";
+import { inertArticle, placeRendered, wireInertToc } from "./inert-render.js";
 import { enhanceRenderedLinks } from "./link-enhancer.js";
 import { acquireMarkdownWorkerClient } from "./markdown-worker-client.js";
 import { initTocWithIntersectionFallback } from "./toc-intersection-fallback.js";
@@ -215,7 +215,19 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
         }
       }
       injectDiagnostics(container, diagnostics, mb);
-      disposeToc = initTocWithIntersectionFallback(() => mb.kpressInitToc(container));
+      // An inert render's table of contents is the page's own; a trusted one's is KPress's.
+      const inert = inertArticle(container);
+      disposeToc = inert
+        ? wireInertToc(inert, {
+            open: (fragment) => {
+              if (path) {
+                void mb.navigation.open({ path, fragment }).catch((error) => {
+                  console.warn("Could not open the table of contents entry", error);
+                });
+              }
+            },
+          })
+        : initTocWithIntersectionFallback(() => mb.kpressInitToc(container));
     } catch (error) {
       if (!disposed && !mb.errors.isAbortError(error)) {
         container.innerHTML = renderKpressError(error, mb);

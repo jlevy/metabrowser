@@ -480,17 +480,23 @@ Content trust:
   head’s Markdown, and a folder served with `--untrusted` — a document’s KPress render
   reaches the page only as an allowlist of plain markup, on the server and again in the
   page: paragraphs, headings, emphasis, code, quotes, lists, tables, details, links, and
-  images inside the served tree, with no class, `id`, `name`, `data-*`, style, or event
-  attribute, and no SVG, MathML, media, stylesheet, frame, form, or script.
-  KPress kept such markup in its sanitized mode, so a README could load a stylesheet or
-  images from anywhere, make the page load KPress’s video script and a YouTube frame,
-  cover the page with the application’s own dialog styling, reach its document-wide
-  handlers, or clobber a global.
+  images inside the served tree, with no class, `name`, `data-*`, style, or event
+  attribute, no `id` the document wrote, and no SVG, MathML, media, stylesheet, frame,
+  form, or script. KPress kept such markup in its sanitized mode, so a README could load
+  a stylesheet or images from anywhere, make the page load KPress’s video script and a
+  YouTube frame, cover the page with the application’s own dialog styling, reach its
+  document-wide handlers, or clobber a global.
   Repository images and relative links keep working inside the pin; an outside image
-  becomes a link; code blocks show without highlighting; and no KPress script loads, so
-  such a document has no table of contents and its in-page anchors do not scroll.
+  becomes a link; code blocks show without highlighting; and no KPress script loads.
+  Headings get the anchors github.com gives them, `user-content-` and the GitHub slug of
+  the heading’s text, numbered on repeats, made by the allowlist and never taken from
+  the document; a `#name` link becomes `#user-content-name`, and a GitHub address’s
+  `#name` scrolls to that heading.
+  The page draws the table of contents from KPress’s entries and runs it itself.
   `GET /api/kpress/render` answers such a render marked `inert`, with only stylesheets
-  in its assets. Trusted folders render as before.
+  in its assets, KPress’s table of contents taken out of the HTML, `toc` saying whether
+  KPress drew one, and `model.headings` pointing at the anchors.
+  Trusted folders render as before.
   The pull-request page uses the same allowlist, now in core
   (`src/metabrowser/inert_html.py`, `static/inert-html.js`).
 
@@ -676,6 +682,16 @@ Fixes:
   shows its real name.
   A literal backslash in a `/view/` URL is refused, and Windows, where a backslash is a
   separator, is unchanged.
+
+- In a trusted served folder, a Markdown link to a file whose POSIX name holds a
+  backslash now opens it.
+  Markdown writes the backslash escaped (`[notes](a\b.md)` links to `a%5Cb.md`, as on
+  GitHub), and the link resolver and the published-route adapter now spell it `%5C`, as
+  the inventory does, instead of refusing the link.
+  In a Git pin such a link is still refused, and a literal backslash in a link’s
+  address, which a browser reads as a separator, still is everywhere; under the
+  untrusted profile the inert allowlist drops an escaped backslash from any reference.
+  Wiki links refuse a backslash as before.
 
 - Load more on a large text file in a pin advances its notice and continues the text.
   A pin’s later window reported its own length as `bytes_read`, where the filesystem

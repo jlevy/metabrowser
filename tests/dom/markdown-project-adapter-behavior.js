@@ -186,6 +186,14 @@ function throws(name, callback, message) {
     { adapter: "mkdocs", path: "docs/100%25.md", status: "internal" },
   );
   equal(
+    "an escaped backslash route keeps the inventory's %5C identity",
+    module.resolvePublishedRoute(
+      { authoredTarget: "/a%5Cb/", resolvedPath: "a%5Cb/" },
+      complete(["mkdocs.yml", "docs/a%5Cb.md"]),
+    ),
+    { adapter: "mkdocs", path: "docs/a%5Cb.md", status: "internal" },
+  );
+  equal(
     "published route percent decoding happens exactly once",
     module.resolvePublishedRoute(
       { authoredTarget: "/100%252F/", resolvedPath: "100%252F/" },

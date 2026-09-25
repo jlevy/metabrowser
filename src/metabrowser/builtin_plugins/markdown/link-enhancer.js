@@ -274,7 +274,12 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
       ) {
         return;
       }
-      findElementById(container, fragment)?.scrollIntoView({
+      // As on github.com, `#name` also reaches an inert render's `user-content-name`
+      // heading anchor, so a GitHub address's fragment scrolls where it did there.
+      (
+        findElementById(container, fragment) ??
+        findElementById(container, `user-content-${fragment}`)
+      )?.scrollIntoView({
         block: "start",
       });
     });
