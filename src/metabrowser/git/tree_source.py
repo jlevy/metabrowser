@@ -77,7 +77,7 @@ from metabrowser.git.process import (
     terminate_git_process,
 )
 from metabrowser.git.wire import is_full_revision
-from metabrowser.invisible_chars import is_invisible
+from metabrowser.invisible_chars import hidden_at
 from metabrowser.settings import INVENTORY_MAX_FILES, TEXT_PREVIEW_REQUEST_MAX_BYTES
 from metabrowser.source import (
     MAX_CONTAINER_INNER_DEPTH,
@@ -171,7 +171,9 @@ def display_segment(segment: bytes) -> str:
     U+200B ZERO WIDTH SPACE, reorders or hides what is shown around it without being
     seen, and a default-ignorable character such as U+3164 HANGUL FILLER, or the blank
     braille pattern U+2800, is drawn as nothing or as a space; a name holding either
-    could pass for another in a listing, a ``path:`` line, or an error message. The
+    could pass for another in a listing, a ``path:`` line, or an error message. A
+    variation selector attached to a base, as in ``❤️.md``, is kept; one with no base,
+    as in ``README<U+FE0F>.md``, is not (see :mod:`metabrowser.invisible_chars`). The
     wire form keeps every byte.
     """
 
@@ -183,9 +185,9 @@ def display_segment(segment: bytes) -> str:
         if ord(ch) < 0x20
         or 0x7F <= ord(ch) <= 0x9F
         or unicodedata.category(ch) == "Cf"
-        or is_invisible(ch)
+        or hidden_at(text, index)
         else ch
-        for ch in text
+        for index, ch in enumerate(text)
     )
 
 

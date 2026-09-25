@@ -802,19 +802,47 @@ def test_display_replaces_format_characters_that_reorder_or_hide_text() -> None:
     for point in (0x202E, 0x2066, 0x200B, 0x200D, 0xFEFF, 0x00AD, 0x0600, 0xE0001):
         shown = display_segment(f"a{chr(point)}b.md".encode())
         assert shown == "a\ufffdb.md", hex(point)
-    # A combining mark is not a format character and stays.
-    kept = f"e{chr(0x301)}{chr(0x2764)}.md"
+    # A variation selector and a combining mark are not format characters and stay.
+    kept = f"e{chr(0x301)}{chr(0x2764)}{chr(0xFE0F)}.md"
     assert display_segment(kept.encode()) == kept
 
 
 def test_display_replaces_characters_drawn_as_nothing_or_as_a_space() -> None:
     """Default-ignorable characters that are not Cf, and the blank braille pattern.
 
-    The Hangul fillers are letters (Lo), the variation selectors and the combining
-    grapheme joiner are marks (Mn), and U+2800 is a symbol (So); each is drawn as
-    nothing or as a space, so ``README<U+3164>.md`` would read as ``README.md``.
+    The Hangul fillers are letters (Lo), the combining grapheme joiner is a mark (Mn),
+    and U+2800 is a symbol (So); each is drawn as nothing or as a space, so
+    ``README<U+3164>.md`` would read as ``README.md``. So is a variation selector after
+    an ASCII letter, which has no variation to select.
     """
 
-    for point in (0x3164, 0x115F, 0xFFA0, 0x034F, 0xFE0F, 0xE0100, 0x2800):
+    for point in (0x3164, 0x115F, 0xFFA0, 0x034F, 0x2800, 0xFE0F, 0xFE00, 0xE0100):
         shown = display_segment(f"README{chr(point)}.md".encode())
         assert shown == "README\ufffd.md", hex(point)
+
+
+def test_display_keeps_a_variation_selector_attached_to_its_base() -> None:
+    """Emoji and ideographic variation sequences are names; a selector with no base is not.
+
+    A look-alike made with a selector needs a base character, which stays visible, so
+    one after an emoji, a keycap, or an ideograph is kept. One that begins the name, or
+    follows a space, another selector, or an invisible character, is replaced.
+    """
+
+    vs16, vs17 = chr(0xFE0F), chr(0xE0100)
+    for kept in (
+        f"{chr(0x2764)}{vs16}.md",
+        f"1{vs16}{chr(0x20E3)}.md",
+        f"#{vs16}{chr(0x20E3)}.md",
+        f"{chr(0x845B)}{vs17}.md",
+        f"{chr(0x263A)}{vs16} notes.md",
+    ):
+        assert display_segment(kept.encode()) == kept, [hex(ord(ch)) for ch in kept]
+    for name, shown in (
+        (f"{vs16}a.md", "\ufffda.md"),
+        (f"a {vs16}.md", "a \ufffd.md"),
+        (f"1{vs16}.md", "1\ufffd.md"),
+        (f"{chr(0x2764)}{vs16}{vs16}.md", f"{chr(0x2764)}{vs16}\ufffd.md"),
+        (f"{chr(0x3164)}{vs16}.md", "\ufffd\ufffd.md"),
+    ):
+        assert display_segment(name.encode()) == shown, name

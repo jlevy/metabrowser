@@ -281,8 +281,11 @@ listing and read time, not from `ls-tree -l`. They do not invent filesystem mtim
 ignore state, ownership, or watcher events.
 Their `GitPath` identity is raw byte segments with a lossless route codec and separate
 display text (`display_segment`: controls, format characters, default-ignorable
-characters, the blank braille pattern, and invalid UTF-8 become U+FFFD); it never
-becomes a host filesystem path.
+characters, the blank braille pattern, and invalid UTF-8 become U+FFFD, except a
+variation selector attached to a visible base, which is part of an emoji or ideographic
+name such as `❤️.md`; `invisible_chars.py` holds the table, the rule, and its known gap,
+a selector after a non-ASCII base that has no variation to select); it never becomes a
+host filesystem path.
 A patch-file container inner is that `GitPath` `g1-` prefix plus a host inner path, not
 another tree segment.
 `/api/plugin/binary/chunk` slices one blob by that identity and keys the window on the

@@ -31,7 +31,8 @@ answers both spellings alike, so both open the same selection. A character that 
 be seen, or that a reader cannot tell apart from a space, is still refused, since a
 name holding one passes for another (``README<U+3164>.md`` reads as ``README.md``):
 controls, whitespace other than a space, format characters such as bidirectional
-overrides, default-ignorable characters such as fillers and variation selectors, the
+overrides, default-ignorable characters such as fillers and a variation selector with
+no base to attach to (one after an emoji, as in ``❤️.md``, is accepted), the
 blank braille pattern, and unassigned and private-use code points; so is a trailing
 space, which a browser strips, and a ``%`` that starts no percent escape, which a
 browser leaves for the server to read. Every character refusal names the code point
@@ -58,7 +59,7 @@ from metabrowser.cache.urls import (
     ReducerRejection,
     RepositorySelection,
 )
-from metabrowser.invisible_chars import is_invisible
+from metabrowser.invisible_chars import hidden_at
 
 CANONICAL_HOST: Final = "github.com"
 _WEB_HOSTS: Final = frozenset({"github.com", "www.github.com"})
@@ -239,14 +240,15 @@ def _escaped(ch: str) -> str:
     return "".join(f"%{byte:02X}" for byte in ch.encode())
 
 
-def _refusal(ch: str, *, encodable: bool) -> _Refuse | None:
-    """Why *ch* may not appear raw in the URL, or ``None`` when it may.
+def _refusal(text: str, index: int, *, encodable: bool) -> _Refuse | None:
+    """Why ``text[index]`` may not appear raw in the URL, or ``None`` when it may.
 
     *encodable* is true in a web URL's path, query, and fragment, where a space and a
     visible character outside ASCII are sent percent-encoded; elsewhere both are refused,
     as the generic grammar refuses them.
     """
 
+    ch = text[index]
     point = f"U+{ord(ch):04X}"
     if ch == " ":
         if encodable:
@@ -267,7 +269,7 @@ def _refusal(ch: str, *, encodable: bool) -> _Refuse | None:
         kind = "a whitespace character"
     elif not encodable:
         kind = "a character outside ASCII"
-    elif category == "Cf" or is_invisible(ch):
+    elif category == "Cf" or hidden_at(text, index):
         kind = "an invisible character"
     elif category == "Cn":
         kind = "an unassigned character"
@@ -292,8 +294,8 @@ def _common_checks(value: str, claimed: _Claimed) -> None:
     strict = claimed.authority if claimed.web else value
     tail = claimed.path + claimed.query + claimed.fragment if claimed.web else ""
     for text, encodable in ((strict, False), (tail, True)):
-        for ch in text:
-            if (refused := _refusal(ch, encodable=encodable)) is not None:
+        for index in range(len(text)):
+            if (refused := _refusal(text, index, encodable=encodable)) is not None:
                 raise refused
     if value.endswith(" "):
         raise _Refuse("control_or_whitespace", "the URL ends with a space; remove it")

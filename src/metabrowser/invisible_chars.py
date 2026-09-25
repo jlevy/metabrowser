@@ -3,6 +3,17 @@
 A name holding one passes for another: ``README<U+3164>.md`` reads as ``README.md`` in
 most fonts. The GitHub URL reducer refuses them raw in a URL, and the Git tree source
 replaces them when it displays a path, so one table serves both.
+
+Variation selectors are default-ignorable but exempt when attached to a base: they are
+part of emoji names such as ``❤️.md`` (U+2764 U+FE0F) and of ideographic variation
+sequences, and a look-alike made with one needs a base character, which stays visible.
+A selector with no base is not exempt, since it is drawn as nothing where it stands:
+one that begins the text, follows a space, a control, an invisible character, or
+another selector, or follows an ASCII character, as in ``README<U+FE0F>.md``. The one
+ASCII base kept is an emoji keycap, a digit, ``#``, or ``*`` followed by the selector
+and U+20E3 COMBINING ENCLOSING KEYCAP, as in ``1️⃣``. A selector after a non-ASCII base
+that has no variation sequence is still drawn as nothing; telling those apart needs
+Unicode's variation-sequence data, which Python's ``unicodedata`` does not carry.
 """
 
 from __future__ import annotations
@@ -32,13 +43,53 @@ DEFAULT_IGNORABLE: Final[tuple[tuple[int, int], ...]] = (
     (0x1D173, 0x1D17A),
     (0xE0000, 0xE0FFF),
 )
+# VARIATION SELECTOR-1..16 and VARIATION SELECTOR-17..256: default-ignorable, but
+# exempt when attached to a base (see the module docstring).
+VARIATION_SELECTORS: Final[tuple[tuple[int, int], ...]] = (
+    (0xFE00, 0xFE0F),
+    (0xE0100, 0xE01EF),
+)
 # U+2800 BRAILLE PATTERN BLANK is a symbol, not default-ignorable, but a cell with no dots
 # is drawn as a space.
 BLANK_BRAILLE: Final = 0x2800
+_KEYCAP_BASES: Final = frozenset("#*0123456789")
+_KEYCAP: Final = "\u20e3"
+
+
+def is_variation_selector(ch: str) -> bool:
+    """Whether *ch* is one of the 256 variation selectors."""
+
+    point = ord(ch)
+    return any(low <= point <= high for low, high in VARIATION_SELECTORS)
 
 
 def is_invisible(ch: str) -> bool:
-    """Whether *ch* is default-ignorable or the blank braille pattern."""
+    """Whether *ch* is default-ignorable or the blank braille pattern, wherever it stands.
+
+    A variation selector is not: whether one is seen depends on its base, which
+    :func:`hidden_at` reads.
+    """
 
     point = ord(ch)
+    if is_variation_selector(ch):
+        return False
     return point == BLANK_BRAILLE or any(low <= point <= high for low, high in DEFAULT_IGNORABLE)
+
+
+def hidden_at(text: str, index: int) -> bool:
+    """Whether ``text[index]`` is drawn as nothing or as a space where it stands."""
+
+    ch = text[index]
+    if not is_variation_selector(ch):
+        return is_invisible(ch)
+    if index == 0:
+        return True
+    base = text[index - 1]
+    if base.isascii():
+        return not (base in _KEYCAP_BASES and text[index + 1 : index + 2] == _KEYCAP)
+    return (
+        not base.isprintable()
+        or base.isspace()
+        or is_variation_selector(base)
+        or is_invisible(base)
+    )
