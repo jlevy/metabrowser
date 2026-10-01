@@ -192,12 +192,34 @@ class RecordedFreshness:
     record_stamp: tuple[int, int] | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class MirrorDisplay:
+    """What a page shows of the mirror it is served from. Display text, never an input.
+
+    ``name`` is the repository's name as a checkout of it would be called, and
+    ``origin`` the address it mirrors. ``location`` is where the mirror is kept: the
+    bare Git repository the pages are read from, with the home directory as ``~``. It
+    is the one place a served page names a path in the cache; see
+    :class:`metabrowser.source_routes.SourceStatus`. All three are safe to print: a
+    control or invisible character the origin put in its address is already replaced.
+    """
+
+    name: str
+    origin: str
+    location: str
+
+
 class ServedMirror(Protocol):
     """The repository mirror a server serves, as this module needs it."""
 
     @property
     def key(self) -> str:
         """The single-flight key of this mirror's refresh: its store key."""
+        ...
+
+    @property
+    def display(self) -> MirrorDisplay:
+        """The mirror's name, origin, and location, as a page shows them."""
         ...
 
     async def open_selection(
@@ -1017,6 +1039,7 @@ __all__ = [
     "FreshnessFields",
     "InvalidSelectionError",
     "LastOutcome",
+    "MirrorDisplay",
     "MirrorRef",
     "MirrorSession",
     "OpenedSelection",

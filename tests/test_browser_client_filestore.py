@@ -735,7 +735,12 @@ def test_main_view_address_dims_the_root_and_leaves_no_dead_segment() -> None:
     js = _read_app_js()
     fn_start = js.index("function headerAddressHtml(path, isFile)")
     fn_block = js[fn_start : fn_start + 1600]
-    assert 'class="file-header-root"' in fn_block
+    # The prefix is built beside the note that says where a served mirror is kept, in
+    # a module a session can run whole (tests/dom/mirror-heading-session.js).
+    assert "var prefix = servedRootAddress().prefix;" in fn_block
+    navigation = proc_browser.STATIC_DIR.joinpath("navigation.js").read_text()
+    root_start = navigation.index("function servedRootAddress(served, esc)")
+    assert 'class="file-header-root"' in navigation[root_start : root_start + 700]
     assert 'class="folder-crumb folder-crumb-root" data-nav-dir=""' in fn_block
     # Every crumb is an owner-marked control; the click delegate ignores unmarked
     # copies a document could write (tests/dom/shell-delegate-owner-session.js).
@@ -798,6 +803,54 @@ def test_address_gives_way_from_the_root_end_and_never_cuts_a_segment() -> None:
     assert "text-overflow: ellipsis" in crumb_block
     assert "min-width: 0" in crumb_block
     assert "overflow: hidden" in crumb_block
+
+
+def test_a_mirrors_location_gives_way_before_its_name_and_never_takes_the_file_name() -> None:
+    """Where a served mirror says it is kept is the first thing a narrow heading drops.
+
+    The note stands after the address, inside the same clipped run, so it can never push
+    a crumb or the copy control out. It narrows before the root's name does, by the
+    ratio the root's own rule measured as the least that takes no sliver from the next
+    part, and it ends in an ellipsis: the start of the path says it is the cache, and
+    the end is a store's hexadecimal key. Its tooltip, which holds the whole path and a
+    commit ID, wraps inside its box.
+    """
+
+    css = _read_styles_css()
+
+    def block(selector: str) -> str:
+        start = css.index(f"{selector} {{")
+        return css[start : css.index("}", start)]
+
+    def shrink(selector: str) -> float:
+        match = re.search(r"flex(?:-shrink)?:\s*(?:[\d.]+\s+)?([\d.]+)", block(selector))
+        assert match is not None, f"{selector} declares no shrink weight"
+        return float(match.group(1))
+
+    note = block(".file-header-mirror")
+    assert shrink(".file-header-mirror") >= 5000 * shrink(".file-header-root")
+    for declaration in ("min-width: 0", "overflow: hidden", "text-overflow: ellipsis"):
+        assert declaration in note, declaration
+    # The end is cut, not the start: the root's own rule reverses the direction.
+    assert "direction" not in note
+    # Apart from the address, and in the design's tokens: muted, at the summary's size.
+    assert "margin-left: auto" in note
+    assert "color: var(--muted)" in note and "font-size: var(--ui-small-font-size)" in note
+    assert not re.search(r"#[0-9a-fA-F]{3,8}\b|rgb\(|oklch\(", note)
+
+    # Both headers end their address with the note, inside the clipped path.
+    js = _read_app_js()
+    assert js.count("servedRootAddress().note") == 2
+    assert "${headerAddressHtml(path, false)}${servedRootAddress().note}</span>" in js
+    file_start = js.index("headerAddressHtml(data.path, true) +")
+    file_block = js[file_start : file_start + 700]
+    assert file_block.index("ICON_COPY") < file_block.index("servedRootAddress().note")
+    assert file_block.index("servedRootAddress().note") < file_block.index('"</span>"')
+
+    # In the navigation heading the ref narrows before the name, and the commit never.
+    assert shrink(".header-ref") > 1
+    assert "flex: none" in block(".header-revision")
+    assert "overflow-wrap: anywhere" in block(".custom-tooltip")
 
 
 def test_navigation_heading_shows_only_the_root_name() -> None:

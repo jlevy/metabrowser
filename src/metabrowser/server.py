@@ -1135,23 +1135,67 @@ def _initial_path_html() -> str:
 
 
 def _pin_label_html(status: SourceStatus) -> str:
-    """The navigation heading for a pinned revision: its ref, then its short commit.
+    """The navigation heading for a pinned revision.
 
-    It stands where a folder's name stands, so it uses the same `.path-base`
-    emphasis for the name a reader chose, and the commit follows it muted. The full
-    commit is the served root: the file header's prefix and this heading's tooltip
-    both read it from `data-served-root`. Without a known ref the short commit is
-    the name.
+    A served mirror's is the repository's name, where a folder's name stands and with
+    the same `.path-base` emphasis, then the ref and the short commit, muted: the page
+    is called what a checkout of the repository would be, and the commit it is pinned
+    to stays in sight beside it. The full commit is in the heading's tooltip.
+
+    A pin with no mirror has no origin to take a name from. Its ref stands as the name
+    with the short commit after it, or the short commit alone when no ref is known,
+    and the full commit is its served root.
     """
 
     short = html_escape((status["pin"] or "")[:12])
+    name = status["name"]
     ref_name = status["ref_name"]
-    if ref_name is None:
-        return f'<span class="path"><span class="path-base">{short}</span></span>'
-    return (
-        f'<span class="path"><span class="path-base">{html_escape(ref_name)}</span></span>'
-        f'<span class="header-revision">{short}</span>'
+
+    def base(text: str) -> str:
+        return f'<span class="path"><span class="path-base">{text}</span></span>'
+
+    commit = f'<span class="header-revision">{short}</span>'
+    if name is None:
+        return base(short) if ref_name is None else base(html_escape(ref_name)) + commit
+    ref = (
+        ""
+        if ref_name is None
+        else f'<span class="header-revision header-ref">{html_escape(ref_name)}</span>'
     )
+    return base(html_escape(name)) + ref + commit
+
+
+def _mirror_tip(status: SourceStatus) -> str | None:
+    """What a served mirror's heading says of itself on hover, or ``None`` for any other subject.
+
+    A page of a mirror looks like a page of a folder, and is not one: nothing is
+    checked out, and each file is read from a Git object at the pinned commit. So the
+    sentence says what the directory it names is, and does not leave the path to be
+    read as a folder of these files.
+    """
+
+    if status["location"] is None:
+        return None
+    return (
+        f"Mirror of {status['origin']} at {status['pin']}, stored in {status['location']}: "
+        "a bare Git repository, with no checked-out files."
+    )
+
+
+def _mirror_heading_attrs(status: SourceStatus) -> str:
+    """The navigation heading's attributes that say where a served mirror is kept.
+
+    `data-mirror-location` is the status's `location` and `data-mirror-tip` the sentence
+    around it. The file header reads both back, as it reads `data-served-root`. These
+    two attributes of the page and the status envelope are the only places a response
+    names a path in the cache.
+    """
+
+    tip = _mirror_tip(status)
+    if tip is None:
+        return ""
+    location = html_escape(status["location"] or "", quote=True)
+    return f' data-mirror-location="{location}" data-mirror-tip="{html_escape(tip, quote=True)}"'
 
 
 def _served_root_str() -> str:
@@ -1242,13 +1286,17 @@ async def index(request: Request, *, pull_page: bool = False) -> HTMLResponse:
         from metabrowser.git.tree_source import ref_branch_name
 
         pin_oid = pin.commit_oid
-        initial_path = _pin_label_html(source_status())
-        initial_root = html_escape(pin_oid, quote=True)
+        mirror = mirror_session(request.app)
+        status = source_status(mirror)
+        initial_path = _pin_label_html(status)
+        # A mirror's served root is the repository's name, as a folder's is its path:
+        # what the file header's prefix and this heading's tooltip call the root.
+        initial_root = html_escape(status["name"] or pin_oid, quote=True)
+        mirror_attrs = _mirror_heading_attrs(status)
         # Core holds no provider URL grammar: the served mirror asks the installed
         # providers, and only a hosted repository's has an answer (a GitHub mirror's
         # comes from the GitHub plugin). A file:// mirror, or a pin with no mirror,
         # has none.
-        mirror = mirror_session(request.app)
         repository_context = (
             mirror.mirror.repository_context(revision=pin_oid, branch=ref_branch_name(pin.ref))
             if mirror is not None
@@ -1257,6 +1305,7 @@ async def index(request: Request, *, pull_page: bool = False) -> HTMLResponse:
     else:
         initial_path = _initial_path_html()
         initial_root = html_escape(_display_root_str(), quote=True)
+        mirror_attrs = ""
         repository_context = await asyncio.to_thread(
             discover_repository_context, session_filesystem_root()
         )
@@ -1644,7 +1693,9 @@ async def index(request: Request, *, pull_page: bool = False) -> HTMLResponse:
         <!-- data-served-root is the one place the absolute root is written:
              the file header reads it back to render its dimmed prefix, so
              the two headers cannot disagree about what the root is. It is also
-             what this heading's tooltip is built from.
+             what this heading's tooltip is built from. A served mirror's root
+             is the repository's name, and data-mirror-location and
+             data-mirror-tip say where the mirror is kept.
 
              No data-tip-text here, deliberately. This element has a tooltip of
              its own in app.js — the folder's counts and age, not just its
@@ -1653,7 +1704,7 @@ async def index(request: Request, *, pull_page: bool = False) -> HTMLResponse:
              to prevent. See "One Tooltip, and It Is Ours" in
              docs/design-system.md. -->
         <a href="{VIEW_ROUTE_PREFIX}" class="header-path"
-           data-served-root="{initial_root}">{initial_path}</a>
+           data-served-root="{initial_root}"{mirror_attrs}>{initial_path}</a>
         <!-- The Metabrowser menu. The gear names the product rather than
              standing as an unlabelled settings control: the wordmark that
              used to sit on its own line above the path is this menu's title,

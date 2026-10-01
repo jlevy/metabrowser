@@ -1314,9 +1314,10 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* A pinned revision's heading: the ref at the heading's weight, then its short
-   commit, muted. The full commit is the served root, shown in the heading's
-   tooltip and the file header's prefix. */
+/* A pinned revision's heading: the repository's name at the heading's weight,
+   then the ref and the short commit, muted. The full commit is in the
+   heading's tooltip. A pin with no mirror has no name, and its ref stands in
+   the name's place. */
 .header-revision {
   flex: none;
   margin-left: 6px;
@@ -1331,6 +1332,15 @@ body {
   align-items: baseline;
 }
 .header-path:has(> .header-revision) > .path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* A served mirror's heading is the repository's name, the ref, then the commit.
+   The ref gives way before the name does: the ref selector under the heading
+   names it too. */
+.header-ref {
+  flex: 0 1000 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3429,6 +3439,44 @@ html[data-prose-font="sans"] {
 .file-header-root > bdi {
   direction: ltr;
 }
+/* Where a served mirror is kept, after the address. A mirror's root is the
+   repository's name, and no directory holds its files: they are read from a
+   bare Git repository in the cache. So that directory is not the start of the
+   address, where it would read as a folder of these files. It stands apart at
+   the far end, muted and at the summary's size, and its tooltip says what it is.
+
+   It gives its width up before anything in the address does, the root's name
+   included, by the same proportional arithmetic .file-header-root describes:
+   its weight is 5000 times the root's, the ratio measured there as the least
+   that takes no sliver from the next part. It ends in an ellipsis rather than
+   starting with one, because the start, ~/.metabrowser/cache, is what says
+   where it is and the end is a store's hexadecimal key.
+
+   Measured 2026-10-01 in Chrome 152, on a mirror's page at
+   squares / docs / deep / nested / a-rather-long-file-name-for-the-heading.md,
+   whose note is 708px wide when nothing is squeezed, as the width each part
+   gave up:
+
+     window    note      root's name   any crumb
+     1440px    144px     0.000px       0.000px
+     1100px    484px     0.008px       0.000px
+      900px    684px     0.008px       0.000px
+      760px    all       all           directories ellipsized; file name 33px
+
+   At 760px and below the note is its 10px of padding and the address behaves
+   as a folder's does, whose root is gone below a 375px header. */
+.file-header-mirror {
+  flex: 0 100000000 auto;
+  min-width: 0;
+  margin-left: auto;
+  padding-left: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+  font-weight: var(--weight-normal);
+}
 .folder-crumb-sep {
   color: var(--muted);
 }
@@ -4359,6 +4407,9 @@ pre.code-block.metabrowser-source-lines > code {
   font-size: var(--tooltip-font-size);
   line-height: 1.4;
   max-width: 360px;
+  /* A path or a commit ID is one unbroken run, and a served mirror's tooltip
+     holds both: without this a run wider than the box is drawn past its edge. */
+  overflow-wrap: anywhere;
   pointer-events: none;
   opacity: 0;
   transition: opacity var(--transition-fast);

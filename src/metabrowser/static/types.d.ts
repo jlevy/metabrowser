@@ -189,6 +189,10 @@ type MetabrowserPreviewPaneLifecycle = Readonly<{
 
 type MetabrowserNavigationRouteRuntime = Readonly<{
   displayPath(path: string, sourceKind?: "filesystem" | "git_revision"): string;
+  servedRootAddress(
+    served: { servedRoot?: string; mirrorLocation?: string; mirrorTip?: string },
+    esc: (text: unknown) => string,
+  ): { prefix: string; note: string };
   /** The GitPath wire of a path on a pinned revision; null when it has an empty segment. */
   attachController(controller: MetabrowserNavigationController): () => void;
   commitFreshFileResponse(options: {
@@ -2206,6 +2210,9 @@ declare global {
     pin: string | null;
     ref: string | null;
     ref_name: string | null;
+    name: string | null;
+    origin: string | null;
+    location: string | null;
     refreshable: boolean;
     latest: string | null;
     ref_on_origin: boolean | null;

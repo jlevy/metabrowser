@@ -292,6 +292,30 @@
     return path.replace(/%(25|5C)/g, (_match, hex) => (hex === "25" ? "%" : "\\"));
   }
 
+  /**
+   * The served root in the main heading: its dimmed prefix and, for a served mirror,
+   * the note saying where the mirror is kept. A mirror's root is the repository's
+   * name, not a path: nothing is checked out, so the cache directory is named apart
+   * from the address.
+   *
+   * @param {{servedRoot?: string, mirrorLocation?: string, mirrorTip?: string}} served
+   *   the navigation heading's data attributes
+   * @param {(text: unknown) => string} esc
+   */
+  function servedRootAddress(served, esc) {
+    const tip = served.mirrorTip ? ` data-tip-text="${esc(served.mirrorTip)}"` : "";
+    return {
+      // <bdi> isolates the path from the start-truncation direction on the
+      // wrapper; see .file-header-root. It carries no style of its own.
+      prefix: served.servedRoot
+        ? `<span class="file-header-root"${tip}><bdi>${esc(served.servedRoot)}</bdi></span>`
+        : "",
+      note: served.mirrorLocation
+        ? `<span class="file-header-mirror"${tip}>mirror in ${esc(served.mirrorLocation)}</span>`
+        : "",
+    };
+  }
+
   /** Convert URL bytes into the provider's lossless identity, including POSIX names
    * with isolated non-UTF-8 bytes. Ordinary UTF-8 takes the fast path.
    * @param {string} segment
@@ -1077,6 +1101,7 @@
     replaceFileSnapshot,
     requestFailure,
     responseBodyFailure,
+    servedRootAddress,
     settleFileSelectionFailure,
     settleNavigationDependency,
   });

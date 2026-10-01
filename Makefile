@@ -163,6 +163,7 @@ ADMITTED_GIT_TESTS := \
 	tests/test_cli_acquire_error_modes.py \
 	tests/test_cli_cache_recovery_golden.py \
 	tests/test_source_refs.py \
+	tests/test_mirror_heading_session.py \
 	tests/test_admitted_git_gate.py
 
 test-admitted-git:
@@ -196,6 +197,7 @@ test-live-github:
 # cannot report that it regenerated what it skipped. Review the diff before committing.
 GOLDEN_RECORDERS := \
 	tests/test_source_kind_session.py \
+	tests/test_mirror_heading_session.py \
 	tests/test_source_freshness_session.py \
 	tests/test_source_ref_selector_session.py \
 	tests/test_diff_view_file_session.py \

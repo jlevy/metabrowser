@@ -2,15 +2,23 @@
 
 :class:`StoreMirror` is the cache's side of :class:`metabrowser.mirror_refresh.ServedMirror`.
 The CLI builds one from the source it acquired or reused and hands it to the server, so
-the server reaches the store, its record, and its origin only through these methods and
-never learns a cache path.
+the server reaches the store, its record, and its origin only through these methods.
+
+The server learns one cache path from it, as text to show and never to open:
+:attr:`StoreMirror.display` says where the mirror is kept, beside the repository's name
+and its origin. A page that showed a commit ID where a folder shows its name, and said
+nowhere that its files came out of ``~/.metabrowser``, hid both (decided 2026-10-01,
+``mb-fndz``).
 """
 
 from __future__ import annotations
 
 import asyncio
+import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Final
+from urllib.parse import unquote_to_bytes
 
 from metabrowser.cache import acquire
 from metabrowser.cache.acquire import PublishedSource
@@ -24,10 +32,76 @@ from metabrowser.cache.resolve import list_mirror_refs, ref_tip, resolve_pin
 from metabrowser.cache.update import update_store
 from metabrowser.cache.urls import GitSource
 from metabrowser.git.process import RepositoryStoreTarget, repository_store_target
-from metabrowser.git.tree_source import GitRevisionSubject
+from metabrowser.git.tree_source import GitRevisionSubject, display_segment
 from metabrowser.home import PrivateStorageError
-from metabrowser.mirror_refresh import MirrorRef, RecordedFreshness, RefKind, RefreshResult
+from metabrowser.mirror_refresh import (
+    MirrorDisplay,
+    MirrorRef,
+    RecordedFreshness,
+    RefKind,
+    RefreshResult,
+)
+from metabrowser.paths_safe import tilde_path
 from metabrowser.repository_context import RepositoryContext
+
+# The longest repository name shown. A checkout is a directory, and a file system holds
+# a name of at most 255 bytes, so no checkout is called anything longer; an origin's
+# last path segment can run to the 2048 bytes an address may. The heading and the
+# tooltip are the only readers, and a longer name ends in an ellipsis.
+REPOSITORY_NAME_MAX_CHARS: Final = 255
+# What a repository is called when its address names nothing: ``file:///.git``.
+UNNAMED_REPOSITORY: Final = "repository"
+_PORT: Final = re.compile(r":[0-9]+$")
+
+
+def repository_name(address: str) -> str:
+    """The name a checkout of the repository at *address* would have, safe to show.
+
+    The rule ``git clone`` names its directory by, for every address the cache holds:
+    the last path segment, without a trailing ``/.git`` and without a ``.git`` suffix,
+    so ``https://github.com/jlevy/squares``, ``file:///srv/squares.git``, and
+    ``file:///srv/squares/.git`` are all ``squares``. An address whose path names
+    nothing else is called by its host, and by :data:`UNNAMED_REPOSITORY` when it has
+    none.
+
+    *address* is a source's normalized address, which the origin's owner chose. A
+    percent-escape is decoded, so a name reads as it is written, and the result goes
+    through :func:`~metabrowser.git.tree_source.display_segment`: bytes that are not
+    UTF-8, controls, and characters drawn as nothing become U+FFFD. It is cut at
+    :data:`REPOSITORY_NAME_MAX_CHARS`. Text to show, never a path to open.
+    """
+
+    scheme, separator, rest = address.partition("://")
+    if separator:
+        authority, _, path = rest.partition("/")
+    else:
+        # The scp-like form, ``[user@]host:path``.
+        authority, _, path = scheme.partition(":")
+    segments = [segment for segment in path.split("/") if segment]
+    if segments and segments[-1] == ".git":
+        segments.pop()
+    raw = segments[-1] if segments else _PORT.sub("", authority.rpartition("@")[2])
+    if raw.endswith(".git") and raw != ".git":
+        raw = raw.removesuffix(".git")
+    name = display_segment(unquote_to_bytes(raw)) or UNNAMED_REPOSITORY
+    if len(name) > REPOSITORY_NAME_MAX_CHARS:
+        name = name[: REPOSITORY_NAME_MAX_CHARS - 1] + "\u2026"
+    return name
+
+
+def display_directory(directory: Path) -> str:
+    """*directory* as a person would type it: the home directory as ``~``.
+
+    Abbreviated only when it is under the home directory, and absolute otherwise, as a
+    served folder's own path is. A control or invisible character in it is replaced, as
+    in every name shown.
+    """
+
+    try:
+        shown = tilde_path(directory, Path.home())
+    except (OSError, RuntimeError):
+        shown = str(directory)
+    return display_segment(shown.encode("utf-8", "surrogateescape"))
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,9 +129,30 @@ class StoreMirror:
     def key(self) -> str:
         return self.store_key
 
+    @property
+    def _repository(self) -> Path:
+        return self.home / store_directory(self.store_key) / "repository.git"
+
     def _target(self) -> RepositoryStoreTarget:
-        return repository_store_target(
-            git_dir=self.home / store_directory(self.store_key) / "repository.git"
+        return repository_store_target(git_dir=self._repository)
+
+    @property
+    def display(self) -> MirrorDisplay:
+        """The repository's name, its origin, and where this mirror is kept.
+
+        The location is the store's bare repository, not the source's directory under
+        ``cache/sources``. That directory carries the repository's name, but it holds
+        three small records and no Git object: ``du`` there measures a few kilobytes,
+        and ``git -C`` there fails. The bare repository is what every page is read
+        from, what a clone's size is, and where ``git -C <location> log --all`` works.
+        The name it lacks is shown beside it.
+        """
+
+        origin = self.source.normalized
+        return MirrorDisplay(
+            name=repository_name(origin),
+            origin=display_segment(origin.encode("utf-8", "surrogateescape")),
+            location=display_directory(self._repository),
         )
 
     async def open_selection(
@@ -147,4 +242,10 @@ class StoreMirror:
             return True
 
 
-__all__ = ["StoreMirror"]
+__all__ = [
+    "REPOSITORY_NAME_MAX_CHARS",
+    "UNNAMED_REPOSITORY",
+    "StoreMirror",
+    "display_directory",
+    "repository_name",
+]
