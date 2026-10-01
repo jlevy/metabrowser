@@ -222,6 +222,54 @@
     "selection_state": null,
     "selection_href": null
   },
+  "commit_stale_started": {
+    "status": 202,
+    "body": {
+      "refresh": "started",
+      "status": {
+        "subject": "git_revision",
+        "generation": 3,
+        "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+        "ref": "refs/remotes/origin/topic",
+        "ref_name": "topic",
+        "refreshable": true,
+        "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+        "ref_on_origin": true,
+        "last_fetch_at": "2026-09-17T12:00:05Z",
+        "last_outcome": {
+          "operation": "refresh",
+          "outcome": "origin_unavailable",
+          "at": "2026-09-23T12:00:00Z"
+        },
+        "refreshing": true,
+        "stale": true,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      }
+    }
+  },
+  "commit_stale_unfetched": {
+    "subject": "git_revision",
+    "generation": 3,
+    "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "refreshable": true,
+    "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-17T12:00:05Z",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "origin_unavailable",
+      "at": "2026-09-23T12:00:00Z"
+    },
+    "refreshing": false,
+    "stale": true,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  },
   "selection_pending": {
     "subject": "git_revision",
     "generation": 4,
@@ -391,28 +439,169 @@
       "code": "commit_not_found"
     }
   },
-  "commit_fetch_started": {
-    "refresh": "started",
-    "status": {
-      "subject": "git_revision",
-      "generation": 8,
-      "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
-      "ref": "refs/remotes/origin/topic",
-      "ref_name": "topic",
-      "refreshable": true,
-      "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
-      "ref_on_origin": true,
-      "last_fetch_at": "2026-09-23T12:00:00Z",
-      "last_outcome": {
-        "operation": "refresh",
-        "outcome": "succeeded",
-        "at": "2026-09-23T12:00:00Z"
-      },
-      "refreshing": true,
-      "stale": false,
-      "pull_request": null,
-      "selection_state": null,
-      "selection_href": null
+  "commit_refused": {
+    "oid": "92b31b0785485bd9eaa9619d198a779c2699295d",
+    "status": 409,
+    "body": {
+      "error": "the server now serves another revision; reload the page",
+      "code": "pin_changed",
+      "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb"
+    }
+  },
+  "commit_fresh": {
+    "status": 200,
+    "body": {
+      "refresh": "fresh",
+      "status": {
+        "subject": "git_revision",
+        "generation": 8,
+        "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+        "ref": "refs/remotes/origin/topic",
+        "ref_name": "topic",
+        "refreshable": true,
+        "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+        "ref_on_origin": true,
+        "last_fetch_at": "2026-09-23T12:00:00Z",
+        "last_outcome": {
+          "operation": "refresh",
+          "outcome": "succeeded",
+          "at": "2026-09-23T12:00:00Z"
+        },
+        "refreshing": false,
+        "stale": false,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      }
+    }
+  },
+  "commit_beside_page": {
+    "subject": "git_revision",
+    "generation": 8,
+    "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "refreshable": true,
+    "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-23T12:00:00Z",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "succeeded",
+      "at": "2026-09-23T12:00:00Z"
+    },
+    "refreshing": false,
+    "stale": true,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  },
+  "commit_beside_refresh": {
+    "status": 202,
+    "body": {
+      "refresh": "started",
+      "status": {
+        "subject": "git_revision",
+        "generation": 8,
+        "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+        "ref": "refs/remotes/origin/topic",
+        "ref_name": "topic",
+        "refreshable": true,
+        "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+        "ref_on_origin": true,
+        "last_fetch_at": "2026-09-23T12:00:00Z",
+        "last_outcome": {
+          "operation": "refresh",
+          "outcome": "succeeded",
+          "at": "2026-09-23T12:00:00Z"
+        },
+        "refreshing": true,
+        "stale": true,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      }
+    }
+  },
+  "commit_beside_only": {
+    "status": 202,
+    "body": {
+      "refresh": "fresh",
+      "status": {
+        "subject": "git_revision",
+        "generation": 8,
+        "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+        "ref": "refs/remotes/origin/topic",
+        "ref_name": "topic",
+        "refreshable": true,
+        "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+        "ref_on_origin": true,
+        "last_fetch_at": "2026-09-23T12:00:00Z",
+        "last_outcome": {
+          "operation": "refresh",
+          "outcome": "succeeded",
+          "at": "2026-09-23T12:00:00Z"
+        },
+        "refreshing": true,
+        "stale": true,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      }
+    }
+  },
+  "commit_retry_started": {
+    "status": 202,
+    "body": {
+      "refresh": "started",
+      "status": {
+        "subject": "git_revision",
+        "generation": 8,
+        "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+        "ref": "refs/remotes/origin/topic",
+        "ref_name": "topic",
+        "refreshable": true,
+        "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+        "ref_on_origin": true,
+        "last_fetch_at": "2026-09-23T12:00:00Z",
+        "last_outcome": {
+          "operation": "refresh",
+          "outcome": "succeeded",
+          "at": "2026-09-23T12:00:00Z"
+        },
+        "refreshing": true,
+        "stale": true,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      }
+    }
+  },
+  "commit_joined": {
+    "status": 202,
+    "body": {
+      "refresh": "joined",
+      "status": {
+        "subject": "git_revision",
+        "generation": 8,
+        "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+        "ref": "refs/remotes/origin/topic",
+        "ref_name": "topic",
+        "refreshable": true,
+        "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+        "ref_on_origin": true,
+        "last_fetch_at": "2026-09-23T12:00:00Z",
+        "last_outcome": {
+          "operation": "refresh",
+          "outcome": "succeeded",
+          "at": "2026-09-23T12:00:00Z"
+        },
+        "refreshing": true,
+        "stale": true,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      }
     }
   },
   "commit_fetched": {
@@ -449,33 +638,9 @@
       "code": "commit_not_found"
     }
   },
-  "commit_unfetched_started": {
-    "refresh": "started",
-    "status": {
-      "subject": "git_revision",
-      "generation": 8,
-      "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
-      "ref": "refs/remotes/origin/topic",
-      "ref_name": "topic",
-      "refreshable": true,
-      "latest": "92b31b0785485bd9eaa9619d198a779c2699295d",
-      "ref_on_origin": true,
-      "last_fetch_at": "2026-09-23T12:00:00Z",
-      "last_outcome": {
-        "operation": "refresh",
-        "outcome": "succeeded",
-        "at": "2026-09-23T12:00:00Z"
-      },
-      "refreshing": true,
-      "stale": false,
-      "pull_request": null,
-      "selection_state": null,
-      "selection_href": null
-    }
-  },
-  "commit_unfetched": {
+  "origin_not_shown": {
     "subject": "git_revision",
-    "generation": 8,
+    "generation": 9,
     "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
     "ref": "refs/remotes/origin/topic",
     "ref_name": "topic",
@@ -485,7 +650,7 @@
     "last_fetch_at": "2026-09-23T12:00:00Z",
     "last_outcome": {
       "operation": "refresh",
-      "outcome": "origin_unavailable",
+      "outcome": "not_found_or_private",
       "at": "2026-09-23T12:00:00Z"
     },
     "refreshing": false,

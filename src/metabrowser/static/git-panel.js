@@ -1690,7 +1690,7 @@
   }
 
   /**
-   * The preview for a commit the repository does not have.
+   * The preview for a commit the repository does not have, or could not be asked about.
    *
    * @param {MetabrowserMissingCommitModel} model
    * @param {(() => void) | null} retry
@@ -1703,10 +1703,13 @@
     const title = document.createElement("strong");
     title.className = "preview-error-title";
     title.textContent = model.title;
-    const detail = document.createElement("span");
-    detail.className = "preview-error-detail";
-    detail.textContent = model.detail;
-    node.append(title, detail);
+    node.appendChild(title);
+    if (model.detail) {
+      const detail = document.createElement("span");
+      detail.className = "preview-error-detail";
+      detail.textContent = model.detail;
+      node.appendChild(detail);
+    }
     if (model.retry && retry !== null) {
       const button = document.createElement("button");
       button.type = "button";
@@ -1721,29 +1724,39 @@
   /**
    * Say what is known about a commit the repository does not have, instead of that it
    * could not be loaded. A folder's repository simply lacks it. A served mirror may only
-   * not have fetched it yet: static/source-freshness.js fetches once through the page's
-   * freshness controller and then opens the commit or says why not, and Retry asks again.
+   * not have fetched it yet: static/source-freshness.js asks the page's freshness
+   * controller for the fetch such a commit waits for and then opens the commit or says
+   * why not. A page asks for that fetch by itself only when the mirror is older than
+   * the freshness window; Retry, the reader's own click, always asks.
    *
-   * Resolves once the first state is painted. On a mirror the fetch from the origin goes
-   * on after that, and the view repaints when it ends.
+   * Resolves once the first state is painted, so the pane stays busy until it shows
+   * one. On a mirror a fetch from the origin goes on after that, and the view repaints
+   * when it ends.
    *
    * @param {string} revision
    * @param {MetabrowserPreviewClaim} previewClaim
+   * @param {{retry?: boolean}} [options]
    */
-  async function showMissingCommit(revision, previewClaim) {
+  async function showMissingCommit(revision, previewClaim, options = {}) {
     const bridge = shell();
     if (!bridge) {
       return;
     }
     const current = () =>
       state.selectedId === revision && bridge.isPreviewClaimCurrent(previewClaim);
+    /** @type {() => void} */
+    let painted = () => {};
+    /** @type {Promise<void>} */
+    const firstPaint = new Promise((resolve) => {
+      painted = resolve;
+    });
     /** @param {MetabrowserMissingCommitModel} model */
     const paint = (model) => {
-      if (!current()) {
-        return;
+      if (current()) {
+        const retry = () => void showMissingCommit(revision, previewClaim, { retry: true });
+        bridge.renderPreviewNode(missingCommitNode(model, retry), previewClaim);
       }
-      const retry = () => void showMissingCommit(revision, previewClaim);
-      bridge.renderPreviewNode(missingCommitNode(model, retry), previewClaim);
+      painted();
     };
     /** @type {MetabrowserSourceFreshnessController | null} */
     let controller = null;
@@ -1765,31 +1778,39 @@
       });
       return;
     }
-    // Its first statement paints the fetching state; the rest waits for the origin.
     void freshness
-      .openMissingCommit(controller, {
-        load: async () => {
-          // A slot that found the commit missing holds that answer; ask again.
-          if (preparationSlot?.revision === revision) {
-            abortPreparation(preparationSlot);
-            preparationSlot = null;
-          }
-          missingRevisions.delete(revision);
-          const preparation = prepareRevision(revision, false);
-          const detail = preparation ? await preparation.detail : null;
-          if (!detail || !current()) {
-            return Boolean(detail);
-          }
-          await renderCommitDetail(detail, previewClaim, preparation);
-          return true;
+      .openMissingCommit(
+        controller,
+        {
+          load: async () => {
+            // A slot that found the commit missing holds that answer; ask again.
+            if (preparationSlot?.revision === revision) {
+              abortPreparation(preparationSlot);
+              preparationSlot = null;
+            }
+            missingRevisions.delete(revision);
+            const preparation = prepareRevision(revision, false);
+            const detail = preparation ? await preparation.detail : null;
+            if (!detail) {
+              // Absent is an answer about the commit; anything else is a failed request.
+              return missingRevisions.has(revision) ? "missing" : "failed";
+            }
+            if (current()) {
+              await renderCommitDetail(detail, previewClaim, preparation);
+            }
+            return "found";
+          },
+          paint,
+          isCurrent: current,
+          now: () => Date.now(),
         },
-        paint,
-        isCurrent: current,
-        now: () => Date.now(),
-      })
+        { retry: options.retry === true },
+      )
       .catch((error) => {
         console.error("metabrowser git panel: opening a fetched commit failed", error);
-      });
+      })
+      .finally(painted);
+    await firstPaint;
   }
 
   /**

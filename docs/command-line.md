@@ -150,10 +150,13 @@ branch again, as its banner says.
 A branch or tag deleted upstream leaves the mirror, but no commit does, so an older pin
 stays readable after a force-push.
 If the origin is gone the row says the refresh failed and the pin keeps serving.
-A `/commit/<id>` address for a commit the mirror does not have is fetched for once: the
-page says it is fetching, then opens the commit, says the commit was not found when the
-fetch ran without bringing it, or says it was not fetched, with the reason and a Retry,
-when the fetch could not run.
+A `/commit/<id>` address for a commit the mirror does not have is fetched for only when
+the mirror is older than the one-minute freshness window: the page says it is fetching,
+then opens the commit, says the commit was not found when the fetch ran without bringing
+it, or says it was not fetched, with the reason, when the fetch could not run.
+On a mirror fetched inside the window nothing is fetched, because a link in a served
+page can lead to any such address; the page says the commit is not in the mirror as
+fetched. Either way **Retry** fetches.
 
 A served pin always runs under the untrusted profile: `--untrusted` is implied, the
 `METAB_*` enables are ignored, and `--allow-edits` is an error.
@@ -164,11 +167,15 @@ cached sources is served beside it; inspect the cache with
 
 `/api/source/status` reports the pinned commit and ref and the mirror’s freshness.
 `POST /api/source/refresh` starts a refresh, or joins the running one, and answers at
-once. `POST /api/source/pin` switches the served commit to a branch, a tag, or a commit
-ID in the mirror, with a JSON body such as `{"ref": "feature"}` or `{"oid": "3f2a9c1"}`.
-In a server, one the mirror lacks answers `202` with `selection_pending` and fetches
-once; asked again after that fetch, it switches or answers `404`. `--api` never fetches
-for it and answers `404` at once.
+once.
+With the body `{"for": "commit"}` it is the fetch a missing commit waits for, which
+starts a fetch of the mirror only outside the freshness window and otherwise answers
+`fresh`; adding `"retry": true` always fetches.
+`POST /api/source/pin` switches the served commit to a branch, a tag, or a commit ID in
+the mirror, with a JSON body such as `{"ref": "feature"}` or `{"oid": "3f2a9c1"}`. In a
+server, one the mirror lacks answers `202` with `selection_pending` and fetches once;
+asked again after that fetch, it switches or answers `404`. `--api` never fetches for it
+and answers `404` at once.
 A pin request may also name the page’s address, as in
 `{"ref": "feature", "view": "/view/…"}`; the answer’s `view_href` is then that address
 when the new revision has the entry, or `/view/` when it does not.

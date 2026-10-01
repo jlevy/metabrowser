@@ -8076,7 +8076,11 @@ var sourceFreshnessStarted = null;
  * one status and a page never polls twice.
  */
 function sourceFreshness() {
-  sourceFreshnessStarted ??= startSourceFreshness();
+  sourceFreshnessStarted ??= startSourceFreshness().catch((error) => {
+    // A failed asset load is not the answer for the rest of the page's life.
+    sourceFreshnessStarted = null;
+    throw error;
+  });
   return sourceFreshnessStarted;
 }
 

@@ -2125,8 +2125,8 @@ async function run() {
       "Could not load this commit.",
     );
 
-    // A served mirror: the commit view says it is fetching, asks the page's controller
-    // for one fetch, and says how the fetch ended.
+    // A served mirror: the commit view asks the page's controller for the fetch such a
+    // commit waits for, and says how that ended.
     const mirrorStatus = (outcome) => ({
       subject: "git_revision",
       generation: 1,
@@ -2144,16 +2144,38 @@ async function run() {
       selection_state: null,
       selection_href: null,
     });
-    let fetches = 0;
+    const asked = [];
     let endFetch = null;
+    // What the controller answers without waiting: inside the freshness window it asks
+    // for nothing. Otherwise it says it is waiting and answers when the fetch ends.
+    let insideWindow = false;
     freshnessController = {
-      fetchMissing: () => {
-        fetches += 1;
+      fetchMissing: (options) => {
+        asked.push(options.retry === true ? "retry" : "own");
+        if (insideWindow) {
+          return Promise.resolve({
+            status: mirrorStatus("succeeded"),
+            error: null,
+            fetched: false,
+            waited: false,
+          });
+        }
+        options.waiting?.();
         return new Promise((resolve) => {
           endFetch = resolve;
         });
       },
     };
+    const fetched = (outcome) => ({
+      status: mirrorStatus(outcome),
+      error: null,
+      fetched: true,
+      waited: true,
+    });
+    const commitRequests = (revision) =>
+      fetchRequests.filter((request) => request.url.startsWith(`/api/git/commit/${revision}`))
+        .length;
+
     responses.set(`/api/git/commit/${SHA_UNFETCHED}`, notFound);
     const previewPane = document.getElementById("preview-pane");
     const priorView = document.createElement("div");
@@ -2168,7 +2190,7 @@ async function run() {
     );
     await selecting;
     await tick();
-    assertEqual("unfetched commit: one fetch is asked for", fetches, 1);
+    assertEqual("unfetched commit: the page's own request is made", asked, ["own"]);
     assertContains("unfetched commit: says it is fetching", previewHtml, "Fetching this commit");
     assertEqual(
       "unfetched commit: pending is a status",
@@ -2181,7 +2203,7 @@ async function run() {
       null,
     );
 
-    endFetch({ status: mirrorStatus("origin_unavailable"), error: null });
+    endFetch(fetched("origin_unavailable"));
     await tick();
     await tick();
     assertContains("unfetched commit: names the failed fetch", previewHtml, "Commit not fetched");
@@ -2194,10 +2216,10 @@ async function run() {
     const retry = previewNode.querySelector(".git-commit-missing-retry");
     assertTrue("unfetched commit: offers the fetch again", retry !== null);
 
-    // Retry asks again; this time the fetch brings the commit and it opens.
+    // Retry is the reader's click; this time the fetch brings the commit and it opens.
     retry.dispatch("click");
     await tick();
-    assertEqual("unfetched commit: retry asks for another fetch", fetches, 2);
+    assertEqual("unfetched commit: the click asks as a retry", asked, ["own", "retry"]);
     assertContains(
       "unfetched commit: retry says it is fetching",
       previewHtml,
@@ -2211,12 +2233,12 @@ async function run() {
       files: [],
       files_truncated: false,
     });
-    endFetch({ status: mirrorStatus("succeeded"), error: null });
+    endFetch(fetched("succeeded"));
     await tick();
     await tick();
     assertContains("unfetched commit: opens once fetched", previewHtml, "commit the fetch brought");
 
-    // Selecting it again reads the commit, not the remembered miss, and fetches nothing.
+    // Selecting it again reads the commit, not the remembered miss, and asks for nothing.
     await internals.selectCommit(SHA_A);
     await tick();
     await internals.selectCommit(SHA_UNFETCHED);
@@ -2226,16 +2248,56 @@ async function run() {
       previewHtml,
       "commit the fetch brought",
     );
-    assertEqual("unfetched commit: a found commit asks for no fetch", fetches, 2);
+    assertEqual("unfetched commit: a found commit asks for no fetch", asked.length, 2);
+
+    // A request that fails when the commit is asked for again after the fetch is a load
+    // failure. It says nothing about the commit, so the view must not say "not found".
+    const SHA_REFUSED = "6".repeat(40);
+    responses.set(`/api/git/commit/${SHA_REFUSED}`, notFound);
+    await internals.selectCommit(SHA_REFUSED);
+    await tick();
+    responses.set(`/api/git/commit/${SHA_REFUSED}`, {
+      httpStatus: 409,
+      body: { error: "the server now serves another revision", code: "pin_changed" },
+    });
+    endFetch(fetched("succeeded"));
+    await tick();
+    await tick();
+    assertContains(
+      "refused commit: a failed re-ask is a load failure",
+      previewHtml,
+      "Could not load this commit.",
+    );
+    assertNotContains("refused commit: not called not found", previewHtml, "Commit not found");
+    assertEqual("refused commit: state on the element", previewNode.dataset.state, "failed");
+
+    // Inside the freshness window the controller asks for nothing: the view says the
+    // commit is not in the mirror as fetched, offers Retry, and does not ask the commit
+    // route a second time.
+    const SHA_INSIDE = "7".repeat(40);
+    insideWindow = true;
+    responses.set(`/api/git/commit/${SHA_INSIDE}`, notFound);
+    await internals.selectCommit(SHA_INSIDE);
+    await tick();
+    await tick();
+    assertContains("inside the window: names the miss", previewHtml, "Commit not found");
+    assertContains("inside the window: says what it knows", previewHtml, "as fetched");
+    assertNotContains("inside the window: no fetch is claimed", previewHtml, "did not bring it");
+    assertNotContains("inside the window: never said fetching", previewHtml, "Fetching");
+    assertEqual("inside the window: the route is asked once", commitRequests(SHA_INSIDE), 1);
+    assertTrue(
+      "inside the window: offers Retry",
+      previewNode.querySelector(".git-commit-missing-retry") !== null,
+    );
+    insideWindow = false;
 
     // A reader who goes elsewhere while the fetch runs keeps what they went to.
     responses.set(`/api/git/commit/${SHA_LEFT}`, notFound);
     await internals.selectCommit(SHA_LEFT);
     await tick();
-    assertEqual("left commit: one fetch is asked for", fetches, 3);
     const fileClaim = sandbox.MetabrowserShell.claimPreview("file");
     sandbox.MetabrowserShell.renderPreviewHtml("<div>the reader moved on</div>", fileClaim);
-    endFetch({ status: mirrorStatus("succeeded"), error: null });
+    endFetch(fetched("succeeded"));
     await tick();
     await tick();
     assertContains("left commit: the newer preview stays", previewHtml, "the reader moved on");

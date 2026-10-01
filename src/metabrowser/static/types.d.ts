@@ -2265,23 +2265,36 @@ declare global {
   };
 
   /**
-   * What the commit view says about a commit the mirror lacks: being fetched, not on
-   * the origin, or not fetched because the fetch did not run, which `retry` offers again.
+   * What the commit view says about a commit the mirror lacks: being fetched, not
+   * found, or not fetched because the fetch did not run; `retry` offers the fetch
+   * again. `failed` is a commit route that failed, which says nothing about the commit.
    */
   type MetabrowserMissingCommitModel = {
-    state: "pending" | "not_found" | "fetch_failed";
+    state: "pending" | "not_found" | "fetch_failed" | "failed";
     title: string;
     detail: string;
     retry: boolean;
   };
 
-  /** How the fetch for a missing address ended: the status then, and why it was not asked for. */
-  type MetabrowserSourceFetchEnd = { status: MetabrowserSourceStatus | null; error: string | null };
+  /**
+   * How asking for a missing commit's fetch ended: the status then, why it could not be
+   * asked for or followed, whether a fetch of the mirror's branches and tags ran, and
+   * whether anything ran that could have brought the commit.
+   */
+  type MetabrowserSourceFetchEnd = {
+    status: MetabrowserSourceStatus | null;
+    error: string | null;
+    fetched: boolean;
+    waited: boolean;
+  };
 
   /** The commit view's side of opening a commit the mirror lacks. */
   type MetabrowserMissingCommitView = {
-    /** Ask the server for the commit again and paint it; false when it is still missing. */
-    load(): Promise<boolean>;
+    /**
+     * Ask the server for the commit again: `found` once it is painted, `missing` when
+     * the server still does not have it, `failed` when the request itself failed.
+     */
+    load(): Promise<"found" | "missing" | "failed">;
     paint(model: MetabrowserMissingCommitModel): void;
     isCurrent(): boolean;
     now(): number;
@@ -2307,8 +2320,11 @@ declare global {
   type MetabrowserSourceFreshnessController = Readonly<{
     start(): Promise<void>;
     poll(): Promise<void>;
-    requestRefresh(): Promise<void>;
-    fetchMissing(): Promise<MetabrowserSourceFetchEnd>;
+    requestRefresh(body?: Record<string, unknown>): Promise<string | null>;
+    fetchMissing(options?: {
+      retry?: boolean;
+      waiting?: () => void;
+    }): Promise<MetabrowserSourceFetchEnd>;
     acceptOffer(): Promise<void>;
     onVisibilityChange(): void;
     dispose(): void;
@@ -2335,13 +2351,19 @@ declare global {
     ): MetabrowserSourceFreshnessModel;
     describeMissingCommit(
       status: MetabrowserSourceStatus | null,
-      page: { phase: "fetching" | "ended"; nowMs: number; error?: string | null },
+      page: {
+        phase: "fetching" | "ended";
+        nowMs: number;
+        error?: string | null;
+        fetched?: boolean;
+      },
     ): MetabrowserMissingCommitModel;
     mount(element: HTMLElement): MetabrowserSourceFreshnessController;
     openMissingCommit(
       controller: Pick<MetabrowserSourceFreshnessController, "fetchMissing">,
       view: MetabrowserMissingCommitView,
-    ): Promise<"found" | "not_found" | "fetch_failed" | "superseded">;
+      options?: { retry?: boolean },
+    ): Promise<"found" | "not_found" | "fetch_failed" | "failed" | "superseded">;
     relativeAge(iso: string | null, nowMs: number): string;
     selectionToOpen(
       status: MetabrowserSourceStatus | null,

@@ -90,6 +90,7 @@ function createPage() {
   let currentStatus = null;
   let currentTag = null;
   let tagCounter = 0;
+  let answering = true;
 
   function setStatus(status) {
     currentStatus = status;
@@ -102,6 +103,9 @@ function createPage() {
       if (method === "GET") {
         const conditional = options.etag ? ` If-None-Match: ${options.etag}` : "";
         log.push(`GET ${route}${conditional}`);
+        if (!answering) {
+          throw new Error("connection refused");
+        }
         if (options.etag && options.etag === currentTag) {
           return { status: 304, etag: currentTag, body: null };
         }
@@ -146,17 +150,22 @@ function createPage() {
 
   function commitView(oid) {
     return {
+      // What static/git-panel.js does with the route's answer: the commit when it is
+      // there, `missing` only for the route's own `commit_not_found`, and `failed` for
+      // any other answer, which says nothing about the commit.
       async load() {
         log.push(`GET /api/git/commit/${oid}`);
         const answer = commitAnswers.shift();
         assert(answer, `no scripted answer for GET /api/git/commit/${oid}`);
-        if (answer.status !== 200) {
-          return false;
+        if (answer.status === 200) {
+          commitModel = null;
+          commitShown = answer.commit;
+          commitPaints += 1;
+          return "found";
         }
-        commitModel = null;
-        commitShown = answer.commit;
-        commitPaints += 1;
-        return true;
+        return answer.status === 404 && answer.body?.code === "commit_not_found"
+          ? "missing"
+          : "failed";
       },
       paint(next) {
         commitModel = next;
@@ -176,6 +185,9 @@ function createPage() {
     },
     leaveCommit() {
       onCommit = false;
+    },
+    stopAnswering() {
+      answering = false;
     },
     answerPost(route, status, body) {
       postAnswers[route].push({ status, body });
@@ -376,115 +388,221 @@ async function run() {
   }
 
   // A commit the mirror lacks, opened by its address in a served page. The commit
-  // route named the miss (recorded.commit_missing) and fetched nothing, so the view asks
-  // for one fetch through the page's controller, waits for it on the page's own polls,
-  // and asks the route again.
+  // route named the miss (recorded.commit_missing) and fetched nothing. A link in
+  // served content can send a reader to such an address, so the view asks for a fetch
+  // by itself only when something is older than the freshness window.
   const outcomes = [];
+  const refreshRoute = "/api/source/refresh";
+  const answerRefresh = (page, answer) => page.answerPost(refreshRoute, answer.status, answer.body);
+  assert(recorded.commit_missing.body.code === "commit_not_found", "the miss must be typed");
   {
+    // Inside the window: nothing is asked for. The view says the commit is not in the
+    // mirror as fetched, not that a fetch failed to bring it, and offers Retry.
     const page = createPage();
     const controller = freshness.createController(page.deps);
     page.setStatus(recorded.commit_page);
     await controller.start();
     page.observe("opened");
-    assert(recorded.commit_missing.body.code === "commit_not_found", "the miss must be typed");
-    page.answerPost("/api/source/refresh", 202, recorded.commit_fetch_started);
+    const view = page.commitView(recorded.commit_missing.oid);
+    outcomes.push(await freshness.openMissingCommit(controller, view));
+    steps.push(page.observe("inside the freshness window a missing commit starts no fetch"));
+
+    // Retry is the reader's own click: it fetches, the view says so while it runs, and
+    // the commit opens once the fetch has brought it.
+    answerRefresh(page, recorded.commit_retry_started);
     page.answerCommit(recorded.commit_found);
-    const opening = freshness.openMissingCommit(
-      controller,
-      page.commitView(recorded.commit_missing.oid),
-    );
+    const retrying = freshness.openMissingCommit(controller, view, { retry: true });
     await settle();
-    steps.push(page.observe("a commit the mirror lacks waits for one fetch"));
-    page.setStatus(recorded.commit_fetch_started.status);
+    steps.push(page.observe("retry fetches for the commit"));
+    page.setStatus(recorded.commit_retry_started.body.status);
     await page.fireTimer();
     steps.push(page.observe("the commit waits while the fetch runs"));
     page.setStatus(recorded.commit_fetched);
     await page.fireTimer();
-    outcomes.push(await opening);
+    outcomes.push(await retrying);
     steps.push(page.observe("the fetch brought the commit; it opens"));
     controller.dispose();
   }
 
-  // One the origin does not have: the fetch runs to the end and the route still says no.
+  // One the origin does not have: the retry's fetch runs to the end and the route
+  // still says no, so the view may say that no branch or tag reaches it.
   {
     const page = createPage();
     const controller = freshness.createController(page.deps);
     page.setStatus(recorded.commit_page);
     await controller.start();
     page.observe("opened");
-    page.answerPost("/api/source/refresh", 202, recorded.commit_fetch_started);
+    answerRefresh(page, recorded.commit_retry_started);
+    page.answerCommit(recorded.commit_absent_after);
+    const opening = freshness.openMissingCommit(
+      controller,
+      page.commitView(recorded.commit_absent.oid),
+      { retry: true },
+    );
+    await settle();
+    page.observe("waiting");
+    page.setStatus(recorded.commit_fetched);
+    await page.fireTimer();
+    outcomes.push(await opening);
+    steps.push(page.observe("the fetch ran and did not bring the commit"));
+    controller.dispose();
+  }
+
+  // A request that fails when the commit is asked for again is not an answer about the
+  // commit: the route refused this one because the pin changed while the fetch ran.
+  {
+    const page = createPage();
+    const controller = freshness.createController(page.deps);
+    page.setStatus(recorded.commit_page);
+    await controller.start();
+    page.observe("opened");
+    answerRefresh(page, recorded.commit_retry_started);
+    page.answerCommit(recorded.commit_refused);
+    const opening = freshness.openMissingCommit(
+      controller,
+      page.commitView(recorded.commit_refused.oid),
+      { retry: true },
+    );
+    await settle();
+    page.observe("waiting");
+    page.setStatus(recorded.commit_fetched);
+    await page.fireTimer();
+    outcomes.push(await opening);
+    steps.push(page.observe("asking again failed; the view does not say not found"));
+    controller.dispose();
+  }
+
+  // Only the data served beside the mirror is stale. The page's own request starts that
+  // refresh and no fetch of the mirror, and the server says so (`fresh`); the view waits
+  // for it, since a pull request's head arrives that way, and then does not claim a
+  // fetch of branches and tags that did not run.
+  {
+    const page = createPage();
+    const controller = freshness.createController(page.deps);
+    page.setStatus(recorded.commit_beside_page);
+    answerRefresh(page, recorded.commit_beside_refresh);
+    await controller.start();
+    page.observe("opened; the page refreshes the stale data beside the mirror");
+    answerRefresh(page, recorded.commit_beside_only);
     page.answerCommit(recorded.commit_absent_after);
     const opening = freshness.openMissingCommit(
       controller,
       page.commitView(recorded.commit_absent.oid),
     );
     await settle();
-    page.observe("waiting");
-    page.setStatus(recorded.commit_fetched);
+    steps.push(page.observe("only the data beside the mirror is refreshed"));
+    assert(recorded.commit_beside_only.body.refresh === "fresh", "no mirror fetch was started");
+    page.setStatus(recorded.commit_page);
     await page.fireTimer();
     outcomes.push(await opening);
-    steps.push(page.observe("the fetch did not bring the commit"));
+    steps.push(page.observe("no fetch of the mirror ran, and the view does not say one did"));
     controller.dispose();
   }
 
-  // One whose fetch cannot run: the view says so and offers the fetch again, and a
-  // retry asks once more.
+  // Outside the window: a page whose stale mirror could not be refreshed asks for the
+  // commit's fetch by itself, and that fetch cannot run either. The reader then goes
+  // elsewhere while a retry's fetch runs.
   {
     const page = createPage();
     const controller = freshness.createController(page.deps);
-    page.setStatus(recorded.commit_fetched);
+    page.setStatus(recorded.unreachable);
+    page.answerPost(refreshRoute, 202, recorded.unreachable_started);
     await controller.start();
-    page.observe("opened");
+    page.setStatus(recorded.unreachable_after);
+    await page.fireTimer();
+    page.observe("opened stale");
     const view = page.commitView(recorded.commit_absent.oid);
-    page.answerPost("/api/source/refresh", 202, recorded.commit_unfetched_started);
+    answerRefresh(page, recorded.commit_stale_started);
     page.answerCommit(recorded.commit_absent_after);
     const opening = freshness.openMissingCommit(controller, view);
     await settle();
-    page.observe("waiting");
-    page.setStatus(recorded.commit_unfetched);
+    steps.push(page.observe("outside the window the page asks for the fetch itself"));
+    page.setStatus(recorded.commit_stale_unfetched);
     await page.fireTimer();
     outcomes.push(await opening);
     steps.push(page.observe("the commit could not be fetched"));
-    page.answerPost("/api/source/refresh", 202, recorded.commit_unfetched_started);
-    const retrying = freshness.openMissingCommit(controller, view);
+
+    answerRefresh(page, recorded.commit_stale_started);
+    const retrying = freshness.openMissingCommit(controller, view, { retry: true });
     await settle();
-    steps.push(page.observe("retry the commit"));
-    // The reader goes elsewhere while the retry's fetch runs: nothing is asked or painted.
+    page.observe("retrying");
     page.leaveCommit();
-    page.setStatus(recorded.commit_unfetched);
+    page.setStatus(recorded.commit_stale_unfetched);
     await page.fireTimer();
     outcomes.push(await retrying);
     steps.push(page.observe("the reader left before the fetch ended"));
     controller.dispose();
   }
 
-  // A refresh already running is the fetch: the page that opened stale asked for it, so
-  // the commit view asks for none beside it.
+  // A fetch of the mirror that is already running is joined by the server, and counts.
   {
     const page = createPage();
     const controller = freshness.createController(page.deps);
-    page.setStatus(recorded.stale);
-    page.answerPost("/api/source/refresh", 202, recorded.refresh_started);
+    page.setStatus(recorded.commit_retry_started.body.status);
     await controller.start();
-    page.observe("opened stale");
-    page.answerCommit(recorded.commit_absent_after);
+    page.observe("opened while a fetch runs");
+    answerRefresh(page, recorded.commit_joined);
+    page.answerCommit(recorded.commit_found);
     const opening = freshness.openMissingCommit(
       controller,
-      page.commitView(recorded.commit_absent.oid),
+      page.commitView(recorded.commit_missing.oid),
     );
     await settle();
-    steps.push(page.observe("a refresh already running is the commit's fetch"));
-    page.setStatus(recorded.refreshed);
+    steps.push(page.observe("a fetch of the mirror already running is joined"));
+    page.setStatus(recorded.commit_fetched);
     await page.fireTimer();
     outcomes.push(await opening);
     page.observe("ended");
     controller.dispose();
   }
+
+  // The server stops answering while the fetch runs: the view gives up at the first
+  // poll that fails, and the page falls back to its slow poll.
+  {
+    const page = createPage();
+    const controller = freshness.createController(page.deps);
+    page.setStatus(recorded.commit_page);
+    await controller.start();
+    page.observe("opened");
+    answerRefresh(page, recorded.commit_retry_started);
+    const opening = freshness.openMissingCommit(
+      controller,
+      page.commitView(recorded.commit_absent.oid),
+      { retry: true },
+    );
+    await settle();
+    page.observe("waiting");
+    page.stopAnswering();
+    await page.fireTimer();
+    outcomes.push(await opening);
+    steps.push(page.observe("the server stopped answering while the fetch ran"));
+    controller.dispose();
+  }
   assert(
     JSON.stringify(outcomes) ===
-      JSON.stringify(["found", "not_found", "fetch_failed", "superseded", "not_found"]),
+      JSON.stringify([
+        "not_found",
+        "found",
+        "not_found",
+        "failed",
+        "not_found",
+        "fetch_failed",
+        "superseded",
+        "found",
+        "fetch_failed",
+      ]),
     `a missing commit ended as ${JSON.stringify(outcomes)}`,
   );
+
+  // The origin no longer shows the repository: the row says so in the command line's words.
+  {
+    const page = createPage();
+    const controller = freshness.createController(page.deps);
+    page.setStatus(recorded.origin_not_shown);
+    await controller.start();
+    steps.push(page.observe("the origin no longer shows the repository"));
+    controller.dispose();
+  }
 
   // A refresh that failed.
   {

@@ -168,15 +168,24 @@ GitHub URLs and HTTPS:
 
 - A served page opened at `/commit/<id>` for a commit the mirror does not have now says
   what is known instead of “Could not load this commit.”
-  It fetches once in the background and shows “Fetching this commit…”, then opens the
-  commit when the fetch brings it, says “Commit not found” when the fetch ran and the
-  origin’s branches and tags do not reach it, or says “Commit not fetched” with the
-  reason and a Retry when the fetch could not run.
-  A refresh already running is that fetch, so no second one is asked for.
+  When the mirror is older than the freshness window the page fetches in the background
+  and shows “Fetching this commit…”, then opens the commit when the fetch brings it,
+  says “Commit not found” when the fetch ran and the origin’s branches and tags do not
+  reach it, or says “Commit not fetched” with the reason when the fetch could not run.
+  On a mirror fetched inside the window the page fetches nothing by itself, because a
+  link in a served page can lead to any commit’s address, and says the commit is not in
+  the mirror as fetched; **Retry**, offered in each of these states, always fetches.
+  The page claims a fetch of branches and tags only when one ran: a refresh of a served
+  pull request’s record alone is waited for and not called one.
   `/api/git/commit/<id>` names the miss as `commit_not_found`, still with HTTP 404, and
   never fetches; in a served folder, which has no mirror to fetch into, the page says
   the commit is not in the repository.
-  A request that fails for another reason still reads “Could not load this commit.”
+  A request that fails for another reason, including one that fails when the commit is
+  asked for again after the fetch, still reads “Could not load this commit.”
+  `POST /api/source/refresh` takes `{"for": "commit"}` for that fetch: it fetches the
+  mirror only outside the freshness window, joins a fetch that is running, and otherwise
+  answers `fresh`; `"retry": true` always fetches, and any other key is refused as
+  `invalid_request`.
 
 - `https://` sources are acquired, anonymously for a public repository.
   When `gh` is installed it is Git’s credential helper for `https://github.com` only,
