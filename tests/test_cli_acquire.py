@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -376,6 +378,44 @@ def test_no_serve_refuses_below_floor_git_without_writing_an_empty_home(
     assert isinstance(result.exception, CLIError)
     assert "unsupported Git version" in str(result.exception)
     assert list(home.iterdir()) == []
+
+
+@posix_only
+def test_a_git_that_reports_a_below_floor_version_is_refused(tmp_path: Path) -> None:
+    """Nothing substituted: a ``git`` first on ``PATH`` answers 2.43.0, and the CLI refuses.
+
+    A separate process, so detection, parsing, and the floor run as shipped, on any
+    machine's Git. The stand-in answers ``version`` and logs every call, so one logged
+    call shows the refusal came before any other Git ran.
+    """
+
+    url = _file_url(_origin(tmp_path))
+    old_git = tmp_path / "old-git" / "git"
+    old_git.parent.mkdir()
+    old_git.write_text(
+        '#!/bin/sh\necho "$*" >> "$0.calls"\n'
+        '[ "$1" = version ] && echo "git version 2.43.0" && exit 0\nexit 97\n',
+        encoding="utf-8",
+    )
+    old_git.chmod(0o755)
+    home = tmp_path / "home"
+    metab = "from metabrowser.cli.entrypoint import main; main()"
+    result = subprocess.run(
+        [sys.executable, "-c", metab, url, "--no-serve"],
+        env={
+            **os.environ,
+            "METABROWSER_HOME": str(home),
+            "PATH": f"{old_git.parent}{os.pathsep}{os.environ['PATH']}",
+        },
+        capture_output=True,
+        text=True,
+        timeout=50,
+        check=False,
+    )
+    assert result.returncode == 1, result.stderr
+    assert "unsupported Git version (git version 2.43.0)" in result.stderr
+    assert Path(f"{old_git}.calls").read_text(encoding="utf-8") == "version\n"
+    assert not home.exists()
 
 
 @posix_only
