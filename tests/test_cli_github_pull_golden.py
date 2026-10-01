@@ -41,7 +41,6 @@ from tests.github_pull_fixture import (
     FETCHED_AT,
     Origin,
     account,
-    copy_origin,
     install_fake_gh,
     ok,
     scenario,
@@ -71,11 +70,11 @@ _RECORD = re.compile(r'^( *)"record": (\{\n.*?\n\1\})', re.MULTILINE | re.DOTALL
 class _Session:
     """The stand-in origin, the fake gh, and a transcript of what each command did."""
 
-    def __init__(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, built: Origin) -> None:
+    def __init__(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> None:
         self.tmp_path = tmp_path
         self.monkeypatch = monkeypatch
         self.home = isolate_cli(tmp_path, monkeypatch).home
-        self.origin: Origin = copy_origin(built, tmp_path)
+        self.origin = origin
         # Each pull request's record as last printed in full, by number, and the
         # numbers printed in full, in order. The record is kept as JSON text, which
         # holds the order of its keys: a dictionary comparison would not.

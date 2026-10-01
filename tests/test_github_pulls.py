@@ -88,7 +88,6 @@ from tests.github_pull_fixture import (
     READER,
     Origin,
     account,
-    copy_origin,
     install_fake_gh,
     ok,
     page,
@@ -137,7 +136,7 @@ def stand(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin) 
     home = tmp_path / "home"
     monkeypatch.setenv("METABROWSER_HOME", str(home))
     _allow_installed_git(monkeypatch)
-    origin = copy_origin(pull_origin, tmp_path)
+    origin = pull_origin
     local = origin.url
     monkeypatch.setattr(
         "metabrowser.cache.acquire.remote_url_for",
@@ -458,8 +457,12 @@ def test_the_startup_sweep_leaves_records_alone(stand: _Stand) -> None:
     """
 
     record = stand.refresh(7)
-    open_cache(stand.published.home)
+    home, slug = stand.published.home, stand.published.slug
+    stamp = read_pull_refresh(home, slug, 7)
+    assert stamp is not None and stamp.outcome == "succeeded"
+    open_cache(home)
     assert stand.record(7) == record
+    assert read_pull_refresh(home, slug, 7) == stamp
 
 
 # ── route state ────────────────────────────────────────────────
@@ -843,7 +846,11 @@ def test_a_fetch_that_cannot_write_one_ref_writes_none(stand: _Stand) -> None:
     (stand.published.git_dir / f"{mirrored}.lock").mkdir(parents=True)
     with pytest.raises(PullDataError) as refused:
         stand.refresh(7)
-    assert refused.value.state == "fetch_failed"
+    # The whole message: Git's own, which names the lock's path in the home, is not in it.
+    assert (refused.value.state, str(refused.value)) == (
+        "fetch_failed",
+        "Git could not fetch the pull request",
+    )
     assert asyncio.run(ref_commit(stand.published, "refs/pull/7/head")) is None
     assert asyncio.run(ref_commit(stand.published, mirrored)) == stand.origin["topic"]
 

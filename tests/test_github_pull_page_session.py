@@ -63,7 +63,6 @@ from tests.github_pull_fixture import (
     HOSTILE_COMMENT,
     Origin,
     allowlist_violations,
-    copy_origin,
     html_tree,
     install_fake_gh,
     ok,
@@ -174,11 +173,10 @@ def _stored_once(recorded: dict[str, Any]) -> dict[str, Any]:
     return recorded
 
 
-def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, built: Origin) -> dict[str, Any]:
+def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> dict[str, Any]:
     home = tmp_path / "home"
     monkeypatch.setenv("METABROWSER_HOME", str(home))
     _allow_installed_git(monkeypatch)
-    origin = copy_origin(built, tmp_path)
     monkeypatch.setattr(
         "metabrowser.cache.acquire.remote_url_for",
         lambda source: origin.url if source.normalized == CANONICAL else source.normalized,  # pyright: ignore[reportUnknownLambdaType, reportUnknownMemberType]

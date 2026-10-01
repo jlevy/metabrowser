@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from collections.abc import Generator
 from html.parser import HTMLParser
+from pathlib import Path
 from typing import NamedTuple
 from urllib.parse import urljoin
 
@@ -12,7 +13,7 @@ import pytest
 
 from metabrowser.git.process import _REPO_PINNING_GIT_VARS
 from tests import suite_gates
-from tests.github_pull_fixture import Origin, build_origin
+from tests.github_pull_fixture import Origin, build_origin, copy_origin
 from tests.required_tools import require_git, require_node
 
 # Test discovery imports the server from several module scopes. Never let an
@@ -82,10 +83,23 @@ def git_on_path() -> str:
 
 
 @pytest.fixture(scope="session")
-def pull_origin(tmp_path_factory: pytest.TempPathFactory, git_on_path: str) -> Origin:
-    """The GitHub stand-in origin, built once; a test takes its own with ``copy_origin``."""
+def _pull_origin_built(  # pyright: ignore[reportUnusedFunction]
+    tmp_path_factory: pytest.TempPathFactory, git_on_path: str
+) -> Origin:
+    """The GitHub stand-in origin, built once. Only ``pull_origin`` reads it."""
 
     return build_origin(tmp_path_factory.mktemp("github-pull-origin"))
+
+
+@pytest.fixture
+def pull_origin(tmp_path: Path, _pull_origin_built: Origin) -> Origin:
+    """This test's own copy of the GitHub stand-in origin, in its ``tmp_path``.
+
+    A test fetches from the origin and some move its refs, so none is handed the one the
+    session shares.
+    """
+
+    return copy_origin(_pull_origin_built, tmp_path)
 
 
 @pytest.fixture(scope="session")
