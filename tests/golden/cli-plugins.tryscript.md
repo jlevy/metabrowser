@@ -357,21 +357,38 @@ $ metab --plugin markdown --json
 
 ## Test: --doctor checks every plugin
 
+tryscript matches stdout and stderr as one text, so each stream of a clean run is
+recorded on its own: the answer is on stdout, and stderr is empty.
+
 ```console
-$ metab --doctor
+$ metab --doctor 2>/dev/null
 metab --doctor: 11 plugin(s) OK
+? 0
+```
+
+## Test: --doctor writes nothing to stderr when nothing is wrong
+
+```console
+$ metab --doctor >/dev/null
 ? 0
 ```
 
 ## Test: --doctor --json
 
 ```console
-$ metab --doctor --json
+$ metab --doctor --json 2>/dev/null
 {
   "ok": true,
   "plugin_count": 11,
   "problems": []
 }
+? 0
+```
+
+## Test: --doctor --json writes nothing to stderr when nothing is wrong
+
+```console
+$ metab --doctor --json >/dev/null
 ? 0
 ```
 

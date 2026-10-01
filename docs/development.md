@@ -73,6 +73,9 @@ make test-macos
 # Run the read-only smoke tests against public repositories on github.com.
 make test-live-github
 
+# Report the size of the test suite by area, at the working tree or at named commits.
+make test-report
+
 # Regenerate every golden (tests/golden/) and every recorded response fixture
 # a session replays (tests/fixtures/*.json) after an intended surface change,
 # then review the diff.
@@ -88,6 +91,8 @@ uv --config-file uv.toml run --frozen metab ./tests/manual-fixtures --no-open
 `make test` fails when Node or Git is missing instead of skipping the tests that need
 them. [Test Tiers](e2e-testing.md#test-tiers) says what each test target covers, when it
 runs, and which skips are expected.
+[Measuring the Suite](e2e-testing.md#measuring-the-suite) says what `make test-report`
+counts and how it times a run from a CI log.
 
 Start v0.12 testing with the
 [alpha test plan](project/specs/active/plan-2026-09-22-v012-alpha-testing.md), which
