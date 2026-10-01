@@ -48,6 +48,11 @@ const source = fs.readFileSync(sourcePath, "utf8");
 vm.runInContext(source, sandbox, { filename: sourcePath });
 
 const route = sandbox.MetabrowserNavigationRoute;
+// The pull-request page's routes: an on-demand module the shell fetches only for an
+// address under /pull/.
+const pullSourcePath = path.join(repoRoot, "src/metabrowser/static/pull-route.js");
+vm.runInContext(fs.readFileSync(pullSourcePath, "utf8"), sandbox, { filename: pullSourcePath });
+const pullRoute = sandbox.MetabrowserPullRoute;
 
 equal(
   "slash-bearing Git ref gets one encoded revision segment",
@@ -84,15 +89,15 @@ for (const revision of ["", ".bad", "bad ref", "x".repeat(257)]) {
   check(`reject invalid commit revision ${JSON.stringify(revision)}`, rejected);
 }
 
-equal("pull-request page href", route.pullHref(7), "/pull/7");
-equal("pull-request Files changed href", route.pullHref(7, "files"), "/pull/7/files");
-equal("pull-request page parses", route.parsePull("/pull/7"), { number: 7, tab: "" });
-equal("pull-request tab parses with a trailing slash", route.parsePull("/pull/7/files/"), {
+equal("pull-request page href", pullRoute.pullHref(7), "/pull/7");
+equal("pull-request Files changed href", pullRoute.pullHref(7, "files"), "/pull/7/files");
+equal("pull-request page parses", pullRoute.parsePull("/pull/7"), { number: 7, tab: "" });
+equal("pull-request tab parses with a trailing slash", pullRoute.parsePull("/pull/7/files/"), {
   number: 7,
   tab: "files",
 });
 for (const pathname of ["/pull/0", "/pull/07", "/pull/7/commits", "/pull/7/files/x", "/pull/x"]) {
-  equal(`reject pull-request route ${pathname}`, route.parsePull(pathname), null);
+  equal(`reject pull-request route ${pathname}`, pullRoute.parsePull(pathname), null);
 }
 for (const [number, tab] of [
   [0, ""],
@@ -100,7 +105,7 @@ for (const [number, tab] of [
 ]) {
   let rejected = false;
   try {
-    route.pullHref(number, tab);
+    pullRoute.pullHref(number, tab);
   } catch (error) {
     rejected = error instanceof TypeError;
   }
@@ -112,7 +117,7 @@ for (const [number, tab] of [
 // controller applies itself, because it held a /view/ target, is left to it.
 equal(
   "back between a page's tabs switches the tab",
-  route.pullHistoryAction("/pull/7/files", 7, false),
+  pullRoute.pullHistoryAction("/pull/7/files", 7, false),
   {
     action: "tab",
     tab: "files",
@@ -120,20 +125,24 @@ equal(
 );
 equal(
   "back onto a page whose pane a commit took mounts it",
-  route.pullHistoryAction("/pull/7", null, false),
+  pullRoute.pullHistoryAction("/pull/7", null, false),
   { action: "mount", number: 7, tab: "" },
 );
 equal(
   "back onto another pull request's page mounts it",
-  route.pullHistoryAction("/pull/7/files", 8, false),
+  pullRoute.pullHistoryAction("/pull/7/files", 8, false),
   { action: "mount", number: 7, tab: "files" },
 );
 equal(
   "back from a file view is the controller's",
-  route.pullHistoryAction("/pull/7", null, true),
+  pullRoute.pullHistoryAction("/pull/7", null, true),
   null,
 );
-equal("back onto a view route is not a page's", route.pullHistoryAction("/view/", 7, false), null);
+equal(
+  "back onto a view route is not a page's",
+  pullRoute.pullHistoryAction("/view/", 7, false),
+  null,
+);
 
 equal("root href", route.href({ path: "" }), "/view/");
 equal("folder href keeps its slash", route.href({ path: "docs/" }), "/view/docs/");
@@ -411,7 +420,7 @@ function makePullShell(pathname) {
     log.push(`claim ${claims} (${owner})`);
     return claims;
   }
-  host = route.createPullPageHost({
+  host = pullRoute.createPullPageHost({
     claim: () => claimPane("pull-request"),
     isCurrent: (claim) => claim === claims,
     mount(claim, landing, open) {

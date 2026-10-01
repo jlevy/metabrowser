@@ -203,30 +203,6 @@ type MetabrowserNavigationRouteRuntime = Readonly<{
   }): "cancelled" | "file" | "folder";
   createFileRevalidationTracker(maxEntries: number): MetabrowserFileRevalidationTracker;
   createPreviewPaneLifecycle(): MetabrowserPreviewPaneLifecycle;
-  createPullPageHost<Handle extends { setTab?(tab: string): void; dispose?(): void }>(deps: {
-    claim(): number;
-    isCurrent(claim: number): boolean;
-    mount(
-      claim: number,
-      route: Readonly<{ number: number; tab: string }>,
-      open: (route: { number: number; tab: string }) => Promise<{ status: string }>,
-    ): Promise<Handle | null | undefined>;
-    pathname(): string;
-    pushHref(href: string): void;
-  }): Readonly<{
-    dispose(): void;
-    onHistory(
-      pathname: string,
-      heldTarget: boolean,
-    ): Readonly<
-      { action: "tab"; tab: string } | { action: "mount"; number: number; tab: string }
-    > | null;
-    open(route: { number: number; tab: string }): Promise<{ status: "opened" | "cancelled" }>;
-    show(
-      route: Readonly<{ number: number; tab: string }>,
-    ): Promise<{ status: "opened" | "cancelled" }>;
-    shown(): number | null;
-  }>;
   createController(options: {
     apply(
       target: MetabrowserNavigationTarget | null,
@@ -243,15 +219,6 @@ type MetabrowserNavigationRouteRuntime = Readonly<{
   normalizeTarget(target: MetabrowserNavigationTarget): MetabrowserNavigationTarget;
   parse(pathname: string, search?: string, hash?: string): MetabrowserNavigationTarget | null;
   parseCommit(pathname: string): Readonly<{ revision: string; file: string }> | null;
-  parsePull(pathname: string): Readonly<{ number: number; tab: string }> | null;
-  pullHistoryAction(
-    pathname: string,
-    shown: number | null,
-    heldTarget: boolean,
-  ): Readonly<
-    { action: "tab"; tab: string } | { action: "mount"; number: number; tab: string }
-  > | null;
-  pullHref(number: number, tab?: string): string;
   replaceFileSnapshot(
     previous: Map<string, Record<string, unknown>>,
     entries: Array<Record<string, unknown> & { path: string }>,
@@ -458,6 +425,42 @@ type MetabrowserSourceLineAnchorState = Readonly<{
   start: number;
   end: number;
   message: string;
+}>;
+
+type MetabrowserPullRouteRuntime = Readonly<{
+  createPullPageHost<Handle extends { setTab?(tab: string): void; dispose?(): void }>(deps: {
+    claim(): number;
+    isCurrent(claim: number): boolean;
+    mount(
+      claim: number,
+      route: Readonly<{ number: number; tab: string }>,
+      open: (route: { number: number; tab: string }) => Promise<{ status: string }>,
+    ): Promise<Handle | null | undefined>;
+    pathname(): string;
+    pushHref(href: string): void;
+  }): Readonly<{
+    dispose(): void;
+    onHistory(
+      pathname: string,
+      heldTarget: boolean,
+    ): Readonly<
+      { action: "tab"; tab: string } | { action: "mount"; number: number; tab: string }
+    > | null;
+    open(route: { number: number; tab: string }): Promise<{ status: "opened" | "cancelled" }>;
+    show(
+      route: Readonly<{ number: number; tab: string }>,
+    ): Promise<{ status: "opened" | "cancelled" }>;
+    shown(): number | null;
+  }>;
+  parsePull(pathname: string): Readonly<{ number: number; tab: string }> | null;
+  pullHistoryAction(
+    pathname: string,
+    shown: number | null,
+    heldTarget: boolean,
+  ): Readonly<
+    { action: "tab"; tab: string } | { action: "mount"; number: number; tab: string }
+  > | null;
+  pullHref(number: number, tab?: string): string;
 }>;
 
 type MetabrowserSourceLineAnchorsRuntime = Readonly<{
@@ -2695,6 +2698,8 @@ declare global {
     MetabrowserTreeKeyboardNavigation: MetabrowserTreeKeyboardRuntime;
     MetabrowserSourceAppend: MetabrowserSourceAppendRuntime;
     MetabrowserSourceLineAnchors: MetabrowserSourceLineAnchorsRuntime;
+    /** static/pull-route.js, the `pull-route` on-demand bundle. */
+    MetabrowserPullRoute?: MetabrowserPullRouteRuntime;
     MetabrowserSourceFreshness?: MetabrowserSourceFreshnessRuntime;
     MetabrowserSourceRefSelector?: MetabrowserSourceRefSelectorRuntime;
     MetabrowserInertHtml?: MetabrowserInertHtmlRuntime;

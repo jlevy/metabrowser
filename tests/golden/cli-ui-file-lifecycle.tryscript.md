@@ -695,6 +695,67 @@ $ node tests/dom/preview-pane-state-session.js
         "notes.md: source"
       ],
       "fragments": 7
+    },
+    "pullRouteLoadsOnDemand": {
+      "folderAddresses": {
+        "assetRequests": [],
+        "hostCreated": false
+      },
+      "pullAddress": {
+        "assetRequests": [
+          "pull-route"
+        ],
+        "kindLoads": [
+          "pull-request"
+        ],
+        "pane": {
+          "claim": 1,
+          "owner": "pull-request",
+          "path": null,
+          "phase": "external",
+          "shows": "preview-empty: No plugin renders pull-request pages here."
+        },
+        "afterTabLanding": {
+          "assetRequests": [
+            "pull-route"
+          ],
+          "kindLoads": [
+            "pull-request",
+            "pull-request"
+          ]
+        }
+      },
+      "notAPullAddress": {
+        "assetRequests": [
+          "pull-route"
+        ],
+        "pane": {
+          "claim": 1,
+          "owner": "none",
+          "path": null,
+          "phase": "idle",
+          "shows": "preview-empty: Select a file to preview."
+        }
+      },
+      "historyLandingWithoutHost": {
+        "before": {
+          "assetRequests": [],
+          "hostCreated": false
+        },
+        "assetRequests": [
+          "pull-route"
+        ],
+        "kindLoads": [
+          "pull-request"
+        ],
+        "pane": {
+          "claim": 1,
+          "owner": "pull-request",
+          "path": null,
+          "phase": "external",
+          "shows": "preview-empty: No plugin renders pull-request pages here."
+        }
+      }
     }
   }
 }

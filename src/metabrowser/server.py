@@ -1268,6 +1268,7 @@ async def index(request: Request) -> HTMLResponse:
     file_type_taxonomy_url = _static_asset_url("file-type-taxonomy.js")
     plugin_sdk_url = _static_asset_url("plugin-sdk.js")
     plugin_sdk_views_url = _static_asset_url("plugin-sdk-views.js")
+    pull_route_url = _static_asset_url("pull-route.js")
     view_composition_url = _static_asset_url("view-composition.js")
     inert_html_url = _static_asset_url("inert-html.js")
     filter_state_url = _static_asset_url("filter-state.js")
@@ -1488,6 +1489,11 @@ async def index(request: Request) -> HTMLResponse:
         # them before it loads a plugin. Measured 2026-10-01: 3,572 of the 22,308
         # compressed bytes plugin-sdk.js cost as a startup script. See exp-037.
         "sdk-views": [{"src": plugin_sdk_views_url}],
+        # The pull-request page's routes and host. Only an address under /pull/
+        # reaches them; app.js starts this fetch as it loads when the address is
+        # one. Measured 2026-10-01: 1,818 of navigation.js's 13,265 compressed bytes
+        # as a startup script on every folder's page. See exp-037.
+        "pull-route": [{"src": pull_route_url}],
         # Only untrusted Markdown needs the allowlist: a pull-request comment, or a
         # document under the untrusted profile, which the server marks inert.
         "inert-html": [{"src": inert_html_url}],

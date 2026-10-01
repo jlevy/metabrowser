@@ -3633,8 +3633,9 @@ function clearPreviewNavigationState(preview) {
 function claimPreview(owner, selection) {
   cancelPendingFilePreviewStage();
   // Whatever claims the pane next replaces the pull-request page, including a page
-  // for another pull request; only a tab change keeps it (createPullPageHost).
-  pullPageHost.dispose();
+  // for another pull request; only a tab change keeps it (createPullPageHost). There
+  // is no host, and so no page, until an address under /pull/ was opened.
+  pullPageHost?.dispose();
   const preview = document.getElementById("preview-pane");
   if (preview) {
     clearPreviewNavigationState(preview);
@@ -7666,63 +7667,118 @@ function deliverNavigationFragment(target) {
 //
 // /pull/<n>[/files] is the served pull request's address space. Its page is the view a
 // plugin registers for the `pull-request` kind, the GitHub plugin's. The host in
-// navigation.js decides what a route does -- switch the shown page's tab or mount a
+// pull-route.js decides what a route does -- switch the shown page's tab or mount a
 // page -- and keeps the tab in the URL; the shell supplies the pane, loads that plugin,
 // and hands it the host's `open`. The view owns everything else: fetching the record,
 // polling, refreshing, and Files changed.
-var pullPageHost = window.MetabrowserNavigationRoute.createPullPageHost({
-  claim: () => {
-    closeLiveStream();
-    currentPath = "";
-    setSelectedPath(null);
-    var claim = claimPreview("pull-request");
-    stopFolderHeaderSubscription();
-    return claim;
-  },
-  isCurrent: (claim) => isPreviewClaimCurrent(claim),
-  mount: async (claim, route, open) => {
-    var sdk = window.metabrowser;
-    var view = null;
-    try {
-      await sdk.ensureKindAssets("pull-request");
-      view = sdk.getRegisteredView("pull-request", "pull-request");
-    } catch (error) {
-      console.error("metabrowser: the pull-request page could not load", error);
-    }
-    if (!isPreviewClaimCurrent(claim)) {
-      return null;
-    }
-    if (!view) {
-      renderPreviewHtml(
-        '<div class="preview-empty">No plugin renders pull-request pages here.</div>',
-        claim,
+//
+// pull-route.js is the `pull-route` on-demand bundle: only an address under /pull/
+// needs it, so a folder's page never fetches it. The host is null until one was opened.
+var PULL_ROUTE_PREFIX = "/pull/";
+/** @type {ReturnType<NonNullable<Window["MetabrowserPullRoute"]>["createPullPageHost"]> | null} */
+var pullPageHost = null;
+
+/** The pull-request page's host, created once its module has arrived. */
+async function loadPullPageHost() {
+  if (pullPageHost) {
+    return pullPageHost;
+  }
+  const assets = window.MetabrowserAssets;
+  if (!assets) {
+    throw new Error("Metabrowser asset loader is unavailable");
+  }
+  await assets.ensureAsset("pull-route");
+  const routes = window.MetabrowserPullRoute;
+  if (!routes) {
+    throw new Error("Metabrowser pull-request routes are unavailable");
+  }
+  pullPageHost ??= routes.createPullPageHost(pullPageHostDeps());
+  return pullPageHost;
+}
+
+// A page that loads at a pull-request address needs the host before it can show
+// anything, so its fetch starts as this script runs, beside the rest of the shell,
+// and applyNavigationTarget finds it already there or already on its way.
+if (window.location.pathname.startsWith(PULL_ROUTE_PREFIX)) {
+  loadPullPageHost().catch(() => {
+    // applyNavigationTarget asks again and reports the failure.
+  });
+}
+
+function pullPageHostDeps() {
+  return {
+    claim: () => {
+      closeLiveStream();
+      currentPath = "";
+      setSelectedPath(null);
+      var claim = claimPreview("pull-request");
+      stopFolderHeaderSubscription();
+      return claim;
+    },
+    isCurrent: (claim) => isPreviewClaimCurrent(claim),
+    mount: async (claim, route, open) => {
+      var sdk = window.metabrowser;
+      var view = null;
+      try {
+        await sdk.ensureKindAssets("pull-request");
+        view = sdk.getRegisteredView("pull-request", "pull-request");
+      } catch (error) {
+        console.error("metabrowser: the pull-request page could not load", error);
+      }
+      if (!isPreviewClaimCurrent(claim)) {
+        return null;
+      }
+      if (!view) {
+        renderPreviewHtml(
+          '<div class="preview-empty">No plugin renders pull-request pages here.</div>',
+          claim,
+        );
+        return null;
+      }
+      var host = document.createElement("div");
+      host.className = "content-body pull-request-host";
+      renderPreviewNode(host, claim);
+      return /** @type {{setTab?: (tab: string) => void, dispose?: () => void} | null} */ (
+        await view.render(host, {
+          kind: "pull-request",
+          number: route.number,
+          tab: route.tab,
+          open: open,
+        })
       );
-      return null;
-    }
-    var host = document.createElement("div");
-    host.className = "content-body pull-request-host";
-    renderPreviewNode(host, claim);
-    return /** @type {{setTab?: (tab: string) => void, dispose?: () => void} | null} */ (
-      await view.render(host, {
-        kind: "pull-request",
-        number: route.number,
-        tab: route.tab,
-        open: open,
-      })
-    );
-  },
-  pathname: () => window.location.pathname,
-  pushHref: (href) => window.history.pushState(null, "", href),
-});
+    },
+    pathname: () => window.location.pathname,
+    pushHref: (href) => window.history.pushState(null, "", href),
+  };
+}
 
 // Back and forward can land on a pull-request route without changing a navigation
 // target -- between a page's tabs, or onto an entry a commit replaced -- so the
 // navigation controller does not see them; the host decides (pullHistoryAction).
 // This listener is added as app.js loads, before the controller starts and adds its own,
-// so it reads the target the controller held before this landing.
-window.addEventListener("popstate", () => {
-  pullPageHost.onHistory(window.location.pathname, navigationController.current() !== null);
-});
+// so it reads the target the controller held before this landing. With no host yet,
+// only a landing under /pull/ can be the page's, and it is applied once the host has
+// loaded, unless history has moved on by then.
+function applyPullHistoryLanding() {
+  var pathname = window.location.pathname;
+  var heldTarget = navigationController.current() !== null;
+  if (pullPageHost) {
+    pullPageHost.onHistory(pathname, heldTarget);
+    return;
+  }
+  if (!pathname.startsWith(PULL_ROUTE_PREFIX)) {
+    return;
+  }
+  loadPullPageHost().then(
+    (host) => {
+      if (window.location.pathname === pathname) {
+        host.onHistory(pathname, heldTarget);
+      }
+    },
+    (error) => console.error("metabrowser: the pull-request page could not load", error),
+  );
+}
+window.addEventListener("popstate", applyPullHistoryLanding);
 
 /**
  * The view *target*'s address asks a file to open in, once the line-anchor module that
@@ -7748,9 +7804,22 @@ async function applyNavigationTarget(target, context) {
     if (window.MetabrowserNavigationRoute.parseCommit(window.location.pathname)) {
       return { status: "cancelled" };
     }
-    var pullRoute = window.MetabrowserNavigationRoute.parsePull(window.location.pathname);
-    if (pullRoute) {
-      return pullPageHost.show(pullRoute);
+    if (window.location.pathname.startsWith(PULL_ROUTE_PREFIX)) {
+      var pullHost = null;
+      try {
+        pullHost = await loadPullPageHost();
+      } catch (error) {
+        console.error("metabrowser: the pull-request page could not load", error);
+      }
+      if (!context.isCurrent()) {
+        return { status: "cancelled" };
+      }
+      var pullRoute = pullHost
+        ? window.MetabrowserPullRoute?.parsePull(window.location.pathname)
+        : null;
+      if (pullHost && pullRoute) {
+        return pullHost.show(pullRoute);
+      }
     }
     showNavigationLanding();
     return { status: "cancelled" };

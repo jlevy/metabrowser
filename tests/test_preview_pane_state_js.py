@@ -237,8 +237,52 @@ def test_shell_ships_the_placeholder_the_pane_starts_in(session: dict[str, Any])
     assert shipped == session["shell"]["shippedPlaceholderHtml"]
 
 
+def test_pull_request_routes_load_only_for_a_pull_request_address(
+    session: dict[str, Any],
+) -> None:
+    pull = session["shell"]["pullRouteLoadsOnDemand"]
+    # A folder's page, its files, and its history never ask for the module.
+    assert pull["folderAddresses"] == {"assetRequests": [], "hostCreated": False}
+    # An address under /pull/ asks once, however many landings follow, and the page
+    # is the host's.
+    assert pull["pullAddress"]["assetRequests"] == ["pull-route"]
+    assert pull["pullAddress"]["afterTabLanding"]["assetRequests"] == ["pull-route"]
+    assert pull["pullAddress"]["pane"]["owner"] == "pull-request"
+    # What is under /pull/ and is no page's address lands nowhere, as it did.
+    assert pull["notAPullAddress"]["pane"]["shows"].endswith(SELECT_A_FILE)
+    # A history landing with no host yet loads it and then mounts the page.
+    landing = pull["historyLandingWithoutHost"]
+    assert landing["before"] == {"assetRequests": [], "hostCreated": False}
+    assert landing["assetRequests"] == ["pull-route"]
+    assert landing["kindLoads"] == ["pull-request"]
+    assert landing["pane"]["owner"] == "pull-request"
+
+
+def test_pull_request_routes_are_no_startup_script() -> None:
+    html = _render_index_html()
+    assert '<script src="/static/pull-route.js' not in html
+    bundles = json.loads(
+        html.split("window.METABROWSER_ASSET_BUNDLES=", 1)[1].split(";</script>", 1)[0]
+    )
+    assert [entry["src"].partition("?")[0] for entry in bundles["pull-route"]] == [
+        "/static/pull-route.js"
+    ]
+    navigation = (STATIC / "navigation.js").read_text(encoding="utf-8")
+    assert "createPullPageHost" not in navigation
+    assert "parsePull" not in navigation
+
+
 def test_shell_seams_the_session_cannot_execute() -> None:
     app = (STATIC / "app.js").read_text(encoding="utf-8")
+
+    # A page that loads at a pull-request address starts fetching its routes as this
+    # script runs, so the address is not applied behind a fetch that began late; and
+    # the history listener is the function the session drives.
+    assert (
+        "if (window.location.pathname.startsWith(PULL_ROUTE_PREFIX)) {\n"
+        "  loadPullPageHost().catch(" in app
+    )
+    assert 'window.addEventListener("popstate", applyPullHistoryLanding);' in app
 
     assert "var previewClaimGeneration" not in app
     # The prompt text lives in the module; the shell only paints directives.

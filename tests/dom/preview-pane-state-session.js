@@ -21,6 +21,10 @@ const appSource = fs.readFileSync(appPath, "utf8");
 // applyNavigationTarget asks the line-anchor module which view an address opens in.
 const lineAnchorsPath = path.join(repoRoot, "src/metabrowser/static/source-line-anchors.js");
 const lineAnchorsSource = fs.readFileSync(lineAnchorsPath, "utf8");
+// The pull-request page's routes and host: an on-demand module the shell asks its
+// asset loader for when an address under /pull/ is opened, and not before.
+const pullRoutePath = path.join(repoRoot, "src/metabrowser/static/pull-route.js");
+const pullRouteSource = fs.readFileSync(pullRoutePath, "utf8");
 
 // Shared with every sandbox so `instanceof` agrees across the realm boundary.
 const BUILTINS = {
@@ -330,6 +334,10 @@ const SHELL_FUNCTIONS = [
   "retryUnreachablePreview",
   "deliverNavigationFragment",
   "showPreviewTab",
+  "renderPreviewHtml",
+  "loadPullPageHost",
+  "pullPageHostDeps",
+  "applyPullHistoryLanding",
   "addressedView",
   "applyNavigationTarget",
   "navigateToPath",
@@ -337,7 +345,10 @@ const SHELL_FUNCTIONS = [
 
 const shellSource = [
   appDeclaration(/^var previewPane = [^\n]*;$/m, "preview pane"),
-  appDeclaration(/^var pullPageHost = [\s\S]*?^\}\);$/m, "pull-request page host"),
+  appDeclaration(/^var PULL_ROUTE_PREFIX = [^\n]*;$/m, "pull-request route prefix"),
+  // The host is created on demand, when an address under /pull/ is opened; none of
+  // these states opens one, so the pane's claim finds no page to dispose.
+  appDeclaration(/^var pullPageHost = null;$/m, "pull-request page host"),
   appDeclaration(/^var navigationController = [\s\S]*?^\}\);$/m, "navigation controller"),
   ...SHELL_FUNCTIONS.map((name) =>
     appDeclaration(
@@ -430,6 +441,10 @@ function createShell(pathname, network) {
   const timers = [];
   const sources = [];
   const counters = { catalogFeedStarts: 0, fragments: 0, paletteReconnects: 0 };
+  /** @type {string[]} */
+  const assetRequests = [];
+  /** @type {string[]} */
+  const kindLoads = [];
   const location = { hash: "", pathname, search: "" };
   const moveTo = (_state, _title, href) => {
     const url = new URL(href, "http://metabrowser.test");
@@ -508,6 +523,25 @@ function createShell(pathname, network) {
       return network(requested);
     },
     loadViewComposition: async () => null,
+    // The asset loader: it records what the shell asked for, and delivers the
+    // pull-request routes a turn later, as a fetched script arrives.
+    MetabrowserAssets: {
+      ensureAsset: async (name) => {
+        assetRequests.push(name);
+        await new Promise((resolve) => setImmediate(resolve));
+        if (name === "pull-route" && !sandbox.MetabrowserPullRoute) {
+          vm.runInContext(pullRouteSource, sandbox, { filename: pullRoutePath });
+        }
+      },
+    },
+    // No plugin registers a pull-request view here, so the host's page is the
+    // shell's own message.
+    metabrowser: {
+      ensureKindAssets: async (kind) => {
+        kindLoads.push(kind);
+      },
+      getRegisteredView: () => undefined,
+    },
     maybeOpenLiveStream() {},
     renderFile: async (data, viewId, claim) => {
       if (!sandbox.isPreviewClaimCurrent(claim)) {
@@ -581,7 +615,9 @@ function createShell(pathname, network) {
       preview.innerHTML = `<article class="git-commit">${revision}</article>`;
       return claim;
     },
+    assetRequests,
     counters,
+    kindLoads,
     /** Let the loading-indicator delay elapse. */
     elapseLoadingDelay() {
       for (const [index, callback] of timers.entries()) {
@@ -851,6 +887,70 @@ async function anchoredAddressesOpenSource() {
   };
 }
 
+async function pullRouteLoadsOnDemand() {
+  // The pull-request page's routes are not a startup script. A folder's addresses
+  // never ask for them; an address under /pull/ asks once and then shows the page;
+  // one that is not a pull-request route still lands nowhere; and a history landing
+  // on a page's address, with no host yet, loads it and then mounts the page.
+  const folder = createShell("/view/", (requested) =>
+    Promise.resolve(jsonResponse({ kind: requested ? "text" : "folder", path: requested })),
+  );
+  await folder.sandbox.navigationController.start();
+  await folder.sandbox.navigationController.open({ path: "notes.txt" });
+  await settle();
+  folder.sandbox.location.pathname = "/view/notes.txt";
+  folder.sandbox.applyPullHistoryLanding();
+  await settle();
+
+  const page = createShell("/pull/7", refusedFetch);
+  await page.sandbox.navigationController.start();
+  await settle();
+  const first = {
+    assetRequests: [...page.assetRequests],
+    kindLoads: [...page.kindLoads],
+    pane: page.pane(),
+  };
+  page.sandbox.location.pathname = "/pull/7/files";
+  page.sandbox.applyPullHistoryLanding();
+  await settle();
+
+  const notAPage = createShell("/pull/x", refusedFetch);
+  await notAPage.sandbox.navigationController.start();
+  await settle();
+
+  // A commit address is the Git panel's, so the controller holds no target there and
+  // nothing has asked for the pull-request routes. Back onto a page's entry is then
+  // the host's to apply, once it has loaded.
+  const back = createShell(`/commit/${"a".repeat(40)}`, refusedFetch);
+  await back.sandbox.navigationController.start();
+  await settle();
+  const backBefore = {
+    assetRequests: [...back.assetRequests],
+    hostCreated: back.sandbox.pullPageHost !== null,
+  };
+  back.sandbox.location.pathname = "/pull/8";
+  back.sandbox.applyPullHistoryLanding();
+  await settle();
+
+  return {
+    folderAddresses: {
+      assetRequests: folder.assetRequests,
+      hostCreated: folder.sandbox.pullPageHost !== null,
+    },
+    pullAddress: {
+      ...first,
+      afterTabLanding: { assetRequests: page.assetRequests, kindLoads: page.kindLoads },
+    },
+    notAPullAddress: { assetRequests: notAPage.assetRequests, pane: notAPage.pane() },
+    historyLandingWithoutHost: {
+      before: backBefore,
+      assetRequests: back.assetRequests,
+      kindLoads: back.kindLoads,
+      pane: back.pane(),
+    },
+  };
+}
+
 async function shell() {
   const shipped = createShell("/view/", refusedFetch);
   return {
@@ -863,6 +963,7 @@ async function shell() {
     reconnectRetry: await reconnectRetry(),
     startupSettle: await startupSettle(),
     anchoredAddressesOpenSource: await anchoredAddressesOpenSource(),
+    pullRouteLoadsOnDemand: await pullRouteLoadsOnDemand(),
   };
 }
 
