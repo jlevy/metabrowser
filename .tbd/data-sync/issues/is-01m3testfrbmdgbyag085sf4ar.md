@@ -3,16 +3,20 @@ type: is
 id: is-01m3testfrbmdgbyag085sf4ar
 title: "Tests: make absent tests loud — require Node and git, name the tiers, and record or fix every raised timeout"
 kind: task
-status: open
+status: in_progress
 priority: 2
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+delegate: claude-code@spud10.local
 labels:
   - release:v0.12.0
 dependencies: []
 parent_id: is-01m3te95dfdnc80j5xywqje9ke
+hold: null
+hold_until: null
 created_at: 2026-10-01T00:46:02.227Z
-updated_at: 2026-10-01T00:46:02.227Z
+updated_at: 2026-10-01T04:49:35.288Z
+started_at: 2026-10-01T04:49:35.282Z
 ---
 Part of the test-suite review epic. Survey of a896d8fe, 2026-09-30, read-only. Cross-cutting: tests that can be absent while the gate is green, tests that never run in CI, timeouts without a measurement, and what belongs in a named outer tier.
 

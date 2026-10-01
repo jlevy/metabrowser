@@ -3,18 +3,22 @@ type: is
 id: is-01m3teqnqm0pdjtjg7dsmnwzkj
 title: "Tests: reset process-global state in conftest, and replace sleeps and wall-clock asserts with events and counts"
 kind: task
-status: open
+status: in_progress
 priority: 2
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+delegate: claude-code@spud10.local
 labels:
   - release:v0.12.0
 dependencies:
   - type: blocks
     target: is-01m3tesntkscpn8he8rvbkj8gc
 parent_id: is-01m3te95dfdnc80j5xywqje9ke
+hold: null
+hold_until: null
 created_at: 2026-10-01T00:44:51.825Z
-updated_at: 2026-10-01T00:45:57.409Z
+updated_at: 2026-10-01T04:49:34.221Z
+started_at: 2026-10-01T04:49:34.219Z
 ---
 Part of the test-suite review epic. Survey of a896d8fe, 2026-09-30, read-only. Cross-cutting: process-global state that leaks between tests, waiting by sleep, and timing asserted against the wall clock.
 

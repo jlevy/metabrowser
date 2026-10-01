@@ -3,10 +3,11 @@ type: is
 id: is-01m3tem0raag7zczfs9ce90jbv
 title: "Tests: golden machinery — one harness, a complete golden-update, a size check, and precise placeholders"
 kind: task
-status: open
+status: in_progress
 priority: 2
-version: 5
+version: 6
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+delegate: claude-code@spud10.local
 labels:
   - release:v0.12.0
 dependencies:
@@ -17,8 +18,11 @@ dependencies:
   - type: blocks
     target: is-01m3teckg1zyphvywvrzkwe3df
 parent_id: is-01m3te95dfdnc80j5xywqje9ke
+hold: null
+hold_until: null
 created_at: 2026-10-01T00:42:52.032Z
-updated_at: 2026-10-01T00:46:59.559Z
+updated_at: 2026-10-01T04:49:36.155Z
+started_at: 2026-10-01T04:49:36.154Z
 ---
 Part of the test-suite review epic. Survey of a896d8fe, 2026-09-30, read-only. Area-specific golden work is in the area beads: sharding `cli-git-pin.txt` (git bead), de-duplicating the pull-request record and its `grep` slices (GitHub bead), the label-only UI blocks (Node runner bead). This bead covers the shared golden machinery and the remaining anti-patterns.
 
