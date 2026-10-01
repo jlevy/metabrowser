@@ -92,16 +92,23 @@ lint-check:
 # none reaches a developer's signed-in gh; pytest has the same guard in tests/conftest.py.
 TRYSCRIPT := PATH="$(CURDIR)/tests/no-real-gh:$$PATH" npx --no-install tryscript
 
+# In CI a skip has to belong to a tier docs/e2e-testing.md names, or the test fails:
+# a reason outside them means a test the suite is believed to run did not. Locally a
+# platform or an old Git may skip more, so this is on only where CI is set, or where
+# the caller sets the variable; see tests/suite_gates.py.
+STRICT_SKIPS := $(if $(CI),METABROWSER_STRICT_SKIPS=1)
+
 # The default tier. -rs names every skipped test with its reason, so a skip is read
-# rather than counted. A missing Node or Git fails here; see tests/required_tools.py.
+# rather than counted. A missing Node or Git stops the run; see tests/required_tools.py.
 test:
-	$(UV_RUN) pytest -rs
+	$(STRICT_SKIPS) $(UV_RUN) pytest -rs
 	$(TRYSCRIPT) run 'tests/golden/*.tryscript.md'
 
 # Acquisition and store-read tests on a real Git the acquisition floor admits,
 # with nothing patched. They skip on a Git below the floor. The CI admitted-git
 # job builds each admitted release and sets METABROWSER_REQUIRE_ADMITTED_GIT, which
-# turns that skip into a failure; see tests/admitted_git.py.
+# turns that skip into a failure; see tests/admitted_git.py. A test that asks for the
+# floor from a module this list leaves out fails; see tests/suite_gates.py.
 ADMITTED_GIT_TESTS := \
 	tests/test_git_full_clone_acceptance.py \
 	tests/test_cli_live_acquire_golden.py \
@@ -133,10 +140,14 @@ ADMITTED_GIT_TESTS := \
 	tests/test_github_pull_page_session.py \
 	tests/test_github_serve.py \
 	tests/test_source_freshness_session.py \
-	tests/test_source_ref_selector_session.py
+	tests/test_source_ref_selector_session.py \
+	tests/test_cli_acquire_error_modes.py \
+	tests/test_cli_cache_recovery_golden.py \
+	tests/test_source_refs.py \
+	tests/test_admitted_git_gate.py
 
 test-admitted-git:
-	$(UV_RUN) pytest -rs $(ADMITTED_GIT_TESTS)
+	$(STRICT_SKIPS) $(UV_RUN) pytest -rs $(ADMITTED_GIT_TESTS)
 
 # The outer tiers nothing in CI runs. docs/e2e-testing.md ("Test Tiers") says what each
 # covers and when to run it.

@@ -52,8 +52,10 @@ pytestmark = [
     # Each test commits, pushes, and fetches a 64 MiB object. CI takes 21-31 s for the
     # three. A 10-core M1 Pro at load average 78-134 took up to 111 s for one (54 s of
     # setup, 57 s of test), and the suite's 60 s default ended the whole run there.
-    # 240 s also covers the 60 s and 120 s waits below, which the default preempted.
-    pytest.mark.timeout(240),
+    # The waits below add up to 180 s (60 s for the fetch to start, 120 s for it to
+    # end), which the default preempted. After the worst setup measured that is 234 s,
+    # so 360 s lets either wait fire with half that again to spare.
+    pytest.mark.timeout(360),
 ]
 
 _STALE_AT = "2020-01-01T00:00:00Z"

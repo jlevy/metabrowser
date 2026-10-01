@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import re
-from pathlib import Path
-
 import pytest
 
 from tests import admitted_git
@@ -48,27 +45,3 @@ def test_the_required_admitted_release_passes(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setenv(REQUIRE_ADMITTED_GIT_ENV, "2.43.7")
     _detected(monkeypatch, "git version 2.43.7")
     assert require_admitted_git() == (2, 43, 7)
-
-
-def test_every_module_that_asks_for_the_floor_is_in_the_admitted_git_run() -> None:
-    """``ADMITTED_GIT_TESTS`` is listed by hand, and a module left out never runs unpatched.
-
-    A module reaches the floor through ``require_admitted_git`` or through
-    ``_allow_installed_git``, which stops patching once CI names a release. The live
-    tier asks too, but needs the network, so it is not part of that run.
-    """
-
-    tests = Path(__file__).resolve().parent
-    listing = (tests.parent / "Makefile").read_text(encoding="utf-8")
-    listing = listing.split("ADMITTED_GIT_TESTS :=", 1)[1].split("\n\n", 1)[0]
-    listed = set(re.findall(r"tests/(test_\w+\.py)", listing))
-    asks = re.compile(r"\b(?:require_admitted_git|required_admitted_git|_allow_installed_git)\b")
-    asking = {
-        path.name
-        for path in tests.glob("test_*.py")
-        if path.name != Path(__file__).name
-        and asks.search(text := path.read_text(encoding="utf-8"))
-        and "pytest.mark.live_github" not in text
-    }
-    assert sorted(asking - listed) == []
-    assert sorted(name for name in listed if not (tests / name).is_file()) == []
