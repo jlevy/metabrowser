@@ -16,8 +16,8 @@ The previous one is the
 [stack readiness review of 2026-09-22](https://github.com/jlevy/metabrowser/pull/216#issuecomment-5786877244),
 a comment on #216 that covers the stack through #225. This record is evidence for the
 landing decision (`mb-n2ro`), not that decision.
-The pull request that adds this ledger sits above #257, changes documents only, and has
-no row.
+[#260](https://github.com/jlevy/metabrowser/pull/260), which adds this ledger, sits
+above #257, changes documents only, and has no row.
 
 ## Limits
 

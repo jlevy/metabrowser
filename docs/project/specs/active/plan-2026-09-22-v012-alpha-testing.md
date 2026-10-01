@@ -426,7 +426,8 @@ holds the commit, the counts, and the ratios of this verification.
 - **The checklist above.** No person has reviewed the stack, and no pull request has a
   GitHub review decision; the ledger says what review each layer did have.
   [#241](https://github.com/jlevy/metabrowser/pull/241), the acceptance record, is still
-  a draft.
+  a draft, and so is [#260](https://github.com/jlevy/metabrowser/pull/260), which
+  carries this section.
 
 **Not blocking.** The test-suite review (`mb-06up`) is not among the beads that block
 `mb-n2ro`. Its open children follow the release, and

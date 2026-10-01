@@ -323,6 +323,20 @@ Follow-up pull requests extend those steps, in stack order:
 | [#248](https://github.com/jlevy/metabrowser/pull/248) | View file at either side of a changed file, from a commit’s diff or Files changed | `mb-zb5t` |
 | [#249](https://github.com/jlevy/metabrowser/pull/249) | Existing folders with URL-like names are served; a state for an unfetched commit; not-found wording | `mb-n80y`, `mb-4kuc`, `mb-2nu0` |
 | [#250](https://github.com/jlevy/metabrowser/pull/250) | Plans, roadmap, architecture documents, and changelog brought in line with the delivered stack | `mb-myum` |
+| [#252](https://github.com/jlevy/metabrowser/pull/252) | Tests: one autouse reset of process state; events and counts in place of sleeps and timing assertions | `mb-onzb` |
+| [#251](https://github.com/jlevy/metabrowser/pull/251) | Tests: a missing Node or Git fails the run; strict skips in CI; the macOS and live-GitHub tiers; a bound on inner timeouts | `mb-cxsk` |
+| [#253](https://github.com/jlevy/metabrowser/pull/253) | Tests: one golden harness, a complete `make golden-update`, and `devtools/check_goldens.py` | `mb-99pm` |
+| [#255](https://github.com/jlevy/metabrowser/pull/255) | Tests: the contract-layer trim, `make test-report`, and the test-suite baseline record | `mb-haxx`, `mb-jqbg` |
+| [#254](https://github.com/jlevy/metabrowser/pull/254) | Git, GitHub, and cache imports and browser code kept off a plain folder’s start; `devtools/check_startup_scripts.py` | `mb-l8c2` |
+| [#256](https://github.com/jlevy/metabrowser/pull/256) | Tests: the cache suite | `mb-sqlv` |
+| [#258](https://github.com/jlevy/metabrowser/pull/258) | Tests: the GitHub pull-request suite and a hostile-link corpus for both inert layers | `mb-738k` |
+| [#257](https://github.com/jlevy/metabrowser/pull/257) | Tests: the Git pin and source suite; the pin transcript split into shards | `mb-79t3` |
+| [#260](https://github.com/jlevy/metabrowser/pull/260) | The QA walk-through, the per-layer review ledger, and the landing status | `mb-65pn` |
+
+The test pull requests from #252 on are the release work of the test-suite review
+(`mb-06up`), whose remaining children follow the release.
+The [review ledger](../../reviews/review-2026-10-01-v012-stack-review-ledger.md) records
+how each pull request through #257 was reviewed.
 
 Later: pull-request list, inline review anchoring, SSH, Enterprise hosts, issues,
 checkout attachment, and rebind.
