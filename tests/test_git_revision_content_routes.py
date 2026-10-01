@@ -45,7 +45,7 @@ from metabrowser.settings import (
     TEXT_PREVIEW_CHUNK_BYTES,
     TEXT_PREVIEW_REQUEST_MAX_BYTES,
 )
-from metabrowser.source import attach_subject, reset_source_session
+from metabrowser.source import MAX_CONTAINER_INNER_DEPTH, attach_subject, reset_source_session
 from metabrowser.wire_models import validate_rollup_node
 from tests.git_pin_harness import fast_import_store
 from tests.required_tools import needs_git
@@ -241,6 +241,10 @@ def test_git_directory_with_no_blob_and_rollup_of_a_subtree(tmp_path: Path) -> N
             assert folder["readme_path"] == ""
             assert [view["id"] for view in folder["views"]] == ["overview", "treemap"]
             assert (await client.get("/raw", params={"path": dep})).status_code == 404
+            # Nor is it content for a hook, though the store holds the commit it names.
+            for hook in ("binary/chunk", "structured/parsed", "agent-log/charts"):
+                refused = await client.get(f"/api/plugin/{hook}", params={"path": dep})
+                assert refused.status_code == 404, hook
             # The index counts the directories its blobs are in: docs/, and not vendor/.
             assert (await client.get("/api/index/meta")).json()["indexed_dirs"] == 1
 
@@ -376,7 +380,12 @@ def test_git_tree_filters_and_blob_size_gate(tmp_path: Path) -> None:
 
             raw_too_big = await client.get("/raw", params={"path": _wire(b"big.bin")})
             assert raw_too_big.status_code == 413
-            assert raw_too_big.json()["code"] == "blob_too_large"
+            too_big = raw_too_big.json()
+            assert (too_big["code"], too_big["size"], too_big["max_bytes"]) == (
+                "blob_too_large",
+                64,
+                32,
+            )
 
             still_ok = await client.get("/api/file", params={"path": _wire(b"README.md")})
             assert still_ok.status_code == 200
@@ -648,8 +657,14 @@ def test_git_file_raw_kpress_follow_in_tree_symlinks(tmp_path: Path) -> None:
     (work / "to_docs").symlink_to("docs")
     (work / "dangling").symlink_to("missing")
     (work / "abs").symlink_to("/tmp/x")
+    # Read from the tree's root, this absolute target would name a tracked file.
+    (work / "abs_in_tree").symlink_to("/README.md")
     (work / "a").symlink_to("b")
     (work / "b").symlink_to("a")
+    # hop1 to hop8 are eight links in a row that end at the README; hop0 is a ninth.
+    for index in range(8):
+        (work / f"hop{index}").symlink_to(f"hop{index + 1}")
+    (work / "hop8").symlink_to("README.md")
     _git(work, "add", "-A")
     _git(work, "commit", "-qm", "symlinks")
     commit = _git(work, "rev-parse", "HEAD").decode().strip()
@@ -685,13 +700,14 @@ def test_git_file_raw_kpress_follow_in_tree_symlinks(tmp_path: Path) -> None:
             assert by_name["to_docs"]["type"] == "symlink"
             assert by_name["dangling"]["type"] == "symlink"
 
-            assert (
-                await client.get("/api/file", params={"path": _wire(b"dangling")})
-            ).status_code == 404
-            assert (
-                await client.get("/api/file", params={"path": _wire(b"abs")})
-            ).status_code == 404
-            assert (await client.get("/api/file", params={"path": _wire(b"a")})).status_code == 404
+            # A missing target, an absolute one, a loop, and one link past the budget.
+            for name in (b"dangling", b"abs", b"abs_in_tree", b"a", b"hop0"):
+                for endpoint in ("/api/file", "/raw"):
+                    refused = await client.get(endpoint, params={"path": _wire(name)})
+                    assert refused.status_code == 404, (name, endpoint)
+            within_budget = await client.get("/api/file", params={"path": _wire(b"hop1")})
+            assert within_budget.status_code == 200
+            assert within_budget.json()["content"] == "hello\n"
             assert (await client.get("/raw", params={"path": _wire(b"to_docs")})).status_code == 404
             assert str(store) not in nested.text
 
@@ -1007,6 +1023,12 @@ def test_git_patch_container_honors_gitpath_prefix_and_inner(tmp_path: Path) -> 
             assert "mtime" not in body
             assert str(store) not in envelope.text
             assert any(view["id"] == "diff" for view in body["views"])
+
+            # An inner path may be MAX_CONTAINER_INNER_DEPTH segments deep and no deeper.
+            deepest = f"{patch_wire}/" + "/".join(["d"] * MAX_CONTAINER_INNER_DEPTH)
+            for inner_path, status in ((deepest, 200), (f"{deepest}/d", 404)):
+                answered = await client.get("/api/file", params={"path": inner_path})
+                assert answered.status_code == status, inner_path
 
             # The container file is a diff too, by its extension.
             container = (await client.get("/api/file", params={"path": patch_wire})).json()
@@ -1349,6 +1371,8 @@ def test_git_raw_blobs_are_sandboxed_like_filesystem_raw(
             for name in (b"page.html", b"pic.svg"):
                 hit = await client.get("/raw", params={"path": _wire(name)})
                 assert hit.status_code == 200, name
+                # A wire names another blob once the pin is switched, so no cache keeps it.
+                assert hit.headers["cache-control"] == "no-store"
                 _assert_git_raw_sandbox(hit, active_content=active_content)
                 assert str(store) not in hit.text
             miss = await client.get("/raw", params={"path": _wire(b"absent.html")})
