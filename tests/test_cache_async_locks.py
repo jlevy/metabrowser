@@ -50,9 +50,9 @@ requires_git = pytest.mark.skipif(shutil.which("git") is None, reason="git execu
 
 
 class _BoundedHolder:
-    """A child interpreter that holds one lock until told to release, or HOLD_AT_MOST."""
+    """A child interpreter that holds one lock until told to release, or *hold_at_most*."""
 
-    def __init__(self, home: Path, acquire: str) -> None:
+    def __init__(self, home: Path, acquire: str, *, hold_at_most: float = HOLD_AT_MOST) -> None:
         script = textwrap.dedent(
             f"""
             import select
@@ -68,7 +68,7 @@ class _BoundedHolder:
             """
         )
         self.process = subprocess.Popen(
-            [sys.executable, "-c", script, str(home), str(HOLD_AT_MOST)],
+            [sys.executable, "-c", script, str(home), str(hold_at_most)],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -177,7 +177,8 @@ def test_work_a_cancelled_task_abandoned_is_released_when_it_finishes() -> None:
 
     async def scenario() -> None:
         waiting = asyncio.create_task(run_acquiring_thread(work, release=release))
-        assert await asyncio.to_thread(working.wait, CHILD_TIMEOUT)
+        # 20 s, so that with the 30 s wait below the two stay within 50 s.
+        assert await asyncio.to_thread(working.wait, 20)
         waiting.cancel()
         with pytest.raises(asyncio.CancelledError):
             await waiting
@@ -240,7 +241,11 @@ def test_a_cancelled_acquisition_behind_a_busy_home_stops_promptly(
     other = tmp_path / "other"
     other.mkdir()
     other_source = _file_source(_origin(other))
-    holder = _BoundedHolder(home, "locks.application_home_lock(home)")
+    # Half the usual hold: the bound this test has always had on how long the
+    # cancelled command may keep running, now kept by the child and not by a clock here.
+    holder = _BoundedHolder(
+        home, "locks.application_home_lock(home)", hold_at_most=HOLD_AT_MOST / 2
+    )
     try:
 
         async def scenario() -> None:

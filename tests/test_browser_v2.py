@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import time
 from pathlib import Path
 from typing import Any, cast
 
@@ -23,6 +22,7 @@ from metabrowser import server as proc_browser
 from metabrowser import sse
 from metabrowser.charts import _CHARTS_CACHE, extract_agent_charts
 from metabrowser.sse import _bound_pending_line, _read_slice, _tail_jsonl
+from tests.test_browser_projections import _bump_mtime
 
 
 class _FakeHeaders:
@@ -97,10 +97,7 @@ def test_charts_cache_invalidates_when_file_grows(tmp_path: Path) -> None:
     first = extract_agent_charts(log)
     first_count = first["summary"]["counts"].get("init", 0)
 
-    # Append another init event. Sleep slightly so mtime_ns is guaranteed
-    # to advance on filesystems with coarser-than-nanosecond mtime
-    # granularity (most modern Linux is fine, but the guard is cheap).
-    time.sleep(0.01)
+    # Append another init event.
     extra = json.dumps(
         {
             "type": "system",
@@ -112,6 +109,8 @@ def test_charts_cache_invalidates_when_file_grows(tmp_path: Path) -> None:
     )
     with log.open("a") as fh:
         fh.write(extra + "\n")
+    # Whatever the file clock's granularity, the modification time moves too.
+    _bump_mtime(log)
 
     second = extract_agent_charts(log)
     assert second is not first, "expected cache miss after file changed"
@@ -211,8 +210,8 @@ def test_api_file_etag_changes_when_file_changes(tmp_path: Path) -> None:
     proc_browser._set_root_dir(tmp_path)
     first = asyncio.run(proc_browser.api_file(cast(Any, _FakeRequest({"path": "doc.md"}))))
     first_etag = first.headers.get("etag")
-    time.sleep(0.01)
     fixture.write_text("# v2 with more content\n")
+    _bump_mtime(fixture)
     second = asyncio.run(proc_browser.api_file(cast(Any, _FakeRequest({"path": "doc.md"}))))
     second_etag = second.headers.get("etag")
     assert first_etag != second_etag, "ETag must change when file content changes"

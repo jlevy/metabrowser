@@ -709,23 +709,20 @@ def test_priority_hint_returns_before_reference_refresh_finishes(
         handle = await _open_settled(tmp_path)
         release = asyncio.Event()
         started = asyncio.Event()
-        finished = asyncio.Event()
 
         async def blocked_refresh(*_args: object, **_kwargs: object) -> None:
             started.set()
             await release.wait()
-            finished.set()
 
         monkeypatch.setattr(handle, "_refresh_path", blocked_refresh)
         try:
-            # Both waits only break a hang. The refresh cannot finish until the hint
-            # has returned, so a hint that waited for it would never return.
+            # Both waits only break a hang. The refresh cannot finish until this test
+            # releases it, so a hint that waited for it would never return.
             await asyncio.wait_for(
                 handle.prioritize(PriorityRequest(paths=("later",), max_depth=1)),
-                timeout=1,
+                timeout=5,
             )
-            await asyncio.wait_for(started.wait(), timeout=1)
-            assert not finished.is_set()
+            await asyncio.wait_for(started.wait(), timeout=5)
         finally:
             release.set()
             await handle.close()

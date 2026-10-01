@@ -232,11 +232,12 @@ def test_decoration_change_emits_fs_upsert_without_catalog_delta(tmp_path: Path)
                 await harness.runtime.coordinator.patch_decorations(
                     {path: InventoryDecorationPatch(active=False)}
                 )
-                while True:
-                    envelope = await asyncio.wait_for(queue.get(), timeout=2.0)
-                    assert not isinstance(envelope.event, CatalogChange)
-                    if isinstance(envelope.event, FsChange):
-                        break
+                async with asyncio.timeout(5):
+                    while True:
+                        envelope = await queue.get()
+                        assert not isinstance(envelope.event, CatalogChange)
+                        if isinstance(envelope.event, FsChange):
+                            break
                 (marker,) = envelope.event.ops
                 assert isinstance(marker, FsUpsert)
                 assert marker.entry.path == path and not marker.entry.active

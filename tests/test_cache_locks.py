@@ -310,7 +310,7 @@ def test_a_waiter_on_a_replaced_lock_file_retries_on_the_new_file(
     # The waiter has opened the old file and is at its flock. Whether the removal
     # lands before or during that call, the descriptor names the old file, which is
     # what makes it retry; no pause is needed to tell the two apart.
-    assert at_flock.wait(CHILD_TIMEOUT)
+    assert at_flock.wait(20), "the waiter never reached its flock"
     assert opens == ["waiter"]
     first.remove_lock_file()
     thread.join(CHILD_TIMEOUT)

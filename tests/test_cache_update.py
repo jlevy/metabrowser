@@ -599,7 +599,10 @@ def test_work_that_must_finish_finishes_however_often_it_is_cancelled() -> None:
         for _ in range(3):
             await asyncio.sleep(0)
             job.cancel()
-        # The work is still running after three cancellations, and only now may end.
+        # One more turn, so the last cancellation is delivered too: the job has then
+        # been cancelled three times and is still waiting for work that has not ended.
+        await asyncio.sleep(0)
+        assert not job.done()
         assert finished == []
         may_finish.set()
         with pytest.raises(asyncio.CancelledError):
@@ -785,13 +788,27 @@ def test_leftover_removal_touches_only_leftovers(tmp_path: Path) -> None:
     assert (git_dir / "config.lock").exists()
 
 
-def _serving_a_fetch(origin: Path) -> bool:
-    """Whether a ``git upload-pack`` for *origin* is running: the sending side of a fetch."""
+def _temporary_objects(git_dir: Path) -> dict[str, int]:
+    """Each temporary object or pack file in the store, by its size in bytes.
 
-    listed = subprocess.run(
-        ["ps", "-A", "-o", "args="], capture_output=True, text=True, check=True
-    ).stdout
-    return any("upload-pack" in line and str(origin) in line for line in listed.splitlines())
+    Git writes what it receives to ``tmp_obj_*`` and ``tmp_pack_*`` under ``objects``
+    and renames it when it is whole.
+    """
+
+    found: dict[str, int] = {}
+    for directory, _directories, names in os.walk(git_dir / "objects"):
+        for name in names:
+            if name.startswith("tmp_"):
+                path = Path(directory) / name
+                with contextlib.suppress(OSError):
+                    found[str(path.relative_to(git_dir))] = path.stat().st_size
+    return found
+
+
+def _receiving_the_large_object(git_dir: Path) -> bool:
+    # Measured on a 48 MiB object: its temporary file appears at 32 KiB and grows for
+    # 1.4 s before the rename. Past the first megabyte, 47 are still to come.
+    return any(size >= 1024 * 1024 for size in _temporary_objects(git_dir).values())
 
 
 def test_a_cancelled_fetch_leaves_the_mirror_consistent(
@@ -800,8 +817,9 @@ def test_a_cancelled_fetch_leaves_the_mirror_consistent(
     """Cancel a real fetch mid-transfer: refs are all old or all new, and the next refresh works.
 
     The fetch runs unmodified; the wrapper only reports when Git has been started. The
-    cancellation is sent once the origin's ``upload-pack`` is seen running, which it is
-    for as long as the large object takes to pack, so it lands in the transfer.
+    cancellation is sent once the store holds part of the large object, in the temporary
+    file Git receives it into, so it lands in the transfer and leaves that file behind
+    for the next refresh to remove.
     """
 
     import metabrowser.cache.update as update_module
@@ -832,10 +850,12 @@ def test_a_cancelled_fetch_leaves_the_mirror_consistent(
                 remote_url=mirror.published.source.normalized,
             )
         )
-        await asyncio.wait_for(fetching.wait(), timeout=30)
+        git_dir = mirror.published.git_dir
+        # The two bounds sum to 40 s, under the suite's 60 s per-test timeout.
+        await asyncio.wait_for(fetching.wait(), timeout=10)
         deadline = asyncio.get_running_loop().time() + 30
-        while not job.done() and not await asyncio.to_thread(_serving_a_fetch, mirror.origin):
-            assert asyncio.get_running_loop().time() < deadline, "the origin never served"
+        while not job.done() and not await asyncio.to_thread(_receiving_the_large_object, git_dir):
+            assert asyncio.get_running_loop().time() < deadline, "no object was received"
         cancelled = not job.done()
         job.cancel()
         with contextlib.suppress(asyncio.CancelledError):
@@ -862,8 +882,8 @@ def test_a_cancelled_fetch_leaves_the_mirror_consistent(
     assert fsck.returncode == 0, fsck.stderr
     assert _update(mirror) is RefreshOutcome.succeeded
     assert mirror.state().default_revision == large
-    pack_directory = mirror.published.git_dir / "objects" / "pack"
-    assert not any(entry.name.startswith("tmp_") for entry in os.scandir(pack_directory))
+    # The refresh removed whatever the killed fetch left, loose or packed.
+    assert _temporary_objects(mirror.published.git_dir) == {}
 
 
 # ── Resolving a selection ────────────────────────────────────────────

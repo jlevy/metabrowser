@@ -856,7 +856,7 @@ def test_page_session_pins_overlay_without_blocking_other_host_operations(tmp_pa
                 )
                 # A hang breaker, not a budget: an update the session held up would
                 # not finish before the session ends, however long this waited.
-                done, _ = await asyncio.wait({patch}, timeout=1)
+                done, _ = await asyncio.wait({patch}, timeout=5)
                 assert patch in done, "a page assembly must not hold up unrelated host updates"
                 after = await session.read(request)
                 assert after.version.overlay_revision == before.version.overlay_revision

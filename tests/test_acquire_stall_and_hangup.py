@@ -211,7 +211,7 @@ def test_an_ignored_hangup_stays_ignored(tmp_path: Path) -> None:
         # Wait on a marker, not for a while: once the child has handled the signal
         # sent after the hangup, it has taken delivery of the hangup too.
         child.send_signal(signal.SIGUSR1)
-        assert _wait_for((tmp_path / "delivered").exists), "the child never saw SIGUSR1"
+        assert _wait_for((tmp_path / "delivered").exists, 5), "the child never saw SIGUSR1"
         assert child.poll() is None and _alive(helper), "SIGHUP was not ignored"
         # The first cancelling signal handled sets the exit status, so a hangup that
         # was acted on, and not yet finished with, still shows here as 129.
