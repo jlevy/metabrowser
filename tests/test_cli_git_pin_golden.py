@@ -297,12 +297,14 @@ class _Pin:
         self.shown = f"file://<ORIGIN{suffix}>"
         self.labels.origin(self.url, suffix, store="STORE_ID", source="SOURCE_ID")
 
-    def _run(self, *args: str, fails: bool = False, repeats: str | None = None) -> Invocation:
-        result = refused([self.url, *args]) if fails else ok([self.url, *args])
-        stdout = self.printed[args[1] if len(args) > 1 else args[0]] = result.stdout
+    def _run(
+        self, mode: str, *args: str, fails: bool = False, repeats: str | None = None
+    ) -> Invocation:
+        result = refused([self.url, mode, *args]) if fails else ok([self.url, mode, *args])
+        stdout = self.printed[args[0] if args else mode] = result.stdout
         if repeats is not None:
             stdout = _name_the_repeat(stdout, self.printed[repeats], shown_by=quoted(repeats))
-        command = " ".join(["metab", self.shown, args[0], *(quoted(arg) for arg in args[1:])])
+        command = " ".join(["metab", self.shown, mode, *(quoted(arg) for arg in args)])
         self.blocks.append(block(command, result.exit_code, stdout, result.stderr))
         return result
 
