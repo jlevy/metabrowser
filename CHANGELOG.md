@@ -28,12 +28,19 @@ Plugin SDK:
   anchors, so every view that uses it gets both.
   The code is still the `<code>` inside `pre.code-block`, now beside a
   `span.source-line-numbers`; the copy button still copies only the code.
+  The markup it writes has LF where the source has CRLF or a lone CR, so that the gutter
+  counts the lines the browser shows.
+  The text in the page and the text the copy button copies are what they were: the
+  browser’s HTML parser already read both as LF when 0.11.0 assigned the markup.
 
 - `ensureKindAssets(kind)` rejects when the SDK’s own view helpers cannot be fetched.
   Those helpers, `renderSourceView` among them, are no longer part of the shell’s
   startup scripts; the SDK has them in place before any plugin’s code runs, so a plugin
   calls them exactly as before.
   When they cannot be fetched no plugin code has run, and the next call tries again.
+  While it waits for them it starts each plugin’s stylesheets and appends one
+  `<link rel="modulepreload">` per plugin module to the document head, so the module is
+  fetched early. Each module is still evaluated once, by the import that follows.
 
 - `window.metabrowser.sourceKind()` reports whether the served tree is a filesystem root
   or a `git_revision` pin.
@@ -245,6 +252,15 @@ GitHub URLs and HTTPS:
   still cannot read it, since a mirror’s Markdown renders inert and `/raw` is a sandbox
   with no access to `/api`.
 
+- The pull-request page and its routes are a new built-in plugin, `github`, and a
+  built-in plugin loads whatever is served.
+  So it is listed for a plain folder too: `metab --plugins` has a `github` row, the
+  `Plugins:` line a server prints when it starts names it, and `metab --doctor` counts
+  one plugin more than 0.11.0 did.
+  On a folder it serves nothing: `/api/plugin/github/pull` answers `state: "absent"`
+  with `reason: "no_pull_request"`, `/api/plugin/github/pull-markdown` answers 409
+  `no_pull_request`, and `--show /pull/<n>` says the source serves no pull request.
+
 - Pull-request data:
   `metab https://github.com/owner/repo/pull/<n> --api /api/plugin/github/pull` reads the
   pull request with `gh api` (its description, labels, state, merge status, commit
@@ -373,6 +389,9 @@ Repository cache:
   whose schemas are missing or no longer match their models is reported there instead of
   at the first acquisition.
   A healthy result reads as before.
+  The check costs time: `--doctor` takes about 250 ms longer than in 0.11.0, 385 ms to
+  629 ms on an Apple M1 Pro, and does 1.78x the work in instructions retired (measured
+  2026-10-01 over 15 back-to-back pairs of installed wheels with compiled bytecode).
 
 - The cache validates the records it writes with SoftSchema, so `softschema==0.8.1` is a
   new runtime dependency and the minimum `frontmatter-format` rises from 0.3.0 to 0.4.0,
@@ -660,7 +679,10 @@ Content trust:
   KPress drew one, and `model.headings` pointing at the anchors.
   Trusted folders render as before.
   The pull-request page uses the same allowlist, now in core
-  (`src/metabrowser/inert_html.py`, `static/inert-html.js`).
+  (`src/metabrowser/inert_html.py`, `static/inert-html.js`). The Markdown plugin has
+  three more files for it, which `metab --plugin markdown` lists among its assets:
+  `inert-render.js`, `inert-toc.js`, and `place-rendered.js`, which places a render and
+  imports the other two on the first inert one.
 
 - With active content off the application page carries a Content-Security-Policy:
   scripts run only from the application’s `/static/` and `/plugin-static/` paths and the
