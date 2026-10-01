@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from devtools import check_artifact_contracts
-from tests.test_artifact_inventory import _contracts
+from tests.test_artifact_inventory import _registries
 
 
 def _architecture_doc(tmp_path: Path, *, contract_rows: str) -> Path:
@@ -36,7 +36,7 @@ def test_architecture_inventory_matches_exact_installed_declarations(tmp_path: P
 
     assert (
         check_artifact_contracts.check(
-            contracts=_contracts(),
+            registries=_registries(),
             architecture_doc=architecture_doc,
         )
         == []
@@ -55,7 +55,7 @@ def test_architecture_inventory_rejects_missing_orphan_and_duplicate_rows(tmp_pa
     )
 
     problems = check_artifact_contracts.check(
-        contracts=_contracts(),
+        registries=_registries(),
         architecture_doc=architecture_doc,
     )
 
@@ -74,7 +74,7 @@ def test_architecture_inventory_rejects_inexact_contract_semantics(tmp_path: Pat
     )
 
     problems = check_artifact_contracts.check(
-        contracts=_contracts(),
+        registries=_registries(),
         architecture_doc=architecture_doc,
     )
 

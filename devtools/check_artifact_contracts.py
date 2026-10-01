@@ -1,4 +1,4 @@
-"""Check the installed artifact contracts against their durable architecture inventory."""
+"""Check installed artifact capabilities against their durable architecture inventory."""
 
 from __future__ import annotations
 
@@ -7,8 +7,11 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from metabrowser.cache.contracts import cache_contract_registry
-from metabrowser.plugin_loader.artifact_contracts import ContractRegistry, ContractRegistryError
+from metabrowser.plugin_loader.artifact_contracts import (
+    CapabilityRegistryError,
+    InstalledRegistries,
+    get_installed_registries,
+)
 from metabrowser.plugin_loader.artifact_inventory import (
     ContractInventoryEntry,
     check_installed_evidence,
@@ -122,31 +125,27 @@ def _reconcile_rows(
 
 def check(
     *,
-    contracts: ContractRegistry | None = None,
+    registries: InstalledRegistries | None = None,
     architecture_doc: Path = ARCHITECTURE_DOC,
 ) -> list[str]:
-    """Return corpus-evidence and architecture-registration problems.
-
-    The installed contracts are the repository cache's enforced records, the only
-    artifact contracts Metabrowser declares.
-    """
+    """Return installed-evidence and architecture-registration problems."""
     try:
-        if contracts is None:
-            contracts = cache_contract_registry()
-    except ContractRegistryError as exc:
-        return [f"installed contract registry failed: {exc}"]
-    problems = list(check_installed_evidence(contracts))
+        if registries is None:
+            registries = get_installed_registries()
+    except CapabilityRegistryError as exc:
+        return [f"installed capability registry failed: {exc}"]
+    problems = list(check_installed_evidence(registries))
     try:
         document = architecture_doc.read_text(encoding="utf-8")
     except OSError as exc:
         return [*problems, f"cannot read architecture inventory {architecture_doc}: {exc}"]
+    inventory = installed_artifact_inventory(registries)
     problems.extend(
         _reconcile_rows(
             label="artifact contract",
             header=_CONTRACT_HEADER,
             expected={
-                contract.contract_id: _contract_values(contract)
-                for contract in installed_artifact_inventory(contracts)
+                contract.contract_id: _contract_values(contract) for contract in inventory.contracts
             },
             rows=_table_rows(document, _CONTRACT_HEADER),
         )
@@ -161,7 +160,8 @@ def main() -> int:
         for problem in problems:
             print(f"artifact-contract inventory: {problem}", file=sys.stderr)
         return 1
-    print(f"artifact-contract inventory: {len(cache_contract_registry())} contract(s) OK")
+    inventory = installed_artifact_inventory()
+    print(f"artifact-contract inventory: {len(inventory.contracts)} contract(s) OK")
     return 0
 
 

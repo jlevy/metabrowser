@@ -4,6 +4,27 @@ All notable changes to Metabrowser are documented here.
 
 ## 0.12.0 (unreleased)
 
+Plugin contracts:
+
+- Installed Python distributions can register versioned artifact contracts through the
+  new `metabrowser.capabilities.v1` entry-point group.
+  Contract discovery is separate from browser plugin manifests and operator plugin
+  directories, so it does not create a static asset root or change the browser SDK.
+  Packaged schemas and Pydantic semantics validate artifacts presented to the installed
+  registry; artifact metadata cannot select a schema, renderer, or Python import path.
+
+- The generic artifact-format gate derives every contract from the installed capability
+  registry. It checks schema and semantic validation, producer/consumer ownership,
+  packaged corpora, and the maintained architecture inventory.
+  Distribution verification repeats the same inventory from isolated wheel and source
+  distribution installs instead of maintaining a separate built-in schema list.
+
+- The repository cache’s `f01` records install as enforced contracts through a
+  `repository-cache` capability provider, so `metab --doctor` now reports one capability
+  provider and six contracts.
+  The application home and `CACHEDIR.TAG` are created by the first `file://`
+  acquisition.
+
 Plugin SDK:
 
 - **Breaking:** `PLUGIN_SDK_VERSION` is now `0.7`. The shared copy and Load more
@@ -299,7 +320,6 @@ Repository cache:
   `/path/to/repo` is never rewritten into one — and `ext::` remote-helper syntax is
   rejected. `metab file://… --no-serve` fetches into the cache and prints slug, store
   identity, and revision without starting a server.
-  The application home and `CACHEDIR.TAG` are created by the first acquisition.
   A Git timeout, oversized output, missing executable, or failed command during that
   acquire is reported as its own error message without a traceback or a local path.
   `metab file://… --api /api/cache/…` acquires as a side effect, then inspects cache

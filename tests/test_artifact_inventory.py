@@ -8,18 +8,22 @@ from typing import Any, cast
 
 import pytest
 
-from metabrowser.plugin_loader.artifact_contracts import (
-    ArtifactContractSpec,
-    ArtifactProfile,
-    ConformanceCorpusSpec,
-    ContractRegistry,
-    build_contract_registry,
-)
+from metabrowser.plugin_loader.artifact_contracts import build_installed_registries
 from metabrowser.plugin_loader.artifact_inventory import (
-    ContractInventoryError,
+    CapabilityInventoryError,
     check_installed_evidence,
     installed_artifact_inventory,
     validate_installed_evidence,
+)
+from metabrowser.plugin_loader.capability_discovery import (
+    CapabilityDiscoveryResult,
+    LoadedCapabilitySet,
+)
+from metabrowser.plugin_loader.capability_types import (
+    ArtifactContractSpec,
+    ArtifactProfile,
+    CapabilitySet,
+    ConformanceCorpusSpec,
 )
 
 _CONTRACT_ID = "org.example.widgets:Widget/v1"
@@ -167,32 +171,58 @@ def _typed_value_contract(
     )
 
 
-def _contracts(contract: ArtifactContractSpec | None = None) -> ContractRegistry:
-    return build_contract_registry((contract or _contract(),))
+def _registries(
+    contract: ArtifactContractSpec | None = None,
+    *,
+    provider_id: str = "org-example-widgets",
+    source_distribution: str = "example-widgets",
+):
+    provider = LoadedCapabilitySet(
+        provider_id=provider_id,
+        source_distribution=source_distribution,
+        capabilities=CapabilitySet(artifact_contracts=(contract or _contract(),)),
+    )
+    return build_installed_registries(CapabilityDiscoveryResult(providers=(provider,)))
 
 
 def test_installed_inventory_executes_structural_and_semantic_corpus_evidence() -> None:
+    registries = _registries()
+
+    assert check_installed_evidence(registries) == ()
+    assert validate_installed_evidence(registries) is registries
+
+    inventory = installed_artifact_inventory(registries)
+    assert inventory.contracts[0].contract_id == _CONTRACT_ID
+    assert inventory.contracts[0].producer_ids == ("example-provider",)
+    assert inventory.contracts[0].consumer_ids == ("example-browser", "example-store")
+    assert inventory.contracts[0].corpus_record_selectors == ("widget",)
+
+
+def test_installed_inventory_identity_does_not_depend_on_the_declaring_provider() -> None:
     contract = _contract()
-    contracts = _contracts(contract)
+    before = installed_artifact_inventory(
+        _registries(contract, provider_id="first-provider", source_distribution="fixture-dist")
+    )
+    after = installed_artifact_inventory(
+        _registries(contract, provider_id="second-provider", source_distribution="other-dist")
+    )
 
-    assert check_installed_evidence(contracts) == ()
-    assert validate_installed_evidence(contracts) is contracts
-
-    (entry,) = installed_artifact_inventory(contracts)
-    assert entry.contract_id == _CONTRACT_ID
-    assert entry.producer_ids == ("example-provider",)
-    assert entry.consumer_ids == ("example-browser", "example-store")
-    assert entry.corpus_record_selectors == ("widget",)
+    assert before == after
+    projected = json.dumps(asdict(before))
+    assert "first-provider" not in projected
+    assert "fixture-dist" not in projected
+    assert "declaring_module" not in projected
+    entry = before.contracts[0]
     assert entry.schema_bytes_sha256 == contract.schema_bytes_sha256
     assert entry.corpus_payload_sha256 == contract.corpus.payload_sha256
-    assert "declaring_module" not in json.dumps(asdict(entry))
+    assert entry.corpus_record_selectors == ("widget",)
 
 
 def test_installed_inventory_rejects_missing_and_zero_case_selectors() -> None:
     contract = replace(_contract(), corpus_record_selectors=("missing",))
-    contracts = _contracts(contract)
+    registries = _registries(contract)
 
-    problems = check_installed_evidence(contracts)
+    problems = check_installed_evidence(registries)
 
     assert any("missing" in problem and "base_records" in problem for problem in problems)
     assert any("missing" in problem and "no cases" in problem for problem in problems)
@@ -210,9 +240,9 @@ def test_installed_inventory_rejects_orphan_cases_and_wrong_expectations() -> No
     )
     corpus["cases"][2]["expect"] = "valid"
     payload = json.dumps(corpus, sort_keys=True, separators=(",", ":")).encode()
-    contracts = _contracts(_contract(corpus_payload=payload))
+    registries = _registries(_contract(corpus_payload=payload))
 
-    problems = check_installed_evidence(contracts)
+    problems = check_installed_evidence(registries)
 
     assert any(
         "orphan-case" in problem and "unknown base record" in problem for problem in problems
@@ -221,17 +251,17 @@ def test_installed_inventory_rejects_orphan_cases_and_wrong_expectations() -> No
         "semantically-invalid-widget" in problem and "expected valid" in problem
         for problem in problems
     )
-    with pytest.raises(ContractInventoryError, match="semantically-invalid-widget"):
-        validate_installed_evidence(contracts)
+    with pytest.raises(CapabilityInventoryError, match="semantically-invalid-widget"):
+        validate_installed_evidence(registries)
 
 
 def test_installed_inventory_rejects_malformed_mutation_paths() -> None:
     corpus = cast(dict[str, Any], json.loads(_corpus_payload()))
     corpus["cases"][0]["changes"] = [{"path": ["missing", "nested"], "value": True}]
     payload = json.dumps(corpus, sort_keys=True, separators=(",", ":")).encode()
-    contracts = _contracts(_contract(corpus_payload=payload))
+    registries = _registries(_contract(corpus_payload=payload))
 
-    problems = check_installed_evidence(contracts)
+    problems = check_installed_evidence(registries)
 
     assert any("valid-widget" in problem and "mutation path" in problem for problem in problems)
 
@@ -248,7 +278,7 @@ def test_installed_inventory_requires_contract_wide_evidence_polarity(
     corpus["cases"] = [case for case in corpus["cases"] if case["expect"] == retained_expectation]
     payload = json.dumps(corpus, sort_keys=True, separators=(",", ":")).encode()
 
-    problems = check_installed_evidence(_contracts(_contract(corpus_payload=payload)))
+    problems = check_installed_evidence(_registries(_contract(corpus_payload=payload)))
 
     assert any(f"no {missing_evidence} evidence" in problem for problem in problems)
 
@@ -259,7 +289,7 @@ def test_installed_inventory_round_trips_both_artifact_profiles(
 ) -> None:
     contract = replace(_contract(), artifact_profile=artifact_profile)
 
-    assert check_installed_evidence(_contracts(contract)) == ()
+    assert check_installed_evidence(_registries(contract)) == ()
 
 
 def test_installed_inventory_rejects_lossy_dumpers() -> None:
@@ -268,7 +298,7 @@ def test_installed_inventory_rejects_lossy_dumpers() -> None:
 
     contract = replace(_contract(), dump_record=dump_lossy_widget)
 
-    problems = check_installed_evidence(_contracts(contract))
+    problems = check_installed_evidence(_registries(contract))
 
     assert any(
         "valid-widget" in problem and "did not preserve the validated corpus record" in problem
@@ -282,7 +312,7 @@ def test_installed_inventory_reports_raising_dumpers() -> None:
 
     contract = replace(_contract(), dump_record=dump_raising_widget)
 
-    problems = check_installed_evidence(_contracts(contract))
+    problems = check_installed_evidence(_registries(contract))
 
     assert any(
         "valid-widget" in problem
@@ -308,7 +338,7 @@ def test_installed_inventory_uses_type_sensitive_record_preservation(
             nested["value"] = True
         return dumped
 
-    problems = check_installed_evidence(_contracts(_typed_value_contract(dump_typed_value)))
+    problems = check_installed_evidence(_registries(_typed_value_contract(dump_typed_value)))
 
     if lossy_path is None:
         assert problems == ()
@@ -343,7 +373,7 @@ def test_installed_inventory_uses_type_sensitive_round_trip_preservation(
                 nested["value"] = True
         return dumped
 
-    problems = check_installed_evidence(_contracts(_typed_value_contract(dump_typed_value)))
+    problems = check_installed_evidence(_registries(_typed_value_contract(dump_typed_value)))
 
     assert any(
         "valid-typed-value" in problem and "round trip did not preserve semantics" in problem
@@ -375,7 +405,7 @@ def test_installed_inventory_allows_integral_float_normalization() -> None:
         ),
     )
 
-    assert check_installed_evidence(_contracts(contract)) == ()
+    assert check_installed_evidence(_registries(contract)) == ()
 
 
 @pytest.mark.parametrize("record", [None, 1])
@@ -397,7 +427,7 @@ def test_document_scope_requires_an_absent_record_key(record: object) -> None:
         corpus_record_selectors=(),
     )
 
-    problems = check_installed_evidence(_contracts(contract))
+    problems = check_installed_evidence(_registries(contract))
 
     assert any(
         "malformed-document-case" in problem and "record must be a nonempty string" in problem

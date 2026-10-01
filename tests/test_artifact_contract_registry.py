@@ -11,13 +11,17 @@ from frontmatter_format import FmFormatError
 
 from metabrowser.plugin_loader.artifact_contracts import (
     ArtifactContractSpec,
-    ArtifactProfile,
-    ConformanceCorpusSpec,
-    ContractRegistryError,
+    CapabilityRegistryError,
+    CapabilitySet,
     build_contract_registry,
     serialize_artifact,
     validate_artifact,
     validate_record,
+)
+from metabrowser.plugin_loader.capability_discovery import LoadedCapabilitySet
+from metabrowser.plugin_loader.capability_types import (
+    ArtifactProfile,
+    ConformanceCorpusSpec,
 )
 
 _CONTRACT_ID = "example.test:Item/v1"
@@ -93,8 +97,22 @@ def _contract(contract_id: str = _CONTRACT_ID) -> ArtifactContractSpec:
     )
 
 
+def _provider(
+    provider_id: str,
+    *,
+    contracts: tuple[ArtifactContractSpec, ...] = (),
+) -> LoadedCapabilitySet:
+    return LoadedCapabilitySet(
+        provider_id=provider_id,
+        source_distribution="fixture-dist",
+        capabilities=CapabilitySet(artifact_contracts=contracts),
+    )
+
+
 def test_contract_registry_is_immutable() -> None:
-    contracts = build_contract_registry((_contract(),))
+    provider = _provider("fixture", contracts=(_contract(),))
+
+    contracts = build_contract_registry((provider,))
 
     assert contracts[_CONTRACT_ID].spec.contract_id == _CONTRACT_ID
     with pytest.raises(TypeError):
@@ -102,15 +120,18 @@ def test_contract_registry_is_immutable() -> None:
 
 
 def test_duplicate_contract_ids_fail_even_when_declarations_match() -> None:
-    with pytest.raises(ContractRegistryError, match="duplicate artifact contract"):
-        build_contract_registry((_contract(), _contract()))
+    first = _provider("first", contracts=(_contract(),))
+    second = _provider("second", contracts=(_contract(),))
+
+    with pytest.raises(CapabilityRegistryError, match="duplicate artifact contract"):
+        build_contract_registry((first, second))
 
 
 def test_contract_id_is_validated_before_registry_key_use() -> None:
     malformed = replace(_contract(), contract_id=cast(Any, []))
 
-    with pytest.raises(ContractRegistryError, match="contract ID"):
-        build_contract_registry((malformed,))
+    with pytest.raises(CapabilityRegistryError, match="contract ID"):
+        build_contract_registry((_provider("fixture", contracts=(malformed,)),))
 
 
 def test_registry_rejects_schema_digest_id_and_remote_reference_mismatches() -> None:
@@ -120,10 +141,19 @@ def test_registry_rejects_schema_digest_id_and_remote_reference_mismatches() -> 
         b'"title":"tampered","type":"object"',
         1,
     )
-    with pytest.raises(ContractRegistryError, match="schema bytes digest"):
-        build_contract_registry((replace(contract, schema_bytes=tampered_schema),))
-    with pytest.raises(ContractRegistryError, match="schema digest"):
-        build_contract_registry((replace(contract, schema_digest="0" * 64),))
+    with pytest.raises(CapabilityRegistryError, match="schema bytes digest"):
+        build_contract_registry(
+            (
+                _provider(
+                    "fixture",
+                    contracts=(replace(contract, schema_bytes=tampered_schema),),
+                ),
+            )
+        )
+    with pytest.raises(CapabilityRegistryError, match="schema digest"):
+        build_contract_registry(
+            (_provider("fixture", contracts=(replace(contract, schema_digest="0" * 64),)),)
+        )
 
     mutated_schema = cast(dict[str, Any], json.loads(contract.schema_bytes))
     mutated_schema["description"] = "changed without recompiling the logical identity"
@@ -132,26 +162,36 @@ def test_registry_rejects_schema_digest_id_and_remote_reference_mismatches() -> 
         sort_keys=True,
         separators=(",", ":"),
     ).encode()
-    with pytest.raises(ContractRegistryError, match="schema digest"):
+    with pytest.raises(CapabilityRegistryError, match="schema digest"):
         build_contract_registry(
             (
-                replace(
-                    contract,
-                    schema_bytes=mutated_schema_bytes,
-                    schema_bytes_sha256=_schema_bytes_digest(mutated_schema_bytes),
+                _provider(
+                    "fixture",
+                    contracts=(
+                        replace(
+                            contract,
+                            schema_bytes=mutated_schema_bytes,
+                            schema_bytes_sha256=_schema_bytes_digest(mutated_schema_bytes),
+                        ),
+                    ),
                 ),
             )
         )
 
     wrong_contract = _schema_bytes("example.test:Wrong/v1")
-    with pytest.raises(ContractRegistryError, match="x-softschema contract"):
+    with pytest.raises(CapabilityRegistryError, match="x-softschema contract"):
         build_contract_registry(
             (
-                replace(
-                    contract,
-                    schema_bytes=wrong_contract,
-                    schema_bytes_sha256=_schema_bytes_digest(wrong_contract),
-                    schema_digest=_schema_digest(wrong_contract),
+                _provider(
+                    "fixture",
+                    contracts=(
+                        replace(
+                            contract,
+                            schema_bytes=wrong_contract,
+                            schema_bytes_sha256=_schema_bytes_digest(wrong_contract),
+                            schema_digest=_schema_digest(wrong_contract),
+                        ),
+                    ),
                 ),
             )
         )
@@ -176,14 +216,19 @@ def test_registry_rejects_schema_digest_id_and_remote_reference_mismatches() -> 
         sort_keys=True,
         separators=(",", ":"),
     ).encode()
-    with pytest.raises(ContractRegistryError, match=r"local \$defs"):
+    with pytest.raises(CapabilityRegistryError, match=r"local \$defs"):
         build_contract_registry(
             (
-                replace(
-                    contract,
-                    schema_bytes=remote_ref,
-                    schema_bytes_sha256=_schema_bytes_digest(remote_ref),
-                    schema_digest=_schema_digest(remote_ref),
+                _provider(
+                    "fixture",
+                    contracts=(
+                        replace(
+                            contract,
+                            schema_bytes=remote_ref,
+                            schema_bytes_sha256=_schema_bytes_digest(remote_ref),
+                            schema_digest=_schema_digest(remote_ref),
+                        ),
+                    ),
                 ),
             )
         )
@@ -191,12 +236,17 @@ def test_registry_rejects_schema_digest_id_and_remote_reference_mismatches() -> 
 
 def test_registry_verifies_resolvable_corpus_evidence() -> None:
     contract = _contract()
-    with pytest.raises(ContractRegistryError, match="corpus payload digest"):
+    with pytest.raises(CapabilityRegistryError, match="corpus payload digest"):
         build_contract_registry(
             (
-                replace(
-                    contract,
-                    corpus=replace(contract.corpus, payload=b'{"changed":true}'),
+                _provider(
+                    "fixture",
+                    contracts=(
+                        replace(
+                            contract,
+                            corpus=replace(contract.corpus, payload=b'{"changed":true}'),
+                        ),
+                    ),
                 ),
             )
         )
@@ -220,14 +270,19 @@ def test_registry_rejects_unresolved_and_dynamic_schema_references() -> None:
     )
 
     for schema_bytes in (unresolved, dynamic):
-        with pytest.raises(ContractRegistryError, match="cannot be enforced"):
+        with pytest.raises(CapabilityRegistryError, match="cannot be enforced"):
             build_contract_registry(
                 (
-                    replace(
-                        contract,
-                        schema_bytes=schema_bytes,
-                        schema_bytes_sha256=_schema_bytes_digest(schema_bytes),
-                        schema_digest=_schema_digest(schema_bytes),
+                    _provider(
+                        "fixture",
+                        contracts=(
+                            replace(
+                                contract,
+                                schema_bytes=schema_bytes,
+                                schema_bytes_sha256=_schema_bytes_digest(schema_bytes),
+                                schema_digest=_schema_digest(schema_bytes),
+                            ),
+                        ),
                     ),
                 )
             )
@@ -254,8 +309,8 @@ def test_registry_requires_the_exact_schema_dialect(declared_dialect: str | None
         schema_digest=_schema_digest(schema_bytes),
     )
 
-    with pytest.raises(ContractRegistryError, match="must declare Draft 2020-12"):
-        build_contract_registry((contract,))
+    with pytest.raises(CapabilityRegistryError, match="must declare Draft 2020-12"):
+        build_contract_registry((_provider("fixture", contracts=(contract,)),))
 
 
 def test_registry_rejects_nonportable_schema_yaml() -> None:
@@ -286,14 +341,19 @@ def test_registry_rejects_nonportable_schema_yaml() -> None:
     )
 
     for schema_bytes in schemas:
-        with pytest.raises(ContractRegistryError, match="schema is not portable"):
+        with pytest.raises(CapabilityRegistryError, match="schema is not portable"):
             build_contract_registry(
                 (
-                    replace(
-                        contract,
-                        schema_bytes=schema_bytes,
-                        schema_bytes_sha256=_schema_bytes_digest(schema_bytes),
-                        schema_digest="0" * 64,
+                    _provider(
+                        "fixture",
+                        contracts=(
+                            replace(
+                                contract,
+                                schema_bytes=schema_bytes,
+                                schema_bytes_sha256=_schema_bytes_digest(schema_bytes),
+                                schema_digest="0" * 64,
+                            ),
+                        ),
                     ),
                 )
             )
@@ -301,7 +361,7 @@ def test_registry_rejects_nonportable_schema_yaml() -> None:
 
 def test_cached_artifact_can_name_but_cannot_supply_its_schema() -> None:
     contract = _contract()
-    registry = build_contract_registry((contract,))
+    registry = build_contract_registry((_provider("fixture", contracts=(contract,)),))
     payload = (
         b"---\n"
         b"softschema:\n"
@@ -337,7 +397,9 @@ def test_cached_artifact_can_name_but_cannot_supply_its_schema() -> None:
 
     other_contract_id = "example.test:Other/v1"
     other_contract = _contract(other_contract_id)
-    registry_with_other = build_contract_registry((contract, other_contract))
+    registry_with_other = build_contract_registry(
+        (_provider("fixture", contracts=(contract, other_contract)),)
+    )
     wrong_slot_payload = payload.replace(_CONTRACT_ID.encode(), other_contract_id.encode())
     with pytest.raises(ValueError, match="does not match its expected contract"):
         validate_artifact(
@@ -348,7 +410,7 @@ def test_cached_artifact_can_name_but_cannot_supply_its_schema() -> None:
 
 
 def test_record_validation_applies_structural_and_semantic_contracts() -> None:
-    registry = build_contract_registry((_contract(),))
+    registry = build_contract_registry((_provider("fixture", contracts=(_contract(),)),))
 
     assert validate_record({"name": "accepted"}, contract_id=_CONTRACT_ID, contracts=registry) == {
         "name": "accepted"
@@ -372,7 +434,7 @@ def test_enforced_record_validation_closes_an_open_source_schema() -> None:
         schema_bytes_sha256=_schema_bytes_digest(open_schema),
         schema_digest=_schema_digest(open_schema),
     )
-    registry = build_contract_registry((open_contract,))
+    registry = build_contract_registry((_provider("fixture", contracts=(open_contract,)),))
 
     with pytest.raises(ValueError, match="does not satisfy contract"):
         validate_record(
@@ -385,8 +447,12 @@ def test_enforced_record_validation_closes_an_open_source_schema() -> None:
 def test_installed_contract_serialization_round_trips_both_profiles() -> None:
     frontmatter_contract = _contract()
     pure_yaml_contract = replace(frontmatter_contract, artifact_profile="pure-yaml")
-    frontmatter_registry = build_contract_registry((frontmatter_contract,))
-    pure_yaml_registry = build_contract_registry((pure_yaml_contract,))
+    frontmatter_registry = build_contract_registry(
+        (_provider("frontmatter", contracts=(frontmatter_contract,)),)
+    )
+    pure_yaml_registry = build_contract_registry(
+        (_provider("pure-yaml", contracts=(pure_yaml_contract,)),)
+    )
     record = {"name": "accepted"}
 
     frontmatter_payload = serialize_artifact(
@@ -462,7 +528,7 @@ def test_artifact_serialization_rejects_nonportable_values(
         schema_digest=_schema_digest(schema_bytes),
         validate_record=_validate_identity_record,
     )
-    registry = build_contract_registry((contract,))
+    registry = build_contract_registry((_provider("fixture", contracts=(contract,)),))
 
     with pytest.raises(ValueError, match="non-portable YAML values"):
         serialize_artifact(
@@ -474,8 +540,17 @@ def test_artifact_serialization_rejects_nonportable_values(
 
 def test_artifact_parsing_uses_portable_yaml_and_preserves_body_bytes() -> None:
     contract = _contract()
-    frontmatter_registry = build_contract_registry((contract,))
-    pure_yaml_registry = build_contract_registry((replace(contract, artifact_profile="pure-yaml"),))
+    frontmatter_registry = build_contract_registry(
+        (_provider("frontmatter", contracts=(contract,)),)
+    )
+    pure_yaml_registry = build_contract_registry(
+        (
+            _provider(
+                "pure-yaml",
+                contracts=(replace(contract, artifact_profile="pure-yaml"),),
+            ),
+        )
+    )
     bom_and_spaced_fences = (
         b"\xef\xbb\xbf---   \r\n"
         b"softschema:\r\n"
@@ -514,12 +589,17 @@ def test_artifact_parsing_uses_portable_yaml_and_preserves_body_bytes() -> None:
 def test_contract_registry_rejects_invalid_corpus_record_selectors() -> None:
     contract = _contract()
 
-    with pytest.raises(ContractRegistryError, match="corpus_record_selectors"):
+    with pytest.raises(CapabilityRegistryError, match="corpus_record_selectors"):
         build_contract_registry(
             (
-                replace(
-                    contract,
-                    corpus_record_selectors=("fixture-record", "fixture-record"),
+                _provider(
+                    "fixture",
+                    contracts=(
+                        replace(
+                            contract,
+                            corpus_record_selectors=("fixture-record", "fixture-record"),
+                        ),
+                    ),
                 ),
             )
         )

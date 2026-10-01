@@ -5,15 +5,14 @@
 stores pull-request data as plain validated JSON records and adds no resource-profile,
 resource-kind, provider-store, or hosted-address layer.
 The code that implemented this design’s first phases, the Hosted Review Format, the
-resource-profile registry, browser-parser evidence, and the
-`metabrowser.capabilities.v1` entry-point group, was removed from the v0.12 stack and is
-kept, unmaintained, on the `reference/v012-hosted-review` branch.
+resource-profile registry, and browser-parser evidence, was removed from the v0.12 stack
+and is kept, unmaintained, on the `reference/v012-hosted-review` branch.
 File and symbol names below describe the code as it stood before that removal, so some
 no longer exist.
 
 **Status:** Design only.
-The one part in use is the artifact-contract registry, now internal, which validates the
-repository cache’s own records; its installed inventory is in
+The one part in use is the artifact-contract registry, which validates the repository
+cache’s own records; its installed inventory is in
 [Cache record contracts](arch-repository-sources-and-provider-mirrors.md#cache-record-contracts).
 No resource profile, resource kind, provider store, hosted address, or view from this
 document exists in this tree.

@@ -1,4 +1,4 @@
-"""The immutable registry of artifact contracts and the codecs that validate against it."""
+"""The immutable registry of installed artifact contracts."""
 
 from __future__ import annotations
 
@@ -6,12 +6,12 @@ import hashlib
 import json
 import math
 import re
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from io import StringIO
 from types import MappingProxyType
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from frontmatter_format import FmFormatError, FmStyle, new_yaml
 from jsonschema import Draft202012Validator
@@ -25,7 +25,19 @@ from softschema.enforcement import (
 )
 from softschema.validate import parse_frontmatter_text, parse_yaml_text
 
-type ArtifactProfile = Literal["frontmatter-md", "pure-yaml"]
+from metabrowser.plugin_loader.capability_types import (
+    ArtifactContractSpec,
+    ArtifactProfile,
+    CapabilitySet,
+    ConformanceCorpusSpec,
+)
+
+if TYPE_CHECKING:
+    from metabrowser.plugin_loader.capability_discovery import (
+        CapabilityDiscoveryResult,
+        LoadedCapabilitySet,
+    )
+
 type ContractRegistry = Mapping[str, InstalledArtifactContract]
 
 _CONTRACT_ID_RE = re.compile(r"^[a-z][a-z0-9.-]*:[A-Za-z][A-Za-z0-9._-]*/v[1-9][0-9]*$")
@@ -37,45 +49,17 @@ _JSON_SCHEMA_DRAFT = "https://json-schema.org/draft/2020-12/schema"
 _MAX_SAFE_INTEGER = 9_007_199_254_740_991
 
 
-class ContractRegistryError(RuntimeError):
-    """The declared contracts cannot produce one coherent registry.
+class CapabilityRegistryError(RuntimeError):
+    """An installed capability set cannot produce one coherent registry.
 
     This is a failure of the installation, never a defect of a record being
     validated against it. Record-level validators report a defect of their input
     by raising ``ValueError``, and their callers turn that into a semantic
-    problem attributed to the input; subclassing ``ValueError`` here would let
-    one broken declaration be reported as a defect of every valid record
-    instead. It shares the base of its sibling ``ContractInventoryError`` in
-    ``artifact_inventory``.
+    problem attributed to the input; subclassing ``ValueError`` here let one
+    broken third-party entry point be reported as a defect of every valid
+    record instead. It shares the base of its sibling
+    ``CapabilityInventoryError`` in ``artifact_inventory``.
     """
-
-
-@dataclass(frozen=True, slots=True)
-class ConformanceCorpusSpec:
-    """Immutable packaged corpus evidence for one or more contracts."""
-
-    corpus_id: str
-    media_type: Literal["application/json"]
-    payload: bytes
-    payload_sha256: str
-
-
-@dataclass(frozen=True, slots=True)
-class ArtifactContractSpec:
-    """Trusted declaration for one versioned artifact contract."""
-
-    contract_id: str
-    artifact_profile: ArtifactProfile
-    envelope: str
-    schema_bytes: bytes
-    schema_bytes_sha256: str
-    schema_digest: str
-    validate_record: Callable[[dict[str, Any]], object]
-    dump_record: Callable[[object], dict[str, Any]]
-    producer_ids: tuple[str, ...]
-    consumer_ids: tuple[str, ...]
-    corpus: ConformanceCorpusSpec
-    corpus_record_selectors: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,7 +67,15 @@ class InstalledArtifactContract:
     """A contract whose schema and declaration passed registry validation."""
 
     spec: ArtifactContractSpec
+    provider_id: str
     structural_validator: Draft202012Validator
+
+
+@dataclass(frozen=True, slots=True)
+class InstalledRegistries:
+    """One all-or-nothing snapshot of installed backend capabilities."""
+
+    contracts: ContractRegistry
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,7 +88,7 @@ class ValidatedArtifact:
 
 
 def _runtime_descriptor_value(value: object) -> object:
-    """Erase static declaration types so each declaration is checked at runtime."""
+    """Erase static declaration types so installed providers are checked at runtime."""
     return value
 
 
@@ -114,9 +106,11 @@ def _require_stable_ids(
             for value in values
         )
     ):
-        raise ContractRegistryError(f"artifact contract {field_name} must be a tuple of stable IDs")
+        raise CapabilityRegistryError(
+            f"artifact contract {field_name} must be a tuple of stable IDs"
+        )
     if len(set(values)) != len(values):
-        raise ContractRegistryError(f"artifact contract {field_name} must be unique")
+        raise CapabilityRegistryError(f"artifact contract {field_name} must be unique")
     return values
 
 
@@ -128,7 +122,7 @@ def _require_packaged_bytes(
     field_name: str,
 ) -> bytes:
     if not isinstance(payload, bytes) or not payload:
-        raise ContractRegistryError(
+        raise CapabilityRegistryError(
             f"artifact contract {contract_id!r} {field_name} must be nonempty bytes"
         )
     if (
@@ -136,13 +130,13 @@ def _require_packaged_bytes(
         or _SCHEMA_DIGEST_RE.fullmatch(digest) is None
         or hashlib.sha256(payload).hexdigest() != digest
     ):
-        raise ContractRegistryError(
+        raise CapabilityRegistryError(
             f"artifact contract {contract_id!r} {field_name} digest does not match"
         )
     try:
         payload.decode("utf-8")
     except UnicodeDecodeError as exc:
-        raise ContractRegistryError(
+        raise CapabilityRegistryError(
             f"artifact contract {contract_id!r} {field_name} must be UTF-8"
         ) from exc
     return payload
@@ -214,7 +208,7 @@ def _logical_schema_digest(schema: dict[str, Any]) -> str:
     digest_input = dict(schema)
     softschema_metadata = digest_input.get("x-softschema")
     if not isinstance(softschema_metadata, dict):
-        raise ContractRegistryError("artifact contract schema requires x-softschema metadata")
+        raise CapabilityRegistryError("artifact contract schema requires x-softschema metadata")
     identity_metadata = dict(softschema_metadata)
     identity_metadata.pop("schema_sha256", None)
     digest_input["x-softschema"] = identity_metadata
@@ -225,29 +219,29 @@ def _logical_schema_digest(schema: dict[str, Any]) -> str:
 def _validated_schema(spec: ArtifactContractSpec) -> dict[str, Any]:
     schema_bytes = _runtime_descriptor_value(spec.schema_bytes)
     if not isinstance(schema_bytes, bytes):
-        raise ContractRegistryError("artifact contract schema must be immutable bytes")
+        raise CapabilityRegistryError("artifact contract schema must be immutable bytes")
     schema_bytes_sha256 = _runtime_descriptor_value(spec.schema_bytes_sha256)
     if (
         not isinstance(schema_bytes_sha256, str)
         or _SCHEMA_DIGEST_RE.fullmatch(schema_bytes_sha256) is None
         or hashlib.sha256(schema_bytes).hexdigest() != schema_bytes_sha256
     ):
-        raise ContractRegistryError(
+        raise CapabilityRegistryError(
             f"artifact contract {spec.contract_id!r} schema bytes digest does not match"
         )
     try:
         schema_text = schema_bytes.decode("utf-8").removeprefix("\ufeff")
         decoded = parse_yaml_text(schema_text)
     except UnicodeDecodeError as exc:
-        raise ContractRegistryError(
+        raise CapabilityRegistryError(
             f"artifact contract {spec.contract_id!r} schema is not UTF-8"
         ) from exc
     except ValueError as exc:
-        raise ContractRegistryError(
+        raise CapabilityRegistryError(
             f"artifact contract {spec.contract_id!r} schema is not portable YAML or JSON"
         ) from exc
     if not isinstance(decoded, dict):
-        raise ContractRegistryError(
+        raise CapabilityRegistryError(
             f"artifact contract {spec.contract_id!r} schema must be an object"
         )
     schema = cast(dict[str, Any], decoded)
@@ -255,15 +249,15 @@ def _validated_schema(spec: ArtifactContractSpec) -> dict[str, Any]:
     try:
         schema_contract_id = view.contract_id
     except ValueError as exc:
-        raise ContractRegistryError(
+        raise CapabilityRegistryError(
             f"artifact contract {spec.contract_id!r} schema has invalid x-softschema contract"
         ) from exc
     if schema_contract_id != spec.contract_id:
-        raise ContractRegistryError(
+        raise CapabilityRegistryError(
             f"artifact contract {spec.contract_id!r} schema x-softschema contract does not match"
         )
     if schema.get("$schema") != _JSON_SCHEMA_DRAFT:
-        raise ContractRegistryError(
+        raise CapabilityRegistryError(
             f"artifact contract {spec.contract_id!r} schema must declare Draft 2020-12"
         )
     embedded_digest = view.schema_sha256
@@ -274,7 +268,7 @@ def _validated_schema(spec: ArtifactContractSpec) -> dict[str, Any]:
         or embedded_digest != schema_digest
         or _logical_schema_digest(schema) != schema_digest
     ):
-        raise ContractRegistryError(
+        raise CapabilityRegistryError(
             f"artifact contract {spec.contract_id!r} schema digest does not match its compiled schema"
         )
     invalid_references = [
@@ -283,19 +277,19 @@ def _validated_schema(spec: ArtifactContractSpec) -> dict[str, Any]:
         if not reference.startswith("#/$defs/")
     ]
     if invalid_references:
-        raise ContractRegistryError(
+        raise CapabilityRegistryError(
             f"artifact contract {spec.contract_id!r} schema may reference only local $defs"
         )
     try:
         Draft202012Validator.check_schema(schema)
     except SchemaError as exc:
-        raise ContractRegistryError(
+        raise CapabilityRegistryError(
             f"artifact contract {spec.contract_id!r} schema is invalid"
         ) from exc
     try:
         return prepare_schema_graph(schema).root
     except (EnforcementUnsupportedError, SchemaGraphError) as exc:
-        raise ContractRegistryError(
+        raise CapabilityRegistryError(
             f"artifact contract {spec.contract_id!r} schema cannot be enforced: {exc}"
         ) from exc
 
@@ -308,32 +302,32 @@ def _validate_contract_spec(spec: ArtifactContractSpec) -> dict[str, Any]:
     dump_record = _runtime_descriptor_value(spec.dump_record)
     corpus = _runtime_descriptor_value(spec.corpus)
     if not isinstance(contract_id, str) or _CONTRACT_ID_RE.fullmatch(contract_id) is None:
-        raise ContractRegistryError("artifact contract ID must be namespaced and versioned")
+        raise CapabilityRegistryError("artifact contract ID must be namespaced and versioned")
     if not isinstance(artifact_profile, str) or artifact_profile not in _ARTIFACT_PROFILES:
-        raise ContractRegistryError(
+        raise CapabilityRegistryError(
             f"artifact contract {spec.contract_id!r} has an unsupported artifact profile"
         )
     if not isinstance(envelope, str) or _STABLE_TOKEN_RE.fullmatch(envelope) is None:
-        raise ContractRegistryError(
+        raise CapabilityRegistryError(
             f"artifact contract {spec.contract_id!r} envelope must be a stable token"
         )
     if not callable(validate_record) or not callable(dump_record):
-        raise ContractRegistryError(
+        raise CapabilityRegistryError(
             f"artifact contract {spec.contract_id!r} requires validator and dumper callables"
         )
     _require_stable_ids(spec.producer_ids, field_name="producer_ids")
     _require_stable_ids(spec.consumer_ids, field_name="consumer_ids")
     if not isinstance(corpus, ConformanceCorpusSpec):
-        raise ContractRegistryError(
+        raise CapabilityRegistryError(
             f"artifact contract {spec.contract_id!r} requires packaged corpus evidence"
         )
     corpus_id = _runtime_descriptor_value(corpus.corpus_id)
     if not isinstance(corpus_id, str) or _STABLE_TOKEN_RE.fullmatch(corpus_id) is None:
-        raise ContractRegistryError(
+        raise CapabilityRegistryError(
             f"artifact contract {spec.contract_id!r} corpus_id must be a stable ID"
         )
     if _runtime_descriptor_value(corpus.media_type) != "application/json":
-        raise ContractRegistryError(
+        raise CapabilityRegistryError(
             f"artifact contract {spec.contract_id!r} corpus must use application/json"
         )
     _require_packaged_bytes(
@@ -350,22 +344,75 @@ def _validate_contract_spec(spec: ArtifactContractSpec) -> dict[str, Any]:
     return _validated_schema(spec)
 
 
-def build_contract_registry(specs: Sequence[ArtifactContractSpec]) -> ContractRegistry:
-    """Validate every declaration and return an immutable contract registry."""
+def build_contract_registry(providers: Sequence[LoadedCapabilitySet]) -> ContractRegistry:
+    """Validate all installed declarations and return an immutable contract registry."""
     registry: dict[str, InstalledArtifactContract] = {}
-    for declared_spec in specs:
-        spec_object = _runtime_descriptor_value(declared_spec)
-        if not isinstance(spec_object, ArtifactContractSpec):
-            raise ContractRegistryError("an artifact contract declaration is invalid")
-        spec = spec_object
-        schema = _validate_contract_spec(spec)
-        if spec.contract_id in registry:
-            raise ContractRegistryError(f"duplicate artifact contract {spec.contract_id!r}")
-        registry[spec.contract_id] = InstalledArtifactContract(
-            spec=spec,
-            structural_validator=Draft202012Validator(schema),
-        )
+    for provider in providers:
+        for declared_spec in provider.capabilities.artifact_contracts:
+            spec_object = _runtime_descriptor_value(declared_spec)
+            if not isinstance(spec_object, ArtifactContractSpec):
+                raise CapabilityRegistryError(
+                    f"capability provider {provider.provider_id!r} declared an invalid artifact contract"
+                )
+            spec = spec_object
+            schema = _validate_contract_spec(spec)
+            if spec.contract_id in registry:
+                raise CapabilityRegistryError(f"duplicate artifact contract {spec.contract_id!r}")
+            registry[spec.contract_id] = InstalledArtifactContract(
+                spec=spec,
+                provider_id=provider.provider_id,
+                structural_validator=Draft202012Validator(schema),
+            )
     return MappingProxyType(registry)
+
+
+def build_installed_registries(
+    discovery: CapabilityDiscoveryResult | None = None,
+) -> InstalledRegistries:
+    """Discover and atomically validate one installed capability snapshot."""
+    if discovery is None:
+        from metabrowser.plugin_loader.capability_discovery import discover_capability_sets
+
+        discovery = discover_capability_sets()
+    if discovery.errors:
+        raise CapabilityRegistryError("capability discovery failed: " + "; ".join(discovery.errors))
+    return InstalledRegistries(contracts=build_contract_registry(discovery.providers))
+
+
+# One process-wide outcome, success or failure. Building the snapshot parses,
+# digests, and compiles the enforcement graph of every installed contract
+# schema, so it costs roughly one compile per installed contract: eleven warm
+# builds of the 16 built-in contracts measured 0.9 s at the minimum and 2.0 s at
+# the median on a contended machine, so most of a second even before subtracting
+# that contention. Installed capabilities cannot change while the process runs,
+# which makes a failure as final as a success, so both are retained. Retaining
+# only the success charged that whole build, plus entry-point discovery, to
+# every record validated for the rest of a process that had one broken provider.
+_installed_snapshot: InstalledRegistries | None = None
+_installed_failure: CapabilityRegistryError | None = None
+
+
+def get_installed_registries() -> InstalledRegistries:
+    """Return the process-wide immutable installed capability snapshot."""
+    global _installed_snapshot, _installed_failure
+    if _installed_failure is not None:
+        # Raise a fresh error rather than the retained one, whose traceback
+        # would otherwise grow by a frame on every call.
+        raise CapabilityRegistryError(str(_installed_failure)) from _installed_failure
+    if _installed_snapshot is None:
+        try:
+            _installed_snapshot = build_installed_registries()
+        except CapabilityRegistryError as exc:
+            _installed_failure = exc
+            raise
+    return _installed_snapshot
+
+
+def reset_installed_registries_for_tests() -> None:
+    """Discard the retained snapshot so a test can install other capabilities."""
+    global _installed_snapshot, _installed_failure
+    _installed_snapshot = None
+    _installed_failure = None
 
 
 def _decode_artifact(payload: bytes) -> str:
@@ -553,13 +600,18 @@ def serialize_artifact(
 __all__ = [
     "ArtifactContractSpec",
     "ArtifactProfile",
-    "ContractRegistryError",
+    "CapabilityRegistryError",
+    "CapabilitySet",
     "ConformanceCorpusSpec",
     "ContractRegistry",
     "InstalledArtifactContract",
+    "InstalledRegistries",
     "ValidatedArtifact",
     "build_contract_registry",
+    "build_installed_registries",
+    "get_installed_registries",
     "portable_serialization_values_equal",
+    "reset_installed_registries_for_tests",
     "serialize_artifact",
     "validate_artifact",
     "validate_record",

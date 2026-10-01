@@ -26,6 +26,11 @@ from metabrowser.paths_safe import (
     _safe_path_from_identity,
     register_root_callback,
 )
+from metabrowser.plugin_loader.capability_types import (
+    ArtifactContractSpec,
+    CapabilitySet,
+    ConformanceCorpusSpec,
+)
 from metabrowser.projections import extract_agent_charts_cached
 from metabrowser.source import (
     MAX_CONTAINER_INNER_DEPTH,
@@ -88,10 +93,13 @@ def served_root() -> Path:
 
 
 __all__ = [
+    "ArtifactContractSpec",
     "ArtifactCompressionError",
     "ArtifactDecompressionLimitError",
     "ArtifactDecompressionTimeoutError",
     "ArtifactPath",
+    "CapabilitySet",
+    "ConformanceCorpusSpec",
     "ContentReadError",
     "ContentRef",
     "ContentStat",

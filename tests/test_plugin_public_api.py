@@ -10,9 +10,12 @@ import metabrowser
 import metabrowser.plugin_api as plugin_api
 from metabrowser import (
     ArtifactCompressionError,
+    ArtifactContractSpec,
     ArtifactDecompressionLimitError,
     ArtifactDecompressionTimeoutError,
     ArtifactPath,
+    CapabilitySet,
+    ConformanceCorpusSpec,
     JsonlParseLimitError,
     detect_adapter,
     extract_agent_charts_cached,
@@ -25,10 +28,13 @@ from metabrowser import (
 from metabrowser.paths_safe import _set_root_dir
 
 PLUGIN_API_EXPORTS = {
+    "ArtifactContractSpec",
     "ArtifactCompressionError",
     "ArtifactDecompressionLimitError",
     "ArtifactDecompressionTimeoutError",
     "ArtifactPath",
+    "CapabilitySet",
+    "ConformanceCorpusSpec",
     "ContentReadError",
     "ContentRef",
     "ContentStat",
@@ -94,7 +100,13 @@ def test_sidekick_runtime_helpers_are_public() -> None:
     assert callable(register_root_callback)
 
 
-def test_public_import_does_not_load_schema_dependencies() -> None:
+def test_installed_capability_declaration_types_are_public() -> None:
+    assert ArtifactContractSpec.__module__ == "metabrowser.plugin_loader.capability_types"
+    assert CapabilitySet.__module__ == "metabrowser.plugin_loader.capability_types"
+    assert ConformanceCorpusSpec.__module__ == "metabrowser.plugin_loader.capability_types"
+
+
+def test_public_import_does_not_load_capability_registry_dependencies() -> None:
     result = subprocess.run(
         [
             sys.executable,
@@ -114,7 +126,7 @@ def test_public_import_does_not_load_schema_dependencies() -> None:
     assert result.returncode == 0, result.stderr
 
 
-def test_version_command_does_not_load_schema_dependencies() -> None:
+def test_version_command_does_not_load_capability_registry_dependencies() -> None:
     result = subprocess.run(
         [
             sys.executable,
