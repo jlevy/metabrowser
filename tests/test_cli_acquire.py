@@ -19,8 +19,6 @@ from metabrowser.git.process import (
     GitTimeoutError,
     GitUnavailableError,
     UnsupportedGitVersionError,
-    acquisition_allowed,
-    detect_git_version,
 )
 from metabrowser.git.tree_source import GitPath
 from tests.required_tools import needs_git
@@ -378,22 +376,6 @@ def test_no_serve_refuses_below_floor_git_without_writing_an_empty_home(
     assert isinstance(result.exception, CLIError)
     assert "unsupported Git version" in str(result.exception)
     assert list(home.iterdir()) == []
-
-
-@posix_only
-def test_installed_git_below_the_floor_is_refused_by_no_serve(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    version, _raw = detect_git_version()
-    if acquisition_allowed(version):
-        pytest.skip("installed git meets the acquisition floor")
-    home = tmp_path / "home"
-    monkeypatch.setenv("METABROWSER_HOME", str(home))
-    url = _file_url(_origin(tmp_path))
-    result = runner.invoke(_app, [url, "--no-serve"])
-    assert isinstance(result.exception, CLIError)
-    assert "unsupported Git version" in str(result.exception)
-    assert not home.exists()
 
 
 @posix_only

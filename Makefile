@@ -126,7 +126,14 @@ ADMITTED_GIT_TESTS := \
 	tests/test_acquire_stall_and_hangup.py \
 	tests/test_acquire_phases.py \
 	tests/test_github_pulls.py \
-	tests/test_cli_github_pull_golden.py
+	tests/test_cli_github_pull_golden.py \
+	tests/test_cache_async_locks.py \
+	tests/test_cli_no_serve_surface.py \
+	tests/test_diff_view_file_session.py \
+	tests/test_github_pull_page_session.py \
+	tests/test_github_serve.py \
+	tests/test_source_freshness_session.py \
+	tests/test_source_ref_selector_session.py
 
 test-admitted-git:
 	$(UV_RUN) pytest -rs $(ADMITTED_GIT_TESTS)
