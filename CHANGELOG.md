@@ -10,9 +10,17 @@ Plugin SDK:
   listeners act only on a control carrying the page’s owner mark, so a plugin that wrote
   the documented `data-mb-copy`, `data-mb-copy-text`, and `data-mb-copy-label` markup by
   hand now gets a button that silently does nothing (see Content trust below for why).
+  A Load more button fails the same silent way in two cases: one a plugin wrote by hand
+  as `button.metabrowser-load-more`, which carries no mark, and one whose
+  `partialNoticeHtml` `action` string names the plugin’s own function.
+  That string no longer becomes an inline handler, and the listener runs only an action
+  the shell registered by name, which is its own text loader.
+  Nothing is logged in any of these cases.
   To migrate, set `sdk_version = "0.7"` and stamp each copy control the plugin builds
   itself: `mb.ownDelegate(element)` on an element, or `mb.delegateOwnerAttribute()`
   spliced into markup.
+  For a Load more that continues the plugin’s own content, pass `action: null` to
+  `partialNoticeHtml` and wire the plugin’s own listener to its button.
   Controls from `wrapWithCopy` and `partialNoticeHtml` are stamped already and need no
   change. A manifest left at `0.6` is refused when it loads.
 
@@ -289,6 +297,14 @@ Repository cache:
   new runtime dependency and the minimum `frontmatter-format` rises from 0.3.0 to 0.4.0,
   which SoftSchema requires.
 
+- Acquiring or refreshing a Git source requires Git 2.43.7 or, on a later release track,
+  the patched release that carries the same security fixes, up to 2.50.1;
+  `ACQUISITION_PATCHED_TRACKS` in `src/metabrowser/git/process.py` lists them.
+  An older Git is refused with a message that names the version found and the version
+  required, and a refused acquisition does not create the application home.
+  Reusing a store already in the cache and serving a folder on disk do not check the
+  floor.
+
 - New read-only routes `/api/cache/layout`, `/api/cache/sources`,
   `/api/cache/source/<slug>`, and `/api/cache/stores` report the cache’s layout and
   config formats, abandoned staging entries the next sweep removes, sources with their
@@ -308,7 +324,8 @@ Repository cache:
   `/path/to/repo` is never rewritten into one — and `ext::` remote-helper syntax is
   rejected. `metab file://… --no-serve` fetches into the cache and prints slug, store
   identity, and revision without starting a server.
-  The application home and `CACHEDIR.TAG` are created by the first acquisition.
+  The application home and `CACHEDIR.TAG` are created by the first acquisition, of a
+  `file://` or an `https://` source alike.
   A Git timeout, oversized output, missing executable, or failed command during that
   acquire is reported as its own error message without a traceback or a local path.
   `metab file://… --api /api/cache/…` acquires as a side effect, then inspects cache
@@ -509,6 +526,16 @@ Content trust:
   (`X-Frame-Options: DENY`); and no plugins, `<base>`, or form submission.
   `/raw` refuses a browsed file requested as a script, stylesheet, worker, or worklet,
   and sends JavaScript and CSS as `text/plain`. See SECURITY.md.
+
+- **Changed for a folder on disk:** `--untrusted` and `--no-active-content`, and their
+  `METAB_UNTRUSTED=1` and `METAB_ACTIVE_CONTENT=0` forms, now apply both entries above
+  to a served folder, not only to an acquired source.
+  In 0.11 they dropped `allow-scripts` from the `/raw` sandbox and omitted the HTML
+  Preview tab, and Markdown rendered as it does in a trusted folder.
+  Such a folder’s Markdown now renders inert, so code blocks lose their highlighting, an
+  outside image becomes a link, and Obsidian wiki links and embeds show as plain text;
+  and its page carries the Content-Security-Policy.
+  A folder served with neither flag renders as before.
 
 - In an inert render, a query alone and root-relative `/api`, `/_debug`, and `/raw`
   references lose their address, as does any link or image past the link enhancer’s
