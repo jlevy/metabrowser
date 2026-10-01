@@ -24,7 +24,8 @@ STATIC_DIR = REPO_ROOT / "src" / "metabrowser" / "static"
 PLUGINS_DIR = STATIC_DIR.parent / "builtin_plugins"
 CORE_CSS = STATIC_DIR / "styles.css"
 PLUGIN_CSS = tuple(sorted(PLUGINS_DIR.glob("*/styles.css")))
-SDK_JS = STATIC_DIR / "plugin-sdk.js"
+# Both SDK scripts emit notices: the startup one, and the view helpers.
+SDK_JS = (STATIC_DIR / "plugin-sdk.js", STATIC_DIR / "plugin-sdk-views.js")
 
 CSS_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
 CSS_RULE_RE = re.compile(r"(?P<selectors>[^{}]+)\{(?P<body>[^{}]*)\}")
@@ -181,7 +182,7 @@ def test_no_status_tint_is_used_as_a_box_fill_anywhere() -> None:
 
 def test_every_notice_the_sdk_emits_carries_the_primitive() -> None:
     """One builder, so markup cannot drift even if a caller is careless."""
-    src = SDK_JS.read_text()
+    src = "\n".join(path.read_text() for path in SDK_JS)
     assert "function partialNoticeHtml" in src
     assert 'class="notice partial-notice' in src
     assert 'data-severity="warning"' in src

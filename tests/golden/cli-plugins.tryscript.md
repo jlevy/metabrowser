@@ -266,6 +266,7 @@ assets in static_root:
   - markdown-worker.js
   - markdown.css
   - package.json
+  - place-rendered.js
   - project-adapters.js
   - reconciliation-coordinator.js
   - rendered.js
@@ -337,6 +338,7 @@ $ metab --plugin markdown --json
       "markdown-worker.js",
       "markdown.css",
       "package.json",
+      "place-rendered.js",
       "project-adapters.js",
       "reconciliation-coordinator.js",
       "rendered.js",

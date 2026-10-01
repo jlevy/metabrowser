@@ -4027,7 +4027,7 @@ pre.code-block code.hljs {
 }
 
 /* Source views: a gutter of line numbers beside the code, and GitHub-style line
-   anchors (static/source-line-anchors.js). The gutter is one text node in the
+   anchors (static/plugin-sdk-views.js). The gutter is one text node in the
    code's font and line height, so its numbers sit on the code's lines; the code
    scrolls sideways on its own and the numbers stay put. The anchored lines are
    painted from --mb-line-first and --mb-line-last times --mb-line-pitch, the

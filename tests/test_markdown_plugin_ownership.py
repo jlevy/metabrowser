@@ -119,7 +119,7 @@ def test_source_views_include_visible_truncation_warning() -> None:
     # The Source tab renders through the shared source view, whose markup leads with
     # the truncation warning.
     assert "mb.renderSourceView(" in (PLUGIN_DIR / "source.js").read_text(encoding="utf-8")
-    sdk = (PLUGIN_DIR.parent.parent / "static" / "plugin-sdk.js").read_text(encoding="utf-8")
+    sdk = (PLUGIN_DIR.parent.parent / "static" / "plugin-sdk-views.js").read_text(encoding="utf-8")
     render = sdk[sdk.index("function renderSourceView(") :]
     assert "const truncationWarning = renderTextTruncationWarning(data);" in render
     assert "container.innerHTML = truncationWarning + " in render

@@ -468,7 +468,7 @@ def test_every_icon_only_control_carries_the_icon_button_primitive() -> None:
 
     server = Path(proc_browser.__file__).read_text()
     app = _read("app.js")
-    sdk = _read("plugin-sdk.js")
+    sdk = _read("plugin-sdk-views.js")
     controls = _read("filter-controls.js")
 
     assert 'class="icon-btn settings-btn"' in server
@@ -496,7 +496,7 @@ def test_plain_text_actions_use_the_shared_button_primitive() -> None:
 
     # The text view's Load more moved out of the file header and into the
     # shared partial-content notice, but it is still the `.btn` primitive.
-    sdk = _read("plugin-sdk.js")
+    sdk = _read("plugin-sdk-views.js")
     assert 'class="btn metabrowser-load-more"' in sdk
     assert "file-header-action" not in app, (
         "the header no longer restates partial progress; the notice owns it"
@@ -518,7 +518,7 @@ def test_every_core_button_declares_non_submit_behavior() -> None:
     for tag in re.findall(r"<button\b[^>]*>", html):
         assert 'type="button"' in tag
 
-    for name in ("app.js", "filter-controls.js", "plugin-sdk.js"):
+    for name in ("app.js", "filter-controls.js", "plugin-sdk.js", "plugin-sdk-views.js"):
         source = _read(name)
         for match in re.finditer(r"<button\b", source):
             nearby_markup = source[match.start() : match.start() + 320]

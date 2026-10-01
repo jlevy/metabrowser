@@ -43,6 +43,7 @@ for (const name of [
   "view-state.js",
   "navigation.js",
   "plugin-sdk.js",
+  "plugin-sdk-views.js",
   "source-append.js",
 ]) {
   const file = path.join(repoRoot, "src/metabrowser/static", name);

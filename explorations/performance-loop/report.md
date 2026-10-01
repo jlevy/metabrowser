@@ -29,6 +29,7 @@ fast -- only that it moved.
 | `require_canonical_inventory_path_calls_per_entry` | 0 | **2** (accepted on other grounds; see the round) | exp-026 |
 | `browser_event_stream_overflows_per_run` | 0 | **0** (accepted on other grounds; see the round) | exp-031 |
 | `browser_inventory_delivery_batch_items_max` | 17,787 | **4,096** | exp-032 |
+| `cli_show_instr_millions` | 7,401 | **7,689** (accepted on other grounds; see the round) | exp-037 |
 
 Each row is one round’s own control and candidate on the same corpus and machine, not a
 running total: they measure different things and do not compose.
@@ -73,6 +74,8 @@ against one that did.
 | exp-033 | [The v0.10.0 rough-cut check rejects the candidate on a 300k walk regression](experiments/exp-033-v0100-rough-cut-release-sanity-under-load.md) | - | `synthetic300k_browser_walk_elapsed_ms` | rejected |
 | exp-034 | [The quiet-machine v0.10.0 comparison rejects the candidate on the 300k corpus](experiments/exp-034-v0100-quiet-machine-rejects-the-candidate-on-300k.md) | - | `synthetic300k_browser_first_row_ms` | rejected |
 | exp-035 | [Scoping the first-row gate to the corpus it was calibrated from accepts v0.10.0](experiments/exp-035-scoping-the-first-row-gate-accepts-v0100.md) | - | `project10_browser_first_row_ms` | accepted |
+| exp-036 | [A backend-only comparison finds v0.11.0 equivalent and does not clear it for release](experiments/exp-036-backend-only-partial-does-not-clear-v0110.md) | - | `project10_browser_first_row_ms` | unresolved |
+| exp-037 | [Deferring unused Git imports and view-phase browser code brings v0.12 start-up within 1.05x of v0.11.0 and back under its startup-script gate, except --doctor](experiments/exp-037-startup-imports-and-loading-tiers-for-v012.md) | - | `cli_show_instr_millions` | accepted |
 
 ## Absolute numbers, per condition
 

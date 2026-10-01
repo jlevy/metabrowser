@@ -2125,6 +2125,36 @@ async function run() {
       "Could not load this commit.",
     );
 
+    // The diff plugin's load is refused when the SDK's view helpers cannot be fetched.
+    // The commit's own detail still stands and its diff says it could not load. The
+    // refusal arrives before the detail does, and nothing awaits it until then: left
+    // unhandled, it would end this session here.
+    const SHA_NO_ASSETS = "8".repeat(40);
+    responses.set(`/api/git/commit/${SHA_NO_ASSETS}`, async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      return {
+        is_repo: true,
+        commit: commit(SHA_NO_ASSETS, [], "diff assets refused"),
+        body: "",
+        stats: { files_changed: 1, additions: 1, deletions: 0 },
+        files: [{ path: "one.js", status: "modified", additions: 1, deletions: 0 }],
+        files_truncated: false,
+      };
+    });
+    const ensureKindAssets = sandbox.metabrowser.ensureKindAssets;
+    sandbox.metabrowser.ensureKindAssets = async () => {
+      throw new Error("Failed to load asset: /static/plugin-sdk-views.js");
+    };
+    await internals.selectCommit(SHA_NO_ASSETS);
+    await tick();
+    sandbox.metabrowser.ensureKindAssets = ensureKindAssets;
+    assertContains("refused diff assets: the commit is shown", previewHtml, "diff assets refused");
+    assertEqual(
+      "refused diff assets: the diff says it could not load",
+      previewNode.querySelector(".git-commit-diff")?.textContent,
+      "Could not load this commit's diff.",
+    );
+
     // A served mirror: the commit view asks the page's controller for the fetch such a
     // commit waits for, and says how that ended.
     const mirrorStatus = (outcome) => ({

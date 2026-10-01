@@ -88,6 +88,7 @@ lint-check:
 	$(UV_RUN) python -m devtools.check_artifact_contracts
 	$(UV_RUN) python -m devtools.check_parity
 	$(UV_RUN) python -m devtools.check_goldens
+	$(UV_RUN) python -m devtools.check_startup_scripts
 	$(FLOWMARK) --auto --check .
 
 # The tryscript goldens run with a failing gh first on PATH (tests/no-real-gh/gh), so

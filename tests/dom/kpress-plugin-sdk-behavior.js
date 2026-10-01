@@ -231,6 +231,12 @@ vm.runInContext(fs.readFileSync(sdkPath, "utf-8"), sandbox, {
   filename: "plugin-sdk.js",
   importModuleDynamically: importKpressModule,
 });
+// The helpers a view's renderer calls, which the shell loads with the compositor.
+vm.runInContext(
+  fs.readFileSync(path.join(path.dirname(sdkPath), "plugin-sdk-views.js"), "utf-8"),
+  sandbox,
+  { filename: "plugin-sdk-views.js" },
+);
 
 if (!sandbox.metabrowser || typeof sandbox.metabrowser.fetchKpressRender !== "function") {
   fail("plugin-sdk.js did not expose metabrowser.fetchKpressRender");
@@ -735,20 +741,28 @@ async function check_selected_kind_plugin_assets() {
   const first = sandbox.metabrowser.ensureKindAssets("fixture-kind");
   const concurrent = sandbox.metabrowser.ensureKindAssets("fixture-kind");
   await new Promise((resolve) => setTimeout(resolve, 0));
-  const stylesheet = appended.at(-1);
-  if (stylesheet?.tagName !== "LINK" || appended.length !== firstAppend + 1) {
-    return { ok: false, detail: "selected-kind stylesheet was not loaded first" };
+  // The stylesheet and the module's preload go out together: neither is code that
+  // runs, so neither waits for the other. tests/dom/plugin-view-helpers-session.js
+  // holds what the plugin's code does wait for.
+  const [stylesheet, preload] = appended.slice(firstAppend);
+  if (
+    appended.length !== firstAppend + 2 ||
+    stylesheet?.getAttribute("rel") !== "stylesheet" ||
+    preload?.getAttribute("rel") !== "modulepreload" ||
+    preload.getAttribute("href") !== "/plugin-static/fixture/index.js"
+  ) {
+    return { ok: false, detail: "selected-kind stylesheet and module preload were not first" };
   }
   stylesheet.onload();
   await new Promise((resolve) => setTimeout(resolve, 0));
   const script = appended.at(-1);
-  if (script?.tagName !== "SCRIPT" || appended.length !== firstAppend + 2) {
+  if (script?.tagName !== "SCRIPT" || appended.length !== firstAppend + 3) {
     return { ok: false, detail: "selected-kind classic script was not loaded after styles" };
   }
   script.onload();
   await Promise.all([first, concurrent]);
   await sandbox.metabrowser.ensureKindAssets("fixture-kind");
-  if (appended.length !== firstAppend + 2) {
+  if (appended.length !== firstAppend + 3) {
     return { ok: false, detail: "selected-kind assets were loaded more than once" };
   }
   return { ok: true };

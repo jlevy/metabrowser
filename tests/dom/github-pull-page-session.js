@@ -41,7 +41,16 @@ const routePath = path.join(repoRoot, "src/metabrowser/static/navigation.js");
 require("node:vm").runInNewContext(fs.readFileSync(routePath, "utf8"), routeContext, {
   filename: routePath,
 });
-globalThis.window = { MetabrowserNavigationRoute: routeContext.MetabrowserNavigationRoute };
+// git-path.js holds the wire encoder; a pinned revision's shell loads it, and a pull
+// request is always served from one.
+const gitPathFile = path.join(repoRoot, "src/metabrowser/static/git-path.js");
+require("node:vm").runInNewContext(fs.readFileSync(gitPathFile, "utf8"), routeContext, {
+  filename: gitPathFile,
+});
+globalThis.window = {
+  MetabrowserGitPath: routeContext.MetabrowserGitPath,
+  MetabrowserNavigationRoute: routeContext.MetabrowserNavigationRoute,
+};
 
 function assert(condition, message) {
   if (!condition) {
