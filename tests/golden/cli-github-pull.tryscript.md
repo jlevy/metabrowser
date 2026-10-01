@@ -629,193 +629,20 @@ model: text envelope; size=8 content_bytes=8 content_truncated=False
 
 ## Test: a commit URL inside a pull request can name a fork’s commit
 
+The pin is the commit the URL names, which only the fork’s `refs/pull/7/head` reaches.
+The page is still pull request 7’s, read from the record the first test shows in full,
+and its Files changed still ends at the record’s head, not at the pin.
+
 ```console
-$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/7/commits/f7c5a99 --api /api/plugin/github/pull
+$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/7/commits/f7c5a99 --show /pull/7/files
 selection: commit
 pin: f7c5a9918657080d6aeb455902615b6e17df760a (commit)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
-api: /api/plugin/github/pull
-status: 200
-{
-  "state": "stale",
-  "reason": null,
-  "source": "https://github.com/octo/demo",
-  "number": 7,
-  "pin": "f7c5a9918657080d6aeb455902615b6e17df760a",
-  "fetched_at": "2026-09-17T12:00:00Z",
-  "fresh_for_s": 60.0,
-  "refreshing": false,
-  "last_refresh": {
-    "outcome": "succeeded",
-    "message": null,
-    "reset_at": null,
-    "at": "2026-09-17T12:00:00Z"
-  },
-  "comparison_route": "/api/plugin/diff/comparison?left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base",
-  "record": {
-    "schema_version": 2,
-    "source": "https://github.com/octo/demo",
-    "number": 7,
-    "fetched_at": "2026-09-17T12:00:00Z",
-    "reader": "gh:octo-reader",
-    "etags": {
-      "repos/octo/demo/pulls/7": "W/\"f9a5f87d7f2672e1b7757f36509de5ce7f8731429fe6cbfc7f672b160f1edb2b\"",
-      "repos/octo/demo/issues/7/comments?per_page=100&page=1": "W/\"129ba5d41c7ad9dc46b0ecc3d92124b83747ed95e5ff5422603eb05b99399608\"",
-      "repos/octo/demo/pulls/7/reviews?per_page=100&page=1": "W/\"553dbffc68c21141af1083cb13e8be39e4138e90d4011da721d679e7853c5e9d\"",
-      "repos/octo/demo/pulls/7/comments?per_page=100&page=1": "W/\"b4ca741eae91bcff3445421bd4f16ee7b2ae05d25fa979346f04a378ee3bd6cc\"",
-      "repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1": "W/\"8b11f63f1595a605256b810ecbc6ad42f31ec79413e5748815f151c4ed6821e8\"",
-      "repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1": "W/\"7362c7bd7021c47983e06eb57cbc2d2b436158c6a1ec5f3fdeda0be1cc45832f\""
-    },
-    "pull": {
-      "number": 7,
-      "title": "Count to two in the app",
-      "body": "The app counts to one.\r\n\r\nThis teaches it **two**.",
-      "body_truncated": false,
-      "state": "open",
-      "draft": false,
-      "merged": false,
-      "merged_by": null,
-      "commits": 2,
-      "merge_commit_sha": null,
-      "mergeable": "mergeable",
-      "labels": [
-        "enhancement"
-      ],
-      "author": "forker",
-      "created_at": "2026-09-16T10:57:23Z",
-      "updated_at": "2026-09-16T17:39:01Z",
-      "merged_at": null,
-      "closed_at": null,
-      "base": {
-        "ref": "topic",
-        "sha": "07b55f07793d9ed4e9f3e130c4414d979137bc53",
-        "repository": "octo/demo"
-      },
-      "head": {
-        "ref": "count-to-two",
-        "sha": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
-        "repository": "forker/demo"
-      },
-      "html_url": "https://github.com/octo/demo/pull/7"
-    },
-    "issue_comments": [
-      {
-        "id": 3341937855,
-        "author": "maintainer",
-        "body": "Thanks. CI is green; one question inline.",
-        "body_truncated": false,
-        "created_at": "2026-09-16T17:34:17Z",
-        "updated_at": "2026-09-16T17:35:33Z"
-      }
-    ],
-    "reviews": [
-      {
-        "id": 3274109685,
-        "state": "COMMENTED",
-        "author": "maintainer",
-        "body": "",
-        "body_truncated": false,
-        "submitted_at": "2026-09-16T12:32:50Z",
-        "commit_id": "f7c5a9918657080d6aeb455902615b6e17df760a"
-      },
-      {
-        "id": 3279967139,
-        "state": "APPROVED",
-        "author": "maintainer",
-        "body": "Looks right.",
-        "body_truncated": false,
-        "submitted_at": "2026-09-16T17:36:02Z",
-        "commit_id": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a"
-      }
-    ],
-    "review_comments": [
-      {
-        "id": 2383608906,
-        "review_id": 3274109685,
-        "in_reply_to": null,
-        "path": "src/app.txt",
-        "line": null,
-        "original_line": 1,
-        "start_line": null,
-        "original_start_line": null,
-        "side": "RIGHT",
-        "commit_id": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
-        "original_commit_id": "f7c5a9918657080d6aeb455902615b6e17df760a",
-        "diff_hunk": "@@ -1 +1 @@\n-one\n+one",
-        "diff_hunk_truncated": false,
-        "author": "maintainer",
-        "body": "Why does this line change?",
-        "body_truncated": false,
-        "created_at": "2026-09-16T12:32:50Z",
-        "updated_at": "2026-09-16T12:32:50Z"
-      },
-      {
-        "id": 2388073350,
-        "review_id": 3279967139,
-        "in_reply_to": 2383608906,
-        "path": "src/app.txt",
-        "line": 2,
-        "original_line": 2,
-        "start_line": null,
-        "original_start_line": null,
-        "side": "RIGHT",
-        "commit_id": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
-        "original_commit_id": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
-        "diff_hunk": "@@ -1 +1,2 @@\n one\n+two",
-        "diff_hunk_truncated": false,
-        "author": "forker",
-        "body": "It no longer does; the second line is new.",
-        "body_truncated": false,
-        "created_at": "2026-09-16T17:30:11Z",
-        "updated_at": "2026-09-16T17:30:11Z"
-      }
-    ],
-    "check_runs": [
-      {
-        "id": 51401654787,
-        "name": "tests (3.13)",
-        "status": "completed",
-        "conclusion": "success",
-        "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
-        "app": "GitHub Actions"
-      },
-      {
-        "id": 51401654788,
-        "name": "docs",
-        "status": "in_progress",
-        "conclusion": null,
-        "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
-        "app": "GitHub Actions"
-      }
-    ],
-    "status": {
-      "state": "success",
-      "statuses": [
-        {
-          "context": "docs/readthedocs.org:demo",
-          "state": "success",
-          "description": "Read the Docs build succeeded!",
-          "target_url": "https://demo--7.org.readthedocs.build/en/7/"
-        }
-      ]
-    },
-    "comparison": {
-      "base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
-      "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
-      "base_commit": "c691256511d05858850bc7684ae062fea0d41132",
-      "base_from": "base_branch"
-    },
-    "truncated": {
-      "issue_comments": false,
-      "reviews": false,
-      "review_comments": false,
-      "check_runs": false,
-      "statuses": false,
-      "text": false
-    },
-    "unavailable": {}
-  }
-}
+show: /pull/7/files
+route: /pull/7/files
+kind: pull-request
+views: pull-request (default)
+model: pull envelope; state=stale pull_state=open fetched_at=2026-09-17T12:00:00Z reader=gh:octo-reader issue_comments=1 reviews=2 review_comments=2 check_runs=2 statuses=1 tab=files comparison_route=/api/plugin/diff/comparison?left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base
 ? 0
 ```
 
@@ -976,39 +803,11 @@ status: 200
 `202` without waiting for it, with the envelope as of that moment, so `refreshing` is
 true. `status_route` names the route that reports how it ended: the one-shot command
 waits for the refresh, prints that route `after` it, and exits 1 when it failed.
-Here `gh` fails, which leaves the record as it was, so the command exits 1. Both
-envelopes carry the whole record, pinned in full by the first test above, so the output
-goes to a file and the next command shows the lines that say what happened.
-
-```console
-$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/7 --api /api/plugin/github/pull-refresh --data refresh.json > refresh-7.txt
-selection: pull_request
-pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
-pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
-Error: the refresh ended with gh_failed
-? 1
-```
-
-```console
-$ grep -E '^(api|status|after|  "(refresh|status_route|refreshing)"|    "(state|number|refreshing|outcome)")' refresh-7.txt
-api: /api/plugin/github/pull-refresh
-status: 202
-  "refresh": "started",
-    "state": "stale",
-    "number": 7,
-    "refreshing": true,
-  "status_route": "/api/plugin/github/pull"
-after: /api/plugin/github/pull
-status: 200
-  "refreshing": false,
-    "outcome": "gh_failed",
-    "number": 7,
-? 0
-```
-
-With no record cached the envelope is `pending` rather than `absent` while the refresh
-runs, and there is no record to repeat, so this one is shown whole: the route answers
-`202`, the status `after` the refresh names `gh_failed`, and the command exits 1.
+Here `gh` fails, so the command exits 1. Pull request 14 has no record, so the envelope
+is `pending` rather than `absent` while the refresh runs, and both envelopes are short
+enough to show whole.
+A refresh that completes, of a pull request whose record is cached, is in
+`tests/golden/cli-github-pull-refresh.txt`.
 
 ```console
 $ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/14 --api /api/plugin/github/pull-refresh --data refresh.json
@@ -1195,23 +994,19 @@ Error: /api/plugin/github/pull-markdown?part=../body returned HTTP 400
 ? 1
 ```
 
-## Test: the cache still reads the source as published
-
-The pull-request records live beside the source’s own records, where nothing reads them
-as damage. The envelope’s times are the fixture’s wall clock, so the command’s output
-goes to a file and the next command shows the publication state and problems of the
-source and of its store.
+With no record cached there is nothing to render, and the answer says so.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab root --api /api/cache/source/github-com--octo--demo--46386669dc01 > cache-source.txt
-? 0
-```
-
-```console
-$ grep -E '"(publication|problems)"' cache-source.txt
-    "publication": "published",
-    "problems": [],
-      "publication": "published",
-      "problems": []
-? 0
+$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/14 --api '/api/plugin/github/pull-markdown?part=body'
+selection: pull_request
+pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
+pull_request: 14 (not opened: pull request 14 of https://github.com/octo/demo: gh exited 1 without an HTTP response (gh_failed); the pin is the default branch)
+api: /api/plugin/github/pull-markdown?part=body
+status: 404
+{
+  "error": "no record of this pull request is cached",
+  "code": "not_cached"
+}
+Error: /api/plugin/github/pull-markdown?part=body returned HTTP 404
+? 1
 ```
