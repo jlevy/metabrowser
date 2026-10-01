@@ -42,10 +42,9 @@ from metabrowser.git.history import (
 from metabrowser.git.log import read_history_summary, read_refs
 from metabrowser.git.process import GitError, GitLocation, GitTimeoutError, failure_detail
 from metabrowser.git.repo import RepoContext, repo_info
-from metabrowser.git.tree_source import GitRevisionSubject
 from metabrowser.git.wire import GitRepoInfo, is_full_revision
 from metabrowser.settings import GIT_LOG_DEFAULT_LIMIT, GIT_LOG_MAX_LIMIT
-from metabrowser.source import get_source_session, session_filesystem_root
+from metabrowser.source import get_source_session, git_revision_subject, session_filesystem_root
 
 log = logging.getLogger(__name__)
 
@@ -53,9 +52,9 @@ log = logging.getLogger(__name__)
 def session_git_location() -> GitLocation:
     """The Git command location for the active repository subject."""
 
-    subject = get_source_session().subject
-    if isinstance(subject, GitRevisionSubject):
-        return GitLocation.revision(subject.command_target, subject.commit_oid)
+    pin = git_revision_subject(get_source_session().subject)
+    if pin is not None:
+        return GitLocation.revision(pin.command_target, pin.commit_oid)
     return GitLocation.filesystem(session_filesystem_root())
 
 

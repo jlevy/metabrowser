@@ -26,20 +26,13 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from typing import Any, Final, TypedDict, cast
+from typing import TYPE_CHECKING, Any, Final, TypedDict, cast
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
 from metabrowser.content_errors import ContentReadError
-from metabrowser.git.tree_source import (
-    GitPathError,
-    GitRevisionSubject,
-    ref_short_name,
-    resolve_git_blob_entry,
-    split_git_container_wire,
-)
 from metabrowser.http_caching import build_scoped_etag, etag_headers, matches_if_none_match
 from metabrowser.mirror_refresh import (
     UNSERVED_FRESHNESS,
@@ -58,6 +51,7 @@ from metabrowser.source import (
     SubjectNotOpenError,
     UnsupportedSourceCapabilityError,
     get_source_session,
+    git_revision_subject,
     unsupported_source_payload,
 )
 from metabrowser.view_routes import (
@@ -65,6 +59,11 @@ from metabrowser.view_routes import (
     decode_view_logical_path,
     format_view_href,
 )
+
+if TYPE_CHECKING:
+    # Annotations only. The server registers this table for a folder too, so what a
+    # function needs from the revision tree source it imports where a pin is served.
+    from metabrowser.git.tree_source import GitRevisionSubject
 
 log = logging.getLogger(__name__)
 
@@ -122,21 +121,23 @@ def source_status(mirror: MirrorSession | None = None) -> SourceStatus:
     """The envelope for the active session. Reads no store and runs no Git."""
 
     session = get_source_session()
-    subject = session.subject
-    if isinstance(subject, GitRevisionSubject):
+    pin = git_revision_subject(session.subject)
+    if pin is not None:
+        from metabrowser.git.tree_source import ref_short_name
+
         freshness: FreshnessFields = (
-            mirror.freshness_fields(subject) if mirror is not None else UNSERVED_FRESHNESS
+            mirror.freshness_fields(pin) if mirror is not None else UNSERVED_FRESHNESS
         )
         return SourceStatus(
-            subject=subject.kind,
+            subject=pin.kind,
             generation=session.generation,
-            pin=subject.commit_oid,
-            ref=subject.ref,
-            ref_name=ref_short_name(subject.ref),
+            pin=pin.commit_oid,
+            ref=pin.ref,
+            ref_name=ref_short_name(pin.ref),
             **freshness,
         )
     return SourceStatus(
-        subject=subject.kind,
+        subject=session.subject.kind,
         generation=session.generation,
         pin=None,
         ref=None,
@@ -252,8 +253,8 @@ async def api_source_refs(request: Request) -> JSONResponse:
         mirror = _served_mirror(request, "refs")
     except UnsupportedSourceCapabilityError as exc:
         return JSONResponse(unsupported_source_payload(exc), status_code=409)
-    subject = get_source_session().subject
-    assert isinstance(subject, GitRevisionSubject)
+    subject = git_revision_subject(get_source_session().subject)
+    assert subject is not None
     try:
         listed = await mirror.mirror.list_refs(kind)
     except ContentReadError as exc:
@@ -272,7 +273,7 @@ async def api_source_refs(request: Request) -> JSONResponse:
 
 def _served_mirror(request: Request, capability: str) -> MirrorSession:
     mirror = mirror_session(request.app)
-    if mirror is None or not isinstance(get_source_session().subject, GitRevisionSubject):
+    if mirror is None or git_revision_subject(get_source_session().subject) is None:
         raise UnsupportedSourceCapabilityError(capability)
     return mirror
 
@@ -401,6 +402,12 @@ async def view_on_pin(subject: GitRevisionSubject, identity: str) -> str:
     query is not kept: the lines may differ on another revision.
     """
 
+    from metabrowser.git.tree_source import (
+        GitPathError,
+        resolve_git_blob_entry,
+        split_git_container_wire,
+    )
+
     if not identity:
         return VIEW_ROUTE_PREFIX
     try:
@@ -463,8 +470,9 @@ async def api_source_pin(request: Request) -> JSONResponse:
         log.warning("switching the pin failed: %s", exc)
         return _error("the selection could not be opened", exc.code, exc.http_status)
     answer: dict[str, Any] = {"changed": changed, "status": dict(source_status(mirror))}
-    if view is not None and isinstance(session.subject, GitRevisionSubject):
-        answer["view_href"] = await view_on_pin(session.subject, view)
+    switched = git_revision_subject(session.subject)
+    if view is not None and switched is not None:
+        answer["view_href"] = await view_on_pin(switched, view)
     return JSONResponse(answer)
 
 
@@ -534,7 +542,8 @@ def _served_pin() -> str | None:
         subject = get_source_session().subject
     except SubjectNotOpenError:
         return None
-    return subject.commit_oid if isinstance(subject, GitRevisionSubject) else ""
+    pin = git_revision_subject(subject)
+    return pin.commit_oid if pin is not None else ""
 
 
 SOURCE_ROUTES = [

@@ -39,13 +39,22 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import partial
-from typing import Any, ClassVar, Final, Literal, Protocol, TypedDict
+from typing import TYPE_CHECKING, Any, ClassVar, Final, Literal, Protocol, TypedDict
 
 from metabrowser.git.process import GIT_ACQUISITION_TIMEOUT_S
-from metabrowser.git.tree_source import GitRevisionSubject
 from metabrowser.paths_safe import register_root_callback
 from metabrowser.repository_context import RepositoryContext
-from metabrowser.source import SourceSession, get_source_session, replace_owned_subject
+from metabrowser.source import (
+    SourceSession,
+    get_source_session,
+    git_revision_subject,
+    replace_owned_subject,
+)
+
+if TYPE_CHECKING:
+    # Annotations only. Every server owns a refresh coordinator, so this module loads
+    # when a folder is served too, and the revision tree source is not a folder's cost.
+    from metabrowser.git.tree_source import GitRevisionSubject
 
 log = logging.getLogger(__name__)
 
@@ -880,8 +889,7 @@ class MirrorSession:
 
 
 def _served_revision() -> GitRevisionSubject | None:
-    subject = get_source_session().subject
-    return subject if isinstance(subject, GitRevisionSubject) else None
+    return git_revision_subject(get_source_session().subject)
 
 
 # ── Configuration and lifespan ──────────────────────────────────

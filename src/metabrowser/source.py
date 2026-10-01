@@ -21,7 +21,7 @@ from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
-from typing import IO, Protocol, runtime_checkable
+from typing import IO, TYPE_CHECKING, Protocol, runtime_checkable
 
 from strif import file_mtime_hash
 
@@ -30,6 +30,9 @@ from metabrowser.content_errors import ContentReadError, ContentUnavailableError
 from metabrowser.gz_io import ArtifactCompressionError, ArtifactPath
 from metabrowser.inventory_engine.contract import canonical_inventory_path, native_inventory_path
 from metabrowser.paths_safe import _is_within, _relativize, register_root_callback
+
+if TYPE_CHECKING:
+    from metabrowser.git.tree_source import GitRevisionSubject
 
 
 class RepositorySubjectKind(StrEnum):
@@ -590,6 +593,23 @@ def get_source_session() -> SourceSession:
             raise SubjectNotOpenError
         return attach_subject(AttachedFilesystemSubject(paths_safe.ROOT_DIR))
     return _session
+
+
+def git_revision_subject(subject: RepositorySubject) -> GitRevisionSubject | None:
+    """Return *subject* as a pinned Git revision, or ``None`` when it is anything else.
+
+    The kind is compared before the class, so a process serving a folder answers
+    without importing :mod:`metabrowser.git.tree_source`. Importing that module and the
+    Git routes built on it is start-up work a folder never uses, and every caller asks
+    this question on a path a folder takes too. A pin's own code has already imported
+    the module by the time one is attached, so the import below costs a pin nothing.
+    """
+
+    if subject.kind != RepositorySubjectKind.git_revision.value:
+        return None
+    from metabrowser.git.tree_source import GitRevisionSubject
+
+    return subject if isinstance(subject, GitRevisionSubject) else None
 
 
 def reset_source_session() -> None:

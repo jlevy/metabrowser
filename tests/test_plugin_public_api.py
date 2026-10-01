@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
+import textwrap
 from pathlib import Path
+
+import pytest
 
 import metabrowser
 import metabrowser.plugin_api as plugin_api
@@ -133,3 +137,100 @@ def test_version_command_does_not_load_schema_dependencies() -> None:
     )
 
     assert result.returncode == 0, result.stderr
+
+
+# What a pinned Git revision, a Git source, or ``--diff`` needs and a local folder does
+# not. Loading any of it when the process starts is work every ``metab`` run pays, in
+# every mode, whether or not a repository is ever opened. The measurements that put the
+# line here are in explorations/performance-loop/experiments/exp-037.
+_GIT_SOURCE_MODULES = (
+    # The revision tree source, and the routes that answer from it.
+    "metabrowser.git.tree_source",
+    "metabrowser.git.content_routes",
+    # Acquiring a Git source and serving its pin.
+    "metabrowser.cli.acquire_cli",
+    "metabrowser.cli.git_pin_cli",
+    "metabrowser.cli.selection",
+    # The ``--diff`` mode.
+    "metabrowser.cli.diff_cli",
+)
+# A folder's server registers these and nothing else of their packages: each is a route
+# table whose handlers import the rest when a request needs it.
+_ROUTE_TABLE_ONLY = {
+    "metabrowser.cache": {"metabrowser.cache.routes"},
+    "metabrowser.builtin_plugins.github": {"metabrowser.builtin_plugins.github.sidekick"},
+}
+
+_REPORT_LOADED_MODULES = textwrap.dedent(
+    """
+    import atexit, json, sys
+    def report():
+        loaded = sorted(name for name in sys.modules if name.startswith("metabrowser."))
+        sys.stderr.write("\\nloaded-modules:" + json.dumps(loaded) + "\\n")
+    atexit.register(report)
+    sys.argv = ["metab", *sys.argv[1:]]
+    from metabrowser.cli.entrypoint import main
+    main()
+    """
+)
+
+
+def _modules_loaded_by(*args: str) -> set[str]:
+    """Run ``metab`` with *args* in a fresh interpreter and return what it imported."""
+
+    result = subprocess.run(
+        [sys.executable, "-c", _REPORT_LOADED_MODULES, *args],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert result.returncode == 0, result.stderr
+    return set(json.loads(result.stderr.rpartition("loaded-modules:")[2]))
+
+
+def _git_source_modules_in(loaded: set[str]) -> list[str]:
+    found = [name for name in _GIT_SOURCE_MODULES if name in loaded]
+    for package, allowed in _ROUTE_TABLE_ONLY.items():
+        found.extend(
+            sorted(
+                name for name in loaded if name.startswith(package + ".") and name not in allowed
+            )
+        )
+    return found
+
+
+def test_version_command_does_not_load_git_source_or_server_modules() -> None:
+    loaded = _modules_loaded_by("--version")
+
+    assert _git_source_modules_in(loaded) == []
+    # Nor anything a server is made of: the version is known before a mode is chosen.
+    for name in (
+        "metabrowser.server",
+        "metabrowser.source_routes",
+        "metabrowser.mirror_refresh",
+        "metabrowser.git.routes",
+        "metabrowser.diff.adapters.git",
+    ):
+        assert name not in loaded, name
+
+
+@pytest.mark.parametrize(
+    "mode",
+    [("--api", "/api/tree?depth=1"), ("--show", "README.md"), ("--walk",)],
+    ids=["api", "show", "walk"],
+)
+def test_a_local_folder_does_not_load_git_source_modules(
+    tmp_path: Path, mode: tuple[str, ...]
+) -> None:
+    root = tmp_path / "browse"
+    root.mkdir()
+    (root / "README.md").write_text("# Local\n")
+
+    loaded = _modules_loaded_by(str(root), *mode)
+
+    assert _git_source_modules_in(loaded) == []
+    if mode[0] != "--walk":
+        # The request went through the real server, so the absence above is not an
+        # artifact of a mode that never builds the application.
+        assert "metabrowser.server" in loaded

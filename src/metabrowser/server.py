@@ -101,17 +101,8 @@ from metabrowser.file_kinds import (
 )
 from metabrowser.file_type_filters import FILTER_TYPE_PRESETS
 from metabrowser.folder_discovery import discover_folder
-from metabrowser.git.content_routes import (
-    decode_git_view_path,
-    git_revision_file,
-    git_revision_kpress_render,
-    git_revision_raw,
-    git_revision_rollup,
-    git_revision_tree,
-)
 from metabrowser.git.history import close_history_sessions
 from metabrowser.git.routes import GIT_ROUTES
-from metabrowser.git.tree_source import GitRevisionSubject, ref_branch_name
 from metabrowser.gz_io import (
     ArtifactCompressionError,
     ArtifactDecompressionLimitError,
@@ -207,6 +198,7 @@ from metabrowser.settings import (
 from metabrowser.source import (
     UnsupportedSourceCapabilityError,
     get_source_session,
+    git_revision_subject,
     lifespan_subject,
     require_filesystem_hooks,
     require_filter_capabilities,
@@ -1233,10 +1225,14 @@ PREFETCH_FALLBACK_DELAY_MS = 200
 async def index(request: Request) -> HTMLResponse:
     """Serve the SPA page with linked assets and one pre-paint state machine."""
 
-    subject = get_source_session().subject
-    git_pin = isinstance(subject, GitRevisionSubject)
-    if git_pin:
-        pin_oid = subject.commit_oid
+    pin = git_revision_subject(get_source_session().subject)
+    git_pin = pin is not None
+    if pin is not None:
+        # Imported where a pin is served, like every other Git import below: the
+        # modules behind a pinned revision are start-up work a folder never uses.
+        from metabrowser.git.tree_source import ref_branch_name
+
+        pin_oid = pin.commit_oid
         initial_path = _pin_label_html(source_status())
         initial_root = html_escape(pin_oid, quote=True)
         # Core holds no provider URL grammar: the served mirror asks the installed
@@ -1245,7 +1241,7 @@ async def index(request: Request) -> HTMLResponse:
         # has none.
         mirror = mirror_session(request.app)
         repository_context = (
-            mirror.mirror.repository_context(revision=pin_oid, branch=ref_branch_name(subject.ref))
+            mirror.mirror.repository_context(revision=pin_oid, branch=ref_branch_name(pin.ref))
             if mirror is not None
             else None
         )
@@ -1368,13 +1364,11 @@ async def index(request: Request) -> HTMLResponse:
         f"<script>window.METABROWSER_SOURCE_KIND={source_kind_json};</script>"
         f"<script>window.METABROWSER_REPOSITORY_CONTEXT={repository_context_json};</script>"
     )
-    if isinstance(subject, GitRevisionSubject):
+    if pin is not None:
         # The commit and ref the page is rendered for: its data requests name the commit,
         # and the freshness row compares both with what the server serves, so a switch
         # or a restart onto another pin before its first poll still offers a reload.
-        page_pin = _json.dumps({"pin": subject.commit_oid, "ref": subject.ref}).replace(
-            "<", "\\u003c"
-        )
+        page_pin = _json.dumps({"pin": pin.commit_oid, "ref": pin.ref}).replace("<", "\\u003c")
         repository_context_block += (
             f"<script>window.METABROWSER_SOURCE_PIN={page_pin};</script>"
             f"<script>{_SOURCE_PIN_GUARD_SCRIPT}</script>"
@@ -1758,12 +1752,12 @@ async def view_shell(request: Request) -> Response:
     raw_path = request.scope.get("raw_path")
     if not isinstance(raw_path, bytes):
         return PlainTextResponse("Invalid view path.", status_code=400)
-    subject = get_source_session().subject
-    decoded = (
-        decode_git_view_path(raw_path)
-        if isinstance(subject, GitRevisionSubject)
-        else decode_safe_view_path(raw_path)
-    )
+    if git_revision_subject(get_source_session().subject) is not None:
+        from metabrowser.git.content_routes import decode_git_view_path
+
+        decoded = decode_git_view_path(raw_path)
+    else:
+        decoded = decode_safe_view_path(raw_path)
     if decoded is None:
         return PlainTextResponse("Invalid view path.", status_code=400)
     return await index(request)
@@ -2028,16 +2022,18 @@ async def api_tree(request: Request) -> Response:
     tree_filter = tree_filter_from_request(request)
     require_source_capability("navigation")
     require_source_capability("index")
-    subject = get_source_session().subject
-    git_pin = isinstance(subject, GitRevisionSubject)
+    pin = git_revision_subject(get_source_session().subject)
+    git_pin = pin is not None
     require_filter_capabilities(
         recency=bool(tree_filter.recency_seconds),
         # Ignore is absent on a pin: unignored equals total, so hiding
         # ignored files is a no-op rather than unsupported_for_subject.
         include_ignored=True if git_pin else tree_filter.include_ignored,
     )
-    if git_pin:
-        return await git_revision_tree(request, subject, tree_filter)
+    if pin is not None:
+        from metabrowser.git.content_routes import git_revision_tree
+
+        return await git_revision_tree(request, pin, tree_filter)
     subpath = parse_inventory_path(requested)
     remaining_depth = _tree_depth_from_query(depth_str)
     if subpath is None or resolve_session_identity(subpath) is None:
@@ -2101,11 +2097,13 @@ async def api_rollup(request: Request) -> Response:
     except ValueError as error:
         return JSONResponse({"error": str(error)}, status_code=400)
 
-    subject = get_source_session().subject
-    if isinstance(subject, GitRevisionSubject):
+    pin = git_revision_subject(get_source_session().subject)
+    if pin is not None:
+        from metabrowser.git.content_routes import git_revision_rollup
+
         return await git_revision_rollup(
             request,
-            subject,
+            pin,
             RollupOptions(
                 depth=depth,
                 top=top,
@@ -2500,9 +2498,11 @@ async def _api_folder_envelope(
 
 @log_async_calls(if_slower_than=0.1)
 async def api_file(request: Request) -> JSONResponse | Response:
-    subject = get_source_session().subject
-    if isinstance(subject, GitRevisionSubject):
-        return await git_revision_file(request, subject)
+    pin = git_revision_subject(get_source_session().subject)
+    if pin is not None:
+        from metabrowser.git.content_routes import git_revision_file
+
+        return await git_revision_file(request, pin)
     subpath = request.query_params.get("path", "")
     try:
         return await _api_file_impl(request)
@@ -3001,10 +3001,12 @@ async def api_kpress_render(request: Request) -> Response:
             status_code=400,
         )
 
-    subject = get_source_session().subject
-    if isinstance(subject, GitRevisionSubject):
+    pin = git_revision_subject(get_source_session().subject)
+    if pin is not None:
+        from metabrowser.git.content_routes import git_revision_kpress_render
+
         return await git_revision_kpress_render(
-            subject,
+            pin,
             subpath=subpath,
             view=view,
             profile=profile,
@@ -3503,9 +3505,11 @@ async def raw_file(request: Request) -> Response:
     for the whole ``/raw`` path rather than any one branch here.
     """
 
-    subject = get_source_session().subject
-    if isinstance(subject, GitRevisionSubject):
-        return await git_revision_raw(request, subject)
+    pin = git_revision_subject(get_source_session().subject)
+    if pin is not None:
+        from metabrowser.git.content_routes import git_revision_raw
+
+        return await git_revision_raw(request, pin)
     target = _raw_target_from_request(request)
     if target is None or not target.is_file():
         return PlainTextResponse("Not found", status_code=404)

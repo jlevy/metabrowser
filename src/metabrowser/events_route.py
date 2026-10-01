@@ -130,6 +130,7 @@ from metabrowser.settings import (
 )
 from metabrowser.source import (
     get_source_session,
+    git_revision_subject,
     require_filesystem_hooks,
     require_source_capability,
 )
@@ -144,12 +145,7 @@ LOG = logging.getLogger(__name__)
 
 
 def _git_revision_subject() -> GitRevisionSubject | None:
-    from metabrowser.git.tree_source import GitRevisionSubject
-
-    subject = get_source_session().subject
-    if isinstance(subject, GitRevisionSubject):
-        return subject
-    return None
+    return git_revision_subject(get_source_session().subject)
 
 
 # Aliases kept so external test imports stay stable; authoritative
