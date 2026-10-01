@@ -6,17 +6,21 @@ All notable changes to Metabrowser are documented here.
 
 Plugin contracts:
 
-- Installed Python distributions can register versioned artifact contracts through the
-  new `metabrowser.capabilities.v1` entry-point group.
+- Installed Python distributions can register versioned artifact contracts and resource
+  publication profiles through the new `metabrowser.capabilities.v1` entry-point group.
   Contract discovery is separate from browser plugin manifests and operator plugin
   directories, so it does not create a static asset root or change the browser SDK.
-  Packaged schemas and Pydantic semantics validate artifacts presented to the installed
-  registry; artifact metadata cannot select a schema, parser, renderer, or Python import
-  path.
 
-- The generic artifact-format gate derives every contract from the installed capability
-  registry. It checks schema and semantic validation, producer/consumer ownership,
-  packaged corpora, browser-parser evidence where declared, and the maintained
+- Hosted Review Format installs enforced SoftSchema contracts for its provider,
+  change-request, review, check, and activity records.
+  Packaged schemas and Pydantic semantics validate artifacts presented to the installed
+  registry; artifact metadata cannot select a schema, profile, parser, renderer, or
+  Python import path.
+
+- The generic artifact-format gate now derives every contract and resource profile from
+  the installed capability registry.
+  It checks schema and semantic validation, producer/consumer ownership, packaged
+  corpora, browser-parser evidence where declared, profile closure, and the maintained
   architecture inventory.
   Browser consumption is explicit rather than inferred from consumer names;
   browser-consumed contracts require an import-free parser that runs over VM-realm
@@ -26,10 +30,14 @@ Plugin contracts:
   source distribution installs instead of maintaining a separate built-in schema list.
 
 - The repository cache’s `f01` records install as enforced contracts through a
-  `repository-cache` capability provider, so `metab --doctor` now reports one capability
-  provider and six contracts.
+  `repository-cache` capability provider, so `metab --doctor` now reports three
+  capability providers and 22 contracts.
   The application home and `CACHEDIR.TAG` are created by the first `file://`
   acquisition.
+
+- A collection name declared in a resource publication profile is limited to the same
+  128 characters as the collection name in a resource-set record, so a longer
+  declaration is rejected when the profile loads rather than invalidating every record.
 
 Plugin SDK:
 

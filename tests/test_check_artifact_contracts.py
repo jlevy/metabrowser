@@ -11,14 +11,18 @@ from devtools import check_artifact_contracts
 from tests.test_artifact_inventory import _registries
 
 
-def _architecture_doc(tmp_path: Path, *, contract_rows: str) -> Path:
+def _architecture_doc(tmp_path: Path, *, contract_rows: str, profile_rows: str) -> Path:
     path = tmp_path / "architecture.md"
     path.write_text(
         "# Architecture\n\n"
         "| Contract ID | Artifact profile | Envelope | Producers | Consumers | Corpus | "
         "Browser parser |\n"
         "| --- | --- | --- | --- | --- | --- | --- |\n"
-        f"{contract_rows}\n",
+        f"{contract_rows}\n\n"
+        "| Profile ID | Target kind | Result contract | Collections | Pagination | "
+        "Last complete |\n"
+        "| --- | --- | --- | --- | --- | --- |\n"
+        f"{profile_rows}\n",
         encoding="utf-8",
     )
     return path
@@ -28,6 +32,10 @@ _CONTRACT_ROW = (
     "| `org.example.widgets:Widget/v1` | `pure-yaml` | `widget` | `example-provider` | "
     "`example-browser,example-store` | `widget-conformance[widget]` | "
     "`widget-model:parseWidget` |"
+)
+_PROFILE_ROW = (
+    "| `org.example.widgets:widget-detail/v1` | `provider_object` | — | "
+    "`widget=org.example.widgets:Widget/v1[1..1]` | `widget=forbidden` | `widget` |"
 )
 
 
@@ -74,6 +82,7 @@ def test_architecture_inventory_matches_exact_installed_declarations(tmp_path: P
     architecture_doc = _architecture_doc(
         tmp_path,
         contract_rows=_CONTRACT_ROW,
+        profile_rows=_PROFILE_ROW,
     )
 
     assert (
@@ -94,6 +103,7 @@ def test_architecture_inventory_rejects_missing_orphan_and_duplicate_rows(tmp_pa
     architecture_doc = _architecture_doc(
         tmp_path,
         contract_rows=f"{orphan_row}\n{orphan_row}",
+        profile_rows=_PROFILE_ROW,
     )
 
     problems = check_artifact_contracts.check(
@@ -109,10 +119,11 @@ def test_architecture_inventory_rejects_missing_orphan_and_duplicate_rows(tmp_pa
     assert any("Orphan/v1" in problem and "duplicate" in problem for problem in problems)
 
 
-def test_architecture_inventory_rejects_inexact_contract_semantics(tmp_path: Path) -> None:
+def test_architecture_inventory_rejects_inexact_profile_semantics(tmp_path: Path) -> None:
     architecture_doc = _architecture_doc(
         tmp_path,
         contract_rows=_CONTRACT_ROW.replace("widget-model:parseWidget", "server-only"),
+        profile_rows=_PROFILE_ROW.replace("widget=forbidden", "widget=optional"),
     )
 
     problems = check_artifact_contracts.check(
@@ -121,12 +132,14 @@ def test_architecture_inventory_rejects_inexact_contract_semantics(tmp_path: Pat
     )
 
     assert any("Widget/v1" in problem and "Browser parser" in problem for problem in problems)
+    assert any("widget-detail/v1" in problem and "Pagination" in problem for problem in problems)
 
 
 def test_browser_evidence_requires_the_declared_export_and_corpus_parity(tmp_path: Path) -> None:
     architecture_doc = _architecture_doc(
         tmp_path,
         contract_rows=_CONTRACT_ROW,
+        profile_rows=_PROFILE_ROW,
     )
     registries = _registries()
     installed = registries.contracts["org.example.widgets:Widget/v1"]
@@ -159,6 +172,7 @@ def test_browser_evidence_rejects_node_builtin_imports(tmp_path: Path) -> None:
     architecture_doc = _architecture_doc(
         tmp_path,
         contract_rows=_CONTRACT_ROW,
+        profile_rows=_PROFILE_ROW,
     )
     registries = _registries()
     installed = registries.contracts["org.example.widgets:Widget/v1"]
@@ -197,6 +211,7 @@ def test_browser_evidence_rejects_node_only_globals(tmp_path: Path) -> None:
     architecture_doc = _architecture_doc(
         tmp_path,
         contract_rows=_CONTRACT_ROW,
+        profile_rows=_PROFILE_ROW,
     )
     registries = _registries()
     installed = registries.contracts["org.example.widgets:Widget/v1"]
@@ -234,6 +249,7 @@ def test_browser_evidence_blocks_constructor_chain_host_realm_escape(tmp_path: P
     architecture_doc = _architecture_doc(
         tmp_path,
         contract_rows=_CONTRACT_ROW,
+        profile_rows=_PROFILE_ROW,
     )
     registries = _registries()
     installed = registries.contracts["org.example.widgets:Widget/v1"]
@@ -318,6 +334,7 @@ def test_browser_evidence_executes_invalid_cases(tmp_path: Path) -> None:
     architecture_doc = _architecture_doc(
         tmp_path,
         contract_rows=_CONTRACT_ROW,
+        profile_rows=_PROFILE_ROW,
     )
     registries = _registries()
     installed = registries.contracts["org.example.widgets:Widget/v1"]
@@ -355,6 +372,7 @@ def test_browser_evidence_requires_completion_proof(
     architecture_doc = _architecture_doc(
         tmp_path,
         contract_rows=_CONTRACT_ROW,
+        profile_rows=_PROFILE_ROW,
     )
 
     monkeypatch.setattr(
@@ -380,6 +398,7 @@ def test_browser_evidence_rejects_missing_and_extra_result_fields(tmp_path: Path
     architecture_doc = _architecture_doc(
         tmp_path,
         contract_rows=_CONTRACT_ROW,
+        profile_rows=_PROFILE_ROW,
     )
     registries = _registries()
     installed = registries.contracts["org.example.widgets:Widget/v1"]
@@ -428,6 +447,7 @@ def test_browser_evidence_rejects_malformed_results_and_parser_throws(tmp_path: 
     architecture_doc = _architecture_doc(
         tmp_path,
         contract_rows=_CONTRACT_ROW,
+        profile_rows=_PROFILE_ROW,
     )
     registries = _registries()
     installed = registries.contracts["org.example.widgets:Widget/v1"]
@@ -476,6 +496,7 @@ def test_browser_evidence_rejects_successful_record_loss(tmp_path: Path) -> None
     architecture_doc = _architecture_doc(
         tmp_path,
         contract_rows=_CONTRACT_ROW,
+        profile_rows=_PROFILE_ROW,
     )
     registries = _registries()
     installed = registries.contracts["org.example.widgets:Widget/v1"]
@@ -516,6 +537,7 @@ def test_browser_evidence_rejects_in_place_input_mutation(tmp_path: Path) -> Non
     architecture_doc = _architecture_doc(
         tmp_path,
         contract_rows=_CONTRACT_ROW,
+        profile_rows=_PROFILE_ROW,
     )
     registries = _registries()
     installed = registries.contracts["org.example.widgets:Widget/v1"]
@@ -584,6 +606,7 @@ def test_python_and_browser_agree_that_document_cases_omit_record(tmp_path: Path
     architecture_doc = _architecture_doc(
         tmp_path,
         contract_rows=_CONTRACT_ROW.replace("widget-conformance[widget]", "widget-conformance[*]"),
+        profile_rows=_PROFILE_ROW,
     )
 
     problems = check_artifact_contracts.check(

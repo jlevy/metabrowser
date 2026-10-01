@@ -22,12 +22,20 @@ from metabrowser.plugin_loader.capability_discovery import (
 from metabrowser.plugin_loader.capability_types import (
     ArtifactContractSpec,
     ArtifactProfile,
+    ArtifactValidationContext,
     BrowserParserSpec,
     CapabilitySet,
     ConformanceCorpusSpec,
 )
+from metabrowser.provider_resources.profiles import (
+    CollectionPaginationPolicy,
+    ResourceCollectionSpec,
+    ResourceProfileSpec,
+    ResourceTargetClass,
+)
 
 _CONTRACT_ID = "org.example.widgets:Widget/v1"
+_PROFILE_ID = "org.example.widgets:widget-detail/v1"
 
 
 def _encoded_schema() -> bytes:
@@ -67,7 +75,10 @@ def _encoded_typed_value_schema() -> bytes:
     return json.dumps(schema, sort_keys=True, separators=(",", ":")).encode()
 
 
-def _validate_widget(value: dict[str, Any]) -> dict[str, Any]:
+def _validate_widget(
+    value: dict[str, Any],
+    _context: ArtifactValidationContext,
+) -> dict[str, Any]:
     if value["name"] == "reserved":
         raise ValueError("reserved widget name")
     return dict(value)
@@ -77,7 +88,10 @@ def _dump_widget(value: object) -> dict[str, Any]:
     return dict(cast(dict[str, Any], value))
 
 
-def _validate_typed_value(value: dict[str, Any]) -> dict[str, Any]:
+def _validate_typed_value(
+    value: dict[str, Any],
+    _context: ArtifactValidationContext,
+) -> dict[str, Any]:
     return dict(value)
 
 
@@ -188,6 +202,24 @@ def _typed_value_contract(
     )
 
 
+def _profile() -> ResourceProfileSpec:
+    return ResourceProfileSpec(
+        profile_id=_PROFILE_ID,
+        target_class=ResourceTargetClass.provider_object,
+        target_result_contract_id=None,
+        collections=(
+            ResourceCollectionSpec(
+                name="widget",
+                artifact_contract_id=_CONTRACT_ID,
+                minimum_artifacts=1,
+                maximum_artifacts=1,
+                pagination=CollectionPaginationPolicy.forbidden,
+                required_for_last_complete=True,
+            ),
+        ),
+    )
+
+
 def _registries(
     contract: ArtifactContractSpec | None = None,
     *,
@@ -197,7 +229,10 @@ def _registries(
     provider = LoadedCapabilitySet(
         provider_id=provider_id,
         source_distribution=source_distribution,
-        capabilities=CapabilitySet(artifact_contracts=(contract or _contract(),)),
+        capabilities=CapabilitySet(
+            artifact_contracts=(contract or _contract(),),
+            resource_profiles=(_profile(),),
+        ),
     )
     return build_installed_registries(CapabilityDiscoveryResult(providers=(provider,)))
 
@@ -215,20 +250,23 @@ def test_installed_inventory_executes_structural_and_semantic_corpus_evidence() 
     assert inventory.contracts[0].corpus_record_selectors == ("widget",)
     assert inventory.contracts[0].browser_consumed is True
     assert inventory.contracts[0].browser_parser_id == "widget-model:parseWidget"
+    assert inventory.resource_profiles[0].profile_id == _PROFILE_ID
+    assert inventory.resource_profiles[0].collections[0].pagination == "forbidden"
+    assert inventory.resource_profiles[0].collections[0].required_for_last_complete is True
 
 
 def test_installed_inventory_identity_does_not_depend_on_the_declaring_provider() -> None:
     contract = _contract()
     before = installed_artifact_inventory(
-        _registries(contract, provider_id="first-provider", source_distribution="fixture-dist")
+        _registries(contract, provider_id="hosted-review", source_distribution="fixture-dist")
     )
     after = installed_artifact_inventory(
-        _registries(contract, provider_id="second-provider", source_distribution="other-dist")
+        _registries(contract, provider_id="provider-resources", source_distribution="other-dist")
     )
 
     assert before == after
     projected = json.dumps(asdict(before))
-    assert "first-provider" not in projected
+    assert "hosted-review" not in projected
     assert "fixture-dist" not in projected
     assert "declaring_module" not in projected
     entry = before.contracts[0]

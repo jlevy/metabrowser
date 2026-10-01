@@ -58,6 +58,7 @@ from metabrowser.plugin_loader.artifact_contracts import ContractRegistry, build
 from metabrowser.plugin_loader.capability_discovery import LoadedCapabilitySet
 from metabrowser.plugin_loader.capability_types import (
     ArtifactContractSpec,
+    ArtifactValidationContext,
     CapabilitySet,
     ConformanceCorpusSpec,
 )
@@ -178,8 +179,10 @@ ENFORCED_CACHE_CONTRACTS: Final = tuple(
 ARTIFACT_PROFILE: Final = SchemaProfile.pure_yaml
 
 
-def _validator_for(contract: CacheContract) -> Callable[[dict[str, Any]], object]:
-    def validate_record(values: dict[str, Any]) -> object:
+def _validator_for(
+    contract: CacheContract,
+) -> Callable[[dict[str, Any], ArtifactValidationContext], object]:
+    def validate_record(values: dict[str, Any], _context: ArtifactValidationContext) -> object:
         return contract.model.model_validate(values)
 
     return validate_record

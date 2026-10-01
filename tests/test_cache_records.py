@@ -89,7 +89,7 @@ EXPECTED_CONTRACTS = {
 
 
 def _registries() -> InstalledRegistries:
-    return InstalledRegistries(contracts=cache_contract_registry())
+    return InstalledRegistries(contracts=cache_contract_registry(), resource_profiles={})
 
 
 def _base_records() -> dict[str, dict[str, Any]]:

@@ -1,0 +1,41 @@
+query CoreNullabilityEvidence(
+  $pullRequestType: String!
+  $reviewCommentType: String!
+) {
+  pullRequest: __type(name: $pullRequestType) {
+    name
+    fields {
+      name
+      type {
+        kind
+        name
+        ofType {
+          kind
+          name
+          ofType {
+            kind
+            name
+          }
+        }
+      }
+    }
+  }
+  reviewComment: __type(name: $reviewCommentType) {
+    name
+    fields {
+      name
+      type {
+        kind
+        name
+        ofType {
+          kind
+          name
+          ofType {
+            kind
+            name
+          }
+        }
+      }
+    }
+  }
+}

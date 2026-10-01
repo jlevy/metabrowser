@@ -235,12 +235,14 @@ def doctor_plugins(plugins_dir: list[Path] | None = None, *, as_json: bool = Fal
 
     problems: list[str] = list(result.errors)
     contract_count = 0
+    profile_count = 0
     try:
         installed_registries = build_installed_registries(capability_discovery)
     except CapabilityRegistryError as exc:
         problems.append(str(exc))
     else:
         contract_count = len(installed_registries.contracts)
+        profile_count = len(installed_registries.resource_profiles)
 
     # Cross-plugin: check kind ids declared at priority 100+ aren't claimed by
     # multiple plugins simultaneously (built-ins at priority 0 are allowed to
@@ -299,6 +301,7 @@ def doctor_plugins(plugins_dir: list[Path] | None = None, *, as_json: bool = Fal
                     "plugin_count": len(result.plugins),
                     "capability_provider_count": len(capability_discovery.providers),
                     "artifact_contract_count": contract_count,
+                    "resource_profile_count": profile_count,
                     "problems": problems,
                 },
                 indent=2,
@@ -317,7 +320,7 @@ def doctor_plugins(plugins_dir: list[Path] | None = None, *, as_json: bool = Fal
     typer.echo(
         f"metab --doctor: {len(result.plugins)} plugin(s), "
         f"{len(capability_discovery.providers)} capability provider(s), "
-        f"{contract_count} contract(s) OK"
+        f"{contract_count} contract(s), {profile_count} profile(s) OK"
     )
 
 

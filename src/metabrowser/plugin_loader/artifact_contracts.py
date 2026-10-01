@@ -1,4 +1,4 @@
-"""The immutable registry of installed artifact contracts."""
+"""Immutable registries for installed artifact contracts and resource profiles."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import json
 import math
 import re
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 from io import StringIO
 from types import MappingProxyType
@@ -28,10 +28,12 @@ from softschema.validate import parse_frontmatter_text, parse_yaml_text
 from metabrowser.plugin_loader.capability_types import (
     ArtifactContractSpec,
     ArtifactProfile,
+    ArtifactValidationContext,
     BrowserParserSpec,
     CapabilitySet,
     ConformanceCorpusSpec,
 )
+from metabrowser.provider_resources.profiles import ResourceProfileSpec
 
 if TYPE_CHECKING:
     from metabrowser.plugin_loader.capability_discovery import (
@@ -40,6 +42,7 @@ if TYPE_CHECKING:
     )
 
 type ContractRegistry = Mapping[str, InstalledArtifactContract]
+type ResourceProfileRegistry = Mapping[str, ResourceProfileSpec]
 
 _CONTRACT_ID_RE = re.compile(r"^[a-z][a-z0-9.-]*:[A-Za-z][A-Za-z0-9._-]*/v[1-9][0-9]*$")
 _STABLE_TOKEN_RE = re.compile(r"^[a-z][a-z0-9._:-]*$")
@@ -72,6 +75,7 @@ class InstalledArtifactContract:
     spec: ArtifactContractSpec
     provider_id: str
     structural_validator: Draft202012Validator
+    validation_context: ArtifactValidationContext
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,6 +83,7 @@ class InstalledRegistries:
     """One all-or-nothing snapshot of installed backend capabilities."""
 
     contracts: ContractRegistry
+    resource_profiles: ResourceProfileRegistry
 
 
 @dataclass(frozen=True, slots=True)
@@ -401,7 +406,52 @@ def build_contract_registry(providers: Sequence[LoadedCapabilitySet]) -> Contrac
                 spec=spec,
                 provider_id=provider.provider_id,
                 structural_validator=Draft202012Validator(schema),
+                validation_context=ArtifactValidationContext(
+                    resource_profiles=MappingProxyType({})
+                ),
             )
+    return MappingProxyType(registry)
+
+
+def build_resource_profile_registry(
+    providers: Sequence[LoadedCapabilitySet],
+    *,
+    contracts: ContractRegistry,
+) -> ResourceProfileRegistry:
+    """Validate profile references and return an immutable profile registry."""
+    registry: dict[str, ResourceProfileSpec] = {}
+    for provider in providers:
+        for declared_profile in provider.capabilities.resource_profiles:
+            profile_object = _runtime_descriptor_value(declared_profile)
+            if not isinstance(profile_object, ResourceProfileSpec):
+                raise CapabilityRegistryError(
+                    f"capability provider {provider.provider_id!r} declared an invalid resource profile"
+                )
+            profile = profile_object
+            if profile.profile_id in registry:
+                raise CapabilityRegistryError(f"duplicate resource profile {profile.profile_id!r}")
+            referenced_contract_ids = {
+                collection.artifact_contract_id for collection in profile.collections
+            }
+            if profile.target_result_contract_id is not None:
+                referenced_contract_ids.add(profile.target_result_contract_id)
+            missing_contract_ids = sorted(referenced_contract_ids.difference(contracts))
+            if missing_contract_ids:
+                raise CapabilityRegistryError(
+                    f"resource profile {profile.profile_id!r} references unregistered artifact "
+                    f"contract {missing_contract_ids[0]!r}"
+                )
+            foreign_contract_ids = sorted(
+                contract_id
+                for contract_id in referenced_contract_ids
+                if contracts[contract_id].provider_id != provider.provider_id
+            )
+            if foreign_contract_ids:
+                raise CapabilityRegistryError(
+                    f"resource profile {profile.profile_id!r} references artifact contract "
+                    f"{foreign_contract_ids[0]!r} owned by another capability provider"
+                )
+            registry[profile.profile_id] = profile
     return MappingProxyType(registry)
 
 
@@ -415,7 +465,16 @@ def build_installed_registries(
         discovery = discover_capability_sets()
     if discovery.errors:
         raise CapabilityRegistryError("capability discovery failed: " + "; ".join(discovery.errors))
-    return InstalledRegistries(contracts=build_contract_registry(discovery.providers))
+    contracts = build_contract_registry(discovery.providers)
+    profiles = build_resource_profile_registry(discovery.providers, contracts=contracts)
+    context = ArtifactValidationContext(resource_profiles=profiles)
+    bound_contracts = MappingProxyType(
+        {
+            contract_id: replace(installed, validation_context=context)
+            for contract_id, installed in contracts.items()
+        }
+    )
+    return InstalledRegistries(contracts=bound_contracts, resource_profiles=profiles)
 
 
 # One process-wide outcome, success or failure. Building the snapshot parses,
@@ -452,6 +511,18 @@ def reset_installed_registries_for_tests() -> None:
     global _installed_snapshot, _installed_failure
     _installed_snapshot = None
     _installed_failure = None
+
+
+def resolve_resource_profile(
+    profile_id: str,
+    *,
+    profiles: ResourceProfileRegistry,
+) -> ResourceProfileSpec:
+    """Resolve a profile only from an explicitly supplied installed registry."""
+    profile = profiles.get(profile_id)
+    if profile is None:
+        raise ValueError("resource set names an unregistered profile")
+    return profile
 
 
 def _decode_artifact(payload: bytes) -> str:
@@ -563,7 +634,7 @@ def validate_record(
         installed.structural_validator.validate(values)
     except ValidationError as exc:
         raise ValueError(f"record does not satisfy contract {contract_id!r}") from exc
-    return installed.spec.validate_record(values)
+    return installed.spec.validate_record(values, installed.validation_context)
 
 
 def portable_serialization_values_equal(original: object, decoded: object) -> bool:
@@ -646,12 +717,15 @@ __all__ = [
     "ContractRegistry",
     "InstalledArtifactContract",
     "InstalledRegistries",
+    "ResourceProfileRegistry",
     "ValidatedArtifact",
     "build_contract_registry",
     "build_installed_registries",
+    "build_resource_profile_registry",
     "get_installed_registries",
     "portable_serialization_values_equal",
     "reset_installed_registries_for_tests",
+    "resolve_resource_profile",
     "serialize_artifact",
     "validate_artifact",
     "validate_record",
