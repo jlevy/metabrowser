@@ -261,6 +261,13 @@ def test_gh_api_returns_304_and_types_refusals(stand: _Stand) -> None:
     with pytest.raises(GhError) as logged_out:
         asyncio.run(gh_api("repos/octo/demo/pulls/7"))
     assert logged_out.value.state == "not_logged_in"
+    # GitHub itself refusing the credentials, in a response gh printed, is the same state.
+    path = "repos/octo/demo/pulls/7"
+    refusal = {"status": 401, "body": {"message": "Requires authentication"}}
+    stand.answer(_api(scenario(stand.origin), path, refusal))
+    with pytest.raises(GhError) as refused:
+        asyncio.run(gh_api(path))
+    assert refused.value.state == "not_logged_in"
 
 
 def test_account_is_the_active_login_even_in_an_error_state() -> None:
