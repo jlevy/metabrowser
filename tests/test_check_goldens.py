@@ -263,11 +263,29 @@ def test_a_listed_exception_may_not_grow(tmp_path: Path) -> None:
     ]
 
 
-def test_every_listed_ceiling_is_the_file_as_committed() -> None:
-    """A ceiling above the file would be room to grow that nobody measured."""
+def _loose_ceilings(root: Path, over_budget: dict[str, Excepted]) -> list[str]:
+    """The listed files whose ceiling is not their line count."""
 
-    for name, excepted in check_goldens.OVER_BUDGET.items():
-        assert check_goldens.line_count(check_goldens.REPO_ROOT / name) == excepted.ceiling, name
+    return [
+        name
+        for name, excepted in over_budget.items()
+        if check_goldens.line_count(root / name) != excepted.ceiling
+    ]
+
+
+def test_every_listed_ceiling_is_the_file_as_committed(tmp_path: Path) -> None:
+    """A ceiling above the file would be room to grow that nobody measured.
+
+    The rule runs on a made-up list first, so it is exercised while the committed list
+    is empty.
+    """
+
+    root = _tree(tmp_path)
+    name = "tests/golden/banner.txt"
+    _write(root, name, "line\n" * 12)
+    assert _loose_ceilings(root, {name: Excepted(12, "mb-0000 shards it")}) == []
+    assert _loose_ceilings(root, {name: Excepted(13, "mb-0000 shards it")}) == [name]
+    assert _loose_ceilings(check_goldens.REPO_ROOT, check_goldens.OVER_BUDGET) == []
 
 
 def test_an_exception_for_a_file_that_is_gone_is_reported(tmp_path: Path) -> None:
@@ -279,9 +297,16 @@ def test_an_exception_for_a_file_that_is_gone_is_reported(tmp_path: Path) -> Non
     ]
 
 
+def _without_a_bead(over_budget: dict[str, Excepted]) -> list[str]:
+    return [name for name, excepted in over_budget.items() if not excepted.reason.startswith("mb-")]
+
+
 def test_every_listed_exception_names_its_bead() -> None:
-    for name, excepted in check_goldens.OVER_BUDGET.items():
-        assert excepted.reason.startswith("mb-"), name
+    """Checked on a made-up list too, so it is exercised while the committed list is empty."""
+
+    made_up = {"a.txt": Excepted(11, "mb-0000 shards it"), "b.txt": Excepted(11, "someday")}
+    assert _without_a_bead(made_up) == ["b.txt"]
+    assert _without_a_bead(check_goldens.OVER_BUDGET) == []
 
 
 # ── transcripts that are not evidence ───────────────────────────────
