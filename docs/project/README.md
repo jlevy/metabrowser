@@ -64,7 +64,8 @@ links to the document that covers each in depth.
 ## Reference Code
 
 - [Hosted Review Format and provider resources](reference/hosted-review-reference.md) —
-  unused reference code kept on this branch only; not on the critical path, not
+  unused reference code kept on this branch and at the
+  `reference/v012-hosted-review-2026-09-30` tag only; not on the critical path, not
   maintained, and not to be merged
 
 ## Research
