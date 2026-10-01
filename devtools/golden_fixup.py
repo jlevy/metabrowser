@@ -9,17 +9,19 @@ restores them so `make golden-update` is a single reviewable step:
 * `[CWD]` for the sandbox directory in walk envelopes
 * `[BUILTIN]` for the absolute checkout prefix of builtin plugin paths
 * `[VERSION]` for the installed package version
-* the KPress rendered document body, which is tens of kilobytes of icon sprite
-  and would make the transcript unreviewable; the POST case keeps its overridden
-  heading visible so the transcript still proves the source override took effect
-* the pending-tally diagnostic's stderr line, which carries a wall clock
-* the time a one-shot refresh found another process refreshing, a wall clock
-* the time a pull request's refresh failed during the transcript, a wall clock
+* the second copy of the KPress asset manifest in the shell transcript
+* the KPress icon sprite at the head of a rendered document, which is tens of
+  kilobytes of third-party SVG and would make the transcript unreviewable; the
+  rendered article after it stays literal
+* `[CLOCK]` for the logger's time of day on the pending-tally diagnostic line
+* `[TIMESTAMP]` for a time taken from the wall clock while the transcript or its
+  fixture ran: when a one-shot refresh found another process refreshing, when a
+  pull request's refresh failed, and when a fixture fetched its mirror
 * the watcher's mode, state, and reason, which are host facts and startup
   transients -- the filesystem the served root sits on, the backend that made
-  available, and how far selection had got when the request landed -- and the
-  engine sequence in the pending-tally diagnostic, which counts internal change
-  batches
+  available, and how far selection had got when the request landed
+* `[COUNT]` for the engine sequence in the pending-tally diagnostic, which counts
+  internal change batches
 
 It also strips trailing whitespace, which `tryscript run --update` preserves
 from Rich's padded terminal output but `git diff --check` rejects; tryscript
@@ -33,6 +35,12 @@ from pathlib import Path
 
 GOLDEN_DIR = Path(__file__).parent.parent / "tests" / "golden"
 
+_TIME = r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ"
+# A time a fixture pinned stays literal. Every fixture that fixes a clock fixes it
+# inside this one minute (tests/source_mirror_fixture.py, tests/github_pull_fixture.py),
+# so any other time in a transcript came from the wall clock.
+_WALL_CLOCK = rf"(?!2026-09-17T12:00:\d\dZ){_TIME}"
+
 FIXUPS: list[tuple[str, str]] = [
     (r"Usage: metab \[OPTIONS\] \[ROOT\]", "Usage: metab [OPTIONS] [ROOT_ARG]"),
     # Not \S*: the sandbox path is often quoted in a JSON envelope, and a
@@ -43,15 +51,24 @@ FIXUPS: list[tuple[str, str]] = [
     # metabrowser.build_version. It varies per commit, so it elides with the
     # version rather than beside it.
     (r"^metab \d+\S*( \([^)]*\))?$", "metab [VERSION]"),
-    # The rendered document body. The POST case is matched first so its
-    # overridden heading survives: it is the only thing in that transcript that
-    # proves `source_text` reached the renderer.
+    # The icon sprite KPress inlines ahead of a rendered document: one hidden <svg>
+    # of symbols, the same for every document and replaced wholesale by a KPress
+    # upgrade. Only its contents are elided. The <article> after it is the render of
+    # the document under test and stays literal, which is what shows a POSTed
+    # `source_text` reached the renderer.
     (
-        r'^  "html": ".*?(<h1 id=\\"overridden\\">Overridden</h1>).*",$',
-        r'  "html": "[..]\1[..]",',
+        r'^(  "html": "<svg xmlns=\\"http://www\.w3\.org/2000/svg\\" style=\\"display: none\\">)'
+        r".*?(</svg>\\n<article )",
+        r"\1[..]\2",
     ),
-    (r'^  "html": ".{300,}",$', '  "html": "[..]",'),
-    (r"^.*pending folder tallies diagnostic.*$", "[..]"),
+    # The logger's time of day on the diagnostic line the pending-tally route writes
+    # to stderr. The rest of the line is the client's report and the server's
+    # snapshot, which stay literal apart from the change-batch counter below.
+    (
+        r"^\d\d:\d\d:\d\d( metabrowser\.events_route \| pending folder tallies diagnostic )",
+        r"[CLOCK]\1",
+    ),
+    (r'(pending folder tallies diagnostic .*"version":)\d+', r"\1[COUNT]"),
     # Host facts, not behavior: the filesystem type the served root sits on
     # (apfs here, ext4 on CI) and the watch backend it made available. These
     # were elided by hand once and silently re-pinned by the next
@@ -83,36 +100,53 @@ FIXUPS: list[tuple[str, str]] = [
     # versions elsewhere in these goldens keep their exact values.
     (
         r'(^    "contract": "inventory-provider-v1",\n    "version": )\d+',
-        r"\1[..]",
+        r"\1[COUNT]",
+    ),
+    # The asset manifest of the POSTed render: the same manifest the GET case above it
+    # pins line by line, so the second copy is elided rather than pinned twice.
+    (
+        r"(^\$ metab shellroot --api /api/kpress/render --data shellroot/render\.json\n"
+        r'(?:.*\n)*?  "assets": \{\n)(?:.*\n)*?(  \},\n  "diagnostics": )',
+        r"\1...\n\2",
     ),
     # When a one-shot refresh found another process refreshing the store: this
     # process's own wall clock, which no fixture can pin. The fetch times beside it
     # are the fixture's and stay literal.
     (
-        r'(^\s+"outcome": "refreshing_elsewhere",\n\s+"at": )"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ"',
-        r'\1"[..]"',
+        rf'(^\s+"outcome": "refreshing_elsewhere",\n\s+"at": )"{_WALL_CLOCK}"',
+        r'\1"[TIMESTAMP]"',
     ),
     # When a pull request's refresh failed in the transcript itself: this process's wall
     # clock. A refresh the fixture ran keeps its fixed time.
+    (rf'(^\s+"reset_at": null,\n\s+"at": )"{_WALL_CLOCK}"', r'\1"[TIMESTAMP]"'),
+    # When a fixture fetched its mirror while it was being built, and did not then set
+    # the recorded fetch to a fixed time: the fixture process's wall clock.
+    (rf'(^\s+"last_fetch_at": )"{_WALL_CLOCK}"', r'\1"[TIMESTAMP]"'),
     (
-        r'(^\s+"reset_at": null,\n\s+"at": )"(?!2026-09-17T12:00:00Z)\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ"',
-        r'\1"[..]"',
+        rf'(^\s+"operation": "acquire",\n\s+"outcome": "succeeded",\n\s+"at": )"{_WALL_CLOCK}"',
+        r'\1"[TIMESTAMP]"',
     ),
 ]
 
 
-def main() -> None:
-    for path in sorted(GOLDEN_DIR.glob("*.tryscript.md")):
-        text = path.read_text()
-        # The frontmatter defines the elision patterns themselves; only the
-        # body after the closing "---" holds captured output to patch.
-        frontmatter, separator, body = text.partition("\n---\n")
-        fixed = body
-        for pattern, replacement in FIXUPS:
-            fixed = re.sub(pattern, replacement, fixed, flags=re.MULTILINE)
-        fixed = re.sub(r"[ \t]+$", "", fixed, flags=re.MULTILINE)
-        if fixed != body:
-            path.write_text(frontmatter + separator + fixed)
+def fix_text(text: str) -> str:
+    """*text* with every elision pattern restored and trailing whitespace stripped."""
+
+    # The frontmatter defines the elision patterns themselves; only the body after
+    # the closing "---" holds captured output to patch.
+    frontmatter, separator, body = text.partition("\n---\n")
+    for pattern, replacement in FIXUPS:
+        body = re.sub(pattern, replacement, body, flags=re.MULTILINE)
+    body = re.sub(r"[ \t]+$", "", body, flags=re.MULTILINE)
+    return frontmatter + separator + body
+
+
+def main(golden_dir: Path = GOLDEN_DIR) -> None:
+    for path in sorted(golden_dir.glob("*.tryscript.md")):
+        text = path.read_text(encoding="utf-8")
+        fixed = fix_text(text)
+        if fixed != text:
+            path.write_text(fixed, encoding="utf-8")
             print(f"patterns restored: {path.name}")
 
 

@@ -210,11 +210,31 @@ def _command_exercises(command: str, surface: str, cli: str) -> bool:
     return False
 
 
+def _route_answered(command: GoldenCommand, surface: str) -> bool:
+    """Whether the route itself answered 2xx in a command that then exited non-zero.
+
+    A one-shot POST that starts work prints the route's answer, waits for the work,
+    prints the status ``after:`` it, and exits 1 when the work failed. The route was
+    reached and answered; what failed is what it started, which the transcript also
+    shows. Its ``status:`` line is the route's own answer, so that is what counts.
+
+    The ``after:`` line is required. A response that fails mid-body also prints a 2xx
+    status and exits non-zero, and a truncated body is not evidence of anything.
+    """
+
+    output = command.output
+    for index, line in enumerate(output[:-1]):
+        if line.startswith("api: ") and _route_token_matches(line.removeprefix("api: "), surface):
+            answered = re.fullmatch(r"status: 2\d\d", output[index + 1]) is not None
+            return answered and any(later.startswith("after: ") for later in output[index + 2 :])
+    return False
+
+
 def _exercises(golden: str, surface: str, cli: str, *, successful_only: bool) -> bool:
     """Whether a transcript attempts, or successfully runs, a route surface."""
 
     return any(
-        (not successful_only or command.status == 0)
+        (not successful_only or command.status == 0 or _route_answered(command, surface))
         and _command_exercises(command.command, surface, cli)
         for command in _console_commands(golden)
     )

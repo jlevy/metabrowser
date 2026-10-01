@@ -340,9 +340,20 @@ must still be `metab`. Sessions that write the cache through `--no-serve` — ac
 reuse, interruption recovery, fetch failure, and refusal — also read state through these
 routes, but they run in-process as `.txt` goldens from
 `tests/test_cli_cache_acquire_golden.py` and `tests/test_cli_cache_recovery_golden.py`,
-because CI’s Git is below the acquisition floor.
+because a subprocess cannot acquire on a Git below the acquisition floor.
 `check_parity.py` reads only tryscript console blocks, so those sessions are not counted
 as the rows’ evidence.
+
+A command is successful evidence for a route when it exits 0. One other case counts: a
+one-shot `POST` that starts work prints the route’s answer, waits, prints the status
+`after:` the work, and exits 1 when that work failed.
+When the route’s own `status:` line is 2xx and an `after:` line follows, the route
+answered, and that is what the row claims.
+`/api/plugin/github/pull-refresh` is covered this way: a refresh that completes needs
+`gh` and a fetch from the origin, which a subprocess transcript has neither of, so
+`cli-github-pull.tryscript.md` pins the `202`, the `gh_failed` status after it, and the
+exit status 1, and `cli-ui-github-pull-page.tryscript.md` replays the route’s recorded
+answers through a refresh that completes.
 
 The exempt rows are the honest boundary.
 A server-sent-event response has no terminating envelope, so `--api` bounds the request

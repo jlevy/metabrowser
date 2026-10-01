@@ -980,6 +980,44 @@ def test_a_nonzero_route_command_is_not_successful_evidence(
     assert any("/api/tree" in problem and "no successful exact" in problem for problem in problems)
 
 
+@pytest.mark.parametrize(
+    ("output", "counts"),
+    [
+        # The route answered 202; the refresh it started failed, which exits 1.
+        ("api: /api/tree\nstatus: 202\n{}\nafter: /api/status\nstatus: 200\n{}\nError: x", True),
+        # A 2xx status and a non-zero exit with nothing awaited is a truncated body.
+        ("api: /api/tree\nstatus: 200\n{\nError: failed mid-response", False),
+        ("api: /api/tree\nstatus: 409\n{}\nafter: /api/status\nstatus: 200\n{}", False),
+        # Another route's answer is not this route's.
+        ("api: /api/treetop\nstatus: 202\n{}\nafter: /api/status\nstatus: 200\n{}", False),
+    ],
+    ids=["answered-then-awaited", "truncated", "refused", "another-route"],
+)
+def test_a_route_that_answered_before_its_awaited_work_failed_is_evidence(
+    output: str,
+    counts: bool,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    only_tree: None,
+) -> None:
+    golden_dir = tmp_path / "golden"
+    _write_golden(
+        golden_dir,
+        "awaited.tryscript.md",
+        f"```console\n$ metab root --api /api/tree --data body.json\n{output}\n? 1\n```\n",
+    )
+    monkeypatch.setattr(check_parity, "GOLDEN_DIR", golden_dir)
+    monkeypatch.setattr(
+        check_parity,
+        "MAP_DOC",
+        _write_map(tmp_path, "| `/api/tree` | covered | `--api` | `awaited.tryscript.md` |"),
+    )
+
+    problems = check_parity.check()
+
+    assert any("no successful exact" in problem for problem in problems) is not counts
+
+
 def test_an_error_golden_can_supplement_successful_route_evidence(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

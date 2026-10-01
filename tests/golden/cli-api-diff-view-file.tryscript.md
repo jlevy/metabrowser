@@ -126,9 +126,16 @@ A name that is not UTF-8 shows a replacement character in `path` and carries its
 in `path_b64`, which is what its `/view/` address is built from.
 `link` is a symbolic link and `vendor/lib` a submodule: neither side of either is a
 regular file, so View file offers neither.
+The comparison document is long, so it goes to a file and the next command shows each
+side’s commit and each change’s kind, paths, and entry types.
 
 ```console
-$ metab changesroot --api '/api/plugin/diff/comparison?revision=6ac4c8b5eb94eecbdb621d629b31066f050c75f1' | grep -E '^(api|status)|"(base_policy|path|path_b64|entry_type)":|"(kind|id)": "(commit|empty|added|deleted|modified|renamed|[0-9a-f]{40})"'
+$ metab changesroot --api '/api/plugin/diff/comparison?revision=6ac4c8b5eb94eecbdb621d629b31066f050c75f1' > commit.txt
+? 0
+```
+
+```console
+$ grep -E '^(api|status)|"(base_policy|path|path_b64|entry_type)":|"(kind|id)": "(commit|empty|added|deleted|modified|renamed|[0-9a-f]{40})"' commit.txt
 api: /api/plugin/diff/comparison?revision=6ac4c8b5eb94eecbdb621d629b31066f050c75f1
 status: 200
     "base_policy": "first_parent",
@@ -179,7 +186,12 @@ A pull request’s Files changed is this comparison, of its base and its head.
 file opens at.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab file://$PWD/origin.git --api '/api/plugin/diff/comparison?left=0dcf612c09184fad5b83f7c80e65dd3a6fb48e99&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&base_policy=merge_base' | grep -E '^(api|status)|"base_policy":|"(kind|id)": "(commit|[0-9a-f]{40})"'
+$ METABROWSER_HOME=$PWD/home metab file://$PWD/origin.git --api '/api/plugin/diff/comparison?left=0dcf612c09184fad5b83f7c80e65dd3a6fb48e99&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&base_policy=merge_base' > merge-base.txt
+? 0
+```
+
+```console
+$ grep -E '^(api|status)|"base_policy":|"(kind|id)": "(commit|[0-9a-f]{40})"' merge-base.txt
 api: /api/plugin/diff/comparison?left=0dcf612c09184fad5b83f7c80e65dd3a6fb48e99&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&base_policy=merge_base
 status: 200
     "base_policy": "merge_base",
