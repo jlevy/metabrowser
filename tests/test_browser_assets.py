@@ -24,15 +24,6 @@ def test_tree_subtree_fetches_remain_depth_bounded() -> None:
     assert "`depth=${TREE_SUBTREE_FETCH_DEPTH}`" in js
 
 
-def test_hover_prefetch_skips_expensive_file_types() -> None:
-    js = _browser_app_js()
-
-    assert "FILE_PREFETCH_HOVER_DELAY_MS" in js
-    assert "FILE_PREFETCH_MAX_CONCURRENT" in js
-    # Which rows are skipped is run, not read: tests/test_hover_prefetch_js.py.
-    assert "AbortController" in js
-
-
 def test_activity_polling_retired_no_longer_referenced() -> None:
     """Sanity: the SPA no longer schedules /api/activity polls.
     Active-file detection moved to the inventory's background
