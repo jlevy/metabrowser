@@ -177,11 +177,17 @@ def test_a_hostile_line_reaches_no_reporter() -> None:
 def test_the_tail_of_an_overlong_line_cannot_pass_for_a_record() -> None:
     """Git prefixes every line the origin sends; a long one must not shed its prefix."""
 
-    line = b"remote: " + b"A" * (MAX_RECORD_BYTES * 2) + b"Receiving objects:  99% (99/100)\r"
-    for size in (1, 7, MAX_RECORD_BYTES, len(line)):
-        seen, kept = _split(*(line[index : index + size] for index in range(0, len(line), size)))
-        assert seen == []
-        assert kept == line
+    record = b"Receiving objects:  99% (99/100)\r"
+    # Every length of padding, so that wherever the long line is cut, one of them puts
+    # the cut exactly where the record-shaped tail begins.
+    for padding in range(MAX_RECORD_BYTES * 2, MAX_RECORD_BYTES * 3 + 2):
+        line = b"remote: " + b"A" * padding + record
+        for size in (1, 7, MAX_RECORD_BYTES, len(line)):
+            pieces = [line[index : index + size] for index in range(0, len(line), size)]
+            seen, kept = _split(*pieces)
+            assert seen == [], (padding, size)
+            assert kept == line
+    line = b"remote: " + b"A" * (MAX_RECORD_BYTES * 2) + record
     # The line after it is read as usual.
     seen, kept = _split(line, b"Receiving objects:  10% (1/10)\r")
     assert [record.done for record in seen] == [1]

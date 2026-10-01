@@ -103,7 +103,10 @@ def test_git_failures_during_acquisition_are_the_same_cli_error_in_every_mode(
         assert isinstance(result.exception.__cause__, GitError)
         message = str(result.exception)
         _assert_path_free(message, tmp_path, home)
-        _assert_path_free(result.output, tmp_path, home)
+        _assert_path_free(result.stdout, tmp_path, home)
+        # The clone had said where it was going, which is the user's own cache
+        # directory; nothing after that line names the staging entry or the store.
+        assert result.stderr == f"cloning {url} into {home}/cache\n"
         assert list((home / STAGING).iterdir()) == []
         assert list((home / SOURCES).iterdir()) == []
         messages[kind] = message
