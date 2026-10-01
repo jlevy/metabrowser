@@ -390,7 +390,14 @@ def _baseline_rows() -> list[tuple[str, str, _El]]:
         text("diff-file-stats", el("diff-stat-add"), el("diff-stat-del")),
         text("diff-file-note"),
     )
-    bar = el("diff-file-bar", toggle, box("icon-btn icon-btn-reveal diff-file-copy"))
+    bar = el(
+        "diff-file-bar",
+        toggle,
+        # View file controls: boxes at the path's size, which centering puts on its baseline.
+        box("diff-file-view diff-file-view-base"),
+        box("diff-file-view diff-file-view-head"),
+        box("icon-btn icon-btn-reveal diff-file-copy"),
+    )
     el("content-body metabrowser-diff-host", el("diff-file", bar))
     rows.append(("Diff file bar", f"{diff_host} .diff-file-toggle", toggle))
     rows.append(("Diff file bar", f"{diff_host} .diff-file-bar", bar))
@@ -432,6 +439,12 @@ def test_row_text_shares_one_baseline() -> None:
     assert "min-height: 100%;" in _rule(styles, ".file-header > .file-header-path"), (
         "the header path no longer fills the header, so its text rides to the top"
     )
+    # The diff bar's View file controls are centered boxes beside the toggle, so they
+    # land on the path's baseline only at the path's own size.
+    for selector in (".diff-file-path", ".diff-file-view"):
+        assert "font-size: var(--nav-font-size);" in _rule(
+            diff_css, f".metabrowser-diff-host {selector}"
+        ), f"{selector} left the diff bar's one text size"
 
 
 def test_disclosure_motion_is_one_recipe_everywhere() -> None:

@@ -453,6 +453,22 @@ Repository cache:
   The address is checked before the switch: one that is not percent-encoded ASCII is
   refused with nothing changed, and a query or fragment is dropped.
 
+- On a served mirror, each file bar of a diff offers the changed file at either side of
+  the change, as GitHub’s View file does, for a commit’s diff and for a pull request’s
+  Files changed. **View file** opens the new side; **View at parent** (a commit’s diff)
+  or **View at base** (Files changed, where the base is the merge base) opens the old
+  side. A deleted file has only its old side, an added file only its new side, and a
+  renamed file opens its old path at the old side.
+  A side at the commit the page shows is a link to the file’s `/view/` address, so a new
+  tab, a copied link, and back and forward work as for any link.
+  A side at another commit is a button that switches the served pin to that commit with
+  `POST /api/source/pin` and opens the file there; its tooltip names the commit, and a
+  switch the server does not make, such as a commit the mirror lacks, is said under the
+  file bar while the page stays as it was.
+  A name that is not UTF-8 is addressed by its bytes.
+  A diff in a served folder, and a patch file’s diff, have no such control: a folder has
+  no file at a commit to open, only its working tree’s.
+
 - A page on a pinned revision is served `Cache-Control: no-store`. The page names the
   commit it was rendered for, and a browser shows a cached document on back and forward
   without asking, so after any pin switch Back used to show a page naming the commit

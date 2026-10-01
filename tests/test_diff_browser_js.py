@@ -52,3 +52,7 @@ def test_diff_intraline_refines_changed_runs() -> None:
 
 def test_diff_render_model_caches_progressive_refinement() -> None:
     _run("diff-render-model-behavior.js", "diff render model OK")
+
+
+def test_diff_view_file_decides_sides_addresses_and_switches() -> None:
+    _run("diff-view-file-behavior.js", "diff view file OK")

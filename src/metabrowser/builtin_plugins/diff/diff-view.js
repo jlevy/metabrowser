@@ -2,9 +2,11 @@
 //
 // Each file renders as a section under a bar: the section-disclosure
 // primitive carrying the filename (styled as a filename, not a
-// heading), change notes, the inline +N −N stat pair, and a copy-path
-// control riding the shared [data-mb-copy] delegation. Sections
-// start expanded; the bar collapses the body without disposing it.
+// heading), change notes, the inline +N −N stat pair, the View file
+// controls of diff-view-file.js when the page can open a file at a
+// commit, and a copy-path control riding the shared [data-mb-copy]
+// delegation. Sections start expanded; the bar collapses the body
+// without disposing it.
 // Every availability state has exactly one rendering path — an absent
 // patch is a labeled state, never an empty box. Rendering is
 // deliberately dumber than the model: the data plane is tested by the
@@ -13,6 +15,7 @@
 import { fileChangeLabel, validateDocument } from "./diff-model.js";
 import { buildFileRenderModel, refineFileChangedRuns } from "./diff-render-model.js";
 import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
+import { createViewFileOpener } from "./diff-view-file.js";
 
 /**
  * @typedef {object} DiffViewApi
@@ -49,11 +52,13 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {"unified" | "split"} layout
  * @property {HTMLElement | null} layoutControl
  * @property {number} layoutGeneration
+ * @property {Record<string, unknown>} resolved
  * @property {HTMLElement} root
  * @property {Promise<void>} enhancementTail
  * @property {Map<HTMLElement, {body: HTMLElement, change: Record<string, unknown>, revision: string}>} pendingHydrations
  * @property {{body: HTMLElement, change: Record<string, unknown>, revision: string}[]} queuedHydrations
  * @property {Set<number>} timers
+ * @property {ReturnType<typeof createViewFileOpener> | null} viewFile
  * @property {Set<{timer: number, resolve: (active: boolean) => void}>} yielders
  */
 
@@ -848,17 +853,56 @@ function cancelFoldMaterializations(state) {
 }
 
 /**
+ * One View file control of a file bar: a link when the page already has the file's
+ * address, and a button when following it first switches the served pin. The link has
+ * no handler, so a click, a new tab, and a copied address are the browser's own. The
+ * text is the application's; the path reaches only the tooltip and accessible name, as
+ * text.
+ *
+ * @param {import("./diff-view-file.js").ViewFileAction} action
+ * @param {NonNullable<MountedDiffState["viewFile"]>} opener
+ * @param {HTMLElement} notice Where a refusal is said, under the bar.
+ * @returns {HTMLElement}
+ */
+function renderViewFileControl(action, opener, notice) {
+  const link = action.mode === "link";
+  const control = el(link ? "a" : "button", `diff-file-view diff-file-view-${action.side}`);
+  control.textContent = action.label;
+  control.setAttribute("data-tip-text", action.detail);
+  control.setAttribute("aria-label", `${action.label}: ${action.detail}`);
+  if (link) {
+    control.setAttribute("href", opener.href(action.wire));
+    return control;
+  }
+  control.setAttribute("type", "button");
+  control.addEventListener("click", () => {
+    notice.textContent = "";
+    notice.hidden = true;
+    control.setAttribute("aria-busy", "true");
+    void opener.switchTo(action).then((outcome) => {
+      control.setAttribute("aria-busy", "false");
+      if (outcome.kind === "refused") {
+        notice.textContent = outcome.message;
+        notice.hidden = false;
+      }
+    });
+  });
+  return control;
+}
+
+/**
  * The per-file bar: one disclosure trigger (kind, path, notes, stats)
- * plus a sibling copy control, per the section-disclosure and icon
- * button primitives in the design system.
+ * plus sibling View file and copy controls, per the section-disclosure
+ * and icon button primitives in the design system.
  *
  * @param {Record<string, unknown>} change
  * @param {string} toggleId
  * @param {string} bodyId
- * @param {DiffViewApi | undefined} api
- * @returns {{bar: HTMLElement, toggle: HTMLElement}}
+ * @param {MountedDiffState} view
+ * @returns {{bar: HTMLElement, toggle: HTMLElement, notice: HTMLElement | null}}
  */
-function renderFileBar(change, toggleId, bodyId, api) {
+function renderFileBar(change, toggleId, bodyId, view) {
+  const api = view.api;
   const { letter, label, notes } = fileChangeLabel(change);
   const bar = el("div", "diff-file-bar");
   const toggle = el("button", "diff-file-toggle expanded");
@@ -891,6 +935,18 @@ function renderFileBar(change, toggleId, bodyId, api) {
   }
   bar.append(toggle);
 
+  /** @type {HTMLElement | null} */
+  let notice = null;
+  const actions = view.viewFile?.actions(change, view.resolved) ?? [];
+  if (view.viewFile && actions.length > 0) {
+    notice = el("div", "diff-availability diff-file-notice");
+    notice.setAttribute("role", "status");
+    notice.hidden = true;
+    for (const action of actions) {
+      bar.append(renderViewFileControl(action, view.viewFile, notice));
+    }
+  }
+
   const side = /** @type {Record<string, unknown> | undefined} */ (change.new ?? change.old);
   if (side !== undefined) {
     const copy = el("button", "icon-btn icon-btn-reveal diff-file-copy");
@@ -910,7 +966,7 @@ function renderFileBar(change, toggleId, bodyId, api) {
     }
     bar.append(copy);
   }
-  return { bar, toggle };
+  return { bar, toggle, notice };
 }
 
 /** @param {DiffViewApi | undefined} api @returns {"unified" | "split"} */
@@ -1235,18 +1291,26 @@ function renderFileSection(change, patch, context, view) {
   const bodyId = `diff-file-body-${sectionSequence}`;
   const section = el("section", "diff-file");
   section.setAttribute("aria-labelledby", toggleId);
-  const { bar, toggle } = renderFileBar(change, toggleId, bodyId, view.api);
+  const { bar, toggle, notice } = renderFileBar(change, toggleId, bodyId, view);
   const body = el("div", "diff-file-body");
   body.setAttribute("id", bodyId);
-  section.append(bar, body);
+  if (notice) {
+    section.append(bar, notice, body);
+  } else {
+    section.append(bar, body);
+  }
 
   // The whole bar is one activation surface, like a tree row; the
   // button stays the semantic trigger for focus and keyboard, whose
-  // synthesized click bubbles here. Only the copy control opts out.
+  // synthesized click bubbles here. Only the copy and View file
+  // controls opt out.
   let expanded = true;
   bar.addEventListener("click", (event) => {
     const origin = /** @type {{closest?: (selector: string) => unknown}} */ (event.target);
-    if (typeof origin?.closest === "function" && origin.closest("[data-mb-copy]")) {
+    if (
+      typeof origin?.closest === "function" &&
+      (origin.closest("[data-mb-copy]") || origin.closest(".diff-file-view"))
+    ) {
       return;
     }
     expanded = !expanded;
@@ -1287,7 +1351,9 @@ function renderFileSection(change, patch, context, view) {
  * @param {HTMLElement} container
  * @param {Record<string, unknown>} document_
  * @param {DiffViewApi} [api]
- * @param {{showSummary?: boolean}} [options]
+ * @param {{showSummary?: boolean, viewFile?: import("./diff-view-file.js").ViewFileHost | null}} [options]
+ *   *viewFile* is how the page opens a file at a commit; without it the bars carry no
+ *   View file control.
  * @returns {{cancelPending: () => void, dispose: () => void}}
  */
 export function mountDiffView(container, document_, api, options = {}) {
@@ -1304,11 +1370,13 @@ export function mountDiffView(container, document_, api, options = {}) {
     layout: readLayoutPreference(api),
     layoutControl: null,
     layoutGeneration: 0,
+    resolved: /** @type {Record<string, unknown>} */ (document_.resolved ?? {}),
     root,
     enhancementTail: Promise.resolve(),
     pendingHydrations: new Map(),
     queuedHydrations: [],
     timers: new Set(),
+    viewFile: options.viewFile ? createViewFileOpener(options.viewFile) : null,
     yielders: new Set(),
   };
   const removeSelectionGate = installSplitSelectionGate(root);

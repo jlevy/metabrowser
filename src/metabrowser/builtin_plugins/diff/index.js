@@ -46,6 +46,44 @@ function comparisonParams(key) {
   return { revision: key };
 }
 
+/**
+ * How this page opens a file at a commit, for the View file controls of a diff: its
+ * `/view/` address for the commit the page shows, and the pin route for any other. The
+ * server writes the commit a page shows into every page on a pinned revision and into
+ * no other, so a served folder, which has no file at a commit to open, gets `null` and
+ * no controls.
+ *
+ * @returns {import("./diff-view-file.js").ViewFileHost | null}
+ */
+function viewFileHost() {
+  const pin = window.METABROWSER_SOURCE_PIN?.pin;
+  if (typeof pin !== "string" || pin === "") {
+    return null;
+  }
+  return {
+    pin,
+    href: (wire) => mb.navigation.href({ path: wire }),
+    // The ref selector's own request: a same-origin JSON POST, which content in a
+    // served page cannot make with a link, an image, or a form.
+    async switchPin(body) {
+      const response = await fetch("/api/source/pin", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        cache: "no-store",
+        body: JSON.stringify(body),
+      });
+      let decoded = null;
+      try {
+        decoded = await response.json();
+      } catch {
+        decoded = null;
+      }
+      return { status: response.status, body: decoded };
+    },
+    navigate: (href) => window.location.assign(href),
+  };
+}
+
 /** @param {HTMLElement} container @param {string} message */
 function renderFailure(container, message) {
   const notice = document.createElement("div");
@@ -111,6 +149,9 @@ mb.registerView("diff", "diff", {
     // A commit comparison already carries these totals beside its revision,
     // author, and age. Direct diff documents and two-endpoint comparisons own
     // their aggregate summary.
-    return mountDiffView(container, result.document, mb, { showSummary: !ctx.revision });
+    return mountDiffView(container, result.document, mb, {
+      showSummary: !ctx.revision,
+      viewFile: viewFileHost(),
+    });
   },
 });
