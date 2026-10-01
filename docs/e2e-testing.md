@@ -225,7 +225,8 @@ Every other test runs with a failing stand-in `gh` first on `PATH`.
 
 ### Skips
 
-`make test` runs pytest with `-rs`, which prints each skipped test with its reason.
+`make test` runs pytest with `-rs`, which prints each skipped test with its reason, and
+with `--durations=25`, which lists the slowest tests.
 In CI it also sets `METABROWSER_STRICT_SKIPS`, and a skip has to belong to an outer tier
 or the test fails:
 
@@ -271,6 +272,48 @@ A test that needs longer carries its own `pytest.mark.timeout` with the measurem
 forced it written beside it.
 A test in `tests/test_suite_gates.py` fails on a longer bound in a module that has not
 raised its budget.
+
+## Measuring the Suite
+
+A change to the tests is reviewed on numbers taken the same way before and after it.
+`devtools/suite_report.py` prints them, so nobody counts by hand and the next person
+gets the figures the last one did:
+
+```shell
+# The working tree: files, lines, and test functions by area, then the totals.
+make test-report
+
+# Commits side by side, with the change from the first to the last.
+# `.` is the working tree.
+make test-report REFS="origin/main ."
+
+# What one run cost: the time of each test file and each golden, and its skips by tier.
+gh run view <run> --job <job> --log > run.log
+make test-report LOG=run.log
+```
+
+- An **area** is the first word of a test module’s name: `tests/test_cache_update.py` is
+  in `cache`.
+- **Lines** are counted from the files of the tree or commit alone, so they are the same
+  on every machine. An image is a file with no lines.
+- A **tier** count is the `def test_` functions that carry the tier’s marker, whether on
+  the function, through the module’s `pytestmark`, or through a decorator the module
+  defines. For the admitted-Git tier it is the functions in the modules
+  `ADMITTED_GIT_TESTS` lists.
+- **Time** is read from a log and belongs to that one run, so quote the run and the job
+  with it. From a CI log, a test file’s time is the gap between the timestamps of
+  consecutive progress lines: pytest ends a file’s line when the next file starts.
+  A golden’s time is the gap before tryscript printed its verdict.
+  A developer machine under load gives other times; compare the CI `test (3.13)` job
+  with itself.
+- From a pytest output with no timestamps, the report sums the phases `--durations`
+  listed. `make test` passes `--durations=25`, which names the slowest tests and is not a
+  total per file; pass `--durations=0` to pytest to list every phase it timed.
+- A **skip** in a log is given the tier of the test it is in, read from the tree being
+  reported, so read a log beside the commit it ran.
+
+`python -m devtools.check_goldens --report` gives the size distribution of the goldens
+and recordings against their review budget.
 
 ## Adding Coverage
 
