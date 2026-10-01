@@ -150,6 +150,9 @@ def _write_state(published: PublishedSource, *, operation: StoreOperation) -> No
 
 
 def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+    # The recording holds session generations, which count from where an earlier test
+    # in this process left the source session.
+    reset_source_session()
     monkeypatch.setenv("METABROWSER_HOME", str(tmp_path / "home"))
     _allow_installed_git(monkeypatch)
     origin = build_origin(tmp_path)
