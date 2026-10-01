@@ -34,6 +34,7 @@ from metabrowser.home import (
     PrivateStorageError,
     PrivateStorageLocation,
     PrivateStorageViolation,
+    SharedEntryPolicy,
     ensure_private_directory,
     open_private_file,
     validate_private_home,
@@ -345,6 +346,8 @@ def _hostile_tree(root: Path) -> list[Path]:
     (homes / "file").write_bytes(b"not a directory\n")
 
     _private_dir(shared(root / "shared", 0o777) / "mine")
+    shared(root / "group-writable", 0o775)
+    shared(root / "other-writable", 0o757)
     foreign(_private_dir(root / "someone-elses"))
     # The sticky bit protects entries from other users, not from the directory's owner.
     foreign(shared(root / "sticky-foreign", 0o1777))
@@ -363,11 +366,14 @@ def _hostile_tree(root: Path) -> list[Path]:
     (home / "linked.yml").symlink_to(victim)
     (home / "dangling.yml").symlink_to(root / "never-created.txt")
     (home / "a-file").write_bytes(b"not a directory\n")
+    (home / "a-file").chmod(PRIVATE_FILE_MODE)
     _private_dir(home / "a-directory")
     os.link(published, home / "hard-linked.yml")
     for mode in _SHARED_FILE_MODES:
         (home / f"shared-{mode:04o}.yml").write_bytes(b"old\n")
         (home / f"shared-{mode:04o}.yml").chmod(mode)
+    (shared(home / "shared-dir", 0o750) / "inner.yml").write_bytes(b"inside\n")
+    (home / "shared-dir" / "inner.yml").chmod(PRIVATE_FILE_MODE)
     return foreign_owned
 
 
@@ -427,13 +433,14 @@ _FLAG_NAMES = (
 )
 
 
-def _open(home: str, relative: str, flags: int) -> _Call:
+def _open(home: str, relative: str, flags: int, shared: SharedEntryPolicy = "repair") -> _Call:
     """An open named by its flags' names, which are the same on every platform."""
 
     access = "+".join(name for name, bit in _FLAG_NAMES if flags & bit) or "rdonly"
+    policy = "" if shared == "repair" else f" shared={shared}"
     return _Call(
-        f"open {home} {relative} {access}",
-        lambda root: open_private_file(root / home, relative, flags),
+        f"open {home} {relative} {access}{policy}",
+        lambda root: open_private_file(root / home, relative, flags, shared=shared),
     )
 
 
@@ -480,6 +487,9 @@ _REFUSED: tuple[_Refused, ...] = (
         mode=0o777,
     ),
     _Refused(_ensure("shared/mine/home", "cache"), _V.PERMISSIVE, _L.HOME_ANCESTOR, at="shared"),
+    # Write access for the group alone, or for others alone, is enough to replace the home.
+    _Refused(_ensure("group-writable/home", "cache"), _V.PERMISSIVE, _L.HOME_ANCESTOR, mode=0o775),
+    _Refused(_ensure("other-writable/home", "cache"), _V.PERMISSIVE, _L.HOME_ANCESTOR, mode=0o757),
     _Refused(_ensure("someone-elses/home", "cache"), _V.FOREIGN_OWNER, _L.HOME_ANCESTOR),
     _Refused(_ensure("sticky-foreign/home", "cache"), _V.FOREIGN_OWNER, _L.HOME_ANCESTOR),
     _Refused(_ensure("planted/home", "cache"), _V.SYMLINK, _L.HOME_ANCESTOR),
@@ -509,6 +519,36 @@ _REFUSED: tuple[_Refused, ...] = (
         for mode in _SHARED_FILE_MODES
         for flags in (_W, os.O_RDWR, _W | os.O_TRUNC, _W | os.O_APPEND, os.O_RDWR | os.O_CREAT)
     ),
+    # shared="refuse": a read that must not touch what the user owns refuses a shared file
+    # and a shared parent directory, with the remedy for each, where the default repairs.
+    *(
+        _Refused(
+            _open("home", f"shared-{mode:04o}.yml", os.O_RDONLY, "refuse"),
+            _V.PERMISSIVE,
+            _L.ENTRY,
+            ("chmod 600", "does not change your entries"),
+            mode,
+        )
+        for mode in (0o644, 0o604, 0o640)
+    ),
+    _Refused(
+        _open("home", "shared-dir/inner.yml", os.O_RDONLY, "refuse"),
+        _V.PERMISSIVE,
+        _L.ENTRY,
+        ("chmod 700", "does not change your entries"),
+        0o750,
+    ),
+    # shared="keep" lets sharing stand for a read and nothing else: a write in place is
+    # still refused, and so is every entry that is wrong for another reason.
+    _Refused(
+        _open("home", "shared-0644.yml", _W, "keep"),
+        _V.PERMISSIVE,
+        _L.ENTRY,
+        ("replace it atomically",),
+    ),
+    _Refused(_open("home", "linked.yml", os.O_RDONLY, "keep"), _V.SYMLINK, _L.ENTRY),
+    _Refused(_open("home", "hard-linked.yml", os.O_RDONLY, "keep"), _V.HARD_LINK, _L.ENTRY),
+    _Refused(_open("home", "foreign.yml", os.O_RDONLY, "keep"), _V.FOREIGN_OWNER, _L.ENTRY),
 )
 
 
@@ -533,6 +573,54 @@ def test_a_call_into_a_hostile_tree_is_refused_and_changes_nothing(
     for text in refused.says:
         assert text in str(error)
     assert _tree(tmp_path) == before
+
+
+@pytest.mark.parametrize("policy", ["keep", "refuse"])
+def test_a_read_that_keeps_or_refuses_opens_a_private_file_and_changes_nothing(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, policy: SharedEntryPolicy
+) -> None:
+    """Neither policy tightens anything, so a private entry opens exactly as it is."""
+
+    _hostile_tree(tmp_path)
+    before = _tree(tmp_path)
+
+    with caplog.at_level(logging.WARNING, logger="metabrowser.home"):
+        fd = open_private_file(tmp_path / "home", "a-file", os.O_RDONLY, shared=policy)
+        with os.fdopen(fd, "rb") as handle:
+            assert handle.read() == b"not a directory\n"
+
+    assert _tree(tmp_path) == before
+    assert caplog.records == []
+
+
+def test_a_keep_read_opens_a_shared_file_in_a_shared_directory_as_they_are(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """``keep`` changes neither the file nor its parents and refuses neither.
+
+    The lock replacement and the pre-read of the layout rely on it: they must see an
+    entry exactly as it is, where the default would tighten both and log each repair.
+    """
+
+    _hostile_tree(tmp_path)
+    home = tmp_path / "home"
+    (home / "shared-dir" / "inner.yml").chmod(0o640)
+    before = _tree(tmp_path)
+
+    with caplog.at_level(logging.WARNING, logger="metabrowser.home"):
+        for relative, content in (
+            ("shared-0644.yml", b"old\n"),
+            ("shared-dir/inner.yml", b"inside\n"),
+        ):
+            fd = open_private_file(home, relative, os.O_RDONLY, shared="keep")
+            with os.fdopen(fd, "rb") as handle:
+                assert handle.read() == content
+
+    assert _tree(tmp_path) == before
+    assert caplog.records == []
+    # The default read of the same entries repairs them, which is what keep withheld.
+    os.close(open_private_file(home, "shared-dir/inner.yml", os.O_RDONLY))
+    assert (_mode(home / "shared-dir"), _mode(home / "shared-dir" / "inner.yml")) == (0o700, 0o600)
 
 
 def test_the_root_directory_is_verified(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
