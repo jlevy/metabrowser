@@ -191,6 +191,28 @@ symlink blobs.
 `diff/comparison?left=&right=` takes `base_policy=direct` (the default) or
 `merge_base`, and reports it in the document.
 
+On a page that shows a pinned revision, the diff view’s file bars offer **View file** at
+each side of a change that exists, for a commit’s diff and a pull request’s Files
+changed alike, and it adds no route.
+The comparison document already says everything it needs: `resolved.left` and
+`resolved.right` are the two commits (the parent and the commit, or the merge base and
+the head), and each change’s `old` and `new` are the path at each, so a deleted file has
+only its old side, an added file only its new side, and a renamed file’s old side is its
+old path. A file at a commit is its `/view/` address while the server’s pin is that
+commit. A side at the commit the page shows is therefore a link to that address, which
+the browser follows, and a side at any other commit is a button that sends
+`POST /api/source/pin` with the commit ID and the address and goes to the answer’s
+`view_href`, as the ref selector does.
+A switch the server does not make (`selection_pending`, `selection_not_found`,
+`selection_fetch_failed`, or any other refusal) is said under the file bar and the page
+stays.
+A patch file’s snapshots are not commits and a served folder’s page has no pin, so
+neither carries the control: a folder has no route that reads a file at a commit, and
+its working-tree file is not that file.
+A pin’s page is served `Cache-Control: no-store`, because it names the commit it was
+rendered for: Back after a switch asks for the page again and gets the served pin’s,
+where a cached copy would name a commit the server no longer serves.
+
 `github/pull` answers the served pull request’s cached record from the cache alone:
 `absent` (with `no_pull_request`, `not_cached`, `schema_mismatch`, or `unreadable`),
 `pending` (no record yet, and a refresh is running), `current`, or `stale`, plus the
@@ -291,7 +313,7 @@ or kind arrives with transcript evidence or the build fails.
 | `/api/cache/stores` | covered | `--api` | `cli-api-cache.tryscript.md` |
 | `/api/source/status` | covered | `--api` | `cli-api-shell.tryscript.md`, `cli-api-source.tryscript.md` |
 | `/api/source/refresh` | covered | `--api --data` | `cli-api-source.tryscript.md`, `cli-api-shell.tryscript.md` |
-| `/api/source/pin` | covered | `--api --data` | `cli-api-source.tryscript.md`, `cli-api-shell.tryscript.md` |
+| `/api/source/pin` | covered | `--api --data` | `cli-api-source.tryscript.md`, `cli-api-shell.tryscript.md`, `cli-api-diff-view-file.tryscript.md` |
 | `/api/source/refs` | covered | `--api` | `cli-api-source.tryscript.md`, `cli-api-shell.tryscript.md` |
 | `/api/git/repo` | covered | `--api` | `cli-api-git.tryscript.md` |
 | `/api/git/refs` | covered | `--api` | `cli-api-git.tryscript.md` |
@@ -304,7 +326,7 @@ or kind arrives with transcript evidence or the build fails.
 | `/api/plugin/binary/chunk` | covered | `--api` | `cli-api-plugins.tryscript.md` |
 | `/api/plugin/diff/document` | covered | `--api` | `cli-api-plugins.tryscript.md` |
 | `/api/plugin/diff/children` | covered | `--api` | `cli-api-plugins.tryscript.md` |
-| `/api/plugin/diff/comparison` | covered | `--api` | `cli-api-plugins.tryscript.md`, `cli-api-git.tryscript.md`, `cli-github-pull.tryscript.md` |
+| `/api/plugin/diff/comparison` | covered | `--api` | `cli-api-plugins.tryscript.md`, `cli-api-git.tryscript.md`, `cli-github-pull.tryscript.md`, `cli-api-diff-view-file.tryscript.md` |
 | `/api/plugin/github/pull` | covered | `--api` | `cli-github-pull.tryscript.md` |
 | `/api/plugin/github/pull-refresh` | covered | `--api` | `cli-github-pull.tryscript.md` |
 | `/api/plugin/github/pull-markdown` | covered | `--api` | `cli-github-pull.tryscript.md` |
@@ -427,6 +449,8 @@ SSE transport whose emitted snapshot is already owned by its data routes.
 | `github.pull-page` | interaction | `builtin_plugins/github/pull-page.js#describePull`, `builtin_plugins/github/pull-page.js#createPullController` | `/api/plugin/github/pull`, `/api/plugin/github/pull-refresh`, `/api/plugin/github/pull-markdown`, `/api/source/pin` | `node tests/dom/github-pull-page-session.js` | `cli-ui-github-pull-page.tryscript.md` |
 | `github.pull-page-inert-markup` | interaction | `static/inert-html.js#sanitizeNodes`, `static/inert-html.js#allowedAttributes`, `static/inert-html.js#imageLink`, `builtin_plugins/github/pull-page.js#safeLink`, `builtin_plugins/github/pull-page.js#gitPathWire` | `/api/plugin/github/pull-markdown` | `node tests/dom/github-pull-page-session.js` | `cli-ui-github-pull-page.tryscript.md` |
 | `github.pull-page-paint-decisions` | interaction | `builtin_plugins/github/pull-page.js#conversationAction`, `builtin_plugins/github/pull-page.js#conversationKey`, `builtin_plugins/github/pull-page.js#filesAction` | `/api/plugin/github/pull` | `node tests/dom/github-pull-page-session.js` | `cli-ui-github-pull-page.tryscript.md` |
+| `diff.view-file-sides` | data | `/api/plugin/diff/comparison` | `owned-route` | `metab changesroot --api '/api/plugin/diff/comparison?revision=037ec682a66fd0c1b7a318237ecd6b386147a32d'` | `cli-api-diff-view-file.tryscript.md` |
+| `diff.view-file` | interaction | `builtin_plugins/diff/diff-view-file.js#viewFileSides`, `builtin_plugins/diff/diff-view-file.js#sidePathWire`, `builtin_plugins/diff/diff-view-file.js#describeViewFile`, `builtin_plugins/diff/diff-view-file.js#createViewFileOpener`, `builtin_plugins/diff/diff-view-file.js#switchRefusal`, `builtin_plugins/diff/diff-view.js#renderViewFileControl`, `builtin_plugins/diff/index.js#viewFileHost` | `/api/plugin/diff/comparison`, `/api/plugin/diff/document`, `/api/source/pin` | `node tests/dom/diff-view-file-session.js` | `cli-ui-diff-view-file.tryscript.md` |
 | `navigation.pull-page-history` | interaction | `static/navigation.js#pullHistoryAction`, `static/navigation.js#createPullPageHost` | `local-only` | `node tests/dom/navigation-route-behavior.js` | `cli-ui-navigation.tryscript.md` |
 | `assets.on-demand-load-recovery` | interaction | `static/asset-loader.js#ensureAsset`, `static/asset-loader.js#ensureScript` | `local-only` | `node tests/dom/asset-loader-behavior.js` | `cli-ui-navigation.tryscript.md` |
 | `source.incremental-cache-transaction` | interaction | `static/source-append.js#requestOwnsPreview`, `static/source-append.js#commitChunkCache` | `/api/file` | `node tests/dom/source-append-navigation-session.js` | `cli-ui-file-lifecycle.tryscript.md` |
@@ -452,6 +476,7 @@ SSE transport whose emitted snapshot is already owned by its data routes.
 | `document.reading-width` | interaction | `static/document-width.js#apply` | `local-only` | `node tests/dom/document-width-session.js` | `cli-ui-document-width.tryscript.md` |
 | `navigation.filter-layout` | paint-exempt | `static/styles.css` | `local-only` | — | CSS geometry and disclosure motion require rendered layout; focused selectors and accessibility state are pinned in `tests/test_browser_filter_ui.py` and `tests/test_tree_keyboard_integration.py` |
 | `document.floating-ui-frame` | paint-exempt | `static/styles.css` | `local-only` | — | Where the `position: fixed` TOC drawer, its toggle, and its backdrop land while the preview pane scrolls is browser layout, and the repository has no browser harness to measure it. `tests/test_preview_frame_contract.py` pins by stylesheet text what places them: the shell wraps the scrolling `#preview-pane` in a non-scrolling `.preview-frame.kpress-frame` that declares a transform, and no rule in the shell’s, a built-in plugin’s, or KPress’s stylesheet gives the pane or an element between it and the TOC a property that makes a containing block for fixed descendants. Computed styles and rules a script adds are not checked. That the toggle stays in view at any scroll depth, in a trusted folder and a served mirror, is step 5 of section 5.9 of the v0.12 QA runbook |
+| `diff.view-file-browser` | paint-exempt | `builtin_plugins/diff/styles.css` | `local-only` | — | What the browser does with a View file control is the browser’s: following the link, opening it in a new tab or copying its address, and going back and forward, including Back after a switch, which asks the server for the page again because a pin’s page is not stored. Where the controls sit in the bar, and that their text shares the path’s baseline, is layout. Every decision they act on is a session owner above (`diff.view-file`): which sides a bar offers, each link’s address, and that no handler takes a link’s click. `tests/test_diff_view_file_session.py` pins those against a real server’s answers, `tests/test_serve_pin.py` that a pin’s page is `no-store` and names the pin served now, and `tests/test_design_vocabulary.py` the size that puts the text on the baseline; the browser walkthrough is section 5.11 of the v0.12 QA runbook |
 | `github.pull-page-paint` | paint-exempt | `builtin_plugins/github/pull-page.js#mountPullPage` | `local-only` | — | Building the page’s DOM, observing which texts scroll into view, loading the diff plugin and mounting its view, and the shell’s `app.js` callbacks the page host calls (load the plugin, render into the pane, `history.pushState`) need a rendered page. Every decision they act on is a session owner above: what a route, a tab link, the link to the served pull request, or a history landing does to the pane, and which superseded page is disposed (`navigation.pull-page-history`), whether the conversation repaints or asks again and what Files changed keeps (`github.pull-page-paint-decisions`), and what of a text’s HTML is inserted (`github.pull-page-inert-markup`). The route grammar, the shell and plugin wiring for the `pull-request` kind, and that only an inert template is parsed are pinned in `tests/test_pull_page_route.py`; the browser walkthrough is in the v0.12 QA runbook |
 
 ### Planned v0.12 hosted-review functional rows
