@@ -29,18 +29,141 @@ Keep additional work on the existing stack until the stack is stabilized and app
 for landing. Archive containers (`mb-380k`) are not part of the stack or of this
 procedure.
 
+## Walk Through This Yourself
+
+An ordered path for one person at a keyboard, about 45 to 60 minutes.
+Each part names the numbered steps that hold its commands and full pass and fail
+conditions; the lines here are the summary to tick off.
+Parts 1 and 2 need no network.
+Part 3 reads GitHub, and nothing in it writes there.
+Part 4 is what no agent run has covered: the
+[acceptance record](project/qa/qa-2026-09-24-v012-alpha-acceptance.md) was made in one
+Chromium pane, hidden for most rows, with no private repository.
+
+### Part 1: Set Up and Pick the Tip (About 5 Minutes)
+
+1. Find the top pull request and its commit: [Pins](#pins).
+2. Check it out, install, isolate the application home, and read the help: 0.1 to 0.3.
+3. Check the installation: 0.4.
+
+**Pass:** `HEAD` is the top pull request’s head, and `gh pr checks "$ALPHA_PR"` lists
+every check as passing.
+`METABROWSER_HOME` names a path that does not exist.
+`metab --doctor` reports every plugin OK.
+
+**Fail:** A checkout of any other commit; a check that fails or is still running;
+`~/.metabrowser` in use.
+
+### Part 2: The Standard Features on a Plain Folder (About 15 Minutes)
+
+What 0.11.0 did for a folder on disk must still work, in a real browser, with nothing
+acquired.
+
+1. Data modes, names that look like URLs, and an unreadable folder: 3.1 to 3.3.
+2. The folder in a browser: every numbered check of 3.4, in the light theme and the dark
+   one.
+
+**Pass:** Each step’s pass line.
+The only differences from 0.11.0 are the ones 3.4 lists under “Changed since 0.11.0”.
+
+**Fail:** Any other difference from 0.11.0 on a folder served without flags; a control
+that does nothing when clicked.
+
+### Part 3: GitHub With Your Own Account (About 20 Minutes)
+
+This part needs the network, a Git the floor admits, and a signed-in `gh`
+(`gh auth status`). Every request reads.
+Run each step on the public repository it names, then repeat steps 1 to 3 with a
+repository and a pull request of your own.
+
+1. **A repository URL.** The two `metab` commands of 4.8, and its served check.
+   **Pass:** `acquired:` names the canonical `https://github.com/<owner>/<repo>`, and
+   the second command answers from the cache with no clone.
+2. **A file URL with lines.** Serve
+   `https://github.com/<owner>/<repo>/blob/<branch>/<path>#L10-L20` the way 4.8 serves
+   its `README#L1`, for a file of at least 20 lines.
+   **Pass:** the banner’s `Selection:` line names the file and `#L10-L20`, and the page
+   opens on that file with lines 10 to 20 highlighted and line 10 in view, as in step 9
+   of 5.3.
+3. **A pull-request URL.** The command at the end of 5.7, and its steps 1 to 6.
+   **Pass:** the page matches the pull request on github.com, including its Files
+   changed list.
+4. **Switch branch.** On the server from step 1, steps 2 to 5 of 5.10, with a branch and
+   a tag the repository already has.
+   **Pass:** the page reloads on the chosen ref, on the same file when that revision has
+   it.
+5. **View file from a diff.** The last paragraph of 5.11, on the pull request from step
+   3\. **Pass:** each side opens the file at the commit its tooltip names.
+6. **Offline reopen.** Stop the servers, turn the network off, and run the commands of
+   steps 1 and 3 again.
+   **Pass:** the same `Revision:` and the same pages.
+   The freshness row reads `Refresh failed · fetched …` as a warning, and the
+   pull-request page shows its cached record and says the last refresh failed.
+   These are rows M05 and M09 of the acceptance record.
+
+**Fail:** A token, a prompt, or `gh` output in any message; a clone on a cache hit; a
+page that changes commit without **Switch** or a reload; an offline reopen that refuses
+or shows a different revision.
+
+### Part 4: What Only a Person Can Check (About 15 Minutes)
+
+1. **Safari and Firefox, as well as Chrome.** Repeat 3.4 and 5.3 in each.
+   Look at what a hidden pane cannot show: focus rings while tabbing, the layout at each
+   width, the HTML Preview frame, the print preview, and Back in steps 4 and 6 of 5.11,
+   which each browser’s back/forward cache treats differently.
+   **Pass:** the same results in all three.
+   **Fail:** a check that passes in one browser only.
+2. **A private repository your account can read.**
+   `metab https://github.com/<owner>/<private-repo>` with the scratch home.
+   **Pass:** it is acquired and served like a public one, and no token, scope, or
+   account name beyond `gh:<login>` appears in any output.
+   Sign out of `gh`, or switch its account, and open it again: the cached content is
+   still served, and the refresh reports a typed failure and no prompt.
+3. **A repository your account cannot read.** The same command for a private repository
+   of another account, or a name that does not exist.
+   **Pass:** exit 1 with `not_found_or_private`, the hint to sign in with
+   `gh auth login`, and `nothing was published`; the scratch home holds no source for
+   it. `tests/golden/cli-github-not-found.txt` holds the exact messages.
+   **Fail:** a message that says whether the repository exists, or a prompt.
+4. **A third-party plugin against Plugin SDK 0.7,** where you have one: 0.5. Then serve
+   a folder with it and click every copy and Load more button it draws.
+   **Pass:** each button acts.
+   **Fail:** a button that silently does nothing, which is what a control without the
+   owner mark does; the `CHANGELOG.md` entry for the break gives the migration.
+
+Steps 2 and 3 are row M10 of the alpha plan’s manual matrix, which the acceptance record
+marks blocked for want of a private repository.
+Keep its name and contents out of anything you record.
+
 ## Pins
 
 Verify the live SHAs before a run.
 They move.
 
-The Repository Library review line is one formal GitHub stack,
-[#218](https://github.com/jlevy/metabrowser/stack/218). Do not check out the superseded
-crumb slices (#208, #210, #211–#215).
+The v0.12 work is one linear chain of open pull requests above `main`. GitHub’s formal
+stack [#218](https://github.com/jlevy/metabrowser/stack/218) lists only the foundation
+layers, through #226
+(`gh api repos/jlevy/metabrowser/stacks/218 --jq '[.pull_requests[].number]'`); the pull
+requests above them chain on by base branch, so the top of that stack is not the tip.
+This lists the chain from the bottom, and its last line is the pull request to test:
+
+```shell
+gh pr list --repo jlevy/metabrowser --state open --limit 200 \
+  --json number,baseRefName,headRefName,isDraft \
+  --jq 'map(select(.headRefName | startswith("reference/") | not)) as $prs
+        | $prs[] | select(.number == 125)
+        | recurse(.headRefName as $head | $prs[] | select(.baseRefName == $head))
+        | "#\(.number) \(.headRefName)\(if .isDraft then " (draft)" else "" end)"'
+```
+
+Each line’s base is the head of the line above it.
+Two pull requests on one base would mean the chain has forked: stop and ask which line
+to test. The command leaves out `reference/v012-hosted-review`, a do-not-merge branch
+beside the chain. Do not check out the superseded crumb slices (#208, #210, #211–#215).
 
 | Lane | PR | Branch | Tip | What it adds |
 | --- | --- | --- | --- | --- |
-| Repository Library and GitHub browsing | The top pull request of stack #218 | Its head branch | the command below | Full-clone mirrors from `file://` and `https://` origins, served pins, refresh and pin switching, GitHub URLs, and pull-request pages |
+| Repository Library and GitHub browsing | The last line of the chain | Its head branch | the command below | Full-clone mirrors from `file://` and `https://` origins, served pins, refresh and pin switching, GitHub URLs, and pull-request pages |
 | HTML trust | [#209](https://github.com/jlevy/metabrowser/pull/209), merged to `main` | Included in the integration tip | verify ancestry below | `/raw` sandbox, `/api` same-origin proof, `--untrusted`, HTML preview kind, plus subsequent mainline hardening |
 
 Every tip in this runbook is read from the live branch rather than written down, because
@@ -48,11 +171,29 @@ a SHA copied into prose is a baseline nothing maintains and it is stale by the n
 push:
 
 ```shell
-: "${ALPHA_PR:?Set ALPHA_PR to the top pull request of stack 218}"
+ALPHA_PR="$(gh pr list --repo jlevy/metabrowser --state open --limit 200 \
+  --json number,baseRefName,headRefName \
+  --jq 'map(select(.headRefName | startswith("reference/") | not)) as $prs
+        | [$prs[] | select(.number == 125)
+           | recurse(.headRefName as $head | $prs[] | select(.baseRefName == $head))]
+        | last | .number')"
+echo "ALPHA_PR=$ALPHA_PR"
 gh pr view "$ALPHA_PR" --repo jlevy/metabrowser --json headRefOid,headRefName,url
+gh pr checks "$ALPHA_PR" --repo jlevy/metabrowser
 gh pr view 209 --repo jlevy/metabrowser --json state,mergeCommit,url
-git merge-base --is-ancestor fd65812ba911e7fa0f6b5967d9240556c8c01c54 HEAD
 ```
+
+After the checkout of 0.1, confirm that it holds the merged HTML trust work and current
+`main`:
+
+```shell
+git merge-base --is-ancestor fd65812ba911e7fa0f6b5967d9240556c8c01c54 HEAD; echo "exit:$?"
+git fetch -q origin main
+git merge-base --is-ancestor origin/main HEAD; echo "exit:$?"
+```
+
+**Pass:** `ALPHA_PR` is the number on the chain’s last line, every check passes, and
+both ancestry commands print `exit:0`.
 
 Run both the Repository Library and HTML regression steps on the same selected
 integration tip. HTML trust has landed and is inherited through `main`; no separate
@@ -60,13 +201,11 @@ checkout of the merged HTML branch is needed.
 Serving a `file://` pin applies that trust profile, and Phase 5 proves it against a
 populated cache over HTTP and in a browser.
 
-The foundation layers of stack #218, bottom to top, are
-`#125 → #134 → #136 → #139 → #140 → #217 → #216 → #225 → #226`: the PRs that still exist
-as review units, not the crumb slices they folded in.
-The layers above them are listed in the thin-mirror plan’s
-[Delivery](project/specs/active/plan-2026-09-23-v012-thin-mirror.md#delivery) section,
-and new PRs extend the chain.
-Landing is tracked by `mb-n2ro`.
+The thin-mirror plan’s
+[Delivery](project/specs/active/plan-2026-09-23-v012-thin-mirror.md#delivery) section
+names the scope and bead of each pull request in the chain, and the
+[review ledger](project/reviews/review-2026-10-01-v012-stack-review-ledger.md) says how
+each was reviewed. Landing is tracked by `mb-n2ro`.
 
 ## Constraints That Are Part of the Product
 
@@ -83,8 +222,9 @@ Landing is tracked by `mb-n2ro`.
 - **ssh stays closed.** It is not acquired and not opened.
 - **`file://` and `https://` are the origins acquired**, including GitHub web URLs,
   which the GitHub reducer rewrites to `https://github.com/<owner>/<repo>`. A bare
-  filesystem path is never rewritten into a clone URL. Only Phase 4.8 and the live half
-  of 4.10 use the network.
+  filesystem path is never rewritten into a clone URL. Only the steps that say so use
+  the network: 4.8, the live halves of 4.10, 5.7, and 5.11, the live tier of 1.2, and
+  Parts 3 and 4 of the walk-through.
 - **Nothing binds a port** on `--no-serve`, `--show`, `--api`, or `--check-api`.
   “Serving” in the output is a failure on those modes.
 - **A served pin is always untrusted.** `metab file://…` or `metab https://…` with no
@@ -113,8 +253,8 @@ Landing is tracked by `mb-n2ro`.
 ### 0.1 Checkout and install
 
 ```shell
-# Use the current top PR, including later stabilization/testing layers.
-: "${ALPHA_PR:?Set ALPHA_PR to the current integration PR number}"
+# The top pull request of the chain, from Pins.
+: "${ALPHA_PR:?Set ALPHA_PR as Pins shows}"
 QA_HEAD="$(gh pr view "$ALPHA_PR" --repo jlevy/metabrowser --json headRefOid --jq .headRefOid)"
 QA_CHECKOUT_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/mb-qa-checkout.XXXXXX")"
 git fetch origin "$QA_HEAD"
@@ -168,14 +308,113 @@ web URL, without starting a server.
 
 **Fail:** Missing `--no-serve`, or help that claims ssh acquire or serve.
 
-## Phase 1: Automated Tests (Repository Library Tip)
+### 0.4 Check the installation
 
-These tests monkeypatch `require_acquisition_git` where a real acquire is required, so
-they can pass on ubuntu Git 2.43.0. That is deliberate.
-The manual acquire steps in Phase 4 still refuse on that Git.
+`--doctor` validates every discovered plugin and the cache record schemas the package
+ships.
 
 ```shell
-uv --config-file uv.toml run --frozen pytest \
+uv --config-file uv.toml run --frozen metab --doctor; echo "exit:$?"
+uv --config-file uv.toml run --frozen metab --doctor --json; echo "exit:$?"
+uv --config-file uv.toml run --frozen metab --plugins
+```
+
+**Pass:** Exit 0 both times.
+The first prints `metab --doctor: <N> plugin(s) OK`, where N is the number of rows
+`--plugins` lists, all of them `builtin`. The JSON answer has `"ok": true` and an empty
+`problems` list.
+
+Then damage one schema in this throwaway checkout and ask again:
+
+```shell
+SCHEMA=src/metabrowser/data/cache-format/schemas/cache-layout-v1.schema.yaml
+sed -i.bak 's/created_by/created_with/' "${SCHEMA}"
+uv --config-file uv.toml run --frozen metab --doctor; echo "exit:$?"
+mv "${SCHEMA}.bak" "${SCHEMA}"
+git status --short
+uv --config-file uv.toml run --frozen metab --doctor; echo "exit:$?"
+```
+
+**Pass:** The damaged run exits 1 and names the problem on stderr: a
+`cache record contracts:` line, and
+`cache record schema 'cache-layout-v1.schema.yaml' does not match its model`. After the
+schema is put back, `git status --short` prints nothing and `--doctor` is healthy again.
+`tests/test_plugins_cli.py` asserts the same on a copy of the schemas.
+
+**Fail:** `OK` printed with a damaged schema; exit 0; a traceback.
+
+### 0.5 A plugin from outside the repository
+
+The documentation’s `hello` example stands in here for a third-party plugin, to show
+what one left at an older SDK version gets.
+
+```shell
+QA_PLUGINS="$(mktemp -d "${TMPDIR:-/tmp}/mb-qa-plugins.XXXXXX")"
+mkdir "${QA_PLUGINS}/hello"
+cat > "${QA_PLUGINS}/hello/manifest.toml" <<'EOF'
+[plugin]
+name = "hello"
+display_name = "Hello"
+version = "0.1.0"
+sdk_version = "0.6"
+
+[[kind]]
+id = "hello-document"
+match = { ext = ".md", frontmatter_has_key = "hello" }
+priority = 100
+
+[[view]]
+kind = "hello-document"
+id = "card"
+label = "Hello"
+default = true
+EOF
+cat > "${QA_PLUGINS}/hello/index.js" <<'EOF'
+(function () {
+  const mb = window.metabrowser;
+
+  mb.registerView("hello-document", "card", {
+    render(container, ctx) {
+      container.innerHTML = mb.render(
+        '<section class="mb-plugin-hello">Hello, {{frontmatter.hello}}!</section>',
+        ctx,
+      );
+    },
+  });
+})();
+EOF
+uv --config-file uv.toml run --frozen metab --doctor --plugins-dir "${QA_PLUGINS}"; echo "exit:$?"
+sed -i.bak 's/sdk_version = "0.6"/sdk_version = "0.7"/' "${QA_PLUGINS}/hello/manifest.toml"
+rm "${QA_PLUGINS}/hello/manifest.toml.bak"
+uv --config-file uv.toml run --frozen metab --doctor --plugins-dir "${QA_PLUGINS}"; echo "exit:$?"
+```
+
+**Pass:** The first run exits 1 and says
+`plugin 'hello' targets browser SDK '0.6', but this Metabrowser provides '0.7'`. The
+second exits 0 and counts one plugin more than 0.4 did.
+For a plugin of your own, point `--plugins-dir` at its parent directory instead.
+
+**Fail:** A manifest at `0.6` accepted; a problem reported for a manifest at `0.7`.
+
+The version is a gate, not a migration: a plugin that wrote copy or Load more markup by
+hand must also stamp those controls, as the `CHANGELOG.md` entry for Plugin SDK 0.7
+says. Part 4 of the walk-through checks that in a browser.
+
+## Phase 1: Automated Tests
+
+### 1.1 The focused selection
+
+In the default tier these tests substitute the acquisition floor where a real acquire is
+needed (`_allow_installed_git` in `tests/test_cache_acquire.py`), so they pass on any
+Git, including one below the floor.
+That is deliberate. The `admitted-git` CI job, and `make test-admitted-git` locally, run
+them with nothing substituted on each Git release that job builds; 1.2 lists the tiers.
+The manual acquire steps in Phase 4 are unpatched too, and refuse on a Git below the
+floor. A missing Node or Git stops the run with one message instead of skipping
+(`tests/required_tools.py`).
+
+```shell
+uv --config-file uv.toml run --frozen pytest -rs \
   tests/test_cli_git_pin_golden.py \
   tests/test_cli_acquire.py \
   tests/test_cli_cache_acquire_golden.py \
@@ -186,7 +425,7 @@ uv --config-file uv.toml run --frozen pytest \
   tests/test_github_credentials.py \
   tests/test_github_provider.py \
   tests/test_cache_resolve.py \
-  tests/test_cache_remote.py \
+  tests/test_cache_origin.py \
   tests/test_acquire_stall_and_hangup.py \
   tests/test_cache_acquire.py \
   tests/test_cache_urls.py \
@@ -208,17 +447,19 @@ uv --config-file uv.toml run --frozen pytest \
   tests/test_source_kind_session.py
 ```
 
-**Pass:** Every selected test passed or was skipped for a documented reason (missing
-`git` binary; installed Git already meets the floor so the below-floor live test skips;
-non-POSIX). `tests/test_cli_git_pin_golden.py` pins the `cli-git-pin-*.txt` transcripts,
-one per scenario, against a multi-entry `file://` origin with nested directories,
-Markdown, JSON, JSONL, an image, a binary, an oversized blob, a symlink, an executable,
-a gitlink, and names containing a newline, a tab, and a byte that is not UTF-8. They
-record `--show` kinds and routes, index counts, `/api/tree` nesting with its lazy
-sentinel past `depth`, name order in `/api/tree` against blob order in `/api/catalog`,
-file content on `g1-` wires, and the 400, 404, 409, and 416 refusals.
-Nothing in those goldens prints `Serving`. `tests/test_serve_pin.py` runs serve mode
-in-process with only uvicorn and the port search patched, then drives the real
+**Pass:** Every selected test passed, or was skipped for a reason that `-rs` prints and
+[End-to-End Testing](e2e-testing.md#skips) lists for a developer machine: on a Mac,
+`the macOS filesystem rejects undecodable byte names`; below the floor,
+`needs a Git the acquisition floor admits`. `tests/test_cli_git_pin_golden.py` pins the
+`cli-git-pin-*.txt` transcripts, one per scenario, against a multi-entry `file://`
+origin with nested directories, Markdown, JSON, JSONL, an image, a binary, an oversized
+blob, a symlink, an executable, a gitlink, and names containing a newline, a tab, and a
+byte that is not UTF-8. They record `--show` kinds and routes, index counts, `/api/tree`
+nesting with its lazy sentinel past `depth`, name order in `/api/tree` against blob
+order in `/api/catalog`, file content on `g1-` wires, and the 400, 404, 409, and 416
+refusals.
+Nothing in those goldens prints `Serving`. `tests/test_serve_pin.py` runs serve
+mode in-process with only uvicorn and the port search patched, then drives the real
 application lifespan and routes over HTTP: the banner golden `serve-pin-banner.txt`, the
 forced profile, a fresh pin per start and a clean close at shutdown, tree, file, raw and
 its sandbox headers, history, commit detail and comparison, and a populated-cache
@@ -250,15 +491,100 @@ The complete `make verify` gate still applies.
 Diagnose any failure before attributing it to the environment and record unresolved
 failures as failures.
 
-Regenerate the goldens only after an intended change, and read the diff:
+### 1.2 The test tiers
+
+`make test` is the default tier, and three outer tiers hold what it cannot run on every
+machine. [End-to-End Testing](e2e-testing.md#test-tiers) defines them; this is what each
+needs from the machine you are on.
+
+| Command | Needs | Touches the network |
+| --- | --- | --- |
+| `make test` | Node and Git on `PATH` | No |
+| `make test-admitted-git` | A Git the acquisition floor admits; below it the tests skip, and in CI that skip is a failure | No |
+| `make test-macos` | macOS, with the checkout on a case-insensitive volume | No |
+| `make test-live-github` | The network, a Git the floor admits, and `gh` signed in to github.com | Yes, read-only: anonymous clones of public repositories and `gh` reads of public pull requests. Nothing is written to GitHub |
+
+Run the two that CI never runs, on a Mac, before a release:
 
 ```shell
-make golden-update
+make test-macos
+make test-live-github
 ```
 
-It rewrites every recording and transcript in dependency order and fails if a test it
-needed was skipped; see
+**Pass:** Each exits 0. `make test-macos` reports no skips: a skip of one of its tests
+is a failure there, so it cannot pass on a machine that cannot run them.
+In the live tier a test may skip only for what github.com holds that day; the skips’
+reasons, printed by `-rs`, are `has no branch with a slash today` and
+`has no open pull request today`.
+
+**Fail:** Any failed test; any other skip in the live tier; a tier that selects no test.
+
+In CI, `make test` runs with strict skips: a skip that belongs to no tier fails the job
+(`tests/suite_gates.py`).
+
+### 1.3 Regenerating the goldens changes nothing
+
+`make golden-update` rewrites every recording and transcript in dependency order and
+fails if a test it needed was skipped; see
 [End-to-End Testing](e2e-testing.md#one-harness-and-one-update-command).
+On a tree with no intended change it must be a no-op:
+
+```shell
+git status --short
+make golden-update; echo "exit:$?"
+git status --short
+```
+
+**Pass:** `exit:0`, and both `git status --short` listings are empty.
+
+**Fail:** A file listed after the run, or a non-zero exit.
+The run takes several minutes on a quiet machine and several times longer on a loaded
+one. Tryscript gives each command 30 seconds, so a timeout under heavy load says the
+machine was busy; run it again when it is quiet before calling the goldens changed.
+
+Regenerate the goldens for real only after an intended change, and read the diff.
+
+### 1.4 The startup-script budget
+
+`make lint-check` holds what a folder’s page fetches before it can paint a tree to the
+budget in `explorations/performance-loop/performance-budgets.toml`. The check alone:
+
+```shell
+uv --config-file uv.toml run --frozen python -m devtools.check_startup_scripts; echo "exit:$?"
+```
+
+**Pass:** `exit:0`, and the first line reports the requests and kilobytes transferred as
+within their budgets.
+Two more lines report the page of a pull-request address and of a pinned revision, which
+carry one script more and are not gated.
+
+**Fail:** A non-zero exit; a total over the budget; a script reported as requested by
+another script before the page is ready.
+
+Then the whole gate, which also runs the parity, golden, and Markdown format checks:
+
+```shell
+make lint-check
+```
+
+**Pass:** Exit 0.
+
+### 1.5 The size of the suite
+
+```shell
+make test-report
+make test-report REFS="origin/main ."
+```
+
+**Pass:** The first prints test files, lines, and test functions by area, then totals
+for `tests/dom`, the goldens, the fixtures, and the tryscript commands.
+The second prints the same for `main` and the working tree side by side, with the
+change.
+[Measuring the Suite](e2e-testing.md#measuring-the-suite) says how each number is
+taken and how to add run times from a CI job log.
+
+**Fail:** A non-zero exit, or a tryscript command count that differs from the `passed`
+count tryscript prints at the end of `make test`.
 
 ## Phase 2: Classify and Refuse (No Acquire)
 
@@ -379,11 +705,13 @@ Serve prints no banner and binds nothing.
 skeleton; a 500; acquire succeeds on 2.43.0; the error omits the version fact; a pin
 mode prints a traceback or a different message than `--no-serve`.
 
-## Phase 3: Filesystem v0.10 Still Works
+## Phase 3: A Folder on Disk Still Works
 
-These commands use a **local path**, not `file://`. They do not acquire.
-They may be served only if you are exercising the existing local server; this runbook
-uses data modes so nothing binds a port.
+These steps use a **local path**, not `file://`. Nothing is acquired, and the folder is
+trusted: it is what 0.11.0 served.
+3.1 to 3.3 are data modes, so nothing binds a port; 3.4 serves the folder to a browser.
+
+### 3.1 Data modes on this repository
 
 ```shell
 uv --config-file uv.toml run --frozen metab . --show README.md
@@ -426,6 +754,189 @@ rm -r "$QA_BS"
 **Pass:** both are HTTP 200; the tree lists `"path": "a%5Cb.txt"`, and in a served
 browser the row reads `a\b.txt` and opens at `/view/a%5Cb.txt`. **Fail:** HTTP 500 or
 `dirty path must be a canonical POSIX-relative path`.
+
+### 3.2 A folder whose name looks like a URL
+
+An argument that names an existing path is that path, whatever it resembles.
+The one exception is an argument that starts with `scheme://`, which is always a source.
+The last two commands use an issues address because it is refused before any network
+request, which shows how the argument was read.
+
+```shell
+QA_NAMES="$(mktemp -d "${TMPDIR:-/tmp}/mb-qa-names.XXXXXX")"
+mkdir -p "${QA_NAMES}/file:notes" "${QA_NAMES}/a::b" \
+  "${QA_NAMES}/https:/github.com/octo/demo/issues/5"
+printf '# Notes\n' > "${QA_NAMES}/file:notes/README.md"
+printf '# Colons\n' > "${QA_NAMES}/a::b/README.md"
+printf 'local\n' > "${QA_NAMES}/https:/github.com/octo/demo/issues/5/local.txt"
+(
+  cd "${QA_NAMES}"
+  metab() { uv --config-file "${REPO}/uv.toml" run --frozen --project "${REPO}" metab "$@"; }
+  metab file:notes --show README.md; echo "exit:$?"
+  metab a::b --walk; echo "exit:$?"
+  metab 'https://github.com/octo/demo/issues/5' --walk; echo "exit:$?"
+  metab 'https:/github.com/octo/demo/issues/5' --walk; echo "exit:$?"
+)
+test ! -e "${METABROWSER_HOME}"
+```
+
+**Pass:** The first two exit 0: `file:notes` shows `README.md` as `kind: markdown` at
+`/view/README.md`, and `a::b` walks one file.
+The `https://` spelling exits 1 with `invalid ROOT (unsupported_github_url)` and offers
+`https://github.com/octo/demo`, although a folder of that name exists.
+The one-slash spelling exits 0 and walks that folder, listing `local.txt`. The home is
+still absent.
+
+**Fail:** `file:notes` or `a::b` refused as a malformed source; the `https://` argument
+served as the folder; the home created.
+
+### 3.3 An unreadable folder, and an empty argument
+
+```shell
+mkdir "${QA_NAMES}/locked" && printf 'x\n' > "${QA_NAMES}/locked/a.txt"
+chmod 000 "${QA_NAMES}/locked"
+uv --config-file uv.toml run --frozen metab "${QA_NAMES}/locked" --walk; echo "exit:$?"
+uv --config-file uv.toml run --frozen metab "${QA_NAMES}/locked" --no-open --port 8791; echo "exit:$?"
+chmod 700 "${QA_NAMES}/locked"
+uv --config-file uv.toml run --frozen metab "" --walk; echo "exit:$?"
+```
+
+**Pass:** Both commands on the locked folder exit 2 with a usage error that ends
+`is not readable.`, and the second prints no `Serving` line.
+The empty argument exits 1 with `invalid ROOT (empty)`. This step means nothing when run
+as root, which no mode denies.
+
+**Fail:** The locked folder walked or served as an empty tree with exit 0; a traceback.
+
+### 3.4 The folder in a browser
+
+Build a small folder that has one of each kind of file, with a Git history, and serve
+it. Keep this terminal open.
+
+```shell
+QA_PLAIN="$(mktemp -d "${TMPDIR:-/tmp}/mb-qa-plain.XXXXXX")"
+cp -R tests/manual-fixtures/. "${QA_PLAIN}/"
+cp docs/qa-v012-repository-library.md "${QA_PLAIN}/guide.md"
+cp images/metabrowser-overview.jpg "${QA_PLAIN}/photo.jpg"
+printf '<!doctype html>\n<title>Page</title>\n<h1>Hello</h1>\n<script>document.querySelector("h1").textContent = "Hello from the script"</script>\n' > "${QA_PLAIN}/page.html"
+awk 'BEGIN { for (i = 1; i <= 40000; i++) printf "line %06d: the quick brown fox jumps over the lazy dog, again and again\n", i }' > "${QA_PLAIN}/long.txt"
+git -C "${QA_PLAIN}" init -q -b main
+git -C "${QA_PLAIN}" add -A
+git -C "${QA_PLAIN}" -c user.name=QA -c user.email=qa@example.invalid commit -q -m "QA first commit"
+uv --config-file uv.toml run --frozen metab "${QA_PLAIN}" --no-open --port 8792
+```
+
+The banner prints `Serving <folder> at http://127.0.0.1:8792/view/` and a `Plugins:`
+line. Open that address with the browser’s developer tools open.
+
+1. **Markdown and its contents list.** Open `guide.md` in a window about 1,700 pixels
+   wide. It renders as a document, with **Document** and **Source** tabs and a
+   **Contents** list beside it.
+   Narrow the window to about 1,000 pixels: the list folds away.
+   Scroll to the end of the document: a table-of-contents button stays in the top-left
+   corner of the pane. Click it: the Contents drawer opens over the pane, not over the
+   file tree. Click an entry: the document scrolls to that heading, the address gains its
+   fragment, and the drawer closes.
+   Open it again and click outside it: it closes.
+
+2. **Source, line numbers, and anchors.** Open `example.py` with `#L3-L5` added to its
+   address: line numbers run beside the code and lines 3 to 5 are highlighted.
+   Click line number 8: the address ends `#L8`, and Back leaves the file rather than
+   returning to `#L3-L5`. Shift-click line number 10: `#L8-L10`. The line numbers now
+   have the keyboard focus: Down gives `#L11`, Shift+Down `#L11-L12`, Home `#L1`, and
+   End `#L12`, the last line.
+   Edit the address to end `#L99999`: no line is highlighted, and a notice reads
+   `Line 99,999 is past the end of this file, which has 12 lines.`
+
+3. **Markdown source.** Open `overview.md` with `#L3-L5` added, then with `?plain=1` and
+   no anchor. Both open the **Source** tab instead of the document, and the first
+   highlights lines 3 to 5.
+
+4. **JSON.** `record.json` opens on **Tree**, with a **Source** tab.
+   Click the `metrics` row: its two entries fold into one line, and a second click
+   unfolds them. The **Source** tab shows the file with line numbers.
+
+5. **Copy.** On `record.json`, click the copy button at the top right of the tree: its
+   tooltip reads `Copied!`, and pasting gives the record as YAML. Hover the file name in
+   the header and click the copy button beside it: pasting gives `record.json`.
+
+6. **Images.** `photo.jpg` and `status.svg` each open as an image, scaled to fit the
+   pane.
+
+7. **HTML preview.** `page.html` opens on **Preview**, with a **Source** tab and an
+   **Open as full page** link.
+   The preview reads **Hello from the script**: the page’s own script ran inside the
+   sandboxed frame, which a trusted folder allows.
+   6.2 checks that `--untrusted` withdraws the preview.
+
+8. **Load more.** `long.txt` opens with `Partial file. Showing 2.0 MB of 2.8 MB.` and a
+   **Load more** button above and below the text.
+   Click one: both notices go, the line numbers run to 40,000, and the text continues at
+   the next line without repeating.
+
+9. **Print.** On `overview.md`, click the printer button in the file header.
+   The browser’s print dialog opens, and its preview shows the document alone: no file
+   tree, header, tabs, or buttons.
+   Cancel it.
+
+10. **The Git panel after a commit.** Select the **Git** tab beside **Files**: the
+    history is one commit, `QA first commit`. From a second terminal:
+
+    ```shell
+    printf '\nA second line.\n' >> "${QA_PLAIN}/overview.md"
+    git -C "${QA_PLAIN}" -c user.name=QA -c user.email=qa@example.invalid commit -q -am "QA second commit"
+    ```
+
+    The list does not change by itself.
+    Select **Files** and then **Git** again: `QA second commit` is first, carrying the
+    `main` label. Click it: the address becomes `/commit/<id>`, and the pane shows the
+    subject, the short commit ID, `1 M file`, `+2 −0 lines`, and the diff of
+    `overview.md` in **Split**, with a **Unified** switch.
+    The file bar has no View file control, because a folder has no file at a commit to
+    open. Reload: the same commit opens.
+
+11. **Themes.** Open the menu on the gear button at the top of the navigation pane and
+    choose the dark theme, then the light one.
+    Repeat checks 1, 2, 4, and 10 in each.
+
+One known defect can interrupt this step (`mb-tdmd`). After about five addresses typed
+or pasted into one tab, the next page can sit on its loading state for several seconds,
+and up to about a minute, while its requests wait for a connection; it may then log
+`metabrowser plugin asset failed to load: … (timed out)`. Pages the browser keeps for
+Back each hold one connection open.
+Clicking files in the tree does not load a new page and is not affected; if a page
+stalls, open the address in a new tab and close the old one.
+
+**Pass:** Every check as described, in both themes.
+The console shows no error except the browser’s own request for `/favicon.ico`, which
+this server answers 404, and the timeout above if a page stalled; no request leaves
+`127.0.0.1`. Stop the server with Ctrl-C: it prints `Stopping Metabrowser.`
+
+**Fail:** A view that stays on its loading state in a fresh tab; a button that does
+nothing when clicked; a line number beside the wrong line; text repeated or missing
+after Load more; a preview that does not run the page’s script in a trusted folder;
+anything unreadable in one theme.
+
+**Changed since 0.11.0.** On a folder served without flags, per `CHANGELOG.md`:
+
+- Source views have line numbers, `#L` anchors, and keyboard anchors, and an address
+  with an anchor or `?plain=1` opens the Source tab (checks 2 and 3).
+- The table-of-contents button stays in place in a narrow pane, where it used to scroll
+  away with the document (check 1).
+- Copy, Load more, the address crumbs, and print act only on controls the page itself
+  created. A reader sees no difference (checks 5, 8, and 9); a plugin that wrote such
+  markup by hand does (0.5).
+- A filename holding a backslash lists and opens (3.1).
+- On a history long enough to page, a commit made while the Git panel is open leaves its
+  rows in place with `History changed since this list loaded.` and **Reload history**.
+  This folder’s history fits one page, so check 10 does not show it.
+- An argument that starts with `scheme://` is always a source, and an empty argument is
+  refused (3.2 and 3.3).
+
+With `--untrusted` or `--no-active-content` a folder’s Markdown now renders inert under
+a Content-Security-Policy, which 0.11.0 did not do.
+`tests/golden/cli-api-untrusted-markdown.tryscript.md` pins that render, and 6.2 checks
+that the preview is withdrawn.
 
 ## Phase 4: `file://` Acquire and the Pin
 
@@ -1346,9 +1857,8 @@ The process is stopped.
 **Fail:** `text/html` on the application origin with no sandbox; `/api` invoked from the
 preview origin.
 
-A hosted UI / real-browser click-through of the preview iframe is **out of scope** for
-an agent host without a browser.
-Record it as untested, not as a pass.
+Check 7 of 3.4 looks at the preview frame itself in a browser.
+On a host without one, record the frame as untested, not as a pass.
 
 ## Phase 7: What This Runbook Cannot Test
 
@@ -1359,12 +1869,15 @@ was acquired or served, or a served pin ran a script).
 | Item | Why it is out of scope here |
 | --- | --- |
 | ssh acquire and serve | Closed; refuse is the test |
-| The browser’s view of a pending URL selection | A page opened while the selection waited goes to it when the fetch finds it; the freshness row says when it is not on the origin or could not be fetched, and offers a Retry for the second |
-| Pull-request page | Later steps; pull-request data is read through `--api` and served beside the pin (4.10) |
-| Hosted-review / GitHub PR slice | Separate beads; not on these tips |
+| The browser’s view of a pending URL selection | It needs an origin that is slow or missing while the page is open. `tests/golden/cli-github-url-waits.txt` pins the states: a page opened while the selection waited goes to it when the fetch finds it, and the freshness row says when it is not on the origin or could not be fetched, with a Retry for the second |
+| A pull-request list, inline review anchors, checkout attachment, and rebind | Deferred from v0.12 by the thin-mirror plan. The pull-request page itself is 5.7 |
+| The Hosted Review Format and provider-resource code | Removed from the stack in #246; kept, unmaintained, on the `reference/v012-hosted-review` branch |
 | Archive containers | `mb-380k` |
-| Real browser HTML preview | Needs a browser; Phase 6.3 is optional and header-level. A pin never offers preview |
-| Below-floor acquire success | Forbidden; ubuntu 2.43.0 must refuse |
+| HTML preview on a pin | A pin never offers Preview. Check 7 of 3.4 covers the preview frame on a folder, and 6.3 its response headers |
+| Below-floor acquire success | Forbidden; a Git below the floor must refuse (2.4) |
+| A private repository, and revoked access | They need a private repository of the operator’s own; Part 4 of the walk-through |
+| Paint in Safari and Firefox | Only a person can look; Part 4 of the walk-through |
+| A live rate limit | Costly to force against GitHub; `tests/golden/cli-github-pull-refresh.txt` pins `rate_limited` |
 | Overlay / `watch_backends` host differences | Investigate separately; record any unresolved failure |
 | Landing / merging the v0.12 stack | `mb-n2ro`; this runbook does not merge |
 
@@ -1388,13 +1901,25 @@ While executing, treat these as bugs if they happen:
 - Filesystem `--show` failing on this repository’s real paths
 - Pin `--show` / `--api` failing on those same paths when Git meets the floor
 - Cache inspect exposing origin objects through `/api/tree` on a cache route
+- An existing folder refused because its name looks like a source, or a `scheme://`
+  argument served as a folder
+- An unreadable folder walked or served as an empty tree
+- A copy, Load more, or print button in a built-in view that does nothing when clicked
+- `metab --doctor` reporting OK on a damaged installation
 
-Honest parents: `mb-k7zy` (epic), `mb-z335` (Git-tree source / pin), `mb-3bna` (source
-session), `mb-h51g` (acquisition), `mb-cun0` (HTML `/raw` sandbox), `mb-doao` (serving a
-pin), `mb-99ub` (forced untrusted profile), `mb-g5je` (served `/raw` references).
-Do not start `mb-380k` or `mb-oueh` (unless the defect is exactly that bead), or reopen
-the completed HTML publication bead `mb-d658`. Do not close unfinished product beads
-from a QA run.
+File a defect under the v0.12 epic, `mb-hall`, with the release label:
+`tbd create "<title>" --type bug --parent mb-hall -l release:v0.12.0`. Run
+`tbd list --parent mb-hall --status open` first, to add to an open bead rather than file
+a duplicate.
+
+The beads that built these areas are closed.
+Read them for what was decided, and name the relevant one in a new bead instead of
+reopening it: `mb-z335` (Git-tree source and pin), `mb-3bna` (source session), `mb-h51g`
+(acquisition), `mb-cun0` and `mb-d658` (HTML `/raw` sandbox and its publication),
+`mb-doao` (serving a pin), `mb-99ub` (forced untrusted profile), and `mb-g5je` (served
+`/raw` references). `mb-k7zy` is the roadmap epic above the release, not a parent for a
+defect. Do not start `mb-380k` (archive containers), and do not close product beads from
+a QA run.
 
 Record pass/fail in the pull request or the QA bead.
 Do not rewrite this procedure into a changelog of one host’s run.
