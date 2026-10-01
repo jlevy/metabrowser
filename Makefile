@@ -92,7 +92,14 @@ lint-check:
 
 # The tryscript goldens run with a failing gh first on PATH (tests/no-real-gh/gh), so
 # none reaches a developer's signed-in gh; pytest has the same guard in tests/conftest.py.
-TRYSCRIPT := PATH="$(CURDIR)/tests/no-real-gh:$$PATH" npx --no-install tryscript
+#
+# The server logs a request slower than 2 s to stderr, which a transcript captures, so
+# a loaded machine changed what a golden recorded: at a load average near 100, nine
+# `--api` requests of cli-api-cache.tryscript.md took 2.4 to 8.0 s and each printed the
+# line. It is a wall-clock measurement and not behavior, so the threshold is put past
+# tryscript's own 30 s command timeout, where it cannot fire before the command fails.
+TRYSCRIPT := PATH="$(CURDIR)/tests/no-real-gh:$$PATH" METABROWSER_SLOW_SERVER_MS=60000 \
+	npx --no-install tryscript
 
 # In CI a skip has to belong to a tier docs/e2e-testing.md names, or the test fails:
 # a reason outside them means a test the suite is believed to run did not. Locally a

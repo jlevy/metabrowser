@@ -140,6 +140,13 @@ times and commit IDs are literal; the placeholders that remain, each with the re
 fixture can pin it, are listed at the top of `tests/golden_harness.py`. For tryscript,
 `devtools/golden_fixup.py` is that list.
 
+A transcript must not depend on how busy the machine is.
+The server logs a request slower than two seconds to stderr, which a transcript
+captures, so the Make targets run tryscript with `METABROWSER_SLOW_SERVER_MS` set past
+tryscript’s own command timeout.
+Run tryscript through `make test` or `make golden-update`, or set that variable, when
+the machine is loaded.
+
 ### Distribution Tests
 
 `make build` inspects the wheel for required static assets and rejects repository-only
