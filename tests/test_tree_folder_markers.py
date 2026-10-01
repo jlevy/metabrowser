@@ -19,16 +19,18 @@ from typing import Any
 
 import pytest
 
+from metabrowser import tree
 from metabrowser.paths_safe import _set_root_dir
 from metabrowser.tree import _dir_tree, set_folder_markers
 
 
 @pytest.fixture(autouse=True)
 def _clear_markers():  # pyright: ignore[reportUnusedFunction]
-    """Each test starts with an empty marker set; tear down likewise."""
+    """Each test starts with an empty marker set, and leaves the set it found."""
+    previous = set(tree._FOLDER_MARKERS)
     set_folder_markers(set())
     yield
-    set_folder_markers(set())
+    set_folder_markers(previous)
 
 
 @pytest.fixture
@@ -36,7 +38,7 @@ def served_root(tmp_path: Path):
     """Treat *tmp_path* as the served root for the duration of the test so
     ``_rel_path`` in tree.py emits stable relative paths."""
     _set_root_dir(tmp_path)
-    yield tmp_path
+    return tmp_path
 
 
 TreeRow = dict[str, Any]
