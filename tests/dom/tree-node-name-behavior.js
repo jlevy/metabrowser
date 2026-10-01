@@ -62,6 +62,10 @@ sandbox.window = sandbox;
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
 
+// The GitPath codec a pinned revision's shell loads ahead of navigation.js: the last
+// check below decodes with it.
+const gitPathPath = path.join(staticDir, "git-path.js");
+vm.runInContext(fs.readFileSync(gitPathPath, "utf-8"), sandbox, { filename: gitPathPath });
 const navigationPath = path.join(staticDir, "navigation.js");
 vm.runInContext(fs.readFileSync(navigationPath, "utf-8"), sandbox, { filename: navigationPath });
 
