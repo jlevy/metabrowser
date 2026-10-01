@@ -49,10 +49,9 @@ Filesystem-backed models reach these layers through the
 [Inventory Provider Contract](arch-inventory-provider.md).
 That boundary keeps routes, wire serializers, and views independent of the Python or fdu
 engine selected for the served-root session.
-The planned source boundary for attached filesystems and immutable Git revisions is in
+The source boundary for attached filesystems and immutable Git revisions is in
 [Repository Sources and Provider Mirrors](arch-repository-sources-and-provider-mirrors.md).
-It keeps a session’s selected root independent of the shared Git object and provider
-stores.
+It keeps a session’s selected root independent of the shared Git object store.
 
 ## Kinds and their views
 

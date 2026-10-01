@@ -640,25 +640,28 @@ in [Views, Models, and Routes](arch-views-models-routes.md).
 
 ### Planned seams
 
-Nothing below is built.
-Where a row names an existing module, the named functions are what that module still
-lacks.
+Nothing below is built, and none of it is on the v0.12 path.
+The thin-mirror plan retired the provider mirror and the provider ports and deferred
+attaching a user’s checkout (`mb-cbak`); the rows stay as the design that later work
+starts from.
 
 | Area | Planned boundary | Responsibility |
 | --- | --- | --- |
-| Pull-request page | The GitHub plugin | The page that renders a pull request’s record and Files changed belongs to the next step of the [thin-mirror plan](../specs/active/plan-2026-09-23-v012-thin-mirror.md) |
 | Source attachments | A neutral provider-resources module for source binding and local-availability records | Map local and managed sources to stable provider repository identity without storing local paths or requiring a cache entry. `ProviderBinding`, `LocalGitObjectAvailability`, `AuthorizationContextRef`, and `authorization_context_key` are specified in [Hosted Review Model and Provider Boundary](arch-hosted-review-model.md) |
 | Provider mirror | `provider_resources/store.py`: `stage_snapshot`, `publish_manifest`, `read_current`, `read_last_complete`, `lease_snapshot`, `reclaim_snapshots` | Publish one repository-scoped, auth-scoped mirror reused by every attachment |
 | Provider ports | `plugin_api.py`: opaque `GitFetchCredentialLease`, `provider_fetch_authorization_context`, `RepositoryContentPort.open_subject`, `RepositoryObjectJobPort.request_selected_refs`, `ProviderResourceStorePort.stage`, `publish`, `read`, `lease` | Inject narrow cancellable capabilities with typed unavailable, authorization, stale-generation, and publication failures; selected-ref requests carry a non-secret context plus an unforgeable registry handle, never tokens, unrestricted sources, core stores, or paths |
 
-These names are the implementation plan, not registered surfaces.
+These names are a design record, not registered surfaces.
 If implementation finds a smaller boundary that preserves every invariant, the
 architecture and beads are updated before code publication.
 
 ## Phased Delivery
 
-Phases 1 to 3 are implemented, to the extent the status line above states; the rest are
-planned.
+Phases 2 to 4 are implemented.
+Phase 1’s binding and storage contracts were built and then removed with the
+hosted-review code. Phase 6 is implemented for a directly opened pull request, as the
+GitHub plugin’s own records rather than provider-mirror snapshots; its discovery and
+navigation half and phase 5 are deferred, and phase 7 is later work.
 
 1. Correct the unreleased binding and storage contracts so provider repository identity
    is independent of a generic cache entry.
