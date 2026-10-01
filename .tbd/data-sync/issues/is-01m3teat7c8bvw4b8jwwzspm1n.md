@@ -5,14 +5,14 @@ title: "Tests: delete the orphaned Hosted Review and oracle tests, and trim the 
 kind: task
 status: open
 priority: 2
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 labels:
   - release:v0.12.0
 dependencies: []
 parent_id: is-01m3te95dfdnc80j5xywqje9ke
 created_at: 2026-10-01T00:37:50.382Z
-updated_at: 2026-10-01T00:37:50.382Z
+updated_at: 2026-10-01T01:40:35.289Z
 ---
 Part of the test-suite review epic. Survey of a896d8fe, 2026-09-30, read-only. Depends on mb-whmn (the removal PR); this bead covers what that removal makes deletable in tests and what is left to trim in the contract layer that stays.
 
@@ -62,3 +62,7 @@ Part of the test-suite review epic. Survey of a896d8fe, 2026-09-30, read-only. D
 - Negative guards that keep retired designs gone: `tests/test_cache_acquire.py:376-377, 447-469`, `tests/test_git_store_read_policy.py:41-43, 133-164`, `tests/test_git_process.py:40-53`, `tests/test_cli_acquire_error_modes.py:223-259`.
 
 Labelled `release:v0.12.0`: the removal lands before the release, and leaving its orphaned tests in place would break collection.
+
+## Notes
+
+2026-09-30: PR #246 (mb-whmn) already deletes the hosted-review tests (3,379 lines), the browser-model session, the GitHub coverage oracle and tests/test_github_coverage.py (2,903 lines), tests/test_capability_discovery.py and the profile/browser/provider cases in the contract tests (about 1,415 lines). What remains for this bead after #246 lands in the stack: trim the surviving contract-layer tests (the estimated -590 to -1,250 lines) and confirm nothing else for the retired layer is left.
