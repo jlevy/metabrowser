@@ -10,7 +10,6 @@ handed to each.
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 from html.parser import HTMLParser
 from pathlib import Path
@@ -22,6 +21,7 @@ from metabrowser import inert_html, kpress_adapter
 from metabrowser.inert_html import harden
 from tests.github_pull_fixture import HOSTILE_COMMENT, allowlist_violations, html_tree
 from tests.golden_harness import check_recording, run_session
+from tests.required_tools import needs_node
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 INERT_JS = REPO_ROOT / "src" / "metabrowser" / "static" / "inert-html.js"
@@ -82,7 +82,7 @@ const serialize = (list) => list.map((node) => "text" in node ? escape(node.text
 process.stdout.write(serialize(inert.sanitizeNodes(nodes(input.tree), doc, input.base)));
 """
 
-pytestmark = pytest.mark.skipif(shutil.which("node") is None, reason="node not available")
+pytestmark = needs_node
 
 
 def _node(payload: dict[str, Any]) -> str:
@@ -91,7 +91,7 @@ def _node(payload: dict[str, Any]) -> str:
         input=json.dumps(payload),
         capture_output=True,
         text=True,
-        timeout=60,
+        timeout=50,
         check=True,
     )
     return result.stdout

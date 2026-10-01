@@ -1249,7 +1249,9 @@ Serve the stand-in of 5.7 (`--serve 7 8475`) and open
 
 **Pass:** every step as described; a switch sends one `POST /api/source/pin` naming the
 commit and the file’s `/view/` address, and nothing else changes the pin; no console
-errors; no request leaves `127.0.0.1`.
+errors, except that a browser which does not restore the page from its back/forward
+cache logs one `409` for the old pin when Back lands after a switch, just before the
+page reloads itself once; no request leaves `127.0.0.1`.
 
 **Fail:** a bar offers a side the change does not have, or the new path at the old side;
 a link opens the file at another commit than its tooltip names; **View file** folds the

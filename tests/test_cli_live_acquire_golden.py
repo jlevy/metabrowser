@@ -36,7 +36,13 @@ from tests.golden_harness import (
     strip_logs,
 )
 
-pytestmark = pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only")
+pytestmark = [
+    pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only"),
+    # Seven cold starts of the installed ``metab``. CI takes about 5 s. A 10-core M1 Pro
+    # at load average 62-86 took 49 s, too close to the suite's 60 s default, which
+    # also preempted the 120 s bound on each start.
+    pytest.mark.timeout(180),
+]
 
 # Pinned by the identity and dates of ``pinned_git_env`` and the recipe in
 # ``_two_commit_origin``.

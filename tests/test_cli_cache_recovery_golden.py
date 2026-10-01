@@ -29,7 +29,6 @@ literal, and no transcript names a pack file or a cache path.
 from __future__ import annotations
 
 import os
-import shutil
 import signal
 import stat
 import subprocess
@@ -58,6 +57,7 @@ from tests.golden_harness import (
     run_metab,
     strip_logs,
 )
+from tests.required_tools import needs_git
 from tests.test_cache_acquire import _remove_owner_write, _restore_owner_write
 from tests.test_cli_cache_acquire_golden import ORIGIN_REVISION, deterministic_origin
 
@@ -68,10 +68,10 @@ skip_as_root = pytest.mark.skipif(
 
 pytestmark = [
     posix_only,
-    pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required"),
+    needs_git,
 ]
 
-CHILD_TIMEOUT: Final = 120
+CHILD_TIMEOUT: Final = 50
 # A Git release below the acquisition floor.
 BELOW_FLOOR_GIT: Final = ((2, 43, 0), "git version 2.43.0")
 

@@ -53,6 +53,7 @@ from tests.golden_harness import (
     run_session,
     serve_published,
 )
+from tests.required_tools import needs_git
 from tests.source_mirror_fixture import FETCHED_AT
 from tests.test_cache_acquire import _allow_installed_git, _file_source
 from tests.test_source_freshness_session import _settle, _stand_in_times, _write_state
@@ -64,7 +65,7 @@ _PAGE_PIN = re.compile(r"window\.METABROWSER_SOURCE_PIN=(\{.*?\});</script>")
 posix_only = pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only")
 pytestmark = [
     posix_only,
-    pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required"),
+    needs_git,
 ]
 
 
@@ -165,7 +166,6 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             recorded["folder_refused"] = _switch(client, lacking)
     finally:
         serve_mirror(None)
-        reset_source_session()
     return _stand_in_times(recorded)
 
 

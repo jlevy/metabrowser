@@ -99,12 +99,8 @@ def test_index_exposes_only_public_repository_identity(tmp_path: Path) -> None:
     )
     served = tmp_path / "docs"
     served.mkdir()
-    previous_root = server._resolved_root_dir()
-    try:
-        server._set_root_dir(served)
-        response = asyncio.run(server.index(cast(Any, object())))
-    finally:
-        server._set_root_dir(previous_root)
+    server._set_root_dir(served)
+    response = asyncio.run(server.index(cast(Any, object())))
 
     html = bytes(response.body).decode("utf-8")
     match = re.search(r"window\.METABROWSER_REPOSITORY_CONTEXT=([^;]+);", html)

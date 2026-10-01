@@ -2,19 +2,17 @@
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 from pathlib import Path
 
-import pytest
+from tests.required_tools import require_node
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 LAYOUT_TEST_JS = Path(__file__).resolve().parent / "dom" / "treemap-layout-behavior.js"
 
 
 def test_treemap_layout_behavior() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(LAYOUT_TEST_JS), str(REPO_ROOT)],
         capture_output=True,

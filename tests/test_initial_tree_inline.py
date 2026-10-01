@@ -36,14 +36,10 @@ def _inline_payload(html: str) -> dict[str, object] | None:
 
 
 def test_the_shell_carries_the_roots_first_rows(tmp_path: Path) -> None:
-    previous_root = server._resolved_root_dir()
-    try:
-        (tmp_path / "alpha").mkdir()
-        (tmp_path / "beta.md").write_text("# beta\n")
-        server._set_root_dir(tmp_path)
-        payload = _inline_payload(asyncio.run(_index_html(tmp_path)))
-    finally:
-        server._set_root_dir(previous_root)
+    (tmp_path / "alpha").mkdir()
+    (tmp_path / "beta.md").write_text("# beta\n")
+    server._set_root_dir(tmp_path)
+    payload = _inline_payload(asyncio.run(_index_html(tmp_path)))
 
     assert payload is not None, "the shell no longer inlines the first rows"
     tree = payload["tree"]

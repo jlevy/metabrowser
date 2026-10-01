@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import shutil
 import signal
 import socket
 import subprocess
@@ -44,11 +43,19 @@ from metabrowser.cache.records import (
 )
 from metabrowser.cache.update import RefreshOutcome, update_store
 from tests.admitted_git import require_admitted_git
+from tests.required_tools import needs_git
 from tests.test_cache_acquire import _file_source, _git
 
 pytestmark = [
     pytest.mark.skipif(os.name != "posix", reason="process groups and flock are POSIX"),
-    pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required"),
+    needs_git,
+    # Each test commits, pushes, and fetches a 64 MiB object. CI takes 21-31 s for the
+    # three. A 10-core M1 Pro at load average 78-134 took up to 111 s for one (54 s of
+    # setup, 57 s of test), and the suite's 60 s default ended the whole run there.
+    # The waits below add up to 180 s (60 s for the fetch to start, 120 s for it to
+    # end), which the default preempted. After the worst setup measured that is 234 s,
+    # so 360 s lets either wait fire with half that again to spare.
+    pytest.mark.timeout(360),
 ]
 
 _STALE_AT = "2020-01-01T00:00:00Z"
@@ -65,6 +72,13 @@ class _Stale:
 
 
 def _free_port() -> int:
+    """A port to start the server's own search from, not one this test relies on.
+
+    The port is free when probed and can be taken before the server binds. That is
+    harmless here: ``metab`` searches upward from ``--port`` for a free one, and these
+    tests reach the server by signal and by its process group, never by its port.
+    """
+
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
         return int(probe.getsockname()[1])

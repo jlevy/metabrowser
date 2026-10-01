@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import base64
 import os
-import shutil
 import subprocess
 import threading
 from collections.abc import AsyncGenerator
@@ -37,11 +36,9 @@ from metabrowser.settings import (
 from metabrowser.source import attach_subject, reset_source_session
 from metabrowser.wire_models import validate_rollup_node
 from tests.git_pin_harness import fast_import_store
+from tests.required_tools import needs_git
 
-pytestmark = pytest.mark.skipif(
-    shutil.which("git") is None,
-    reason="git executable is required",
-)
+pytestmark = needs_git
 
 _LFS_POINTER = (
     b"version https://git-lfs.github.com/spec/v1\n"
@@ -252,6 +249,7 @@ async def _pinned_client(
                 yield client, subject
     finally:
         await subject.aclose()
+        # Not teardown: tests open several pins in turn.
         reset_source_session()
 
 

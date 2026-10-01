@@ -9,7 +9,6 @@ point and prints the argument vector, which names the staging path (mb-sumg).
 from __future__ import annotations
 
 import os
-import shutil
 from pathlib import Path
 
 import pytest
@@ -27,6 +26,7 @@ from metabrowser.git.process import (
     UnsupportedGitVersionError,
 )
 from metabrowser.git.tree_source import GitPath
+from tests.required_tools import needs_git
 from tests.test_cache_acquire import _origin
 from tests.test_cli_acquire import _file_url, _git_failure, _isolate_home
 
@@ -34,7 +34,7 @@ posix_only = pytest.mark.skipif(os.name != "posix", reason="owner-only cache is 
 
 pytestmark = [
     posix_only,
-    pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required"),
+    needs_git,
 ]
 
 runner = CliRunner()

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import shutil
 from collections.abc import Sequence
 from dataclasses import dataclass, fields
 from pathlib import Path
@@ -16,11 +15,9 @@ from metabrowser.git import tree_source as tree_module
 from metabrowser.git.process import repository_store_target
 from metabrowser.git.tree_source import GitPath, git_revision_subject
 from tests.git_pin_harness import fast_import_store, pinned_client
+from tests.required_tools import needs_git
 
-pytestmark = pytest.mark.skipif(
-    shutil.which("git") is None,
-    reason="git executable is required",
-)
+pytestmark = needs_git
 
 
 class _Counters:

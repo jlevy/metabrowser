@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import shutil
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -31,11 +30,9 @@ from metabrowser.git.log import LOG_FORMAT
 from metabrowser.git.process import GitCommandError, run_git
 from metabrowser.git.wire import validate_git_log_page
 from metabrowser.settings import GIT_HISTORY_SESSION_PARSER_MAX_BYTES, GIT_LOG_MAX_LIMIT
+from tests.required_tools import needs_git
 
-pytestmark = pytest.mark.skipif(
-    shutil.which("git") is None,
-    reason="git executable is required to build the fixture repositories",
-)
+pytestmark = needs_git
 
 
 def _history(root: Path, *, commits: int = 17) -> Path:

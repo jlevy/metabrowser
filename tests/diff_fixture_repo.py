@@ -16,6 +16,7 @@ from pathlib import Path
 from metabrowser.diff.apply import TreeEntry, TreeSnapshot
 from metabrowser.diff.format import EntryType
 from metabrowser.git.process import _REPO_PINNING_GIT_VARS
+from tests.required_tools import require_git
 
 _EPOCH_ONE = "2026-01-01T00:00:00 +0000"
 _EPOCH_TWO = "2026-01-02T00:00:00 +0000"
@@ -39,6 +40,7 @@ def _env(root: Path, date: str) -> dict[str, str]:
 
 
 def git(root: Path, *args: str, date: str = _EPOCH_ONE) -> bytes:
+    require_git()
     result = subprocess.run(
         ["git", "-C", str(root), *args],
         check=True,

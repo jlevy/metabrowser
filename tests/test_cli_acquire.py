@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import os
-import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -20,10 +21,9 @@ from metabrowser.git.process import (
     GitTimeoutError,
     GitUnavailableError,
     UnsupportedGitVersionError,
-    acquisition_allowed,
-    detect_git_version,
 )
 from metabrowser.git.tree_source import GitPath
+from tests.required_tools import needs_git
 from tests.test_cache_acquire import (
     _allow_installed_git,
     _git,
@@ -37,7 +37,7 @@ skip_as_root = pytest.mark.skipif(
     os.geteuid() == 0, reason="root is never denied by modes, so a denial cannot be staged"
 )
 
-pytestmark = pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required")
+pytestmark = needs_git
 
 runner = CliRunner()
 
@@ -381,18 +381,40 @@ def test_no_serve_refuses_below_floor_git_without_writing_an_empty_home(
 
 
 @posix_only
-def test_installed_git_below_the_floor_is_refused_by_no_serve(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    version, _raw = detect_git_version()
-    if acquisition_allowed(version):
-        pytest.skip("installed git meets the acquisition floor")
-    home = tmp_path / "home"
-    monkeypatch.setenv("METABROWSER_HOME", str(home))
+def test_a_git_that_reports_a_below_floor_version_is_refused(tmp_path: Path) -> None:
+    """Nothing substituted: a ``git`` first on ``PATH`` answers 2.43.0, and the CLI refuses.
+
+    A separate process, so detection, parsing, and the floor run as shipped, on any
+    machine's Git. The stand-in answers ``version`` and logs every call, so one logged
+    call shows the refusal came before any other Git ran.
+    """
+
     url = _file_url(_origin(tmp_path))
-    result = runner.invoke(_app, [url, "--no-serve"])
-    assert isinstance(result.exception, CLIError)
-    assert "unsupported Git version" in str(result.exception)
+    old_git = tmp_path / "old-git" / "git"
+    old_git.parent.mkdir()
+    old_git.write_text(
+        '#!/bin/sh\necho "$*" >> "$0.calls"\n'
+        '[ "$1" = version ] && echo "git version 2.43.0" && exit 0\nexit 97\n',
+        encoding="utf-8",
+    )
+    old_git.chmod(0o755)
+    home = tmp_path / "home"
+    metab = "from metabrowser.cli.entrypoint import main; main()"
+    result = subprocess.run(
+        [sys.executable, "-c", metab, url, "--no-serve"],
+        env={
+            **os.environ,
+            "METABROWSER_HOME": str(home),
+            "PATH": f"{old_git.parent}{os.pathsep}{os.environ['PATH']}",
+        },
+        capture_output=True,
+        text=True,
+        timeout=50,
+        check=False,
+    )
+    assert result.returncode == 1, result.stderr
+    assert "unsupported Git version (git version 2.43.0)" in result.stderr
+    assert Path(f"{old_git}.calls").read_text(encoding="utf-8") == "version\n"
     assert not home.exists()
 
 

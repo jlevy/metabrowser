@@ -577,8 +577,10 @@ def _patched(target: object, name: str, value: object) -> Generator[None]:
 def build_home(directory: Path) -> None:
     """Cache the mirror and pull requests 7 to 10 through the production CLI path.
 
-    The seams are the in-process goldens' own: the origin URL, the Git floor (CI's Git
-    is below it), the clock, and a fake ``gh`` first on ``PATH``.
+    The seams are the in-process goldens' own: the origin URL, the Git floor (the
+    machine's Git may be below it), the clock, and a fake ``gh`` first on ``PATH``.
+    Only this module run as a script reaches them, from a tryscript golden. No pytest
+    run does, so the admitted-git job's tests still meet the floor unpatched.
     """
 
     from metabrowser.builtin_plugins.github import pulls

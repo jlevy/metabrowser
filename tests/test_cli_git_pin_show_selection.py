@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -28,11 +27,12 @@ from metabrowser.cli.main import _app
 from metabrowser.git.process import _REPO_PINNING_GIT_VARS
 from metabrowser.git.tree_source import GitPath
 from tests.golden_harness import file_url
+from tests.required_tools import needs_git
 from tests.test_cache_acquire import _allow_installed_git
 
 posix_only = pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only")
 
-pytestmark = pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required")
+pytestmark = needs_git
 
 runner = CliRunner()
 

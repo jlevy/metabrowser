@@ -17,7 +17,6 @@ does not vary by Git version.
 from __future__ import annotations
 
 import os
-import shutil
 from pathlib import Path
 
 import pytest
@@ -39,6 +38,7 @@ from tests.golden_harness import (
     ok,
     pinned_git,
 )
+from tests.required_tools import needs_git
 from tests.test_cache_acquire import _remove_owner_write, _restore_owner_write
 
 # Pinned by the identity and dates of ``pinned_git_env`` and the origin recipe below.
@@ -51,7 +51,7 @@ skip_as_root = pytest.mark.skipif(
     os.geteuid() == 0, reason="root is never denied by modes, so a denial cannot be staged"
 )
 
-pytestmark = pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required")
+pytestmark = needs_git
 
 
 def deterministic_origin(tmp_path: Path) -> Path:

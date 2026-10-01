@@ -10,7 +10,6 @@ fake ``gh`` answer only for ``https://github.com``.
 from __future__ import annotations
 
 import os
-import shutil
 import stat
 import subprocess
 from pathlib import Path
@@ -21,10 +20,11 @@ from metabrowser.builtin_plugins.github import provider as github_provider
 from metabrowser.builtin_plugins.github.provider import GithubProvider, credential_helper_args
 from metabrowser.cache.origin import origin_git_args
 from metabrowser.git.process import ACQUISITION_POLICY, git_environment
+from tests.required_tools import needs_git
 
 pytestmark = [
     pytest.mark.skipif(os.name != "posix", reason="the fake gh is a POSIX shell script"),
-    pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required"),
+    needs_git,
 ]
 
 GH_SENTINEL = "gh-sentinel-7f3a"

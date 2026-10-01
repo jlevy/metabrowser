@@ -15,13 +15,15 @@ Run as a script, it builds below one directory:
   go when the transcript's ``after`` step stops it, when ``origin.git`` is gone, or
   after five minutes, whichever is first.
 
-Acquisition checks the installed Git against the security floor, and CI's Git is below
-it. The transcript's commands only open the cached store, which a cache hit does without
-the floor, so this fixture stands in for an acquisition an admitted Git performed and
-patches the floor for that one call, as the in-process acquisition tests do. A refresh
+Acquisition checks the installed Git against the security floor, and the machine's Git
+may be below it. The transcript's commands only open the cached store, which a cache hit
+does without the floor, so this fixture stands in for an acquisition an admitted Git
+performed and patches the floor for that one call, as the in-process acquisition tests
+do. Only this module run as a script reaches that patch, from a tryscript golden; no
+pytest run does, so the admitted-git job's tests still meet the floor unpatched. A refresh
 the transcript requests checks the floor itself, after the fetch lock: the held lock makes
 that refresh report another process refreshing whatever Git the machine has, which a
-transcript run on CI's Git and on an admitted one must agree on.
+transcript run on a Git below the floor and on an admitted one must agree on.
 
     source_mirror_fixture.py <directory> [--hold-fetch-lock]
 """

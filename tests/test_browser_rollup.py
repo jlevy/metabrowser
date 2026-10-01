@@ -5,7 +5,7 @@ gitignore-excluded variants, extension tallies with the remainder row,
 dominant extensions, top-N children with the rest bucket, the depth
 sentinel (children: null with full totals), pending state, and the
 non-directory / unknown-path None result. A synthetic large index
-records the query-cost budget (spec: <=150 ms at 100k entries).
+bounds the traversal one rollup does, counted and not timed.
 """
 
 from __future__ import annotations
@@ -13,16 +13,18 @@ from __future__ import annotations
 import asyncio
 import re
 import threading
-import time
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+import pytest
 from conftest import SyntheticIndexWriter
 from watchfiles import Change
 
 from metabrowser.events import FsEntry
 from metabrowser.inventory_engine.contract import DiagnosticsQuery, ReadRequest
+from metabrowser.inventory_engine.providers import python_inventory
 from metabrowser.inventory_engine.providers.python_inventory import (
     _PythonInventoryStore as PythonInventoryStore,
 )
@@ -322,53 +324,108 @@ def test_rollup_global_node_budget_on_adversarial_branching() -> None:
     assert _has_cut_marker(node)
 
 
-def test_rollup_budget_on_synthetic_large_index(tmp_path: Path) -> None:
-    """Query-cost budget record: rollup over a synthetic index.
+class _CountedBuckets(Mapping[str, Sequence[Any]]):
+    """A child index that counts the buckets a rollup reads and the entries they hold."""
 
-    Builds ~40k entries directly (disk-free) — the spec budget is 150 ms
-    at 100k entries; the hard gate here is generous for CI jitter and
-    the measured value prints for the budget record.
-    """
+    def __init__(self, buckets: Mapping[str, Sequence[Any]]) -> None:
+        self._buckets = buckets
+        self.reads = 0
+        self.entries = 0
+
+    def __getitem__(self, parent: str) -> Sequence[Any]:
+        bucket = self._buckets[parent]
+        self.reads += 1
+        self.entries += len(bucket)
+        return bucket
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._buckets)
+
+    def __len__(self) -> int:
+        return len(self._buckets)
+
+
+def _flat_index(directories: int, files_each: int) -> tuple[PythonInventoryStore, int]:
+    """A synthetic index of equal directories under the root, and its entry count."""
 
     index = PythonInventoryStore()
     entries = SyntheticIndexWriter(index)  # synthetic index setup, test-only
-    root_placeholder = FsEntry.for_observed_dir(path="", parent="", name="root")
-    dir_count = 200
-    files_per_dir = 200
     mtime_ns = 1_700_000_000_000_000_000
     entries[""] = replace(
-        root_placeholder,
-        total_files=dir_count * files_per_dir,
-        total_size=dir_count * files_per_dir * 10,
+        FsEntry.for_observed_dir(path="", parent="", name="root"),
+        total_files=directories * files_each,
+        total_size=directories * files_each * 10,
         newest_mtime_ns=mtime_ns,
     )
-    for d in range(dir_count):
+    for d in range(directories):
         dir_path = f"d{d:03d}"
-        placeholder = FsEntry.for_observed_dir(path=dir_path, parent="", name=dir_path)
         entries[dir_path] = replace(
-            placeholder,
-            total_files=files_per_dir,
-            total_size=files_per_dir * 10,
+            FsEntry.for_observed_dir(path=dir_path, parent="", name=dir_path),
+            total_files=files_each,
+            total_size=files_each * 10,
             newest_mtime_ns=mtime_ns,
         )
-        for f in range(files_per_dir):
+        for f in range(files_each):
             file_path = f"{dir_path}/f{f:03d}.py"
             entries[file_path] = FsEntry.for_observed_file(
-                path=file_path,
-                parent=dir_path,
-                name=f"f{f:03d}.py",
-                size=10,
-                mtime_ns=mtime_ns,
+                path=file_path, parent=dir_path, name=f"f{f:03d}.py", size=10, mtime_ns=mtime_ns
             )
+    return index, directories + directories * files_each
 
-    start = time.perf_counter()
-    result = index.rollup("", depth=3, top=40, ext_top=12)
-    elapsed_ms = (time.perf_counter() - start) * 1000
-    assert result is not None
-    total = dir_count * files_per_dir
-    assert result["node"]["total_files"] == total
-    print(f"rollup budget: {total} files in {elapsed_ms:.1f}ms (spec: 150ms at 100k entries)")
-    assert elapsed_ms < 1_000, f"rollup took {elapsed_ms:.1f}ms on {total} synthetic entries"
+
+def test_rollup_traversal_is_bounded_cold_and_independent_of_index_size_warm(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """What one rollup reads from the child index: counted, not timed.
+
+    Cold, the aggregation visits every directory once and the emission reads again
+    the directories it shows, so the entries handed out are at most twice the index.
+    Warm, the aggregates are memoized and only the emission reads, so the buckets
+    read do not depend on how large the index is.
+
+    Measured on 2026-10-01, with ``depth=3, top=40``:
+
+    - 200 directories of 200 files, 40,200 entries: cold, 231 bucket reads handing
+      out 46,200 entries, 1.15 times the index; warm, 30 reads and 6,000 entries.
+    - 50 directories of 50 files, 2,550 entries: cold, 81 reads and 4,050 entries,
+      1.59 times the index; warm, 30 reads and 1,500 entries.
+
+    Twice the index is reached when every directory is shown: 30 directories of 30
+    files hand out 1,860 entries for 930.
+
+    The limit of this test: it bounds traversal, not the CPU spent on each entry. A
+    rollup that did ten times the work per entry it was handed would pass. That cost
+    is the "settled rollup, aggregated" row of ``devtools/bench_serving.py``. This
+    test took the place of a 1,000 ms gate on one aggregation.
+    """
+
+    passes: list[_CountedBuckets] = []
+    real_build = python_inventory.build_rollup
+
+    def counted_build(entries: Any, children: Any, *args: Any, **kwargs: Any) -> Any:
+        passes.append(_CountedBuckets(children))
+        return real_build(entries, passes[-1], *args, **kwargs)
+
+    monkeypatch.setattr(python_inventory, "build_rollup", counted_build)
+
+    def cold_and_warm(directories: int, files_each: int) -> tuple[_CountedBuckets, ...]:
+        index, total = _flat_index(directories, files_each)
+        passes.clear()
+        for _attempt in ("cold", "warm"):
+            result = index.rollup("", depth=3, top=40, ext_top=12)
+            assert result is not None
+            assert result["node"]["total_files"] == directories * files_each
+        cold, warm = passes
+        assert cold.entries <= 2 * total, f"cold handed out {cold.entries} entries of {total}"
+        assert warm.reads < cold.reads
+        return cold, warm
+
+    _large_cold, large_warm = cold_and_warm(200, 200)
+    _small_cold, small_warm = cold_and_warm(50, 50)
+    assert large_warm.reads == small_warm.reads, (
+        f"a warm rollup read {large_warm.reads} buckets of a 40,200-entry index and "
+        f"{small_warm.reads} of a 2,550-entry one"
+    )
 
 
 def _assert_derived_state_matches_entries(index: PythonInventoryStore) -> None:

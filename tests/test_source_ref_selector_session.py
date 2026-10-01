@@ -22,7 +22,6 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import shutil
 from pathlib import Path
 from typing import Any
 
@@ -34,7 +33,6 @@ from metabrowser.cache.acquire import acquire_source
 from metabrowser.cache.records import StoreOperation
 from metabrowser.git.tree_source import GitPath
 from metabrowser.mirror_refresh import serve_mirror
-from metabrowser.source import reset_source_session
 from tests.golden_harness import (
     JSON_BODY,
     answer,
@@ -43,6 +41,7 @@ from tests.golden_harness import (
     run_session,
     serve_published,
 )
+from tests.required_tools import needs_git
 from tests.source_mirror_fixture import FETCHED_AT, build_origin
 from tests.test_cache_acquire import _allow_installed_git, _file_source
 from tests.test_source_freshness_session import _write_state
@@ -56,7 +55,7 @@ FEATURE = "refs/remotes/origin/feature"
 posix_only = pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only")
 pytestmark = [
     posix_only,
-    pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required"),
+    needs_git,
 ]
 
 
@@ -98,7 +97,6 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             recorded["switch_missing"] = switch({"ref": "refs/remotes/origin/gone"})
     finally:
         serve_mirror(None)
-        reset_source_session()
     return recorded
 
 

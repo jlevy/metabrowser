@@ -233,5 +233,10 @@ testpaths = [
 pythonpath = ["."]
 norecursedirs = []
 filterwarnings = []
+# One test's whole budget, in seconds. The thread method ends the run when it fires,
+# not one test, so a bound inside a test (a child process's timeout, a polling
+# deadline) has to be shorter than the budget to fail that test instead: at most 50
+# under this default. A test that needs longer carries pytest.mark.timeout with the
+# measurement that forced it.
 timeout = 60
 timeout_method = "thread"

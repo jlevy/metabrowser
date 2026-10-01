@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -30,9 +29,10 @@ from metabrowser.git.tree_source import (
 from metabrowser.settings import TEXT_PREVIEW_CHUNK_BYTES, TEXT_PREVIEW_REQUEST_MAX_BYTES
 from metabrowser.source import read_content_window
 from tests.git_pin_harness import fast_import_store
+from tests.required_tools import needs_git, require_node
 from tests.test_git_revision_content_routes import _pinned_client
 
-pytestmark = pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required")
+pytestmark = needs_git
 
 _ZERO_OID = "0" * 40
 _LINES = b"".join(b"line %05d of a text blob\n" % index for index in range(400))
@@ -345,8 +345,7 @@ def test_load_more_on_a_pin_advances_the_notice_and_the_cursor(
     there, repeating content. Each step here is the shell's own merge and notice.
     """
 
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     store, commit = _store(tmp_path)
     step = 16
 

@@ -61,7 +61,6 @@ that names an object the store lacks, and acquisition refuses such an origin.
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -72,10 +71,11 @@ from metabrowser.git.tree_source import GitPath
 from metabrowser.settings import TEXT_PREVIEW_REQUEST_MAX_BYTES
 from tests.git_pin_harness import git_env
 from tests.golden_harness import Labels, check_golden, file_url, isolate_cli, ok, quoted, refused
+from tests.required_tools import needs_git
 
 posix_only = pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only")
 
-pytestmark = pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required")
+pytestmark = needs_git
 
 # Pinned by the fast-import recipe below: tree, committer identity and date,
 # and message are fixed, and a commit id is a function of nothing else.

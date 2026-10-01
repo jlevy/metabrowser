@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import shutil
 import subprocess
 from collections.abc import Iterator
 from pathlib import Path
@@ -24,12 +23,10 @@ from metabrowser.git.wire import (
     validate_git_repo_info,
 )
 from metabrowser.server import app
-from metabrowser.source import attach_subject, reset_source_session
+from metabrowser.source import attach_subject
+from tests.required_tools import needs_git
 
-pytestmark = pytest.mark.skipif(
-    shutil.which("git") is None,
-    reason="git executable is required",
-)
+pytestmark = needs_git
 
 
 def _git_env(root: Path) -> dict[str, str]:
@@ -108,7 +105,6 @@ def pinned_first(tmp_path: Path) -> Iterator[tuple[Path, str, str]]:
     finally:
         asyncio.run(HISTORY_SESSIONS.close_all())
         asyncio.run(subject.aclose())
-        reset_source_session()
         git_repo.clear_repo_cache()
 
 

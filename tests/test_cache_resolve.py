@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import shutil
 import subprocess
 from pathlib import Path
 
@@ -34,10 +33,11 @@ from metabrowser.cache.urls import GitSource, RepositorySelection, classify_root
 from metabrowser.git.process import repository_store_target
 from tests.git_pin_harness import git_env
 from tests.github_origin import FIRST_COMMIT, SECOND_COMMIT, github_origin
+from tests.required_tools import needs_git
 from tests.test_cache_acquire import _allow_installed_git
 
 pytestmark = [
-    pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required"),
+    needs_git,
     pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only"),
 ]
 

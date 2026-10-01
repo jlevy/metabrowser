@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from devtools import check_parity
+from tests.required_tools import needs_node
 
 _HEADER = "| Surface | Status | CLI | Golden or reason |\n| --- | --- | --- | --- |\n"
 _FUNCTIONAL_HEADER = (
@@ -148,6 +149,7 @@ def test_an_unknown_status_is_reported(
     assert any("/api/tree" in problem and "is not one of" in problem for problem in problems)
 
 
+@needs_node
 def test_the_real_table_passes() -> None:
     assert check_parity.check() == []
 
@@ -469,6 +471,7 @@ def test_an_owner_filename_in_session_source_is_not_execution_evidence(
     )
 
 
+@needs_node
 def test_importing_an_owner_does_not_prove_its_behavior_function_ran(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -522,6 +525,7 @@ def test_importing_an_owner_does_not_prove_its_behavior_function_ran(
     )
 
 
+@needs_node
 def test_checker_controlled_coverage_proves_a_declared_function_ran(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -542,6 +546,7 @@ def test_checker_controlled_coverage_proves_a_declared_function_ran(
     assert problems == []
 
 
+@needs_node
 def test_executing_an_unrelated_function_does_not_credit_the_declared_symbol(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -562,6 +567,7 @@ def test_executing_an_unrelated_function_does_not_credit_the_declared_symbol(
     assert any("did not execute owner function" in problem for problem in problems)
 
 
+@needs_node
 def test_a_missing_interaction_owner_function_is_reported(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -582,6 +588,7 @@ def test_a_missing_interaction_owner_function_is_reported(
     )
 
 
+@needs_node
 def test_a_duplicate_interaction_owner_function_is_ambiguous(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

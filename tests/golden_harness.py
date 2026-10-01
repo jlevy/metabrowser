@@ -40,7 +40,6 @@ import io
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 from collections.abc import Sequence
@@ -65,6 +64,7 @@ from metabrowser.cli.main import _run_cli
 from metabrowser.git.process import _REPO_PINNING_GIT_VARS
 from metabrowser.git.tree_source import GitRevisionSubject
 from metabrowser.source import reset_source_session, serve_subject_opener
+from tests.required_tools import require_node
 from tests.test_cache_acquire import _allow_installed_git
 
 TESTS_DIR: Final = Path(__file__).resolve().parent
@@ -149,15 +149,17 @@ def read_recording(name: str) -> Any:
 
 
 def run_session(script: str, *args: str) -> Any:
-    """Run ``tests/dom/<script>`` under Node and return the transcript it prints."""
+    """Run ``tests/dom/<script>`` under Node and return the transcript it prints.
 
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    Node is a prerequisite: without it ``require_node`` stops the run, or skips where
+    ``tests/required_tools.py`` says a developer allowed that.
+    """
+
     result = subprocess.run(
-        ["node", str(DOM_DIR / script), *args],
+        [require_node(), str(DOM_DIR / script), *args],
         capture_output=True,
         text=True,
-        timeout=60,
+        timeout=50,
         check=False,
     )
     assert result.returncode == 0, (
@@ -449,7 +451,10 @@ def isolate_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> CliSandbox:
     """A private application home, a fixed clock, and a console no host setting changes.
 
     The acquisition floor admits the installed Git, as in every in-process acquisition
-    test (``_allow_installed_git``).
+    test. That goes through ``_allow_installed_git``, which asks
+    ``tests/admitted_git.py`` whether this run names an admitted release, so
+    ``tests/suite_gates.py`` sees the module that called and holds it to
+    ``ADMITTED_GIT_TESTS``.
     """
 
     home = tmp_path / "home"
@@ -481,9 +486,11 @@ def serve_published(published: PublishedSource, *, serving: bool = False) -> Non
     lifespan refreshes a stale mirror by itself; without it the mirror is served as a
     one-shot command serves it, and only a request starts a refresh.
 
-    The source session is reset first. A recording holds session generations, and a
-    recorder that serves twice in one test, or runs after a test that left a session
-    open, would otherwise record a generation that depends on what ran before.
+    The source session is reset first. Each test already starts from a fresh one
+    (``_reset_served_source`` in ``tests/conftest.py``), so this reset is for a recorder
+    that serves more than once in one test, as ``tests/test_diff_view_file_session.py``
+    does when it models a server restarted on another repository: the generations it
+    records must count from the restart.
     """
 
     async def opener() -> GitRevisionSubject:

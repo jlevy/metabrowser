@@ -23,7 +23,6 @@ from __future__ import annotations
 import asyncio
 import os
 import re
-import shutil
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path, PurePosixPath
@@ -32,11 +31,13 @@ from typing import Any
 import pytest
 from httpx2 import ASGITransport, AsyncClient
 
-from metabrowser.paths_safe import ROOT_DIR, _set_root_dir
+from metabrowser import paths_safe
+from metabrowser.paths_safe import _set_root_dir
 from metabrowser.server import app
 from metabrowser.source import AttachedFilesystemSubject, attach_subject, reset_source_session
-from tests.git_pin_harness import fast_import_store, pinned_client
+from tests.git_pin_harness import fast_import_store, overwrite_tree, pinned_client
 from tests.golden_harness import check_recording, run_session
+from tests.required_tools import needs_git
 
 # The same names under both subjects. A literal percent is where a folder's
 # inventory identity escapes (``%25``) and a pin's display name does not. A
@@ -71,12 +72,12 @@ _HEADING = re.compile(
 _PIN_REF = "refs/remotes/origin/topic"
 
 posix_only = pytest.mark.skipif(os.name != "posix", reason="folder identities are POSIX bytes")
-pytestmark = pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required")
+pytestmark = needs_git
 
 
 @asynccontextmanager
 async def _folder_client(root: Path) -> AsyncGenerator[AsyncClient]:
-    original = ROOT_DIR
+    original = paths_safe.ROOT_DIR
     _set_root_dir(root)
     attach_subject(AttachedFilesystemSubject(root))
     try:
@@ -85,8 +86,12 @@ async def _folder_client(root: Path) -> AsyncGenerator[AsyncClient]:
             async with AsyncClient(transport=transport, base_url="http://testserver") as client:
                 yield client
     finally:
+        # A phase boundary, not teardown: the pin is observed after this, and must not
+        # find the folder still served. The folder's files are then overwritten, so
+        # a pin answered from them cannot match the pin's recording by accident.
         reset_source_session()
         _set_root_dir(original)
+        overwrite_tree(root)
 
 
 def _project(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:

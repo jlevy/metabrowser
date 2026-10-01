@@ -58,6 +58,7 @@ from tests.golden_harness import (
     run_session,
     serve_published,
 )
+from tests.required_tools import needs_git
 from tests.source_mirror_fixture import FETCHED_AT, build_origin
 from tests.test_cache_acquire import _allow_installed_git, _file_source
 
@@ -77,7 +78,7 @@ _STAND_IN_TIME = "2026-09-23T12:00:00Z"
 posix_only = pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only")
 pytestmark = [
     posix_only,
-    pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required"),
+    needs_git,
 ]
 
 
@@ -380,7 +381,6 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             recorded["folder"] = client.get("/api/source/status").json()
     finally:
         serve_mirror(None)
-        reset_source_session()
     return _stand_in_times(recorded)
 
 

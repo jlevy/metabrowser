@@ -3,18 +3,16 @@
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 from pathlib import Path
 
-import pytest
+from tests.required_tools import require_node
 
 COPY_DELEGATE_TEST_JS = Path(__file__).resolve().parent / "dom" / "sdk-copy-delegate-behavior.js"
 
 
 def test_sdk_copy_delegate_behavior() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(COPY_DELEGATE_TEST_JS)],
         capture_output=True,
@@ -39,8 +37,7 @@ def test_shell_delegates_act_only_on_controls_the_page_created() -> None:
     with the SDK's per-page owner mark, and the tooltip ignores a rendered document.
     """
 
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(SHELL_DELEGATE_SESSION)],
         capture_output=True,

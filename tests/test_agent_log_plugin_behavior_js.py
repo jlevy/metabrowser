@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 from pathlib import Path
 
-import pytest
+from tests.required_tools import require_node
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SHIM = Path(__file__).resolve().parent / "dom" / "agent-log-plugin-behavior.js"
@@ -16,8 +15,7 @@ VIEW_COMPOSITION_JS = REPO_ROOT / "src/metabrowser/static/view-composition.js"
 
 
 def test_agent_log_escapes_kinds_and_disposes_charts() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available; skipping agent-log browser behavior")
+    require_node()
 
     result = subprocess.run(
         ["node", str(SHIM), str(REPO_ROOT)],

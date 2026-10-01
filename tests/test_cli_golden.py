@@ -26,6 +26,7 @@ from typer.testing import CliRunner
 
 from metabrowser.cli.main import _app
 from tests.golden_harness import block, check_golden, normalize_console
+from tests.required_tools import needs_git
 
 FIXED_MTIME = 1_700_000_000
 
@@ -64,6 +65,7 @@ def _make_walk_fixture(tmp_path: Path) -> Path:
     return root
 
 
+@needs_git
 @pytest.mark.parametrize(
     ("golden", "selection"),
     [("serve-banner.txt", ""), ("serve-file-root.txt", "/data.jsonl")],

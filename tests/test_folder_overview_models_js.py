@@ -2,19 +2,17 @@
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 from pathlib import Path
 
-import pytest
+from tests.required_tools import require_node
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TEST_JS = Path(__file__).resolve().parent / "dom" / "folder-overview-models-behavior.js"
 
 
 def test_folder_overview_models() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(TEST_JS), str(REPO_ROOT)],
         capture_output=True,

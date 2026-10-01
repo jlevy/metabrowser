@@ -47,11 +47,12 @@ from tests.golden_harness import (
     pinned_git_env,
     refused,
 )
+from tests.required_tools import needs_git
 from tests.source_mirror_fixture import build_origin
 
 posix_only = pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only")
 
-pytestmark = pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required")
+pytestmark = needs_git
 
 FIRST = "fcb9d63c3c8533d1b929861f451a066e6d4f2d9e"
 SECOND = "42382ea2303b733e1e21b4bd6ddb974ca4e775eb"

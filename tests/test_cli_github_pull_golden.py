@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 from pathlib import Path
 from typing import Any
 
@@ -40,9 +39,10 @@ from tests.github_pull_fixture import (
     scenario,
 )
 from tests.golden_harness import Invocation, check_golden, isolate_cli, quoted, run_metab
+from tests.required_tools import needs_git
 
 pytestmark = [
-    pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required"),
+    needs_git,
     pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only"),
 ]
 

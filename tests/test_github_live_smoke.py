@@ -42,7 +42,10 @@ pytestmark = [
     pytest.mark.live_github,
     pytest.mark.skipif(os.environ.get(LIVE_ENV) != "1", reason=f"set {LIVE_ENV}=1 to run"),
     pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only"),
-    # Clones over a real network; the suite's 60 s default is for local work.
+    # Clones and reads over a real network. Measured on 2026-09-30 from a home
+    # connection, on a 10-core M1 Pro at load average 60-90: the seven live tests took
+    # 151 s, the slowest 38 s. The network is not ours to bound, so this is generous;
+    # it also has to exceed the 300 s bound on one ``metab`` call below.
     pytest.mark.timeout(600),
 ]
 
@@ -165,7 +168,7 @@ def test_live_size_check_with_the_real_gh() -> None:
     """The provider's own read-only size query; no clone, and no credential command."""
 
     if gh_executable() is None:
-        pytest.skip("gh is not installed")
+        pytest.fail(f"{LIVE_ENV}=1 selected the live tier, which needs gh; it is not installed")
     try:
         asyncio.run(
             run_gh(
@@ -181,8 +184,11 @@ def test_live_size_check_with_the_real_gh() -> None:
                 ]
             )
         )
-    except GhError:
-        pytest.skip("gh cannot read the GitHub API here (signed out or offline)")
+    except GhError as error:
+        pytest.fail(
+            f"{LIVE_ENV}=1 selected the live tier, but gh cannot read the GitHub API "
+            f"(signed out or offline): {error}"
+        )
     provider = GithubProvider()
     small = GitSource(
         transport="https", form="url", normalized="https://github.com/octocat/hello-world"
@@ -206,7 +212,6 @@ def test_live_serve_refresh_and_status(tmp_path: Path, monkeypatch: pytest.Monke
 
     from metabrowser import server
     from metabrowser.cli.main import _app
-    from metabrowser.source import reset_source_session
 
     monkeypatch.setenv("METABROWSER_HOME", str(tmp_path / "home"))
     monkeypatch.setenv("PATH", _no_credentials_path(tmp_path))
@@ -218,24 +223,21 @@ def test_live_serve_refresh_and_status(tmp_path: Path, monkeypatch: pytest.Monke
         result = CliRunner().invoke(_app, [f"{HELLO}/blob/master/README#L1", "--no-open"])
     assert result.exit_code == 0, result.output
     assert "Revision: " in result.stdout and "(master)" in result.stdout
-    try:
-        with TestClient(server.app) as client:
-            status = client.get("/api/source/status").json()
-            assert status["ref_name"] == "master" and status["refreshable"] is True
-            pin = status["pin"]
-            started = client.post(
-                "/api/source/refresh", json={}, headers={"content-type": "application/json"}
-            )
-            assert started.status_code == 202
-            deadline = time.monotonic() + 120
-            while client.get("/api/source/status").json()["refreshing"]:
-                assert time.monotonic() < deadline, "the refresh did not finish"
-                time.sleep(0.2)
-            after = client.get("/api/source/status").json()
-            assert after["last_outcome"]["operation"] == "refresh"
-            assert after["last_outcome"]["outcome"] == "succeeded", after
-            assert after["pin"] == pin and after["latest"] is not None
-            shell = client.get("/view/").text
-            assert '"owner": "octocat"' in shell and '"name": "hello-world"' in shell
-    finally:
-        reset_source_session()
+    with TestClient(server.app) as client:
+        status = client.get("/api/source/status").json()
+        assert status["ref_name"] == "master" and status["refreshable"] is True
+        pin = status["pin"]
+        started = client.post(
+            "/api/source/refresh", json={}, headers={"content-type": "application/json"}
+        )
+        assert started.status_code == 202
+        deadline = time.monotonic() + 120
+        while client.get("/api/source/status").json()["refreshing"]:
+            assert time.monotonic() < deadline, "the refresh did not finish"
+            time.sleep(0.2)
+        after = client.get("/api/source/status").json()
+        assert after["last_outcome"]["operation"] == "refresh"
+        assert after["last_outcome"]["outcome"] == "succeeded", after
+        assert after["pin"] == pin and after["latest"] is not None
+        shell = client.get("/view/").text
+        assert '"owner": "octocat"' in shell and '"name": "hello-world"' in shell

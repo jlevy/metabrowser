@@ -28,7 +28,6 @@ for one; its test says what is substituted.
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -42,9 +41,10 @@ from metabrowser.git.tree_source import GitPath
 from tests.git_pin_harness import git_env
 from tests.github_origin import FIRST_COMMIT, SECOND_COMMIT, _commit, github_origin
 from tests.golden_harness import Invocation, check_golden, isolate_cli, quoted, run_metab
+from tests.required_tools import needs_git
 
 pytestmark = [
-    pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required"),
+    needs_git,
     pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only"),
 ]
 

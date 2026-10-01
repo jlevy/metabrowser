@@ -31,7 +31,6 @@ import copy
 import json
 import os
 import re
-import shutil
 import threading
 import time
 from dataclasses import replace
@@ -53,7 +52,7 @@ from metabrowser.git import repo as git_repo
 from metabrowser.git.tree_source import GitRevisionSubject
 from metabrowser.mirror_refresh import mirror_session, serve_mirror
 from metabrowser.server import app
-from metabrowser.source import attach_subject, reset_source_session
+from metabrowser.source import attach_subject
 from tests.github_pull_fixture import (
     CANONICAL,
     DEFAULT_BRANCH,
@@ -68,6 +67,7 @@ from tests.github_pull_fixture import (
     scenario,
 )
 from tests.golden_harness import JSON_BODY, check_recording, run_session
+from tests.required_tools import needs_git
 from tests.test_cache_acquire import _allow_installed_git
 
 _PULL = "/api/plugin/github/pull"
@@ -76,7 +76,7 @@ _MARKDOWN = "/api/plugin/github/pull-markdown"
 _PIN = "/api/source/pin"
 _PROSE = re.compile(r'<div class="kpress-prose[^"]*">(.*)</div></div></article>', re.S)
 pytestmark = [
-    pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required"),
+    needs_git,
     pytest.mark.skipif(os.name != "posix", reason="the fake gh is a POSIX script"),
 ]
 
@@ -150,7 +150,7 @@ def _session_tags(recorded: dict[str, Any]) -> dict[str, Any]:
 
 
 def _settle(client: TestClient) -> None:
-    deadline = time.monotonic() + 60
+    deadline = time.monotonic() + 50
     while client.get("/api/source/status").json()["refreshing"]:
         assert time.monotonic() < deadline, "the refresh did not finish"
         time.sleep(0.02)
@@ -305,7 +305,6 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             recorded["merged_unattributed"] = _answer(client.get(_PULL))
     finally:
         serve_mirror(None)
-        reset_source_session()
         git_repo.clear_repo_cache()
     return _session_tags(recorded)
 

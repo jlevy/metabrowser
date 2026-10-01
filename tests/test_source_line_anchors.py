@@ -18,6 +18,7 @@ from typing import Any, cast
 
 from metabrowser import server
 from metabrowser.builtin_plugins.github import urls as github_urls
+from tests.required_tools import needs_node
 
 STATIC = Path(server.__file__).resolve().parent / "static"
 
@@ -68,6 +69,7 @@ process.stdout.write(JSON.stringify(corpus.map((f) => sandbox.MetabrowserSourceL
 """
 
 
+@needs_node
 def test_browser_and_reducer_accept_the_same_line_anchors() -> None:
     result = subprocess.run(
         [
@@ -115,6 +117,7 @@ process.stdout.write(JSON.stringify(corpus.map((query) => view(query) === "sourc
 """
 
 
+@needs_node
 def test_browser_and_reducer_read_plain_the_same_way() -> None:
     result = subprocess.run(
         ["node", "-e", _JS_PLAIN, str(STATIC / "source-line-anchors.js"), json.dumps(PLAIN_CORPUS)],

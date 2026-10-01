@@ -2,19 +2,17 @@
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 from pathlib import Path
 
-import pytest
+from tests.required_tools import require_node
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SESSION_JS = Path(__file__).resolve().parent / "dom" / "markdown-toc-scrollspy-session.js"
 
 
 def test_rendered_markdown_toc_scrollspy_session() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(SESSION_JS), str(REPO_ROOT)],
         capture_output=True,

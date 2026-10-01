@@ -12,6 +12,7 @@ import pytest
 from metabrowser.cli.show_cli import run_show
 from metabrowser.errors import CLIError
 from metabrowser.git.process import _REPO_PINNING_GIT_VARS
+from tests.required_tools import require_git
 
 GIT_FIXTURE_HEAD = "703de1c4a3360d55e60646f300ceb6c926377221"
 
@@ -46,6 +47,7 @@ def git_root(tmp_path: Path) -> Path:
 
     import subprocess
 
+    require_git()
     env = {key: value for key, value in os.environ.items() if key not in _REPO_PINNING_GIT_VARS}
     env.update(_GIT_ENV)
 
