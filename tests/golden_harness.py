@@ -26,19 +26,24 @@ What a transcript may still replace, and why no fixture can pin it:
 - ``<VERSION>``, ``<STATE>``: the installed package version and its build annotation;
 - ``<GIT_VERSION>``: the Git on ``PATH``;
 - ``<TIME>``: a time written by a process the fixed clock cannot reach, which is a
-  child killed mid-publication;
-- ``<N lines, from … on, are the same as in … above>``: not a value but a run of lines
-  an earlier command of the same transcript printed, shown there once. The pin driver
-  (``tests/test_cli_git_pin_golden.py``) finds the run by comparing the two outputs.
+  child killed mid-publication.
 
 Everything else is literal. Commit IDs are literal because every origin is built with
 :func:`pinned_git_env` or ``git fast-import``; times are literal because
 :func:`fix_clock` replaces the clock.
 
-One label stands for a value the transcript itself pins: ``<RECORD n>`` in
-``cli-github-pull-refresh.txt`` is a pull-request record equal to the one last printed
-in full above it, so each distinct record is shown once
-(``tests/test_cli_github_pull_golden.py``).
+Two markers stand for text the transcript itself pins, so a payload that repeats is
+shown once. Each is written by its driver after comparing, never assumed, so what
+stopped repeating is printed:
+
+- ``<RECORD n>`` in ``cli-github-pull-refresh.txt``: a pull-request record equal to the
+  one last printed in full above it (``tests/test_cli_github_pull_golden.py``);
+- ``<N lines, from … on, are the same as in … above>`` in ``cli-git-pin-tree.txt``: a
+  run of lines an earlier command of the transcript printed
+  (``tests/test_cli_git_pin_golden.py``).
+
+They are two operations and share no code: the first replaces one JSON value by its
+key, the second the longest run of lines two outputs share.
 """
 
 from __future__ import annotations

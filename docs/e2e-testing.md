@@ -94,12 +94,8 @@ the only reader of `GOLDEN_UPDATE`. It serves the two kinds of expectation pytes
 - **In-process transcripts**, `tests/golden/*.txt`, for commands a subprocess cannot
   run: serve mode, and acquisition, which a Git below the acquisition floor refuses.
   A driver runs `metab` through the console script’s entry point and renders each
-  command’s line, exit status, and both streams in full.
-  One exception keeps a transcript readable: where a command repeats a long run of an
-  earlier command’s output, a driver may print the run once and name it where it
-  repeats, as `cli-git-pin-tree.txt` does for the tallies every `/api/tree` answer
-  carries. The run is found by comparing the two outputs, so the lines that stopped
-  repeating print, and the marker’s count changes.
+  command’s line, exit status, and both streams in full, except a payload it shows once
+  ([What a Transcript May Replace](#what-a-transcript-may-replace)).
 - **Recorded response fixtures**, `tests/fixtures/*.json`, which a browserless session
   replays so that it runs on what the server answered and not on envelopes a test wrote
   by hand. The recorder replays the story against the real application and fails when the
@@ -145,14 +141,23 @@ times and commit IDs are literal; the placeholders that remain, each with the re
 fixture can pin it, are listed at the top of `tests/golden_harness.py`. For tryscript,
 `devtools/golden_fixup.py` is that list.
 
-A payload that a story reads many times is shown once.
-A pull envelope carries the whole record, so `cli-github-pull-refresh.txt` prints a
-record in full the first time and as `<RECORD n>` while a later read equals it, and
-`tests/fixtures/github-pull-page-responses.json` holds a record in the first answer that
-carried it and names that answer, `{"same_as": "current"}`, in the later ones, which the
-session reads back as that record.
-A record that differs is written in full, so a read that changed it shows as a whole
-record where the reference was.
+A payload that repeats is shown once, and a marker stands where it repeats.
+Each marker is written after comparing, so what stopped repeating is printed.
+
+- **A record a story reads many times.** A pull envelope carries the whole record, so
+  `cli-github-pull-refresh.txt` prints a record in full the first time and as
+  `<RECORD n>` while a later read equals it, and
+  `tests/fixtures/github-pull-page-responses.json` holds a record in the first answer
+  that carried it and names that answer, `{"same_as": "current"}`, in the later ones,
+  which the session reads back as that record.
+  A record that differs is written in full, so a read that changed it shows as a whole
+  record where the reference was.
+- **A run of lines a later command repeats.** Every `/api/tree` answer carries the whole
+  pin’s tallies, so `cli-git-pin-tree.txt` prints them in its first block, and each
+  later block says how many lines it repeats and where they begin:
+  `<157 lines, from … on, are the same as in '/api/tree?depth=0' above>`. The driver
+  finds the run by comparing the two outputs, so the lines that stopped repeating print,
+  and the marker’s count changes.
 
 A transcript must not depend on how busy the machine is.
 The server logs a request slower than two seconds to stderr, which a transcript
