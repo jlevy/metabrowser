@@ -444,13 +444,24 @@ uv --config-file uv.toml run --frozen metab "${FILE_URL}" --no-serve
 uv --config-file uv.toml run --frozen metab "${FILE_URL}" --no-serve
 ```
 
-**Pass:** Exit 0. Lines `acquired:`, `slug:`, `store: sha256:`, and `revision:`. No
-`Serving`. No cache path, pack path, or `repository.git` in the text.
-The second invocation prints the **same** identity (reuse).
+**Pass:** Exit 0. On stdout, lines `acquired:`, `slug:`, `store: sha256:`, and
+`revision:`, with no `Serving` and no cache path, pack path, or `repository.git`. The
+second invocation prints the **same** identity (reuse).
+On stderr, the first invocation prints `cloning ${FILE_URL} into <scratch home>/cache`
+and then `cloned ${FILE_URL} in <seconds> s`, with the size received in parentheses for
+a repository of a hundred objects or more; on a terminal a single status line is redrawn
+between the two, and in a pipe a whole status line appears only if the clone runs past
+ten seconds. The second prints one line,
+`using the clone of ${FILE_URL} cached in <scratch home>/cache, fetched less than a minute ago`,
+and no `cloning` line.
+Those lines are the only place the scratch home may be named, in this step and in every
+later one that clones or reuses the store; none names the store’s own directory under
+`repository-stores` or a staging entry.
 Staging is empty after publish.
 
 **Fail:** Port bind; different store on the second call without a reason; home paths in
-stdout.
+stdout; a `cloning` line on the second call; raw Git progress text such as
+`Receiving objects:` or `remote:` on stderr.
 
 ### 4.2 Cache `--api` after acquire
 

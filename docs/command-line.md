@@ -132,6 +132,8 @@ with a trailing slash.
 If the pin cannot be opened again when the server starts, the command prints the same
 error as `--show` and exits 1. Every page reads from the store, so the origin can be
 gone and the pinned revision still serves.
+Before the banner, stderr says whether the source was cloned just now or found in the
+cache; see [What a clone prints](#what-a-clone-prints).
 
 The store is a mirror that refreshes in the background.
 When the server starts on a mirror last fetched more than a minute ago it runs one
@@ -222,6 +224,41 @@ metab file:///path/to/origin.git --show README
 metab file:///path/to/origin.git --api /api/tree
 ```
 
+### What a clone prints
+
+A first clone of a large repository runs for minutes, so every mode that clones says on
+stderr where the clone goes, how far it has got, and when it is done:
+
+```text
+cloning https://github.com/owner/repo into ~/.metabrowser/cache
+cloning https://github.com/owner/repo: receiving objects: 45%, 334.0 MiB at 9.5 MiB/s (40 s)
+cloned https://github.com/owner/repo in 104 s (742.0 MiB); starting the server
+```
+
+- The first line names the cache directory of `METABROWSER_HOME`, with your home
+  directory as `~`. It is the directory that holds every clone, and the one to measure
+  or move aside.
+- On a terminal the middle line is one status line, redrawn in place: the phase, then
+  Git’s own progress as it arrives, with the elapsed time counting once a second.
+  Anywhere else it is a whole line at most every ten seconds, so a log stays short, and
+  a clone that finishes sooner prints only the first and last lines.
+- The last line gives the time the clone took, the size received unless the repository
+  is too small for Git to report one, and, in serve mode, that the server starts next.
+
+The numbers are read from `git fetch --progress` and printed in Metabrowser’s own words.
+No text Git or the origin wrote reaches the terminal: a line of Git’s output that is not
+exactly a progress record is dropped, and `--log-level debug` still shows Git’s own
+message when a clone fails.
+
+When the source is already cloned, serve mode and `--no-serve` say so in one line,
+`using the clone of <url> cached in ~/.metabrowser/cache, fetched 3 hours ago`, and
+start no clone. `--show`, `--api`, and `--check-api` print nothing for a cache hit: a
+script runs them many times against one clone, and `/api/source/status` reports the last
+fetch as data.
+
+All of this is stderr.
+stdout carries what it carried before, and no route’s answer names a cache path.
+
 ### GitHub URLs
 
 A GitHub URL copied from the browser opens the repository it names, pinned where it
@@ -272,7 +309,8 @@ No other credential source applies: your Git credential helpers are cleared, and
 runs with `HOME=/dev/null`, so curl does not read `~/.netrc`. With `gh` installed, a
 first clone is also refused before it starts when GitHub reports the repository too
 large to finish within the acquisition deadline.
-On a terminal, a first clone reports each phase and the time elapsed.
+A first clone reports where it goes and how far it has got; see
+[What a clone prints](#what-a-clone-prints).
 
 ### Pull requests
 
@@ -329,9 +367,9 @@ Nothing binds a port.
 `--walk` refuses a Git source: the walker reads a filesystem, and
 `--api '/api/tree?depth=N'` lists a pinned tree.
 ssh URLs stay closed.
-A second `--no-serve` of the same `file://` source reuses the published store.
-That cache hit reads only the application home: it runs no Git, does not need the
-origin, and works against a home the current user cannot write.
+A second `--no-serve` of the same `file://` source reuses the published store and says
+so on stderr. That cache hit reads only the application home: it runs no Git, does not
+need the origin, and works against a home the current user cannot write.
 Spellings that normalize to the same address, such as `FILE://localhost/path/` and
 `file:///path`, are one source.
 

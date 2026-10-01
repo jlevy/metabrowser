@@ -184,16 +184,34 @@ GitHub URLs and HTTPS:
   `CLICOLOR_FORCE`, or `GH_FORCE_TTY`. A transfer slower than 1000 bytes per second for
   30 seconds is treated as stalled, and an origin that does not answer the first request
   within 30 seconds times out rather than waiting for curl’s five-minute connect
-  timeout. On a terminal, a first clone reports its phases and elapsed time.
-  A served mirror refreshes from the same URL with the same arguments, including the
-  prune and single retry after a ref that cannot be locked, and a refresh’s outcome, in
-  the status and in the store’s `state.yml`, carries the same names, plus
+  timeout. A served mirror refreshes from the same URL with the same arguments, including
+  the prune and single retry after a ref that cannot be locked, and a refresh’s outcome,
+  in the status and in the store’s `state.yml`, carries the same names, plus
   `ref_case_collision` where a case-insensitive filesystem cannot hold two refs apart.
   Git does not always refuse that fetch: given `SAME` beside an unchanged `same`, it
   writes `SAME` into `same`’s file and succeeds, repointing `same`. A refresh on such a
   filesystem checks the store holds every ref the fetch wrote under its exact name, and
   otherwise puts every ref back and reports `ref_case_collision`, so no pin resolves to
   the twin’s commit.
+
+- A first clone says where it goes and shows that it is running, in every mode that
+  clones. A clone of a 740 MB repository used to print two lines and then nothing for 100
+  seconds, and nothing at all when stderr was not a terminal, so it looked hung.
+  Now stderr names the cache directory once (`cloning <url> into ~/.metabrowser/cache`),
+  then reports Git’s own progress with the elapsed time
+  (`receiving objects: 45%, 334.0 MiB at 9.5 MiB/s (40 s)`), and ends with
+  `cloned <url> in 104 s (742.0 MiB)`, to which serve mode adds that the server starts
+  next. On a terminal the progress is one status line redrawn in place, with the time
+  counting through a stall; elsewhere it is a whole line at most every ten seconds, so a
+  quick clone adds two lines to a log.
+  The progress is read from `git fetch --progress` as numbers and printed in
+  Metabrowser’s words: Git’s and the origin’s own text still never reaches the terminal,
+  whatever control characters it carries.
+  A source that is already cloned says so in one line in serve mode and `--no-serve`
+  (`using the clone of <url> cached in ~/.metabrowser/cache, fetched 3 hours ago`), so a
+  second run reads differently from a first; `--show`, `--api`, and `--check-api` stay
+  silent on a cache hit.
+  stdout and every route’s answer are unchanged, and neither names a cache path.
 
 - Pull-request data:
   `metab https://github.com/owner/repo/pull/<n> --api /api/plugin/github/pull` reads the

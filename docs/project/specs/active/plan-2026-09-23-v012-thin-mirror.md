@@ -151,7 +151,8 @@ It claims only `github.com` and `raw.githubusercontent.com`.
   the baseline. When `gh` is available, the repository size from `repos/<o>/<r>` is
   checked first, and a clone that cannot finish inside the acquisition deadline is
   refused with a typed state rather than killed partway.
-  The first clone reports its phase and elapsed time; a full progress parser can follow.
+  The first clone says on stderr where it goes, then reports Git’s own progress, read as
+  numbers and never passed through as text, with the elapsed time (`mb-4cg7`).
 
 ### Serving and pin switching
 
