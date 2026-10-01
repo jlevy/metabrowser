@@ -17,19 +17,20 @@ group, the cache’s provider-store reservations, and the GitHub coverage oracle
 It is kept, unmaintained, on the `reference/v012-hosted-review` branch, tagged
 `reference/v012-hosted-review-2026-09-30`.
 
-**Status:** Phase 0 through 0D and repository-library Phase 1A are implemented on open
-GitHub stack [#218](https://github.com/jlevy/metabrowser/stack/218), above the released
-v0.11.0 `main`. Cache Phase 1B is on ready-for-review
-[#217](https://github.com/jlevy/metabrowser/pull/217) and
-[#216](https://github.com/jlevy/metabrowser/pull/216); #216 combines the source boundary
-and leased Git pin. The alpha test plan is on
-[#225](https://github.com/jlevy/metabrowser/pull/225) above #216. The #209 content-trust
-foundation is on `main`, including in the stack base through #224. Provider URL open,
-`gh` acquisition, and hosted-review views are not started.
-Landing remains `mb-n2ro` and requires explicit approval.
-The [alpha test plan](plan-2026-09-22-v012-alpha-testing.md) tests incremental readiness
-through direct PR viewing before the full milestone reaches the bounded PR index and
-virtual navigation.
+**Status:** None of this plan’s hosted-review design is in the v0.12 tree.
+The Phase 0 through 0D foundation was built on stack
+[#218](https://github.com/jlevy/metabrowser/stack/218) and then removed, as the addendum
+above records. Phases 2 through 4A are superseded: the thin-mirror plan’s
+[Delivery](plan-2026-09-23-v012-thin-mirror.md#delivery) section names the pull requests
+that open GitHub URLs, read pull-request records with `gh`, and render the pull-request
+page in their place, so the unchecked items in those phases will not be done as written.
+The pull-request index and panel (Phases 3C and 4B) and anchored review threads (Phase
+4C) are deferred by the user’s 2026-09-23 decision.
+Phases 5 and 6, hosted releases, and GitLab remain later work and need re-planning
+against the thin mirror before they start.
+Landing is `mb-n2ro` and requires the user’s explicit approval; the
+[alpha test plan](plan-2026-09-22-v012-alpha-testing.md#landing-status) lists what
+remains before it.
 
 ## Vision
 
@@ -1055,6 +1056,10 @@ and the remaining `mb-dg00` goldens are not done.
 
 ### Phase 2: GitHub URLs, selected refs, and branches (`mb-12cz`, `mb-s1lt`, `mb-ew38`, `mb-jlon`, `mb-bf94`, `mb-2xq7`)
 
+**Addendum (2026-09-30):** superseded by the
+[thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md), whose GitHub URL open step
+(#231, `mb-bgs7`) delivers it; the unchecked items below will not be done as written.
+
 The GitHub implementation after Phase 0 also uses one formal stacked pull request per
 phase. Every publication bead requires independent review, the review shortcut,
 `make verify`, a formal draft PR created with `gh`, exact base/head branch names and
@@ -1111,6 +1116,14 @@ recorded base silently.
 ### Phase 3: GitHub `gh` adapter, binding, and provider cache (`mb-y1ax`, `mb-p4sw`, `mb-s123`, `mb-s0gv`, `mb-cbak`, `mb-duu7`, `mb-wx32`)
 
 #### Phase 3A: Transport, auth, binding, and snapshot kernel (`mb-y1ax`, `mb-p4sw`, `mb-s123`, `mb-ji83`, `mb-s0gv`, `mb-i3xc`, `mb-2oxp`, `mb-cbak`)
+
+**Addendum (2026-09-30):** superseded by the
+[thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md).
+Its PR data step (#232, `mb-nkmq`) runs `gh` with fixed arguments and uses it as Git’s
+credential helper.
+The credential lease bridge, provider binding, and snapshot kernel are
+retired, and attaching a user’s checkout (`mb-cbak`) is deferred; the unchecked items
+below will not be done as written.
 
 - [ ] Define the provider transport port, then implement only `GitHubGhAdapter` with
   bounded `gh api` REST/GraphQL calls and explicit host selection.
@@ -1189,6 +1202,11 @@ recorded base silently.
 
 #### Phase 3B: Directly addressed PR bundle (`mb-h64t`)
 
+**Addendum (2026-09-30):** superseded by the
+[thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md), whose PR data step (#232)
+stores one validated JSON record per pull request and fetches `refs/pull/<n>/head`; the
+unchecked items below will not be done as written.
+
 - [ ] Fetch a selected `ChangeRequest/v1` frontmatter artifact and its bounded review,
   top-level conversation comment, thread, review-comment, check, and status companions,
   including `Review/v1` artifacts both with and without summary prose and a
@@ -1213,6 +1231,9 @@ recorded base silently.
 
 #### Phase 3C: Bounded PR discovery index (`mb-lnkl`)
 
+**Addendum (2026-09-30):** deferred by the user’s 2026-09-23 decision (`mb-lnkl`), and
+to be re-planned against the thin mirror before work starts.
+
 - [ ] Publish a bounded `ChangeRequestIndex/v1` with explicit query, pages, cursors,
   stable sort/tie-breaker, per-page provenance, first/last observation times, remote
   consistency, completeness, freshness, and truncation; do not use `gh --paginate`,
@@ -1226,6 +1247,12 @@ recorded base silently.
 ### Phase 4: Hosted-review views and virtual PR collection (`mb-r19i`)
 
 #### Phase 4A: Direct PR document and comparison (`mb-xzj3`, `mb-6mle`, `mb-83w0`, `mb-81p5`)
+
+**Addendum (2026-09-30):** superseded by the
+[thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md), whose PR view step (#233,
+`mb-vrl7`) renders the pull-request page inside the GitHub plugin, with no public
+router, address-space, or resource-kind SDK; the unchecked items below will not be done
+as written.
 
 - [ ] Mount plugin-owned browser and resource routes with path parameters and honest
   responses; retain exact data hooks for simple models.
@@ -1244,6 +1271,9 @@ recorded base silently.
 
 #### Phase 4B: Pull Requests virtual collection (`mb-uh6p`, `mb-iw1v`)
 
+**Addendum (2026-09-30):** deferred by the user’s 2026-09-23 decision (`mb-iw1v`). The
+public nav-panel SDK (`mb-uh6p`) is retired.
+
 - [ ] Add the repository-scoped plugin SDK surface (`mb-uh6p`) for virtual nav
   collections, including loading, error, replacement, restoration, and disposal.
 - [ ] Register a Pull Requests nav panel backed by the cached index, reusing Git
@@ -1257,6 +1287,9 @@ recorded base silently.
   currently mounted rows.
 
 #### Phase 4C: Anchored review threads (`mb-rldc`)
+
+**Addendum (2026-09-30):** deferred by the user’s 2026-09-23 decision (`mb-rldc`). The
+pull-request page lists each review comment with its file and line.
 
 - [ ] Deliver provider-neutral review threads and diff anchors after direct comparison
   rendering is stable, with explicit outdated, unresolved, and unmappable states.

@@ -12,18 +12,22 @@ Its Simplify step then changed part of that foundation; the
 [Phase 1B addendum](#phase-1b-generic-git-cache-and-repository-url-open) lists what it
 replaced.
 
-**Status:** v0.12.0 implementation is on open GitHub stack
+**Status:** Phases 0 through 1B are built on the unmerged v0.12 stack,
 [#218](https://github.com/jlevy/metabrowser/stack/218), above the released v0.11.0
-`main`. Phase 0 and Phase 1A are on nondraft PRs with green CI; final stack review
-remains open. Phase 1B-a file:// acquire
-[#217](https://github.com/jlevy/metabrowser/pull/217) and Phase 1B source boundary and
-leased Git pin [#216](https://github.com/jlevy/metabrowser/pull/216) are ready for
-review; their remaining acceptance and publication obligations are listed below.
-URL open, HTTP serving of acquired Git, https/ssh acquire, and later phases are not
-started. The content-trust foundation from #209 is on `main`; #224 and its ancestors are
-in the stack base. Landing remains `mb-n2ro` and requires explicit approval.
-The [alpha test plan](plan-2026-09-22-v012-alpha-testing.md) adds an incremental
-readiness gate without changing the full v0.12 milestone.
+`main`, and their acceptance closed with foundation stabilization in
+[#226](https://github.com/jlevy/metabrowser/pull/226). The thin-mirror Simplify step
+then changed part of that foundation, and
+[#246](https://github.com/jlevy/metabrowser/pull/246) removed the cache’s reservations
+for a provider store.
+Phases 2A through 2C are superseded: the thin-mirror plan’s
+[Delivery](plan-2026-09-23-v012-thin-mirror.md#delivery) section names the pull requests
+that open, serve, refresh, and re-pin a repository URL in their place, so the unchecked
+items in those phases will not be done as written.
+SSH acquisition is deferred (`mb-bi2c`). The later phases remain open work: the catalog
+(`mb-0ybg`), the chooser (`mb-vmzy`), and very large repositories (`mb-dqvj`). Landing
+is `mb-n2ro` and requires the user’s explicit approval; the
+[alpha test plan](plan-2026-09-22-v012-alpha-testing.md#landing-status) lists what
+remains before it.
 
 ## Vision
 
@@ -1774,13 +1778,9 @@ detail.
 
 The foundation has acquisition, content-source and immutable-revision slices; #216
 consolidates the latter two.
-Complete their remaining acceptance before the URL-open phase.
-Subsequent phases each get a new PR above the current stack tip, with records, routes,
-goldens and recovery evidence appropriate to that phase.
-Review and publish each phase before starting its dependents; land the stabilized stack
-together. The
-[next-PR sequence](plan-2026-09-22-v012-alpha-testing.md#next-prs-and-agent-handoff)
-names the acceptance owners and testing checkpoints.
+Their remaining acceptance closed in #226. The pull requests above it are named in the
+alpha test plan’s [Delivery](plan-2026-09-22-v012-alpha-testing.md#delivery) section,
+and the stabilized stack lands together.
 
 **Addendum (2026-09-23, thin-mirror Simplify step):** the checklists below record what
 was built; the Simplify step replaced part of it.
@@ -1934,6 +1934,12 @@ Its acceptance and independent review are completed in
 
 #### Phase 2A: Open repository and hosted web URLs (`mb-12cz`, `mb-s1lt`, `mb-ew38`, `mb-innz`)
 
+**Addendum (2026-09-30):** superseded by the
+[thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md).
+Its GitHub URL open step (#231, `mb-bgs7`) opens repository and GitHub web URLs over
+HTTPS through the built-in reducer, with no public reducer SDK; the unchecked items
+below will not be done as written.
+
 - [ ] Add the trusted installed-plugin `ProviderUrlReducer` registration point; keep
   operator-directory plugins JavaScript-only and keep provider syntax out of cache
   identity and records.
@@ -1963,6 +1969,11 @@ Its acceptance and independent review are completed in
   green integration head recorded by `mb-j439` at the current stack tip.
 
 #### Phase 2B: Provider jobs, selected refs, and convergence (`mb-jlon`, `mb-bgn8`, `mb-bf94`)
+
+**Addendum (2026-09-30):** retired by the
+[thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md), with no replacement.
+Stores are full clones and a refresh is one `git fetch`, so the unchecked items below
+will not be done.
 
 - [ ] Keep `selection.py` pure.
   Put `fetch_selected_ref`, `request_ref_fetch`, progress, cancellation, and typed stage
@@ -2032,6 +2043,12 @@ Its acceptance and independent review are completed in
   head before selected-branch or PR work consumes the service.
 
 #### Phase 2C: Open any selected branch as an immutable revision (`mb-2xq7`, `mb-9aku`)
+
+**Addendum (2026-09-30):** superseded by the
+[thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md).
+Its GitHub URL open step (#231) splits a ref and path against the mirror, and the branch
+and tag selector (#236) switches the served pin; the unchecked items below will not be
+done as written.
 
 - [ ] Resolve the ambiguous ref/path split after acquisition against local heads,
   remote-tracking refs, tags, and full object IDs, longest matching prefix first.

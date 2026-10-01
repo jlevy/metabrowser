@@ -4,11 +4,23 @@
 
 **Author:** Joshua Levy (with LLM assistance)
 
-**Status:** v0.11.0 released after the parity foundation; v0.12.0 implementation is on
-[stack #218](https://github.com/jlevy/metabrowser/stack/218). The #209 content-trust
-foundation is on `main`. The [alpha test plan](plan-2026-09-22-v012-alpha-testing.md)
-adds an incremental gate through the direct PR view while the full milestone continues
-through bounded PR discovery and navigation.
+**Superseded in part (2026-09-23):** the v0.12 sequence in rows 7 and 9 through 12 of
+the [ordering table](#ordering) follows
+[Thin Mirror for Git and GitHub Browsing](plan-2026-09-23-v012-thin-mirror.md), which
+replaces this plan wherever they disagree.
+The parity mechanism and the rule it rests on stand.
+Three parts below record the earlier design: the cache module table in Part 2, the
+GitHub rows of the golden table, and the sequence under “What lands for the v0.12.0
+PR-first slice”. The modules as built are in
+[Implementation Seams](../../architecture/arch-repository-sources-and-provider-mirrors.md#implementation-seams),
+and the goldens as built are in the
+[parity table](../../architecture/arch-views-models-routes.md#cli-and-functional-ui-parity).
+
+**Status:** v0.11.0 released after the parity foundation; the v0.12.0 implementation is
+on [stack #218](https://github.com/jlevy/metabrowser/stack/218), unmerged.
+The #209 content-trust foundation is on `main`. The
+[alpha test plan](plan-2026-09-22-v012-alpha-testing.md#landing-status) lists what
+remains before landing.
 
 ## Overview
 
@@ -73,18 +85,17 @@ parallel.
 | 2 | Parity enforcement, persisted state, functional aspects, and codification | `mb-esht`, `mb-zodq`, `mb-n9xg` | 1 | Enforcement and codification landed for v0.10.0; `mb-n9xg` remains active for legacy functional inventory |
 | 3 | Git-status measurement gate for attached filesystem subjects | `mb-r5gn` | 0 | Planned; does not gate worktree-free Git serving |
 | 4 | Git-status backend, then panel | `mb-u4mf`, `mb-vibn`, `mb-y06t` | 0, 1, 3 | Planned for attached filesystem subjects |
-| 5 | Measurement and source-binding correction, owner-only cache format, local-origin contract, worktree-free acquisition, content-source boundary, then immutable Git-tree source | `mb-ire2`, `mb-z2mc`, `mb-xa0p`, `mb-4gnu`, `mb-k54c`, `mb-dxmb`, `mb-h51g`, `mb-dg00`, `mb-3bna`, `mb-z335` | 0, 1 | Cache and contracts on #125–#140; acquisition #217 and consolidated source/pin #216 are ready for review but still owe acceptance and review |
-| 6 | HTML trust chain | `mb-cun0`, `mb-vib1`, `mb-d658` | 0 | Landed through #209 on `main`; its application to new URL and pin paths still needs proof |
-| 7 | Provider URL reducer, repository open, provider-selected refs, then immutable selected branch | `mb-12cz`, `mb-ew38`, `mb-jlon`, `mb-2xq7` | 5, 6 | Planned on new layers above the stabilized stack |
+| 5 | Measurement and source-binding correction, owner-only cache format, local-origin contract, worktree-free acquisition, content-source boundary, then immutable Git-tree source | `mb-ire2`, `mb-z2mc`, `mb-xa0p`, `mb-4gnu`, `mb-k54c`, `mb-dxmb`, `mb-h51g`, `mb-dg00`, `mb-3bna`, `mb-z335` | 0, 1 | Built on the stack: cache and contracts on #125–#140, acquisition on #217, and the consolidated source and pin on #216, with acceptance closed in #226 and the store simplified in #228 |
+| 6 | HTML trust chain | `mb-cun0`, `mb-vib1`, `mb-d658` | 0 | Landed through #209 on `main`; every served pin applies it as a forced untrusted profile (#229, #234) |
+| 7 | Provider URL reducer, repository open, provider-selected refs, then immutable selected branch | `mb-12cz`, `mb-ew38`, `mb-jlon`, `mb-2xq7` | 5, 6 | Superseded: thin-mirror steps 3 to 5 (#229–#231) serve, refresh, and re-pin a repository URL through the built-in GitHub reducer |
 | 8 | Hosted-review models | `mb-63ym` | 0 | Phase 0 records were on #134 and were removed from the stack on 2026-09-30; they are kept on the `reference/v012-hosted-review` branch, tagged `reference/v012-hosted-review-2026-09-30` |
-| 9 | Bounded provider runner, `gh api` adapter, broker-pinned Git credential bridge, capability registry, auth-scoped store, repository summary, then direct PR bundle | `mb-y1ax`, `mb-p4sw`, `mb-s123`, `mb-ji83`, `mb-s0gv`, `mb-i3xc`, `mb-2oxp`, `mb-cbak`, `mb-h64t` | 5, 7, 8 | v0.12.0 |
-| 10 | Plugin router, address-space lifecycle, and direct PR document/diff | `mb-xzj3`, `mb-6mle`, `mb-81p5` | 6, 9 | v0.12.0 |
-| 11 | Query-keyed bounded PR index and virtual nav | `mb-lnkl`, `mb-uh6p`, `mb-iw1v` | 9, 10 | v0.12.0 |
-| 12 | Anchored review threads | `mb-rldc` | 10 | v0.12.0 |
+| 9 | Bounded provider runner, `gh api` adapter, broker-pinned Git credential bridge, capability registry, auth-scoped store, repository summary, then direct PR bundle | `mb-y1ax`, `mb-p4sw`, `mb-s123`, `mb-ji83`, `mb-s0gv`, `mb-i3xc`, `mb-2oxp`, `mb-cbak`, `mb-h64t` | 5, 7, 8 | Superseded: the PR data step (#232) runs `gh` and stores one record per pull request; the credential bridge, capability registry, auth-scoped store, and binding are retired, and `mb-cbak` is deferred |
+| 10 | Plugin router, address-space lifecycle, and direct PR document/diff | `mb-xzj3`, `mb-6mle`, `mb-81p5` | 6, 9 | Superseded: the PR view step (#233) renders the pull-request page inside the GitHub plugin |
+| 11 | Query-keyed bounded PR index and virtual nav | `mb-lnkl`, `mb-uh6p`, `mb-iw1v` | 9, 10 | Deferred by the user’s 2026-09-23 decision; `mb-uh6p` is retired |
+| 12 | Anchored review threads | `mb-rldc` | 10 | Deferred by the user’s 2026-09-23 decision |
 
-Row 6 records the trust foundation that landed through #209. Serving fetched content
-still requires proof that the new pin and URL paths apply its sandbox and untrusted
-profile. Row 3 concerns working-tree status on attached filesystem subjects; it is not a
+Row 6 records the trust foundation that landed through #209, which every served pin
+applies. Row 3 concerns working-tree status on attached filesystem subjects; it is not a
 serving dependency for the worktree-free Git source.
 
 The *lift* in row 1 was behavior-preserving, and that remains checkable: every existing
@@ -581,6 +592,10 @@ candidate:
 
 ### What lands for the v0.12.0 PR-first slice
 
+**Addendum (2026-09-30):** steps 2 through 6 below record the earlier sequence.
+The [thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md#delivery) names what was
+delivered in their place and what is deferred.
+
 `mb-i57d` and `mb-xxhi` closed on 2026-09-15 after v0.10.0 was released and the intended
 `main` baseline was verified.
 The remaining sequence proceeds from that released baseline:
@@ -650,6 +665,10 @@ against an empty throwaway root.
 There is no `/api/cache/acquire` write route.
 Serving, walking, and other modes refuse Git sources without acquiring; https and ssh
 stay closed; acquired content is not served.
+
+**Addendum (2026-09-30):** the thin-mirror plan changed the last sentence.
+`file://` and `https://` sources are acquired and served in the browser under the forced
+untrusted profile; `ssh` stays closed, and `--walk` refuses a Git source by design.
 
 Still open:
 
