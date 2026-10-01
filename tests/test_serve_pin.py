@@ -18,6 +18,7 @@ import asyncio
 import io
 import os
 import re
+import sys
 from collections.abc import AsyncGenerator, Awaitable, Callable, Iterator
 from contextlib import asynccontextmanager, redirect_stderr, redirect_stdout
 from dataclasses import dataclass
@@ -457,6 +458,23 @@ def test_the_shell_names_the_pinned_revision(served: tuple[TestClient, _Origin])
     assert client.get(f"/view/{_wire('README.md')}").status_code == 200
     assert client.get("/view/README.md").status_code == 400
     assert client.get(f"/commit/{origin.first}").status_code == 200
+
+
+def test_a_served_pin_has_its_routes_before_its_first_request(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # server.py imports a pin's routes where a pin is served, which keeps them off a
+    # folder's start. A served pin imports them as it starts, so its first request does
+    # not import them on the event loop. This process has long since imported them, so
+    # the module is forgotten for the length of the test.
+    _home(tmp_path, monkeypatch)
+    origin = _origin(tmp_path)
+    monkeypatch.delitem(sys.modules, "metabrowser.git.content_routes", raising=False)
+
+    result = _serve(origin.url)
+
+    assert result.exit_code == 0, result.output
+    assert "metabrowser.git.content_routes" in sys.modules
 
 
 def test_tree_file_and_raw_answer_from_the_pinned_tree(
