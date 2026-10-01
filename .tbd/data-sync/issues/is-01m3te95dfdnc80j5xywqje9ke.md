@@ -5,7 +5,7 @@ title: "v0.12 test-suite review: maximum coverage, minimum test complexity"
 kind: epic
 status: open
 priority: 2
-version: 25
+version: 26
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 labels:
   - release:v0.12.0
@@ -33,8 +33,9 @@ child_order_hints:
   - is-01m3v7sx1x6w4pys73jw4w2wee
   - is-01m3vmcns2ssaahzpc7bcgahqr
   - is-01m3vqyz7rb248ygvsq3jpgr9m
+  - is-01m3vtwjtsaxwyck7jkwr8m4av
 created_at: 2026-10-01T00:36:56.339Z
-updated_at: 2026-10-01T12:49:22.075Z
+updated_at: 2026-10-01T13:36:30.040Z
 ---
 ## Goal
 
