@@ -12,6 +12,8 @@ compared and one way to be rewritten:
 ``GOLDEN_UPDATE=1`` is read here and nowhere else, so ``make golden-update`` rewrites
 everything by running the modules its two lists name, and ``devtools/check_goldens.py``
 fails when a module that calls this harness is missing from them.
+``devtools/golden_update.py`` sets the switch for those runs and fails when a test in
+them was skipped.
 
 The rest is what a transcript driver needs to pin values rather than hide them: one
 in-process ``metab`` runner, one block renderer, labels for the values that depend on the
@@ -472,10 +474,16 @@ def answer(response: Any) -> dict[str, Any]:
 
 
 def serve_published(published: PublishedSource, *, serving: bool = False) -> None:
-    """Serve *published* at its default revision, as ``metab <url>`` would.
+    """Tell the next application lifespan to serve *published* at its default revision.
 
-    The source session starts fresh, because a recording holds session generations and
-    an earlier test in the process may have left one open.
+    Nothing is opened here: the ``TestClient`` a recorder then starts opens the pin, as
+    the lifespan of ``metab <url>`` does. *serving* is serve mode, in which that
+    lifespan refreshes a stale mirror by itself; without it the mirror is served as a
+    one-shot command serves it, and only a request starts a refresh.
+
+    The source session is reset first. A recording holds session generations, and a
+    recorder that serves twice in one test, or runs after a test that left a session
+    open, would otherwise record a generation that depends on what ran before.
     """
 
     async def opener() -> GitRevisionSubject:

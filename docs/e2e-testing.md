@@ -104,21 +104,31 @@ the only reader of `GOLDEN_UPDATE`. It serves the two kinds of expectation pytes
 `devtools/golden_fixup.py`, then the in-process drivers.
 A session’s transcript is built from its recording, so recording first is what stops a
 transcript being rewritten from a stale input.
+The recorders and drivers run through `devtools/golden_update.py`, which fails when any
+of their tests was skipped: a host without Node, or with a Git below the acquisition
+floor, cannot report that it regenerated what it skipped.
 
 `devtools/check_goldens.py`, part of `make lint-check`, keeps that true and keeps a
 transcript from passing while wrong:
 
-- every module that calls the harness is in the Makefile list `golden-update` runs, and
-  every committed `.txt` transcript is named by a driver;
-- no `metab` or `node` command in a transcript pipes its output, because a pipeline
-  records its last stage’s exit status.
+- every module that calls the harness is in the Makefile list `golden-update` runs, the
+  recipe keeps the order above, and every committed `.txt` transcript is named by a
+  driver;
+- a `metab` or `node` invocation in a transcript is the last command of its block, or
+  the line prints its status with `; echo "exit: $?"` directly after it.
+  A block has one exit status, the last command’s, so a pipe, a `;`, or an `||` after
+  the command under test records another command’s status.
   Redirect the command to a file, record its own `? N`, and filter the file in the next
   block;
-- no transcript is empty, carries a command in a block tryscript does not run, or
-  annotates a test `skip` or `only`;
+- no transcript is empty, holds a command outside the blocks tryscript runs, or
+  annotates a test `skip` or `only`. tryscript runs a block that opens on an unindented
+  line of backticks and `console` or `bash`, and nothing else;
+  `devtools/tryscript_blocks.py` reads transcripts the way tryscript does, and
+  `check_parity.py` uses the same reading;
 - no golden or recording is over the review budget.
   The limit, the measurement it was chosen from, and the files excepted until a named
-  bead shrinks them are beside `MAX_GOLDEN_LINES`;
+  bead shrinks them are beside `MAX_GOLDEN_LINES`. An excepted file has its line count
+  as a ceiling, so it can shrink and cannot grow.
   `python -m devtools.check_goldens --report` prints the current distribution.
 
 ### What a Transcript May Replace

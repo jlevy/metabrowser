@@ -250,11 +250,15 @@ The complete `make verify` gate still applies.
 Diagnose any failure before attributing it to the environment and record unresolved
 failures as failures.
 
-Regenerate the in-process pin golden only after an intended change:
+Regenerate the goldens only after an intended change, and read the diff:
 
 ```shell
-GOLDEN_UPDATE=1 uv --config-file uv.toml run --frozen pytest tests/test_cli_git_pin_golden.py
+make golden-update
 ```
+
+It rewrites every recording and transcript in dependency order and fails if a test it
+needed was skipped; see
+[End-to-End Testing](e2e-testing.md#one-harness-and-one-update-command).
 
 ## Phase 2: Classify and Refuse (No Acquire)
 
