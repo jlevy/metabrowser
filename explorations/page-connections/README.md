@@ -132,6 +132,8 @@ appeared, gained it from their snapshot.
 Chrome fires `pagehide` before `visibilitychange`, and on the way back `resume`,
 `visibilitychange`, then `pageshow`. A kept page is frozen, so its timers do not run
 while it is away; the freshness row had already stopped its own on `visibilitychange`.
+In the two runs after the fix that stayed 65 s on the last page, the net log has no
+request at all from three seconds into the stay until the first landing.
 
 ### Back After a Minute
 
