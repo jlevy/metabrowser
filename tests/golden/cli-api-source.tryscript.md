@@ -494,3 +494,80 @@ status: 200
 }
 ? 0
 ```
+
+## Test: a commit’s fetch is asked for by name, and a stale mirror gets it
+
+A page that opens a commit the mirror lacks posts `{"for": "commit"}`. A link in served
+content can send a reader to such an address, so this request fetches the mirror only
+when its last fetch is older than the freshness window, as this one’s is: the answer is
+`started`. On a mirror fetched inside the window it is `fresh` and nothing starts, which
+`cli-git-refresh.txt` records, since that takes a fetch.
+The fetch lock is still held, so the fetch that started reports `refreshing_elsewhere`.
+
+```console
+$ METABROWSER_HOME=$PWD/home metab file://$PWD/origin.git --api /api/source/refresh --data commit-fetch.json
+api: /api/source/refresh
+status: 202
+{
+  "refresh": "started",
+  "status": {
+    "subject": "git_revision",
+    "generation": 1,
+    "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "refreshable": true,
+    "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-17T12:00:05Z",
+    "last_outcome": {
+      "operation": "acquire",
+      "outcome": "succeeded",
+      "at": "2026-09-17T12:00:05Z"
+    },
+    "refreshing": true,
+    "stale": true,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  }
+}
+after: /api/source/status
+status: 200
+{
+  "subject": "git_revision",
+  "generation": 1,
+  "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+  "ref": "refs/remotes/origin/topic",
+  "ref_name": "topic",
+  "refreshable": true,
+  "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+  "ref_on_origin": true,
+  "last_fetch_at": "2026-09-17T12:00:05Z",
+  "last_outcome": {
+    "operation": "refresh",
+    "outcome": "refreshing_elsewhere",
+    "at": "[..]"
+  },
+  "refreshing": false,
+  "stale": true,
+  "pull_request": null,
+  "selection_state": null,
+  "selection_href": null
+}
+? 0
+```
+
+## Test: a refresh request that names anything else is refused
+
+```console
+$ METABROWSER_HOME=$PWD/home metab file://$PWD/origin.git --api /api/source/refresh --data refresh-branch.json
+api: /api/source/refresh
+status: 400
+{
+  "error": "\"for\" may only be \"commit\"",
+  "code": "invalid_request"
+}
+Error: /api/source/refresh returned HTTP 400
+? 1
+```

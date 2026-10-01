@@ -556,6 +556,47 @@ def test_a_same_origin_page_may_post(served: TestClient) -> None:
     _settle(served)
 
 
+def test_a_commit_fetch_inside_the_window_starts_nothing_until_a_retry(
+    served: TestClient,
+) -> None:
+    """The route enforces the floor itself: a page's own request for a missing commit's
+    fetch is answered ``fresh`` on a mirror fetched inside the window, whatever the page
+    decided, and only a retry fetches."""
+
+    fresh = _post(served, "/api/source/refresh", {"for": "commit"})
+    assert fresh.status_code == 200
+    assert fresh.json()["refresh"] == "fresh"
+    assert fresh.json()["status"]["refreshing"] is False
+    assert served.get("/api/source/status").json()["last_outcome"]["operation"] == "acquire"
+
+    retried = _post(served, "/api/source/refresh", {"for": "commit", "retry": True})
+    assert retried.status_code == 202
+    assert retried.json()["refresh"] == "started"
+    assert _settle(served)["last_outcome"] == {
+        "operation": "refresh",
+        "outcome": "succeeded",
+        "at": served.get("/api/source/status").json()["last_fetch_at"],
+    }
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"for": "branch"},
+        {"retry": True},
+        {"for": "commit", "retry": "yes"},
+        {"for": "commit", "oid": "0" * 40},
+    ],
+)
+def test_a_malformed_refresh_request_is_refused_and_starts_nothing(
+    served: TestClient, body: dict[str, Any]
+) -> None:
+    refused = _post(served, "/api/source/refresh", body)
+    assert refused.status_code == 400
+    assert refused.json()["code"] == "invalid_request"
+    assert served.get("/api/source/status").json()["refreshing"] is False
+
+
 # ── The coordinator ──────────────────────────────────────────────────
 
 

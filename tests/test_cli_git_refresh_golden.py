@@ -16,7 +16,9 @@ the origin moves the way a busy upstream does:
 - ``v2`` tags ``rewritten``.
 
 The transcript then shows the refresh starting and, once it has ended, the status after
-it; the next command pinning the new default revision; the force-pushed-away commit and
+it; the next command pinning the new default revision; a page's own request for a
+missing commit's fetch starting nothing on the mirror just fetched, and a retry fetching
+all the same; the force-pushed-away commit and
 the deleted branch's commit still readable by ID; the deleted branch gone by name; and a
 refresh against a removed origin recorded as ``origin_unavailable``, which exits 1 while
 the mirror keeps serving. Fetch times are wall-clock values no fixture can pin, so they
@@ -95,7 +97,7 @@ def _move_origin(origin: Path) -> str:
     ).stdout.strip()
 
 
-def _body(directory: Path, name: str, body: dict[str, str]) -> str:
+def _body(directory: Path, name: str, body: dict[str, Any]) -> str:
     path = directory / name
     path.write_text(json.dumps(body) + "\n", encoding="utf-8")
     return str(path)
@@ -175,6 +177,20 @@ def test_golden_refresh_and_pin_switching(tmp_path: Path, monkeypatch: pytest.Mo
     assert after["last_outcome"]["operation"] == "refresh"
     assert after["last_outcome"]["outcome"] == "succeeded"
 
+    # The fetch a page asks for when it opens a commit the mirror lacks. The mirror was
+    # just fetched, so the page's own request starts nothing and is answered at once;
+    # a reader's retry fetches all the same.
+    own = api("/api/source/refresh", data=_body(bodies, "commit-fetch.json", {"for": "commit"}))
+    assert _payload(own)["refresh"] == "fresh"
+    assert _payload(own)["status"]["refreshing"] is False
+    assert len(_sections(own.stdout)) == 1, "nothing was started, so there is nothing to follow"
+    retried = api(
+        "/api/source/refresh",
+        data=_body(bodies, "commit-retry.json", {"for": "commit", "retry": True}),
+    )
+    assert _payload(retried)["refresh"] == "started"
+    assert _after(retried)["last_outcome"]["outcome"] == "succeeded"
+
     old = _payload(api("/api/source/pin", data=_body(bodies, "pin-second.json", {"oid": SECOND})))
     assert old["changed"] is True and old["status"]["pin"] == SECOND
     tag = _payload(api("/api/source/pin", data=_body(bodies, "pin-v2.json", {"ref": "v2"})))
@@ -197,8 +213,8 @@ def test_golden_refresh_and_pin_switching(tmp_path: Path, monkeypatch: pytest.Mo
     assert failed["pin"] == rewritten
     assert failed["last_outcome"]["operation"] == "refresh"
     assert failed["last_outcome"]["outcome"] == "origin_unavailable"
-    # The last successful fetch is kept; only the outcome records the failure.
-    assert failed["last_fetch_at"] == after["last_fetch_at"]
+    # The last successful fetch, the retry's, is kept; only the outcome records the failure.
+    assert failed["last_fetch_at"] == _after(retried)["last_fetch_at"]
 
     rendered = "".join(blocks)
     assert str(tmp_path) not in rendered

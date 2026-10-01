@@ -105,6 +105,89 @@ status: 200
   "selection_href": null
 }
 --- stderr ---
+# metab file://<ORIGIN> --api /api/source/refresh --data commit-fetch.json
+exit: 0
+--- stdout ---
+api: /api/source/refresh
+status: 200
+{
+  "refresh": "fresh",
+  "status": {
+    "subject": "git_revision",
+    "generation": 1,
+    "pin": "79c734ab2c794b6aa3ea3186ef7d8a6578981721",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "refreshable": true,
+    "latest": "79c734ab2c794b6aa3ea3186ef7d8a6578981721",
+    "ref_on_origin": true,
+    "last_fetch_at": "<TIME>",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "succeeded",
+      "at": "<TIME>"
+    },
+    "refreshing": false,
+    "stale": false,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  }
+}
+--- stderr ---
+# metab file://<ORIGIN> --api /api/source/refresh --data commit-retry.json
+exit: 0
+--- stdout ---
+api: /api/source/refresh
+status: 202
+{
+  "refresh": "started",
+  "status": {
+    "subject": "git_revision",
+    "generation": 1,
+    "pin": "79c734ab2c794b6aa3ea3186ef7d8a6578981721",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "refreshable": true,
+    "latest": "79c734ab2c794b6aa3ea3186ef7d8a6578981721",
+    "ref_on_origin": true,
+    "last_fetch_at": "<TIME>",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "succeeded",
+      "at": "<TIME>"
+    },
+    "refreshing": true,
+    "stale": false,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  }
+}
+after: /api/source/status
+status: 200
+{
+  "subject": "git_revision",
+  "generation": 1,
+  "pin": "79c734ab2c794b6aa3ea3186ef7d8a6578981721",
+  "ref": "refs/remotes/origin/topic",
+  "ref_name": "topic",
+  "refreshable": true,
+  "latest": "79c734ab2c794b6aa3ea3186ef7d8a6578981721",
+  "ref_on_origin": true,
+  "last_fetch_at": "<TIME>",
+  "last_outcome": {
+    "operation": "refresh",
+    "outcome": "succeeded",
+    "at": "<TIME>"
+  },
+  "refreshing": false,
+  "stale": false,
+  "pull_request": null,
+  "selection_state": null,
+  "selection_href": null
+}
+--- stderr ---
 # metab file://<ORIGIN> --api /api/source/pin --data pin-second.json
 exit: 0
 --- stdout ---

@@ -70,6 +70,9 @@ ELSEWHERE_POLL_S: Final = 1.0
 ELSEWHERE_WAIT_S: Final = GIT_ACQUISITION_TIMEOUT_S
 
 type StartedOrJoined = Literal["started", "joined"]
+# How a request for the fetch a missing commit waits for was answered: the mirror's
+# fetch was started or joined, or the mirror is ``"fresh"`` and none was asked for.
+type CommitFetch = Literal["started", "joined", "fresh"]
 
 
 class SelectionError(Exception):
@@ -616,6 +619,28 @@ class MirrorSession:
             self.request_companion_refresh()
         return started
 
+    def request_commit_fetch(self, *, retry: bool) -> CommitFetch:
+        """Ask for the fetch a commit the mirror lacks waits for.
+
+        It is the fetch a pin by commit ID waits for: the mirror's own, of branches and
+        tags, whatever the state of the data served beside it, and that data's refresh
+        as well, since a pull request's head arrives only through it. A fetch of the
+        mirror that is already running is joined.
+
+        A page asks for this by itself when it opens a commit's address, and a link in
+        served content can send a reader to any address, so that request fetches only
+        what is older than :data:`FRESHNESS_WINDOW_S`: ``"fresh"`` says the mirror was
+        fetched inside the window and no fetch of it was started. *retry* is a reader's
+        own click, and always fetches.
+        """
+
+        now = _now_utc()
+        if retry or self._companion_stale(now):
+            self.request_companion_refresh()
+        if retry or self._mirror_stale(now) or self._coordinator.running(self.mirror.key):
+            return self.request_refresh(for_selection=True)
+        return "fresh"
+
     def request_companion_refresh(self) -> StartedOrJoined | None:
         """Start or join the refresh of the data served beside the mirror, if there is any."""
 
@@ -951,6 +976,7 @@ __all__ = [
     "MAX_CONCURRENT_REFRESHES",
     "UNSERVED_FRESHNESS",
     "AmbiguousSelectionError",
+    "CommitFetch",
     "CompanionRefresh",
     "FreshnessFields",
     "InvalidSelectionError",

@@ -145,6 +145,9 @@ def write_bodies(directory: Path, origin: Path) -> None:
     first = _rev(origin, "refs/heads/topic~1")
     bodies = {
         "refresh.json": {},
+        # What a page posts for a commit the mirror lacks, and a body the route refuses.
+        "commit-fetch.json": {"for": "commit"},
+        "refresh-branch.json": {"for": "branch"},
         "pin-feature.json": {"ref": "feature"},
         "pin-tag.json": {"ref": "v1"},
         "pin-oid.json": {"oid": first[:9]},
