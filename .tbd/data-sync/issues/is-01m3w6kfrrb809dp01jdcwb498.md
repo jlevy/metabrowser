@@ -3,16 +3,22 @@ type: is
 id: is-01m3w6kfrrb809dp01jdcwb498
 title: "After about five full page loads in one tab, the next page waits for a connection: pages in the back/forward cache keep their event stream open"
 kind: bug
-status: open
-priority: 3
-version: 1
+status: in_progress
+priority: 2
+version: 4
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+delegate: claude-code@spud10.local
 labels:
   - release:v0.12.0
-dependencies: []
+dependencies:
+  - type: blocks
+    target: is-01m2k713pxra1ns2fk3pcwrpb6
 parent_id: is-01m36k3w9vgwy97c9hcj2sqrs5
+hold: null
+hold_until: null
 created_at: 2026-10-01T17:01:14.875Z
-updated_at: 2026-10-01T17:01:14.875Z
+updated_at: 2026-10-01T17:25:22.344Z
+started_at: 2026-10-01T17:25:22.341Z
 ---
 Found 2026-10-01 while running the new browser step 3.4 of docs/qa-v012-repository-library.md on the stack tip 373b59a9 (a plain trusted folder, `metab <folder> --no-open`), driven in stock Chrome 152.0.7977.83, headless, over the DevTools protocol with `Page.navigate` for each address.
 
@@ -31,3 +37,7 @@ Not checked: a headed browser with typed addresses; Safari and Firefox; a served
 Fix direction (for whoever takes this; no code was changed): close the event stream on a persisted `pagehide` and reopen it on the matching `pageshow`, as the keyboard infrastructure is rebuilt there, and add a browserless session for it. Acceptance: ten full page loads in one tab with the back/forward cache on, none waiting for a connection.
 
 Until then the runbook's step 3.4 tells the walker to open a new tab if a page stalls.
+
+## Notes
+
+2026-10-01 (coordinator): raised to P2 and made a landing gate. v0.12 adds full page loads to ordinary use (View file links from a diff, pin switches, Back after a switch), so a stall after about five page loads in one tab is reachable in normal GitHub browsing even if the EventSource code is the same on main. The fix agent must first establish whether 0.11.0 shows it, and prove the cause before fixing.
