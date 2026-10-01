@@ -428,6 +428,23 @@ def test_a_status_that_was_dropped_is_due_again_at_once(
     assert log.getvalue().splitlines()[1:] == [
         f"cloning {URL}: receiving objects: 41%, 41.0 MiB at 1.0 MiB/s (11 s)"
     ]
+    # On a terminal too, and what is on the screen is still the status before it.
+    clock.now = 100.0
+    terminal = Terminal()
+    report = CloneReport(URL, WHERE, stream=terminal)
+    report.phase("fetching every object")
+    clock.now += 1
+    report.progress(_receiving(40))
+    long = "receiving objects: 40%, 40.0 MiB at 1.0 MiB/s (1.0 s)"
+    assert terminal.frames[-1] == "\r" + long
+    writable = False
+    clock.now += 1
+    report.progress(GitProgress("resolving", 1, 10))
+    writable = True
+    clock.now += REDRAW_INTERVAL_S / 2
+    report.progress(GitProgress("resolving", 2, 10))
+    short = "resolving deltas: 20% (2.0 s)"
+    assert terminal.frames[-1] == "\r" + short + " " * (len(long) - len(short))
 
 
 def test_a_stream_whose_reader_has_gone_is_written_to_once(clock: Clock) -> None:

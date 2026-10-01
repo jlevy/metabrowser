@@ -332,7 +332,7 @@ def test_the_time_keeps_counting_while_git_reports_nothing(
     # Silent until released; the bound only keeps a failure from waiting for ever.
     _fetch_after(
         monkeypatch,
-        f"i=0; while [ ! -e '{released}' ] && [ $i -lt 800 ]; do sleep 0.05; i=$((i + 1)); done",
+        f"i=0; while [ ! -e '{released}' ] && [ $i -lt 300 ]; do sleep 0.05; i=$((i + 1)); done",
     )
     monkeypatch.setattr(clone_report, "TICK_S", 0.01)
     seconds = itertools.count()
