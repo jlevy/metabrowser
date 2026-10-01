@@ -49,6 +49,7 @@ from metabrowser.cli.hangup import run_cancelling_on_hangup
 from metabrowser.cli.plugin_paths import apply_extra_plugin_dirs
 from metabrowser.cli.selection import (
     PullOpen,
+    display_ref,
     open_pull_for_cli,
     pending_selection_opener,
     require_selected_path,
@@ -527,7 +528,8 @@ def run_serve_pin(
     stop_on_interrupt()
     selected = servable.selected
     ref = ref_short_name(selected.ref)
-    revision = selected.commit + (f" ({ref})" if ref else "")
+    # The ref is the origin's: displayed as the ``pin:`` line displays it, never raw.
+    revision = selected.commit + (f" ({display_ref(ref)})" if ref else "")
     serve_until_interrupted(
         served=selected.published.source.normalized,
         view_href=servable.view_href,

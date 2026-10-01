@@ -409,6 +409,9 @@ Repository cache:
   The banner names the source and prints a `Revision:` line with the full commit and
   branch. `--path` deep-links a path within the pin, spelled as `--show` accepts it, and
   prints a directory’s address with a trailing slash.
+  The branch name on the `Revision:` line is the origin’s, so it is shown as a path is:
+  a control character in it, such as the one-character CSI U+009B, or an invisible
+  character, is U+FFFD, there as on a GitHub URL’s `pin:` line.
   If the pin cannot be opened again when the server starts, the command prints the same
   path-free error as `--show` and exits 1 rather than a traceback.
   The tree, file views, Markdown and its images, JSON, images, history, commit detail,
