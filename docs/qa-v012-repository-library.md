@@ -157,9 +157,21 @@ gh pr list --repo jlevy/metabrowser --state open --limit 200 \
 ```
 
 Each line’s base is the head of the line above it.
-Two pull requests on one base would mean the chain has forked: stop and ask which line
-to test. The command leaves out `reference/v012-hosted-review`, a do-not-merge branch
-beside the chain. Do not check out the superseded crumb slices (#208, #210, #211–#215).
+Two pull requests on one base mean the chain has forked, and the listing then shows both
+branches one after the other, so its last line is no longer the tip.
+This prints a line for each fork and nothing while the chain is linear:
+
+```shell
+gh pr list --repo jlevy/metabrowser --state open --limit 200 \
+  --json number,baseRefName,headRefName \
+  --jq 'map(select(.baseRefName != "main" and (.headRefName | startswith("reference/") | not)))
+        | group_by(.baseRefName)[] | select(length > 1)
+        | "forked at \(.[0].baseRefName): \(map("#\(.number)") | join(", "))"'
+```
+
+If it prints anything, stop and ask which line to test.
+These commands leave out `reference/v012-hosted-review`, a do-not-merge branch beside
+the chain. Do not check out the superseded crumb slices (#208, #210, #211–#215).
 
 | Lane | PR | Branch | Tip | What it adds |
 | --- | --- | --- | --- | --- |
@@ -192,8 +204,8 @@ git fetch -q origin main
 git merge-base --is-ancestor origin/main HEAD; echo "exit:$?"
 ```
 
-**Pass:** `ALPHA_PR` is the number on the chain’s last line, every check passes, and
-both ancestry commands print `exit:0`.
+**Pass:** The fork check printed nothing, `ALPHA_PR` is the number on the chain’s last
+line, every check passes, and both ancestry commands print `exit:0`.
 
 Run both the Repository Library and HTML regression steps on the same selected
 integration tip. HTML trust has landed and is inherited through `main`; no separate
