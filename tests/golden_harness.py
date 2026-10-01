@@ -428,10 +428,13 @@ def label_home(text: str, home: Path, label: str = HOME_LABEL) -> str:
     """*text* with the application home *home* as *label*, checked to be where it may be.
 
     A first clone says where it goes and a cache hit says where it was found, each in
-    one line of stderr. The home is named nowhere else: not in a route's answer, an
-    identity line, or an error. And those lines name the cache directory and stop: a
-    line that went on to a store or a staging entry under it is refused here, before
-    an update could write it into a transcript.
+    one line of stderr. The home is named nowhere else in what a command prints: not in
+    an identity line or an error, and not in a route's answer. The one answer that does
+    name a path under it, the status's ``location`` of a served mirror, is the served
+    store's own directory, which ``--api`` prints as ``<ROOT>`` as it prints a served
+    folder's path. And those lines name the cache directory and stop: a line that went
+    on to a store or a staging entry under it is refused here, before an update could
+    write it into a transcript.
     """
 
     labelled = text.replace(str(home), label)
