@@ -20,12 +20,14 @@ from typing import Any, cast
 
 import pytest
 
+from devtools import check_startup_scripts
 from metabrowser import server as proc_browser
 from tests.required_tools import require_node
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SESSION = Path(__file__).resolve().parent / "dom" / "preview-pane-state-session.js"
 STATIC = REPO_ROOT / "src" / "metabrowser" / "static"
+SDK_SANDBOX = Path(__file__).resolve().parent / "dom" / "sdk-sandbox.js"
 SELECT_A_FILE = "Select a file to preview."
 PULL_PAGE_FAILED = (
     "preview-empty preview-error: Could not load the pull-request page. "
@@ -319,6 +321,59 @@ def test_on_demand_code_that_does_not_arrive_is_said_and_asked_for_again(
     retried = refused["viewHelpersOnThePullPage"]["nextRoute"]
     assert retried["scriptRequests"] == ["plugin-sdk-views.js"]
     assert retried["pane"]["shows"] == NO_PULL_PLUGIN
+
+
+def test_pull_request_routes_are_a_startup_script_of_pull_addresses_only() -> None:
+    folder_html, pull_html = check_startup_scripts.render_shells(
+        check_startup_scripts.FOLDER_ADDRESS, check_startup_scripts.PULL_ADDRESS
+    )
+    assert "/static/pull-route.js" not in check_startup_scripts.startup_script_paths(folder_html)
+    assert "/static/pull-route.js" in check_startup_scripts.startup_script_paths(pull_html)
+    # Any other page takes them from a bundle, which names the global they leave.
+    bundles = json.loads(
+        folder_html.split("window.METABROWSER_ASSET_BUNDLES=", 1)[1].split(";</script>", 1)[0]
+    )
+    assert [
+        (entry["src"].partition("?")[0], entry.get("provides")) for entry in bundles["pull-route"]
+    ] == [("/static/pull-route.js", "MetabrowserPullRoute")]
+    # The navigation module, a startup script of every page, no longer carries them.
+    exported = subprocess.run(
+        [
+            require_node(),
+            "-e",
+            "const sandbox = require(process.argv[1]).createSdkSandbox();"
+            "process.stdout.write(JSON.stringify({"
+            "navigation: Object.keys(sandbox.MetabrowserNavigationRoute),"
+            "pullRoutes: typeof sandbox.MetabrowserPullRoute}));",
+            str(SDK_SANDBOX),
+        ],
+        capture_output=True,
+        check=True,
+        text=True,
+        timeout=20,
+    )
+    names = json.loads(exported.stdout)
+    assert names["pullRoutes"] == "undefined"
+    assert "parse" in names["navigation"]
+    assert not {"parsePull", "pullHref", "pullHistoryAction", "createPullPageHost"} & set(
+        names["navigation"]
+    )
+
+
+def test_a_history_landing_on_a_pull_address_asks_for_the_routes() -> None:
+    # The shell's own startup, whole: a folder's page asks for no script before its
+    # first tree, and when history then lands on a pull-request address, the listener
+    # app.js registered asks for that page's routes. A landing on a file asks for none.
+    folder_html = check_startup_scripts.render_folder_shell()
+    on_pull = check_startup_scripts.run_startup_session(folder_html, "/view/", landing="/pull/8")
+    assert on_pull["errors"] == []
+    assert on_pull["requested"] == []
+    assert on_pull["afterLanding"] == [{"how": "script", "url": "/static/pull-route.js"}]
+    on_file = check_startup_scripts.run_startup_session(
+        folder_html, "/view/", landing="/view/notes.md"
+    )
+    assert on_file["errors"] == []
+    assert on_file["afterLanding"] == []
 
 
 def test_shell_seams_the_session_cannot_execute() -> None:
