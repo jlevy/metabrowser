@@ -78,6 +78,9 @@ links to the document that covers each in depth.
 
 ## Reviews
 
+- [Per-layer review ledger for the v0.12 stack](reviews/review-2026-10-01-v012-stack-review-ledger.md)
+  — what review each pull request of the stack had, its findings and their disposition,
+  CI on each head, and the limits of that evidence
 - [Test-suite baseline for the v0.12 test review](reviews/review-2026-10-01-test-suite-baseline.md)
   — the size and CI run time of the suite at `main`, at the v0.12 stack before the
   review, and after its first three pull requests, with the command behind each figure
