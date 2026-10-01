@@ -46,7 +46,18 @@ _PNG_HEADER = b"\x89PNG\r\n\x1a\n" + b"\x00" * 120
 _BINARY = bytes(range(256)) * 4
 # Every fixture blob is larger than this, so every route below takes the windowed path.
 _CEILING = 64
-assert all(len(body) > _CEILING for body in (_LINES, _FRONTMATTER, _JSONL, _PNG_HEADER, _BINARY))
+_AT_OR_UNDER_THE_CEILING = [
+    name
+    for name, body in {
+        "_LINES": _LINES,
+        "_FRONTMATTER": _FRONTMATTER,
+        "_JSONL": _JSONL,
+        "_PNG_HEADER": _PNG_HEADER,
+        "_BINARY": _BINARY,
+    }.items()
+    if len(body) <= _CEILING
+]
+assert not _AT_OR_UNDER_THE_CEILING, f"fixtures at or under the ceiling: {_AT_OR_UNDER_THE_CEILING}"
 
 
 def _wire(name: bytes) -> str:
