@@ -49,6 +49,11 @@ def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
         "markers", "live_github: an opt-in test that talks to github.com with the real gh"
     )
+    config.addinivalue_line(
+        "markers",
+        "macos_tier: runs only on macOS, on its extended ACLs or its case-insensitive "
+        "file system; `make test-macos` runs these alone and fails if one skips",
+    )
 
 
 # ── Tests that must not be silently absent ─────────────────────────────────────
@@ -70,6 +75,34 @@ def git_on_path() -> str:
     """Behind ``needs_git``: without Git the test fails; see ``tests/required_tools.py``."""
 
     return require_git()
+
+
+REQUIRE_MACOS_TIER_ENV = "METABROWSER_REQUIRE_MACOS_TIER"
+
+
+def fail_a_required_macos_tier_skip(item: pytest.Item, report: pytest.TestReport) -> None:
+    """Turn a skipped ``macos_tier`` test into a failure where the tier is required.
+
+    ``make test-macos`` sets the variable, so that run cannot pass by testing nothing:
+    on Linux, or on a case-sensitive volume, the tests it exists for fail instead.
+    """
+
+    if not report.skipped or os.environ.get(REQUIRE_MACOS_TIER_ENV) != "1":
+        return
+    if item.get_closest_marker("macos_tier") is None:
+        return
+    reason = report.longrepr[2] if isinstance(report.longrepr, tuple) else report.longrepr
+    report.outcome = "failed"
+    report.longrepr = f"{REQUIRE_MACOS_TIER_ENV}=1, so a macOS-tier test may not skip. {reason}"
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_makereport(
+    item: pytest.Item, call: pytest.CallInfo[None]
+) -> Generator[None, pytest.TestReport, pytest.TestReport]:
+    report = yield
+    fail_a_required_macos_tier_skip(item, report)
+    return report
 
 
 @pytest.fixture(scope="session")

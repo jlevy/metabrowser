@@ -1362,6 +1362,7 @@ def test_a_base_branch_the_store_spells_otherwise_is_neither_fetched_nor_compare
     assert endpoints.base_from == "base_sha"
 
 
+@pytest.mark.macos_tier
 def test_a_base_branch_folded_on_disk_does_not_fail_the_record(stand: _Stand) -> None:
     """On a case-insensitive filesystem only: the store keeps ``Feature/x`` as ``feature/x``."""
 

@@ -31,6 +31,7 @@ from tests.admitted_git import require_admitted_git
 LIVE_ENV = "METABROWSER_LIVE_GITHUB"
 
 pytestmark = [
+    pytest.mark.live_github,
     pytest.mark.skipif(os.environ.get(LIVE_ENV) != "1", reason=f"set {LIVE_ENV}=1 to run"),
     pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only"),
     pytest.mark.timeout(600),
@@ -89,7 +90,7 @@ def _gh_json(*args: str) -> Any:
 
 def _require_signed_in_gh() -> None:
     if shutil.which("gh") is None:
-        pytest.skip("gh is not installed")
+        pytest.fail(f"{LIVE_ENV}=1 selected the live tier, which needs gh; it is not installed")
     status = subprocess.run(
         ["gh", "auth", "status", "--active", "--hostname", "github.com", "--json", "hosts"],
         check=False,
@@ -99,7 +100,7 @@ def _require_signed_in_gh() -> None:
         timeout=60,
     )
     if '"login"' not in status.stdout:
-        pytest.skip("gh is not signed in to github.com")
+        pytest.fail(f"{LIVE_ENV}=1 selected the live tier, but gh is not signed in to github.com")
 
 
 def _changed_paths(document: dict[str, Any]) -> set[str]:

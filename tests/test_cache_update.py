@@ -410,6 +410,7 @@ def _case_insensitive(directory: Path) -> bool:
         probe.unlink()
 
 
+@pytest.mark.macos_tier
 def test_a_case_only_branch_rename_does_not_wedge_the_mirror(mirror: _Mirror) -> None:
     """``Topic2`` renamed ``topic2``: on a case-insensitive file system one ref file."""
 
@@ -452,6 +453,7 @@ def _add_packed_ref(git_dir: Path, name: str, oid: str) -> None:
     packed.write_text("".join([*lines[:at], entry, *lines[at:]]), encoding="utf-8")
 
 
+@pytest.mark.macos_tier
 def test_a_ref_folded_into_its_case_twin_is_put_back_and_reported(mirror: _Mirror) -> None:
     """``SAME`` added beside an unchanged ``same``: one loose file cannot hold both.
 
@@ -521,6 +523,7 @@ def test_a_ref_folded_into_its_case_twin_is_put_back_and_reported(mirror: _Mirro
     assert "refs/remotes/origin/SAME" not in refs
 
 
+@pytest.mark.macos_tier
 def test_refs_the_filesystem_spells_differently_are_not_folds(mirror: _Mirror) -> None:
     """A case-insensitive, normalization-insensitive filesystem respells, and that is all.
 

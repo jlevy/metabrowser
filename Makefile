@@ -92,8 +92,10 @@ lint-check:
 # none reaches a developer's signed-in gh; pytest has the same guard in tests/conftest.py.
 TRYSCRIPT := PATH="$(CURDIR)/tests/no-real-gh:$$PATH" npx --no-install tryscript
 
+# The default tier. -rs names every skipped test with its reason, so a skip is read
+# rather than counted. A missing Node or Git fails here; see tests/required_tools.py.
 test:
-	$(UV_RUN) pytest
+	$(UV_RUN) pytest -rs
 	$(TRYSCRIPT) run 'tests/golden/*.tryscript.md'
 
 # Acquisition and store-read tests on a real Git the acquisition floor admits,
@@ -128,6 +130,22 @@ ADMITTED_GIT_TESTS := \
 
 test-admitted-git:
 	$(UV_RUN) pytest -rs $(ADMITTED_GIT_TESTS)
+
+# The outer tiers nothing in CI runs. docs/e2e-testing.md ("Test Tiers") says what each
+# covers and when to run it.
+.PHONY: test-macos test-live-github
+test-macos test-live-github: | install
+
+# Tests that need macOS: its extended ACLs, or a case-insensitive file system. They are
+# part of `make test` on a Mac and skip on Linux. Here a skip is a failure, so this
+# target cannot pass on a machine that cannot run them.
+test-macos:
+	METABROWSER_REQUIRE_MACOS_TIER=1 $(UV_RUN) pytest -rs -m macos_tier
+
+# Read-only smoke tests against public repositories on github.com. They need the
+# network, an admitted Git, and a gh signed in to github.com.
+test-live-github:
+	METABROWSER_LIVE_GITHUB=1 $(UV_RUN) pytest -rs -m live_github
 
 # Regenerate the CLI console goldens after an intended surface change.
 # tryscript rewrites changed blocks with literal output, golden_fixup.py

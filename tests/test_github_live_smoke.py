@@ -165,7 +165,7 @@ def test_live_size_check_with_the_real_gh() -> None:
     """The provider's own read-only size query; no clone, and no credential command."""
 
     if gh_executable() is None:
-        pytest.skip("gh is not installed")
+        pytest.fail(f"{LIVE_ENV}=1 selected the live tier, which needs gh; it is not installed")
     try:
         asyncio.run(
             run_gh(
@@ -181,8 +181,11 @@ def test_live_size_check_with_the_real_gh() -> None:
                 ]
             )
         )
-    except GhError:
-        pytest.skip("gh cannot read the GitHub API here (signed out or offline)")
+    except GhError as error:
+        pytest.fail(
+            f"{LIVE_ENV}=1 selected the live tier, but gh cannot read the GitHub API "
+            f"(signed out or offline): {error}"
+        )
     provider = GithubProvider()
     small = GitSource(
         transport="https", form="url", normalized="https://github.com/octocat/hello-world"

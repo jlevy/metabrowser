@@ -1,12 +1,15 @@
-"""A missing Node or Git fails a test unless a developer names it as allowed."""
+"""A missing Node or Git fails a test, and the macOS tier cannot pass by skipping."""
 
 from __future__ import annotations
 
 import re
 from collections.abc import Callable
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 
 import pytest
+from conftest import REQUIRE_MACOS_TIER_ENV, fail_a_required_macos_tier_skip
 
 from tests.required_tools import ALLOW_MISSING_TOOLS_ENV, require_git, require_node
 
@@ -63,3 +66,37 @@ def test_no_test_module_looks_node_or_git_up_itself() -> None:
         if path.name != "required_tools.py" and lookup.search(path.read_text(encoding="utf-8"))
     )
     assert offenders == []
+
+
+def _skipped_macos_tier_test(*, marked: bool = True) -> tuple[Any, Any]:
+    item = SimpleNamespace(get_closest_marker=lambda name: object() if marked else None)
+    report = SimpleNamespace(
+        skipped=True, outcome="skipped", longrepr=("tests/test_x.py", 1, "Skipped: needs macOS")
+    )
+    return item, report
+
+
+def test_a_required_macos_tier_turns_its_skip_into_a_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(REQUIRE_MACOS_TIER_ENV, "1")
+    item, report = _skipped_macos_tier_test()
+    fail_a_required_macos_tier_skip(item, report)
+    assert report.outcome == "failed"
+    assert report.longrepr == (
+        f"{REQUIRE_MACOS_TIER_ENV}=1, so a macOS-tier test may not skip. Skipped: needs macOS"
+    )
+
+
+def test_a_skip_stays_a_skip_outside_the_required_macos_tier(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(REQUIRE_MACOS_TIER_ENV, "1")
+    item, report = _skipped_macos_tier_test(marked=False)
+    fail_a_required_macos_tier_skip(item, report)
+    assert report.outcome == "skipped"
+
+    monkeypatch.delenv(REQUIRE_MACOS_TIER_ENV)
+    item, report = _skipped_macos_tier_test()
+    fail_a_required_macos_tier_skip(item, report)
+    assert report.outcome == "skipped"

@@ -120,13 +120,19 @@ def _another_uid() -> int:
 skip_as_root = pytest.mark.skipif(
     os.geteuid() == 0, reason="root is never denied by modes, so a denial cannot be staged"
 )
-darwin_only = pytest.mark.skipif(
+_skip_off_darwin = pytest.mark.skipif(
     sys.platform != "darwin",
     reason=(
         "extended ACLs are inspected only on macOS; a Linux POSIX ACL cannot exceed the "
         "group-class mask that 0700 and 0600 clear, as metabrowser/home.py records"
     ),
 )
+
+
+def darwin_only[Test: Callable[..., object]](test: Test) -> Test:
+    """Mark a test for the macOS tier, which CI does not run; see docs/e2e-testing.md."""
+
+    return pytest.mark.macos_tier(_skip_off_darwin(test))
 
 
 _PATHS_GIVEN_ACLS: list[Path] = []
