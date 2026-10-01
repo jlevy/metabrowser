@@ -608,6 +608,36 @@ pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: g
 --- gh ---
 gh auth status
 gh api repos/octo/demo/pulls/11
+# metab https://github.com/octo/demo/pull/11 --api /api/plugin/github/pull
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull
+status: 200
+{
+  "state": "absent",
+  "reason": "not_cached",
+  "source": "https://github.com/octo/demo",
+  "number": 11,
+  "pin": "c691256511d05858850bc7684ae062fea0d41132",
+  "fetched_at": null,
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "rate_limited",
+    "message": "GitHub's API rate limit is exhausted; try again in a few minutes",
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "comparison_route": null,
+  "record": null
+}
+--- stderr ---
+selection: pull_request
+pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
+pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: GitHub's API rate limit is exhausted; try again in a few minutes (rate_limited); the pin is the default branch)
+--- gh ---
+gh auth status
+gh api repos/octo/demo/pulls/11
 ## Git's fetch of refs/pull/7/head is answered here with the text Git printed for a repository GitHub does not show.
 # metab https://github.com/octo/demo/pull/7 --no-serve
 exit: 0

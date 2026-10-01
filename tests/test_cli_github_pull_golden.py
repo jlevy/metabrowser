@@ -200,6 +200,16 @@ def test_golden_pull_requests_fetch_refresh_and_read_offline(
         "base_from": "base_sha",
     }
 
+    # A secondary limit: requests remain and nothing says when it lifts.
+    secondary = _api(
+        online,
+        "repos/octo/demo/pulls/11",
+        {
+            "status": 403,
+            "headers": {"X-Ratelimit-Remaining": "4990"},
+            "body": {"message": "You have exceeded a secondary rate limit."},
+        },
+    )
     refusals: list[tuple[str, dict[str, Any]]] = [
         ("not_found_or_private", online),
         ("not_logged_in", _with(online, auth={"stdout": '{"hosts":{}}\n', "exit": 0})),
@@ -234,18 +244,7 @@ def test_golden_pull_requests_fetch_refresh_and_read_offline(
                 },
             ),
         ),
-        (
-            "rate_limited",
-            _api(
-                online,
-                "repos/octo/demo/pulls/11",
-                {
-                    "status": 403,
-                    "headers": {"X-Ratelimit-Remaining": "4990"},
-                    "body": {"message": "You have exceeded a secondary rate limit."},
-                },
-            ),
-        ),
+        ("rate_limited", secondary),
         (
             "network_error",
             _with(online, api_failure={"stderr": "dial tcp: i/o timeout\n", "exit": 1}),
@@ -259,6 +258,13 @@ def test_golden_pull_requests_fetch_refresh_and_read_offline(
             state,
             refused.stdout,
         )
+
+    # With no reset time to give, the refusal's stamp says null, and is kept: the route
+    # answers from it, so the next command within the window does not ask gh again.
+    session.answer(secondary)
+    limited = session.run(f"{PULL}/11", "--api", "/api/plugin/github/pull")
+    last = limited.payload()["last_refresh"]
+    assert (last["outcome"], last["reset_at"]) == ("rate_limited", None)
 
     # The API shows the pull request while Git's fetch of its head is answered as a
     # repository GitHub does not show, as for credentials that stopped opening it
