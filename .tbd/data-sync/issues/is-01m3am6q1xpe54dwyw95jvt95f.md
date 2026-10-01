@@ -3,9 +3,9 @@ type: is
 id: is-01m3am6q1xpe54dwyw95jvt95f
 title: No way to open a changed file at base or head from a commit or PR diff
 kind: feature
-status: in_progress
+status: closed
 priority: 2
-version: 5
+version: 6
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 delegate: claude-code@spud10.local
 labels:
@@ -17,8 +17,12 @@ parent_id: is-01m36k3w9vgwy97c9hcj2sqrs5
 hold: null
 hold_until: null
 created_at: 2026-09-24T21:12:36.668Z
-updated_at: 2026-10-01T00:14:25.006Z
+updated_at: 2026-10-01T03:17:04.043Z
 started_at: 2026-10-01T00:14:25.004Z
+closed_at: 2026-10-01T03:17:04.042Z
+close_reason: "PR #248: View file / View at parent / View at base on each changed file's bar in the commit diff and PR Files changed; link at the served commit, pin switch otherwise; no new route or SDK. Review: no-store replaced by a pageshow/back_forward pin check (Back 3-14 ms with bfcache in Chrome 152, one reload only after a switch); submodule and symlink sides skipped; OID switch keeps the served ref; CI green on the restacked head. M03b/M08b rerun is tracked by mb-gnr9."
+resolution: null
+duplicate_of: null
 ---
 Found during the v0.12 alpha acceptance (mb-gnr9) on the integrated stack (PR #241; installed wheel 0.11.1.dev400+250a10c4).
 
