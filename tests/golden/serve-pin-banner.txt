@@ -5,6 +5,8 @@ Serving file://<ROOT>/origin.git at http://127.0.0.1:8411/view/  [dev build: <ST
 Revision: 99d0343568d1b5119b4182bdf8162413989746c2 (topic)
 Plugins: agent-log, binary, diff, folder, github, html, image, markdown, structured, text, unknown-jsonl
 --- stderr ---
+cloning file://<ROOT>/origin.git into <ROOT>/home/cache
+cloned file://<ROOT>/origin.git in 0.0 s; starting the server
 # metab file://<ROOT>/origin.git --no-open --path images/logo.png
 exit: 0
 --- stdout ---
@@ -12,6 +14,7 @@ Serving file://<ROOT>/origin.git at http://127.0.0.1:8411/view/g1-aW1hZ2Vz/g1-bG
 Revision: 99d0343568d1b5119b4182bdf8162413989746c2 (topic)
 Plugins: agent-log, binary, diff, folder, github, html, image, markdown, structured, text, unknown-jsonl
 --- stderr ---
+using the clone of file://<ROOT>/origin.git cached in <ROOT>/home/cache, fetched less than a minute ago
 # metab file://<ROOT>/origin.git --no-open --path ./README.md
 exit: 0
 --- stdout ---
@@ -19,6 +22,7 @@ Serving file://<ROOT>/origin.git at http://127.0.0.1:8411/view/g1-UkVBRE1FLm1k  
 Revision: 99d0343568d1b5119b4182bdf8162413989746c2 (topic)
 Plugins: agent-log, binary, diff, folder, github, html, image, markdown, structured, text, unknown-jsonl
 --- stderr ---
+using the clone of file://<ROOT>/origin.git cached in <ROOT>/home/cache, fetched less than a minute ago
 # metab file://<ROOT>/origin.git --no-open --path /README.md
 exit: 0
 --- stdout ---
@@ -26,6 +30,7 @@ Serving file://<ROOT>/origin.git at http://127.0.0.1:8411/view/g1-UkVBRE1FLm1k  
 Revision: 99d0343568d1b5119b4182bdf8162413989746c2 (topic)
 Plugins: agent-log, binary, diff, folder, github, html, image, markdown, structured, text, unknown-jsonl
 --- stderr ---
+using the clone of file://<ROOT>/origin.git cached in <ROOT>/home/cache, fetched less than a minute ago
 # metab file://<ROOT>/origin.git --no-open --path g1-aW1hZ2Vz/g1-bG9nby5wbmc
 exit: 0
 --- stdout ---
@@ -33,6 +38,7 @@ Serving file://<ROOT>/origin.git at http://127.0.0.1:8411/view/g1-aW1hZ2Vz/g1-bG
 Revision: 99d0343568d1b5119b4182bdf8162413989746c2 (topic)
 Plugins: agent-log, binary, diff, folder, github, html, image, markdown, structured, text, unknown-jsonl
 --- stderr ---
+using the clone of file://<ROOT>/origin.git cached in <ROOT>/home/cache, fetched less than a minute ago
 # metab file://<ROOT>/origin.git --no-open --path images
 exit: 0
 --- stdout ---
@@ -40,6 +46,7 @@ Serving file://<ROOT>/origin.git at http://127.0.0.1:8411/view/g1-aW1hZ2Vz/  [de
 Revision: 99d0343568d1b5119b4182bdf8162413989746c2 (topic)
 Plugins: agent-log, binary, diff, folder, github, html, image, markdown, structured, text, unknown-jsonl
 --- stderr ---
+using the clone of file://<ROOT>/origin.git cached in <ROOT>/home/cache, fetched less than a minute ago
 # metab file://<ROOT>/origin.git --no-open --path images/
 exit: 0
 --- stdout ---
@@ -47,6 +54,7 @@ Serving file://<ROOT>/origin.git at http://127.0.0.1:8411/view/g1-aW1hZ2Vz/  [de
 Revision: 99d0343568d1b5119b4182bdf8162413989746c2 (topic)
 Plugins: agent-log, binary, diff, folder, github, html, image, markdown, structured, text, unknown-jsonl
 --- stderr ---
+using the clone of file://<ROOT>/origin.git cached in <ROOT>/home/cache, fetched less than a minute ago
 # metab file://<ROOT>/origin.git --no-open --path /
 exit: 0
 --- stdout ---
@@ -54,3 +62,4 @@ Serving file://<ROOT>/origin.git at http://127.0.0.1:8411/view/  [dev build: <ST
 Revision: 99d0343568d1b5119b4182bdf8162413989746c2 (topic)
 Plugins: agent-log, binary, diff, folder, github, html, image, markdown, structured, text, unknown-jsonl
 --- stderr ---
+using the clone of file://<ROOT>/origin.git cached in <ROOT>/home/cache, fetched less than a minute ago

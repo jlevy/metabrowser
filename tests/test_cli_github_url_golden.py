@@ -40,7 +40,14 @@ from metabrowser.git.process import GitCommandError
 from metabrowser.git.tree_source import GitPath
 from tests.git_pin_harness import git_env
 from tests.github_origin import FIRST_COMMIT, SECOND_COMMIT, _commit, github_origin
-from tests.golden_harness import Invocation, check_golden, isolate_cli, quoted, run_metab
+from tests.golden_harness import (
+    Invocation,
+    check_golden,
+    isolate_cli,
+    label_home,
+    quoted,
+    run_metab,
+)
 from tests.required_tools import needs_git
 
 pytestmark = [
@@ -227,7 +234,9 @@ def test_golden_github_urls_open_through_a_local_stand_in(
         assert "Error: README\ufffd.md is not in " in result.stderr
         assert "(path_not_found)" in result.stderr
 
-    rendered = "".join(_block(args, result) for args, result in [*opened, *refused])
+    rendered = label_home(
+        "".join(_block(args, result) for args, result in [*opened, *refused]), home
+    )
     assert chr(0x202E) not in rendered and chr(0x9B) not in rendered
     assert chr(0x3164) not in rendered and chr(0x2800) not in rendered
     heart = by_command[f"{REPO}/blob/unicode/docs/{HEART}.md --no-serve"].stdout
@@ -369,5 +378,6 @@ def test_golden_a_repository_the_origin_does_not_show(
         + "## Another host answers 404, and there is no hint.\n"
         + _block(*elsewhere)
     )
+    rendered = label_home(rendered, home)
     assert str(tmp_path) not in rendered and str(home) not in rendered
     check_golden("cli-github-not-found.txt", rendered)

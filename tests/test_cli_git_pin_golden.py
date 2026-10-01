@@ -104,6 +104,7 @@ from tests.golden_harness import (
     check_golden,
     file_url,
     isolate_cli,
+    label_home,
     ok,
     quoted,
     refused,
@@ -322,8 +323,9 @@ class _Pin:
         return self._run("--check-api")
 
     def check(self, name: str) -> None:
-        rendered = self.labels.apply("".join(self.blocks))
-        # Nothing a command printed names the sandbox, the application home, or a pack.
+        rendered = label_home(self.labels.apply("".join(self.blocks)), self.sandbox / "home")
+        # Nothing a command printed names the sandbox or a pack, and only a clone's own
+        # lines name the application home.
         assert str(self.sandbox) not in rendered
         assert "pack-" not in rendered and ".pack" not in rendered
         check_golden(name, rendered)

@@ -1177,15 +1177,7 @@ def _display_root_str() -> str:
         home = Path.home().resolve()
     except (OSError, RuntimeError):
         return str(resolved)
-    if resolved == home:
-        return "~"
-    try:
-        relative = resolved.relative_to(home)
-    except ValueError:
-        return str(resolved)
-    # Through Path rather than a slash join, so the separator is the
-    # platform's rather than this file's assumption about it.
-    return str(Path("~") / relative)
+    return _paths_safe.tilde_path(resolved, home)
 
 
 def _static_asset_url(rel_path: str) -> str:

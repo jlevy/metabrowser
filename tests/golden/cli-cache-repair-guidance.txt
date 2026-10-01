@@ -18,6 +18,8 @@ slug: <SLUG-A>
 store: <STORE-A>
 revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
 --- stderr ---
+cloning <ORIGIN-A> into <HOME>/cache
+cloned <ORIGIN-A> in 0.0 s
 ## A home other users can read refuses both a cache hit and a new acquisition, says how to fix it, and is not changed.
 # metab <ORIGIN-A> --no-serve
 exit: 1
@@ -38,6 +40,7 @@ slug: <SLUG-A>
 store: <STORE-A>
 revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
 --- stderr ---
+using the clone of <ORIGIN-A> cached in <HOME>/cache, fetched less than a minute ago
 # metab <ORIGIN-B> --no-serve
 exit: 0
 --- stdout ---
@@ -46,6 +49,8 @@ slug: <SLUG-B>
 store: <STORE-B>
 revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
 --- stderr ---
+cloning <ORIGIN-B> into <HOME>/cache
+cloned <ORIGIN-B> in 0.0 s
 ## A home written by a newer release is refused before anything is written.
 # metab <ORIGIN-A> --no-serve
 exit: 1
@@ -61,3 +66,5 @@ slug: <SLUG-A>
 store: <STORE-A>
 revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
 --- stderr ---
+cloning <ORIGIN-A> into <OTHER-HOME>/cache
+cloned <ORIGIN-A> in 0.0 s

@@ -25,6 +25,8 @@ status: 200
   "selection_href": null
 }
 --- stderr ---
+cloning <ORIGIN> into <HOME>/cache
+cloned <ORIGIN> in 0.0 s
 # metab file://<ORIGIN> --api /api/source/refresh --data refresh.json
 exit: 0
 --- stdout ---

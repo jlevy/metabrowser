@@ -70,6 +70,8 @@ slug: <SLUG-A>
 store: <STORE-A>
 revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
 --- stderr ---
+cloning <ORIGIN-A> into <HOME>/cache
+cloned <ORIGIN-A> in 0.0 s
 # metab <ROOT> --api /api/cache/stores
 exit: 0
 --- stdout ---

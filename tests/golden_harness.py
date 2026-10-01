@@ -22,15 +22,20 @@ sandbox path, a pinned Git environment, and a fixed clock.
 What a transcript may still replace, and why no fixture can pin it:
 
 - ``<ROOT>``, ``<ORIGIN…>``, ``<PATH-…>``: the pytest sandbox path and URLs built on it;
+- ``<HOME>``: the application home under that sandbox, where a first clone says it goes;
 - ``<SLUG…>``, ``<STORE…>``, ``<SOURCE…>``: identities hashed from such a URL;
 - ``<VERSION>``, ``<STATE>``: the installed package version and its build annotation;
 - ``<GIT_VERSION>``: the Git on ``PATH``;
 - ``<TIME>``: a time written by a process the fixed clock cannot reach, which is a
-  child killed mid-publication.
+  child killed mid-publication;
+- ``<ELAPSED>``, ``<AGE>``: how long a clone took, and how long ago a cached one was
+  fetched, as a real ``metab`` process says them: nothing replaces that process's
+  clocks (:func:`elide_clone_timing`).
 
 Everything else is literal. Commit IDs are literal because every origin is built with
 :func:`pinned_git_env` or ``git fast-import``; times are literal because
-:func:`fix_clock` replaces the clock.
+:func:`fix_clock` replaces the clock, the one a clone's elapsed time is read from
+included, so a clone always took ``0.0 s`` and never reaches its first status line.
 
 Two markers stand for text the transcript itself pins, so a payload that repeats is
 shown once. Each is written by its driver after comparing, never assumed, so what
@@ -74,6 +79,7 @@ from metabrowser.cache.identity import cache_slug, repository_store_id, source_i
 from metabrowser.cache.repository_store import open_revision
 from metabrowser.cache.served_mirror import StoreMirror
 from metabrowser.cache.urls import GitSource, classify_root_argument
+from metabrowser.cli import clone_report
 from metabrowser.cli.main import _run_cli
 from metabrowser.git.process import _REPO_PINNING_GIT_VARS
 from metabrowser.git.tree_source import GitRevisionSubject
@@ -98,6 +104,7 @@ CLOCK_START: Final = datetime(2026, 9, 17, 12, 0, tzinfo=UTC)
 _LOG_LINE: Final = re.compile(r"^\d{2}:\d{2}:\d{2} \S+ \| .*\n?", re.MULTILINE)
 _TIMESTAMP: Final = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
 TIME_PLACEHOLDER: Final = "<TIME>"
+HOME_LABEL: Final = "<HOME>"
 
 
 def updating() -> bool:
@@ -245,6 +252,18 @@ class Invocation:
 
         return json.loads(self.stdout[self.stdout.index("{") :])
 
+    @property
+    def error(self) -> str:
+        """The ``Error:`` line a refusal printed, without what a clone said before it.
+
+        A first clone names its URL and the cache directory on stderr before it can
+        fail, and both are the user's own. What a failure must not carry is in the
+        message: a staging path, Git's argument vector, Git's own text.
+        """
+
+        start = self.stderr.index("Error: ")
+        return self.stderr[start:]
+
 
 def run_metab(args: Sequence[str]) -> Invocation:
     """Run one ``metab`` command in-process through the console script's entry point.
@@ -352,6 +371,50 @@ class Labels:
         return _RECORDED_GIT.sub(r'\1"<GIT_VERSION>"', text)
 
 
+_CLONED_IN: Final = re.compile(r"^(cloned \S+ in )\d+(?:\.\d)? s", re.MULTILINE)
+_CLONE_STATUS: Final = re.compile(r"^cloning \S+: .* \(\d+(?:\.\d)? s\)\n", re.MULTILINE)
+_FETCHED_AGO: Final = re.compile(
+    r"^(using the clone of .*, fetched )(?:less than a minute|\d+ (?:minute|hour|day)s?) ago$",
+    re.MULTILINE,
+)
+ELAPSED_PLACEHOLDER: Final = "<ELAPSED>"
+AGE_PLACEHOLDER: Final = "<AGE>"
+
+
+def elide_clone_timing(stderr: str) -> str:
+    """What an unpatched ``metab`` process said of its clone, without the machine's speed.
+
+    The time the clone took becomes ``<ELAPSED>``, and how long ago a later command
+    found it fetched becomes ``<AGE>``. A status line, which is written only when a
+    clone has run ten seconds since its last line, is removed: whether one appears says
+    how loaded the machine was and nothing about the command.
+    """
+
+    stderr = _CLONE_STATUS.sub("", stderr)
+    stderr = _CLONED_IN.sub(rf"\g<1>{ELAPSED_PLACEHOLDER}", stderr)
+    return _FETCHED_AGO.sub(rf"\g<1>{AGE_PLACEHOLDER}", stderr)
+
+
+# The two lines of a command's stderr that say where clones are kept.
+_CLONE_LINES: Final = ("cloning ", "using the clone of ")
+
+
+def label_home(text: str, home: Path, label: str = HOME_LABEL) -> str:
+    """*text* with the application home *home* as *label*, checked to be where it may be.
+
+    A first clone says where it goes and a cache hit says where it was found, each in
+    one line of stderr. The home is named nowhere else: not in a route's answer, an
+    identity line, or an error.
+    """
+
+    labelled = text.replace(str(home), label)
+    for line in labelled.splitlines():
+        assert label not in line or line.startswith(_CLONE_LINES), (
+            f"the application home is named outside a clone's own lines: {line}"
+        )
+    return labelled
+
+
 def _stamp(instant: datetime) -> str:
     return instant.strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -390,7 +453,9 @@ def fix_clock(monkeypatch: pytest.MonkeyPatch) -> FixedClock:
     through. The clock that function reads is replaced rather than the function, so
     every module that imported the name reads the fixed clock whenever it was imported,
     and no binding outlives the test. The mirror's freshness reads its own ``_now_utc``,
-    replaced with the same instant so ``stale`` is a function of the fixture.
+    replaced with the same instant so ``stale`` is a function of the fixture. What a
+    clone says of itself reads a monotonic clock, which stands still: its elapsed time
+    is ``0.0 s`` however loaded the machine, and no status line is ever due.
     """
 
     clock = FixedClock()
@@ -402,6 +467,7 @@ def fix_clock(monkeypatch: pytest.MonkeyPatch) -> FixedClock:
 
     monkeypatch.setattr(records, "datetime", ClockDatetime)
     monkeypatch.setattr(mirror_refresh, "_now_utc", clock.read)
+    monkeypatch.setattr(clone_report, "_monotonic", float)
     return clock
 
 

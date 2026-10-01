@@ -121,6 +121,27 @@ def _safe_subdir(requested: str) -> Path | None:
     return target
 
 
+def tilde_path(path: Path, user_home: Path) -> str:
+    """*path* as a person types it: with *user_home* as ``~`` when it is under it.
+
+    Display only, and only a shortening: ``~`` is the shortest true name for a path
+    under the home directory, which is the common case. The path is returned as it is
+    when it is outside *user_home*, where the substitution would be a guess. The two
+    are compared as spelled, so a caller that wants symbolic links followed resolves
+    both first.
+    """
+
+    if path == user_home:
+        return "~"
+    try:
+        relative = path.relative_to(user_home)
+    except ValueError:
+        return str(path)
+    # Through Path rather than a slash join, so the separator is the platform's
+    # rather than this file's assumption about it.
+    return str(Path("~") / relative)
+
+
 def _cached_root_prefix() -> str:
     """Return ``str(ROOT_DIR.resolve()) + os.sep``, cached per ROOT_DIR value."""
     cached = _ROOT_PREFIX_CACHE.get(ROOT_DIR)

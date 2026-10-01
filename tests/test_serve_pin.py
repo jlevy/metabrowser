@@ -50,7 +50,13 @@ from metabrowser.source import (
     get_source_session,
     serve_subject_opener,
 )
-from tests.golden_harness import block, check_golden, normalize_console, pin_git_dates
+from tests.golden_harness import (
+    block,
+    check_golden,
+    fix_clock,
+    normalize_console,
+    pin_git_dates,
+)
 from tests.required_tools import needs_git, needs_node
 from tests.test_cache_acquire import _allow_installed_git, _file_source, _git
 
@@ -175,6 +181,8 @@ def test_golden_serve_pin_banner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 
     _home(tmp_path, monkeypatch)
     pin_git_dates(monkeypatch)
+    # The first command clones and says how long it took; the others say how long ago.
+    fix_clock(monkeypatch)
     origin = _origin(tmp_path)
     assert origin.second == BANNER_REVISION
     selections = (
@@ -301,12 +309,17 @@ def test_a_pin_that_fails_to_reopen_in_the_server_exits_without_a_traceback(
     assert stderr.strip().endswith(
         "Error: Git could not open the cached repository store; see --log-level debug"
     ), stderr
-    for text in (stdout, stderr):
+    # Before the banner the clone said where it went, which is the user's own home.
+    # From the error on, nothing names a local path, and the store path the failure
+    # carried is nowhere.
+    error = stderr[stderr.index("Error: ") :]
+    for text in (stdout, error):
         assert "Traceback" not in text
         assert "Application startup failed" not in text
         assert str(home) not in text
-    # The banner names the origin; nothing after it names a local path.
-    assert str(tmp_path) not in stderr
+    assert "Traceback" not in stderr and "Application startup failed" not in stderr
+    assert f"{home}/cache/x" not in stderr
+    assert str(tmp_path) not in error
 
 
 def test_a_folder_whose_startup_fails_exits_non_zero(

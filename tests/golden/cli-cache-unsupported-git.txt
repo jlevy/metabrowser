@@ -38,6 +38,8 @@ slug: <SLUG-A>
 store: <STORE-A>
 revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
 --- stderr ---
+cloning <ORIGIN-A> into <HOME>/cache
+cloned <ORIGIN-A> in 0.0 s
 ## Below the floor again, with origin A moved away, A is reused without Git, and a new source B is refused without changing the home.
 # metab <ORIGIN-A> --no-serve
 exit: 0
@@ -47,6 +49,7 @@ slug: <SLUG-A>
 store: <STORE-A>
 revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
 --- stderr ---
+using the clone of <ORIGIN-A> cached in <HOME>/cache, fetched less than a minute ago
 # metab <ORIGIN-B> --no-serve
 exit: 1
 --- stdout ---

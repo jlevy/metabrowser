@@ -170,16 +170,19 @@ class _Selected:
         return self.published.source.selection
 
 
-async def _select(source: GitSource, *, allow_pending: bool) -> _Selected:
+async def _select(source: GitSource, *, allow_pending: bool, serving: bool = False) -> _Selected:
     """Acquire *source*, open the pull request it names, and resolve its selection.
 
     With *allow_pending*, a ref or commit a fetch could bring is not an error: the
     default branch is selected and ``pending`` is set. A mirror this call just cloned
     was fetched a moment ago, so there a missing selection is not found at once rather
-    than waiting on a second fetch.
+    than waiting on a second fetch. *serving* is serve mode, which says when it opens a
+    source from the cache and, after a clone, that the server is next.
     """
 
-    published = await acquire_for_cli(source)
+    published = await acquire_for_cli(
+        source, announce_hit=serving, then="starting the server" if serving else ""
+    )
     selection = source.selection
     if selection is None or selection.kind == "repository":
         return _Selected(
@@ -453,7 +456,7 @@ async def _prove_servable(source: GitSource, *, path: str) -> _ServablePin:
     ``--path`` wins over the URL's own path.
     """
 
-    selected = await _select(source, allow_pending=True)
+    selected = await _select(source, allow_pending=True, serving=True)
     subject = await _open_pin(selected)
     try:
         if path:

@@ -32,7 +32,9 @@ from tests.golden_harness import (
     Invocation,
     Labels,
     check_golden,
+    elide_clone_timing,
     file_url,
+    label_home,
     pinned_git,
     strip_logs,
 )
@@ -101,7 +103,9 @@ def _run(home: Path, *args: str) -> Invocation:
         timeout=120,
     )
     return Invocation(
-        completed.returncode, strip_logs(completed.stdout), strip_logs(completed.stderr)
+        completed.returncode,
+        strip_logs(completed.stdout),
+        elide_clone_timing(strip_logs(completed.stderr)),
     )
 
 
@@ -146,5 +150,6 @@ def test_golden_live_full_acquire_and_offline_read(tmp_path: Path) -> None:
             ]
         )
     )
+    rendered = label_home(rendered, home)
     assert str(tmp_path) not in rendered
     check_golden("cli-cache-acquire-live.txt", rendered)

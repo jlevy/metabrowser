@@ -69,7 +69,11 @@ def test_no_serve_acquires_a_file_source_and_prints_logical_identity(
     assert list((home / STAGING).iterdir()) == []
     assert any((home / SOURCES).iterdir())
     assert "repository.git" not in result.output
-    assert str(home) not in result.output
+    # What it printed as data names no place on disk. stderr says where clones are
+    # kept, the cache directory, and never the store's own directory under it.
+    assert str(home) not in result.stdout
+    assert f"cloning {url} into {home}/cache\n" in result.stderr
+    assert "repository-stores" not in result.stderr and "staging" not in result.stderr
 
 
 @posix_only
@@ -82,7 +86,11 @@ def test_a_second_no_serve_reuses_the_published_store(
     second = runner.invoke(_app, [url, "--no-serve"])
     assert first.exit_code == 0, first.output
     assert second.exit_code == 0, second.output
-    assert first.output == second.output
+    assert first.stdout == second.stdout
+    # The second run is visibly not a clone.
+    assert first.stderr.startswith(f"cloning {url} into ")
+    assert second.stderr.startswith(f"using the clone of {url} cached in ")
+    assert "cloning" not in second.stderr
 
 
 @posix_only
@@ -225,7 +233,7 @@ def test_file_url_api_tree_attaches_the_default_pin(
     assert '"subject": "git_revision"' in result.output
     assert '"kind": "tree"' in result.output
     assert "README" in result.output
-    assert str(home) not in result.output
+    assert str(home) not in result.stdout
     assert "repository.git" not in result.output
 
 
@@ -431,7 +439,7 @@ def test_no_serve_reuses_a_cache_hit_when_the_home_has_no_owner_write(
     try:
         second = runner.invoke(_app, [url, "--no-serve"])
         assert second.exit_code == 0, second.output
-        assert second.output == first.output
+        assert second.stdout == first.stdout
         assert list((home / STAGING).iterdir()) == []
     finally:
         _restore_owner_write(home)
