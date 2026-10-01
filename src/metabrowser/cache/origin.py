@@ -67,15 +67,18 @@ PROTOCOL_ARGS: Final[tuple[str, ...]] = (
 #   repositories, began its pack 1.7 s after the request, and its longest silence in
 #   the first 290 MB was 0.49 s.
 # - a first clone fetches with progress on, and then the origin reports its preparation
-#   in the same stream. Git writes a record at most once a percent or once a second, and
-#   each is some 45 bytes, so a stage that takes longer than about five seconds moves
-#   under the limit throughout and a preparing origin is bounded as before. That is
-#   argued from the record sizes, not from a throttled run. Measured 2026-10-01 (Git
-#   2.50.1): github.com/cli/cli sent its 45 preparation records, about 2 KB, in one burst
-#   1.7 s after the request and began its pack at once, and the longest gap between two
-#   records of the fetch after that was 1.0 s.
-# 30 s tolerates a server much slower to start its pack than that, while bounding a
-# stall at half a minute rather than the whole acquisition deadline.
+#   in the same stream, some 45 bytes a record. What the bound gives is 30 s for each
+#   quiet stretch, not for the preparation as a whole: a burst of records that lifts
+#   one second above the limit starts the 30 s again, as a burst of anything does, with
+#   progress or without. So an origin that means to hold a connection open can, by
+#   sending a kilobyte every half minute, and what bounds it is the acquisition
+#   deadline, GIT_ACQUISITION_TIMEOUT_S. Measured 2026-10-01 (Git 2.50.1):
+#   github.com/cli/cli sent its 45 preparation records, about 2 KB, in one burst 1.7 s
+#   after the request and began its pack at once, and the longest gap between two
+#   records of the fetch after that was 1.0 s. No throttled run was made with progress
+#   on.
+# 30 s tolerates a server much slower to start its pack than that, while ending an
+# origin that has gone quiet in half a minute rather than at the acquisition deadline.
 HTTP_LOW_SPEED_LIMIT_BYTES: Final[int] = 1000
 HTTP_LOW_SPEED_TIME_S: Final[int] = 30
 _STALL_ARGS: Final[tuple[str, ...]] = (
@@ -245,8 +248,8 @@ def mirror_fetch_args(remote_url: str, *, prune: bool, progress: bool = False) -
 
     *progress* adds ``--progress``, which Git otherwise turns off when stderr is not a
     terminal: a first clone's caller reads it as numbers, through ``run_git``'s
-    ``on_progress``, and nothing else should ask for it. The stall bound is unchanged by
-    it; see :data:`HTTP_LOW_SPEED_TIME_S`.
+    ``on_progress``, and nothing else should ask for it. What the origin's records mean
+    for the stall bound is said at :data:`HTTP_LOW_SPEED_TIME_S`.
     """
 
     flags = ["--prune", "--atomic"] if prune else []
