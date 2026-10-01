@@ -143,6 +143,27 @@ def _reset_served_source() -> Generator[None, None, None]:  # pyright: ignore[re
 
 
 @pytest.fixture(autouse=True)
+def _restore_environment() -> Generator[None, None, None]:  # pyright: ignore[reportUnusedFunction]
+    """Put back whatever a test, or the code it ran, changed in ``os.environ``.
+
+    The CLI exports what it resolves: ``--log-level`` and the dotenv chain both write
+    ``os.environ``. ``monkeypatch.delenv`` on a name that is absent records no undo, so
+    a value written that way outlived its test. A debug log level left by a dotenv
+    test then put tracebacks into the stderr of every in-process command that ran
+    after it, which the default module order happened to hide.
+    """
+    # pytest keeps the running test's name in this one and rewrites it for each phase.
+    own = "PYTEST_CURRENT_TEST"
+    before = {name: value for name, value in os.environ.items() if name != own}
+    yield
+    for name in os.environ.keys() - before.keys() - {own}:
+        del os.environ[name]
+    for name, value in before.items():
+        if os.environ.get(name) != value:
+            os.environ[name] = value
+
+
+@pytest.fixture(autouse=True)
 def _reset_browser_response_caches() -> Generator[None, None, None]:  # pyright: ignore[reportUnusedFunction]
     """Keep route response caches isolated between tests."""
     yield
