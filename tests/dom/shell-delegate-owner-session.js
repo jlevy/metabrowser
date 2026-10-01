@@ -39,7 +39,7 @@ const PRODUCTION_MODULES = [
 const LIFTED = [
   "esc",
   "queryHtml",
-  "servedRoot",
+  "servedRootAddress",
   "eventTargetElement",
   "ownedControlAttr",
   "isOwnedControl",
