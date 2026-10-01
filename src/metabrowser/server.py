@@ -197,8 +197,8 @@ from metabrowser.settings import (
 )
 from metabrowser.source import (
     UnsupportedSourceCapabilityError,
+    as_git_revision_subject,
     get_source_session,
-    git_revision_subject,
     lifespan_subject,
     require_filesystem_hooks,
     require_filter_capabilities,
@@ -1225,7 +1225,7 @@ PREFETCH_FALLBACK_DELAY_MS = 200
 async def index(request: Request) -> HTMLResponse:
     """Serve the SPA page with linked assets and one pre-paint state machine."""
 
-    pin = git_revision_subject(get_source_session().subject)
+    pin = as_git_revision_subject(get_source_session().subject)
     git_pin = pin is not None
     if pin is not None:
         # Imported where a pin is served, like every other Git import below: the
@@ -1790,7 +1790,7 @@ async def view_shell(request: Request) -> Response:
     raw_path = request.scope.get("raw_path")
     if not isinstance(raw_path, bytes):
         return PlainTextResponse("Invalid view path.", status_code=400)
-    if git_revision_subject(get_source_session().subject) is not None:
+    if as_git_revision_subject(get_source_session().subject) is not None:
         from metabrowser.git.content_routes import decode_git_view_path
 
         decoded = decode_git_view_path(raw_path)
@@ -2060,7 +2060,7 @@ async def api_tree(request: Request) -> Response:
     tree_filter = tree_filter_from_request(request)
     require_source_capability("navigation")
     require_source_capability("index")
-    pin = git_revision_subject(get_source_session().subject)
+    pin = as_git_revision_subject(get_source_session().subject)
     git_pin = pin is not None
     require_filter_capabilities(
         recency=bool(tree_filter.recency_seconds),
@@ -2135,7 +2135,7 @@ async def api_rollup(request: Request) -> Response:
     except ValueError as error:
         return JSONResponse({"error": str(error)}, status_code=400)
 
-    pin = git_revision_subject(get_source_session().subject)
+    pin = as_git_revision_subject(get_source_session().subject)
     if pin is not None:
         from metabrowser.git.content_routes import git_revision_rollup
 
@@ -2536,7 +2536,7 @@ async def _api_folder_envelope(
 
 @log_async_calls(if_slower_than=0.1)
 async def api_file(request: Request) -> JSONResponse | Response:
-    pin = git_revision_subject(get_source_session().subject)
+    pin = as_git_revision_subject(get_source_session().subject)
     if pin is not None:
         from metabrowser.git.content_routes import git_revision_file
 
@@ -3039,7 +3039,7 @@ async def api_kpress_render(request: Request) -> Response:
             status_code=400,
         )
 
-    pin = git_revision_subject(get_source_session().subject)
+    pin = as_git_revision_subject(get_source_session().subject)
     if pin is not None:
         from metabrowser.git.content_routes import git_revision_kpress_render
 
@@ -3543,7 +3543,7 @@ async def raw_file(request: Request) -> Response:
     for the whole ``/raw`` path rather than any one branch here.
     """
 
-    pin = git_revision_subject(get_source_session().subject)
+    pin = as_git_revision_subject(get_source_session().subject)
     if pin is not None:
         from metabrowser.git.content_routes import git_revision_raw
 

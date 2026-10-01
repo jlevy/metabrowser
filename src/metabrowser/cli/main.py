@@ -829,8 +829,9 @@ def _metab(
         )
     elif mode == "diff":
         assert diff is not None
-        # Local for the same reason as the other mode imports below: the Git diff adapter
-        # loads the revision tree source, which no other mode on a local folder needs.
+        # Imported in its branch, as the `api`, `no-serve` and `show` modes below are:
+        # the Git diff adapter loads the revision tree source, which no other mode on a
+        # local folder needs.
         from metabrowser.cli.diff_cli import run_diff
 
         run_diff(

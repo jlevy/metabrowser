@@ -50,8 +50,8 @@ from metabrowser.source import (
     MAX_CONTAINER_INNER_DEPTH,
     SubjectNotOpenError,
     UnsupportedSourceCapabilityError,
+    as_git_revision_subject,
     get_source_session,
-    git_revision_subject,
     unsupported_source_payload,
 )
 from metabrowser.view_routes import (
@@ -121,7 +121,7 @@ def source_status(mirror: MirrorSession | None = None) -> SourceStatus:
     """The envelope for the active session. Reads no store and runs no Git."""
 
     session = get_source_session()
-    pin = git_revision_subject(session.subject)
+    pin = as_git_revision_subject(session.subject)
     if pin is not None:
         from metabrowser.git.tree_source import ref_short_name
 
@@ -253,7 +253,7 @@ async def api_source_refs(request: Request) -> JSONResponse:
         mirror = _served_mirror(request, "refs")
     except UnsupportedSourceCapabilityError as exc:
         return JSONResponse(unsupported_source_payload(exc), status_code=409)
-    subject = git_revision_subject(get_source_session().subject)
+    subject = as_git_revision_subject(get_source_session().subject)
     assert subject is not None
     try:
         listed = await mirror.mirror.list_refs(kind)
@@ -273,7 +273,7 @@ async def api_source_refs(request: Request) -> JSONResponse:
 
 def _served_mirror(request: Request, capability: str) -> MirrorSession:
     mirror = mirror_session(request.app)
-    if mirror is None or git_revision_subject(get_source_session().subject) is None:
+    if mirror is None or as_git_revision_subject(get_source_session().subject) is None:
         raise UnsupportedSourceCapabilityError(capability)
     return mirror
 
@@ -470,7 +470,7 @@ async def api_source_pin(request: Request) -> JSONResponse:
         log.warning("switching the pin failed: %s", exc)
         return _error("the selection could not be opened", exc.code, exc.http_status)
     answer: dict[str, Any] = {"changed": changed, "status": dict(source_status(mirror))}
-    switched = git_revision_subject(session.subject)
+    switched = as_git_revision_subject(session.subject)
     if view is not None and switched is not None:
         answer["view_href"] = await view_on_pin(switched, view)
     return JSONResponse(answer)
@@ -542,7 +542,7 @@ def _served_pin() -> str | None:
         subject = get_source_session().subject
     except SubjectNotOpenError:
         return None
-    pin = git_revision_subject(subject)
+    pin = as_git_revision_subject(subject)
     return pin.commit_oid if pin is not None else ""
 
 

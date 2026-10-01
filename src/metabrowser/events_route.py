@@ -129,8 +129,8 @@ from metabrowser.settings import (
     SSE_RING_BUFFER_CAPACITY,
 )
 from metabrowser.source import (
+    as_git_revision_subject,
     get_source_session,
-    git_revision_subject,
     require_filesystem_hooks,
     require_source_capability,
 )
@@ -145,7 +145,7 @@ LOG = logging.getLogger(__name__)
 
 
 def _git_revision_subject() -> GitRevisionSubject | None:
-    return git_revision_subject(get_source_session().subject)
+    return as_git_revision_subject(get_source_session().subject)
 
 
 # Aliases kept so external test imports stay stable; authoritative

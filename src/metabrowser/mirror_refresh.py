@@ -46,8 +46,8 @@ from metabrowser.paths_safe import register_root_callback
 from metabrowser.repository_context import RepositoryContext
 from metabrowser.source import (
     SourceSession,
+    as_git_revision_subject,
     get_source_session,
-    git_revision_subject,
     replace_owned_subject,
 )
 
@@ -889,7 +889,7 @@ class MirrorSession:
 
 
 def _served_revision() -> GitRevisionSubject | None:
-    return git_revision_subject(get_source_session().subject)
+    return as_git_revision_subject(get_source_session().subject)
 
 
 # ── Configuration and lifespan ──────────────────────────────────

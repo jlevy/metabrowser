@@ -595,7 +595,7 @@ def get_source_session() -> SourceSession:
     return _session
 
 
-def git_revision_subject(subject: RepositorySubject) -> GitRevisionSubject | None:
+def as_git_revision_subject(subject: RepositorySubject) -> GitRevisionSubject | None:
     """Return *subject* as a pinned Git revision, or ``None`` when it is anything else.
 
     The kind is compared before the class, so a process serving a folder answers
@@ -603,6 +603,7 @@ def git_revision_subject(subject: RepositorySubject) -> GitRevisionSubject | Non
     Git routes built on it is start-up work a folder never uses, and every caller asks
     this question on a path a folder takes too. A pin's own code has already imported
     the module by the time one is attached, so the import below costs a pin nothing.
+    It is not :func:`metabrowser.git.tree_source.git_revision_subject`, which opens one.
     """
 
     if subject.kind != RepositorySubjectKind.git_revision.value:
@@ -824,6 +825,7 @@ __all__ = [
     "SubjectNotOpenError",
     "SubjectOpenError",
     "UnsupportedSourceCapabilityError",
+    "as_git_revision_subject",
     "attach_owned_subject",
     "attach_subject",
     "close_owned_subject",
