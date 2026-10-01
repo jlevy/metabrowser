@@ -262,7 +262,7 @@ the run against it.
 | Pull request: checks and statuses summary | Yes | Logs |
 | Pull request: Files changed | Yes (merge-base diff) |  |
 | Diff: View file at either side of a changed file | Yes (a side not at the served commit switches the pin) | An address for a file at another commit |
-| Pull request list for a repository |  | Yes |
+| Pull request list for a repository |  | Yes: [GitHub Pulls tab](plan-2026-10-01-github-pulls-tab.md) |
 | Issues, Actions, releases, blame |  | Yes |
 | SSH remotes, GitHub Enterprise hosts |  | Yes |
 
@@ -338,8 +338,9 @@ The test pull requests from #252 on are the release work of the test-suite revie
 The [review ledger](../../reviews/review-2026-10-01-v012-stack-review-ledger.md) records
 how each pull request through #257 was reviewed.
 
-Later: pull-request list, inline review anchoring, SSH, Enterprise hosts, issues,
-checkout attachment, and rebind.
+Later: the pull-request list and pull requests on a local checkout
+([GitHub Pulls tab](plan-2026-10-01-github-pulls-tab.md)), inline review anchoring, SSH,
+Enterprise hosts, issues, and rebind.
 
 ## Testing
 

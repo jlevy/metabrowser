@@ -46,6 +46,10 @@ links to the document that covers each in depth.
 - [v0.12 alpha testing and stack acceptance](specs/active/plan-2026-09-22-v012-alpha-testing.md)
   — executable foundation quick start, manual end-to-end matrix, automated coverage, and
   the landing checklist and status
+- [GitHub Pulls tab for mirrors and local checkouts](specs/active/plan-2026-10-01-github-pulls-tab.md)
+  — planned, not started: a list of a repository’s pull requests beside Files and Git,
+  opening any of them, for a repository opened from a GitHub URL and for an existing
+  checkout; starts after the v0.12 stack lands
 - [Opt-in trusted-local file editing](specs/active/plan-2026-07-16-trusted-local-file-editing.md)
 - [Scanning state and recent directories](specs/active/plan-2026-07-16-scanning-state-and-recent-directories.md)
 - [Quick file finder and search providers](specs/active/plan-2026-07-17-scalable-file-search.md)
