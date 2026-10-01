@@ -13,10 +13,13 @@ URL, inspect the intended immutable content, and reopen previously acquired cont
 offline. A directly addressed PR must work without first populating a discovery index.
 Tests must prove the installed application path as well as the individual contracts.
 
-Implementation is one linear chain of open pull requests on
-[stack 218](https://github.com/jlevy/metabrowser/stack/218). Keep the stack together
-until it is stabilized; an intermediate testing milestone does not authorize merging a
-lower layer. The landing coordinator is `mb-n2ro`.
+Implementation is one linear chain of open pull requests above `main`. GitHub’s formal
+[stack 218](https://github.com/jlevy/metabrowser/stack/218) lists only its foundation
+layers, through #226; the QA runbook’s
+[Pins](../../../qa-v012-repository-library.md#pins) section lists the whole chain and
+finds its top. Keep the stack together until it is stabilized; an intermediate testing
+milestone does not authorize merging a lower layer.
+The landing coordinator is `mb-n2ro`.
 
 The [thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md) owns the v0.12 feature
 design and the capabilities it defers.
@@ -89,7 +92,7 @@ Foundation stabilization is [#226](https://github.com/jlevy/metabrowser/pull/226
 reviewed green head is recorded in `mb-j439`. The work above it follows the thin-mirror
 plan, whose [Delivery](plan-2026-09-23-v012-thin-mirror.md#delivery) section maps each
 step and follow-up to its pull request.
-Every pull request extends the tip of stack 218 and is reviewed and green before the
+Every pull request extends the tip of the chain and is reviewed and green before the
 next one starts from its head.
 
 The milestones and manual matrix below apply wherever the thin-mirror plan keeps the
@@ -100,8 +103,8 @@ capability; rows for a deferred capability say so.
 | Milestone | Entry condition | User-visible acceptance | Current availability |
 | --- | --- | --- | --- |
 | T0: local Git foundation | Current integration tip, supported Git, isolated application home | Acquire a `file://` origin, reopen its default full OID, inspect files/tree through `--show` and `--api`, and preserve local browsing | Passed: foundation acceptance in #226 and M01 in the acceptance run. Rerun it with the quick start below and the [foundation QA runbook](../../../qa-v012-repository-library.md) |
-| T1: repository URL alpha | URL open and serving, ref and path selection, and trust integration (thin-mirror steps 3 to 5) | Open repository/tree/blob/commit/raw URLs; view content, history, and diffs; preserve slash-containing refs and path/line intent; reopen cached content offline | Passed in the acceptance run and its rerun, except M03’s base and head files, which wait for a rerun on View file |
-| T2: direct PR alpha | T1 plus `gh` pull-request records and the pull-request page (steps 6 and 7) | Paste a PR URL; read its description, review/check state, changed files, and pinned comparison; reload and reopen offline | Passed in the acceptance run and its rerun, except M08’s base and head files (the same rerun) and M10’s private and revoked cases, which are blocked for lack of a private fixture |
+| T1: repository URL alpha | URL open and serving, ref and path selection, and trust integration (thin-mirror steps 3 to 5) | Open repository/tree/blob/commit/raw URLs; view content, history, and diffs; preserve slash-containing refs and path/line intent; reopen cached content offline | Passed in the acceptance run and its reruns; M03’s base and head files pass in the rerun on View file |
+| T2: direct PR alpha | T1 plus `gh` pull-request records and the pull-request page (steps 6 and 7) | Paste a PR URL; read its description, review/check state, changed files, and pinned comparison; reload and reopen offline | Passed in the acceptance run and its reruns, M08’s base and head files included, except M10’s private and revoked cases, which are blocked for lack of a private fixture |
 | T3: discovery, navigation, and anchors | Deferred with the capabilities it tests | Bounded paginated PR navigation with honest counts/partiality, direct selection outside that index, and explicit outdated/unmappable anchors | Not part of v0.12 |
 
 T2, in the thin-mirror scope, is the v0.12 landing milestone.
@@ -147,7 +150,7 @@ layers added after the Git-pin layer.
 Do not reset an existing development branch or test a stale local tracking ref.
 
 ```shell
-# Set ALPHA_PR to the reviewed top PR number from stack 218.
+# Set ALPHA_PR to the top pull request of the chain, as Pins in the QA runbook shows.
 : "${ALPHA_PR:?Set ALPHA_PR to the current integration PR number}"
 ALPHA_HEAD="$(gh pr view "$ALPHA_PR" --repo jlevy/metabrowser --json headRefOid --jq .headRefOid)"
 ALPHA_WORKSPACE="$(mktemp -d "${TMPDIR:-/tmp}/metab-alpha.XXXXXX")"
@@ -356,43 +359,83 @@ landing/release; this testing plan performs neither.
 
 ### Landing status
 
-Recorded 2026-09-30. Three commands give the current state, and they win where this
-section disagrees: `tbd list --label release:v0.12.0` lists the open v0.12 beads,
-`tbd show mb-n2ro` names the ones that block landing, and `gh pr list --state open`
-shows the stack.
+Recorded 2026-10-01. Four commands give the current state, and they win where this
+section disagrees:
 
-The acceptance rerun on the stack’s tip passed: M03’s and M08’s base and head rows (View
-file, [#248](https://github.com/jlevy/metabrowser/pull/248)) are in the
-[QA record](../../qa/qa-2026-09-24-v012-alpha-acceptance.md) under “Rerun on #250”.
+- `tbd list --label release:v0.12.0` lists the open v0.12 beads;
+- `tbd show mb-n2ro` names the beads that block landing;
+- the chain command under [Pins](../../../qa-v012-repository-library.md#pins) in the QA
+  runbook lists the stack and its top pull request;
+- `gh pr checks <top pull request>` shows its CI.
 
-Open before landing:
+**Verified on the tip.** The
+[QA record’s addendum of 2026-10-01](../../qa/qa-2026-09-24-v012-alpha-acceptance.md#addendum-2026-10-01)
+holds the commit, the counts, and the ratios of this verification.
 
-- **Startup and eager-load cost** (`mb-l8c2`). Against `main`, startup does more import
-  work in every mode and the eagerly loaded JavaScript grew, while route times and
-  memory are unchanged; the bead holds the measurements.
-  The wall-clock pairs against `main` still need a quiet machine.
-- **Test-suite review** (`mb-06up`). Its children labelled `release:v0.12.0` are landing
-  work; the others follow the release.
-- **M10’s private and revoked cases** are blocked until an operator-owned private
-  fixture exists.
-- **The checklist above**: the review ledger covering every layer, a disposition for
-  each finding, every pull request on the stack out of draft, and green CI on the final
-  tip against current `main`.
+- `make lint-check` and the full `make test` pass locally on the tip.
+  CI passes on every pull request’s head, including both `admitted-git` jobs and
+  `stack-integration`, which merges `main` into the head it tests.
+- `make golden-update`, run as one command on a clean tree, changes nothing.
+- The acceptance runs pass for T0 through T2, with M03’s and M08’s base and head rows in
+  the record’s “Rerun on #250”.
+- Startup against v0.11.0, measured in CPU time and in instructions, is within the 1.1x
+  tolerance `mb-67s1` states for `--show`, `--api`, and `--version`. `--doctor` does
+  more work by design, because it now validates the cache record contracts.
+  exp-037 under `explorations/performance-loop/experiments/` and `mb-67s1` hold the
+  measurements.
+- The stack is one linear chain that contains `main`:
+  `git merge-base --is-ancestor origin/main <tip>` succeeds.
+- Every pull request has a row in the
+  [review ledger](../../reviews/review-2026-10-01-v012-stack-review-ledger.md), which
+  also states what that review evidence does not cover.
 
-Checks only the user can make:
+**Remaining before landing.**
 
-- **Paint in other browsers.** The acceptance run used one Chromium pane that was hidden
-  for most rows, so it read DOM state and network traffic rather than pixels.
-  Focus rings, layout at each width, the lazily rendered review bodies, and the HTML
-  Preview frame were not observed, and no other browser engine was tried.
-- **The user’s own GitHub account**, including a private repository: authorized private
-  access and revoked access.
-- **Third-party plugins against Plugin SDK 0.7.** A plugin that writes copy or Load more
-  markup by hand gets a button that silently does nothing until it migrates; the
-  `CHANGELOG.md` entry for the break gives the migration.
+- **Wall-clock startup pairs** (`mb-67s1`). The pairs taken so far were noise, because
+  other jobs loaded the machine.
+  They are owed on a machine that stays quiet for about ten minutes, unless the user
+  accepts the CPU-time and instruction evidence in their place.
+- **The review of #244**, which was running when the ledger was written.
+- **One finding to disposition** (`mb-tdmd`). After about five full page loads in one
+  tab, the next page can wait for a connection, because pages kept for Back each hold
+  their event stream open.
+  `origin/main` has the same code; it was not run on 0.11.0. The QA record’s addendum
+  has the measurements.
+- **The checks only the user can make**, which are Part 4 of the runbook’s
+  [walk-through](../../../qa-v012-repository-library.md#walk-through-this-yourself):
+  - Safari and Firefox as well as Chrome.
+    The acceptance runs used one Chromium pane that was hidden for most rows, so they
+    read DOM state and network traffic rather than pixels.
+  - The user’s own GitHub account with a private repository it can read, and one it
+    cannot. This is row M10, which stays blocked until an operator-owned private fixture
+    exists.
+  - A third-party plugin against Plugin SDK 0.7, where one exists.
+    A plugin that writes copy or Load more markup by hand gets a button that silently
+    does nothing until it migrates; the `CHANGELOG.md` entry for the break gives the
+    migration.
+- **The user’s decisions:**
+  - approval to land (`mb-n2ro`);
+  - whether to add a macOS CI job, since no CI job runs the macOS tier (the options are
+    in [#251](https://github.com/jlevy/metabrowser/pull/251)’s description);
+  - whether the admitted-Git test files keep running in every job of the test matrix as
+    well as in the `admitted-git` jobs (also in #251’s description);
+  - whether to add a line-coverage tool (the cost is set out in
+    [#255](https://github.com/jlevy/metabrowser/pull/255)’s description);
+  - whether CPU-time and instruction evidence stands in for the wall-clock pairs
+    (`mb-67s1`).
+- **The checklist above.** No person has reviewed the stack, and no pull request has a
+  GitHub review decision; the ledger says what review each layer did have.
+  [#241](https://github.com/jlevy/metabrowser/pull/241), the acceptance record, is still
+  a draft.
 
-Landing is one fast-forward of `main` to the stack’s tip, on the user’s approval.
-No layer merges separately.
+**Not blocking.** The test-suite review (`mb-06up`) is not among the beads that block
+`mb-n2ro`. Its open children follow the release, and
+`tbd list --parent mb-06up --status open` lists them; one, `mb-weez`, still carries the
+release label.
+`tbd list --parent mb-hall --status open` lists the other open follow-ups.
+
+**Landing method.** Landing is one fast-forward of `main` to the stack’s tip, on the
+user’s approval. No layer merges separately.
 `main` must be an ancestor of the tip at that moment, which the merge-based restacks
 preserve and `git merge-base --is-ancestor origin/main <tip>` confirms.
 
