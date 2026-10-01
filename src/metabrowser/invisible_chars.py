@@ -34,6 +34,11 @@ intact under another. Nor is either kind hidden by rule: the unassigned code poi
 that are default-ignorable are in the table, a private-use code point shows the glyph a
 font gives it, as an icon font does, and the rest normally show a font's missing-glyph
 mark, so a reader sees that the name holds something.
+
+Every table here is literal, the format characters included, so what a path displays as
+does not depend on that data, with one exception: the base of a variation selector is
+judged by the running Python's ``str.isprintable`` and ``str.isspace``, so a selector
+after a code point that Python calls unassigned counts as having no base.
 """
 
 from __future__ import annotations
@@ -84,43 +89,70 @@ SPACE_SEPARATORS: Final[tuple[tuple[int, int], ...]] = (
     (0x205F, 0x205F),
     (0x3000, 0x3000),
 )
+# The format characters (category Cf), which reorder or hide what is shown around them:
+# 170 code points, the same in Unicode 15.0, 15.1, 16.0, and 17.0, the data Python 3.12,
+# 3.13, and 3.14 and Node 24 carry. The display tests membership here instead of asking
+# ``unicodedata.category`` for each character. The table is literal because the set
+# cannot be made cheaply from that data: asking the category of all 1,114,112 code
+# points cost 108 to 142 times the CPU time of building every set below from the tables,
+# about 0.1 s against under 1 ms (CPython 3.14.7, seven back-to-back pairs, 2026-10-01).
+FORMAT: Final[tuple[tuple[int, int], ...]] = (
+    (0x00AD, 0x00AD),
+    (0x0600, 0x0605),
+    (0x061C, 0x061C),
+    (0x06DD, 0x06DD),
+    (0x070F, 0x070F),
+    (0x0890, 0x0891),
+    (0x08E2, 0x08E2),
+    (0x180E, 0x180E),
+    (0x200B, 0x200F),
+    (0x202A, 0x202E),
+    (0x2060, 0x2064),
+    (0x2066, 0x206F),
+    (0xFEFF, 0xFEFF),
+    (0xFFF9, 0xFFFB),
+    (0x110BD, 0x110BD),
+    (0x110CD, 0x110CD),
+    (0x13430, 0x1343F),
+    (0x1BCA0, 0x1BCA3),
+    (0x1D173, 0x1D17A),
+    (0xE0001, 0xE0001),
+    (0xE0020, 0xE007F),
+)
 _KEYCAP_BASES: Final = frozenset("#*0123456789")
 _KEYCAP: Final = "\u20e3"
 
 
-def is_variation_selector(ch: str) -> bool:
-    """Whether *ch* is one of the 256 variation selectors."""
+def _chars(*tables: tuple[tuple[int, int], ...]) -> frozenset[str]:
+    """The characters of *tables*, for a membership test that costs one hash lookup."""
 
-    point = ord(ch)
-    return any(low <= point <= high for low, high in VARIATION_SELECTORS)
-
-
-def is_invisible(ch: str) -> bool:
-    """Whether *ch* is drawn as nothing or as a space wherever it stands.
-
-    Default-ignorable, the blank braille pattern, or a space or line separator other
-    than the ASCII space.
-
-    A variation selector is not: whether one is seen depends on its base, which
-    :func:`hidden_at` reads.
-    """
-
-    point = ord(ch)
-    if is_variation_selector(ch):
-        return False
-    return point == BLANK_BRAILLE or any(
-        low <= point <= high
-        for table in (DEFAULT_IGNORABLE, SPACE_SEPARATORS)
-        for low, high in table
+    return frozenset(
+        chr(point) for table in tables for low, high in table for point in range(low, high + 1)
     )
+
+
+# The tables above as sets of characters. A path is displayed once per entry of a
+# listing, so each test is one lookup and never a walk of the ranges; the measurement
+# is beside ``display_segment`` in ``metabrowser.git.tree_source``.
+#
+# The 256 variation selectors. Whether one is seen depends on its base, which
+# ``hidden_at`` reads.
+SELECTOR_CHARS: Final[frozenset[str]] = _chars(VARIATION_SELECTORS)
+# Drawn as nothing or as a space wherever it stands: default-ignorable, the blank
+# braille pattern, or a space or line separator other than the ASCII space. A variation
+# selector is not here.
+INVISIBLE_CHARS: Final[frozenset[str]] = (
+    _chars(DEFAULT_IGNORABLE, SPACE_SEPARATORS, ((BLANK_BRAILLE, BLANK_BRAILLE),)) - SELECTOR_CHARS
+)
+FORMAT_CHARS: Final[frozenset[str]] = _chars(FORMAT)
 
 
 def hidden_at(text: str, index: int) -> bool:
     """Whether ``text[index]`` is drawn as nothing or as a space where it stands."""
 
     ch = text[index]
-    if not is_variation_selector(ch):
-        return is_invisible(ch)
+    if ch not in SELECTOR_CHARS:
+        return ch in INVISIBLE_CHARS
     if index == 0:
         return True
     base = text[index - 1]
@@ -129,6 +161,6 @@ def hidden_at(text: str, index: int) -> bool:
     return (
         not base.isprintable()
         or base.isspace()
-        or is_variation_selector(base)
-        or is_invisible(base)
+        or base in SELECTOR_CHARS
+        or base in INVISIBLE_CHARS
     )

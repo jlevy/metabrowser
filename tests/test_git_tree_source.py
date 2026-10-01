@@ -8,6 +8,7 @@ import subprocess
 import unicodedata
 from contextlib import suppress
 from dataclasses import replace
+from functools import cache
 from pathlib import Path
 
 import pytest
@@ -33,7 +34,14 @@ from metabrowser.git.tree_source import (
     read_store_blob,
     store_batch_reader_count,
 )
-from metabrowser.invisible_chars import SPACE_SEPARATORS
+from metabrowser.invisible_chars import (
+    BLANK_BRAILLE,
+    DEFAULT_IGNORABLE,
+    FORMAT,
+    SPACE_SEPARATORS,
+    VARIATION_SELECTORS,
+    hidden_at,
+)
 from metabrowser.plugin_api import (
     UnsupportedSourceCapabilityError,
     require_source_capability,
@@ -686,6 +694,143 @@ def test_display_replaces_characters_drawn_as_nothing_or_as_a_space() -> None:
         assert shown == "README\ufffd.md", hex(point)
 
 
+@cache
+def _code_points_by_category() -> dict[str, set[int]]:
+    """Every code point under the general category the running Python gives it."""
+
+    by_category: dict[str, set[int]] = {}
+    for point in range(0x110000):
+        by_category.setdefault(unicodedata.category(chr(point)), set()).add(point)
+    return by_category
+
+
+def _listed(table: tuple[tuple[int, int], ...]) -> set[int]:
+    return {point for low, high in table for point in range(low, high + 1)}
+
+
+def _within(point: int, table: tuple[tuple[int, int], ...]) -> bool:
+    return any(low <= point <= high for low, high in table)
+
+
+def _displayed_by_the_rule(text: str) -> str:
+    """The display rule one character at a time, from the category and the range tables.
+
+    What ``display_segment`` did before it tested membership in sets, kept as the
+    statement of what it must return.
+    """
+
+    def selector(ch: str) -> bool:
+        return _within(ord(ch), VARIATION_SELECTORS)
+
+    def invisible(ch: str) -> bool:
+        return not selector(ch) and (
+            ord(ch) == BLANK_BRAILLE
+            or _within(ord(ch), DEFAULT_IGNORABLE)
+            or _within(ord(ch), SPACE_SEPARATORS)
+        )
+
+    def hidden(index: int) -> bool:
+        ch = text[index]
+        if not selector(ch):
+            return invisible(ch)
+        if index == 0:
+            return True
+        base = text[index - 1]
+        if base.isascii():
+            return not (base in "#*0123456789" and text[index + 1 : index + 2] == "\u20e3")
+        return not base.isprintable() or base.isspace() or selector(base) or invisible(base)
+
+    return "".join(
+        "\ufffd"
+        if ord(ch) < 0x20
+        or 0x7F <= ord(ch) <= 0x9F
+        or unicodedata.category(ch) == "Cf"
+        or hidden(index)
+        else ch
+        for index, ch in enumerate(text)
+    )
+
+
+def test_the_format_table_is_the_running_pythons_format_characters() -> None:
+    """The display reads ``FORMAT`` where it read ``unicodedata.category`` per character.
+
+    The 170 format characters are the same in the Unicode data of every supported
+    Python. A Python whose data adds one fails here, and the table gains it.
+    """
+
+    assert all(low <= high for low, high in FORMAT)
+    assert all(FORMAT[i][1] < FORMAT[i + 1][0] for i in range(len(FORMAT) - 1))
+    assert _listed(FORMAT) == _code_points_by_category()["Cf"]
+    assert len(_listed(FORMAT)) == 170
+
+
+def test_display_is_the_per_character_rule_in_every_context() -> None:
+    """Set membership answers as the category and the range tables do.
+
+    Every code point a table lists, each table's neighbours, and every 251st code point,
+    in the contexts the rule reads: at the start, after ASCII, after a visible base
+    outside ASCII, after an invisible character, as a keycap's selector, and as the base
+    of a selector. All 1,114,112 code points were compared in these contexts when the
+    sets were introduced; the commit message has the count.
+    """
+
+    tables = (
+        DEFAULT_IGNORABLE,
+        VARIATION_SELECTORS,
+        SPACE_SEPARATORS,
+        FORMAT,
+        ((BLANK_BRAILLE, BLANK_BRAILLE), (0x00, 0x1F), (0x7F, 0x9F)),
+    )
+    points = set(range(0, 0x110000, 251))
+    for table in tables:
+        for low, high in table:
+            points.update(range(max(low - 1, 0), min(high + 1, 0x10FFFF) + 1))
+    contexts = (
+        ("", ""),
+        ("a", ""),
+        ("\u96ea", ""),
+        ("\u3164", ""),
+        ("1", "\u20e3"),
+        ("", "\ufe0f"),
+        ("README", "\U000e0100.md"),
+    )
+    for prefix, suffix in contexts:
+        for point in sorted(points):
+            # A lone surrogate is not UTF-8; its bytes decode to U+FFFD under both.
+            name = (prefix + chr(point) + suffix).encode("utf-8", "surrogatepass")
+            expected = _displayed_by_the_rule(name.decode("utf-8", "replace"))
+            assert display_segment(name) == expected, (hex(point), prefix, suffix)
+
+
+def test_display_does_per_character_work_only_for_a_name_that_needs_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A listing displays up to ``INVENTORY_MAX_FILES`` names, one call each.
+
+    A name with no character the display could replace is returned as decoded, and the
+    rule that reads a selector's base runs for a selector only. Before the sets, that
+    rule ran for every character of any name outside ASCII, which made such a name
+    many times slower to display; the measurement is beside ``display_segment``.
+    """
+
+    asked: list[tuple[str, int]] = []
+
+    def counted(text: str, index: int) -> bool:
+        asked.append((text, index))
+        return hidden_at(text, index)
+
+    monkeypatch.setattr(tree_module, "hidden_at", counted)
+    plain = "\u30c9\u30ad\u30e5\u30e1\u30f3\u30c8\u6982\u8981-123.md"
+    assert display_segment(plain.encode()) == plain
+    assert asked == []
+    heart = "\u2764\ufe0f notes.md"
+    assert display_segment(heart.encode()) == heart
+    assert asked == [(heart, 1)]
+    asked.clear()
+    assert display_segment("a\u202eb\u3164c\u00a0.md".encode()) == "a\ufffdb\ufffdc\ufffd.md"
+    assert asked == []
+
+
 # Every space separator (Zs) but U+0020, with the line and paragraph separators.
 _UNICODE_SPACES = (0x00A0, 0x1680, *range(0x2000, 0x200B), 0x2028, 0x2029, 0x202F, 0x205F, 0x3000)
 
@@ -705,14 +850,10 @@ def test_display_replaces_every_space_and_separator_but_the_ascii_space() -> Non
     assert display_segment(b"My Notes.md") == "My Notes.md"
     assert display_segment("\u96ea \u6708.md".encode()) == "\u96ea \u6708.md"
     # The table is the running Python's Zs, Zl, and Zp, less the ASCII space.
-    separators = {
-        point
-        for point in range(0x110000)
-        if unicodedata.category(chr(point)) in {"Zs", "Zl", "Zp"} and point != 0x20
-    }
+    by_category = _code_points_by_category()
+    separators = (by_category["Zs"] | by_category["Zl"] | by_category["Zp"]) - {0x20}
     assert separators == set(_UNICODE_SPACES)
-    listed = {point for low, high in SPACE_SEPARATORS for point in range(low, high + 1)}
-    assert listed == separators
+    assert _listed(SPACE_SEPARATORS) == separators
 
 
 def test_display_keeps_private_use_and_unassigned_code_points() -> None:
