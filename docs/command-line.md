@@ -141,6 +141,10 @@ branch again, as its banner says.
 A branch or tag deleted upstream leaves the mirror, but no commit does, so an older pin
 stays readable after a force-push.
 If the origin is gone the row says the refresh failed and the pin keeps serving.
+A `/commit/<id>` address for a commit the mirror does not have is fetched for once: the
+page says it is fetching, then opens the commit, says the commit was not found when the
+fetch ran without bringing it, or says it was not fetched, with the reason and a Retry,
+when the fetch could not run.
 
 A served pin always runs under the untrusted profile: `--untrusted` is implied, the
 `METAB_*` enables are ignored, and `--allow-edits` is an error.

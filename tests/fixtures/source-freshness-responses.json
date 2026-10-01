@@ -353,5 +353,145 @@
       "selection_state": "pending",
       "selection_href": null
     }
+  },
+  "commit_page": {
+    "subject": "git_revision",
+    "generation": 8,
+    "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "refreshable": true,
+    "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-23T12:00:00Z",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "succeeded",
+      "at": "2026-09-23T12:00:00Z"
+    },
+    "refreshing": false,
+    "stale": false,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  },
+  "commit_missing": {
+    "oid": "92b31b0785485bd9eaa9619d198a779c2699295d",
+    "status": 404,
+    "body": {
+      "error": "unknown revision",
+      "code": "commit_not_found"
+    }
+  },
+  "commit_absent": {
+    "oid": "0123456789abcdef0123456789abcdef01234567",
+    "status": 404,
+    "body": {
+      "error": "unknown revision",
+      "code": "commit_not_found"
+    }
+  },
+  "commit_fetch_started": {
+    "refresh": "started",
+    "status": {
+      "subject": "git_revision",
+      "generation": 8,
+      "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+      "ref": "refs/remotes/origin/topic",
+      "ref_name": "topic",
+      "refreshable": true,
+      "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+      "ref_on_origin": true,
+      "last_fetch_at": "2026-09-23T12:00:00Z",
+      "last_outcome": {
+        "operation": "refresh",
+        "outcome": "succeeded",
+        "at": "2026-09-23T12:00:00Z"
+      },
+      "refreshing": true,
+      "stale": false,
+      "pull_request": null,
+      "selection_state": null,
+      "selection_href": null
+    }
+  },
+  "commit_fetched": {
+    "subject": "git_revision",
+    "generation": 8,
+    "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "refreshable": true,
+    "latest": "92b31b0785485bd9eaa9619d198a779c2699295d",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-23T12:00:00Z",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "succeeded",
+      "at": "2026-09-23T12:00:00Z"
+    },
+    "refreshing": false,
+    "stale": false,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  },
+  "commit_found": {
+    "oid": "92b31b0785485bd9eaa9619d198a779c2699295d",
+    "status": 200,
+    "commit": "92b31b0785485bd9eaa9619d198a779c2699295d"
+  },
+  "commit_absent_after": {
+    "oid": "0123456789abcdef0123456789abcdef01234567",
+    "status": 404,
+    "body": {
+      "error": "unknown revision",
+      "code": "commit_not_found"
+    }
+  },
+  "commit_unfetched_started": {
+    "refresh": "started",
+    "status": {
+      "subject": "git_revision",
+      "generation": 8,
+      "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+      "ref": "refs/remotes/origin/topic",
+      "ref_name": "topic",
+      "refreshable": true,
+      "latest": "92b31b0785485bd9eaa9619d198a779c2699295d",
+      "ref_on_origin": true,
+      "last_fetch_at": "2026-09-23T12:00:00Z",
+      "last_outcome": {
+        "operation": "refresh",
+        "outcome": "succeeded",
+        "at": "2026-09-23T12:00:00Z"
+      },
+      "refreshing": true,
+      "stale": false,
+      "pull_request": null,
+      "selection_state": null,
+      "selection_href": null
+    }
+  },
+  "commit_unfetched": {
+    "subject": "git_revision",
+    "generation": 8,
+    "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "refreshable": true,
+    "latest": "92b31b0785485bd9eaa9619d198a779c2699295d",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-23T12:00:00Z",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "origin_unavailable",
+      "at": "2026-09-23T12:00:00Z"
+    },
+    "refreshing": false,
+    "stale": false,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
   }
 }

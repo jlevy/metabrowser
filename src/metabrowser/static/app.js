@@ -3876,6 +3876,7 @@ window.MetabrowserShell = Object.freeze({
   removeNavPanel,
   renderPreviewHtml,
   renderPreviewNode,
+  sourceFreshness,
 });
 
 // Toggle the nav chrome's drop shadow based on whether the
@@ -8060,10 +8061,23 @@ async function startSourceFreshness() {
   var element = document.getElementById("source-freshness");
   var assets = window.MetabrowserAssets;
   if (!isGitRevisionSource() || !element || !assets) {
-    return;
+    return null;
   }
   await assets.ensureAsset("source-freshness");
-  window.MetabrowserSourceFreshness?.mount(element);
+  return window.MetabrowserSourceFreshness?.mount(element) ?? null;
+}
+
+/** @type {Promise<MetabrowserSourceFreshnessController | null> | null} */
+var sourceFreshnessStarted = null;
+
+/**
+ * The page's one freshness controller, mounted on first use: null when a folder is
+ * served. The commit view asks it to fetch for a commit the mirror lacks, so both read
+ * one status and a page never polls twice.
+ */
+function sourceFreshness() {
+  sourceFreshnessStarted ??= startSourceFreshness();
+  return sourceFreshnessStarted;
 }
 
 /**
@@ -8122,7 +8136,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       console.error("metabrowser shell tools: init failed", { url: location.pathname }, error);
     })
     .finally(settleCommitRoutePreview);
-  startSourceFreshness().catch((error) => {
+  sourceFreshness().catch((error) => {
     console.error("metabrowser source freshness: init failed", error);
   });
   startSourceRefSelector().catch((error) => {

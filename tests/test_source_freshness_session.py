@@ -1,13 +1,14 @@
 """The freshness session runs production browser code on what a served mirror answers.
 
 ``tests/dom/source-freshness-session.js`` drives ``static/source-freshness.js`` -- the
-polling, the stale label, the newer-revision offer, and pin switching -- and the history
-panel's ``classifyPageFailure`` through a scripted conversation, and
-``tests/golden/cli-ui-source-freshness.tryscript.md`` pins its transcript. So that the
-conversation is the real server's and not envelopes a test wrote by hand, its responses
-come from ``tests/fixtures/source-freshness-responses.json``: what the in-process
-application answered while a mirror went stale, refreshed, gained a newer commit,
-switched its pin, lost its origin, and invalidated an open all-branch history cursor.
+polling, the stale label, the newer-revision offer, pin switching, and opening a commit
+the mirror lacks -- and the history panel's ``classifyPageFailure`` through a scripted
+conversation, and ``tests/golden/cli-ui-source-freshness.tryscript.md`` pins its
+transcript. So that the conversation is the real server's and not envelopes a test wrote
+by hand, its responses come from ``tests/fixtures/source-freshness-responses.json``:
+what the in-process application answered while a mirror went stale, refreshed, gained a
+newer commit, switched its pin, lost its origin, invalidated an open all-branch history
+cursor, and was asked for commits it did not have.
 The first test here replays that story against a real store and fails when the
 recording no longer matches.
 
@@ -61,6 +62,8 @@ SESSION_JS = REPO_ROOT / "tests" / "dom" / "source-freshness-session.js"
 FIXTURE = REPO_ROOT / "tests" / "fixtures" / "source-freshness-responses.json"
 
 _JSON = {"content-type": "application/json"}
+# A full commit ID no repository in these tests has.
+_ABSENT_COMMIT = "0123456789abcdef0123456789abcdef01234567"
 _TIMESTAMP = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
 _STAND_IN_TIME = "2026-09-23T12:00:00Z"
 
@@ -258,6 +261,45 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
                     assert retried.status_code == 202
                     recorded["selection_retry_started"] = retried.json()
                     _settle(client)
+        # A commit the mirror lacks, asked for by its address in a served page. The
+        # commit route names the miss and never fetches; the refresh the page asks for
+        # brings the commit, does not have it, or cannot run.
+        shutil.move(away, origin)
+        serve_mirror(StoreMirror.from_published(published))
+        with TestClient(server.app) as client:
+            # A fetch that just succeeded, so the page opens fresh and asks for nothing
+            # on its own; the origin gains the commit only after it.
+            assert client.post("/api/source/refresh", json={}, headers=_JSON).status_code == 202
+            _settle(client)
+            unfetched = _commit_on_topic(origin)
+            recorded["commit_page"] = client.get("/api/source/status").json()
+            for key, oid in (("commit_missing", unfetched), ("commit_absent", _ABSENT_COMMIT)):
+                missing = client.get(f"/api/git/commit/{oid}")
+                recorded[key] = {"oid": oid, "status": missing.status_code, "body": missing.json()}
+            assert client.get("/api/source/status").json() == recorded["commit_page"], (
+                "asking for a commit the mirror lacks must not start a fetch"
+            )
+            started = client.post("/api/source/refresh", json={}, headers=_JSON)
+            assert started.status_code == 202
+            recorded["commit_fetch_started"] = started.json()
+            recorded["commit_fetched"] = _settle(client)
+            found = client.get(f"/api/git/commit/{unfetched}")
+            recorded["commit_found"] = {
+                "oid": unfetched,
+                "status": found.status_code,
+                "commit": found.json()["commit"]["id"],
+            }
+            still = client.get(f"/api/git/commit/{_ABSENT_COMMIT}")
+            recorded["commit_absent_after"] = {
+                "oid": _ABSENT_COMMIT,
+                "status": still.status_code,
+                "body": still.json(),
+            }
+            shutil.move(origin, away)
+            started = client.post("/api/source/refresh", json={}, headers=_JSON)
+            assert started.status_code == 202
+            recorded["commit_unfetched_started"] = started.json()
+            recorded["commit_unfetched"] = _settle(client)
     finally:
         serve_mirror(None)
         reset_source_session()
@@ -285,6 +327,17 @@ def test_recording_is_what_a_served_mirror_answers(
     assert recorded["selection_not_found"]["selection_state"] == "not_found"
     assert recorded["selection_fetch_failed"]["selection_state"] == "fetch_failed"
     assert recorded["selection_retry_started"]["status"]["selection_state"] == "pending"
+    page = recorded["commit_page"]
+    assert (page["refreshable"], page["refreshing"], page["stale"]) == (True, False, False)
+    assert page["last_outcome"]["outcome"] == "succeeded"
+    for key in ("commit_missing", "commit_absent", "commit_absent_after"):
+        assert recorded[key]["status"] == 404
+        assert recorded[key]["body"] == {"error": "unknown revision", "code": "commit_not_found"}
+    assert recorded["commit_fetch_started"]["status"]["refreshing"] is True
+    assert recorded["commit_fetched"]["last_outcome"]["outcome"] == "succeeded"
+    assert recorded["commit_found"]["status"] == 200
+    assert recorded["commit_found"]["commit"] == recorded["commit_missing"]["oid"]
+    assert recorded["commit_unfetched"]["last_outcome"]["outcome"] == "origin_unavailable"
     rendered = json.dumps(recorded, indent=2, ensure_ascii=False) + "\n"
     if os.environ.get("GOLDEN_UPDATE") == "1":
         FIXTURE.write_text(rendered, encoding="utf-8")
@@ -339,3 +392,23 @@ def test_the_session_runs_on_the_recording() -> None:
     failed = by_name["the address could not be fetched"]["paint"]
     assert failed["tone"] == "warning" and failed["offer"] == "Fetch the address again [Retry]"
     assert by_name["retry the address"]["requests"] == ["POST /api/source/refresh {}"]
+    # A commit the mirror lacks is fetched for once, then opens or says why not.
+    missing = recording["commit_missing"]["oid"]
+    waiting = by_name["a commit the mirror lacks waits for one fetch"]
+    assert waiting["requests"] == ["POST /api/source/refresh {}"]
+    assert waiting["commit"]["state"] == "pending" and waiting["commit"]["offer"] is None
+    assert by_name["the commit waits while the fetch runs"]["commit"]["repaints"] == 0
+    brought = by_name["the fetch brought the commit; it opens"]
+    assert brought["requests"][-1] == f"GET /api/git/commit/{missing}"
+    assert brought["commit"] == {"repaints": 1, "shows": missing}
+    absent = by_name["the fetch did not bring the commit"]["commit"]
+    assert absent["state"] == "not_found" and absent["title"].startswith("Commit not found")
+    unfetched = by_name["the commit could not be fetched"]["commit"]
+    assert unfetched["state"] == "fetch_failed" and unfetched["offer"] == "[Retry]"
+    assert unfetched["title"].startswith("Commit not fetched")
+    assert "The origin could not be read." in unfetched["detail"]
+    assert by_name["retry the commit"]["requests"] == ["POST /api/source/refresh {}"]
+    left = by_name["the reader left before the fetch ended"]
+    assert left["requests"] == ["GET /api/source/status"] and left["commit"]["repaints"] == 0
+    joined = by_name["a refresh already running is the commit's fetch"]
+    assert joined["requests"] == [] and joined["commit"]["state"] == "pending"

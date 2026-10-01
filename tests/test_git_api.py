@@ -916,6 +916,8 @@ def test_route_commit_returns_404_for_an_unknown_object(repo: Path) -> None:
         api_git_commit(_FakeRequest(path_params={"revision": "0" * 40}))  # pyright: ignore[reportArgumentType]
     )
     assert response.status_code == 404
+    # Named, so the browser tells a commit the repository lacks from a failed request.
+    assert _json(response) == {"error": "unknown revision", "code": "commit_not_found"}
 
 
 def test_route_commit_preserves_operational_git_failures(repo: Path) -> None:

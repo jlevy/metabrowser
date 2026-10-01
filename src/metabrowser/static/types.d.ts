@@ -2264,6 +2264,29 @@ declare global {
     pull: { href: string; text: string } | null;
   };
 
+  /**
+   * What the commit view says about a commit the mirror lacks: being fetched, not on
+   * the origin, or not fetched because the fetch did not run, which `retry` offers again.
+   */
+  type MetabrowserMissingCommitModel = {
+    state: "pending" | "not_found" | "fetch_failed";
+    title: string;
+    detail: string;
+    retry: boolean;
+  };
+
+  /** How the fetch for a missing address ended: the status then, and why it was not asked for. */
+  type MetabrowserSourceFetchEnd = { status: MetabrowserSourceStatus | null; error: string | null };
+
+  /** The commit view's side of opening a commit the mirror lacks. */
+  type MetabrowserMissingCommitView = {
+    /** Ask the server for the commit again and paint it; false when it is still missing. */
+    load(): Promise<boolean>;
+    paint(model: MetabrowserMissingCommitModel): void;
+    isCurrent(): boolean;
+    now(): number;
+  };
+
   type MetabrowserSourceResponse = { status: number; etag: string | null; body: unknown };
 
   type MetabrowserSourceFreshnessDependencies = {
@@ -2285,6 +2308,7 @@ declare global {
     start(): Promise<void>;
     poll(): Promise<void>;
     requestRefresh(): Promise<void>;
+    fetchMissing(): Promise<MetabrowserSourceFetchEnd>;
     acceptOffer(): Promise<void>;
     onVisibilityChange(): void;
     dispose(): void;
@@ -2309,7 +2333,15 @@ declare global {
       status: MetabrowserSourceStatus | null,
       page: { shown: MetabrowserSourcePage | null; nowMs: number; error?: string | null },
     ): MetabrowserSourceFreshnessModel;
+    describeMissingCommit(
+      status: MetabrowserSourceStatus | null,
+      page: { phase: "fetching" | "ended"; nowMs: number; error?: string | null },
+    ): MetabrowserMissingCommitModel;
     mount(element: HTMLElement): MetabrowserSourceFreshnessController;
+    openMissingCommit(
+      controller: Pick<MetabrowserSourceFreshnessController, "fetchMissing">,
+      view: MetabrowserMissingCommitView,
+    ): Promise<"found" | "not_found" | "fetch_failed" | "superseded">;
     relativeAge(iso: string | null, nowMs: number): string;
     selectionToOpen(
       status: MetabrowserSourceStatus | null,
@@ -2554,6 +2586,8 @@ declare global {
     removeNavPanel(panelId: string): void;
     renderPreviewHtml(html: string, claim: MetabrowserPreviewClaim): HTMLElement | null;
     renderPreviewNode(node: HTMLElement, claim: MetabrowserPreviewClaim): HTMLElement | null;
+    /** The page's freshness controller once it is mounted; null when a folder is served. */
+    sourceFreshness(): Promise<MetabrowserSourceFreshnessController | null>;
   };
   type MetabrowserPublicFileTypeTaxonomyRuntime = MetabrowserFileTypeTaxonomyRuntime;
   type MetabrowserPublicPreparedViewComposition = MetabrowserPreparedViewComposition;

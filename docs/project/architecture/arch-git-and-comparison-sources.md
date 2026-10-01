@@ -398,6 +398,19 @@ Four rules hold across all of them:
 - **Git failures become 5xx with a generic body.** Git’s error text contains absolute
   local paths, so it is logged and dropped.
 
+A commit the repository does not have is not a failure.
+`/api/git/commit/{revision}` answers it with HTTP 404 and the code `commit_not_found`,
+which the browser tells apart from a request that failed, and it never fetches: the
+route is a GET, and a GET starts no network work.
+In a served folder the commit view says the commit is not in the repository.
+In a served mirror the commit may only not have been fetched yet, so the view asks the
+page’s freshness controller for one fetch through `POST /api/source/refresh`, says it is
+fetching, and then opens the commit, says the fetch ran without bringing it, or says the
+fetch could not run and offers it again.
+Those are the states a URL selection passes through, described in the
+[views/models/routes map](arch-views-models-routes.md) under `/api/source/status`; the
+functional row `git.unfetched-commit` there pins the sequence.
+
 ## How the layers are modeled
 
 The layers currently use different modeling idioms.

@@ -375,7 +375,10 @@ sandbox.history = {
 // Shell bridge stub. Pending state is shell-owned so file and Git navigation
 // exercise the same claim-scoped lifecycle.
 let previewHtml = "";
+let previewNode = null;
 let previewClaim = 0;
+// The page's freshness controller: null when a folder is served.
+let freshnessController = null;
 const removedPanels = [];
 let registeredPanel = null;
 sandbox.MetabrowserShell = {
@@ -429,9 +432,11 @@ sandbox.MetabrowserShell = {
       return null;
     }
     previewHtml = node.innerHTML;
+    previewNode = node;
     return node;
   },
   activateNavPanel: () => {},
+  sourceFreshness: async () => freshnessController,
 };
 
 // A fresh directory shell has configured plugin descriptors but has not
@@ -519,7 +524,15 @@ vm.createContext(sandbox);
 // formatters.js first: the panel's ages come from that shared primitive,
 // and loading the real module (not a stub) is what proves a commit's age
 // is spelled exactly like a file's.
-for (const file of ["formatters.js", "git-graph.js", "git-history-window.js", "git-panel.js"]) {
+// source-freshness.js is the production module a pin loads on demand; the panel hands
+// it a commit the mirror lacks.
+for (const file of [
+  "formatters.js",
+  "git-graph.js",
+  "git-history-window.js",
+  "source-freshness.js",
+  "git-panel.js",
+]) {
   const source = fs.readFileSync(path.join(repoRoot, "src/metabrowser/static", file), "utf-8");
   vm.runInContext(source, sandbox, { filename: file });
 }
@@ -2065,6 +2078,168 @@ async function run() {
       "age-old",
     );
     responses.delete("/api/git/summary");
+  }
+
+  // ── A commit the repository does not have ──────────────────
+  {
+    responses.clear();
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+    const notFound = {
+      httpStatus: 404,
+      body: { error: "unknown revision", code: "commit_not_found" },
+    };
+    const SHA_MISSING = "2".repeat(40);
+    const SHA_BROKEN = "3".repeat(40);
+    const SHA_UNFETCHED = "4".repeat(40);
+    const SHA_LEFT = "5".repeat(40);
+
+    // A folder has no mirror to fetch into: the commit is simply not there.
+    freshnessController = null;
+    responses.set(`/api/git/commit/${SHA_MISSING}`, notFound);
+    await internals.selectCommit(SHA_MISSING);
+    await tick();
+    assertContains("missing commit: a folder names the miss", previewHtml, "Commit not found");
+    assertContains(
+      "missing commit: a folder says where it looked",
+      previewHtml,
+      "This commit is not in the repository.",
+    );
+    assertNotContains("missing commit: not a load failure", previewHtml, "Could not load");
+    assertEqual(
+      "missing commit: a folder offers no fetch",
+      previewNode.querySelector(".git-commit-missing-retry"),
+      null,
+    );
+    assertEqual("missing commit: state on the element", previewNode.dataset.state, "not_found");
+
+    // A request that failed is still a load failure, not a missing commit.
+    responses.set(`/api/git/commit/${SHA_BROKEN}`, {
+      httpStatus: 500,
+      body: { error: "git command failed" },
+    });
+    await internals.selectCommit(SHA_BROKEN);
+    await tick();
+    assertContains(
+      "failed commit: says it could not load",
+      previewHtml,
+      "Could not load this commit.",
+    );
+
+    // A served mirror: the commit view says it is fetching, asks the page's controller
+    // for one fetch, and says how the fetch ended.
+    const mirrorStatus = (outcome) => ({
+      subject: "git_revision",
+      generation: 1,
+      pin: SHA_A,
+      ref: null,
+      ref_name: null,
+      refreshable: true,
+      latest: null,
+      ref_on_origin: null,
+      last_fetch_at: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+      last_outcome: { operation: "refresh", outcome, at: new Date().toISOString() },
+      refreshing: false,
+      stale: false,
+      pull_request: null,
+      selection_state: null,
+      selection_href: null,
+    });
+    let fetches = 0;
+    let endFetch = null;
+    freshnessController = {
+      fetchMissing: () => {
+        fetches += 1;
+        return new Promise((resolve) => {
+          endFetch = resolve;
+        });
+      },
+    };
+    responses.set(`/api/git/commit/${SHA_UNFETCHED}`, notFound);
+    const previewPane = document.getElementById("preview-pane");
+    const priorView = document.createElement("div");
+    priorView.textContent = "prior view";
+    previewPane.replaceChildren(priorView);
+    const selecting = internals.selectCommit(SHA_UNFETCHED);
+    await Promise.resolve();
+    assertEqual(
+      "unfetched commit: the pane is busy while the commit is asked for",
+      previewPane.getAttribute("aria-busy"),
+      "true",
+    );
+    await selecting;
+    await tick();
+    assertEqual("unfetched commit: one fetch is asked for", fetches, 1);
+    assertContains("unfetched commit: says it is fetching", previewHtml, "Fetching this commit");
+    assertEqual(
+      "unfetched commit: pending is a status",
+      previewNode.getAttribute("role"),
+      "status",
+    );
+    assertEqual(
+      "unfetched commit: the pending state has left the busy state",
+      previewPane.getAttribute("aria-busy"),
+      null,
+    );
+
+    endFetch({ status: mirrorStatus("origin_unavailable"), error: null });
+    await tick();
+    await tick();
+    assertContains("unfetched commit: names the failed fetch", previewHtml, "Commit not fetched");
+    assertContains("unfetched commit: says why", previewHtml, "The origin could not be read.");
+    assertEqual(
+      "unfetched commit: the failure is an alert",
+      previewNode.getAttribute("role"),
+      "alert",
+    );
+    const retry = previewNode.querySelector(".git-commit-missing-retry");
+    assertTrue("unfetched commit: offers the fetch again", retry !== null);
+
+    // Retry asks again; this time the fetch brings the commit and it opens.
+    retry.dispatch("click");
+    await tick();
+    assertEqual("unfetched commit: retry asks for another fetch", fetches, 2);
+    assertContains(
+      "unfetched commit: retry says it is fetching",
+      previewHtml,
+      "Fetching this commit",
+    );
+    responses.set(`/api/git/commit/${SHA_UNFETCHED}`, {
+      is_repo: true,
+      commit: commit(SHA_UNFETCHED, [], "commit the fetch brought"),
+      body: "",
+      stats: { files_changed: 0, additions: 0, deletions: 0 },
+      files: [],
+      files_truncated: false,
+    });
+    endFetch({ status: mirrorStatus("succeeded"), error: null });
+    await tick();
+    await tick();
+    assertContains("unfetched commit: opens once fetched", previewHtml, "commit the fetch brought");
+
+    // Selecting it again reads the commit, not the remembered miss, and fetches nothing.
+    await internals.selectCommit(SHA_A);
+    await tick();
+    await internals.selectCommit(SHA_UNFETCHED);
+    await tick();
+    assertContains(
+      "unfetched commit: stays open on reselect",
+      previewHtml,
+      "commit the fetch brought",
+    );
+    assertEqual("unfetched commit: a found commit asks for no fetch", fetches, 2);
+
+    // A reader who goes elsewhere while the fetch runs keeps what they went to.
+    responses.set(`/api/git/commit/${SHA_LEFT}`, notFound);
+    await internals.selectCommit(SHA_LEFT);
+    await tick();
+    assertEqual("left commit: one fetch is asked for", fetches, 3);
+    const fileClaim = sandbox.MetabrowserShell.claimPreview("file");
+    sandbox.MetabrowserShell.renderPreviewHtml("<div>the reader moved on</div>", fileClaim);
+    endFetch({ status: mirrorStatus("succeeded"), error: null });
+    await tick();
+    await tick();
+    assertContains("left commit: the newer preview stays", previewHtml, "the reader moved on");
+    freshnessController = null;
   }
 
   // ── Relative age ───────────────────────────────────────────

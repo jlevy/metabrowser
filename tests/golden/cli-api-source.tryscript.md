@@ -211,6 +211,25 @@ Error: /api/source/pin returned HTTP 404
 ? 1
 ```
 
+## Test: a commit the mirror does not have is named, and nothing is fetched
+
+The commit route reads the mirror alone.
+A commit ID no object in it has answers `commit_not_found`; the route is a GET, so it
+starts no fetch, and a served page asks for one itself through
+`POST /api/source/refresh`.
+
+```console
+$ METABROWSER_HOME=$PWD/home metab file://$PWD/origin.git --api /api/git/commit/0123456789abcdef0123456789abcdef01234567
+api: /api/git/commit/0123456789abcdef0123456789abcdef01234567
+status: 404
+{
+  "error": "unknown revision",
+  "code": "commit_not_found"
+}
+Error: /api/git/commit/0123456789abcdef0123456789abcdef01234567 returned HTTP 404
+? 1
+```
+
 ## Test: revision syntax is refused before any lookup
 
 `:/first` would be a commit-message search to `rev-parse`; it is not a valid ref name,

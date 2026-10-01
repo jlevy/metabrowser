@@ -166,6 +166,18 @@ GitHub URLs and HTTPS:
   newline is not one. github.com links inside a rendered README of a served GitHub mirror
   open inside the pin, as they already did for a served checkout of the repository.
 
+- A served page opened at `/commit/<id>` for a commit the mirror does not have now says
+  what is known instead of “Could not load this commit.”
+  It fetches once in the background and shows “Fetching this commit…”, then opens the
+  commit when the fetch brings it, says “Commit not found” when the fetch ran and the
+  origin’s branches and tags do not reach it, or says “Commit not fetched” with the
+  reason and a Retry when the fetch could not run.
+  A refresh already running is that fetch, so no second one is asked for.
+  `/api/git/commit/<id>` names the miss as `commit_not_found`, still with HTTP 404, and
+  never fetches; in a served folder, which has no mirror to fetch into, the page says
+  the commit is not in the repository.
+  A request that fails for another reason still reads “Could not load this commit.”
+
 - `https://` sources are acquired, anonymously for a public repository.
   When `gh` is installed it is Git’s credential helper for `https://github.com` only,
   after every configured helper is cleared, so `gh auth login` opens a private

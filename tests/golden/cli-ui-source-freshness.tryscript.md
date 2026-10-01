@@ -15,16 +15,26 @@ a typed stale state with a reload action.
 A page on a pin also names the commit it shows on its data requests, and a request
 refused as `pin_changed` makes the row ask the status route at once.
 
+A commit the mirror lacks, opened by its `/commit/<id>` address in a served page, is an
+address not fetched too.
+`/api/git/commit/<id>` answers `commit_not_found` and fetches nothing, so the commit
+view asks for one fetch through the page’s own controller, says it is fetching, and then
+opens the commit, says the origin did not have it, or says the fetch could not run and
+offers it again.
+
 This browserless session loads the production `static/source-freshness.js`,
 `static/source-pin-guard.js`, and `static/git-history-window.js` and plays the server’s
 side from `tests/fixtures/source-freshness-responses.json`: what the in-process
 application answered while a real mirror went stale, refreshed, gained a newer commit,
-switched its pin, lost its origin, and invalidated an open all-branch history cursor.
+switched its pin, lost its origin, invalidated an open all-branch history cursor, and
+was asked for commits it did not have.
 `tests/test_source_freshness_session.py` replays that story and fails when the recording
 drifts. Timers, the clock, visibility, and paint are injected; each step records the
 requests the page made, the poll it scheduled (`fast` while a refresh runs, `slow`
 otherwise), how many times it repainted (never for an unchanged status, so the row’s
 announcement and focus stay put), whether it reloaded, and what it would paint.
+A step with a commit view adds `commit`: what the preview pane shows for the commit and
+how many times the step painted it.
 
 ```console
 $ node tests/dom/source-freshness-session.js
@@ -285,6 +295,188 @@ $ node tests/dom/source-freshness-session.js
         "detail": "Fetching from the origin. The mirror was last fetched 5 min ago. The address this page was opened at is not in the mirror yet; it opens when the fetch brings it.",
         "offer": "topic is now at 66f65bf1e89d [Switch] → refs/remotes/origin/topic",
         "error": null
+      }
+    },
+    {
+      "step": "a commit the mirror lacks waits for one fetch",
+      "requests": [
+        "POST /api/source/refresh {}"
+      ],
+      "timer": "fast",
+      "reloads": 0,
+      "repaints": 1,
+      "paint": {
+        "label": "Refreshing…",
+        "tone": "refreshing",
+        "detail": "Fetching from the origin. The mirror was last fetched 5 min ago.",
+        "offer": "topic is now at 66f65bf1e89d [Switch] → refs/remotes/origin/topic",
+        "error": null
+      },
+      "commit": {
+        "repaints": 1,
+        "state": "pending",
+        "title": "Fetching this commit…",
+        "detail": "This commit is not in the mirror yet; it opens when the fetch brings it.",
+        "offer": null
+      }
+    },
+    {
+      "step": "the commit waits while the fetch runs",
+      "requests": [
+        "GET /api/source/status"
+      ],
+      "timer": "fast",
+      "reloads": 0,
+      "repaints": 0,
+      "paint": {
+        "label": "Refreshing…",
+        "tone": "refreshing",
+        "detail": "Fetching from the origin. The mirror was last fetched 5 min ago.",
+        "offer": "topic is now at 66f65bf1e89d [Switch] → refs/remotes/origin/topic",
+        "error": null
+      },
+      "commit": {
+        "repaints": 0,
+        "state": "pending",
+        "title": "Fetching this commit…",
+        "detail": "This commit is not in the mirror yet; it opens when the fetch brings it.",
+        "offer": null
+      }
+    },
+    {
+      "step": "the fetch brought the commit; it opens",
+      "requests": [
+        "GET /api/source/status If-None-Match: \"s2\"",
+        "GET /api/git/commit/92b31b0785485bd9eaa9619d198a779c2699295d"
+      ],
+      "timer": "slow",
+      "reloads": 0,
+      "repaints": 1,
+      "paint": {
+        "label": "Fetched 5 min ago",
+        "tone": "quiet",
+        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "offer": "topic is now at 92b31b078548 [Switch] → refs/remotes/origin/topic",
+        "error": null
+      },
+      "commit": {
+        "repaints": 1,
+        "shows": "92b31b0785485bd9eaa9619d198a779c2699295d"
+      }
+    },
+    {
+      "step": "the fetch did not bring the commit",
+      "requests": [
+        "GET /api/source/status",
+        "GET /api/git/commit/0123456789abcdef0123456789abcdef01234567"
+      ],
+      "timer": "slow",
+      "reloads": 0,
+      "repaints": 1,
+      "paint": {
+        "label": "Fetched 5 min ago",
+        "tone": "quiet",
+        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "offer": "topic is now at 92b31b078548 [Switch] → refs/remotes/origin/topic",
+        "error": null
+      },
+      "commit": {
+        "repaints": 1,
+        "state": "not_found",
+        "title": "Commit not found · fetched 5 min ago",
+        "detail": "This commit is not in the mirror, and the fetch from the origin did not bring it: no branch or tag there reaches it.",
+        "offer": "[Retry]"
+      }
+    },
+    {
+      "step": "the commit could not be fetched",
+      "requests": [
+        "GET /api/source/status",
+        "GET /api/git/commit/0123456789abcdef0123456789abcdef01234567"
+      ],
+      "timer": "slow",
+      "reloads": 0,
+      "repaints": 1,
+      "paint": {
+        "label": "Refresh failed · fetched 5 min ago",
+        "tone": "warning",
+        "detail": "The origin could not be read. The pinned revision is still served from the mirror.",
+        "offer": "topic is now at 92b31b078548 [Switch] → refs/remotes/origin/topic",
+        "error": null
+      },
+      "commit": {
+        "repaints": 1,
+        "state": "fetch_failed",
+        "title": "Commit not fetched · fetched 5 min ago",
+        "detail": "This commit is not in the mirror, and it could not be fetched. The origin could not be read.",
+        "offer": "[Retry]"
+      }
+    },
+    {
+      "step": "retry the commit",
+      "requests": [
+        "POST /api/source/refresh {}"
+      ],
+      "timer": "fast",
+      "reloads": 0,
+      "repaints": 1,
+      "paint": {
+        "label": "Refreshing…",
+        "tone": "refreshing",
+        "detail": "Fetching from the origin. The mirror was last fetched 5 min ago.",
+        "offer": "topic is now at 92b31b078548 [Switch] → refs/remotes/origin/topic",
+        "error": null
+      },
+      "commit": {
+        "repaints": 1,
+        "state": "pending",
+        "title": "Fetching this commit…",
+        "detail": "This commit is not in the mirror yet; it opens when the fetch brings it.",
+        "offer": null
+      }
+    },
+    {
+      "step": "the reader left before the fetch ended",
+      "requests": [
+        "GET /api/source/status"
+      ],
+      "timer": "slow",
+      "reloads": 0,
+      "repaints": 1,
+      "paint": {
+        "label": "Refresh failed · fetched 5 min ago",
+        "tone": "warning",
+        "detail": "The origin could not be read. The pinned revision is still served from the mirror.",
+        "offer": "topic is now at 92b31b078548 [Switch] → refs/remotes/origin/topic",
+        "error": null
+      },
+      "commit": {
+        "repaints": 0,
+        "state": "pending",
+        "title": "Fetching this commit…",
+        "detail": "This commit is not in the mirror yet; it opens when the fetch brings it.",
+        "offer": null
+      }
+    },
+    {
+      "step": "a refresh already running is the commit's fetch",
+      "requests": [],
+      "timer": "fast",
+      "reloads": 0,
+      "repaints": 0,
+      "paint": {
+        "label": "Refreshing…",
+        "tone": "refreshing",
+        "detail": "Fetching from the origin. The mirror was last fetched 6 d ago.",
+        "offer": null,
+        "error": null
+      },
+      "commit": {
+        "repaints": 1,
+        "state": "pending",
+        "title": "Fetching this commit…",
+        "detail": "This commit is not in the mirror yet; it opens when the fetch brings it.",
+        "offer": null
       }
     },
     {
