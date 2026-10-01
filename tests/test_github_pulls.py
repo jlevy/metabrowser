@@ -69,7 +69,7 @@ from metabrowser.cache.urls import GitSource, RepositorySelection
 from metabrowser.cli.main import _app
 from metabrowser.git import process as git_process
 from metabrowser.git import repo as git_repo
-from metabrowser.git.process import kill_live_process_groups, repository_store_target
+from metabrowser.git.process import GitError, kill_live_process_groups, repository_store_target
 from metabrowser.git.tree_source import GitRevisionSubject
 from metabrowser.mirror_refresh import (
     FRESHNESS_WINDOW_S,
@@ -871,6 +871,29 @@ def test_a_fetch_that_cannot_write_one_ref_writes_none(stand: _Stand) -> None:
     )
     assert asyncio.run(ref_commit(stand.published, "refs/pull/7/head")) is None
     assert asyncio.run(ref_commit(stand.published, mirrored)) == stand.origin["topic"]
+
+
+def test_a_git_failure_is_reported_without_gits_own_text(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Git's message can name a path inside the application home; the refusal never does."""
+
+    said = f"fatal: unable to read {stand.published.git_dir}/packed-refs"
+    git = pull_refs.run_git
+
+    async def failing(args: list[str], **kwargs: Any) -> bytes:
+        if "show-ref" in args:
+            raise GitError(said)
+        return await git(args, **kwargs)
+
+    monkeypatch.setattr(pull_refs, "run_git", failing)
+    with pytest.raises(PullDataError) as refused:
+        stand.refresh(7)
+    message = "a Git command failed while reading it (--log-level debug shows Git's own message)"
+    assert (refused.value.state, str(refused.value)) == ("git_failed", message)
+    # The stamp is what the route and the next command show of it.
+    stamp = read_pull_refresh(stand.published.home, stand.published.slug, 7)
+    assert stamp is not None and (stamp.outcome, stamp.message) == ("git_failed", message)
 
 
 def test_the_route_parses_a_record_again_only_when_it_changed(
