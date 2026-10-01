@@ -26,7 +26,10 @@ What a transcript may still replace, and why no fixture can pin it:
 - ``<VERSION>``, ``<STATE>``: the installed package version and its build annotation;
 - ``<GIT_VERSION>``: the Git on ``PATH``;
 - ``<TIME>``: a time written by a process the fixed clock cannot reach, which is a
-  child killed mid-publication.
+  child killed mid-publication;
+- ``<N lines, from … on, are the same as in … above>``: not a value but a run of lines
+  an earlier command of the same transcript printed, shown there once. The pin driver
+  (``tests/test_cli_git_pin_golden.py``) finds the run by comparing the two outputs.
 
 Everything else is literal. Commit IDs are literal because every origin is built with
 :func:`pinned_git_env` or ``git fast-import``; times are literal because

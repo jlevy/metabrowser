@@ -267,17 +267,19 @@ def _name_the_repeat(stdout: str, first: str, *, shown_by: str) -> str:
     Every ``/api/tree`` answer carries the whole pin's filter tallies, which is some 160
     lines that do not depend on the directory listed. The first block prints them; a
     later one says how many lines it repeats and where they begin. The run is found by
-    comparing the two outputs, not assumed, so tallies that stopped being equal would
-    print in full again and show in the diff.
+    comparing the two outputs, not assumed: where they stop agreeing, the lines that
+    stopped repeating print and the marker's count changes, and a run shorter than
+    ``_REPEAT_MIN_LINES`` is not replaced at all. Either shows in the diff.
     """
 
     earlier, lines = first.splitlines(), stdout.splitlines()
     run = difflib.SequenceMatcher(None, earlier, lines, autojunk=False).find_longest_match()
     if run.size < _REPEAT_MIN_LINES:
         return stdout
-    marker = (
-        f"  <{run.size} lines, from {lines[run.b].strip()} on, are the same as in {shown_by} above>"
-    )
+    begins = lines[run.b].strip()
+    # The marker names the run by its first line, which must be one place in *first*.
+    assert sum(line.strip() == begins for line in earlier) == 1, begins
+    marker = f"  <{run.size} lines, from {begins} on, are the same as in {shown_by} above>"
     return "\n".join([*lines[: run.b], marker, *lines[run.b + run.size :]]) + "\n"
 
 
