@@ -334,6 +334,7 @@ Follow-up pull requests extend those steps, in stack order:
 | [#248](https://github.com/jlevy/metabrowser/pull/248) | View file at either side of a changed file, from a commit’s diff or Files changed | `mb-zb5t` |
 | [#249](https://github.com/jlevy/metabrowser/pull/249) | Existing folders with URL-like names are served; a state for an unfetched commit; not-found wording | `mb-n80y`, `mb-4kuc`, `mb-2nu0` |
 | [#250](https://github.com/jlevy/metabrowser/pull/250) | Plans, roadmap, architecture documents, and changelog brought in line with the delivered stack | `mb-myum` |
+| [#263](https://github.com/jlevy/metabrowser/pull/263) | A served mirror is headed by the repository’s name and says where it is kept ([Decision (2026-10-01)](#decision-2026-10-01-by-the-user)) | `mb-fndz` |
 
 Later: pull-request list, inline review anchoring, SSH, Enterprise hosts, issues,
 checkout attachment, and rebind.
