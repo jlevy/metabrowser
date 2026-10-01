@@ -63,6 +63,23 @@ const source = fs.readFileSync(sourcePath, "utf8");
 vm.runInContext(source, sandbox, { filename: sourcePath });
 
 const route = sandbox.MetabrowserNavigationRoute;
+// The pull-request page's routes: an on-demand module the shell fetches only for an
+// address under /pull/.
+const pullSourcePath = path.join(repoRoot, "src/metabrowser/static/pull-route.js");
+vm.runInContext(fs.readFileSync(pullSourcePath, "utf8"), sandbox, { filename: pullSourcePath });
+const pullRoute = sandbox.MetabrowserPullRoute;
+// The GitPath wire codec, a startup script on a pinned revision's shell only. It is
+// loaded here after navigation.js to show that the order does not matter: displayPath
+// looks for it when it is called.
+const gitPathSourcePath = path.join(repoRoot, "src/metabrowser/static/git-path.js");
+observe(
+  "without the codec a wire shows as written",
+  route.displayPath("g1-UkVBRE1FLm1k", "git_revision"),
+);
+vm.runInContext(fs.readFileSync(gitPathSourcePath, "utf8"), sandbox, {
+  filename: gitPathSourcePath,
+});
+const gitPath = sandbox.MetabrowserGitPath;
 
 observe(
   "slash-bearing Git ref gets one encoded revision segment",
@@ -92,12 +109,12 @@ for (const [label, revision] of [
   );
 }
 
-observe("pull-request page href", route.pullHref(7));
-observe("pull-request Files changed href", route.pullHref(7, "files"));
-observe("pull-request page parses", route.parsePull("/pull/7"));
-observe("pull-request tab parses with a trailing slash", route.parsePull("/pull/7/files/"));
+observe("pull-request page href", pullRoute.pullHref(7));
+observe("pull-request Files changed href", pullRoute.pullHref(7, "files"));
+observe("pull-request page parses", pullRoute.parsePull("/pull/7"));
+observe("pull-request tab parses with a trailing slash", pullRoute.parsePull("/pull/7/files/"));
 for (const pathname of ["/pull/0", "/pull/07", "/pull/7/commits", "/pull/7/files/x", "/pull/x"]) {
-  observe(`reject pull-request route ${pathname}`, route.parsePull(pathname));
+  observe(`reject pull-request route ${pathname}`, pullRoute.parsePull(pathname));
 }
 for (const [number, tab] of [
   [0, ""],
@@ -105,7 +122,7 @@ for (const [number, tab] of [
 ]) {
   observe(
     `reject invalid pull-request href ${number}/${tab}`,
-    refusal(() => route.pullHref(number, tab)),
+    refusal(() => pullRoute.pullHref(number, tab)),
   );
 }
 
@@ -114,21 +131,21 @@ for (const [number, tab] of [
 // controller applies itself, because it held a /view/ target, is left to it.
 observe(
   "back between a page's tabs switches the tab",
-  route.pullHistoryAction("/pull/7/files", 7, false),
+  pullRoute.pullHistoryAction("/pull/7/files", 7, false),
 );
 observe(
   "back onto a page whose pane a commit took mounts it",
-  route.pullHistoryAction("/pull/7", null, false),
+  pullRoute.pullHistoryAction("/pull/7", null, false),
 );
 observe(
   "back onto another pull request's page mounts it",
-  route.pullHistoryAction("/pull/7/files", 8, false),
+  pullRoute.pullHistoryAction("/pull/7/files", 8, false),
 );
 observe(
   "back from a file view is the controller's",
-  route.pullHistoryAction("/pull/7", null, true),
+  pullRoute.pullHistoryAction("/pull/7", null, true),
 );
-observe("back onto a view route is not a page's", route.pullHistoryAction("/view/", 7, false));
+observe("back onto a view route is not a page's", pullRoute.pullHistoryAction("/view/", 7, false));
 
 observe("root href", route.href({ path: "" }));
 observe("folder href keeps its slash", route.href({ path: "docs/" }));
@@ -209,15 +226,15 @@ observe(
 observe("display filesystem g1-looking filename literally", route.displayPath("g1-UkVBRE1FLm1k"));
 // The encoder is the decoder's inverse, and the one place a page spells a wire.
 for (const display of ["README.md", "docs/note.txt", "100%.html", "docs/雪.md", "a b/c?#.txt"]) {
-  const shown = route.displayPath(route.gitPathWire(display), "git_revision");
+  const shown = route.displayPath(gitPath.wire(display), "git_revision");
   observe(`GitPath wire of ${display} displays as it`, shown);
   invariant(`GitPath wire of ${display} displays as it`, shown, display);
 }
-observe("GitPath wire is one token per segment", route.gitPathWire("src/app.py"));
-observe("GitPath wire is unpadded base64url", route.gitPathWire("a?>"));
+observe("GitPath wire is one token per segment", gitPath.wire("src/app.py"));
+observe("GitPath wire is unpadded base64url", gitPath.wire("a?>"));
 observe(
   "GitPath wire of a name that is not UTF-8 is its bytes",
-  route.gitPathWire(Uint8Array.from([0x64, 0xe9, 0x2f, 0x66])),
+  gitPath.wire(Uint8Array.from([0x64, 0xe9, 0x2f, 0x66])),
 );
 for (const [label, bad] of [
   ["an empty path", ""],
@@ -226,7 +243,7 @@ for (const [label, bad] of [
   ["an empty segment", "a//b"],
   ["no bytes", new Uint8Array(0)],
 ]) {
-  observe(`${label} has no GitPath wire`, route.gitPathWire(bad));
+  observe(`${label} has no GitPath wire`, gitPath.wire(bad));
 }
 observe(
   "display filesystem g1-looking filename with explicit kind",
@@ -355,7 +372,7 @@ function makePullShell(pathname) {
     log.push(`claim ${claims} (${owner})`);
     return claims;
   }
-  host = route.createPullPageHost({
+  host = pullRoute.createPullPageHost({
     claim: () => claimPane("pull-request"),
     isCurrent: (claim) => claim === claims,
     mount(claim, landing, open) {

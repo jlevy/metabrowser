@@ -29,6 +29,12 @@ Plugin SDK:
   The code is still the `<code>` inside `pre.code-block`, now beside a
   `span.source-line-numbers`; the copy button still copies only the code.
 
+- `ensureKindAssets(kind)` rejects when the SDK’s own view helpers cannot be fetched.
+  Those helpers, `renderSourceView` among them, are no longer part of the shell’s
+  startup scripts; the SDK has them in place before any plugin’s code runs, so a plugin
+  calls them exactly as before.
+  When they cannot be fetched no plugin code has run, and the next call tries again.
+
 - `window.metabrowser.sourceKind()` reports whether the served tree is a filesystem root
   or a `git_revision` pin.
   Markdown link and wiki resolution use that kind instead of inferring GitPath encoding

@@ -52,12 +52,6 @@ from metabrowser.git.process import (
     as_location,
     run_git_at,
 )
-from metabrowser.git.tree_source import (
-    GitBlobTooLargeError,
-    GitObjectUnavailableError,
-    GitPathError,
-    read_store_blob,
-)
 
 MAX_MANIFEST_FILES = 2000
 """Manifest cap. A 2000-file change set is far past reviewable; beyond it
@@ -494,12 +488,23 @@ class GitDiffSource:
     async def _read_blob(self, oid: str) -> bytes:
         target = self._location.target
         if isinstance(target, RepositoryStoreTarget):
+            from metabrowser.git.tree_source import read_store_blob
+
             return await read_store_blob(target, oid)
         return await run_git_at(["cat-file", "blob", oid], self._location)
 
     async def content(
         self, resolved: ResolvedComparison, file_id: str, side: str
     ) -> AsyncIterator[bytes]:
+        # Imported when a blob is read rather than with this module: the diff plugin's
+        # sidekick loads this adapter in every server, and the revision tree source
+        # behind these names is work a server that never reads a blob has no use for.
+        from metabrowser.git.tree_source import (
+            GitBlobTooLargeError,
+            GitObjectUnavailableError,
+            GitPathError,
+        )
+
         manifest = await self.manifest(resolved)
         change = next((entry for entry in manifest.files if entry.id == file_id), None)
         if change is None:

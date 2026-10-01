@@ -581,6 +581,7 @@ its answers.
 $ node tests/dom/navigation-route-behavior.js
 {
   "observed": {
+    "without the codec a wire shows as written": "g1-UkVBRE1FLm1k",
     "slash-bearing Git ref gets one encoded revision segment": "/commit/refs%2Fheads%2Fmain",
     "slash-bearing Git ref parses": {"revision":"refs/heads/main","file":""},
     "slash-bearing Git ref and inner path parse independently": {"revision":"refs/heads/feature","file":"src/app.py"},

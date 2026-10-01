@@ -17,6 +17,23 @@ function missingRequiredPerformanceLabels(requiredLabels, labelTotals) {
   return requiredLabels.filter((label) => !observed.has(label));
 }
 
+// The startup scripts the budget gates, and their size as the gate reports it. These
+// are functions of their own so that devtools/check_startup_scripts.py, which holds
+// the same budget on every lint without a browser, is tested against this arithmetic
+// and not against a description of it (tests/test_check_startup_scripts.py).
+function startupScriptResources(resources, domContentLoadedEventEnd) {
+  return resources.filter(
+    (r) =>
+      new URL(r.name).pathname.endsWith(".js") &&
+      !r.name.includes("/static/vendor/") &&
+      r.startTime < Number(domContentLoadedEventEnd),
+  );
+}
+
+function transferKb(list) {
+  return Math.round(list.reduce((total, r) => total + (r.transferSize || 0), 0) / 1024);
+}
+
 (async () => {
   const origin = performance.timeOrigin;
   // Freeze the navigation-time profile before this adapter runs its own
@@ -90,8 +107,7 @@ function missingRequiredPerformanceLabels(requiredLabels, labelTotals) {
     performance.getEntriesByType("resource")
   );
   const memory = /** @type {{ usedJSHeapSize?: number }} */ (performance).memory;
-  const kb = (list) =>
-    Math.round(list.reduce((total, r) => total + (r.transferSize || 0), 0) / 1024);
+  const kb = transferKb;
   const vendor = resources.filter((r) => r.name.includes("/static/vendor/"));
   const subtree = resources.filter((r) => r.name.includes("/api/tree?path="));
   // A preloaded script has Resource Timing initiator type `link`, and its later
@@ -99,10 +115,7 @@ function missingRequiredPerformanceLabels(requiredLabels, labelTotals) {
   // scripts and styles by the requested path so preloading changes scheduling,
   // not the category totals.
   const scripts = resources.filter((r) => new URL(r.name).pathname.endsWith(".js"));
-  const startupScripts = scripts.filter(
-    (r) =>
-      !r.name.includes("/static/vendor/") && r.startTime < Number(nav.domContentLoadedEventEnd),
-  );
+  const startupScripts = startupScriptResources(resources, nav.domContentLoadedEventEnd);
   const styles = resources.filter((r) => new URL(r.name).pathname.endsWith(".css"));
   const blockingStyleUrls = new Set(
     Array.from(document.querySelectorAll('link[rel~="stylesheet"]'))

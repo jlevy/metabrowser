@@ -1,29 +1,18 @@
 """Golden CLI transcripts for interrupted, failed, and refused file:// acquisition.
 
-These sessions complete ``tests/test_cli_cache_acquire_golden.py`` and run in-process
-for the same reason: a successful acquisition cannot run as a tryscript subprocess
-where the installed Git is below the acquisition floor. Every command goes
-through ``metabrowser.cli.main._run_cli``, the console script's own error rendering, so
-a refusal is pinned as the ``Error:`` line and exit status a user sees. Apart from the
+These sessions complete ``tests/test_cli_cache_acquire_golden.py``, whose module
+description says why they run in-process and what a transcript labels. Apart from the
 interruptions below, the floor and the clock are the only behavior replaced:
 ``require_acquisition_git`` admits the installed Git, and the below-floor session
 replaces ``detect_git_version`` instead so the production gate itself refuses. The other
-substitutions only observe: a spy records what reclamation removed, and a guard fails
-the test if a cache hit runs Git.
+substitutions only observe: a guard fails the test if a cache hit runs Git.
 
 An interruption is a real process death. A child interpreter runs the same CLI with the
 production ``publish_entry`` wrapped to SIGKILL the child at a chosen publication, so
 no cleanup runs and the next command finds exactly what a crash leaves on disk. The
 transcript then inspects that state through ``/api/cache/*`` and shows the next
-acquisition recovering from it.
-
-Each origin's normalized ``file://`` URL, path, source identity, store identity, and
-slug depend on the sandbox path, so they become per-origin labels such as
-``<ORIGIN-A>``, ``<SOURCE-A>``, ``<STORE-A>``, and ``<SLUG-A>``; equal labels are equal
-values. The clock is fixed, so times are literal; the two interruption sessions also
-show records a killed child wrote with the real clock, and those times read ``<TIME>``.
-Revisions, refs, strategies, publication and reference states, counts, and messages are
-literal, and no transcript names a pack file or a cache path.
+acquisition recovering from it. Those two sessions also show records a killed child
+wrote with the real clock, and those times read ``<TIME>``.
 """
 
 from __future__ import annotations
@@ -35,7 +24,6 @@ import subprocess
 import sys
 import textwrap
 from collections.abc import Sequence
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final
 
@@ -45,21 +33,22 @@ from metabrowser.cache import acquire as acquire_module
 from metabrowser.cache.identity import store_key
 from metabrowser.git import process as git_process
 from tests.golden_harness import (
-    FixedClock,
-    Labels,
     block,
     check_golden,
     file_url,
-    isolate_cli,
     origin_identity,
     pinned_git,
     pinned_git_env,
-    run_metab,
     strip_logs,
 )
 from tests.required_tools import needs_git
 from tests.test_cache_acquire import _remove_owner_write, _restore_owner_write
-from tests.test_cli_cache_acquire_golden import ORIGIN_REVISION, deterministic_origin
+from tests.test_cli_cache_acquire_golden import (
+    ORIGIN_REVISION,
+    Session,
+    named_origin,
+    open_session,
+)
 
 posix_only = pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only")
 skip_as_root = pytest.mark.skipif(
@@ -108,77 +97,22 @@ _KILLED_AT_PUBLICATION: Final = textwrap.dedent(
 )
 
 
-@dataclass(slots=True)
-class _Session:
-    """One golden transcript: commands, their outcomes, and the labels that elide them."""
+def _killed_at_publication(
+    session: Session, command: str, args: Sequence[str], *, survive: int
+) -> None:
+    """Run *args* in a child killed at the publication after *survive* others."""
 
-    tmp_path: Path
-    root: Path
-    clock: FixedClock
-    labels: Labels = field(default_factory=Labels)
-    blocks: list[str] = field(default_factory=list[str])
-    child_ran: bool = False
-
-    def origin(self, letter: str, url: str) -> None:
-        """Label every sandbox-dependent value derived from the origin at *url*."""
-
-        self.labels.origin(url, f"-{letter}")
-
-    def note(self, text: str) -> None:
-        self.blocks.append(f"## {text}\n")
-
-    def run(self, command: str, args: Sequence[str], *, exit_code: int = 0) -> str:
-        """Run one command through the console script's error rendering."""
-
-        result = run_metab(args)
-        assert result.exit_code == exit_code, f"{command}: {result}"
-        self.blocks.append(block(command, result.exit_code, result.stdout, result.stderr))
-        return result.stdout + result.stderr
-
-    def inspect(self, route: str, *, exit_code: int = 0) -> str:
-        return self.run(
-            f"metab <ROOT> --api {route}", [str(self.root), "--api", route], exit_code=exit_code
-        )
-
-    def killed_at_publication(self, command: str, args: Sequence[str], *, survive: int) -> None:
-        """Run *args* in a child killed at the publication after *survive* others."""
-
-        result = subprocess.run(
-            [sys.executable, "-c", _KILLED_AT_PUBLICATION, str(survive), *args],
-            capture_output=True,
-            text=True,
-            timeout=CHILD_TIMEOUT,
-            check=False,
-            env=pinned_git_env(),
-        )
-        assert result.returncode == -signal.SIGKILL, result.stderr
-        self.child_ran = True
-        self.blocks.append(block(command, "SIGKILL", result.stdout, strip_logs(result.stderr)))
-
-    def render(self) -> str:
-        text = self.labels.apply("".join(self.blocks))
-        if self.child_ran:
-            # What the killed child published carries its own clock's times.
-            text = self.clock.elide_other_times(text)
-        for leaked in {str(self.tmp_path), str(self.tmp_path.resolve())}:
-            assert leaked not in text, f"sandbox path leaked into the transcript: {leaked}"
-        assert ".pack" not in text
-        return text
-
-
-def _session(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[_Session, Path]:
-    sandbox = isolate_cli(tmp_path, monkeypatch)
-    monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
-    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
-    root = tmp_path / "root"
-    root.mkdir()
-    return _Session(tmp_path=tmp_path, root=root, clock=sandbox.clock), sandbox.home
-
-
-def _origin(tmp_path: Path, name: str) -> Path:
-    parent = tmp_path / name
-    parent.mkdir()
-    return deterministic_origin(parent)
+    result = subprocess.run(
+        [sys.executable, "-c", _KILLED_AT_PUBLICATION, str(survive), *args],
+        capture_output=True,
+        text=True,
+        timeout=CHILD_TIMEOUT,
+        check=False,
+        env=pinned_git_env(),
+    )
+    assert result.returncode == -signal.SIGKILL, result.stderr
+    session.child_ran = True
+    session.blocks.append(block(command, "SIGKILL", result.stdout, strip_logs(result.stderr)))
 
 
 def _snapshot(home: Path) -> list[tuple[str, int, int, int]]:
@@ -200,24 +134,18 @@ def _snapshot(home: Path) -> list[tuple[str, int, int, int]]:
     return sorted(entries)
 
 
-def _no_serve(session: _Session, letter: str, url: str, *, exit_code: int = 0) -> str:
-    return session.run(
-        f"metab <ORIGIN-{letter}> --no-serve", [url, "--no-serve"], exit_code=exit_code
-    )
-
-
 # ── Interruption ──────────────────────────────────────────────────
 
 
 def test_golden_interrupted_before_store_publication(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    session, home = _session(tmp_path, monkeypatch)
-    url = file_url(_origin(tmp_path, "a"))
+    session, home = open_session(tmp_path, monkeypatch)
+    url = file_url(named_origin(tmp_path, "a"))
     session.origin("A", url)
 
     session.note("A child is killed at the rename that would publish the store.")
-    session.killed_at_publication("metab <ORIGIN-A> --no-serve", [url, "--no-serve"], survive=0)
+    _killed_at_publication(session, "metab <ORIGIN-A> --no-serve", [url, "--no-serve"], survive=0)
     assert len(list((home / "cache" / "staging").iterdir())) == 1
     assert list((home / "cache" / "repository-stores").iterdir()) == []
 
@@ -227,7 +155,7 @@ def test_golden_interrupted_before_store_publication(
     assert '"sources": []' in session.inspect("/api/cache/sources")
 
     session.note("The next acquisition sweeps the entry, fetches again, and publishes.")
-    assert ORIGIN_REVISION in _no_serve(session, "A", url)
+    assert ORIGIN_REVISION in session.no_serve("A", url)
     assert '"staging_entries": 0' in session.inspect("/api/cache/layout")
     assert '"reference_state": "referenced"' in session.inspect("/api/cache/stores")
     assert '"publication": "published"' in session.inspect("/api/cache/sources")
@@ -239,12 +167,12 @@ def test_golden_interrupted_before_store_publication(
 def test_golden_interrupted_between_store_and_alias_publication(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    session, home = _session(tmp_path, monkeypatch)
-    url = file_url(_origin(tmp_path, "a"))
+    session, home = open_session(tmp_path, monkeypatch)
+    url = file_url(named_origin(tmp_path, "a"))
     session.origin("A", url)
 
     session.note("A child publishes the store and is killed at the source alias rename.")
-    session.killed_at_publication("metab <ORIGIN-A> --no-serve", [url, "--no-serve"], survive=1)
+    _killed_at_publication(session, "metab <ORIGIN-A> --no-serve", [url, "--no-serve"], survive=1)
     assert len(list((home / "cache" / "repository-stores").iterdir())) == 1
     assert list((home / "cache" / "sources").iterdir()) == []
 
@@ -262,7 +190,7 @@ def test_golden_interrupted_between_store_and_alias_publication(
         "The next acquisition fetches again, finds the same store already published, "
         "reuses it, and publishes the alias."
     )
-    assert ORIGIN_REVISION in _no_serve(session, "A", url)
+    assert ORIGIN_REVISION in session.no_serve("A", url)
     assert orphan.name == store_key(origin_identity(url).store_id)
     assert orphan.stat().st_ino == orphan_inode
     layout = session.inspect("/api/cache/layout")
@@ -281,8 +209,8 @@ def test_golden_interrupted_between_store_and_alias_publication(
 def test_golden_fetch_failures_leave_other_sources_untouched(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    session, home = _session(tmp_path, monkeypatch)
-    url = file_url(_origin(tmp_path, "a"))
+    session, home = open_session(tmp_path, monkeypatch)
+    url = file_url(named_origin(tmp_path, "a"))
     session.origin("A", url)
     missing = tmp_path / "missing.git"
     plain = tmp_path / "plain"
@@ -291,7 +219,7 @@ def test_golden_fetch_failures_leave_other_sources_untouched(
     empty = tmp_path / "empty.git"
     empty.mkdir()
     pinned_git(empty, "init", "-q", "--bare", "--initial-branch=topic")
-    detached_origin = _origin(tmp_path, "detached")
+    detached_origin = named_origin(tmp_path, "detached")
     detached = detached_origin.parent / "work"
     pinned_git(detached, "checkout", "-q", "--detach")
     failures = {
@@ -304,12 +232,12 @@ def test_golden_fetch_failures_leave_other_sources_untouched(
         session.origin(letter, file_url(path))
 
     session.note("Source A is acquired.")
-    first = _no_serve(session, "A", url)
+    first = session.no_serve("A", url)
     snapshot = _snapshot(home / "cache" / "repository-stores")
 
     for letter, (why, path) in failures.items():
         session.note(f"Source {letter}, {why}, fails without publishing anything.")
-        failed = _no_serve(session, letter, file_url(path), exit_code=1)
+        failed = session.no_serve(letter, file_url(path), exit_code=1)
         assert str(tmp_path) not in failed
     session.note("The route mode refuses the same way and never issues the route.")
     session.run(
@@ -328,7 +256,7 @@ def test_golden_fetch_failures_leave_other_sources_untouched(
     assert _snapshot(home / "cache" / "repository-stores") == snapshot
 
     session.note("A is still a cache hit, and another spelling of A normalizes to A.")
-    assert _no_serve(session, "A", url) == first
+    assert session.no_serve("A", url) == first
     path_a = url.removeprefix("file://")
     folded = session.run(
         "metab FILE://LocalHost<PATH-A>/ --no-serve",
@@ -355,9 +283,9 @@ def _below_floor_git(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_golden_below_floor_git_refuses_a_miss_and_still_reuses_a_hit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    session, home = _session(tmp_path, monkeypatch)
-    url_a = file_url(_origin(tmp_path, "a"))
-    url_b = file_url(_origin(tmp_path, "b"))
+    session, home = open_session(tmp_path, monkeypatch)
+    url_a = file_url(named_origin(tmp_path, "a"))
+    url_b = file_url(named_origin(tmp_path, "b"))
     session.origin("A", url_a)
     session.origin("B", url_b)
     installed = git_process.detect_git_version()[0]
@@ -368,7 +296,7 @@ def test_golden_below_floor_git_refuses_a_miss_and_still_reuses_a_hit(
         "Git 2.43.0 is below the acquisition floor. The first acquisition is refused "
         "and the application home is not created."
     )
-    refused = _no_serve(session, "A", url_a, exit_code=1)
+    refused = session.no_serve("A", url_a, exit_code=1)
     assert "unsupported Git version (git version 2.43.0)" in refused
     assert not home.exists()
     session.run(
@@ -382,12 +310,12 @@ def test_golden_below_floor_git_refuses_a_miss_and_still_reuses_a_hit(
 
     session.note("An empty directory named as the home is left empty.")
     home.mkdir(mode=0o700)
-    _no_serve(session, "A", url_a, exit_code=1)
+    session.no_serve("A", url_a, exit_code=1)
     assert list(home.iterdir()) == []
 
     session.note("With a Git at or above the floor, A is acquired.")
     monkeypatch.setattr("metabrowser.cache.acquire.require_acquisition_git", lambda: installed)
-    acquired = _no_serve(session, "A", url_a)
+    acquired = session.no_serve("A", url_a)
 
     _below_floor_git(monkeypatch)
     origin_a = Path(url_a.removeprefix("file://"))
@@ -401,9 +329,9 @@ def test_golden_below_floor_git_refuses_a_miss_and_still_reuses_a_hit(
         "Below the floor again, with origin A moved away, A is reused without Git, and a "
         "new source B is refused without changing the home."
     )
-    assert _no_serve(session, "A", url_a) == acquired
+    assert session.no_serve("A", url_a) == acquired
     before = _snapshot(home)
-    _no_serve(session, "B", url_b, exit_code=1)
+    session.no_serve("B", url_b, exit_code=1)
     assert _snapshot(home) == before
     sources = session.inspect("/api/cache/sources")
     assert sources.count('"slug":') == 1
@@ -415,9 +343,9 @@ def test_golden_below_floor_git_refuses_a_miss_and_still_reuses_a_hit(
 
 
 def test_golden_refusals_name_their_repair(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    session, home = _session(tmp_path, monkeypatch)
-    url_a = file_url(_origin(tmp_path, "a"))
-    url_b = file_url(_origin(tmp_path, "b"))
+    session, home = open_session(tmp_path, monkeypatch)
+    url_a = file_url(named_origin(tmp_path, "a"))
+    url_b = file_url(named_origin(tmp_path, "b"))
     session.origin("A", url_a)
     session.origin("B", url_b)
 
@@ -434,7 +362,7 @@ def test_golden_refusals_name_their_repair(tmp_path: Path, monkeypatch: pytest.M
     assert not (Path.cwd() / "relative").exists()
 
     session.note("A is acquired into a private home.")
-    acquired = _no_serve(session, "A", url_a)
+    acquired = session.no_serve("A", url_a)
 
     session.note(
         "A home other users can read refuses both a cache hit and a new acquisition, "
@@ -442,13 +370,13 @@ def test_golden_refusals_name_their_repair(tmp_path: Path, monkeypatch: pytest.M
     )
     home.chmod(0o755)
     before = _snapshot(home)
-    assert "Run chmod 700 on it" in _no_serve(session, "A", url_a, exit_code=1)
-    assert "Run chmod 700 on it" in _no_serve(session, "B", url_b, exit_code=1)
+    assert "Run chmod 700 on it" in session.no_serve("A", url_a, exit_code=1)
+    assert "Run chmod 700 on it" in session.no_serve("B", url_b, exit_code=1)
     assert _snapshot(home) == before
     session.note("After chmod 700, A is reused and B is acquired.")
     home.chmod(0o700)
-    assert _no_serve(session, "A", url_a) == acquired
-    _no_serve(session, "B", url_b)
+    assert session.no_serve("A", url_a) == acquired
+    session.no_serve("B", url_b)
 
     session.note("A home written by a newer release is refused before anything is written.")
     layout = home / "cache" / "layout.yml"
@@ -457,14 +385,14 @@ def test_golden_refusals_name_their_repair(tmp_path: Path, monkeypatch: pytest.M
         encoding="utf-8",
     )
     before = _snapshot(home)
-    refused = _no_serve(session, "A", url_a, exit_code=1)
+    refused = session.no_serve("A", url_a, exit_code=1)
     assert "Upgrade Metabrowser" in refused
     assert _snapshot(home) == before
 
     session.note("Another METABROWSER_HOME, as the message suggests, acquires independently.")
     other = tmp_path / "other-home"
     monkeypatch.setenv("METABROWSER_HOME", str(other))
-    _no_serve(session, "A", url_a)
+    session.no_serve("A", url_a)
     assert _snapshot(home) == before
 
     check_golden("cli-cache-repair-guidance.txt", session.render())
@@ -474,26 +402,26 @@ def test_golden_refusals_name_their_repair(tmp_path: Path, monkeypatch: pytest.M
 def test_golden_a_home_without_owner_write_refuses_a_miss_and_reuses_a_hit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    session, home = _session(tmp_path, monkeypatch)
-    url_a = file_url(_origin(tmp_path, "a"))
-    url_b = file_url(_origin(tmp_path, "b"))
+    session, home = open_session(tmp_path, monkeypatch)
+    url_a = file_url(named_origin(tmp_path, "a"))
+    url_b = file_url(named_origin(tmp_path, "b"))
     session.origin("A", url_a)
     session.origin("B", url_b)
 
     session.note("A is acquired, then the owner's write permission is removed from the home.")
-    acquired = _no_serve(session, "A", url_a)
+    acquired = session.no_serve("A", url_a)
     _remove_owner_write(home)
     try:
         before = _snapshot(home)
         session.note("A is reused. A new source B is refused, and nothing in the home changes.")
-        assert _no_serve(session, "A", url_a) == acquired
-        refused = _no_serve(session, "B", url_b, exit_code=1)
+        assert session.no_serve("A", url_a) == acquired
+        refused = session.no_serve("B", url_b, exit_code=1)
         assert str(tmp_path) not in refused
         assert _snapshot(home) == before
     finally:
         _restore_owner_write(home)
 
     session.note("With owner write restored, B is acquired.")
-    _no_serve(session, "B", url_b)
+    session.no_serve("B", url_b)
 
     check_golden("cli-cache-readonly-miss.txt", session.render())

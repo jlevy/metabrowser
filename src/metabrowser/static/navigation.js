@@ -68,201 +68,6 @@
     }
   }
 
-  const PULL_PREFIX = "/pull/";
-  // Keep aligned with view_routes._PULL_NUMBER and PULL_ROUTE_TABS.
-  const PULL_NUMBER_PATTERN = /^[1-9][0-9]{0,9}$/;
-  const PULL_TABS = Object.freeze(["", "files"]);
-
-  /**
-   * Encode the served pull request's page: `/pull/<n>` for its conversation,
-   * `/pull/<n>/files` for its Files changed.
-   *
-   * @param {number} number
-   * @param {string} [tab]
-   * @returns {string}
-   */
-  function pullHref(number, tab = "") {
-    if (!PULL_NUMBER_PATTERN.test(String(number)) || !PULL_TABS.includes(tab)) {
-      throw new TypeError("pull route requires a pull-request number and a known tab");
-    }
-    return `${PULL_PREFIX}${number}${tab ? `/${tab}` : ""}`;
-  }
-
-  /**
-   * Parse a pull-request page route, or null when the location is not one.
-   *
-   * @param {string} pathname
-   * @returns {Readonly<{number: number, tab: string}> | null}
-   */
-  function parsePull(pathname) {
-    if (typeof pathname !== "string" || !pathname.startsWith(PULL_PREFIX)) {
-      return null;
-    }
-    const segments = pathname.slice(PULL_PREFIX.length).split("/");
-    if (segments.length > 1 && segments[segments.length - 1] === "") {
-      segments.pop();
-    }
-    const [number, tab = ""] = segments;
-    if (
-      segments.length > 2 ||
-      !PULL_NUMBER_PATTERN.test(number) ||
-      !PULL_TABS.includes(tab) ||
-      (segments.length === 2 && !tab)
-    ) {
-      return null;
-    }
-    return Object.freeze({ number: Number(number), tab });
-  }
-
-  /**
-   * What the shell does when history lands on *pathname*. Pure.
-   *
-   * *shown* is the pull request whose page holds the pane, or null, and *heldTarget*
-   * whether the navigation controller holds a `/view/` target. A pull-request route is
-   * no target, so the controller applies a landing on one only when it held a target
-   * before, and then mounts the page itself. Otherwise -- back and forward between a
-   * page's tabs, or onto an entry a commit replaced while the page was shown -- this
-   * route decides: the page shown for the same number switches its tab, and anything
-   * else mounts the page.
-   *
-   * @param {string} pathname
-   * @param {number | null} shown
-   * @param {boolean} heldTarget
-   * @returns {Readonly<{action: "tab", tab: string} | {action: "mount", number: number, tab: string}> | null}
-   */
-  function pullHistoryAction(pathname, shown, heldTarget) {
-    const route = parsePull(pathname);
-    if (route === null || heldTarget) {
-      return null;
-    }
-    return route.number === shown
-      ? Object.freeze({ action: "tab", tab: route.tab })
-      : Object.freeze({ action: "mount", number: route.number, tab: route.tab });
-  }
-
-  /**
-   * The shell's host for the served pull request's page. It decides what a
-   * `/pull/<n>[/files]` route does to the pane -- switch the shown page's tab, or claim
-   * the pane and mount a page -- keeps the page's tab in the URL, and disposes a render
-   * a later claim superseded. The shell supplies the pane and the history; nothing here
-   * touches the DOM.
-   *
-   * *claim* claims the pane and returns its token; the shell's claim calls `dispose`, so
-   * whatever claims the pane next replaces the page. *mount* loads and renders the page
-   * for a claim and resolves to its handle, or to null when nothing was mounted (the
-   * claim was superseded, or no plugin renders the page); the page gets `open` to move
-   * to a tab or to another pull request's page.
-   *
-   * @template {{setTab?: (tab: string) => void, dispose?: () => void}} Handle
-   * @param {{
-   *   claim: () => number,
-   *   isCurrent: (claim: number) => boolean,
-   *   mount: (
-   *     claim: number,
-   *     route: Readonly<{number: number, tab: string}>,
-   *     open: (route: {number: number, tab: string}) => Promise<{status: string}>,
-   *   ) => Promise<Handle | null | undefined>,
-   *   pathname: () => string,
-   *   pushHref: (href: string) => void,
-   * }} deps
-   */
-  function createPullPageHost(deps) {
-    /** @type {{number: number, claim: number, handle: Handle | null} | null} */
-    let page = null;
-
-    // The page that holds the pane, or null once anything else claimed it or while it
-    // is still mounting.
-    function shown() {
-      return page !== null && page.handle !== null && deps.isCurrent(page.claim) ? page : null;
-    }
-
-    function dispose() {
-      const held = page;
-      page = null;
-      try {
-        held?.handle?.dispose?.();
-      } catch (error) {
-        console.error("pull-request page dispose error:", error);
-      }
-    }
-
-    /**
-     * Show a route's page, or switch its tab when that page is already shown.
-     *
-     * @param {Readonly<{number: number, tab: string}>} route
-     * @returns {Promise<{status: "opened" | "cancelled"}>}
-     */
-    async function show(route) {
-      const current = shown();
-      if (current !== null && current.number === route.number) {
-        current.handle?.setTab?.(route.tab);
-        return { status: "opened" };
-      }
-      const claim = deps.claim();
-      /** @type {NonNullable<typeof page>} */
-      const mine = { number: route.number, claim, handle: null };
-      page = mine;
-      const handle = await deps.mount(claim, route, open);
-      if (page !== mine || !deps.isCurrent(claim)) {
-        handle?.dispose?.();
-        return { status: "cancelled" };
-      }
-      if (!handle) {
-        // Nothing holds the pane, so the next route to this page mounts it again.
-        page = null;
-        return { status: "opened" };
-      }
-      mine.handle = handle;
-      return { status: "opened" };
-    }
-
-    /**
-     * Go to a page's tab or another pull request's page. A tab is a selection within
-     * the page, so it owns the URL (Browser URL Grammar) and back and forward move
-     * between tabs.
-     *
-     * @param {{number: number, tab: string}} route
-     */
-    function open(route) {
-      const number = Number(route.number);
-      let href;
-      try {
-        href = pullHref(number, route.tab);
-      } catch (error) {
-        return Promise.reject(error);
-      }
-      if (deps.pathname() !== href) {
-        deps.pushHref(href);
-      }
-      return show(Object.freeze({ number, tab: route.tab }));
-    }
-
-    /**
-     * Apply a history landing that `pullHistoryAction` says is the page's.
-     *
-     * @param {string} pathname
-     * @param {boolean} heldTarget
-     */
-    function onHistory(pathname, heldTarget) {
-      const current = shown();
-      const landing = pullHistoryAction(pathname, current ? current.number : null, heldTarget);
-      if (landing?.action === "tab") {
-        current?.handle?.setTab?.(landing.tab);
-      } else if (landing?.action === "mount") {
-        void show(Object.freeze({ number: landing.number, tab: landing.tab }));
-      }
-      return landing;
-    }
-
-    return Object.freeze({
-      dispose,
-      onHistory,
-      open,
-      show,
-      shown: () => shown()?.number ?? null,
-    });
-  }
-
   /**
    * @typedef {object} NavigationTarget
    * @property {string} path Served-root-relative logical path, or empty for root.
@@ -458,110 +263,6 @@
     return encodePath(path).replace(/%25([0-9A-F]{2})/g, "%$1");
   }
 
-  /** @param {string} token */
-  function isGitPathToken(token) {
-    return token.startsWith("g1-") && token.length > 3;
-  }
-
-  /**
-   * The GitPath wire of a slash-separated path on a pinned revision, as `/view/`
-   * addresses it: `g1-` and the unpadded base64url of each segment's bytes. A string is
-   * its UTF-8 bytes; a name that is not UTF-8 is given as its bytes, since its display
-   * spelling holds replacement characters. Null for a path with no segment or an empty
-   * one, which no tree entry has.
-   *
-   * @param {string | Uint8Array} path
-   * @returns {string | null}
-   */
-  function gitPathWire(path) {
-    const bytes = typeof path === "string" ? new TextEncoder().encode(path) : path;
-    const tokens = [];
-    let start = 0;
-    for (let index = 0; index <= bytes.length; index += 1) {
-      if (index < bytes.length && bytes[index] !== 0x2f) {
-        continue;
-      }
-      if (index === start) {
-        return null;
-      }
-      let binary = "";
-      for (let at = start; at < index; at += 1) {
-        binary += String.fromCharCode(bytes[at]);
-      }
-      tokens.push(
-        `g1-${btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "")}`,
-      );
-      start = index + 1;
-    }
-    return tokens.join("/");
-  }
-
-  /** Canonical unpadded base64url atom to replacement-safe UTF-8, or null.
-   * @param {string} atom
-   */
-  function decodeGitPathAtom(atom) {
-    if (!atom || /[^A-Za-z0-9_-]/.test(atom)) {
-      return null;
-    }
-    const padded = atom + "=".repeat((4 - (atom.length % 4)) % 4);
-    let binary;
-    try {
-      binary = atob(padded.replaceAll("-", "+").replaceAll("_", "/"));
-    } catch (_error) {
-      return null;
-    }
-    let encoded;
-    try {
-      encoded = btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
-    } catch (_error) {
-      return null;
-    }
-    if (encoded !== atom) {
-      return null;
-    }
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i += 1) {
-      bytes[i] = binary.charCodeAt(i);
-    }
-    const text = new TextDecoder("utf-8").decode(bytes);
-    if (!text || text.includes("\0") || text.includes("/")) {
-      return null;
-    }
-    let sanitized = "";
-    for (const ch of text) {
-      const code = ch.charCodeAt(0);
-      sanitized += code < 32 || code === 127 ? "\uFFFD" : ch;
-    }
-    return sanitized;
-  }
-
-  /** Decode a contiguous GitPath wire prefix. Null when this is not a GitPath identity.
-   * @param {string} path
-   */
-  function displayGitPathWire(path) {
-    const parts = path.split("/");
-    let cut = 0;
-    while (cut < parts.length && isGitPathToken(parts[cut])) {
-      cut += 1;
-    }
-    if (cut === 0) {
-      return null;
-    }
-    const decoded = [];
-    for (let i = 0; i < cut; i += 1) {
-      const segment = decodeGitPathAtom(parts[i].slice(3));
-      if (segment === null) {
-        return null;
-      }
-      decoded.push(segment);
-    }
-    const gitDisplay = decoded.join("/");
-    if (cut === parts.length) {
-      return gitDisplay;
-    }
-    return `${gitDisplay}/${parts.slice(cut).join("/").replaceAll("%25", "%")}`;
-  }
-
   /** Display a path identity. GitPath wires decode to UTF-8 names; inventory
    * identities show literal percent signs. Undecodable platform bytes stay escaped.
    * Git decoding requires an explicit git_revision source, not a g1- filename.
@@ -575,7 +276,9 @@
         ? "git_revision"
         : "filesystem");
     if (kind === "git_revision") {
-      const gitDisplay = displayGitPathWire(path);
+      // git-path.js, which the server writes into a pin's shell ahead of this script.
+      // app.js stops a pin's page that lacks it before any name is shown.
+      const gitDisplay = window.MetabrowserGitPath?.display(path) ?? null;
       if (gitDisplay !== null) {
         return gitDisplay;
       }
@@ -1364,18 +1067,13 @@
     createController,
     createFileRevalidationTracker,
     createPreviewPaneLifecycle,
-    createPullPageHost,
     displayPath,
-    gitPathWire,
     href,
     navigation,
     normalizeTarget,
     openFailureOutcome,
     parse,
     parseCommit,
-    parsePull,
-    pullHistoryAction,
-    pullHref,
     replaceFileSnapshot,
     requestFailure,
     responseBodyFailure,

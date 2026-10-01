@@ -1,6 +1,7 @@
 {
   "schema": "metabrowser-repository-cache-git-version-gates-v1",
   "decided": "2026-09-16",
+  "provenance": "Written by hand from Git's release notes and security advisories, reviewed through the date in advisories_reviewed_through; there is no generator. tests/test_repository_cache_contract_fixtures.py replays every case through metabrowser.git.process, and devtools/check_supply_chain.py requires the CI admitted-git matrix to test the gate's minimum and newest_patched. To move the floor, change the gate and its cases together.",
   "parsing": "Match '^git version (\\d+)\\.(\\d+)(?:\\.(\\d+))?' against the first line of `git version`; a missing patch component is 0, anything after the matched numbers (Apple, Windows, or untagged build suffixes) is ignored, and an unparseable string is below every floor.",
   "advisories_reviewed_through": "2026-09-16: upstream tags end at v2.55.0, and the newest security batch is the 2025-07-08 release (v2.50.1 and its maintenance backports).",
   "gates": [

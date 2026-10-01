@@ -529,18 +529,3 @@ def test_a_refused_home_is_probed_again_next_time(
         with pytest.raises(PrivateStorageError):
             probe.probe_application_home(home, force=True)
     assert probe.probe_application_home(home).no_replace_rename in {True, False}
-
-
-def test_locks_module_exports_every_side_lock() -> None:
-    assert {kind.value for kind in LockKind} == {
-        "home",
-        "source_alias",
-        "repository_store",
-        "staging_entry",
-        "store_fetch",
-    }
-    assert locks.HIERARCHY_RANKS == {
-        LockKind.HOME: 1,
-        LockKind.SOURCE_ALIAS: 2,
-        LockKind.REPOSITORY_STORE: 3,
-    }

@@ -1,58 +1,19 @@
-"""Root-argument classification and provider-reducer arbitration."""
+"""Provider-reducer arbitration ahead of the root-argument grammar.
+
+The grammar itself is ``tests/fixtures/repository-cache/url-grammar.json``, replayed
+case by case in ``tests/test_repository_cache_contract_fixtures.py``.
+"""
 
 from __future__ import annotations
 
 import pytest
 
 from metabrowser.cache.urls import (
-    DEFAULT_PORTS,
     GitSource,
-    LocalPath,
     ReducerArbitrationError,
     ReducerOutcome,
-    RejectedRoot,
     classify_root_argument,
 )
-
-
-def test_file_url_is_a_git_source_and_a_bare_path_is_not() -> None:
-    source = classify_root_argument("file:///srv/git/repo.git")
-    assert isinstance(source, GitSource)
-    assert source.transport == "file"
-    assert source.form == "url"
-    assert source.normalized == "file:///srv/git/repo.git"
-    path = classify_root_argument("/srv/git/repo.git")
-    assert isinstance(path, LocalPath)
-    assert path.value == "/srv/git/repo.git"
-
-
-def test_file_localhost_folds_to_the_empty_authority() -> None:
-    source = classify_root_argument("FILE://LocalHost/srv/git/repo.git/")
-    assert source == GitSource(transport="file", form="url", normalized="file:///srv/git/repo.git")
-
-
-def test_file_authority_that_is_not_this_machine_is_rejected() -> None:
-    rejected = classify_root_argument("file://fileserver/share/repo.git")
-    assert rejected == RejectedRoot("file_authority_not_local")
-
-
-def test_https_and_ssh_remain_git_sources() -> None:
-    https = classify_root_argument("HTTPS://Example.COM:443/Owner/Repo.git")
-    assert https == GitSource(
-        transport="https",
-        form="url",
-        normalized="https://example.com/Owner/Repo.git",
-    )
-    scp = classify_root_argument("git@example.com:owner/repo.git")
-    assert scp == GitSource(
-        transport="ssh",
-        form="scp",
-        normalized="git@example.com:owner/repo.git",
-    )
-
-
-def test_defaults_match_the_frozen_https_and_ssh_ports() -> None:
-    assert DEFAULT_PORTS == {"https": "443", "ssh": "22"}
 
 
 class _ClaimingReducer:

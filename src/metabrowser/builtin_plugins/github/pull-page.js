@@ -890,12 +890,15 @@ export function createPullController(deps, options) {
 /**
  * The GitPath wire of a slash-separated repository path, as `/view/` addresses a file
  * on a pinned revision, by the route codec's encoder. A path that is not one a tree
- * entry has (an empty segment) has no wire and addresses the root.
+ * entry has (an empty segment) has no wire and addresses the root. Null when the page
+ * has no codec, as a folder's does not: nothing is addressed then, not the root.
  *
  * @param {string} path
+ * @returns {string | null}
  */
 export function gitPathWire(path) {
-  return window.MetabrowserNavigationRoute.gitPathWire(path) ?? "";
+  const codec = window.MetabrowserGitPath;
+  return codec ? (codec.wire(path) ?? "") : null;
 }
 
 /**
@@ -1139,10 +1142,11 @@ export function mountPullPage(container, ctx, mb) {
 
   /** @param {string} path @param {number | null} line */
   function fileLink(path, line) {
-    if (mb.sourceKind() !== "git_revision" || path === "") {
+    const wire = mb.sourceKind() === "git_revision" && path !== "" ? gitPathWire(path) : null;
+    if (wire === null) {
       return h("code", {}, [path]);
     }
-    const target = { path: gitPathWire(path), ...(line === null ? {} : { fragment: `L${line}` }) };
+    const target = { path: wire, ...(line === null ? {} : { fragment: `L${line}` }) };
     const link = h("a", { href: mb.navigation.href(target), class: "github-pull-file" }, [
       h("code", {}, [line === null ? path : `${path}:${line}`]),
     ]);

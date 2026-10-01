@@ -36,10 +36,13 @@ from metabrowser.cache.locks import (
 )
 from metabrowser.cache.paths import (
     LAYOUT_RECORD,
+    SOURCES,
+    STAGING,
     source_directory,
     source_record,
     staging_entry,
     store_directory,
+    store_record,
 )
 from metabrowser.cache.records import (
     CACHE_LAYOUT_CONTRACT_ID,
@@ -92,12 +95,20 @@ FLASK_HTTPS: Final = FixtureSource("https", "https://github.com/pallets/flask")
 FLASK_SSH: Final = FixtureSource("ssh", "git@github.com:pallets/flask.git")
 CLICK: Final = FixtureSource("https", "https://github.com/pallets/click")
 WERKZEUG: Final = FixtureSource("https", "https://github.com/pallets/werkzeug")
+JINJA: Final = FixtureSource("https", "https://github.com/pallets/jinja")
+MARKUPSAFE: Final = FixtureSource("https", "https://github.com/pallets/markupsafe")
+ITSDANGEROUS: Final = FixtureSource("https", "https://github.com/pallets/itsdangerous")
 # Both flask spellings share the store the HTTPS source acquired.
 FLASK_STORE_KEY: Final = FLASK_HTTPS.store_key()
 # An acquisition interrupted after publishing its store and before its alias.
 ORPHAN_STORE_KEY: Final = CLICK.store_key()
 # A store nothing publishes, for an alias that dangles.
 MISSING_STORE_KEY: Final = WERKZEUG.store_key()
+# A name no slug spells, so the routes count it and never repeat it.
+UNRECOGNIZED_ENTRY: Final = "Private Notes"
+# Shaped like a token and nothing more. A record that fails validation can hold one, so
+# the report of the failure must not quote the record.
+RECORD_SECRET: Final = "ghp-examplesecrettokenvalue"
 
 
 def _stage_and_publish_store(home: Path, key: str, *, with_revision: bool) -> None:
@@ -214,6 +225,76 @@ def build_populated_home(home: Path) -> None:
     ensure_private_directory(home, f"{staging_entry(LEFTOVER_STAGING_ENTRY)}/repository.git")
 
 
+def build_damaged_home(home: Path) -> None:
+    """The populated home with one entry damaged in each way a read can find.
+
+    Every source is published by the production writers first and damaged afterwards,
+    as a crash, a stray edit, or a ``chmod`` would leave it:
+
+    - click: ``source.yml`` fails validation, and holds a credential;
+    - flask over HTTPS: ``state.yml`` is not a state record;
+    - flask over SSH: ``store-alias.yml`` is not an alias record;
+    - itsdangerous: the entry's directory is readable by its group;
+    - jinja: the alias carries another source's identity;
+    - markupsafe: ``source.yml`` is readable by its group;
+    - werkzeug: the alias names a store that is not there;
+    - a directory in ``sources/`` whose name is not a slug;
+    - click's store has lost its ``state.yml``.
+    """
+
+    build_populated_home(home)
+    for source in (ITSDANGEROUS, JINJA, MARKUPSAFE, WERKZEUG):
+        _stage_and_publish_source(home, source, opened=False)
+    _attach(home, WERKZEUG, MISSING_STORE_KEY, generation=1, at=ALIASED_AT)
+    with source_alias_lock(home, JINJA.slug), repository_store_lock(home, FLASK_STORE_KEY):
+        write_record_atomic(
+            home,
+            source_record(JINJA.slug, "store-alias.yml"),
+            RepositoryStoreAlias(
+                source_id=FLASK_HTTPS.id,
+                store_id=f"sha256:{FLASK_STORE_KEY}",
+                generation=1,
+                updated_at=ALIASED_AT,
+            ),
+            REPOSITORY_STORE_ALIAS_CONTRACT_ID,
+        )
+    write_private_file_atomic(
+        home,
+        source_record(CLICK.slug, "source.yml"),
+        (
+            "softschema:\n"
+            f"  contract: {REPOSITORY_SOURCE_CONTRACT_ID}\n"
+            "  envelope: source\n"
+            "  status: enforced\n"
+            "source:\n"
+            f"  id: {CLICK.id}\n"
+            f"  slug: {CLICK.slug}\n"
+            f"  display_url: https://user:{RECORD_SECRET}@github.com/pallets/click\n"
+            f"  clone_url: https://user:{RECORD_SECRET}@github.com/pallets/click\n"
+            "  transport: https\n"
+            f"  created_at: {CREATED_AT}\n"
+        ).encode(),
+    )
+    write_private_file_atomic(
+        home, source_record(FLASK_HTTPS.slug, "state.yml"), b"state: nonsense\n"
+    )
+    write_private_file_atomic(
+        home, source_record(FLASK_SSH.slug, "store-alias.yml"), b"alias: nonsense\n"
+    )
+    ensure_private_directory(home, f"{SOURCES}/{UNRECOGNIZED_ENTRY}")
+    (home / store_record(ORPHAN_STORE_KEY, "state.yml")).unlink()
+    os.chmod(home / source_record(MARKUPSAFE.slug, "source.yml"), 0o640)
+    os.chmod(home / source_directory(ITSDANGEROUS.slug), 0o750)
+
+
+def build_shared_directories_home(home: Path) -> None:
+    """A private home in which two fixed cache directories let other users in."""
+
+    build_empty_home(home)
+    for directory in (SOURCES, STAGING):
+        os.chmod(home / directory, 0o755)
+
+
 def build_future_home(home: Path) -> None:
     """A home whose layout a newer release wrote."""
 
@@ -239,8 +320,10 @@ def build_all(directory: Path) -> None:
     (directory / "root").mkdir(exist_ok=True)
     build_empty_home(directory / "empty")
     build_populated_home(directory / "populated")
+    build_damaged_home(directory / "damaged")
     build_future_home(directory / "future")
     build_shared_home(directory / "shared")
+    build_shared_directories_home(directory / "shared-directories")
 
 
 if __name__ == "__main__":

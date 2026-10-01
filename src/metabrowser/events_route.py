@@ -129,6 +129,7 @@ from metabrowser.settings import (
     SSE_RING_BUFFER_CAPACITY,
 )
 from metabrowser.source import (
+    as_git_revision_subject,
     get_source_session,
     require_filesystem_hooks,
     require_source_capability,
@@ -144,12 +145,7 @@ LOG = logging.getLogger(__name__)
 
 
 def _git_revision_subject() -> GitRevisionSubject | None:
-    from metabrowser.git.tree_source import GitRevisionSubject
-
-    subject = get_source_session().subject
-    if isinstance(subject, GitRevisionSubject):
-        return subject
-    return None
+    return as_git_revision_subject(get_source_session().subject)
 
 
 # Aliases kept so external test imports stay stable; authoritative
@@ -1344,10 +1340,10 @@ async def api_catalog(request: Request) -> Response:
     and is already complete.
     """
 
-    from metabrowser.git.content_routes import git_revision_catalog
-
     subject = _git_revision_subject()
     if subject is not None:
+        from metabrowser.git.content_routes import git_revision_catalog
+
         return await git_revision_catalog(request, subject)
 
     require_filesystem_hooks()

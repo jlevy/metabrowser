@@ -220,7 +220,15 @@ function observe(kind) {
   for (const script of shell) {
     vm.runInContext(script, sandbox, { filename: `served-shell-${kind}.js` });
   }
-  for (const name of PRODUCTION_MODULES) {
+  // A pin's shell carries the GitPath codec as one more startup script, ahead of
+  // navigation.js; a folder's does not.
+  const modules =
+    kind === "git_revision"
+      ? PRODUCTION_MODULES.flatMap((name) =>
+          name === "navigation.js" ? ["git-path.js", name] : [name],
+        )
+      : PRODUCTION_MODULES;
+  for (const name of modules) {
     const absolute = path.join(staticDir, name);
     vm.runInContext(fs.readFileSync(absolute, "utf8"), sandbox, { filename: absolute });
   }

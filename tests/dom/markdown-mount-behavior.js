@@ -126,18 +126,37 @@ class FakeWorker {
   const transclusionStub =
     'export function transclusionKey(path){return Object.freeze({fragment:"",path})}';
   const transclusionUrl = `data:text/javascript;base64,${Buffer.from(transclusionStub).toString("base64")}`;
+  // The production placement module, with the inert render it imports on demand
+  // replaced by a double that counts its own evaluation: a trusted mount must never
+  // import it, and an inert one must run its table of contents instead of KPress's.
+  const inertRenderStub =
+    "globalThis.__markdownInertImports=(globalThis.__markdownInertImports||0)+1;" +
+    "export async function placeRendered(target,rendered,mb,enhance){" +
+    "target.innerHTML='<article class=kpress-inert>'+rendered.html+'</article>';" +
+    "target.inertArticle={of:target};return enhance?enhance(target):null}" +
+    "export function inertArticle(root){return root.inertArticle||null}" +
+    "export function wireInertToc(article,options){" +
+    "globalThis.__markdownInertTocs.push({article,options});" +
+    "return ()=>globalThis.__markdownInertTocDisposals.push(article)}";
+  const inertRenderUrl = `data:text/javascript;base64,${Buffer.from(inertRenderStub).toString("base64")}`;
+  const placeRenderedSource = fs
+    .readFileSync(
+      path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/place-rendered.js"),
+      "utf8",
+    )
+    .replaceAll('"./inert-render.js"', JSON.stringify(inertRenderUrl));
+  check(
+    "the placement module imports the inert render on demand",
+    placeRenderedSource.includes(`await import(${JSON.stringify(inertRenderUrl)})`),
+  );
+  const placeRenderedUrl = `data:text/javascript;base64,${Buffer.from(placeRenderedSource).toString("base64")}`;
+  globalThis.__markdownInertTocs = [];
+  globalThis.__markdownInertTocDisposals = [];
   const importableSource = source
     .replace('"./link-enhancer.js"', JSON.stringify(enhancerUrl))
     .replace('"./markdown-worker-client.js"', JSON.stringify(workerClientUrl))
     .replace('"./toc-intersection-fallback.js"', JSON.stringify(tocFallbackUrl))
-    .replace(
-      '"./inert-render.js"',
-      JSON.stringify(
-        require("node:url").pathToFileURL(
-          path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/inert-render.js"),
-        ).href,
-      ),
-    )
+    .replace('"./place-rendered.js"', JSON.stringify(placeRenderedUrl))
     .replace('"./transclusion.js"', JSON.stringify(transclusionUrl));
   const module = await import(
     `data:text/javascript;base64,${Buffer.from(importableSource).toString("base64")}`
@@ -418,6 +437,67 @@ class FakeWorker {
   limitedWikiMount.dispose();
   check(
     "no Worker outlives the last mount",
+    workers.every((worker) => worker.terminated),
+  );
+
+  // Every render above was trusted, as every render of a trusted folder is. The
+  // inert path loads with the first inert render and not before.
+  check(
+    "a trusted render never imports the inert render",
+    globalThis.__markdownInertImports === undefined,
+    String(globalThis.__markdownInertImports),
+  );
+  const fallbackCallsBeforeInert = globalThis.__markdownTocFallbackCalls;
+  const kpressTocDisposalsBeforeInert = tocDisposals.length;
+  const inertContainers = [makeContainer(), makeContainer()];
+  const inertMounts = inertContainers.map((container, index) =>
+    module.mountRenderedMarkdown(
+      container,
+      { path: `inert-${index}.md`, raw: { content: "# Inert" } },
+      mb,
+    ),
+  );
+  await flush();
+  for (const index of [0, 1]) {
+    requestFor(`inert-${index}.md`).resolve({ html: `inert ${index}`, inert: true, toc: true });
+  }
+  await Promise.all(inertMounts.map((mount) => mount.ready));
+  check(
+    "inert renders import the inert render once between them",
+    globalThis.__markdownInertImports === 1,
+    String(globalThis.__markdownInertImports),
+  );
+  check(
+    "an inert render is placed by the inert path",
+    inertContainers.every((container, index) =>
+      container.innerHTML.includes(`kpress-inert>inert ${index}`),
+    ),
+    JSON.stringify(inertContainers.map((container) => container.innerHTML.slice(0, 200))),
+  );
+  check(
+    "an inert render's links are still enhanced",
+    enhanceCallFor("inert-0.md") !== undefined && enhanceCallFor("inert-1.md") !== undefined,
+  );
+  check(
+    "an inert render runs the page's table of contents, not KPress's",
+    globalThis.__markdownInertTocs.length === 2 &&
+      globalThis.__markdownInertTocs[0].article.of === inertContainers[0] &&
+      typeof globalThis.__markdownInertTocs[0].options.open === "function" &&
+      globalThis.__markdownTocFallbackCalls === fallbackCallsBeforeInert,
+    JSON.stringify([globalThis.__markdownInertTocs.length, globalThis.__markdownTocFallbackCalls]),
+  );
+  inertMounts[0].dispose();
+  inertMounts[0].dispose();
+  check(
+    "disposing an inert mount releases its table of contents exactly once",
+    globalThis.__markdownInertTocDisposals.length === 1 &&
+      globalThis.__markdownInertTocDisposals[0].of === inertContainers[0] &&
+      tocDisposals.length === kpressTocDisposalsBeforeInert,
+    String(globalThis.__markdownInertTocDisposals.length),
+  );
+  inertMounts[1].dispose();
+  check(
+    "no Worker outlives the inert mounts",
     workers.every((worker) => worker.terminated),
   );
 

@@ -1,7 +1,7 @@
 {
   "schema": "metabrowser-repository-cache-state-machines-v1",
   "decided": "2026-09-16",
-  "visibility": "A state is visible when an ordinary open, catalog scan, or served subject can observe the entry or result it describes.",
+  "provenance": "Written by hand from the design in docs/project/architecture/arch-repository-sources-and-provider-mirrors.md (Locks and Deletion); there is no generator. The replays read these keys and no others: each hierarchy lock's name, rank, and path, each side lock's name and path, and each sequence's steps and valid, through metabrowser.cache.locks (tests/test_repository_cache_contract_fixtures.py); and the machine's initial state, each transition's from, event, to, and holds, and the scenario's machine, events, and expected_final, through metabrowser.cache.reclaim (tests/test_cache_reclaim.py). The rest, which is schema, decided, primitive, rules, protects, acquisition, why_outside_the_hierarchy, why, and effect, is rationale that nothing reads. The acquisition and refresh machines, and what a crash leaves in each state, are tables in that document.",
   "locks": {
     "primitive": {
       "kind": "flock",
@@ -12,21 +12,18 @@
       {
         "name": "home",
         "rank": 1,
-        "multiple": false,
         "path": "cache/locks/home.lock",
         "protects": "layout migration and brief global enumeration for catalog scans and sweeps"
       },
       {
         "name": "source_alias",
         "rank": 2,
-        "multiple": true,
         "path": "cache/locks/sources/<slug>.lock",
         "protects": "slug claim and alias creation; several aliases lock in ascending slug order"
       },
       {
         "name": "repository_store",
         "rank": 3,
-        "multiple": true,
         "path": "cache/locks/stores/<store-key>.lock",
         "protects": "store directory publication and store records; several stores lock in ascending key order. It is held only for those short steps, never across network work or a long-running Git process such as fetch"
       }
@@ -34,14 +31,12 @@
     "side_locks": [
       {
         "name": "staging_entry",
-        "mode": "exclusive",
         "path": "cache/locks/staging/<entry>.lock",
         "acquisition": "taken before cache/staging/<entry>/ is created and held by its one owner for the entry's whole life, including network work; every other process only tries it without blocking",
         "why_outside_the_hierarchy": "It is a liveness marker nobody waits on, so holding it across network work cannot block another operation."
       },
       {
         "name": "store_fetch",
-        "mode": "exclusive",
         "path": "cache/locks/stores/<store-key>.fetch.lock",
         "acquisition": "tried without blocking by a refresh of a published store and held through its network work, stale-lock cleanup, and the record rewrite; the Git processes that write the store inherit its descriptor, so it stays held while any of them runs, even after the process that took it has died; a refresh that finds it busy reports that another process is refreshing the store and does not wait",
         "why_outside_the_hierarchy": "It is held across network work, which no hierarchy lock may be, and nobody waits on it. The store lock is still taken under it, briefly, to rewrite state.yml."
@@ -148,241 +143,16 @@
       }
     ]
   },
-  "publication": {
-    "rule": "The owning hierarchy lock is held, the target path is verified absent with lstat, and the staged directory or record is renamed into place; that check under the lock is the guarantee, because every Metabrowser writer of the path takes the same lock.",
-    "defense_in_depth": "Where the platform offers an atomic no-replace rename it is used for the same rename: renameat2 with RENAME_NOREPLACE on Linux and renamex_np with RENAME_EXCL on macOS, called through ctypes with no new dependency. It turns a violated lock discipline into an error instead of a silent replacement.",
-    "basis": "On APFS os.rename replaced an existing empty directory, os.rename onto a non-empty directory failed with ENOTEMPTY, and renamex_np with RENAME_EXCL refused an existing empty directory with EEXIST (results/platform.json). renameat2 was not measured."
-  },
-  "crash_recovery": {
-    "nothing_to_recover": {
-      "visible_after": "unchanged",
-      "action": "No durable state changed before the crash."
-    },
-    "staging_swept": {
-      "visible_after": false,
-      "action": "The startup sweep finds the staging entry's lock free and deletes the entry. A SIGKILLed clone leaves its destination and a temporary pack behind (results/concurrency.json), so staging is never inside a published path."
-    },
-    "unreferenced_store_kept": {
-      "visible_after": false,
-      "action": "The crash released the acquisition's locks after its store was published and before its alias was. A published store that no alias names is not visible. It stays in place, and the next acquisition of the same source reuses it and publishes the alias."
-    },
-    "sweep_restarts": {
-      "visible_after": "unchanged",
-      "action": "The sweep is idempotent and runs again at the next startup."
-    },
-    "fetch_interrupted": {
-      "visible_after": "unchanged",
-      "action": "The atomic fetch moved every ref or none, and objects it wrote stay unreferenced. A killed Git can leave packed-refs.lock, refs/**.lock, a temporary loose object, or a temporary pack; the next refresh removes them under the store's fetch lock before it fetches, which it can take only once no Git from the interrupted refresh is alive. state.yml still records the previous fetch."
-    },
-    "prune_interrupted": {
-      "visible_after": "unchanged",
-      "action": "Some refs whose branch or tag the origin deleted are gone and others are not; each deletion is whole, and no commit is removed. The next refresh prunes the rest."
-    },
-    "record_behind": {
-      "visible_after": "unchanged",
-      "action": "The refs moved but state.yml still names the previous default revision and fetch time. Nothing reads the record to find a commit, and the next refresh rewrites it."
-    }
-  },
   "machines": [
     {
-      "name": "store_acquisition",
-      "owner_phase": "1B-a",
-      "initial": "absent",
-      "states": [
-        { "name": "absent", "visible": false, "terminal": false, "on_crash": "nothing_to_recover" },
-        {
-          "name": "staging_claimed",
-          "visible": false,
-          "terminal": false,
-          "on_crash": "staging_swept"
-        },
-        {
-          "name": "head_observed",
-          "visible": false,
-          "terminal": false,
-          "on_crash": "staging_swept"
-        },
-        { "name": "fetching", "visible": false, "terminal": false, "on_crash": "staging_swept" },
-        { "name": "fetched", "visible": false, "terminal": false, "on_crash": "staging_swept" },
-        { "name": "validated", "visible": false, "terminal": false, "on_crash": "staging_swept" },
-        {
-          "name": "store_published",
-          "visible": false,
-          "terminal": false,
-          "on_crash": "unreferenced_store_kept"
-        },
-        {
-          "name": "store_reused",
-          "visible": false,
-          "terminal": false,
-          "on_crash": "unreferenced_store_kept"
-        },
-        { "name": "alias_published", "visible": true, "terminal": true },
-        { "name": "alias_conflict_reported", "visible": true, "terminal": true },
-        { "name": "abandoned", "visible": false, "terminal": true }
-      ],
-      "transitions": [
-        {
-          "from": "absent",
-          "event": "claim_staging",
-          "to": "staging_claimed",
-          "holds": ["staging_entry"],
-          "network": false,
-          "effect": "Take cache/locks/staging/<entry>.lock, then create cache/staging/<entry>/ on the cache filesystem."
-        },
-        {
-          "from": "staging_claimed",
-          "event": "lookup_remote_head",
-          "to": "head_observed",
-          "holds": ["staging_entry"],
-          "network": true,
-          "effect": "git ls-remote --symref origin HEAD records the remote default branch and its object ID."
-        },
-        {
-          "from": "staging_claimed",
-          "event": "remote_unavailable",
-          "to": "abandoned",
-          "holds": ["staging_entry"],
-          "network": false,
-          "effect": "Typed failure; staging deleted."
-        },
-        {
-          "from": "head_observed",
-          "event": "fetch_started",
-          "to": "fetching",
-          "holds": ["staging_entry"],
-          "network": true,
-          "effect": "init --bare --template=, Metabrowser-written config with automatic maintenance and gc off, then one fetch of every object with explicit refspecs; no low-speed bound until acquisition stalls are measured, so user cancellation is the guard."
-        },
-        {
-          "from": "fetching",
-          "event": "fetch_failed",
-          "to": "abandoned",
-          "holds": ["staging_entry"],
-          "network": false,
-          "effect": "Typed failure; staging deleted."
-        },
-        {
-          "from": "fetching",
-          "event": "cancelled",
-          "to": "abandoned",
-          "holds": ["staging_entry"],
-          "network": false,
-          "effect": "Git terminated (4.4 ms to exit after SIGTERM, results/concurrency.json); staging deleted."
-        },
-        {
-          "from": "fetching",
-          "event": "fetch_succeeded",
-          "to": "fetched",
-          "holds": ["staging_entry"],
-          "network": false,
-          "effect": "Every object reachable from the fetched branches and tags is present in staging."
-        },
-        {
-          "from": "fetched",
-          "event": "validation_failed",
-          "to": "abandoned",
-          "holds": ["staging_entry"],
-          "network": false,
-          "effect": "The observed HEAD object, its branch, or the object format did not validate; staging deleted."
-        },
-        {
-          "from": "fetched",
-          "event": "validated",
-          "to": "validated",
-          "holds": ["staging_entry"],
-          "network": false,
-          "effect": "Records written in staging: strategy full and object_state complete."
-        },
-        {
-          "from": "validated",
-          "event": "publish_store",
-          "to": "store_published",
-          "holds": ["source_alias", "repository_store", "staging_entry"],
-          "network": false,
-          "effect": "Take the alias lock, then the store lock, and keep both through the alias commit; verify the store directory is absent and rename staging into repository-stores/<store-key>."
-        },
-        {
-          "from": "validated",
-          "event": "store_exists_same_identity",
-          "to": "store_reused",
-          "holds": ["source_alias", "repository_store", "staging_entry"],
-          "network": false,
-          "effect": "Under the same two locks, a concurrent acquisition had published the same deterministic store first; its records validate, and staging is deleted after the locks are released."
-        },
-        {
-          "from": "store_published",
-          "event": "publish_alias",
-          "to": "alias_published",
-          "holds": ["source_alias", "repository_store", "staging_entry"],
-          "network": false,
-          "effect": "Still under both locks, atomically create sources/<slug>/ with source.yml and store-alias.yml as the sole visibility commit; release both locks."
-        },
-        {
-          "from": "store_reused",
-          "event": "publish_alias",
-          "to": "alias_published",
-          "holds": ["source_alias", "repository_store", "staging_entry"],
-          "network": false,
-          "effect": "Same visibility commit."
-        },
-        {
-          "from": "store_published",
-          "event": "alias_exists_same_store",
-          "to": "alias_published",
-          "holds": ["source_alias", "repository_store", "staging_entry"],
-          "network": false,
-          "effect": "Another process committed the identical alias first; release both locks."
-        },
-        {
-          "from": "store_reused",
-          "event": "alias_exists_same_store",
-          "to": "alias_published",
-          "holds": ["source_alias", "repository_store", "staging_entry"],
-          "network": false,
-          "effect": "Another process committed the identical alias first; release both locks."
-        },
-        {
-          "from": "store_published",
-          "event": "alias_points_elsewhere",
-          "to": "alias_conflict_reported",
-          "holds": ["source_alias", "repository_store", "staging_entry"],
-          "network": false,
-          "effect": "The existing alias stays; release both locks, leaving the new store unreferenced."
-        },
-        {
-          "from": "store_reused",
-          "event": "alias_points_elsewhere",
-          "to": "alias_conflict_reported",
-          "holds": ["source_alias", "repository_store", "staging_entry"],
-          "network": false,
-          "effect": "The existing alias stays; release both locks."
-        }
-      ]
-    },
-    {
       "name": "startup_sweep",
-      "owner_phase": "1A",
       "initial": "idle",
-      "states": [
-        { "name": "idle", "visible": false, "terminal": false, "on_crash": "nothing_to_recover" },
-        {
-          "name": "enumerating",
-          "visible": false,
-          "terminal": false,
-          "on_crash": "sweep_restarts"
-        },
-        { "name": "inspecting", "visible": false, "terminal": false, "on_crash": "sweep_restarts" },
-        { "name": "removing", "visible": false, "terminal": false, "on_crash": "sweep_restarts" },
-        { "name": "done", "visible": false, "terminal": true }
-      ],
       "transitions": [
         {
           "from": "idle",
           "event": "begin",
           "to": "enumerating",
           "holds": ["home"],
-          "network": false,
           "effect": "List entry names under staging/ only."
         },
         {
@@ -390,7 +160,6 @@
           "event": "listed",
           "to": "inspecting",
           "holds": [],
-          "network": false,
           "effect": "Release the home lock before any per-entry work."
         },
         {
@@ -398,7 +167,6 @@
           "event": "entry_lock_busy",
           "to": "inspecting",
           "holds": [],
-          "network": false,
           "effect": "A live owner holds the entry's lock; skip it."
         },
         {
@@ -406,7 +174,6 @@
           "event": "entry_lock_acquired",
           "to": "removing",
           "holds": ["staging_entry"],
-          "network": false,
           "effect": "Nobody owns the entry and the lock file's identity rechecks."
         },
         {
@@ -414,7 +181,6 @@
           "event": "removed",
           "to": "inspecting",
           "holds": ["staging_entry"],
-          "network": false,
           "effect": "Delete the directory, tolerating read-only Git object files, then remove the lock file and release it."
         },
         {
@@ -422,262 +188,12 @@
           "event": "exhausted",
           "to": "done",
           "holds": [],
-          "network": false,
           "effect": "Every listed entry was skipped or removed."
-        }
-      ]
-    },
-    {
-      "name": "store_refresh",
-      "owner_phase": "thin-mirror-4",
-      "initial": "published",
-      "states": [
-        {
-          "name": "published",
-          "visible": true,
-          "terminal": false,
-          "on_crash": "nothing_to_recover"
-        },
-        {
-          "name": "fetch_locked",
-          "visible": true,
-          "terminal": false,
-          "on_crash": "nothing_to_recover"
-        },
-        {
-          "name": "locks_cleaned",
-          "visible": true,
-          "terminal": false,
-          "on_crash": "nothing_to_recover"
-        },
-        {
-          "name": "head_observed",
-          "visible": true,
-          "terminal": false,
-          "on_crash": "nothing_to_recover"
-        },
-        { "name": "fetching", "visible": true, "terminal": false, "on_crash": "fetch_interrupted" },
-        { "name": "pruning", "visible": true, "terminal": false, "on_crash": "prune_interrupted" },
-        {
-          "name": "refetching",
-          "visible": true,
-          "terminal": false,
-          "on_crash": "fetch_interrupted"
-        },
-        { "name": "fetched", "visible": true, "terminal": false, "on_crash": "record_behind" },
-        { "name": "recorded", "visible": true, "terminal": true },
-        { "name": "failure_recorded", "visible": true, "terminal": true },
-        { "name": "refreshing_elsewhere", "visible": true, "terminal": true },
-        { "name": "cancelled", "visible": true, "terminal": true }
-      ],
-      "transitions": [
-        {
-          "from": "published",
-          "event": "take_fetch_lock",
-          "to": "fetch_locked",
-          "holds": ["store_fetch"],
-          "network": false,
-          "effect": "Try cache/locks/stores/<store-key>.fetch.lock without blocking."
-        },
-        {
-          "from": "published",
-          "event": "fetch_lock_busy",
-          "to": "refreshing_elsewhere",
-          "holds": [],
-          "network": false,
-          "effect": "Another holder is refreshing the store; report it and fetch nothing."
-        },
-        {
-          "from": "fetch_locked",
-          "event": "remove_stale_locks",
-          "to": "locks_cleaned",
-          "holds": ["store_fetch"],
-          "network": false,
-          "effect": "Remove packed-refs.lock, refs/**.lock, temporary loose objects, and temporary packs a killed Git left in the store. Every writer of the store holds this lock, through the descriptor it inherited, so none of them is live."
-        },
-        {
-          "from": "locks_cleaned",
-          "event": "lookup_remote_head",
-          "to": "head_observed",
-          "holds": ["store_fetch"],
-          "network": true,
-          "effect": "git ls-remote --symref -- origin HEAD records which branch the origin's HEAD names."
-        },
-        {
-          "from": "locks_cleaned",
-          "event": "remote_unavailable",
-          "to": "failure_recorded",
-          "holds": ["repository_store", "store_fetch"],
-          "network": false,
-          "effect": "Typed failure; under the store lock, state.yml records a failed refresh and keeps the previous fetch time and default revision."
-        },
-        {
-          "from": "head_observed",
-          "event": "fetch_started",
-          "to": "fetching",
-          "holds": ["store_fetch"],
-          "network": true,
-          "effect": "git fetch --prune --atomic --no-write-fetch-head origin with the branch and tag refspecs, in Git's own process group, holding the inherited fetch lock."
-        },
-        {
-          "from": "fetching",
-          "event": "fetch_refused",
-          "to": "pruning",
-          "holds": ["store_fetch"],
-          "network": false,
-          "effect": "Git ran and failed, and no ref moved. One transaction cannot delete side and create side/x, or rename Topic to topic on a case-insensitive file system, and Git words that refusal differently for loose refs, packed refs, and reftable, or pushes it past the bounded stderr, so every such failure is followed by the prune."
-        },
-        {
-          "from": "fetching",
-          "event": "fetch_failed",
-          "to": "failure_recorded",
-          "holds": ["repository_store", "store_fetch"],
-          "network": false,
-          "effect": "Git could not start or was stopped at its deadline, which a prune cannot help. No ref moved, because the fetch is atomic; under the store lock, state.yml records the failed refresh and keeps the previous fetch time and default revision."
-        },
-        {
-          "from": "pruning",
-          "event": "stale_refs_pruned",
-          "to": "refetching",
-          "holds": ["store_fetch"],
-          "network": true,
-          "effect": "git remote prune with the mirror refspecs deletes the refs whose branch or tag the origin no longer has, and nothing else; the atomic fetch then runs once more."
-        },
-        {
-          "from": "pruning",
-          "event": "prune_failed",
-          "to": "failure_recorded",
-          "holds": ["repository_store", "store_fetch"],
-          "network": false,
-          "effect": "The prune may have deleted some stale refs before it failed. Under the store lock, state.yml records the failed refresh with the origin's default branch or the one recorded before, whichever the mirror still has, and keeps the previous fetch time."
-        },
-        {
-          "from": "pruning",
-          "event": "cancelled",
-          "to": "cancelled",
-          "holds": ["store_fetch"],
-          "network": false,
-          "effect": "Git's process group is killed; each ref deletion is whole, stale refs already deleted stay deleted, and the record is left as it was."
-        },
-        {
-          "from": "refetching",
-          "event": "fetch_succeeded",
-          "to": "fetched",
-          "holds": ["store_fetch"],
-          "network": false,
-          "effect": "With the stale refs gone, every branch and tag moved together. No object was removed."
-        },
-        {
-          "from": "refetching",
-          "event": "fetch_failed",
-          "to": "failure_recorded",
-          "holds": ["repository_store", "store_fetch"],
-          "network": false,
-          "effect": "The second transaction moved no ref, but the prune deleted stale refs. Under the store lock, state.yml records the failed refresh with the origin's default branch or the one recorded before, whichever the mirror still has, and keeps the previous fetch time."
-        },
-        {
-          "from": "refetching",
-          "event": "cancelled",
-          "to": "cancelled",
-          "holds": ["store_fetch"],
-          "network": false,
-          "effect": "Git's process group is killed; the second transaction moved every ref or none, stale refs the prune deleted stay deleted, and the record is left as it was."
-        },
-        {
-          "from": "fetching",
-          "event": "cancelled",
-          "to": "cancelled",
-          "holds": ["store_fetch"],
-          "network": false,
-          "effect": "Git's process group is killed, by the lifespan's cancellation or by the command's immediate exit; the atomic fetch moved every ref or none, and the record is left as it was."
-        },
-        {
-          "from": "fetching",
-          "event": "fetch_succeeded",
-          "to": "fetched",
-          "holds": ["store_fetch"],
-          "network": false,
-          "effect": "Every branch and tag moved together; branches and tags deleted upstream were pruned. No object was removed."
-        },
-        {
-          "from": "fetched",
-          "event": "validation_failed",
-          "to": "failure_recorded",
-          "holds": ["repository_store", "store_fetch"],
-          "network": false,
-          "effect": "The origin's default branch is missing from the mirror or is not a commit; the failure is recorded under the store lock."
-        },
-        {
-          "from": "fetched",
-          "event": "record_written",
-          "to": "recorded",
-          "holds": ["repository_store", "store_fetch"],
-          "network": false,
-          "effect": "Under the store lock, state.yml gets the default branch, its commit, the fetch time, and the succeeded outcome; then both locks are released."
         }
       ]
     }
   ],
   "scenarios": [
-    {
-      "id": "acquire-first-open",
-      "machine": "store_acquisition",
-      "events": [
-        "claim_staging",
-        "lookup_remote_head",
-        "fetch_started",
-        "fetch_succeeded",
-        "validated",
-        "publish_store",
-        "publish_alias"
-      ],
-      "expected_final": "alias_published",
-      "expected_visible": true
-    },
-    {
-      "id": "acquire-crash-during-fetch",
-      "machine": "store_acquisition",
-      "events": ["claim_staging", "lookup_remote_head", "fetch_started", "crash"],
-      "expected_final": "staging_swept",
-      "expected_visible": false
-    },
-    {
-      "id": "acquire-crash-between-commits",
-      "machine": "store_acquisition",
-      "events": [
-        "claim_staging",
-        "lookup_remote_head",
-        "fetch_started",
-        "fetch_succeeded",
-        "validated",
-        "publish_store",
-        "crash"
-      ],
-      "expected_final": "unreferenced_store_kept",
-      "expected_visible": false
-    },
-    {
-      "id": "acquire-race-loser-reuses-store",
-      "machine": "store_acquisition",
-      "events": [
-        "claim_staging",
-        "lookup_remote_head",
-        "fetch_started",
-        "fetch_succeeded",
-        "validated",
-        "store_exists_same_identity",
-        "alias_exists_same_store"
-      ],
-      "expected_final": "alias_published",
-      "expected_visible": true
-    },
-    {
-      "id": "acquire-cancelled",
-      "machine": "store_acquisition",
-      "events": ["claim_staging", "lookup_remote_head", "fetch_started", "cancelled"],
-      "expected_final": "abandoned",
-      "expected_visible": false
-    },
     {
       "id": "sweep-skips-live-staging",
       "machine": "startup_sweep",
@@ -689,107 +205,7 @@
         "removed",
         "exhausted"
       ],
-      "expected_final": "done",
-      "expected_visible": false
-    },
-    {
-      "id": "refresh-succeeds",
-      "machine": "store_refresh",
-      "events": [
-        "take_fetch_lock",
-        "remove_stale_locks",
-        "lookup_remote_head",
-        "fetch_started",
-        "fetch_succeeded",
-        "record_written"
-      ],
-      "expected_final": "recorded",
-      "expected_visible": true
-    },
-    {
-      "id": "refresh-busy-elsewhere",
-      "machine": "store_refresh",
-      "events": ["fetch_lock_busy"],
-      "expected_final": "refreshing_elsewhere",
-      "expected_visible": true
-    },
-    {
-      "id": "refresh-origin-gone",
-      "machine": "store_refresh",
-      "events": ["take_fetch_lock", "remove_stale_locks", "remote_unavailable"],
-      "expected_final": "failure_recorded",
-      "expected_visible": true
-    },
-    {
-      "id": "refresh-crash-during-fetch",
-      "machine": "store_refresh",
-      "events": [
-        "take_fetch_lock",
-        "remove_stale_locks",
-        "lookup_remote_head",
-        "fetch_started",
-        "crash"
-      ],
-      "expected_final": "fetch_interrupted",
-      "expected_visible": true
-    },
-    {
-      "id": "refresh-cancelled",
-      "machine": "store_refresh",
-      "events": [
-        "take_fetch_lock",
-        "remove_stale_locks",
-        "lookup_remote_head",
-        "fetch_started",
-        "cancelled"
-      ],
-      "expected_final": "cancelled",
-      "expected_visible": true
-    },
-    {
-      "id": "refresh-prunes-a-clashing-ref",
-      "machine": "store_refresh",
-      "events": [
-        "take_fetch_lock",
-        "remove_stale_locks",
-        "lookup_remote_head",
-        "fetch_started",
-        "fetch_refused",
-        "stale_refs_pruned",
-        "fetch_succeeded",
-        "record_written"
-      ],
-      "expected_final": "recorded",
-      "expected_visible": true
-    },
-    {
-      "id": "refresh-retry-fails-after-pruning",
-      "machine": "store_refresh",
-      "events": [
-        "take_fetch_lock",
-        "remove_stale_locks",
-        "lookup_remote_head",
-        "fetch_started",
-        "fetch_refused",
-        "stale_refs_pruned",
-        "fetch_failed"
-      ],
-      "expected_final": "failure_recorded",
-      "expected_visible": true
-    },
-    {
-      "id": "refresh-crash-during-prune",
-      "machine": "store_refresh",
-      "events": [
-        "take_fetch_lock",
-        "remove_stale_locks",
-        "lookup_remote_head",
-        "fetch_started",
-        "fetch_refused",
-        "crash"
-      ],
-      "expected_final": "prune_interrupted",
-      "expected_visible": true
+      "expected_final": "done"
     }
   ]
 }

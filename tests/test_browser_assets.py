@@ -52,12 +52,13 @@ def test_generated_html_handlers_keep_their_global_names() -> None:
     """Static analysis cannot see function names embedded in generated HTML."""
     app = _browser_app_js()
     sdk = _browser_asset("static/plugin-sdk.js")
+    sdk_views = _browser_asset("static/plugin-sdk-views.js")
     agent_log = _browser_asset("builtin_plugins/agent_log/index.js")
 
     # The Load more control moved into the SDK's partial-content notice, so the
     # delegated listener there calls a global that still lives in app.js. That split
     # is exactly what this check exists to catch.
-    assert 'loadMoreCurrentText()"' in sdk
+    assert 'loadMoreCurrentText()"' in sdk_views
     assert "async function loadMoreCurrentText()" in app
     # Header copy/navigation buttons carry values in data-* attributes
     # consumed by the SDK's delegated listener (inline onclick would
@@ -66,7 +67,7 @@ def test_generated_html_handlers_keep_their_global_names() -> None:
     assert "data-mb-copy-text=" in app
     assert "data-nav-dir=" in app
     assert "function copyPath(btn, path)" not in app
-    assert "content-copy-btn" in sdk
+    assert "content-copy-btn" in sdk_views
     assert 'target.closest("[data-mb-copy]")' in sdk
     assert "_copyDelegationInstalled" in sdk
     # An agent log's event header opens through one delegated listener that calls the

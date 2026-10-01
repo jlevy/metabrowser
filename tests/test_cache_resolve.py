@@ -42,46 +42,60 @@ pytestmark = [
 ]
 
 
-@pytest.mark.parametrize(
-    "name",
-    ["main", "release/v1", "v1.0", "feature/x-y_z", "a.b", "@x", "x@y", "café", "v1./x"],
+# Git's check-ref-format rules, one table for short names and full ones under refs/.
+# A short name is looked up under the mirror's namespaces, never as HEAD itself.
+_VALID_REF_NAMES = (
+    "main",
+    "release/v1",
+    "v1.0",
+    "feature/x-y_z",
+    "a.b",
+    "@x",
+    "x@y",
+    "café",
+    "v1./x",
+    "HEAD",
+    "refs/remotes/origin/topic",
+    "refs/tags/v1.0",
 )
-def test_valid_ref_names(name: str) -> None:
-    assert is_valid_ref_name(name)
+_INVALID_REF_NAMES = (
+    "",
+    "@",
+    "a..b",
+    "a@{1}",
+    "HEAD@{upstream}",
+    ".hidden",
+    "a/.hidden",
+    "a.lock",
+    "a/b.lock/c",
+    "a/",
+    "/a",
+    "a//b",
+    "a.",
+    "a b",
+    "a\tb",
+    "a\x01",
+    "a\x7f",
+    "a~1",
+    "a^",
+    "x^{/msg}",
+    "a:b",
+    ":/text",
+    "a?",
+    "a*",
+    "a[",
+    "a\\b",
+    "a\ud800",
+    "refs/remotes/origin/" + "x" * 1100,
+)
 
 
 @pytest.mark.parametrize(
-    "name",
-    [
-        "",
-        "@",
-        "a..b",
-        "a@{1}",
-        ".hidden",
-        "a/.hidden",
-        "a.lock",
-        "a/b.lock/c",
-        "a/",
-        "/a",
-        "a//b",
-        "a.",
-        "a b",
-        "a~1",
-        "a^",
-        "a:b",
-        "a?",
-        "a*",
-        "a[",
-        "a\\b",
-        "a\x7f",
-        "a\tb",
-        ":/text",
-        "HEAD@{upstream}",
-        "x^{/msg}",
-    ],
+    ("name", "valid"),
+    [(name, True) for name in _VALID_REF_NAMES] + [(name, False) for name in _INVALID_REF_NAMES],
 )
-def test_invalid_ref_names_never_become_candidates(name: str) -> None:
-    assert not is_valid_ref_name(name)
+def test_ref_names_follow_the_git_ref_name_rules(name: str, valid: bool) -> None:
+    assert is_valid_ref_name(name) is valid
 
 
 def test_one_candidate_per_leading_segment() -> None:

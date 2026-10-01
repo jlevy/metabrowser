@@ -158,7 +158,10 @@ Plugin CSS and module side effects therefore do not exist on an unrelated page.
 For one plugin, the host loads its automatically detected `styles.css` and every
 `extra_styles` entry in parallel and waits for them to settle.
 It then loads `extra_scripts` sequentially in manifest order and evaluates `index.js`
-last. When several plugins declare the same kind, complete plugin descriptors load
+last. `index.js` is fetched while the stylesheets are, and evaluated in its turn.
+Every documented `window.metabrowser` function is in place before any of a plugin’s code
+runs: while `index.js` evaluates, in a view’s `render`, and in a handler.
+When several plugins declare the same kind, complete plugin descriptors load
 sequentially in stable discovery order.
 A later plugin therefore wins a duplicate `registerView` key deterministically, matching
 the manifest view registry.
@@ -470,6 +473,9 @@ belongs in.
 Await it before embedding one kind’s renderer inside another plugin, then read the
 renderer from the SDK. Already-loaded plugins resolve immediately, and simultaneous
 callers share one load.
+It rejects only when the SDK’s own view helpers could not be fetched; no plugin’s code
+has run then, and calling it again tries again.
+A plugin whose own assets fail to load is logged and skipped.
 This keeps cross-kind renderers off the eager shell path without exposing the private
 plugin host.
 

@@ -198,6 +198,9 @@ description = "Largest contentful paint."
 # the first usable tree on the same 111,590-file corpus. These ceilings retain
 # headroom for a small core module while preventing either eager tier from
 # returning to the directory shell's critical path.
+# devtools/check_startup_scripts.py applies these two on every `make lint-check`,
+# from the shell the server renders; exp-037 is why, and records it agreeing with
+# the browser's count byte for byte.
 [metrics.startup_script_requests]
 category = "loading"
 maximum = 25

@@ -3,7 +3,7 @@
 // Under the untrusted profile KPress's toc.js cannot run, so the server sends KPress's
 // entries, anchored to the `user-content-` headings, and the page draws and runs its own
 // table of contents (builtin_plugins/markdown/inert-toc.js). This session runs the
-// production placeRendered (inert-render.js) on the inert render recorded by
+// production placeRendered (place-rendered.js, then inert-render.js) on the render recorded by
 // tests/test_inert_toc.py in tests/fixtures/inert-toc-render.json -- Python's HTML parse
 // of the server's inert HTML, rebuilt by the production static/inert-html.js -- then
 // wires the table of contents in a scrolling viewport: the entry for the section at the
@@ -230,8 +230,10 @@ function state(article, viewport) {
 }
 
 async function main() {
-  const render = await import(
-    pathToFileURL(path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/inert-render.js"))
+  // The module the views place a render through: it imports inert-render.js for an
+  // inert render, as it does in the page, and hands that module back.
+  const { placeRendered } = await import(
+    pathToFileURL(path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/place-rendered.js"))
       .href
   );
   const mb = { ensureAsset: async () => undefined };
@@ -247,12 +249,13 @@ async function main() {
   // The link enhancer sees the prose alone, so the table of contents takes none of its
   // limit from the document's own links.
   const enhanced = [];
-  await render.placeRendered(
+  const { inert: render } = await placeRendered(
     target,
     { html: "", inert: true, toc: recorded.toc, model: { headings: recorded.headings } },
     mb,
     (root) => enhanced.push(root),
   );
+  assert(render, "an inert render is placed by the inert module");
   const article = render.inertArticle(target);
   assert(article, "the inert article is the render's container's child");
   const headings = article.querySelectorAll("h1, h2, h3, h4, h5, h6");
@@ -263,13 +266,13 @@ async function main() {
   // A render KPress drew no table of contents for gets none, and entries that do not
   // point at an anchor in the document are left out.
   const plain = new Element("div", pageDocument);
-  await render.placeRendered(
+  await placeRendered(
     plain,
     { html: "", inert: true, toc: false, model: { headings: recorded.headings } },
     mb,
   );
   const forged = new Element("div", pageDocument);
-  await render.placeRendered(
+  await placeRendered(
     forged,
     {
       html: "",

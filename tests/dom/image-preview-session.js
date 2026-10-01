@@ -111,6 +111,9 @@ for (const relative of [
   "src/metabrowser/static/contribution-registry.js",
   "src/metabrowser/static/resource-context.js",
   "src/metabrowser/static/view-state.js",
+  // The GitPath codec: a pinned revision's shell loads it, and this session renders an
+  // image on one as well as in a folder.
+  "src/metabrowser/static/git-path.js",
   "src/metabrowser/static/navigation.js",
   "src/metabrowser/static/plugin-sdk.js",
   "src/metabrowser/static/view-composition.js",
