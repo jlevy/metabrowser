@@ -7,21 +7,18 @@
     "encoding": "sha256:<64 lowercase hex digits>",
     "rules": [
       "Identity is computed only from the normalized address in url-grammar.json; no provider knowledge, DNS lookup, url.<base>.insteadOf rewrite, or credential participates.",
-      "Transport is part of the material, so an https and an ssh spelling of one hosted repository are two sources until a provider binding attaches both to one store.",
+      "Transport is part of the material, so an https and an ssh spelling of one hosted repository are two sources.",
       "source.yml stores the full digest; directory names never substitute for it."
     ]
   },
   "store_identity": {
     "domain": "metabrowser.repository-store.v1",
     "generic_material": "domain, 'source', source id, object format, joined with NUL",
-    "provider_material": "domain, 'provider', provider kind, canonical provider instance, raw stable repository opaque id, object format, joined with NUL",
     "encoding": "sha256:<64 lowercase hex digits>",
     "key_hex_digits": 64,
     "rules": [
-      "A store created from a source before provider resolution derives its id from the source id and the object format observed during acquisition, so two concurrent acquisitions of one source converge on one store key and the loser discards its staging copy.",
-      "A provider-derived store is domain-separated from every generic store and contains no authorization context.",
-      "The directory key is all 64 hex digits: there is no truncation and therefore no store-key collision path to handle. A mismatch between the directory key and store.yml is corruption and refuses the entry.",
-      "The canonical spelling of a provider instance is owned by the provider plan; the fixture values are placeholders for that spelling."
+      "A store derives its id from the source id and the object format observed during acquisition, so two concurrent acquisitions of one source converge on one store key and the loser discards its staging copy.",
+      "The directory key is all 64 hex digits: there is no truncation and therefore no store-key collision path to handle. A mismatch between the directory key and store.yml is corruption and refuses the entry."
     ]
   },
   "slug": {
@@ -366,7 +363,7 @@
         "https://github.com/pallets/flask.git"
       ],
       "same_source": false,
-      "why": "A terminal .git is preserved for generic hosts; a provider binding may later attach both to one store."
+      "why": "A terminal .git is preserved for generic hosts, so the two spellings are two sources."
     },
     {
       "inputs": [
@@ -426,40 +423,6 @@
       },
       "expected_slug": "github-com--pallets--flask--e7b7fe0ffe8a",
       "why": "A slug already owned by the same source id is reused, so an interrupted claim is idempotent."
-    }
-  ],
-  "provider_stores": [
-    {
-      "provider_kind": "github",
-      "provider_instance": "github.com",
-      "repository_opaque_id": "R_kgDOAbCdEf",
-      "object_format": "sha1",
-      "store_id": "sha256:caaa0af9aac01c52a3f9ffa87acc2c8253230fe27dd276f6e8c9cf280bd7e693",
-      "store_key": "caaa0af9aac01c52a3f9ffa87acc2c8253230fe27dd276f6e8c9cf280bd7e693"
-    },
-    {
-      "provider_kind": "github",
-      "provider_instance": "github.com",
-      "repository_opaque_id": "R_kgDOAbCdEf",
-      "object_format": "sha256",
-      "store_id": "sha256:5e24eff150f1100cfb8b42c5e2738d80253b0cf53e265b6fc4e4588cb18e7a7e",
-      "store_key": "5e24eff150f1100cfb8b42c5e2738d80253b0cf53e265b6fc4e4588cb18e7a7e"
-    },
-    {
-      "provider_kind": "github",
-      "provider_instance": "github.example.com",
-      "repository_opaque_id": "R_kgDOAbCdEf",
-      "object_format": "sha1",
-      "store_id": "sha256:c42b739df7c0ca5111bf067e335267dad1f8114915b633ff9babdcad24546a94",
-      "store_key": "c42b739df7c0ca5111bf067e335267dad1f8114915b633ff9babdcad24546a94"
-    },
-    {
-      "provider_kind": "gitlab",
-      "provider_instance": "gitlab.example.org",
-      "repository_opaque_id": "12345",
-      "object_format": "sha1",
-      "store_id": "sha256:42dc105760226b722c3f947693a69a677ffd18c8138344b2b3d51a47d9db40d7",
-      "store_key": "42dc105760226b722c3f947693a69a677ffd18c8138344b2b3d51a47d9db40d7"
     }
   ]
 }

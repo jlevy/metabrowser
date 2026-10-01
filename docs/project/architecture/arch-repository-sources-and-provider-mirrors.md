@@ -566,10 +566,9 @@ state. It never combines metadata for one object with content from another.
 The fixed lock order is:
 
 1. application-home lock for layout migration and global enumeration;
-2. source-alias lock for alias creation;
+2. source-alias lock for alias creation; and
 3. one or more repository-store locks in ascending `RepositoryStoreId` order for store
-   directory publication and store records; and
-4. provider-resource lock, whose use belongs to the provider plan.
+   directory publication and store records.
 
 Network work and long-running Git processes hold none of these locks, and a local
 checkout is never a lock target.

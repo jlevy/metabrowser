@@ -33,7 +33,6 @@ from metabrowser.cache.locks import (
     LockOrderError,
     application_home_lock,
     held_locks,
-    provider_resource_lock,
     repository_store_lock,
     require_no_hierarchy_locks,
     source_alias_lock,
@@ -140,7 +139,6 @@ def test_hierarchy_locks_are_taken_in_rank_then_key_order(home: Path) -> None:
         source_alias_lock(home, SLUG_B),
         repository_store_lock(home, STORE_A),
         repository_store_lock(home, STORE_B),
-        provider_resource_lock(home, "forge-repo-1"),
     ):
         assert [lock.kind for lock in held_locks()] == [
             LockKind.HOME,
@@ -148,7 +146,6 @@ def test_hierarchy_locks_are_taken_in_rank_then_key_order(home: Path) -> None:
             LockKind.SOURCE_ALIAS,
             LockKind.REPOSITORY_STORE,
             LockKind.REPOSITORY_STORE,
-            LockKind.PROVIDER_RESOURCE,
         ]
 
 
@@ -169,10 +166,6 @@ def test_hierarchy_locks_are_taken_in_rank_then_key_order(home: Path) -> None:
             lambda home: repository_store_lock(home, STORE_A),
             lambda home: repository_store_lock(home, STORE_A),
         ),
-        (
-            lambda home: provider_resource_lock(home, "p1"),
-            lambda home: repository_store_lock(home, STORE_A),
-        ),
     ],
     ids=[
         "store-before-alias",
@@ -180,7 +173,6 @@ def test_hierarchy_locks_are_taken_in_rank_then_key_order(home: Path) -> None:
         "home-twice",
         "stores-descending",
         "store-reentry",
-        "provider-before-store",
     ],
 )
 def test_out_of_order_acquisition_is_refused_before_any_lock_is_taken(
@@ -271,7 +263,6 @@ def test_a_worker_thread_is_its_own_holder_and_still_refuses_descending_locks(
         lambda home: source_alias_lock(home, "Not-A-Slug"),
         lambda home: repository_store_lock(home, "../" + "a" * 61),
         lambda home: staging_entry_lock(home, "../escape"),
-        lambda home: provider_resource_lock(home, "a/b"),
     ],
 )
 def test_lock_keys_cannot_name_paths_outside_their_directory(
@@ -540,7 +531,6 @@ def test_locks_module_exports_every_side_lock() -> None:
         "home",
         "source_alias",
         "repository_store",
-        "provider_resource",
         "staging_entry",
         "store_fetch",
     }
@@ -548,5 +538,4 @@ def test_locks_module_exports_every_side_lock() -> None:
         LockKind.HOME: 1,
         LockKind.SOURCE_ALIAS: 2,
         LockKind.REPOSITORY_STORE: 3,
-        LockKind.PROVIDER_RESOURCE: 4,
     }

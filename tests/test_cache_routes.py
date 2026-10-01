@@ -754,7 +754,7 @@ def test_listing_is_sorted_verified_and_never_creates(tmp_path: Path) -> None:
 
     assert list_private_directory(home, SOURCES, max_entries=10) == ("a", "b", "c")
     with pytest.raises(FileNotFoundError):
-        list_private_directory(home, "cache/provider-bindings", max_entries=10)
+        list_private_directory(home, "cache/absent", max_entries=10)
     with pytest.raises(ListingLimitError):
         list_private_directory(home, SOURCES, max_entries=2)
     assert _snapshot(tmp_path) == before
