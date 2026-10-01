@@ -125,6 +125,11 @@ With nothing changed, applying the snapshot rewrote 84 attributes in the tree wi
 values they had: the tree’s markup and the whole page’s were identical before and after,
 and the layout-shift total was 0.
 
+A folder’s own page asks for two more things about a second after it lands, its envelope
+and its rollup (`/api/file?path=<folder>` and `/api/rollup`), as it does after any
+change beneath it. With nothing changed it wrote the values it already showed: the
+preview’s markup was identical afterwards as well, and the layout-shift total stayed 0.
+
 With a file created after the first landing, that page’s tree gained the row from the
 reopened stream, and the two pages restored afterwards, which were away when the file
 appeared, gained it from their snapshot.

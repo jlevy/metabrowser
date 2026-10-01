@@ -13,7 +13,7 @@
 //   walk    --paths a,b,c   Load /view/<path> for each, by Page.navigate.
 //   back    --paths a,b,c   The same walk, then Back through all of it. Reports each
 //                           landing's pageshow, scroll position, requests, and what
-//                           the restored page changed in its tree.
+//                           the restored page changed in its tree and its preview.
 //   mirror  --commit <id>   On a served mirror: open /commit/<id>, then each round
 //                           click a View file link and come Back.
 //
@@ -131,9 +131,20 @@ const PROBE = `(() => {
     }
     // What the restored page changes once it is shown.
     const tree = document.getElementById("tree-pane");
-    window.__mbAtShow = { tree: tree ? tree.innerHTML : null, page: document.body.innerHTML };
+    const shown = document.getElementById("preview-pane");
+    window.__mbAtShow = {
+      tree: tree ? tree.innerHTML : null,
+      preview: shown ? shown.innerHTML : null,
+      page: document.body.innerHTML,
+    };
     window.__mbTreeMutations = 0;
+    window.__mbPreviewMutations = 0;
     window.__mbLayoutShift = 0;
+    const preview = document.getElementById("preview-pane");
+    if (preview) {
+      new MutationObserver((records) => { window.__mbPreviewMutations += records.length; })
+        .observe(preview, { attributes: true, childList: true, subtree: true, characterData: true });
+    }
     if (tree) {
       new MutationObserver((records) => { window.__mbTreeMutations += records.length; })
         .observe(tree, { attributes: true, childList: true, subtree: true, characterData: true });
@@ -377,9 +388,13 @@ async function main() {
         requests: requestedSince(mark),
         streams: await evaluate(STREAMS),
         treeMutations: await evaluate("window.__mbTreeMutations ?? null"),
+        previewMutations: await evaluate("window.__mbPreviewMutations ?? null"),
         layoutShift: await evaluate("window.__mbLayoutShift ?? null"),
         treeUnchanged: await evaluate(
           'window.__mbAtShow ? document.getElementById("tree-pane")?.innerHTML === window.__mbAtShow.tree : null',
+        ),
+        previewUnchanged: await evaluate(
+          'window.__mbAtShow ? document.getElementById("preview-pane")?.innerHTML === window.__mbAtShow.preview : null',
         ),
         pageUnchanged: await evaluate(
           "window.__mbAtShow ? document.body.innerHTML === window.__mbAtShow.page : null",
@@ -481,7 +496,7 @@ function summarize(report) {
   }
   for (const landing of report.landings ?? []) {
     out(
-      `  Back to ${landing.address.slice(0, 28).padEnd(28)} persisted ${landing.persisted}  pageshow ${landing.backToPageshowMs} ms  documents ${landing.documents}  scroll ${landing.scroll.left} -> ${landing.scroll.back}  requests ${landing.documents > 0 ? `${landing.requests.length} (the page was loaded again)` : JSON.stringify(tally(landing.requests))}  streams [${landing.streams.join("; ")}]  tree mutations ${landing.treeMutations}, unchanged ${landing.treeUnchanged}, page unchanged ${landing.pageUnchanged}, layout shift ${landing.layoutShift}${landing.touchedRow === null ? "" : `  touched row shown ${landing.touchedRow}`}  connections ${landing.connections}`,
+      `  Back to ${landing.address.slice(0, 28).padEnd(28)} persisted ${landing.persisted}  pageshow ${landing.backToPageshowMs} ms  documents ${landing.documents}  scroll ${landing.scroll.left} -> ${landing.scroll.back}  requests ${landing.documents > 0 ? `${landing.requests.length} (the page was loaded again)` : JSON.stringify(tally(landing.requests))}  streams [${landing.streams.join("; ")}]  tree mutations ${landing.treeMutations}, unchanged ${landing.treeUnchanged}, preview mutations ${landing.previewMutations}, unchanged ${landing.previewUnchanged}, page unchanged ${landing.pageUnchanged}, layout shift ${landing.layoutShift}${landing.touchedRow === null ? "" : `  touched row shown ${landing.touchedRow}`}  connections ${landing.connections}`,
     );
   }
   if (report.consoleErrors.length) {
