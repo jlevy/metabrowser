@@ -8,8 +8,8 @@ an unrelated one. ``/view/`` addresses stay wire identities, which is what
 keeps a tracked file from capturing a route.
 
 The CLI runs in process with ``require_acquisition_git`` patched, the same
-boundary ``tests/test_cli_git_pin_golden.py`` uses, because the CI runner's Git
-is below the acquisition floor.
+boundary ``tests/test_cli_git_pin_golden.py`` uses, because the test must pass
+on whatever Git a machine has, which may be below the acquisition floor.
 """
 
 from __future__ import annotations

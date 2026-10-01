@@ -1,7 +1,8 @@
 """Golden transcript of real ``metab`` subprocesses acquiring a ``file://`` origin.
 
 The other acquisition goldens run the CLI in process with the Git floor patched,
-because the ordinary CI runner's Git is below it. This one patches nothing: each
+because they must pass on whatever Git a machine has, which may be below it (the
+hosted CI runner's is 2.55.0, which the floor admits). This one patches nothing: each
 command is a separate ``metab`` process that detects the Git on ``PATH``, applies
 the production floor, acquires every object into a fresh home, and reads the
 result. It skips where no admitted Git is installed and cannot skip in the CI
