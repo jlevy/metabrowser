@@ -86,6 +86,50 @@ Regenerate with `make golden-update` **only to record an intended change**, then
 the diff line by line before committing it.
 A regenerated transcript nobody read turns a regression into a committed expectation.
 
+### One Harness and One Update Command
+
+`tests/golden_harness.py` is the one place an expectation is compared or rewritten, and
+the only reader of `GOLDEN_UPDATE`. It serves the two kinds of expectation pytest owns:
+
+- **In-process transcripts**, `tests/golden/*.txt`, for commands a subprocess cannot
+  run: serve mode, and acquisition, which a Git below the acquisition floor refuses.
+  A driver runs `metab` through the console script’s entry point and renders each
+  command’s line, exit status, and both streams in full.
+- **Recorded response fixtures**, `tests/fixtures/*.json`, which a browserless session
+  replays so that it runs on what the server answered and not on envelopes a test wrote
+  by hand. The recorder replays the story against the real application and fails when the
+  committed recording no longer matches.
+
+`make golden-update` runs in dependency order: the recorders, then tryscript and
+`devtools/golden_fixup.py`, then the in-process drivers.
+A session’s transcript is built from its recording, so recording first is what stops a
+transcript being rewritten from a stale input.
+
+`devtools/check_goldens.py`, part of `make lint-check`, keeps that true and keeps a
+transcript from passing while wrong:
+
+- every module that calls the harness is in the Makefile list `golden-update` runs, and
+  every committed `.txt` transcript is named by a driver;
+- no `metab` or `node` command in a transcript pipes its output, because a pipeline
+  records its last stage’s exit status.
+  Redirect the command to a file, record its own `? N`, and filter the file in the next
+  block;
+- no transcript is empty, carries a command in a block tryscript does not run, or
+  annotates a test `skip` or `only`;
+- no golden or recording is over the review budget.
+  The limit, the measurement it was chosen from, and the files excepted until a named
+  bead shrinks them are beside `MAX_GOLDEN_LINES`;
+  `python -m devtools.check_goldens --report` prints the current distribution.
+
+### What a Transcript May Replace
+
+A value is replaced only when no fixture can pin it, and by a pattern as narrow as the
+value: a time is `[TIMESTAMP]` and a counter `[COUNT]`, not `[..]`. In-process
+transcripts fix the clock and build every origin with pinned identities and dates, so
+times and commit IDs are literal; the placeholders that remain, each with the reason no
+fixture can pin it, are listed at the top of `tests/golden_harness.py`. For tryscript,
+`devtools/golden_fixup.py` is that list.
+
 ### Distribution Tests
 
 `make build` inspects the wheel for required static assets and rejects repository-only

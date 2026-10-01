@@ -67,8 +67,9 @@ uv --config-file uv.toml run --frozen pytest tests/test_plugin_loader.py::test_c
 # acquisition floor unpatched. They skip when that floor refuses the installed Git.
 make test-admitted-git
 
-# Regenerate the CLI console goldens (tests/golden/) after an intended
-# surface change, then review the diff.
+# Regenerate every golden (tests/golden/) and every recorded response fixture
+# a session replays (tests/fixtures/*.json) after an intended surface change,
+# then review the diff.
 make golden-update
 
 # Exercise the full navigation API scenario in-process.
@@ -522,8 +523,12 @@ inspection command, which is the practical reason to prefer a route to a CLI mod
 pins them against homes that `tests/cache_home_fixture.py` builds with the production
 writers. `--no-serve` is the one command that writes the cache.
 Its sessions, including interrupted and refused acquisitions, run in-process in
-`tests/test_cli_cache_acquire_golden.py` and `tests/test_cli_cache_recovery_golden.py`,
-because CI’s Git is below the acquisition floor; see
+`tests/test_cli_cache_acquire_golden.py` and `tests/test_cli_cache_recovery_golden.py`.
+A Git below the acquisition floor refuses to acquire and a subprocess has no way to
+admit it, so a transcript that acquires would fail on any machine with such a Git; the
+hosted runner’s Git is above the floor today, and a developer’s may not be.
+In-process, the floor admits the installed Git and the clock is fixed, which is also
+what lets these transcripts print every recorded time; see
 [CLI-first delivery](project/specs/active/plan-2026-08-28-cli-first-delivery-map.md).
 
 ## Compatibility and Legacy Code
