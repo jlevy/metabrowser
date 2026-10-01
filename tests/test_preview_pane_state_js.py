@@ -355,9 +355,9 @@ def test_pull_request_routes_are_a_startup_script_of_pull_addresses_only() -> No
     names = json.loads(exported.stdout)
     assert names["pullRoutes"] == "undefined"
     assert "parse" in names["navigation"]
-    assert not {"parsePull", "pullHref", "pullHistoryAction", "createPullPageHost"} & set(
-        names["navigation"]
-    )
+    # Nor the GitPath wire encoder, which is git-path.js on a pin's shell.
+    moved = {"parsePull", "pullHref", "pullHistoryAction", "createPullPageHost", "gitPathWire"}
+    assert not moved & set(names["navigation"])
 
 
 def test_a_history_landing_on_a_pull_address_asks_for_the_routes() -> None:

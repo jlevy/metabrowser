@@ -1,10 +1,10 @@
 // The pull-request page's routes and its host.
 //
 // `/pull/<n>[/files]` is the served pull request's address space (Browser URL Grammar).
-// Only a server that serves a pull request has such a page, and only an address under
-// `/pull/` reaches this code, so it is not a startup script: it is the `pull-route`
-// on-demand bundle, which the shell starts fetching as it loads when the address is
-// one, and waits for before it applies that address.
+// Only an address under `/pull/` reaches this code, so it is no startup script of any
+// other page. The server writes it into the shell of a pull-request address, where the
+// page needs it before it can show anything; a page that reaches such an address
+// through history takes it as the `pull-route` on-demand bundle.
 //
 // Measured 2026-10-01: in navigation.js, a startup script, this was 1,818 of 13,265
 // compressed bytes on every folder's page. See

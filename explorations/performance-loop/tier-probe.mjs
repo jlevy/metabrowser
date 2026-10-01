@@ -9,7 +9,7 @@
 // loaded back to back, so a ratio is between two loads taken next to each other.
 //
 //   node tier-probe.mjs --out probe.jsonl --pairs 8 --path "/view/src/a.py#L40" \
-//     --module source-line-anchors.js \
+//     --module plugin-sdk-views.js \
 //     --build base=http://127.0.0.1:8771 --build after=http://127.0.0.1:8773
 //
 // Per load it records, as one JSON line:

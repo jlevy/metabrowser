@@ -661,9 +661,9 @@ calibrated on a folder’s page:
 | Shell | Requests | Transferred | Against the 175 KB ceiling | In Chrome |
 | --- | --- | --- | --- | --- |
 | A folder’s page | 20 | 177,539 | 2,172 under | 20, 177,539 |
-| A pull-request address, `pull-route.js` | 21 | 180,517 | 806 over | 21, 180,517 |
+| A pull-request address, `pull-route.js` | 21 | 180,531 | 820 over | 21, 180,531 |
 | A pinned revision, `git-path.js` | 21 | 179,425 | 286 under | 21, 179,425 |
-| A pinned revision’s pull-request page, both | 22 | 182,403 | 2,692 over | 22, 182,403 |
+| A pinned revision’s pull-request page, both | 22 | 182,417 | 2,706 over | 22, 182,417 |
 
 A folder’s server answers a pull-request address with the page that says it serves no
 pull request, which the GitHub plugin renders through the same host, so that page has
