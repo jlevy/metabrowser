@@ -363,14 +363,10 @@ shows the stack.
 
 Open before landing:
 
-- **View file** (`mb-zb5t`, [#248](https://github.com/jlevy/metabrowser/pull/248)) is in
-  review. The acceptance rerun (`mb-gnr9`) then repeats M03’s and M08’s base and head
-  rows on an installed wheel and adds the result to the
+- **The acceptance rerun** (`mb-gnr9`). View file is on the stack
+  ([#248](https://github.com/jlevy/metabrowser/pull/248)), so the rerun repeats M03’s
+  and M08’s base and head rows on an installed wheel and adds the result to the
   [QA record](../../qa/qa-2026-09-24-v012-alpha-acceptance.md).
-- **Folders with URL-like names** (`mb-n80y`,
-  [#249](https://github.com/jlevy/metabrowser/pull/249)) is in review.
-  It restores serving an existing folder whose name resembles a URL, as `main` does, and
-  fixes the two observations from the acceptance run (`mb-4kuc`, `mb-2nu0`).
 - **Startup and eager-load cost** (`mb-l8c2`). Against `main`, startup does more import
   work in every mode and the eagerly loaded JavaScript grew, while route times and
   memory are unchanged; the bead holds the measurements.
