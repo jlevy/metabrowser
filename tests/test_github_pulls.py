@@ -414,6 +414,17 @@ def test_a_record_from_another_schema_or_damaged_is_refetched(stand: _Stand) -> 
     assert stand.record(7) == "unreadable"
     path.write_text(json.dumps({**payload, "number": 8}), encoding="utf-8")
     assert stand.record(7) == "unreadable"
+    # What a record may hold is checked again when it is read, not only when it is
+    # written: a login that is not one, a link that is not https, and a field the record
+    # does not have, such as GitHub's own rendering of a body.
+    pull, check = payload["pull"], payload["check_runs"][0]
+    for damaged in (
+        {**payload, "pull": {**pull, "author": "not a login"}},
+        {**payload, "check_runs": [{**check, "details_url": "javascript:alert(1)"}]},
+        {**payload, "pull": {**pull, "body_html": "<script>alert(1)</script>"}},
+    ):
+        path.write_text(json.dumps(damaged), encoding="utf-8")
+        assert stand.record(7) == "unreadable"
     stand.calls()
     pin = asyncio.run(open_pull_request(stand.published, 7, fetch="if_missing"))
     assert pin.head == record.pull.head.sha
