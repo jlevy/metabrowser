@@ -226,12 +226,21 @@ def test_decoration_change_emits_fs_upsert_without_catalog_delta(tmp_path: Path)
                 assert len(upserts) == 1
                 assert upserts[0].entry.path == path
                 assert upserts[0].entry.active
-                try:
-                    pending = await asyncio.wait_for(queue.get(), timeout=0.05)
-                except TimeoutError:
-                    pass
-                else:
-                    assert not isinstance(pending.event, CatalogChange)
+                # A second change is the marker. A catalog delta is queued right after
+                # the change it belongs to, so reading up to the marker sees whatever
+                # the first change emitted; a pause could only see nothing yet.
+                await harness.runtime.coordinator.patch_decorations(
+                    {path: InventoryDecorationPatch(active=False)}
+                )
+                async with asyncio.timeout(5):
+                    while True:
+                        envelope = await queue.get()
+                        assert not isinstance(envelope.event, CatalogChange)
+                        if isinstance(envelope.event, FsChange):
+                            break
+                (marker,) = envelope.event.ops
+                assert isinstance(marker, FsUpsert)
+                assert marker.entry.path == path and not marker.entry.active
             finally:
                 harness.bus.detach_connection(queue)
 

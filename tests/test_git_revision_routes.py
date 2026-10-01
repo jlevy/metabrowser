@@ -23,7 +23,7 @@ from metabrowser.git.wire import (
     validate_git_repo_info,
 )
 from metabrowser.server import app
-from metabrowser.source import attach_subject, reset_source_session
+from metabrowser.source import attach_subject
 from tests.required_tools import needs_git
 
 pytestmark = needs_git
@@ -105,7 +105,6 @@ def pinned_first(tmp_path: Path) -> Iterator[tuple[Path, str, str]]:
     finally:
         asyncio.run(HISTORY_SESSIONS.close_all())
         asyncio.run(subject.aclose())
-        reset_source_session()
         git_repo.clear_repo_cache()
 
 

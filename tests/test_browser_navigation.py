@@ -67,22 +67,19 @@ def test_direct_view_routes_serve_the_shell_for_safe_targets(tmp_path: Path) -> 
     folder.mkdir()
     (folder / "雪 #1.md").write_text("# Snow")
     server._set_root_dir(tmp_path)
-    try:
-        client = TestClient(server.app)
-        for route in (
-            "/view/",
-            "/view/nested%20folder",
-            "/view/nested%20folder/",
-            "/view/nested%20folder/%E9%9B%AA%20%231.md",
-            "/view/percent%252Fname.md",
-            "/view/not-yet-created.md",
-        ):
-            response = client.get(route)
-            assert response.status_code == 200, route
-            assert "<title>Metabrowser</title>" in response.text
-            assert "/static/navigation.js?v=" in response.text
-    finally:
-        server._set_root_dir(Path())
+    client = TestClient(server.app)
+    for route in (
+        "/view/",
+        "/view/nested%20folder",
+        "/view/nested%20folder/",
+        "/view/nested%20folder/%E9%9B%AA%20%231.md",
+        "/view/percent%252Fname.md",
+        "/view/not-yet-created.md",
+    ):
+        response = client.get(route)
+        assert response.status_code == 200, route
+        assert "<title>Metabrowser</title>" in response.text
+        assert "/static/navigation.js?v=" in response.text
 
 
 @pytest.mark.parametrize(
@@ -99,10 +96,7 @@ def test_direct_view_routes_reject_malformed_or_unsafe_encodings(
     tmp_path: Path, route: str
 ) -> None:
     server._set_root_dir(tmp_path)
-    try:
-        response = TestClient(server.app).get(route)
-    finally:
-        server._set_root_dir(Path())
+    response = TestClient(server.app).get(route)
     assert response.status_code == 400
 
 
@@ -118,10 +112,7 @@ def test_view_routes_round_trip_an_undecodable_posix_filename(tmp_path: Path) ->
     assert decode_safe_view_path(b"/view/a%FFb.md") == native
 
     server._set_root_dir(tmp_path)
-    try:
-        response = TestClient(server.app).get("/view/a%FFb.md")
-    finally:
-        server._set_root_dir(Path())
+    response = TestClient(server.app).get("/view/a%FFb.md")
     assert response.status_code == 200
     assert "<title>Metabrowser</title>" in response.text
 
@@ -145,10 +136,7 @@ def test_view_routes_round_trip_a_posix_backslash_filename(tmp_path: Path) -> No
         format_commit_href("main", "a\\b.md")
 
     server._set_root_dir(tmp_path)
-    try:
-        response = TestClient(server.app).get("/view/a%5Cb.md")
-    finally:
-        server._set_root_dir(Path())
+    response = TestClient(server.app).get("/view/a%5Cb.md")
     assert response.status_code == 200
     assert "<title>Metabrowser</title>" in response.text
 
@@ -160,24 +148,18 @@ def test_direct_view_route_rejects_symlinks_outside_root(tmp_path: Path) -> None
     outside.write_text("secret")
     (served / "linked.md").symlink_to(outside)
     server._set_root_dir(served)
-    try:
-        response = TestClient(server.app).get("/view/linked.md")
-    finally:
-        server._set_root_dir(Path())
+    response = TestClient(server.app).get("/view/linked.md")
     assert response.status_code == 400
 
 
 def test_unprefixed_repository_paths_do_not_become_shell_routes(tmp_path: Path) -> None:
     (tmp_path / "README.md").write_text("# Read me")
     server._set_root_dir(tmp_path)
-    try:
-        client = TestClient(server.app)
-        assert client.get("/README.md").status_code == 404
-        root_redirect = client.get("/view", follow_redirects=False)
-        assert root_redirect.status_code == 307
-        assert root_redirect.headers["location"].endswith("/view/")
-    finally:
-        server._set_root_dir(Path())
+    client = TestClient(server.app)
+    assert client.get("/README.md").status_code == 404
+    root_redirect = client.get("/view", follow_redirects=False)
+    assert root_redirect.status_code == 307
+    assert root_redirect.headers["location"].endswith("/view/")
 
 
 def test_bare_origin_redirects_to_the_canonical_served_root(tmp_path: Path) -> None:
@@ -185,26 +167,20 @@ def test_bare_origin_redirects_to_the_canonical_served_root(tmp_path: Path) -> N
 
     (tmp_path / "README.md").write_text("# Read me")
     server._set_root_dir(tmp_path)
-    try:
-        client = TestClient(server.app)
-        redirect = client.get("/", follow_redirects=False)
-        assert redirect.status_code == 307
-        assert redirect.headers["location"] == "/view/"
-        followed = client.get("/")
-        assert followed.status_code == 200
-        assert "<title>Metabrowser</title>" in followed.text
-    finally:
-        server._set_root_dir(Path())
+    client = TestClient(server.app)
+    redirect = client.get("/", follow_redirects=False)
+    assert redirect.status_code == 307
+    assert redirect.headers["location"] == "/view/"
+    followed = client.get("/")
+    assert followed.status_code == 200
+    assert "<title>Metabrowser</title>" in followed.text
 
 
 def test_header_root_link_uses_the_canonical_view_route(tmp_path: Path) -> None:
     """`Jump to root` must select the served root, not the bare origin."""
 
     server._set_root_dir(tmp_path)
-    try:
-        response = TestClient(server.app).get("/view/")
-    finally:
-        server._set_root_dir(Path())
+    response = TestClient(server.app).get("/view/")
     assert '<a href="/view/" class="header-path"' in response.text
     assert '<a href="/" class="header-path"' not in response.text
 
@@ -226,10 +202,7 @@ def test_header_shows_the_root_folder_name_and_keeps_the_whole_path(tmp_path: Pa
     root = (tmp_path / "wrk" / "foo").resolve()
     root.mkdir(parents=True)
     server._set_root_dir(root)
-    try:
-        response = TestClient(server.app).get("/view/")
-    finally:
-        server._set_root_dir(Path())
+    response = TestClient(server.app).get("/view/")
     assert '<span class="path-base">foo</span>' in response.text
     assert '<span class="path-dir">' not in response.text
     assert f'data-served-root="{root}"' in response.text
@@ -245,10 +218,7 @@ def test_settings_menu_trigger_has_an_accessible_name_without_a_tooltip(
     """The menu title makes a second product-name tooltip redundant."""
 
     server._set_root_dir(tmp_path)
-    try:
-        response = TestClient(server.app).get("/view/")
-    finally:
-        server._set_root_dir(Path())
+    response = TestClient(server.app).get("/view/")
 
     settings_button = response.text[response.text.index('id="settings-btn"') :][:300]
     assert 'aria-haspopup="true"' in settings_button
@@ -284,13 +254,10 @@ def test_startup_urls_do_not_land_on_a_redirect(tmp_path: Path) -> None:
     """
 
     server._set_root_dir(tmp_path)
-    try:
-        client = TestClient(server.app)
-        for logical_path in ("", "docs/guide.md"):
-            route = format_view_href(logical_path)
-            assert client.get(route, follow_redirects=False).status_code == 200, route
-    finally:
-        server._set_root_dir(Path())
+    client = TestClient(server.app)
+    for logical_path in ("", "docs/guide.md"):
+        route = format_view_href(logical_path)
+        assert client.get(route, follow_redirects=False).status_code == 200, route
 
 
 def test_serve_cli_emits_the_canonical_root_url_without_a_selected_path(
@@ -331,20 +298,17 @@ def test_a_root_under_the_home_directory_is_shown_with_a_tilde(
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
 
     server._set_root_dir(home / "wrk" / "project")
-    try:
-        assert server._display_root_str() == str(Path("~") / "wrk" / "project")
-        # The absolute root is still what the API reports and paths resolve on.
-        assert server._served_root_str() == str(home / "wrk" / "project")
+    assert server._display_root_str() == str(Path("~") / "wrk" / "project")
+    # The absolute root is still what the API reports and paths resolve on.
+    assert server._served_root_str() == str(home / "wrk" / "project")
 
-        server._set_root_dir(home)
-        assert server._display_root_str() == "~"
+    server._set_root_dir(home)
+    assert server._display_root_str() == "~"
 
-        outside = (tmp_path / "elsewhere").resolve()
-        outside.mkdir()
-        server._set_root_dir(outside)
-        assert server._display_root_str() == str(outside)
-    finally:
-        server._set_root_dir(Path())
+    outside = (tmp_path / "elsewhere").resolve()
+    outside.mkdir()
+    server._set_root_dir(outside)
+    assert server._display_root_str() == str(outside)
 
 
 def test_the_header_prefix_gives_way_from_its_start_and_reads_at_row_weight() -> None:

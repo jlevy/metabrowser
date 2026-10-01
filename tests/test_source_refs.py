@@ -24,7 +24,7 @@ from metabrowser.cache.acquire import acquire_source
 from metabrowser.cache.repository_store import open_revision
 from metabrowser.git.tree_source import GitPath, GitRevisionSubject
 from metabrowser.mirror_refresh import serve_mirror
-from metabrowser.source import reset_source_session, serve_subject_opener
+from metabrowser.source import serve_subject_opener
 from metabrowser.source_routes import REFS_DEFAULT_LIMIT, REFS_MAX_QUERY_CHARS
 from tests.required_tools import needs_git
 from tests.test_cache_acquire import _file_source, _git, _git_env
@@ -44,12 +44,10 @@ def _wire(display: str) -> str:
 
 
 @pytest.fixture(autouse=True)
-def _isolated_session(  # pyright: ignore[reportUnusedFunction]
+def _no_interrupt_handler(  # pyright: ignore[reportUnusedFunction]
     monkeypatch: pytest.MonkeyPatch,
-) -> Iterator[None]:
+) -> None:
     monkeypatch.setattr("metabrowser.cli.git_pin_cli.stop_on_interrupt", lambda: None)
-    yield
-    reset_source_session()
 
 
 def _tag_later(work: Path, name: str, target: str) -> None:

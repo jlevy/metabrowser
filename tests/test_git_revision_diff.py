@@ -16,7 +16,7 @@ from metabrowser.git import repo as git_repo
 from metabrowser.git.process import repository_store_target
 from metabrowser.git.tree_source import GitRevisionSubject, git_revision_subject
 from metabrowser.server import app
-from metabrowser.source import attach_subject, reset_source_session
+from metabrowser.source import attach_subject
 from tests.diff_fixture_repo import build_diff_fixture
 from tests.required_tools import needs_git
 
@@ -83,7 +83,6 @@ def pinned_base(tmp_path: Path) -> Iterator[tuple[Path, Path, str, str]]:
         yield work, store, base, target
     finally:
         asyncio.run(subject.aclose())
-        reset_source_session()
         git_repo.clear_repo_cache()
 
 

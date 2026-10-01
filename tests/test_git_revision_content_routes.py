@@ -249,6 +249,7 @@ async def _pinned_client(
                 yield client, subject
     finally:
         await subject.aclose()
+        # Not teardown: tests open several pins in turn.
         reset_source_session()
 
 

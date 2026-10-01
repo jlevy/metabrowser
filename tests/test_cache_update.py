@@ -48,6 +48,7 @@ from metabrowser.mirror_refresh import (
     SelectionNotACommitError,
     SelectionNotFoundError,
 )
+from tests.child_io import read_line
 from tests.required_tools import needs_git
 from tests.test_cache_acquire import _allow_installed_git, _file_source, _git, _git_env
 
@@ -591,15 +592,23 @@ def test_work_that_must_finish_finishes_however_often_it_is_cancelled() -> None:
 
     finished: list[bool] = []
 
-    async def work() -> None:
-        await asyncio.sleep(0.05)
-        finished.append(True)
-
     async def scenario() -> None:
+        may_finish = asyncio.Event()
+
+        async def work() -> None:
+            await may_finish.wait()
+            finished.append(True)
+
         job = asyncio.ensure_future(update_module._finish_despite_cancel(work()))
         for _ in range(3):
-            await asyncio.sleep(0.005)
+            await asyncio.sleep(0)
             job.cancel()
+        # One more turn, so the last cancellation is delivered too: the job has then
+        # been cancelled three times and is still waiting for work that has not ended.
+        await asyncio.sleep(0)
+        assert not job.done()
+        assert finished == []
+        may_finish.set()
         with pytest.raises(asyncio.CancelledError):
             await job
 
@@ -713,8 +722,7 @@ def test_a_fetch_lock_held_by_another_process_is_refreshing_elsewhere(
         text=True,
     )
     try:
-        assert holder.stdout is not None
-        assert holder.stdout.readline().strip() == "held"
+        assert read_line(holder).strip() == "held"
         before = mirror.state()
         assert _update(mirror) is RefreshOutcome.refreshing_elsewhere
         assert mirror.state() == before
@@ -784,13 +792,38 @@ def test_leftover_removal_touches_only_leftovers(tmp_path: Path) -> None:
     assert (git_dir / "config.lock").exists()
 
 
+def _temporary_objects(git_dir: Path) -> dict[str, int]:
+    """Each temporary object or pack file in the store, by its size in bytes.
+
+    Git writes what it receives to ``tmp_obj_*`` and ``tmp_pack_*`` under ``objects``
+    and renames it when it is whole.
+    """
+
+    found: dict[str, int] = {}
+    for directory, _directories, names in os.walk(git_dir / "objects"):
+        for name in names:
+            if name.startswith("tmp_"):
+                path = Path(directory) / name
+                with contextlib.suppress(OSError):
+                    found[str(path.relative_to(git_dir))] = path.stat().st_size
+    return found
+
+
+def _receiving_the_large_object(git_dir: Path) -> bool:
+    # Measured on a 48 MiB object: its temporary file appears at 32 KiB and grows for
+    # 1.4 s before the rename. Past the first megabyte, 47 are still to come.
+    return any(size >= 1024 * 1024 for size in _temporary_objects(git_dir).values())
+
+
 def test_a_cancelled_fetch_leaves_the_mirror_consistent(
     mirror: _Mirror, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Cancel a real fetch mid-transfer: refs are all old or all new, and the next refresh works.
 
-    The fetch runs unmodified; the wrapper only reports when Git has been started, so the
-    cancellation lands while its process group is transferring a large object.
+    The fetch runs unmodified; the wrapper only reports when Git has been started. The
+    cancellation is sent once the store holds part of the large object, in the temporary
+    file Git receives it into, so it lands in the transfer and leaves that file behind
+    for the next refresh to remove.
     """
 
     import metabrowser.cache.update as update_module
@@ -821,9 +854,12 @@ def test_a_cancelled_fetch_leaves_the_mirror_consistent(
                 remote_url=mirror.published.source.normalized,
             )
         )
-        await asyncio.wait_for(fetching.wait(), timeout=30)
-        # Long enough for Git to be transferring, far shorter than the transfer.
-        await asyncio.sleep(0.02)
+        git_dir = mirror.published.git_dir
+        # The two bounds sum to 40 s, under the suite's 60 s per-test timeout.
+        await asyncio.wait_for(fetching.wait(), timeout=10)
+        deadline = asyncio.get_running_loop().time() + 30
+        while not job.done() and not await asyncio.to_thread(_receiving_the_large_object, git_dir):
+            assert asyncio.get_running_loop().time() < deadline, "no object was received"
         cancelled = not job.done()
         job.cancel()
         with contextlib.suppress(asyncio.CancelledError):
@@ -850,8 +886,8 @@ def test_a_cancelled_fetch_leaves_the_mirror_consistent(
     assert fsck.returncode == 0, fsck.stderr
     assert _update(mirror) is RefreshOutcome.succeeded
     assert mirror.state().default_revision == large
-    pack_directory = mirror.published.git_dir / "objects" / "pack"
-    assert not any(entry.name.startswith("tmp_") for entry in os.scandir(pack_directory))
+    # The refresh removed whatever the killed fetch left, loose or packed.
+    assert _temporary_objects(mirror.published.git_dir) == {}
 
 
 # ── Resolving a selection ────────────────────────────────────────────

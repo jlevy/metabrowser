@@ -31,6 +31,7 @@ from metabrowser.cache.locks import (
 )
 from metabrowser.cache.reclaim import MachineEvent, sweep_staging
 from metabrowser.home import ensure_home, ensure_private_directory
+from tests.child_io import read_line
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="cache locks are BSD flock locks")
 fcntl = pytest.importorskip("fcntl")
@@ -118,8 +119,7 @@ class _Child:
             stderr=subprocess.PIPE,
             text=True,
         )
-        assert self.process.stdout is not None
-        line = self.process.stdout.readline().strip()
+        line = read_line(self.process).strip()
         if line != "ready":
             _, errors = self.process.communicate(timeout=CHILD_TIMEOUT)
             pytest.fail(f"child did not start: {line!r} {errors}")

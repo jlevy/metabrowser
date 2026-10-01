@@ -40,7 +40,7 @@ from metabrowser.cache.repository_store import open_revision
 from metabrowser.cache.served_mirror import StoreMirror
 from metabrowser.git.tree_source import GitPath, GitRevisionSubject
 from metabrowser.mirror_refresh import serve_mirror
-from metabrowser.source import reset_source_session, serve_subject_opener
+from metabrowser.source import serve_subject_opener
 from tests.required_tools import needs_git, require_node
 from tests.source_mirror_fixture import FETCHED_AT, build_origin
 from tests.test_cache_acquire import _allow_installed_git, _file_source
@@ -72,7 +72,6 @@ def _answer(response: Any) -> dict[str, Any]:
 def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     # The recording pins session generations, so start from a fresh session: an earlier
     # test that renders the shell (server.index) opens one and leaves it behind.
-    reset_source_session()
     monkeypatch.setenv("METABROWSER_HOME", str(tmp_path / "home"))
     _allow_installed_git(monkeypatch)
     origin = build_origin(tmp_path)
@@ -117,7 +116,6 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             recorded["switch_missing"] = switch({"ref": "refs/remotes/origin/gone"})
     finally:
         serve_mirror(None)
-        reset_source_session()
     return recorded
 
 

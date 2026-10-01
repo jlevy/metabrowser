@@ -72,6 +72,13 @@ class _Stale:
 
 
 def _free_port() -> int:
+    """A port to start the server's own search from, not one this test relies on.
+
+    The port is free when probed and can be taken before the server binds. That is
+    harmless here: ``metab`` searches upward from ``--port`` for a free one, and these
+    tests reach the server by signal and by its process group, never by its port.
+    """
+
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
         return int(probe.getsockname()[1])

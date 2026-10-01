@@ -10,7 +10,6 @@ once settled. See explorations/performance-loop/experiments/exp-003.
 
 from __future__ import annotations
 
-import asyncio
 import inspect
 import sys
 import threading
@@ -30,6 +29,22 @@ from metabrowser.inventory_engine.providers.python_inventory import (
 PRESETS: list[tuple[str, list[str]]] = [("code", ["py", "js"])]
 WINDOWS: list[tuple[str, float]] = [("24h", 86_400.0)]
 LIMIT = 200
+# How long a thread waits for an event that only a hang would withhold. Not a budget:
+# no assertion depends on how much of it elapsed.
+_HANG_BREAKER_S = 10.0
+
+
+def _aged(index: PythonInventoryStore, seconds: float) -> None:
+    """Make the memoized pass *seconds* old, in place of sleeping until it is."""
+    index._navigation_tally_at = time.monotonic() - seconds  # pyright: ignore[reportPrivateUsage]
+
+
+def _move_revision(index: PythonInventoryStore) -> None:
+    before = index.rollup_revision()
+    index.apply_live_entry(
+        FsEntry.for_observed_file(path="new.py", parent="", name="new.py", size=1, mtime_ns=1)
+    )
+    assert index.rollup_revision() != before, "a write must move the revision"
 
 
 def _index_with(files: int) -> PythonInventoryStore:
@@ -54,12 +69,7 @@ def test_a_recent_pass_is_reused_though_the_revision_moved_on() -> None:
     revision test would miss every time."""
     index = _index_with(4)
     index.navigation_tallies_snapshotting(PRESETS, WINDOWS, LIMIT)
-    before = index.rollup_revision()
-
-    index.apply_live_entry(
-        FsEntry.for_observed_file(path="new.py", parent="", name="new.py", size=1, mtime_ns=1)
-    )
-    assert index.rollup_revision() != before, "a write must move the revision"
+    _move_revision(index)
 
     fresh = index.navigation_tallies_fresh_within(PRESETS, WINDOWS, LIMIT, min_stale_s=60.0)
     assert fresh is not None, "a recent pass must be reused across a revision bump"
@@ -69,11 +79,9 @@ def test_an_old_pass_is_not_reused_once_the_revision_has_moved() -> None:
     """The bound is a bound -- but only for a revision that is moving."""
     index = _index_with(4)
     index.navigation_tallies_snapshotting(PRESETS, WINDOWS, LIMIT)
-    index.apply_live_entry(
-        FsEntry.for_observed_file(path="new.py", parent="", name="new.py", size=1, mtime_ns=1)
-    )
-    time.sleep(0.01)
-    assert index.navigation_tallies_fresh_within(PRESETS, WINDOWS, LIMIT, min_stale_s=0.0) is None
+    _move_revision(index)
+    _aged(index, 3600.0)
+    assert index.navigation_tallies_fresh_within(PRESETS, WINDOWS, LIMIT, min_stale_s=60.0) is None
 
 
 def test_a_settled_index_serves_the_memo_however_old_it_is() -> None:
@@ -88,7 +96,7 @@ def test_a_settled_index_serves_the_memo_however_old_it_is() -> None:
     index = _index_with(4)
     index.navigation_tallies_snapshotting(PRESETS, WINDOWS, LIMIT)
     # Older than any bound the route would ever ask for, revision untouched.
-    index._navigation_tally_at = time.monotonic() - 3600.0  # pyright: ignore[reportPrivateUsage]
+    _aged(index, 3600.0)
     assert (
         index.navigation_tallies_fresh_within(PRESETS, WINDOWS, LIMIT, min_stale_s=0.0) is not None
     ), "a settled index must serve its memo rather than recomputing forever"
@@ -96,15 +104,24 @@ def test_a_settled_index_serves_the_memo_however_old_it_is() -> None:
 
 def test_the_bound_is_at_least_what_the_pass_cost() -> None:
     """A constant right at ten thousand files starves the loop at a million, so
-    the bound is derived from the measured cost and the constant is its floor."""
+    the bound is derived from the measured cost and the constant is its floor.
+
+    The revision has to have moved: an unchanged one serves the memo whatever the
+    bound, and this test would then pass with the cost left out of it.
+    """
     index = _index_with(4)
     index.navigation_tallies_snapshotting(PRESETS, WINDOWS, LIMIT)
+    _move_revision(index)
     # Stand in for a tree big enough that the pass is expensive.
     index._navigation_tally_cost_s = 30.0  # pyright: ignore[reportPrivateUsage]
-    time.sleep(0.01)
+    _aged(index, 10.0)
     assert (
         index.navigation_tallies_fresh_within(PRESETS, WINDOWS, LIMIT, min_stale_s=0.0) is not None
-    ), "a pass that cost 30 s must not be repeated 10 ms later"
+    ), "a pass that cost 30 s must not be repeated 10 s later"
+    _aged(index, 60.0)
+    assert (
+        index.navigation_tallies_fresh_within(PRESETS, WINDOWS, LIMIT, min_stale_s=0.0) is None
+    ), "past what the pass cost, a moved revision is a miss again"
 
 
 def test_a_different_preset_shape_is_a_miss_not_a_wrong_answer() -> None:
@@ -117,40 +134,41 @@ def test_a_different_preset_shape_is_a_miss_not_a_wrong_answer() -> None:
 
 
 def test_a_freshness_probe_never_waits_for_an_in_flight_tally_pass() -> None:
-    """A cache lookup on the request loop must not wait for worker-owned work."""
+    """A cache lookup on the request loop must not wait for worker-owned work.
+
+    Ordered, not timed. The memo is warm, so the probe hits when the lock is free; a
+    stand-in for the worker then holds the lock until the probe has returned. A probe
+    that waited for the lock could only return after the stand-in gave up on it.
+    """
     index = _index_with(4)
+    index.navigation_tallies_snapshotting(PRESETS, WINDOWS, LIMIT)
+
+    def probe() -> object:
+        return index.navigation_tallies_fresh_within(PRESETS, WINDOWS, LIMIT, min_stale_s=60.0)
+
+    assert probe() is not None
     lock_acquired = threading.Event()
+    probe_returned = threading.Event()
+    released_after_probe: list[bool] = []
 
     def hold_tally_lock() -> None:
         with index._navigation_tally_lock:  # pyright: ignore[reportPrivateUsage]
             lock_acquired.set()
-            time.sleep(0.35)
+            released_after_probe.append(probe_returned.wait(_HANG_BREAKER_S))
 
     holder = threading.Thread(target=hold_tally_lock)
     holder.start()
-    assert lock_acquired.wait(1.0), "tally worker did not acquire its lock"
-
-    async def scenario() -> tuple[float, float]:
-        async def heartbeat() -> float:
-            started = time.perf_counter()
-            await asyncio.sleep(0.001)
-            return (time.perf_counter() - started) * 1000.0
-
-        heartbeat_task = asyncio.create_task(heartbeat())
-        await asyncio.sleep(0)
-        started = time.perf_counter()
-        result = index.navigation_tallies_fresh_within(PRESETS, WINDOWS, LIMIT, min_stale_s=60.0)
-        call_ms = (time.perf_counter() - started) * 1000.0
-        assert result is None
-        return call_ms, await heartbeat_task
-
     try:
-        call_ms, heartbeat_ms = asyncio.run(scenario())
+        assert lock_acquired.wait(_HANG_BREAKER_S), "tally worker did not acquire its lock"
+        during = probe()
     finally:
-        holder.join(timeout=1.0)
+        probe_returned.set()
+        holder.join(_HANG_BREAKER_S)
 
-    assert call_ms < 50.0
-    assert heartbeat_ms < 50.0
+    assert not holder.is_alive()
+    assert released_after_probe == [True], "the probe waited for the worker's lock"
+    assert during is None, "a contended lock is a miss"
+    assert probe() is not None
 
 
 class _TakenEntries(Sequence[FsEntry]):

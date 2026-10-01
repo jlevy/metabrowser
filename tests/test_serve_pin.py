@@ -46,7 +46,6 @@ from metabrowser.git.tree_source import (
 from metabrowser.source import (
     SubjectNotOpenError,
     get_source_session,
-    reset_source_session,
     serve_subject_opener,
 )
 from tests.required_tools import needs_git
@@ -127,15 +126,13 @@ def _rev(work: Path) -> str:
 
 
 @pytest.fixture(autouse=True)
-def _isolated_session(  # pyright: ignore[reportUnusedFunction]
+def _no_interrupt_handler(  # pyright: ignore[reportUnusedFunction]
     monkeypatch: pytest.MonkeyPatch,
-) -> Iterator[None]:
-    """Keep the served subject, its opener, and the interrupt handler inside one test."""
+) -> None:
+    """Keep the interrupt handler and the log level inside one test."""
 
     monkeypatch.setattr("metabrowser.cli.git_pin_cli.stop_on_interrupt", lambda: None)
     monkeypatch.delenv("METABROWSER_LOG_LEVEL", raising=False)
-    yield
-    reset_source_session()
 
 
 def _home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
