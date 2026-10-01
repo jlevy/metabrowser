@@ -72,8 +72,8 @@ $ metab --help
 │                           localhost. Pass the remote directory with --path.  │
 │ --plugins                 List every discovered plugin.                      │
 │ --plugin           NAME   Print the full resolved manifest for one plugin.   │
-│ --doctor                  Validate browser plugins and installed artifact    │
-│                           capabilities.                                      │
+│ --doctor                  Validate every discovered plugin; exit non-zero on │
+│                           any problem.                                       │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Diff (--diff SPEC) ─────────────────────────────────────────────────────────╮
 │ --diff-patch        PATH  Print one changed file's hunks from the comparison │
