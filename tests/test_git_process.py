@@ -115,6 +115,11 @@ def test_isolated_policies_drop_every_ambient_git_variable(
     ordinary = git_environment(READ_POLICY)
     assert ordinary["GIT_ALLOW_PROTOCOL"] == "file:ext"
     assert ordinary["GIT_TRACE"] == "1"
+    # An ordinary read of the user's own worktree keeps the caller's environment:
+    # nothing an isolated policy forces.
+    assert ordinary["GIT_SSH_COMMAND"] == "ssh -oProxyCommand=ambient"
+    assert "GIT_NO_LAZY_FETCH" not in ordinary
+    assert "GIT_CONFIG_NOSYSTEM" not in ordinary
 
 
 def test_an_ambient_ref_format_does_not_reach_an_acquired_store(
