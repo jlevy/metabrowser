@@ -2,11 +2,10 @@
 
 **Status:** Implemented for the subprocess boundary, repository discovery, the
 `/api/git/` collection API, and the immutable-revision diff source.
-The Hosted Review Format, a format and model layer with no adapter, route, kind, or
-view, was removed from the v0.12 stack; its retired design is in
-[Hosted Review Model and Provider Boundary](arch-hosted-review-model.md).
 Pull-request data is the GitHub plugin’s own validated records; see
 [Pull-request records](arch-repository-sources-and-provider-mirrors.md#pull-request-records).
+The retired provider-neutral design is in
+[Hosted Review Model and Provider Boundary](arch-hosted-review-model.md).
 Worktree-free repository stores and immutable revision subjects are implemented for tree
 reads, Git collection routes, `GitPath` file/raw/tree routes (including a SPA `tree`
 projection on `/api/tree` and SPA `folder` chrome on tree `/api/file` envelopes),

@@ -82,9 +82,6 @@ dev = [
 metab = "metabrowser.cli.entrypoint:main"
 metabrowser = "metabrowser.cli.entrypoint:main"
 
-[project.entry-points."metabrowser.capabilities.v1"]
-repository-cache = "metabrowser.cache.contracts:repository_cache_capabilities"
-
 
 # ---- Build system ----
 

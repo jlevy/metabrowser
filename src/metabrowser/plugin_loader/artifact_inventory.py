@@ -1,4 +1,4 @@
-"""Installed artifact-contract inventory evidence."""
+"""Inventory and corpus evidence for a registry of artifact contracts."""
 
 from __future__ import annotations
 
@@ -8,8 +8,7 @@ from dataclasses import dataclass
 from typing import Any, Literal, cast
 
 from metabrowser.plugin_loader.artifact_contracts import (
-    InstalledRegistries,
-    get_installed_registries,
+    ContractRegistry,
     portable_serialization_values_equal,
     serialize_artifact,
     validate_artifact,
@@ -17,13 +16,13 @@ from metabrowser.plugin_loader.artifact_contracts import (
 )
 
 
-class CapabilityInventoryError(RuntimeError):
-    """Installed capability evidence is incomplete or contradicts its contracts."""
+class ContractInventoryError(RuntimeError):
+    """Packaged corpus evidence is incomplete or contradicts its contracts."""
 
 
 @dataclass(frozen=True, slots=True)
 class ContractInventoryEntry:
-    """Provider-neutral inventory metadata for one installed artifact contract."""
+    """Inventory metadata for one installed artifact contract."""
 
     contract_id: str
     artifact_profile: str
@@ -35,13 +34,6 @@ class ContractInventoryEntry:
     corpus_id: str
     corpus_payload_sha256: str
     corpus_record_selectors: tuple[str, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class InstalledArtifactInventory:
-    """Deterministic public metadata for one installed capability snapshot."""
-
-    contracts: tuple[ContractInventoryEntry, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,13 +77,9 @@ def _evidence_semantic_json_values_equal(original: object, dumped: object) -> bo
     return False
 
 
-def installed_artifact_inventory(
-    registries: InstalledRegistries | None = None,
-) -> InstalledArtifactInventory:
-    """Return deterministic metadata without provider-specific IDs or source paths."""
-    if registries is None:
-        registries = get_installed_registries()
-    contracts = tuple(
+def installed_artifact_inventory(contracts: ContractRegistry) -> tuple[ContractInventoryEntry, ...]:
+    """Return deterministic metadata, in contract-ID order, without source paths."""
+    return tuple(
         ContractInventoryEntry(
             contract_id=installed.spec.contract_id,
             artifact_profile=installed.spec.artifact_profile,
@@ -104,9 +92,8 @@ def installed_artifact_inventory(
             corpus_payload_sha256=installed.spec.corpus.payload_sha256,
             corpus_record_selectors=installed.spec.corpus_record_selectors,
         )
-        for _, installed in sorted(registries.contracts.items())
+        for _, installed in sorted(contracts.items())
     )
-    return InstalledArtifactInventory(contracts=contracts)
 
 
 def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -275,9 +262,9 @@ def _round_trip_problems(
     case_name: str,
     record: dict[str, Any],
     validated: object,
-    registries: InstalledRegistries,
+    contracts: ContractRegistry,
 ) -> list[str]:
-    spec = registries.contracts[contract_id].spec
+    spec = contracts[contract_id].spec
     problems: list[str] = []
     try:
         dumped_object = cast(object, spec.dump_record(validated))
@@ -294,12 +281,12 @@ def _round_trip_problems(
         payload = serialize_artifact(
             validated,
             contract_id=contract_id,
-            contracts=registries.contracts,
+            contracts=contracts,
         )
         repeated_payload = serialize_artifact(
             validated,
             contract_id=contract_id,
-            contracts=registries.contracts,
+            contracts=contracts,
         )
     except Exception as exc:
         return [
@@ -316,7 +303,7 @@ def _round_trip_problems(
         artifact = validate_artifact(
             payload,
             expected_contract_id=contract_id,
-            contracts=registries.contracts,
+            contracts=contracts,
         )
     except Exception as exc:
         return [
@@ -336,7 +323,7 @@ def _round_trip_problems(
         round_trip_payload = serialize_artifact(
             artifact.record,
             contract_id=contract_id,
-            contracts=registries.contracts,
+            contracts=contracts,
         )
     except Exception as exc:
         return [f"case {case_name!r} round-trip serialization raised {type(exc).__name__}: {exc}"]
@@ -349,9 +336,9 @@ def _round_trip_problems(
 
 def _corpus_problems(
     contract_id: str,
-    registries: InstalledRegistries,
+    contracts: ContractRegistry,
 ) -> list[str]:
-    spec = registries.contracts[contract_id].spec
+    spec = contracts[contract_id].spec
     prefix = f"artifact contract {contract_id!r}"
     try:
         corpus = _decode_corpus(spec.corpus.payload)
@@ -402,7 +389,7 @@ def _corpus_problems(
             validated = validate_record(
                 record,
                 contract_id=contract_id,
-                contracts=registries.contracts,
+                contracts=contracts,
             )
         except ValueError as exc:
             if case.expectation == "valid":
@@ -419,42 +406,31 @@ def _corpus_problems(
                         case_name=case.name,
                         record=record,
                         validated=validated,
-                        registries=registries,
+                        contracts=contracts,
                     )
                 )
     return [f"{prefix} {problem}" for problem in problems]
 
 
-def check_installed_evidence(
-    registries: InstalledRegistries | None = None,
-) -> tuple[str, ...]:
-    """Check every installed corpus selector through structural and semantic validation."""
-    if registries is None:
-        registries = get_installed_registries()
+def check_installed_evidence(contracts: ContractRegistry) -> tuple[str, ...]:
+    """Check every contract's corpus selectors through structural and semantic validation."""
     problems: list[str] = []
-    for contract_id in sorted(registries.contracts):
-        problems.extend(_corpus_problems(contract_id, registries))
+    for contract_id in sorted(contracts):
+        problems.extend(_corpus_problems(contract_id, contracts))
     return tuple(problems)
 
 
-def validate_installed_evidence(
-    registries: InstalledRegistries | None = None,
-) -> InstalledRegistries:
-    """Require complete installed evidence and return the validated registry snapshot."""
-    if registries is None:
-        registries = get_installed_registries()
-    problems = check_installed_evidence(registries)
+def validate_installed_evidence(contracts: ContractRegistry) -> ContractRegistry:
+    """Require complete corpus evidence and return the validated registry."""
+    problems = check_installed_evidence(contracts)
     if problems:
-        raise CapabilityInventoryError(
-            "installed capability inventory failed: " + "; ".join(problems)
-        )
-    return registries
+        raise ContractInventoryError("installed contract inventory failed: " + "; ".join(problems))
+    return contracts
 
 
 __all__ = [
-    "CapabilityInventoryError",
+    "ContractInventoryError",
     "ContractInventoryEntry",
-    "InstalledArtifactInventory",
     "check_installed_evidence",
     "installed_artifact_inventory",
     "validate_installed_evidence",

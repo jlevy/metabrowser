@@ -120,9 +120,6 @@ The repository cache’s record contracts are an internal format, not one of the
 installed inventory is maintained by `devtools/check_artifact_contracts.py` in
 [Cache record contracts](arch-repository-sources-and-provider-mirrors.md#cache-record-contracts),
 and this map registers no route, kind, or view for them.
-The Hosted Review Format that was in progress here was removed from the v0.12 stack; its
-retired design is in
-[Hosted Review Model and Provider Boundary](arch-hosted-review-model.md).
 
 Everything else travels as an envelope on `/api/*`, versioned with the shell and the
 built-in plugins as one artifact — an internal contract, not a standard.
@@ -222,11 +219,8 @@ existing SDK 0.7 manifests and JavaScript calls keep their signatures and behavi
 They still require plugin-author documentation and a changelog entry.
 An existing browser-contract change instead bumps `PLUGIN_SDK_VERSION` and every
 built-in manifest in one commit, with no compatibility layer.
-Artifact contracts use the separately versioned `metabrowser.capabilities.v1`
-installed-Python entry-point group and never enter browser plugin discovery or static
-asset loading. The thin-mirror plan retired the router, address-space, provider-adapter,
-resource-kind, and nav-panel declarations for the alpha; their rows remain as design
-background.
+The thin-mirror plan retired the router, address-space, provider-adapter, resource-kind,
+and nav-panel declarations for the alpha; their rows remain as design background.
 
 | Declaration or SDK call | Owns | Arbitration and lifecycle | Bead |
 | --- | --- | --- | --- |
@@ -235,7 +229,6 @@ background.
 | `AddressSpaceSpec` / `registerAddressSpace` | Browser prefix, parse, format, apply, preview claim, startup, popstate, root replacement, disposal | Exactly one owner per address; browser and `metab --show` share the registration | `mb-6mle` |
 | `ProviderUrlReducerSpec` | Declared schemes/hosts and `NotApplicable`/`Reduced`/terminal `Rejected` reducer | Overlapping claims fail discovery; claimed rejection never falls through. Superseded for the alpha by the thin-mirror plan: the built-in GitHub reducer reaches `classify_root_argument(reducers=)` through `cache/providers.py`, with no public declaration | `mb-12cz` |
 | `ProviderAdapterSpec` | Provider/instance capability and trusted adapter factory | Duplicate claims fail; lifespan injects neutral ports and awaits cancellation/close | `mb-ji83` |
-| `ArtifactContractSpec` via `metabrowser.capabilities.v1` | Packaged schema, corpus, and producer/consumer inventory | Only installed Python distributions contribute; duplicate IDs, malformed declaration structure, invalid schemas, missing evidence, and architecture-table drift fail the build. Artifact content cannot register declarations. The installed capability, generic inventory, and isolated-wheel gates are implemented without registering a browser plugin or static asset | `mb-52iz`, `mb-vors` |
 | `ResourceKindSpec` | Route-backed semantic kind, item/container capabilities, primary contract, and views | Duplicate kind or view claims fail; route, browser, and CLI resolve the same selection | `mb-83w0` before `mb-81p5` |
 | `registerNavPanel` | Repository-scoped bounded virtual collection | Generation-checked loading, restoration, root replacement, and disposal | `mb-uh6p` |
 

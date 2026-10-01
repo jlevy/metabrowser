@@ -16,12 +16,9 @@ from metabrowser.errors import CLIError
 from metabrowser.plugin_api import (
     MAX_CONTAINER_INNER_DEPTH,
     ArtifactCompressionError,
-    ArtifactContractSpec,
     ArtifactDecompressionLimitError,
     ArtifactDecompressionTimeoutError,
     ArtifactPath,
-    CapabilitySet,
-    ConformanceCorpusSpec,
     ContentReadError,
     ContentRef,
     ContentStat,
@@ -55,14 +52,11 @@ except PackageNotFoundError:  # pragma: no cover - source tree without installat
     __version__ = "0.0.0"
 
 __all__ = [
-    "ArtifactContractSpec",
     "ArtifactCompressionError",
     "ArtifactDecompressionLimitError",
     "ArtifactDecompressionTimeoutError",
     "ArtifactPath",
-    "CapabilitySet",
     "CLIError",
-    "ConformanceCorpusSpec",
     "ContentReadError",
     "ContentRef",
     "ContentStat",

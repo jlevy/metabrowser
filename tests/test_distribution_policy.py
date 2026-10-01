@@ -11,16 +11,10 @@ import pytest
 
 from devtools.check_distribution import (
     ROOT,
-    _check_capability_entry_points,
     _check_project_metadata,
-    _project_capability_entry_points,
     _smoke_install,
-    _smoke_installed_capabilities,
+    _smoke_installed_contracts,
 )
-
-EXAMPLE_ENTRY_POINTS = {
-    "example": "example_package.capabilities:build_capabilities",
-}
 
 
 def test_wheel_metadata_declares_project_license_and_notice() -> None:
@@ -37,41 +31,6 @@ def test_wheel_metadata_rejects_incomplete_license_declarations() -> None:
         _check_project_metadata(
             b"Metadata-Version: 2.4\nLicense-Expression: AGPL-3.0-or-later\nLicense-File: LICENSE\n"
         )
-
-
-def test_wheel_metadata_declares_at_least_one_installed_capability_factory() -> None:
-    _check_capability_entry_points(
-        b"[metabrowser.capabilities.v1]\n"
-        b"example = example_package.capabilities:build_capabilities\n",
-        EXAMPLE_ENTRY_POINTS,
-    )
-
-
-def test_wheel_metadata_rejects_empty_capability_factory_group() -> None:
-    with pytest.raises(RuntimeError, match="must not be empty"):
-        _check_capability_entry_points(b"[metabrowser.capabilities.v1]\n", EXAMPLE_ENTRY_POINTS)
-
-
-def test_wheel_metadata_rejects_a_provider_omitted_from_project_metadata() -> None:
-    expected = {
-        **EXAMPLE_ENTRY_POINTS,
-        "second": "example_package.capabilities:build_second_capabilities",
-    }
-
-    with pytest.raises(RuntimeError, match=r"missing.*second"):
-        _check_capability_entry_points(
-            b"[metabrowser.capabilities.v1]\n"
-            b"example = example_package.capabilities:build_capabilities\n",
-            expected,
-        )
-
-
-def test_project_capability_authority_is_nonempty_and_generic() -> None:
-    entry_points = _project_capability_entry_points()
-
-    assert entry_points
-    assert all(entry_points)
-    assert all(isinstance(target, str) and target for target in entry_points.values())
 
 
 def test_wheel_smoke_commands_isolate_python_and_validate_versions() -> None:
@@ -112,7 +71,6 @@ def test_wheel_smoke_commands_isolate_python_and_validate_versions() -> None:
     assert "load_file_type_registry()" in python_script
     assert "discover_plugins()" in python_script
     assert "render_kpress_view(" in python_script
-    assert "discover_capability_sets()" not in python_script
     assert "validate_installed_evidence" not in python_script
     assert [command[-2:] for command in commands if command[-1] == "--version"] == [
         ["metab", "--version"],
@@ -122,7 +80,7 @@ def test_wheel_smoke_commands_isolate_python_and_validate_versions() -> None:
     assert all(call.kwargs["cwd"] == ROOT for call in run.call_args_list)
 
 
-def test_wheel_and_sdist_run_the_same_installed_capability_evidence_smoke() -> None:
+def test_wheel_and_sdist_run_the_same_installed_contract_evidence_smoke() -> None:
     artifacts = [
         Path("/tmp/metabrowser-test.whl"),
         Path("/tmp/metabrowser-test.tar.gz"),
@@ -133,7 +91,7 @@ def test_wheel_and_sdist_run_the_same_installed_capability_evidence_smoke() -> N
 
     with patch("devtools.check_distribution.subprocess.run", side_effect=fake_run) as run:
         for artifact in artifacts:
-            _smoke_installed_capabilities(artifact, EXAMPLE_ENTRY_POINTS)
+            _smoke_installed_contracts(artifact)
 
     python_commands = [call.args[0] for call in run.call_args_list]
     assert len(python_commands) == 2
@@ -145,17 +103,13 @@ def test_wheel_and_sdist_run_the_same_installed_capability_evidence_smoke() -> N
         str(artifact) for artifact in artifacts
     ]
     python_script = scripts[0]
-    assert "discover_capability_sets()" in python_script
-    assert "validate_installed_evidence(build_installed_registries(discovery))" in python_script
-    assert "provider.capabilities.artifact_contracts" in python_script
+    assert "validate_installed_evidence(cache_contract_registry())" in python_script
     assert '("frontmatter_format", "jsonschema", "softschema")' in python_script
-    assert "expected_provider_ids" in python_script
-    assert "actual_provider_ids" in python_script
     assert "assert " not in python_script
     assert all(call.kwargs["cwd"] == ROOT for call in run.call_args_list)
 
 
-def test_broken_sdist_capability_evidence_is_fatal_and_visible() -> None:
+def test_broken_sdist_contract_evidence_is_fatal_and_visible() -> None:
     sdist = Path("/tmp/metabrowser-test.tar.gz")
 
     def fail_run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
@@ -170,4 +124,4 @@ def test_broken_sdist_capability_evidence_is_fatal_and_visible() -> None:
         patch("devtools.check_distribution.subprocess.run", side_effect=fail_run),
         pytest.raises(RuntimeError, match=r"metabrowser-test\.tar\.gz.*corpus digest"),
     ):
-        _smoke_installed_capabilities(sdist, EXAMPLE_ENTRY_POINTS)
+        _smoke_installed_contracts(sdist)
