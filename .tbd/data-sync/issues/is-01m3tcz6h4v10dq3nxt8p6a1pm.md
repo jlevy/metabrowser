@@ -3,9 +3,9 @@ type: is
 id: is-01m3tcz6h4v10dq3nxt8p6a1pm
 title: Reconcile v0.12 specs, TODO, arch docs and CHANGELOG with the delivered stack
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 delegate: claude-code@spud10.local
 labels:
@@ -17,7 +17,11 @@ parent_id: is-01m36k3w9vgwy97c9hcj2sqrs5
 hold: null
 hold_until: null
 created_at: 2026-10-01T00:14:01.250Z
-updated_at: 2026-10-01T02:52:47.175Z
+updated_at: 2026-10-01T05:37:59.218Z
 started_at: 2026-10-01T02:52:47.167Z
+closed_at: 2026-10-01T05:37:59.217Z
+close_reason: "PR #250: thin-mirror plan (status, delivered column, follow-ups), alpha-testing plan (status, coverage, delivery, milestones, landing status), superseded-phase addenda in the repository, GitHub and CLI-first plans, TODO.md, docs/project/README.md, QA addendum and rerun, architecture docs, runbook, CHANGELOG gaps. CI green on ea7fd9ba."
+resolution: null
+duplicate_of: null
 ---
 Apply the 2026-09-30 audit's doc edits (thin-mirror Status, Delivery and Follow-ups tables, capability map; alpha-testing plan Status, Feature Coverage, Delivery section, milestones, walkthrough, coverage table, deferred matrix rows; superseded-phase notes in the repository, GitHub and CLI-first plans; TODO.md; docs/project/README.md; QA addendum; arch docs; docs/qa-v012-repository-library.md, development.md, e2e-testing.md) and the landing review's CHANGELOG gaps (softschema and frontmatter-format runtime deps, Git 2.43.7 acquisition floor, https also creates the home, URL-like ROOT, silent copy and Load-more no-ops folded into the Breaking SDK 0.7 item).
