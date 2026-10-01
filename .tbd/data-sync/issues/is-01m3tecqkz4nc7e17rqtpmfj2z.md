@@ -3,16 +3,20 @@ type: is
 id: is-01m3tecqkz4nc7e17rqtpmfj2z
 title: "Tests: GitHub pull-request suite — one copy of each record, no grep slices, and drop tests the goldens already carry"
 kind: task
-status: open
+status: in_progress
 priority: 2
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+delegate: claude-code@spud10.local
 labels:
   - release:v0.12.0
 dependencies: []
 parent_id: is-01m3te95dfdnc80j5xywqje9ke
+hold: null
+hold_until: null
 created_at: 2026-10-01T00:38:53.293Z
-updated_at: 2026-10-01T00:38:53.293Z
+updated_at: 2026-10-01T10:30:12.350Z
+started_at: 2026-10-01T10:30:12.343Z
 ---
 Part of the test-suite review epic. Survey of a896d8fe, 2026-09-30, read-only. All files are new since `origin/main`. The oracle and `tests/test_github_coverage.py` are handled by the Hosted Review cleanup bead.
 

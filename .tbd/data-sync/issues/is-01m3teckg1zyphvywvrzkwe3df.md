@@ -3,16 +3,20 @@ type: is
 id: is-01m3teckg1zyphvywvrzkwe3df
 title: "Tests: cache suite — bind or drop self-checking contract fixtures, stop restating goldens in Python, and table-drive the repeats"
 kind: task
-status: open
+status: in_progress
 priority: 2
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+delegate: claude-code@spud10.local
 labels:
   - release:v0.12.0
 dependencies: []
 parent_id: is-01m3te95dfdnc80j5xywqje9ke
+hold: null
+hold_until: null
 created_at: 2026-10-01T00:38:49.086Z
-updated_at: 2026-10-01T00:38:49.086Z
+updated_at: 2026-10-01T10:30:15.944Z
+started_at: 2026-10-01T10:30:15.934Z
 ---
 Part of the test-suite review epic. Survey of a896d8fe, 2026-09-30, read-only. All files are new since `origin/main`.
 

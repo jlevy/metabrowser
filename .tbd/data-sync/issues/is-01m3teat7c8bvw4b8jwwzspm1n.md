@@ -3,16 +3,20 @@ type: is
 id: is-01m3teat7c8bvw4b8jwwzspm1n
 title: "Tests: delete the orphaned Hosted Review and oracle tests, and trim the contract-layer tests that survive the removal"
 kind: task
-status: open
+status: in_progress
 priority: 2
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+delegate: claude-code@spud10.local
 labels:
   - release:v0.12.0
 dependencies: []
 parent_id: is-01m3te95dfdnc80j5xywqje9ke
+hold: null
+hold_until: null
 created_at: 2026-10-01T00:37:50.382Z
-updated_at: 2026-10-01T01:40:35.289Z
+updated_at: 2026-10-01T10:30:19.360Z
+started_at: 2026-10-01T10:30:19.352Z
 ---
 Part of the test-suite review epic. Survey of a896d8fe, 2026-09-30, read-only. Depends on mb-whmn (the removal PR); this bead covers what that removal makes deletable in tests and what is left to trim in the contract layer that stays.
 

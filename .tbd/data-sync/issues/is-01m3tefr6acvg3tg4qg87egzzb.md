@@ -3,16 +3,20 @@ type: is
 id: is-01m3tefr6acvg3tg4qg87egzzb
 title: "Tests: git pin and source suite — shard the 2,434-line pin golden and drop the route tests it already carries"
 kind: task
-status: open
+status: in_progress
 priority: 2
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+delegate: claude-code@spud10.local
 labels:
   - release:v0.12.0
 dependencies: []
 parent_id: is-01m3te95dfdnc80j5xywqje9ke
+hold: null
+hold_until: null
 created_at: 2026-10-01T00:40:32.184Z
-updated_at: 2026-10-01T00:40:32.184Z
+updated_at: 2026-10-01T10:30:09.293Z
+started_at: 2026-10-01T10:30:09.267Z
 ---
 Part of the test-suite review epic. Survey of a896d8fe, 2026-09-30, read-only. Shared repository fixtures and helper duplication for this area are in the shared-fixtures bead; session isolation is in the isolation bead.
 
