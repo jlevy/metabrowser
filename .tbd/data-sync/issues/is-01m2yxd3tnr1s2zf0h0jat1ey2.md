@@ -3,9 +3,9 @@ type: is
 id: is-01m2yxd3tnr1s2zf0h0jat1ey2
 title: "v0.12 stabilization review: stack 218 against specs, tests, and beads"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 59
+version: 60
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 labels:
   - release:v0.12.0
@@ -64,7 +64,11 @@ child_order_hints:
   - is-01m367kbxqy7gbm5a76qjsappk
   - is-01m36aq07n0kr6hv53ycx6pb6e
 created_at: 2026-09-20T08:02:30.356Z
-updated_at: 2026-09-23T06:38:42.044Z
+updated_at: 2026-10-01T00:13:07.718Z
+closed_at: 2026-10-01T00:13:07.717Z
+close_reason: "v0.12 stabilization review complete: every stack finding under it is closed (foundation in #226; mb-99ub and mb-g5je in #229; mb-163x in #231). The two remaining children are not landing work and moved to mb-ge1b: mb-cds1 (workspace hygiene) and mb-ghko (bench shebang)."
+resolution: null
+duplicate_of: null
 ---
 Follow-up to mb-rldx, which was closed at 2026-09-20T07:32Z by a fast pass while its own notes said the #216 browser/plugin, resource-lifecycle, CLI/parity, and docs review passes were unfinished. Independently verify the #140/#217/#216 fix commits (da73b878, 70091d81, bc8dd72b, de0f4f5a), complete the unreviewed areas, review #209 as the security gate for serving acquired Git, reconcile every PR review channel, and reconcile beads and spec checklists with the branches. Output: confirmed findings filed as beads on their owning layers, and an ordered stabilization plan. Read-only until the plan is agreed; do not merge (landing owner is mb-n2ro).
 

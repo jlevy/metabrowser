@@ -3,9 +3,9 @@ type: is
 id: is-01m10xd666fefs5z7ft5m58zj0
 title: "GitHub Phase 3: gh adapter, binding, and provider snapshots"
 kind: feature
-status: open
+status: closed
 priority: 1
-version: 22
+version: 23
 spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
 delegate: null
 labels:
@@ -31,7 +31,11 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-08-27T06:09:37.988Z
-updated_at: 2026-09-23T00:40:57.877Z
+updated_at: 2026-10-01T00:13:20.724Z
 started_at: 2026-09-23T00:40:30.862Z
+closed_at: 2026-10-01T00:13:20.723Z
+close_reason: "Superseded 2026-09-23 by the thin-mirror plan (docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md, PR #227; epic mb-hall), per the user's decisions. Replacements: mb-nkmq (PR #232, gh runner and PR records) and mb-vrl7 (PR #233, PR page). Binding, auth-scoped snapshots, leases and provider SDKs are retired. Deferred children mb-lnkl, mb-iw1v and mb-rldc moved to mb-k7zy."
+resolution: canceled
+duplicate_of: null
 ---
 Implement the GitHub provider lane through three explicit foundations: bounded provider_process work, the mb-ji83 ProviderAdapterSpec capability/lifecycle registry, and the mb-i3xc auth-scoped provider-store kernel. The only v0.12 transport is hardened gh api with explicit host/auth outcomes. Bind repositories without changing generic identity and publish provider-neutral immutable records with distinct transaction/coverage state, current plus last-complete pointers, leases, and bounded reclamation. Depend on mb-63ym and mb-jlon, not full cache management; never persist raw responses or credentials.

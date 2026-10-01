@@ -3,9 +3,9 @@ type: is
 id: is-01kxry31tw40txkbzctzv1mtsd
 title: "Plugin SDK: repository-scoped nav panels and virtual collections"
 kind: feature
-status: deferred
+status: closed
 priority: 1
-version: 10
+version: 11
 spec_path: docs/project/architecture/arch-hosted-review-model.md
 labels:
   - release:v0.12.0
@@ -18,7 +18,11 @@ dependencies:
     target: is-01m2kw2d2arc9hn25pfsc4me50
 parent_id: is-01m10vgwqwn8gjdv8fm183vztr
 created_at: 2026-07-17T21:00:33.500Z
-updated_at: 2026-09-23T07:37:21.554Z
+updated_at: 2026-10-01T00:13:19.718Z
+closed_at: 2026-10-01T00:13:19.717Z
+close_reason: "Superseded 2026-09-23 by the thin-mirror plan (docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md, PR #227; epic mb-hall), per the user's decisions. The plan retires new public nav-panel SDKs and keeps GitHub support internal. The deferred PR panel (mb-iw1v) is re-planned without this SDK unless a consumer needs one."
+resolution: canceled
+duplicate_of: null
 extensions:
   linear:
     id: 28ee38a5-1006-44dd-a6a0-814e434a8190

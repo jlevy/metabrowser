@@ -5,17 +5,16 @@ title: "WS-1: workspace hygiene: gh stack metadata, unpushed feat/git-graph-view
 kind: chore
 status: open
 priority: 3
-version: 5
+version: 7
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: null
-labels:
-  - stack:pr216
+labels: []
 dependencies: []
-parent_id: is-01m2yxd3tnr1s2zf0h0jat1ey2
+parent_id: is-01m03tqjzm7j6qkxjeath5qe0d
 hold: null
 hold_until: null
 created_at: 2026-09-20T15:28:36.309Z
-updated_at: 2026-09-23T06:32:39.267Z
+updated_at: 2026-10-01T00:13:07.182Z
 started_at: 2026-09-23T00:40:31.081Z
 ---
 Finding WS-1 from the v0.11 stabilization review. Owning layer: PR #216. Full evidence, path:line, and suggested fix are in the notes of mb-gacf under WS-1.

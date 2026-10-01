@@ -1,12 +1,12 @@
 ---
 type: is
 id: is-01m2k713pxra1ns2fk3pcwrpb6
-title: "v0.12 repository and hosted-resource stack: coordinate stabilized landing"
+title: "v0.12 thin-mirror stack: coordinate landing"
 kind: task
 status: in_progress
 priority: 1
-version: 61
-spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
+version: 64
+spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 refs:
   - kind: other
     url: https://github.com/jlevy/metabrowser/stack/218
@@ -47,12 +47,14 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: blocked
 hold_until: null
 created_at: 2026-09-15T18:59:49.596Z
-updated_at: 2026-09-25T00:15:03.616Z
+updated_at: 2026-10-01T00:13:57.532Z
 started_at: 2026-09-16T21:24:51.532Z
 ---
-Coordinate the whole v0.12 repository/GitHub Stack 218, beginning with #125 -> #134 -> #136 -> #139 -> #140 -> #217 -> #216 and extending with alpha-testing, stabilization, and later feature PRs. Keep exact base/head relationships, current per-layer review dispositions and green CI, top integration evidence against current main, and aligned specs/beads. mb-nhky coordinates later Phase 2A-4C publications within this same stack. Hold all layers until the agreed acceptance milestone is stabilized and the user explicitly approves landing; then land and retarget coherently. Do not treat published draft PRs or passing unit/model tests as completed GitHub alpha acceptance.
+Coordinate landing of the v0.12 stack: one linear chain of open PRs, main <- #125 ... #244 (#241 is the draft acceptance record), plus the PRs above #244 that finish stabilization. Keep exact base/head relationships, per-layer review dispositions, green per-layer CI and top integration evidence against current main, and keep beads and specs aligned. Gates: mb-hall and mb-gnr9. SSH, the PR list and panel, inline review anchors, checkout attachment and rebind are deferred by the user's 2026-09-23 decision and do not gate landing. Hold every layer until the user explicitly approves; then land the tip as one fast-forward of main (merging lower layers one at a time would put retired-design states on main).
 
 ## Notes
+
+2026-09-30 audit: SSH (mb-bi2c) is deferred and has no edge to this bead; the 2026-09-22 notes saying it gates final landing are superseded. mb-nhky closed as superseded; mb-gacf closed. Live 2026-09-30: all 27 PRs CLEAN and green, #241 draft, origin/main 6c278f3f is an ancestor of #244 a896d8fe; merge-tree of main and the tip equals the tip's tree. Remaining gates: mb-hall (mb-zb5t and the new landing beads) and mb-gnr9.
 
 2026-09-22 planning-only handoff complete. PR #225 https://github.com/jlevy/metabrowser/pull/225 is at 7a3bd1de04589c38ccc203e79d78a1856ca0a90d, on codex/v012-alpha-test-plan above unchanged #216 b3c001a96eed64eb77961c2b7165b103af98b77c. Fresh CI passed all seven jobs: https://github.com/jlevy/metabrowser/actions/runs/35811262120 . Local make verify passed (3112 pytest tests, two skips; 147 CLI transcripts; audits and installed-distribution checks), final lint and pre-push passed. Working tree is clean; only four planning documents changed.
 

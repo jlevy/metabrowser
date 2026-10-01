@@ -5,7 +5,7 @@ title: Execute v0.12 direct-PR alpha acceptance on installed artifacts and a rea
 kind: task
 status: in_progress
 priority: 1
-version: 6
+version: 7
 spec_path: docs/project/specs/active/plan-2026-09-22-v012-alpha-testing.md
 delegate: claude-code@spud10.local
 labels:
@@ -17,10 +17,10 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-09-23T00:23:26.596Z
-updated_at: 2026-09-24T23:49:38.088Z
+updated_at: 2026-10-01T00:13:55.197Z
 started_at: 2026-09-23T01:37:28.312Z
 ---
-Run T1 and T2 acceptance from the alpha test plan after the corresponding implementation/publication beads complete. Exercise the installed wheel through real CLI and HTTP startup, GitHub repository/tree/blob/commit/raw/PR URL forms, a directly addressed PR absent from the index, cold/warm/offline behavior, two concurrent revisions, private authorization and typed failures, trust with populated cache, and browser navigation/rendering. Add deterministic adapter-to-store-to-view and production-JS golden coverage in each owning implementation PR; record exact head/base/main/tool versions and pass/fail/blocked for manual rows M01-M11, including M10b explicit provider rebind. T0 was exercised during mb-eegt but does not satisfy this future GitHub alpha. Keep the whole formal stack held until stabilization; this task does not merge or publish a release. No tbd release or optional shortcut cleanup gates these tests.
+Execute the v0.12 alpha acceptance (T0-T2, thin-mirror scope) on an installed wheel and a real browser per docs/project/specs/active/plan-2026-09-22-v012-alpha-testing.md; the record is docs/project/qa/qa-2026-09-24-v012-alpha-acceptance.md. Ran 2026-09-24 with a rerun on #243. Remaining: rerun M03b and M08b after mb-zb5t lands; record M10 private and revoked as blocked (no operator-owned private fixture) unless the user supplies one. M10b, M12 and M13 are deferred by the user's 2026-09-23 decision and are not run. Does not merge or release.
 
 ## Notes
 

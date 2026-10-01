@@ -4,15 +4,17 @@ id: is-01m3am6q1xpe54dwyw95jvt95f
 title: No way to open a changed file at base or head from a commit or PR diff
 kind: feature
 status: open
-priority: 3
-version: 1
+priority: 2
+version: 4
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 labels:
   - release:v0.12.0
-dependencies: []
+dependencies:
+  - type: blocks
+    target: is-01m35tapm6wjnn235hr3s669b7
 parent_id: is-01m36k3w9vgwy97c9hcj2sqrs5
 created_at: 2026-09-24T21:12:36.668Z
-updated_at: 2026-09-24T21:12:36.668Z
+updated_at: 2026-10-01T00:13:54.760Z
 ---
 Found during the v0.12 alpha acceptance (mb-gnr9) on the integrated stack (PR #241; installed wheel 0.11.1.dev400+250a10c4).
 
@@ -23,3 +25,7 @@ The content is correct when reached another way: the comparison records the base
 Acceptance test: a file bar in the diff view offers "View file" at the new side (and at the old side for a modified, renamed, or deleted entry). On a served mirror the old side switches the pin to the comparison's left commit, or opens it read-only without a switch. Cover it with a browserless session over the production diff-view module and a golden transcript, per the parity rules.
 
 Owning PR: #233 (PR view) for Files changed; the commit diff view predates the v0.12 stack. The thin-mirror plan's capability map does not list this action, so it may be a plan decision rather than a defect; if so, amend the alpha matrix rows instead.
+
+## Notes
+
+2026-09-30: decided by the coordinator under the user's 'recommended product defaults' instruction: implement now as GitHub's View file on each diff file bar (commit diff and PR Files changed), with a browserless session and a golden. Gates mb-gnr9 (M03b/M08b rerun) and closes mb-hall's last open child.
