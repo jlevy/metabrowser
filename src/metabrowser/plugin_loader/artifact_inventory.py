@@ -35,9 +35,6 @@ class ContractInventoryEntry:
     corpus_id: str
     corpus_payload_sha256: str
     corpus_record_selectors: tuple[str, ...]
-    browser_consumed: bool
-    browser_parser_id: str | None
-    browser_parser_module_sha256: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,17 +103,6 @@ def installed_artifact_inventory(
             corpus_id=installed.spec.corpus.corpus_id,
             corpus_payload_sha256=installed.spec.corpus.payload_sha256,
             corpus_record_selectors=installed.spec.corpus_record_selectors,
-            browser_consumed=installed.spec.browser_consumed,
-            browser_parser_id=(
-                installed.spec.browser_parser.parser_id
-                if installed.spec.browser_parser is not None
-                else None
-            ),
-            browser_parser_module_sha256=(
-                installed.spec.browser_parser.module_bytes_sha256
-                if installed.spec.browser_parser is not None
-                else None
-            ),
         )
         for _, installed in sorted(registries.contracts.items())
     )

@@ -58,7 +58,6 @@ def _repository_markdown() -> list[str]:
 
 DOC_PATHS = _repository_markdown()
 BIOME_PATHS = [
-    "devtools/artifact-contract-browser-check.mjs",
     "src/metabrowser/static",
     "src/metabrowser/builtin_plugins",
     "tests/dom",

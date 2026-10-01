@@ -22,7 +22,6 @@ from metabrowser.plugin_loader.capability_discovery import (
 from metabrowser.plugin_loader.capability_types import (
     ArtifactContractSpec,
     ArtifactProfile,
-    BrowserParserSpec,
     CapabilitySet,
     ConformanceCorpusSpec,
 )
@@ -114,13 +113,6 @@ def _corpus_payload() -> bytes:
 def _contract(*, corpus_payload: bytes | None = None) -> ArtifactContractSpec:
     schema_bytes = _encoded_schema()
     payload = corpus_payload if corpus_payload is not None else _corpus_payload()
-    module_bytes = (
-        b"export function parseWidget(value) {\n"
-        b"  const ok = typeof value.name === 'string' && "
-        b"value.name.length > 0 && value.name !== 'reserved';\n"
-        b"  return ok ? { ok: true, value } : { ok: false, error: 'invalid widget' };\n"
-        b"}\n"
-    )
     schema = cast(dict[str, Any], json.loads(schema_bytes))
     return ArtifactContractSpec(
         contract_id=_CONTRACT_ID,
@@ -140,13 +132,6 @@ def _contract(*, corpus_payload: bytes | None = None) -> ArtifactContractSpec:
             payload_sha256=hashlib.sha256(payload).hexdigest(),
         ),
         corpus_record_selectors=("widget",),
-        browser_consumed=True,
-        browser_parser=BrowserParserSpec(
-            module_id="widget-model",
-            module_bytes=module_bytes,
-            module_bytes_sha256=hashlib.sha256(module_bytes).hexdigest(),
-            export_name="parseWidget",
-        ),
     )
 
 
@@ -183,8 +168,6 @@ def _typed_value_contract(
         schema_digest=cast(str, schema["x-softschema"]["schema_sha256"]),
         validate_record=_validate_typed_value,
         dump_record=dump_record,
-        browser_consumed=False,
-        browser_parser=None,
     )
 
 
@@ -213,8 +196,6 @@ def test_installed_inventory_executes_structural_and_semantic_corpus_evidence() 
     assert inventory.contracts[0].producer_ids == ("example-provider",)
     assert inventory.contracts[0].consumer_ids == ("example-browser", "example-store")
     assert inventory.contracts[0].corpus_record_selectors == ("widget",)
-    assert inventory.contracts[0].browser_consumed is True
-    assert inventory.contracts[0].browser_parser_id == "widget-model:parseWidget"
 
 
 def test_installed_inventory_identity_does_not_depend_on_the_declaring_provider() -> None:
@@ -235,7 +216,6 @@ def test_installed_inventory_identity_does_not_depend_on_the_declaring_provider(
     assert entry.schema_bytes_sha256 == contract.schema_bytes_sha256
     assert entry.corpus_payload_sha256 == contract.corpus.payload_sha256
     assert entry.corpus_record_selectors == ("widget",)
-    assert entry.browser_consumed is True
 
 
 def test_installed_inventory_rejects_missing_and_zero_case_selectors() -> None:

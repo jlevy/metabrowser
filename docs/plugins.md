@@ -722,7 +722,6 @@ capability set:
 ```python
 from metabrowser import (
     ArtifactContractSpec,
-    BrowserParserSpec,
     CapabilitySet,
     ConformanceCorpusSpec,
 )
@@ -749,13 +748,6 @@ def capabilities() -> CapabilitySet:
                     payload_sha256="<SHA-256 of the exact corpus bytes>",
                 ),
                 corpus_record_selectors=(),
-                browser_consumed=True,
-                browser_parser=BrowserParserSpec(
-                    module_id="example-note-model",
-                    module_bytes=load_packaged_browser_module(),
-                    module_bytes_sha256="<SHA-256 of the exact module bytes>",
-                    export_name="parseNote",
-                ),
             ),
         ),
     )
@@ -783,48 +775,17 @@ distribution gates and fails on drift.
 The semantic validator receives the structurally valid record values and returns the
 validated record. Metabrowser rejects duplicate contract IDs, structurally incomplete
 declarations, and nonlocal schema references.
-Corpus and browser-parser declarations carry exact packaged bytes and digests rather
-than paths, so an installed-distribution evidence gate can resolve them without a
-Metabrowser-specific source-tree layout.
-A contract declares `browser_consumed=True` only when a browser consumer reads its
-record. The installed registry then requires `BrowserParserSpec`; a server-only contract
-declares `browser_consumed=False` and cannot attach browser-parser evidence.
-Consumer names do not imply either role.
-A parser module is self-contained ESM conformance evidence; it does not register a
-browser plugin, static asset, kind, or view.
-The evidence gate evaluates its exact bytes in a restricted browser-like module context.
-The context exposes only context-native `TextEncoder`, one-shot UTF-8 `TextDecoder`,
-`atob`, and `btoa` browser capabilities beyond the ECMAScript globals.
-It forbids imports and dynamic string or WebAssembly compilation; Node-only globals such
-as `process` and `Buffer` are absent, and no host-realm object or function enters the
-context. Each corpus record is constructed inside that realm.
-The gate compares JSON-domain values recursively by keys, array shape, primitive type,
-and primitive value without requiring cross-realm prototype identity, so complete
-shallow or deep clones pass while mutation, record loss, and type changes fail.
-The `BrowserParserSpec` v1 export is synchronous and validation-only: it does not mutate
-its input, and a successful result preserves the complete input record.
-It returns exactly one of these shapes:
-
-```javascript
-{ ok: true, value: { /* validated record */ } }
-{ ok: false, error: "nonempty validation error" }
-```
-
-The successful `value` is a non-null, non-array object.
-The failed `error` is a nonempty string.
-Neither result permits extra fields.
-Invalid input returns the failure shape; unexpected programming defects throw and fail
-the evidence gate. When a view later ships, its installed browser plugin binds the same
-module digest to a served asset and renderer.
-The generic evidence gate checks every installed declaration against its packaged
-schema, semantics, positive and negative corpus cases, deterministic artifact-profile
-round trip, browser parser when browser-consumed, and maintained architecture inventory.
+The corpus declaration carries exact packaged bytes and a digest rather than a path, so
+an installed-distribution evidence gate can resolve it without a Metabrowser-specific
+source-tree layout. The generic evidence gate checks every installed declaration against
+its packaged schema, semantics, positive and negative corpus cases, deterministic
+artifact-profile round trip, and maintained architecture inventory.
 Metabrowser’s distribution verification repeats the same inventory from isolated wheel
 and source distribution installs rather than maintaining a second built-in contract
 list.
 Artifacts may repeat their contract, envelope, and enforced status, but the trusted
 caller selects the expected installed contract; artifact metadata cannot supply or
-select schemas, parsers, renderers, or Python imports.
+select schemas, renderers, or Python imports.
 The versioned capability surface is independent of the browser SDK version.
 
 ### Plugin-Owned JSONL Adapters
@@ -914,9 +875,8 @@ from metabrowser import (
   `ArtifactPath` and chart extraction can raise them.
 - `JsonlParseLimitError` is raised when chart extraction exceeds the JSONL parser’s
   decompressed-input limit.
-- `ArtifactContractSpec`, `BrowserParserSpec`, `CapabilitySet`, and
-  `ConformanceCorpusSpec` define the installed artifact-capability surface described
-  above.
+- `ArtifactContractSpec`, `CapabilitySet`, and `ConformanceCorpusSpec` define the
+  installed artifact-capability surface described above.
 
 These helpers share the server’s active root and lifecycle.
 Do not cache the resolved root or import underscored helpers from

@@ -223,8 +223,6 @@ def _artifact_contract(contract: CacheContract) -> ArtifactContractSpec:
         consumer_ids=_CONSUMERS,
         corpus=_corpus(contract.corpus_id),
         corpus_record_selectors=contract.corpus_record_selectors,
-        browser_consumed=False,
-        browser_parser=None,
     )
 
 

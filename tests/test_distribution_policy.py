@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import subprocess
 from pathlib import Path
@@ -22,63 +21,6 @@ from devtools.check_distribution import (
 EXAMPLE_ENTRY_POINTS = {
     "example": "example_package.capabilities:build_capabilities",
 }
-
-
-def _materialize_browser_evidence(
-    python_command: list[str],
-    *,
-    module_source: str = (
-        "export function parseWidget(value) {\n"
-        "  return value.name === 'accepted'\n"
-        "    ? { ok: true, value }\n"
-        "    : { ok: false, error: 'invalid widget' };\n"
-        "}\n"
-    ),
-) -> Path:
-    script_index = python_command.index("-c") + 1
-    evidence_root = Path(python_command[script_index + 1])
-    module_path = evidence_root / "installed-parser.mjs"
-    corpus_path = evidence_root / "installed-corpus.json"
-    descriptor_path = evidence_root / "descriptors.json"
-    module_path.write_text(module_source, encoding="utf-8")
-    corpus_path.write_text(
-        json.dumps(
-            {
-                "base_records": {"widget": {"name": "accepted"}},
-                "cases": [
-                    {
-                        "name": "valid-widget",
-                        "record": "widget",
-                        "changes": [],
-                        "expect": "valid",
-                    },
-                    {
-                        "name": "invalid-widget",
-                        "record": "widget",
-                        "changes": [{"path": ["name"], "value": ""}],
-                        "expect": "invalid",
-                    },
-                ],
-            }
-        ),
-        encoding="utf-8",
-    )
-    descriptor_path.write_text(
-        json.dumps(
-            [
-                {
-                    "contract_id": "org.example.widgets:Widget/v1",
-                    "module_path": str(module_path),
-                    "export_name": "parseWidget",
-                    "corpus_path": str(corpus_path),
-                    "record_selectors": ["widget"],
-                    "expected_case_count": 2,
-                }
-            ]
-        ),
-        encoding="utf-8",
-    )
-    return descriptor_path
 
 
 def test_wheel_metadata_declares_project_license_and_notice() -> None:
@@ -187,40 +129,21 @@ def test_wheel_and_sdist_run_the_same_installed_capability_evidence_smoke() -> N
     ]
 
     def fake_run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
-        if command[0] == "node":
-            return subprocess.CompletedProcess(
-                command,
-                0,
-                stdout="artifact browser evidence OK (1 parser(s), 2 cases)\n",
-                stderr="",
-            )
-        _materialize_browser_evidence(command)
         return subprocess.CompletedProcess(command, 0, stdout="0.1.0\n", stderr="")
 
     with patch("devtools.check_distribution.subprocess.run", side_effect=fake_run) as run:
         for artifact in artifacts:
             _smoke_installed_capabilities(artifact, EXAMPLE_ENTRY_POINTS)
 
-    commands = [call.args[0] for call in run.call_args_list]
-    assert len(commands) == 4
-    python_commands = [command for command in commands if command[0] == "uv"]
-    browser_commands = [command for command in commands if command[0] == "node"]
+    python_commands = [call.args[0] for call in run.call_args_list]
     assert len(python_commands) == 2
-    assert len(browser_commands) == 2
+    assert all(command[0] == "uv" for command in python_commands)
     scripts = [command[command.index("-c") + 1] for command in python_commands]
     assert scripts[0] == scripts[1]
     assert all(command[command.index("python") + 1] == "-I" for command in python_commands)
     assert [command[command.index("--with") + 1] for command in python_commands] == [
         str(artifact) for artifact in artifacts
     ]
-    assert all(
-        command[1:3] == ["--experimental-vm-modules", "--no-warnings"]
-        for command in browser_commands
-    )
-    assert all(
-        command[-2] == str(ROOT / "devtools" / "artifact-contract-browser-check.mjs")
-        for command in browser_commands
-    )
     python_script = scripts[0]
     assert "discover_capability_sets()" in python_script
     assert "validate_installed_evidence(build_installed_registries(discovery))" in python_script
@@ -230,40 +153,6 @@ def test_wheel_and_sdist_run_the_same_installed_capability_evidence_smoke() -> N
     assert "actual_provider_ids" in python_script
     assert "assert " not in python_script
     assert all(call.kwargs["cwd"] == ROOT for call in run.call_args_list)
-
-
-@pytest.mark.parametrize(
-    "artifact",
-    [
-        Path("/tmp/metabrowser-test.whl"),
-        Path("/tmp/metabrowser-test.tar.gz"),
-    ],
-)
-def test_installed_artifact_browser_evidence_rejects_node_imports(artifact: Path) -> None:
-    real_run = subprocess.run
-    node_only_module = (
-        'import fs from "node:fs";\n'
-        "export function parseWidget(value) {\n"
-        "  return fs.constants.F_OK === 0 && value.name === 'accepted'\n"
-        "    ? { ok: true, value }\n"
-        "    : { ok: false, error: 'invalid widget' };\n"
-        "}\n"
-    )
-
-    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-        if command[0] == "node":
-            return real_run(command, **kwargs)  # type: ignore[arg-type]
-        _materialize_browser_evidence(command, module_source=node_only_module)
-        return subprocess.CompletedProcess(command, 0, stdout="0.1.0\n", stderr="")
-
-    with (
-        patch("devtools.check_distribution.subprocess.run", side_effect=fake_run),
-        pytest.raises(
-            RuntimeError,
-            match=rf"{artifact.name}.*self-contained browser ESM; imports are forbidden",
-        ),
-    ):
-        _smoke_installed_capabilities(artifact, EXAMPLE_ENTRY_POINTS)
 
 
 def test_broken_sdist_capability_evidence_is_fatal_and_visible() -> None:
