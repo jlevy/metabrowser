@@ -146,9 +146,10 @@ def test_incomplete_or_contradicted_evidence_is_reported(
     assert _problems(spec) == problems
 
 
-def test_reported_problems_refuse_the_installed_registry() -> None:
-    contracts = build_contract_registry((contract(corpus=corpus(VALID_CASE)),))
+def test_every_reported_problem_refuses_the_installed_registry() -> None:
+    contracts = build_contract_registry((contract(corpus_record_selectors=("missing",)),))
 
+    # The last of the four problems this declaration has, so the error carries them all.
     with pytest.raises(ContractInventoryError, match=_NO_INVALID):
         validate_installed_evidence(contracts)
 
