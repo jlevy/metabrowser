@@ -258,8 +258,9 @@ GitHub URLs and HTTPS:
   `Plugins:` line a server prints when it starts names it, and `metab --doctor` counts
   one plugin more than 0.11.0 did.
   On a folder it serves nothing: `/api/plugin/github/pull` answers `state: "absent"`
-  with `reason: "no_pull_request"`, `/api/plugin/github/pull-markdown` answers 409
-  `no_pull_request`, and `--show /pull/<n>` says the source serves no pull request.
+  with `reason: "no_pull_request"`, `/api/plugin/github/pull-markdown?part=body` answers
+  409 `no_pull_request`, and `--show /pull/<n>` says the source serves no pull request.
+  Without a valid `part`, `pull-markdown` answers 400 `invalid_part` on any source.
 
 - Pull-request data:
   `metab https://github.com/owner/repo/pull/<n> --api /api/plugin/github/pull` reads the
@@ -390,8 +391,10 @@ Repository cache:
   at the first acquisition.
   A healthy result reads as before.
   The check costs time: `--doctor` takes about 250 ms longer than in 0.11.0, 385 ms to
-  629 ms on an Apple M1 Pro, and does 1.78x the work in instructions retired (measured
-  2026-10-01 over 15 back-to-back pairs of installed wheels with compiled bytecode).
+  629 ms of wall time and 350 ms to 560 ms of CPU time on an Apple M1 Pro, and does
+  1.78x the work in instructions retired.
+  That is the median of 15 back-to-back pairs of installed wheels with compiled
+  bytecode, taken on 2026-10-01 under a load average of 12 to 16.
 
 - The cache validates the records it writes with SoftSchema, so `softschema==0.8.1` is a
   new runtime dependency and the minimum `frontmatter-format` rises from 0.3.0 to 0.4.0,
