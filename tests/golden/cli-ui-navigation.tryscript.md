@@ -573,6 +573,9 @@ history updates, including segment encoding, fragments, Windows-native identitie
 invalid path rejection.
 Each line is what the production module answered: an address, a parsed target, a history
 decision, or the error a refused call threw.
+This transcript is the one place those values are pinned: the session does not repeat
+them as inline expectations, and keeps inline only the round trips that relate two of
+its answers.
 
 ```console
 $ node tests/dom/navigation-route-behavior.js
