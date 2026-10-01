@@ -144,7 +144,7 @@ A character no one can see, or cannot tell from a space, is refused by code poin
 the spelling to use if it belongs in the address: whitespace other than a space, and
 invisible characters such as the Hangul filler, which makes `README<U+3164>.md` read as
 `README.md`. The unit table has the other classes: a right-to-left override, unassigned
-and private-use code points, control characters, and a trailing space.
+and private-use code points, and control characters.
 
 ```console
 $ METABROWSER_HOME=$PWD/home metab "https://github.com/octo/demo/blob/topic/a$(printf '\302\240')b.md" --no-serve
@@ -155,6 +155,16 @@ Error: invalid ROOT (control_or_whitespace): the URL contains U+00A0, a whitespa
 ```console
 $ METABROWSER_HOME=$PWD/home metab "https://github.com/octo/demo/blob/topic/README$(printf '\343\205\244').md" --no-serve
 Error: invalid ROOT (non_ascii): the URL contains U+3164, an invisible character; if it belongs in the address, write it as %E3%85%A4
+? 1
+```
+
+A trailing space, which a browser strips, is refused.
+This is the one command here whose refusal depends on the argument reaching the reducer
+byte for byte: a command line that trimmed it would open the file.
+
+```console
+$ METABROWSER_HOME=$PWD/home metab 'https://github.com/octo/demo/blob/topic/a.md ' --no-serve
+Error: invalid ROOT (control_or_whitespace): the URL ends with a space; remove it
 ? 1
 ```
 

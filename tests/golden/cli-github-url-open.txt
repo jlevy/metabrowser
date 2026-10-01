@@ -22,6 +22,14 @@ slug: github-com--octo--demo--46386669dc01
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
 --- stderr ---
+# metab 'https://github.com:443/octo/demo?tab=readme-ov-file#readme' --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
+--- stderr ---
 # metab https://github.com/octo/demo/tree/release/v1/docs --no-serve
 exit: 0
 --- stdout ---
