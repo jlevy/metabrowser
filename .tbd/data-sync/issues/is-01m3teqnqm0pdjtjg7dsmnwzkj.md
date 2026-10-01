@@ -3,9 +3,9 @@ type: is
 id: is-01m3teqnqm0pdjtjg7dsmnwzkj
 title: "Tests: reset process-global state in conftest, and replace sleeps and wall-clock asserts with events and counts"
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 delegate: claude-code@spud10.local
 labels:
@@ -17,8 +17,12 @@ parent_id: is-01m3te95dfdnc80j5xywqje9ke
 hold: null
 hold_until: null
 created_at: 2026-10-01T00:44:51.825Z
-updated_at: 2026-10-01T04:49:34.221Z
+updated_at: 2026-10-01T08:11:24.461Z
 started_at: 2026-10-01T04:49:34.219Z
+closed_at: 2026-10-01T08:11:24.456Z
+close_reason: "PR #252: autouse reset of the source session and served root, and an environment restore; manual resets 44 -> 17, root restores 77 -> 5, elapsed-time asserts 8 -> 0, non-zero sleeps 59 -> 41; counted rollup gate replaces the deleted timing test. Review: two lost-detection P1s fixed (phase boundaries restored; cancellation loop), 26 source mutations all caught. CI green in forward and module-reversed order. Remaining process globals tracked in mb-yth5."
+resolution: null
+duplicate_of: null
 ---
 Part of the test-suite review epic. Survey of a896d8fe, 2026-09-30, read-only. Cross-cutting: process-global state that leaks between tests, waiting by sleep, and timing asserted against the wall clock.
 
