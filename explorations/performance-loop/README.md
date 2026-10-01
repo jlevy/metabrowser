@@ -608,6 +608,61 @@ It is not accepted by `record`: the initial-load ledger and its budgets use a di
 schema. Run at least three visible-Chrome captures for each condition, alternate
 condition order, and keep the repository and selected subjects unchanged.
 
+### Start-Up Work, in Pairs
+
+Every probe above starts once a tree is being served.
+None sees what a build does before that: importing itself, which every mode pays,
+`--version` included.
+That cost is a few percent of a start, which wall time on a busy machine cannot resolve,
+so `startup_pairs.py` counts instructions retired and records wall and CPU time beside
+them for a quiet machine:
+
+```shell
+$UV explorations/performance-loop/startup_pairs.py run \
+  --tree /path/to/folder --pairs 9 --out .bench/startup-pairs.jsonl \
+  --control /envs/release/bin/metab \
+  --candidate candidate=/envs/candidate/bin/metab
+
+$UV explorations/performance-loop/startup_pairs.py summarize .bench/startup-pairs.jsonl \
+  --candidate candidate --suffix _instr --ratios
+```
+
+Each round runs the control and then one candidate, so every ratio is between
+measurements taken next to each other.
+A round covers `--show`, `--api`, `--version`, and `--doctor` as one-shot commands, a
+server from spawn to its first `/api/routes` answer, and the shell fetched cold and
+warm. `--suffix _ms` and `--suffix _cpu_ms` summarize the wall and CPU columns of the
+same file. Instructions retired are read through macOS interfaces; elsewhere only the
+time columns are recorded.
+
+When a start-up number moves, the cause is an import.
+`python -X importtime` names it, and the fresh-interpreter `sys.modules` assertions in
+`tests/test_plugin_public_api.py` are where a boundary that matters is pinned.
+
+### Loading-Tier Probe
+
+A loading tier is a claim about what an asset costs and when it is needed
+([Asset Loading Tiers](../../docs/development.md#asset-loading-tiers)). `tier-probe.mjs`
+measures the claim in stock Chrome with a throwaway profile, loading one address on each
+build in turn, each load with an empty HTTP cache:
+
+```shell
+node explorations/performance-loop/tier-probe.mjs \
+  --out .bench/tier-probe.jsonl --pairs 8 --path "/view/src/a.py#L40" \
+  --module source-line-anchors.js \
+  --build base=http://127.0.0.1:8771 --build candidate=http://127.0.0.1:8773
+```
+
+It reports the scripts requested before `DOMContentLoaded` with the bytes they
+transferred, which is what the `startup_script_requests` and
+`startup_script_transfer_kb` gates bound; where a module that left that set is fetched
+instead; the named module’s compile and evaluate time; and, on a file address, whether
+the Source view had its line gutter when it first appeared, with every layout shift and
+the elements that moved.
+Those answers do not depend on how busy the machine is.
+Its paint timings do, and they come from a headless window, so they are pair ratios for
+a quiet machine and never a substitute for the visible-Chrome captures `record` takes.
+
 ### Attributing Stateful-Navigation Delay
 
 Use this sequence when an interaction feels late even though one measured application

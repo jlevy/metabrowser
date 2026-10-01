@@ -185,6 +185,23 @@ record it with the change.
 same way and against the same corpus, so a tier change and a serving change are
 comparable.
 
+The transfer the eager tier may cost is a gate, not a habit: `startup_script_requests`
+and `startup_script_transfer_kb` in
+[`performance-budgets.toml`](../explorations/performance-loop/performance-budgets.toml)
+bound the scripts requested before `DOMContentLoaded`. A module whose evaluation costs
+nothing still spends that budget.
+
+A decision is recorded beside the constant that makes it.
+These are the ones with a measurement on record, and where it is:
+
+| Asset | Tier | Decided at | Measurement |
+| --- | --- | --- | --- |
+| Core shell modules | Eager | the script tags in `server.py`’s shell template | the note beside the startup gates in `performance-budgets.toml` |
+| Search, Help, keyboard, and Git tools | On demand, once the first tree is usable | `shell-tools` in `on_demand_script_bundles` | the same note |
+| Source line gutter and `#L` anchors | On demand, fetched beside the view compositor | `source-line-anchors` in `on_demand_script_bundles` | [exp-037](../explorations/performance-loop/experiments/exp-037-startup-imports-and-loading-tiers-for-v012.md) |
+| Chart.js and its plugins | On demand, at the first chart | `chart` in `on_demand_script_bundles` | the comment beside it |
+| Inert Markdown render and its table of contents | On demand, at the first inert render | `builtin_plugins/markdown/place-rendered.js` | [exp-037](../explorations/performance-loop/experiments/exp-037-startup-imports-and-loading-tiers-for-v012.md) |
+
 ## Benchmarking Scan and Serve
 
 Two harnesses, and they answer different questions.
