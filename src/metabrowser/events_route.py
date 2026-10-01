@@ -1340,10 +1340,10 @@ async def api_catalog(request: Request) -> Response:
     and is already complete.
     """
 
-    from metabrowser.git.content_routes import git_revision_catalog
-
     subject = _git_revision_subject()
     if subject is not None:
+        from metabrowser.git.content_routes import git_revision_catalog
+
         return await git_revision_catalog(request, subject)
 
     require_filesystem_hooks()

@@ -215,10 +215,28 @@ def test_version_command_does_not_load_git_source_or_server_modules() -> None:
         assert name not in loaded, name
 
 
+# The routes a folder's page asks for. A handler that imports a pin's module before it
+# checks the subject defers the cost to its first request instead of removing it:
+# `/api/catalog` did, and its first answer on a folder cost a third more for it.
+_FOLDER_ROUTES = (
+    "/api/tree?depth=1",
+    "/api/catalog",
+    "/api/index/meta",
+    "/api/index/progress",
+    "/api/capabilities",
+    "/api/file?path=README.md",
+    "/api/kpress/render?path=README.md",
+    "/api/rollup?path=&depth=1",
+    "/api/activity",
+    "/api/git/repo",
+    "/api/source/status",
+)
+
+
 @pytest.mark.parametrize(
     "mode",
-    [("--api", "/api/tree?depth=1"), ("--show", "README.md"), ("--walk",)],
-    ids=["api", "show", "walk"],
+    [*(("--api", route) for route in _FOLDER_ROUTES), ("--show", "README.md"), ("--walk",)],
+    ids=[*_FOLDER_ROUTES, "show", "walk"],
 )
 def test_a_local_folder_does_not_load_git_source_modules(
     tmp_path: Path, mode: tuple[str, ...]
