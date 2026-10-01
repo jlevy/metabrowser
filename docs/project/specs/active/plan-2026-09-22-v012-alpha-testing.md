@@ -361,12 +361,12 @@ section disagrees: `tbd list --label release:v0.12.0` lists the open v0.12 beads
 `tbd show mb-n2ro` names the ones that block landing, and `gh pr list --state open`
 shows the stack.
 
+The acceptance rerun on the stack’s tip passed: M03’s and M08’s base and head rows (View
+file, [#248](https://github.com/jlevy/metabrowser/pull/248)) are in the
+[QA record](../../qa/qa-2026-09-24-v012-alpha-acceptance.md) under “Rerun on #250”.
+
 Open before landing:
 
-- **The acceptance rerun** (`mb-gnr9`). View file is on the stack
-  ([#248](https://github.com/jlevy/metabrowser/pull/248)), so the rerun repeats M03’s
-  and M08’s base and head rows on an installed wheel and adds the result to the
-  [QA record](../../qa/qa-2026-09-24-v012-alpha-acceptance.md).
 - **Startup and eager-load cost** (`mb-l8c2`). Against `main`, startup does more import
   work in every mode and the eagerly loaded JavaScript grew, while route times and
   memory are unchanged; the bead holds the measurements.
