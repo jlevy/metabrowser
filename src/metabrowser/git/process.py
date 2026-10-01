@@ -36,13 +36,14 @@ import re
 import shutil
 import signal
 import subprocess
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
 from typing import Final, Literal
 
 from metabrowser.content_errors import ContentReadError
+from metabrowser.git.progress import GitProgress, ProgressSplitter
 from metabrowser.settings import GIT_SUBPROCESS_MAX_BYTES, GIT_SUBPROCESS_TIMEOUT_S
 
 log = logging.getLogger(__name__)
@@ -510,6 +511,26 @@ async def _read_capped(stream: asyncio.StreamReader | None, max_bytes: int) -> t
     return b"".join(chunks), overflowed
 
 
+async def _read_stderr(
+    stream: asyncio.StreamReader | None,
+    on_progress: Callable[[GitProgress], None] | None,
+) -> tuple[bytes, bool]:
+    """Drain stderr for the log, handing progress records to *on_progress* as numbers.
+
+    Without *on_progress* this is the capped drain. With it, a record of the shape
+    ``git fetch --progress`` prints is parsed into a :class:`GitProgress` and dropped,
+    and only the rest counts toward the cap: a long fetch writes more progress than the
+    cap holds, and the error that explains a failure comes after it. No text Git or the
+    origin wrote reaches the caller; see :mod:`metabrowser.git.progress`.
+    """
+    if stream is None or on_progress is None:
+        return await _read_capped(stream, _STDERR_MAX_BYTES)
+    splitter = ProgressSplitter(on_progress, _STDERR_MAX_BYTES)
+    while chunk := await stream.read(_READ_CHUNK_BYTES):
+        splitter.feed(chunk)
+    return splitter.finish(), False
+
+
 async def run_git(
     args: Sequence[str],
     *,
@@ -520,6 +541,7 @@ async def run_git(
     max_bytes: int | None = None,
     pass_fds: Sequence[int] = (),
     stdin_bytes: bytes | None = None,
+    on_progress: Callable[[GitProgress], None] | None = None,
 ) -> bytes:
     """Run ``git`` with *args* in *cwd* and return raw stdout.
 
@@ -534,6 +556,9 @@ async def run_git(
     *pass_fds* are descriptors Git inherits, such as a lock it must hold for
     as long as it runs, even if this process dies first. *stdin_bytes* is written
     to Git's stdin, which is then closed, as ``update-ref --stdin`` reads it.
+    *on_progress* is called, on the event loop, with each progress record a command
+    run with ``--progress`` writes to stderr. It changes nothing else: the deadline,
+    the output cap, and what a cancellation kills are the same with or without it.
 
     Raises :class:`GitUnavailableError`, :class:`GitTimeoutError`,
     :class:`GitOutputTooLargeError`, or :class:`GitCommandError`.
@@ -554,7 +579,7 @@ async def run_git(
     # sequence deadlocks as soon as git fills the pipe we are not
     # reading, which a repository with a lot of output will do.
     stdout_task = asyncio.ensure_future(_read_capped(proc.stdout, max_bytes))
-    stderr_task = asyncio.ensure_future(_read_capped(proc.stderr, _STDERR_MAX_BYTES))
+    stderr_task = asyncio.ensure_future(_read_stderr(proc.stderr, on_progress))
 
     async def feed_stdin() -> None:
         if stdin_bytes is None or proc.stdin is None:
