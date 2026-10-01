@@ -5,7 +5,7 @@ transcripts, driven by ``tests/test_cli_git_pin_golden.py``: index status, the t
 its tallies, the rollup, the catalog, a file envelope per kind, the blob hooks, and the
 refusals. What stays here needs something a transcript lacks:
 
-- ``/raw``, ``/view/``, and ``/api/kpress/render``, which ``--api`` does not issue;
+- ``/raw`` and ``/view/``, which ``--api`` does not issue;
 - response headers: the raw sandbox and the same-origin proof;
 - a store built for one case: a missing object, an LFS pointer with a smudge filter
   configured, symlink shapes, a gitlink-only directory, frontmatter, compound
