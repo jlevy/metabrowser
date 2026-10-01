@@ -28,6 +28,9 @@ Plugin SDK:
   anchors, so every view that uses it gets both.
   The code is still the `<code>` inside `pre.code-block`, now beside a
   `span.source-line-numbers`; the copy button still copies only the code.
+  The gutter’s module is delivered with the view compositor rather than with the shell’s
+  startup scripts, so it is present whenever a registered view renders: call
+  `renderSourceView` from a view’s `render`, as the built-in views do.
 
 - `window.metabrowser.sourceKind()` reports whether the served tree is a filesystem root
   or a `git_revision` pin.

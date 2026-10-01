@@ -330,6 +330,7 @@ const SHELL_FUNCTIONS = [
   "retryUnreachablePreview",
   "deliverNavigationFragment",
   "showPreviewTab",
+  "addressedView",
   "applyNavigationTarget",
   "navigateToPath",
 ];

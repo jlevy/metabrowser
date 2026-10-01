@@ -117,10 +117,10 @@ async function loadModule() {
     )
     .replace('"./toc-intersection-fallback.js"', JSON.stringify(tocFallbackUrl))
     .replace(
-      '"./inert-render.js"',
+      '"./place-rendered.js"',
       JSON.stringify(
         require("node:url").pathToFileURL(
-          path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/inert-render.js"),
+          path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/place-rendered.js"),
         ).href,
       ),
     )

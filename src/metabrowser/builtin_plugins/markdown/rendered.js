@@ -1,6 +1,6 @@
-import { inertArticle, placeRendered, wireInertToc } from "./inert-render.js";
 import { enhanceRenderedLinks } from "./link-enhancer.js";
 import { acquireMarkdownWorkerClient } from "./markdown-worker-client.js";
+import { placeRendered } from "./place-rendered.js";
 import { initTocWithIntersectionFallback } from "./toc-intersection-fallback.js";
 import { transclusionKey } from "./transclusion.js";
 
@@ -184,7 +184,7 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
         return;
       }
       const path = ctx.path;
-      const links = await placeRendered(
+      const { enhanced: links, inert: inertRender } = await placeRendered(
         container,
         rendered,
         mb,
@@ -216,18 +216,19 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
       }
       injectDiagnostics(container, diagnostics, mb);
       // An inert render's table of contents is the page's own; a trusted one's is KPress's.
-      const inert = inertArticle(container);
-      disposeToc = inert
-        ? wireInertToc(inert, {
-            open: (fragment) => {
-              if (path) {
-                void mb.navigation.open({ path, fragment }).catch((error) => {
-                  console.warn("Could not open the table of contents entry", error);
-                });
-              }
-            },
-          })
-        : initTocWithIntersectionFallback(() => mb.kpressInitToc(container));
+      const inert = inertRender?.inertArticle(container);
+      disposeToc =
+        inertRender && inert
+          ? inertRender.wireInertToc(inert, {
+              open: (fragment) => {
+                if (path) {
+                  void mb.navigation.open({ path, fragment }).catch((error) => {
+                    console.warn("Could not open the table of contents entry", error);
+                  });
+                }
+              },
+            })
+          : initTocWithIntersectionFallback(() => mb.kpressInitToc(container));
     } catch (error) {
       if (!disposed && !mb.errors.isAbortError(error)) {
         container.innerHTML = renderKpressError(error, mb);

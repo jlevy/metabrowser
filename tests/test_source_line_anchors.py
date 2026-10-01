@@ -2,7 +2,7 @@
 
 `tests/dom/source-line-anchors-session.js` runs the anchor state machine through the
 production SDK and navigation controller. What stays here is what it cannot observe:
-that the shell loads the module before the SDK that calls it, that the browser and the
+that the shell delivers the module with the view compositor, that the browser and the
 GitHub reducer accept the same `#L` grammar, and that the stylesheet paints the gutter
 and the highlight on the code's own line box.
 """
@@ -28,11 +28,39 @@ def _rule(css: str, selector: str) -> str:
     return match.group(1)
 
 
-def test_shell_loads_line_anchors_eagerly_before_the_sdk() -> None:
+def test_shell_loads_line_anchors_with_the_view_compositor() -> None:
+    # The gutter belongs to a Source view's first paint, not the folder shell's: the
+    # module is no startup script. It is a bundle the shell fetches beside the
+    # compositor and waits for before any view mounts, so a renderer always finds it.
     response = asyncio.run(server.index(cast(Any, None)))
     html = bytes(response.body).decode()
-    assert '<script src="/static/source-line-anchors.js?v=' in html
-    assert html.index("/static/source-line-anchors.js") < html.index("/static/plugin-sdk.js")
+    assert '<script src="/static/source-line-anchors.js' not in html
+    bundles = json.loads(
+        html.split("window.METABROWSER_ASSET_BUNDLES=", 1)[1].split(";</script>", 1)[0]
+    )
+    sources = [entry["src"].partition("?")[0] for entry in bundles["source-line-anchors"]]
+    assert sources == ["/static/source-line-anchors.js"]
+    app = (STATIC / "app.js").read_text(encoding="utf-8")
+    load = app[app.index("async function loadViewComposition() {") :]
+    load = load[: load.index("\n}\n")]
+    assert 'assets.ensureAsset("view-composition"),' in load
+    assert 'assets.ensureAsset("source-line-anchors"),' in load
+    assert "Promise.all([" in load
+
+
+def test_navigation_waits_for_line_anchors_only_when_an_address_can_name_a_view() -> None:
+    # Reading an address's anchor takes the module, which is not there until the
+    # compositor's bundle is. Only a fragment or a query can ask for a view, so every
+    # other open goes on without that wait.
+    app = (STATIC / "app.js").read_text(encoding="utf-8")
+    apply = app[app.index("async function applyNavigationTarget(") :]
+    apply = apply[: apply.index("\n}\n")]
+    assert (
+        "var anchorModule = target.fragment || target.query ? beginViewCompositionLoad() : null;"
+        in apply
+    )
+    assert apply.count("anchorModule ? await addressedView(target, anchorModule) : null") == 2
+    assert "MetabrowserSourceLineAnchors" not in apply
 
 
 # Fragments the two parsers must agree on, including the edges a regular expression
@@ -133,8 +161,9 @@ def test_an_anchored_address_opens_the_source_view() -> None:
     # view from plugin navigation still wins. tests/dom/preview-pane-state-session.js
     # runs this; Load more's full render, which no session runs, keeps the active tab.
     app = (STATIC / "app.js").read_text(encoding="utf-8")
+    assert "await selectFile(path, context.viewId || preferredView || undefined)" in app
     assert (
-        "context.viewId || window.MetabrowserSourceLineAnchors.preferredView(target) || undefined"
+        "var preferredView = anchorModule ? await addressedView(target, anchorModule) : null;"
         in app
     )
     load_more = app[app.index("async function loadMoreCurrentText(") :]

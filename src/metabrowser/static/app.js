@@ -5776,8 +5776,13 @@ async function loadViewComposition() {
   if (!assets) {
     throw new Error("Metabrowser asset loader is unavailable");
   }
+  // The line gutter's module is fetched beside the compositor, not after it: every
+  // Source view is mounted through here, so a renderer always finds it.
   await _perf.measureAsync("fileNavigation:viewComposition", () =>
-    assets.ensureAsset("view-composition"),
+    Promise.all([
+      assets.ensureAsset("view-composition"),
+      assets.ensureAsset("source-line-anchors"),
+    ]),
   );
   const composition = window.MetabrowserViewComposition;
   if (!composition) {
@@ -7717,6 +7722,21 @@ window.addEventListener("popstate", () => {
   pullPageHost.onHistory(window.location.pathname, navigationController.current() !== null);
 });
 
+/**
+ * The view *target*'s address asks a file to open in, once the line-anchor module that
+ * reads it has arrived with the view compositor (*loading*). A load that failed names
+ * no view, and the file's own load of the same bundle reports the failure.
+ *
+ * @param {{path: string, query?: string, fragment?: string}} target
+ * @param {ReturnType<typeof beginViewCompositionLoad>} loading
+ * @returns {Promise<"source" | null>}
+ */
+async function addressedView(target, loading) {
+  return (await loading).status === "ready"
+    ? window.MetabrowserSourceLineAnchors.preferredView(target)
+    : null;
+}
+
 async function applyNavigationTarget(target, context) {
   if (!target) {
     // A null target usually means "no selection". A /commit/ URL is a
@@ -7734,12 +7754,22 @@ async function applyNavigationTarget(target, context) {
     return { status: "cancelled" };
   }
   var path = target.path.replace(/\/$/, "");
+  // An address that anchors lines or carries `plain=1` opens the file's Source view.
+  // Only an address with a fragment or a query can ask for one, and reading it takes
+  // the line-anchor module, which arrives with the view compositor. That load starts
+  // here and is awaited where the view is chosen, so it overlaps revealing the row,
+  // and an address with neither goes on without it.
+  var anchorModule = target.fragment || target.query ? beginViewCompositionLoad() : null;
   // Only a pane that already shows or is loading this path can take the
   // fragment alone. After a failure, or once the Git panel owns the pane,
   // opening the same path again is a retry and has to load it.
   if (!context.pathChanged && previewPane.holds(path)) {
     // A line anchor added to the file shown opens its Source tab, as opening it does.
-    showPreviewTab(path, window.MetabrowserSourceLineAnchors.preferredView(target));
+    var shownView = anchorModule ? await addressedView(target, anchorModule) : null;
+    if (!context.isCurrent()) {
+      return { status: "cancelled" };
+    }
+    showPreviewTab(path, shownView);
     deliverNavigationFragment(target);
     return {
       focusTarget: document.getElementById("preview-pane") || undefined,
@@ -7747,14 +7777,11 @@ async function applyNavigationTarget(target, context) {
     };
   }
   await revealInTree(path);
+  var preferredView = anchorModule ? await addressedView(target, anchorModule) : null;
   if (!context.isCurrent()) {
     return { status: "cancelled" };
   }
-  // An address that anchors lines or carries `plain=1` opens the file's Source view.
-  var outcome = await selectFile(
-    path,
-    context.viewId || window.MetabrowserSourceLineAnchors.preferredView(target) || undefined,
-  );
+  var outcome = await selectFile(path, context.viewId || preferredView || undefined);
   if (outcome.status === "opened" && context.isCurrent()) {
     deliverNavigationFragment(navigationController.current() || target);
   }

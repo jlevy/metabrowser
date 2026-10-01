@@ -1466,6 +1466,21 @@ async def index(request: Request) -> HTMLResponse:
         # first tree is usable. renderFile awaits this bundle and rechecks its
         # ownership claim before preparing or mounting a view.
         "view-composition": [{"src": view_composition_url}],
+        # The line-number gutter and `#L` anchors. loadViewComposition fetches this
+        # beside the compositor and waits for both, and the compositor mounts every
+        # Source view, so the module is present before a renderer asks for a gutter
+        # and a Source view never paints without one. It is a bundle of its own
+        # because a bundle's scripts are fetched one after another, and neither of
+        # these two reads the other.
+        # Measured 2026-09-30 in Chrome 152: as a startup script it was 7,992 of
+        # 191,862 bytes transferred before DOMContentLoaded (25,515 of 644,947
+        # decoded) and one of 21 requests, on a folder shell that draws no gutter.
+        # Its compile and evaluate took 0.09 ms, so the cost is transfer, which is
+        # what `startup_script_transfer_kb` in performance-budgets.toml bounds. On an
+        # anchored deep link the Source view appeared with its gutter in every load,
+        # with no layout shift in the pane, in this tier as in the eager one. See
+        # explorations/performance-loop/experiments/exp-037.
+        "source-line-anchors": [{"src": source_line_anchors_url}],
         # Only untrusted Markdown needs the allowlist: a pull-request comment, or a
         # document under the untrusted profile, which the server marks inert.
         "inert-html": [{"src": inert_html_url}],
@@ -1716,7 +1731,6 @@ async def index(request: Request) -> HTMLResponse:
   <script src="{view_state_url}"></script>
   <script src="{navigation_url}"></script>
   <script src="{file_type_taxonomy_url}"></script>
-  <script src="{source_line_anchors_url}"></script>
   <script src="{plugin_sdk_url}"></script>
   <script src="{perf_url}"></script>
   <script src="{filter_state_url}"></script>

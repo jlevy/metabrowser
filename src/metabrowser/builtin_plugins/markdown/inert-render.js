@@ -11,7 +11,8 @@
 // gave it; a link or image past the enhancer's limit loses its address. When KPress
 // drew a table of contents, the article gets the page's own, from the render's entries
 // (inert-toc.js), ahead of the prose. A trusted render is inserted as it always was, and
-// enhanced after.
+// enhanced after. The views place a render through place-rendered.js, which imports this
+// module on the first inert render, so a trusted folder's Markdown view never loads it.
 
 // From the leaf module, not the enhancer: the enhancer reaches this module through its
 // transclusions, and an import back would be a cycle.

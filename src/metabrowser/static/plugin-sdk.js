@@ -1931,8 +1931,9 @@
       );
       languageClass = language ? `language-${language}` : "plaintext";
     }
-    // Line numbers and #L anchors: source-line-anchors.js is an eager script before
-    // this one, because the gutter is part of the first paint.
+    // Line numbers and #L anchors: source-line-anchors.js is fetched with the view
+    // compositor, which the shell waits for before it runs any renderer, so the
+    // gutter is part of a Source view's first paint without being part of the shell's.
     // The HTML parser turns CR and CRLF into LF, so the gutter counts the same text.
     const lineAnchors = global.MetabrowserSourceLineAnchors;
     const normalize = (/** @type {string} */ text) => text.replace(/\r\n?/g, "\n");
