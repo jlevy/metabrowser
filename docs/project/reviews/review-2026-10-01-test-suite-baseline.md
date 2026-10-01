@@ -5,6 +5,9 @@
 **Status:** A record of measurements, not a maintained table.
 Each figure was taken at the commit and from the CI run named beside it, by the command
 shown. For today’s values, run the command.
+The commands reproduce these figures only while the commits and CI logs they name exist.
+`ea7fd9ba`, `f9cd3e6b`, and `a896d8fe` are tips of stack branches that have not merged,
+so a rebase or a deleted branch can remove them, and a CI log is kept only for a time.
 
 **Scope:** The size and run time of the test suite at three commits, as the starting
 point of the v0.12 test-suite review, which is tracked by `mb-06up`. This record and the
@@ -42,7 +45,7 @@ make test-report REFS=f9cd3e6b LOG=tip.log
 | --- | ---: | ---: | ---: | ---: |
 | `tests/test_*.py` files | 203 | 276 | 282 | +79 |
 | `tests/test_*.py` lines | 49,436 | 79,100 | 79,639 | +30,203 |
-| `def test_` functions | 1,930 | 2,784 | 2,842 | +912 |
+| test functions | 1,930 | 2,784 | 2,842 | +912 |
 | test helper modules | 3 | 10 | 14 | +11 |
 | test helper lines | 323 | 1,967 | 2,864 | +2,541 |
 | `tests/dom` files | 84 | 95 | 96 | +12 |
@@ -54,9 +57,6 @@ make test-report REFS=f9cd3e6b LOG=tip.log
 | `tests/fixtures` lines | 972 | 10,249 | 10,249 | +9,277 |
 | other files under `tests` | 7 | 8 | 8 | +1 |
 | other lines under `tests` | 277 | 287 | 287 | +10 |
-| tests in the `live_github` tier | 0 | 5 | 7 | +7 |
-| tests in the `macos_tier` tier | 0 | 0 | 12 | +12 |
-| tests in the admitted-Git tier | 0 | 316 | 381 | +381 |
 
 The twelve areas of Python tests that changed most from main to the tip, in lines, of
 the 73 that changed:
@@ -90,7 +90,9 @@ One CI run for each commit, the `test (3.13)` job.
 | tryscript seconds | 37.9 | 181.2 | 148.4 |
 
 The base’s run did not pass `-rs`, so its log does not list its 27 skips.
-The tip’s 26 are 19 in the `macos_tier` tier and 7 in the `live_github` tier.
+The tip’s log lists its 26 by reason: 15 for ACLs that are inspected only on macOS, 4
+for a file system that tells letter case apart, and 7 for the live GitHub tier, which
+that run did not select.
 
 The slowest test files and goldens at the tip, in seconds:
 
@@ -118,9 +120,9 @@ tests, the helper modules, `tests/dom`, and `tests/golden`, and its count of try
 commands. Two figures differ, and the tool’s are the ones to compare against from here
 on:
 
-- **`def test_` functions:** the survey counted 2,899 and the tool counts 2,933. The
-  survey matched only functions at the left margin, which leaves out the 34 methods of
-  test classes.
+- **Test functions:** the survey counted 2,899 and the tool counts 2,933. The survey
+  matched `def test_` at the left margin, which leaves out the 34 methods of test
+  classes. The tool reads each module’s syntax tree and counts what pytest collects.
 - **`tests/fixtures`:** the survey counted 59 files and 10,236 lines, and the tool
   counts 62 files and 10,250 lines.
   The survey left out three files: two Markdown fixtures with non-ASCII names, which
