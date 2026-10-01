@@ -131,7 +131,8 @@ status: 200
 
 ## Test: pinning an abbreviated commit ID
 
-A commit pinned by ID has no ref, so there is no `latest` to compare with.
+A commit pinned by ID that is not the tip of the ref served has no ref, so there is no
+`latest` to compare with.
 
 ```console
 $ METABROWSER_HOME=$PWD/home metab file://$PWD/origin.git --api /api/source/pin --data pin-oid.json
@@ -148,6 +149,44 @@ status: 200
     "refreshable": true,
     "latest": null,
     "ref_on_origin": null,
+    "last_fetch_at": "2026-09-17T12:00:05Z",
+    "last_outcome": {
+      "operation": "acquire",
+      "outcome": "succeeded",
+      "at": "2026-09-17T12:00:05Z"
+    },
+    "refreshing": false,
+    "stale": true,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  }
+}
+? 0
+```
+
+## Test: a commit ID that is the tip of the ref served keeps the ref
+
+View file on a diff switches by commit ID. A commit that is the tip of the ref the
+server was serving is served under that ref, so a reader who went to another commit and
+came back by ID is on the branch again, with a `latest` to compare with.
+Here the ID is the served branch’s own tip, so nothing changes.
+
+```console
+$ METABROWSER_HOME=$PWD/home metab file://$PWD/origin.git --api /api/source/pin --data pin-tip-oid.json
+api: /api/source/pin
+status: 200
+{
+  "changed": false,
+  "status": {
+    "subject": "git_revision",
+    "generation": 1,
+    "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "refreshable": true,
+    "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "ref_on_origin": true,
     "last_fetch_at": "2026-09-17T12:00:05Z",
     "last_outcome": {
       "operation": "acquire",

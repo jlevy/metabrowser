@@ -60,9 +60,13 @@ class StoreMirror:
             git_dir=self.home / store_directory(self.store_key) / "repository.git"
         )
 
-    async def open_selection(self, *, ref: str | None, oid: str | None) -> GitRevisionSubject:
+    async def open_selection(
+        self, *, ref: str | None, oid: str | None, keep_refs: tuple[str, ...] = ()
+    ) -> GitRevisionSubject:
         default_ref = await asyncio.to_thread(self._default_ref) if ref == "HEAD" else None
-        resolved = await resolve_pin(self._target(), ref=ref, oid=oid, default_ref=default_ref)
+        resolved = await resolve_pin(
+            self._target(), ref=ref, oid=oid, default_ref=default_ref, keep_refs=keep_refs
+        )
         return await open_revision(
             home=self.home,
             store_key=self.store_key,

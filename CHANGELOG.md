@@ -469,6 +469,15 @@ Repository cache:
   A diff in a served folder, and a patch file’s diff, have no such control: a folder has
   no file at a commit to open, only its working tree’s.
 
+- `POST /api/source/pin` with `{"oid": …}` keeps the ref when the commit is its tip.
+  A commit pinned by ID had no ref.
+  It is now served under the ref the server last served, or the served pull request’s
+  `refs/pull/<n>/head`, when it is that ref’s tip in the mirror, so going to another
+  commit and back by ID, as View file does, ends on the branch or the pull request
+  again: the selector names it and freshness follows it.
+  A commit ID that is the tip of the ref already served answers `changed: false`. Any
+  other commit pinned by ID still has no ref.
+
 - The Git panel no longer rebuilds a different history under the rows on screen when the
   refs its walk was fingerprinted by moved, as a refresh, a pin switched in another tab,
   or a commit in a served checkout does.

@@ -467,12 +467,22 @@ async def _pin_commit_id(target: RepositoryStoreTarget, text: str) -> str:
     raise SelectionNotFoundError("no commit with that ID is in the mirror")
 
 
+async def _ref_at(target: RepositoryStoreTarget, commit: str, refs: tuple[str, ...]) -> str | None:
+    """The first of *refs* whose tip in the mirror is *commit*, or ``None``."""
+
+    for ref in refs:
+        if await ref_tip(target, ref) == commit:
+            return ref
+    return None
+
+
 async def resolve_pin(
     target: RepositoryStoreTarget,
     *,
     ref: str | None = None,
     oid: str | None = None,
     default_ref: str | None = None,
+    keep_refs: tuple[str, ...] = (),
 ) -> ResolvedPin:
     """The commit a pin request names in the mirror, and the ref it came through.
 
@@ -481,7 +491,11 @@ async def resolve_pin(
     be under ``refs/remotes/origin/`` or ``refs/tags/``, or be a pull request's
     ``refs/pull/<n>/head``: the only refs a mirror holds.
     *oid* is only a commit ID, full or abbreviated to at least seven digits. A commit
-    pinned by ID has no ref. ``HEAD`` is the default branch, *default_ref*, as in a URL.
+    pinned by ID has no ref, unless it is the tip of one of *keep_refs* in the mirror
+    now: the refs a server was serving, which a reader who went to another commit and
+    came back by ID is still on. The first such ref is kept, so the selector names it
+    and freshness keeps following it. ``HEAD`` is the default branch, *default_ref*, as
+    in a URL.
     A name the mirror holds that is not a commit, such as a tag of a tree, is refused
     at once, as URL opening refuses it. Raises a
     :class:`~metabrowser.mirror_refresh.SelectionError`; Git failures other than "not
@@ -491,7 +505,8 @@ async def resolve_pin(
     if (ref is None) == (oid is None):
         raise InvalidSelectionError('give exactly one of "ref" and "oid"')
     if oid is not None:
-        return ResolvedPin(commit_oid=await _pin_commit_id(target, oid), ref=None)
+        commit = await _pin_commit_id(target, oid)
+        return ResolvedPin(commit_oid=commit, ref=await _ref_at(target, commit, keep_refs))
     assert ref is not None
     if not ref:
         raise InvalidSelectionError("the ref is empty")
