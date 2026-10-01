@@ -7,8 +7,9 @@ metadata (node count, max depth) the client uses for budget
 decisions.
 
 Failure modes are surfaced explicitly:
-- ``parse_error`` is set on malformed input; the client falls back to
-  the Source view and renders the error in a banner.
+- ``parse_error`` is set on malformed input, and on a compressed file whose
+  stream cannot be decoded; the client falls back to the Source view and
+  renders the error in a banner.
 - ``truncated`` is set when the content exceeds STRUCTURED_PARSE_MAX_BYTES;
   same fallback behavior.
 
@@ -33,6 +34,7 @@ from starlette.responses import JSONResponse
 from metabrowser.builtin_plugins.structured.parser import (
     STRUCTURED_PARSE_MAX_BYTES,
     StructuredPayload,
+    error_payload,
     lookup_structured_payload,
     parse_structured_bytes,
     remember_structured_payload,
@@ -40,6 +42,8 @@ from metabrowser.builtin_plugins.structured.parser import (
 )
 from metabrowser.http_caching import build_scoped_etag
 from metabrowser.plugin_api import (
+    ArtifactCompressionError,
+    ArtifactDecompressionLimitError,
     ContentReadError,
     ContentRef,
     read_content_window,
@@ -122,14 +126,23 @@ async def _parse(ref: ContentRef, ext: str) -> StructuredPayload:
     failed request, and it is the same answer for content too large to read at
     all. The cap is enforced by the read, not by a declared size, because a
     compressed artifact's declared size is a trailer nothing verifies.
+
+    A compressed file whose stream cannot be decoded is a ``parse_error`` for the
+    same reason: the file is there, and the Source view says what is wrong with
+    it. Both are what 0.11.0 answered. Content that is gone or cannot be opened
+    stays the read's own error.
     """
 
     try:
         window = await read_content_window(ref, max_bytes=STRUCTURED_PARSE_MAX_BYTES)
     except ContentReadError as exc:
-        if exc.http_status != 413:
-            raise
-        return truncated_payload()
+        # A compressed artifact past a resource bound, its time budget included, and a
+        # blob a pin will not read for its size.
+        if isinstance(exc, ArtifactDecompressionLimitError) or exc.http_status == 413:
+            return truncated_payload()
+        if isinstance(exc, ArtifactCompressionError):
+            return error_payload(exc)
+        raise
     if window.has_more:
         return truncated_payload()
     return await asyncio.to_thread(parse_structured_bytes, window.data, ext)

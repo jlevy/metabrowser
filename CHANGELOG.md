@@ -891,6 +891,12 @@ Fixes:
   untrusted profile the inert allowlist drops an escaped backslash from any reference.
   Wiki links refuse a backslash as before.
 
+- `/api/plugin/structured/parsed` no longer answers with a path on the host.
+  For a JSON or YAML file it could not open, such as one without read permission, 0.11.0
+  answered 200 with
+  `parse_error: "PermissionError: [Errno 13] Permission denied: '<the file's absolute path>'"`.
+  It now answers 404 `content_unavailable` and names the served path.
+
 - Load more on a large text file in a pin advances its notice and continues the text.
   A pin’s later window reported its own length as `bytes_read`, where the filesystem
   reports the cursor past the window, so after Load more the notice kept reading
