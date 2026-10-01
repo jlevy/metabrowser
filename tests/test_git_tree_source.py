@@ -170,6 +170,11 @@ def test_git_path_refuses_nul_padding_and_noncanonical_atoms() -> None:
         GitPath.from_wire(padded)
     with pytest.raises(GitPathError):
         GitPath.from_wire("g1-@@@@")
+    # One path has one wire. ``QR`` decodes to the same byte as ``QQ`` with its unused
+    # trailing bits set, and a second spelling would be a second identity for one entry.
+    assert GitPath.from_wire("g1-QQ").segments == (b"A",)
+    with pytest.raises(GitPathError):
+        GitPath.from_wire("g1-QR")
 
 
 def test_git_path_from_display_accepts_names_and_wires() -> None:
@@ -560,12 +565,16 @@ def test_read_store_blob_gates_size_without_a_live_subject(tmp_path: Path) -> No
             await subject.aclose()
         assert store_batch_reader_count(target) == 0
         assert await read_store_blob(target, readme_oid) == b"hello\n"
-        try:
+        with pytest.raises(GitBlobTooLargeError) as refused:
             await read_store_blob(target, big_oid, max_blob_bytes=16)
-            raise AssertionError("oversized blob must be refused")
-        except GitBlobTooLargeError as exc:
-            assert exc.size == 64
-            assert exc.max_bytes == 16
+        assert (refused.value.size, refused.value.max_bytes) == (64, 16)
+        # The bound is the largest blob read: 64 bytes pass a ceiling of 64 and not 63.
+        assert len(await read_store_blob(target, big_oid, max_blob_bytes=64)) == 64
+        with pytest.raises(GitBlobTooLargeError):
+            await read_store_blob(target, big_oid, max_blob_bytes=63)
+        # Only a blob is read as one: a diff names a gitlink's commit by its ID too.
+        with pytest.raises(GitBatchProtocolError, match="not a blob"):
+            await read_store_blob(target, commit)
         assert store_batch_reader_count(target) == 0
 
     asyncio.run(_run())
