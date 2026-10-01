@@ -36,6 +36,7 @@ from metabrowser.cli.hangup import (
 )
 from metabrowser.git.process import _REPO_PINNING_GIT_VARS
 from tests.admitted_git import require_admitted_git
+from tests.github_origin import github_origin
 from tests.required_tools import needs_git
 from tests.test_cache_acquire import _allow_installed_git
 
@@ -269,6 +270,48 @@ def test_the_previous_handlers_are_restored() -> None:
         for number, handler in zip((signal.SIGHUP, signal.SIGTERM), before, strict=True):
             if handler is not None:
                 signal.signal(number, handler)
+
+
+@pytest.fixture
+def stderr_whose_reader_has_gone() -> Iterator[int]:
+    """The write end of a pipe nobody reads, as ``2>&1 | head -1`` leaves a command."""
+
+    reader, writer = os.pipe()
+    os.close(reader)
+    try:
+        yield writer
+    finally:
+        os.close(writer)
+
+
+def test_a_stderr_whose_reader_has_gone_does_not_change_the_exit_status(
+    tmp_path: Path, stderr_whose_reader_has_gone: int
+) -> None:
+    """The installed CLI, unpatched: a clone's lines that could not be written cost nothing.
+
+    Text left in stderr's buffer fails the interpreter's flush at exit, which reports
+    status 120 for a command that succeeded. Both a first clone and a cache hit write
+    to stderr before they write their answer.
+    """
+
+    require_admitted_git()
+    env = _child_env()
+    env.update({"METABROWSER_HOME": str(tmp_path / "home"), "METABROWSER_LOG_LEVEL": "ERROR"})
+    url = f"file://{github_origin(tmp_path).resolve()}"
+    for mode in (["--api", "/api/git/repo"], ["--no-serve"]):
+        finished = subprocess.run(
+            [_metab(), url, *mode],
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=stderr_whose_reader_has_gone,
+            timeout=50,
+            check=False,
+        )
+        assert finished.returncode == 0, (mode, finished.stdout)
+        assert finished.stdout != b""
+    # The second command found what the first cloned.
+    assert len(list((tmp_path / "home" / "cache" / "repository-stores").iterdir())) == 1
 
 
 def _metab() -> str:

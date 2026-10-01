@@ -123,7 +123,7 @@ async def acquire_for_cli(
     try:
         # The server's handler is not attached yet on these paths, so an explicit
         # ``--log-level`` needs its own, or Git's failure text is never printed.
-        with maybe_cli_logging():
+        with maybe_cli_logging(report.end_status_line):
             async with report.ticking():
                 published = await acquire_source(
                     source, home=home, on_phase=report.phase, on_progress=report.progress

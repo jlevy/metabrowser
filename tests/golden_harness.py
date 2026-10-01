@@ -395,8 +395,33 @@ def elide_clone_timing(stderr: str) -> str:
     return _FETCHED_AGO.sub(rf"\g<1>{AGE_PLACEHOLDER}", stderr)
 
 
-# The two lines of a command's stderr that say where clones are kept.
-_CLONE_LINES: Final = ("cloning ", "using the clone of ")
+# The two lines of a command's stderr that say where clones are kept, whole: a URL, the
+# home's cache directory and nothing under it, and for a hit how long ago it was fetched.
+_HOME_LINES: Final = (
+    r"cloning \S+ into {home}/cache",
+    r"using the clone of \S+ cached in {home}/cache"
+    r"(?:, fetched (?:less than a minute ago|\d+ (?:minute|hour|day)s? ago|<AGE>))?",
+)
+
+
+def first_clone_stderr(url: str, home: Path, *, then: str = "") -> str:
+    """A pattern for everything a first clone writes to stderr when it is not timed.
+
+    For a test whose clock is the machine's: where the clone goes, and that it is done,
+    in so many seconds and with a size if Git reported one. Match it whole, so that a
+    line naming a store or a staging entry cannot stand beside these two.
+    """
+
+    done = re.escape(f"cloned {url} in ") + r"\d+(?:\.\d)? s(?: \([\d.]+ (?:bytes?|[KMG]iB)\))?"
+    following = re.escape(f"; {then}") if then else ""
+    return re.escape(f"cloning {url} into {home}/cache\n") + done + following + r"\n"
+
+
+def cache_hit_stderr(url: str, home: Path) -> str:
+    """A pattern for the one line a cache hit writes to stderr, with whatever age."""
+
+    age = r"(?:less than a minute|\d+ (?:minute|hour|day)s?) ago"
+    return re.escape(f"using the clone of {url} cached in {home}/cache, fetched ") + age + r"\n"
 
 
 def label_home(text: str, home: Path, label: str = HOME_LABEL) -> str:
@@ -404,12 +429,15 @@ def label_home(text: str, home: Path, label: str = HOME_LABEL) -> str:
 
     A first clone says where it goes and a cache hit says where it was found, each in
     one line of stderr. The home is named nowhere else: not in a route's answer, an
-    identity line, or an error.
+    identity line, or an error. And those lines name the cache directory and stop: a
+    line that went on to a store or a staging entry under it is refused here, before
+    an update could write it into a transcript.
     """
 
     labelled = text.replace(str(home), label)
+    allowed = [re.compile(line.format(home=re.escape(label))) for line in _HOME_LINES]
     for line in labelled.splitlines():
-        assert label not in line or line.startswith(_CLONE_LINES), (
+        assert label not in line or any(pattern.fullmatch(line) for pattern in allowed), (
             f"the application home is named outside a clone's own lines: {line}"
         )
     return labelled

@@ -12,7 +12,6 @@ import errno
 import io
 import os
 import re
-import threading
 from pathlib import Path
 
 import pytest
@@ -126,6 +125,44 @@ def test_a_stalled_transfer_still_writes_a_line_every_interval(clock: Clock) -> 
     )
 
 
+def test_the_interval_runs_from_the_destination_line(clock: Clock) -> None:
+    """What came before the clone, such as a provider's size check, is not part of it."""
+
+    log = io.StringIO()
+    report = CloneReport(URL, WHERE, stream=log)
+    clock.now += 60
+    report.phase("reading the default branch")
+    report.phase("fetching every object")
+    clock.now += 1
+    report.progress(_receiving(1))
+    assert log.getvalue() == f"cloning {URL} into {WHERE}\n"
+    clock.now += LOG_INTERVAL_S - 1
+    report.progress(_receiving(2))
+    assert log.getvalue().splitlines()[1:] == [
+        f"cloning {URL}: receiving objects: 2%, 2.0 MiB at 1.0 MiB/s (70 s)"
+    ]
+
+
+def test_the_size_is_only_what_this_side_counted_as_received(clock: Clock) -> None:
+    """Not a stage that unpacks, and not a record the origin sent."""
+
+    log = io.StringIO()
+    report = CloneReport(URL, WHERE, stream=log)
+    report.phase("fetching every object")
+    report.progress(GitProgress("unpacking", 3, 3, 220, 1024, True))
+    report.progress(GitProgress("receiving", 99, 100, 5 * 1024**3, MIB, remote=True))
+    report.phase("done")
+    assert log.getvalue().splitlines()[-1] == f"cloned {URL} in 0.0 s"
+    # A record without a size does not forget the one before it.
+    log = io.StringIO()
+    report = CloneReport(URL, WHERE, stream=log)
+    report.phase("fetching every object")
+    report.progress(_receiving(40))
+    report.progress(GitProgress("receiving", 41, 100))
+    report.phase("done")
+    assert log.getvalue().splitlines()[-1] == f"cloned {URL} in 0.0 s (40.0 MiB)"
+
+
 def test_a_cache_hit_writes_nothing_until_asked(clock: Clock) -> None:
     log = io.StringIO()
     report = CloneReport(URL, WHERE, stream=log)
@@ -189,11 +226,34 @@ def test_a_shorter_status_blanks_what_the_longer_one_left(clock: Clock) -> None:
     short = "resolving deltas: 10% (2.0 s)"
     assert terminal.frames[-1] == "\r" + short + " " * (len(long) - len(short))
     report.phase("done")
-    # The line is cleared before the last one is written over it.
-    assert terminal.frames[-2:] == [
-        "\r" + " " * len(short) + "\r",
-        f"cloned {URL} in 2.0 s (5.0 MiB)\n",
-    ]
+    # The line is blanked and the last one written over it, in one write.
+    assert terminal.frames[-1] == (
+        "\r" + " " * len(short) + "\r" + f"cloned {URL} in 2.0 s (5.0 MiB)\n"
+    )
+
+
+def test_a_terminal_made_narrower_is_not_made_to_wrap(
+    clock: Clock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The blanks over a longer status stop at the width the terminal has now."""
+
+    columns = 80
+    monkeypatch.setattr(clone_report, "_columns", lambda _stream: columns)
+    terminal = Terminal()
+    report = CloneReport(URL, WHERE, stream=terminal)
+    report.phase("fetching every object")
+    clock.now += 1
+    report.progress(GitProgress("receiving", 5, 10, 5 * MIB, MIB))
+    assert len(terminal.frames[-1]) == 1 + len(
+        "receiving objects: 50%, 5.0 MiB at 1.0 MiB/s (1.0 s)"
+    )
+    columns = 40
+    clock.now += 1
+    report.progress(GitProgress("resolving", 1, 10))
+    assert terminal.frames[-1] == "\r" + "resolving deltas: 10% (2.0 s)".ljust(39)
+    columns = 20
+    report.phase("done")
+    assert terminal.frames[-1].startswith("\r" + " " * 19 + "\rcloned ")
 
 
 def test_a_status_wider_than_the_terminal_is_cut_not_wrapped(
@@ -221,6 +281,23 @@ def test_a_failure_leaves_the_status_and_ends_its_line(clock: Clock) -> None:
     assert untouched.getvalue() == ""
 
 
+def test_a_log_record_gets_a_line_of_its_own(clock: Clock) -> None:
+    """Before something else writes to the terminal, the status line is ended."""
+
+    terminal = Terminal()
+    report = CloneReport(URL, WHERE, stream=terminal)
+    report.end_status_line()
+    assert terminal.frames == []
+    report.phase("fetching every object")
+    report.end_status_line()
+    report.end_status_line()
+    assert terminal.frames[-2:] == ["\rfetching every object (0.0 s)", "\n"]
+    clock.now += 1
+    report.progress(GitProgress("resolving", 1, 10))
+    # The next status starts a line; there is nothing of the old one to blank.
+    assert terminal.frames[-1] == "\rresolving deltas: 10% (1.0 s)"
+
+
 def test_the_tick_keeps_the_time_counting_through_a_phase_without_progress(clock: Clock) -> None:
     terminal = Terminal()
     report = CloneReport(URL, WHERE, stream=terminal)
@@ -236,66 +313,149 @@ def test_the_tick_keeps_the_time_counting_through_a_phase_without_progress(clock
     ]
 
 
-def test_ticking_runs_only_while_the_clone_does(
+def test_ticking_runs_while_the_clone_does_and_is_stopped_after(
     clock: Clock, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(clone_report, "TICK_S", 0.001)
     terminal = Terminal()
     report = CloneReport(URL, WHERE, stream=terminal)
 
-    async def clone() -> int:
+    async def clone() -> list[asyncio.Task[object]]:
         async with report.ticking():
             report.phase("reading the default branch")
             during = len(terminal.frames)
+            # Each pass moves the clock, so every tick finds a status due. The ticker
+            # is the only thing that can add a frame here.
             while len(terminal.frames) < during + 3:
                 clock.now += 1
                 await asyncio.sleep(0.001)
             report.phase("done")
-        after = len(terminal.frames)
-        await asyncio.sleep(0.02)
-        return len(terminal.frames) - after
+        # One turn of the loop for the cancellation to land, and the ticker is gone.
+        await asyncio.sleep(0)
+        return [task for task in asyncio.all_tasks() if task is not asyncio.current_task()]
 
-    assert asyncio.run(asyncio.wait_for(clone(), timeout=30)) == 0
+    assert asyncio.run(asyncio.wait_for(clone(), timeout=30)) == []
 
 
 # ── A stream that cannot be written ─────────────────────────────────
 
 
+class Recorder(io.StringIO):
+    """A stream that counts the writes it is asked for, over a descriptor of the test's."""
+
+    def __init__(self, descriptor: int | None = None, *, terminal: bool = False) -> None:
+        super().__init__()
+        self.descriptor = descriptor
+        self.terminal = terminal
+        self.writes = 0
+
+    def isatty(self) -> bool:
+        return self.terminal
+
+    def fileno(self) -> int:
+        if self.descriptor is None:
+            raise io.UnsupportedOperation("fileno")
+        return self.descriptor
+
+    def write(self, text: str) -> int:
+        self.writes += 1
+        return super().write(text)
+
+
+def _report_everything(report: CloneReport, clock: Clock) -> None:
+    """Every kind of line a report writes: destination, status, the end, and a hit."""
+
+    report.phase("fetching every object")
+    clock.now += LOG_INTERVAL_S
+    report.progress(_receiving(40))
+    report.end_status_line()
+    clock.now += LOG_INTERVAL_S
+    report.tick()
+    report.phase("done")
+    report.close()
+    report.cache_hit(None)
+
+
 @pytest.mark.skipif(os.name != "posix", reason="a full pipe is staged with POSIX descriptors")
-def test_a_status_that_would_block_is_dropped(clock: Clock) -> None:
-    """A pipe nobody reads must not hold up the loop that awaits Git."""
+@pytest.mark.parametrize("terminal", [False, True], ids=["log", "terminal"])
+def test_no_line_is_written_to_a_pipe_that_would_block(clock: Clock, terminal: bool) -> None:
+    """A pipe nobody reads must not hold up the loop that awaits Git: not for the status,
+    and not for the first line, the last, or a hit's.
+
+    The question is put to a real full pipe; the write that must not happen is counted,
+    so nothing here can block and no time is measured.
+    """
 
     reader, writer = os.pipe()
-    os.set_blocking(writer, False)
     try:
-        while True:
-            os.write(writer, b"x" * 65536)
-    except BlockingIOError as full:
-        assert full.errno in {errno.EAGAIN, errno.EWOULDBLOCK}
-    os.set_blocking(writer, True)
-    stream = os.fdopen(writer, "w", encoding="utf-8")
-    report = CloneReport(URL, WHERE, stream=stream)
-    # White box: start as a clone that has written its first line, which a full pipe
-    # would not have let it write.
-    report._cloning = True  # pyright: ignore[reportPrivateUsage]
+        os.set_blocking(writer, False)
+        with pytest.raises(BlockingIOError) as full:
+            while True:
+                os.write(writer, b"x" * 65536)
+        assert full.value.errno in {errno.EAGAIN, errno.EWOULDBLOCK}
+        blocked = Recorder(writer, terminal=terminal)
+        _report_everything(CloneReport(URL, WHERE, stream=blocked), clock)
+        assert blocked.writes == 0
+        # The same calls on the pipe once it has room write every line.
+        os.set_blocking(reader, False)
+        with contextlib.suppress(BlockingIOError):
+            while os.read(reader, 1 << 20):
+                pass
+        open_again = Recorder(writer, terminal=terminal)
+        _report_everything(CloneReport(URL, WHERE, stream=open_again), clock)
+        assert open_again.writes >= 5
+    finally:
+        os.close(reader)
+        os.close(writer)
+
+
+def test_a_status_that_was_dropped_is_due_again_at_once(
+    clock: Clock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Dropping a status does not count as showing it: the next record shows."""
+
+    writable = True
+    monkeypatch.setattr(clone_report, "_writable_now", lambda _stream: writable)
+    log = io.StringIO()
+    report = CloneReport(URL, WHERE, stream=log)
+    report.phase("fetching every object")
     clock.now += LOG_INTERVAL_S
-    shown = threading.Thread(target=report.progress, args=(_receiving(40),), daemon=True)
-    shown.start()
-    shown.join(timeout=5)
-    returned = not shown.is_alive()
-    # Empty the pipe, which unblocks a write that did not return: a failure here
-    # fails and does not hang.
-    os.set_blocking(reader, False)
-    drained = b""
-    with contextlib.suppress(BlockingIOError):
-        while chunk := os.read(reader, 1 << 20):
-            drained += chunk
-    shown.join(timeout=5)
-    os.close(reader)
-    with contextlib.suppress(OSError):
-        stream.close()
-    assert returned, "a status write blocked on a full pipe"
-    assert drained.strip(b"x") == b""
+    writable = False
+    report.progress(_receiving(40))
+    writable = True
+    clock.now += 1
+    report.progress(_receiving(41))
+    assert log.getvalue().splitlines()[1:] == [
+        f"cloning {URL}: receiving objects: 41%, 41.0 MiB at 1.0 MiB/s (11 s)"
+    ]
+    # On a terminal too, and what is on the screen is still the status before it.
+    clock.now = 100.0
+    terminal = Terminal()
+    report = CloneReport(URL, WHERE, stream=terminal)
+    report.phase("fetching every object")
+    clock.now += 1
+    report.progress(_receiving(40))
+    long = "receiving objects: 40%, 40.0 MiB at 1.0 MiB/s (1.0 s)"
+    assert terminal.frames[-1] == "\r" + long
+    writable = False
+    clock.now += 1
+    report.progress(GitProgress("resolving", 1, 10))
+    writable = True
+    clock.now += REDRAW_INTERVAL_S / 2
+    report.progress(GitProgress("resolving", 2, 10))
+    short = "resolving deltas: 20% (2.0 s)"
+    assert terminal.frames[-1] == "\r" + short + " " * (len(long) - len(short))
+
+
+def test_a_stream_whose_reader_has_gone_is_written_to_once(clock: Clock) -> None:
+    class Gone(Recorder):
+        def write(self, text: str) -> int:
+            super().write(text)
+            raise BrokenPipeError(errno.EPIPE, "Broken pipe")
+
+    gone = Gone()
+    _report_everything(CloneReport(URL, WHERE, stream=gone), clock)
+    assert gone.writes == 1
 
 
 def test_a_closed_stream_does_not_fail_the_clone(clock: Clock) -> None:

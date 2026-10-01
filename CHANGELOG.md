@@ -213,6 +213,10 @@ GitHub URLs and HTTPS:
   The progress is read from `git fetch --progress` as numbers and printed in
   Metabrowser’s words: Git’s and the origin’s own text still never reaches the terminal,
   whatever control characters it carries.
+  `--log-level debug` is how to read that text when a clone fails, and a log line that
+  quotes it, here and in a server’s log, now writes every character that is not
+  printable as its escape (`\x1b`, `\r`), so an origin’s escape sequence is read and not
+  obeyed. Before, it was written to the terminal as it came.
   A source that is already cloned says so in one line in serve mode and `--no-serve`
   (`using the clone of <url> cached in ~/.metabrowser/cache, fetched 3 hours ago`), so a
   second run reads differently from a first; `--show`, `--api`, and `--check-api` stay
