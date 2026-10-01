@@ -45,6 +45,7 @@ metab --doctor --plugins-dir ./examples
 
 `--doctor` validates manifests, `index.js` files, installed-plugin data-hook imports,
 operator-directory JavaScript-only boundaries, and high-priority kind conflicts.
+It also checks that the packaged repository-cache record schemas are intact.
 It exits nonzero when any problem is found.
 All three modes support `--json` for machine-readable output.
 Discovery errors preserve any plugins that loaded successfully but make the command exit

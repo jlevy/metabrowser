@@ -7,8 +7,9 @@ Three modes on the ``metab`` CLI (parsing lives in
 * ``metab --plugin NAME``: full manifest dump for one plugin.
 * ``metab --doctor``: sanity-check every plugin, validating the
   manifest, confirming sidekick handlers import, and checking for
-  asset and kind-id collisions across plugins. Exit code != 0 when
-  any plugin is broken.
+  asset and kind-id collisions across plugins. It also checks the
+  packaged cache record contracts. Exit code != 0 when any plugin
+  or contract is broken.
 
 These modes answer the operator question 'is my plugin loaded?'
 without having to start the server. They use the same discovery
@@ -223,12 +224,45 @@ def show_plugin(name: str, plugins_dir: list[Path] | None = None, *, as_json: bo
         raise typer.Exit(code=1)
 
 
+def _cache_contract_problems() -> list[str]:
+    """Return what is wrong with the cache record contracts this installation ships.
+
+    The repository cache validates every record it reads and writes against these
+    packaged schemas, so a damaged or incomplete installation fails here rather than at
+    the first acquisition. The import is local because this module loads on every
+    ``metab`` start, and the contract registry pulls in the schema libraries that
+    ``--version`` and ``import metabrowser`` are tested not to load.
+    """
+    from metabrowser.cache.contracts import cache_contract_registry, check_packaged_schemas
+
+    problems: list[str] = []
+    try:
+        cache_contract_registry()
+    except (OSError, RuntimeError, ValueError) as exc:
+        problems.append(f"cache record contracts: {exc}")
+    try:
+        drifted = check_packaged_schemas()
+    except (OSError, RuntimeError, ValueError) as exc:
+        problems.append(f"cache record schemas: {exc}")
+    else:
+        # Each entry is "<schema file>: <diff>"; the file name is what a reader can act on.
+        problems.extend(
+            f"cache record schema '{entry.partition(':')[0]}' does not match its model"
+            for entry in drifted
+        )
+    return problems
+
+
 def doctor_plugins(plugins_dir: list[Path] | None = None, *, as_json: bool = False) -> None:
-    """Validate every discovered plugin. Exit non-zero on any problem."""
+    """Validate every discovered plugin and the packaged cache record contracts.
+
+    Exit non-zero on any problem.
+    """
     extra = resolve_extra_plugin_dirs(plugins_dir)
     result = discover_plugins(extra_dirs=extra)
 
     problems: list[str] = list(result.errors)
+    problems.extend(_cache_contract_problems())
 
     # Cross-plugin: check kind ids declared at priority 100+ aren't claimed by
     # multiple plugins simultaneously (built-ins at priority 0 are allowed to

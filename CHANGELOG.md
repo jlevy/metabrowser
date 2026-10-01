@@ -280,6 +280,11 @@ Source views:
 
 Repository cache:
 
+- `metab --doctor` also checks the packaged cache record schemas, so an installation
+  whose schemas are missing or no longer match their models is reported there instead of
+  at the first acquisition.
+  A healthy result reads as before.
+
 - New read-only routes `/api/cache/layout`, `/api/cache/sources`,
   `/api/cache/source/<slug>`, and `/api/cache/stores` report the cache’s layout and
   config formats, abandoned staging entries the next sweep removes, sources with their
