@@ -12,6 +12,7 @@ import pytest
 
 from metabrowser.git.process import _REPO_PINNING_GIT_VARS
 from tests import suite_gates
+from tests.github_pull_fixture import Origin, build_origin
 from tests.required_tools import require_git, require_node
 
 # Test discovery imports the server from several module scopes. Never let an
@@ -78,6 +79,13 @@ def git_on_path() -> str:
     """Behind ``needs_git``: without Git the run stops; see ``tests/required_tools.py``."""
 
     return require_git()
+
+
+@pytest.fixture(scope="session")
+def pull_origin(tmp_path_factory: pytest.TempPathFactory, git_on_path: str) -> Origin:
+    """The GitHub stand-in origin, built once; a test takes its own with ``copy_origin``."""
+
+    return build_origin(tmp_path_factory.mktemp("github-pull-origin"))
 
 
 @pytest.fixture(scope="session")

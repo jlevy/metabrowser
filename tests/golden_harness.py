@@ -42,6 +42,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from collections.abc import Sequence
 from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import dataclass, field
@@ -476,6 +477,18 @@ def answer(response: Any) -> dict[str, Any]:
     """One response as a session replays it: the status and the decoded body."""
 
     return {"status": response.status_code, "body": response.json()}
+
+
+def settle(client: Any) -> dict[str, Any]:
+    """Poll ``/api/source/status`` as a page does until no refresh runs; return that status."""
+
+    deadline = time.monotonic() + 50
+    while True:
+        status: dict[str, Any] = client.get("/api/source/status").json()
+        if not status["refreshing"]:
+            return status
+        assert time.monotonic() < deadline, "the refresh did not finish"
+        time.sleep(0.02)
 
 
 def serve_published(published: PublishedSource, *, serving: bool = False) -> None:
