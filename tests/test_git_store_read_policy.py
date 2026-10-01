@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import stat
 from collections.abc import Coroutine, Sequence
 from dataclasses import replace
 from pathlib import Path
@@ -28,16 +30,41 @@ from tests.required_tools import needs_git
 pytestmark = needs_git
 
 
-def test_store_read_policy_has_the_request_deadline_and_no_stdin() -> None:
+def test_store_read_policy_has_the_request_deadline() -> None:
     """A request waits on a store read, so its deadline is not the acquisition's.
 
-    The policy's environment is asserted beside the other isolated policies, in
-    ``test_isolated_policies_drop_every_ambient_git_variable``.
+    The policy's environment and its stdin are asserted beside the other isolated
+    policies, in ``tests/test_git_process.py``.
     """
 
     policy = process_module.STORE_READ_POLICY
     assert policy.timeout_s == GIT_SUBPROCESS_TIMEOUT_S < ACQUISITION_POLICY.timeout_s
-    assert policy.stdin == "devnull"
+
+
+def test_what_a_store_read_writes_is_owner_only(tmp_path: Path) -> None:
+    """A Git run on a published store under the default policy gives nobody else access.
+
+    The reads Metabrowser runs write nothing, so this writes an object through the same
+    spawn to see the mode: under a permissive ambient umask, the new object and its
+    directory still carry no group or other bits.
+    """
+
+    store, _commit = fast_import_store(tmp_path, {b"a.txt": b"a\n"})
+    before = set((store / "objects").rglob("*"))
+    ambient = os.umask(0o022)
+    try:
+        written = asyncio.run(
+            run_git(
+                ["hash-object", "-w", "--stdin"],
+                target=repository_store_target(git_dir=store),
+                stdin_bytes=b"written by a store-read spawn\n",
+            )
+        )
+    finally:
+        os.umask(ambient)
+    created = set((store / "objects").rglob("*")) - before
+    assert any(path.name == written.decode().strip()[2:] for path in created), created
+    assert [path for path in created if path.stat().st_mode & (stat.S_IRWXG | stat.S_IRWXO)] == []
 
 
 def test_a_pinned_location_reads_under_the_store_read_policy(tmp_path: Path) -> None:

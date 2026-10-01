@@ -122,6 +122,56 @@ def test_isolated_policies_drop_every_ambient_git_variable(
     assert "GIT_CONFIG_NOSYSTEM" not in ordinary
 
 
+def test_no_git_can_ask_a_person_and_isolated_git_speaks_one_locale(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """What the ``GIT_`` allowlist does not reach: the askpass, the manager, the locale.
+
+    ``SSH_ASKPASS`` is cleared for every spawn, so a repository that needs a credential
+    fails instead of waiting on a prompt nobody sees. An acquisition and a store read
+    also tell the credential manager never to prompt, and run in the C locale, because
+    Git's messages are matched as text (``cache/origin.py``, ``git/detail.py``).
+    """
+
+    monkeypatch.setenv("SSH_ASKPASS", "/usr/libexec/ambient-askpass")
+    monkeypatch.setenv("GCM_INTERACTIVE", "always")
+    monkeypatch.setenv("LC_ALL", "de_DE.UTF-8")
+    for policy in (READ_POLICY, ACQUISITION_POLICY, STORE_READ_POLICY, BATCH_OBJECT_POLICY):
+        assert git_environment(policy)["SSH_ASKPASS"] == "", policy.name
+    for policy in (ACQUISITION_POLICY, STORE_READ_POLICY):
+        env = git_environment(policy)
+        assert (env["GCM_INTERACTIVE"], env["LC_ALL"]) == ("never", "C"), policy.name
+
+
+# ``git hash-object --stdin`` of no input: the empty blob.
+_EMPTY_BLOB = b"e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
+
+
+@pytest.mark.parametrize("policy", [ACQUISITION_POLICY, STORE_READ_POLICY], ids=lambda p: p.name)
+def test_an_isolated_git_never_waits_on_the_callers_stdin(
+    tmp_path: Path, policy: GitProcessPolicy
+) -> None:
+    """Its stdin is the null device, whatever this process's own stdin is.
+
+    The process's stdin is replaced with a pipe nobody writes to or closes. A Git that
+    inherited it would wait until the deadline; one reading the null device sees the
+    end of input at once and names the empty blob.
+    """
+
+    read_end, write_end = os.pipe()
+    saved = os.dup(0)
+    os.dup2(read_end, 0)
+    try:
+        answered = asyncio.run(
+            run_git(["hash-object", "--stdin"], cwd=tmp_path, policy=policy, timeout_s=15)
+        )
+    finally:
+        os.dup2(saved, 0)
+        for descriptor in (saved, read_end, write_end):
+            os.close(descriptor)
+    assert answered.strip() == _EMPTY_BLOB
+
+
 def test_an_ambient_ref_format_does_not_reach_an_acquired_store(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
