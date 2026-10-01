@@ -5,16 +5,18 @@ green test run:
 
 - **It is regenerated with everything it is built from.** A browserless session
   replays a recorded response fixture, and its transcript pins what the session printed.
-  If ``make golden-update`` skips the recorder, the transcript is rewritten from a stale
-  recording and both still pass. So every module that calls
-  ``tests/golden_harness.py`` must be in the Makefile list ``golden-update`` runs, the
+  If ``make golden-update`` skips the recorder, or runs it after tryscript, the
+  transcript is rewritten from a stale recording and both still pass. So every module
+  that calls ``tests/golden_harness.py`` must be in the Makefile list ``golden-update``
+  runs, the recipe must run recorders, then tryscript and its fixup, then drivers, the
   ``GOLDEN_UPDATE`` switch is read in the harness and nowhere else, and every committed
   in-process transcript is named by a driver that writes it.
-- **It records what the command did.** A pipeline's exit status is its last stage's, so
-  ``metab … | grep …`` records ``grep``'s status and a command documented to exit 1
-  reads ``? 0``. A fenced block tryscript does not run, a test annotated ``skip`` or
-  ``only``, and a transcript with no block at all, are the same failure: text that
-  looks like evidence and is never executed.
+- **It records what the command did.** A block has one exit status, the last command's,
+  so ``metab … | grep …`` records ``grep``'s and a command documented to exit 1 reads
+  ``? 0`` (``devtools/shell_status.py``). A fence tryscript does not open, a test
+  annotated ``skip`` or ``only``, and a transcript with no block at all, are the same
+  failure: text that looks like evidence and is never executed
+  (``devtools/tryscript_blocks.py``).
 - **It is small enough to read.** ``make golden-update`` rewrites whole files, and a
   diff nobody can review turns a regression into a committed expectation.
 
@@ -30,8 +32,11 @@ import re
 import statistics
 import sys
 from dataclasses import dataclass
+from itertools import pairwise
 from pathlib import Path
 from typing import Final
+
+from devtools import shell_status, tryscript_blocks
 
 REPO_ROOT: Final = Path(__file__).resolve().parent.parent
 
@@ -47,15 +52,32 @@ REPO_ROOT: Final = Path(__file__).resolve().parent.parent
 # leaves the largest transcript room to grow by more than half before it must be split.
 # A lower limit would be a number this tree did not ask for. Run the report again
 # before changing it.
+#
+# One file has little room: `tests/fixtures/inert-html-kpress-tree.json` was 1,895
+# lines, 105 under the limit, and its size is KPress's render of the hostile README,
+# which this repository does not write. A KPress upgrade that adds markup can take it
+# over. That is the check working, not a reason to raise the limit or to give
+# recordings a looser one, which no measurement supports: shorten the fixture README or
+# record a narrower projection of the tree.
 MAX_GOLDEN_LINES: Final = 2000
 
-# Files over the budget when the check was added, each with the bead that brings it
-# under. An entry is removed by the change that shrinks its file: the check fails on an
-# entry whose file is back inside the budget, so the list cannot outlive its reasons.
-OVER_BUDGET: Final[dict[str, str]] = {
-    "tests/golden/cli-git-pin.txt": "mb-79t3 shards the pin transcript by scenario",
-    "tests/fixtures/github-pull-page-responses.json": (
-        "mb-738k stores each distinct pull-request record once"
+
+@dataclass(frozen=True, slots=True)
+class Excepted:
+    """A file over the budget: the most lines it may have, and the bead that shrinks it."""
+
+    ceiling: int
+    reason: str
+
+
+# Files over the budget when the check was added. Each has a ceiling, its line count
+# when it was listed, so an excepted file can shrink and cannot grow. An entry is
+# removed by the change that brings its file under the budget: the check fails on an
+# entry whose file fits again, so the list cannot outlive its reasons.
+OVER_BUDGET: Final[dict[str, Excepted]] = {
+    "tests/golden/cli-git-pin.txt": Excepted(2434, "mb-79t3 shards the pin transcript by scenario"),
+    "tests/fixtures/github-pull-page-responses.json": Excepted(
+        2203, "mb-738k stores each distinct pull-request record once"
     ),
 }
 
@@ -63,22 +85,22 @@ HARNESS: Final = "tests/golden_harness.py"
 UPDATE_ENV: Final = "GOLDEN_UPDATE"
 # The harness function a module calls decides which Makefile list must name it.
 _LIST_FOR: Final = {"check_recording": "GOLDEN_RECORDERS", "check_golden": "GOLDEN_DRIVERS"}
-
-_FENCE: Final = re.compile(r"^(`{3,})(.*)$")
-# The program under test followed by a pipe in the same command. Filters over a saved
-# file (`grep … out.txt | sort`) are not matched: only their input's producer matters.
-# tryscript reports a `skip` test as passed, and `only` skips every other test in its file.
-_ANNOTATION: Final = re.compile(r"<!--\s*(skip|only)\s*-->")
-_PIPED_COMMAND: Final = re.compile(r"(?:^|[\s;&(])(metab|node)\s(?:(?!;|&&|\|\|)[^|])*\|(?!\|)")
-
-
-@dataclass(frozen=True, slots=True)
-class Tryscript:
-    """The executable part of one tryscript file."""
-
-    path: str
-    commands: tuple[tuple[int, str], ...]
-    unrun: tuple[int, ...]
+# The harness's own switch. A module that asks it rewrites something by itself, which
+# no list can order and no check can see.
+_UPDATING: Final = "updating"
+# What `golden-update` must run, in this order: a session's transcript is rewritten from
+# its recording, and the fixup restores what `--update` wrote literally. The lists run
+# through `devtools.golden_update`, which fails on a skipped test.
+_RECIPE_ORDER: Final = (
+    (
+        "devtools.golden_update $(GOLDEN_RECORDERS)",
+        "the recorders through `devtools.golden_update`",
+    ),
+    ("run --update", "`tryscript run --update`"),
+    ("devtools.golden_fixup", "`devtools.golden_fixup`"),
+    ("devtools.golden_update $(GOLDEN_DRIVERS)", "the drivers through `devtools.golden_update`"),
+)
+_DOLLAR_LINE: Final = re.compile(r"^\s*\$ (.*)$")
 
 
 def makefile_list(makefile: str, name: str) -> list[str]:
@@ -113,6 +135,7 @@ class HarnessUse:
     functions: frozenset[str]
     recordings: frozenset[str]
     literals: frozenset[str]
+    asks_updating: bool = False
 
 
 def harness_use(source: str) -> HarnessUse:
@@ -139,7 +162,37 @@ def harness_use(source: str) -> HarnessUse:
         for node in ast.walk(tree)
         if isinstance(node, ast.Constant) and isinstance(node.value, str)
     }
-    return HarnessUse(frozenset(functions), frozenset(recordings), frozenset(literals))
+    asks_updating = any(
+        (isinstance(node, ast.Name) and node.id == _UPDATING)
+        or (isinstance(node, ast.Attribute) and node.attr == _UPDATING)
+        or (isinstance(node, ast.alias) and node.name == _UPDATING)
+        for node in ast.walk(tree)
+    )
+    return HarnessUse(
+        frozenset(functions), frozenset(recordings), frozenset(literals), asks_updating
+    )
+
+
+def test_modules(root: Path) -> list[Path]:
+    """The test modules, which are the files directly in ``tests``.
+
+    Not the tree below it: ``tests/fixtures`` and ``tests/manual-fixtures`` hold Python
+    that is content to be served, which need not even parse.
+    """
+
+    return sorted((root / "tests").glob("*.py"))
+
+
+def recipe(makefile: str, target: str) -> str:
+    """The recipe lines of *target*."""
+
+    lines = makefile.split(f"\n{target}:", 1)[-1].splitlines()[1:]
+    body: list[str] = []
+    for line in lines:
+        if not line.startswith("\t"):
+            break
+        body.append(line)
+    return "\n".join(body)
 
 
 def registration_findings(root: Path) -> list[str]:
@@ -151,18 +204,32 @@ def registration_findings(root: Path) -> list[str]:
     for name, modules in listed.items():
         if not modules:
             findings.append(f"Makefile: {name} is missing or empty")
-        if f"$({name})" not in makefile.split("golden-update:", 1)[-1]:
-            findings.append(f"Makefile: golden-update does not run $({name})")
         for module in modules:
             if not (root / module).is_file():
                 findings.append(f"Makefile: {name} names {module}, which does not exist")
+    steps = recipe(makefile, "golden-update")
+    placed = [(steps.find(marker), what) for marker, what in _RECIPE_ORDER]
+    findings += [f"Makefile: golden-update does not run {what}" for at, what in placed if at < 0]
+    present = [step for step in placed if step[0] >= 0]
+    for (earlier_at, earlier), (later_at, later) in pairwise(present):
+        if later_at < earlier_at:
+            findings.append(
+                f"Makefile: golden-update runs {later} before {earlier}; it needs the "
+                "recorders, then `tryscript run --update`, then the fixup, then the drivers"
+            )
+            break
 
     uses: dict[str, HarnessUse] = {}
-    for path in sorted((root / "tests").rglob("*.py")):
+    for path in test_modules(root):
         relative = path.relative_to(root).as_posix()
         if relative == HARNESS:
             continue
         use = harness_use(path.read_text(encoding="utf-8"))
+        if use.asks_updating:
+            findings.append(
+                f"{relative}: asks the harness whether this run is updating; write through "
+                "`check_golden` or `check_recording`, which `make golden-update` orders"
+            )
         # The name as a whole string, which is how code asks the environment for it;
         # prose and probe sources that merely mention it are longer strings.
         if UPDATE_ENV in use.literals:
@@ -209,7 +276,7 @@ def recorded_fixtures(root: Path) -> list[Path]:
     """The response fixtures the recorders write, read from their harness calls."""
 
     names: set[str] = set()
-    for path in (root / "tests").rglob("*.py"):
+    for path in test_modules(root):
         names |= harness_use(path.read_text(encoding="utf-8")).recordings
     return sorted(root / "tests" / "fixtures" / name for name in names)
 
@@ -226,7 +293,7 @@ def line_count(path: Path) -> int:
 
 
 def size_findings(
-    root: Path, *, limit: int = MAX_GOLDEN_LINES, over_budget: dict[str, str] | None = None
+    root: Path, *, limit: int = MAX_GOLDEN_LINES, over_budget: dict[str, Excepted] | None = None
 ) -> list[str]:
     allowed = OVER_BUDGET if over_budget is None else over_budget
     findings: list[str] = []
@@ -235,94 +302,76 @@ def size_findings(
         relative = path.relative_to(root).as_posix()
         seen.add(relative)
         lines = line_count(path)
-        if lines > limit and relative not in allowed:
-            findings.append(
-                f"{relative}: {lines} lines is over the {limit}-line review budget; split it "
-                "by scenario, or show a repeated payload once"
-            )
-        if lines <= limit and relative in allowed:
+        excepted = allowed.get(relative)
+        if excepted is None:
+            if lines > limit:
+                findings.append(
+                    f"{relative}: {lines} lines is over the {limit}-line review budget; split "
+                    "it by scenario, or show a repeated payload once"
+                )
+        elif lines <= limit:
             findings.append(
                 f"{relative}: {lines} lines is inside the budget now; remove it from OVER_BUDGET"
+            )
+        elif lines > excepted.ceiling:
+            findings.append(
+                f"{relative}: {lines} lines is over its ceiling of {excepted.ceiling}; a file "
+                "excepted from the budget may shrink and may not grow"
             )
     for relative in sorted(set(allowed) - seen):
         findings.append(f"{relative}: listed in OVER_BUDGET but is not a golden or a recording")
     return findings
 
 
-def parse_tryscript(path: str, text: str) -> Tryscript:
-    """The commands tryscript runs in *text*, and the fenced commands it does not."""
+def transcript_findings(relative: str, text: str) -> list[str]:
+    """What in one transcript reads as evidence and is not."""
 
-    commands: list[tuple[int, str]] = []
-    unrun: list[int] = []
-    fence: str | None = None
-    console = False
-    first_line = False
-    for number, line in enumerate(text.splitlines(), start=1):
-        opened = _FENCE.match(line)
-        if fence is None:
-            if opened is not None:
-                fence, console, first_line = opened.group(1), opened.group(2) == "console", True
+    findings: list[str] = []
+    blocks = tryscript_blocks.blocks(text)
+    if not blocks:
+        findings.append(f"{relative}: no block with a command, so tryscript runs nothing in it")
+    for block in blocks:
+        where = f"{relative}:{block.line}"
+        if block.annotation is not None:
+            findings.append(
+                f"{where}: a `{block.annotation}` annotation, which makes tryscript report "
+                "tests it did not run as passed"
+            )
+        if block.dollar_lines > 1:
+            findings.append(
+                f"{where}: {block.dollar_lines} `$` lines in one block, which tryscript joins "
+                "into one command line; give each command its own block"
+            )
+        for reason in shell_status.hidden_statuses(block.command):
+            findings.append(
+                f"{where}: {reason}, so the block records another command's exit status; "
+                "end the line with the command under test, redirected to a file if its "
+                "output is long, and filter the file in the next block"
+            )
+    run = tryscript_blocks.run_lines(text)
+    for number, line in enumerate(text.split("\n"), start=1):
+        dollar = _DOLLAR_LINE.match(line)
+        if number in run or dollar is None:
             continue
-        if line.startswith(fence) and line.strip() == fence:
-            fence = None
-            continue
-        if console and line.startswith("$ "):
-            commands.append((number, line[2:]))
-        elif console and line.startswith("> ") and commands:
-            previous_number, previous = commands[-1]
-            commands[-1] = (previous_number, f"{previous}\n{line[2:]}")
-        elif not console and first_line and line.startswith("$ "):
-            unrun.append(number)
-        first_line = False
-    return Tryscript(path, tuple(commands), tuple(unrun))
-
-
-def _body(text: str) -> tuple[str, int]:
-    """A transcript without its frontmatter, and how many lines the frontmatter took.
-
-    The frontmatter is configuration; its `before` command is setup, not a block.
-    """
-
-    if not text.startswith("---\n"):
-        return text, 0
-    frontmatter, _separator, body = text.partition("\n---\n")
-    return body, frontmatter.count("\n") + 2
+        if shell_status.runs_program_under_test(dollar.group(1)):
+            findings.append(
+                f"{relative}:{number}: a command outside the blocks tryscript runs; a block "
+                "opens on an unindented line of backticks and `console` or `bash`"
+            )
+    return findings
 
 
 def tryscript_findings(root: Path) -> list[str]:
     findings: list[str] = []
     for path in sorted((root / "tests" / "golden").glob("*.tryscript.md")):
-        relative = path.relative_to(root).as_posix()
-        body, offset = _body(path.read_text(encoding="utf-8"))
-        parsed = parse_tryscript(relative, body)
-        if not parsed.commands:
-            findings.append(
-                f"{relative}: no console block with a command, so tryscript runs nothing in it"
-            )
-        for number, line in enumerate(body.splitlines(), start=1):
-            annotation = _ANNOTATION.search(line)
-            if annotation is not None:
-                findings.append(
-                    f"{relative}:{number + offset}: a `{annotation.group(1)}` annotation, which "
-                    "makes tryscript report tests it did not run as passed"
-                )
-        for number in parsed.unrun:
-            findings.append(
-                f"{relative}:{number + offset}: a command in a block that is not ```console, "
-                "which tryscript does not run"
-            )
-        for number, command in parsed.commands:
-            if _PIPED_COMMAND.search(command) is not None:
-                findings.append(
-                    f"{relative}:{number + offset}: the command under test is piped, so the "
-                    "block records the last stage's exit status; redirect it to a file, "
-                    "record its own `? N`, and filter the file in a second command"
-                )
+        findings += transcript_findings(
+            path.relative_to(root).as_posix(), path.read_text(encoding="utf-8")
+        )
     return findings
 
 
 def find_findings(
-    root: Path = REPO_ROOT, *, over_budget: dict[str, str] | None = None
+    root: Path = REPO_ROOT, *, over_budget: dict[str, Excepted] | None = None
 ) -> list[str]:
     return [
         *registration_findings(root),
@@ -339,8 +388,7 @@ def report(root: Path = REPO_ROOT) -> str:
     deciles = statistics.quantiles(counts, n=10) if len(counts) > 1 else counts
     tryscripts = sorted((root / "tests" / "golden").glob("*.tryscript.md"))
     blocks = sum(
-        len(parse_tryscript(path.name, _body(path.read_text(encoding="utf-8"))[0]).commands)
-        for path in tryscripts
+        len(tryscript_blocks.blocks(path.read_text(encoding="utf-8"))) for path in tryscripts
     )
     lines = [
         f"{len(counts)} files, {sum(counts)} lines; limit {MAX_GOLDEN_LINES}",

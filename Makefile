@@ -136,8 +136,11 @@ test-admitted-git:
 # browserless sessions replay (tests/fixtures/*.json), tryscript then rewrites changed
 # blocks with literal output and golden_fixup.py restores the elision patterns, and the
 # in-process drivers rewrite tests/golden/*.txt. Every module that calls
-# tests/golden_harness.py is in one of these two lists, or `make lint-check` fails
-# (devtools/check_goldens.py). Review the diff before committing.
+# tests/golden_harness.py is in one of these two lists, and the recipe keeps this
+# order, or `make lint-check` fails (devtools/check_goldens.py).
+# devtools/golden_update.py runs a list with GOLDEN_UPDATE=1 and fails if any test in
+# it was skipped, so a host without Node or with a Git below the acquisition floor
+# cannot report that it regenerated what it skipped. Review the diff before committing.
 GOLDEN_RECORDERS := \
 	tests/test_source_kind_session.py \
 	tests/test_source_freshness_session.py \
@@ -158,11 +161,11 @@ GOLDEN_DRIVERS := \
 	tests/test_cli_github_pull_golden.py
 
 golden-update:
-	GOLDEN_UPDATE=1 $(UV_RUN) pytest $(GOLDEN_RECORDERS)
+	$(UV_RUN) python -m devtools.golden_update $(GOLDEN_RECORDERS)
 	$(TRYSCRIPT) run --update 'tests/golden/*.tryscript.md' || true
-	$(UV_RUN) python devtools/golden_fixup.py
+	$(UV_RUN) python -m devtools.golden_fixup
 	$(TRYSCRIPT) run 'tests/golden/*.tryscript.md'
-	GOLDEN_UPDATE=1 $(UV_RUN) pytest $(GOLDEN_DRIVERS)
+	$(UV_RUN) python -m devtools.golden_update $(GOLDEN_DRIVERS)
 
 audit:
 	bash devtools/npm_audit.sh
