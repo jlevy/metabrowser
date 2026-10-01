@@ -2716,11 +2716,12 @@ function shouldPrefetchFile(item) {
   if (+(item.dataset.tipSize || 0) > FILE_PREFETCH_MAX_BYTES) {
     return false;
   }
-  // For .gz files the server attaches `data-logical-ext`; key the
-  // "skip prefetch for JSONL" rule off the inner extension so
-  // `events.jsonl.gz` is treated identically to `events.jsonl`.
+  // No name ending `.jsonl` is prefetched: /api/file parses such a file whole
+  // into events instead of answering a bounded text window. `data-logical-ext`
+  // is the inner extension of a .gz; `data-ext` is a compound tail
+  // (`.codex.jsonl`), and all a pin's wire path has, so match its end.
   var ext = (item.dataset.logicalExt || item.dataset.ext || getExt(path)).toLowerCase();
-  return ext !== ".jsonl";
+  return !ext.endsWith(".jsonl");
 }
 
 function abortHoverPrefetch() {
