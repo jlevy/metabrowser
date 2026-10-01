@@ -5776,12 +5776,14 @@ async function loadViewComposition() {
   if (!assets) {
     throw new Error("Metabrowser asset loader is unavailable");
   }
-  // The line gutter's module is fetched beside the compositor, not after it: every
-  // Source view is mounted through here, so a renderer always finds it.
+  // The line gutter's module and the SDK's view helpers are fetched beside the
+  // compositor, not after it: every view is mounted through here, so a renderer
+  // always finds them.
   await _perf.measureAsync("fileNavigation:viewComposition", () =>
     Promise.all([
       assets.ensureAsset("view-composition"),
       assets.ensureAsset("source-line-anchors"),
+      assets.ensureAsset("sdk-views"),
     ]),
   );
   const composition = window.MetabrowserViewComposition;

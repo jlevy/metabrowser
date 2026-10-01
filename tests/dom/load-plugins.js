@@ -105,6 +105,12 @@ for (const filename of [
 // proof that initialization already happened.
 sandbox.metabrowser = { foreignHostValue: true };
 load(path.join(repoRoot, "src", "metabrowser", "static", "plugin-sdk.js"), "plugin-sdk.js");
+// The helpers a view's renderer calls. The shell has them on the SDK before any plugin
+// loads, so this shim does too.
+load(
+  path.join(repoRoot, "src", "metabrowser", "static", "plugin-sdk-views.js"),
+  "plugin-sdk-views.js",
+);
 load(
   path.join(repoRoot, "src", "metabrowser", "static", "filter-controls.js"),
   "filter-controls.js",

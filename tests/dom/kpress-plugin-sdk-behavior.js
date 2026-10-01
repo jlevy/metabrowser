@@ -115,7 +115,13 @@ const orderedPluginModules = new Map([
   ["/plugin-static/order-first/index.js", { delayMs: 30, owner: "first" }],
   ["/plugin-static/order-second/index.js", { delayMs: 0, owner: "second" }],
 ]);
+/** What the SDK held when the view-helper fixture's plugin module was imported. */
+const viewHelperImports = [];
 async function importKpressModule(specifier) {
+  if (specifier === "/plugin-static/view-helper-fixture/index.js") {
+    viewHelperImports.push(typeof sandbox.metabrowser.renderSourceView);
+    return import("data:text/javascript,export default 1");
+  }
   const orderedPlugin = orderedPluginModules.get(specifier);
   if (orderedPlugin) {
     await new Promise((resolve) => setTimeout(resolve, orderedPlugin.delayMs));
@@ -231,6 +237,12 @@ vm.runInContext(fs.readFileSync(sdkPath, "utf-8"), sandbox, {
   filename: "plugin-sdk.js",
   importModuleDynamically: importKpressModule,
 });
+// The helpers a view's renderer calls, which the shell loads with the compositor.
+vm.runInContext(
+  fs.readFileSync(path.join(path.dirname(sdkPath), "plugin-sdk-views.js"), "utf-8"),
+  sandbox,
+  { filename: "plugin-sdk-views.js" },
+);
 
 if (!sandbox.metabrowser || typeof sandbox.metabrowser.fetchKpressRender !== "function") {
   fail("plugin-sdk.js did not expose metabrowser.fetchKpressRender");
@@ -809,6 +821,85 @@ async function check_same_kind_plugins_follow_manifest_order() {
   return { ok: true };
 }
 
+// ── Contract: no plugin loads ahead of the view helpers ───────────────────
+//
+// plugin-sdk-views.js is not a startup script. The shell fetches it beside the view
+// compositor; a plugin loaded on any other path must still find the helpers there
+// when its module evaluates, so the plugin loader fetches the `sdk-views` bundle
+// first when they are missing, and not at all when they are present.
+
+async function check_plugins_wait_for_view_helpers() {
+  const helpers = [
+    "langForExtension",
+    "langForPath",
+    "partialNoticeHtml",
+    "renderSourceView",
+    "renderTextLoadMoreFooter",
+    "renderTextTruncationWarning",
+    "wrapWithCopy",
+  ];
+  const missing = helpers.filter((name) => typeof sandbox.metabrowser[name] !== "function");
+  if (missing.length) {
+    return { ok: false, detail: `plugin-sdk-views.js did not define ${missing.join(", ")}` };
+  }
+  const held = Object.fromEntries(helpers.map((name) => [name, sandbox.metabrowser[name]]));
+  const requested = [];
+  const previousAssets = sandbox.MetabrowserAssets;
+  sandbox.MetabrowserAssets = {
+    ensureAsset(name) {
+      requested.push(name);
+      // The bundle arrives a turn later, as a fetched script does.
+      return new Promise((resolve) => {
+        setTimeout(() => {
+          Object.assign(sandbox.metabrowser, held);
+          resolve(undefined);
+        }, 5);
+      });
+    },
+  };
+  try {
+    sandbox.MetabrowserPluginHost.configureAssets({
+      "view-helper-kind": [
+        {
+          name: "view-helper-fixture",
+          module: "/plugin-static/view-helper-fixture/index.js",
+          scripts: [],
+          styles: [],
+        },
+      ],
+      "view-helper-kind-again": [
+        {
+          name: "view-helper-fixture-again",
+          module: "/plugin-static/view-helper-fixture/index.js",
+          scripts: [],
+          styles: [],
+        },
+      ],
+    });
+    for (const name of helpers) {
+      delete sandbox.metabrowser[name];
+    }
+    await sandbox.metabrowser.ensureKindAssets("view-helper-kind");
+    if (requested.join() !== "sdk-views" || viewHelperImports.join() !== "function") {
+      return {
+        ok: false,
+        detail: `absent helpers: requested ${requested.join() || "nothing"}, plugin saw ${viewHelperImports.join()}`,
+      };
+    }
+    await sandbox.metabrowser.ensureKindAssets("view-helper-kind-again");
+    if (requested.length !== 1 || viewHelperImports.join() !== "function,function") {
+      return {
+        ok: false,
+        detail: `present helpers: requested ${requested.join()}, plugin saw ${viewHelperImports.join()}`,
+      };
+    }
+    return { ok: true };
+  } finally {
+    Object.assign(sandbox.metabrowser, held);
+    sandbox.MetabrowserAssets = previousAssets;
+  }
+}
+
 // ── Driver ────────────────────────────────────────────────────────────────
 
 (async () => {
@@ -826,9 +917,10 @@ async function check_same_kind_plugins_follow_manifest_order() {
   const cachedPluginStylesheet = await check_cached_plugin_stylesheet_settles_without_onload();
   const sameKindOrder = await check_same_kind_plugins_follow_manifest_order();
   const loadMore = check_load_more_runs_only_registered_actions();
+  const viewHelpers = await check_plugins_wait_for_view_helpers();
 
   process.stdout.write(
-    `${JSON.stringify({ stylesheet, dedup, errorProp, assetRetry, cachedStylesheet, assetFailureFallback, transformedSource, fileCatalog, completeText, pathText, selectedKindAssets, cachedPluginStylesheet, sameKindOrder, loadMore })}\n`,
+    `${JSON.stringify({ stylesheet, dedup, errorProp, assetRetry, cachedStylesheet, assetFailureFallback, transformedSource, fileCatalog, completeText, pathText, selectedKindAssets, cachedPluginStylesheet, sameKindOrder, loadMore, viewHelpers })}\n`,
   );
 
   if (
@@ -845,7 +937,8 @@ async function check_same_kind_plugins_follow_manifest_order() {
     !selectedKindAssets.ok ||
     !cachedPluginStylesheet.ok ||
     !sameKindOrder.ok ||
-    !loadMore.ok
+    !loadMore.ok ||
+    !viewHelpers.ok
   ) {
     process.exit(1);
   }

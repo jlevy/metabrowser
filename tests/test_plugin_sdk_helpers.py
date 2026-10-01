@@ -20,13 +20,49 @@ Surface checked:
 
 from __future__ import annotations
 
+import asyncio
+import json
 from pathlib import Path
+from typing import Any, cast
 
-SDK_JS = Path(__file__).resolve().parent.parent / "src" / "metabrowser" / "static" / "plugin-sdk.js"
+from metabrowser import server
+
+STATIC = Path(__file__).resolve().parent.parent / "src" / "metabrowser" / "static"
+# The SDK is two scripts: the startup one, and the helpers a view's renderer calls,
+# which load with the view compositor and before any plugin.
+SDK_JS = (STATIC / "plugin-sdk.js", STATIC / "plugin-sdk-views.js")
 
 
 def _sdk_source() -> str:
-    return SDK_JS.read_text(encoding="utf-8")
+    return "\n".join(path.read_text(encoding="utf-8") for path in SDK_JS)
+
+
+def test_view_helpers_are_no_startup_script_and_precede_every_view_and_plugin() -> None:
+    # A view's renderer calls these and the first tree does not, so the shell must not
+    # fetch them before it paints. They are a bundle the shell waits for with the view
+    # compositor, and the plugin loader waits for before it loads any plugin.
+    html = bytes(asyncio.run(server.index(cast(Any, None))).body).decode()
+    assert '<script src="/static/plugin-sdk.js' in html
+    assert '<script src="/static/plugin-sdk-views.js' not in html
+    bundles = json.loads(
+        html.split("window.METABROWSER_ASSET_BUNDLES=", 1)[1].split(";</script>", 1)[0]
+    )
+    assert [entry["src"].partition("?")[0] for entry in bundles["sdk-views"]] == [
+        "/static/plugin-sdk-views.js"
+    ]
+
+    app = (STATIC / "app.js").read_text(encoding="utf-8")
+    load = app[app.index("async function loadViewComposition() {") :]
+    assert 'assets.ensureAsset("sdk-views"),' in load[: load.index("\n}\n")]
+
+    startup = SDK_JS[0].read_text(encoding="utf-8")
+    loader = startup[startup.index("async function loadPluginsForKind(kind) {") :]
+    assert loader.splitlines()[1].strip() == "await _ensureViewHelpers();"
+    assert 'ensureAsset("sdk-views")' in startup
+    # The startup script keeps none of them, or the move saved nothing.
+    for name in ("renderSourceView", "wrapWithCopy", "partialNoticeHtml", "langForPath"):
+        assert f"function {name}(" not in startup, name
+        assert f"function {name}(" in SDK_JS[1].read_text(encoding="utf-8"), name
 
 
 def test_sdk_exports_size_html() -> None:

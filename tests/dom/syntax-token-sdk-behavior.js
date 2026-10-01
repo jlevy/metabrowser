@@ -102,6 +102,8 @@ function loadSdk(sandbox) {
     load(sandbox, `src/metabrowser/static/${filename}`);
   }
   load(sandbox, "src/metabrowser/static/plugin-sdk.js");
+  // The helpers a view's renderer calls, which the shell loads with the compositor.
+  load(sandbox, "src/metabrowser/static/plugin-sdk-views.js");
 }
 
 async function main() {

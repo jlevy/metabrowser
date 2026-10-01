@@ -115,6 +115,8 @@ WHEEL_SMOKE_SCRIPT = dedent(
         "static/keyboard-help.js",
         "static/keyboard-shortcuts.js",
         "static/overlay-layer.js",
+        "static/plugin-sdk-views.js",
+        "static/source-line-anchors.js",
         "static/tree-keyboard-navigation.js",
         "static/view-composition.js",
         "builtin_plugins/folder/overview.js",

@@ -1267,6 +1267,7 @@ async def index(request: Request) -> HTMLResponse:
     source_line_anchors_url = _static_asset_url("source-line-anchors.js")
     file_type_taxonomy_url = _static_asset_url("file-type-taxonomy.js")
     plugin_sdk_url = _static_asset_url("plugin-sdk.js")
+    plugin_sdk_views_url = _static_asset_url("plugin-sdk-views.js")
     view_composition_url = _static_asset_url("view-composition.js")
     inert_html_url = _static_asset_url("inert-html.js")
     filter_state_url = _static_asset_url("filter-state.js")
@@ -1481,6 +1482,12 @@ async def index(request: Request) -> HTMLResponse:
         # with no layout shift in the pane, in this tier as in the eager one. See
         # explorations/performance-loop/experiments/exp-037.
         "source-line-anchors": [{"src": source_line_anchors_url}],
+        # The SDK helpers a renderer builds its markup with: the Source surface, the
+        # copy wrapper, the partial-content notice. Nothing runs them until a view
+        # renders, so they load beside the compositor, and plugin-sdk.js waits for
+        # them before it loads a plugin. Measured 2026-10-01: 3,572 of the 22,308
+        # compressed bytes plugin-sdk.js cost as a startup script. See exp-037.
+        "sdk-views": [{"src": plugin_sdk_views_url}],
         # Only untrusted Markdown needs the allowlist: a pull-request comment, or a
         # document under the untrusted profile, which the server marks inert.
         "inert-html": [{"src": inert_html_url}],
