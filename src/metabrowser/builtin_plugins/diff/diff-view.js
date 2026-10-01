@@ -59,6 +59,7 @@ import { createViewFileOpener } from "./diff-view-file.js";
  * @property {{body: HTMLElement, change: Record<string, unknown>, revision: string}[]} queuedHydrations
  * @property {Set<number>} timers
  * @property {ReturnType<typeof createViewFileOpener> | null} viewFile
+ * @property {HTMLElement | null} viewFileBusy The control whose switch is on its way.
  * @property {Set<{timer: number, resolve: (active: boolean) => void}>} yielders
  */
 
@@ -860,31 +861,54 @@ function cancelFoldMaterializations(state) {
  * text.
  *
  * @param {import("./diff-view-file.js").ViewFileAction} action
- * @param {NonNullable<MountedDiffState["viewFile"]>} opener
- * @param {HTMLElement} notice Where a refusal is said, under the bar.
+ * @param {MountedDiffState} view
+ * @param {{element: HTMLElement, timer: number}} notice Where a refusal is said, under
+ *   the bar.
  * @returns {HTMLElement}
  */
-function renderViewFileControl(action, opener, notice) {
+function renderViewFileControl(action, view, notice) {
+  const opener = /** @type {NonNullable<MountedDiffState["viewFile"]>} */ (view.viewFile);
   const link = action.mode === "link";
   const control = el(link ? "a" : "button", `diff-file-view diff-file-view-${action.side}`);
   control.textContent = action.label;
   control.setAttribute("data-tip-text", action.detail);
   control.setAttribute("aria-label", `${action.label}: ${action.detail}`);
   if (link) {
-    control.setAttribute("href", opener.href(action.wire));
+    control.setAttribute("href", action.href);
     return control;
   }
   control.setAttribute("type", "button");
   control.addEventListener("click", () => {
-    notice.textContent = "";
-    notice.hidden = true;
+    if (opener.switching()) {
+      // Another control's switch is on its way: this click changes nothing, and that
+      // control stays the busy one.
+      return;
+    }
+    clearTimeout(notice.timer);
+    view.timers.delete(notice.timer);
+    notice.element.textContent = "";
+    notice.element.hidden = true;
     control.setAttribute("aria-busy", "true");
+    view.viewFileBusy = control;
     void opener.switchTo(action).then((outcome) => {
-      control.setAttribute("aria-busy", "false");
-      if (outcome.kind === "refused") {
-        notice.textContent = outcome.message;
-        notice.hidden = false;
+      if (outcome.kind === "navigated") {
+        // The page is leaving; the control stays busy until it does, or until the
+        // browser brings the page back (the opener's `released`).
+        return;
       }
+      control.setAttribute("aria-busy", "false");
+      view.viewFileBusy = null;
+      if (outcome.kind !== "refused") {
+        return;
+      }
+      // A live region announces a change it was shown before: unhide it first, and
+      // set its text in the next task.
+      notice.element.hidden = false;
+      notice.timer = setTimeout(() => {
+        view.timers.delete(notice.timer);
+        notice.element.textContent = outcome.message;
+      }, 0);
+      view.timers.add(notice.timer);
     });
   });
   return control;
@@ -938,12 +962,13 @@ function renderFileBar(change, toggleId, bodyId, view) {
   /** @type {HTMLElement | null} */
   let notice = null;
   const actions = view.viewFile?.actions(change, view.resolved) ?? [];
-  if (view.viewFile && actions.length > 0) {
+  if (actions.length > 0) {
     notice = el("div", "diff-availability diff-file-notice");
     notice.setAttribute("role", "status");
     notice.hidden = true;
+    const said = { element: notice, timer: 0 };
     for (const action of actions) {
-      bar.append(renderViewFileControl(action, view.viewFile, notice));
+      bar.append(renderViewFileControl(action, view, said));
     }
   }
 
@@ -1376,9 +1401,18 @@ export function mountDiffView(container, document_, api, options = {}) {
     pendingHydrations: new Map(),
     queuedHydrations: [],
     timers: new Set(),
-    viewFile: options.viewFile ? createViewFileOpener(options.viewFile) : null,
+    viewFile: null,
+    viewFileBusy: null,
     yielders: new Set(),
   };
+  if (options.viewFile) {
+    view.viewFile = createViewFileOpener(options.viewFile, {
+      released() {
+        view.viewFileBusy?.setAttribute("aria-busy", "false");
+        view.viewFileBusy = null;
+      },
+    });
+  }
   const removeSelectionGate = installSplitSelectionGate(root);
   root.dataset.layout = view.layout;
   const manifest =
@@ -1439,6 +1473,7 @@ export function mountDiffView(container, document_, api, options = {}) {
       }
       view.disposed = true;
       cancelPendingWork();
+      view.viewFile?.dispose();
       unbind();
       removeSelectionGate();
       root.remove();

@@ -459,12 +459,16 @@ Repository cache:
   or **View at base** (Files changed, where the base is the merge base) opens the old
   side. A deleted file has only its old side, an added file only its new side, and a
   renamed file opens its old path at the old side.
+  Only a regular file’s side is offered: a submodule has no file to show, and a symbolic
+  link would open its target rather than the link text the diff shows.
   A side at the commit the page shows is a link to the file’s `/view/` address, so a new
   tab, a copied link, and back and forward work as for any link.
   A side at another commit is a button that switches the served pin to that commit with
   `POST /api/source/pin` and opens the file there; its tooltip names the commit, and a
   switch the server does not make, such as a commit the mirror lacks, is said under the
   file bar while the page stays as it was.
+  There is no address for a file at a commit the server does not serve, so such a side
+  has no link to copy or open in a new tab.
   A name that is not UTF-8 is addressed by its bytes.
   A diff in a served folder, and a patch file’s diff, have no such control: a folder has
   no file at a commit to open, only its working tree’s.

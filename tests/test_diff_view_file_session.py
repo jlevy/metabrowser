@@ -40,7 +40,7 @@ from metabrowser.cache.acquire import PublishedSource, acquire_source
 from metabrowser.cache.records import StoreOperation
 from metabrowser.cache.repository_store import open_revision
 from metabrowser.cache.served_mirror import StoreMirror
-from metabrowser.git.tree_source import GitRevisionSubject
+from metabrowser.git.tree_source import GitPath, GitRevisionSubject
 from metabrowser.mirror_refresh import serve_mirror
 from metabrowser.source import reset_source_session, serve_subject_opener
 from tests import source_mirror_fixture
@@ -151,6 +151,10 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
                 client, {"oid": ids["first"], "view": recorded["views"]["old_name"]}
             )
             recorded["page_at_parent"] = _page(client)
+            # Asked of a page brought back by Back, for the deleted file's old side.
+            recorded["switch_gone"] = _switch(
+                client, {"oid": ids["first"], "view": view("gone.txt")}
+            )
             recorded["switch_head"] = _switch(
                 client, {"oid": ids["second"], "view": recorded["views"]["new_name"]}
             )
@@ -199,8 +203,13 @@ def test_recording_is_what_the_servers_answer(
         ids["first"],
         ids["second"],
     )
-    kinds = {change["kind"] for change in recorded["commit"]["body"]["manifest"]["files"]}
-    assert kinds == {"modified", "added", "deleted", "renamed"}
+    files = recorded["commit"]["body"]["manifest"]["files"]
+    assert {change["kind"] for change in files} == {"modified", "added", "deleted", "renamed"}
+    assert {(change.get("new") or change["old"])["entry_type"] for change in files} == {
+        "file",
+        "symlink",
+        "submodule",
+    }
     assert recorded["root"]["body"]["resolved"]["left"] == {
         "kind": "empty",
         "symbolic": ids["first"],
@@ -215,6 +224,8 @@ def test_recording_is_what_the_servers_answer(
     assert recorded["page_at_parent"] == {"pin": ids["first"], "ref": None}
     head = recorded["switch_head"]
     assert (head["status"], head["body"]["view_href"]) == (200, recorded["views"]["new_name"])
+    # Back on the branch's tip by its ID, the server serves the branch again.
+    assert head["body"]["status"]["ref"] == "refs/remotes/origin/trunk"
     assert recorded["other_pending"]["status"] == 202
     assert recorded["other_pending"]["body"]["code"] == "selection_pending"
     assert recorded["other_not_found"]["status"] == 404
@@ -232,77 +243,53 @@ def test_recording_is_what_the_servers_answer(
     )
 
 
-def _session() -> dict[str, Any]:
+_LINK = re.compile(r"link (/view/\S+) · Open .* at ([0-9a-f]{12}), ")
+_SWITCH = re.compile(r"POST /api/source/pin \[content-type: application/json\] (\{.*\})$")
+
+
+def test_every_side_the_session_offers_is_a_file_at_its_commit(tmp_path: Path) -> None:
+    """Git itself confirms what the transcript cannot: each address names a real file.
+
+    ``tests/golden/cli-ui-diff-view-file.tryscript.md`` pins what the session prints. This
+    asks the fixture's repository whether every link's address, and every address a
+    switch posts, is a blob at the commit it is offered at: so a deleted file is offered
+    only where it exists, a renamed one at its old path on the old side, and a name that
+    is not UTF-8 by its bytes.
+    """
+
     if shutil.which("node") is None:
         pytest.skip("node not available")
     result = subprocess.run(
         ["node", str(SESSION_JS)], capture_output=True, text=True, timeout=60, check=False
     )
     assert result.returncode == 0, f"stdout: {result.stdout!r}\nstderr: {result.stderr!r}"
-    return json.loads(result.stdout)
-
-
-def test_the_session_runs_on_the_recording() -> None:
-    recording = json.loads(FIXTURE.read_text(encoding="utf-8"))
-    ids, views = recording["commits"], recording["views"]
-    by_name = {step["step"]: step for step in _session()["steps"]}
-
-    shown = by_name["a commit's diff on the page that shows that commit"]["bars"]
-    # Deleted: only the parent's side. Added: only the commit's. Renamed: the old path
-    # at the parent and the new one at the commit.
-    assert [control.split("]")[0] for control in shown["D gone.txt"]] == ["[View at parent"]
-    assert [control.split("]")[0] for control in shown["A added.txt"]] == ["[View file"]
-    old, new = shown["R100 src/old_name.py → src/new_name.py"]
-    assert old.endswith(f"Switch to {ids['first'][:12]} and open {OLD_NAME}")
-    assert f"link {views['new_name']} " in new and NEW_NAME in new
-    # A name that is not UTF-8 is addressed by its bytes, as the server addresses it.
-    assert f"link {views['latin1']} " in shown["M latin1-\ufffd.txt"][1]
-
-    followed = by_name["the link is the browser's to follow"]
-    assert (followed["prevented"], followed["requests"]) == (False, [])
-    assert (followed["follows"], followed["opens"]) == (views["readme"], "README.md")
-    assert followed["barStillOpen"] is True
-    assert by_name["the rest of the bar still folds the file"]["barStillOpen"] is False
-
-    asked = by_name["View at parent asks the server to switch"]
-    body = json.dumps(recording["switch_parent"]["request"], separators=(",", ":"))
-    assert asked["requests"] == [f"POST /api/source/pin {body}"]
-    assert asked["barStillOpen"] is True
-    assert by_name["a second switch waits for the first"]["requests"] == []
-    went = by_name["the page goes where the server says"]
-    assert went["navigated"] == [views["old_name"]] and went["opens"] == OLD_NAME
-
-    # On the parent's page the same diff has the sides the other way around.
-    on_parent = by_name["the same diff from the page on the parent"]["bars"]
-    old, new = on_parent["R100 src/old_name.py → src/new_name.py"]
-    assert f"link {views['old_name']} " in old
-    assert new.endswith(f"Switch to {ids['second'][:12]} and open {NEW_NAME}")
-    assert by_name["View file switches to the commit"]["navigated"] == [views["new_name"]]
-
-    root = by_name["a root commit has only its own side"]["bars"]
-    assert all(len(controls) == 1 and "[View file]" in controls[0] for controls in root.values())
-
-    pull = by_name["a pull request's Files changed opens the merge base and the head"]
-    assert pull["requests"] == [
-        "GET /api/plugin/diff/comparison"
-        f"?left={ids['base']}&right={ids['second']}&base_policy=merge_base"
-    ]
-    base, head = pull["bars"]["M README.md"]
-    assert base == f"[View at base] button · Switch to {ids['first'][:12]} and open README.md"
-    assert head.startswith(f"[View file] link {views['readme']} ")
-
-    assert by_name["a patch file names no commit"]["bars"] == {"M kept.txt": []}
-    refusals = [
-        ("a commit the server's mirror lacks is being fetched", "is fetching"),
-        ("asked again after the fetch, the origin does not have it", "origin does not have it"),
-        ("a fetch that could not run says so", "fetching it failed"),
-        ("a server that now serves a folder refuses", "(unsupported_for_subject)"),
-        ("a request that fails says so", "The switch request failed."),
-    ]
-    for name, said in refusals:
-        step = by_name[name]
-        assert said in step["notices"]["M README.md"], name
-        assert "navigated" not in step, name
-    assert "notices" not in by_name["asking again clears what the last refusal said"]
-    folder = by_name["a served folder's page has no controls"]["bars"]
-    assert folder and all(controls == [] for controls in folder.values())
+    offered: set[tuple[str, str]] = set()
+    for step in json.loads(result.stdout)["steps"]:
+        for controls in step.get("bars", {}).values():
+            for control in controls:
+                link = _LINK.search(control)
+                if link is not None:
+                    offered.add((link.group(2), link.group(1)))
+        for request in step["requests"]:
+            switch = _SWITCH.match(request)
+            if switch is not None:
+                body = json.loads(switch.group(1))
+                offered.add((body["oid"], body["view"]))
+    # Both commits, by link and by switch, and every kind of change among them.
+    assert len(offered) >= 12, offered
+    origin = build_origin(tmp_path)
+    for commit, address in sorted(offered):
+        segments = GitPath.from_wire(address.removeprefix("/view/")).segments
+        kind = subprocess.run(
+            [
+                b"git",
+                b"--git-dir",
+                os.fsencode(origin),
+                b"cat-file",
+                b"-t",
+                commit.encode() + b":" + b"/".join(segments),
+            ],
+            capture_output=True,
+            check=False,
+        )
+        assert kind.stdout.strip() == b"blob", (commit, address, kind.stderr)

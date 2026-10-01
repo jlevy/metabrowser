@@ -12,11 +12,13 @@
 // builtin_plugins/diff/index.js loads whole, as the shell loads the plugin, with its
 // modules: it reads the page's pin, validates the document, and mounts the diff view,
 // whose file bars carry the controls diff-view-file.js decides. static/navigation.js
-// loads whole too and formats every address. The SDK functions the plugin calls that
+// loads whole too and spells every address. The SDK functions the plugin calls that
 // do not decide anything here (the plugin-data transport, syntax highlighting, and
 // preferences) are stand-ins, and the page is a small element tree that records what the
-// production code builds. Each step prints the requests the page made, the controls of
-// each file bar, where the browser or the page went, and what a refusal said.
+// production code builds. The stand-in for the pin route refuses what the server
+// refuses: a request whose content type is not JSON. Each step prints the requests the
+// page made, the controls of each file bar, where the browser or the page went, and
+// what a refusal said.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -29,15 +31,31 @@ const recorded = JSON.parse(
   fs.readFileSync(path.join(repoRoot, "tests/fixtures/diff-view-file-responses.json"), "utf8"),
 );
 
+// A step that waits on a promise the page never settles would end the process with
+// nothing printed and status 0. Say so instead.
+let finished = false;
+process.on("exit", (code) => {
+  if (!finished && code === 0) {
+    process.stderr.write(
+      "View file session: ended before its last step; a promise never settled\n",
+    );
+    process.exitCode = 1;
+  }
+});
+
 function assert(condition, message) {
   if (!condition) {
     throw new Error(message);
   }
 }
 
+/** Let promises and zero-delay timers run: a refusal is said in the task after it. */
 async function settle() {
-  for (let turn = 0; turn < 20; turn += 1) {
-    await new Promise((resolve) => setImmediate(resolve));
+  for (let turn = 0; turn < 3; turn += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 2));
+    for (let tick = 0; tick < 10; tick += 1) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
   }
 }
 
@@ -190,6 +208,7 @@ function loadNavigation() {
     atob,
     btoa,
     TextDecoder,
+    TextEncoder,
     Uint8Array,
     METABROWSER_SOURCE_KIND: "git_revision",
   };
@@ -207,6 +226,8 @@ const route = loadNavigation();
 const requests = [];
 const waiting = [];
 const navigated = [];
+// What the page listens for on its window: `pageshow`, for a restore by the browser.
+const windowListeners = new Map();
 
 /** The answers of the plugin's data hooks, by route and query, from the recording. */
 const pluginData = new Map();
@@ -224,10 +245,20 @@ globalThis.document = {
   removeEventListener() {},
 };
 globalThis.window = {
+  MetabrowserNavigationRoute: route,
   location: {
     assign(href) {
       navigated.push(href);
     },
+  },
+  addEventListener(type, handler) {
+    windowListeners.set(type, [...(windowListeners.get(type) ?? []), handler]);
+  },
+  removeEventListener(type, handler) {
+    windowListeners.set(
+      type,
+      (windowListeners.get(type) ?? []).filter((candidate) => candidate !== handler),
+    );
   },
   metabrowser: {
     registerView(kind, view, spec) {
@@ -249,13 +280,24 @@ globalThis.window = {
     prefs: { get: (_name, fallback) => fallback, set: () => true },
   },
 };
-// The pin route, as the plugin asks it: each request waits for the step to answer.
+// The pin route, as the plugin asks it: each request waits for the step to answer. The
+// server answers a body that is not declared JSON with 415 before it reads it, so a
+// request without that content type never reaches an answer here either.
 globalThis.fetch = (url, init) => {
-  requests.push(`${init.method} ${url} ${init.body}`);
+  const type = new Headers(init.headers).get("content-type");
+  requests.push(`${init.method} ${url} [content-type: ${type}] ${init.body}`);
+  assert(type === "application/json", `the pin route refuses content type ${type} with 415`);
   return new Promise((resolve, reject) => {
     waiting.push({ body: JSON.parse(init.body), resolve, reject });
   });
 };
+
+/** A `pageshow`, as the browser fires it when it brings the page back. */
+function pageshow(persisted) {
+  for (const handler of windowListeners.get("pageshow") ?? []) {
+    handler({ persisted });
+  }
+}
 
 /** Answer the waiting pin request with what a server answered that same request. */
 async function answer(recording) {
@@ -283,15 +325,17 @@ function barLabel(bar) {
 }
 
 function describeControl(control) {
-  const href = control.getAttribute("href");
-  const kind = control.tagName === "A" ? `link ${href}` : "button";
+  const kind =
+    control.tagName === "A"
+      ? `link ${control.getAttribute("href")}`
+      : `button[type=${control.getAttribute("type")}]`;
   const name = control.getAttribute("aria-label");
   const detail = control.getAttribute("data-tip-text");
   assert(name === `${control.textContent}: ${detail}`, "the name is the label and the detail");
   return `[${control.textContent}] ${kind} · ${detail}`;
 }
 
-/** Each file bar's controls, and what a refusal says under it. */
+/** Each file bar's controls. */
 function bars(container) {
   const shown = {};
   for (const section of container.find("diff-file")) {
@@ -301,12 +345,14 @@ function bars(container) {
   return shown;
 }
 
+/** What a refusal says under a bar, with the role it is announced by. */
 function notices(container) {
   const said = {};
   for (const section of container.find("diff-file")) {
     const notice = section.find("diff-file-notice")[0];
     if (notice && !notice.hidden) {
-      said[barLabel(section.find("diff-file-bar")[0])] = notice.textContent;
+      said[barLabel(section.find("diff-file-bar")[0])] =
+        `[role=${notice.getAttribute("role")}] ${notice.textContent}`;
     }
   }
   return said;
@@ -333,6 +379,14 @@ function expanded(container, file) {
     }
   }
   throw new Error(`no file bar ${file}`);
+}
+
+/** The controls that say a switch is on its way. */
+function busy(container) {
+  return container
+    .find("diff-file-view")
+    .filter((candidate) => candidate.getAttribute("aria-busy") === "true")
+    .map((candidate) => `${barLabel(candidate.parentNode)} [${candidate.textContent}]`);
 }
 
 /** The path a `/view/` address names on a pin, by the production decoder. */
@@ -400,23 +454,41 @@ async function main() {
   container.find("diff-file-path")[0].click();
   step("the rest of the bar still folds the file", { barStillOpen: expanded(container, readme) });
 
-  const toParent = control(container, renamed, "View at parent");
-  toParent.click();
+  control(container, renamed, "View at parent").click();
   await settle();
   step("View at parent asks the server to switch", {
-    busy: toParent.getAttribute("aria-busy"),
+    busy: busy(container),
     barStillOpen: expanded(container, renamed),
   });
 
   control(container, "D gone.txt", "View at parent").click();
   await settle();
-  step("a second switch waits for the first");
+  step("a second switch waits for the first", { busy: busy(container) });
 
   await answer(recorded.switch_parent);
   const went = navigated[0];
-  step("the page goes where the server says", {
-    busy: toParent.getAttribute("aria-busy"),
-    opens: pathOf(went),
+  step("the page goes where the server says", { opens: pathOf(went), busy: busy(container) });
+
+  // The page is leaving. Until it has, nothing more is asked of the server.
+  control(container, "D gone.txt", "View at parent").click();
+  await settle();
+  step("a page that is leaving asks nothing more", { busy: busy(container) });
+
+  // Back, with the commit the page shows served again: the browser restores the page as
+  // it was left, and its controls work again.
+  pageshow(false);
+  step("a pageshow that restores nothing changes nothing", { busy: busy(container) });
+  pageshow(true);
+  control(container, "D gone.txt", "View at parent").click();
+  await settle();
+  step("a page the browser brings back switches again", { busy: busy(container) });
+
+  // Unmounted while that switch was on its way: its answer takes the page nowhere.
+  mounted.dispose();
+  mounted = null;
+  await answer(recorded.switch_gone);
+  step("a diff unmounted before the answer goes nowhere", {
+    listeningForPageshow: (windowListeners.get("pageshow") ?? []).length,
   });
 
   // The page that load brings is rendered for the parent; Back returns to the diff on it.
@@ -426,7 +498,10 @@ async function main() {
   control(container, renamed, "View file").click();
   await settle();
   await answer(recorded.switch_head);
-  step("View file switches to the commit", { opens: pathOf(navigated[0]) });
+  step("View file switches to the commit, and the server is on its branch again", {
+    opens: pathOf(navigated[0]),
+    served: recorded.switch_head.body.status.ref,
+  });
 
   await open(recorded.page, { revision: ids.first, raw: Promise.resolve(recorded.root.body) });
   step("a root commit has only its own side", { bars: bars(container) });
@@ -445,13 +520,13 @@ async function main() {
     bars: bars(container),
   });
 
-  const patch = recorded.views.readme.replace(/[^/]*$/, "g1-Y2hhbmdlcy5wYXRjaA");
-  pluginData.set(
-    pluginRoute("diff", "document", { path: patch.slice("/view/".length) }),
-    recorded.patch.body,
-  );
-  await open(recorded.page, { path: patch.slice("/view/".length) });
-  step("a patch file names no commit", { opens: pathOf(patch), bars: bars(container) });
+  const patch = route.gitPathWire("changes.patch");
+  pluginData.set(pluginRoute("diff", "document", { path: patch }), recorded.patch.body);
+  await open(recorded.page, { path: patch });
+  step("a patch file names no commit", {
+    opens: pathOf(`/view/${patch}`),
+    bars: bars(container),
+  });
 
   // A page left open while its server was restarted on another repository.
   await open(recorded.page, commitDiff);
@@ -460,7 +535,7 @@ async function main() {
   lacking.click();
   await settle();
   await answer(recorded.other_pending);
-  step("a commit the server's mirror lacks is being fetched");
+  step("a commit the server's mirror lacks is being fetched", { busy: busy(container) });
 
   lacking.click();
   await settle();
@@ -493,10 +568,12 @@ async function main() {
   step("a served folder's page has no controls", { bars: bars(container) });
 
   mounted?.dispose();
+  finished = true;
   process.stdout.write(`${JSON.stringify({ steps }, null, 2)}\n`);
 }
 
 main().catch((error) => {
+  finished = true;
   process.stderr.write(`${error.stack || error}\n`);
   process.exit(1);
 });

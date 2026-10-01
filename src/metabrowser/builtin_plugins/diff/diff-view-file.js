@@ -11,6 +11,11 @@
 // selector's own request, `POST /api/source/pin`, naming the address so the answer
 // says where the page goes.
 //
+// Only a regular file's side gets a control. A submodule's side is a commit of another
+// repository, which the view has nothing to show for. A symbolic link's side would open
+// the file the link points at, while the diff shows the link's own text, so it is left
+// out rather than opened as something the diff did not show.
+//
 // Every decision lives here without a DOM. `viewFileSides` reads the document,
 // `describeViewFile` says what each control is and does, and `createViewFileOpener`
 // owns the switch and what a refusal says. diff-view.js paints the controls, and
@@ -22,7 +27,8 @@
  * @property {"parent" | "base" | "head"} role What the side is to the comparison.
  * @property {string} commit The full ID of the commit the side belongs to.
  * @property {string} path The side's path, as the diff shows it.
- * @property {string} wire The path's GitPath wire, as `/view/` addresses it on a pin.
+ * @property {string | Uint8Array} address The path as an address is built from it: its
+ *   bytes when the name is not UTF-8, since `path` then holds replacement characters.
  */
 
 /**
@@ -30,7 +36,7 @@
  * @property {"base" | "head"} side
  * @property {string} commit
  * @property {string} path
- * @property {string} wire
+ * @property {string} href The file's `/view/` address on a pin.
  * @property {"link" | "switch"} mode A link opens an address the page already has; a
  *   switch changes the served pin first.
  * @property {string} label The control's text.
@@ -43,19 +49,21 @@
  *
  * @typedef {object} ViewFileHost
  * @property {string} pin The full ID of the commit the page shows.
- * @property {(wire: string) => string} href The `/view/` address of a GitPath wire.
+ * @property {(path: string | Uint8Array) => string | null} href The `/view/` address of
+ *   a path on a pin; null for a path no tree entry has.
  * @property {(body: {oid: string, view: string}) => Promise<{status: number, body: unknown}>} switchPin
  *   `POST /api/source/pin`.
  * @property {(href: string) => void} navigate Load an address, as a link does.
+ * @property {(restored: () => void) => () => void} onRestored Call *restored* when the
+ *   browser brings the page back from its back/forward cache; returns how to stop.
  */
 
 /**
- * @typedef {{kind: "navigated", href: string} | {kind: "busy"} | {kind: "refused", message: string}} ViewFileOutcome
+ * @typedef {{kind: "navigated", href: string} | {kind: "busy"} | {kind: "abandoned"} | {kind: "refused", message: string}} ViewFileOutcome
  */
 
 const FULL_COMMIT = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 const VIEW_PREFIX = "/view/";
-const SLASH = 0x2f;
 
 /** @param {string} commit */
 function short(commit) {
@@ -63,56 +71,21 @@ function short(commit) {
 }
 
 /**
- * One path segment's bytes as a GitPath wire token.
+ * One side's path as an address is built from it: the bytes in `path_b64` for a name
+ * that is not UTF-8, else the path itself. Null when the entry names no path.
  *
- * @param {Uint8Array} bytes
+ * @param {{path?: unknown, path_b64?: unknown}} entry
+ * @returns {string | Uint8Array | null}
  */
-function wireToken(bytes) {
-  let binary = "";
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
-  }
-  return `g1-${btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "")}`;
-}
-
-/**
- * The GitPath wire of one side's path: `g1-` and the unpadded base64url of each
- * segment's bytes. A path that is not UTF-8 carries its bytes in `path_b64`, and the
- * wire is built from those rather than from the replacement characters `path` shows.
- * `null` for a path with no segment or an empty one, which no tree entry has.
- *
- * @param {{path?: unknown, path_b64?: unknown}} side
- * @returns {string | null}
- */
-export function sidePathWire(side) {
-  /** @type {Uint8Array} */
-  let bytes;
-  if (typeof side.path_b64 === "string") {
-    let binary;
+export function sidePathForAddress(entry) {
+  if (typeof entry.path_b64 === "string") {
     try {
-      binary = atob(side.path_b64);
+      return Uint8Array.from(atob(entry.path_b64), (character) => character.charCodeAt(0));
     } catch {
       return null;
     }
-    bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
-  } else if (typeof side.path === "string") {
-    bytes = new TextEncoder().encode(side.path);
-  } else {
-    return null;
   }
-  const tokens = [];
-  let start = 0;
-  for (let index = 0; index <= bytes.length; index += 1) {
-    if (index < bytes.length && bytes[index] !== SLASH) {
-      continue;
-    }
-    if (index === start) {
-      return null;
-    }
-    tokens.push(wireToken(bytes.subarray(start, index)));
-    start = index + 1;
-  }
-  return tokens.join("/");
+  return typeof entry.path === "string" ? entry.path : null;
 }
 
 /**
@@ -132,11 +105,12 @@ function snapshotCommit(snapshot) {
 }
 
 /**
- * The sides of one change that are files at a commit, base before head.
+ * The sides of one change that are regular files at a commit, base before head.
  *
  * A deleted file has only its base side and an added one only its head side; a renamed
  * or copied file's base side is its old path. A comparison whose snapshots are not
  * commits, as a patch file's are not, has none, and neither has a root commit's base.
+ * A submodule's or a symbolic link's side is left out (see the head of this file).
  *
  * @param {Record<string, unknown>} change A manifest entry of the document.
  * @param {Record<string, unknown>} resolved The document's resolved comparison.
@@ -151,10 +125,12 @@ export function viewFileSides(change, resolved) {
     if (commit === null || entry === null || typeof entry !== "object") {
       return;
     }
-    const record = /** @type {{path?: unknown, path_b64?: unknown}} */ (entry);
-    const wire = sidePathWire(record);
-    if (wire !== null && typeof record.path === "string") {
-      sides.push({ side, role, commit, path: record.path, wire });
+    const record = /** @type {{path?: unknown, path_b64?: unknown, entry_type?: unknown}} */ (
+      entry
+    );
+    const address = sidePathForAddress(record);
+    if (record.entry_type === "file" && address !== null && typeof record.path === "string") {
+      sides.push({ side, role, commit, path: record.path, address });
     }
   };
   add(
@@ -171,10 +147,11 @@ export function viewFileSides(change, resolved) {
  * What one side's control is. Pure.
  *
  * @param {ViewFileSide} side
+ * @param {string} href The side's `/view/` address.
  * @param {{pin: string}} page The commit the page shows.
  * @returns {ViewFileAction}
  */
-export function describeViewFile(side, page) {
+export function describeViewFile(side, href, page) {
   const mode = side.commit === page.pin ? "link" : "switch";
   const label = side.side === "head" ? "View file" : `View at ${side.role}`;
   const at = short(side.commit);
@@ -182,7 +159,7 @@ export function describeViewFile(side, page) {
     side: side.side,
     commit: side.commit,
     path: side.path,
-    wire: side.wire,
+    href,
     mode,
     label,
     detail:
@@ -221,12 +198,25 @@ function switchRefusal(commit, status, body) {
  * The controls of one mounted diff and what following one does.
  *
  * One switch runs at a time: the pin is the server's, so a second request while the
- * first is on its way would race it.
+ * first is on its way would race it. A switch the server made keeps the hold while the
+ * page leaves, as the ref selector's does, so nothing else is asked of a page that is
+ * going away; the hold ends if the browser brings the page back from its back/forward
+ * cache with the pin it shows served again. A diff that was unmounted while its switch
+ * was on the way does not take the page anywhere.
  *
  * @param {ViewFileHost} host
+ * @param {{released?: () => void}} [options] *released* is called when a restored page
+ *   lets go of the hold.
  */
-export function createViewFileOpener(host) {
+export function createViewFileOpener(host, options = {}) {
   let switching = false;
+  let disposed = false;
+  const stopListening = host.onRestored(() => {
+    if (switching) {
+      switching = false;
+      options.released?.();
+    }
+  });
 
   /**
    * @param {Record<string, unknown>} change
@@ -234,7 +224,15 @@ export function createViewFileOpener(host) {
    * @returns {ViewFileAction[]}
    */
   function actions(change, resolved) {
-    return viewFileSides(change, resolved).map((side) => describeViewFile(side, host));
+    /** @type {ViewFileAction[]} */
+    const found = [];
+    for (const side of viewFileSides(change, resolved)) {
+      const href = host.href(side.address);
+      if (href !== null) {
+        found.push(describeViewFile(side, href, host));
+      }
+    }
+    return found;
   }
 
   /**
@@ -244,34 +242,48 @@ export function createViewFileOpener(host) {
    * @returns {Promise<ViewFileOutcome>}
    */
   async function switchTo(action) {
-    if (switching) {
-      return { kind: "busy" };
+    if (switching || disposed) {
+      return { kind: disposed ? "abandoned" : "busy" };
     }
     switching = true;
-    const address = host.href(action.wire);
+    let response;
     try {
-      const response = await host.switchPin({ oid: action.commit, view: address });
-      if (response.status !== 200) {
-        return {
-          kind: "refused",
-          message: switchRefusal(action.commit, response.status, response.body),
-        };
-      }
-      const answer = /** @type {{view_href?: unknown} | null} */ (response.body);
-      const href = answer?.view_href;
-      // The server says where the page goes on the new pin; the address asked for
-      // stands in when it says nothing.
-      const target = typeof href === "string" && href.startsWith(VIEW_PREFIX) ? href : address;
-      host.navigate(target);
-      return { kind: "navigated", href: target };
+      response = await host.switchPin({ oid: action.commit, view: action.href });
     } catch {
-      return { kind: "refused", message: "The switch request failed." };
-    } finally {
-      // Also after a switch: a page the browser restores from its history cache must
-      // not come back with every control held.
       switching = false;
+      return disposed
+        ? { kind: "abandoned" }
+        : { kind: "refused", message: "The switch request failed." };
     }
+    if (disposed) {
+      // The diff is gone, and with it the reader's reason to leave this page. The
+      // server may have switched; the freshness row says so.
+      switching = false;
+      return { kind: "abandoned" };
+    }
+    if (response.status !== 200) {
+      switching = false;
+      return {
+        kind: "refused",
+        message: switchRefusal(action.commit, response.status, response.body),
+      };
+    }
+    const answer = /** @type {{view_href?: unknown} | null} */ (response.body);
+    const href = answer?.view_href;
+    // The server says where the page goes on the new pin; the address asked for stands
+    // in when it says nothing.
+    const target = typeof href === "string" && href.startsWith(VIEW_PREFIX) ? href : action.href;
+    host.navigate(target);
+    return { kind: "navigated", href: target };
   }
 
-  return Object.freeze({ actions, href: host.href, switchTo });
+  return Object.freeze({
+    actions,
+    switchTo,
+    switching: () => switching,
+    dispose() {
+      disposed = true;
+      stopListening();
+    },
+  });
 }

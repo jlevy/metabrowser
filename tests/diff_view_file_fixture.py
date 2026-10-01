@@ -6,7 +6,8 @@ Run as a module, it builds below one directory:
   identity and date from the stream, so each commit ID is the same on every machine.
   ``trunk`` (the default branch) is ``first`` then ``second``, and ``second`` modifies
   ``README.md``, adds ``added.txt``, deletes ``gone.txt``, renames ``src/old_name.py`` to
-  ``src/new_name.py``, and modifies a file whose name is not UTF-8. ``base`` branches
+  ``src/new_name.py``, modifies a file whose name is not UTF-8, retargets the symbolic
+  link ``link``, and moves the submodule ``vendor/lib``. ``base`` branches
   from ``first`` and adds ``BASE.md``, so the merge base of ``base`` and ``trunk`` is
   ``first``, as it is for a pull request whose base branch moved on after the fork.
   ``changes.patch`` is a patch file in the tree, whose diff names no commit.
@@ -30,7 +31,15 @@ from pathlib import Path
 from typing import Final
 
 from metabrowser.git.tree_source import GitPath
-from tests.source_mirror_fixture import _EPOCH, _commit, _file, _git_env, _rev, build_home
+from tests.source_mirror_fixture import (
+    _EPOCH,
+    _commit,
+    _data,
+    _file,
+    _git_env,
+    _rev,
+    build_home,
+)
 
 # A name Git stores as these bytes, the Latin-1 spelling of "latin1-é.txt". The byte
 # 0xE9 alone is not UTF-8, so the name shows a replacement character.
@@ -58,12 +67,16 @@ def _stream() -> bytes:
     stream += _file(b"kept.txt", b"unchanged\n")
     stream += _file(LATIN1_NAME, b"a Latin-1 name\n")
     stream += _file(b"changes.patch", _PATCH)
+    stream += b"M 120000 inline link\n" + _data(b"README.md")
+    stream += b"M 160000 " + b"a" * 40 + b" vendor/lib\n"
     stream += _commit(b"refs/heads/trunk", 2, _EPOCH + 3600, b"second\n", 1)
     stream += _file(b"README.md", b"# Changes\n\nFirst line, changed.\nSecond line.\n")
     stream += _file(b"added.txt", b"new file\n")
     stream += b"D gone.txt\n"
     stream += b"R " + OLD_NAME.encode() + b" " + NEW_NAME.encode() + b"\n"
     stream += _file(LATIN1_NAME, b"a Latin-1 name, edited\n")
+    stream += b"M 120000 inline link\n" + _data(b"docs/guide.md")
+    stream += b"M 160000 " + b"b" * 40 + b" vendor/lib\n"
     stream += _commit(b"refs/heads/base", 3, _EPOCH + 7200, b"base moved on\n", 1)
     stream += _file(b"BASE.md", b"Only on base.\n")
     return stream + b"done\n"

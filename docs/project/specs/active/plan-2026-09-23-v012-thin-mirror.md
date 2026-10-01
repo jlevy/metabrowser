@@ -250,7 +250,7 @@ It claims only `github.com` and `raw.githubusercontent.com`.
 | Pull request: conversation, reviews, review comments | Yes (review comments listed with file and line) | Inline anchoring in the diff |
 | Pull request: checks and statuses summary | Yes | Logs |
 | Pull request: Files changed | Yes (merge-base diff) |  |
-| Diff: View file at either side of a changed file | Yes |  |
+| Diff: View file at either side of a changed file | Yes (a side not at the served commit switches the pin) | An address for a file at another commit |
 | Pull request list for a repository |  | Yes |
 | Issues, Actions, releases, blame |  | Yes |
 | SSH remotes, GitHub Enterprise hosts |  | Yes |

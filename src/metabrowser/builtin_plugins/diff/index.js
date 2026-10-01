@@ -53,6 +53,16 @@ function comparisonParams(key) {
  * no other, so a served folder, which has no file at a commit to open, gets `null` and
  * no controls.
  *
+ * Three things here are the shell's and the server's rather than the plugin SDK's: the
+ * page's pin (`METABROWSER_SOURCE_PIN`), the pin route, and the route codec's wire
+ * encoder (`MetabrowserNavigationRoute`). The SDK has no accessor for the first two,
+ * and the ref selector and the freshness row, which are shell code, read the global and
+ * call the route directly as well; there is no host path to share. Adding one would be
+ * a new public SDK surface, which the thin-mirror plan rules out for the alpha, and a
+ * built-in plugin ships with the shell and the server as one artifact, so these are
+ * internal contracts it may use, as the GitHub plugin posts to the pin route and the
+ * image and folder plugins use the route codec.
+ *
  * @returns {import("./diff-view-file.js").ViewFileHost | null}
  */
 function viewFileHost() {
@@ -62,9 +72,23 @@ function viewFileHost() {
   }
   return {
     pin,
-    href: (wire) => mb.navigation.href({ path: wire }),
+    href(path) {
+      const wire = window.MetabrowserNavigationRoute.gitPathWire(path);
+      return wire === null ? null : mb.navigation.href({ path: wire });
+    },
+    onRestored(restored) {
+      /** @param {PageTransitionEvent} event */
+      const shown = (event) => {
+        if (event.persisted) {
+          restored();
+        }
+      };
+      window.addEventListener("pageshow", shown);
+      return () => window.removeEventListener("pageshow", shown);
+    },
     // The ref selector's own request: a same-origin JSON POST, which content in a
-    // served page cannot make with a link, an image, or a form.
+    // served page cannot make with a link, an image, or a form. The server answers any
+    // other content type with 415.
     async switchPin(body) {
       const response = await fetch("/api/source/pin", {
         method: "POST",
