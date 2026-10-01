@@ -13,7 +13,6 @@ import os
 import re
 import subprocess
 import threading
-import time
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -32,6 +31,7 @@ from metabrowser.source import reset_source_session
 from metabrowser.source_routes import PIN_CHANGED_HEADER, PIN_HEADER
 from tests.git_pin_harness import git_env
 from tests.github_origin import FIRST_COMMIT, SECOND_COMMIT, github_origin
+from tests.golden_harness import settle
 from tests.required_tools import needs_git
 from tests.test_cache_acquire import _allow_installed_git
 
@@ -79,16 +79,6 @@ def _serve(url: str) -> Any:
 
 def _served_line(stdout: str) -> str:
     return next(line for line in stdout.splitlines() if line.startswith("Serving "))
-
-
-def _settle(client: TestClient) -> dict[str, Any]:
-    deadline = time.monotonic() + 30
-    while True:
-        status = client.get("/api/source/status").json()
-        if not status["refreshing"]:
-            return status
-        assert time.monotonic() < deadline, "the refresh did not finish"
-        time.sleep(0.02)
 
 
 def test_a_blob_url_serves_its_branch_and_opens_at_the_file_and_lines(origin: Path) -> None:
@@ -175,7 +165,7 @@ def test_a_selection_the_mirror_lacks_is_fetched_once_then_served(
         shell = client.get("/view/").text
         assert f'"pin": "{FIRST_COMMIT}"' in shell
         fetch_may_run.set()
-        status = _settle(client)
+        status = settle(client)
         assert status["selection_state"] == "found"
         assert (status["pin"], status["ref_name"]) == (later, "later")
         # The switch is a pin switch like any other: a page rendered for the default
@@ -192,7 +182,7 @@ def test_a_selection_no_fetch_brings_is_reported_not_found(origin: Path) -> None
     result = _serve(f"{REPO}/tree/never/docs")
     assert result.exit_code == 0, result.output
     with TestClient(server.app) as client:
-        status = _settle(client)
+        status = settle(client)
         assert status["selection_state"] == "not_found"
         # Nothing was switched, so a page rendered for the default pin stays current.
         assert status["pin"] == FIRST_COMMIT
@@ -239,7 +229,7 @@ def test_a_pin_switch_while_the_selection_waits_is_not_undone_by_its_fetch(
         assert switched.status_code == 200 and switched.json()["changed"] is True
         assert switched.json()["status"]["selection_state"] == "superseded"
         fetch_may_run.set()
-        status = _settle(client)
+        status = settle(client)
         assert (status["pin"], status["ref_name"]) == (SECOND_COMMIT, "release/v1")
         assert (status["selection_state"], status["selection_href"]) == ("superseded", None)
 
@@ -250,7 +240,7 @@ def test_a_found_selection_is_superseded_by_a_later_switch(origin: Path, tmp_pat
     _push_branch(origin, tmp_path, "later")
     assert _serve(f"{REPO}/blob/later/docs/v1.md#L1-L2").exit_code == 0
     with TestClient(server.app) as client:
-        found = _settle(client)
+        found = settle(client)
         assert found["selection_state"] == "found"
         wire = GitPath.from_display("docs/v1.md").to_wire()
         assert found["selection_href"] == f"/view/{wire}#L1-L2"
@@ -272,13 +262,13 @@ def test_a_failed_fetch_is_not_reported_as_not_found(
     result = _serve(f"{REPO}/tree/later/docs")
     assert result.exit_code == 0, result.output
     with TestClient(server.app) as client:
-        failed = _settle(client)
+        failed = settle(client)
         assert failed["selection_state"] == "fetch_failed"
         assert failed["last_outcome"]["outcome"] == "origin_unavailable"
         assert failed["pin"] == FIRST_COMMIT
         # A pin request that waited for a fetch that failed says so, not "not found".
         assert _pin(client, {"ref": "nope"}).status_code == 202
-        _settle(client)
+        settle(client)
         refused = _pin(client, {"ref": "nope"})
         assert refused.status_code == 502
         assert refused.json()["code"] == "selection_fetch_failed"
@@ -286,7 +276,7 @@ def test_a_failed_fetch_is_not_reported_as_not_found(
         away.rename(origin)
         started = client.post("/api/source/refresh", json={}, headers=_JSON_HEADERS)
         assert started.json()["status"]["selection_state"] == "pending"
-        status = _settle(client)
+        status = settle(client)
         assert (status["selection_state"], status["pin"]) == ("found", later)
 
 
@@ -313,7 +303,7 @@ def test_a_no_op_pin_switch_still_supersedes_a_waiting_selection(
         assert same.status_code == 200 and same.json()["changed"] is False
         assert same.json()["status"]["selection_state"] == "superseded"
         fetch_may_run.set()
-        status = _settle(client)
+        status = settle(client)
         assert (status["pin"], status["selection_state"]) == (FIRST_COMMIT, "superseded")
 
 
@@ -326,12 +316,12 @@ def test_a_miss_is_judged_by_the_fetches_since_it_not_by_the_last_one(
     reset_source_session()
     assert _serve(REPO).exit_code == 0
     with TestClient(server.app) as client:
-        _settle(client)
+        settle(client)
         assert _pin(client, {"ref": "first-miss"}).status_code == 202
-        _settle(client)
+        settle(client)
         origin.rename(tmp_path / "origin-away.git")
         assert _pin(client, {"ref": "second-miss"}).status_code == 202
-        failed = _settle(client)
+        failed = settle(client)
         assert failed["last_outcome"]["outcome"] == "origin_unavailable"
         first = _pin(client, {"ref": "first-miss"})
         assert (first.status_code, first.json()["code"]) == (404, "selection_not_found")

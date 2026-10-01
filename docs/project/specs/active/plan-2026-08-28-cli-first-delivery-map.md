@@ -456,12 +456,12 @@ the machine has, and Ubuntu’s packaged Git 2.43.0 is below the acquisition flo
 / patched tracks), with distro-patched Git still refused.
 The hosted runner image has since shipped a Git the floor admits (2.55.0 on 2026-10-01),
 but nothing pins it.
-Until CI pins Git 2.50.1 (`mb-oueh`), acquire / reuse / staging-sweep / orphan-store
-reuse / read-only cache hit / last-opened-at evidence is
+Until CI pins Git 2.50.1 (`mb-oueh`), acquire, reuse, and orphan-store evidence is
 `tests/test_cli_cache_acquire_golden.py`: the production CLI in-process, the floor
 monkeypatched, a real pack fetch.
 `tests/test_cli_cache_recovery_golden.py` adds the interrupted, failed, and refused
-sessions the same way, rendered through the console script’s own `Error:` handling.
+sessions the same way, rendered through the console script’s own `Error:` handling; the
+staging sweep and the read-only cache hit are steps of those sessions.
 Its interruptions are real: a child interpreter running the same CLI is killed with
 SIGKILL at the store or alias publication, and the next command recovers from what the
 crash left. Its below-floor session replaces `detect_git_version` rather than the gate,
@@ -482,10 +482,8 @@ values; cache routes never report paths, and `--no-serve` does not print the hom
 | `cli-git-status-bounds.tryscript.md` | truncation is honest and reported, not silent | Status P1 |
 | `cli-cache-layout.tryscript.md` | home creation, `f01` record, `CACHEDIR.TAG`, future-format refusal | Cache 1A |
 | `cli-cache-acquire.txt` | clone, publish, second open reuses with no network | Cache 1B-a |
-| `cli-cache-recover.txt` | the next acquisition sweeps a lock-free staging entry | Cache 1B-a |
 | `cli-cache-orphan-kept.txt` | the next acquisition of another source keeps a store no alias names | Cache 1B-a |
-| `cli-cache-readonly-hit.txt` | second `--no-serve` reuses a published store against a home without owner-write | Cache 1B-a |
-| `cli-cache-readonly-miss.txt` | a home without owner-write refuses a new source and stays unchanged | Cache 1B-a |
+| `cli-cache-readonly-miss.txt` | a home without owner-write reuses a published store, refuses a new source, and stays unchanged | Cache 1B-a |
 | `cli-cache-interrupt-store.txt` | a process killed before store publication leaves only staging, which the next acquisition sweeps | Cache 1B-a |
 | `cli-cache-interrupt-alias.txt` | a process killed between store and alias publication leaves an unreferenced store and no visible source; the next acquisition reuses the store and publishes the alias | Cache 1B-a |
 | `cli-cache-fetch-failures.txt` | missing, non-repository, empty, and detached-HEAD origins fail without touching another source; a folded spelling reuses the same source | Cache 1B-a |
@@ -500,10 +498,10 @@ values; cache routes never report paths, and `--no-serve` does not print the hom
 | `cli-github-pr-offline.tryscript.md` | repository and selected PR remain inspectable from immutable snapshots without a network | GitHub P4A |
 | `cli-ui-hosted-review.tryscript.md` | exact production address parse/apply, direct view, panel window/selection/restoration, root replacement, and disposal | GitHub P4 |
 
-`cli-cache-recover` is the one worth insisting on.
-Crash recovery is the behavior most likely to be wrong and least likely to be exercised
-by hand, and a transcript that kills a publish midway and then shows the swept state is
-a far better test than any unit test of the same code.
+`cli-cache-interrupt-store` and `cli-cache-interrupt-alias` are the ones worth insisting
+on. Crash recovery is the behavior most likely to be wrong and least likely to be
+exercised by hand, and a transcript that kills a publish midway and then shows the swept
+state is a far better test than any unit test of the same code.
 
 ## Codifying the Principle
 

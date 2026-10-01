@@ -31,8 +31,10 @@ from metabrowser.cache.atomic import (
 from metabrowser.cache.locks import LockOrderError, repository_store_lock, staging_entry_lock
 from metabrowser.cache.records import (
     CACHE_LAYOUT_CONTRACT_ID,
+    REPOSITORY_SOURCE_STATE_CONTRACT_ID,
     REPOSITORY_STORE_STATE_CONTRACT_ID,
     CacheLayout,
+    RepositorySourceState,
 )
 from metabrowser.home import (
     ensure_home,
@@ -306,6 +308,17 @@ def test_a_record_read_in_the_wrong_slot_is_refused_without_naming_its_path(home
 
     assert str(home) not in str(refused.value)
     assert refused.value.path == home / "cache/layout.yml"
+
+    # A source's state and a store's share the envelope `state`, so this pair is refused
+    # by its contract alone.
+    write_record_atomic(
+        home,
+        "cache/state.yml",
+        RepositorySourceState(last_opened_at="2026-09-17T12:00:00Z"),
+        REPOSITORY_SOURCE_STATE_CONTRACT_ID,
+    )
+    with pytest.raises(RecordError, match="does not match its expected contract"):
+        read_record(home, "cache/state.yml", REPOSITORY_STORE_STATE_CONTRACT_ID)
 
 
 def test_an_oversized_record_is_refused_before_it_is_parsed(home: Path) -> None:

@@ -9,6 +9,11 @@
 // KPress renders it differently. builtin_plugins/markdown/inert-render.js decides from the
 // server's answer which renders go through the allowlist. The real browser's parse, and
 // that nothing loads, are checked in the QA runbook's walkthrough with a network watch.
+//
+// KPress removes a link whose scheme is not http(s) before the allowlist sees it, so the
+// README cannot show what the allowlist itself does with one. The links of
+// tests/fixtures/inert-html-hostile-links.json are handed to it directly, the same
+// corpus tests/test_inert_html.py hands the server's side.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -18,6 +23,12 @@ const { pathToFileURL } = require("node:url");
 const repoRoot = path.resolve(__dirname, "../..");
 const tree = JSON.parse(
   fs.readFileSync(path.join(repoRoot, "tests/fixtures/inert-html-kpress-tree.json"), "utf8"),
+);
+const hostileLinks = JSON.parse(
+  fs.readFileSync(path.join(repoRoot, "tests/fixtures/inert-html-hostile-links.json"), "utf8"),
+);
+const linkTree = Object.entries({ ...hostileLinks.refused, ...hostileLinks.kept }).map(
+  ([name, href]) => ({ tag: "a", attrs: [["href", href]], children: [name] }),
 );
 const inertPath = path.join(repoRoot, "src/metabrowser/static/inert-html.js");
 const context = { window: {}, URL };
@@ -95,10 +106,11 @@ async function main() {
     pathToFileURL(path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/inert-render.js"))
       .href
   );
-  const documentMode = serialize(inert.sanitizeNodes(templateNodes(tree), pageDocument, null));
-  const commentMode = serialize(
-    inert.sanitizeNodes(templateNodes(tree), pageDocument, "https://github.com/octo/demo/pull/7"),
-  );
+  const pullRequest = "https://github.com/octo/demo/pull/7";
+  const rebuilt = (nodes, base) =>
+    serialize(inert.sanitizeNodes(templateNodes(nodes), pageDocument, base));
+  const documentMode = rebuilt(tree, null);
+  const commentMode = rebuilt(tree, pullRequest);
   console.log(
     JSON.stringify(
       {
@@ -108,6 +120,7 @@ async function main() {
         },
         document: documentMode,
         comment: commentMode,
+        links: { document: rebuilt(linkTree, null), comment: rebuilt(linkTree, pullRequest) },
       },
       null,
       2,

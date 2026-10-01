@@ -318,7 +318,8 @@ test ! -e "${METABROWSER_HOME}"
 `unsupported_github_url` offering `https://github.com/octo/demo`, `insecure_http`,
 `reserved_owner`, `credentials_in_url`, and `invalid_pull_request`. No message repeats
 `ghp_example`. The home is still absent.
-`tests/golden/cli-github-urls.tryscript.md` pins the full set.
+`tests/golden/cli-github-urls.tryscript.md` pins what these and the other refusals
+print, and `tests/test_github_url_reducer.py` holds the full set of shapes.
 
 **Fail:** A refused URL reaches Git or the network; a token echoed; the home created.
 
@@ -663,7 +664,7 @@ In `cli-github-url-open.txt`, `/pull/7` pins the default branch and
 In `cli-github-pull.tryscript.md`, pull requests 12, 13, and 14 answer `absent` with
 `schema_mismatch`, `unreadable`, and `not_cached`. `/api/source/status` on `/pull/7`
 names `refs/pull/7/head` and `pull_request: 7`; `pull-refresh` answers `202` with
-`refreshing: true` (`pending` for 14), `409 no_pull_request` for a repository URL, and
+`refreshing: true` and `pending` for 14, `409 no_pull_request` for a repository URL, and
 `405` for a GET. In `tests/test_github_pulls.py`, a served `/pull/7` pins its head, a
 refresh through `pull-refresh` runs as one coordinator job that a second request joins,
 a newer head behind `refs/pull/7/head` is offered as `latest` and taken through

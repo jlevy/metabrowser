@@ -30,10 +30,15 @@ file no `old`, and a renamed file’s `old` is its old path.
 every commit ID below is the same on every machine: `trunk` is `first` (`a5232ab…`) then
 `second` (`6ac4c8b…`), and `base` (`0dcf612…`) branches from `first`. `changesroot` is a
 clone of it without a checkout, and `home` is an application home that acquired it.
-The whole documents these commands answer are pinned once, in
+The comparison of a whole commit, and the one from a merge base that a pull request’s
+Files changed is, are long documents, pinned once and in full in
 `tests/fixtures/diff-view-file-responses.json`, which
-`tests/test_diff_view_file_session.py` checks against the server; here each is cut to
-what View file reads.
+`tests/test_diff_view_file_session.py` checks against the server.
+`tests/golden/cli-ui-diff-view-file.tryscript.md` shows what View file offers for each
+change in them: a name that is not UTF-8, a symbolic link, a submodule, and the merge
+base a base side opens at.
+The commands here are the two a transcript can show whole: one change of that commit,
+and the switch to its parent.
 
 ## Test: a renamed file’s old side is its old path at the parent
 
@@ -116,89 +121,6 @@ status: 200
     }
   }
 }
-? 0
-```
-
-## Test: a commit’s comparison names each side’s path and what kind of entry it is
-
-Each change lists its `old` side, then its `new` one; a side it lacks is not listed.
-A name that is not UTF-8 shows a replacement character in `path` and carries its bytes
-in `path_b64`, which is what its `/view/` address is built from.
-`link` is a symbolic link and `vendor/lib` a submodule: neither side of either is a
-regular file, so View file offers neither.
-The comparison document is long, so it goes to a file and the next command shows each
-side’s commit and each change’s kind, paths, and entry types.
-
-```console
-$ metab changesroot --api '/api/plugin/diff/comparison?revision=6ac4c8b5eb94eecbdb621d629b31066f050c75f1' > commit.txt
-? 0
-```
-
-```console
-$ grep -E '^(api|status)|"(base_policy|path|path_b64|entry_type)":|"(kind|id)": "(commit|empty|added|deleted|modified|renamed|[0-9a-f]{40})"' commit.txt
-api: /api/plugin/diff/comparison?revision=6ac4c8b5eb94eecbdb621d629b31066f050c75f1
-status: 200
-    "base_policy": "first_parent",
-      "kind": "commit",
-      "id": "a5232ab93056074aa3dd87c7b3c28ca84081a6a0",
-      "kind": "commit",
-      "id": "6ac4c8b5eb94eecbdb621d629b31066f050c75f1"
-        "kind": "modified",
-          "path": "README.md",
-          "entry_type": "file",
-          "path": "README.md",
-          "entry_type": "file",
-        "kind": "added",
-          "path": "added.txt",
-          "entry_type": "file",
-        "kind": "deleted",
-          "path": "gone.txt",
-          "entry_type": "file",
-        "kind": "modified",
-          "path": "latin1-�.txt",
-          "path_b64": "bGF0aW4xLekudHh0",
-          "entry_type": "file",
-          "path": "latin1-�.txt",
-          "path_b64": "bGF0aW4xLekudHh0",
-          "entry_type": "file",
-        "kind": "modified",
-          "path": "link",
-          "entry_type": "symlink",
-          "path": "link",
-          "entry_type": "symlink",
-        "kind": "renamed",
-          "path": "src/old_name.py",
-          "entry_type": "file",
-          "path": "src/new_name.py",
-          "entry_type": "file",
-        "kind": "modified",
-          "path": "vendor/lib",
-          "entry_type": "submodule",
-          "path": "vendor/lib",
-          "entry_type": "submodule",
-? 0
-```
-
-## Test: a comparison from a merge base names the merge base, not the base’s tip
-
-A pull request’s Files changed is this comparison, of its base and its head.
-`resolved.left` is `first`, their merge base, so that is the commit the base side of a
-file opens at.
-
-```console
-$ METABROWSER_HOME=$PWD/home metab file://$PWD/origin.git --api '/api/plugin/diff/comparison?left=0dcf612c09184fad5b83f7c80e65dd3a6fb48e99&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&base_policy=merge_base' > merge-base.txt
-? 0
-```
-
-```console
-$ grep -E '^(api|status)|"base_policy":|"(kind|id)": "(commit|[0-9a-f]{40})"' merge-base.txt
-api: /api/plugin/diff/comparison?left=0dcf612c09184fad5b83f7c80e65dd3a6fb48e99&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&base_policy=merge_base
-status: 200
-    "base_policy": "merge_base",
-      "kind": "commit",
-      "id": "a5232ab93056074aa3dd87c7b3c28ca84081a6a0",
-      "kind": "commit",
-      "id": "6ac4c8b5eb94eecbdb621d629b31066f050c75f1",
 ? 0
 ```
 

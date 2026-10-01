@@ -270,6 +270,19 @@ def test_a_cache_file_cannot_choose_a_different_contract_or_status() -> None:
             expected_contract_id=REPOSITORY_STORE_STATE_CONTRACT_ID,
             contracts=registry,
         )
+    # Both state records use the envelope `state`, so only the contract tells them apart:
+    # a source's state in a store's slot would otherwise validate as the wrong model.
+    for written, slot in (
+        (REPOSITORY_SOURCE_STATE_CONTRACT_ID, REPOSITORY_STORE_STATE_CONTRACT_ID),
+        (REPOSITORY_STORE_STATE_CONTRACT_ID, REPOSITORY_SOURCE_STATE_CONTRACT_ID),
+    ):
+        assert CACHE_CONTRACT_BY_ID[written].envelope == CACHE_CONTRACT_BY_ID[slot].envelope
+        with pytest.raises(ValueError, match="does not match its expected contract"):
+            validate_artifact(
+                _artifact(written, _valid_record(written)),
+                expected_contract_id=slot,
+                contracts=registry,
+            )
     with pytest.raises(ValueError, match="enforced"):
         validate_artifact(
             _artifact(CACHE_LAYOUT_CONTRACT_ID, layout, status="permissive"),

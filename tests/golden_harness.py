@@ -34,6 +34,11 @@ What a transcript may still replace, and why no fixture can pin it:
 Everything else is literal. Commit IDs are literal because every origin is built with
 :func:`pinned_git_env` or ``git fast-import``; times are literal because
 :func:`fix_clock` replaces the clock.
+
+One label stands for a value the transcript itself pins: ``<RECORD n>`` in
+``cli-github-pull-refresh.txt`` is a pull-request record equal to the one last printed
+in full above it, so each distinct record is shown once
+(``tests/test_cli_github_pull_golden.py``).
 """
 
 from __future__ import annotations
@@ -45,6 +50,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from collections.abc import Sequence
 from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import dataclass, field
@@ -479,6 +485,18 @@ def answer(response: Any) -> dict[str, Any]:
     """One response as a session replays it: the status and the decoded body."""
 
     return {"status": response.status_code, "body": response.json()}
+
+
+def settle(client: Any) -> dict[str, Any]:
+    """Poll ``/api/source/status`` as a page does until no refresh runs; return that status."""
+
+    deadline = time.monotonic() + 50
+    while True:
+        status: dict[str, Any] = client.get("/api/source/status").json()
+        if not status["refreshing"]:
+            return status
+        assert time.monotonic() < deadline, "the refresh did not finish"
+        time.sleep(0.02)
 
 
 def serve_published(published: PublishedSource, *, serving: bool = False) -> None:

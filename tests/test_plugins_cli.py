@@ -2,7 +2,9 @@
 
 Drives ``metab --plugins / --plugin NAME / --doctor`` via Typer's
 CliRunner. Confirms the discovered set, the JSON output shape, and the
-doctor's exit-code contract on broken / valid plugins.
+doctor's exit-code contract on broken plugins and a damaged cache contract.
+``tests/golden/cli-plugins.tryscript.md`` records the doctor's whole answer, text and
+JSON, on a clean installation.
 """
 
 from __future__ import annotations
@@ -104,22 +106,6 @@ def test_plugins_show_unknown_plugin_json_emits_structured_error() -> None:
     assert result.stdout == ""
     payload = json.loads(result.stderr)
     assert "no-such-plugin" in payload["error"]
-
-
-def test_plugins_doctor_exits_zero_on_clean_install() -> None:
-    result = _runner.invoke(_app, ["--doctor"])
-    assert result.exit_code == 0
-    assert "11 plugin(s) OK" in result.stdout
-
-
-def test_plugins_doctor_json_emits_structured_result() -> None:
-    result = _runner.invoke(_app, ["--doctor", "--json"])
-    assert result.exit_code == 0
-    payload = json.loads(result.stdout)
-    assert set(payload) == {"ok", "plugin_count", "problems"}
-    assert payload["ok"] is True
-    assert payload["plugin_count"] > 0
-    assert payload["problems"] == []
 
 
 @pytest.fixture

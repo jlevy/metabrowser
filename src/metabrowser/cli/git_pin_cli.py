@@ -545,6 +545,11 @@ def run_serve_pin(
 def _serve_selected(selected: _Selected) -> None:
     """Hand the server the pin to open and the mirror to keep fresh."""
 
+    # The routes a pin answers with. server.py imports them where a pin is served,
+    # which keeps them off a folder's start; a served pin imports them here, before the
+    # server starts, so that its first request does not import them on the event loop.
+    import metabrowser.git.content_routes  # noqa: F401  # pyright: ignore[reportUnusedImport]
+
     selection = selected.selection
     serve_subject_opener(_serving_opener(selected))
     serve_mirror(

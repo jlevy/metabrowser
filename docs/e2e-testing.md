@@ -145,6 +145,15 @@ times and commit IDs are literal; the placeholders that remain, each with the re
 fixture can pin it, are listed at the top of `tests/golden_harness.py`. For tryscript,
 `devtools/golden_fixup.py` is that list.
 
+A payload that a story reads many times is shown once.
+A pull envelope carries the whole record, so `cli-github-pull-refresh.txt` prints a
+record in full the first time and as `<RECORD n>` while a later read equals it, and
+`tests/fixtures/github-pull-page-responses.json` holds a record in the first answer that
+carried it and names that answer, `{"same_as": "current"}`, in the later ones, which the
+session reads back as that record.
+A record that differs is written in full, so a read that changed it shows as a whole
+record where the reference was.
+
 A transcript must not depend on how busy the machine is.
 The server logs a request slower than two seconds to stderr, which a transcript
 captures, so the Make targets run tryscript with `METABROWSER_SLOW_SERVER_MS` set past
@@ -230,7 +239,8 @@ Every other test runs with a failing stand-in `gh` first on `PATH`.
 
 ### Skips
 
-`make test` runs pytest with `-rs`, which prints each skipped test with its reason.
+`make test` runs pytest with `-rs`, which prints each skipped test with its reason, and
+with `--durations`, which lists the slowest tests.
 In CI it also sets `METABROWSER_STRICT_SKIPS`, and a skip has to belong to an outer tier
 or the test fails:
 
@@ -276,6 +286,46 @@ A test that needs longer carries its own `pytest.mark.timeout` with the measurem
 forced it written beside it.
 A test in `tests/test_suite_gates.py` fails on a longer bound in a module that has not
 raised its budget.
+
+## Measuring the Suite
+
+A change to the tests is reviewed on numbers taken the same way before and after it.
+`devtools/suite_report.py` prints them, so nobody counts by hand and the next person
+gets the figures the last one did:
+
+```shell
+# The working tree: files, lines, and test functions by area, then the totals.
+make test-report
+
+# Commits side by side, with the change from the first to the last.
+# `.` is the working tree.
+make test-report REFS="origin/main ."
+
+# What one run cost: the time of each test file and each golden, and what it skipped.
+gh run view <run> --job <job> --log > run.log
+make test-report LOG=run.log
+```
+
+- An **area** is the first word of a test module’s name: `tests/test_cache_update.py` is
+  in `cache`.
+- **Lines** are counted from the files of the tree or commit alone, so they are the same
+  on every machine. An image is a file with no lines.
+- **Test functions** are the ones pytest collects, read from each module’s syntax tree:
+  `test_` functions at module level and `test_` methods of a `Test` class.
+  A parametrized function is one function, so this is lower than the number of cases a
+  run reports.
+- **Time** is read from a CI job log and belongs to that one run, so quote the run and
+  the job with it. A test file’s time is the gap between the timestamps of consecutive
+  progress lines: pytest ends a file’s line when the next file starts.
+  A golden’s time is the gap before tryscript printed its verdict.
+  A pytest output with no timestamps gives no time per file.
+  A developer machine under load gives other times; compare the CI `test (3.13)` job
+  with itself.
+- **Skips** are the cases `-rs` listed in the log, counted by reason.
+  [Skips](#skips) says which reason belongs to which tier.
+
+`python -m devtools.check_goldens --report` gives the size distribution of the goldens
+and recordings against their review budget.
 
 ## Adding Coverage
 

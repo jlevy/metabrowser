@@ -88,6 +88,7 @@ lint-check:
 	$(UV_RUN) python -m devtools.check_artifact_contracts
 	$(UV_RUN) python -m devtools.check_parity
 	$(UV_RUN) python -m devtools.check_goldens
+	$(UV_RUN) python -m devtools.check_startup_scripts
 	$(FLOWMARK) --auto --check .
 
 # The tryscript goldens run with a failing gh first on PATH (tests/no-real-gh/gh), so
@@ -108,10 +109,20 @@ TRYSCRIPT := PATH="$(CURDIR)/tests/no-real-gh:$$PATH" METABROWSER_SLOW_SERVER_MS
 STRICT_SKIPS := $(if $(CI),METABROWSER_STRICT_SKIPS=1)
 
 # The default tier. -rs names every skipped test with its reason, so a skip is read
-# rather than counted. A missing Node or Git stops the run; see tests/required_tools.py.
+# rather than counted, and --durations lists the slowest tests, so a run says where its
+# time went. A missing Node or Git stops the run; see tests/required_tools.py.
 test:
-	$(STRICT_SKIPS) $(UV_RUN) pytest -rs
+	$(STRICT_SKIPS) $(UV_RUN) pytest -rs --durations=25
 	$(TRYSCRIPT) run 'tests/golden/*.tryscript.md'
+
+# The size of the suite by area, at the working tree or at the commits in REFS, and with
+# LOG the time each test file and golden took in that CI job log:
+#   make test-report
+#   make test-report REFS="origin/main ." LOG=run.log
+# docs/e2e-testing.md ("Measuring the Suite") says how each number is taken.
+.PHONY: test-report
+test-report:
+	$(UV_RUN) python -m devtools.suite_report $(REFS) $(if $(LOG),--log $(LOG))
 
 # Acquisition and store-read tests on a real Git the acquisition floor admits,
 # with nothing patched. They skip on a Git below the floor. The CI admitted-git

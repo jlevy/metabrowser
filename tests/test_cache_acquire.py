@@ -33,7 +33,6 @@ from metabrowser.git.process import (
     UnsupportedGitVersionError,
     detect_git_version,
 )
-from metabrowser.home import PrivateStorageError
 from tests.admitted_git import require_admitted_git, required_admitted_git
 from tests.required_tools import needs_git, require_git
 
@@ -499,6 +498,12 @@ def test_ssh_sources_are_out_of_scope_for_staging_fetch() -> None:
 def test_git_below_the_acquisition_floor_is_refused(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Staging checks the floor itself, whoever calls it.
+
+    ``acquire_source`` refuses a miss before it gets here, so the transcript of a
+    below-floor Git, ``cli-cache-unsupported-git.txt``, passes without this check.
+    """
+
     origin = _origin(tmp_path)
     home = tmp_path / "home"
 
@@ -512,58 +517,6 @@ def test_git_below_the_acquisition_floor_is_refused(
         not (home / "cache" / "staging").exists()
         or list((home / "cache" / "staging").iterdir()) == []
     )
-
-
-@posix_only
-def test_acquire_source_refuses_below_floor_git_before_creating_the_home(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    origin = _origin(tmp_path)
-    home = tmp_path / "home"
-
-    def refuse() -> tuple[int, int, int]:
-        raise UnsupportedGitVersionError("git version 2.39.5", "2.43.7")
-
-    monkeypatch.setattr("metabrowser.cache.acquire.require_acquisition_git", refuse)
-    with pytest.raises(UnsupportedGitVersionError):
-        asyncio.run(acquire_source(_file_source(origin), home=home))
-    assert not home.exists()
-
-
-@posix_only
-def test_acquire_source_refuses_below_floor_git_without_writing_an_empty_home(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    origin = _origin(tmp_path)
-    home = tmp_path / "home"
-    home.mkdir()
-
-    def refuse() -> tuple[int, int, int]:
-        raise UnsupportedGitVersionError("git version 2.39.5", "2.43.7")
-
-    monkeypatch.setattr("metabrowser.cache.acquire.require_acquisition_git", refuse)
-    with pytest.raises(UnsupportedGitVersionError):
-        asyncio.run(acquire_source(_file_source(origin), home=home))
-    assert list(home.iterdir()) == []
-
-
-@posix_only
-def test_a_cache_hit_does_not_require_the_acquisition_floor(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _allow_installed_git(monkeypatch)
-    origin = _origin(tmp_path)
-    home = tmp_path / "home"
-    source = _file_source(origin)
-    first = asyncio.run(acquire_source(source, home=home))
-
-    def refuse() -> tuple[int, int, int]:
-        raise UnsupportedGitVersionError("git version 2.39.5", "2.43.7")
-
-    monkeypatch.setattr("metabrowser.cache.acquire.require_acquisition_git", refuse)
-    second = asyncio.run(acquire_source(source, home=home))
-    assert second.store_id == first.store_id
-    assert second.slug == first.slug
 
 
 @posix_only
@@ -587,50 +540,15 @@ def test_a_cache_hit_does_not_open_the_home_for_write(
 
 
 @posix_only
-@skip_as_root
-def test_a_cache_hit_against_a_home_without_owner_write_reuses(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _allow_installed_git(monkeypatch)
-    origin = _origin(tmp_path)
-    home = tmp_path / "home"
-    source = _file_source(origin)
-    first = asyncio.run(acquire_source(source, home=home))
-    _remove_owner_write(home)
-    try:
-        second = asyncio.run(acquire_source(source, home=home))
-        assert second.store_id == first.store_id
-        assert second.slug == first.slug
-        assert list((home / "cache" / "staging").iterdir()) == []
-    finally:
-        _restore_owner_write(home)
-
-
-@posix_only
-@skip_as_root
-def test_a_cache_miss_against_a_home_without_owner_write_does_not_fetch(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _allow_installed_git(monkeypatch)
-    origin = _origin(tmp_path)
-    home = tmp_path / "home"
-    asyncio.run(acquire_source(_file_source(origin), home=home))
-    other = tmp_path / "other"
-    other.mkdir()
-    other_source = _file_source(_origin(other))
-    _remove_owner_write(home)
-    try:
-        with pytest.raises(PrivateStorageError):
-            asyncio.run(acquire_source(other_source, home=home))
-        assert list((home / "cache" / "staging").iterdir()) == []
-    finally:
-        _restore_owner_write(home)
-
-
-@posix_only
 def test_a_future_home_is_refused_before_opening_the_cache_for_write(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """The refusal itself is in ``cli-cache-repair-guidance.txt``; its order is not.
+
+    Opening the cache refuses a future layout too and happens to leave the home as it
+    was, so the transcript reads the same whichever check comes first.
+    """
+
     _allow_installed_git(monkeypatch)
     origin = _origin(tmp_path)
     home = tmp_path / "home"

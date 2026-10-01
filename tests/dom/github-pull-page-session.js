@@ -25,6 +25,16 @@ const repoRoot = path.resolve(__dirname, "../..");
 const recorded = JSON.parse(
   fs.readFileSync(path.join(repoRoot, "tests/fixtures/github-pull-page-responses.json"), "utf8"),
 );
+// The recording holds each distinct record once: an answer whose record an earlier
+// pull-route answer carried names that answer, and reads here as that record.
+for (const answer of Object.values(recorded)) {
+  for (const envelope of [answer.body, answer.body?.pull]) {
+    const holder = envelope?.record?.same_as;
+    if (holder !== undefined) {
+      envelope.record = recorded[holder].body.record;
+    }
+  }
+}
 const pagePath = path.join(repoRoot, "src/metabrowser/builtin_plugins/github/pull-page.js");
 // The allowlist the page passes a text's Markdown through, loaded whole as the shell
 // loads it on demand.
@@ -41,7 +51,16 @@ const routePath = path.join(repoRoot, "src/metabrowser/static/navigation.js");
 require("node:vm").runInNewContext(fs.readFileSync(routePath, "utf8"), routeContext, {
   filename: routePath,
 });
-globalThis.window = { MetabrowserNavigationRoute: routeContext.MetabrowserNavigationRoute };
+// git-path.js holds the wire encoder; a pinned revision's shell loads it, and a pull
+// request is always served from one.
+const gitPathFile = path.join(repoRoot, "src/metabrowser/static/git-path.js");
+require("node:vm").runInNewContext(fs.readFileSync(gitPathFile, "utf8"), routeContext, {
+  filename: gitPathFile,
+});
+globalThis.window = {
+  MetabrowserGitPath: routeContext.MetabrowserGitPath,
+  MetabrowserNavigationRoute: routeContext.MetabrowserNavigationRoute,
+};
 
 function assert(condition, message) {
   if (!condition) {

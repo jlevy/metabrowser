@@ -254,7 +254,30 @@ def _path(path: str, *, strip_trailing: bool, percent: bool) -> str:
 
 
 def _classify_grammar(value: str, defaults: Mapping[str, str]) -> RootClassification:
-    """The frozen root-argument grammar, in the fixture's declared check order."""
+    """The frozen root-argument grammar.
+
+    The checks apply in this order, and the first that fails names the refusal: an empty
+    argument, an option-like one, remote-helper syntax, an unsupported transport or a
+    malformed URL, and the decision that the argument is a local path; then, for a
+    source, control characters and whitespace, non-ASCII, a backslash, a query, a
+    fragment, the authority, and the path.
+
+    A source is normalized so that spellings Git treats alike share one identity:
+
+    - the scheme and host are lowercased (RFC 3986 6.2.2.1);
+    - percent-encoding hex digits are uppercased and encoded unreserved characters
+      decoded (RFC 3986 6.2.2.1-2);
+    - an empty or default port is removed (RFC 3986 6.2.3);
+    - ``file://localhost/`` becomes ``file:///`` (RFC 8089);
+    - one trailing ``/`` is removed from https and file paths: Git's smart-HTTP client
+      requests the same ``/info/refs`` URL with and without it
+      (``explorations/repository-cache/results/url.json``), and POSIX resolves a
+      directory path identically.
+
+    Path case, a terminal ``.git``, the ssh user, SSH versus HTTPS spelling, scp-like
+    versus ``ssh://`` spelling, and an ssh or scp-like trailing ``/`` are preserved,
+    because a generic Git host may interpret each.
+    """
     if value == "":
         return RejectedRoot("empty")
     if value.startswith("-"):

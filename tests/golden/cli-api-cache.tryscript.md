@@ -416,3 +416,328 @@ status: 409
 Error: /api/cache/layout returned HTTP 409
 ? 1
 ```
+
+## Test: damaged entries are reported beside the readable ones
+
+The damaged home is the populated one with four more sources, each entry damaged a
+different way after the production writers published it:
+
+- click: `source.yml` fails validation, and holds a credential the report must not
+  quote;
+- flask over SSH: `store-alias.yml` is not an alias record;
+- flask over HTTPS: `state.yml` is not a state record;
+- itsdangerous: the entry’s directory is readable by its group;
+- jinja: the alias carries another source’s identity;
+- markupsafe: `source.yml` is readable by its group;
+- werkzeug: the alias names a store that is not there.
+
+A record other users can reach is `not_private`, which the user fixes with `chmod`, and
+is not `damaged`. No message names a path, a slug, or a value from the record.
+`sources/` also holds a directory whose name is not a slug, which is counted and never
+named.
+
+```console
+$ METABROWSER_HOME=$PWD/damaged metab root --api /api/cache/sources
+api: /api/cache/sources
+status: 200
+{
+  "home": "present",
+  "layout_format": "f01",
+  "sources": [
+    {
+      "slug": "github-com--pallets--click--76d8973c8c6c",
+      "publication": "damaged",
+      "identity": null,
+      "alias": null,
+      "state": null,
+      "problems": [
+        {
+          "record": "source.yml",
+          "code": "invalid",
+          "message": "the record does not satisfy com.github.jlevy.metabrowser.cache:RepositorySource/v1: record: Value error, source id does not match its transport and clone URL"
+        }
+      ]
+    },
+    {
+      "slug": "github-com--pallets--flask--74fe6e07e4b9",
+      "publication": "damaged",
+      "identity": {
+        "id": "sha256:74fe6e07e4b9e366cbfea79bdb0f6051ae58c0742e1a6748ba6c9dea86b1e231",
+        "display_url": "git@github.com:pallets/flask.git",
+        "clone_url": "git@github.com:pallets/flask.git",
+        "transport": "ssh",
+        "created_at": "2026-09-17T12:00:00Z"
+      },
+      "alias": null,
+      "state": null,
+      "problems": [
+        {
+          "record": "store-alias.yml",
+          "code": "invalid",
+          "message": "the record does not satisfy com.github.jlevy.metabrowser.cache:RepositoryStoreAlias/v1: softschema metadata must contain contract, envelope, and status"
+        }
+      ]
+    },
+    {
+      "slug": "github-com--pallets--flask--e7b7fe0ffe8a",
+      "publication": "damaged",
+      "identity": {
+        "id": "sha256:e7b7fe0ffe8a446772b8a863f51222c90d256e511e1a4da3daec599735962fa9",
+        "display_url": "https://github.com/pallets/flask",
+        "clone_url": "https://github.com/pallets/flask",
+        "transport": "https",
+        "created_at": "2026-09-17T12:00:00Z"
+      },
+      "alias": {
+        "store_id": "sha256:4c2d8559cb0179baca3afa2f633e1cfd7271b82e4fb7f0c451dfa9354aa70aff",
+        "generation": 1,
+        "updated_at": "2026-09-17T12:00:06Z"
+      },
+      "state": null,
+      "problems": [
+        {
+          "record": "state.yml",
+          "code": "invalid",
+          "message": "the record does not satisfy com.github.jlevy.metabrowser.cache:RepositorySourceState/v1: softschema metadata must contain contract, envelope, and status"
+        }
+      ]
+    },
+    {
+      "slug": "github-com--pallets--itsdangerous--428923955b39",
+      "publication": "not_private",
+      "identity": null,
+      "alias": null,
+      "state": null,
+      "problems": [
+        {
+          "record": "source.yml",
+          "code": "not_private",
+          "message": "An entry in the Metabrowser application home is accessible to other users (mode 0750), and Metabrowser does not change your entries to answer a request. Run chmod 700 on it, or set METABROWSER_HOME to a private directory you own."
+        },
+        {
+          "record": "store-alias.yml",
+          "code": "not_private",
+          "message": "An entry in the Metabrowser application home is accessible to other users (mode 0750), and Metabrowser does not change your entries to answer a request. Run chmod 700 on it, or set METABROWSER_HOME to a private directory you own."
+        },
+        {
+          "record": "state.yml",
+          "code": "not_private",
+          "message": "An entry in the Metabrowser application home is accessible to other users (mode 0750), and Metabrowser does not change your entries to answer a request. Run chmod 700 on it, or set METABROWSER_HOME to a private directory you own."
+        }
+      ]
+    },
+    {
+      "slug": "github-com--pallets--jinja--1b7f05892a34",
+      "publication": "damaged",
+      "identity": {
+        "id": "sha256:1b7f05892a34c8a9a2c373e617a7522e692cd1e5ef1557b385eba62e5ade5209",
+        "display_url": "https://github.com/pallets/jinja",
+        "clone_url": "https://github.com/pallets/jinja",
+        "transport": "https",
+        "created_at": "2026-09-17T12:00:00Z"
+      },
+      "alias": {
+        "store_id": "sha256:4c2d8559cb0179baca3afa2f633e1cfd7271b82e4fb7f0c451dfa9354aa70aff",
+        "generation": 1,
+        "updated_at": "2026-09-17T12:00:06Z"
+      },
+      "state": null,
+      "problems": [
+        {
+          "record": "store-alias.yml",
+          "code": "mismatch",
+          "message": "store-alias.yml names a different source than source.yml."
+        }
+      ]
+    },
+    {
+      "slug": "github-com--pallets--markupsafe--c9f236af140d",
+      "publication": "not_private",
+      "identity": null,
+      "alias": null,
+      "state": null,
+      "problems": [
+        {
+          "record": "source.yml",
+          "code": "not_private",
+          "message": "An entry in the Metabrowser application home is accessible to other users (mode 0640), and Metabrowser does not change your entries to answer a request. Run chmod 600 on it, or set METABROWSER_HOME to a private directory you own."
+        }
+      ]
+    },
+    {
+      "slug": "github-com--pallets--werkzeug--731ec7030846",
+      "publication": "dangling",
+      "identity": {
+        "id": "sha256:731ec703084622f28033594c20370bc971a33e97349937be3527397e90dfe671",
+        "display_url": "https://github.com/pallets/werkzeug",
+        "clone_url": "https://github.com/pallets/werkzeug",
+        "transport": "https",
+        "created_at": "2026-09-17T12:00:00Z"
+      },
+      "alias": {
+        "store_id": "sha256:d00f8d877a72131596d9fb6afcb2445a1936ec8496a0c534777e14208df24e99",
+        "generation": 1,
+        "updated_at": "2026-09-17T12:00:06Z"
+      },
+      "state": null,
+      "problems": []
+    }
+  ],
+  "unrecognized_entries": 1,
+  "limit": 25,
+  "next_after": null
+}
+? 0
+```
+
+## Test: a damaged store, and references nothing can rule out
+
+click’s store has lost its `state.yml`. No alias that can be read names it, but an
+unreadable alias or an unrecognized entry might, so its references are `unknown` and not
+`unreferenced`. An alias that carries the wrong source still counts as a reference to
+the store it names.
+
+```console
+$ METABROWSER_HOME=$PWD/damaged metab root --api /api/cache/stores
+api: /api/cache/stores
+status: 200
+{
+  "home": "present",
+  "layout_format": "f01",
+  "stores": [
+    {
+      "id": "sha256:4c2d8559cb0179baca3afa2f633e1cfd7271b82e4fb7f0c451dfa9354aa70aff",
+      "publication": "published",
+      "identity": {
+        "created_at": "2026-09-17T12:00:00Z",
+        "acquisition": {
+          "git_version": "2.50.1",
+          "object_format": "sha1"
+        }
+      },
+      "state": {
+        "default_remote_ref": "refs/remotes/origin/trunk",
+        "default_revision": "5f4c1a2e8b0d9c7e6a5f4b3c2d1e0f9a8b7c6d5e",
+        "last_fetch_at": "2026-09-17T12:00:05Z",
+        "last_operation": {
+          "kind": "acquire",
+          "outcome": "succeeded",
+          "at": "2026-09-17T12:00:05Z"
+        }
+      },
+      "problems": [],
+      "referenced_by": [
+        {
+          "slug": "github-com--pallets--flask--e7b7fe0ffe8a",
+          "generation": 1
+        },
+        {
+          "slug": "github-com--pallets--jinja--1b7f05892a34",
+          "generation": 1
+        }
+      ],
+      "reference_state": "referenced"
+    },
+    {
+      "id": "sha256:c3c36fb283ea2c90a566bfb072d621839b3940b93ef33c8a53b8d4e120dc22bf",
+      "publication": "damaged",
+      "identity": {
+        "created_at": "2026-09-17T12:00:00Z",
+        "acquisition": {
+          "git_version": "2.50.1",
+          "object_format": "sha1"
+        }
+      },
+      "state": null,
+      "problems": [
+        {
+          "record": "state.yml",
+          "code": "missing",
+          "message": "The record is missing."
+        }
+      ],
+      "referenced_by": [],
+      "reference_state": "unknown"
+    }
+  ],
+  "unrecognized_entries": 0,
+  "limit": 25,
+  "next_after": null
+}
+? 0
+```
+
+## Test: a damaged source reads the same on its own route
+
+The list and the detail build one row, so an entry cannot look healthy on one of them.
+A source that is not published carries no store.
+
+```console
+$ METABROWSER_HOME=$PWD/damaged metab root --api /api/cache/source/github-com--pallets--flask--e7b7fe0ffe8a
+api: /api/cache/source/github-com--pallets--flask--e7b7fe0ffe8a
+status: 200
+{
+  "home": "present",
+  "layout_format": "f01",
+  "source": {
+    "slug": "github-com--pallets--flask--e7b7fe0ffe8a",
+    "publication": "damaged",
+    "identity": {
+      "id": "sha256:e7b7fe0ffe8a446772b8a863f51222c90d256e511e1a4da3daec599735962fa9",
+      "display_url": "https://github.com/pallets/flask",
+      "clone_url": "https://github.com/pallets/flask",
+      "transport": "https",
+      "created_at": "2026-09-17T12:00:00Z"
+    },
+    "alias": {
+      "store_id": "sha256:4c2d8559cb0179baca3afa2f633e1cfd7271b82e4fb7f0c451dfa9354aa70aff",
+      "generation": 1,
+      "updated_at": "2026-09-17T12:00:06Z"
+    },
+    "state": null,
+    "problems": [
+      {
+        "record": "state.yml",
+        "code": "invalid",
+        "message": "the record does not satisfy com.github.jlevy.metabrowser.cache:RepositorySourceState/v1: softschema metadata must contain contract, envelope, and status"
+      }
+    ],
+    "store": null
+  }
+}
+? 0
+```
+
+## Test: a shared cache directory is refused by the name the user must fix
+
+A fixed layout name is not a secret, and without it the remedy is a guess.
+
+```console
+$ METABROWSER_HOME=$PWD/shared-directories metab root --api /api/cache/sources
+api: /api/cache/sources
+status: 409
+{
+  "error": "An entry in the Metabrowser application home is accessible to other users (mode 0755), and Metabrowser does not change your entries to answer a request. Run chmod 700 on it, or set METABROWSER_HOME to a private directory you own.",
+  "code": "home_not_private",
+  "location": "entry",
+  "violation": "permissive",
+  "path": "cache/sources"
+}
+Error: /api/cache/sources returned HTTP 409
+? 1
+```
+
+```console
+$ METABROWSER_HOME=$PWD/shared-directories metab root --api /api/cache/layout
+api: /api/cache/layout
+status: 409
+{
+  "error": "An entry in the Metabrowser application home is accessible to other users (mode 0755), and Metabrowser does not change your entries to answer a request. Run chmod 700 on it, or set METABROWSER_HOME to a private directory you own.",
+  "code": "home_not_private",
+  "location": "entry",
+  "violation": "permissive",
+  "path": "cache/staging"
+}
+Error: /api/cache/layout returned HTTP 409
+? 1
+```

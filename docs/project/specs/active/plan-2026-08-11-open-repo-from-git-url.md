@@ -413,8 +413,11 @@ Every object enters a store under its lease, and every alias that names a store 
 written under that store’s lease, so an exclusive holder sees a stable set of objects
 and referring aliases.
 `tests/fixtures/repository-cache/state-machines.json` freezes this order, the side
-locks, and the acquisition, reclamation, sweep, fetch, lease, maintenance, purge,
-quarantine, and repointing state machines.
+locks, and the startup sweep’s state machine.
+The acquisition and refresh machines are tables in
+[Repository Sources and Provider Mirrors](../../architecture/arch-repository-sources-and-provider-mirrors.md#acquisition-and-refresh-state-machines).
+The reclamation, lease, maintenance, purge, quarantine, and repointing machines went
+with the operations they described, which the thin-mirror Simplify step removed.
 Purge and quarantine move the alias before the store, under the alias and store locks.
 A crash between the two moves leaves a store with no alias, which is an ordinary
 unreferenced store that reclamation handles; the reverse order could leave a visible
@@ -1092,7 +1095,8 @@ classify source
   -> converge the remaining objects in background by explicit object-ID fetches
 ```
 
-The `store_acquisition` machine in `tests/fixtures/repository-cache/state-machines.json`
+The acquisition machine in
+[Repository Sources and Provider Mirrors](../../architecture/arch-repository-sources-and-provider-mirrors.md#acquisition-and-refresh-state-machines)
 names each step’s locks, network work, visibility, and crash recovery.
 A remote that ignores the filter produces a store with every reachable object, recorded
 as strategy full and object state complete, never as partial.
@@ -1568,7 +1572,7 @@ replay against production functions when they land.
 | Version floors | One acquisition floor, which is both the security floor and the lazy-fetch floor; [Git version gates](#git-version-gates) and `git-version-gates.json` | Upstream release notes, and `promisor-remote.c` and `diffcore-rename.c` read at each relevant tag; only 2.50.1 was available to run |
 | URL grammar | `url-grammar.json` | Git’s HTTP client sent the same request with and without a trailing slash, and sent `//`, `%72`, and path case verbatim |
 | Source and store identity, aliases, slugs | `source-identity.json` | The home filesystem folded case and Unicode normalization, and `NAME_MAX` was 255 bytes |
-| Locks and state machines | `state-machines.json`, with the lock order and store lease above; publication verifies absence under the owning lock, with a platform no-replace rename as defense in depth | `flock` released 2.8 ms after its holder was killed; `lockf` vanished when an unrelated descriptor closed; `os.rename` replaced an empty directory and `renamex_np(RENAME_EXCL)` refused it. The interleaving check found the store-to-alias reclamation race in the previous design and none in this one |
+| Locks and state machines | `state-machines.json` for the lock order, the side locks, and the startup sweep, and the tables in [Repository Sources and Provider Mirrors](../../architecture/arch-repository-sources-and-provider-mirrors.md#acquisition-and-refresh-state-machines) for acquisition and refresh; publication verifies absence under the owning lock, with a platform no-replace rename as defense in depth | `flock` released 2.8 ms after its holder was killed; `lockf` vanished when an unrelated descriptor closed; `os.rename` replaced an empty directory and `renamex_np(RENAME_EXCL)` refused it. The interleaving check found the store-to-alias reclamation race in the previous design and none in this one |
 | Catalog layout | Flat `sources/` and `repository-stores/` directories | Scanning 10,000 flat entries and reading each record took 262 ms |
 
 Store and alias rules follow from those identities.

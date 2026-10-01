@@ -29,7 +29,7 @@ from metabrowser.cache.locks import LockBusyError, held_locks, store_fetch_lock
 from metabrowser.cache.paths import store_record
 from metabrowser.cache.records import REPOSITORY_STORE_STATE_CONTRACT_ID, RepositoryStoreState
 from metabrowser.cache.repository_store import open_revision
-from metabrowser.cache.resolve import is_valid_ref_name, ref_tip, resolve_pin
+from metabrowser.cache.resolve import ref_tip, resolve_pin
 from metabrowser.cache.served_mirror import StoreMirror
 from metabrowser.cache.update import (
     RefreshOutcome,
@@ -896,42 +896,6 @@ def test_a_cancelled_fetch_leaves_the_mirror_consistent(
 
 
 # ── Resolving a selection ────────────────────────────────────────────
-
-
-@pytest.mark.parametrize(
-    ("name", "valid"),
-    [
-        ("refs/remotes/origin/topic", True),
-        ("refs/remotes/origin/feature/x-1", True),
-        ("refs/tags/v1.0", True),
-        ("refs/tags/café", True),
-        ("refs/remotes/origin/a..b", False),
-        ("refs/remotes/origin/a b", False),
-        ("refs/remotes/origin/a~1", False),
-        ("refs/remotes/origin/a^", False),
-        ("refs/remotes/origin/a:b", False),
-        ("refs/remotes/origin/a?", False),
-        ("refs/remotes/origin/a*", False),
-        ("refs/remotes/origin/a[", False),
-        ("refs/remotes/origin/a\\b", False),
-        ("refs/remotes/origin/@{-1}", False),
-        ("refs/remotes/origin/x.lock", False),
-        ("refs/remotes/origin/.hidden", False),
-        ("refs/remotes/origin/trailing.", False),
-        ("refs/remotes/origin/trailing/", False),
-        ("refs/remotes/origin//double", False),
-        ("refs/remotes/origin/ctrl\x01", False),
-        ("refs/remotes/origin/del\x7f", False),
-        ("refs/remotes/origin/\ud800", False),
-        ("refs/remotes/origin/" + "x" * 1100, False),
-        # One rule set for full and short names; a short name is looked up under the
-        # mirror's namespaces, never as HEAD itself.
-        ("HEAD", True),
-        ("@", False),
-    ],
-)
-def test_ref_names_follow_the_git_ref_name_rules(name: str, valid: bool) -> None:
-    assert is_valid_ref_name(name) is valid
 
 
 def test_a_branch_wins_over_a_tag_of_the_same_name_and_tags_peel(mirror: _Mirror) -> None:

@@ -101,17 +101,8 @@ from metabrowser.file_kinds import (
 )
 from metabrowser.file_type_filters import FILTER_TYPE_PRESETS
 from metabrowser.folder_discovery import discover_folder
-from metabrowser.git.content_routes import (
-    decode_git_view_path,
-    git_revision_file,
-    git_revision_kpress_render,
-    git_revision_raw,
-    git_revision_rollup,
-    git_revision_tree,
-)
 from metabrowser.git.history import close_history_sessions
 from metabrowser.git.routes import GIT_ROUTES
-from metabrowser.git.tree_source import GitRevisionSubject, ref_branch_name
 from metabrowser.gz_io import (
     ArtifactCompressionError,
     ArtifactDecompressionLimitError,
@@ -206,6 +197,7 @@ from metabrowser.settings import (
 )
 from metabrowser.source import (
     UnsupportedSourceCapabilityError,
+    as_git_revision_subject,
     get_source_session,
     lifespan_subject,
     require_filesystem_hooks,
@@ -1230,13 +1222,34 @@ PREFETCH_IDLE_TIMEOUT_MS = 2000
 PREFETCH_FALLBACK_DELAY_MS = 200
 
 
-async def index(request: Request) -> HTMLResponse:
-    """Serve the SPA page with linked assets and one pre-paint state machine."""
+# Startup scripts only some shells carry, by static file name. A pin's page needs the
+# GitPath wire codec before its first paint, and a page at a pull-request address needs
+# that page's routes before it can show anything; a folder's page at any other address
+# fetches neither. devtools/check_startup_scripts.py reports what each adds to the
+# startup-script budget, so they are named here once.
+PIN_STARTUP_SCRIPTS: tuple[str, ...] = ("git-path.js",)
+PULL_PAGE_STARTUP_SCRIPTS: tuple[str, ...] = ("pull-route.js",)
 
-    subject = get_source_session().subject
-    git_pin = isinstance(subject, GitRevisionSubject)
-    if git_pin:
-        pin_oid = subject.commit_oid
+
+def _startup_script_tags(names: tuple[str, ...]) -> str:
+    return "".join(f'\n  <script src="{_static_asset_url(name)}"></script>' for name in names)
+
+
+async def index(request: Request, *, pull_page: bool = False) -> HTMLResponse:
+    """Serve the SPA page with linked assets and one pre-paint state machine.
+
+    *pull_page* is set by the pull-request route: its shell carries that page's routes
+    as a startup script.
+    """
+
+    pin = as_git_revision_subject(get_source_session().subject)
+    git_pin = pin is not None
+    if pin is not None:
+        # Imported where a pin is served, like every other Git import below: the
+        # modules behind a pinned revision are start-up work a folder never uses.
+        from metabrowser.git.tree_source import ref_branch_name
+
+        pin_oid = pin.commit_oid
         initial_path = _pin_label_html(source_status())
         initial_root = html_escape(pin_oid, quote=True)
         # Core holds no provider URL grammar: the served mirror asks the installed
@@ -1245,7 +1258,7 @@ async def index(request: Request) -> HTMLResponse:
         # has none.
         mirror = mirror_session(request.app)
         repository_context = (
-            mirror.mirror.repository_context(revision=pin_oid, branch=ref_branch_name(subject.ref))
+            mirror.mirror.repository_context(revision=pin_oid, branch=ref_branch_name(pin.ref))
             if mirror is not None
             else None
         )
@@ -1268,9 +1281,20 @@ async def index(request: Request) -> HTMLResponse:
     view_state_url = _static_asset_url("view-state.js")
     navigation_url = _static_asset_url("navigation.js")
     source_append_url = _static_asset_url("source-append.js")
-    source_line_anchors_url = _static_asset_url("source-line-anchors.js")
     file_type_taxonomy_url = _static_asset_url("file-type-taxonomy.js")
     plugin_sdk_url = _static_asset_url("plugin-sdk.js")
+    plugin_sdk_views_url = _static_asset_url("plugin-sdk-views.js")
+    pull_route_url = _static_asset_url("pull-route.js")
+    # The GitPath wire codec, which only a pin's page uses and which it needs before
+    # its first paint: a startup script on a pin's shell and absent from a folder's,
+    # like the pin guard below. Measured 2026-10-01: 885 compressed bytes of
+    # navigation.js on every folder's page. See exp-037.
+    git_path_script = _startup_script_tags(PIN_STARTUP_SCRIPTS if git_pin else ())
+    # The pull-request page's routes and host, on the shell of a pull-request address
+    # only. The server knows the address when it renders, so the script is fetched
+    # with the rest of the shell and not one round trip after it. Any other page that
+    # lands on such an address, through history, takes it from the `pull-route` bundle.
+    pull_route_script = _startup_script_tags(PULL_PAGE_STARTUP_SCRIPTS if pull_page else ())
     view_composition_url = _static_asset_url("view-composition.js")
     inert_html_url = _static_asset_url("inert-html.js")
     filter_state_url = _static_asset_url("filter-state.js")
@@ -1368,13 +1392,11 @@ async def index(request: Request) -> HTMLResponse:
         f"<script>window.METABROWSER_SOURCE_KIND={source_kind_json};</script>"
         f"<script>window.METABROWSER_REPOSITORY_CONTEXT={repository_context_json};</script>"
     )
-    if isinstance(subject, GitRevisionSubject):
+    if pin is not None:
         # The commit and ref the page is rendered for: its data requests name the commit,
         # and the freshness row compares both with what the server serves, so a switch
         # or a restart onto another pin before its first poll still offers a reload.
-        page_pin = _json.dumps({"pin": subject.commit_oid, "ref": subject.ref}).replace(
-            "<", "\\u003c"
-        )
+        page_pin = _json.dumps({"pin": pin.commit_oid, "ref": pin.ref}).replace("<", "\\u003c")
         repository_context_block += (
             f"<script>window.METABROWSER_SOURCE_PIN={page_pin};</script>"
             f"<script>{_SOURCE_PIN_GUARD_SCRIPT}</script>"
@@ -1472,6 +1494,30 @@ async def index(request: Request) -> HTMLResponse:
         # first tree is usable. renderFile awaits this bundle and rechecks its
         # ownership claim before preparing or mounting a view.
         "view-composition": [{"src": view_composition_url}],
+        # What a view's renderer calls: the line-number gutter with its `#L` anchors,
+        # and the SDK helpers a renderer builds its markup with (the Source surface,
+        # the copy wrapper, the partial-content notice, the syntax service). Nothing
+        # runs either until a view renders. loadViewComposition fetches this beside
+        # the compositor and waits for both, and plugin-sdk.js fetches it before it
+        # evaluates a plugin where no compositor ran, so a renderer always finds all
+        # of it. One file, because nothing uses one half without the other and a
+        # bundle's scripts are fetched one after another.
+        # Measured 2026-09-30 and 2026-10-01 in Chrome 152: as startup scripts the
+        # gutter was 7,992 of 191,862 bytes transferred before DOMContentLoaded and
+        # one of 21 requests, on a folder shell that draws no gutter, and the helpers
+        # 5,632 of plugin-sdk.js's 22,308 compressed bytes. The gutter's compile and
+        # evaluate took 0.09 ms, so the cost is transfer, which is what
+        # `startup_script_transfer_kb` in performance-budgets.toml bounds. On an
+        # anchored deep link the Source view appeared with its gutter in every load,
+        # with no layout shift in the pane, in this tier as in the eager one. See
+        # explorations/performance-loop/experiments/exp-037.
+        "sdk-views": [{"src": plugin_sdk_views_url, "provides": "MetabrowserSourceLineAnchors"}],
+        # The pull-request page's routes and host, for a page that reaches a
+        # pull-request address without loading there. A page that loads at one has
+        # them as a startup script (PULL_PAGE_STARTUP_SCRIPTS). Measured 2026-10-01:
+        # 1,818 of navigation.js's 13,265 compressed bytes as a startup script on
+        # every folder's page. See exp-037.
+        "pull-route": [{"src": pull_route_url, "provides": "MetabrowserPullRoute"}],
         # Only untrusted Markdown needs the allowlist: a pull-request comment, or a
         # document under the untrusted profile, which the server marks inert.
         "inert-html": [{"src": inert_html_url}],
@@ -1511,6 +1557,9 @@ async def index(request: Request) -> HTMLResponse:
     }}
     function loadNext(i) {{
       if (i >= assets.length) {{
+        // The event tells a listener that is already there. The flag tells one that
+        // arrives later, such as the syntax service, which loads with the first view.
+        window.METABROWSER_OPTIONAL_ASSETS_SETTLED = true;
         window.dispatchEvent(new Event("metabrowser:optional-assets-loaded"));
         return;
       }}
@@ -1719,10 +1768,9 @@ async def index(request: Request) -> HTMLResponse:
   <script src="{directory_totals_store_url}"></script>
   <script src="{contribution_registry_url}"></script>
   <script src="{resource_context_url}"></script>
-  <script src="{view_state_url}"></script>
-  <script src="{navigation_url}"></script>
+  <script src="{view_state_url}"></script>{git_path_script}
+  <script src="{navigation_url}"></script>{pull_route_script}
   <script src="{file_type_taxonomy_url}"></script>
-  <script src="{source_line_anchors_url}"></script>
   <script src="{plugin_sdk_url}"></script>
   <script src="{perf_url}"></script>
   <script src="{filter_state_url}"></script>
@@ -1758,12 +1806,12 @@ async def view_shell(request: Request) -> Response:
     raw_path = request.scope.get("raw_path")
     if not isinstance(raw_path, bytes):
         return PlainTextResponse("Invalid view path.", status_code=400)
-    subject = get_source_session().subject
-    decoded = (
-        decode_git_view_path(raw_path)
-        if isinstance(subject, GitRevisionSubject)
-        else decode_safe_view_path(raw_path)
-    )
+    if as_git_revision_subject(get_source_session().subject) is not None:
+        from metabrowser.git.content_routes import decode_git_view_path
+
+        decoded = decode_git_view_path(raw_path)
+    else:
+        decoded = decode_safe_view_path(raw_path)
     if decoded is None:
         return PlainTextResponse("Invalid view path.", status_code=400)
     return await index(request)
@@ -1794,7 +1842,7 @@ async def pull_shell(request: Request) -> Response:
     raw_path = request.scope.get("raw_path")
     if not isinstance(raw_path, bytes) or decode_safe_pull_route(raw_path) is None:
         return PlainTextResponse("Invalid pull-request route.", status_code=400)
-    return await index(request)
+    return await index(request, pull_page=True)
 
 
 async def root_redirect(_request: Request) -> Response:
@@ -2028,16 +2076,18 @@ async def api_tree(request: Request) -> Response:
     tree_filter = tree_filter_from_request(request)
     require_source_capability("navigation")
     require_source_capability("index")
-    subject = get_source_session().subject
-    git_pin = isinstance(subject, GitRevisionSubject)
+    pin = as_git_revision_subject(get_source_session().subject)
+    git_pin = pin is not None
     require_filter_capabilities(
         recency=bool(tree_filter.recency_seconds),
         # Ignore is absent on a pin: unignored equals total, so hiding
         # ignored files is a no-op rather than unsupported_for_subject.
         include_ignored=True if git_pin else tree_filter.include_ignored,
     )
-    if git_pin:
-        return await git_revision_tree(request, subject, tree_filter)
+    if pin is not None:
+        from metabrowser.git.content_routes import git_revision_tree
+
+        return await git_revision_tree(request, pin, tree_filter)
     subpath = parse_inventory_path(requested)
     remaining_depth = _tree_depth_from_query(depth_str)
     if subpath is None or resolve_session_identity(subpath) is None:
@@ -2101,11 +2151,13 @@ async def api_rollup(request: Request) -> Response:
     except ValueError as error:
         return JSONResponse({"error": str(error)}, status_code=400)
 
-    subject = get_source_session().subject
-    if isinstance(subject, GitRevisionSubject):
+    pin = as_git_revision_subject(get_source_session().subject)
+    if pin is not None:
+        from metabrowser.git.content_routes import git_revision_rollup
+
         return await git_revision_rollup(
             request,
-            subject,
+            pin,
             RollupOptions(
                 depth=depth,
                 top=top,
@@ -2500,9 +2552,11 @@ async def _api_folder_envelope(
 
 @log_async_calls(if_slower_than=0.1)
 async def api_file(request: Request) -> JSONResponse | Response:
-    subject = get_source_session().subject
-    if isinstance(subject, GitRevisionSubject):
-        return await git_revision_file(request, subject)
+    pin = as_git_revision_subject(get_source_session().subject)
+    if pin is not None:
+        from metabrowser.git.content_routes import git_revision_file
+
+        return await git_revision_file(request, pin)
     subpath = request.query_params.get("path", "")
     try:
         return await _api_file_impl(request)
@@ -3001,10 +3055,12 @@ async def api_kpress_render(request: Request) -> Response:
             status_code=400,
         )
 
-    subject = get_source_session().subject
-    if isinstance(subject, GitRevisionSubject):
+    pin = as_git_revision_subject(get_source_session().subject)
+    if pin is not None:
+        from metabrowser.git.content_routes import git_revision_kpress_render
+
         return await git_revision_kpress_render(
-            subject,
+            pin,
             subpath=subpath,
             view=view,
             profile=profile,
@@ -3503,9 +3559,11 @@ async def raw_file(request: Request) -> Response:
     for the whole ``/raw`` path rather than any one branch here.
     """
 
-    subject = get_source_session().subject
-    if isinstance(subject, GitRevisionSubject):
-        return await git_revision_raw(request, subject)
+    pin = as_git_revision_subject(get_source_session().subject)
+    if pin is not None:
+        from metabrowser.git.content_routes import git_revision_raw
+
+        return await git_revision_raw(request, pin)
     target = _raw_target_from_request(request)
     if target is None or not target.is_file():
         return PlainTextResponse("Not found", status_code=404)

@@ -73,6 +73,9 @@ make test-macos
 # Run the read-only smoke tests against public repositories on github.com.
 make test-live-github
 
+# Report the size of the test suite by area, at the working tree or at named commits.
+make test-report
+
 # Regenerate every golden (tests/golden/) and every recorded response fixture
 # a session replays (tests/fixtures/*.json) after an intended surface change,
 # then review the diff.
@@ -88,6 +91,8 @@ uv --config-file uv.toml run --frozen metab ./tests/manual-fixtures --no-open
 `make test` fails when Node or Git is missing instead of skipping the tests that need
 them. [Test Tiers](e2e-testing.md#test-tiers) says what each test target covers, when it
 runs, and which skips are expected.
+[Measuring the Suite](e2e-testing.md#measuring-the-suite) says what `make test-report`
+counts and how it times a run from a CI log.
 
 Start v0.12 testing with the
 [alpha test plan](project/specs/active/plan-2026-09-22-v012-alpha-testing.md), which
@@ -195,6 +200,60 @@ record it with the change.
 `devtools/bench_serving.py` covers the serving side; the page-load side is measured the
 same way and against the same corpus, so a tier change and a serving change are
 comparable.
+
+The transfer the eager tier may cost is a gate, not a habit: `startup_script_requests`
+and `startup_script_transfer_kb` in
+[`performance-budgets.toml`](../explorations/performance-loop/performance-budgets.toml)
+bound the scripts requested before `DOMContentLoaded`. A module whose evaluation costs
+nothing still spends that budget.
+
+`devtools/check_startup_scripts.py` applies both ceilings on every `make lint-check`. It
+renders a folder’s shell through the application and counts every `<script src>` in it,
+whatever its attributes, compresses each file as the application’s gzip middleware does,
+and adds the 300 bytes Resource Timing reports for a response’s headers, which is how
+the browser arrives at the number the gate reads.
+Its module documentation records the two agreeing, script for script.
+A script can also ask for another one, which no tag shows and the gate still counts.
+So the check runs the shell’s own scripts without a browser
+(`tests/dom/shell-startup-requests.js`) and fails on any script one of them requests
+before `DOMContentLoaded` has been handled.
+A script a page needs at startup is therefore a tag of the shell that needs it, as
+`git-path.js` is on a pinned revision’s shell and `pull-route.js` on a pull-request
+address’s; the check reports those two shells beside the budget without gating them.
+When it fails, move code out of a startup script or behind the first usable tree;
+raising the ceiling needs a measurement that shows the headroom is still real.
+
+A decision is recorded beside the constant that makes it.
+These are the ones with a measurement on record, and where it is:
+
+| Asset | Tier | Decided at | Measurement |
+| --- | --- | --- | --- |
+| Core shell modules | Eager | the script tags in `server.py`’s shell template | the note beside the startup gates in `performance-budgets.toml` |
+| Search, Help, keyboard, and Git tools | On demand, once the first tree is usable | `shell-tools` in `on_demand_script_bundles` | the same note |
+| Source line gutter with `#L` anchors, SDK view helpers, and the syntax service | On demand, one file, fetched beside the view compositor and before any plugin’s code runs | `sdk-views` in `on_demand_script_bundles` | [exp-037](../explorations/performance-loop/experiments/exp-037-startup-imports-and-loading-tiers-for-v012.md) |
+| Pull-request routes and page host | Eager on the shell of an address under `/pull/`; on demand for a page that reaches one through history | `PULL_PAGE_STARTUP_SCRIPTS` and `pull-route` in `server.py` | [exp-037](../explorations/performance-loop/experiments/exp-037-startup-imports-and-loading-tiers-for-v012.md) |
+| GitPath wire codec | Eager, on a pinned revision’s shell only | `PIN_STARTUP_SCRIPTS` in `server.py` | [exp-037](../explorations/performance-loop/experiments/exp-037-startup-imports-and-loading-tiers-for-v012.md) |
+| Chart.js and its plugins | On demand, at the first chart | `chart` in `on_demand_script_bundles` | the comment beside it |
+| Inert Markdown render and its table of contents | On demand, at the first inert render | `builtin_plugins/markdown/place-rendered.js` | [exp-037](../explorations/performance-loop/experiments/exp-037-startup-imports-and-loading-tiers-for-v012.md) |
+
+What would move next, if the budget tightens or a startup script has to grow, measured
+2026-10-01 as the compressed bytes each saves where it stands (gzip level 6, as the
+middleware compresses):
+
+| Code | In | Saves | Who calls it |
+| --- | --- | --- | --- |
+| KPress document loading and its table of contents | `plugin-sdk.js` | 2,595 bytes | a Markdown view’s renderer |
+| Rollup fetch and watch | `plugin-sdk.js` | 1,368 bytes | a folder view’s renderer |
+| Plugin data and text fetch helpers | `plugin-sdk.js` | 1,178 bytes | a view’s renderer |
+| The chart helper | `plugin-sdk.js` | 673 bytes | a view that draws a chart |
+| File rendering: the staged render, tabs and print, Load more, the live stream | `app.js` | 7,339 bytes | an opened file |
+
+The first four are the rest of the SDK’s view-phase surface and would join
+`plugin-sdk-views.js` under the guarantee it already gives: there before any plugin’s
+code runs. Together they would put the pull-request shell, which the check reports as
+over, back under the ceiling.
+The last would sit beside the view compositor, and a page that loads at a file’s address
+wants it at once, so it needs the measurement this section asks for before it moves.
 
 ## Benchmarking Scan and Serve
 
@@ -424,10 +483,27 @@ secondary-text, and label divergences.
 ## Deferred Imports
 
 Imports go at the top of a module.
-There is one exception, in `metabrowser/kpress_adapter.py`, and it is written down here
-so the next one has to argue for itself rather than cite precedent.
+An import inside a function is an exception that has to argue for itself rather than
+cite precedent. There are three kinds, each written down here with the test that holds
+its boundary, so that the list of them is what a test enforces and not a count in this
+document:
 
-**Why that one.** A CLI’s startup cost is a tax on every invocation, paid by humans
+- **The KPress runtime**, in `metabrowser/kpress_adapter.py`, described below.
+- **A mode’s own module**, imported in that mode’s branch of the command line, so that
+  `--version` and `--help` do not build the application.
+  `test_version_command_does_not_load_git_source_or_server_modules` in
+  `tests/test_plugin_public_api.py` holds it.
+- **What only a Git source needs**: the revision tree source, the routes that answer
+  from it, acquisition, and `--diff`. A folder’s process never opens a repository, so a
+  handler imports them behind the subject check (`source.as_git_revision_subject`). The
+  same test module runs every mode, every route a folder’s page asks for, and the page
+  routes themselves in a fresh interpreter and fails when one of `_GIT_SOURCE_MODULES`
+  is loaded. A served pin imports its routes as it starts (`cli/git_pin_cli.py`), so its
+  first request does not import them on the event loop.
+  The measurements are in
+  [exp-037](../explorations/performance-loop/experiments/exp-037-startup-imports-and-loading-tiers-for-v012.md).
+
+**Why the first one.** A CLI’s startup cost is a tax on every invocation, paid by humans
 waiting and by agents making many calls.
 Importing `metabrowser.server` cost about 345 ms, of which KPress and its rendering
 stack were the largest single contributor.

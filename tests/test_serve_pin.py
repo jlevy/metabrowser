@@ -18,6 +18,7 @@ import asyncio
 import io
 import os
 import re
+import sys
 from collections.abc import AsyncGenerator, Awaitable, Callable, Iterator
 from contextlib import asynccontextmanager, redirect_stderr, redirect_stdout
 from dataclasses import dataclass
@@ -30,6 +31,7 @@ from starlette.routing import Route
 from starlette.testclient import TestClient
 from typer.testing import CliRunner
 
+from devtools import check_startup_scripts
 from metabrowser import server
 from metabrowser.cache.acquire import PublishedSource, acquire_source
 from metabrowser.cache.repository_store import open_revision
@@ -49,7 +51,7 @@ from metabrowser.source import (
     serve_subject_opener,
 )
 from tests.golden_harness import block, check_golden, normalize_console, pin_git_dates
-from tests.required_tools import needs_git
+from tests.required_tools import needs_git, needs_node
 from tests.test_cache_acquire import _allow_installed_git, _file_source, _git
 
 posix_only = pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only")
@@ -440,10 +442,79 @@ def test_the_shell_names_the_pinned_revision(served: tuple[TestClient, _Origin])
     assert f'<span class="header-revision">{origin.second[:12]}</span>' in shell.text
     assert 'window.METABROWSER_SOURCE_KIND="git_revision"' in shell.text
     assert "window.METABROWSER_REPOSITORY_CONTEXT=null" in shell.text
+    # The GitPath codec is a startup script here, ahead of the navigation module that
+    # displays a pin's paths with it. A folder's shell leaves it out:
+    # test_source_line_anchors.py holds that half.
+    assert shell.text.index('<script src="/static/git-path.js') < shell.text.index(
+        '<script src="/static/navigation.js'
+    )
     # A pinned address is a GitPath wire, and a filesystem spelling is refused.
     assert client.get(f"/view/{_wire('README.md')}").status_code == 200
     assert client.get("/view/README.md").status_code == 400
     assert client.get(f"/commit/{origin.first}").status_code == 200
+
+
+def test_a_served_pin_has_its_routes_before_its_first_request(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # server.py imports a pin's routes where a pin is served, which keeps them off a
+    # folder's start. A served pin imports them as it starts, so its first request does
+    # not import them on the event loop. This process has long since imported them, so
+    # the module is forgotten for the length of the test.
+    _home(tmp_path, monkeypatch)
+    origin = _origin(tmp_path)
+    monkeypatch.delitem(sys.modules, "metabrowser.git.content_routes", raising=False)
+
+    result = _serve(origin.url)
+
+    assert result.exit_code == 0, result.output
+    assert "metabrowser.git.content_routes" in sys.modules
+
+
+def test_a_pins_shell_adds_the_startup_scripts_the_budget_check_reports(
+    served: tuple[TestClient, _Origin],
+) -> None:
+    # devtools/check_startup_scripts.py cannot acquire a repository on every lint, so
+    # it reports a pin's shell as a folder's plus server.PIN_STARTUP_SCRIPTS. This is
+    # the real pin's shell held to that list. Rendering the folder's replaces the
+    # served pin, so the pin's is read first.
+    client, _origin = served
+    pin = check_startup_scripts.startup_script_paths(client.get("/view/").text)
+    folder = check_startup_scripts.startup_script_paths(check_startup_scripts.render_folder_shell())
+    added = [f"/static/{name}" for name in server.PIN_STARTUP_SCRIPTS]
+    assert added == ["/static/git-path.js"]
+    assert sorted(pin) == sorted(folder + added)
+    assert not set(added) & set(folder)
+
+
+@needs_node
+def test_a_pins_page_without_its_codec_stops_and_says_so(
+    served: tuple[TestClient, _Origin],
+) -> None:
+    # A pin's page names and addresses every file through the GitPath codec. If that
+    # startup script did not arrive, a row would show its wire for a name and a link
+    # would address another file. The page's own scripts, run whole: with the codec
+    # they start the tree; without it they say the page did not load and ask for
+    # nothing.
+    client, _origin = served
+    shell = client.get("/view/").text
+    loaded = check_startup_scripts.run_startup_session(shell, "/view/")
+    assert loaded["errors"] == []
+    assert loaded["alerts"] == []
+    assert loaded["requested"] == []
+    assert "/api/tree" in loaded["fetches"]
+
+    codec = re.search(r'\n *<script src="/static/git-path\.js[^"]*"></script>', shell)
+    assert codec is not None
+    without = check_startup_scripts.run_startup_session(shell.replace(codec.group(0), ""), "/view/")
+    assert (
+        without["alerts"]
+        == ["This page did not load completely. Refresh the page to try again."] * 2
+    )
+    assert without["fetches"] == []
+    assert without["requested"] == []
+    assert len(without["errors"]) == 1
+    assert "git-path.js did not load on a pinned revision's page" in without["errors"][0]
 
 
 def test_tree_file_and_raw_answer_from_the_pinned_tree(

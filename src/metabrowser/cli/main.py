@@ -36,7 +36,6 @@ import typer
 from metabrowser import __version__
 from metabrowser.build_version import display_version_line
 from metabrowser.cli.common import PipeTrackingStream, silence_broken_pipe, validate_log_level
-from metabrowser.cli.diff_cli import run_diff
 from metabrowser.cli.plugins import doctor_plugins, list_plugins, show_plugin
 from metabrowser.cli.remote import run_remote
 from metabrowser.cli.serve import run_serve
@@ -830,6 +829,11 @@ def _metab(
         )
     elif mode == "diff":
         assert diff is not None
+        # Imported in its branch, as the `api`, `no-serve` and `show` modes below are:
+        # the Git diff adapter loads the revision tree source, which no other mode on a
+        # local folder needs.
+        from metabrowser.cli.diff_cli import run_diff
+
         run_diff(
             _require_root(ctx, root, mode),
             spec=diff,

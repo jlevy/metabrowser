@@ -1,24 +1,10 @@
 {
   "schema": "metabrowser-repository-cache-url-grammar-v1",
   "decided": "2026-09-16",
+  "provenance": "Written by hand before the classifier existed; there is no generator. The replay reads transports, default_ports, the names in reasons, and each case's id, input, and expected, through metabrowser.cache.urls.classify_root_argument (tests/test_repository_cache_contract_fixtures.py); scope, each reason's text, and each case's why are rationale that nothing reads. The order the checks apply in and the normalization rules are stated where they are implemented, in metabrowser/cache/urls.py. To add a case, write its input, the outcome those rules give, and a why; do not paste what the classifier returns.",
   "scope": "Provider-neutral classification of the CLI root argument before any Path is constructed. An installed provider reducer that claims a scheme and host is consulted first; this grammar applies to every input no reducer reduced.",
   "transports": ["https", "ssh", "file"],
   "default_ports": { "https": "443", "ssh": "22" },
-  "check_order": [
-    "empty",
-    "option_like",
-    "remote_helper_syntax",
-    "unsupported_transport",
-    "malformed_url",
-    "local_path",
-    "control_or_whitespace",
-    "non_ascii",
-    "backslash",
-    "query_not_allowed",
-    "fragment_not_allowed",
-    "authority",
-    "path"
-  ],
   "reasons": {
     "empty": "An empty argument names nothing.",
     "option_like": "A leading '-' in the argument, host, user, or SCP path can become a Git or SSH option (CVE-2017-1000117).",
@@ -43,14 +29,6 @@
     "invalid_percent_encoding": "'%' must be followed by two hexadecimal digits.",
     "invalid_path_character": "Paths use only RFC 3986 pchar characters; SCP-like paths are not URIs, so '%' is not allowed there."
   },
-  "normalization": [
-    "Lowercase the scheme and host (RFC 3986 6.2.2.1).",
-    "Uppercase percent-encoding hex digits and decode percent-encoded unreserved characters (RFC 3986 6.2.2.1-2).",
-    "Remove an empty or default port (RFC 3986 6.2.3).",
-    "Rewrite file://localhost/ to file:/// (RFC 8089).",
-    "Remove one trailing '/' from https and file paths: Git's smart-HTTP client requests the same /info/refs URL with and without it (explorations/repository-cache/results/url.json), and POSIX resolves a directory path identically.",
-    "Preserve path case, a terminal .git, the ssh user, SSH versus HTTPS spelling, SCP-like versus ssh:// spelling, and an ssh or SCP trailing '/', because a generic Git host may interpret each."
-  ],
   "cases": [
     {
       "id": "https-basic",

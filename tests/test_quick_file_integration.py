@@ -284,7 +284,7 @@ def test_navigation_returns_explicit_palette_outcomes_and_revalidates_hits() -> 
         )
     ]
     # The palette's view wins; otherwise an anchored address asks for the Source view.
-    assert "await selectFile(\n    path,\n    context.viewId || " in apply_navigation
+    assert "await selectFile(path, context.viewId || preferredView || " in apply_navigation
 
     init_block = _function_source(js, "initQuickFileFinder")
     assert "fileNeedsRevalidate.add(path)" in init_block

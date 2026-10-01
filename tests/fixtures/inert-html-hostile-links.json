@@ -1,0 +1,21 @@
+{
+  "refused": {
+    "script": "javascript:alert(1)",
+    "mixed case": "JaVaScRiPt:alert(1)",
+    "padded": " \t javascript:alert(1)",
+    "split": "java\nscr\tipt:alert(1)",
+    "control": "\u0001javascript:alert(1)",
+    "data": "data:text/html,<script>alert(1)</script>",
+    "vbscript": "vbscript:msgbox(1)",
+    "file": "file:///etc/passwd",
+    "blob": "blob:https://example.com/1",
+    "mailto": "mailto:someone@example.com",
+    "ftp": "ftp://example.com/x",
+    "websocket": "wss://example.com/x",
+    "view-source": "view-source:https://example.com/"
+  },
+  "kept": {
+    "https": "https://example.com/ok",
+    "http": "http://example.com/ok"
+  }
+}

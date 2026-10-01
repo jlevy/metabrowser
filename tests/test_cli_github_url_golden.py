@@ -110,6 +110,8 @@ OPENED: list[list[str]] = [
     [f"{REPO.replace('octo/demo', 'Octo/Demo')}.git", "--no-serve"],
     ["https://www.github.com/octo/demo/", "--no-serve"],
     ["git@github.com:octo/demo.git", "--no-serve"],
+    # The default port, a tab parameter, and a fragment, as copied from a repository page.
+    ["https://github.com:443/octo/demo?tab=readme-ov-file#readme", "--no-serve"],
     [f"{REPO}/tree/release/v1/docs", "--no-serve"],
     [f"{REPO}/blob/topic/README.md?plain=1&utm_source=chat#L3-L4", "--no-serve"],
     [f"{REPO}/blob/v1.0/docs/v1.md#L1C3-L1C9", "--no-serve"],

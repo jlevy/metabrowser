@@ -78,6 +78,9 @@ links to the document that covers each in depth.
 
 ## Reviews
 
+- [Test-suite baseline for the v0.12 test review](reviews/review-2026-10-01-test-suite-baseline.md)
+  — the size and CI run time of the suite at `main`, at the v0.12 stack before the
+  review, and after its first three pull requests, with the command behind each figure
 - [Delivery order for Git status, the repository cache, and providers](reviews/review-2026-08-27-delivery-order-for-status-cache-and-providers.md)
   — reviews the architecture and plans against the stated priority order, and finds the
   gates that order does not yet show

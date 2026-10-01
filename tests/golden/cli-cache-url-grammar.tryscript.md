@@ -29,8 +29,10 @@ before it builds a path or runs Git.
 The frozen grammar is `tests/fixtures/repository-cache/url-grammar.json`, and
 `tests/test_repository_cache_contract_fixtures.py` replays every case against the
 production classifier.
-This transcript shows what reaches the terminal: one input per accepted form and per
-refusal reason, through the acquisition modes.
+That replay is the authority for the grammar: every normalization and every refusal
+reason has its cases there.
+This transcript shows what the fixture cannot, which is what reaches the terminal: one
+input per accepted form, the refusal line, and the rule that an existing path is served.
 
 No command reaches Git or the network, so this runs as a subprocess on any Git version.
 A refused input stops at classification.
@@ -49,9 +51,8 @@ none of them created it.
 
 ## Test: https sources are normalized
 
-The scheme and host fold to lowercase, the default port and a trailing slash are
-dropped, and an encoded unreserved character is decoded.
-The path keeps its case.
+The scheme and host fold to lowercase, and the default port and a trailing slash are
+dropped. The path keeps its case.
 
 ```console
 $ METABROWSER_HOME=$PWD/home metab HTTPS://Example.COM:443/Owner/Repo.git/ --walk
@@ -59,40 +60,15 @@ Error: --walk runs the filesystem inventory walker, and a Git source has no file
 ? 1
 ```
 
-```console
-$ METABROWSER_HOME=$PWD/home metab https://example.com/owner/%72epo.git --walk
-Error: --walk runs the filesystem inventory walker, and a Git source has no filesystem to walk (https://example.com/owner/repo.git). Read a pinned tree with --api '/api/tree?depth=N', or --walk a local directory.
-? 1
-```
-
-```console
-$ METABROWSER_HOME=$PWD/home metab 'https://[2001:DB8::1]:8443/repo.git' --walk
-Error: --walk runs the filesystem inventory walker, and a Git source has no filesystem to walk (https://[2001:db8::1]:8443/repo.git). Read a pinned tree with --api '/api/tree?depth=N', or --walk a local directory.
-? 1
-```
-
 ## Test: ssh URLs and scp-like addresses are ssh sources
 
 The default port 22 is dropped and the host folds to lowercase.
-An ssh URL keeps a trailing slash and an scp-like address keeps its path as written,
-because a generic Git host may interpret either one.
-An scp-like address needs a user; without one it is a local path, as a later test shows.
+An scp-like address keeps its path as written, and is refused in the route mode as in
+the acquisition mode.
 
 ```console
 $ METABROWSER_HOME=$PWD/home metab ssh://git@Example.com:22/owner/repo.git --no-serve
 Error: ssh Git sources are not acquired yet (ssh://git@example.com/owner/repo.git)
-? 1
-```
-
-```console
-$ METABROWSER_HOME=$PWD/home metab ssh://git@example.com/owner/repo.git/ --no-serve
-Error: ssh Git sources are not acquired yet (ssh://git@example.com/owner/repo.git/)
-? 1
-```
-
-```console
-$ METABROWSER_HOME=$PWD/home metab git@EXAMPLE.com:Owner/Repo.git --no-serve
-Error: ssh Git sources are not acquired yet (git@example.com:Owner/Repo.git)
 ? 1
 ```
 
@@ -114,8 +90,7 @@ Error: --walk runs the filesystem inventory walker, and a Git source has no file
 
 ## Test: a bare path is never a clone origin
 
-A path, including one that looks like a host and path without a user, stays a local
-path, and `--no-serve` has nothing to acquire.
+A path stays a local path, and `--no-serve` has nothing to acquire.
 
 ```console
 $ METABROWSER_HOME=$PWD/home metab /srv/git/repo.git --no-serve
@@ -123,9 +98,13 @@ Error: ROOT is a local path; --no-serve acquires a file:// or https:// Git sourc
 ? 1
 ```
 
+A path the grammar has to decide is the path that was given.
+`a/b::c` holds `::`, so the grammar is asked; it names nothing here, and the error is
+about that path and not about the working directory.
+
 ```console
-$ METABROWSER_HOME=$PWD/home metab example.com:owner/repo.git --no-serve
-Error: ROOT is a local path; --no-serve acquires a file:// or https:// Git source
+$ METABROWSER_HOME=$PWD/home metab a/b::c --walk
+Error: [CWD]/a/b::c is not a directory
 ? 1
 ```
 
@@ -325,11 +304,14 @@ entries:
 ? 0
 ```
 
-## Test: arguments that could become Git or SSH options
+## Test: a refused ROOT names its reason and nothing else
 
-A leading `-` is refused wherever Git or SSH could read it as an option.
-The first command passes `--` so the argument reaches the grammar instead of the option
-parser.
+Every refusal is the one line `Error: invalid ROOT (<reason>)`. One input per reason
+would repeat that line, so the fixture holds the reasons and this test holds the cases
+where the command line itself matters.
+
+A leading `-` reaches the grammar only past `--`, and is refused where Git or SSH could
+read it as an option.
 
 ```console
 $ METABROWSER_HOME=$PWD/home metab --no-serve -- '--upload-pack=true'
@@ -337,17 +319,7 @@ Error: invalid ROOT (option_like)
 ? 1
 ```
 
-```console
-$ METABROWSER_HOME=$PWD/home metab 'ssh://-oProxyCommand=true/repo.git' --no-serve
-Error: invalid ROOT (option_like)
-? 1
-```
-
-```console
-$ METABROWSER_HOME=$PWD/home metab 'git@example.com:-oProxyCommand=true' --no-serve
-Error: invalid ROOT (option_like)
-? 1
-```
+Remote-helper syntax, which can run a command, names no folder here.
 
 ```console
 $ METABROWSER_HOME=$PWD/home metab 'ext::sh -c true' --no-serve
@@ -355,7 +327,7 @@ Error: invalid ROOT (remote_helper_syntax)
 ? 1
 ```
 
-## Test: transports and malformed URLs
+An empty argument is refused, not read as the current directory.
 
 ```console
 $ METABROWSER_HOME=$PWD/home metab '' --no-serve
@@ -369,55 +341,8 @@ Error: invalid ROOT (unsupported_transport)
 ? 1
 ```
 
-```console
-$ METABROWSER_HOME=$PWD/home metab git://example.com/owner/repo.git --no-serve
-Error: invalid ROOT (unsupported_transport)
-? 1
-```
-
-```console
-$ METABROWSER_HOME=$PWD/home metab git+ssh://example.com/owner/repo.git --no-serve
-Error: invalid ROOT (unsupported_transport)
-? 1
-```
-
-```console
-$ METABROWSER_HOME=$PWD/home metab https:/example.com/owner/repo.git --no-serve
-Error: invalid ROOT (malformed_url)
-? 1
-```
-
-```console
-$ METABROWSER_HOME=$PWD/home metab file:srv/git/repo.git --no-serve
-Error: invalid ROOT (malformed_url)
-? 1
-```
-
-## Test: characters no repository address contains
-
-```console
-$ METABROWSER_HOME=$PWD/home metab 'https://example.com/owner/my repo.git' --no-serve
-Error: invalid ROOT (control_or_whitespace)
-? 1
-```
-
-```console
-$ METABROWSER_HOME=$PWD/home metab https://example.com/owner/repo%0A.git --no-serve
-Error: invalid ROOT (control_or_whitespace)
-? 1
-```
-
-```console
-$ METABROWSER_HOME=$PWD/home metab https://exämple.com/owner/repo.git --no-serve
-Error: invalid ROOT (non_ascii)
-? 1
-```
-
-```console
-$ METABROWSER_HOME=$PWD/home metab 'https://example.com\owner\repo.git' --no-serve
-Error: invalid ROOT (backslash)
-? 1
-```
+A token in the query or in the userinfo does not reach the terminal, in the acquisition
+mode or in the route mode.
 
 ```console
 $ METABROWSER_HOME=$PWD/home metab 'https://example.com/owner/repo.git?access_token=secret' --no-serve
@@ -426,108 +351,8 @@ Error: invalid ROOT (query_not_allowed)
 ```
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab 'https://example.com/owner/repo.git#readme' --no-serve
-Error: invalid ROOT (fragment_not_allowed)
-? 1
-```
-
-## Test: credentials, users, hosts, and ports
-
-```console
-$ METABROWSER_HOME=$PWD/home metab https://alice:secret@example.com/owner/repo.git --no-serve
-Error: invalid ROOT (credentials_in_url)
-? 1
-```
-
-```console
 $ METABROWSER_HOME=$PWD/home metab https://token123@example.com/owner/repo.git --api /api/cache/sources
 Error: invalid ROOT (credentials_in_url)
-? 1
-```
-
-```console
-$ METABROWSER_HOME=$PWD/home metab ssh://git:secret@example.com/owner/repo.git --no-serve
-Error: invalid ROOT (credentials_in_url)
-? 1
-```
-
-```console
-$ METABROWSER_HOME=$PWD/home metab 'ssh://al;ce@example.com/owner/repo.git' --no-serve
-Error: invalid ROOT (invalid_user)
-? 1
-```
-
-```console
-$ METABROWSER_HOME=$PWD/home metab https:///owner/repo.git --no-serve
-Error: invalid ROOT (missing_host)
-? 1
-```
-
-```console
-$ METABROWSER_HOME=$PWD/home metab https://exa_mple.com/owner/repo.git --no-serve
-Error: invalid ROOT (invalid_host)
-? 1
-```
-
-```console
-$ METABROWSER_HOME=$PWD/home metab https://example.com:0443/owner/repo.git --no-serve
-Error: invalid ROOT (invalid_port)
-? 1
-```
-
-```console
-$ METABROWSER_HOME=$PWD/home metab file://fileserver/share/repo.git --no-serve
-Error: invalid ROOT (file_authority_not_local)
-? 1
-```
-
-## Test: paths that name no repository or an ambiguous one
-
-```console
-$ METABROWSER_HOME=$PWD/home metab https://example.com/ --no-serve
-Error: invalid ROOT (missing_repository_path)
-? 1
-```
-
-```console
-$ METABROWSER_HOME=$PWD/home metab git@example.com: --no-serve
-Error: invalid ROOT (missing_repository_path)
-? 1
-```
-
-```console
-$ METABROWSER_HOME=$PWD/home metab https://example.com/owner//repo.git --no-serve
-Error: invalid ROOT (empty_path_segment)
-? 1
-```
-
-```console
-$ METABROWSER_HOME=$PWD/home metab https://example.com/owner/%2e%2e/repo.git --no-serve
-Error: invalid ROOT (dot_segment)
-? 1
-```
-
-```console
-$ METABROWSER_HOME=$PWD/home metab file:///srv/git/./repo.git --no-serve
-Error: invalid ROOT (dot_segment)
-? 1
-```
-
-```console
-$ METABROWSER_HOME=$PWD/home metab https://example.com/owner%2Frepo.git --no-serve
-Error: invalid ROOT (encoded_delimiter)
-? 1
-```
-
-```console
-$ METABROWSER_HOME=$PWD/home metab https://example.com/owner/repo%zz.git --no-serve
-Error: invalid ROOT (invalid_percent_encoding)
-? 1
-```
-
-```console
-$ METABROWSER_HOME=$PWD/home metab 'https://example.com/owner/repo<.git' --no-serve
-Error: invalid ROOT (invalid_path_character)
 ? 1
 ```
 

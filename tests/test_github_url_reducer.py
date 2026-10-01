@@ -190,7 +190,11 @@ def test_web_url_shapes_carry_their_selection(value: str, expected: RepositorySe
         ("https://github.com/octo/demo/commit/abcdef0/x", "unsupported_github_url", CANONICAL),
         ("https://github.com/octo/demo/pull/0", "invalid_pull_request", CANONICAL),
         ("https://github.com/octo/demo/pull/x", "invalid_pull_request", CANONICAL),
-        ("https://github.com/octo/demo/pull/12/checks", "unsupported_github_url", CANONICAL),
+        (
+            "https://github.com/octo/demo/pull/12/checks",
+            "unsupported_github_url",
+            f"this GitHub page is not opened; open the repository at {CANONICAL}",
+        ),
         ("https://raw.githubusercontent.com/octo/demo/main", "unsupported_github_url", "raw URL"),
         ("https://github.com/o_o/demo", "invalid_owner", "owner"),
         ("https://github.com/octo/de$mo", "invalid_repository", "repository name"),
