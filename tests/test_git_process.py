@@ -34,22 +34,6 @@ from tests.required_tools import needs_git
 pytestmark = needs_git
 
 
-def test_acquisition_policy_isolates_config_and_disables_lazy_fetch() -> None:
-    env = git_environment(ACQUISITION_POLICY)
-    assert env["GIT_CONFIG_NOSYSTEM"] == "1"
-    assert env["GIT_CONFIG_GLOBAL"] == os.devnull
-    assert env["GIT_NO_LAZY_FETCH"] == "1"
-    assert env["GIT_SSH_COMMAND"] == "ssh -oBatchMode=yes"
-    assert env["GIT_TERMINAL_PROMPT"] == "0"
-    read_env = git_environment(READ_POLICY)
-    assert "GIT_NO_LAZY_FETCH" not in read_env
-    assert "GIT_CONFIG_NOSYSTEM" not in read_env
-    assert "GIT_SSH_COMMAND" not in read_env
-    batch_env = git_environment(BATCH_OBJECT_POLICY)
-    assert BATCH_OBJECT_POLICY.no_lazy_fetch is True
-    assert batch_env["GIT_NO_LAZY_FETCH"] == "1"
-
-
 def test_run_git_rejects_cwd_and_target_together(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -98,23 +82,36 @@ def test_isolated_policies_ignore_an_ambient_protocol_allowlist(
 def test_isolated_policies_drop_every_ambient_git_variable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Isolation is an allowlist: a spawn gets exactly the variables its policy sets.
+
+    An ambient ``GIT_ALLOW_PROTOCOL`` would otherwise replace every ``protocol.*``
+    setting, on an acquisition and on a request-path read of a published store alike.
+    Each policy's set is spelled out here rather than read back from the policy, so a
+    policy that stopped forcing SSH batch mode would fail.
+    """
+
     monkeypatch.setenv("GIT_ALLOW_PROTOCOL", "file:ext")
     monkeypatch.setenv("GIT_DEFAULT_REF_FORMAT", "reftable")
     monkeypatch.setenv("GIT_TRACE", "1")
     monkeypatch.setenv("GIT_SSH_COMMAND", "ssh -oProxyCommand=ambient")
-    for policy in (ACQUISITION_POLICY, STORE_READ_POLICY, BATCH_OBJECT_POLICY):
+    isolated = {
+        "GIT_OPTIONAL_LOCKS": "0",
+        "GIT_TERMINAL_PROMPT": "0",
+        "GIT_ASKPASS": "",
+        "GIT_CONFIG_GLOBAL": os.devnull,
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_NO_LAZY_FETCH": "1",
+    }
+    ssh_batch = {"GIT_SSH_COMMAND": "ssh -oBatchMode=yes"}
+    for policy, forced in (
+        (ACQUISITION_POLICY, ssh_batch),
+        (STORE_READ_POLICY, ssh_batch),
+        (BATCH_OBJECT_POLICY, {}),
+    ):
         env = git_environment(policy)
-        wanted = {
-            "GIT_OPTIONAL_LOCKS": "0",
-            "GIT_TERMINAL_PROMPT": "0",
-            "GIT_ASKPASS": "",
-            "GIT_CONFIG_GLOBAL": os.devnull,
-            "GIT_CONFIG_NOSYSTEM": "1",
-            "GIT_NO_LAZY_FETCH": "1",
-        }
-        if policy.ssh_batch:
-            wanted["GIT_SSH_COMMAND"] = "ssh -oBatchMode=yes"
-        assert {name: value for name, value in env.items() if name.startswith("GIT_")} == wanted
+        assert {
+            name: value for name, value in env.items() if name.startswith("GIT_")
+        } == isolated | forced, policy.name
     ordinary = git_environment(READ_POLICY)
     assert ordinary["GIT_ALLOW_PROTOCOL"] == "file:ext"
     assert ordinary["GIT_TRACE"] == "1"
