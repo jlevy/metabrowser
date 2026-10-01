@@ -153,9 +153,9 @@ The Metabrowser suite should use generic sample plugins so it cannot pass only b
 an unrelated workspace package happens to be installed.
 
 The [v0.12 alpha test plan](project/specs/active/plan-2026-09-22-v012-alpha-testing.md)
-sequences foundation testing, GitHub URL browsing, direct PRs, and full-release
-acceptance, with manual and automated scenarios.
-The executable foundation procedure is
+sequences foundation testing, GitHub URL browsing, and direct PRs, with manual and
+automated scenarios and the landing checklist.
+The step-by-step procedure is
 [QA: v0.12 Repository Library](qa-v012-repository-library.md).
 
 ## Manual Browser Check

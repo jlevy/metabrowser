@@ -18,8 +18,8 @@ Checked items below are supported today; unchecked items are planned work.
 | File editing | [Opt-in trusted-local file editing](docs/project/specs/active/plan-2026-07-16-trusted-local-file-editing.md) | Draft |
 | Scan state | [Scanning state and recent directories](docs/project/specs/active/plan-2026-07-16-scanning-state-and-recent-directories.md) | Draft |
 | Git surfaces | [Git graph nav panel](docs/project/specs/active/plan-2026-08-06-git-graph-view.md), [general diff rendering](docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md), [Git status and working-tree diffs](docs/project/specs/active/plan-2026-08-26-git-status-and-working-tree-diffs.md) | Graph panel, read-only Git API, and diff rendering shipped; working-tree status and `/compare/` remain, after CLI parity |
-| Repository library | [Repository library and open from a Git URL](docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md) | v0.11.0 released. Stack [#218](https://github.com/jlevy/metabrowser/stack/218) holds the owner-only cache, ready-for-review `file://` acquisition, and ready-for-review leased Git-tree pin. Repository URL opening, https/ssh acquisition, and HTTP serving remain; immutable Git trees are read without a checkout or detached worktree |
-| Hosted review and GitHub | [Hosted review model and GitHub provider](docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md), [architecture](docs/project/architecture/arch-hosted-review-model.md) | The provider-neutral Hosted Review Format records and their contract gates were removed from stack [#218](https://github.com/jlevy/metabrowser/stack/218) and are kept, unmaintained, on the `reference/v012-hosted-review` branch, tagged `reference/v012-hosted-review-2026-09-30`; the [thin-mirror plan](docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md) stores pull-request data as plain validated JSON records in the GitHub plugin. The bounded PR index and virtual nav remain planned. [Alpha testing](docs/project/specs/active/plan-2026-09-22-v012-alpha-testing.md) covers incremental readiness through the direct PR view; the full v0.12 milestone continues through the index and nav |
+| Repository library | [Repository library and open from a Git URL](docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md) | v0.11.0 released. v0.12 is on unmerged stack [#218](https://github.com/jlevy/metabrowser/stack/218): an owner-only cache of full-clone mirrors acquired from `file://` and `https://` origins and served as immutable pins under the forced untrusted profile, with background refresh and pin switching, per the [thin-mirror plan](docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md). SSH, the catalog, the chooser, and very large repositories remain |
+| Hosted review and GitHub | [Hosted review model and GitHub provider](docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md), [architecture](docs/project/architecture/arch-hosted-review-model.md) | The provider-neutral Hosted Review Format records and their contract gates were removed from stack [#218](https://github.com/jlevy/metabrowser/stack/218) and are kept, unmaintained, on the `reference/v012-hosted-review` branch, tagged `reference/v012-hosted-review-2026-09-30`; the [thin-mirror plan](docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md) stores pull-request data as plain validated JSON records in the GitHub plugin. GitHub URLs, pull-request records, and the pull-request page are on the stack; the pull-request list, its panel, and inline review anchors are deferred beyond v0.12. [Alpha testing](docs/project/specs/active/plan-2026-09-22-v012-alpha-testing.md#landing-status) lists what remains before landing |
 | Editor host | [VS Code extension host](docs/project/architecture/arch-vscode-extension-host.md) | Architecture only; no plan yet |
 | Load-time performance | [End-to-end load time](docs/project/specs/active/plan-2026-08-21-load-time-performance.md) | Draft |
 | Mermaid diagrams | [Mermaid diagram rendering](docs/project/specs/active/plan-2026-08-21-mermaid-diagram-rendering.md) | Draft; depends on load-time Phase 1 |
@@ -32,53 +32,29 @@ flat `metab` CLI, and the v0.1.0 package.
 
 ## v0.12.0 Repository and GitHub Slice
 
-The next release starts with additive paths from a pasted GitHub URL to an offline
-repository, any exposed and authorized branch, and a cached pull-request view.
-The order follows the actual contracts rather than treating “GitHub support” as one
-component:
+v0.12.0 lets a user paste a GitHub repository, file, commit, or pull-request URL and
+browse it from a local mirror: instant once seen, usable offline, and refreshed in the
+background.
+[Thin Mirror for Git and GitHub Browsing](docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md)
+is the design, and its Delivery section maps each step to its pull request (epic
+`mb-hall`).
 
-1. `mb-i57d` and `mb-xxhi` are closed: v0.10.0 was cut from the intended `main` and its
-   release and fetched commit verified.
-   v0.11.0 has since shipped; new `release:v0.12.0` implementation PRs extend the
-   current Stack 218 tip.
-2. `mb-ire2`, `mb-xa0p`, `mb-4gnu`, and `mb-h51g` establish the owner-only versioned
-   application home and publish a pinned generic Git cache entry.
-   `mb-k54c`, `mb-dg00`, and `mb-dxmb` expose and golden-pin its state and URL grammar.
-   The first seven stack layers through ready-for-review #216 carry this foundation;
-   [#225](https://github.com/jlevy/metabrowser/pull/225) adds the alpha test plan above
-   them. Remaining acceptance work is tracked in the
-   [repository plan](docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md).
-3. The untrusted-content profile (`mb-cun0`, `mb-vib1`) landed on `main` through #209.
-   `mb-r5gn` and `mb-u4mf` provide Git working-tree status for attached filesystem
-   subjects; they do not gate serving a worktree-free Git revision.
-4. After foundation stabilization through `mb-j439`, `mb-12cz`, `mb-s1lt` and `mb-ew38`
-   add HTTPS acquisition and open or reuse repository and GitHub web URLs through a
-   provider-neutral reducer and the canonical path-identity codec; `mb-jlon`, `mb-z335`,
-   and `mb-2xq7` resolve any selected branch to an immutable object ID and read its Git
-   tree through the leased repository subject.
-   The
-   [next-PR handoff](docs/project/specs/active/plan-2026-09-22-v012-alpha-testing.md#next-prs-and-agent-handoff)
-   specifies one new PR each for stabilization, 2A, 2B and 2C.
-5. `mb-63ym` defines provider-neutral hosted-review contracts and the plugin boundary,
-   using a frontmatter artifact whose Markdown body is the PR description, while
-   `mb-jlon` adds only the generic provider jobs and selected-ref fetching they need.
-6. `mb-y1ax`, `mb-ji83`, `mb-p4sw`, `mb-i3xc`, `mb-duu7`, and `mb-2oxp` implement the
-   shared bounded subprocess runner, provider registry, hardened `gh api` adapter, auth
-   contexts, provider binding, repository summary, and leased snapshot kernel.
-   `mb-h64t` then caches one directly addressed PR bundle and only its selected Git
-   refs.
-7. `mb-xzj3`, `mb-6mle`, and `mb-81p5` mount, address, and render the plugin-owned
-   direct PR document and diff through the existing Markdown, Git, revision-content, and
-   File Diff Format pipelines.
-   `mb-lnkl`, `mb-uh6p`, and `mb-iw1v` add the bounded PR index and Pull Requests
-   virtual collection afterward; `mb-rldc` layers anchored review threads last.
+The work is one unmerged stack of pull requests above the released v0.11.0 `main`. The
+2026-09-24 acceptance run on an installed wheel is recorded in
+[QA: v0.12 alpha acceptance](docs/project/qa/qa-2026-09-24-v012-alpha-acceptance.md).
+[Landing status](docs/project/specs/active/plan-2026-09-22-v012-alpha-testing.md#landing-status)
+lists what remains before the stack lands, which waits for the user’s approval
+(`mb-n2ro`).
+
+Deferred beyond v0.12.0 by the user’s 2026-09-23 decision: SSH acquisition (`mb-bi2c`),
+the pull-request list and its panel (`mb-lnkl`, `mb-iw1v`), inline review anchors
+(`mb-rldc`), attaching a user’s own checkout (`mb-cbak`), and rebind.
 
 The complete roadmap remains larger than this release slice.
 Full generic cache management (`mb-0ybg`), the repository chooser (`mb-vmzy`), GitHub
-issues and timelines (`mb-9rrc`), stacked PR projections (`mb-glxc`), and measured
-very-large-repository acquisition (`mb-dqvj`) remain tracked follow-ups.
-The second named provider implementation, a GitLab adapter over the same hosted-review
-format (`mb-51uj`), is also explicitly deferred beyond v0.12.0.
+issues and timelines (`mb-9rrc`), stacked PR projections (`mb-glxc`), measured
+very-large-repository acquisition (`mb-dqvj`), and a GitLab provider (`mb-51uj`) remain
+tracked follow-ups.
 
 ## Markdown Navigation: What Is Not Done
 
@@ -152,10 +128,10 @@ Two known gaps sit outside that plan and are not regressions:
   with conflicts, staged, unstaged, and untracked groups above history
 - [ ] Build the `/compare/<base>..<head>` route, which
   [the URL grammar](docs/architecture.md) specifies and nothing serves yet
-- [ ] Add the
-  [repository library](docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md):
-  a versioned local cache that opens or reuses Git URLs and selected branches; add the
-  v0.12.0 direct GitHub PR snapshot/view and then the bounded PR index; follow with full
+- [ ] Land the v0.12.0
+  [repository mirror and GitHub browsing](docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md):
+  a versioned local cache that opens or reuses Git and GitHub URLs at a selected branch,
+  tag, or commit, with pull-request pages; follow with the pull-request list, SSH, full
   cache management, a repository chooser, issues, and stacked PRs
 
 Both entered core behind written plans, with the read-only boundary and bounded-cost

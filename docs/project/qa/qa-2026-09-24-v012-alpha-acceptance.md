@@ -4,7 +4,8 @@
 findings filed as beads.
 M10b, M12, and M13 were not run because the thin-mirror plan defers them.
 This record is evidence for the landing decision (`mb-n2ro`), not that decision.
-The failed rows were rerun on the fixes in #243; see [Rerun on #243](#rerun-on-243).
+The failed rows were rerun on the fixes in #243; see [Rerun on #243](#rerun-on-243). The
+[addendum](#addendum-2026-09-30) records what changed after the run.
 
 The procedure is the manual matrix in the
 [alpha testing plan](../specs/active/plan-2026-09-22-v012-alpha-testing.md), adapted to
@@ -558,6 +559,30 @@ It was not checked whether this predates #243.
 | --- | --- | --- |
 | `mb-v8sb` | P4 | The pull-request header omits the base’s owner when the head is in a fork |
 | `mb-1bpe` | P4 | Path errors print default-ignorable characters such as U+3164 raw |
+
+## Addendum (2026-09-30)
+
+What changed after this run, without altering the results above:
+
+- **The stack is linear.** It was restacked by merges into one chain, so the sibling
+  layout under [Build](#build) no longer holds.
+  #241 now sits on #240 and below #243, and its tree is the tested tree `948861c4` plus
+  #242’s removal of an unused DOM test harness.
+- **M03b and M08b.** View file is [#248](https://github.com/jlevy/metabrowser/pull/248)
+  (`mb-zb5t`). Both rows are rerun on an installed wheel once it is on the stack, and
+  the result is added to this record.
+- **M10.** The private and revoked cases are **blocked**, in the alpha plan’s terms,
+  until an operator-owned private fixture exists.
+- **The two observations outside the rows** are filed and fixed in
+  [#249](https://github.com/jlevy/metabrowser/pull/249): the not-found message that said
+  Git had no credentials (`mb-2nu0`), and “Could not load this commit.”
+  for a commit the mirror lacks (`mb-4kuc`).
+- **A regression check against `main`** followed on 2026-09-30. Its measurements, and
+  the startup and eager-load cost it found, are in `mb-l8c2`.
+
+The alpha plan’s
+[Landing status](../specs/active/plan-2026-09-22-v012-alpha-testing.md#landing-status)
+lists what remains before the stack lands.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

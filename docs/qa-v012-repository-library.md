@@ -1,20 +1,19 @@
 # QA: v0.12 Repository Library and HTML Trust
 
-**Status:** Active foundation procedure for the unreleased v0.12 Repository Library
-stack. HTML trust is included through released `main`. Acquired `file://` Git is
-inspectable through data modes and served in the browser as an immutable pin under the
-forced untrusted profile.
-The served mirror refreshes from its `file://` origin in the background, and the pin can
-switch to another branch, tag, or commit of the same mirror; https and ssh stay closed.
+**Status:** Active procedure for the unreleased v0.12 Repository Library stack.
+HTML trust is included through released `main`. Git acquired from a `file://` or
+`https://` origin, including a GitHub URL, is inspectable through data modes and served
+in the browser as an immutable pin under the forced untrusted profile.
+The served mirror refreshes from its origin in the background, and the pin can switch to
+another branch, tag, or commit of the same mirror; ssh stays closed.
 
 The [v0.12 alpha test plan](project/specs/active/plan-2026-09-22-v012-alpha-testing.md)
-defines the later repository-URL and direct-PR milestones, manual browser matrix, and
-automated acceptance work.
-Use this runbook for the foundation that is executable now.
+defines the milestones, the manual browser matrix, and the landing checklist.
+This runbook holds the step-by-step checks those milestones run.
 
-This runbook tests the Git foundation and inherited HTML behavior: automated coverage
-first, then numbered manual checks against **this** repository, with an explicit
-pass/fail for each step and a list of what this procedure cannot prove.
+This runbook tests the Git mirror, GitHub browsing, and inherited HTML behavior:
+automated coverage first, then numbered manual checks against **this** repository, with
+an explicit pass/fail for each step and a list of what this procedure cannot prove.
 
 `metab --help` is the flag reference for the build you are running.
 The [command-line guide](command-line.md) is the other half: what each mode is for.
@@ -27,8 +26,8 @@ The HTML-trust invariant lives in
 and [SECURITY.md](../SECURITY.md).
 
 Keep additional work on the existing stack until the stack is stabilized and approved
-for landing. This procedure tests the current foundation; it does not implement URL
-serving (`mb-ew38`) or archive containers (`mb-380k`).
+for landing. Archive containers (`mb-380k`) are not part of the stack or of this
+procedure.
 
 ## Pins
 
@@ -41,7 +40,7 @@ crumb slices (#208, #210, #211–#215).
 
 | Lane | PR | Branch | Tip | What it adds |
 | --- | --- | --- | --- | --- |
-| Repository Library / Git pin | [#216](https://github.com/jlevy/metabrowser/pull/216) (consolidates #211–#215) | `cursor/v011-git-revision-pin-bd04` | the command below | GitPath / `file://` pin for `--show` and non-cache `--api`; review and acceptance work remains |
+| Repository Library and GitHub browsing | The top pull request of stack #218 | Its head branch | the command below | Full-clone mirrors from `file://` and `https://` origins, served pins, refresh and pin switching, GitHub URLs, and pull-request pages |
 | HTML trust | [#209](https://github.com/jlevy/metabrowser/pull/209), merged to `main` | Included in the integration tip | verify ancestry below | `/raw` sandbox, `/api` same-origin proof, `--untrusted`, HTML preview kind, plus subsequent mainline hardening |
 
 Every tip in this runbook is read from the live branch rather than written down, because
@@ -49,7 +48,8 @@ a SHA copied into prose is a baseline nothing maintains and it is stale by the n
 push:
 
 ```shell
-gh pr view 216 --repo jlevy/metabrowser --json headRefOid,headRefName,url
+: "${ALPHA_PR:?Set ALPHA_PR to the top pull request of stack 218}"
+gh pr view "$ALPHA_PR" --repo jlevy/metabrowser --json headRefOid,headRefName,url
 gh pr view 209 --repo jlevy/metabrowser --json state,mergeCommit,url
 git merge-base --is-ancestor fd65812ba911e7fa0f6b5967d9240556c8c01c54 HEAD
 ```
@@ -60,12 +60,12 @@ checkout of the merged HTML branch is needed.
 Serving a `file://` pin applies that trust profile, and Phase 5 proves it against a
 populated cache over HTTP and in a browser.
 
-Layers of stack #218, bottom to top — the PRs that still exist as review units, not the
-crumb slices they folded in:
-
-`#125 → #134 → #136 → #139 → #140 → #217 → #216 → #225`
-
-New testing, stabilization, and feature PRs extend this chain.
+The foundation layers of stack #218, bottom to top, are
+`#125 → #134 → #136 → #139 → #140 → #217 → #216 → #225 → #226`: the PRs that still exist
+as review units, not the crumb slices they folded in.
+The layers above them are listed in the thin-mirror plan’s
+[Delivery](project/specs/active/plan-2026-09-23-v012-thin-mirror.md#delivery) section,
+and new PRs extend the chain.
 Landing is tracked by `mb-n2ro`.
 
 ## Constraints That Are Part of the Product
