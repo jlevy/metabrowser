@@ -534,6 +534,7 @@ slug: github-com--octo--demo--46386669dc01
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
 --- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
 Error: README�.md is not in https://github.com/octo/demo at topic (path_not_found)
 # metab https://github.com/octo/demo/blob/topic/README%E2%80%8A.md --no-serve
 exit: 1
@@ -543,6 +544,7 @@ slug: github-com--octo--demo--46386669dc01
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
 --- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
 Error: README�.md is not in https://github.com/octo/demo at topic (path_not_found)
 # metab https://github.com/octo/demo/blob/topic/README%E2%80%A8.md --no-serve
 exit: 1
@@ -552,4 +554,5 @@ slug: github-com--octo--demo--46386669dc01
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
 --- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
 Error: README�.md is not in https://github.com/octo/demo at topic (path_not_found)

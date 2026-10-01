@@ -239,8 +239,10 @@ def test_golden_github_urls_open_through_a_local_stand_in(
     for _args, result in refused[-6:]:
         assert "Error: README\ufffd.md is not in " in result.stderr
         assert "(path_not_found)" in result.stderr
-        # One line, whatever a consumer takes for a line break.
-        assert len(result.stderr.splitlines()) == 1
+        # One line, whatever a consumer takes for a line break, after the line that
+        # says the clone was reused.
+        assert len(result.error.splitlines()) == 1
+        assert len(result.stderr.splitlines()) == 2
 
     rendered = label_home(
         "".join(_block(args, result) for args, result in [*opened, *refused]), home
