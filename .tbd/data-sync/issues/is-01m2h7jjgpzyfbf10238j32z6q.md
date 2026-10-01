@@ -5,7 +5,7 @@ title: "GitHub Pulls tab: list a mirrored repository's pull requests and open an
 kind: feature
 status: deferred
 priority: 1
-version: 11
+version: 12
 spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
 labels: []
 dependencies:
@@ -15,11 +15,13 @@ dependencies:
     target: is-01m2kw2d2arc9hn25pfsc4me50
 parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 created_at: 2026-09-15T00:30:52.949Z
-updated_at: 2026-10-01T19:39:52.782Z
+updated_at: 2026-10-01T19:54:27.465Z
 ---
 Add the Pull Requests repository-scoped nav panel after direct view and the bounded index. Project only the index row fields—no review/check summary—through RepositoryActivity and reuse bounded paging, virtualization, roving selection, query-key restoration, loading/error, root replacement, and disposal through public SDK. Selection opens the direct PR address; expansion exposes comparison files. Counts/grouping/visibility come from the bounded model. Execute exact panel-window, selection, restoration, replacement, and disposal owners in hosted-review-session and cli-ui-hosted-review.
 
 ## Notes
+
+2026-10-01, decided by the user: 'we can land the stack first then continue a new stack with the pulls tab' and 'let's stabilize everything else but not implement the pulls tab yet, just make sure we've planned it well'. So: no implementation before the v0.12 stack lands; the plan spec (mb-qftx) is written now; the work starts afterwards as a new stack.
 
 2026-10-01, the user's additions: (a) 'when you open a github repo that would automatically appear, if we know we have the right setup'. Design: the tab appears, like the Git tab, once the shell knows the root is a Git repository whose origin is on github.com (learned after first paint from the repository route, no startup cost); the gh check (installed, version, signed in) runs lazily when the tab is first opened, and a missing or signed-out gh is shown in the tab with what to do, not by hiding the tab. The import-boundary and 'a plain folder starts no gh' tests must keep passing. (b) the same views on an existing checkout: see mb-cbak.
 
