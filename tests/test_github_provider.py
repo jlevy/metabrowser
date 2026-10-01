@@ -170,7 +170,6 @@ def test_a_not_found_message_does_not_say_git_has_no_credentials(fake_gh: Path) 
         "(not_found_or_private); if it is private, sign in with gh auth login to an account "
         "that can read it; nothing was published"
     )
-    assert "no credentials" not in message
 
 
 def test_repository_context_for_a_github_mirror() -> None:

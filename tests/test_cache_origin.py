@@ -122,7 +122,6 @@ def test_a_not_found_message_claims_nothing_about_credentials() -> None:
         "https://example.com/o/r.git was not found, or it is private and could not be read "
         "(not_found_or_private); nothing was published"
     )
-    assert "credential" not in message
 
 
 def test_every_network_command_gets_the_allowlist_and_the_stall_bound() -> None:

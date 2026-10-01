@@ -30,7 +30,9 @@ from typing import Any
 
 import pytest
 
+from metabrowser.cache import pull_refs
 from metabrowser.cache.urls import GitSource
+from metabrowser.git.process import GitCommandError
 from tests.github_pull_fixture import (
     CANONICAL,
     FETCHED_AT,
@@ -217,6 +219,32 @@ def test_golden_pull_requests_fetch_refresh_and_read_offline(
             state,
             refused.stdout,
         )
+
+    # The API shows the pull request while Git's fetch of its head is answered as a
+    # repository GitHub does not show, as for credentials that stopped opening it
+    # between the two. The one substitution: that fetch raises with the text Git
+    # printed for such a repository; classifying it and the message are production code.
+    session.answer(online)
+    real_git = pull_refs.run_git
+
+    async def head_not_shown(args: list[str], **kwargs: Any) -> bytes:
+        if "fetch" in args and any("refs/pull/" in arg for arg in args):
+            raise GitCommandError(
+                args,
+                128,
+                "remote: Repository not found.\n"
+                "fatal: repository 'https://github.com/octo/demo/' not found",
+            )
+        return await real_git(args, **kwargs)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(pull_refs, "run_git", head_not_shown)
+        session.blocks.append(
+            "## Git's fetch of refs/pull/7/head is answered here with the text Git printed "
+            "for a repository GitHub does not show.\n"
+        )
+        hidden = session.run(f"{PULL}/7", "--no-serve")
+    assert hidden.exit_code == 0 and "(not_found_or_private))" in hidden.stdout
 
     # The account switches between the two account checks around a complete read.
     session.answer(_with(online, auth=[account("octo-reader"), account("someone-else")]))

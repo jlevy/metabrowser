@@ -307,11 +307,18 @@ def test_golden_a_selection_waits_for_the_refresh_it_asked_for(
     check_golden("cli-github-url-waits.txt", rendered)
 
 
-# What Git 2.50.1 printed with LC_ALL=C for a GitHub repository that does not exist or
-# that the request may not see; ``tests/test_cache_origin.py`` holds the captured set.
-_REPOSITORY_NOT_FOUND = (
+# What Git 2.50.1 printed with LC_ALL=C when an origin did not show a repository;
+# ``tests/test_cache_origin.py`` holds the captured set. With a credential that the
+# origin refuses, and for a repository that does not exist, GitHub answers "not found";
+# with no credential to offer, Git stops at the challenge. Another host's 404 is Git's
+# own message with no ``remote:`` line.
+_NOT_FOUND = (
     "remote: Repository not found.\nfatal: repository 'https://github.com/octo/absent/' not found"
 )
+_NO_CREDENTIAL = (
+    "fatal: could not read Username for 'https://github.com': terminal prompts disabled"
+)
+_NOT_FOUND_ELSEWHERE = "fatal: repository 'https://example.com/owner/absent.git/' not found"
 ABSENT = "https://github.com/octo/absent"
 ELSEWHERE = "https://example.com/owner/absent.git"
 
@@ -325,22 +332,24 @@ def test_golden_a_repository_the_origin_does_not_show(
     credentials, and one the account a credential helper answered with cannot see, so
     the message claims nothing about credentials; the provider's hint says what to do.
 
-    One substitution, and no request leaves the machine: ``ls-remote``, the first
-    command that would reach the origin, raises with the text Git printed for such a
-    repository. Classifying that text, the message, and the exit status are production
-    code. With ``gh`` on ``PATH``, as in the first two commands, Git would have asked it
-    for credentials; that ``gh`` fails every command, so the size check steps aside.
+    No request leaves the machine, and one thing is substituted: ``ls-remote``, the
+    first command that would reach the origin, raises with the text Git printed in that
+    situation. So Git, ``gh``, and the origin are not exercised here, and the
+    transcript's first line says so. Classifying the text, the message, the hint, and
+    the exit status are production code. The ``gh`` on ``PATH`` in the first two
+    commands fails every command, so the size check steps aside.
     """
 
     home = _isolate(tmp_path, monkeypatch)
     real_run = acquire._run  # pyright: ignore[reportPrivateUsage]
+    printed = {"stderr": _NOT_FOUND}
 
-    async def not_found(args: list[str], **kwargs: Any) -> bytes:
+    async def not_shown(args: list[str], **kwargs: Any) -> bytes:
         if "ls-remote" in args:
-            raise GitCommandError(args, 128, _REPOSITORY_NOT_FOUND)
+            raise GitCommandError(args, 128, printed["stderr"])
         return await real_run(args, **kwargs)
 
-    monkeypatch.setattr(acquire, "_run", not_found)
+    monkeypatch.setattr(acquire, "_run", not_shown)
     failing = tmp_path / "failing-gh"
     failing.mkdir()
     gh = failing / "gh"
@@ -353,26 +362,26 @@ def test_golden_a_repository_the_origin_does_not_show(
         ([ABSENT, "--show", "README.md"], _run([ABSENT, "--show", "README.md"])),
     ]
     monkeypatch.setattr("metabrowser.builtin_plugins.github.provider.gh_executable", lambda: None)
+    printed["stderr"] = _NO_CREDENTIAL
     without_gh = ([ABSENT, "--no-serve"], _run([ABSENT, "--no-serve"]))
+    printed["stderr"] = _NOT_FOUND_ELSEWHERE
     elsewhere = ([ELSEWHERE, "--no-serve"], _run([ELSEWHERE, "--no-serve"]))
 
     for _args, result in (*with_gh, without_gh, elsewhere):
         assert result.exit_code == 1 and result.stdout == ""
-        assert "(not_found_or_private)" in result.stderr
-        assert "credentials" not in result.stderr
-    assert "sign in with gh auth login to an account that can read it" in with_gh[0][1].stderr
-    assert "install GitHub CLI (gh)" in without_gh[1].stderr
-    assert "gh" not in elsewhere[1].stderr
     sources = home / "cache" / "sources"
     assert not sources.is_dir() or list(sources.iterdir()) == []
 
     rendered = (
-        "## gh is installed, so Git asks it for credentials: the message does not say "
-        "there were none.\n"
+        "## Git's ls-remote is answered here with text Git printed when an origin did not "
+        "show a repository; Git, gh, and the origin are not run.\n"
+        "## gh is installed, so Git would ask it for credentials; the origin answers "
+        '"Repository not found" for a refused credential and for no repository alike.\n'
         + "".join(_block(args, result) for args, result in with_gh)
-        + "## Without gh the same answer comes with the hint to install it.\n"
+        + "## Without gh Git has no credential to offer and stops at the challenge "
+        '("could not read Username"); the hint is to install gh.\n'
         + _block(*without_gh)
-        + "## Another host has no hint.\n"
+        + "## Another host answers 404, and there is no hint.\n"
         + _block(*elsewhere)
     )
     assert str(tmp_path) not in rendered and str(home) not in rendered
