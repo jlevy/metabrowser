@@ -38,9 +38,9 @@ from typing import Any
 import pytest
 from httpx2 import ASGITransport, AsyncClient
 
-from metabrowser.paths_safe import ROOT_DIR, _set_root_dir
+from metabrowser.paths_safe import _set_root_dir
 from metabrowser.server import app
-from metabrowser.source import AttachedFilesystemSubject, attach_subject, reset_source_session
+from metabrowser.source import AttachedFilesystemSubject, attach_subject
 from tests.git_pin_harness import fast_import_store, pinned_client
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -85,17 +85,12 @@ pytestmark = pytest.mark.skipif(shutil.which("git") is None, reason="git executa
 
 @asynccontextmanager
 async def _folder_client(root: Path) -> AsyncGenerator[AsyncClient]:
-    original = ROOT_DIR
     _set_root_dir(root)
     attach_subject(AttachedFilesystemSubject(root))
-    try:
-        async with app.router.lifespan_context(app):
-            transport = ASGITransport(app=app, raise_app_exceptions=True)
-            async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-                yield client
-    finally:
-        reset_source_session()
-        _set_root_dir(original)
+    async with app.router.lifespan_context(app):
+        transport = ASGITransport(app=app, raise_app_exceptions=True)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            yield client
 
 
 def _project(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:

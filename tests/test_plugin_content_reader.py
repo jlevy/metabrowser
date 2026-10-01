@@ -23,7 +23,7 @@ from metabrowser.git.tree_source import (
     GitPath,
     git_revision_subject,
 )
-from metabrowser.paths_safe import ROOT_DIR, _set_root_dir
+from metabrowser.paths_safe import _set_root_dir
 from metabrowser.plugin_api import (
     ArtifactDecompressionLimitError,
     ContentReadError,
@@ -40,7 +40,6 @@ from metabrowser.plugin_api import (
 from metabrowser.source import (
     AttachedFilesystemSubject,
     attach_subject,
-    reset_source_session,
 )
 from tests.git_pin_harness import fast_import_store
 
@@ -74,14 +73,9 @@ def _on_filesystem(tmp_path: Path) -> Path:
 async def _with_filesystem[T](
     tmp_path: Path, hook: Callable[[str], Awaitable[T]], identity: str
 ) -> T:
-    original = ROOT_DIR
     _set_root_dir(_on_filesystem(tmp_path))
-    try:
-        attach_subject(AttachedFilesystemSubject(tmp_path))
-        return await hook(identity)
-    finally:
-        reset_source_session()
-        _set_root_dir(original)
+    attach_subject(AttachedFilesystemSubject(tmp_path))
+    return await hook(identity)
 
 
 async def _with_pin[T](tmp_path: Path, hook: Callable[[str], Awaitable[T]], identity: str) -> T:
@@ -98,7 +92,6 @@ async def _with_pin[T](tmp_path: Path, hook: Callable[[str], Awaitable[T]], iden
         return await hook(identity)
     finally:
         await subject.aclose()
-        reset_source_session()
 
 
 def _wire(native: str) -> str:
@@ -187,7 +180,6 @@ def test_resolution_reports_a_fingerprint_that_tracks_the_bytes(tmp_path: Path) 
     root.mkdir()
     target = root / "note.bin"
     target.write_bytes(BODY)
-    original = ROOT_DIR
     _set_root_dir(root)
 
     async def fingerprints() -> tuple[str, str]:
@@ -199,12 +191,8 @@ def test_resolution_reports_a_fingerprint_that_tracks_the_bytes(tmp_path: Path) 
         assert second is not None
         return first.fingerprint, second.fingerprint
 
-    try:
-        attach_subject(AttachedFilesystemSubject(root))
-        before, after = asyncio.run(fingerprints())
-    finally:
-        reset_source_session()
-        _set_root_dir(original)
+    attach_subject(AttachedFilesystemSubject(root))
+    before, after = asyncio.run(fingerprints())
     assert before != after
 
 
@@ -280,7 +268,6 @@ def test_a_compressed_artifact_reads_its_logical_bytes(tmp_path: Path) -> None:
     root = tmp_path / "fs"
     root.mkdir()
     (root / "log.jsonl.gz").write_bytes(gzip.compress(BODY))
-    original = ROOT_DIR
     _set_root_dir(root)
 
     async def hook() -> tuple[ContentStat, ContentWindow]:
@@ -289,12 +276,8 @@ def test_a_compressed_artifact_reads_its_logical_bytes(tmp_path: Path) -> None:
         assert ref.logical_ext == ".jsonl"
         return await stat_content(ref), await read_content_window(ref, offset=16, max_bytes=32)
 
-    try:
-        attach_subject(AttachedFilesystemSubject(root))
-        stat, window = asyncio.run(hook())
-    finally:
-        reset_source_session()
-        _set_root_dir(original)
+    attach_subject(AttachedFilesystemSubject(root))
+    stat, window = asyncio.run(hook())
     assert stat.size == len(BODY)
     assert window.data == BODY[16:48]
     assert window.has_more is True
@@ -304,14 +287,9 @@ def test_traversal_out_of_the_served_root_is_refused(tmp_path: Path) -> None:
     root = tmp_path / "fs"
     root.mkdir()
     (tmp_path / "secret.txt").write_text("no\n")
-    original = ROOT_DIR
     _set_root_dir(root)
-    try:
-        attach_subject(AttachedFilesystemSubject(root))
-        assert asyncio.run(resolve_content("../secret.txt")) is None
-    finally:
-        reset_source_session()
-        _set_root_dir(original)
+    attach_subject(AttachedFilesystemSubject(root))
+    assert asyncio.run(resolve_content("../secret.txt")) is None
 
 
 # ── One typed vocabulary for both kinds ───────────────────────────
@@ -356,13 +334,8 @@ def test_pin_route_statuses_agree_with_the_shared_vocabulary() -> None:
 def test_the_port_refuses_a_subject_that_cannot_read_content(tmp_path: Path) -> None:
     from tests.test_source_session import _MemorySubject
 
-    original = ROOT_DIR
     _set_root_dir(tmp_path)
-    try:
-        attach_subject(_MemorySubject())
-        with pytest.raises(UnsupportedSourceCapabilityError) as caught:
-            asyncio.run(resolve_content("note.bin"))
-        assert caught.value.capability == "content"
-    finally:
-        reset_source_session()
-        _set_root_dir(original)
+    attach_subject(_MemorySubject())
+    with pytest.raises(UnsupportedSourceCapabilityError) as caught:
+        asyncio.run(resolve_content("note.bin"))
+    assert caught.value.capability == "content"

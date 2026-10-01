@@ -42,7 +42,6 @@ from metabrowser.plugin_api import (
 from metabrowser.source import (
     attach_subject,
     get_source_session,
-    reset_source_session,
 )
 
 pytestmark = pytest.mark.skipif(
@@ -418,7 +417,6 @@ def test_git_revision_subject_gates_filesystem_hooks(tmp_path: Path) -> None:
             require_source_capability("index")
         finally:
             await subject.aclose()
-            reset_source_session()
 
     asyncio.run(_run())
 

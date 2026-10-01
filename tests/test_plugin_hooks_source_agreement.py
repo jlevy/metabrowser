@@ -23,9 +23,9 @@ from typing import Any
 from httpx2 import ASGITransport, AsyncClient
 
 from metabrowser.git.tree_source import GitPath
-from metabrowser.paths_safe import ROOT_DIR, _set_root_dir
+from metabrowser.paths_safe import _set_root_dir
 from metabrowser.server import app
-from metabrowser.source import AttachedFilesystemSubject, attach_subject, reset_source_session
+from metabrowser.source import AttachedFilesystemSubject, attach_subject
 from tests.git_pin_harness import fast_import_store, pinned_client
 
 LOG = (
@@ -67,17 +67,12 @@ async def _folder_client(tmp_path: Path) -> AsyncGenerator[AsyncClient, None]:
     root.mkdir()
     for name, body in FILES.items():
         (root / name.decode()).write_bytes(body)
-    original = ROOT_DIR
     _set_root_dir(root)
     attach_subject(AttachedFilesystemSubject(root))
-    try:
-        async with app.router.lifespan_context(app):
-            transport = ASGITransport(app=app, raise_app_exceptions=True)
-            async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-                yield client
-    finally:
-        reset_source_session()
-        _set_root_dir(original)
+    async with app.router.lifespan_context(app):
+        transport = ASGITransport(app=app, raise_app_exceptions=True)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            yield client
 
 
 def _wire(native: str) -> str:

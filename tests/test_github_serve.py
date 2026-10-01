@@ -15,7 +15,6 @@ import shutil
 import subprocess
 import threading
 import time
-from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -47,7 +46,7 @@ runner = CliRunner()
 
 
 @pytest.fixture
-def origin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
+def origin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("METABROWSER_HOME", str(tmp_path / "home"))
     monkeypatch.delenv("METABROWSER_LOG_LEVEL", raising=False)
     _allow_installed_git(monkeypatch)
@@ -64,8 +63,7 @@ def origin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     monkeypatch.setattr("metabrowser.builtin_plugins.github.provider.gh_executable", lambda: None)
     monkeypatch.setattr("metabrowser.builtin_plugins.github.gh.gh_executable", lambda: None)
     monkeypatch.setattr("metabrowser.cli.git_pin_cli.stop_on_interrupt", lambda: None)
-    yield built
-    reset_source_session()
+    return built
 
 
 def _serve(url: str) -> Any:

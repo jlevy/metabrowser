@@ -27,7 +27,6 @@ from metabrowser.source import (
     SourceCapabilities,
     attach_subject,
     get_source_session,
-    reset_source_session,
 )
 from tests.test_inventory_coordinator import _coordinator, _FakeBackend
 
@@ -172,7 +171,6 @@ def test_one_active_subject_and_legacy_hooks_gate_non_filesystem(tmp_path: Path)
             except UnsupportedSourceCapabilityError as exc:
                 assert exc.capability == name
     finally:
-        reset_source_session()
         _set_root_dir(original)
 
 
@@ -267,7 +265,6 @@ def test_recent_and_activity_routes_report_unsupported_capabilities(
             assert events.json()["code"] == "unsupported_for_subject"
             assert events.json()["capability"] == "watcher"
     finally:
-        reset_source_session()
         _set_root_dir(original)
 
 

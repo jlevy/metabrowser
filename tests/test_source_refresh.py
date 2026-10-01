@@ -86,13 +86,11 @@ def _wire(display: str) -> str:
 
 
 @pytest.fixture(autouse=True)
-def _isolated_session(  # pyright: ignore[reportUnusedFunction]
+def _no_interrupt_handler(  # pyright: ignore[reportUnusedFunction]
     monkeypatch: pytest.MonkeyPatch,
-) -> Iterator[None]:
+) -> None:
     monkeypatch.setattr("metabrowser.cli.git_pin_cli.stop_on_interrupt", lambda: None)
     monkeypatch.delenv("METABROWSER_LOG_LEVEL", raising=False)
-    yield
-    reset_source_session()
 
 
 def _work(origin: _Origin) -> Path:
@@ -786,19 +784,16 @@ def test_a_switch_attaches_the_new_pin_before_it_closes_the_old() -> None:
         raise AssertionError("the opener only runs in a lifespan")
 
     serve_subject_opener(never_called)
-    try:
-        first, second = _Subject("first"), _Subject("second")
-        attach_owned_subject(first)  # type: ignore[arg-type]
-        before = get_source_session().generation
-        session = asyncio.run(replace_owned_subject(second))  # type: ignore[arg-type]
-        assert session.subject is second
-        assert session.generation == before + 1
-        assert observed == ["close first while serving second"]
-        # Shutdown is the one moment nothing is served, and a request then is refused.
-        asyncio.run(close_owned_subject())
-        assert observed[-1] == "close second while serving nothing"
-    finally:
-        reset_source_session()
+    first, second = _Subject("first"), _Subject("second")
+    attach_owned_subject(first)  # type: ignore[arg-type]
+    before = get_source_session().generation
+    session = asyncio.run(replace_owned_subject(second))  # type: ignore[arg-type]
+    assert session.subject is second
+    assert session.generation == before + 1
+    assert observed == ["close first while serving second"]
+    # Shutdown is the one moment nothing is served, and a request then is refused.
+    asyncio.run(close_owned_subject())
+    assert observed[-1] == "close second while serving nothing"
 
 
 # ── Review fixes ─────────────────────────────────────────────────────

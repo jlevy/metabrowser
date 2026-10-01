@@ -187,7 +187,6 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             recorded["folder_refused"] = _switch(client, lacking)
     finally:
         serve_mirror(None)
-        reset_source_session()
     return _stand_in_times(recorded)
 
 

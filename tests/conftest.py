@@ -117,6 +117,32 @@ def _reset_served_mirror() -> Generator[None, None, None]:  # pyright: ignore[re
 
 
 @pytest.fixture(autouse=True)
+def _reset_served_source() -> Generator[None, None, None]:  # pyright: ignore[reportUnusedFunction]
+    """Give every test a fresh source session, and put back the served root it found.
+
+    The session, its generation counter, the subject opener and the served root are
+    process globals. Rendering the shell, serving a folder or attaching a subject
+    leaves them behind, so a later test would count its generations from where an
+    earlier one stopped and pass in one module order only. With this fixture a test
+    sets a root or attaches a subject and needs no ``try``/``finally`` to undo it.
+
+    Two things stay with the test. A subject it opened is its own to close: the reset
+    only drops the reference. And a reset in a test body is still right where the test
+    models a second server process.
+    """
+    from metabrowser import paths_safe
+    from metabrowser.source import reset_source_session
+
+    root = paths_safe.ROOT_DIR
+    reset_source_session()
+    yield
+    if root != paths_safe.ROOT_DIR:
+        # Fires the root callbacks, so per-root caches do not outlive the root either.
+        paths_safe._set_root_dir(root)  # pyright: ignore[reportPrivateUsage]
+    reset_source_session()
+
+
+@pytest.fixture(autouse=True)
 def _reset_browser_response_caches() -> Generator[None, None, None]:  # pyright: ignore[reportUnusedFunction]
     """Keep route response caches isolated between tests."""
     yield

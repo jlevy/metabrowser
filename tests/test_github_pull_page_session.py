@@ -58,7 +58,7 @@ from metabrowser.git import repo as git_repo
 from metabrowser.git.tree_source import GitRevisionSubject
 from metabrowser.mirror_refresh import mirror_session, serve_mirror
 from metabrowser.server import app
-from metabrowser.source import attach_subject, reset_source_session
+from metabrowser.source import attach_subject
 from tests.github_pull_fixture import (
     CANONICAL,
     DEFAULT_BRANCH,
@@ -314,7 +314,6 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             recorded["merged_unattributed"] = _answer(client.get(_PULL))
     finally:
         serve_mirror(None)
-        reset_source_session()
         git_repo.clear_repo_cache()
     return _session_tags(recorded)
 

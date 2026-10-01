@@ -206,7 +206,6 @@ def test_live_serve_refresh_and_status(tmp_path: Path, monkeypatch: pytest.Monke
 
     from metabrowser import server
     from metabrowser.cli.main import _app
-    from metabrowser.source import reset_source_session
 
     monkeypatch.setenv("METABROWSER_HOME", str(tmp_path / "home"))
     monkeypatch.setenv("PATH", _no_credentials_path(tmp_path))
@@ -218,24 +217,21 @@ def test_live_serve_refresh_and_status(tmp_path: Path, monkeypatch: pytest.Monke
         result = CliRunner().invoke(_app, [f"{HELLO}/blob/master/README#L1", "--no-open"])
     assert result.exit_code == 0, result.output
     assert "Revision: " in result.stdout and "(master)" in result.stdout
-    try:
-        with TestClient(server.app) as client:
-            status = client.get("/api/source/status").json()
-            assert status["ref_name"] == "master" and status["refreshable"] is True
-            pin = status["pin"]
-            started = client.post(
-                "/api/source/refresh", json={}, headers={"content-type": "application/json"}
-            )
-            assert started.status_code == 202
-            deadline = time.monotonic() + 120
-            while client.get("/api/source/status").json()["refreshing"]:
-                assert time.monotonic() < deadline, "the refresh did not finish"
-                time.sleep(0.2)
-            after = client.get("/api/source/status").json()
-            assert after["last_outcome"]["operation"] == "refresh"
-            assert after["last_outcome"]["outcome"] == "succeeded", after
-            assert after["pin"] == pin and after["latest"] is not None
-            shell = client.get("/view/").text
-            assert '"owner": "octocat"' in shell and '"name": "hello-world"' in shell
-    finally:
-        reset_source_session()
+    with TestClient(server.app) as client:
+        status = client.get("/api/source/status").json()
+        assert status["ref_name"] == "master" and status["refreshable"] is True
+        pin = status["pin"]
+        started = client.post(
+            "/api/source/refresh", json={}, headers={"content-type": "application/json"}
+        )
+        assert started.status_code == 202
+        deadline = time.monotonic() + 120
+        while client.get("/api/source/status").json()["refreshing"]:
+            assert time.monotonic() < deadline, "the refresh did not finish"
+            time.sleep(0.2)
+        after = client.get("/api/source/status").json()
+        assert after["last_outcome"]["operation"] == "refresh"
+        assert after["last_outcome"]["outcome"] == "succeeded", after
+        assert after["pin"] == pin and after["latest"] is not None
+        shell = client.get("/view/").text
+        assert '"owner": "octocat"' in shell and '"name": "hello-world"' in shell

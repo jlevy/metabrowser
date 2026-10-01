@@ -13,7 +13,7 @@ from httpx2 import ASGITransport, AsyncClient
 from metabrowser.git.process import repository_store_target
 from metabrowser.git.tree_source import GitRevisionSubject, git_revision_subject
 from metabrowser.server import app
-from metabrowser.source import attach_subject, reset_source_session
+from metabrowser.source import attach_subject
 
 
 def git_env(root: Path) -> dict[str, str]:
@@ -92,4 +92,3 @@ async def pinned_client(
                 yield client, subject
     finally:
         await subject.aclose()
-        reset_source_session()
