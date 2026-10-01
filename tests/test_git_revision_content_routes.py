@@ -816,6 +816,8 @@ def test_git_plugin_sidekicks_follow_in_tree_symlinks(tmp_path: Path) -> None:
             assert parsed_body["path"] == _wire(b"cfg")
             assert parsed_body["ext"] == ".json"
             assert parsed_body["parsed"] == {"name": "pin", "count": 2}
+            # The size of the blob the link leads to, not of the link.
+            assert parsed_body["size"] == len('{"name": "pin", "count": 2}\n')
 
             chunk = await client.get(
                 "/api/plugin/binary/chunk",

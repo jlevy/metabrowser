@@ -20,8 +20,12 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
+import pytest
+from cachetools import LRUCache
 from httpx2 import ASGITransport, AsyncClient
 
+import metabrowser.builtin_plugins.structured as structured_sidekick
+import metabrowser.builtin_plugins.structured.parser as structured_parser
 from metabrowser import paths_safe
 from metabrowser.git.tree_source import GitPath
 from metabrowser.paths_safe import _set_root_dir
@@ -128,6 +132,26 @@ def test_structured_parsed_reports_the_same_tree(tmp_path: Path) -> None:
     assert folder["parsed"] == {"name": "pin", "count": 2, "tags": ["a", "b"]}
     assert _content_fields(folder) == _content_fields(pinned)
     assert folder["size"] == len(CONFIG)
+
+
+def test_structured_parsed_reports_the_stored_size_past_the_cap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Past the parse cap both sources say ``truncated``, and ``size`` is the whole file's.
+
+    Under a folder that is the size on disk; on a pin it is the blob's length. Neither
+    is the number of bytes the bounded read returned.
+    """
+
+    cap = len(CONFIG) // 2
+    monkeypatch.setattr(structured_sidekick, "STRUCTURED_PARSE_MAX_BYTES", cap)
+    # A pin's payload is cached by blob id, and another test parses this blob whole.
+    # This test's cache is its own, so neither reads what the other stored.
+    monkeypatch.setattr(structured_parser, "_PAYLOAD_CACHE", LRUCache(maxsize=4))
+    folder, pinned = _both(tmp_path, "/api/plugin/structured/parsed", "config.json")
+    assert _content_fields(folder) == _content_fields(pinned)
+    assert (folder["truncated"], folder["parsed"]) == (True, None)
+    assert folder["size"] == pinned["size"] == len(CONFIG) > cap
 
 
 def test_agent_log_charts_report_the_same_tallies(tmp_path: Path) -> None:

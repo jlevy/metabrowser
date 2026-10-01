@@ -182,16 +182,14 @@ def _collapse_yaml_documents(docs: list[Any]) -> Any:
     return meaningful or None
 
 
-# A payload plus the byte count that produced it, so a cache hit can answer
-# the envelope's `size` without re-reading the content.
-CachedPayload = tuple[StructuredPayload, int]
-
-_PAYLOAD_CACHE: LRUCache[tuple[str, str, str], CachedPayload] = LRUCache(
+_PAYLOAD_CACHE: LRUCache[tuple[str, str, str], StructuredPayload] = LRUCache(
     maxsize=STRUCTURED_CACHE_SIZE
 )
 
 
-def lookup_structured_payload(identity: str, ext: str, fingerprint: str) -> CachedPayload | None:
+def lookup_structured_payload(
+    identity: str, ext: str, fingerprint: str
+) -> StructuredPayload | None:
     """A payload parsed earlier for content that has not changed since.
 
     Keyed by the content reader's own fingerprint -- an mtime hash under an
@@ -203,7 +201,7 @@ def lookup_structured_payload(identity: str, ext: str, fingerprint: str) -> Cach
 
 
 def remember_structured_payload(
-    identity: str, ext: str, fingerprint: str, payload: CachedPayload
+    identity: str, ext: str, fingerprint: str, payload: StructuredPayload
 ) -> None:
     _PAYLOAD_CACHE[(identity, ext, fingerprint)] = payload
 

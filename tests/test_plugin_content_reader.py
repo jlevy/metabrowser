@@ -175,6 +175,18 @@ def test_stat_reports_the_validated_logical_size(tmp_path: Path) -> None:
         assert stat.size == len(BODY)
 
 
+def test_resolution_reports_the_stored_size_without_a_read(tmp_path: Path) -> None:
+    """The size as the source stores it: on disk under a folder, the blob's on a pin."""
+
+    async def hook(identity: str) -> int | None:
+        ref = await resolve_content(identity)
+        assert ref is not None
+        return ref.stored_size
+
+    for stored_size in _both(tmp_path, hook, "note.bin"):
+        assert stored_size == len(BODY)
+
+
 def test_resolution_reports_a_fingerprint_that_tracks_the_bytes(tmp_path: Path) -> None:
     """A hook keys its own cache on this without knowing which source it is."""
 
@@ -286,6 +298,8 @@ def test_a_compressed_artifact_reads_its_logical_bytes(tmp_path: Path) -> None:
         ref = await resolve_content("log.jsonl.gz")
         assert ref is not None
         assert ref.logical_ext == ".jsonl"
+        # Stored is what the disk holds; the logical size below is what it decodes to.
+        assert ref.stored_size == (root / "log.jsonl.gz").stat().st_size != len(BODY)
         return await stat_content(ref), await read_content_window(ref, offset=16, max_bytes=32)
 
     attach_subject(AttachedFilesystemSubject(root))

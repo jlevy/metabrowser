@@ -60,16 +60,18 @@ Plugin SDK:
 - A hook that only needs bytes reads them on either source kind through
   `resolve_content`, `resolve_content_container`, `stat_content`, and
   `read_content_window`, over an opaque `ContentRef` that carries the identity to echo
-  back, the logical extension to dispatch on, and a fingerprint that changes when the
-  bytes do. Every read takes a required `max_bytes` and reports whether content continues
-  past the window; there is no unbounded variant, and the bound is on bytes rather than
-  on a decoded string.
-  Failures are one catchable `ContentReadError` family carrying a stable `code` and the
-  `http_status` Metabrowser’s own routes answer with, so a hook writes one error path
-  for a missing object, an oversized blob, an unreadable compressed stream, and a
-  timeout alike. The four built-in data hooks — binary bytes, structured parse, agent-log
-  charts, and diff documents — now read this way and no longer branch on the source
-  kind. These are additions to the Python helper surface; no manifest, kind, or
+  back, the logical extension to dispatch on, a fingerprint that changes when the bytes
+  do, and `stored_size`, the size the source stores: a file’s size on disk, which for a
+  compressed artifact is its compressed size, and a blob’s length.
+  Every read takes a required `max_bytes` and reports whether content continues past the
+  window; there is no unbounded variant, and the bound is on bytes rather than on a
+  decoded string. Failures are one catchable `ContentReadError` family carrying a stable
+  `code` and the `http_status` Metabrowser’s own routes answer with, so a hook writes
+  one error path for a missing object, an oversized blob, an unreadable compressed
+  stream, and a timeout alike.
+  The four built-in data hooks — binary bytes, structured parse, agent-log charts, and
+  diff documents — now read this way and no longer branch on the source kind.
+  These are additions to the Python helper surface; no manifest, kind, or
   `window.metabrowser` call changes.
   `content_source()`, added earlier in this unreleased series and never part of a
   release, is gone: it handed a hook the raw active source, which is what the content
@@ -750,6 +752,8 @@ Content source:
   `path_glob` stays filesystem-only.
   `/api/plugin/structured/parsed` reads the blob by `GitPath` and uses the object id as
   the cache key instead of a filesystem mtime.
+  Its `size` on a pin is the blob’s length; on a folder it is the file’s size on disk,
+  as in 0.11.0. Neither is capped at the parse limit.
   `/api/file` for a Git `.jsonl` blob is a parsed JSONL envelope; adapter sniffing
   claims `agent-log` when the bytes match Claude, Gemini, or Pi.
   `/api/plugin/agent-log/charts` reads that blob by `GitPath`. `/api/rollup` on a pin

@@ -195,17 +195,25 @@ class ContentReader(Protocol):
 class ContentRef:
     """An opaque reference to one readable content object.
 
-    It carries the three facts resolution already established and a hook needs
+    It carries the facts resolution already established and a hook needs
     before it reads anything: the identity to echo back to the client, the
-    logical extension to dispatch on, and a fingerprint that changes exactly
+    logical extension to dispatch on, a fingerprint that changes exactly
     when the bytes can have, so a hook keys its own cache on it without knowing
-    whether that is an mtime hash or a blob object id. It is not a path, a
-    cache location, or a handle on the source.
+    whether that is an mtime hash or a blob object id, and the size the source
+    stores. It is not a path, a cache location, or a handle on the source.
+
+    ``stored_size`` is the length of the object as the source holds it: a
+    file's size on disk, which for a compressed artifact is its compressed
+    size, and a blob's length. It costs no read, unlike the logical size
+    :class:`ContentStat` validates, and the two differ exactly for a compressed
+    artifact. It is None only for a blob a pin's store does not hold, which no
+    read will return either.
     """
 
     identity: str
     logical_ext: str
     fingerprint: str
+    stored_size: int | None
     reader: ContentReader = field(repr=False, compare=False)
 
 
@@ -366,6 +374,7 @@ class FilesystemContentSource:
         artifact = ArtifactPath(handle.path)
         try:
             fingerprint = file_mtime_hash(handle.path)
+            stored_size = handle.path.stat().st_size
         except OSError:
             # Unlinked or replaced between the resolve and the hash. There is
             # nothing readable at this identity after all.
@@ -374,6 +383,7 @@ class FilesystemContentSource:
             identity=_identity_for(handle.path) or identity,
             logical_ext=artifact.logical_ext,
             fingerprint=fingerprint,
+            stored_size=stored_size,
             reader=_FilesystemContentReader(artifact),
         )
 

@@ -11,13 +11,17 @@ from __future__ import annotations
 
 import gzip
 import json
+import os
 import zlib
 from pathlib import Path
+from typing import Any
 
 import pytest
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
+import metabrowser.builtin_plugins.structured as structured_sidekick
+import metabrowser.builtin_plugins.structured.parser as structured_parser
 from metabrowser import paths_safe
 from metabrowser import server as proc_browser  # noqa: F401  # pyright: ignore[reportUnusedImport]
 from metabrowser.plugin_loader.discovery import _try_load_plugin
@@ -115,3 +119,53 @@ def test_parsed_endpoint_handles_zlib_json(tmp_path: Path, structured_app: TestC
     assert body["ext"] == ".json"
     assert body["parsed"] == {"compressed": "zlib", "n": 8}
     assert body["parse_error"] is None
+
+
+def test_parsed_endpoint_reports_the_stored_size_and_truncation_past_the_cap(
+    tmp_path: Path, structured_app: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``size`` is the file's size on disk, and ``truncated`` says the cap was passed.
+
+    ``size`` is not what was read or parsed: for a compressed file it is the
+    compressed size, as ``/api/file`` reports it, and past the cap it is still the
+    whole file's, not the cap. v0.11.0 answered it this way, and an answer taken from
+    the bounded read gave 22 for the 40-byte ``small.json.gz`` and 1000 for a file
+    over a 1000-byte cap.
+
+    Past the cap the route answers ``truncated`` with nothing parsed, which is what
+    sends the Tree view to Source. A compressed file is over the cap by what it
+    decodes to, whatever it weighs on disk.
+    """
+
+    cap = 1000
+    monkeypatch.setattr(structured_sidekick, "STRUCTURED_PARSE_MAX_BYTES", cap)
+    monkeypatch.setattr(structured_parser, "STRUCTURED_PARSE_MAX_BYTES", cap)
+    small = json.dumps({"a": 1, "b": [2, 3]}).encode()
+    big = json.dumps({"x": "y" * (2 * cap)}).encode()
+    (tmp_path / "small.json").write_bytes(small)
+    (tmp_path / "small.json.gz").write_bytes(gzip.compress(small))
+    (tmp_path / "big.json").write_bytes(big)
+    (tmp_path / "big.json.gz").write_bytes(gzip.compress(big))
+    on_disk = {name: (tmp_path / name).stat().st_size for name in sorted(os.listdir(tmp_path))}
+    # The fixture separates the three quantities a wrong `size` could be taken from.
+    assert on_disk["small.json.gz"] != len(small)
+    assert on_disk["big.json"] > cap > on_disk["big.json.gz"]
+
+    def parsed(name: str) -> dict[str, Any]:
+        response = structured_app.get("/api/plugin/structured/parsed", params={"path": name})
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    for name in ("small.json", "small.json.gz"):
+        body = parsed(name)
+        assert body["size"] == on_disk[name], name
+        assert body["truncated"] is False, name
+        assert body["parsed"] == {"a": 1, "b": [2, 3]}, name
+    for name in ("big.json", "big.json.gz"):
+        body = parsed(name)
+        assert body["size"] == on_disk[name], name
+        assert body["truncated"] is True, name
+        assert (body["parsed"], body["pretty_yaml"], body["parse_error"]) == (None, "", None), name
+        assert (body["node_count"], body["max_depth"]) == (0, 0), name
+    # A second request is answered from the payload cache, and says the same.
+    assert [parsed(name)["size"] for name in on_disk] == list(on_disk.values())

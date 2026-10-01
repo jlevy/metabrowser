@@ -16,6 +16,11 @@ One handler serves every source kind. The content reader answers an attached
 folder and a pinned revision through the same bounded calls, runs the blocking
 part off the event loop, and reports the fingerprint the cache is keyed on, so
 nothing here branches on which subject is active.
+
+``size`` is the size of the file as it is stored, whatever was read or parsed:
+its size on disk under a folder, which for ``data.json.gz`` is the compressed
+size, as ``/api/file`` reports it; and the blob's length on a pinned revision.
+It is not capped at the parse limit.
 """
 
 from __future__ import annotations
@@ -49,7 +54,7 @@ def _envelope(
     path: str,
     ext: str,
     fingerprint: str,
-    size: int,
+    size: int | None,
     payload: StructuredPayload,
 ) -> JSONResponse:
     return JSONResponse(
@@ -91,12 +96,10 @@ async def parsed_handler(request: Request) -> JSONResponse:
                 {"error": "Unsupported extension", "path": raw_path, "ext": ext},
                 status_code=400,
             )
-        cached = lookup_structured_payload(ref.identity, ext, ref.fingerprint)
-        if cached is not None:
-            payload, size = cached
-        else:
-            payload, size = await _parse(ref, ext)
-            remember_structured_payload(ref.identity, ext, ref.fingerprint, (payload, size))
+        payload = lookup_structured_payload(ref.identity, ext, ref.fingerprint)
+        if payload is None:
+            payload = await _parse(ref, ext)
+            remember_structured_payload(ref.identity, ext, ref.fingerprint, payload)
     except ContentReadError as exc:
         return JSONResponse(
             {"error": str(exc), "code": exc.code, "path": raw_path},
@@ -106,13 +109,13 @@ async def parsed_handler(request: Request) -> JSONResponse:
         path=ref.identity,
         ext=ext,
         fingerprint=ref.fingerprint,
-        size=size,
+        size=ref.stored_size,
         payload=payload,
     )
 
 
-async def _parse(ref: ContentRef, ext: str) -> tuple[StructuredPayload, int]:
-    """Bounded read plus parse, with the byte count that was parsed.
+async def _parse(ref: ContentRef, ext: str) -> StructuredPayload:
+    """Bounded read plus parse.
 
     Content past the cap is ``truncated``, not an error: the Tree view falls
     back to Source on that flag, which is a better answer for a reader than a
@@ -126,8 +129,7 @@ async def _parse(ref: ContentRef, ext: str) -> tuple[StructuredPayload, int]:
     except ContentReadError as exc:
         if exc.http_status != 413:
             raise
-        return truncated_payload(), 0
+        return truncated_payload()
     if window.has_more:
-        return truncated_payload(), len(window.data)
-    parsed = await asyncio.to_thread(parse_structured_bytes, window.data, ext)
-    return parsed, len(window.data)
+        return truncated_payload()
+    return await asyncio.to_thread(parse_structured_bytes, window.data, ext)

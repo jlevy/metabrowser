@@ -1128,11 +1128,13 @@ class GitTreeSource:
         # The requested path stays the route identity even when a symlink was
         # followed, matching what ``/api/file`` and ``/raw`` echo back. The
         # extension comes from the resolved leaf, which is what a kind check
-        # has to see.
+        # has to see. The size is the one its tree listing attached, which is
+        # absent only for a blob the store does not hold.
         return ContentRef(
             identity=path.to_wire(),
             logical_ext=blob_logical_ext(entry.path),
             fingerprint=entry.oid,
+            stored_size=entry.size,
             reader=_GitBlobReader(source=self, entry=entry),
         )
 

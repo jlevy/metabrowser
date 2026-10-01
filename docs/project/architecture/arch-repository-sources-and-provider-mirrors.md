@@ -157,6 +157,8 @@ revision — and never constructs one or branches on the subject kind.
   another’s files. Both return the identity to echo back, the logical extension to
   dispatch on, and a fingerprint that changes exactly when the bytes can have, so a hook
   keys its own cache without knowing whether that is an mtime hash or a blob object id.
+  They also return the stored size, a file’s size on disk or a blob’s length, which
+  costs no read.
 
 - `read_content_window` takes a required `max_bytes`; there is no unbounded variant, and
   the bound is on bytes, not on a decoded string.
