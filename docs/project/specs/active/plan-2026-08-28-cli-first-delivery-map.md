@@ -478,7 +478,7 @@ values; cache routes never report paths, and `--no-serve` does not print the hom
 | `cli-cache-fetch-failures.txt` | missing, non-repository, empty, and detached-HEAD origins fail without touching another source; a folded spelling reuses the same source | Cache 1B-a |
 | `cli-cache-unsupported-git.txt` | below-floor Git refuses a miss without creating or changing the home, and still reuses a hit without Git | Cache 1B-a |
 | `cli-cache-repair-guidance.txt` | invalid `METABROWSER_HOME`, a shared home, and a future format each name their repair, which then works | Cache 1B-a |
-| `cli-cache-url-grammar.tryscript.md` | ROOT grammar accepts and normalizes, or rejects with a reason and without echoing the input | Cache 1B-a |
+| `cli-cache-url-grammar.tryscript.md` | ROOT grammar accepts and normalizes, or rejects with a reason and without echoing the input; an existing path is served whatever its name resembles, and `scheme://` is always a source | Cache 1B-a |
 | `cli-url-open.tryscript.md` | URL open accepts and rejects, with reasons | Cache 1B-b |
 | `cli-github-repo-open.tryscript.md` | GitHub repository URL reduces to and reuses the shared store without provider auth | Repository 2A |
 | `cli-github-branch-open.tryscript.md` | default, non-default, slash-containing, offline, and unavailable branches use immutable revision subjects without moving a checkout | Repository 2C |

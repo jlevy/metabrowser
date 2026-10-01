@@ -25,6 +25,8 @@ The canonical command is ``metab``; ``metabrowser`` is an alias.
 
 from __future__ import annotations
 
+import os
+import re
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, TextIO, cast
@@ -293,6 +295,37 @@ def _is_plain_local_root(value: str) -> bool:
     return at <= 0 or "/" in value[:at] or ":" not in value[at + 1 :]
 
 
+# A scheme followed by ``//``, the one spelling that is always a source string. It is
+# ``_SCHEME`` in ``cache/urls.py``, repeated because ordinary local browsing must not
+# import that module; ``test_explicit_url_pattern_matches_the_grammar`` pins the pair.
+_EXPLICIT_URL = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
+
+
+def _names_existing_path(value: str) -> bool:
+    """Return True when *value* is served as the existing local path it names.
+
+    The rule for ROOT, in order:
+
+    1. An argument that starts with ``scheme://`` is a source string, whatever exists
+       on disk. No shell or file manager spells a path that way: the path it would
+       name is ``scheme:/rest``, with one slash, and that spelling or ``./scheme://rest``
+       reaches it. So a pasted URL opens the same thing in every working directory,
+       and a folder cannot stand in, under the local trust profile, for the repository
+       a URL names.
+    2. Any other argument that names an existing filesystem entry is that path, as it
+       was before ROOT was classified: a folder called ``file:notes``, ``a::b``,
+       ``me@host:dir``, or ``https:x`` is served, a file is opened, and a symbolic
+       link is followed. A dangling link counts, so it gets the local path's error
+       rather than a refusal that describes a URL.
+    3. Everything else is classified by the grammar, so an scp-like address, a
+       malformed URL, or remote-helper syntax that names nothing on disk is refused
+       or acquired exactly as the grammar says.
+    """
+    if value == "" or _EXPLICIT_URL.match(value) is not None:
+        return False
+    return os.path.lexists(value)
+
+
 def _classified_root(ctx: typer.Context, root: str | None, mode: str) -> Path | GitSource:
     """Return a local path or a classified Git source, or fail the invocation."""
     if root is None:
@@ -307,7 +340,7 @@ def _classified_root(ctx: typer.Context, root: str | None, mode: str) -> Path | 
         hint = hints.get(mode, "pass the required root")
         ctx.fail(f"ROOT is required for {_MODE_LABELS[mode]}; {hint}")
     assert root is not None
-    if _is_plain_local_root(root):
+    if _is_plain_local_root(root) or _names_existing_path(root):
         return Path(root)
     from metabrowser.cache.providers import url_reducers
     from metabrowser.cache.urls import LocalPath, RejectedRoot, classify_root_argument

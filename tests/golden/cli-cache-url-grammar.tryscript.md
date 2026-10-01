@@ -9,10 +9,21 @@ env:
   METABROWSER_LOG_LEVEL: "WARNING"
   GIT_CONFIG_GLOBAL: "/dev/null"
   GIT_CONFIG_NOSYSTEM: "1"
+before: >-
+  mkdir -p file:notes a::b me@host:dir https:x ./-dash
+  https:/example.com/served/repo.git &&
+  printf '# Notes\n' > file:notes/README.md &&
+  printf 'b\n' > a::b/b.txt &&
+  printf 'dir\n' > me@host:dir/dir.txt &&
+  printf 'x\n' > https:x/x.txt &&
+  printf 'dash\n' > ./-dash/dash.txt &&
+  printf 'served\n' > https:/example.com/served/repo.git/served.txt &&
+  touch -t 202311142213.20 file:notes/README.md file:notes
 ---
 # Golden tests: the ROOT grammar a user sees
 
-`metab` classifies ROOT before it builds a path or runs Git.
+`metab` serves a ROOT that names an existing path, and classifies every other ROOT
+before it builds a path or runs Git.
 The frozen grammar is `tests/fixtures/repository-cache/url-grammar.json`, and
 `tests/test_repository_cache_contract_fixtures.py` replays every case against the
 production classifier.
@@ -114,6 +125,160 @@ Error: ROOT is a local path; --no-serve acquires a file:// or https:// Git sourc
 $ METABROWSER_HOME=$PWD/home metab example.com:owner/repo.git --no-serve
 Error: ROOT is a local path; --no-serve acquires a file:// or https:// Git source
 ? 1
+```
+
+## Test: an existing path is served, whatever its name resembles
+
+A folder may be called `file:notes`, `a::b`, `me@host:dir`, or `https:x`, names the
+grammar would refuse or read as an ssh address.
+An argument that names an existing path is that path, so each is served as a local
+folder, as it was before ROOT was classified.
+The `before` command creates them in the sandbox.
+
+```console
+$ METABROWSER_HOME=$PWD/home metab file:notes --api '/api/tree?depth=1'
+api: /api/tree?depth=1
+status: 200
+{
+  "root": "<ROOT>",
+  "tree": [
+    {
+      "name": "README.md",
+      "path": "README.md",
+      "type": "file",
+      "size": 8,
+      "mtime": 1700000000.0,
+      "ext": ".md"
+    }
+  ],
+  "filtered": null,
+  "tally_cache_status": "done",
+  "tally_cache_max_files": 500000,
+  "summary": null,
+  "file_type_registry": null,
+  "extensions": null,
+  "canonical_extensions": null,
+  "type_families": null,
+  "type_presets": null,
+  "recency_tallies": null
+}
+? 0
+```
+
+`/api/source/status` names the subject: the filesystem, not a pin.
+
+```console
+$ METABROWSER_HOME=$PWD/home metab me@host:dir --api /api/source/status
+api: /api/source/status
+status: 200
+{
+  "subject": "attached_filesystem",
+  "generation": 1,
+  "pin": null,
+  "ref": null,
+  "ref_name": null,
+  "refreshable": false,
+  "latest": null,
+  "ref_on_origin": null,
+  "last_fetch_at": null,
+  "last_outcome": null,
+  "refreshing": false,
+  "stale": false,
+  "pull_request": null,
+  "selection_state": null,
+  "selection_href": null
+}
+? 0
+```
+
+```console
+$ METABROWSER_HOME=$PWD/home metab a::b --walk
+walk: a::b
+status: done
+counts: files=1 dirs=1 symlinks=0
+totals: total_files=1 total_size=2
+
+entries:
+  . [dir] files=1 size=2
+  b.txt [file] size=2
+? 0
+```
+
+```console
+$ METABROWSER_HOME=$PWD/home metab https:x --walk
+walk: https:x
+status: done
+counts: files=1 dirs=1 symlinks=0
+totals: total_files=1 total_size=2
+
+entries:
+  . [dir] files=1 size=2
+  x.txt [file] size=2
+? 0
+```
+
+A name that starts with a dash is reached past `--`, and is a path like the others.
+
+```console
+$ METABROWSER_HOME=$PWD/home metab --walk -- -dash
+walk: -dash
+status: done
+counts: files=1 dirs=1 symlinks=0
+totals: total_files=1 total_size=5
+
+entries:
+  . [dir] files=1 size=5
+  dash.txt [file] size=5
+? 0
+```
+
+`--no-serve` has nothing to acquire from a local path.
+
+```console
+$ METABROWSER_HOME=$PWD/home metab me@host:dir --no-serve
+Error: ROOT is a local path; --no-serve acquires a file:// or https:// Git source
+? 1
+```
+
+The same shapes name nothing here, so the grammar decides, as in the tests below.
+
+```console
+$ METABROWSER_HOME=$PWD/home metab file:absent --walk
+Error: invalid ROOT (malformed_url)
+? 1
+```
+
+```console
+$ METABROWSER_HOME=$PWD/home metab me@host:absent --no-serve
+Error: ssh Git sources are not acquired yet (me@host:absent)
+? 1
+```
+
+## Test: a `scheme://` argument is a source, whatever exists on disk
+
+A path never needs that spelling: the system reads `https://example.com/served/repo.git`
+as the path `https:/example.com/served/repo.git`, which exists in this sandbox.
+The URL is still a Git source, so what a pasted URL opens does not depend on the working
+directory, and a folder cannot stand in for the repository a URL names.
+The one-slash spelling reaches the folder.
+
+```console
+$ METABROWSER_HOME=$PWD/home metab https://example.com/served/repo.git --walk
+Error: --walk runs the filesystem inventory walker, and a Git source has no filesystem to walk (https://example.com/served/repo.git). Read a pinned tree with --api '/api/tree?depth=N', or --walk a local directory.
+? 1
+```
+
+```console
+$ METABROWSER_HOME=$PWD/home metab https:/example.com/served/repo.git --walk
+walk: repo.git
+status: done
+counts: files=1 dirs=1 symlinks=0
+totals: total_files=1 total_size=7
+
+entries:
+  . [dir] files=1 size=7
+  served.txt [file] size=7
+? 0
 ```
 
 ## Test: arguments that could become Git or SSH options

@@ -6,6 +6,11 @@ replayed against :func:`classify_root_argument`. A local path stays a local path
 explicit ``https``, ``ssh``, or ``file://`` Git source. ``file://`` is the pack
 transport; a bare path is never rewritten into one.
 
+The grammar reads a string and never the filesystem. The CLI asks the filesystem first:
+an argument that names an existing path is served as that path and never reaches this
+module, unless it starts with ``scheme://``, which is always classified here. The rule
+and its reasons are on ``_names_existing_path`` in ``cli/main.py``.
+
 Installed provider reducers run first. This module arbitrates their claims and then
 applies the generic grammar to every input no reducer reduced. No provider reducer
 ships here; the built-in ones are listed in ``cache/providers.py``. Overlapping claims

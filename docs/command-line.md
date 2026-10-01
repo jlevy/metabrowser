@@ -27,6 +27,21 @@ effect of serving them, `--show`, `--api`, or `--check-api`; ssh stays closed.
 `--show`, `--api`, and `--check-api` inspect that pin in-process without binding a port.
 Acquired content always runs under the untrusted profile.
 A bare filesystem path is never treated as a clone origin.
+
+Two rules decide between the readings, in this order:
+
+1. An argument that starts with `scheme://` is always a source, whatever exists on disk.
+   No path needs that spelling — the system reads `https://host/x` as the path
+   `https:/host/x` — so a pasted URL opens the same thing in every working directory,
+   and a local folder cannot stand in, under the local trust profile, for the repository
+   a URL names. Write the path with one slash, or as `./https://host/x`, to serve such a
+   folder.
+2. Any other argument that names an existing path is that path.
+   A folder called `file:notes`, `a::b`, `me@host:dir`, or `https:x` is served, a file
+   is opened, and a symbolic link is followed, as for any other name.
+   Only an argument that names nothing on disk is read as an scp-like address or refused
+   as a malformed URL or remote-helper syntax.
+
 With no mode flag, `metab ROOT` starts the server and opens a browser, the way `open`
 opens a folder on macOS.
 

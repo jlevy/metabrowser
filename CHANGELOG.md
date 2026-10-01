@@ -356,6 +356,17 @@ Repository cache:
   A pin always runs under the untrusted profile: `METAB_ACTIVE_CONTENT=1` and
   `METAB_ALLOW_EDITS=1` do not lift it, and `--allow-edits` on a pin is an error.
 
+- An argument that names an existing path is that path, whatever it resembles.
+  A folder called `file:notes`, `a::b`, `me@host:dir`, `https:x`, or `-dash` (after
+  `--`) is served, a file is opened, and a symbolic link is followed, as in 0.11. Only
+  an argument that names nothing on disk is read as an scp-like address or refused as a
+  malformed URL or remote-helper syntax.
+  The one exception is an argument that starts with `scheme://`, which is always a
+  source: no path needs that spelling, so a pasted URL opens the same thing in every
+  working directory and a local folder cannot stand in for the repository it names.
+  `metab https://host/x` therefore no longer serves a folder at `https:/host/x`; write
+  that path with one slash, or as `./https://host/x`.
+
 - `metab file://…` serves the acquired source in the browser, pinned to the commit its
   default branch named at the store’s last fetch, until Ctrl-C. Every page reads from
   the store; only the background refresh below reaches the origin.
