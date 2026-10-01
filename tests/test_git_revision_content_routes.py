@@ -34,7 +34,7 @@ from metabrowser.settings import (
     TEXT_PREVIEW_CHUNK_BYTES,
     TEXT_PREVIEW_REQUEST_MAX_BYTES,
 )
-from metabrowser.source import attach_subject
+from metabrowser.source import attach_subject, reset_source_session
 from metabrowser.wire_models import validate_rollup_node
 from tests.git_pin_harness import fast_import_store
 
@@ -252,6 +252,8 @@ async def _pinned_client(
                 yield client, subject
     finally:
         await subject.aclose()
+        # Not teardown: tests open several pins in turn.
+        reset_source_session()
 
 
 def test_git_file_raw_tree_honor_gitpath_without_filesystem_facts(tmp_path: Path) -> None:

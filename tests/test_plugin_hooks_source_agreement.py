@@ -22,11 +22,12 @@ from typing import Any
 
 from httpx2 import ASGITransport, AsyncClient
 
+from metabrowser import paths_safe
 from metabrowser.git.tree_source import GitPath
 from metabrowser.paths_safe import _set_root_dir
 from metabrowser.server import app
-from metabrowser.source import AttachedFilesystemSubject, attach_subject
-from tests.git_pin_harness import fast_import_store, pinned_client
+from metabrowser.source import AttachedFilesystemSubject, attach_subject, reset_source_session
+from tests.git_pin_harness import fast_import_store, overwrite_tree, pinned_client
 
 LOG = (
     b'{"type":"system","subtype":"init","model":"claude-opus-4-20250514"}\n'
@@ -67,12 +68,21 @@ async def _folder_client(tmp_path: Path) -> AsyncGenerator[AsyncClient, None]:
     root.mkdir()
     for name, body in FILES.items():
         (root / name.decode()).write_bytes(body)
+    original = paths_safe.ROOT_DIR
     _set_root_dir(root)
     attach_subject(AttachedFilesystemSubject(root))
-    async with app.router.lifespan_context(app):
-        transport = ASGITransport(app=app, raise_app_exceptions=True)
-        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-            yield client
+    try:
+        async with app.router.lifespan_context(app):
+            transport = ASGITransport(app=app, raise_app_exceptions=True)
+            async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+                yield client
+    finally:
+        # A phase boundary, not teardown: the pin half of each test runs after this,
+        # and must not find the folder still served. The folder's files are then
+        # overwritten, so a pin read answered from them cannot agree by accident.
+        reset_source_session()
+        _set_root_dir(original)
+        overwrite_tree(root)
 
 
 def _wire(native: str) -> str:

@@ -17,6 +17,7 @@ from typing import Any
 
 import pytest
 
+from metabrowser import paths_safe
 from metabrowser.git.tree_source import (
     GitBlobTooLargeError,
     GitObjectUnavailableError,
@@ -40,8 +41,9 @@ from metabrowser.plugin_api import (
 from metabrowser.source import (
     AttachedFilesystemSubject,
     attach_subject,
+    reset_source_session,
 )
-from tests.git_pin_harness import fast_import_store
+from tests.git_pin_harness import fast_import_store, overwrite_tree
 
 # 4 KiB of non-repeating-enough bytes: large enough that a window is a real
 # slice of it and small enough to keep the fixture store tiny.
@@ -73,9 +75,18 @@ def _on_filesystem(tmp_path: Path) -> Path:
 async def _with_filesystem[T](
     tmp_path: Path, hook: Callable[[str], Awaitable[T]], identity: str
 ) -> T:
+    original = paths_safe.ROOT_DIR
     _set_root_dir(_on_filesystem(tmp_path))
-    attach_subject(AttachedFilesystemSubject(tmp_path))
-    return await hook(identity)
+    try:
+        attach_subject(AttachedFilesystemSubject(tmp_path))
+        return await hook(identity)
+    finally:
+        # A phase boundary, not teardown: the pin half of a test runs after this,
+        # and must not find this folder still served. The folder's files are then
+        # overwritten, so a pin read answered from them cannot agree by accident.
+        reset_source_session()
+        _set_root_dir(original)
+        overwrite_tree(tmp_path)
 
 
 async def _with_pin[T](tmp_path: Path, hook: Callable[[str], Awaitable[T]], identity: str) -> T:
@@ -92,6 +103,7 @@ async def _with_pin[T](tmp_path: Path, hook: Callable[[str], Awaitable[T]], iden
         return await hook(identity)
     finally:
         await subject.aclose()
+        reset_source_session()
 
 
 def _wire(native: str) -> str:

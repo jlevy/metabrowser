@@ -13,7 +13,7 @@ from httpx2 import ASGITransport, AsyncClient
 from metabrowser.git.process import repository_store_target
 from metabrowser.git.tree_source import GitRevisionSubject, git_revision_subject
 from metabrowser.server import app
-from metabrowser.source import attach_subject
+from metabrowser.source import attach_subject, reset_source_session
 
 
 def git_env(root: Path) -> dict[str, str]:
@@ -74,6 +74,19 @@ def fast_import_store(
     return store, commit.decode().strip()
 
 
+def overwrite_tree(root: Path) -> None:
+    """Replace every file under *root* with bytes no fixture holds.
+
+    A test that reads one tree as a folder and then as a pin calls this between the
+    two. The trees hold the same bytes so the answers can be compared; once the
+    folder's are gone, a pin read that reached the folder cannot agree by accident.
+    """
+
+    for path in sorted(root.rglob("*")):
+        if path.is_file() and not path.is_symlink():
+            path.write_bytes(b"overwritten after the folder half\n")
+
+
 @asynccontextmanager
 async def pinned_client(
     store: Path, commit: str, *, raise_app_exceptions: bool = True, ref: str | None = None
@@ -92,3 +105,6 @@ async def pinned_client(
                 yield client, subject
     finally:
         await subject.aclose()
+        # Not teardown: a test goes on after this block, often to another source, and
+        # must not find the closed pin still attached.
+        reset_source_session()

@@ -38,10 +38,11 @@ from typing import Any
 import pytest
 from httpx2 import ASGITransport, AsyncClient
 
+from metabrowser import paths_safe
 from metabrowser.paths_safe import _set_root_dir
 from metabrowser.server import app
-from metabrowser.source import AttachedFilesystemSubject, attach_subject
-from tests.git_pin_harness import fast_import_store, pinned_client
+from metabrowser.source import AttachedFilesystemSubject, attach_subject, reset_source_session
+from tests.git_pin_harness import fast_import_store, overwrite_tree, pinned_client
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SESSION_JS = REPO_ROOT / "tests" / "dom" / "source-kind-session.js"
@@ -85,12 +86,21 @@ pytestmark = pytest.mark.skipif(shutil.which("git") is None, reason="git executa
 
 @asynccontextmanager
 async def _folder_client(root: Path) -> AsyncGenerator[AsyncClient]:
+    original = paths_safe.ROOT_DIR
     _set_root_dir(root)
     attach_subject(AttachedFilesystemSubject(root))
-    async with app.router.lifespan_context(app):
-        transport = ASGITransport(app=app, raise_app_exceptions=True)
-        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-            yield client
+    try:
+        async with app.router.lifespan_context(app):
+            transport = ASGITransport(app=app, raise_app_exceptions=True)
+            async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+                yield client
+    finally:
+        # A phase boundary, not teardown: the pin is observed after this, and must not
+        # find the folder still served. The folder's files are then overwritten, so
+        # a pin answered from them cannot match the pin's recording by accident.
+        reset_source_session()
+        _set_root_dir(original)
+        overwrite_tree(root)
 
 
 def _project(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
