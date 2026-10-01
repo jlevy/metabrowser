@@ -16,7 +16,8 @@ restores them so `make golden-update` is a single reviewable step:
 * `[CLOCK]` for the logger's time of day on the pending-tally diagnostic line
 * `[TIMESTAMP]` for a time taken from the wall clock while the transcript or its
   fixture ran: when a one-shot refresh found another process refreshing, when a
-  pull request's refresh failed, and when a fixture fetched its mirror
+  pull request's refresh failed, and when a fixture fetched its mirror. A time a
+  fixture pins stays literal, and a time that is neither stops the update
 * the watcher's mode, state, and reason, which are host facts and startup
   transients -- the filesystem the served root sits on, the backend that made
   available, and how far selection had got when the request landed
@@ -31,15 +32,36 @@ trims line ends on both sides of a comparison, so stripping is match-safe.
 from __future__ import annotations
 
 import re
+import sys
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+
+from tests import cache_home_fixture, github_pull_fixture, source_mirror_fixture
 
 GOLDEN_DIR = Path(__file__).parent.parent / "tests" / "golden"
 
 _TIME = r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ"
-# A time a fixture pinned stays literal. Every fixture that fixes a clock fixes it
-# inside this one minute (tests/source_mirror_fixture.py, tests/github_pull_fixture.py),
-# so any other time in a transcript came from the wall clock.
-_WALL_CLOCK = rf"(?!2026-09-17T12:00:\d\dZ){_TIME}"
+_TIME_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
+
+# The times the fixtures themselves record in the places the rules below look at, read
+# from the fixtures, so a fixture that moves its clock moves this with it. One of these
+# in a transcript is a pinned value and stays literal.
+FIXTURE_TIMES: frozenset[str] = frozenset(
+    {
+        cache_home_fixture.FETCHED_AT,
+        source_mirror_fixture.FETCHED_AT,
+        github_pull_fixture.FETCHED_AT.strftime(_TIME_FORMAT),
+    }
+)
+# A time the wall clock gave during this update is at most this old. Anything older
+# that is not a fixture's time is neither, and is refused rather than guessed at.
+_UPDATE_WINDOW = timedelta(hours=6)
+_CLOCK_SKEW = timedelta(minutes=5)
+
+
+class UnexpectedTime(ValueError):
+    """A time where a wall-clock time goes that is neither a fixture's nor this run's."""
+
 
 FIXUPS: list[tuple[str, str]] = [
     (r"Usage: metab \[OPTIONS\] \[ROOT\]", "Usage: metab [OPTIONS] [ROOT_ARG]"),
@@ -109,46 +131,80 @@ FIXUPS: list[tuple[str, str]] = [
         r'(?:.*\n)*?  "assets": \{\n)(?:.*\n)*?(  \},\n  "diagnostics": )',
         r"\1...\n\2",
     ),
+]
+
+# Where a transcript shows a time taken from the wall clock, each with the lines that
+# place it. The time itself is the last group.
+WALL_CLOCK_SITES: list[str] = [
     # When a one-shot refresh found another process refreshing the store: this
-    # process's own wall clock, which no fixture can pin. The fetch times beside it
-    # are the fixture's and stay literal.
-    (
-        rf'(^\s+"outcome": "refreshing_elsewhere",\n\s+"at": )"{_WALL_CLOCK}"',
-        r'\1"[TIMESTAMP]"',
-    ),
-    # When a pull request's refresh failed in the transcript itself: this process's wall
-    # clock. A refresh the fixture ran keeps its fixed time.
-    (rf'(^\s+"reset_at": null,\n\s+"at": )"{_WALL_CLOCK}"', r'\1"[TIMESTAMP]"'),
+    # process's own clock. The fetch times beside it are the fixture's.
+    rf'(^\s+"outcome": "refreshing_elsewhere",\n\s+"at": )"({_TIME})"',
+    # When a pull request's refresh failed in the transcript itself. A refresh the
+    # fixture ran keeps the fixture's time.
+    rf'(^\s+"reset_at": null,\n\s+"at": )"({_TIME})"',
     # When a fixture fetched its mirror while it was being built, and did not then set
-    # the recorded fetch to a fixed time: the fixture process's wall clock.
-    (rf'(^\s+"last_fetch_at": )"{_WALL_CLOCK}"', r'\1"[TIMESTAMP]"'),
-    (
-        rf'(^\s+"operation": "acquire",\n\s+"outcome": "succeeded",\n\s+"at": )"{_WALL_CLOCK}"',
-        r'\1"[TIMESTAMP]"',
-    ),
+    # the recorded fetch to a fixed time: the fixture process's clock.
+    rf'(^\s+"last_fetch_at": )"({_TIME})"',
+    rf'(^\s+"operation": "acquire",\n\s+"outcome": "succeeded",\n\s+"at": )"({_TIME})"',
 ]
 
 
-def fix_text(text: str) -> str:
-    """*text* with every elision pattern restored and trailing whitespace stripped."""
+def _wall_clock(match: re.Match[str], now: datetime) -> str:
+    """Keep a fixture's time, pattern this run's, and refuse anything else.
 
+    A time is this run's when it is within the update window before *now*. A time that
+    is neither is a value some fixture pins without this module knowing, or a wall
+    clock left in a transcript by an earlier run. Patterning the first would hide a
+    pinned value, and keeping the second would commit a time that fails tomorrow, so
+    neither is done silently.
+    """
+
+    stamp = match.group(2)
+    if stamp in FIXTURE_TIMES:
+        return match.group(0)
+    moment = datetime.strptime(stamp, _TIME_FORMAT).replace(tzinfo=UTC)
+    if now - _UPDATE_WINDOW <= moment <= now + _CLOCK_SKEW:
+        return f'{match.group(1)}"[TIMESTAMP]"'
+    raise UnexpectedTime(
+        f"{stamp} is neither a fixture's fixed time ({', '.join(sorted(FIXTURE_TIMES))}) nor "
+        "a time from this update; if a fixture pins it, add that fixture's constant to "
+        "FIXTURE_TIMES, and if it is an old wall-clock time, rerun `make golden-update`"
+    )
+
+
+def fix_text(text: str, *, now: datetime | None = None) -> str:
+    """*text* with every elision pattern restored and trailing whitespace stripped.
+
+    *now* is when the update ran, which decides what counts as its wall clock.
+    """
+
+    moment = datetime.now(UTC) if now is None else now
     # The frontmatter defines the elision patterns themselves; only the body after
     # the closing "---" holds captured output to patch.
     frontmatter, separator, body = text.partition("\n---\n")
     for pattern, replacement in FIXUPS:
         body = re.sub(pattern, replacement, body, flags=re.MULTILINE)
+    for site in WALL_CLOCK_SITES:
+        body = re.sub(site, lambda found: _wall_clock(found, moment), body, flags=re.MULTILINE)
     body = re.sub(r"[ \t]+$", "", body, flags=re.MULTILINE)
     return frontmatter + separator + body
 
 
-def main(golden_dir: Path = GOLDEN_DIR) -> None:
+def main(golden_dir: Path = GOLDEN_DIR) -> int:
+    status = 0
     for path in sorted(golden_dir.glob("*.tryscript.md")):
         text = path.read_text(encoding="utf-8")
-        fixed = fix_text(text)
+        try:
+            fixed = fix_text(text)
+        except UnexpectedTime as error:
+            print(f"{path.name}: {error}", file=sys.stderr)
+            status = 1
+            continue
         if fixed != text:
             path.write_text(fixed, encoding="utf-8")
             print(f"patterns restored: {path.name}")
+    return status
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
