@@ -1,0 +1,622 @@
+# metab file://<ORIGIN> --api '/api/tree?depth=0'
+exit: 0
+--- stdout ---
+api: /api/tree?depth=0
+status: 200
+{
+  "subject": "git_revision",
+  "path": "",
+  "display": "",
+  "oid": "2aba9e6f68f6b11f98bee8a8d7b47693aca3fb43",
+  "kind": "tree",
+  "entries": [],
+  "tree": [],
+  "tally_cache_status": "done",
+  "tally_cache_max_files": 500000,
+  "summary": {
+    "files": 16,
+    "size": 16777474,
+    "ignored_files": 0,
+    "ignored_size": 0
+  },
+  "extensions": [
+    [
+      ".txt",
+      4,
+      0
+    ],
+    [
+      ".md",
+      3,
+      0
+    ],
+    [
+      ".bin",
+      2,
+      0
+    ],
+    [
+      ".json",
+      1,
+      0
+    ],
+    [
+      ".jsonl",
+      1,
+      0
+    ],
+    [
+      ".png",
+      1,
+      0
+    ],
+    [
+      ".py",
+      1,
+      0
+    ],
+    [
+      ".sh",
+      1,
+      0
+    ]
+  ],
+  "canonical_extensions": [
+    [
+      ".txt",
+      4,
+      0
+    ],
+    [
+      ".md",
+      3,
+      0
+    ],
+    [
+      ".bin",
+      2,
+      0
+    ],
+    [
+      ".json",
+      1,
+      0
+    ],
+    [
+      ".jsonl",
+      1,
+      0
+    ],
+    [
+      ".png",
+      1,
+      0
+    ],
+    [
+      ".py",
+      1,
+      0
+    ],
+    [
+      ".sh",
+      1,
+      0
+    ]
+  ],
+  "type_families": [
+    [
+      "plain-text",
+      4,
+      0
+    ],
+    [
+      "markdown",
+      3,
+      0
+    ],
+    [
+      "images",
+      1,
+      0
+    ],
+    [
+      "json",
+      1,
+      0
+    ],
+    [
+      "log-files",
+      1,
+      0
+    ],
+    [
+      "python",
+      1,
+      0
+    ],
+    [
+      "shell",
+      1,
+      0
+    ]
+  ],
+  "type_presets": [
+    [
+      "code",
+      2,
+      0
+    ],
+    [
+      "docs",
+      7,
+      0
+    ],
+    [
+      "data",
+      1,
+      0
+    ],
+    [
+      "archives",
+      0,
+      0
+    ],
+    [
+      "media",
+      1,
+      0
+    ]
+  ]
+}
+--- stderr ---
+# metab file://<ORIGIN> --api '/api/tree?depth=2'
+exit: 0
+--- stdout ---
+api: /api/tree?depth=2
+status: 200
+{
+  "subject": "git_revision",
+  "path": "",
+  "display": "",
+  "oid": "2aba9e6f68f6b11f98bee8a8d7b47693aca3fb43",
+  "kind": "tree",
+  "entries": [
+    {
+      "path": "g1-UkVBRE1FLm1k",
+      "display": "README.md",
+      "mode": "100644",
+      "kind": "blob",
+      "symlink": false,
+      "gitlink": false,
+      "oid": "36516194dee2aa72ce75357bc32cd75a59f71e57",
+      "size": 17
+    },
+    {
+      "path": "g1-YQ",
+      "display": "a",
+      "mode": "040000",
+      "kind": "tree",
+      "symlink": false,
+      "gitlink": false,
+      "oid": "488995644342a4443f2cc5280e6a6d13f3a045fe"
+    },
+    {
+      "path": "g1-YS1i",
+      "display": "a-b",
+      "mode": "100644",
+      "kind": "blob",
+      "symlink": false,
+      "gitlink": false,
+      "oid": "a2544f7ec3007899167de1fef481a5a0fd63fa41",
+      "size": 5
+    },
+    {
+      "path": "g1-YS50eHQ",
+      "display": "a.txt",
+      "mode": "100644",
+      "kind": "blob",
+      "symlink": false,
+      "gitlink": false,
+      "oid": "06b3a8f652461758c3095a9b0014a7d626e1915c",
+      "size": 9
+    },
+    {
+      "path": "g1-YWI",
+      "display": "ab",
+      "mode": "100644",
+      "kind": "blob",
+      "symlink": false,
+      "gitlink": false,
+      "oid": "b9bca019c83a65e6d717d0b6da86215f45dde1b3",
+      "size": 6
+    },
+    {
+      "path": "g1-Ymlu",
+      "display": "bin",
+      "mode": "040000",
+      "kind": "tree",
+      "symlink": false,
+      "gitlink": false,
+      "oid": "406c2736ec0c08fdcff7ee8b3f5752ad8f83e043"
+    },
+    {
+      "path": "g1-ZGF0YQ",
+      "display": "data",
+      "mode": "040000",
+      "kind": "tree",
+      "symlink": false,
+      "gitlink": false,
+      "oid": "92a2aa36f8772eb7faf7ffe45bf38b9d24b18978"
+    },
+    {
+      "path": "g1-bGlua3M",
+      "display": "links",
+      "mode": "040000",
+      "kind": "tree",
+      "symlink": false,
+      "gitlink": false,
+      "oid": "a7dd58c1121a97ccb71a6428c5a9213093f36616"
+    },
+    {
+      "path": "g1-b2Rk",
+      "display": "odd",
+      "mode": "040000",
+      "kind": "tree",
+      "symlink": false,
+      "gitlink": false,
+      "oid": "5386dad79188f6147a05b096d0035cf0f4827ce3"
+    },
+    {
+      "path": "g1-dG9vbHM",
+      "display": "tools",
+      "mode": "040000",
+      "kind": "tree",
+      "symlink": false,
+      "gitlink": false,
+      "oid": "e0ac75fc5c8f12a47f2556d20668bb54e641f955"
+    },
+    {
+      "path": "g1-dmVuZG9y",
+      "display": "vendor",
+      "mode": "160000",
+      "kind": "commit",
+      "symlink": false,
+      "gitlink": true,
+      "oid": "1111111111111111111111111111111111111111"
+    }
+  ],
+  "tree": [
+    {
+      "name": "a",
+      "path": "g1-YQ",
+      "type": "dir",
+      "children": [
+        {
+          "name": "deep",
+          "path": "g1-YQ/g1-ZGVlcA",
+          "type": "dir",
+          "children": null,
+          "has_children": true,
+          "total_files": 2,
+          "total_size": 52
+        },
+        {
+          "name": "one.py",
+          "path": "g1-YQ/g1-b25lLnB5",
+          "type": "file",
+          "ext": ".py",
+          "size": 6
+        }
+      ],
+      "has_children": true,
+      "total_files": 3,
+      "total_size": 58
+    },
+    {
+      "name": "bin",
+      "path": "g1-Ymlu",
+      "type": "dir",
+      "children": [
+        {
+          "name": "glyph.png",
+          "path": "g1-Ymlu/g1-Z2x5cGgucG5n",
+          "type": "file",
+          "ext": ".png",
+          "size": 67
+        },
+        {
+          "name": "oversize.bin",
+          "path": "g1-Ymlu/g1-b3ZlcnNpemUuYmlu",
+          "type": "file",
+          "ext": ".bin",
+          "size": 16777217
+        },
+        {
+          "name": "sample.bin",
+          "path": "g1-Ymlu/g1-c2FtcGxlLmJpbg",
+          "type": "file",
+          "ext": ".bin",
+          "size": 8
+        }
+      ],
+      "has_children": true,
+      "total_files": 3,
+      "total_size": 16777292
+    },
+    {
+      "name": "data",
+      "path": "g1-ZGF0YQ",
+      "type": "dir",
+      "children": [
+        {
+          "name": "events.jsonl",
+          "path": "g1-ZGF0YQ/g1-ZXZlbnRzLmpzb25s",
+          "type": "file",
+          "ext": ".jsonl",
+          "size": 18
+        }
+      ],
+      "has_children": true,
+      "total_files": 1,
+      "total_size": 18
+    },
+    {
+      "name": "links",
+      "path": "g1-bGlua3M",
+      "type": "dir",
+      "children": [
+        {
+          "name": "to-readme.md",
+          "path": "g1-bGlua3M/g1-dG8tcmVhZG1lLm1k",
+          "type": "symlink",
+          "size": 12
+        }
+      ],
+      "has_children": true,
+      "total_files": 1,
+      "total_size": 12
+    },
+    {
+      "name": "odd",
+      "path": "g1-b2Rk",
+      "type": "dir",
+      "children": [
+        {
+          "name": "latin-�.txt",
+          "path": "g1-b2Rk/g1-bGF0aW4t6S50eHQ",
+          "type": "file",
+          "ext": ".txt",
+          "size": 13
+        },
+        {
+          "name": "line�break.txt",
+          "path": "g1-b2Rk/g1-bGluZQpicmVhay50eHQ",
+          "type": "file",
+          "ext": ".txt",
+          "size": 13
+        },
+        {
+          "name": "tab�here.txt",
+          "path": "g1-b2Rk/g1-dGFiCWhlcmUudHh0",
+          "type": "file",
+          "ext": ".txt",
+          "size": 9
+        }
+      ],
+      "has_children": true,
+      "total_files": 3,
+      "total_size": 35
+    },
+    {
+      "name": "tools",
+      "path": "g1-dG9vbHM",
+      "type": "dir",
+      "children": [
+        {
+          "name": "run.sh",
+          "path": "g1-dG9vbHM/g1-cnVuLnNo",
+          "type": "file",
+          "ext": ".sh",
+          "size": 22
+        }
+      ],
+      "has_children": true,
+      "total_files": 1,
+      "total_size": 22
+    },
+    {
+      "name": "README.md",
+      "path": "g1-UkVBRE1FLm1k",
+      "type": "file",
+      "ext": ".md",
+      "size": 17
+    },
+    {
+      "name": "a-b",
+      "path": "g1-YS1i",
+      "type": "file",
+      "size": 5
+    },
+    {
+      "name": "a.txt",
+      "path": "g1-YS50eHQ",
+      "type": "file",
+      "ext": ".txt",
+      "size": 9
+    },
+    {
+      "name": "ab",
+      "path": "g1-YWI",
+      "type": "file",
+      "size": 6
+    },
+    {
+      "name": "vendor",
+      "path": "g1-dmVuZG9y",
+      "type": "file"
+    }
+  ],
+  <157 lines, from "tally_cache_status": "done", on, are the same as in '/api/tree?depth=0' above>
+--- stderr ---
+# metab file://<ORIGIN> --api '/api/tree?path=g1-YQ&depth=1'
+exit: 0
+--- stdout ---
+api: /api/tree?path=g1-YQ&depth=1
+status: 200
+{
+  "subject": "git_revision",
+  "path": "g1-YQ",
+  "display": "a",
+  "oid": "488995644342a4443f2cc5280e6a6d13f3a045fe",
+  "kind": "tree",
+  "entries": [
+    {
+      "path": "g1-YQ/g1-ZGVlcA",
+      "display": "a/deep",
+      "mode": "040000",
+      "kind": "tree",
+      "symlink": false,
+      "gitlink": false,
+      "oid": "7f540f734fe44c6ecbcdf5a4bafc4a57efccb672"
+    },
+    {
+      "path": "g1-YQ/g1-b25lLnB5",
+      "display": "a/one.py",
+      "mode": "100644",
+      "kind": "blob",
+      "symlink": false,
+      "gitlink": false,
+      "oid": "7d4290a117a4ddcc11daae7ea675841033830c8f",
+      "size": 6
+    }
+  ],
+  "tree": [
+    {
+      "name": "deep",
+      "path": "g1-YQ/g1-ZGVlcA",
+      "type": "dir",
+      "children": null,
+      "has_children": true,
+      "total_files": 2,
+      "total_size": 52
+    },
+    {
+      "name": "one.py",
+      "path": "g1-YQ/g1-b25lLnB5",
+      "type": "file",
+      "ext": ".py",
+      "size": 6
+    }
+  ],
+  <157 lines, from "tally_cache_status": "done", on, are the same as in '/api/tree?depth=0' above>
+--- stderr ---
+# metab file://<ORIGIN> --api '/api/tree?path=g1-bGlua3M&depth=1'
+exit: 0
+--- stdout ---
+api: /api/tree?path=g1-bGlua3M&depth=1
+status: 200
+{
+  "subject": "git_revision",
+  "path": "g1-bGlua3M",
+  "display": "links",
+  "oid": "a7dd58c1121a97ccb71a6428c5a9213093f36616",
+  "kind": "tree",
+  "entries": [
+    {
+      "path": "g1-bGlua3M/g1-dG8tcmVhZG1lLm1k",
+      "display": "links/to-readme.md",
+      "mode": "120000",
+      "kind": "blob",
+      "symlink": true,
+      "gitlink": false,
+      "oid": "32d46ee883b58d6a383eed06eb98f33aa6530ded",
+      "size": 12
+    }
+  ],
+  "tree": [
+    {
+      "name": "to-readme.md",
+      "path": "g1-bGlua3M/g1-dG8tcmVhZG1lLm1k",
+      "type": "symlink",
+      "size": 12
+    }
+  ],
+  <157 lines, from "tally_cache_status": "done", on, are the same as in '/api/tree?depth=0' above>
+--- stderr ---
+# metab file://<ORIGIN> --api '/api/tree?depth=1&types=.md'
+exit: 0
+--- stdout ---
+api: /api/tree?depth=1&types=.md
+status: 200
+{
+  "subject": "git_revision",
+  "path": "",
+  "display": "",
+  "oid": "2aba9e6f68f6b11f98bee8a8d7b47693aca3fb43",
+  "kind": "tree",
+  "entries": [
+    {
+      "path": "g1-UkVBRE1FLm1k",
+      "display": "README.md",
+      "mode": "100644",
+      "kind": "blob",
+      "symlink": false,
+      "gitlink": false,
+      "oid": "36516194dee2aa72ce75357bc32cd75a59f71e57",
+      "size": 17
+    },
+    {
+      "path": "g1-YQ",
+      "display": "a",
+      "mode": "040000",
+      "kind": "tree",
+      "symlink": false,
+      "gitlink": false,
+      "oid": "488995644342a4443f2cc5280e6a6d13f3a045fe"
+    },
+    {
+      "path": "g1-bGlua3M",
+      "display": "links",
+      "mode": "040000",
+      "kind": "tree",
+      "symlink": false,
+      "gitlink": false,
+      "oid": "a7dd58c1121a97ccb71a6428c5a9213093f36616"
+    }
+  ],
+  "tree": [
+    {
+      "name": "a",
+      "path": "g1-YQ",
+      "type": "dir",
+      "children": null,
+      "has_children": true,
+      "total_files": 1,
+      "total_size": 27
+    },
+    {
+      "name": "links",
+      "path": "g1-bGlua3M",
+      "type": "dir",
+      "children": null,
+      "has_children": true,
+      "total_files": 1,
+      "total_size": 12
+    },
+    {
+      "name": "README.md",
+      "path": "g1-UkVBRE1FLm1k",
+      "type": "file",
+      "ext": ".md",
+      "size": 17
+    }
+  ],
+  <155 lines, from "tally_cache_status": "done", on, are the same as in '/api/tree?depth=0' above>
+  ],
+  "filtered": {
+    "files": 3,
+    "size": 56,
+    "entries": 3
+  }
+}
+--- stderr ---

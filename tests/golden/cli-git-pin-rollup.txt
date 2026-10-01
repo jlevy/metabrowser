@@ -1,0 +1,607 @@
+# metab file://<ORIGIN> --api '/api/rollup?depth=1'
+exit: 0
+--- stdout ---
+api: /api/rollup?depth=1
+status: 200
+{
+  "subject": "git_revision",
+  "root": "",
+  "path": "",
+  "node": {
+    "name": "",
+    "path": "",
+    "type": "dir",
+    "state": "complete",
+    "total_files": 16,
+    "total_size": 16777474,
+    "unignored_files": 16,
+    "unignored_size": 16777474,
+    "gitignored": false,
+    "dominant_ext": ".bin",
+    "children": [
+      {
+        "name": "bin",
+        "path": "g1-Ymlu",
+        "type": "dir",
+        "state": "complete",
+        "total_files": 3,
+        "total_size": 16777292,
+        "unignored_files": 3,
+        "unignored_size": 16777292,
+        "gitignored": false,
+        "dominant_ext": ".bin",
+        "children": null
+      },
+      {
+        "name": "a",
+        "path": "g1-YQ",
+        "type": "dir",
+        "state": "complete",
+        "total_files": 3,
+        "total_size": 58,
+        "unignored_files": 3,
+        "unignored_size": 58,
+        "gitignored": false,
+        "dominant_ext": ".md",
+        "children": null
+      },
+      {
+        "name": "odd",
+        "path": "g1-b2Rk",
+        "type": "dir",
+        "state": "complete",
+        "total_files": 3,
+        "total_size": 35,
+        "unignored_files": 3,
+        "unignored_size": 35,
+        "gitignored": false,
+        "dominant_ext": ".txt",
+        "children": null
+      },
+      {
+        "name": "tools",
+        "path": "g1-dG9vbHM",
+        "type": "dir",
+        "state": "complete",
+        "total_files": 1,
+        "total_size": 22,
+        "unignored_files": 1,
+        "unignored_size": 22,
+        "gitignored": false,
+        "dominant_ext": ".sh",
+        "children": null
+      },
+      {
+        "name": "data",
+        "path": "g1-ZGF0YQ",
+        "type": "dir",
+        "state": "complete",
+        "total_files": 1,
+        "total_size": 18,
+        "unignored_files": 1,
+        "unignored_size": 18,
+        "gitignored": false,
+        "dominant_ext": ".jsonl",
+        "children": null
+      },
+      {
+        "name": "README.md",
+        "path": "g1-UkVBRE1FLm1k",
+        "type": "file",
+        "size": 17,
+        "ext": ".md",
+        "gitignored": false
+      },
+      {
+        "name": "links",
+        "path": "g1-bGlua3M",
+        "type": "dir",
+        "state": "complete",
+        "total_files": 1,
+        "total_size": 12,
+        "unignored_files": 1,
+        "unignored_size": 12,
+        "gitignored": false,
+        "dominant_ext": ".md",
+        "children": null
+      },
+      {
+        "name": "a.txt",
+        "path": "g1-YS50eHQ",
+        "type": "file",
+        "size": 9,
+        "ext": ".txt",
+        "gitignored": false
+      },
+      {
+        "name": "ab",
+        "path": "g1-YWI",
+        "type": "file",
+        "size": 6,
+        "ext": "",
+        "gitignored": false
+      },
+      {
+        "name": "a-b",
+        "path": "g1-YS1i",
+        "type": "file",
+        "size": 5,
+        "ext": "",
+        "gitignored": false
+      }
+    ]
+  },
+  "ext_tallies": [
+    [
+      ".bin",
+      2,
+      16777225,
+      2,
+      16777225
+    ],
+    [
+      ".png",
+      1,
+      67,
+      1,
+      67
+    ],
+    [
+      ".md",
+      3,
+      56,
+      3,
+      56
+    ],
+    [
+      ".txt",
+      4,
+      44,
+      4,
+      44
+    ],
+    [
+      ".json",
+      1,
+      25,
+      1,
+      25
+    ],
+    [
+      ".sh",
+      1,
+      22,
+      1,
+      22
+    ],
+    [
+      ".jsonl",
+      1,
+      18,
+      1,
+      18
+    ],
+    [
+      "(none)",
+      2,
+      11,
+      2,
+      11
+    ],
+    [
+      ".py",
+      1,
+      6,
+      1,
+      6
+    ]
+  ],
+  "file_type_breakdown": {
+    "schema": "file-type-breakdown-v1",
+    "registry": {
+      "schema_version": 4,
+      "revision": 3,
+      "fingerprint": "d6a500a45b7da7e5acf2587c735000ee74b99d7dbb5845f2f3481a0cd5ed0e1c"
+    },
+    "metrics": {
+      "all": {
+        "files": 16,
+        "bytes": 16777474
+      },
+      "unignored": {
+        "files": 16,
+        "bytes": 16777474
+      }
+    },
+    "groups": [
+      {
+        "id": "code",
+        "families": [
+          {
+            "id": "python",
+            "metrics": {
+              "all": {
+                "files": 1,
+                "bytes": 6
+              },
+              "unignored": {
+                "files": 1,
+                "bytes": 6
+              }
+            },
+            "extensions": [
+              {
+                "extension": ".py",
+                "metrics": {
+                  "all": {
+                    "files": 1,
+                    "bytes": 6
+                  },
+                  "unignored": {
+                    "files": 1,
+                    "bytes": 6
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "id": "shell",
+            "metrics": {
+              "all": {
+                "files": 1,
+                "bytes": 22
+              },
+              "unignored": {
+                "files": 1,
+                "bytes": 22
+              }
+            },
+            "extensions": [
+              {
+                "extension": ".sh",
+                "metrics": {
+                  "all": {
+                    "files": 1,
+                    "bytes": 22
+                  },
+                  "unignored": {
+                    "files": 1,
+                    "bytes": 22
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "docs",
+        "families": [
+          {
+            "id": "markdown",
+            "metrics": {
+              "all": {
+                "files": 3,
+                "bytes": 56
+              },
+              "unignored": {
+                "files": 3,
+                "bytes": 56
+              }
+            },
+            "extensions": [
+              {
+                "extension": ".md",
+                "metrics": {
+                  "all": {
+                    "files": 3,
+                    "bytes": 56
+                  },
+                  "unignored": {
+                    "files": 3,
+                    "bytes": 56
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "id": "plain-text",
+            "metrics": {
+              "all": {
+                "files": 4,
+                "bytes": 44
+              },
+              "unignored": {
+                "files": 4,
+                "bytes": 44
+              }
+            },
+            "extensions": [
+              {
+                "extension": ".txt",
+                "metrics": {
+                  "all": {
+                    "files": 4,
+                    "bytes": 44
+                  },
+                  "unignored": {
+                    "files": 4,
+                    "bytes": 44
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "data",
+        "families": [
+          {
+            "id": "json",
+            "metrics": {
+              "all": {
+                "files": 1,
+                "bytes": 25
+              },
+              "unignored": {
+                "files": 1,
+                "bytes": 25
+              }
+            },
+            "extensions": [
+              {
+                "extension": ".json",
+                "metrics": {
+                  "all": {
+                    "files": 1,
+                    "bytes": 25
+                  },
+                  "unignored": {
+                    "files": 1,
+                    "bytes": 25
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "media",
+        "families": [
+          {
+            "id": "images",
+            "metrics": {
+              "all": {
+                "files": 1,
+                "bytes": 67
+              },
+              "unignored": {
+                "files": 1,
+                "bytes": 67
+              }
+            },
+            "extensions": [
+              {
+                "extension": ".png",
+                "metrics": {
+                  "all": {
+                    "files": 1,
+                    "bytes": 67
+                  },
+                  "unignored": {
+                    "files": 1,
+                    "bytes": 67
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "other",
+        "families": [
+          {
+            "id": "log-files",
+            "metrics": {
+              "all": {
+                "files": 1,
+                "bytes": 18
+              },
+              "unignored": {
+                "files": 1,
+                "bytes": 18
+              }
+            },
+            "extensions": [
+              {
+                "extension": ".jsonl",
+                "metrics": {
+                  "all": {
+                    "files": 1,
+                    "bytes": 18
+                  },
+                  "unignored": {
+                    "files": 1,
+                    "bytes": 18
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "no_extension": {
+      "metrics": {
+        "all": {
+          "files": 2,
+          "bytes": 11
+        },
+        "unignored": {
+          "files": 2,
+          "bytes": 11
+        }
+      },
+      "filenames": [
+        {
+          "basename": "ab",
+          "metrics": {
+            "all": {
+              "files": 1,
+              "bytes": 6
+            },
+            "unignored": {
+              "files": 1,
+              "bytes": 6
+            }
+          }
+        },
+        {
+          "basename": "a-b",
+          "metrics": {
+            "all": {
+              "files": 1,
+              "bytes": 5
+            },
+            "unignored": {
+              "files": 1,
+              "bytes": 5
+            }
+          }
+        }
+      ],
+      "others": null
+    },
+    "remaining_types": {
+      "metrics": {
+        "all": {
+          "files": 2,
+          "bytes": 16777225
+        },
+        "unignored": {
+          "files": 2,
+          "bytes": 16777225
+        }
+      },
+      "extensions": [
+        {
+          "extension": ".bin",
+          "metrics": {
+            "all": {
+              "files": 2,
+              "bytes": 16777225
+            },
+            "unignored": {
+              "files": 2,
+              "bytes": 16777225
+            }
+          }
+        }
+      ],
+      "others": null
+    }
+  },
+  "index_status": "complete",
+  "indexed_files": 16,
+  "max_files": 500000,
+  "truncated": false
+}
+--- stderr ---
+# metab file://<ORIGIN> --api /api/catalog
+exit: 0
+--- stdout ---
+api: /api/catalog
+status: 200
+{
+  "complete": true,
+  "truncated": false,
+  "revision": 1,
+  "files": [
+    {
+      "p": "g1-UkVBRE1FLm1k",
+      "e": ".md",
+      "n": "README.md"
+    },
+    {
+      "p": "g1-YS1i",
+      "e": "",
+      "n": "a-b"
+    },
+    {
+      "p": "g1-YS50eHQ",
+      "e": ".txt",
+      "n": "a.txt"
+    },
+    {
+      "p": "g1-YQ/g1-ZGVlcA/g1-bmVzdGVkLm1k",
+      "e": ".md",
+      "n": "nested.md"
+    },
+    {
+      "p": "g1-YQ/g1-ZGVlcA/g1-cGF5bG9hZC5qc29u",
+      "e": ".json",
+      "n": "payload.json"
+    },
+    {
+      "p": "g1-YQ/g1-b25lLnB5",
+      "e": ".py",
+      "n": "one.py"
+    },
+    {
+      "p": "g1-YWI",
+      "e": "",
+      "n": "ab"
+    },
+    {
+      "p": "g1-Ymlu/g1-Z2x5cGgucG5n",
+      "e": ".png",
+      "n": "glyph.png"
+    },
+    {
+      "p": "g1-Ymlu/g1-b3ZlcnNpemUuYmlu",
+      "e": ".bin",
+      "n": "oversize.bin"
+    },
+    {
+      "p": "g1-Ymlu/g1-c2FtcGxlLmJpbg",
+      "e": ".bin",
+      "n": "sample.bin"
+    },
+    {
+      "p": "g1-ZGF0YQ/g1-ZXZlbnRzLmpzb25s",
+      "e": ".jsonl",
+      "n": "events.jsonl"
+    },
+    {
+      "p": "g1-bGlua3M/g1-dG8tcmVhZG1lLm1k",
+      "e": ".md",
+      "n": "to-readme.md"
+    },
+    {
+      "p": "g1-b2Rk/g1-bGF0aW4t6S50eHQ",
+      "e": ".txt",
+      "n": "latin-�.txt"
+    },
+    {
+      "p": "g1-b2Rk/g1-bGluZQpicmVhay50eHQ",
+      "e": ".txt",
+      "n": "line�break.txt"
+    },
+    {
+      "p": "g1-b2Rk/g1-dGFiCWhlcmUudHh0",
+      "e": ".txt",
+      "n": "tab�here.txt"
+    },
+    {
+      "p": "g1-dG9vbHM/g1-cnVuLnNo",
+      "e": ".sh",
+      "n": "run.sh"
+    }
+  ]
+}
+--- stderr ---

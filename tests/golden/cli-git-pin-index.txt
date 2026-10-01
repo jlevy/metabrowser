@@ -1,0 +1,138 @@
+# metab file://<ORIGIN> --api /api/index/progress
+exit: 0
+--- stdout ---
+api: /api/index/progress
+status: 200
+{
+  "status": "done",
+  "indexed_files": 16,
+  "max_files": 500000,
+  "truncated": false,
+  "complete": true,
+  "provider": "git",
+  "contract": "git-revision",
+  "active": false
+}
+--- stderr ---
+# metab file://<ORIGIN> --api /api/index/meta
+exit: 0
+--- stdout ---
+api: /api/index/meta
+status: 200
+{
+  "status": "done",
+  "indexed_files": 16,
+  "max_files": 500000,
+  "truncated": false,
+  "complete": true,
+  "provider": "git",
+  "contract": "git-revision",
+  "indexed_dirs": 7,
+  "suffixes": [
+    {
+      "ext": ".txt",
+      "count": 4
+    },
+    {
+      "ext": ".md",
+      "count": 3
+    },
+    {
+      "ext": ".bin",
+      "count": 2
+    },
+    {
+      "ext": ".json",
+      "count": 1
+    },
+    {
+      "ext": ".jsonl",
+      "count": 1
+    },
+    {
+      "ext": ".png",
+      "count": 1
+    },
+    {
+      "ext": ".py",
+      "count": 1
+    },
+    {
+      "ext": ".sh",
+      "count": 1
+    }
+  ]
+}
+--- stderr ---
+# metab file://<ORIGIN> --api /api/capabilities
+exit: 0
+--- stdout ---
+api: /api/capabilities
+status: 200
+{
+  "backends": [
+    {
+      "prefix": ".",
+      "mode": "none",
+      "reason": "git-revision-immutable",
+      "state": "idle"
+    }
+  ],
+  "index": {
+    "complete": true,
+    "indexed_files": 16,
+    "max_files": 500000,
+    "truncated": false,
+    "provider": "git",
+    "contract": "git-revision"
+  },
+  "events": {
+    "stream": "off",
+    "reason": "git-revision-no-watcher"
+  },
+  "capabilities": {
+    "active_content": false,
+    "mutations": false
+  }
+}
+--- stderr ---
+# metab file://<ORIGIN> --api /api/source/status
+exit: 0
+--- stdout ---
+api: /api/source/status
+status: 200
+{
+  "subject": "git_revision",
+  "generation": 1,
+  "pin": "8653ceb4d5ca69e2e7e3b39d04645b3820233854",
+  "ref": "refs/remotes/origin/topic",
+  "ref_name": "topic",
+  "refreshable": true,
+  "latest": "8653ceb4d5ca69e2e7e3b39d04645b3820233854",
+  "ref_on_origin": true,
+  "last_fetch_at": "2026-09-17T12:00:00Z",
+  "last_outcome": {
+    "operation": "acquire",
+    "outcome": "succeeded",
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "refreshing": false,
+  "stale": false,
+  "pull_request": null,
+  "selection_state": null,
+  "selection_href": null
+}
+--- stderr ---
+# metab file://<ORIGIN> --check-api
+exit: 0
+--- stdout ---
+api check: <ORIGIN>
+scenario: nav-live-clear-filter
+initial tree: 200; response=tree
+live filter: 409; unsupported_for_subject
+cleared filter: 200; response=tree
+index: done
+final nav: 200; rows=11; files=16; size=16777474; index=done
+filtered nav: 200; rows=3; files=3; size=56; empty_dirs=0
+result: pass
+--- stderr ---

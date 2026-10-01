@@ -210,14 +210,14 @@ uv --config-file uv.toml run --frozen pytest \
 
 **Pass:** Every selected test passed or was skipped for a documented reason (missing
 `git` binary; installed Git already meets the floor so the below-floor live test skips;
-non-POSIX). `tests/test_cli_git_pin_golden.py` pins `cli-git-pin.txt` against a
-multi-entry `file://` origin with nested directories, Markdown, JSON, JSONL, an image, a
-binary, an oversized blob, a symlink, an executable, a gitlink, and names containing a
-newline, a tab, and a byte that is not UTF-8. It records `--show` kinds and routes,
-index counts, `/api/tree` nesting with its lazy sentinel past `depth`, name order in
-`/api/tree` against blob order in `/api/catalog`, file content on `g1-` wires, and the
-404, 409, and 413 refusals.
-Nothing in that golden prints `Serving`. `tests/test_serve_pin.py` runs serve mode
+non-POSIX). `tests/test_cli_git_pin_golden.py` pins the `cli-git-pin-*.txt` transcripts,
+one per scenario, against a multi-entry `file://` origin with nested directories,
+Markdown, JSON, JSONL, an image, a binary, an oversized blob, a symlink, an executable,
+a gitlink, and names containing a newline, a tab, and a byte that is not UTF-8. They
+record `--show` kinds and routes, index counts, `/api/tree` nesting with its lazy
+sentinel past `depth`, name order in `/api/tree` against blob order in `/api/catalog`,
+file content on `g1-` wires, and the 400, 404, 409, and 416 refusals.
+Nothing in those goldens prints `Serving`. `tests/test_serve_pin.py` runs serve mode
 in-process with only uvicorn and the port search patched, then drives the real
 application lifespan and routes over HTTP: the banner golden `serve-pin-banner.txt`, the
 forced profile, a fresh pin per start and a clean close at shutdown, tree, file, raw and

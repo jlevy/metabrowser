@@ -46,12 +46,12 @@ REPO_ROOT: Final = Path(__file__).resolve().parent.parent
 # review in a pull request and commit is under 2,000 lines. Measured on 2026-09-30 with
 # `python -m devtools.check_goldens --report`, over the 57 goldens and 7 recorded
 # fixtures then in the tree (25,851 lines): the median file was 226 lines and the 90th
-# percentile 976. Two files were over 2,000, at 2,434 and 2,203, and are listed below.
-# The largest inside it were a recording of 1,895 lines and a transcript of 1,217. So
-# the guideline's figure fails only what is already too long to read in one sitting, and
-# leaves the largest transcript room to grow by more than half before it must be split.
-# A lower limit would be a number this tree did not ask for. Run the report again
-# before changing it.
+# percentile 976. Two files were over 2,000, at 2,434 and 2,203: the first has since been
+# split by scenario, and the second is listed below. The largest inside it were a
+# recording of 1,895 lines and a transcript of 1,217. So the guideline's figure fails
+# only what is already too long to read in one sitting, and leaves the largest
+# transcript room to grow by more than half before it must be split. A lower limit would
+# be a number this tree did not ask for. Run the report again before changing it.
 #
 # One file has little room: `tests/fixtures/inert-html-kpress-tree.json` was 1,895
 # lines, 105 under the limit, and its size is KPress's render of the hostile README,
@@ -75,7 +75,6 @@ class Excepted:
 # removed by the change that brings its file under the budget: the check fails on an
 # entry whose file fits again, so the list cannot outlive its reasons.
 OVER_BUDGET: Final[dict[str, Excepted]] = {
-    "tests/golden/cli-git-pin.txt": Excepted(2434, "mb-79t3 shards the pin transcript by scenario"),
     "tests/fixtures/github-pull-page-responses.json": Excepted(
         2203, "mb-738k stores each distinct pull-request record once"
     ),

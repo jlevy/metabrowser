@@ -1,0 +1,132 @@
+# metab file://<ORIGIN> --api /api/recent
+exit: 1
+--- stdout ---
+api: /api/recent
+status: 409
+{
+  "error": "source does not support recency",
+  "code": "unsupported_for_subject",
+  "capability": "recency"
+}
+--- stderr ---
+Error: /api/recent returned HTTP 409
+# metab file://<ORIGIN> --api '/api/tree?recency=24h'
+exit: 1
+--- stdout ---
+api: /api/tree?recency=24h
+status: 409
+{
+  "error": "source does not support recency",
+  "code": "unsupported_for_subject",
+  "capability": "recency"
+}
+--- stderr ---
+Error: /api/tree?recency=24h returned HTTP 409
+# metab file://<ORIGIN> --api '/api/file?path=g1-bm9wZS50eHQ'
+exit: 1
+--- stdout ---
+api: /api/file?path=g1-bm9wZS50eHQ
+status: 404
+{
+  "error": "Not found"
+}
+--- stderr ---
+Error: /api/file?path=g1-bm9wZS50eHQ returned HTTP 404
+# metab file://<ORIGIN> --api '/api/file?path=README.md'
+exit: 1
+--- stdout ---
+api: /api/file?path=README.md
+status: 404
+{
+  "error": "Not found"
+}
+--- stderr ---
+Error: /api/file?path=README.md returned HTTP 404
+# metab file://<ORIGIN> --api '/api/tree?path=a'
+exit: 1
+--- stdout ---
+api: /api/tree?path=a
+status: 404
+{
+  "error": "Not found"
+}
+--- stderr ---
+Error: /api/tree?path=a returned HTTP 404
+# metab file://<ORIGIN> --api '/api/rollup?path=a'
+exit: 1
+--- stdout ---
+api: /api/rollup?path=a
+status: 404
+{
+  "error": "Not found"
+}
+--- stderr ---
+Error: /api/rollup?path=a returned HTTP 404
+# metab file://<ORIGIN> --api '/api/plugin/binary/chunk?path=bin/sample.bin'
+exit: 1
+--- stdout ---
+api: /api/plugin/binary/chunk?path=bin/sample.bin
+status: 404
+{
+  "type": "binary_chunk_error",
+  "error": "This file is no longer available.",
+  "path": "bin/sample.bin"
+}
+--- stderr ---
+Error: /api/plugin/binary/chunk?path=bin/sample.bin returned HTTP 404
+# metab file://<ORIGIN> --api '/api/plugin/structured/parsed?path=a/deep/payload.json'
+exit: 1
+--- stdout ---
+api: /api/plugin/structured/parsed?path=a/deep/payload.json
+status: 404
+{
+  "error": "Not found",
+  "path": "a/deep/payload.json"
+}
+--- stderr ---
+Error: /api/plugin/structured/parsed?path=a/deep/payload.json returned HTTP 404
+# metab file://<ORIGIN> --api '/api/tree?path=g1-dmVuZG9y'
+exit: 1
+--- stdout ---
+api: /api/tree?path=g1-dmVuZG9y
+status: 404
+{
+  "error": "Not found"
+}
+--- stderr ---
+Error: /api/tree?path=g1-dmVuZG9y returned HTTP 404
+# metab file://<ORIGIN> --api '/api/rollup?path=g1-UkVBRE1FLm1k'
+exit: 1
+--- stdout ---
+api: /api/rollup?path=g1-UkVBRE1FLm1k
+status: 404
+{
+  "error": "Not found"
+}
+--- stderr ---
+Error: /api/rollup?path=g1-UkVBRE1FLm1k returned HTTP 404
+# metab file://<ORIGIN> --api '/api/plugin/structured/parsed?path=g1-UkVBRE1FLm1k'
+exit: 1
+--- stdout ---
+api: /api/plugin/structured/parsed?path=g1-UkVBRE1FLm1k
+status: 400
+{
+  "error": "Unsupported extension",
+  "path": "g1-UkVBRE1FLm1k",
+  "ext": ".md"
+}
+--- stderr ---
+Error: /api/plugin/structured/parsed?path=g1-UkVBRE1FLm1k returned HTTP 400
+# metab file://<ORIGIN> --api '/api/file?path=g1-Ymlu/g1-b3ZlcnNpemUuYmlu&offset=16777217'
+exit: 1
+--- stdout ---
+api: /api/file?path=g1-Ymlu/g1-b3ZlcnNpemUuYmlu&offset=16777217
+status: 416
+{
+  "type": "error",
+  "path": "g1-Ymlu/g1-b3ZlcnNpemUuYmlu",
+  "error": "Requested preview window exceeds the stream budget for this blob",
+  "max_offset": 16777216
+}
+--- stderr ---
+Error: /api/file?path=g1-Ymlu/g1-b3ZlcnNpemUuYmlu&offset=16777217 returned HTTP 416

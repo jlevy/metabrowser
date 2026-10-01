@@ -95,6 +95,11 @@ the only reader of `GOLDEN_UPDATE`. It serves the two kinds of expectation pytes
   run: serve mode, and acquisition, which a Git below the acquisition floor refuses.
   A driver runs `metab` through the console script’s entry point and renders each
   command’s line, exit status, and both streams in full.
+  One exception keeps a transcript readable: where a command repeats a long run of an
+  earlier command’s output, a driver may print the run once and name it where it
+  repeats, as `cli-git-pin-tree.txt` does for the tallies every `/api/tree` answer
+  carries. The run is found by comparing the two outputs, so output that stopped
+  repeating prints in full again.
 - **Recorded response fixtures**, `tests/fixtures/*.json`, which a browserless session
   replays so that it runs on what the server answered and not on envelopes a test wrote
   by hand. The recorder replays the story against the real application and fails when the
