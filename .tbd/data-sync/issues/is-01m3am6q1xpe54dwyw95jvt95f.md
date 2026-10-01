@@ -3,18 +3,22 @@ type: is
 id: is-01m3am6q1xpe54dwyw95jvt95f
 title: No way to open a changed file at base or head from a commit or PR diff
 kind: feature
-status: open
+status: in_progress
 priority: 2
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+delegate: claude-code@spud10.local
 labels:
   - release:v0.12.0
 dependencies:
   - type: blocks
     target: is-01m35tapm6wjnn235hr3s669b7
 parent_id: is-01m36k3w9vgwy97c9hcj2sqrs5
+hold: null
+hold_until: null
 created_at: 2026-09-24T21:12:36.668Z
-updated_at: 2026-10-01T00:13:54.760Z
+updated_at: 2026-10-01T00:14:25.006Z
+started_at: 2026-10-01T00:14:25.004Z
 ---
 Found during the v0.12 alpha acceptance (mb-gnr9) on the integrated stack (PR #241; installed wheel 0.11.1.dev400+250a10c4).
 
