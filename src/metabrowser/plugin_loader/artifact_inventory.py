@@ -1,4 +1,4 @@
-"""Installed artifact-contract and resource-profile inventory evidence."""
+"""Installed artifact-contract inventory evidence."""
 
 from __future__ import annotations
 
@@ -41,33 +41,10 @@ class ContractInventoryEntry:
 
 
 @dataclass(frozen=True, slots=True)
-class ResourceCollectionInventoryEntry:
-    """Collection semantics installed as part of one resource profile."""
-
-    name: str
-    artifact_contract_id: str
-    minimum_artifacts: int
-    maximum_artifacts: int
-    pagination: str
-    required_for_last_complete: bool
-
-
-@dataclass(frozen=True, slots=True)
-class ResourceProfileInventoryEntry:
-    """Provider-neutral inventory metadata for one installed resource profile."""
-
-    profile_id: str
-    target_kind: str
-    target_result_contract_id: str | None
-    collections: tuple[ResourceCollectionInventoryEntry, ...]
-
-
-@dataclass(frozen=True, slots=True)
 class InstalledArtifactInventory:
     """Deterministic public metadata for one installed capability snapshot."""
 
     contracts: tuple[ContractInventoryEntry, ...]
-    resource_profiles: tuple[ResourceProfileInventoryEntry, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,26 +120,7 @@ def installed_artifact_inventory(
         )
         for _, installed in sorted(registries.contracts.items())
     )
-    profiles = tuple(
-        ResourceProfileInventoryEntry(
-            profile_id=profile.profile_id,
-            target_kind=profile.target_class.value,
-            target_result_contract_id=profile.target_result_contract_id,
-            collections=tuple(
-                ResourceCollectionInventoryEntry(
-                    name=collection.name,
-                    artifact_contract_id=collection.artifact_contract_id,
-                    minimum_artifacts=collection.minimum_artifacts,
-                    maximum_artifacts=collection.maximum_artifacts,
-                    pagination=collection.pagination.value,
-                    required_for_last_complete=collection.required_for_last_complete,
-                )
-                for collection in profile.collections
-            ),
-        )
-        for _, profile in sorted(registries.resource_profiles.items())
-    )
-    return InstalledArtifactInventory(contracts=contracts, resource_profiles=profiles)
+    return InstalledArtifactInventory(contracts=contracts)
 
 
 def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -511,8 +469,6 @@ __all__ = [
     "CapabilityInventoryError",
     "ContractInventoryEntry",
     "InstalledArtifactInventory",
-    "ResourceCollectionInventoryEntry",
-    "ResourceProfileInventoryEntry",
     "check_installed_evidence",
     "installed_artifact_inventory",
     "validate_installed_evidence",

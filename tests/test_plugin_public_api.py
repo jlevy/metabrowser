@@ -14,15 +14,10 @@ from metabrowser import (
     ArtifactDecompressionLimitError,
     ArtifactDecompressionTimeoutError,
     ArtifactPath,
-    ArtifactValidationContext,
     BrowserParserSpec,
     CapabilitySet,
-    CollectionPaginationPolicy,
     ConformanceCorpusSpec,
     JsonlParseLimitError,
-    ResourceCollectionSpec,
-    ResourceProfileSpec,
-    ResourceTargetClass,
     detect_adapter,
     extract_agent_charts_cached,
     paths_safe,
@@ -35,14 +30,12 @@ from metabrowser.paths_safe import _set_root_dir
 
 PLUGIN_API_EXPORTS = {
     "ArtifactContractSpec",
-    "ArtifactValidationContext",
     "ArtifactCompressionError",
     "ArtifactDecompressionLimitError",
     "ArtifactDecompressionTimeoutError",
     "ArtifactPath",
     "BrowserParserSpec",
     "CapabilitySet",
-    "CollectionPaginationPolicy",
     "ConformanceCorpusSpec",
     "ContentReadError",
     "ContentRef",
@@ -52,9 +45,6 @@ PLUGIN_API_EXPORTS = {
     "JsonlParseLimitError",
     "LogEvent",
     "LogParser",
-    "ResourceCollectionSpec",
-    "ResourceProfileSpec",
-    "ResourceTargetClass",
     "SourceCapabilities",
     "UnsupportedSourceCapabilityError",
     "detect_adapter",
@@ -114,14 +104,9 @@ def test_sidekick_runtime_helpers_are_public() -> None:
 
 def test_installed_capability_declaration_types_are_public() -> None:
     assert ArtifactContractSpec.__module__ == "metabrowser.plugin_loader.capability_types"
-    assert ArtifactValidationContext.__module__ == "metabrowser.plugin_loader.capability_types"
     assert BrowserParserSpec.__module__ == "metabrowser.plugin_loader.capability_types"
     assert CapabilitySet.__module__ == "metabrowser.plugin_loader.capability_types"
     assert ConformanceCorpusSpec.__module__ == "metabrowser.plugin_loader.capability_types"
-    assert CollectionPaginationPolicy.__module__ == "metabrowser.provider_resources.profiles"
-    assert ResourceCollectionSpec.__module__ == "metabrowser.provider_resources.profiles"
-    assert ResourceProfileSpec.__module__ == "metabrowser.provider_resources.profiles"
-    assert ResourceTargetClass.__module__ == "metabrowser.provider_resources.profiles"
     assert "browser_consumed" in ArtifactContractSpec.__dataclass_fields__
 
 

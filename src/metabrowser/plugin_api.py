@@ -28,18 +28,11 @@ from metabrowser.paths_safe import (
 )
 from metabrowser.plugin_loader.capability_types import (
     ArtifactContractSpec,
-    ArtifactValidationContext,
     BrowserParserSpec,
     CapabilitySet,
     ConformanceCorpusSpec,
 )
 from metabrowser.projections import extract_agent_charts_cached
-from metabrowser.provider_resources.profiles import (
-    CollectionPaginationPolicy,
-    ResourceCollectionSpec,
-    ResourceProfileSpec,
-    ResourceTargetClass,
-)
 from metabrowser.source import (
     MAX_CONTAINER_INNER_DEPTH,
     ContentReadError,
@@ -102,14 +95,12 @@ def served_root() -> Path:
 
 __all__ = [
     "ArtifactContractSpec",
-    "ArtifactValidationContext",
     "ArtifactCompressionError",
     "ArtifactDecompressionLimitError",
     "ArtifactDecompressionTimeoutError",
     "ArtifactPath",
     "BrowserParserSpec",
     "CapabilitySet",
-    "CollectionPaginationPolicy",
     "ConformanceCorpusSpec",
     "ContentReadError",
     "ContentRef",
@@ -120,9 +111,6 @@ __all__ = [
     "LogEvent",
     "LogParser",
     "MAX_CONTAINER_INNER_DEPTH",
-    "ResourceCollectionSpec",
-    "ResourceProfileSpec",
-    "ResourceTargetClass",
     "SourceCapabilities",
     "UnsupportedSourceCapabilityError",
     "detect_adapter",

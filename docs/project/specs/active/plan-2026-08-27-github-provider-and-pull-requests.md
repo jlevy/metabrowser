@@ -9,6 +9,11 @@
 replaces this plan wherever they disagree.
 The built foundation and its record below stay as background.
 
+**Addendum (2026-09-30):** the Phase 0 through 0D hosted-review foundation this plan
+records as built, the Hosted Review Format, its resource profiles, and the GitHub
+coverage oracle, was removed from the stack because the thin-mirror design does not use
+it. It is kept, unmaintained, on the `reference/v012-hosted-review` branch.
+
 **Status:** Phase 0 through 0D and repository-library Phase 1A are implemented on open
 GitHub stack [#218](https://github.com/jlevy/metabrowser/stack/218), above the released
 v0.11.0 `main`. Cache Phase 1B is on ready-for-review

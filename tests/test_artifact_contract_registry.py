@@ -14,8 +14,6 @@ from metabrowser.plugin_loader.artifact_contracts import (
     CapabilityRegistryError,
     CapabilitySet,
     build_contract_registry,
-    build_resource_profile_registry,
-    resolve_resource_profile,
     serialize_artifact,
     validate_artifact,
     validate_record,
@@ -23,19 +21,11 @@ from metabrowser.plugin_loader.artifact_contracts import (
 from metabrowser.plugin_loader.capability_discovery import LoadedCapabilitySet
 from metabrowser.plugin_loader.capability_types import (
     ArtifactProfile,
-    ArtifactValidationContext,
     BrowserParserSpec,
     ConformanceCorpusSpec,
 )
-from metabrowser.provider_resources.profiles import (
-    CollectionPaginationPolicy,
-    ResourceCollectionSpec,
-    ResourceProfileSpec,
-    ResourceTargetClass,
-)
 
 _CONTRACT_ID = "example.test:Item/v1"
-_PROFILE_ID = "example.test:item/v1"
 
 
 def _schema_bytes(
@@ -70,19 +60,13 @@ def _schema_bytes_digest(schema_bytes: bytes) -> str:
     return hashlib.sha256(schema_bytes).hexdigest()
 
 
-def _validate_record(
-    value: dict[str, Any],
-    _context: ArtifactValidationContext,
-) -> dict[str, Any]:
+def _validate_record(value: dict[str, Any]) -> dict[str, Any]:
     if value["name"] == "semantic-invalid":
         raise ValueError("semantic validation failed")
     return dict(value)
 
 
-def _validate_identity_record(
-    value: dict[str, Any],
-    _context: ArtifactValidationContext,
-) -> dict[str, Any]:
+def _validate_identity_record(value: dict[str, Any]) -> dict[str, Any]:
     return dict(value)
 
 
@@ -116,64 +100,34 @@ def _contract(contract_id: str = _CONTRACT_ID) -> ArtifactContractSpec:
     )
 
 
-def _profile() -> ResourceProfileSpec:
-    return ResourceProfileSpec(
-        profile_id=_PROFILE_ID,
-        target_class=ResourceTargetClass.provider_object,
-        target_result_contract_id=None,
-        collections=(
-            ResourceCollectionSpec(
-                name="item",
-                artifact_contract_id=_CONTRACT_ID,
-                minimum_artifacts=1,
-                maximum_artifacts=1,
-                pagination=CollectionPaginationPolicy.forbidden,
-                required_for_last_complete=True,
-            ),
-        ),
-    )
-
-
 def _provider(
     provider_id: str,
     *,
     contracts: tuple[ArtifactContractSpec, ...] = (),
-    profiles: tuple[ResourceProfileSpec, ...] = (),
 ) -> LoadedCapabilitySet:
     return LoadedCapabilitySet(
         provider_id=provider_id,
         source_distribution="fixture-dist",
-        capabilities=CapabilitySet(
-            artifact_contracts=contracts,
-            resource_profiles=profiles,
-        ),
+        capabilities=CapabilitySet(artifact_contracts=contracts),
     )
 
 
-def test_contract_and_profile_registries_are_immutable_and_cross_checked() -> None:
-    provider = _provider("fixture", contracts=(_contract(),), profiles=(_profile(),))
+def test_contract_registry_is_immutable() -> None:
+    provider = _provider("fixture", contracts=(_contract(),))
 
     contracts = build_contract_registry((provider,))
-    profiles = build_resource_profile_registry((provider,), contracts=contracts)
 
     assert contracts[_CONTRACT_ID].spec.contract_id == _CONTRACT_ID
-    assert resolve_resource_profile(_PROFILE_ID, profiles=profiles) == _profile()
     with pytest.raises(TypeError):
         cast(dict[str, object], contracts)[_CONTRACT_ID] = object()
-    with pytest.raises(TypeError):
-        cast(dict[str, object], profiles)[_PROFILE_ID] = object()
 
 
-def test_duplicate_contract_and_profile_ids_fail_even_when_declarations_match() -> None:
-    first = _provider("first", contracts=(_contract(),), profiles=(_profile(),))
-    second = _provider("second", contracts=(_contract(),), profiles=(_profile(),))
+def test_duplicate_contract_ids_fail_even_when_declarations_match() -> None:
+    first = _provider("first", contracts=(_contract(),))
+    second = _provider("second", contracts=(_contract(),))
 
     with pytest.raises(CapabilityRegistryError, match="duplicate artifact contract"):
         build_contract_registry((first, second))
-
-    contracts = build_contract_registry((first,))
-    with pytest.raises(CapabilityRegistryError, match="duplicate resource profile"):
-        build_resource_profile_registry((first, second), contracts=contracts)
 
 
 def test_contract_id_is_validated_before_registry_key_use() -> None:
@@ -490,22 +444,6 @@ def test_registry_rejects_nonportable_schema_yaml() -> None:
                     ),
                 )
             )
-
-
-def test_profile_references_only_installed_artifact_contracts() -> None:
-    provider = _provider("fixture", profiles=(_profile(),))
-
-    with pytest.raises(CapabilityRegistryError, match="unregistered artifact contract"):
-        build_resource_profile_registry((provider,), contracts={})
-
-
-def test_profile_cannot_claim_another_capability_providers_contract() -> None:
-    contract_provider = _provider("contract-owner", contracts=(_contract(),))
-    profile_provider = _provider("profile-owner", profiles=(_profile(),))
-    contracts = build_contract_registry((contract_provider,))
-
-    with pytest.raises(CapabilityRegistryError, match="owned by another capability provider"):
-        build_resource_profile_registry((profile_provider,), contracts=contracts)
 
 
 def test_cached_artifact_can_name_but_cannot_supply_its_schema() -> None:

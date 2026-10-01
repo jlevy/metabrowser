@@ -85,23 +85,12 @@ CAPABILITY_SMOKE_SCRIPT = dedent(
     _require(not discovery.errors, f"installed capability discovery failed: {discovery.errors}")
     capabilities = validate_installed_evidence(build_installed_registries(discovery))
     _require(capabilities.contracts, "installed capability registry has no artifact contracts")
-    _require(
-        capabilities.resource_profiles,
-        "installed capability registry has no resource profiles",
-    )
     expected_contract_count = sum(
         len(provider.capabilities.artifact_contracts) for provider in discovery.providers
-    )
-    expected_profile_count = sum(
-        len(provider.capabilities.resource_profiles) for provider in discovery.providers
     )
     _require(
         len(capabilities.contracts) == expected_contract_count,
         "installed artifact-contract registry lost a provider declaration",
-    )
-    _require(
-        len(capabilities.resource_profiles) == expected_profile_count,
-        "installed resource-profile registry lost a provider declaration",
     )
 
     descriptors = []

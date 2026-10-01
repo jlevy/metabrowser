@@ -17,13 +17,14 @@ from metabrowser.plugin_loader.artifact_contracts import (
 )
 from metabrowser.plugin_loader.artifact_inventory import (
     ContractInventoryEntry,
-    ResourceProfileInventoryEntry,
     check_installed_evidence,
     installed_artifact_inventory,
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-ARCHITECTURE_DOC = REPO_ROOT / "docs/project/architecture/arch-external-resources-and-views.md"
+ARCHITECTURE_DOC = (
+    REPO_ROOT / "docs/project/architecture/arch-repository-sources-and-provider-mirrors.md"
+)
 BROWSER_CHECK = Path(__file__).with_name("artifact-contract-browser-check.mjs")
 _NODE_TIMEOUT_SECONDS = 30
 
@@ -35,14 +36,6 @@ _CONTRACT_HEADER = (
     "Consumers",
     "Corpus",
     "Browser parser",
-)
-_PROFILE_HEADER = (
-    "Profile ID",
-    "Target kind",
-    "Result contract",
-    "Collections",
-    "Pagination",
-    "Last complete",
 )
 
 
@@ -91,29 +84,6 @@ def _contract_values(contract: ContractInventoryEntry) -> tuple[str, ...]:
         ",".join(contract.consumer_ids),
         f"{contract.corpus_id}[{selectors}]",
         contract.browser_parser_id or "server-only",
-    )
-
-
-def _profile_values(profile: ResourceProfileInventoryEntry) -> tuple[str, ...]:
-    collections = ";".join(
-        f"{collection.name}={collection.artifact_contract_id}"
-        f"[{collection.minimum_artifacts}..{collection.maximum_artifacts}]"
-        for collection in profile.collections
-    )
-    pagination = ";".join(
-        f"{collection.name}={collection.pagination}" for collection in profile.collections
-    )
-    last_complete = ",".join(
-        collection.name
-        for collection in profile.collections
-        if collection.required_for_last_complete
-    )
-    return (
-        profile.target_kind,
-        profile.target_result_contract_id or "—",
-        collections,
-        pagination,
-        last_complete or "—",
     )
 
 
@@ -262,17 +232,6 @@ def check(
             rows=_table_rows(document, _CONTRACT_HEADER),
         )
     )
-    problems.extend(
-        _reconcile_rows(
-            label="resource profile",
-            header=_PROFILE_HEADER,
-            expected={
-                profile.profile_id: _profile_values(profile)
-                for profile in inventory.resource_profiles
-            },
-            rows=_table_rows(document, _PROFILE_HEADER),
-        )
-    )
     return problems
 
 
@@ -284,10 +243,7 @@ def main() -> int:
             print(f"artifact-contract inventory: {problem}", file=sys.stderr)
         return 1
     inventory = installed_artifact_inventory()
-    print(
-        f"artifact-contract inventory: {len(inventory.contracts)} contract(s), "
-        f"{len(inventory.resource_profiles)} profile(s) OK"
-    )
+    print(f"artifact-contract inventory: {len(inventory.contracts)} contract(s) OK")
     return 0
 
 

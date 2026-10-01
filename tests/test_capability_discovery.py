@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import importlib.metadata
-import json
 import sys
 from collections.abc import Callable, Generator
 from types import ModuleType
@@ -9,11 +8,6 @@ from typing import Any, cast
 
 import pytest
 
-from metabrowser.builtin_plugins.hosted_review.contracts import (
-    HOSTED_REVIEW_CONTRACTS,
-    validate_contract_values,
-)
-from metabrowser.builtin_plugins.hosted_review.models import RESOURCE_SET_CONTRACT_ID
 from metabrowser.plugin_loader.artifact_contracts import (
     CapabilityRegistryError,
     CapabilitySet,
@@ -66,17 +60,6 @@ def _break_one_third_party_entry_point(monkeypatch: pytest.MonkeyPatch) -> Calla
 
     monkeypatch.setattr(importlib.metadata, "entry_points", entry_points)
     return lambda: discoveries
-
-
-def _valid_resource_set_record() -> dict[str, Any]:
-    """Return one packaged built-in record that validates against its contract."""
-    spec = next(
-        contract
-        for contract in HOSTED_REVIEW_CONTRACTS
-        if contract.contract_id == RESOURCE_SET_CONTRACT_ID
-    )
-    corpus = cast(dict[str, Any], json.loads(spec.corpus.payload))
-    return cast(dict[str, Any], corpus["base_records"]["resource_set"])
 
 
 def test_capabilities_load_only_from_the_installed_v1_entry_point_group(
@@ -170,15 +153,9 @@ def test_capability_factory_rejects_mutable_or_missing_declaration_collections(
 def test_a_broken_third_party_provider_is_an_installation_error_not_a_record_defect(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    record = _valid_resource_set_record()
-    healthy = validate_contract_values(RESOURCE_SET_CONTRACT_ID, record)
-    assert healthy.semantic.ok, healthy.semantic.errors
-
     _break_one_third_party_entry_point(monkeypatch)
     reset_installed_registries_for_tests()
 
-    with pytest.raises(CapabilityRegistryError, match="capability discovery failed"):
-        validate_contract_values(RESOURCE_SET_CONTRACT_ID, record)
     with pytest.raises(CapabilityRegistryError, match="capability discovery failed") as installed:
         get_installed_registries()
     # A record-level validator reports a defect of its input by raising ValueError.

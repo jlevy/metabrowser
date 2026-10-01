@@ -28,8 +28,8 @@ the Metabrowser page.
 Operator-supplied directory plugins are JavaScript-only.
 Python data hooks are accepted from installed entry-point packages, whose modules
 already belong to the active Python environment.
-Artifact contracts and resource publication profiles use a separate trust surface:
-installed Python entry points in the versioned `metabrowser.capabilities.v1` group.
+Artifact contracts use a separate trust surface: installed Python entry points in the
+versioned `metabrowser.capabilities.v1` group.
 Capability discovery is all-or-nothing and is never sourced from a plugin directory, the
 served root, or cached artifact metadata.
 When Metabrowser runs through uvx or as a uv tool, install the plugin distribution into
@@ -49,7 +49,7 @@ metab --doctor --plugins-dir ./examples
 
 `--doctor` validates manifests, `index.js` files, installed-plugin data-hook imports,
 operator-directory JavaScript-only boundaries, high-priority kind conflicts, and
-installed artifact-contract and resource-profile declarations.
+installed artifact-contract declarations.
 It exits nonzero when any problem is found.
 All three modes support `--json` for machine-readable output.
 Discovery errors preserve any plugins that loaded successfully but make the command exit
@@ -714,8 +714,8 @@ example = "example_plugin:plugin_dir"
 
 ### Installed Artifact Capabilities
 
-An installed distribution may also publish artifact contracts and resource profiles
-without creating a browser plugin or static asset root.
+An installed distribution may also publish artifact contracts without creating a browser
+plugin or static asset root.
 Import the declaration types from the public Python API and return one immutable
 capability set:
 
@@ -780,13 +780,11 @@ content for every installed provider, so a schema edited without recompiling is 
 Built-in schemas are checked against the models they were compiled from instead:
 `compile_contracts(check_only=True)` recompiles every one of them in the test and
 distribution gates and fails on drift.
-The semantic validator receives an `ArtifactValidationContext` bound to the same atomic
-resource-profile snapshot as the contract registry; it must not rediscover profiles or
-trust profile declarations from an artifact.
-Metabrowser rejects duplicate contract or profile IDs, structurally incomplete
-declarations, nonlocal schema references, and profiles that refer to unregistered
-contracts. Corpus and browser-parser declarations carry exact packaged bytes and digests
-rather than paths, so an installed-distribution evidence gate can resolve them without a
+The semantic validator receives the structurally valid record values and returns the
+validated record. Metabrowser rejects duplicate contract IDs, structurally incomplete
+declarations, and nonlocal schema references.
+Corpus and browser-parser declarations carry exact packaged bytes and digests rather
+than paths, so an installed-distribution evidence gate can resolve them without a
 Metabrowser-specific source-tree layout.
 A contract declares `browser_consumed=True` only when a browser consumer reads its
 record. The installed registry then requires `BrowserParserSpec`; a server-only contract
@@ -820,14 +818,13 @@ the evidence gate. When a view later ships, its installed browser plugin binds t
 module digest to a served asset and renderer.
 The generic evidence gate checks every installed declaration against its packaged
 schema, semantics, positive and negative corpus cases, deterministic artifact-profile
-round trip, browser parser when browser-consumed, resource-profile closure, and
-maintained architecture inventory.
+round trip, browser parser when browser-consumed, and maintained architecture inventory.
 Metabrowser’s distribution verification repeats the same inventory from isolated wheel
 and source distribution installs rather than maintaining a second built-in contract
 list.
 Artifacts may repeat their contract, envelope, and enforced status, but the trusted
 caller selects the expected installed contract; artifact metadata cannot supply or
-select schemas, profiles, parsers, renderers, or Python imports.
+select schemas, parsers, renderers, or Python imports.
 The versioned capability surface is independent of the browser SDK version.
 
 ### Plugin-Owned JSONL Adapters
@@ -917,10 +914,9 @@ from metabrowser import (
   `ArtifactPath` and chart extraction can raise them.
 - `JsonlParseLimitError` is raised when chart extraction exceeds the JSONL parser’s
   decompressed-input limit.
-- `ArtifactContractSpec`, `ArtifactValidationContext`, `CapabilitySet`,
-  `ResourceProfileSpec`, `ResourceCollectionSpec`, `ResourceTargetClass`, and
-  `CollectionPaginationPolicy` define the installed artifact-capability surface
-  described above.
+- `ArtifactContractSpec`, `BrowserParserSpec`, `CapabilitySet`, and
+  `ConformanceCorpusSpec` define the installed artifact-capability surface described
+  above.
 
 These helpers share the server’s active root and lifecycle.
 Do not cache the resolved root or import underscored helpers from

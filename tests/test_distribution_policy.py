@@ -132,16 +132,6 @@ def test_project_capability_authority_is_nonempty_and_generic() -> None:
     assert all(isinstance(target, str) and target for target in entry_points.values())
 
 
-def test_distribution_capability_gate_has_no_hosted_review_allowlist() -> None:
-    source = (ROOT / "devtools" / "check_distribution.py").read_text(encoding="utf-8")
-
-    assert "EXPECTED_CAPABILITY_ENTRY_POINTS" not in source
-    assert "HOSTED_REVIEW_SCHEMA_ASSETS" not in source
-    assert "data/hosted-review-format" not in source
-    assert "builtin_plugins.hosted_review" not in source
-    assert "len(capabilities.contracts) == 16" not in source
-
-
 def test_wheel_smoke_commands_isolate_python_and_validate_versions() -> None:
     wheel = Path("/tmp/metabrowser-test.whl")
 
@@ -235,14 +225,10 @@ def test_wheel_and_sdist_run_the_same_installed_capability_evidence_smoke() -> N
     assert "discover_capability_sets()" in python_script
     assert "validate_installed_evidence(build_installed_registries(discovery))" in python_script
     assert "provider.capabilities.artifact_contracts" in python_script
-    assert "provider.capabilities.resource_profiles" in python_script
     assert '("frontmatter_format", "jsonschema", "softschema")' in python_script
     assert "expected_provider_ids" in python_script
     assert "actual_provider_ids" in python_script
     assert "assert " not in python_script
-    assert "hosted_review" not in python_script
-    assert "hosted-review-format" not in python_script
-    assert "change_request" not in python_script
     assert all(call.kwargs["cwd"] == ROOT for call in run.call_args_list)
 
 
