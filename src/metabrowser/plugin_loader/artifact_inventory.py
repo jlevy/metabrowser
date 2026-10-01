@@ -429,8 +429,8 @@ def validate_installed_evidence(contracts: ContractRegistry) -> ContractRegistry
 
 
 __all__ = [
-    "ContractInventoryError",
     "ContractInventoryEntry",
+    "ContractInventoryError",
     "check_installed_evidence",
     "installed_artifact_inventory",
     "validate_installed_evidence",

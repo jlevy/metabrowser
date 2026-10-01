@@ -13,7 +13,7 @@ from io import StringIO
 from types import MappingProxyType
 from typing import Any, Literal, cast
 
-from frontmatter_format import FmFormatError, FmStyle, new_yaml
+from frontmatter_format import new_yaml
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError, ValidationError
 from softschema import SchemaView
@@ -23,15 +23,15 @@ from softschema.enforcement import (
     SchemaGraphError,
     prepare_schema_graph,
 )
-from softschema.validate import parse_frontmatter_text, parse_yaml_text
+from softschema.validate import parse_yaml_text
 
-type ArtifactProfile = Literal["frontmatter-md", "pure-yaml"]
+type ArtifactProfile = Literal["pure-yaml"]
 type ContractRegistry = Mapping[str, InstalledArtifactContract]
 
 _CONTRACT_ID_RE = re.compile(r"^[a-z][a-z0-9.-]*:[A-Za-z][A-Za-z0-9._-]*/v[1-9][0-9]*$")
 _STABLE_TOKEN_RE = re.compile(r"^[a-z][a-z0-9._:-]*$")
 _SCHEMA_DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
-_ARTIFACT_PROFILES = frozenset({"frontmatter-md", "pure-yaml"})
+_ARTIFACT_PROFILES = frozenset({"pure-yaml"})
 _ENFORCED_STATUS = "enforced"
 _JSON_SCHEMA_DRAFT = "https://json-schema.org/draft/2020-12/schema"
 _MAX_SAFE_INTEGER = 9_007_199_254_740_991
@@ -92,7 +92,6 @@ class ValidatedArtifact:
 
     contract_id: str
     record: object
-    body: str
 
 
 def _runtime_descriptor_value(value: object) -> object:
@@ -368,44 +367,18 @@ def build_contract_registry(specs: Sequence[ArtifactContractSpec]) -> ContractRe
     return MappingProxyType(registry)
 
 
-def _decode_artifact(payload: bytes) -> str:
+def _parse_pure_yaml(payload: bytes) -> dict[str, Any]:
     try:
         text = payload.decode("utf-8")
     except UnicodeDecodeError as exc:
-        raise FmFormatError("artifacts must be UTF-8") from exc
-    return text.removeprefix("\ufeff")
-
-
-def _frontmatter_body(text: str) -> str:
-    lines = text.splitlines(keepends=True)
-    cursor = len(lines[0]) if lines else 0
-    for line in lines[1:]:
-        cursor += len(line)
-        if line.rstrip() == FmStyle.yaml.end:
-            return text[cursor:]
-    raise FmFormatError("artifact has no closing frontmatter delimiter")
-
-
-def _parse_frontmatter(payload: bytes) -> tuple[dict[str, Any], str]:
-    text = _decode_artifact(payload)
+        raise ValueError("artifacts must be UTF-8") from exc
     try:
-        _normalized_body, metadata = parse_frontmatter_text(text, source="<artifact>")
+        metadata = parse_yaml_text(text.removeprefix("\ufeff"))
     except ValueError as exc:
-        raise FmFormatError("artifact has malformed YAML frontmatter") from exc
+        raise ValueError("artifact has malformed YAML") from exc
     if not isinstance(metadata, dict):
-        raise FmFormatError("artifact frontmatter must be a mapping")
-    return cast(dict[str, Any], metadata), _frontmatter_body(text)
-
-
-def _parse_pure_yaml(payload: bytes) -> tuple[dict[str, Any], str]:
-    text = _decode_artifact(payload)
-    try:
-        metadata = parse_yaml_text(text)
-    except ValueError as exc:
-        raise FmFormatError("artifact has malformed YAML") from exc
-    if not isinstance(metadata, dict):
-        raise FmFormatError("artifact YAML must be a mapping")
-    return cast(dict[str, Any], metadata), ""
+        raise ValueError("artifact YAML must be a mapping")
+    return cast(dict[str, Any], metadata)
 
 
 def _artifact_identity(metadata: Mapping[str, Any]) -> tuple[str, str]:
@@ -439,10 +412,7 @@ def validate_artifact(
     if installed is None:
         raise ValueError(f"artifact slot names an unregistered contract: {expected_contract_id}")
     spec = installed.spec
-    if spec.artifact_profile == "frontmatter-md":
-        metadata, body = _parse_frontmatter(payload)
-    else:
-        metadata, body = _parse_pure_yaml(payload)
+    metadata = _parse_pure_yaml(payload)
     contract_id, envelope = _artifact_identity(metadata)
     if contract_id != expected_contract_id:
         raise ValueError("artifact metadata does not match its expected contract")
@@ -458,7 +428,7 @@ def validate_artifact(
         contract_id=contract_id,
         contracts=contracts,
     )
-    return ValidatedArtifact(contract_id=contract_id, record=validated, body=body)
+    return ValidatedArtifact(contract_id=contract_id, record=validated)
 
 
 def validate_record(
@@ -511,15 +481,11 @@ def serialize_artifact(
     *,
     contract_id: str,
     contracts: ContractRegistry,
-    body: str = "",
 ) -> bytes:
     """Serialize one validated record with installed contract metadata."""
     installed = contracts.get(contract_id)
     if installed is None:
         raise ValueError(f"artifact slot names an unregistered contract: {contract_id}")
-    body_object = _runtime_descriptor_value(body)
-    if not isinstance(body_object, str):
-        raise TypeError("artifact body must be a string")
     spec = installed.spec
     dumped_object = _runtime_descriptor_value(spec.dump_record(record))
     if not isinstance(dumped_object, dict):
@@ -543,19 +509,15 @@ def serialize_artifact(
         raise ValueError("artifact contract dumper produced non-portable YAML values") from exc
     if not portable_serialization_values_equal(metadata, decoded_metadata):
         raise ValueError("artifact contract dumper produced non-portable YAML values")
-    if spec.artifact_profile == "frontmatter-md":
-        return f"{FmStyle.yaml.start}\n{yaml_text}{FmStyle.yaml.end}\n{body_object}".encode()
-    if body_object:
-        raise ValueError("pure-YAML artifacts cannot contain a Markdown body")
     return yaml_text.encode()
 
 
 __all__ = [
     "ArtifactContractSpec",
     "ArtifactProfile",
-    "ContractRegistryError",
     "ConformanceCorpusSpec",
     "ContractRegistry",
+    "ContractRegistryError",
     "InstalledArtifactContract",
     "ValidatedArtifact",
     "build_contract_registry",

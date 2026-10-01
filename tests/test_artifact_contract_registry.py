@@ -7,11 +7,9 @@ from datetime import date
 from typing import Any, cast
 
 import pytest
-from frontmatter_format import FmFormatError
 
 from metabrowser.plugin_loader.artifact_contracts import (
     ArtifactContractSpec,
-    ArtifactProfile,
     ConformanceCorpusSpec,
     ContractRegistryError,
     build_contract_registry,
@@ -74,7 +72,7 @@ def _contract(contract_id: str = _CONTRACT_ID) -> ArtifactContractSpec:
     corpus_payload = b'{"cases":[]}'
     return ArtifactContractSpec(
         contract_id=contract_id,
-        artifact_profile="frontmatter-md",
+        artifact_profile="pure-yaml",
         envelope="item",
         schema_bytes=schema_bytes,
         schema_bytes_sha256=_schema_bytes_digest(schema_bytes),
@@ -303,15 +301,12 @@ def test_cached_artifact_can_name_but_cannot_supply_its_schema() -> None:
     contract = _contract()
     registry = build_contract_registry((contract,))
     payload = (
-        b"---\n"
         b"softschema:\n"
         b"  contract: example.test:Item/v1\n"
         b"  envelope: item\n"
         b"  status: enforced\n"
         b"item:\n"
         b"  name: accepted\n"
-        b"---\n"
-        b"Reader-facing body.\n"
     )
 
     artifact = validate_artifact(
@@ -322,7 +317,6 @@ def test_cached_artifact_can_name_but_cannot_supply_its_schema() -> None:
 
     assert artifact.contract_id == _CONTRACT_ID
     assert artifact.record == {"name": "accepted"}
-    assert artifact.body == "Reader-facing body.\n"
 
     injected_schema = payload.replace(
         b"  status: enforced\n",
@@ -382,68 +376,31 @@ def test_enforced_record_validation_closes_an_open_source_schema() -> None:
         )
 
 
-def test_installed_contract_serialization_round_trips_both_profiles() -> None:
-    frontmatter_contract = _contract()
-    pure_yaml_contract = replace(frontmatter_contract, artifact_profile="pure-yaml")
-    frontmatter_registry = build_contract_registry((frontmatter_contract,))
-    pure_yaml_registry = build_contract_registry((pure_yaml_contract,))
+def test_installed_contract_serialization_round_trips() -> None:
+    registry = build_contract_registry((_contract(),))
     record = {"name": "accepted"}
 
-    frontmatter_payload = serialize_artifact(
-        record,
-        contract_id=_CONTRACT_ID,
-        contracts=frontmatter_registry,
-        body="Reader-facing body.\n",
-    )
-    pure_yaml_payload = serialize_artifact(
-        record,
-        contract_id=_CONTRACT_ID,
-        contracts=pure_yaml_registry,
-    )
+    payload = serialize_artifact(record, contract_id=_CONTRACT_ID, contracts=registry)
 
+    assert serialize_artifact(record, contract_id=_CONTRACT_ID, contracts=registry) == payload
     assert (
-        serialize_artifact(
-            record,
-            contract_id=_CONTRACT_ID,
-            contracts=frontmatter_registry,
-            body="Reader-facing body.\n",
-        )
-        == frontmatter_payload
-    )
-    assert (
-        validate_artifact(
-            frontmatter_payload,
-            expected_contract_id=_CONTRACT_ID,
-            contracts=frontmatter_registry,
-        ).body
-        == "Reader-facing body.\n"
-    )
-    assert (
-        validate_artifact(
-            pure_yaml_payload,
-            expected_contract_id=_CONTRACT_ID,
-            contracts=pure_yaml_registry,
-        ).record
+        validate_artifact(payload, expected_contract_id=_CONTRACT_ID, contracts=registry).record
         == record
     )
-    with pytest.raises(ValueError, match="cannot contain a Markdown body"):
-        serialize_artifact(
-            record,
-            contract_id=_CONTRACT_ID,
-            contracts=pure_yaml_registry,
-            body="not allowed",
-        )
 
 
-@pytest.mark.parametrize("artifact_profile", ["frontmatter-md", "pure-yaml"])
+def test_registry_rejects_an_unsupported_artifact_profile() -> None:
+    contract = replace(_contract(), artifact_profile=cast(Any, "frontmatter-md"))
+
+    with pytest.raises(ContractRegistryError, match="unsupported artifact profile"):
+        build_contract_registry((contract,))
+
+
 @pytest.mark.parametrize(
     "nonportable_value",
     [float("nan"), 9_007_199_254_740_992, date(2026, 9, 15), ("tuple",)],
 )
-def test_artifact_serialization_rejects_nonportable_values(
-    artifact_profile: ArtifactProfile,
-    nonportable_value: object,
-) -> None:
+def test_artifact_serialization_rejects_nonportable_values(nonportable_value: object) -> None:
     schema_bytes = _encoded_schema(
         {
             "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -456,7 +413,6 @@ def test_artifact_serialization_rejects_nonportable_values(
     )
     contract = replace(
         _contract(),
-        artifact_profile=artifact_profile,
         schema_bytes=schema_bytes,
         schema_bytes_sha256=_schema_bytes_digest(schema_bytes),
         schema_digest=_schema_digest(schema_bytes),
@@ -472,20 +428,15 @@ def test_artifact_serialization_rejects_nonportable_values(
         )
 
 
-def test_artifact_parsing_uses_portable_yaml_and_preserves_body_bytes() -> None:
-    contract = _contract()
-    frontmatter_registry = build_contract_registry((contract,))
-    pure_yaml_registry = build_contract_registry((replace(contract, artifact_profile="pure-yaml"),))
-    bom_and_spaced_fences = (
-        b"\xef\xbb\xbf---   \r\n"
-        b"softschema:\r\n"
+def test_artifact_parsing_uses_portable_yaml() -> None:
+    registry = build_contract_registry((_contract(),))
+    with_bom_and_crlf = (
+        b"\xef\xbb\xbfsoftschema:\r\n"
         b"  contract: example.test:Item/v1\r\n"
         b"  envelope: item\r\n"
         b"  status: enforced\r\n"
         b"item:\r\n"
         b"  name: accepted\r\n"
-        b"---   \r\n"
-        b"Body bytes stay exact.\r\n"
     )
     alias_payload = (
         b"softschema:\n"
@@ -497,18 +448,14 @@ def test_artifact_parsing_uses_portable_yaml_and_preserves_body_bytes() -> None:
     )
 
     artifact = validate_artifact(
-        bom_and_spaced_fences,
-        expected_contract_id=_CONTRACT_ID,
-        contracts=frontmatter_registry,
+        with_bom_and_crlf, expected_contract_id=_CONTRACT_ID, contracts=registry
     )
 
-    assert artifact.body == "Body bytes stay exact.\r\n"
-    with pytest.raises(FmFormatError, match="malformed YAML"):
-        validate_artifact(
-            alias_payload,
-            expected_contract_id=_CONTRACT_ID,
-            contracts=pure_yaml_registry,
-        )
+    assert artifact.record == {"name": "accepted"}
+    with pytest.raises(ValueError, match="malformed YAML"):
+        validate_artifact(alias_payload, expected_contract_id=_CONTRACT_ID, contracts=registry)
+    with pytest.raises(ValueError, match="must be UTF-8"):
+        validate_artifact(b"\xff\xfe", expected_contract_id=_CONTRACT_ID, contracts=registry)
 
 
 def test_contract_registry_rejects_invalid_corpus_record_selectors() -> None:
