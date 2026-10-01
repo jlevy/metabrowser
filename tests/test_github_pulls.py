@@ -38,6 +38,7 @@ from metabrowser.builtin_plugins.github.gh import (
     parse_included_response,
     rate_limit_reset,
 )
+from metabrowser.builtin_plugins.github.pull_markdown import render_part
 from metabrowser.builtin_plugins.github.pull_record import (
     MAX_BODY_BYTES,
     MAX_DIFF_HUNK_BYTES,
@@ -565,6 +566,54 @@ def test_the_pull_route_answers_an_unchanged_record_with_a_304(
     aged = client.get("/api/plugin/github/pull", headers={"if-none-match": etag})
     assert (aged.status_code, aged.json()["state"]) == (200, "stale")
     assert aged.headers["etag"] != etag
+
+
+@pytest.mark.parametrize(
+    ("part", "answer"),
+    [
+        ("", (400, "invalid_part")),
+        ("pull/7", (400, "invalid_part")),
+        ("../body", (400, "invalid_part")),
+        ("body/1", (400, "invalid_part")),
+        ("review/", (400, "invalid_part")),
+        (f"issue_comment/{'1' * 21}", (400, "invalid_part")),
+        # A part's name is judged before anything is read, so these two reach the next
+        # check, which finds no served pull request.
+        ("body", (409, "no_pull_request")),
+        ("review_comment/1", (409, "no_pull_request")),
+    ],
+)
+def test_the_markdown_route_names_a_part_before_it_reads_anything(
+    part: str, answer: tuple[int, str]
+) -> None:
+    status, body = render_part(None, part)
+    assert (status, body["code"]) == answer
+
+
+def test_a_record_that_is_gone_or_replaced_stops_being_answered(
+    pinned_pull: tuple[_Stand, TestClient],
+) -> None:
+    """The route keeps a parsed record in memory, and only while its file is the same."""
+
+    stand, client = pinned_pull
+
+    def answers() -> tuple[tuple[str, str | None, Any], tuple[int, str | None]]:
+        envelope = client.get("/api/plugin/github/pull").json()
+        text = client.get("/api/plugin/github/pull-markdown", params={"part": "body"})
+        return (
+            (envelope["state"], envelope["reason"], envelope["record"]),
+            (text.status_code, text.json().get("code")),
+        )
+
+    read, rendered = answers()
+    assert (read[0], rendered) == ("current", (200, None)) and read[2] is not None
+    record = stand.published.home / source_pull_record(stand.published.slug, 7)
+    elsewhere = stand.tmp_path / "elsewhere.json"
+    record.rename(elsewhere)
+    assert answers() == (("absent", "not_cached", None), (404, "not_cached"))
+    # A link to the same bytes is not the record: the cache reads regular files only.
+    record.symlink_to(elsewhere)
+    assert answers() == (("absent", "unreadable", None), (404, "unreadable"))
 
 
 def test_the_markdown_route_drops_the_kpress_icon_sprite(
