@@ -205,7 +205,17 @@ def test_gh_api_runs_isolated_with_fixed_arguments(
     # Common in dotfiles: either makes gh colorize --include headers and JSON.
     monkeypatch.setenv("CLICOLOR_FORCE", "1")
     monkeypatch.setenv("GH_FORCE_TTY", "1")
-    response = asyncio.run(gh_api("repos/octo/demo/pulls/7", etag='W/"x"'))
+    # Under pytest's capture this process's own stdin is already the null device, which
+    # a gh that inherited it would pass for one given none. A pipe there tells them apart.
+    read_end, write_end = os.pipe()
+    own_stdin = os.dup(0)
+    os.dup2(read_end, 0)
+    try:
+        response = asyncio.run(gh_api("repos/octo/demo/pulls/7", etag='W/"x"'))
+    finally:
+        os.dup2(own_stdin, 0)
+        for descriptor in (own_stdin, read_end, write_end):
+            os.close(descriptor)
     assert response.status == 200
     (call,) = stand.calls()
     assert call["args"] == [
