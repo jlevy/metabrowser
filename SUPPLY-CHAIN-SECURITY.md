@@ -90,9 +90,9 @@ Changing any of these versions requires a new review against the checks above.
 ### SoftSchema Review (September 15, 2026)
 
 `softschema==0.8.1` provides the installed contract registry, deterministic JSON Schema
-compilation, and structural plus Pydantic semantic validation used at provider-artifact
-boundaries. It is reviewed against 0.8.0. The Python change makes cross-field Pydantic
-errors JSON-serializable; its runtime dependencies are otherwise unchanged.
+compilation, and structural plus Pydantic semantic validation used for the repository
+cache’s records. It is reviewed against 0.8.0. The Python change makes cross-field
+Pydantic errors JSON-serializable; its runtime dependencies are otherwise unchanged.
 The locked wheel SHA-256 is
 `7a68e52483c7a8ab63e541bb3d0329dd728096a2c256ef501e9658175540d6ad`; the source archive
 SHA-256 is `e368eed680bf970b22790f4d90770dbdee290bedd6c0975ac51a6f1461b394e7`.

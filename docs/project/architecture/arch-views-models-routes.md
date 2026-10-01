@@ -18,17 +18,16 @@ selected     can do              data                 is drawn
 ```
 
 - **Address** names the address space and the resource within it.
-  Core routes are owned by the shell; installed domain plugins may own validated mounted
-  sub-routes through the same route map.
-  See [Browser URL Grammar](../../architecture.md#browser-url-grammar).
+  Core routes are owned by the shell; a plugin adds data routes as `[[data_hook]]`
+  entries under `/api/plugin/<plugin>/`. See
+  [Browser URL Grammar](../../architecture.md#browser-url-grammar).
 - **Resource kind** is the semantic classification a plugin claims.
   Filesystem `[[kind]]` blocks use `FileContext` (including content predicates).
   Git blobs use extension, basename, sniffed adapter, and bounded JSON/YAML/frontmatter
   mappings parsed from blob bytes.
   `path_glob` stays filesystem-only.
-  Planned `ResourceKindSpec` declarations cover route-backed resources without
-  fabricating a file matcher.
-  One kind, many views.
+  A route-backed kind has no file matcher: the shell selects it for its route, as it
+  does `pull-request` for `/pull/<n>`. One kind, many views.
 - **Contract/model** is the validated data a view receives.
   Simple kinds take the `/api/file` envelope; richer kinds have their own documented
   format with a schema and a conformance corpus.
@@ -150,7 +149,6 @@ the sources that produce them.
 | `/commit/<rev>/<inner>` | One file’s diff inside that change set | Route parses; the panel restores the commit, not yet the file |
 | `/pull/<n>[/files]` | The served pull request’s page: its conversation, or its Files changed | Implemented. The shell mounts the view a plugin registers for the `pull-request` kind (the GitHub plugin’s); a number other than the served pull request’s shows why it has nothing |
 | `/compare/<base>..<head>[/<inner>]` | An explicit comparison (`...` for merge base) | Specified, not built |
-| `/hosted/<provider-kind>/<instance-key>/<repository-key>/<resource-kind>/<resource-key>[/<inner>]` | A provider-neutral hosted resource and optional addressed child; typed atom keys encode the instance and opaque IDs canonically | Proposed for v0.12.0 in `mb-xzj3`, `mb-6mle`, `mb-83w0`, and `mb-81p5`; the first kind is `change-request` |
 
 The shape after the route is always `<container address>/<inner path>`, which is the
 container contract written as a URL. The full grammar, including the `_mb_` query
@@ -176,7 +174,6 @@ reservation and its invariants, is in
 | `/api/source/pin` | `POST` with `{"ref": …}` or `{"oid": …}`: resolve a branch, then a tag, then a commit ID in the mirror alone, never through revision syntax, and serve it: the old tree source is closed and the new one attached under a new generation. Answers `changed` and the new status, and, when the body also names the page’s `/view/` address as `view`, `view_href`: that entry’s canonical address when the new pin has it, an inner address kept when the new pin has its container file, else `/view/`; `view` is checked before the switch, so one that is not percent-encoded ASCII is `invalid_selection` with nothing changed, and a query or fragment is dropped; `invalid_selection` (400), `selection_not_found` (404), `ambiguous_selection` (409), or `unsupported_for_subject` (409) otherwise. `HEAD` is the default branch, and a name the mirror holds that is not a commit answers `not_a_commit` (409) at once, as URL opening does. In a server, a selection the mirror lacks answers `selection_pending` (202) with `refresh` and the status, and starts one background fetch; asked again after it ends, it switches, answers 404, or answers `selection_fetch_failed` (502) when that fetch did not run. `--api` never fetches for it, so the transcripts pin the 404; the 202 path is asserted by `tests/test_source_refresh.py` |
 | `/api/kpress/render`, `/api/kpress/export` | Document rendering and export. On a `GitRevisionSubject`, render reads a `GitPath` blob, uses the object id as the cache key, and passes the GitPath wire as `source_path`; export stays mutation-gated and unavailable. With active content off (every served mirror, and a folder served with `--untrusted`), render answers the HTML reduced to the inert allowlist of `src/metabrowser/inert_html.py`, with GitHub’s `user-content-` heading anchors, marks it `inert`, and keeps only stylesheets in its assets; KPress’s table of contents leaves the HTML, `toc` says whether KPress drew one, and the model’s `headings` point at the anchors |
 | `/api/plugin/<plugin>/<route>` | Plugin data hooks (`[[data_hook]]`). On a `GitRevisionSubject`, diff document/children, binary chunk, structured parsed, and agent-log charts honor `GitPath` and follow in-tree relative symlink blobs using the leaf kind |
-| A plugin-declared mounted prefix (proposed) | Domain resource routes with path parameters and honest HTTP responses; `mb-xzj3` adds this for hosted review |
 | `/raw`, `/raw/<path>` | Bounded raw bytes through the active source’s content reader, and the document the sandboxed html Preview frames; oversized content is refused before an unbounded object read. Both shapes share one resolver and send the same sandbox headers; the path form exists so relative references inside a browsed document resolve. A Git subject reads blobs by `GitPath` and follows in-tree relative symlink blobs. Image blobs use an image media type from the leaf display name. LFS pointers are stored pointer bytes; a missing blob is 404. On a Git subject only the query form answers: the path form’s one consumer, the HTML preview frame, is never offered under the forced untrusted profile, so it answers `unsupported_for_subject` (409) rather than a 404 that would misreport a present file, and Markdown images resolve to `GitPath` wires through the query form |
 | `/kpress-static/<path>`, `/static/<path>`, `/plugin-static/<plugin>/<path>` | Shell, renderer, and plugin assets |
 | `/_debug/tasks`, `/_debug/inventory` | Opt-in local task and inventory-provider diagnostics when `METABROWSER_DEBUG=1` |
@@ -483,10 +480,10 @@ No server aggregate may bypass those record validators.
 - **A filesystem-backed kind**: add a `[[kind]]` block with a match predicate and at
   least one `[[view]]`, then add a representative `--show` case to the golden
   transcript.
-- **A route-backed resource kind**: add one `ResourceKindSpec` with its primary
-  contract/model, item/container capabilities, address owner, and views; add the route,
-  `--show`, `--api`, browser parser, and functional golden evidence in the same change.
-  Do not invent a file matcher.
+- **A route-backed kind**: declare a `[[view]]` for a kind no `[[kind]]` matches and
+  have the shell select it for its route, as the GitHub plugin’s `pull-request` kind
+  does for `/pull/<n>`; add the route, its `--api` golden, and its functional rows in
+  the same change. Do not invent a file matcher.
 - **A view on an existing kind**: add a `[[view]]` block and `mb.registerView`; give it
   a disposal path, then register each new observable behavior in the functional table.
 - **A container**: add `container = { children = "<data_hook route>" }` to the kind and
