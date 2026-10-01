@@ -29,7 +29,7 @@ fast -- only that it moved.
 | `require_canonical_inventory_path_calls_per_entry` | 0 | **2** (accepted on other grounds; see the round) | exp-026 |
 | `browser_event_stream_overflows_per_run` | 0 | **0** (accepted on other grounds; see the round) | exp-031 |
 | `browser_inventory_delivery_batch_items_max` | 17,787 | **4,096** | exp-032 |
-| `cli_show_instr_millions` | 7,468 | **7,734** (accepted on other grounds; see the round) | exp-037 |
+| `cli_show_instr_millions` | 7,401 | **7,689** (accepted on other grounds; see the round) | exp-037 |
 
 Each row is one round’s own control and candidate on the same corpus and machine, not a
 running total: they measure different things and do not compose.

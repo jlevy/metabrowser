@@ -649,7 +649,7 @@ build in turn, each load with an empty HTTP cache:
 ```shell
 node explorations/performance-loop/tier-probe.mjs \
   --out .bench/tier-probe.jsonl --pairs 8 --path "/view/src/a.py#L40" \
-  --module source-line-anchors.js \
+  --module plugin-sdk-views.js \
   --build base=http://127.0.0.1:8771 --build candidate=http://127.0.0.1:8773
 ```
 
