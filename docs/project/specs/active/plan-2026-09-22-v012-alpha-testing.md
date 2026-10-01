@@ -395,7 +395,10 @@ holds the commit, the counts, and the ratios of this verification.
   other jobs loaded the machine.
   They are owed on a machine that stays quiet for about ten minutes, unless the user
   accepts the CPU-time and instruction evidence in their place.
-- **The review of #244**, which was running when the ledger was written.
+- **The review of #244.** Its findings are `mb-2on0`, whose fixes are in the draft
+  [#259](https://github.com/jlevy/metabrowser/pull/259), not yet part of the chain, and
+  `mb-mw0t`, left open.
+  The ledger’s row for #244 is to be completed.
 - **One finding to disposition** (`mb-tdmd`). After about five full page loads in one
   tab, the next page can wait for a connection, because pages kept for Back each hold
   their event stream open.
