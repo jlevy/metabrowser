@@ -1,4 +1,27 @@
-## A store no alias names is published.
+## A home an earlier release wrote holds a store no alias names.
+# metab <ROOT> --api /api/cache/layout
+exit: 0
+--- stdout ---
+api: /api/cache/layout
+status: 200
+{
+  "home": "present",
+  "supported_format": "f01",
+  "state": "current",
+  "layout": {
+    "format": "f01",
+    "created_by": "0.11.0"
+  },
+  "config": {
+    "format": "f01",
+    "written_by": "0.11.0",
+    "upgrades": []
+  },
+  "reclamation": {
+    "staging_entries": 0
+  }
+}
+--- stderr ---
 # metab <ROOT> --api /api/cache/stores
 exit: 0
 --- stdout ---
@@ -113,5 +136,29 @@ status: 200
   "unrecognized_entries": 0,
   "limit": 25,
   "next_after": null
+}
+--- stderr ---
+## The home is current, so the acquisition rewrote neither its layout nor its config.
+# metab <ROOT> --api /api/cache/layout
+exit: 0
+--- stdout ---
+api: /api/cache/layout
+status: 200
+{
+  "home": "present",
+  "supported_format": "f01",
+  "state": "current",
+  "layout": {
+    "format": "f01",
+    "created_by": "0.11.0"
+  },
+  "config": {
+    "format": "f01",
+    "written_by": "0.11.0",
+    "upgrades": []
+  },
+  "reclamation": {
+    "staging_entries": 0
+  }
 }
 --- stderr ---

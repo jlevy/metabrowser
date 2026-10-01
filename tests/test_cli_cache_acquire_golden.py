@@ -180,7 +180,9 @@ def test_golden_unreferenced_store_is_kept_by_the_next_acquire(
     url = file_url(named_origin(tmp_path, "a"))
     session.origin("A", url)
 
-    session.note("A store no alias names is published.")
+    session.note("A home an earlier release wrote holds a store no alias names.")
+    layout = session.inspect("/api/cache/layout")
+    assert f'"created_by": "{FIXTURE_VERSION}"' in layout
     before = session.inspect("/api/cache/stores")
     assert '"reference_state": "unreferenced"' in before
     assert f"sha256:{FIRST_ORPHAN_KEY}" in before
@@ -192,5 +194,10 @@ def test_golden_unreferenced_store_is_kept_by_the_next_acquire(
     assert '"reference_state": "referenced"' in after
     assert f"sha256:{FIRST_ORPHAN_KEY}" in after
     assert ORIGIN_REVISION in after
+
+    session.note(
+        "The home is current, so the acquisition rewrote neither its layout nor its config."
+    )
+    assert session.inspect("/api/cache/layout") == layout
 
     check_golden("cli-cache-orphan-kept.txt", session.render())
