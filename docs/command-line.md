@@ -247,8 +247,13 @@ cloned https://github.com/owner/repo in 104 s (742.0 MiB); starting the server
 
 The numbers are read from `git fetch --progress` and printed in Metabrowser’s own words.
 No text Git or the origin wrote reaches the terminal: a line of Git’s output that is not
-exactly a progress record is dropped, and `--log-level debug` still shows Git’s own
-message when a clone fails.
+exactly a progress record is dropped.
+`--log-level debug` still shows Git’s own message when a clone fails, with every
+character that is not printable written as its escape, such as `\x1b`, and on a line of
+its own after the status line.
+A line that cannot be written at once, to a stopped terminal or a pipe nobody reads, is
+dropped rather than waited for, and a stderr that has been closed does not change the
+exit status.
 
 When the source is already cloned, serve mode and `--no-serve` say so in one line,
 `using the clone of <url> cached in ~/.metabrowser/cache, fetched 3 hours ago`, and
