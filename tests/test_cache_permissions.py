@@ -372,7 +372,12 @@ def _hostile_tree(root: Path) -> list[Path]:
 
 
 def _tree(root: Path) -> dict[str, tuple[int, int, int, int, bytes]]:
-    """Every entry below *root*: mode, link count, size, write time, and content or target."""
+    """Every entry below *root*: mode, link count, size, write time, and content or target.
+
+    A file its owner cannot read, such as the mode 0044 one in the hostile tree, is
+    compared by mode, link count, size, and write time. Its content is not: reading it
+    would take a ``chmod``, which is the change this snapshot exists to catch.
+    """
 
     entries: dict[str, tuple[int, int, int, int, bytes]] = {}
     for directory, names, files in os.walk(root):
@@ -413,9 +418,21 @@ def _ensure(home: str, relative: str) -> _Call:
     )
 
 
+_FLAG_NAMES = (
+    ("wrongly", os.O_WRONLY),
+    ("rdwr", os.O_RDWR),
+    ("creat", os.O_CREAT),
+    ("trunc", os.O_TRUNC),
+    ("append", os.O_APPEND),
+)
+
+
 def _open(home: str, relative: str, flags: int) -> _Call:
+    """An open named by its flags' names, which are the same on every platform."""
+
+    access = "+".join(name for name, bit in _FLAG_NAMES if flags & bit) or "rdonly"
     return _Call(
-        f"open {home} {relative} {flags:#x}",
+        f"open {home} {relative} {access}",
         lambda root: open_private_file(root / home, relative, flags),
     )
 
