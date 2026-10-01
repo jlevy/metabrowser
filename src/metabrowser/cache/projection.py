@@ -50,6 +50,8 @@ from metabrowser.cache.paths import (
     CACHE_ROOT,
     CONFIG_RECORD,
     LAYOUT_RECORD,
+    PROVIDER_BINDINGS,
+    PROVIDER_REPOSITORIES,
     REPOSITORY_STORES,
     SOURCES,
     STAGING,
@@ -160,12 +162,19 @@ _FIXED_LAYOUT_PATHS: Final[frozenset[str]] = frozenset(
         SOURCES,
         REPOSITORY_STORES,
         STAGING,
+        PROVIDER_BINDINGS,
+        PROVIDER_REPOSITORIES,
     }
 )
 
 _MISSING_MESSAGE: Final = "The record is missing."
 _UNREADABLE_MESSAGE: Final = "The record could not be read."
-_DURABLE_DIRECTORIES: Final = (SOURCES, REPOSITORY_STORES)
+_DURABLE_DIRECTORIES: Final = (
+    SOURCES,
+    REPOSITORY_STORES,
+    PROVIDER_BINDINGS,
+    PROVIDER_REPOSITORIES,
+)
 
 
 @dataclass(slots=True)
@@ -752,13 +761,15 @@ def _store_records(home: Path, key: str) -> StoreRecords | None:
 def _references(home: Path, budget: _Budget) -> tuple[dict[str, list[StoreReference]], bool]:
     """Every readable alias by the store it names, and whether nothing else could refer.
 
-    An unrecognized source entry and an unreadable alias may each name a store, so they
-    make the answer incomplete. So does running out of the request's record budget, which
-    is why the aliases read before that still count as references while the stores none
-    of them names are reported unknown.
+    Provider data, an unrecognized source entry, and an unreadable alias may each name a
+    store, so they make the answer incomplete. So does running out of the request's
+    record budget, which is why the aliases read before that still count as references
+    while the stores none of them names are reported unknown.
     """
 
-    complete = True
+    complete = not any(
+        _has_entries(home, directory) for directory in (PROVIDER_BINDINGS, PROVIDER_REPOSITORIES)
+    )
     names = _names(home, SOURCES)
     slugs = [name for name in names if is_slug(name)]
     if len(slugs) != len(names):

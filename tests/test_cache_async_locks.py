@@ -29,6 +29,7 @@ from metabrowser.cache.locks import (
     LockOrderError,
     application_home_lock,
     held_locks,
+    provider_resource_lock,
     repository_store_lock,
     source_alias_lock,
     staging_entry_lock,
@@ -117,6 +118,7 @@ BLOCKING_LOCKS: list[Callable[[Path], CacheLock]] = [
     application_home_lock,
     lambda home: source_alias_lock(home, SLUG_A),
     lambda home: repository_store_lock(home, STORE_A),
+    lambda home: provider_resource_lock(home, "p1"),
 ]
 
 

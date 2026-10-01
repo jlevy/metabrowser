@@ -5,8 +5,9 @@ which vanish when a process closes any descriptor for the file. The hierarchy, f
 ``tests/fixtures/repository-cache/state-machines.json``, is:
 
 1. the application-home lock, for layout migration and brief global enumeration;
-2. source-alias locks, several in ascending slug order; and
-3. repository-store locks, several in ascending store-key order.
+2. source-alias locks, several in ascending slug order;
+3. repository-store locks, several in ascending store-key order; and
+4. provider/resource locks, several in ascending key order.
 
 A thread acquires hierarchy locks in ascending rank, and within a rank in ascending key,
 and never re-acquires one it holds; :class:`LockOrder` refuses anything else before a
@@ -79,6 +80,7 @@ LOCKS_DIRECTORY: Final = "cache/locks"
 HOME_LOCK_PATH: Final = "cache/locks/home.lock"
 
 _ENTRY_NAME_RE: Final = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
+_RESOURCE_KEY_RE: Final = re.compile(r"^[a-z0-9][a-z0-9_-]{0,127}$")
 _IDENTITY_ATTEMPTS: Final = 8
 # How often an abandonable wait in a worker thread retries a busy lock. One busy attempt
 # cost a median 2.4 ms (p90 9 ms) on a machine at load average 23; doubling from 5 ms to
@@ -110,6 +112,7 @@ class LockKind(StrEnum):
     HOME = "home"
     SOURCE_ALIAS = "source_alias"
     REPOSITORY_STORE = "repository_store"
+    PROVIDER_RESOURCE = "provider_resource"
     STAGING_ENTRY = "staging_entry"
     STORE_FETCH = "store_fetch"
 
@@ -118,8 +121,11 @@ HIERARCHY_RANKS: Final[dict[LockKind, int]] = {
     LockKind.HOME: 1,
     LockKind.SOURCE_ALIAS: 2,
     LockKind.REPOSITORY_STORE: 3,
+    LockKind.PROVIDER_RESOURCE: 4,
 }
-_MULTIPLE: Final = frozenset({LockKind.SOURCE_ALIAS, LockKind.REPOSITORY_STORE})
+_MULTIPLE: Final = frozenset(
+    {LockKind.SOURCE_ALIAS, LockKind.REPOSITORY_STORE, LockKind.PROVIDER_RESOURCE}
+)
 
 
 class LockOrderError(RuntimeError):
@@ -551,6 +557,22 @@ def repository_store_lock(home: Path, store_key: str, *, blocking: bool = True) 
     )
 
 
+def provider_resource_lock(home: Path, resource_key: str, *, blocking: bool = True) -> CacheLock:
+    """Acquire the lock for one provider resource.
+
+    The rank is frozen; the key's spelling belongs to the provider storage plan.
+    """
+
+    _require(_RESOURCE_KEY_RE.fullmatch(resource_key) is not None, "provider resource key")
+    return _acquire(
+        home,
+        LockKind.PROVIDER_RESOURCE,
+        resource_key,
+        f"{LOCKS_DIRECTORY}/providers/{resource_key}.lock",
+        blocking=blocking,
+    )
+
+
 def _entry_lock(
     home: Path,
     kind: LockKind,
@@ -623,6 +645,7 @@ __all__ = [
     "held_locks",
     "is_entry_name",
     "lock_order",
+    "provider_resource_lock",
     "repository_store_lock",
     "require_no_hierarchy_locks",
     "source_alias_lock",
