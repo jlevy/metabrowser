@@ -478,6 +478,19 @@ Repository cache:
   A commit ID that is the tip of the ref already served answers `changed: false`. Any
   other commit pinned by ID still has no ref.
 
+- Back and forward onto a page whose commit the server no longer serves now land on the
+  commit it does serve.
+  A browser brings a page back from its back/forward cache or its HTTP cache without
+  asking the server, so after a pin switch (the selector’s, the freshness row’s, View
+  file’s) Back showed a page naming the commit served before, with “Could not load
+  files” and every data request refused as `pin_changed` until a reload.
+  On such a landing the page now asks `/api/source/status` once and reloads itself, at
+  most once, when another commit is served.
+  A landing with nothing switched is untouched: it stays in the back/forward cache and
+  keeps its scroll position.
+  A page that stayed open while another tab switched still gets the reload offer rather
+  than a reload.
+
 - The Git panel no longer rebuilds a different history under the rows on screen when the
   refs its walk was fingerprinted by moved, as a refresh, a pin switched in another tab,
   or a commit in a served checkout does.

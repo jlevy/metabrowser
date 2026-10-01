@@ -258,6 +258,15 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
                     assert retried.status_code == 202
                     recorded["selection_retry_started"] = retried.json()
                     _settle(client)
+        # A server restarted on a folder, which serves no commit at all: what a page
+        # still open on the mirror, or brought back by Back, is told.
+        folder = tmp_path / "folder"
+        folder.mkdir()
+        serve_mirror(None)
+        reset_source_session()
+        server._set_root_dir(folder)
+        with TestClient(server.app) as client:
+            recorded["folder"] = client.get("/api/source/status").json()
     finally:
         serve_mirror(None)
         reset_source_session()
@@ -285,6 +294,7 @@ def test_recording_is_what_a_served_mirror_answers(
     assert recorded["selection_not_found"]["selection_state"] == "not_found"
     assert recorded["selection_fetch_failed"]["selection_state"] == "fetch_failed"
     assert recorded["selection_retry_started"]["status"]["selection_state"] == "pending"
+    assert recorded["folder"]["pin"] is None
     rendered = json.dumps(recorded, indent=2, ensure_ascii=False) + "\n"
     if os.environ.get("GOLDEN_UPDATE") == "1":
         FIXTURE.write_text(rendered, encoding="utf-8")

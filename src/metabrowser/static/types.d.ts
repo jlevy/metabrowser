@@ -2645,6 +2645,19 @@ declare global {
     MetabrowserSourcePinGuard?: Readonly<{
       PIN_CHANGED_HEADER: string;
       PIN_HEADER: string;
+      createHistoryGuard(
+        deps: {
+          status(): Promise<{ pin?: unknown } | null>;
+          reload(): void;
+        },
+        pin: string,
+      ): Readonly<{
+        loaded(navigationType: string): Promise<void>;
+        shown(persisted: boolean): Promise<void>;
+        refused(): void;
+        snapshot(): { asking: boolean; reloaded: boolean };
+      }>;
+      servesAnother(pin: string, served: { pin?: unknown } | null): boolean;
       guardFetch(
         fetchImpl: typeof fetch,
         pin: string,
