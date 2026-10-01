@@ -1,14 +1,21 @@
 # Plan: v0.12 Thin Mirror for Git and GitHub Browsing
 
-**Status:** Active design, decided 2026-09-23 and revised the same day after an
-independent design review.
-It supersedes the remaining v0.12 phases in
+**Status:** Delivered on the unmerged v0.12 stack.
+The design was decided on 2026-09-23 and revised the same day after an independent
+design review. [Delivery](#delivery) maps each step and follow-up to its pull request.
+Nothing is merged: the
+[alpha test plan](plan-2026-09-22-v012-alpha-testing.md#landing-status) lists what
+remains before landing, which waits for the user’s approval (`mb-n2ro`).
+
+This plan supersedes the remaining v0.12 phases in
 [Open Repositories from Git URLs](plan-2026-08-11-open-repo-from-git-url.md) (2A onward)
 and
 [GitHub Provider and Pull Requests](plan-2026-08-27-github-provider-and-pull-requests.md)
 wherever they disagree.
-Those documents stay as background, and their built foundation (Phases 0–1B) stays as
-built until the Simplify pull request below changes it.
+Those documents stay as background.
+The repository foundation they record (Phases 0–1B) stays as built, as changed by the
+Simplify step below; the hosted-review foundation was removed, as
+[Retired From Earlier Plans](#retired-from-earlier-plans) records.
 
 ## Goal
 
@@ -240,10 +247,14 @@ It claims only `github.com` and `raw.githubusercontent.com`.
 
 ## Capability Map
 
+The Alpha column is delivered on the stack.
+[QA: v0.12 alpha acceptance](../../qa/qa-2026-09-24-v012-alpha-acceptance.md) records
+the run against it.
+
 | GitHub web | Alpha | Later |
 | --- | --- | --- |
 | Code tree and file view, with line links | Yes |  |
-| Branch, tag, and commit selection | Yes (pin switching) |  |
+| Branch, tag, and commit selection | Yes (pin switching: a branch and tag selector, and commits by URL) |  |
 | Commit history and commit detail with diff | Yes (existing Git views) |  |
 | Raw file | Yes (sandboxed) |  |
 | Pull request: description, labels, state, merge status | Yes |  |
@@ -282,17 +293,38 @@ maintained, on the `reference/v012-hosted-review` branch, tagged
 Each step is one stacked pull request, implemented and reviewed by separate agents, with
 `make verify` and green CI before the next step starts from its head.
 
-| PR | Scope | Checkpoint |
-| --- | --- | --- |
-| 1. Design | This plan, bead changes, superseded notes | Plan agreed |
-| 2. Simplify | Full clones; remove convergence, subject refs, leases, maintenance locks, and store reclamation; edit the unreleased records and fixtures in place | T0 still passes, with less code |
-| 3. Serve a pin | Browser serving of a `file://` pin, forced untrusted profile, served `/raw` decision; `repository_context` moved to step 5, since only a GitHub mirror has one | Open a `file://` source in the browser and browse it; no network |
-| 4. Refresh and pin switching | Coordinator, status, refresh and pin routes, browser stale label and newer-revision offer, stale history cursors, fetch side lock and stale-lock cleanup | Push to a `file://` origin, see the offer, switch; no network |
-| 5. GitHub URL open | Reducer plugin with network-free goldens for every URL shape, HTTPS with the `gh` helper, error classification, measured stall bound, ref and path split, line anchors, SIGHUP handling, `repository_context` for GitHub mirrors | Opt-in live smoke on a public repository |
-| 6. PR data | `gh` runner and account checks, PR records, `refs/pull/<n>/head`, comparison endpoints, CLI inspection | `metab <pr-url> --api …` shows the pull request, including offline |
-| 7. PR view | Pull-request page: conversation, reviews, review comments, checks, Files changed | Paste a PR URL and read it in the browser; reload and reopen offline |
+| PR | Scope | Checkpoint | Delivered |
+| --- | --- | --- | --- |
+| 1. Design | This plan, bead changes, superseded notes | Plan agreed | [#227](https://github.com/jlevy/metabrowser/pull/227) (`mb-4izu`) |
+| 2. Simplify | Full clones; remove convergence, subject refs, leases, maintenance locks, and store reclamation; edit the unreleased records and fixtures in place | T0 still passes, with less code | [#228](https://github.com/jlevy/metabrowser/pull/228) (`mb-raep`) |
+| 3. Serve a pin | Browser serving of a `file://` pin, forced untrusted profile, served `/raw` decision; `repository_context` moved to step 5, since only a GitHub mirror has one | Open a `file://` source in the browser and browse it; no network | [#229](https://github.com/jlevy/metabrowser/pull/229) (`mb-doao`) |
+| 4. Refresh and pin switching | Coordinator, status, refresh and pin routes, browser stale label and newer-revision offer, stale history cursors, fetch side lock and stale-lock cleanup | Push to a `file://` origin, see the offer, switch; no network | [#230](https://github.com/jlevy/metabrowser/pull/230) (`mb-i5ln`) |
+| 5. GitHub URL open | Reducer plugin with network-free goldens for every URL shape, HTTPS with the `gh` helper, error classification, measured stall bound, ref and path split, line anchors, SIGHUP handling, `repository_context` for GitHub mirrors | Opt-in live smoke on a public repository | [#231](https://github.com/jlevy/metabrowser/pull/231) (`mb-bgs7`) |
+| 6. PR data | `gh` runner and account checks, PR records, `refs/pull/<n>/head`, comparison endpoints, CLI inspection | `metab <pr-url> --api …` shows the pull request, including offline | [#232](https://github.com/jlevy/metabrowser/pull/232) (`mb-nkmq`) |
+| 7. PR view | Pull-request page: conversation, reviews, review comments, checks, Files changed | Paste a PR URL and read it in the browser; reload and reopen offline | [#233](https://github.com/jlevy/metabrowser/pull/233) (`mb-vrl7`) |
 
-Later: pull-request list, inline review anchoring, SSH, Enterprise hosts, issues.
+Follow-up pull requests extend those steps, in stack order:
+
+| Pull request | Scope | Beads |
+| --- | --- | --- |
+| [#234](https://github.com/jlevy/metabrowser/pull/234) | Inert Markdown and a Content-Security-Policy for untrusted sources | `mb-a0za`, `mb-2rg9` |
+| [#235](https://github.com/jlevy/metabrowser/pull/235) | Line numbers and `#L` anchors in source views | `mb-rlf3` |
+| [#239](https://github.com/jlevy/metabrowser/pull/239) | Line anchors on the Markdown Source tab, `?plain=1`, and keyboard anchors | `mb-gkrr` |
+| [#242](https://github.com/jlevy/metabrowser/pull/242) | Removal of an unused DOM test harness | `mb-y3z4` |
+| [#236](https://github.com/jlevy/metabrowser/pull/236) | Branch and tag selector for a served mirror | `mb-eezo` |
+| [#238](https://github.com/jlevy/metabrowser/pull/238) | Pull-request page follow-ups | `mb-7kqx`, `mb-f9s2` |
+| [#237](https://github.com/jlevy/metabrowser/pull/237) | Backslash filenames, Load more on a pin, and owner-stamped delegated controls (Plugin SDK 0.7) | `mb-yhso`, `mb-clkn`, `mb-w2vx` |
+| [#240](https://github.com/jlevy/metabrowser/pull/240) | GitHub-style heading anchors and a table of contents for untrusted documents | `mb-39uq`, `mb-rzjh` |
+| [#241](https://github.com/jlevy/metabrowser/pull/241) | Alpha acceptance record | `mb-gnr9` |
+| [#243](https://github.com/jlevy/metabrowser/pull/243) | Acceptance fixes: table-of-contents toggle, raw GitHub URLs, pull-request header state | `mb-ddbe`, `mb-tals`, `mb-5wqg` |
+| [#244](https://github.com/jlevy/metabrowser/pull/244) | Fork-qualified pull-request header; default-ignorable characters escaped in displayed paths | `mb-v8sb`, `mb-1bpe` |
+| [#246](https://github.com/jlevy/metabrowser/pull/246) | Removal of the unused Hosted Review Format and provider-resource code | `mb-whmn`, `mb-31qs` |
+| [#248](https://github.com/jlevy/metabrowser/pull/248) | View file at either side of a changed file, from a commit’s diff or Files changed | `mb-zb5t` |
+| [#249](https://github.com/jlevy/metabrowser/pull/249) | Existing folders with URL-like names are served; a state for an unfetched commit; not-found wording | `mb-n80y`, `mb-4kuc`, `mb-2nu0` |
+| Documentation reconciliation | Plans, roadmap, architecture documents, and changelog brought in line with the delivered stack | `mb-myum` |
+
+Later: pull-request list, inline review anchoring, SSH, Enterprise hosts, issues,
+checkout attachment, and rebind.
 
 ## Testing
 
