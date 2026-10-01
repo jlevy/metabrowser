@@ -191,6 +191,14 @@ and `startup_script_transfer_kb` in
 bound the scripts requested before `DOMContentLoaded`. A module whose evaluation costs
 nothing still spends that budget.
 
+`devtools/check_startup_scripts.py` applies both ceilings on every `make lint-check`. It
+reads the script tags from the shell the server renders, compresses each file as the
+application’s gzip middleware does, and adds the 300 bytes Resource Timing reports for a
+response’s headers, which is how the browser arrives at the number the gate reads.
+Its module documentation records the two agreeing, script for script.
+When it fails, move code out of a startup script or behind the first usable tree;
+raising the ceiling needs a measurement that shows the headroom is still real.
+
 A decision is recorded beside the constant that makes it.
 These are the ones with a measurement on record, and where it is:
 
@@ -199,6 +207,9 @@ These are the ones with a measurement on record, and where it is:
 | Core shell modules | Eager | the script tags in `server.py`’s shell template | the note beside the startup gates in `performance-budgets.toml` |
 | Search, Help, keyboard, and Git tools | On demand, once the first tree is usable | `shell-tools` in `on_demand_script_bundles` | the same note |
 | Source line gutter and `#L` anchors | On demand, fetched beside the view compositor | `source-line-anchors` in `on_demand_script_bundles` | [exp-037](../explorations/performance-loop/experiments/exp-037-startup-imports-and-loading-tiers-for-v012.md) |
+| SDK view helpers and the syntax service | On demand, fetched beside the view compositor and before any plugin | `sdk-views` in `on_demand_script_bundles` | [exp-037](../explorations/performance-loop/experiments/exp-037-startup-imports-and-loading-tiers-for-v012.md) |
+| Pull-request routes and page host | On demand, at an address under `/pull/` | `pull-route` in `on_demand_script_bundles` | [exp-037](../explorations/performance-loop/experiments/exp-037-startup-imports-and-loading-tiers-for-v012.md) |
+| GitPath wire codec | Eager, on a pinned revision’s shell only | `git_path_script` in `server.py` | [exp-037](../explorations/performance-loop/experiments/exp-037-startup-imports-and-loading-tiers-for-v012.md) |
 | Chart.js and its plugins | On demand, at the first chart | `chart` in `on_demand_script_bundles` | the comment beside it |
 | Inert Markdown render and its table of contents | On demand, at the first inert render | `builtin_plugins/markdown/place-rendered.js` | [exp-037](../explorations/performance-loop/experiments/exp-037-startup-imports-and-loading-tiers-for-v012.md) |
 
