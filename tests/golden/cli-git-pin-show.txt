@@ -129,6 +129,36 @@ kind: markdown
 views: rendered (default), source
 model: text envelope; size=6 content_bytes=6 content_truncated=False
 --- stderr ---
+# metab file://<ORIGIN-NAMES> --show g1-data/x.md --format json
+exit: 0
+--- stdout ---
+{
+  "show": "g1-data/x.md",
+  "route": "/view/g1-ZzEtZGF0YQ/g1-eC5tZA",
+  "kind": "markdown",
+  "views": [
+    {
+      "id": "rendered",
+      "label": "Document",
+      "default": true,
+      "container_class": "content-body metabrowser-kpress-host md-body",
+      "printable": true,
+      "print_profile": "document",
+      "render_runtime": "kpress"
+    },
+    {
+      "id": "source",
+      "label": "Source",
+      "default": false,
+      "container_class": "content-body metabrowser-source-host",
+      "printable": true,
+      "print_profile": "source",
+      "render_runtime": "client"
+    }
+  ],
+  "model": "text envelope; size=5 content_bytes=5 content_truncated=False"
+}
+--- stderr ---
 # metab file://<ORIGIN-NAMES> --show g1-absent.md
 exit: 1
 --- stdout ---

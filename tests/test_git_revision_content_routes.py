@@ -241,6 +241,8 @@ def test_git_directory_with_no_blob_and_rollup_of_a_subtree(tmp_path: Path) -> N
             assert folder["readme_path"] == ""
             assert [view["id"] for view in folder["views"]] == ["overview", "treemap"]
             assert (await client.get("/raw", params={"path": dep})).status_code == 404
+            # The index counts the directories its blobs are in: docs/, and not vendor/.
+            assert (await client.get("/api/index/meta")).json()["indexed_dirs"] == 1
 
             empty = (await client.get("/api/rollup", params={"path": vendor})).json()["node"]
             assert (empty["total_files"], empty["total_size"], empty["children"]) == (0, 0, [])

@@ -299,15 +299,15 @@ class _Pin:
 
     def _run(self, *args: str, fails: bool = False, repeats: str | None = None) -> Invocation:
         result = refused([self.url, *args]) if fails else ok([self.url, *args])
-        stdout = self.printed[args[-1]] = result.stdout
+        stdout = self.printed[args[1] if len(args) > 1 else args[0]] = result.stdout
         if repeats is not None:
             stdout = _name_the_repeat(stdout, self.printed[repeats], shown_by=quoted(repeats))
         command = " ".join(["metab", self.shown, args[0], *(quoted(arg) for arg in args[1:])])
         self.blocks.append(block(command, result.exit_code, stdout, result.stderr))
         return result
 
-    def show(self, selection: str, *, fails: bool = False) -> Invocation:
-        return self._run("--show", selection, fails=fails)
+    def show(self, selection: str, *options: str, fails: bool = False) -> Invocation:
+        return self._run("--show", selection, *options, fails=fails)
 
     def api(self, route: str, *, fails: bool = False, repeats: str | None = None) -> Invocation:
         """``--api route``; *repeats* names an earlier route whose output this one repeats."""
@@ -358,6 +358,8 @@ def test_golden_pin_show(pin: _Pin, tmp_path: Path) -> None:
     # bare wire with no tracked name of that spelling still resolves.
     pin.show(f"/view/{_wire(b'g1-notes.md')}")
     pin.show(_wire(b"plain.md"))
+    # The same answer as JSON, which is what a script reads.
+    pin.show("g1-data/x.md", "--format", "json")
     pin.show("g1-absent.md", fails=True)
     pin.check("cli-git-pin-show.txt")
 
