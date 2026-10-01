@@ -41,6 +41,15 @@ _STAGES: Final[dict[bytes, ProgressStage]] = {
     b"Resolving deltas": "resolving",
     b"Checking connectivity": "checking",
 }
+# Who reports what. The origin's pack-objects reports these three, and Git relays every
+# line the origin sends with a ``remote: `` prefix; this side reports the rest, with no
+# prefix. Only that pairing is a record, so an origin that sends ``Receiving objects:
+# 99% …, 5.00 GiB`` cannot pass for this side's count of what arrived.
+_REMOTE_STAGES: Final[frozenset[ProgressStage]] = frozenset(
+    {"enumerating", "counting", "compressing"}
+)
+# The stages that move bytes, and so the only ones whose records carry a size and a rate.
+_TRANSFER_STAGES: Final[frozenset[ProgressStage]] = frozenset({"receiving", "unpacking"})
 _UNITS: Final[dict[bytes, int]] = {
     b"byte": 1,
     b"bytes": 1,
@@ -52,21 +61,23 @@ _UNITS: Final[dict[bytes, int]] = {
 _AMOUNT: Final = rb"(\d{1,10})(?:\.(\d{2}))? (bytes?|KiB|MiB|GiB)"
 # One whole record, without its line ending. A counted stage prints "NN% (done/total)"
 # and an uncounted one a bare count; a transfer adds its size and rate; the last record
-# of a stage adds ", done.". Git pads what the origin sent with up to eight spaces, in
-# place of the erase sequence it sends a terminal.
+# of a stage adds ", done.". Git pads what the origin sent with eight spaces, in place
+# of the erase sequence it sends a terminal, and a record of its own that is shorter
+# than the one before with the few spaces that cover the difference.
 _RECORD: Final = re.compile(
     rb"(remote: )?("
     + b"|".join(re.escape(title) for title in _STAGES)
-    + rb"): +(?:\d{1,3}% \((\d{1,20})/(\d{1,20})\)|(\d{1,20}))"
+    + rb"): {1,3}(?:\d{1,3}% \((\d{1,20})/(\d{1,20})\)|(\d{1,20}))"
     + rb"(?:, "
     + _AMOUNT
     + rb" \| "
     + _AMOUNT
     + rb"/s)?(, done\.)? {0,8}"
 )
-# Measured 2026-10-01 on a fetch of github.com/cli/cli with Git 2.50.1: the longest of
-# its 255 progress records was 70 bytes with its line ending. A line longer than this
-# bound is not progress, and is not held in memory while its end is awaited.
+# A line longer than this is not progress, and is not held in memory while its end is
+# awaited. The pattern above admits nothing longer than 129 bytes. Measured 2026-10-01
+# on a fetch of github.com/cli/cli with Git 2.50.1: the longest of its 255 progress
+# records was 70 bytes with its line ending.
 MAX_RECORD_BYTES: Final = 256
 _LINE_END: Final = re.compile(rb"[\r\n]")
 
@@ -77,7 +88,8 @@ class GitProgress:
 
     ``total`` is ``None`` for a stage that counts without knowing its end, and the two
     transfer fields are ``None`` for a stage that moves no bytes. ``remote`` says the
-    origin reported it, so a caller knows these numbers are the origin's claim.
+    origin reported it, so the numbers are the origin's claim about its own work; a
+    record of what arrived here is never ``remote``.
     """
 
     stage: ProgressStage
@@ -107,16 +119,19 @@ def parse_progress(record: bytes) -> GitProgress | None:
     *record* is one line of a Git child's stderr without its line ending.
     """
 
-    if len(record) > MAX_RECORD_BYTES:
-        return None
     match = _RECORD.fullmatch(record)
     if match is None:
         return None
     remote, title, done, total, count = match.group(1, 2, 3, 4, 5)
     size, size_hundredths, size_unit = match.group(6, 7, 8)
     rate, rate_hundredths, rate_unit = match.group(9, 10, 11)
+    stage = _STAGES[title]
+    if (remote is not None) != (stage in _REMOTE_STAGES):
+        return None
+    if size is not None and stage not in _TRANSFER_STAGES:
+        return None
     return GitProgress(
-        stage=_STAGES[title],
+        stage=stage,
         done=int(count if done is None else done),
         total=None if total is None else int(total),
         received_bytes=None if size is None else _amount(size, size_hundredths, size_unit),

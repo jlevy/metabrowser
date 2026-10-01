@@ -97,6 +97,21 @@ def test_percent_comes_from_the_counts_and_stays_within_bounds() -> None:
         b"Receiving objects:  50% (1/" + b"9" * 21 + b")",
         b"Receiving objects:  50%",
         b"Receiving objects: ",
+        # More padding than Git writes, before the count or after the record.
+        b"Receiving objects:    5% (1/20)",
+        b"Receiving objects:  50% (1/2)" + b" " * 9,
+        # A stage in the wrong mouth. Git prefixes every line the origin sends, so the
+        # origin cannot say what arrived here, and this side does not count for it.
+        b"remote: Receiving objects:  99% (99/100), 5.00 GiB | 1.00 GiB/s",
+        b"remote: Unpacking objects: 100% (3/3), 5.00 GiB | 1.00 GiB/s, done.",
+        b"remote: Resolving deltas:  50% (1/2)",
+        b"remote: Checking connectivity: 12, done.",
+        b"Enumerating objects: 3, done.",
+        b"Counting objects:  50% (1/2)",
+        b"Compressing objects:  50% (1/2)",
+        # A size on a stage that moves no bytes.
+        b"Resolving deltas:  50% (1/2), 1.00 MiB | 1.00 MiB/s",
+        b"remote: Counting objects:  50% (1/2), 5.00 GiB | 1.00 GiB/s",
         b"",
         " Receiving objects:  50% (１/2)".encode(),
     ],
@@ -105,10 +120,36 @@ def test_anything_else_is_not_progress(line: bytes) -> None:
     assert parse_progress(line) is None
 
 
-def test_a_line_too_long_to_be_a_record_is_not_parsed() -> None:
-    padded = b"Receiving objects:  50% (1/2)" + b" " * 8
-    assert parse_progress(padded) is not None
-    assert parse_progress(b"remote: Counting objects: 1" + b"0" * MAX_RECORD_BYTES) is None
+def test_no_record_is_as_long_as_the_bound_on_a_line() -> None:
+    """The splitter stops holding a line at ``MAX_RECORD_BYTES``; no record is that long."""
+
+    count = b"9" * 20
+    amount = b"9999999999.99 bytes"
+    longest = (
+        b"Unpacking objects:   999% ("
+        + count
+        + b"/"
+        + count
+        + b"), "
+        + amount
+        + b" | "
+        + amount
+        + b"/s, done."
+        + b" " * 8
+    )
+    assert parse_progress(longest) is not None
+    assert len(longest) == 129 < MAX_RECORD_BYTES
+    # Each bounded part is at its bound: one more of any is no record.
+    for longer in (
+        longest.replace(b":   999%", b":    999%"),
+        longest.replace(b"999%", b"9999%"),
+        longest.replace(b"(" + count, b"(9" + count),
+        longest.replace(count + b")", count + b"9)"),
+        longest.replace(b", 9999999999.99", b", 99999999999.99"),
+        longest + b" ",
+    ):
+        assert len(longer) == 130
+        assert parse_progress(longer) is None
 
 
 def _split(*chunks: bytes, max_kept: int = 1 << 16) -> tuple[list[GitProgress], bytes]:
