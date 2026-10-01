@@ -1,32 +1,27 @@
-"""Pin the repository-cache contracts frozen before the cache is implemented.
+"""Replay the repository-cache contract fixtures through the production code.
 
-The fixtures under ``tests/fixtures/repository-cache/`` are the contract the
-format-foundation and acquisition implementations consume: the root-argument URL grammar,
-source and repository-store identity, slug derivation, Git version gates,
-and the lock, publication, and staging-sweep state machines.
-
-Rules with a production implementation replay the fixtures through it:
-source and store identity, store keys, and slugs through
-``metabrowser.cache.identity``, the root-argument URL grammar through
-``metabrowser.cache.urls``, the Git version gates through
+The fixtures under ``tests/fixtures/repository-cache/`` were frozen before the cache was
+implemented, and each says in its ``provenance`` how it was written. Every test here
+runs production code on fixture data: the root-argument URL grammar through
+``metabrowser.cache.urls``, source and store identity, store keys, and slugs through
+``metabrowser.cache.identity``, the Git version gates through
 ``metabrowser.git.process``, and the lock hierarchy, lock-file placement, and lock
-sequences through ``metabrowser.cache.locks``. The sweep machine replays against
-``metabrowser.cache.reclaim`` in ``tests/test_cache_reclaim.py``, and
-``tests/test_cache_publish.py`` checks the locks the real acquisition holds against the
-acquisition machine.
+sequences through ``metabrowser.cache.locks``. The sweep machine is replayed against
+``metabrowser.cache.reclaim`` in ``tests/test_cache_reclaim.py``.
 
-The state-machine well-formedness checks verify the design itself.
+A malformed fixture fails the replay that reads it, so no test validates a fixture's
+shape. Two tests read only a fixture, to keep the replays' coverage from shrinking
+unnoticed: the grammar's cases must exercise every declared reason, outcome, and
+transport, and no two identity cases may share a store key.
 """
 
 from __future__ import annotations
 
 import json
-from collections import deque
 from pathlib import Path
 from typing import Any, cast
 
 import pytest
-from jsonschema import Draft202012Validator
 
 from metabrowser.cache import identity, locks, urls
 from metabrowser.cache.locks import HIERARCHY_RANKS, LockKind, LockOrder, LockOrderError
@@ -38,21 +33,6 @@ FIXTURES = Path(__file__).parent / "fixtures" / "repository-cache"
 
 def _load(name: str) -> dict[str, Any]:
     return cast(dict[str, Any], json.loads((FIXTURES / name).read_text(encoding="utf-8")))
-
-
-@pytest.mark.parametrize(
-    ("fixture", "schema_name"),
-    [
-        ("url-grammar.json", "url-grammar.schema.json"),
-        ("source-identity.json", "source-identity.schema.json"),
-        ("git-version-gates.json", "git-version-gates.schema.json"),
-        ("state-machines.json", "state-machines.schema.json"),
-    ],
-)
-def test_fixture_matches_its_schema(fixture: str, schema_name: str) -> None:
-    schema = _load(schema_name)
-    Draft202012Validator.check_schema(schema)
-    Draft202012Validator(schema).validate(_load(fixture))
 
 
 # ----------------------------------------------------------------------------
@@ -356,97 +336,3 @@ def test_lock_files_are_where_the_fixture_places_them(tmp_path: Path) -> None:
             assert lock.relative_path == expected, name
             assert lock.path.is_file(), name
     assert set(templates) == set(acquisitions)
-
-
-# ----------------------------------------------------------------------------
-# State machines
-
-
-def test_state_machines_are_well_formed() -> None:
-    document = _load("state-machines.json")
-    hierarchy = document["locks"]["hierarchy"]
-    lock_names = {lock["name"] for lock in hierarchy} | {
-        lock["name"] for lock in document["locks"]["side_locks"]
-    }
-    recoveries = set(document["crash_recovery"])
-    for machine in document["machines"]:
-        states = {state["name"]: state for state in machine["states"]}
-        assert len(states) == len(machine["states"]), machine["name"]
-        assert machine["initial"] in states
-        outgoing: dict[str, list[dict[str, Any]]] = {name: [] for name in states}
-        for transition in machine["transitions"]:
-            assert transition["from"] in states, (machine["name"], transition)
-            assert transition["to"] in states, (machine["name"], transition)
-            assert set(transition["holds"]) <= lock_names, (machine["name"], transition)
-            if transition.get("network"):
-                ordered = [
-                    lock for lock in transition["holds"] if lock in {h["name"] for h in hierarchy}
-                ]
-                assert ordered == [], (machine["name"], transition["event"])
-            ordered_steps = [
-                lock for lock in transition["holds"] if lock in {h["name"] for h in hierarchy}
-            ]
-            ranks = [
-                next(h["rank"] for h in hierarchy if h["name"] == lock) for lock in ordered_steps
-            ]
-            assert ranks == sorted(ranks), (machine["name"], transition["event"])
-            outgoing[transition["from"]].append(transition)
-        for name, state in states.items():
-            if state["terminal"]:
-                assert outgoing[name] == [], (machine["name"], name)
-            else:
-                assert outgoing[name], (machine["name"], name)
-                assert state["on_crash"] in recoveries, (machine["name"], name)
-        reachable = {machine["initial"]}
-        queue = deque([machine["initial"]])
-        while queue:
-            current = queue.popleft()
-            for transition in outgoing[current]:
-                if transition["to"] not in reachable:
-                    reachable.add(transition["to"])
-                    queue.append(transition["to"])
-        assert reachable == set(states), (machine["name"], set(states) - reachable)
-
-
-def test_state_machine_scenarios_replay() -> None:
-    document = _load("state-machines.json")
-    machines = {machine["name"]: machine for machine in document["machines"]}
-    recoveries = document["crash_recovery"]
-    for scenario in document["scenarios"]:
-        machine = machines[scenario["machine"]]
-        states = {state["name"]: state for state in machine["states"]}
-        current = machine["initial"]
-        visible = states[current]["visible"]
-        crashed = False
-        for event in scenario["events"]:
-            assert not crashed, (scenario["id"], "events after crash")
-            if event == "crash":
-                recovery = cast(str, states[current]["on_crash"])
-                after = recoveries[recovery]["visible_after"]
-                visible = states[current]["visible"] if after == "unchanged" else after
-                current = recovery
-                crashed = True
-                continue
-            candidates = [
-                transition
-                for transition in machine["transitions"]
-                if transition["from"] == current and transition["event"] == event
-            ]
-            assert len(candidates) == 1, (scenario["id"], current, event)
-            current = candidates[0]["to"]
-            visible = states[current]["visible"]
-        assert current == scenario["expected_final"], scenario["id"]
-        assert visible is scenario["expected_visible"], scenario["id"]
-
-
-def test_every_machine_has_a_crash_scenario_or_is_crash_free() -> None:
-    document = _load("state-machines.json")
-    crashing = {
-        scenario["machine"] for scenario in document["scenarios"] if "crash" in scenario["events"]
-    }
-    for machine in document["machines"]:
-        recoveries = {
-            state.get("on_crash") for state in machine["states"] if not state["terminal"]
-        } - {"nothing_to_recover", "sweep_restarts"}
-        if recoveries:
-            assert machine["name"] in crashing, machine["name"]

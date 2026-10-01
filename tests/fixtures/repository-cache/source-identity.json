@@ -1,6 +1,7 @@
 {
   "schema": "metabrowser-repository-cache-source-identity-v1",
   "decided": "2026-09-16",
+  "provenance": "Written by hand before the implementation existed; there is no generator. A source_id is the SHA-256 of its stated material, which a shell reproduces without Metabrowser: printf 'metabrowser.repository-source.v1\\0https\\0https://github.com/pallets/flask' | shasum -a 256. A store_id digests 'metabrowser.repository-store.v1\\0source\\0<source id>\\0<object format>' the same way, a store_key is its 64 hexadecimal digits, and a slug follows slug.rules. tests/test_repository_cache_contract_fixtures.py recomputes every value through metabrowser.cache.identity.",
   "source_identity": {
     "domain": "metabrowser.repository-source.v1",
     "material": "domain, transport, and the grammar's normalized address, joined with NUL",

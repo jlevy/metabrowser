@@ -1,6 +1,7 @@
 {
   "schema": "metabrowser-repository-cache-url-grammar-v1",
   "decided": "2026-09-16",
+  "provenance": "Written by hand before the classifier existed; there is no generator. Each expected outcome follows from check_order, reasons, and normalization in this file, and tests/test_repository_cache_contract_fixtures.py replays every case through metabrowser.cache.urls.classify_root_argument. To add a case, write its input, the outcome those rules give, and a why; do not paste what the classifier returns.",
   "scope": "Provider-neutral classification of the CLI root argument before any Path is constructed. An installed provider reducer that claims a scheme and host is consulted first; this grammar applies to every input no reducer reduced.",
   "transports": ["https", "ssh", "file"],
   "default_ports": { "https": "443", "ssh": "22" },

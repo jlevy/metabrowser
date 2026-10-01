@@ -611,8 +611,128 @@ No cache lock blocks the event loop, and `_acquire` in `cache/locks.py` refuses 
 blocking lock on a thread that runs one.
 Opening the cache and publication each run as one synchronous section in a worker thread
 and release their locks before returning.
-The lock order and state machines are
-`tests/fixtures/repository-cache/state-machines.json`.
+The lock order, the side locks, the lock sequences, and the startup sweep’s state
+machine are `tests/fixtures/repository-cache/state-machines.json`, and production
+replays each of them.
+`tests/test_repository_cache_contract_fixtures.py` runs the sequences through
+`cache/locks.py`, and `tests/test_cache_reclaim.py` checks every transition the real
+sweep reports, with the locks it holds, against the machine.
+
+### Acquisition and refresh state machines
+
+The two machines below are the design `cache/acquire.py` and `cache/update.py` follow.
+They are a record of that design and not data a test replays: the code does not report
+these transitions, so nothing checks a table row against it.
+The behavior is tested directly, and each machine names where.
+
+A state is visible when an ordinary open, catalog scan, or served subject can observe
+the entry or result it describes.
+A state with no recovery is terminal.
+The recoveries are in [After a crash](#after-a-crash).
+
+#### Acquisition
+
+Staging holds only its own liveness lock, the network work holds no hierarchy lock, and
+publication holds the alias lock and the store lock together.
+
+| From | Event | To | Locks held | Network | Effect |
+| --- | --- | --- | --- | --- | --- |
+| `absent` | `claim_staging` | `staging_claimed` | `staging_entry` | no | Take `cache/locks/staging/<entry>.lock`, then create `cache/staging/<entry>/` on the cache filesystem. |
+| `staging_claimed` | `lookup_remote_head` | `head_observed` | `staging_entry` | yes | `git ls-remote --symref origin HEAD` records the remote default branch and its object ID. |
+| `staging_claimed` | `remote_unavailable` | `abandoned` | `staging_entry` | no | Typed failure; staging deleted. |
+| `head_observed` | `fetch_started` | `fetching` | `staging_entry` | yes | `init --bare --template=`, Metabrowser-written config with automatic maintenance and gc off, then one fetch of every object with explicit refspecs; no low-speed bound until acquisition stalls are measured, so user cancellation is the guard. |
+| `fetching` | `fetch_failed` | `abandoned` | `staging_entry` | no | Typed failure; staging deleted. |
+| `fetching` | `cancelled` | `abandoned` | `staging_entry` | no | Git terminated (4.4 ms to exit after SIGTERM, `explorations/repository-cache/results/concurrency.json`); staging deleted. |
+| `fetching` | `fetch_succeeded` | `fetched` | `staging_entry` | no | Every object reachable from the fetched branches and tags is present in staging. |
+| `fetched` | `validation_failed` | `abandoned` | `staging_entry` | no | The observed HEAD object, its branch, or the object format did not validate; staging deleted. |
+| `fetched` | `validated` | `validated` | `staging_entry` | no | Records written in staging: strategy full and object_state complete. |
+| `validated` | `publish_store` | `store_published` | `source_alias`, `repository_store`, `staging_entry` | no | Take the alias lock, then the store lock, and keep both through the alias commit; verify the store directory is absent and rename staging into `repository-stores/<store-key>`. |
+| `validated` | `store_exists_same_identity` | `store_reused` | `source_alias`, `repository_store`, `staging_entry` | no | Under the same two locks, a concurrent acquisition had published the same deterministic store first; its records validate, and staging is deleted after the locks are released. |
+| `store_published` | `publish_alias` | `alias_published` | `source_alias`, `repository_store`, `staging_entry` | no | Still under both locks, atomically create `sources/<slug>/` with `source.yml` and `store-alias.yml` as the sole visibility commit; release both locks. |
+| `store_reused` | `publish_alias` | `alias_published` | `source_alias`, `repository_store`, `staging_entry` | no | Same visibility commit. |
+| `store_published` | `alias_exists_same_store` | `alias_published` | `source_alias`, `repository_store`, `staging_entry` | no | Another process committed the identical alias first; release both locks. |
+| `store_reused` | `alias_exists_same_store` | `alias_published` | `source_alias`, `repository_store`, `staging_entry` | no | Another process committed the identical alias first; release both locks. |
+| `store_published` | `alias_points_elsewhere` | `alias_conflict_reported` | `source_alias`, `repository_store`, `staging_entry` | no | The existing alias stays; release both locks, leaving the new store unreferenced. |
+| `store_reused` | `alias_points_elsewhere` | `alias_conflict_reported` | `source_alias`, `repository_store`, `staging_entry` | no | The existing alias stays; release both locks. |
+
+| State | Visible | After a crash |
+| --- | --- | --- |
+| `absent` | no | `nothing_to_recover` |
+| `staging_claimed` | no | `staging_swept` |
+| `head_observed` | no | `staging_swept` |
+| `fetching` | no | `staging_swept` |
+| `fetched` | no | `staging_swept` |
+| `validated` | no | `staging_swept` |
+| `store_published` | no | `unreferenced_store_kept` |
+| `store_reused` | no | `unreferenced_store_kept` |
+| `alias_published` | yes | terminal |
+| `alias_conflict_reported` | yes | terminal |
+| `abandoned` | no | terminal |
+
+`tests/test_cache_publish.py` records the locks the real acquisition holds at the store
+rename, the alias write, and the source rename.
+`cli-cache-interrupt-store.txt` and `cli-cache-interrupt-alias.txt` kill a process
+before each publication and show what the next acquisition finds, and
+`cli-cache-fetch-failures.txt` shows the abandoned paths.
+
+#### Refresh
+
+The fetch side lock is held from the first step to the last, and the store lock is taken
+under it only to rewrite `state.yml`.
+
+| From | Event | To | Locks held | Network | Effect |
+| --- | --- | --- | --- | --- | --- |
+| `published` | `take_fetch_lock` | `fetch_locked` | `store_fetch` | no | Try `cache/locks/stores/<store-key>.fetch.lock` without blocking. |
+| `published` | `fetch_lock_busy` | `refreshing_elsewhere` | none | no | Another holder is refreshing the store; report it and fetch nothing. |
+| `fetch_locked` | `remove_stale_locks` | `locks_cleaned` | `store_fetch` | no | Remove `packed-refs.lock`, `refs/**.lock`, temporary loose objects, and temporary packs a killed Git left in the store. Every writer of the store holds this lock, through the descriptor it inherited, so none of them is live. |
+| `locks_cleaned` | `lookup_remote_head` | `head_observed` | `store_fetch` | yes | `git ls-remote --symref -- origin HEAD` records which branch the origin’s HEAD names. |
+| `locks_cleaned` | `remote_unavailable` | `failure_recorded` | `repository_store`, `store_fetch` | no | Typed failure; under the store lock, `state.yml` records a failed refresh and keeps the previous fetch time and default revision. |
+| `head_observed` | `fetch_started` | `fetching` | `store_fetch` | yes | `git fetch --prune --atomic --no-write-fetch-head origin` with the branch and tag refspecs, in Git’s own process group, holding the inherited fetch lock. |
+| `fetching` | `fetch_refused` | `pruning` | `store_fetch` | no | Git ran and failed, and no ref moved. One transaction cannot delete `side` and create `side/x`, or rename `Topic` to `topic` on a case-insensitive file system, and Git words that refusal differently for loose refs, packed refs, and reftable, or pushes it past the bounded stderr, so every such failure is followed by the prune. |
+| `fetching` | `fetch_failed` | `failure_recorded` | `repository_store`, `store_fetch` | no | Git could not start or was stopped at its deadline, which a prune cannot help. No ref moved, because the fetch is atomic; under the store lock, `state.yml` records the failed refresh and keeps the previous fetch time and default revision. |
+| `pruning` | `stale_refs_pruned` | `refetching` | `store_fetch` | yes | `git remote prune` with the mirror refspecs deletes the refs whose branch or tag the origin no longer has, and nothing else; the atomic fetch then runs once more. |
+| `pruning` | `prune_failed` | `failure_recorded` | `repository_store`, `store_fetch` | no | The prune may have deleted some stale refs before it failed. Under the store lock, `state.yml` records the failed refresh with the origin’s default branch or the one recorded before, whichever the mirror still has, and keeps the previous fetch time. |
+| `pruning` | `cancelled` | `cancelled` | `store_fetch` | no | Git’s process group is killed; each ref deletion is whole, stale refs already deleted stay deleted, and the record is left as it was. |
+| `refetching` | `fetch_succeeded` | `fetched` | `store_fetch` | no | With the stale refs gone, every branch and tag moved together. No object was removed. |
+| `refetching` | `fetch_failed` | `failure_recorded` | `repository_store`, `store_fetch` | no | The second transaction moved no ref, but the prune deleted stale refs. Under the store lock, `state.yml` records the failed refresh with the origin’s default branch or the one recorded before, whichever the mirror still has, and keeps the previous fetch time. |
+| `refetching` | `cancelled` | `cancelled` | `store_fetch` | no | Git’s process group is killed; the second transaction moved every ref or none, stale refs the prune deleted stay deleted, and the record is left as it was. |
+| `fetching` | `cancelled` | `cancelled` | `store_fetch` | no | Git’s process group is killed, by the lifespan’s cancellation or by the command’s immediate exit; the atomic fetch moved every ref or none, and the record is left as it was. |
+| `fetching` | `fetch_succeeded` | `fetched` | `store_fetch` | no | Every branch and tag moved together; branches and tags deleted upstream were pruned. No object was removed. |
+| `fetched` | `validation_failed` | `failure_recorded` | `repository_store`, `store_fetch` | no | The origin’s default branch is missing from the mirror or is not a commit; the failure is recorded under the store lock. |
+| `fetched` | `record_written` | `recorded` | `repository_store`, `store_fetch` | no | Under the store lock, `state.yml` gets the default branch, its commit, the fetch time, and the succeeded outcome; then both locks are released. |
+
+| State | Visible | After a crash |
+| --- | --- | --- |
+| `published` | yes | `nothing_to_recover` |
+| `fetch_locked` | yes | `nothing_to_recover` |
+| `locks_cleaned` | yes | `nothing_to_recover` |
+| `head_observed` | yes | `nothing_to_recover` |
+| `fetching` | yes | `fetch_interrupted` |
+| `pruning` | yes | `prune_interrupted` |
+| `refetching` | yes | `fetch_interrupted` |
+| `fetched` | yes | `record_behind` |
+| `recorded` | yes | terminal |
+| `failure_recorded` | yes | terminal |
+| `refreshing_elsewhere` | yes | terminal |
+| `cancelled` | yes | terminal |
+
+`tests/test_cache_update.py` drives each path against a real mirror: a refresh that
+succeeds, one that finds the fetch lock busy, a removed origin, a clash that is pruned
+and retried, a retry that still fails, a cancelled fetch, and the leftovers of a killed
+one. `RefreshOutcome` in `cache/update.py` is what a refresh reports.
+It has outcomes this machine does not model, such as `ref_case_collision`, and the
+module’s own description is the authority for those.
+
+#### After a crash
+
+| Recovery | Visible afterwards | What happens |
+| --- | --- | --- |
+| `nothing_to_recover` | unchanged | No durable state changed before the crash. |
+| `staging_swept` | no | The startup sweep finds the staging entry’s lock free and deletes the entry. A SIGKILLed clone leaves its destination and a temporary pack behind (`explorations/repository-cache/results/concurrency.json`), so staging is never inside a published path. |
+| `unreferenced_store_kept` | no | The crash released the acquisition’s locks after its store was published and before its alias was. A published store that no alias names is not visible. It stays in place, and the next acquisition of the same source reuses it and publishes the alias. |
+| `fetch_interrupted` | unchanged | The atomic fetch moved every ref or none, and objects it wrote stay unreferenced. A killed Git can leave `packed-refs.lock`, `refs/**.lock`, a temporary loose object, or a temporary pack; the next refresh removes them under the store’s fetch lock before it fetches, which it can take only once no Git from the interrupted refresh is alive. `state.yml` still records the previous fetch. |
+| `prune_interrupted` | unchanged | Some refs whose branch or tag the origin deleted are gone and others are not; each deletion is whole, and no commit is removed. The next refresh prunes the rest. |
+| `record_behind` | unchanged | The refs moved but `state.yml` still names the previous default revision and fetch time. Nothing reads the record to find a commit, and the next refresh rewrites it. |
 
 ## Implementation Seams
 
@@ -739,8 +859,9 @@ are not budgets.
   closed, and `os.rename` replaced an empty directory.
   Publication verifies absence under the owning lock and uses
   `renameat2(RENAME_NOREPLACE)` or `renamex_np(RENAME_EXCL)` as defense in depth.
-  The lock order and state machines are
-  `tests/fixtures/repository-cache/state-machines.json`.
+  The lock order is `tests/fixtures/repository-cache/state-machines.json`, and the
+  acquisition and refresh machines are in
+  [Locks and Deletion](#acquisition-and-refresh-state-machines).
 
 The thin-mirror plan reversed the choices that served partial clones on 2026-09-23.
 Their measurements stay in the exploration as the record to revisit:

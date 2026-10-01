@@ -15,7 +15,8 @@ loose file of an unchanged ``same``; there the refs are listed before the fetch 
 checked after it, and a fold, or a clash the retry still meets, puts every ref back
 and is reported as ``ref_case_collision``.
 
-Locks follow ``tests/fixtures/repository-cache/state-machines.json`` (``store_refresh``):
+Locks follow the refresh machine in
+``docs/project/architecture/arch-repository-sources-and-provider-mirrors.md``:
 
 - the network work holds no hierarchy lock;
 - the store's fetch side lock, ``cache/locks/stores/<store-key>.fetch.lock``, is tried

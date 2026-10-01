@@ -1092,7 +1092,8 @@ classify source
   -> converge the remaining objects in background by explicit object-ID fetches
 ```
 
-The `store_acquisition` machine in `tests/fixtures/repository-cache/state-machines.json`
+The acquisition machine in
+[Repository Sources and Provider Mirrors](../../architecture/arch-repository-sources-and-provider-mirrors.md#acquisition-and-refresh-state-machines)
 names each step’s locks, network work, visibility, and crash recovery.
 A remote that ignores the filter produces a store with every reachable object, recorded
 as strategy full and object state complete, never as partial.
