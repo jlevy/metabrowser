@@ -8,11 +8,11 @@
 // so every one of them is on `window.metabrowser` before any plugin module evaluates
 // or any renderer runs. A plugin sees the same SDK it always did.
 //
-// What stays in plugin-sdk.js is what the shell needs to start, and the syntax service,
-// whose record of the optional-assets event has to exist before that event fires.
+// The syntax service is here too: nothing asks for a token until a view shows code.
 //
-// Measured 2026-10-01 in Chrome 152: these were 3,572 of plugin-sdk.js's 22,308
-// compressed bytes. See explorations/performance-loop/experiments/exp-037.
+// Measured 2026-10-01 in Chrome 152: all of this was 5,632 of plugin-sdk.js's 22,308
+// compressed bytes as a startup script. See
+// explorations/performance-loop/experiments/exp-037.
 
 ((global) => {
   const mb = global.metabrowser;
@@ -20,6 +20,273 @@
     throw new Error("plugin-sdk-views.js requires window.metabrowser");
   }
   const { delegateOwnerAttribute, escapeHtml, formatSize } = mb;
+
+  const HIGHLIGHT_TOKEN_CLASS_RE = /^[A-Za-z_][A-Za-z0-9_-]*$/;
+  /** @type {Readonly<Record<string, string>>} */
+  const HIGHLIGHT_ENTITIES = Object.freeze({
+    "&amp;": "&",
+    "&lt;": "<",
+    "&gt;": ">",
+    "&quot;": '"',
+    "&#x27;": "'",
+  });
+  /** @type {TextEncoder | null} */
+  let syntaxTextEncoder = null;
+  // Whether the prefetched optional assets have all settled. The event says so once;
+  // this module loads with the first view, which can be after it, so the shell's
+  // prefetch chain also leaves METABROWSER_OPTIONAL_ASSETS_SETTLED behind it.
+  let syntaxAssetsSettled = global.METABROWSER_OPTIONAL_ASSETS_SETTLED === true;
+  if (typeof global.addEventListener === "function") {
+    global.addEventListener("metabrowser:optional-assets-loaded", () => {
+      syntaxAssetsSettled = true;
+    });
+  }
+
+  function syntaxHighlightMaxBytes() {
+    const configured = Number(
+      /** @type {{SYNTAX_HIGHLIGHT_MAX_BYTES?: unknown} | undefined} */ (
+        global.METABROWSER_SETTINGS
+      )?.SYNTAX_HIGHLIGHT_MAX_BYTES,
+    );
+    return Number.isFinite(configured) && configured >= 0 ? configured : 0;
+  }
+
+  /** @param {string} value */
+  function utf8ByteLength(value) {
+    syntaxTextEncoder ??= new global.TextEncoder();
+    return syntaxTextEncoder.encode(value).byteLength;
+  }
+
+  /**
+   * Record one safe plain-text fallback without making diagnostics part of
+   * the syntax service's correctness path. Labels are fixed-cardinality and
+   * metadata never includes source text.
+   * @param {"over_limit" | "no_grammar" | "markup_rejected" | "lexer_threw"} reason
+   * @param {string} language
+   * @param {number} inputBytes
+   */
+  function recordSyntaxFallback(reason, language, inputBytes) {
+    const recorder = global.metabrowser?.perf;
+    if (typeof recorder?.measure !== "function") {
+      return;
+    }
+    try {
+      recorder.measure(`syntaxHighlight:fallback:${reason}`, () => undefined, {
+        input_bytes: inputBytes,
+        language: String(language).slice(0, 80),
+      });
+    } catch (_diagnosticError) {
+      // Plain-text fallback must remain safe when an injected profiler fails.
+    }
+  }
+
+  /** @param {string} language */
+  function syntaxGrammarReady(language) {
+    return (
+      typeof global.hljs?.highlight === "function" &&
+      typeof global.hljs?.getLanguage === "function" &&
+      Boolean(global.hljs.getLanguage(language))
+    );
+  }
+
+  function syntaxAbortError() {
+    return new global.DOMException("Syntax highlighting was aborted.", "AbortError");
+  }
+
+  /**
+   * Wait for a requested grammar or the terminal optional-asset event.
+   * @param {string} language
+   * @param {AbortSignal | undefined} signal
+   * @returns {Promise<boolean>}
+   */
+  function waitForSyntaxAssets(language, signal) {
+    if (signal?.aborted) {
+      return Promise.reject(syntaxAbortError());
+    }
+    if (syntaxGrammarReady(language)) {
+      return Promise.resolve(true);
+    }
+    if (syntaxAssetsSettled || typeof global.addEventListener !== "function") {
+      return Promise.resolve(false);
+    }
+    return new Promise((resolve, reject) => {
+      function cleanup() {
+        global.removeEventListener("metabrowser:optional-asset-loaded", onAsset);
+        global.removeEventListener("metabrowser:optional-assets-loaded", onTerminal);
+        signal?.removeEventListener("abort", onAbort);
+      }
+      function onAsset() {
+        if (syntaxGrammarReady(language)) {
+          cleanup();
+          resolve(true);
+        }
+      }
+      function onTerminal() {
+        cleanup();
+        resolve(syntaxGrammarReady(language));
+      }
+      function onAbort() {
+        cleanup();
+        reject(syntaxAbortError());
+      }
+      global.addEventListener("metabrowser:optional-asset-loaded", onAsset);
+      global.addEventListener("metabrowser:optional-assets-loaded", onTerminal);
+      signal?.addEventListener("abort", onAbort, { once: true });
+    });
+  }
+
+  /** @param {Record<string, any> | null | undefined} data */
+  function isLargeTextPreview(data) {
+    if (!data) {
+      return false;
+    }
+    if (data.highlight_disabled) {
+      return true;
+    }
+    if (typeof data.content === "string") {
+      return utf8ByteLength(data.content) > syntaxHighlightMaxBytes();
+    }
+    const size = Number(data.size);
+    return Number.isFinite(size) && size >= 0 && size > syntaxHighlightMaxBytes();
+  }
+
+  /**
+   * Convert Highlight.js's constrained markup to token data without an HTML parser.
+   * @param {string} markup
+   * @returns {MetabrowserSyntaxTokenLines | null}
+   */
+  function scanHighlightMarkup(markup) {
+    /** @type {MetabrowserSyntaxTokenLines} */
+    const lines = [[]];
+    /** @type {string[][]} */
+    const classStack = [];
+    let offset = 0;
+
+    /** @param {string} text */
+    function appendText(text) {
+      if (text.length === 0) {
+        return;
+      }
+      const classes = classStack.flat();
+      const line = lines[lines.length - 1];
+      const previous = line[line.length - 1];
+      if (
+        previous &&
+        previous.classes.length === classes.length &&
+        previous.classes.every((name, index) => name === classes[index])
+      ) {
+        previous.text += text;
+      } else {
+        line.push({ classes, text });
+      }
+    }
+
+    while (offset < markup.length) {
+      if (markup.startsWith("</span>", offset)) {
+        if (classStack.length === 0) {
+          return null;
+        }
+        classStack.pop();
+        offset += "</span>".length;
+        continue;
+      }
+      if (markup.startsWith('<span class="', offset)) {
+        const end = markup.indexOf('">', offset);
+        if (end < 0) {
+          return null;
+        }
+        const opening = markup.slice(offset, end + 2);
+        const match = /^<span class="([^"]+)">$/.exec(opening);
+        const classes = match?.[1].split(" ") ?? [];
+        if (
+          classes.length === 0 ||
+          !classes.some((name) => name.startsWith("hljs-")) ||
+          !classes.every((name) => HIGHLIGHT_TOKEN_CLASS_RE.test(name))
+        ) {
+          return null;
+        }
+        classStack.push(classes);
+        offset = end + 2;
+        continue;
+      }
+      const character = markup[offset];
+      if (character === "<") {
+        return null;
+      }
+      if (character === "&") {
+        const end = markup.indexOf(";", offset);
+        if (end < 0) {
+          return null;
+        }
+        const entity = markup.slice(offset, end + 1);
+        const decoded = HIGHLIGHT_ENTITIES[entity];
+        if (decoded === undefined) {
+          return null;
+        }
+        appendText(decoded);
+        offset = end + 1;
+        continue;
+      }
+      if (character === "\n") {
+        lines.push([]);
+        offset += 1;
+        continue;
+      }
+      let end = offset + 1;
+      while (end < markup.length && !"<&\n".includes(markup[end])) {
+        end += 1;
+      }
+      appendText(markup.slice(offset, end));
+      offset = end;
+    }
+    return classStack.length === 0 ? lines : null;
+  }
+
+  /**
+   * Highlight source through the host grammar registry and return DOM-free token lines.
+   * @param {string} source
+   * @param {string} language
+   * @param {{signal?: AbortSignal}} [options]
+   * @returns {Promise<MetabrowserSyntaxTokenLines | null>}
+   */
+  async function highlightSyntax(source, language, options = {}) {
+    if (options.signal?.aborted) {
+      throw syntaxAbortError();
+    }
+    const inputBytes = utf8ByteLength(source);
+    if (inputBytes > syntaxHighlightMaxBytes()) {
+      recordSyntaxFallback("over_limit", language, inputBytes);
+      return null;
+    }
+    if (!(await waitForSyntaxAssets(language, options.signal))) {
+      recordSyntaxFallback("no_grammar", language, inputBytes);
+      return null;
+    }
+    if (options.signal?.aborted) {
+      throw syntaxAbortError();
+    }
+    try {
+      const result = global.hljs.highlight(source, { language, ignoreIllegals: true });
+      if (!result || typeof result.value !== "string") {
+        recordSyntaxFallback("markup_rejected", language, inputBytes);
+        return null;
+      }
+      const lines = scanHighlightMarkup(result.value);
+      const sourceLines = source.split("\n");
+      if (
+        lines === null ||
+        lines.length !== sourceLines.length ||
+        lines.some((runs, index) => runs.map((run) => run.text).join("") !== sourceLines[index])
+      ) {
+        recordSyntaxFallback("markup_rejected", language, inputBytes);
+        return null;
+      }
+      return lines;
+    } catch (_error) {
+      recordSyntaxFallback("lexer_threw", language, inputBytes);
+      return null;
+    }
+  }
 
   /**
    * How much of a partially-loaded payload is showing, or null when it is
@@ -228,7 +495,7 @@
     const truncationWarning = renderTextTruncationWarning(data);
     const loadMoreFooter = renderTextLoadMoreFooter(data);
     const content = typeof data.content === "string" ? data.content : "";
-    const large = mb.isLargeTextPreview(data);
+    const large = isLargeTextPreview(data);
     let languageClass = "plaintext no-highlight";
     if (!large) {
       const language = langForPath(
@@ -288,6 +555,8 @@
   }
 
   Object.assign(mb, {
+    highlightSyntax: highlightSyntax,
+    isLargeTextPreview: isLargeTextPreview,
     langForExtension: langForExtension,
     langForPath: langForPath,
     partialNoticeHtml: partialNoticeHtml,

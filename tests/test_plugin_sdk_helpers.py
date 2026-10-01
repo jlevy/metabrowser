@@ -59,8 +59,21 @@ def test_view_helpers_are_no_startup_script_and_precede_every_view_and_plugin() 
     loader = startup[startup.index("async function loadPluginsForKind(kind) {") :]
     assert loader.splitlines()[1].strip() == "await _ensureViewHelpers();"
     assert 'ensureAsset("sdk-views")' in startup
+    # The syntax service waits on the optional assets' terminal event. It loads after
+    # that event can have fired, so the prefetch chain records it before announcing it.
+    assert html.index("window.METABROWSER_OPTIONAL_ASSETS_SETTLED = true;") < html.index(
+        'new Event("metabrowser:optional-assets-loaded")'
+    )
+    assert "METABROWSER_OPTIONAL_ASSETS_SETTLED === true" in SDK_JS[1].read_text(encoding="utf-8")
     # The startup script keeps none of them, or the move saved nothing.
-    for name in ("renderSourceView", "wrapWithCopy", "partialNoticeHtml", "langForPath"):
+    for name in (
+        "renderSourceView",
+        "wrapWithCopy",
+        "partialNoticeHtml",
+        "langForPath",
+        "highlightSyntax",
+        "isLargeTextPreview",
+    ):
         assert f"function {name}(" not in startup, name
         assert f"function {name}(" in SDK_JS[1].read_text(encoding="utf-8"), name
 

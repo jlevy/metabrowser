@@ -422,6 +422,21 @@ async function main() {
     "unknown grammars should expose a fixed fallback reason before and after settlement",
   );
 
+  // The service loads with the first view, which can be after the optional assets
+  // settled. The event has been and gone; the shell's prefetch chain leaves a flag
+  // behind it, and a request for a grammar that never arrived must not wait forever.
+  const late = createSandbox();
+  late.METABROWSER_OPTIONAL_ASSETS_SETTLED = true;
+  loadSdk(late);
+  const lateResult = await Promise.race([
+    late.metabrowser.highlightSyntax("plain", "not-a-language"),
+    new Promise((resolve) => setTimeout(() => resolve("still waiting"), 200)),
+  ]);
+  check(
+    lateResult === null,
+    `a service loaded after settlement should answer null at once, got ${lateResult}`,
+  );
+
   const aborting = createSandbox();
   loadSdk(aborting);
   const controller = new AbortController();

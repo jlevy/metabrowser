@@ -1486,8 +1486,9 @@ async def index(request: Request) -> HTMLResponse:
         # The SDK helpers a renderer builds its markup with: the Source surface, the
         # copy wrapper, the partial-content notice. Nothing runs them until a view
         # renders, so they load beside the compositor, and plugin-sdk.js waits for
-        # them before it loads a plugin. Measured 2026-10-01: 3,572 of the 22,308
-        # compressed bytes plugin-sdk.js cost as a startup script. See exp-037.
+        # them before it loads a plugin. The syntax service is with them. Measured
+        # 2026-10-01: 5,632 of the 22,308 compressed bytes plugin-sdk.js cost as a
+        # startup script. See exp-037.
         "sdk-views": [{"src": plugin_sdk_views_url}],
         # The pull-request page's routes and host. Only an address under /pull/
         # reaches them; app.js starts this fetch as it loads when the address is
@@ -1533,6 +1534,9 @@ async def index(request: Request) -> HTMLResponse:
     }}
     function loadNext(i) {{
       if (i >= assets.length) {{
+        // The event tells a listener that is already there. The flag tells one that
+        // arrives later, such as the syntax service, which loads with the first view.
+        window.METABROWSER_OPTIONAL_ASSETS_SETTLED = true;
         window.dispatchEvent(new Event("metabrowser:optional-assets-loaded"));
         return;
       }}

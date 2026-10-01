@@ -2644,6 +2644,8 @@ declare global {
   interface Window {
     __structuredPreview?: StructuredPreviewGlobal;
     __structuredTree?: StructuredTreeGlobal;
+    /** Set by the shell's prefetch chain once every optional asset has settled. */
+    METABROWSER_OPTIONAL_ASSETS_SETTLED?: boolean;
     METABROWSER_ASSET_BUNDLES?: Record<
       string,
       Array<{ src: string; requires?: string; provides?: string }>
