@@ -5,7 +5,7 @@ title: "v0.12 thin-mirror stack: coordinate landing"
 kind: task
 status: in_progress
 priority: 1
-version: 64
+version: 65
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 refs:
   - kind: other
@@ -47,12 +47,14 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: blocked
 hold_until: null
 created_at: 2026-09-15T18:59:49.596Z
-updated_at: 2026-10-01T00:13:57.532Z
+updated_at: 2026-10-01T04:49:08.873Z
 started_at: 2026-09-16T21:24:51.532Z
 ---
 Coordinate landing of the v0.12 stack: one linear chain of open PRs, main <- #125 ... #244 (#241 is the draft acceptance record), plus the PRs above #244 that finish stabilization. Keep exact base/head relationships, per-layer review dispositions, green per-layer CI and top integration evidence against current main, and keep beads and specs aligned. Gates: mb-hall and mb-gnr9. SSH, the PR list and panel, inline review anchors, checkout attachment and rebind are deferred by the user's 2026-09-23 decision and do not gate landing. Hold every layer until the user explicitly approves; then land the tip as one fast-forward of main (merging lower layers one at a time would put retired-design states on main).
 
 ## Notes
+
+2026-09-30 (evening): the stack above #244 is linear, restacked by merges with bases set through gh: #244 <- #246 (remove unused Hosted Review and capability SDK; ready) <- #248 (View file; ready) <- #249 (landing fixes; ready) <- #250 (docs reconciliation; draft until the acceptance rerun is recorded). Every head contains its base; all green. #247 (reference/v012-hosted-review, tag reference/v012-hosted-review-2026-09-30) hangs off #246 as a do-not-merge draft and is not part of the stack. In progress above #250: mb-l8c2 (startup cost, branch codex/v012-startup-cost). Regression check against main: no route, memory or output regression; make verify passes on the tip except the long-path bench test that fails on main too (mb-ghko). Remaining gates: mb-gnr9 rerun, mb-l8c2, mb-06up's labelled children, mb-myum; then the user's approval. Land the tip as one fast-forward.
 
 2026-09-30 audit: SSH (mb-bi2c) is deferred and has no edge to this bead; the 2026-09-22 notes saying it gates final landing are superseded. mb-nhky closed as superseded; mb-gacf closed. Live 2026-09-30: all 27 PRs CLEAN and green, #241 draft, origin/main 6c278f3f is an ancestor of #244 a896d8fe; merge-tree of main and the tip equals the tip's tree. Remaining gates: mb-hall (mb-zb5t and the new landing beads) and mb-gnr9.
 
