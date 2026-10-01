@@ -8,6 +8,8 @@ The failed rows were rerun on the fixes in #243; see [Rerun on #243](#rerun-on-2
 [addendum](#addendum-2026-09-30) records what changed after the run.
 M03b and M08b were rerun on View file at the stack’s tip, and both pass; see
 [Rerun on #250](#rerun-on-250-view-file-landing-fixes).
+The [addendum of 2026-10-01](#addendum-2026-10-01) records the verification of the final
+tip, which is not an acceptance rerun.
 
 The procedure is the manual matrix in the
 [alpha testing plan](../specs/active/plan-2026-09-22-v012-alpha-testing.md), adapted to
@@ -683,6 +685,123 @@ Three observations qualify the browser evidence:
   preview…” while the page is hidden, the limit #249 states.
   The three rows above set `document.visibilityState` to `visible` and dispatched
   `visibilitychange`, as the first run did for the freshness rows.
+
+## Addendum (2026-10-01)
+
+Verification of the stack’s tip after its last functional pull requests, #251 to #258,
+and of the steps the [runbook](../../qa-v012-repository-library.md) gained the same day.
+No row of the manual matrix was run again, so the results above stand as recorded.
+
+| Item | Value |
+| --- | --- |
+| Tip (`codex/v012-tests-git-pin`, #257) | `373b59a9fdec90ca0bba45648af02d746e6adf12` |
+| `main` | `6c278f3f9e10aebcb34a207035aee7768a1bba0e`, an ancestor of the tip |
+| Platform | macOS 26.5.2 (25F84), arm64 |
+| Tools | Git 2.50.1, gh 2.98.0, uv 0.12.8, Python 3.14.7, Node 24.19.0 |
+| Browser | Google Chrome 152.0.7977.83, headless, driven over the DevTools protocol with a throwaway profile |
+
+### The Gate on the Tip
+
+Bead `mb-67s1` records these, run from the tip on the same day:
+
+- `make lint-check` and the full `make test` pass locally: 3,772 tests passed, 8 were
+  skipped, and tryscript ran 264 commands.
+- `make golden-update`, as one command on a clean tree, exited 0 and left
+  `git status --short` empty, at a load average of 13 to 21.
+- CI passes all nine checks on the tip:
+  [run 36886011227](https://github.com/jlevy/metabrowser/actions/runs/36886011227).
+
+### Startup Against v0.11.0
+
+Twelve back-to-back pairs of v0.11.0 against a wheel built from the tip, taken with
+`explorations/performance-loop/startup_pairs.py` (`mb-67s1`):
+
+| Mode | CPU time, tip over v0.11.0 (median of 12 pairs) |
+| --- | ---: |
+| `--show` | 1.020 |
+| `--api /api/tree` | 0.990 |
+| `--version` | 0.956 |
+| `--doctor` | 1.466 |
+
+One `--show` pair of the twelve was above 1.1x, and none above 1.3x. `--doctor` does
+more work by design: since #246 it validates the cache record contracts.
+These agree with the instruction counts in exp-037
+(`explorations/performance-loop/experiments/`).
+
+The wall-clock ratios of the same pairs ranged from 0.46 to 2.25, which is noise: other
+jobs loaded the machine during the run (one-minute load average 17 at the least, 52 at
+the median, 97 at the most), and one CLI start took about 3 s. The wall-clock comparison
+is still owed on a quiet machine, or the user may accept the CPU-time and instruction
+evidence in its place; `mb-67s1` tracks it.
+
+### Runbook Steps Run on the Tip
+
+Each command the runbook gained or changed on 2026-10-01 was run as written, from a
+checkout of the tip with a scratch application home.
+
+| Step | What ran | Result |
+| --- | --- | --- |
+| Pins | The chain listing, `ALPHA_PR`, its checks, and both ancestry checks | The chain was 39 pull requests ending at #257; nine checks pass; both ancestry commands exit 0. GitHub’s stack 218 holds only #125 to #226 |
+| 0.4 | `metab --doctor`, then with one cache schema damaged | `11 plugin(s) OK`; damaged, exit 1 with the contract and schema problems on stderr; healthy again once restored |
+| 0.5 | `--doctor --plugins-dir` on a stand-in plugin at SDK 0.6, then 0.7 | Refused with the SDK message and exit 1; then `12 plugin(s) OK` |
+| 1.1 | The focused selection, with `tests/test_cache_origin.py` in place of a file that no longer exists | 635 passed and 1 skipped (`the macOS filesystem rejects undecodable byte names`) in 9 min 50 s, at a load average of 36 to 190 |
+| 1.2 | `make test-macos` | 19 passed, none skipped. `make test-live-github` was not run |
+| 1.3 | `make golden-update` on a clean tree | Exit 0 and an empty `git status --short`, in 26 min 53 s at a load average of 23 to 52 |
+| 1.4 | `devtools.check_startup_scripts` | 20 requests of 25 and 173 KB of 175 KB; exit 0 |
+| 1.5 | `make test-report`, alone and with `REFS="origin/main ."` | Tables printed; 264 tryscript commands, the count `make test` ran |
+| 3.2 | Folders named `file:notes` and `a::b`; an `https://` argument beside a folder of that name | Both folders read; the `https://` argument refused as `unsupported_github_url`; its one-slash spelling walked; no home created |
+| 3.3 | An unreadable folder with `--walk` and served; an empty argument | Exit 2, `is not readable.`, both times; `invalid ROOT (empty)`, exit 1 |
+| 3.4 | The folder in a browser, all eleven checks | As the runbook describes, with the limits and the one finding below |
+
+**Step 3.4 in a browser.** The fixture was built and served by the runbook’s commands,
+and each check was driven with real mouse and key events:
+
+- The Contents rail shows at 1,700 pixels.
+  At 1,000 the toggle sits at (312, 16) at the end of the document, the drawer opens
+  inside the pane, and an entry or a click outside closes it.
+- `example.py#L3-L5` highlights lines 3 to 5. A click and a shift-click give `#L8` and
+  `#L8-L10` without adding history entries; Down, Shift+Down, Home, and End give `#L11`,
+  `#L11-L12`, `#L1`, and `#L12`; `#L99999` gives the past-the-end notice.
+- `overview.md#L3-L5` and `?plain=1` open the Source tab.
+- The JSON tree folds and unfolds a row.
+  Its copy button reads `Copied!` and puts the record on the clipboard as YAML; the
+  header’s button copies the path.
+  A copy control written without the owner mark did nothing.
+- Both images load.
+- **The HTML Preview frame painted** and ran the page’s script, which the browser pane
+  of the earlier runs refused to load.
+- Load more took `long.txt` from 2.0 MB of 2.8 MB to the whole file, 40,000 numbered
+  lines, with nothing repeated at the seam.
+- A commit made while the Git panel was open appeared after the Git tab was selected
+  again, and its diff opened with no View file control.
+- Both themes applied.
+- No request left `127.0.0.1`.
+
+**Finding.** `mb-tdmd`: after about five full page loads in one tab, the next page’s
+requests waited for a connection, for 4.5 s in one run and 50.8 s in another, and the
+page then logged `metabrowser plugin asset failed to load: … (timed out)`. With Chrome’s
+back/forward cache disabled the same sequence did not wait.
+`origin/main` has the same event-stream and `pagehide` code, so the code gives no reason
+to call it a regression, but it was not run on 0.11.0. The runbook’s step 3.4 describes
+it.
+
+**Limits of this verification.**
+
+- One browser, headless.
+  Focus rings and screen-reader output were not judged, and Safari and Firefox were not
+  tried.
+- The print dialog was not opened.
+  The print button was shown to call `window.print()` once, and the page was then
+  inspected under emulated print media, where the file tree, header, tabs, and buttons
+  are hidden.
+- The only console error apart from the finding was the browser’s own request for
+  `/favicon.ico`, which answers 404.
+- Nothing here touched GitHub: Parts 3 and 4 of the runbook’s walk-through, and
+  `make test-live-github`, were not run.
+- The desktop app’s browser pane, hidden, pegged its renderer for minutes on a text
+  window of about 315,000 very short lines.
+  Stock Chrome opened the same file in about 3 s, so this is recorded as a limit of that
+  pane, and the runbook’s fixture uses ordinary line lengths.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
