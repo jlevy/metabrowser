@@ -53,18 +53,15 @@ def test_obsidian_fixture_source_metadata_survives_safe_rendering() -> None:
     preprocessed = _preprocessed_readme()
     assert preprocessed["changed"] is True
     server._set_root_dir(FIXTURE_ROOT)
-    try:
-        response = TestClient(server.app).post(
-            "/api/kpress/render",
-            json={
-                "path": "README.md",
-                "view": "rendered",
-                "profile": "document",
-                "source_text": preprocessed["source"],
-            },
-        )
-    finally:
-        server._set_root_dir(Path())
+    response = TestClient(server.app).post(
+        "/api/kpress/render",
+        json={
+            "path": "README.md",
+            "view": "rendered",
+            "profile": "document",
+            "source_text": preprocessed["source"],
+        },
+    )
 
     assert response.status_code == 200
     parser = _WikiMetadata()
@@ -103,22 +100,19 @@ def test_obsidian_fixture_has_exact_ambiguous_and_missing_targets() -> None:
 
 def test_obsidian_fixture_canonical_routes_and_raw_resource_reload() -> None:
     server._set_root_dir(FIXTURE_ROOT)
-    try:
-        client = TestClient(server.app)
-        for route in (
-            "/view/README.md#obsidian-heading-Local%20heading",
-            "/view/README.md#obsidian-block-home-block",
-            "/view/Notes/Welcome.md#obsidian-heading-Overview",
-            "/view/Notes/R%C3%A9sum%C3%A9.md",
-            "/view/Notes/space%20note.md",
-        ):
-            response = client.get(route)
-            assert response.status_code == 200, route
-            assert "<title>Metabrowser</title>" in response.text
+    client = TestClient(server.app)
+    for route in (
+        "/view/README.md#obsidian-heading-Local%20heading",
+        "/view/README.md#obsidian-block-home-block",
+        "/view/Notes/Welcome.md#obsidian-heading-Overview",
+        "/view/Notes/R%C3%A9sum%C3%A9.md",
+        "/view/Notes/space%20note.md",
+    ):
+        response = client.get(route)
+        assert response.status_code == 200, route
+        assert "<title>Metabrowser</title>" in response.text
 
-        resource = client.get("/raw?path=Attachments%2Fmap.svg")
-        assert resource.status_code == 200
-        assert resource.headers["content-type"].startswith("image/svg+xml")
-        assert b"Obsidian vault map fixture" in resource.content
-    finally:
-        server._set_root_dir(Path())
+    resource = client.get("/raw?path=Attachments%2Fmap.svg")
+    assert resource.status_code == 200
+    assert resource.headers["content-type"].startswith("image/svg+xml")
+    assert b"Obsidian vault map fixture" in resource.content

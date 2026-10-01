@@ -37,7 +37,6 @@ def served_root(tmp_path: Path):
     ``_rel_path`` in tree.py emits stable relative paths."""
     _set_root_dir(tmp_path)
     yield tmp_path
-    _set_root_dir(Path())
 
 
 TreeRow = dict[str, Any]

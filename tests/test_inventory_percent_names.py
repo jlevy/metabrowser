@@ -315,12 +315,9 @@ def test_the_file_route_answers_only_the_escaped_backslash_identity(tmp_path: Pa
 
     (tmp_path / "a\\b.txt").write_text("x")
     server._set_root_dir(tmp_path)  # pyright: ignore[reportPrivateUsage]
-    try:
-        client = TestClient(server.app)
-        escaped = client.get("/api/file", params={"path": "a%5Cb.txt"})
-        unescaped = client.get("/api/file", params={"path": "a\\b.txt"})
-    finally:
-        server._set_root_dir(Path())  # pyright: ignore[reportPrivateUsage]
+    client = TestClient(server.app)
+    escaped = client.get("/api/file", params={"path": "a%5Cb.txt"})
+    unescaped = client.get("/api/file", params={"path": "a\\b.txt"})
     assert escaped.status_code == 200
     assert escaped.json()["path"] == "a%5Cb.txt"
     assert unescaped.status_code == 404

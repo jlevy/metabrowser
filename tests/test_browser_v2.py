@@ -155,34 +155,29 @@ def test_api_file_emits_etag_header_and_304s_on_match(tmp_path: Path) -> None:
     fixture = tmp_path / "doc.md"
     fixture.write_text("# hello\n")
     proc_browser._set_root_dir(tmp_path)
-    try:
-        # First call: no If-None-Match → 200 + body + ETag header.
-        first = asyncio.run(proc_browser.api_file(cast(Any, _FakeRequest({"path": "doc.md"}))))
-        etag = first.headers.get("etag")
-        assert first.status_code == 200
-        assert etag, "api_file must emit an ETag header"
-        assert bytes(first.body), "200 must have a body"
+    # First call: no If-None-Match → 200 + body + ETag header.
+    first = asyncio.run(proc_browser.api_file(cast(Any, _FakeRequest({"path": "doc.md"}))))
+    etag = first.headers.get("etag")
+    assert first.status_code == 200
+    assert etag, "api_file must emit an ETag header"
+    assert bytes(first.body), "200 must have a body"
 
-        # Second call: matching If-None-Match → 304 + empty body.
-        second = asyncio.run(
-            proc_browser.api_file(
-                cast(Any, _FakeRequest({"path": "doc.md"}, {"If-None-Match": etag}))
-            )
-        )
-        assert second.status_code == 304
-        assert bytes(second.body) == b"", "304 must have an empty body"
+    # Second call: matching If-None-Match → 304 + empty body.
+    second = asyncio.run(
+        proc_browser.api_file(cast(Any, _FakeRequest({"path": "doc.md"}, {"If-None-Match": etag})))
+    )
+    assert second.status_code == 304
+    assert bytes(second.body) == b"", "304 must have an empty body"
 
-        # Third call: stale ETag → 200 with fresh body (server doesn't
-        # short-circuit on a non-matching token).
-        third = asyncio.run(
-            proc_browser.api_file(
-                cast(Any, _FakeRequest({"path": "doc.md"}, {"If-None-Match": '"stale"'}))
-            )
+    # Third call: stale ETag → 200 with fresh body (server doesn't
+    # short-circuit on a non-matching token).
+    third = asyncio.run(
+        proc_browser.api_file(
+            cast(Any, _FakeRequest({"path": "doc.md"}, {"If-None-Match": '"stale"'}))
         )
-        assert third.status_code == 200
-        assert bytes(third.body)
-    finally:
-        proc_browser._set_root_dir(Path())
+    )
+    assert third.status_code == 200
+    assert bytes(third.body)
 
 
 def test_api_file_explains_symlink_outside_served_folder(tmp_path: Path) -> None:
@@ -196,12 +191,7 @@ def test_api_file_explains_symlink_outside_served_folder(tmp_path: Path) -> None
     (served / "outside-link").symlink_to(outside / "target.txt")
 
     proc_browser._set_root_dir(served)
-    try:
-        response = asyncio.run(
-            proc_browser.api_file(cast(Any, _FakeRequest({"path": "outside-link"})))
-        )
-    finally:
-        proc_browser._set_root_dir(Path())
+    response = asyncio.run(proc_browser.api_file(cast(Any, _FakeRequest({"path": "outside-link"}))))
 
     assert response.status_code == 404
     assert json.loads(bytes(response.body)) == {
@@ -219,24 +209,21 @@ def test_api_file_etag_changes_when_file_changes(tmp_path: Path) -> None:
     fixture = tmp_path / "doc.md"
     fixture.write_text("# v1\n")
     proc_browser._set_root_dir(tmp_path)
-    try:
-        first = asyncio.run(proc_browser.api_file(cast(Any, _FakeRequest({"path": "doc.md"}))))
-        first_etag = first.headers.get("etag")
-        time.sleep(0.01)
-        fixture.write_text("# v2 with more content\n")
-        second = asyncio.run(proc_browser.api_file(cast(Any, _FakeRequest({"path": "doc.md"}))))
-        second_etag = second.headers.get("etag")
-        assert first_etag != second_etag, "ETag must change when file content changes"
+    first = asyncio.run(proc_browser.api_file(cast(Any, _FakeRequest({"path": "doc.md"}))))
+    first_etag = first.headers.get("etag")
+    time.sleep(0.01)
+    fixture.write_text("# v2 with more content\n")
+    second = asyncio.run(proc_browser.api_file(cast(Any, _FakeRequest({"path": "doc.md"}))))
+    second_etag = second.headers.get("etag")
+    assert first_etag != second_etag, "ETag must change when file content changes"
 
-        third = asyncio.run(
-            proc_browser.api_file(
-                cast(Any, _FakeRequest({"path": "doc.md"}, {"If-None-Match": first_etag or ""}))
-            )
+    third = asyncio.run(
+        proc_browser.api_file(
+            cast(Any, _FakeRequest({"path": "doc.md"}, {"If-None-Match": first_etag or ""}))
         )
-        assert third.status_code == 200
-        assert bytes(third.body)
-    finally:
-        proc_browser._set_root_dir(Path())
+    )
+    assert third.status_code == 200
+    assert bytes(third.body)
 
 
 def test_api_file_windows_large_syntax_text_at_highlight_bound(tmp_path: Path) -> None:
@@ -245,16 +232,13 @@ def test_api_file_windows_large_syntax_text_at_highlight_bound(tmp_path: Path) -
     fixture = tmp_path / "big.yaml"
     fixture.write_text(content)
     proc_browser._set_root_dir(tmp_path)
-    try:
-        resp = asyncio.run(proc_browser.api_file(cast(Any, _FakeRequest({"path": "big.yaml"}))))
-        payload = json.loads(bytes(resp.body))
-        assert payload["type"] == "text"
-        assert payload["content_truncated"] is True
-        assert payload["highlight_disabled"] is False
-        assert payload["bytes_read"] == proc_browser._SYNTAX_HIGHLIGHT_MAX_BYTES
-        assert len(payload["content"]) == proc_browser._SYNTAX_HIGHLIGHT_MAX_BYTES
-    finally:
-        proc_browser._set_root_dir(Path())
+    resp = asyncio.run(proc_browser.api_file(cast(Any, _FakeRequest({"path": "big.yaml"}))))
+    payload = json.loads(bytes(resp.body))
+    assert payload["type"] == "text"
+    assert payload["content_truncated"] is True
+    assert payload["highlight_disabled"] is False
+    assert payload["bytes_read"] == proc_browser._SYNTAX_HIGHLIGHT_MAX_BYTES
+    assert len(payload["content"]) == proc_browser._SYNTAX_HIGHLIGHT_MAX_BYTES
 
 
 def test_api_file_plain_text_keeps_the_normal_initial_window(tmp_path: Path) -> None:
@@ -263,15 +247,12 @@ def test_api_file_plain_text_keeps_the_normal_initial_window(tmp_path: Path) -> 
     fixture = tmp_path / "big.txt"
     fixture.write_text(content)
     proc_browser._set_root_dir(tmp_path)
-    try:
-        resp = asyncio.run(proc_browser.api_file(cast(Any, _FakeRequest({"path": "big.txt"}))))
-        payload = json.loads(bytes(resp.body))
-        assert payload["type"] == "text"
-        assert payload["content_truncated"] is True
-        assert payload["highlight_disabled"] is True
-        assert payload["bytes_read"] == proc_browser._TEXT_PREVIEW_CHUNK_BYTES
-    finally:
-        proc_browser._set_root_dir(Path())
+    resp = asyncio.run(proc_browser.api_file(cast(Any, _FakeRequest({"path": "big.txt"}))))
+    payload = json.loads(bytes(resp.body))
+    assert payload["type"] == "text"
+    assert payload["content_truncated"] is True
+    assert payload["highlight_disabled"] is True
+    assert payload["bytes_read"] == proc_browser._TEXT_PREVIEW_CHUNK_BYTES
 
 
 def test_api_file_windows_large_extensionless_source_at_highlight_bound(tmp_path: Path) -> None:
@@ -281,15 +262,12 @@ def test_api_file_windows_large_extensionless_source_at_highlight_bound(tmp_path
     fixture = tmp_path / "Makefile"
     fixture.write_text(content)
     proc_browser._set_root_dir(tmp_path)
-    try:
-        resp = asyncio.run(proc_browser.api_file(cast(Any, _FakeRequest({"path": "Makefile"}))))
-        payload = json.loads(bytes(resp.body))
-        assert payload["type"] == "text"
-        assert payload["content_truncated"] is True
-        assert payload["highlight_disabled"] is False
-        assert payload["bytes_read"] == proc_browser._SYNTAX_HIGHLIGHT_MAX_BYTES
-    finally:
-        proc_browser._set_root_dir(Path())
+    resp = asyncio.run(proc_browser.api_file(cast(Any, _FakeRequest({"path": "Makefile"}))))
+    payload = json.loads(bytes(resp.body))
+    assert payload["type"] == "text"
+    assert payload["content_truncated"] is True
+    assert payload["highlight_disabled"] is False
+    assert payload["bytes_read"] == proc_browser._SYNTAX_HIGHLIGHT_MAX_BYTES
 
 
 def test_api_file_codex_turn_completed_without_usage_helper_crash(tmp_path: Path) -> None:
@@ -302,18 +280,15 @@ def test_api_file_codex_turn_completed_without_usage_helper_crash(tmp_path: Path
         '"cached_input_tokens":1465472,"output_tokens":10890}}\n'
     )
     proc_browser._set_root_dir(tmp_path)
-    try:
-        resp = asyncio.run(proc_browser.api_file(cast(Any, _FakeRequest({"path": "codex.jsonl"}))))
-        body = json.loads(bytes(resp.body))
-        assert resp.status_code == 200
-        assert body["type"] == "jsonl"
-        assert body["summary"]["adapter"] == "codex"
-        assert any(
-            event["summary"] == "[result] DONE input=1686052 output=10890 cached=1465472"
-            for event in body["events"]
-        )
-    finally:
-        proc_browser._set_root_dir(Path())
+    resp = asyncio.run(proc_browser.api_file(cast(Any, _FakeRequest({"path": "codex.jsonl"}))))
+    body = json.loads(bytes(resp.body))
+    assert resp.status_code == 200
+    assert body["type"] == "jsonl"
+    assert body["summary"]["adapter"] == "codex"
+    assert any(
+        event["summary"] == "[result] DONE input=1686052 output=10890 cached=1465472"
+        for event in body["events"]
+    )
 
 
 def test_api_file_internal_error_degrades_to_error_view(tmp_path: Path, monkeypatch) -> None:
@@ -326,18 +301,15 @@ def test_api_file_internal_error_degrades_to_error_view(tmp_path: Path, monkeypa
 
     monkeypatch.setattr("metabrowser.projections.parse_jsonl_file_cached", _raise)
     proc_browser._set_root_dir(tmp_path)
-    try:
-        resp = asyncio.run(proc_browser.api_file(cast(Any, _FakeRequest({"path": "broken.jsonl"}))))
-        body = json.loads(bytes(resp.body))
-        assert resp.status_code == 200
-        assert body["type"] == "error"
-        assert body["kind"] == "error"
-        assert body["views"] == []
-        assert "Internal error while rendering this file" in body["error"]
-        assert "RuntimeError: boom" in body["error"]
-        assert "server 500" in body["warning"]
-    finally:
-        proc_browser._set_root_dir(Path())
+    resp = asyncio.run(proc_browser.api_file(cast(Any, _FakeRequest({"path": "broken.jsonl"}))))
+    body = json.loads(bytes(resp.body))
+    assert resp.status_code == 200
+    assert body["type"] == "error"
+    assert body["kind"] == "error"
+    assert body["views"] == []
+    assert "Internal error while rendering this file" in body["error"]
+    assert "RuntimeError: boom" in body["error"]
+    assert "server 500" in body["warning"]
 
 
 def test_api_file_parse_error_has_a_composable_error_envelope(tmp_path: Path, monkeypatch) -> None:
@@ -349,21 +321,16 @@ def test_api_file_parse_error_has_a_composable_error_envelope(tmp_path: Path, mo
 
     monkeypatch.setattr("metabrowser.projections.parse_jsonl_file_cached", _raise)
     proc_browser._set_root_dir(tmp_path)
-    try:
-        response = asyncio.run(
-            proc_browser.api_file(cast(Any, _FakeRequest({"path": "broken.jsonl"})))
-        )
-        body = json.loads(bytes(response.body))
-        assert response.status_code == 200
-        assert body == {
-            "type": "error",
-            "kind": "error",
-            "views": [],
-            "path": "broken.jsonl",
-            "error": "malformed event",
-        }
-    finally:
-        proc_browser._set_root_dir(Path())
+    response = asyncio.run(proc_browser.api_file(cast(Any, _FakeRequest({"path": "broken.jsonl"}))))
+    body = json.loads(bytes(response.body))
+    assert response.status_code == 200
+    assert body == {
+        "type": "error",
+        "kind": "error",
+        "views": [],
+        "path": "broken.jsonl",
+        "error": "malformed event",
+    }
 
 
 def test_api_file_large_text_chunk_ignores_matching_etag(tmp_path: Path) -> None:
@@ -372,33 +339,30 @@ def test_api_file_large_text_chunk_ignores_matching_etag(tmp_path: Path) -> None
     fixture = tmp_path / "big.yaml"
     fixture.write_text(content)
     proc_browser._set_root_dir(tmp_path)
-    try:
-        first = asyncio.run(proc_browser.api_file(cast(Any, _FakeRequest({"path": "big.yaml"}))))
-        etag = first.headers.get("etag")
-        assert etag is not None
-        resp = asyncio.run(
-            proc_browser.api_file(
-                cast(
-                    Any,
-                    _FakeRequest(
-                        {
-                            "path": "big.yaml",
-                            "offset": str(proc_browser._TEXT_PREVIEW_CHUNK_BYTES),
-                            "limit": "16",
-                        },
-                        {"If-None-Match": etag},
-                    ),
-                )
+    first = asyncio.run(proc_browser.api_file(cast(Any, _FakeRequest({"path": "big.yaml"}))))
+    etag = first.headers.get("etag")
+    assert etag is not None
+    resp = asyncio.run(
+        proc_browser.api_file(
+            cast(
+                Any,
+                _FakeRequest(
+                    {
+                        "path": "big.yaml",
+                        "offset": str(proc_browser._TEXT_PREVIEW_CHUNK_BYTES),
+                        "limit": "16",
+                    },
+                    {"If-None-Match": etag},
+                ),
             )
         )
-        payload = json.loads(bytes(resp.body))
-        assert resp.status_code == 200
-        assert payload["type"] == "text_chunk"
-        assert payload["content"] == "tail"
-        assert payload["content_truncated"] is False
-        assert payload["highlight_disabled"] is True
-    finally:
-        proc_browser._set_root_dir(Path())
+    )
+    payload = json.loads(bytes(resp.body))
+    assert resp.status_code == 200
+    assert payload["type"] == "text_chunk"
+    assert payload["content"] == "tail"
+    assert payload["content_truncated"] is False
+    assert payload["highlight_disabled"] is True
 
 
 # ── SSE tail (sse.py) ──────────────────────────────────────────
@@ -597,10 +561,7 @@ def test_api_stream_prefers_last_event_id_on_reconnect(tmp_path: Path, monkeypat
         async for _chunk in cast(Any, response).body_iterator:
             pass
 
-    try:
-        asyncio.run(consume_response())
-    finally:
-        proc_browser._set_root_dir(Path())
+    asyncio.run(consume_response())
 
     assert observed == [17]
 

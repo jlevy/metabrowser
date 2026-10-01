@@ -978,7 +978,6 @@ def test_classify_path_glob_matches_under_subtree(tmp_path: Path) -> None:
         discovery_index=0,
     )
     assert build_classifier([rule])(_ctx(md)) == "derived-markdown"
-    _set_root_dir(Path())
 
 
 def test_classify_path_glob_rejects_outside_subtree(tmp_path: Path) -> None:
@@ -995,7 +994,6 @@ def test_classify_path_glob_rejects_outside_subtree(tmp_path: Path) -> None:
         discovery_index=0,
     )
     assert build_classifier([rule])(_ctx(plain)) is None
-    _set_root_dir(Path())
 
 
 def test_manifest_rejects_yaml_value_prefix_without_key() -> None:
