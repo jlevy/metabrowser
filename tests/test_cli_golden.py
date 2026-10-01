@@ -32,6 +32,7 @@ from click import unstyle
 from typer.testing import CliRunner
 
 from metabrowser.cli.main import _app
+from tests.required_tools import needs_git
 
 GOLDEN_DIR = Path(__file__).parent / "golden"
 FIXED_MTIME = 1_700_000_000
@@ -117,6 +118,7 @@ def _make_walk_fixture(tmp_path: Path) -> Path:
     return root
 
 
+@needs_git
 def test_golden_serve_banner(tmp_path: Path) -> None:
     root = _make_walk_fixture(tmp_path)
     with (
@@ -133,6 +135,7 @@ def test_golden_serve_banner(tmp_path: Path) -> None:
     check_golden("serve-banner.txt", rendered)
 
 
+@needs_git
 def test_golden_serve_file_root_deep_link(tmp_path: Path) -> None:
     root = _make_walk_fixture(tmp_path)
     with (

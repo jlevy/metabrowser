@@ -14,6 +14,7 @@ from metabrowser.git.process import repository_store_target
 from metabrowser.git.tree_source import GitRevisionSubject, git_revision_subject
 from metabrowser.server import app
 from metabrowser.source import attach_subject, reset_source_session
+from tests.required_tools import require_git
 
 
 def git_env(root: Path) -> dict[str, str]:
@@ -38,6 +39,7 @@ def fast_import_store(
     *symlinks* maps a link's name to its target, stored as a mode 120000 blob.
     """
 
+    require_git()
     store = tmp_path / "store.git"
     env = git_env(tmp_path)
     subprocess.run(
