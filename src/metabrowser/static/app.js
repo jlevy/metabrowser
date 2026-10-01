@@ -6280,6 +6280,16 @@ function closeLiveStream() {
   }
 }
 
+// Park the live tail (createPageConnections): reopened from the cursor it reached.
+function parkLiveStream() {
+  if (!currentLiveStream) {
+    return null;
+  }
+  var path = currentPath;
+  closeLiveStream();
+  return () => maybeOpenLiveStream(path, fileCache.get(path));
+}
+
 function maybeOpenLiveStream(path, data) {
   // Subscribe only if (a) the payload is a JSONL log, and (b) the
   // file's writer is still alive per the activity poll. Anything else
@@ -7451,6 +7461,25 @@ function _scheduleInventoryReconnect() {
   }, delay);
 }
 
+// Park the stream or its pending reconnect (createPageConnections); a pin has
+// neither. A new stream begins with a snapshot and a catalog refetch, as a reconnect
+// does, which covers what the cached page missed.
+function parkInventoryEventStream() {
+  if (!inventoryEventSource && _esReconnectTimer === null) {
+    return null;
+  }
+  _cancelEsStableReset();
+  clearTimeout(_esReconnectTimer);
+  _esReconnectTimer = null;
+  inventoryEventSource?.close();
+  inventoryEventSource = null;
+  catalogFeedCanStart = false;
+  return () => {
+    _esConsecutiveErrors = 0;
+    _createInventoryEventSource();
+  };
+}
+
 function _createInventoryEventSource() {
   catalogFeedCanStart = false;
   try {
@@ -8036,23 +8065,20 @@ function disposeKeyboardInfrastructure() {
 // `pagehide` also fires when the document enters the back/forward cache, and a
 // bfcache restore never re-runs DOMContentLoaded. Tearing the registry down
 // there would return the user to a page whose shortcuts, Help, Quick File, and
-// tree keys are all silently dead, so a persisted hide is left alone and the
-// matching `pageshow` rebuilds whatever an earlier real teardown removed. The
-// listener stays registered: a persisted hide can be followed by a genuine one.
-window.addEventListener("pagehide", (event) => {
-  if (/** @type {PageTransitionEvent} */ (event).persisted) {
-    return;
-  }
-  disposeKeyboardInfrastructure();
+// tree keys are all silently dead, so a persisted hide parks only the page's
+// connections, and the matching `pageshow` rebuilds whatever an earlier real
+// teardown removed and reopens them. The listeners stay registered: a persisted
+// hide can be followed by a genuine one.
+var pageConnections = window.MetabrowserNavigationRoute.createPageConnections({
+  connections: [parkInventoryEventStream, parkLiveStream],
+  rebuild: () => {
+    initKeyboardInfrastructure();
+    initQuickFileFinder();
+  },
+  teardown: disposeKeyboardInfrastructure,
 });
-
-window.addEventListener("pageshow", (event) => {
-  if (!(/** @type {PageTransitionEvent} */ (event).persisted)) {
-    return;
-  }
-  initKeyboardInfrastructure();
-  initQuickFileFinder();
-});
+window.addEventListener("pagehide", (event) => pageConnections.hidden(event.persisted));
+window.addEventListener("pageshow", (event) => pageConnections.shown(event.persisted));
 
 // Compose the application-lifetime quick-file modules at the shell boundary.
 function initQuickFileFinder() {

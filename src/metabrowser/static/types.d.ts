@@ -201,6 +201,16 @@ type MetabrowserNavigationRouteRuntime = Readonly<{
     isCurrent(): boolean;
   }): "cancelled" | "file" | "folder";
   createFileRevalidationTracker(maxEntries: number): MetabrowserFileRevalidationTracker;
+  /** Park a page's connections for the back/forward cache and resume them on a restore. */
+  createPageConnections(deps: {
+    connections: ReadonlyArray<() => (() => void) | null>;
+    rebuild(): void;
+    teardown(): void;
+  }): Readonly<{
+    hidden(persisted: boolean): void;
+    parked(): number;
+    shown(persisted: boolean): void;
+  }>;
   createPreviewPaneLifecycle(): MetabrowserPreviewPaneLifecycle;
   createController(options: {
     apply(
