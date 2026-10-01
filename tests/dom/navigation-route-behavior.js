@@ -6,23 +6,31 @@ const vm = require("node:vm");
 
 const repoRoot = path.resolve(process.argv[2] || path.join(__dirname, "../.."));
 const failures = [];
-// Every distinct scenario this session verified, in first-run order. The
-// golden pins the list, so removing a scenario changes the transcript.
-const verified = [];
-
-function check(name, condition, detail = "failed") {
-  if (!verified.includes(name)) {
-    verified.push(name);
-  }
-  if (!condition) {
-    failures.push(`${name}: ${detail}`);
-  }
-}
+// What the production module answered for each scenario, in run order, recorded
+// before it is compared. The golden pins the values, so a changed address, parse,
+// or history decision shows in the transcript; the expectation beside each one
+// says which contract it broke.
+const observed = [];
 
 function equal(name, actual, expected) {
   const actualJson = JSON.stringify(actual);
   const expectedJson = JSON.stringify(expected);
-  check(name, actualJson === expectedJson, `expected ${expectedJson}, got ${actualJson}`);
+  if (observed.some(([seen]) => seen === name)) {
+    failures.push(`${name}: recorded twice`);
+  }
+  observed.push([name, actualJson]);
+  if (actualJson !== expectedJson) {
+    failures.push(`${name}: expected ${expectedJson}, got ${actualJson}`);
+  }
+}
+
+// What a call that must be refused did: the error it threw, or what it returned.
+function refusal(call) {
+  try {
+    return { returned: call() };
+  } catch (error) {
+    return `${error.name}: ${error.message}`;
+  }
 }
 
 const sandbox = {
@@ -74,14 +82,17 @@ for (const pathname of [
     null,
   );
 }
-for (const revision of ["", ".bad", "bad ref", "x".repeat(257)]) {
-  let rejected = false;
-  try {
-    route.commitHref(revision);
-  } catch (error) {
-    rejected = error instanceof TypeError;
-  }
-  check(`reject invalid commit revision ${JSON.stringify(revision)}`, rejected);
+for (const [label, revision] of [
+  ["an empty", ""],
+  ["a dot-leading", ".bad"],
+  ["a spaced", "bad ref"],
+  ["an over-long", "x".repeat(257)],
+]) {
+  equal(
+    `reject ${label} commit revision`,
+    refusal(() => route.commitHref(revision)),
+    "TypeError: commit route requires a valid revision",
+  );
 }
 
 equal("pull-request page href", route.pullHref(7), "/pull/7");
@@ -98,13 +109,11 @@ for (const [number, tab] of [
   [0, ""],
   [7, "commits"],
 ]) {
-  let rejected = false;
-  try {
-    route.pullHref(number, tab);
-  } catch (error) {
-    rejected = error instanceof TypeError;
-  }
-  check(`reject invalid pull-request href ${number}/${tab}`, rejected);
+  equal(
+    `reject invalid pull-request href ${number}/${tab}`,
+    refusal(() => route.pullHref(number, tab)),
+    "TypeError: pull route requires a pull-request number and a known tab",
+  );
 }
 
 // History landing on a pull-request route: the shown page switches its tab; a page a
@@ -344,20 +353,20 @@ for (const [name, pathname] of [
   equal(`reject ${name}`, route.parse(pathname, "", ""), null);
 }
 
-for (const [name, target] of [
-  ["leading slash", { path: "/docs/a.md" }],
-  ["dot segment", { path: "docs/./a.md" }],
-  ["parent segment", { path: "docs/../a.md" }],
-  ["backslash", { path: "docs\\a.md" }],
-  ["NUL", { path: "docs/\0a.md" }],
+const unsafePath = "TypeError: navigation path must be a safe served-root-relative path";
+const unnormalizedPath = "TypeError: navigation path must already be normalized";
+for (const [name, target, refused] of [
+  ["leading slash", { path: "/docs/a.md" }, unsafePath],
+  ["dot segment", { path: "docs/./a.md" }, unnormalizedPath],
+  ["parent segment", { path: "docs/../a.md" }, unnormalizedPath],
+  ["backslash", { path: "docs\\a.md" }, unsafePath],
+  ["NUL", { path: "docs/\0a.md" }, unsafePath],
 ]) {
-  let rejected = false;
-  try {
-    route.href(target);
-  } catch (error) {
-    rejected = error instanceof TypeError;
-  }
-  check(`format rejects ${name}`, rejected);
+  equal(
+    `format rejects ${name}`,
+    refusal(() => route.href(target)),
+    refused,
+  );
 }
 
 function makeBrowser(pathname, search = "", hash = "") {
@@ -581,8 +590,8 @@ function makePullShell(pathname) {
 
     await route.navigation.open({ path: "docs/next.md" });
     equal("user navigation pushes", browser.writes.at(-1), ["push", "/view/docs/next.md"]);
-    check("path navigation reports a fetch boundary", applied.at(-1)[1].pathChanged === true);
-    check("latest navigation context is current", applied.at(-1)[1].isCurrent());
+    equal("path navigation reports a fetch boundary", applied.at(-1)[1].pathChanged, true);
+    equal("latest navigation context is current", applied.at(-1)[1].isCurrent(), true);
 
     controller.canonicalizePath("docs/next.md", true);
     equal("folder slash canonicalization replaces", browser.writes.at(-1), [
@@ -596,8 +605,8 @@ function makePullShell(pathname) {
       "push",
       "/view/docs/next.md/#details",
     ]);
-    check("same-file fragment avoids a fetch boundary", applied.at(-1)[1].pathChanged === false);
-    check("superseded navigation context is stale", applied.at(-2)[1].isCurrent() === false);
+    equal("same-file fragment avoids a fetch boundary", applied.at(-1)[1].pathChanged, false);
+    equal("superseded navigation context is stale", applied.at(-2)[1].isCurrent(), false);
 
     browser.setUrl("/view/back.md#old");
     browser.eventTarget.dispatch("popstate");
@@ -615,7 +624,7 @@ function makePullShell(pathname) {
 
     controller.dispose();
     detachPublicNavigation();
-    check("dispose removes popstate", !browser.listeners.has("popstate"));
+    equal("dispose removes popstate", [...browser.listeners.keys()], []);
   }
 
   {
@@ -637,7 +646,9 @@ function makePullShell(pathname) {
     console.error(`navigation route FAILURES:\n- ${failures.join("\n- ")}`);
     process.exit(1);
   }
-  console.log(JSON.stringify({ verified }, null, 2));
+  // One observation a line, so a changed value is a one-line diff.
+  const lines = observed.map(([name, value]) => `    ${JSON.stringify(name)}: ${value}`);
+  console.log(`{\n  "observed": {\n${lines.join(",\n")}\n  }\n}`);
 })().catch((error) => {
   console.error(error);
   process.exit(1);

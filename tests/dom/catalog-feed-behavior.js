@@ -18,22 +18,36 @@ const source = fs.readFileSync(sourcePath, "utf-8");
 vm.runInContext(source, sandbox, { filename: sourcePath });
 
 const failures = [];
-// Every distinct scenario this session verified, in first-run order. The
-// golden pins the list, so removing a scenario changes the transcript.
-const verified = [];
+// What the session observed at each checkpoint, in run order: how many fetches the
+// feed had begun, and what it had delivered to the catalog since the checkpoint
+// before. The golden pins these values, so a changed fetch count or delivery shows
+// in the transcript; the condition beside each one says which expectation it broke.
+const observed = [];
+// The catalog double and fetch double of the scenario that is running.
+let scene = { calls: [], pending: [], seen: 0 };
 
-function check(label, condition, detail = "") {
-  if (!verified.includes(label)) {
-    verified.push(label);
+function sceneEvidence() {
+  const delivered = scene.calls.slice(scene.seen);
+  scene.seen = scene.calls.length;
+  return { fetches: scene.pending.length, delivered };
+}
+
+function check(label, condition, evidence = sceneEvidence()) {
+  // Serialized now: a later delivery must not rewrite what this checkpoint saw.
+  const seen = JSON.stringify(evidence);
+  if (observed.some(([recorded]) => recorded === label)) {
+    failures.push(`${label}: recorded twice`);
   }
+  observed.push([label, seen]);
   if (!condition) {
-    failures.push(`${label}${detail ? `: ${detail}` : ""}`);
+    failures.push(`${label}: observed ${seen}`);
   }
 }
 
 /** A recording catalog double for the feed target. */
 function makeCatalog() {
   const calls = [];
+  scene = { calls, pending: [], seen: 0 };
   return {
     calls,
     beginBulkSnapshot(files, coverage, authoritative) {
@@ -84,6 +98,7 @@ function makeCatalog() {
 /** A controllable fetch double: each call returns a pending promise. */
 function makeFetch() {
   const pending = [];
+  scene.pending = pending;
   const impl = () => {
     let resolve;
     let reject;
@@ -286,7 +301,6 @@ async function main() {
         finalBulk?.kind === "bulk" &&
           finalBulk.coverage === "truncated" &&
           finalBulk.authoritative === true,
-        JSON.stringify(finalBulk?.coverage),
       );
     }
   }
@@ -359,7 +373,6 @@ async function main() {
       reconnectCalls.includes("markIncomplete") &&
         catalog.calls.at(-1)?.kind === "bulk" &&
         catalog.calls.at(-1)?.coverage === "complete",
-      reconnectCalls.join(","),
     );
   }
 
@@ -388,7 +401,6 @@ async function main() {
     check(
       "304 reconnect restores known truncated coverage",
       catalog.calls.at(-1)?.kind === "bulk" && catalog.calls.at(-1)?.coverage === "truncated",
-      JSON.stringify(catalog.calls.at(-1)),
     );
   }
 
@@ -564,7 +576,9 @@ async function main() {
     const refreshSource = appSource.match(
       /^async function refreshIndexProgress\(force\) \{[\s\S]*?^\}/m,
     )?.[0];
-    check("progress poll function is extractable", typeof refreshSource === "string");
+    check("progress poll function is extractable", typeof refreshSource === "string", {
+      refreshIndexProgress: typeof refreshSource,
+    });
 
     async function completionCalls(meta) {
       const calls = [];
@@ -597,7 +611,9 @@ async function main() {
       complete: false,
       truncated: false,
     });
-    check("failed progress does not complete the catalog", failedCalls.length === 0);
+    check("failed progress does not complete the catalog", failedCalls.length === 0, {
+      onIndexComplete: failedCalls,
+    });
 
     const cappedCalls = await completionCalls({
       status: "truncated",
@@ -608,6 +624,7 @@ async function main() {
     check(
       "capped progress repairs without claiming complete coverage",
       cappedCalls.length === 1 && cappedCalls[0] === true,
+      { onIndexComplete: cappedCalls },
     );
   }
 
@@ -629,7 +646,6 @@ async function main() {
     check(
       "a truncated catalog is not reported complete",
       catalog.calls[0]?.coverage === "truncated",
-      String(catalog.calls[0]?.coverage),
     );
     feed.onIndexComplete(true);
     check(
@@ -654,7 +670,6 @@ async function main() {
     check(
       "a truncated terminal event marks the catalog truncated",
       catalog.calls.at(-1)?.kind === "markTruncated" && pending.length === 1,
-      catalog.calls.map((call) => call.kind).join(","),
     );
   }
 }
@@ -712,10 +727,12 @@ async function stagedChangeDuringRefetch() {
   }));
   feed.onCatalogChange({ removes: [], upserts: bulk });
   await tick();
-  check("a large steady change is staged", turns.length === 1, String(turns.length));
+  check("a large steady change is staged", turns.length === 1, { yields: turns.length });
   feed.onIndexComplete();
   await tick();
-  check("walk completion issues the authoritative refetch", pending.length === 3);
+  check("walk completion issues the authoritative refetch", pending.length === 3, {
+    fetches: pending.length,
+  });
   feed.onCatalogChange({ removes: [], upserts: [{ e: ".txt", p: "new.txt" }] });
   await settle();
 
@@ -727,11 +744,11 @@ async function stagedChangeDuringRefetch() {
     paths.includes("new.txt") &&
       paths.length === baseline.length + bulk.length + 1 &&
       catalog.snapshot().complete === true,
-    JSON.stringify({
+    {
       complete: catalog.snapshot().complete,
-      count: paths.length,
+      files: paths.length,
       hasNew: paths.includes("new.txt"),
-    }),
+    },
   );
   feed.dispose();
 }
@@ -743,5 +760,7 @@ main()
       process.stderr.write(`${failures.join("\n")}\n`);
       process.exit(1);
     }
-    process.stdout.write(`${JSON.stringify({ verified }, null, 2)}\n`);
+    // One checkpoint a line, so a changed observation is a one-line diff.
+    const lines = observed.map(([label, seen]) => `    ${JSON.stringify(label)}: ${seen}`);
+    process.stdout.write(`{\n  "observed": {\n${lines.join(",\n")}\n  }\n}\n`);
   });
