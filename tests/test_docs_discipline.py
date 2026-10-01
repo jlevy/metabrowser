@@ -53,7 +53,7 @@ def test_documents_that_tabulate_registered_surfaces_name_their_check() -> None:
             assert "tests/test_" in text, (
                 f"{doc.name} tabulates registered surfaces but names no test that checks it"
             )
-        if "| Contract ID |" in text or "| Profile ID |" in text:
+        if "| Contract ID |" in text:
             assert "devtools/check_artifact_contracts.py" in text, (
                 f"{doc.name} tabulates installed formats but names no inventory checker"
             )

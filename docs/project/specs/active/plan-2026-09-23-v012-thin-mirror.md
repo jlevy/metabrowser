@@ -270,8 +270,13 @@ It claims only `github.com` and `raw.githubusercontent.com`.
 | Attaching user checkouts; fork mirrors | Deferred; `refs/pull/<n>/head` carries fork commits |
 
 `GIT_NO_LAZY_FETCH` and the store-spawn guard stay as defensive settings.
-The Hosted Review Format and `provider_resources` code already in the stack stays for
-now; whether to remove it is a separate decision.
+The Hosted Review Format and `provider_resources` code that was in the stack was removed
+in [#246](https://github.com/jlevy/metabrowser/pull/246), with what existed only for it:
+browser-parser evidence, the `metabrowser.capabilities.v1` entry-point group, the
+frontmatter Markdown artifact profile, and the cache’s reservations for a provider
+store. It is preserved as unused reference code, not on the critical path and not
+maintained, on the `reference/v012-hosted-review` branch, tagged
+`reference/v012-hosted-review-2026-09-30`.
 
 ## Delivery
 

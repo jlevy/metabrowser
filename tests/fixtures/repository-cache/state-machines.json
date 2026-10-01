@@ -29,13 +29,6 @@
         "multiple": true,
         "path": "cache/locks/stores/<store-key>.lock",
         "protects": "store directory publication and store records; several stores lock in ascending key order. It is held only for those short steps, never across network work or a long-running Git process such as fetch"
-      },
-      {
-        "name": "provider_resource",
-        "rank": 4,
-        "multiple": true,
-        "path": "owned by the provider storage plan",
-        "protects": "binding, snapshot publication, pointer movement, and provider reclamation"
       }
     ],
     "side_locks": [
@@ -89,8 +82,7 @@
           "source_alias:a",
           "source_alias:b",
           "repository_store:s1",
-          "repository_store:s2",
-          "provider_resource:p1"
+          "repository_store:s2"
         ],
         "valid": true,
         "why": "Ascending rank, and ascending keys within a rank."
@@ -121,12 +113,6 @@
       {
         "id": "store-before-alias",
         "steps": ["repository_store:s1", "source_alias:k1"],
-        "valid": false,
-        "why": "Descending rank."
-      },
-      {
-        "id": "provider-before-store",
-        "steps": ["provider_resource:p1", "repository_store:s1"],
         "valid": false,
         "why": "Descending rank."
       },

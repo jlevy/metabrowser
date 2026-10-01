@@ -4,7 +4,7 @@
   "title": "Repository cache source identity, store identity, and slug derivation",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "decided", "source_identity", "store_identity", "slug", "sources", "equivalence", "slug_collisions", "provider_stores"],
+  "required": ["schema", "decided", "source_identity", "store_identity", "slug", "sources", "equivalence", "slug_collisions"],
   "$defs": {
     "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
     "key": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
@@ -33,11 +33,10 @@
     "store_identity": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["domain", "generic_material", "provider_material", "encoding", "key_hex_digits", "rules"],
+      "required": ["domain", "generic_material", "encoding", "key_hex_digits", "rules"],
       "properties": {
         "domain": { "type": "string", "minLength": 1 },
         "generic_material": { "type": "string" },
-        "provider_material": { "type": "string" },
         "encoding": { "type": "string" },
         "key_hex_digits": { "const": 64 },
         "rules": { "$ref": "#/$defs/rules" }
@@ -103,22 +102,6 @@
           "existing": { "type": "object", "additionalProperties": { "$ref": "#/$defs/digest" } },
           "expected_slug": { "type": "string" },
           "why": { "type": "string", "minLength": 1 }
-        }
-      }
-    },
-    "provider_stores": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["provider_kind", "provider_instance", "repository_opaque_id", "object_format", "store_id", "store_key"],
-        "properties": {
-          "provider_kind": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
-          "provider_instance": { "type": "string", "minLength": 1 },
-          "repository_opaque_id": { "type": "string", "minLength": 1 },
-          "object_format": { "enum": ["sha1", "sha256"] },
-          "store_id": { "$ref": "#/$defs/digest" },
-          "store_key": { "$ref": "#/$defs/key" }
         }
       }
     }

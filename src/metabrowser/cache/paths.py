@@ -18,8 +18,6 @@ LAYOUT_RECORD: Final = "cache/layout.yml"
 STAGING: Final = "cache/staging"
 SOURCES: Final = "cache/sources"
 REPOSITORY_STORES: Final = "cache/repository-stores"
-PROVIDER_BINDINGS: Final = "cache/provider-bindings"
-PROVIDER_REPOSITORIES: Final = "cache/provider-repositories"
 STAGING_LOCKS: Final = "cache/locks/staging"
 # The GitHub URL grammar's ``^[1-9][0-9]{0,9}$``.
 MAX_PULL_REQUEST_NUMBER: Final = 9_999_999_999
@@ -89,8 +87,6 @@ __all__ = [
     "CONFIG_RECORD",
     "LAYOUT_RECORD",
     "MAX_PULL_REQUEST_NUMBER",
-    "PROVIDER_BINDINGS",
-    "PROVIDER_REPOSITORIES",
     "REPOSITORY_STORES",
     "SOURCES",
     "STAGING",

@@ -2,18 +2,12 @@
 
 from __future__ import annotations
 
-import configparser
-import json
 import os
 import subprocess
 import tarfile
-import tempfile
-import tomllib
 import zipfile
-from collections.abc import Mapping
 from pathlib import Path
 from textwrap import dedent
-from typing import cast, override
 
 from devtools.public_hygiene import find_hygiene_findings
 
@@ -42,19 +36,13 @@ KEYBOARD_STATIC_ASSETS = {
     "overlay-layer.js",
     "tree-keyboard-navigation.js",
 }
-CAPABILITY_ENTRY_POINT_GROUP = "metabrowser.capabilities.v1"
 ISOLATED_PYTHON_ENV_VARS = ("PYTHONHOME", "PYTHONOPTIMIZE", "PYTHONPATH")
-BROWSER_EVIDENCE_CHECK = ROOT / "devtools" / "artifact-contract-browser-check.mjs"
-BROWSER_EVIDENCE_TIMEOUT_SECONDS = 30
 
-CAPABILITY_SMOKE_SCRIPT = dedent(
+CONTRACT_SMOKE_SCRIPT = dedent(
     """
-    import json
     import sys
-    from pathlib import Path
 
     import metabrowser
-    from metabrowser import ArtifactContractSpec, CapabilitySet, ConformanceCorpusSpec
 
 
     def _require(condition, message):
@@ -64,83 +52,14 @@ CAPABILITY_SMOKE_SCRIPT = dedent(
 
     _require(
         all(name not in sys.modules for name in ("frontmatter_format", "jsonschema", "softschema")),
-        "public capability imports loaded heavyweight schema dependencies",
+        "importing metabrowser loaded heavyweight schema dependencies",
     )
 
-    from metabrowser.plugin_loader.artifact_contracts import build_installed_registries
+    from metabrowser.cache.contracts import cache_contract_registry
     from metabrowser.plugin_loader.artifact_inventory import validate_installed_evidence
-    from metabrowser.plugin_loader.capability_discovery import discover_capability_sets
 
-    evidence_root = Path(sys.argv[1])
-    expected_provider_ids = frozenset(sys.argv[2:])
-    _require(evidence_root.is_dir(), "caller-owned browser evidence directory is absent")
-    _require(expected_provider_ids, "project metadata declared no capability providers")
-    discovery = discover_capability_sets()
-    actual_provider_ids = frozenset(provider.provider_id for provider in discovery.providers)
-    _require(
-        actual_provider_ids == expected_provider_ids,
-        f"installed capability providers differ from project metadata: "
-        f"expected {sorted(expected_provider_ids)}, found {sorted(actual_provider_ids)}",
-    )
-    _require(not discovery.errors, f"installed capability discovery failed: {discovery.errors}")
-    capabilities = validate_installed_evidence(build_installed_registries(discovery))
-    _require(capabilities.contracts, "installed capability registry has no artifact contracts")
-    _require(
-        capabilities.resource_profiles,
-        "installed capability registry has no resource profiles",
-    )
-    expected_contract_count = sum(
-        len(provider.capabilities.artifact_contracts) for provider in discovery.providers
-    )
-    expected_profile_count = sum(
-        len(provider.capabilities.resource_profiles) for provider in discovery.providers
-    )
-    _require(
-        len(capabilities.contracts) == expected_contract_count,
-        "installed artifact-contract registry lost a provider declaration",
-    )
-    _require(
-        len(capabilities.resource_profiles) == expected_profile_count,
-        "installed resource-profile registry lost a provider declaration",
-    )
-
-    descriptors = []
-    for contract_id, installed in sorted(capabilities.contracts.items()):
-        spec = installed.spec
-        if not spec.browser_consumed:
-            continue
-        parser = spec.browser_parser
-        _require(parser is not None, f"browser-consumed contract {contract_id!r} has no parser")
-        module_path = evidence_root / f"{parser.module_bytes_sha256}.mjs"
-        corpus_path = evidence_root / f"{spec.corpus.payload_sha256}.json"
-        for path, payload in (
-            (module_path, parser.module_bytes),
-            (corpus_path, spec.corpus.payload),
-        ):
-            if path.exists():
-                _require(path.read_bytes() == payload, f"installed evidence collision at {path.name}")
-            else:
-                path.write_bytes(payload)
-        corpus = json.loads(spec.corpus.payload)
-        selectors = set(spec.corpus_record_selectors)
-        selected_count = sum(
-            (case.get("record") in selectors) if selectors else ("record" not in case)
-            for case in corpus["cases"]
-        )
-        descriptors.append(
-            {
-                "contract_id": contract_id,
-                "module_path": str(module_path),
-                "export_name": parser.export_name,
-                "corpus_path": str(corpus_path),
-                "record_selectors": spec.corpus_record_selectors,
-                "expected_case_count": selected_count,
-            }
-        )
-    (evidence_root / "descriptors.json").write_text(
-        json.dumps(descriptors, sort_keys=True, separators=(",", ":")),
-        encoding="utf-8",
-    )
+    contracts = validate_installed_evidence(cache_contract_registry())
+    _require(contracts, "installed contract registry has no artifact contracts")
     _require(metabrowser.__version__, "installed distribution has no version")
     print(metabrowser.__version__)
     """
@@ -218,19 +137,13 @@ WHEEL_SMOKE_SCRIPT = dedent(
     _require(required == names, f"installed plugin set differs: expected {sorted(required)}, found {sorted(names)}")
     _require(not plugins.errors, f"installed plugin discovery failed: {plugins.errors}")
     _require("Wheel smoke" in rendered["html"], "installed KPress renderer returned unexpected HTML")
-    # The permissive config contract is outside the enforced registry the capability
+    # The permissive config contract is outside the enforced registry the contract
     # smoke covers, so every packaged cache schema is compiled against its model here.
     schema_drift = check_packaged_schemas()
     _require(not schema_drift, f"installed cache schemas drifted from their models: {schema_drift}")
     print(metabrowser.__version__)
     """
 ).strip()
-
-
-class _EntryPointConfigParser(configparser.ConfigParser):
-    @override
-    def optionxform(self, optionstr: str) -> str:
-        return optionstr
 
 
 def _single_wheel() -> Path:
@@ -266,77 +179,7 @@ def _check_project_metadata(payload: bytes) -> None:
         raise RuntimeError(f"wheel metadata is missing license declarations: {missing}")
 
 
-def _parse_project_capability_entry_points(payload: bytes) -> dict[str, str]:
-    try:
-        document = cast(dict[str, object], tomllib.loads(payload.decode("utf-8")))
-    except (UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
-        raise RuntimeError("project capability entry points are malformed") from exc
-    project_value = document.get("project")
-    if not isinstance(project_value, dict):
-        raise RuntimeError("project metadata is missing [project]")
-    project = cast(dict[str, object], project_value)
-    entry_points_value = project.get("entry-points")
-    if not isinstance(entry_points_value, dict):
-        raise RuntimeError("project metadata is missing [project.entry-points]")
-    entry_points = cast(dict[str, object], entry_points_value)
-    declarations_value = entry_points.get(CAPABILITY_ENTRY_POINT_GROUP)
-    if not isinstance(declarations_value, dict) or not declarations_value:
-        raise RuntimeError(
-            f'project metadata is missing nonempty [project.entry-points."{CAPABILITY_ENTRY_POINT_GROUP}"]'
-        )
-    declarations = cast(dict[object, object], declarations_value)
-    if any(
-        not isinstance(name, str) or not name or not isinstance(target, str) or not target
-        for name, target in declarations.items()
-    ):
-        raise RuntimeError("project capability entry points must map nonempty names to targets")
-    return {
-        cast(str, name): cast(str, target)
-        for name, target in sorted(declarations.items(), key=lambda item: str(item[0]))
-    }
-
-
-def _project_capability_entry_points(
-    pyproject: Path = ROOT / "pyproject.toml",
-) -> dict[str, str]:
-    return _parse_project_capability_entry_points(pyproject.read_bytes())
-
-
-def _entry_point_difference(actual: Mapping[str, str], expected: Mapping[str, str]) -> str | None:
-    missing = sorted(set(expected).difference(actual))
-    unexpected = sorted(set(actual).difference(expected))
-    changed = sorted(
-        name for name in set(actual).intersection(expected) if actual[name] != expected[name]
-    )
-    differences: list[str] = []
-    if missing:
-        differences.append(f"missing {missing}")
-    if unexpected:
-        differences.append(f"unexpected {unexpected}")
-    if changed:
-        differences.append(f"changed targets {changed}")
-    return "; ".join(differences) or None
-
-
-def _check_capability_entry_points(payload: bytes, expected: Mapping[str, str]) -> None:
-    parser = _EntryPointConfigParser(interpolation=None)
-    try:
-        parser.read_string(payload.decode("utf-8"))
-    except (UnicodeDecodeError, configparser.Error) as exc:
-        raise RuntimeError("wheel capability entry points are malformed") from exc
-    if not parser.has_section(CAPABILITY_ENTRY_POINT_GROUP):
-        raise RuntimeError(f"wheel entry points are missing [{CAPABILITY_ENTRY_POINT_GROUP}]")
-    items = dict(parser.items(CAPABILITY_ENTRY_POINT_GROUP))
-    if not items:
-        raise RuntimeError(f"wheel entry points [{CAPABILITY_ENTRY_POINT_GROUP}] must not be empty")
-    difference = _entry_point_difference(items, expected)
-    if difference is not None:
-        raise RuntimeError(
-            f"wheel capability entry points differ from project metadata: {difference}"
-        )
-
-
-def _inspect_wheel(wheel: Path, expected_entry_points: Mapping[str, str]) -> None:
+def _inspect_wheel(wheel: Path) -> None:
     with zipfile.ZipFile(wheel) as archive:
         names = set(archive.namelist())
         required_suffixes = {
@@ -390,17 +233,11 @@ def _inspect_wheel(wheel: Path, expected_entry_points: Mapping[str, str]) -> Non
         if len(metadata_names) != 1:
             raise RuntimeError(f"wheel must contain one METADATA file, found {metadata_names}")
         _check_project_metadata(archive.read(metadata_names[0]))
-        entry_point_names = [name for name in names if name.endswith(".dist-info/entry_points.txt")]
-        if len(entry_point_names) != 1:
-            raise RuntimeError(
-                f"wheel must contain one entry_points.txt file, found {entry_point_names}"
-            )
-        _check_capability_entry_points(archive.read(entry_point_names[0]), expected_entry_points)
         for name in names:
             _check_text_member(name, archive.read(name))
 
 
-def _inspect_sdist(sdist: Path, expected_entry_points: Mapping[str, str]) -> None:
+def _inspect_sdist(sdist: Path) -> None:
     with tarfile.open(sdist, "r:gz") as archive:
         members = [member for member in archive.getmembers() if member.isfile()]
         names = {member.name for member in members}
@@ -425,23 +262,6 @@ def _inspect_sdist(sdist: Path, expected_entry_points: Mapping[str, str]) -> Non
         for suffix in required_suffixes:
             if not any(name.endswith(suffix) for name in names):
                 raise RuntimeError(f"sdist is missing {suffix}")
-        pyproject_members = [
-            member for member in members if member.name.endswith("/pyproject.toml")
-        ]
-        if len(pyproject_members) != 1:
-            raise RuntimeError(
-                f"sdist must contain one pyproject.toml file, found "
-                f"{[member.name for member in pyproject_members]}"
-            )
-        extracted_pyproject = archive.extractfile(pyproject_members[0])
-        if extracted_pyproject is None:
-            raise RuntimeError("sdist pyproject.toml could not be read")
-        sdist_entry_points = _parse_project_capability_entry_points(extracted_pyproject.read())
-        difference = _entry_point_difference(sdist_entry_points, expected_entry_points)
-        if difference is not None:
-            raise RuntimeError(
-                f"sdist capability entry points differ from project metadata: {difference}"
-            )
         leaked = [
             name
             for name in names
@@ -464,12 +284,7 @@ def _isolated_install_environment() -> dict[str, str]:
     return env
 
 
-def _run_installed_python_smoke(
-    artifact: Path,
-    script: str,
-    *,
-    arguments: tuple[str, ...] = (),
-) -> str:
+def _run_installed_python_smoke(artifact: Path, script: str) -> str:
     python_command = [
         "uv",
         "--config-file",
@@ -483,7 +298,6 @@ def _run_installed_python_smoke(
         "-I",
         "-c",
         script,
-        *arguments,
     ]
     try:
         result = subprocess.run(
@@ -502,90 +316,9 @@ def _run_installed_python_smoke(
     return result.stdout.strip()
 
 
-def _browser_evidence_expected_output(descriptor_path: Path, evidence_root: Path) -> str:
-    try:
-        decoded = cast(object, json.loads(descriptor_path.read_text(encoding="utf-8")))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise RuntimeError("installed browser evidence descriptor is unreadable") from exc
-    if not isinstance(decoded, list):
-        raise RuntimeError("installed browser evidence descriptor must be an array")
-    descriptors = cast(list[object], decoded)
-    case_count = 0
-    evidence_root = evidence_root.resolve()
-    for index, descriptor_value in enumerate(descriptors):
-        if not isinstance(descriptor_value, dict):
-            raise RuntimeError(f"installed browser evidence descriptor {index} is not an object")
-        descriptor = cast(dict[object, object], descriptor_value)
-        for field in ("module_path", "corpus_path"):
-            value = descriptor.get(field)
-            if not isinstance(value, str) or not value:
-                raise RuntimeError(f"installed browser evidence descriptor {index} has no {field}")
-            path = Path(value).resolve()
-            if not path.is_relative_to(evidence_root) or not path.is_file():
-                raise RuntimeError(
-                    f"installed browser evidence descriptor {index} {field} escapes its handoff"
-                )
-        expected_case_count = descriptor.get("expected_case_count")
-        if (
-            isinstance(expected_case_count, bool)
-            or not isinstance(expected_case_count, int)
-            or expected_case_count < 0
-        ):
-            raise RuntimeError(
-                f"installed browser evidence descriptor {index} has an invalid case count"
-            )
-        case_count += expected_case_count
-    return f"artifact browser evidence OK ({len(descriptors)} parser(s), {case_count} cases)"
-
-
-def _run_installed_browser_evidence(artifact: Path, evidence_root: Path) -> None:
-    descriptor_path = evidence_root / "descriptors.json"
-    expected_output = _browser_evidence_expected_output(descriptor_path, evidence_root)
-    try:
-        result = subprocess.run(
-            [
-                "node",
-                "--experimental-vm-modules",
-                "--no-warnings",
-                str(BROWSER_EVIDENCE_CHECK),
-                str(descriptor_path),
-            ],
-            cwd=ROOT,
-            env=_isolated_install_environment(),
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=BROWSER_EVIDENCE_TIMEOUT_SECONDS,
-        )
-    except FileNotFoundError as exc:
-        raise RuntimeError(f"installed {artifact.name} browser evidence requires Node.js") from exc
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(f"installed {artifact.name} browser evidence timed out") from exc
-    except OSError as exc:
-        raise RuntimeError(
-            f"installed {artifact.name} browser evidence could not start: {exc}"
-        ) from exc
-    if result.returncode != 0:
-        detail = result.stderr.strip() or result.stdout.strip()
-        if not detail:
-            detail = f"browser harness exited {result.returncode} without diagnostics"
-        raise RuntimeError(f"installed {artifact.name} browser evidence failed: {detail}")
-    if result.stdout.strip() != expected_output or result.stderr.strip():
-        raise RuntimeError(
-            f"installed {artifact.name} browser evidence exited without its completion proof: "
-            f"stdout={result.stdout.strip()!r}, stderr={result.stderr.strip()!r}"
-        )
-
-
-def _smoke_installed_capabilities(artifact: Path, expected_entry_points: Mapping[str, str]) -> None:
-    with tempfile.TemporaryDirectory(prefix="metabrowser-installed-evidence-") as temp_dir:
-        evidence_root = Path(temp_dir)
-        _run_installed_python_smoke(
-            artifact,
-            CAPABILITY_SMOKE_SCRIPT,
-            arguments=(str(evidence_root), *sorted(expected_entry_points)),
-        )
-        _run_installed_browser_evidence(artifact, evidence_root)
+def _smoke_installed_contracts(artifact: Path) -> None:
+    """Run every installed contract's packaged corpus evidence against one built artifact."""
+    _run_installed_python_smoke(artifact, CONTRACT_SMOKE_SCRIPT)
 
 
 def _smoke_install(wheel: Path) -> None:
@@ -649,11 +382,10 @@ def _smoke_install(wheel: Path) -> None:
 def main() -> int:
     wheel = _single_wheel()
     sdist = _single_sdist()
-    expected_entry_points = _project_capability_entry_points()
-    _inspect_wheel(wheel, expected_entry_points)
-    _inspect_sdist(sdist, expected_entry_points)
-    _smoke_installed_capabilities(wheel, expected_entry_points)
-    _smoke_installed_capabilities(sdist, expected_entry_points)
+    _inspect_wheel(wheel)
+    _inspect_sdist(sdist)
+    _smoke_installed_contracts(wheel)
+    _smoke_installed_contracts(sdist)
     _smoke_install(wheel)
     print(f"Distribution checks passed: {wheel.name}, {sdist.name}")
     return 0

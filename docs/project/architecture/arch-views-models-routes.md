@@ -18,17 +18,16 @@ selected     can do              data                 is drawn
 ```
 
 - **Address** names the address space and the resource within it.
-  Core routes are owned by the shell; installed domain plugins may own validated mounted
-  sub-routes through the same route map.
-  See [Browser URL Grammar](../../architecture.md#browser-url-grammar).
+  Core routes are owned by the shell; a plugin adds data routes as `[[data_hook]]`
+  entries under `/api/plugin/<plugin>/`. See
+  [Browser URL Grammar](../../architecture.md#browser-url-grammar).
 - **Resource kind** is the semantic classification a plugin claims.
   Filesystem `[[kind]]` blocks use `FileContext` (including content predicates).
   Git blobs use extension, basename, sniffed adapter, and bounded JSON/YAML/frontmatter
   mappings parsed from blob bytes.
   `path_glob` stays filesystem-only.
-  Planned `ResourceKindSpec` declarations cover route-backed resources without
-  fabricating a file matcher.
-  One kind, many views.
+  A route-backed kind has no file matcher: the shell selects it for its route, as it
+  does `pull-request` for `/pull/<n>`. One kind, many views.
 - **Contract/model** is the validated data a view receives.
   Simple kinds take the `/api/file` envelope; richer kinds have their own documented
   format with a schema and a conformance corpus.
@@ -40,10 +39,11 @@ model, and a model never learns which route reached it.
 That is what lets one diff renderer serve a patch file, a commit, and later a pull
 request without knowing the difference.
 
-Artifact contracts, resource publication profiles, and resource kinds are separate
-trusted registries. Their ownership and the mapping workflow for external APIs are
-defined in
-[External Resources, Artifact Contracts, and Views](arch-external-resources-and-views.md).
+The repository cache validates its own records against installed artifact contracts; see
+[Cache record contracts](arch-repository-sources-and-provider-mirrors.md#cache-record-contracts).
+Resource publication profiles and resource kinds belong to the retired design in
+[External Resources, Artifact Contracts, and Views](arch-external-resources-and-views.md)
+and are not built.
 
 Filesystem-backed models reach these layers through the
 [Inventory Provider Contract](arch-inventory-provider.md).
@@ -76,17 +76,6 @@ Two kinds are also **containers** — folder-like entries whose children are add
 (see [nav containers](arch-nav-containers.md)): `folder` (children are files and
 folders) and `diff` (children are the files a patch changes).
 
-The proposed v0.12 hosted-review plugin adds one route-backed kind only when its model,
-view, address, and parity evidence land together:
-
-| Planned kind | Matches | Views (default first) | Model | Bead |
-| --- | --- | --- | --- | --- |
-| `change-request` | A selected `/hosted/.../change-request/...` resource | Review, Diff, Source | `ChangeRequest/v1` plus a selected bundle of validated companions and File Diff Format by reference | `mb-83w0`, `mb-81p5` |
-
-It is item-like as a document and folder-like as a changed-file container.
-Repository summaries and PR index rows are route models and virtual-navigation data, not
-synthetic filesystem kinds.
-
 ### Shared Source rendering
 
 `text`, `structured`, `markdown`, and `html` all expose raw source from the file
@@ -114,24 +103,18 @@ The registry-to-vendored-grammar and registry-to-text-routing checks live in
 
 ## Documented data formats
 
-Complete formats have a schema, a conformance corpus, and implementations bound by it;
-in-progress rows name the narrower authority already present.
+Complete formats have a schema, a conformance corpus, and implementations bound by it.
 These formats are tool-neutral: nothing in a document references Metabrowser.
 
 | Format | Describes | Authority | Implementations |
 | --- | --- | --- | --- |
 | [File Diff Format v1](file-diff-format/file-diff-format.md) | A change set between two snapshots | `data/file-diff-format/file-diff.schema.json` | `metabrowser.diff.format` (Pydantic), `builtin_plugins/diff/diff-model.js` |
 | [File Rollup Format](file-rollup-format/file-rollup-format.md) | File classification and directory totals | `data/file-rollup-format/` | Python inventory, browser rollup projection |
-| [Hosted Review Format](arch-hosted-review-model.md) (in progress) | Provider-neutral repositories, change requests, reviews, threads, checks, status, freshness, and activity projections | Installed enforced SoftSchema contracts and resource profiles; Pydantic record validators; packaged conformance corpora; mechanically closed scrubbed GitHub coverage oracle with exact reduced-response shapes, field/value evidence, and executable identity recipes | Python registry, validators, and codecs plus registry-driven browser parsers for every browser-consumed contract; the generic installed inventory/evidence and isolated-wheel gates are implemented, while browser plugin registration and the GitHub adapter remain planned |
 
-The registry and composition rules that let later release, issue, or other external
-contracts reuse these layers are specified in
-[External Resources, Artifact Contracts, and Views](arch-external-resources-and-views.md).
-Its installed contract and profile tables are maintained by
-`devtools/check_artifact_contracts.py`; this map does not register a route, resource
-kind, or view for format-only capability declarations.
-A planned resource kind is added to the table above only when its model, route, views,
-CLI parity, and functional evidence land together.
+The repository cache’s record contracts are an internal format, not one of these: their
+installed inventory is maintained by `devtools/check_artifact_contracts.py` in
+[Cache record contracts](arch-repository-sources-and-provider-mirrors.md#cache-record-contracts),
+and this map registers no route, kind, or view for them.
 
 Everything else travels as an envelope on `/api/*`, versioned with the shell and the
 built-in plugins as one artifact — an internal contract, not a standard.
@@ -150,7 +133,6 @@ the sources that produce them.
 | `/commit/<rev>/<inner>` | One file’s diff inside that change set | Route parses; the panel restores the commit, not yet the file |
 | `/pull/<n>[/files]` | The served pull request’s page: its conversation, or its Files changed | Implemented. The shell mounts the view a plugin registers for the `pull-request` kind (the GitHub plugin’s); a number other than the served pull request’s shows why it has nothing |
 | `/compare/<base>..<head>[/<inner>]` | An explicit comparison (`...` for merge base) | Specified, not built |
-| `/hosted/<provider-kind>/<instance-key>/<repository-key>/<resource-kind>/<resource-key>[/<inner>]` | A provider-neutral hosted resource and optional addressed child; typed atom keys encode the instance and opaque IDs canonically | Proposed for v0.12.0 in `mb-xzj3`, `mb-6mle`, `mb-83w0`, and `mb-81p5`; the first kind is `change-request` |
 
 The shape after the route is always `<container address>/<inner path>`, which is the
 container contract written as a URL. The full grammar, including the `_mb_` query
@@ -176,7 +158,6 @@ reservation and its invariants, is in
 | `/api/source/pin` | `POST` with `{"ref": …}` or `{"oid": …}`: resolve a branch, then a tag, then a commit ID in the mirror alone, never through revision syntax, and serve it: the old tree source is closed and the new one attached under a new generation. Answers `changed` and the new status, and, when the body also names the page’s `/view/` address as `view`, `view_href`: that entry’s canonical address when the new pin has it, an inner address kept when the new pin has its container file, else `/view/`; `view` is checked before the switch, so one that is not percent-encoded ASCII is `invalid_selection` with nothing changed, and a query or fragment is dropped; `invalid_selection` (400), `selection_not_found` (404), `ambiguous_selection` (409), or `unsupported_for_subject` (409) otherwise. `HEAD` is the default branch, and a name the mirror holds that is not a commit answers `not_a_commit` (409) at once, as URL opening does. A commit pinned by `oid` has no ref, unless it is the tip, in the mirror now, of the ref this server last served or of the served pull request’s `refs/pull/<n>/head`: it is then served under that ref, so a reader who went to another commit and came back by ID, as View file on a diff does, is on the branch or the pull request again. In a server, a selection the mirror lacks answers `selection_pending` (202) with `refresh` and the status, and starts one background fetch; asked again after it ends, it switches, answers 404, or answers `selection_fetch_failed` (502) when that fetch did not run. `--api` never fetches for it, so the transcripts pin the 404; the 202 path is asserted by `tests/test_source_refresh.py` |
 | `/api/kpress/render`, `/api/kpress/export` | Document rendering and export. On a `GitRevisionSubject`, render reads a `GitPath` blob, uses the object id as the cache key, and passes the GitPath wire as `source_path`; export stays mutation-gated and unavailable. With active content off (every served mirror, and a folder served with `--untrusted`), render answers the HTML reduced to the inert allowlist of `src/metabrowser/inert_html.py`, with GitHub’s `user-content-` heading anchors, marks it `inert`, and keeps only stylesheets in its assets; KPress’s table of contents leaves the HTML, `toc` says whether KPress drew one, and the model’s `headings` point at the anchors |
 | `/api/plugin/<plugin>/<route>` | Plugin data hooks (`[[data_hook]]`). On a `GitRevisionSubject`, diff document/children, binary chunk, structured parsed, and agent-log charts honor `GitPath` and follow in-tree relative symlink blobs using the leaf kind |
-| A plugin-declared mounted prefix (proposed) | Domain resource routes with path parameters and honest HTTP responses; `mb-xzj3` adds this for hosted review |
 | `/raw`, `/raw/<path>` | Bounded raw bytes through the active source’s content reader, and the document the sandboxed html Preview frames; oversized content is refused before an unbounded object read. Both shapes share one resolver and send the same sandbox headers; the path form exists so relative references inside a browsed document resolve. A Git subject reads blobs by `GitPath` and follows in-tree relative symlink blobs. Image blobs use an image media type from the leaf display name. LFS pointers are stored pointer bytes; a missing blob is 404. On a Git subject only the query form answers: the path form’s one consumer, the HTML preview frame, is never offered under the forced untrusted profile, so it answers `unsupported_for_subject` (409) rather than a 404 that would misreport a present file, and Markdown images resolve to `GitPath` wires through the query form |
 | `/kpress-static/<path>`, `/static/<path>`, `/plugin-static/<plugin>/<path>` | Shell, renderer, and plugin assets |
 | `/_debug/tasks`, `/_debug/inventory` | Opt-in local task and inventory-provider diagnostics when `METABROWSER_DEBUG=1` |
@@ -260,16 +241,6 @@ The page applies the same allowlist again, rebuilding the nodes it inserts.
 See
 [Pull-request records](arch-repository-sources-and-provider-mirrors.md#pull-request-records).
 
-The hosted-review slice registers these exact proposed resource routes with the browser
-address in the same implementation changes:
-
-| Planned route | Model | CLI evidence | Bead |
-| --- | --- | --- | --- |
-| `/api/hosted-review/<provider-kind>/<instance-key>/<repository-key>/repository` | `HostedRepository/v1` plus retrieval and manifest references | `metab --api`; `cli-github-repository.tryscript.md` | `mb-2oxp` |
-| `/api/hosted-review/<provider-kind>/<instance-key>/<repository-key>/change-requests?query_key=<key>` | One `ChangeRequestIndex/v1` observation | `metab --api`; `cli-github-pr-index.tryscript.md` | `mb-lnkl` |
-| `/api/hosted-review/<provider-kind>/<instance-key>/<repository-key>/change-requests/<resource-key>` | Selected `ChangeRequest/v1` bundle, including distinct top-level and review comments | `metab --api`; `cli-github-pr-open.tryscript.md` | `mb-h64t` |
-| `/api/hosted-review/<provider-kind>/<instance-key>/<repository-key>/change-requests/<resource-key>/comparison` | File Diff Format resolved from immutable base/head object IDs | `metab --api`; `cli-github-pr-open.tryscript.md` | `mb-81p5` |
-
 ### Planned plugin registration surfaces
 
 Browser and route declarations are additive installed-plugin capabilities only if
@@ -277,9 +248,8 @@ existing SDK 0.7 manifests and JavaScript calls keep their signatures and behavi
 They still require plugin-author documentation and a changelog entry.
 An existing browser-contract change instead bumps `PLUGIN_SDK_VERSION` and every
 built-in manifest in one commit, with no compatibility layer.
-Artifact contracts and resource profiles use the separately versioned
-`metabrowser.capabilities.v1` installed-Python entry-point group and never enter browser
-plugin discovery or static asset loading.
+The thin-mirror plan retired the router, address-space, provider-adapter, resource-kind,
+and nav-panel declarations for the alpha; their rows remain as design background.
 
 | Declaration or SDK call | Owns | Arbitration and lifecycle | Bead |
 | --- | --- | --- | --- |
@@ -288,7 +258,6 @@ plugin discovery or static asset loading.
 | `AddressSpaceSpec` / `registerAddressSpace` | Browser prefix, parse, format, apply, preview claim, startup, popstate, root replacement, disposal | Exactly one owner per address; browser and `metab --show` share the registration | `mb-6mle` |
 | `ProviderUrlReducerSpec` | Declared schemes/hosts and `NotApplicable`/`Reduced`/terminal `Rejected` reducer | Overlapping claims fail discovery; claimed rejection never falls through. Superseded for the alpha by the thin-mirror plan: the built-in GitHub reducer reaches `classify_root_argument(reducers=)` through `cache/providers.py`, with no public declaration | `mb-12cz` |
 | `ProviderAdapterSpec` | Provider/instance capability and trusted adapter factory | Duplicate claims fail; lifespan injects neutral ports and awaits cancellation/close | `mb-ji83` |
-| `ArtifactContractSpec` / `ResourceProfileSpec` via `metabrowser.capabilities.v1` | Packaged schema, parser, corpus, producer/consumer inventory, and publication bundle shape | Only installed Python distributions contribute; duplicate IDs, malformed declaration structure, invalid schemas, broken profile references, missing evidence, and architecture-table drift fail the build. Artifact content cannot register declarations. The installed capability, generic inventory, and isolated-wheel gates are implemented without registering a browser plugin or static asset | `mb-52iz`, `mb-vors` |
 | `ResourceKindSpec` | Route-backed semantic kind, item/container capabilities, primary contract, and views | Duplicate kind or view claims fail; route, browser, and CLI resolve the same selection | `mb-83w0` before `mb-81p5` |
 | `registerNavPanel` | Repository-scoped bounded virtual collection | Generation-checked loading, restoration, root replacement, and disposal | `mb-uh6p` |
 
@@ -495,39 +464,15 @@ SSE transport whose emitted snapshot is already owned by its data routes.
 | `source.history-landing-browser` | paint-exempt | `static/source-pin-guard.js` | `local-only` | — | Whether Back restores a page from the back/forward cache or loads it again, when `pageshow` fires and with what `persisted`, the navigation type a document reports, and what a reload fetches are the browser’s. The decision made on them is a session owner above (`source.history-landing`), which also loads the module as the server writes it into a page. `tests/test_source_freshness_session.py` pins the statuses that decision reads against a real server, and `explorations/history-landing/README.md` records the Chrome run: a restore with `persisted` true that keeps its scroll position when nothing switched, and one reload after a switch |
 | `github.pull-page-paint` | paint-exempt | `builtin_plugins/github/pull-page.js#mountPullPage` | `local-only` | — | Building the page’s DOM, observing which texts scroll into view, loading the diff plugin and mounting its view, and the shell’s `app.js` callbacks the page host calls (load the plugin, render into the pane, `history.pushState`) need a rendered page. Every decision they act on is a session owner above: what a route, a tab link, the link to the served pull request, or a history landing does to the pane, and which superseded page is disposed (`navigation.pull-page-history`), whether the conversation repaints or asks again and what Files changed keeps (`github.pull-page-paint-decisions`), and what of a text’s HTML is inserted (`github.pull-page-inert-markup`). The route grammar, the shell and plugin wiring for the `pull-request` kind, and that only an inert template is parsed are pinned in `tests/test_pull_page_route.py`; the browser walkthrough is in the v0.12 QA runbook |
 
-### Planned v0.12 hosted-review functional rows
-
-These rows move into the enforced table in the same changes that add their production
-functions. All interaction rows enter through `node tests/dom/hosted-review-session.js`
-and are pinned together by `tests/golden/cli-ui-hosted-review.tryscript.md`; focused
-unit sessions may supplement but cannot replace that exact production path.
-
-| Aspect | Tier | Planned owner | Data inputs | Required production session |
-| --- | --- | --- | --- | --- |
-| `hosted-review.direct-lifecycle` | interaction | `static/plugin-address-spaces.js#parseAddress`, `static/plugin-address-spaces.js#applyAddress`, `builtin_plugins/hosted_review/hosted-review-view.js#prepareChangeRequestView`, `#mountChangeRequestView`, `#disposeChangeRequestView` | selected change-request and comparison routes above | direct `/hosted/.../change-request/...` startup, popstate, replacement, and failed-load recovery |
-| `hosted-review.panel-window` | interaction | `builtin_plugins/hosted_review/hosted-review-panel.js#createPullRequestPanel`, `#loadIndexPage` | change-request index route | bounded page load, virtualization window shift, stale and partial indicators |
-| `hosted-review.panel-selection` | interaction | `builtin_plugins/hosted_review/hosted-review-panel.js#openChangeRequest` | index and selected change-request routes | row selection opens the same direct address and changed-file container |
-| `hosted-review.panel-restoration` | interaction | `builtin_plugins/hosted_review/hosted-review-panel.js#restorePullRequestSelection` | index route | selection and expansion restore only for the same repository and query key |
-| `hosted-review.root-replacement` | interaction | `static/plugin-address-spaces.js#replaceRoot`, `builtin_plugins/hosted_review/hosted-review-panel.js#replaceRoot` | `local-only` | old requests, previews, index pages, and snapshot leases settle before the new root owns state |
-| `hosted-review.disposal` | interaction | `static/plugin-address-spaces.js#disposeAddress`, `builtin_plugins/hosted_review/hosted-review-view.js#disposeChangeRequestView`, `builtin_plugins/hosted_review/hosted-review-panel.js#dispose` | `local-only` | navigation away, failed replacement, root replacement, and shutdown dispose once |
-
-Every browser-consumed Hosted Review Format record has a named parser in
-`builtin_plugins/hosted_review/hosted-review-model.js` and runs the same valid/invalid
-corpus as Python: repository, index, change request, top-level comment, review, thread,
-review comment, check, status, and activity page.
-Provider binding, retrieval, resource-set, sync-manifest, pointer, and tombstone records
-remain server-only publication evidence and have no browser parser.
-No server aggregate may bypass those record validators.
-
 ## Adding something
 
 - **A filesystem-backed kind**: add a `[[kind]]` block with a match predicate and at
   least one `[[view]]`, then add a representative `--show` case to the golden
   transcript.
-- **A route-backed resource kind**: add one `ResourceKindSpec` with its primary
-  contract/model, item/container capabilities, address owner, and views; add the route,
-  `--show`, `--api`, browser parser, and functional golden evidence in the same change.
-  Do not invent a file matcher.
+- **A route-backed kind**: declare a `[[view]]` for a kind no `[[kind]]` matches and
+  have the shell select it for its route, as the GitHub plugin’s `pull-request` kind
+  does for `/pull/<n>`; add the route, its `--api` golden, and its functional rows in
+  the same change. Do not invent a file matcher.
 - **A view on an existing kind**: add a `[[view]]` block and `mb.registerView`; give it
   a disposal path, then register each new observable behavior in the functional table.
 - **A container**: add `container = { children = "<data_hook route>" }` to the kind and

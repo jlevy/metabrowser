@@ -17,7 +17,6 @@ from metabrowser.cache.atomic import RecordError, parse_record
 from metabrowser.cache.contracts import (
     CACHE_CONTRACT_BY_ID,
     CACHE_CONTRACTS,
-    CAPABILITY_PROVIDER_ID,
     ENFORCED_CACHE_CONTRACTS,
     FORMAT_ROOT,
     MAX_CONFIG_REASONS,
@@ -29,7 +28,6 @@ from metabrowser.cache.contracts import (
     config_reasons,
     parse_application_config,
     record_reasons,
-    repository_cache_capabilities,
     validate_config_values,
 )
 from metabrowser.cache.identity import (
@@ -49,13 +47,11 @@ from metabrowser.cache.records import (
     RepositoryStoreState,
 )
 from metabrowser.plugin_loader.artifact_contracts import (
-    InstalledRegistries,
     serialize_artifact,
     validate_artifact,
     validate_record,
 )
 from metabrowser.plugin_loader.artifact_inventory import check_installed_evidence
-from metabrowser.plugin_loader.capability_discovery import discover_capability_sets
 
 EXPECTED_CONTRACTS = {
     CONFIG_CONTRACT_ID: ("application-config-v1.schema.yaml", "config", SchemaStatus.permissive),
@@ -86,10 +82,6 @@ EXPECTED_CONTRACTS = {
         SchemaStatus.enforced,
     ),
 }
-
-
-def _registries() -> InstalledRegistries:
-    return InstalledRegistries(contracts=cache_contract_registry(), resource_profiles={})
 
 
 def _base_records() -> dict[str, dict[str, Any]]:
@@ -148,7 +140,9 @@ def test_a_model_change_without_recompiling_is_reported_as_drift(tmp_path: Path)
 
 
 def test_installed_specs_carry_the_packaged_schema_bytes_and_digests() -> None:
-    specs = {spec.contract_id: spec for spec in repository_cache_capabilities().artifact_contracts}
+    specs = {
+        contract_id: installed.spec for contract_id, installed in cache_contract_registry().items()
+    }
 
     assert set(specs) == {contract.contract_id for contract in ENFORCED_CACHE_CONTRACTS}
     assert CONFIG_CONTRACT_ID not in specs
@@ -159,22 +153,11 @@ def test_installed_specs_carry_the_packaged_schema_bytes_and_digests() -> None:
         assert spec.schema_bytes_sha256 == hashlib.sha256(schema_bytes).hexdigest()
         assert spec.schema_digest == SchemaView.load(contract.schema_path).schema_sha256
         assert spec.artifact_profile == "pure-yaml"
-        assert spec.browser_consumed is False
         assert spec.corpus_record_selectors == contract.corpus_record_selectors
 
 
 def test_the_enforced_corpus_passes_the_generic_evidence_gate() -> None:
-    assert check_installed_evidence(_registries()) == ()
-
-
-def test_the_repository_cache_provider_is_installed_through_its_entry_point() -> None:
-    discovery = discover_capability_sets()
-
-    assert discovery.errors == ()
-    (provider,) = [p for p in discovery.providers if p.provider_id == CAPABILITY_PROVIDER_ID]
-    assert {spec.contract_id for spec in provider.capabilities.artifact_contracts} == {
-        contract.contract_id for contract in ENFORCED_CACHE_CONTRACTS
-    }
+    assert check_installed_evidence(cache_contract_registry()) == ()
 
 
 def test_config_corpus_cases_have_their_expected_outcomes() -> None:

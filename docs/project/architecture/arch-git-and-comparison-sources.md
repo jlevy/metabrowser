@@ -2,9 +2,9 @@
 
 **Status:** Implemented for the subprocess boundary, repository discovery, the
 `/api/git/` collection API, and the immutable-revision diff source.
-The hosted-review format is implemented as a format and model layer only — its record
-families, contracts, and browser models — with no adapter, route, kind, or view, and no
-GitHub provider layer exists; see
+Pull-request data is the GitHub plugin’s own validated records; see
+[Pull-request records](arch-repository-sources-and-provider-mirrors.md#pull-request-records).
+The retired provider-neutral design is in
 [Hosted Review Model and Provider Boundary](arch-hosted-review-model.md).
 Worktree-free repository stores and immutable revision subjects are implemented for tree
 reads, Git collection routes, `GitPath` file/raw/tree routes (including a SPA `tree`
@@ -409,7 +409,6 @@ That is worth stating plainly, because the differences are not all deliberate.
 | Git wire | `git/wire.py` | `TypedDict` with `NotRequired`, plus hand-written validators and `_*_REQUIRED` gate sets | Validators, exercised by the test suite |
 | Cache records | `cache/records.py`, `cache/contracts.py` | Pydantic plus deterministic compiled SoftSchema contracts | Compile-drift, corpus validation, and installed-wheel checks |
 | Cache wire | `cache/wire.py` | `TypedDict` with `NotRequired`, built only from validated cache records | The type checker on every producer, plus route tests and the `--api` golden |
-| Hosted Review Format | `builtin_plugins/hosted_review/models.py`, `builtin_plugins/hosted_review/contracts.py`, `builtin_plugins/hosted_review/hosted-review-model.js` | Provider-neutral Pydantic and browser models plus compiled SoftSchema contracts; frontmatter Markdown for primary change-request documents | Cross-runtime corpus, provider mapping oracle, architecture inventory, and installed-wheel checks |
 
 **The format layer is the model to copy.** Every closed vocabulary is a `StrEnum`
 (`ChangeKind`, `SnapshotKind`, `Availability`, `EntryType`, `FileMode`, `LineOp`,

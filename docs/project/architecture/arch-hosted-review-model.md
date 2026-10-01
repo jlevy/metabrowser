@@ -1,15 +1,18 @@
 # Hosted Review Model and Provider Boundary
 
-**Superseded in part (2026-09-23):** pull-request data for the v0.12 alpha is stored as
-plain validated JSON records per
-[Thin Mirror for Git and GitHub Browsing](../specs/active/plan-2026-09-23-v012-thin-mirror.md);
-the provider boundary and snapshot store below are not built for the alpha.
+**Retired (2026-09-30):** this design is not on the v0.12 path.
+Pull-request data is stored as plain validated JSON records per
+[Thin Mirror for Git and GitHub Browsing](../specs/active/plan-2026-09-23-v012-thin-mirror.md),
+and the provider boundary and snapshot store below are not built.
+The Hosted Review Format code this document describes, with its contracts, corpora,
+browser models, and GitHub coverage oracle, was removed from the v0.12 stack and is
+kept, unmaintained, on the `reference/v012-hosted-review` branch, tagged
+`reference/v012-hosted-review-2026-09-30`. File and symbol names below refer to that
+removed code.
 
-**Status:** Accepted design; the no-network record families, source-based provider
-bindings, provider revision observations, the non-persisted local object-availability
-report, scrubbed GitHub coverage oracle, installed enforced contracts and resource
-profiles, and generic format inventory gate are implemented.
-No provider adapter, cache, route, kind, or view is implemented yet.
+**Status:** Design only; nothing in this document is implemented in this tree.
+No record family, contract, corpus, coverage oracle, provider adapter, cache, route,
+kind, or view exists here.
 
 Hosted review is a domain above Git history and File Diff Format.
 A pull request or merge request has Git endpoints and can produce a comparison, but it

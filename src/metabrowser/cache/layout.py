@@ -39,8 +39,6 @@ from metabrowser.cache.locks import application_home_lock
 from metabrowser.cache.paths import (
     CONFIG_RECORD,
     LAYOUT_RECORD,
-    PROVIDER_BINDINGS,
-    PROVIDER_REPOSITORIES,
     REPOSITORY_STORES,
     SOURCES,
 )
@@ -279,12 +277,7 @@ def _has_durable_entries(home: Path) -> bool:
     home. ``keep`` leaves an over-shared directory to the repairing writes that follow.
     """
 
-    for directory in (
-        SOURCES,
-        REPOSITORY_STORES,
-        PROVIDER_BINDINGS,
-        PROVIDER_REPOSITORIES,
-    ):
+    for directory in (SOURCES, REPOSITORY_STORES):
         try:
             if list_private_directory(home, directory, max_entries=0, shared="keep"):
                 return True

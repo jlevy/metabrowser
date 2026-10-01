@@ -7,12 +7,9 @@ the URL classifier's job, not this module's.
 
 - A source identity is a SHA-256 digest of a domain, the transport, and the normalized
   address, joined with NUL. Transport is part of the material, so an HTTPS and an SSH
-  spelling of one hosted repository are two sources until a provider binding attaches
-  both to one store.
-- A generic store identity digests the source identity and the object format observed
-  during acquisition, so two concurrent acquisitions of one source converge on one store.
-  A provider store identity is domain-separated from every generic one and carries no
-  authorization context.
+  spelling of one hosted repository are two sources.
+- A store identity digests the source identity and the object format observed during
+  acquisition, so two concurrent acquisitions of one source converge on one store.
 - A store key is all 64 hexadecimal digits of its identity, so store directories cannot
   collide.
 - A slug is a readable, lowercase ASCII prefix plus the shortest digest suffix no other
@@ -113,45 +110,12 @@ def source_identity(transport: GitTransport, normalized_address: str) -> str:
 
 
 def repository_store_id(source_id: str, object_format: ObjectFormat) -> str:
-    """Return the store identity a source acquires before any provider resolution."""
+    """Return the identity of the store a source acquires."""
 
     if not is_identity(source_id):
         raise ValueError("a source identity is sha256:<64 lowercase hex digits>")
     _require_object_format(object_format)
     return _digest(f"{STORE_IDENTITY_DOMAIN}\0source\0{source_id}\0{object_format}")
-
-
-def provider_repository_store_id(
-    provider_kind: str,
-    provider_instance: str,
-    repository_opaque_id: str,
-    object_format: ObjectFormat,
-) -> str:
-    """Return the store identity proven by stable provider repository identity.
-
-    The canonical spelling of *provider_instance* belongs to the provider plan; this
-    function only guarantees domain separation from every generic store.
-    """
-
-    _require_object_format(object_format)
-    for name, value in (
-        ("provider kind", provider_kind),
-        ("provider instance", provider_instance),
-        ("repository opaque id", repository_opaque_id),
-    ):
-        if not value or "\0" in value:
-            raise ValueError(f"{name} must be nonempty and contain no NUL")
-    material = "\0".join(
-        (
-            STORE_IDENTITY_DOMAIN,
-            "provider",
-            provider_kind,
-            provider_instance,
-            repository_opaque_id,
-            object_format,
-        )
-    )
-    return _digest(material)
 
 
 def store_key(store_id: str) -> str:
@@ -275,7 +239,6 @@ __all__ = [
     "is_identity",
     "is_slug",
     "is_store_key",
-    "provider_repository_store_id",
     "repository_store_id",
     "slug_matches_identity",
     "slug_readable_part",
