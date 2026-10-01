@@ -30,6 +30,13 @@ Instructions retired are read through macOS interfaces (`/usr/bin/time -l` for a
 one-shot command, `proc_pid_rusage` for a live server). On another platform the
 instruction columns are absent and only wall and CPU time are recorded.
 
+Every build is measured in one bytecode state. A start that finds no compiled bytecode
+compiles each module it imports, which is about three times the work of a start that
+loads them compiled, so one build with bytecode beside one without measures the
+compiler and not the builds. `run` reads the state of each build's environment before
+the first round, refuses a series whose builds differ, and writes the state into every
+record: see "One bytecode state" below.
+
 Judge a tolerance on the pair ratios, never on one condition's worst run against the
 other's: see "Judge a tolerance on back-to-back pairs" in this directory's README.
 """
@@ -50,8 +57,9 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Final, cast
 
 # Warm repetitions of the shell fetch. Nine gives a median that one slow response
 # cannot move, and keeps a round short enough to take many of them.
@@ -113,10 +121,219 @@ def _fetch(url: str, *, timeout: float) -> tuple[float, int]:
         return (time.perf_counter() - started) * 1000, error.code
 
 
+# ── One bytecode state ──────────────────────────────────────────────────────────
+#
+# Python compiles a module the first time it is imported and keeps the result beside the
+# source, unless PYTHONDONTWRITEBYTECODE is set, and `uv pip install` compiles nothing
+# unless asked. So an environment built and used under that variable, as some agent
+# shells set it, never has bytecode, and every start in it compiles everything it
+# imports. Measured 2026-10-01 on one wheel in two environments: 9,344M instructions
+# from spawn to an accepted connection without bytecode, 2,805M with it. exp-037 took
+# both builds without it; a control with bytecode beside a candidate without read 3.2x
+# on `--show` for builds that differ by 1.03x.
+#
+# The state is read from the files: each source of the installed `metabrowser`
+# distribution and of every distribution it requires, and whether a bytecode file the
+# interpreter would accept lies beside it. Two states can be measured, and a ratio is
+# only taken inside one:
+#
+# - `cached`: every source has one. This is what an installation runs from its second
+#   start, and the state a claim about a release is made in.
+# - `uncached`: none has. Every start compiles its imports.
+#
+# Anything between is refused. It is what one earlier run leaves behind, and it differs
+# by which modes that run happened to import.
+
+BYTECODE_STATES: Final = ("cached", "uncached")
+DONT_WRITE_BYTECODE: Final = "PYTHONDONTWRITEBYTECODE"
+
+# Runs in the environment's own interpreter, with the standard library alone. A source
+# the interpreter cannot compile is not counted: no start imports it, and no compile
+# step can give it bytecode. The header test is the one `compileall` uses to skip a file
+# that is up to date, and it accepts a hash-based file, which the interpreter loads
+# without a timestamp.
+_BYTECODE_PROBE: Final = r"""
+import importlib.metadata as metadata, importlib.util as util
+import json, os, re, struct, sys
+
+def compiled(source):
+    try:
+        with open(util.cache_from_source(source), "rb") as handle:
+            head = handle.read(12)
+        if len(head) < 12 or head[:4] != util.MAGIC_NUMBER:
+            return False
+        flags, stamp = struct.unpack("<LL", head[4:])
+        return bool(flags & 1) or stamp == int(os.stat(source).st_mtime) & 0xFFFFFFFF
+    except (OSError, ValueError, NotImplementedError):
+        return False
+
+def compilable(source):
+    try:
+        with open(source, "rb") as handle:
+            compile(handle.read(), source, "exec", dont_inherit=True)
+        return True
+    except (OSError, SyntaxError, ValueError):
+        return False
+
+seen, queue, report, roots = set(), ["metabrowser"], {}, set()
+while queue:
+    name = re.sub(r"[-_.]+", "-", queue.pop()).lower()
+    if name in seen:
+        continue
+    seen.add(name)
+    try:
+        distribution = metadata.distribution(name)
+    except metadata.PackageNotFoundError:
+        continue
+    sources = have = 0
+    for entry in distribution.files or ():
+        source = str(distribution.locate_file(entry))
+        if not source.endswith(".py") or not os.path.isfile(source):
+            continue
+        if compiled(source):
+            have += 1
+        elif not compilable(source):
+            continue
+        sources += 1
+    report[name] = [sources, have]
+    roots.add(str(distribution.locate_file("")))
+    queue += [re.match(r"[A-Za-z0-9._-]+", line)[0] for line in distribution.requires or ()]
+json.dump({"distributions": report, "roots": sorted(roots)}, sys.stdout)
+"""
+
+
+@dataclass(frozen=True, slots=True)
+class BytecodeState:
+    """What bytecode one build's environment holds for the package and what it requires."""
+
+    interpreter: Path
+    sources: int
+    compiled: int
+    roots: tuple[str, ...]
+
+    @property
+    def state(self) -> str:
+        if self.compiled == self.sources:
+            return "cached"
+        return "uncached" if self.compiled == 0 else "partial"
+
+    def describe(self) -> str:
+        return f"{self.state} ({self.compiled} of {self.sources} source files have bytecode)"
+
+    @property
+    def compile_command(self) -> str:
+        return f"{self.interpreter} -m compileall -q {' '.join(self.roots)}"
+
+
+def _without_bytecode_writes() -> dict[str, str]:
+    # Reading a state, or asking a build its version, must not change the state.
+    return {**os.environ, DONT_WRITE_BYTECODE: "1"}
+
+
+def bytecode_state(metab: Path) -> BytecodeState:
+    """Read the bytecode state of the environment *metab* is installed in."""
+
+    interpreter = metab.parent / "python"
+    if not interpreter.exists():
+        raise SystemExit(
+            f"{metab} has no interpreter beside it, so its environment's bytecode cannot be "
+            "read. Give the console script inside the environment's bin directory."
+        )
+    result = subprocess.run(
+        [str(interpreter), "-c", _BYTECODE_PROBE],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=_without_bytecode_writes(),
+    )
+    if result.returncode != 0:
+        raise SystemExit(f"could not read the bytecode state of {metab}: {result.stderr[-300:]}")
+    report = cast("dict[str, Any]", json.loads(result.stdout))
+    distributions = cast("dict[str, list[int]]", report["distributions"])
+    if distributions.get("metabrowser", [0, 0])[0] == 0:
+        raise SystemExit(
+            f"the environment of {metab} holds no installed metabrowser source files. An "
+            "editable install is not what a user runs: measure a wheel installed into an "
+            "environment of its own."
+        )
+    return BytecodeState(
+        interpreter=interpreter,
+        sources=sum(counts[0] for counts in distributions.values()),
+        compiled=sum(counts[1] for counts in distributions.values()),
+        roots=tuple(cast("list[str]", report["roots"])),
+    )
+
+
+def compile_bytecode(state: BytecodeState) -> None:
+    """Compile every source under the environment's package directories."""
+
+    # Without the variable, though on CPython 3.14 `compileall` writes either way. Its
+    # exit status is not read: it is nonzero when one file anywhere fails to compile,
+    # and the caller reads the state again.
+    environment = {key: value for key, value in os.environ.items() if key != DONT_WRITE_BYTECODE}
+    subprocess.run(
+        [str(state.interpreter), "-m", "compileall", "-q", *state.roots],
+        capture_output=True,
+        check=False,
+        env=environment,
+    )
+
+
+def settle_bytecode(builds: dict[str, Path], *, compile_missing: bool) -> str:
+    """The one bytecode state every build is in, or a refusal that says how to get one.
+
+    With *compile_missing*, an environment that is not `cached` is compiled first.
+    """
+
+    states = {name: bytecode_state(path) for name, path in builds.items()}
+    if compile_missing:
+        for name, state in states.items():
+            if state.state != "cached":
+                print(
+                    f"{name}: compiling {state.sources - state.compiled} source files", flush=True
+                )
+                compile_bytecode(state)
+                states[name] = bytecode_state(builds[name])
+    found = {state.state for state in states.values()}
+    if len(found) == 1 and found <= set(BYTECODE_STATES):
+        (state_name,) = found
+        for name, state in states.items():
+            print(f"{name}: bytecode {state.describe()}", flush=True)
+        if state_name == "uncached":
+            print(
+                "every start in this series compiles its imports, which an installation does "
+                "only on its first start; pass --compile-bytecode for the state a release "
+                "claim is made in",
+                flush=True,
+            )
+        return state_name
+    lines = [
+        "a ratio is taken only between builds in one bytecode state, all cached or all "
+        "uncached, and these are not:"
+    ]
+    lines += [f"  {name}: {state.describe()}" for name, state in states.items()]
+    lines.append(
+        "A start without bytecode compiles what it imports, about three times the work of "
+        "one that loads it compiled. Compile each environment that is not cached, and run "
+        "again:"
+    )
+    commands = [state.compile_command for state in states.values() if state.state != "cached"]
+    lines += [f"  {command}" for command in dict.fromkeys(commands)]
+    lines.append("or pass --compile-bytecode, which does that before the first round.")
+    raise SystemExit("\n".join(lines))
+
+
 def _environment(home: Path) -> dict[str, str]:
     # A home of its own, so a build under test never reads or writes the developer's
     # cache, and a fixed hash seed, so set and dict ordering does not vary the work.
-    return {**os.environ, "METABROWSER_HOME": str(home), "PYTHONHASHSEED": "0"}
+    # No measured process writes bytecode, so the state read before the first round is
+    # the state of every round: without this, an `uncached` series would compile itself
+    # into a cached one as it ran, the control first.
+    return {
+        **_without_bytecode_writes(),
+        "METABROWSER_HOME": str(home),
+        "PYTHONHASHSEED": "0",
+    }
 
 
 def _measure_command(
@@ -221,7 +438,12 @@ def _measure(metab: Path, tree: Path, home: Path) -> dict[str, float]:
 
 def _version(metab: Path) -> str:
     result = subprocess.run(
-        [str(metab), "--version"], capture_output=True, text=True, check=True, timeout=120
+        [str(metab), "--version"],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=120,
+        env=_without_bytecode_writes(),
     )
     return result.stdout.strip()
 
@@ -242,6 +464,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     versions = {name: _version(path) for name, path in builds.items()}
     for name, version in versions.items():
         print(f"{name}: {version}", flush=True)
+    bytecode = settle_bytecode(builds, compile_missing=cast(bool, args.compile_bytecode))
     with tempfile.TemporaryDirectory(prefix="metab-startup-home-") as home_dir:
         home = Path(home_dir)
         with out.open("a", encoding="utf-8") as stream:
@@ -254,6 +477,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                             "candidate": candidate,
                             "build": build,
                             "version": versions[build],
+                            "bytecode": bytecode,
                             "load1": load,
                             "recorded_at": time.time(),
                             **_measure(builds[build], tree, home),
@@ -264,7 +488,22 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
-_NOT_METRICS = {"pair", "candidate", "build", "version", "load1", "recorded_at"}
+_NOT_METRICS = {"pair", "candidate", "build", "version", "bytecode", "load1", "recorded_at"}
+# A record written before the state was read. Such a series may have been taken in
+# either state, or across both.
+BYTECODE_UNRECORDED: Final = "unrecorded"
+
+
+def recorded_bytecode(rows: list[dict[str, Any]]) -> str:
+    """The one bytecode state *rows* were measured in; refuse rows from more than one."""
+
+    states = sorted({str(row.get("bytecode", BYTECODE_UNRECORDED)) for row in rows})
+    if len(states) > 1:
+        raise SystemExit(
+            f"these records were measured in more than one bytecode state ({', '.join(states)}); "
+            "a median across them is of no one condition. Summarize a file that holds one."
+        )
+    return states[0]
 
 
 def cmd_summarize(args: argparse.Namespace) -> int:
@@ -287,8 +526,11 @@ def cmd_summarize(args: argparse.Namespace) -> int:
     if not complete:
         raise SystemExit(f"no complete pair for candidate {candidate!r}")
     loads = [float(halves[build]["load1"]) for halves in complete for build in halves]
+    # Every record of this candidate, not only the pairs kept above: a later run appended
+    # to the same file reuses the pair numbers, and its rows replace the earlier ones.
+    bytecode = recorded_bytecode([row for row in rows if row["candidate"] == candidate])
     print(
-        f"candidate={candidate} pairs={len(complete)} "
+        f"candidate={candidate} pairs={len(complete)} bytecode={bytecode} "
         f"load1 min={min(loads):.0f} median={statistics.median(loads):.0f} max={max(loads):.0f}"
     )
     print(
@@ -336,6 +578,11 @@ def main() -> int:
         help="a candidate build's metab script; repeat for several",
     )
     run.add_argument("--pairs", type=int, default=9)
+    run.add_argument(
+        "--compile-bytecode",
+        action="store_true",
+        help="compile each environment that lacks bytecode before the first round",
+    )
     run.add_argument("--out", required=True, help="JSON Lines file to append to")
     run.set_defaults(handler=cmd_run)
 
