@@ -5,7 +5,7 @@ title: "GitHub Pulls tab: list a mirrored repository's pull requests and open an
 kind: feature
 status: deferred
 priority: 1
-version: 12
+version: 13
 spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
 labels: []
 dependencies:
@@ -15,11 +15,13 @@ dependencies:
     target: is-01m2kw2d2arc9hn25pfsc4me50
 parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 created_at: 2026-09-15T00:30:52.949Z
-updated_at: 2026-10-01T19:54:27.465Z
+updated_at: 2026-10-01T20:24:24.511Z
 ---
 Add the Pull Requests repository-scoped nav panel after direct view and the bounded index. Project only the index row fields—no review/check summary—through RepositoryActivity and reuse bounded paging, virtualization, roving selection, query-key restoration, loading/error, root replacement, and disposal through public SDK. Selection opens the direct PR address; expansion exposes comparison files. Counts/grouping/visibility come from the bounded model. Execute exact panel-window, selection, restoration, replacement, and disposal owners in hosted-review-session and cli-ui-hosted-review.
 
 ## Notes
+
+2026-10-01: the design is now the plan spec docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md (mb-qftx, commit 245f296c on codex/v012-landing-docs); it supersedes the notes below where they differ, and its Open Decisions section lists what the user decides first.
 
 2026-10-01, decided by the user: 'we can land the stack first then continue a new stack with the pulls tab' and 'let's stabilize everything else but not implement the pulls tab yet, just make sure we've planned it well'. So: no implementation before the v0.12 stack lands; the plan spec (mb-qftx) is written now; the work starts afterwards as a new stack.
 

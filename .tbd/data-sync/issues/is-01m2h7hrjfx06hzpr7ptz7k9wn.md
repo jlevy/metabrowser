@@ -5,7 +5,7 @@ title: "GitHub pull-request list for a mirrored repository: bounded list data fr
 kind: feature
 status: deferred
 priority: 1
-version: 14
+version: 15
 spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
 delegate: null
 labels: []
@@ -18,12 +18,14 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-09-15T00:30:26.382Z
-updated_at: 2026-10-01T19:54:26.228Z
+updated_at: 2026-10-01T20:24:22.771Z
 started_at: 2026-09-16T21:10:44.906Z
 ---
 Publish a bounded query-keyed ChangeRequestIndex after direct PR hydration works. Keep rows summary-only and record normalized query identity, deterministic ordering, per-page provenance, observation window and remote consistency, dedupe, bounds, cursors, and honest coverage. Store one repository/auth-scoped index reused by all attached clones and managed URL sources; listing fetches no Git refs. Cover continuation, moving pages, reauth isolation, stale/offline state, missing direct item, and no-ref-fetch.
 
 ## Notes
+
+2026-10-01: the design is now the plan spec docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md (mb-qftx, commit 245f296c on codex/v012-landing-docs); it supersedes the notes below where they differ, and its Open Decisions section lists what the user decides first.
 
 2026-10-01, decided by the user: 'we can land the stack first then continue a new stack with the pulls tab' and 'let's stabilize everything else but not implement the pulls tab yet, just make sure we've planned it well'. So: no implementation before the v0.12 stack lands; the plan spec (mb-qftx) is written now; the work starts afterwards as a new stack.
 
