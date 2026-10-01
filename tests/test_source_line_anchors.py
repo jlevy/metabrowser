@@ -1,26 +1,27 @@
 """Line anchors in source views: the wiring and paint a browserless session cannot see.
 
 `tests/dom/source-line-anchors-session.js` runs the anchor state machine through the
-production SDK and navigation controller. What stays here is what it cannot observe:
-that the shell delivers the module with the view compositor, that the browser and the
-GitHub reducer accept the same `#L` grammar, and that the stylesheet paints the gutter
-and the highlight on the code's own line box.
+production SDK and navigation controller, and `tests/dom/preview-pane-state-session.js`
+runs the shell fetching the module on demand and waiting for it where an address names
+a view. What stays here is what they cannot observe: what the server's shell publishes,
+that the browser and the GitHub reducer accept the same `#L` grammar, and that the
+stylesheet paints the gutter and the highlight on the code's own line box.
 """
 
 from __future__ import annotations
 
-import asyncio
 import json
 import re
 import subprocess
 from pathlib import Path
-from typing import Any, cast
 
+from devtools import check_startup_scripts
 from metabrowser import server
 from metabrowser.builtin_plugins.github import urls as github_urls
-from tests.required_tools import needs_node
+from tests.required_tools import needs_node, require_node
 
 STATIC = Path(server.__file__).resolve().parent / "static"
+SDK_SANDBOX = Path(__file__).resolve().parent / "dom" / "sdk-sandbox.js"
 
 
 def _rule(css: str, selector: str) -> str:
@@ -29,44 +30,25 @@ def _rule(css: str, selector: str) -> str:
     return match.group(1)
 
 
-def test_shell_loads_line_anchors_with_the_view_compositor() -> None:
-    # The gutter belongs to a Source view's first paint, not the folder shell's: the
-    # module is no startup script. It is a bundle the shell fetches beside the
-    # compositor and waits for before any view mounts, so a renderer always finds it.
-    response = asyncio.run(server.index(cast(Any, None)))
-    html = bytes(response.body).decode()
-    assert '<script src="/static/source-line-anchors.js' not in html
+def test_the_shell_publishes_the_gutter_as_an_on_demand_bundle() -> None:
+    # The gutter belongs to a Source view's first paint, not the folder shell's: it is
+    # no startup script. It is in the one bundle that holds what a view's renderer
+    # calls, which names the global it must leave behind, so a file that arrived and
+    # did not define the anchors is a failed load and not a Source view without them.
+    html = check_startup_scripts.render_folder_shell()
+    startup = check_startup_scripts.startup_script_paths(html)
+    assert "/static/plugin-sdk-views.js" not in startup
     # Nor does a folder's shell carry the GitPath codec, which only a pin's page reads.
-    assert "/static/git-path.js" not in html
-    navigation = (STATIC / "navigation.js").read_text(encoding="utf-8")
-    assert "window.MetabrowserGitPath?.display(path)" in navigation
-    assert "function gitPathWire" not in navigation
+    assert "/static/git-path.js" not in startup
     bundles = json.loads(
         html.split("window.METABROWSER_ASSET_BUNDLES=", 1)[1].split(";</script>", 1)[0]
     )
-    sources = [entry["src"].partition("?")[0] for entry in bundles["source-line-anchors"]]
-    assert sources == ["/static/source-line-anchors.js"]
-    app = (STATIC / "app.js").read_text(encoding="utf-8")
-    load = app[app.index("async function loadViewComposition() {") :]
-    load = load[: load.index("\n}\n")]
-    assert 'assets.ensureAsset("view-composition"),' in load
-    assert 'assets.ensureAsset("source-line-anchors"),' in load
-    assert "Promise.all([" in load
-
-
-def test_navigation_waits_for_line_anchors_only_when_an_address_can_name_a_view() -> None:
-    # Reading an address's anchor takes the module, which is not there until the
-    # compositor's bundle is. Only a fragment or a query can ask for a view, so every
-    # other open goes on without that wait.
-    app = (STATIC / "app.js").read_text(encoding="utf-8")
-    apply = app[app.index("async function applyNavigationTarget(") :]
-    apply = apply[: apply.index("\n}\n")]
-    assert (
-        "var anchorModule = target.fragment || target.query ? beginViewCompositionLoad() : null;"
-        in apply
-    )
-    assert apply.count("anchorModule ? await addressedView(target, anchorModule) : null") == 2
-    assert "MetabrowserSourceLineAnchors" not in apply
+    assert [
+        (entry["src"].partition("?")[0], entry.get("provides")) for entry in bundles["sdk-views"]
+    ] == [("/static/plugin-sdk-views.js", "MetabrowserSourceLineAnchors")]
+    # One request beside the compositor's, not two: no bundle of the gutter's own.
+    assert "source-line-anchors" not in bundles
+    assert len(bundles["view-composition"]) == 1
 
 
 # Fragments the two parsers must agree on, including the edges a regular expression
@@ -92,11 +74,7 @@ ANCHOR_CORPUS = (
 )
 
 _JS_PARSE = """
-const fs = require("node:fs");
-const vm = require("node:vm");
-const sandbox = {};
-vm.createContext(sandbox);
-vm.runInContext(fs.readFileSync(process.argv[1], "utf8"), sandbox);
+const sandbox = require(process.argv[1]).createSdkSandbox();
 const corpus = JSON.parse(process.argv[2]);
 process.stdout.write(JSON.stringify(corpus.map((f) => sandbox.MetabrowserSourceLineAnchors.parse(f))));
 """
@@ -105,13 +83,7 @@ process.stdout.write(JSON.stringify(corpus.map((f) => sandbox.MetabrowserSourceL
 @needs_node
 def test_browser_and_reducer_accept_the_same_line_anchors() -> None:
     result = subprocess.run(
-        [
-            "node",
-            "-e",
-            _JS_PARSE,
-            str(STATIC / "source-line-anchors.js"),
-            json.dumps(ANCHOR_CORPUS),
-        ],
+        [require_node(), "-e", _JS_PARSE, str(SDK_SANDBOX), json.dumps(ANCHOR_CORPUS)],
         capture_output=True,
         text=True,
         timeout=20,
@@ -139,11 +111,7 @@ PLAIN_CORPUS = (
 )
 
 _JS_PLAIN = """
-const fs = require("node:fs");
-const vm = require("node:vm");
-const sandbox = {};
-vm.createContext(sandbox);
-vm.runInContext(fs.readFileSync(process.argv[1], "utf8"), sandbox);
+const sandbox = require(process.argv[1]).createSdkSandbox();
 const corpus = JSON.parse(process.argv[2]);
 const view = (query) => sandbox.MetabrowserSourceLineAnchors.preferredView({ path: "a.md", query });
 process.stdout.write(JSON.stringify(corpus.map((query) => view(query) === "source")));
@@ -153,7 +121,7 @@ process.stdout.write(JSON.stringify(corpus.map((query) => view(query) === "sourc
 @needs_node
 def test_browser_and_reducer_read_plain_the_same_way() -> None:
     result = subprocess.run(
-        ["node", "-e", _JS_PLAIN, str(STATIC / "source-line-anchors.js"), json.dumps(PLAIN_CORPUS)],
+        [require_node(), "-e", _JS_PLAIN, str(SDK_SANDBOX), json.dumps(PLAIN_CORPUS)],
         capture_output=True,
         text=True,
         timeout=20,
@@ -164,16 +132,11 @@ def test_browser_and_reducer_read_plain_the_same_way() -> None:
         assert source == github_urls._plain(query), query  # pyright: ignore[reportPrivateUsage]
 
 
-def test_an_anchored_address_opens_the_source_view() -> None:
-    # The shell asks for the view the address names when it opens a file; an explicit
-    # view from plugin navigation still wins. tests/dom/preview-pane-state-session.js
-    # runs this; Load more's full render, which no session runs, keeps the active tab.
+def test_load_more_keeps_the_tab_the_reader_is_on() -> None:
+    # Which view an address opens, and that a view plugin navigation names wins, is run
+    # by tests/dom/preview-pane-state-session.js. Load more's full render, which no
+    # session runs, keeps the active tab.
     app = (STATIC / "app.js").read_text(encoding="utf-8")
-    assert "await selectFile(path, context.viewId || preferredView || undefined)" in app
-    assert (
-        "var preferredView = anchorModule ? await addressedView(target, anchorModule) : null;"
-        in app
-    )
     load_more = app[app.index("async function loadMoreCurrentText(") :]
     load_more = load_more[: load_more.index("\n}\n")]
     assert 'var activeView = document.getElementById("preview-pane")?.dataset.activeView;' in (

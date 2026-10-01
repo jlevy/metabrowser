@@ -91,8 +91,8 @@
 // The helpers that build a view's markup -- renderSourceView, wrapWithCopy,
 // partialNoticeHtml, renderTextTruncationWarning, renderTextLoadMoreFooter, langForPath
 // and langForExtension -- and the syntax service, highlightSyntax and
-// isLargeTextPreview, are defined in plugin-sdk-views.js, which loads with the view
-// compositor and before any plugin, not with this startup script.
+// isLargeTextPreview, are defined in plugin-sdk-views.js, which is not a startup
+// script. It is on this object before any plugin's code runs: see loadPluginsForKind.
 //
 // Plugins register from index.js with code like:
 //   const mb = window.metabrowser;
@@ -272,20 +272,39 @@
     }
   }
 
+  /** @type {Map<string, Promise<unknown>>} */
+  const _pluginStyleLoads = new Map();
+
+  // Fetch what a plugin's code does not have to wait for: its stylesheets, and its
+  // module through `modulepreload`, which does not evaluate it.
+  function _startPluginAssets(descriptor) {
+    const started = _pluginStyleLoads.get(descriptor.name);
+    if (started) {
+      return started;
+    }
+    const styles = Promise.all(
+      descriptor.styles.map((url, index) =>
+        _loadPluginElement("link", url, {
+          "data-metabrowser-plugin-asset": `${descriptor.name}:style:${index}`,
+          rel: "stylesheet",
+        }),
+      ),
+    );
+    _pluginStyleLoads.set(descriptor.name, styles);
+    const preload = global.document.createElement("link");
+    preload.setAttribute("rel", "modulepreload");
+    preload.setAttribute("href", descriptor.module);
+    global.document.head.append(preload);
+    return styles;
+  }
+
   function _loadPlugin(descriptor) {
     const existing = _pluginLoads.get(descriptor.name);
     if (existing) {
       return existing;
     }
     const loading = (async () => {
-      await Promise.all(
-        descriptor.styles.map((url, index) =>
-          _loadPluginElement("link", url, {
-            "data-metabrowser-plugin-asset": `${descriptor.name}:style:${index}`,
-            rel: "stylesheet",
-          }),
-        ),
-      );
+      await _startPluginAssets(descriptor);
       for (let index = 0; index < descriptor.scripts.length; index += 1) {
         await _loadPluginElement("script", descriptor.scripts[index], {
           "data-metabrowser-plugin-asset": `${descriptor.name}:script:${index}`,
@@ -301,10 +320,7 @@
     return loading;
   }
 
-  // The helpers a renderer builds its markup with are in plugin-sdk-views.js, which is
-  // not a startup script. They are on the SDK before any plugin module evaluates:
-  // already there when the shell fetched them beside the view compositor, and fetched
-  // here when a plugin is loaded on another path, such as the pull-request page's.
+  // plugin-sdk-views.js is here before any plugin's code runs; it says why.
   /** @returns {Promise<void>} */
   function _ensureViewHelpers() {
     return typeof global.metabrowser.renderSourceView === "function"
@@ -312,9 +328,17 @@
       : ensureAsset("sdk-views");
   }
 
+  // The helpers gate each plugin's code, not its transfer. Rejects when they cannot
+  // be loaded: no plugin's code has run then, and the next call tries again.
   async function loadPluginsForKind(kind) {
-    await _ensureViewHelpers();
     const descriptors = _pluginAssetsByKind.get(kind) || [];
+    const helpers = _ensureViewHelpers();
+    for (const descriptor of descriptors) {
+      if (!_pluginLoads.has(descriptor.name)) {
+        void _startPluginAssets(descriptor);
+      }
+    }
+    await helpers;
     for (const descriptor of descriptors) {
       await _loadPlugin(descriptor);
     }

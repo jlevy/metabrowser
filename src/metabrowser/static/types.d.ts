@@ -2698,7 +2698,7 @@ declare global {
     MetabrowserTreeFilterModel: MetabrowserTreeFilterModel;
     MetabrowserTreeKeyboardNavigation: MetabrowserTreeKeyboardRuntime;
     MetabrowserSourceAppend: MetabrowserSourceAppendRuntime;
-    MetabrowserSourceLineAnchors: MetabrowserSourceLineAnchorsRuntime;
+    MetabrowserSourceLineAnchors?: MetabrowserSourceLineAnchorsRuntime;
     /** static/git-path.js, which only a pinned revision's shell loads. */
     MetabrowserGitPath?: Readonly<{
       display(path: string): string | null;

@@ -1,7 +1,7 @@
 // Browserless session for line anchors in source views.
 //
-// Loads the production navigation, source-append, source-line-anchors, and plugin SDK
-// scripts into one context, attaches a real navigation controller over a fake location
+// Loads the production navigation, source-append, and plugin SDK scripts, the SDK's
+// view helpers with the line anchors among them, into one context, attaches a real navigation controller over a fake location
 // and history, and renders a source view through the SDK's renderSourceView into a
 // small fake document. Then it takes the paths a reader takes: open a partly loaded
 // file at #L60, Load more, click a line number, shift-click a range, edit the fragment,
@@ -384,7 +384,6 @@ for (const filename of [
   "resource-context.js",
   "view-state.js",
   "navigation.js",
-  "source-line-anchors.js",
   "plugin-sdk.js",
   "plugin-sdk-views.js",
   "source-append.js",

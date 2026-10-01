@@ -5189,7 +5189,7 @@ async function loadMoreCurrentText() {
         document,
         window.metabrowser?.renderTextLoadMoreFooter?.(nextCached) || "",
       );
-      window.MetabrowserSourceLineAnchors.refresh(document, nextCached);
+      window.MetabrowserSourceLineAnchors?.refresh(document, nextCached);
       commitTextChunkCache(path, previewClaim, cached, nextCached, requested);
     } else {
       // The render replaces the whole file view; it keeps the tab the reader is on,
@@ -5199,7 +5199,7 @@ async function loadMoreCurrentText() {
         isCurrent: () => textChunkRequestOwnsPreview(path, previewClaim, cached),
         onCommit: () => {
           commitTextChunkCache(path, previewClaim, cached, nextCached, requested);
-          window.MetabrowserSourceLineAnchors.refresh(document, nextCached);
+          window.MetabrowserSourceLineAnchors?.refresh(document, nextCached);
         },
       });
     }
@@ -5777,15 +5777,11 @@ async function loadViewComposition() {
   if (!assets) {
     throw new Error("Metabrowser asset loader is unavailable");
   }
-  // The line gutter's module and the SDK's view helpers are fetched beside the
-  // compositor, not after it: every view is mounted through here, so a renderer
-  // always finds them.
+  // The line gutter and the SDK's view helpers are one bundle, fetched beside the
+  // compositor and not after it: every file view is mounted through here, so its
+  // renderer finds them without the plugin loader having to fetch them first.
   await _perf.measureAsync("fileNavigation:viewComposition", () =>
-    Promise.all([
-      assets.ensureAsset("view-composition"),
-      assets.ensureAsset("source-line-anchors"),
-      assets.ensureAsset("sdk-views"),
-    ]),
+    Promise.all([assets.ensureAsset("view-composition"), assets.ensureAsset("sdk-views")]),
   );
   const composition = window.MetabrowserViewComposition;
   if (!composition) {
@@ -7672,8 +7668,9 @@ function deliverNavigationFragment(target) {
 // and hands it the host's `open`. The view owns everything else: fetching the record,
 // polling, refreshing, and Files changed.
 //
-// pull-route.js is the `pull-route` on-demand bundle: only an address under /pull/
-// needs it, so a folder's page never fetches it. The host is null until one was opened.
+// Only an address under /pull/ needs pull-route.js. The server adds it to that
+// address's shell; a page that gets there through history takes the `pull-route`
+// bundle. The host is null until one was opened.
 var PULL_ROUTE_PREFIX = "/pull/";
 /** @type {ReturnType<NonNullable<Window["MetabrowserPullRoute"]>["createPullPageHost"]> | null} */
 var pullPageHost = null;
@@ -7683,11 +7680,13 @@ async function loadPullPageHost() {
   if (pullPageHost) {
     return pullPageHost;
   }
-  const assets = window.MetabrowserAssets;
-  if (!assets) {
-    throw new Error("Metabrowser asset loader is unavailable");
+  if (!window.MetabrowserPullRoute) {
+    const assets = window.MetabrowserAssets;
+    if (!assets) {
+      throw new Error("Metabrowser asset loader is unavailable");
+    }
+    await assets.ensureAsset("pull-route");
   }
-  await assets.ensureAsset("pull-route");
   const routes = window.MetabrowserPullRoute;
   if (!routes) {
     throw new Error("Metabrowser pull-request routes are unavailable");
@@ -7696,13 +7695,24 @@ async function loadPullPageHost() {
   return pullPageHost;
 }
 
-// A page that loads at a pull-request address needs the host before it can show
-// anything, so its fetch starts as this script runs, beside the rest of the shell,
-// and applyNavigationTarget finds it already there or already on its way.
-if (window.location.pathname.startsWith(PULL_ROUTE_PREFIX)) {
-  loadPullPageHost().catch(() => {
-    // applyNavigationTarget asks again and reports the failure.
-  });
+/**
+ * The pane when the pull-request page's code could not be loaded.
+ *
+ * @param {number} [claim] The page's claim when it already holds the pane.
+ */
+function showPullPageLoadFailure(claim) {
+  var held = claim;
+  if (held === undefined) {
+    closeLiveStream();
+    currentPath = "";
+    setSelectedPath(null);
+    held = claimPreview("pull-request");
+    stopFolderHeaderSubscription();
+  }
+  renderPreviewHtml(
+    previewErrorHtml("Could not load the pull-request page.", "Refresh the page to try again."),
+    held,
+  );
 }
 
 function pullPageHostDeps() {
@@ -7723,7 +7733,10 @@ function pullPageHostDeps() {
         await sdk.ensureKindAssets("pull-request");
         view = sdk.getRegisteredView("pull-request", "pull-request");
       } catch (error) {
+        // Not the same as no plugin rendering such pages; the next route tries again.
         console.error("metabrowser: the pull-request page could not load", error);
+        showPullPageLoadFailure(claim);
+        return null;
       }
       if (!isPreviewClaimCurrent(claim)) {
         return null;
@@ -7775,7 +7788,12 @@ function applyPullHistoryLanding() {
         host.onHistory(pathname, heldTarget);
       }
     },
-    (error) => console.error("metabrowser: the pull-request page could not load", error),
+    (error) => {
+      console.error("metabrowser: the pull-request page could not load", error);
+      if (window.location.pathname === pathname) {
+        showPullPageLoadFailure();
+      }
+    },
   );
 }
 window.addEventListener("popstate", applyPullHistoryLanding);
@@ -7791,7 +7809,7 @@ window.addEventListener("popstate", applyPullHistoryLanding);
  */
 async function addressedView(target, loading) {
   return (await loading).status === "ready"
-    ? window.MetabrowserSourceLineAnchors.preferredView(target)
+    ? (window.MetabrowserSourceLineAnchors?.preferredView(target) ?? null)
     : null;
 }
 
@@ -7810,14 +7828,16 @@ async function applyNavigationTarget(target, context) {
         pullHost = await loadPullPageHost();
       } catch (error) {
         console.error("metabrowser: the pull-request page could not load", error);
+        if (context.isCurrent()) {
+          showPullPageLoadFailure();
+        }
+        return { status: "cancelled" };
       }
       if (!context.isCurrent()) {
         return { status: "cancelled" };
       }
-      var pullRoute = pullHost
-        ? window.MetabrowserPullRoute?.parsePull(window.location.pathname)
-        : null;
-      if (pullHost && pullRoute) {
+      var pullRoute = window.MetabrowserPullRoute?.parsePull(window.location.pathname);
+      if (pullRoute) {
         return pullHost.show(pullRoute);
       }
     }
@@ -8201,6 +8221,20 @@ async function startSourceRefSelector() {
 // cache used by its renderer are initialized here. Paint the server-carried
 // rows now instead of waiting for DOMContentLoaded. The authoritative request
 // below keeps the same baseline and reconciles into it.
+//
+// A pin's page names and addresses every file through the GitPath codec, a startup
+// script of its shell. Without it a row would show its wire for a name and a link
+// would address another file, so the page stops here and says so.
+if (isGitRevisionSource() && !window.MetabrowserGitPath) {
+  for (const id of ["tree-content", "preview-pane"]) {
+    const pane = document.getElementById(id);
+    if (pane) {
+      pane.innerHTML =
+        '<div class="preview-empty" role="alert">This page did not load completely. Refresh the page to try again.</div>';
+    }
+  }
+  throw new Error("metabrowser: git-path.js did not load on a pinned revision's page");
+}
 renderInitialTreeRows();
 
 document.addEventListener("DOMContentLoaded", async () => {

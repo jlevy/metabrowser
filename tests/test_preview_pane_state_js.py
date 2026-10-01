@@ -27,6 +27,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SESSION = Path(__file__).resolve().parent / "dom" / "preview-pane-state-session.js"
 STATIC = REPO_ROOT / "src" / "metabrowser" / "static"
 SELECT_A_FILE = "Select a file to preview."
+PULL_PAGE_FAILED = (
+    "preview-empty preview-error: Could not load the pull-request page. "
+    "Refresh the page to try again."
+)
+NO_PULL_PLUGIN = "preview-empty: No plugin renders pull-request pages here."
 
 
 def _function_source(js: str, name: str) -> str:
@@ -240,48 +245,84 @@ def test_pull_request_routes_load_only_for_a_pull_request_address(
     session: dict[str, Any],
 ) -> None:
     pull = session["shell"]["pullRouteLoadsOnDemand"]
-    # A folder's page, its files, and its history never ask for the module.
-    assert pull["folderAddresses"] == {"assetRequests": [], "hostCreated": False}
-    # An address under /pull/ asks once, however many landings follow, and the page
-    # is the host's.
-    assert pull["pullAddress"]["assetRequests"] == ["pull-route"]
-    assert pull["pullAddress"]["afterTabLanding"]["assetRequests"] == ["pull-route"]
+    # A folder's page and its files never ask for the routes; what they ask for is the
+    # compositor and the view helpers, once, when the first file opens.
+    assert pull["folderAddresses"] == {
+        "scriptRequests": ["view-composition.js", "plugin-sdk-views.js"],
+        "hostCreated": False,
+    }
+    # A page that loads at a pull-request address has the routes with its shell, so it
+    # asks for none. Its plugin is loaded with no compositor, which fetches the view
+    # helpers once, however many landings follow, and the page is the host's.
+    assert pull["pullAddress"]["scriptRequests"] == ["plugin-sdk-views.js"]
+    assert pull["pullAddress"]["afterTabLanding"]["scriptRequests"] == ["plugin-sdk-views.js"]
     assert pull["pullAddress"]["pane"]["owner"] == "pull-request"
+    assert pull["pullAddress"]["pane"]["shows"] == NO_PULL_PLUGIN
     # What is under /pull/ and is no page's address lands nowhere, as it did.
     assert pull["notAPullAddress"]["pane"]["shows"].endswith(SELECT_A_FILE)
-    # A history landing with no host yet loads it and then mounts the page.
+    # A history landing with no host yet fetches the routes and then mounts the page.
     landing = pull["historyLandingWithoutHost"]
-    assert landing["before"] == {"assetRequests": [], "hostCreated": False}
-    assert landing["assetRequests"] == ["pull-route"]
-    assert landing["kindLoads"] == ["pull-request"]
+    assert landing["before"] == {"scriptRequests": [], "hostCreated": False}
+    assert landing["scriptRequests"] == ["pull-route.js", "plugin-sdk-views.js"]
     assert landing["pane"]["owner"] == "pull-request"
 
 
-def test_pull_request_routes_are_no_startup_script() -> None:
-    html = _render_index_html()
-    assert '<script src="/static/pull-route.js' not in html
-    bundles = json.loads(
-        html.split("window.METABROWSER_ASSET_BUNDLES=", 1)[1].split(";</script>", 1)[0]
+def test_a_cold_anchored_address_waits_for_the_module_that_reads_it(
+    session: dict[str, Any],
+) -> None:
+    cold = session["shell"]["coldAnchoredAddress"]
+    # The line anchors are no startup script, and the address still opens the Source
+    # view: applying it waits for the bundle that brings them.
+    assert cold["lineAnchorsAtStartup"] == "undefined"
+    assert cold["scriptRequests"] == ["view-composition.js", "plugin-sdk-views.js"]
+    assert cold["renderedViews"] == ["a.py: source"]
+    # That fetch overlaps revealing the row; a plain address asks for nothing first.
+    revealing = cold["whileTheRowIsRevealed"]
+    assert revealing["anchoredAddress"]["requestedMeanwhile"] == cold["scriptRequests"]
+    assert revealing["plainAddress"] == {
+        "requestedMeanwhile": [],
+        "renderedViews": ["a.py: default view"],
+    }
+    # A view that plugin navigation names outright wins over the address's.
+    assert session["shell"]["anchoredAddressesOpenSource"]["renderedViews"][-1] == (
+        "chosen.md: rendered"
     )
-    assert [entry["src"].partition("?")[0] for entry in bundles["pull-route"]] == [
-        "/static/pull-route.js"
-    ]
-    navigation = (STATIC / "navigation.js").read_text(encoding="utf-8")
-    assert "createPullPageHost" not in navigation
-    assert "parsePull" not in navigation
+
+
+def test_on_demand_code_that_does_not_arrive_is_said_and_asked_for_again(
+    session: dict[str, Any],
+) -> None:
+    refused = session["shell"]["onDemandCodeRefused"]
+
+    # A file whose view helpers did not arrive is a failed file, and opening it again
+    # asks only for what failed.
+    file = refused["viewHelpersOpeningAFile"]
+    assert file["failed"]["pane"]["phase"] == "error"
+    assert file["failed"]["pane"]["shows"] == (
+        "preview-empty preview-error: Could not open this file. "
+        "Failed to load asset: /static/plugin-sdk-views.js"
+    )
+    assert file["reopened"]["scriptRequests"] == ["plugin-sdk-views.js"]
+    assert file["reopened"]["pane"]["phase"] == "content"
+
+    # A pull-request page whose code did not arrive says so. It is not the prompt to
+    # select a file, and it is not the message that no plugin renders such pages.
+    for state in (
+        refused["pullRoutesAtAPullAddress"]["pane"],
+        refused["pullRoutesOnAHistoryLanding"]["pane"],
+        refused["viewHelpersOnThePullPage"]["failed"]["pane"],
+    ):
+        assert state["owner"] == "pull-request"
+        assert state["shows"] == PULL_PAGE_FAILED
+    assert SELECT_A_FILE not in json.dumps(refused)
+    # The next route to the page loads what failed, and only that.
+    retried = refused["viewHelpersOnThePullPage"]["nextRoute"]
+    assert retried["scriptRequests"] == ["plugin-sdk-views.js"]
+    assert retried["pane"]["shows"] == NO_PULL_PLUGIN
 
 
 def test_shell_seams_the_session_cannot_execute() -> None:
     app = (STATIC / "app.js").read_text(encoding="utf-8")
-
-    # A page that loads at a pull-request address starts fetching its routes as this
-    # script runs, so the address is not applied behind a fetch that began late; and
-    # the history listener is the function the session drives.
-    assert (
-        "if (window.location.pathname.startsWith(PULL_ROUTE_PREFIX)) {\n"
-        "  loadPullPageHost().catch(" in app
-    )
-    assert 'window.addEventListener("popstate", applyPullHistoryLanding);' in app
 
     assert "var previewClaimGeneration" not in app
     # The prompt text lives in the module; the shell only paints directives.

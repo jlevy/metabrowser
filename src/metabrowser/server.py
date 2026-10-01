@@ -1222,8 +1222,25 @@ PREFETCH_IDLE_TIMEOUT_MS = 2000
 PREFETCH_FALLBACK_DELAY_MS = 200
 
 
-async def index(request: Request) -> HTMLResponse:
-    """Serve the SPA page with linked assets and one pre-paint state machine."""
+# Startup scripts only some shells carry, by static file name. A pin's page needs the
+# GitPath wire codec before its first paint, and a page at a pull-request address needs
+# that page's routes before it can show anything; a folder's page at any other address
+# fetches neither. devtools/check_startup_scripts.py reports what each adds to the
+# startup-script budget, so they are named here once.
+PIN_STARTUP_SCRIPTS: tuple[str, ...] = ("git-path.js",)
+PULL_PAGE_STARTUP_SCRIPTS: tuple[str, ...] = ("pull-route.js",)
+
+
+def _startup_script_tags(names: tuple[str, ...]) -> str:
+    return "".join(f'\n  <script src="{_static_asset_url(name)}"></script>' for name in names)
+
+
+async def index(request: Request, *, pull_page: bool = False) -> HTMLResponse:
+    """Serve the SPA page with linked assets and one pre-paint state machine.
+
+    *pull_page* is set by the pull-request route: its shell carries that page's routes
+    as a startup script.
+    """
 
     pin = as_git_revision_subject(get_source_session().subject)
     git_pin = pin is not None
@@ -1264,7 +1281,6 @@ async def index(request: Request) -> HTMLResponse:
     view_state_url = _static_asset_url("view-state.js")
     navigation_url = _static_asset_url("navigation.js")
     source_append_url = _static_asset_url("source-append.js")
-    source_line_anchors_url = _static_asset_url("source-line-anchors.js")
     file_type_taxonomy_url = _static_asset_url("file-type-taxonomy.js")
     plugin_sdk_url = _static_asset_url("plugin-sdk.js")
     plugin_sdk_views_url = _static_asset_url("plugin-sdk-views.js")
@@ -1273,9 +1289,12 @@ async def index(request: Request) -> HTMLResponse:
     # its first paint: a startup script on a pin's shell and absent from a folder's,
     # like the pin guard below. Measured 2026-10-01: 885 compressed bytes of
     # navigation.js on every folder's page. See exp-037.
-    git_path_script = (
-        f'\n  <script src="{_static_asset_url("git-path.js")}"></script>' if git_pin else ""
-    )
+    git_path_script = _startup_script_tags(PIN_STARTUP_SCRIPTS if git_pin else ())
+    # The pull-request page's routes and host, on the shell of a pull-request address
+    # only. The server knows the address when it renders, so the script is fetched
+    # with the rest of the shell and not one round trip after it. Any other page that
+    # lands on such an address, through history, takes it from the `pull-route` bundle.
+    pull_route_script = _startup_script_tags(PULL_PAGE_STARTUP_SCRIPTS if pull_page else ())
     view_composition_url = _static_asset_url("view-composition.js")
     inert_html_url = _static_asset_url("inert-html.js")
     filter_state_url = _static_asset_url("filter-state.js")
@@ -1475,33 +1494,30 @@ async def index(request: Request) -> HTMLResponse:
         # first tree is usable. renderFile awaits this bundle and rechecks its
         # ownership claim before preparing or mounting a view.
         "view-composition": [{"src": view_composition_url}],
-        # The line-number gutter and `#L` anchors. loadViewComposition fetches this
-        # beside the compositor and waits for both, and the compositor mounts every
-        # Source view, so the module is present before a renderer asks for a gutter
-        # and a Source view never paints without one. It is a bundle of its own
-        # because a bundle's scripts are fetched one after another, and neither of
-        # these two reads the other.
-        # Measured 2026-09-30 in Chrome 152: as a startup script it was 7,992 of
-        # 191,862 bytes transferred before DOMContentLoaded (25,515 of 644,947
-        # decoded) and one of 21 requests, on a folder shell that draws no gutter.
-        # Its compile and evaluate took 0.09 ms, so the cost is transfer, which is
-        # what `startup_script_transfer_kb` in performance-budgets.toml bounds. On an
+        # What a view's renderer calls: the line-number gutter with its `#L` anchors,
+        # and the SDK helpers a renderer builds its markup with (the Source surface,
+        # the copy wrapper, the partial-content notice, the syntax service). Nothing
+        # runs either until a view renders. loadViewComposition fetches this beside
+        # the compositor and waits for both, and plugin-sdk.js fetches it before it
+        # evaluates a plugin where no compositor ran, so a renderer always finds all
+        # of it. One file, because nothing uses one half without the other and a
+        # bundle's scripts are fetched one after another.
+        # Measured 2026-09-30 and 2026-10-01 in Chrome 152: as startup scripts the
+        # gutter was 7,992 of 191,862 bytes transferred before DOMContentLoaded and
+        # one of 21 requests, on a folder shell that draws no gutter, and the helpers
+        # 5,632 of plugin-sdk.js's 22,308 compressed bytes. The gutter's compile and
+        # evaluate took 0.09 ms, so the cost is transfer, which is what
+        # `startup_script_transfer_kb` in performance-budgets.toml bounds. On an
         # anchored deep link the Source view appeared with its gutter in every load,
         # with no layout shift in the pane, in this tier as in the eager one. See
         # explorations/performance-loop/experiments/exp-037.
-        "source-line-anchors": [{"src": source_line_anchors_url}],
-        # The SDK helpers a renderer builds its markup with: the Source surface, the
-        # copy wrapper, the partial-content notice. Nothing runs them until a view
-        # renders, so they load beside the compositor, and plugin-sdk.js waits for
-        # them before it loads a plugin. The syntax service is with them. Measured
-        # 2026-10-01: 5,632 of the 22,308 compressed bytes plugin-sdk.js cost as a
-        # startup script. See exp-037.
-        "sdk-views": [{"src": plugin_sdk_views_url}],
-        # The pull-request page's routes and host. Only an address under /pull/
-        # reaches them; app.js starts this fetch as it loads when the address is
-        # one. Measured 2026-10-01: 1,818 of navigation.js's 13,265 compressed bytes
-        # as a startup script on every folder's page. See exp-037.
-        "pull-route": [{"src": pull_route_url}],
+        "sdk-views": [{"src": plugin_sdk_views_url, "provides": "MetabrowserSourceLineAnchors"}],
+        # The pull-request page's routes and host, for a page that reaches a
+        # pull-request address without loading there. A page that loads at one has
+        # them as a startup script (PULL_PAGE_STARTUP_SCRIPTS). Measured 2026-10-01:
+        # 1,818 of navigation.js's 13,265 compressed bytes as a startup script on
+        # every folder's page. See exp-037.
+        "pull-route": [{"src": pull_route_url, "provides": "MetabrowserPullRoute"}],
         # Only untrusted Markdown needs the allowlist: a pull-request comment, or a
         # document under the untrusted profile, which the server marks inert.
         "inert-html": [{"src": inert_html_url}],
@@ -1753,7 +1769,7 @@ async def index(request: Request) -> HTMLResponse:
   <script src="{contribution_registry_url}"></script>
   <script src="{resource_context_url}"></script>
   <script src="{view_state_url}"></script>{git_path_script}
-  <script src="{navigation_url}"></script>
+  <script src="{navigation_url}"></script>{pull_route_script}
   <script src="{file_type_taxonomy_url}"></script>
   <script src="{plugin_sdk_url}"></script>
   <script src="{perf_url}"></script>
@@ -1826,7 +1842,7 @@ async def pull_shell(request: Request) -> Response:
     raw_path = request.scope.get("raw_path")
     if not isinstance(raw_path, bytes) or decode_safe_pull_route(raw_path) is None:
         return PlainTextResponse("Invalid pull-request route.", status_code=400)
-    return await index(request)
+    return await index(request, pull_page=True)
 
 
 async def root_redirect(_request: Request) -> Response:

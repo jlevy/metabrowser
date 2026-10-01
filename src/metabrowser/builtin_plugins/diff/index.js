@@ -73,6 +73,7 @@ function viewFileHost() {
   return {
     pin,
     href(path) {
+      // No codec, no address: the control is not offered, never pointed elsewhere.
       const wire = window.MetabrowserGitPath?.wire(path) ?? null;
       return wire === null ? null : mb.navigation.href({ path: wire });
     },

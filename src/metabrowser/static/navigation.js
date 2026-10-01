@@ -277,6 +277,7 @@
         : "filesystem");
     if (kind === "git_revision") {
       // git-path.js, which the server writes into a pin's shell ahead of this script.
+      // app.js stops a pin's page that lacks it before any name is shown.
       const gitDisplay = window.MetabrowserGitPath?.display(path) ?? null;
       if (gitDisplay !== null) {
         return gitDisplay;

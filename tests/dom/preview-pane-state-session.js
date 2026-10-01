@@ -6,6 +6,10 @@
 // activateNavPanel, the inventory stream's onopen, and the startup settle),
 // extracted verbatim and executed with the real navigation module and
 // controller, so that wiring cannot regress behind a source-string assertion.
+// The asset loader and the plugin SDK are the production scripts too, and what
+// they fetch on demand -- the view compositor, the SDK's view helpers with the
+// line anchors, the pull-request routes -- is the production file, delivered a
+// turn after it is asked for or refused, as a scenario says.
 // Only the DOM, the network, the renderer, and unrelated shell services are
 // doubles. Nothing here restates a decision the production code makes.
 
@@ -14,17 +18,30 @@ const path = require("node:path");
 const vm = require("node:vm");
 
 const repoRoot = path.resolve(__dirname, "../..");
-const navigationPath = path.join(repoRoot, "src/metabrowser/static/navigation.js");
+const staticDir = path.join(repoRoot, "src/metabrowser/static");
+const navigationPath = path.join(staticDir, "navigation.js");
 const navigationSource = fs.readFileSync(navigationPath, "utf8");
-const appPath = path.join(repoRoot, "src/metabrowser/static/app.js");
+const appPath = path.join(staticDir, "app.js");
 const appSource = fs.readFileSync(appPath, "utf8");
-// applyNavigationTarget asks the line-anchor module which view an address opens in.
-const lineAnchorsPath = path.join(repoRoot, "src/metabrowser/static/source-line-anchors.js");
-const lineAnchorsSource = fs.readFileSync(lineAnchorsPath, "utf8");
-// The pull-request page's routes and host: an on-demand module the shell asks its
-// asset loader for when an address under /pull/ is opened, and not before.
-const pullRoutePath = path.join(repoRoot, "src/metabrowser/static/pull-route.js");
-const pullRouteSource = fs.readFileSync(pullRoutePath, "utf8");
+// The startup scripts the on-demand loads below run through, in the shell's order
+// around navigation.js, which loadNavigation runs first.
+const STARTUP_SCRIPTS = [
+  "asset-loader.js",
+  "request-error.js",
+  "formatters.js",
+  "inventory-scope.js",
+  "resource-context.js",
+  "view-state.js",
+  "plugin-sdk.js",
+];
+// What the shell publishes as on-demand bundles and these scenarios reach: the view
+// compositor, the SDK's view helpers with the line anchors applyNavigationTarget
+// reads an address with, and the pull-request page's routes and host.
+const ASSET_BUNDLES = {
+  "view-composition": [{ src: "/static/view-composition.js" }],
+  "sdk-views": [{ src: "/static/plugin-sdk-views.js", provides: "MetabrowserSourceLineAnchors" }],
+  "pull-route": [{ src: "/static/pull-route.js", provides: "MetabrowserPullRoute" }],
+};
 
 // Shared with every sandbox so `instanceof` agrees across the realm boundary.
 const BUILTINS = {
@@ -335,7 +352,9 @@ const SHELL_FUNCTIONS = [
   "deliverNavigationFragment",
   "showPreviewTab",
   "renderPreviewHtml",
+  "loadViewComposition",
   "loadPullPageHost",
+  "showPullPageLoadFailure",
   "pullPageHostDeps",
   "applyPullHistoryLanding",
   "addressedView",
@@ -349,6 +368,7 @@ const shellSource = [
   // The host is created on demand, when an address under /pull/ is opened; none of
   // these states opens one, so the pane's claim finds no page to dispose.
   appDeclaration(/^var pullPageHost = null;$/m, "pull-request page host"),
+  appDeclaration(/^var pluginViewLifecycle = null;$/m, "plugin view lifecycle"),
   appDeclaration(/^var navigationController = [\s\S]*?^\}\);$/m, "navigation controller"),
   ...SHELL_FUNCTIONS.map((name) =>
     appDeclaration(
@@ -415,8 +435,16 @@ async function settle() {
 /**
  * A shell booted at one pathname. `network(path)` answers each `/api/file`
  * request; the renderer double paints a view only for a current claim.
+ *
+ * `options.startupScripts` names what the server adds to this address's shell, as
+ * pull-route.js on a pull-request address. `options.refused` is the set of script
+ * names the network refuses; a scenario empties it when the server answers again.
+ * `options.revealInTree` stands in for revealing the opened row, which takes tree
+ * requests of its own.
  */
-function createShell(pathname, network) {
+function createShell(pathname, network, options = {}) {
+  /** @type {Set<string>} */
+  const refused = options.refused ?? new Set();
   /** @type {string[]} */
   const renderedViews = [];
   // The shown file's Source tab; a click selects it, as initTabs does.
@@ -441,11 +469,34 @@ function createShell(pathname, network) {
   const timers = [];
   const sources = [];
   const counters = { catalogFeedStarts: 0, fragments: 0, paletteReconnects: 0 };
+  // Every script the page asks for after it started, in order.
   /** @type {string[]} */
-  const assetRequests = [];
-  /** @type {string[]} */
-  const kindLoads = [];
-  const location = { hash: "", pathname, search: "" };
+  const scriptRequests = [];
+  const location = {
+    hash: options.hash ?? "",
+    origin: "http://metabrowser.test",
+    pathname,
+    search: "",
+  };
+
+  function runScript(name) {
+    const filepath = path.join(staticDir, name);
+    vm.runInContext(fs.readFileSync(filepath, "utf8"), sandbox, { filename: filepath });
+  }
+
+  /** A <script> the page appended: the production file a turn later, or a refusal. */
+  function requestScript(script) {
+    const name = String(script.src).replace("/static/", "");
+    scriptRequests.push(name);
+    setImmediate(() => {
+      if (refused.has(name)) {
+        script.onerror?.();
+        return;
+      }
+      runScript(name);
+      script.onload?.();
+    });
+  }
   const moveTo = (_state, _title, href) => {
     const url = new URL(href, "http://metabrowser.test");
     location.pathname = url.pathname;
@@ -467,7 +518,24 @@ function createShell(pathname, network) {
       }
       return true;
     },
-    document: { getElementById: (id) => elements.get(id) ?? null },
+    document: {
+      addEventListener() {},
+      body: { append() {} },
+      cookie: "",
+      createElement: () => fakeElement({ remove() {} }),
+      documentElement: { getAttribute: () => null },
+      getElementById: (id) => elements.get(id) ?? null,
+      head: { append() {}, appendChild: requestScript },
+    },
+    DOMException,
+    METABROWSER_ASSET_BUNDLES: ASSET_BUNDLES,
+    METABROWSER_SETTINGS: {
+      SYNTAX_HIGHLIGHT_MAX_BYTES: 512 * 1024,
+      SYNTAX_LANGUAGE_BY_BASENAME: {},
+      SYNTAX_LANGUAGE_BY_EXTENSION: {},
+    },
+    TextEncoder,
+    URL,
     history: { pushState: moveTo, replaceState: moveTo },
     location,
     removeEventListener() {},
@@ -522,28 +590,14 @@ function createShell(pathname, network) {
       fetched.push(requested);
       return network(requested);
     },
-    loadViewComposition: async () => null,
-    // The asset loader: it records what the shell asked for, and delivers the
-    // pull-request routes a turn later, as a fetched script arrives.
-    MetabrowserAssets: {
-      ensureAsset: async (name) => {
-        assetRequests.push(name);
-        await new Promise((resolve) => setImmediate(resolve));
-        if (name === "pull-route" && !sandbox.MetabrowserPullRoute) {
-          vm.runInContext(pullRouteSource, sandbox, { filename: pullRoutePath });
-        }
-      },
-    },
-    // No plugin registers a pull-request view here, so the host's page is the
-    // shell's own message.
-    metabrowser: {
-      ensureKindAssets: async (kind) => {
-        kindLoads.push(kind);
-      },
-      getRegisteredView: () => undefined,
-    },
     maybeOpenLiveStream() {},
-    renderFile: async (data, viewId, claim) => {
+    renderFile: async (data, viewId, claim, renderOptions) => {
+      // The renderer mounts through the compositor selectFile began loading, so a
+      // compositor that did not arrive is this render's failure.
+      const composition = await renderOptions.viewComposition;
+      if (composition.status === "error") {
+        throw composition.error;
+      }
       if (!sandbox.isPreviewClaimCurrent(claim)) {
         return false;
       }
@@ -555,7 +609,7 @@ function createShell(pathname, network) {
     },
     resetTextChunkGrowth() {},
     responsePerfMeta: () => ({}),
-    revealInTree: async () => false,
+    revealInTree: options.revealInTree ?? (async () => false),
     setSelectedPath() {},
     settleHoverPrefetchForSelection: async () => {},
     stopFolderHeaderSubscription() {},
@@ -586,7 +640,11 @@ function createShell(pathname, network) {
   });
   sandbox.fileNeedsRevalidate =
     sandbox.MetabrowserNavigationRoute.createFileRevalidationTracker(512);
-  vm.runInContext(lineAnchorsSource, sandbox, { filename: lineAnchorsPath });
+  // No plugin registers a pull-request view here, so a pull-request page that loaded
+  // is the shell's own message that nothing renders it.
+  for (const name of [...STARTUP_SCRIPTS, ...(options.startupScripts ?? [])]) {
+    runScript(name);
+  }
   vm.runInContext(shellSource, sandbox, { filename: "app.js (preview pane functions)" });
   // What server.py ships in the pane before any script runs.
   preview.innerHTML = sandbox.previewPlaceholderHtml(sandbox.previewPane.placeholder(0));
@@ -615,9 +673,7 @@ function createShell(pathname, network) {
       preview.innerHTML = `<article class="git-commit">${revision}</article>`;
       return claim;
     },
-    assetRequests,
     counters,
-    kindLoads,
     /** Let the loading-indicator delay elapse. */
     elapseLoadingDelay() {
       for (const [index, callback] of timers.entries()) {
@@ -629,7 +685,9 @@ function createShell(pathname, network) {
     outcome,
     pane,
     panelShows,
+    refused,
     renderedViews,
+    scriptRequests,
     tabClicks,
     sandbox,
     sources,
@@ -863,6 +921,7 @@ async function anchoredAddressesOpenSource() {
   // An address with a line anchor or GitHub's `plain=1` opens the file in its Source
   // view; any other fragment or query leaves the file's default view. A line anchor
   // added to the file already shown selects its Source tab without loading it again.
+  // A view that plugin navigation names outright wins over the address's.
   const shell = createShell("/view/", (requested) =>
     Promise.resolve(jsonResponse({ kind: requested ? "markdown" : "folder", path: requested })),
   );
@@ -879,6 +938,11 @@ async function anchoredAddressesOpenSource() {
     await shell.sandbox.navigationController.open(target);
     await settle();
   }
+  await shell.sandbox.navigationController.open(
+    { path: "chosen.md", fragment: "L7" },
+    { viewId: "rendered" },
+  );
+  await settle();
   const files = shell.renderedViews.filter((entry) => !entry.startsWith(": "));
   return {
     renderedViews: files,
@@ -887,11 +951,58 @@ async function anchoredAddressesOpenSource() {
   };
 }
 
+async function coldAnchoredAddress() {
+  // A page that loads at a line-anchored address opens the file in its Source view.
+  // The module that reads the anchor is not a startup script: it arrives with the view
+  // compositor, and the address waits for it before it chooses a view.
+  const shell = createShell(
+    "/view/a.py",
+    (requested) => Promise.resolve(jsonResponse({ kind: "text", path: requested })),
+    { hash: "#L10" },
+  );
+  const lineAnchorsAtStartup = typeof shell.sandbox.MetabrowserSourceLineAnchors;
+  await shell.sandbox.navigationController.start();
+  await settle();
+
+  // The module's fetch starts when the address is applied, so it overlaps revealing
+  // the row and does not follow it. An address with no fragment or query cannot name
+  // a view, and goes on to the file without asking for anything first.
+  async function whileRevealing(hash) {
+    const row = deferred();
+    const revealing = createShell(
+      "/view/a.py",
+      (requested) => Promise.resolve(jsonResponse({ kind: "text", path: requested })),
+      { hash, revealInTree: () => row.promise },
+    );
+    const started = revealing.sandbox.navigationController.start();
+    await settle();
+    const requestedMeanwhile = [...revealing.scriptRequests];
+    row.resolve(false);
+    await started;
+    await settle();
+    return { requestedMeanwhile, renderedViews: revealing.renderedViews };
+  }
+
+  return {
+    lineAnchorsAtStartup,
+    scriptRequests: shell.scriptRequests,
+    renderedViews: shell.renderedViews,
+    pane: shell.pane(),
+    whileTheRowIsRevealed: {
+      anchoredAddress: await whileRevealing("#L10"),
+      plainAddress: await whileRevealing(""),
+    },
+  };
+}
+
 async function pullRouteLoadsOnDemand() {
-  // The pull-request page's routes are not a startup script. A folder's addresses
-  // never ask for them; an address under /pull/ asks once and then shows the page;
-  // one that is not a pull-request route still lands nowhere; and a history landing
-  // on a page's address, with no host yet, loads it and then mounts the page.
+  // The pull-request page's routes are no startup script of a folder's page, whose
+  // addresses never ask for them. The server adds them to the shell of a pull-request
+  // address, so a page that loads there asks for nothing before it shows the page; one
+  // that reaches such an address through history, with no host yet, fetches them and
+  // then mounts the page; and an address under /pull/ that is no page lands nowhere.
+  // The page's plugin is loaded with no compositor, so its load fetches the SDK's
+  // view helpers.
   const folder = createShell("/view/", (requested) =>
     Promise.resolve(jsonResponse({ kind: requested ? "text" : "folder", path: requested })),
   );
@@ -902,14 +1013,10 @@ async function pullRouteLoadsOnDemand() {
   folder.sandbox.applyPullHistoryLanding();
   await settle();
 
-  const page = createShell("/pull/7", refusedFetch);
+  const page = createShell("/pull/7", refusedFetch, { startupScripts: ["pull-route.js"] });
   await page.sandbox.navigationController.start();
   await settle();
-  const first = {
-    assetRequests: [...page.assetRequests],
-    kindLoads: [...page.kindLoads],
-    pane: page.pane(),
-  };
+  const first = { scriptRequests: [...page.scriptRequests], pane: page.pane() };
   page.sandbox.location.pathname = "/pull/7/files";
   page.sandbox.applyPullHistoryLanding();
   await settle();
@@ -925,7 +1032,7 @@ async function pullRouteLoadsOnDemand() {
   await back.sandbox.navigationController.start();
   await settle();
   const backBefore = {
-    assetRequests: [...back.assetRequests],
+    scriptRequests: [...back.scriptRequests],
     hostCreated: back.sandbox.pullPageHost !== null,
   };
   back.sandbox.location.pathname = "/pull/8";
@@ -934,19 +1041,81 @@ async function pullRouteLoadsOnDemand() {
 
   return {
     folderAddresses: {
-      assetRequests: folder.assetRequests,
+      scriptRequests: folder.scriptRequests,
       hostCreated: folder.sandbox.pullPageHost !== null,
     },
-    pullAddress: {
-      ...first,
-      afterTabLanding: { assetRequests: page.assetRequests, kindLoads: page.kindLoads },
-    },
-    notAPullAddress: { assetRequests: notAPage.assetRequests, pane: notAPage.pane() },
+    pullAddress: { ...first, afterTabLanding: { scriptRequests: page.scriptRequests } },
+    notAPullAddress: { scriptRequests: notAPage.scriptRequests, pane: notAPage.pane() },
     historyLandingWithoutHost: {
       before: backBefore,
-      assetRequests: back.assetRequests,
-      kindLoads: back.kindLoads,
+      scriptRequests: back.scriptRequests,
       pane: back.pane(),
+    },
+  };
+}
+
+async function onDemandCodeRefused() {
+  // Each on-demand script a page needs can fail to arrive. The pane then says that,
+  // not that nothing is selected or that no plugin renders the page, and what is asked
+  // for again once the server answers is only what failed.
+  const text = (requested) => Promise.resolve(jsonResponse({ kind: "text", path: requested }));
+
+  // Opening a file: the SDK's view helpers arrive beside the compositor, or not.
+  const fileRefused = new Set(["plugin-sdk-views.js"]);
+  const file = createShell("/view/notes.md", text, { refused: fileRefused });
+  await file.sandbox.navigationController.start();
+  await settle();
+  const fileFailed = { pane: file.pane(), scriptRequests: [...file.scriptRequests] };
+  fileRefused.clear();
+  const reopened = await file.sandbox.navigateToPath("notes.md");
+  await settle();
+
+  // A pull-request address whose routes did not arrive: the shell's own script failed,
+  // or history landed there from another page.
+  const routes = createShell("/pull/7", refusedFetch, { refused: new Set(["pull-route.js"]) });
+  await routes.sandbox.navigationController.start();
+  await settle();
+
+  const landing = createShell(`/commit/${"a".repeat(40)}`, refusedFetch, {
+    refused: new Set(["pull-route.js"]),
+  });
+  await landing.sandbox.navigationController.start();
+  landing.claimGit("abc123");
+  landing.sandbox.location.pathname = "/pull/8";
+  landing.sandbox.applyPullHistoryLanding();
+  await settle();
+
+  // The page's plugin is loaded with no compositor, so its load fetches the helpers.
+  const helpersRefused = new Set(["plugin-sdk-views.js"]);
+  const helpers = createShell("/pull/7", refusedFetch, {
+    refused: helpersRefused,
+    startupScripts: ["pull-route.js"],
+  });
+  await helpers.sandbox.navigationController.start();
+  await settle();
+  const helpersFailed = { pane: helpers.pane(), scriptRequests: [...helpers.scriptRequests] };
+  helpersRefused.clear();
+  helpers.sandbox.location.pathname = "/pull/7/files";
+  helpers.sandbox.applyPullHistoryLanding();
+  await settle();
+
+  return {
+    viewHelpersOpeningAFile: {
+      failed: fileFailed,
+      reopened: {
+        outcome: file.outcome(reopened),
+        pane: file.pane(),
+        scriptRequests: file.scriptRequests.slice(fileFailed.scriptRequests.length),
+      },
+    },
+    pullRoutesAtAPullAddress: { pane: routes.pane(), scriptRequests: routes.scriptRequests },
+    pullRoutesOnAHistoryLanding: { pane: landing.pane(), scriptRequests: landing.scriptRequests },
+    viewHelpersOnThePullPage: {
+      failed: helpersFailed,
+      nextRoute: {
+        pane: helpers.pane(),
+        scriptRequests: helpers.scriptRequests.slice(helpersFailed.scriptRequests.length),
+      },
     },
   };
 }
@@ -963,7 +1132,9 @@ async function shell() {
     reconnectRetry: await reconnectRetry(),
     startupSettle: await startupSettle(),
     anchoredAddressesOpenSource: await anchoredAddressesOpenSource(),
+    coldAnchoredAddress: await coldAnchoredAddress(),
     pullRouteLoadsOnDemand: await pullRouteLoadsOnDemand(),
+    onDemandCodeRefused: await onDemandCodeRefused(),
   };
 }
 

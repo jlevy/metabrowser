@@ -97,7 +97,6 @@ function loadSdk(sandbox) {
     "resource-context.js",
     "view-state.js",
     "navigation.js",
-    "source-line-anchors.js",
   ]) {
     load(sandbox, `src/metabrowser/static/${filename}`);
   }

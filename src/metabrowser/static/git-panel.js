@@ -839,8 +839,10 @@
       : undefined;
     // Speculative work may be replaced before the diff view awaits it. Attach
     // a rejection handler immediately while preserving the original promise
-    // for the view's existing error path.
+    // for the view's existing error path. The assets can fail too: the diff
+    // plugin's load is refused when the SDK's view helpers cannot be fetched.
     void comparison?.catch(() => {});
+    void assets.catch(() => {});
     return { assets, comparison };
   }
 
