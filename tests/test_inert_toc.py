@@ -145,7 +145,7 @@ def test_the_session_plays_the_recorded_inert_render() -> None:
         RECORDED.write_text(recorded, encoding="utf-8")
     assert RECORDED.read_text(encoding="utf-8") == recorded
     result = subprocess.run(
-        ["node", str(SESSION_JS)], capture_output=True, text=True, timeout=60, check=True
+        ["node", str(SESSION_JS)], capture_output=True, text=True, timeout=50, check=True
     )
     transcript = json.loads(result.stdout)
     assert transcript["entries"][0] == {

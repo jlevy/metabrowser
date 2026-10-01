@@ -1040,7 +1040,7 @@ def test_a_pull_request_head_is_pinned_by_its_ref(stand: _Stand) -> None:
 
 
 def _settle(client: TestClient) -> dict[str, Any]:
-    deadline = time.monotonic() + 60
+    deadline = time.monotonic() + 50
     while True:
         status = client.get("/api/source/status").json()
         if not status["refreshing"]:

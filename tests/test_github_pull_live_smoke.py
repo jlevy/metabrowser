@@ -34,6 +34,10 @@ pytestmark = [
     pytest.mark.live_github,
     pytest.mark.skipif(os.environ.get(LIVE_ENV) != "1", reason=f"set {LIVE_ENV}=1 to run"),
     pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only"),
+    # Clones and reads over a real network. Measured on 2026-09-30 from a home
+    # connection, on a 10-core M1 Pro at load average 60-90: the seven live tests took
+    # 151 s, the slowest 38 s. The network is not ours to bound, so this is generous;
+    # it also has to exceed the 300 s bound on one ``metab`` call below.
     pytest.mark.timeout(600),
 ]
 

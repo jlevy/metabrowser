@@ -90,7 +90,7 @@ def _node(payload: dict[str, Any]) -> str:
         input=json.dumps(payload),
         capture_output=True,
         text=True,
-        timeout=60,
+        timeout=50,
         check=True,
     )
     return result.stdout
@@ -228,7 +228,7 @@ def test_the_session_plays_what_kpress_renders_of_the_hostile_readme() -> None:
         SESSION_TREE.write_text(recorded, encoding="utf-8")
     assert SESSION_TREE.read_text(encoding="utf-8") == recorded
     result = subprocess.run(
-        ["node", str(SESSION_JS)], capture_output=True, text=True, timeout=60, check=True
+        ["node", str(SESSION_JS)], capture_output=True, text=True, timeout=50, check=True
     )
     transcript = json.loads(result.stdout)
     assert allowlist_violations(transcript["document"], images=True) == []

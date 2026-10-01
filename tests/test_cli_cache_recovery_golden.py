@@ -79,7 +79,7 @@ pytestmark = [
     needs_git,
 ]
 
-CHILD_TIMEOUT: Final = 120
+CHILD_TIMEOUT: Final = 50
 # The Git ubuntu-latest ships, which is below the acquisition floor.
 BELOW_FLOOR_GIT: Final = ((2, 43, 0), "git version 2.43.0")
 

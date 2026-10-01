@@ -36,7 +36,7 @@ pytestmark = pytest.mark.skipif(os.name != "posix", reason="cache locks are BSD 
 fcntl = pytest.importorskip("fcntl")
 
 FIXTURES = Path(__file__).parent / "fixtures" / "repository-cache"
-CHILD_TIMEOUT = 60.0
+CHILD_TIMEOUT = 50.0
 
 
 def _document() -> dict[str, Any]:

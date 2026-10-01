@@ -89,7 +89,7 @@ def results() -> dict[str, list[dict[str, str]]]:
         ["node", "-e", _RUN, PULL_PAGE_JS.as_uri(), json.dumps(payload)],
         capture_output=True,
         text=True,
-        timeout=60,
+        timeout=50,
         check=True,
     )
     return json.loads(completed.stdout)

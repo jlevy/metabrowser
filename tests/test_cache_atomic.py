@@ -45,7 +45,7 @@ pytestmark = pytest.mark.skipif(os.name != "posix", reason="owner-only storage i
 fcntl = pytest.importorskip("fcntl")
 
 STORE_KEY = "c" * 64
-CHILD_TIMEOUT = 60
+CHILD_TIMEOUT = 50
 
 
 @pytest.fixture

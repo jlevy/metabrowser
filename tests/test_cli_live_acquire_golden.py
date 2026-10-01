@@ -35,7 +35,13 @@ from tests.admitted_git import require_admitted_git
 from tests.test_cli_cache_acquire_golden import _block, _file_url
 from tests.test_cli_golden import check_golden
 
-pytestmark = pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only")
+pytestmark = [
+    pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only"),
+    # Seven cold starts of the installed ``metab``. CI takes about 5 s. A 10-core M1 Pro
+    # at load average 62-86 took 49 s, too close to the suite's 60 s default, which
+    # also preempted the 120 s bound on each start.
+    pytest.mark.timeout(180),
+]
 
 # Pinned by the identity, dates, and recipe in ``_two_commit_origin``.
 FIRST_REVISION = "042f85f6d00e35e36494a3c201048675cd24abc7"

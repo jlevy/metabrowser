@@ -260,7 +260,7 @@ def test_every_side_the_session_offers_is_a_file_at_its_commit(tmp_path: Path) -
 
     require_node()
     result = subprocess.run(
-        ["node", str(SESSION_JS)], capture_output=True, text=True, timeout=60, check=False
+        ["node", str(SESSION_JS)], capture_output=True, text=True, timeout=50, check=False
     )
     assert result.returncode == 0, f"stdout: {result.stdout!r}\nstderr: {result.stderr!r}"
     offered: set[tuple[str, str]] = set()

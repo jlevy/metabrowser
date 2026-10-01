@@ -159,7 +159,7 @@ def _session_tags(recorded: dict[str, Any]) -> dict[str, Any]:
 
 
 def _settle(client: TestClient) -> None:
-    deadline = time.monotonic() + 60
+    deadline = time.monotonic() + 50
     while client.get("/api/source/status").json()["refreshing"]:
         assert time.monotonic() < deadline, "the refresh did not finish"
         time.sleep(0.02)
@@ -375,7 +375,7 @@ def test_recording_is_what_a_served_pull_request_answers(
 def test_the_session_runs_on_the_recording() -> None:
     require_node()
     result = subprocess.run(
-        ["node", str(SESSION_JS)], capture_output=True, text=True, timeout=60, check=False
+        ["node", str(SESSION_JS)], capture_output=True, text=True, timeout=50, check=False
     )
     assert result.returncode == 0, f"stdout: {result.stdout!r}\nstderr: {result.stderr!r}"
     steps = {step["step"]: step for step in json.loads(result.stdout)["steps"]}

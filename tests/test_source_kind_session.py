@@ -199,7 +199,7 @@ def test_source_kind_session_agrees_with_the_served_kind() -> None:
         ["node", str(SESSION_JS)],
         capture_output=True,
         text=True,
-        timeout=60,
+        timeout=50,
         check=False,
     )
     assert result.returncode == 0, (

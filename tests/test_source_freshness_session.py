@@ -467,7 +467,7 @@ def transcript_pin_after_switch() -> str:
 def test_the_session_runs_on_the_recording() -> None:
     require_node()
     result = subprocess.run(
-        ["node", str(SESSION_JS)], capture_output=True, text=True, timeout=60, check=False
+        ["node", str(SESSION_JS)], capture_output=True, text=True, timeout=50, check=False
     )
     assert result.returncode == 0, f"stdout: {result.stdout!r}\nstderr: {result.stderr!r}"
     steps = json.loads(result.stdout)["steps"]

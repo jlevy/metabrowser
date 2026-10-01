@@ -56,7 +56,7 @@ def _api(root: Path, home: Path, route: str, *flags: str) -> tuple[int, Any]:
         env={**os.environ, "METABROWSER_HOME": str(home)},
         capture_output=True,
         text=True,
-        timeout=120,
+        timeout=50,
         check=False,
     )
     status = re.search(r"^status: (\d+)$", result.stdout, re.MULTILINE)
@@ -69,7 +69,7 @@ def _resolve(source_path: str, authored_target: str) -> dict[str, Any]:
         ["node", "-e", _RESOLVE, LINKS_JS.as_uri(), source_path, authored_target],
         capture_output=True,
         text=True,
-        timeout=60,
+        timeout=50,
         check=True,
     )
     return json.loads(result.stdout)

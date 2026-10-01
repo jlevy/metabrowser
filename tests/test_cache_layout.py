@@ -64,7 +64,7 @@ from tests.cache_home_fixture import (
 )
 
 posix_only = pytest.mark.skipif(os.name != "posix", reason="owner-only storage is POSIX-only")
-CHILD_TIMEOUT = 120
+CHILD_TIMEOUT = 50
 
 
 def _mode(path: Path) -> int:

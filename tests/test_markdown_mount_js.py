@@ -34,10 +34,11 @@ FIXTURE_ROOT = Path(__file__).resolve().parent / "fixtures"
 
 # Breaks a hung session; it is not a speed budget. These sessions need a
 # fraction of a second of CPU, but on a loaded host they wait for it: the link
-# enhancer took 11-23 s of wall time at load average ~170 against a 30 s bound,
-# and failed the suite there. A deadlock never finishes, so a generous bound
-# loses nothing.
-_SESSION_DEADLOCK_TIMEOUT_S = 300
+# enhancer took 11-23 s of wall time at load average ~170, and the slowest
+# session here 11 s at ~80, so 30 s was too tight. It stays below the suite's
+# 60 s per-test timeout (pyproject.toml), which would otherwise fire first and
+# end the whole run instead of failing one test with the session's output.
+_SESSION_DEADLOCK_TIMEOUT_S = 50
 
 
 def test_markdown_mount_lifecycle() -> None:

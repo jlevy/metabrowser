@@ -49,6 +49,11 @@ from tests.test_cache_acquire import _file_source, _git
 pytestmark = [
     pytest.mark.skipif(os.name != "posix", reason="process groups and flock are POSIX"),
     needs_git,
+    # Each test commits, pushes, and fetches a 64 MiB object. CI takes 21-31 s for the
+    # three. A 10-core M1 Pro at load average 78-134 took up to 111 s for one (54 s of
+    # setup, 57 s of test), and the suite's 60 s default ended the whole run there.
+    # 240 s also covers the 60 s and 120 s waits below, which the default preempted.
+    pytest.mark.timeout(240),
 ]
 
 _STALE_AT = "2020-01-01T00:00:00Z"
