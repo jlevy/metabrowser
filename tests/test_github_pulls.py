@@ -9,8 +9,10 @@ fake ``gh`` replaying scrubbed real responses. Nothing reaches the network or th
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
+import signal
 import subprocess
 import threading
 import time
@@ -64,8 +66,9 @@ from metabrowser.cache.resolve import resolve_pin, store_ignores_case
 from metabrowser.cache.served_mirror import StoreMirror
 from metabrowser.cache.urls import GitSource, RepositorySelection
 from metabrowser.cli.main import _app
+from metabrowser.git import process as git_process
 from metabrowser.git import repo as git_repo
-from metabrowser.git.process import repository_store_target
+from metabrowser.git.process import kill_live_process_groups, repository_store_target
 from metabrowser.git.tree_source import GitRevisionSubject
 from metabrowser.mirror_refresh import (
     FRESHNESS_WINDOW_S,
@@ -81,17 +84,16 @@ from tests.github_pull_fixture import (
     CANONICAL,
     DEFAULT_BRANCH,
     FETCHED_AT,
-    HOSTILE_COMMENT,
     READER,
     Origin,
     account,
-    allowlist_violations,
-    build_origin,
+    copy_origin,
     install_fake_gh,
     ok,
     page,
     scenario,
 )
+from tests.golden_harness import read_recording, settle
 from tests.required_tools import needs_git
 from tests.test_cache_acquire import _allow_installed_git
 
@@ -130,11 +132,11 @@ class _Stand:
 
 
 @pytest.fixture
-def stand(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> _Stand:
+def stand(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin) -> _Stand:
     home = tmp_path / "home"
     monkeypatch.setenv("METABROWSER_HOME", str(home))
     _allow_installed_git(monkeypatch)
-    origin = build_origin(tmp_path)
+    origin = copy_origin(pull_origin, tmp_path)
     local = origin.url
     monkeypatch.setattr(
         "metabrowser.cache.acquire.remote_url_for",
@@ -150,6 +152,19 @@ def stand(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> _Stand:
 
 def _api(answers: dict[str, Any], path: str, entry: Any) -> dict[str, Any]:
     return {**answers, "api": {**answers["api"], path: entry}}
+
+
+def _move_origin_ref(stand: _Stand, ref: str, commit: str) -> None:
+    subprocess.run(
+        ["git", "--git-dir", str(stand.origin.path), "update-ref", ref, commit],
+        check=True,
+        capture_output=True,
+        env=git_env(stand.tmp_path),
+    )
+
+
+def _move_pull_head(stand: _Stand, commit: str) -> None:
+    _move_origin_ref(stand, "refs/pull/7/head", commit)
 
 
 # ── gh runner ──────────────────────────────────────────────────
@@ -257,37 +272,7 @@ def test_account_is_the_active_login_even_in_an_error_state() -> None:
         parse_account(b'{"hosts":{"github.com":[{"active":true,"login":"bad login"}]}}')
 
 
-def test_account_states(stand: _Stand, monkeypatch: pytest.MonkeyPatch) -> None:
-    assert asyncio.run(gh_account()) == READER
-    stand.answer({**scenario(stand.origin), "auth": {"stdout": '{"hosts":{}}\n'}})
-    with pytest.raises(GhError) as logged_out:
-        asyncio.run(gh_account())
-    assert logged_out.value.state == "not_logged_in"
-    stand.answer(
-        {**scenario(stand.origin), "auth": {"stderr": "unknown flag: --json\n", "exit": 1}}
-    )
-    with pytest.raises(GhError) as old:
-        asyncio.run(gh_account())
-    assert old.value.state == "gh_too_old"
-    monkeypatch.setattr("metabrowser.builtin_plugins.github.gh.gh_executable", lambda: None)
-    with pytest.raises(GhError) as missing:
-        asyncio.run(gh_account())
-    assert missing.value.state == "gh_missing"
-
-
 # ── refresh ────────────────────────────────────────────────────
-
-
-def test_a_fork_pull_request_brings_its_commits_and_the_mirror_base(stand: _Stand) -> None:
-    record = stand.refresh(7)
-    origin = stand.origin
-    assert record.reader == f"gh:{READER}"
-    assert record.pull.head.repository == "forker/demo"
-    assert asyncio.run(ref_commit(stand.published, "refs/pull/7/head")) == origin["fork_head"]
-    assert record.comparison is not None
-    assert (record.comparison.base, record.comparison.base_from) == (origin["base"], "base_branch")
-    assert record.comparison.base_commit == origin["topic"]
-    assert stand.record(7) == record
 
 
 def test_merged_and_closed_pull_requests_compare_from_base_sha(stand: _Stand) -> None:
@@ -308,16 +293,6 @@ def test_merged_and_closed_pull_requests_compare_from_base_sha(stand: _Stand) ->
     draft = stand.refresh(10)
     assert draft.pull.draft and draft.pull.mergeable == "conflicting"
     assert draft.comparison is not None and draft.comparison.base == origin["topic"]
-
-
-def test_a_second_refresh_is_conditional_and_reuses_unchanged_parts(stand: _Stand) -> None:
-    first = stand.refresh(7)
-    stand.calls()
-    again = stand.refresh(7)
-    api_calls = [call["args"] for call in stand.calls() if call["args"][0] == "api"]
-    assert len(api_calls) == 6
-    assert all(any(arg.startswith("If-None-Match: ") for arg in args) for args in api_calls)
-    assert again.model_dump(exclude={"fetched_at"}) == first.model_dump(exclude={"fetched_at"})
 
 
 def test_etags_are_not_sent_for_another_reader(stand: _Stand) -> None:
@@ -475,6 +450,12 @@ def test_serialization_validates_and_bounds(stand: _Stand, monkeypatch: pytest.M
 
 
 def test_the_startup_sweep_leaves_records_alone(stand: _Stand) -> None:
+    """The cache is opened, and swept, only for a source it does not hold yet.
+
+    No transcript opens it while a record exists, so none would show a sweep that took
+    the records with it.
+    """
+
     record = stand.refresh(7)
     open_cache(stand.published.home)
     assert stand.record(7) == record
@@ -568,39 +549,6 @@ def test_the_pull_route_and_the_comparison_it_names(
     assert _changed(by_merge_base) == {"docs/new.md", "src/app.txt"}
 
 
-@pytest.mark.parametrize(
-    "params",
-    [
-        {"left": "HEAD", "right": "HEAD", "base_policy": "first_parent"},
-        {"left": "HEAD", "right": "HEAD", "base_policy": "sideways"},
-        {"revision": "HEAD", "base_policy": "merge_base"},
-    ],
-)
-def test_the_comparison_route_refuses_a_base_policy_it_cannot_honor(
-    pinned_pull: tuple[_Stand, TestClient], params: dict[str, str]
-) -> None:
-    _stand, client = pinned_pull
-    refused = client.get("/api/plugin/diff/comparison", params=params)
-    assert refused.status_code == 400
-    assert refused.json()["error"] == "diff_comparison"
-
-
-def test_the_pull_route_reports_a_missing_record(pinned_pull: tuple[_Stand, TestClient]) -> None:
-    stand, client = pinned_pull
-    (stand.published.home / source_pull_record(stand.published.slug, 7)).unlink()
-    envelope = client.get("/api/plugin/github/pull").json()
-    assert (envelope["state"], envelope["reason"], envelope["record"]) == (
-        "absent",
-        "not_cached",
-        None,
-    )
-    stand.monkeypatch.setattr(
-        pulls, "utc_now", lambda: FETCHED_AT + timedelta(seconds=FRESHNESS_WINDOW_S + 1)
-    )
-    stand.refresh(7)
-    assert client.get("/api/plugin/github/pull").json()["state"] == "current"
-
-
 def test_the_pull_route_answers_an_unchanged_record_with_a_304(
     pinned_pull: tuple[_Stand, TestClient],
 ) -> None:
@@ -617,56 +565,6 @@ def test_the_pull_route_answers_an_unchanged_record_with_a_304(
     aged = client.get("/api/plugin/github/pull", headers={"if-none-match": etag})
     assert (aged.status_code, aged.json()["state"]) == (200, "stale")
     assert aged.headers["etag"] != etag
-
-
-def test_the_markdown_route_renders_one_part_of_the_record(
-    pinned_pull: tuple[_Stand, TestClient],
-) -> None:
-    stand, client = pinned_pull
-    record = client.get("/api/plugin/github/pull").json()["record"]
-    body = client.get("/api/plugin/github/pull-markdown", params={"part": "body"})
-    assert body.status_code == 200
-    rendered = body.json()
-    assert (rendered["part"], rendered["fetched_at"]) == ("body", record["fetched_at"])
-    assert "<strong>two</strong>" in rendered["html"]
-    review = record["reviews"][1]
-    answer = client.get(
-        "/api/plugin/github/pull-markdown", params={"part": f"review/{review['id']}"}
-    )
-    assert "Looks right." in answer.json()["html"]
-    for part, status_code, code in (
-        ("", 400, "invalid_part"),
-        ("pull/7", 400, "invalid_part"),
-        ("review/1", 404, "unknown_part"),
-    ):
-        refused = client.get("/api/plugin/github/pull-markdown", params={"part": part})
-        assert (refused.status_code, refused.json()["code"]) == (status_code, code)
-    (stand.published.home / source_pull_record(stand.published.slug, 7)).unlink()
-    missing = client.get("/api/plugin/github/pull-markdown", params={"part": "body"})
-    assert (missing.status_code, missing.json()["code"]) == (404, "not_cached")
-
-
-def test_the_markdown_route_answers_only_allowlisted_markup(
-    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from metabrowser.builtin_plugins.github import pull_markdown
-
-    monkeypatch.setattr(pull_markdown, "part_text", lambda _record, _part: HOSTILE_COMMENT)
-    _stand, client = pinned_pull
-    answer = client.get("/api/plugin/github/pull-markdown", params={"part": "body"}).json()
-    # No asset list: KPress adds scripts for what a text contains, and none may load.
-    assert set(answer) == {"number", "fetched_at", "part", "html"}
-    html = answer["html"]
-    assert allowlist_violations(html) == []
-    for gone in ("url(", "javascript:", "evil.css", "e.x/", "dQw4w9WgXcQ", "modal-overlay"):
-        assert gone not in html, gone
-    # The Markdown survives; an image is a link to it; a relative link is GitHub's.
-    assert "<code>topic</code>" in html
-    assert (
-        '<a href="https://example.com/badge.png" target="_blank" rel="noopener noreferrer">'
-        "build badge</a>"
-    ) in html
-    assert '<a href="https://github.com/octo/demo/pull/docs/new.md" target="_blank"' in html
 
 
 def test_the_markdown_route_drops_the_kpress_icon_sprite(
@@ -712,24 +610,6 @@ def test_harden_keeps_the_allowlist_and_is_idempotent() -> None:
 
 
 # ── Review hardening: degraded parts, oversized pages, and typed failures ──
-
-
-def test_a_secondary_rate_limit_is_rate_limited(stand: _Stand) -> None:
-    path = "repos/octo/demo/pulls/7"
-    stand.answer(
-        _api(
-            scenario(stand.origin),
-            path,
-            {
-                "status": 403,
-                "headers": {"X-Ratelimit-Remaining": "4990"},
-                "body": {"message": "You have exceeded a secondary rate limit. Please wait."},
-            },
-        )
-    )
-    with pytest.raises(GhError) as limited:
-        asyncio.run(gh_api(path))
-    assert (limited.value.state, limited.value.reset_at) == ("rate_limited", None)
 
 
 def test_unreadable_optional_fields_are_left_empty_and_items_left_out(stand: _Stand) -> None:
@@ -905,21 +785,18 @@ def test_a_record_the_cache_cannot_hold_or_read_is_typed(stand: _Stand) -> None:
     assert record.number == 7
 
 
-def test_fetches_are_atomic(stand: _Stand, monkeypatch: pytest.MonkeyPatch) -> None:
-    from metabrowser.cache import pull_refs
+def test_a_fetch_that_cannot_write_one_ref_writes_none(stand: _Stand) -> None:
+    """The head is not left in the store beside a base branch Git could not update."""
 
-    seen: list[list[str]] = []
-    original = pull_refs.run_git
-
-    async def recording(args: list[str], **kwargs: Any) -> bytes:
-        seen.append(list(args))
-        return await original(args, **kwargs)
-
-    monkeypatch.setattr(pull_refs, "run_git", recording)
-    stand.refresh(9)
-    fetches = [args for args in seen if "fetch" in args]
-    assert len(fetches) == 2  # refs/pull/9/head, then base.sha by ID
-    assert all("--atomic" in args for args in fetches)
+    mirrored = "refs/remotes/origin/topic"
+    _move_origin_ref(stand, "refs/heads/topic", stand.origin["draft_head"])
+    # Git cannot take the base branch's lock while a directory has the lock's name.
+    (stand.published.git_dir / f"{mirrored}.lock").mkdir(parents=True)
+    with pytest.raises(PullDataError) as refused:
+        stand.refresh(7)
+    assert refused.value.state == "fetch_failed"
+    assert asyncio.run(ref_commit(stand.published, "refs/pull/7/head")) is None
+    assert asyncio.run(ref_commit(stand.published, mirrored)) == stand.origin["topic"]
 
 
 def test_the_route_parses_a_record_again_only_when_it_changed(
@@ -1006,26 +883,29 @@ def test_a_fetch_takes_the_mirror_fetch_lock_and_hands_it_to_git(
 def test_a_served_pull_request_is_stale_by_its_record_or_its_last_try(
     stand: _Stand, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """A failing refresh is tried once a window, by this server and by the next command."""
+
     window = FRESHNESS_WINDOW_S
     assert served_pull(stand.published, 7).is_stale(FETCHED_AT, window_s=window)
     stand.refresh(7)
     served = served_pull(stand.published, 7)
     assert served.key == f"{stand.published.store_key}:pull/7"
+    assert served.last is not None and served.last["outcome"] == "succeeded"
     assert not served.is_stale(FETCHED_AT + timedelta(seconds=window), window_s=window)
     later = FETCHED_AT + timedelta(seconds=window + 1)
     assert served.is_stale(later, window_s=window)
 
-    async def failing(published: PublishedSource, number: int) -> PullRecord:
-        raise PullDataError("gh_missing", f"pull request {number}: gh is not installed")
-
-    monkeypatch.setattr(pulls, "refresh_pull_request", failing)
+    # gh goes missing. The server's refresh fails and keeps how it ended beside the
+    # record, where the next command reads it.
     monkeypatch.setattr(pulls, "utc_now", lambda: later)
+    monkeypatch.setattr("metabrowser.builtin_plugins.github.gh.gh_executable", lambda: None)
     asyncio.run(served.refresh())
-    assert served.last is not None and served.last["outcome"] == "gh_missing"
-    assert served.fetched_at == "2026-09-17T12:00:00Z"
-    # A failing refresh is tried once a window, not on every poll.
-    assert not served.is_stale(later, window_s=window)
-    assert served.is_stale(later + timedelta(seconds=window + 1), window_s=window)
+    for tried in (served, served_pull(stand.published, 7)):
+        assert tried.last is not None and tried.last["outcome"] == "gh_missing"
+        assert tried.fetched_at == "2026-09-17T12:00:00Z"
+        # Asked a moment ago, so gh is not asked again within the window.
+        assert not tried.is_stale(later, window_s=window)
+        assert tried.is_stale(later + timedelta(seconds=window + 1), window_s=window)
 
 
 def test_a_pull_request_head_is_pinned_by_its_ref(stand: _Stand) -> None:
@@ -1036,16 +916,6 @@ def test_a_pull_request_head_is_pinned_by_its_ref(stand: _Stand) -> None:
     for ref in ("refs/pull/0/head", "refs/pull/7/merge", "refs/pull/x/head", "refs/heads/topic"):
         with pytest.raises(InvalidSelectionError):
             asyncio.run(resolve_pin(target, ref=ref))
-
-
-def _settle(client: TestClient) -> dict[str, Any]:
-    deadline = time.monotonic() + 50
-    while True:
-        status = client.get("/api/source/status").json()
-        if not status["refreshing"]:
-            return status
-        assert time.monotonic() < deadline, "the refresh did not finish"
-        time.sleep(0.02)
 
 
 def test_the_refresh_route_starts_or_joins_one_job(
@@ -1076,7 +946,7 @@ def test_the_refresh_route_starts_or_joins_one_job(
     assert client.get("/api/plugin/github/pull").json()["refreshing"] is True
     assert client.get("/api/source/status").json()["refreshing"] is True
     release.set()
-    _settle(client)
+    settle(client)
     assert runs == [7]
     assert client.get("/api/plugin/github/pull").json()["refreshing"] is False
 
@@ -1097,22 +967,6 @@ def test_the_refresh_route_refuses_what_is_not_a_refresh_request(
     assert client.post(_REFRESH_ROUTE, content=b"{}", headers=plain).status_code == 415
     outdated = client.post(_REFRESH_ROUTE, json={}, headers={**_JSON, PIN_HEADER: "0" * 40})
     assert (outdated.status_code, outdated.json()["code"]) == (409, "pin_changed")
-
-
-def _move_pull_head(stand: _Stand, commit: str) -> None:
-    subprocess.run(
-        [
-            "git",
-            "--git-dir",
-            str(stand.tmp_path / "github-pull-origin.git"),
-            "update-ref",
-            "refs/pull/7/head",
-            commit,
-        ],
-        check=True,
-        capture_output=True,
-        env=git_env(stand.tmp_path),
-    )
 
 
 def _answering_head(stand: _Stand, head: str) -> dict[str, Any]:
@@ -1159,7 +1013,7 @@ def test_a_served_pull_request_pins_its_head_and_refreshes_beside_the_mirror(
         assert result.exit_code == 0, result.output
         assert f"Revision: {earlier} (refs/pull/7/head)\n" in result.stdout
         with TestClient(app) as client:
-            status = _settle(client)
+            status = settle(client)
             assert (status["pin"], status["pull_request"], status["stale"]) == (earlier, 7, False)
             envelope = client.get("/api/plugin/github/pull").json()
             assert (envelope["state"], envelope["pin"]) == ("current", earlier)
@@ -1169,7 +1023,7 @@ def test_a_served_pull_request_pins_its_head_and_refreshes_beside_the_mirror(
             stand.answer(scenario(stand.origin))
             started = client.post(_REFRESH_ROUTE, json={}, headers=_JSON)
             assert started.status_code == 202 and started.json()["pull"]["refreshing"] is True
-            status = _settle(client)
+            status = settle(client)
             assert (status["pin"], status["latest"]) == (earlier, head)
             envelope = client.get("/api/plugin/github/pull").json()
             assert envelope["last_refresh"]["outcome"] == "succeeded"
@@ -1209,7 +1063,7 @@ def test_a_switch_by_commit_id_back_to_the_head_keeps_the_pull_requests_ref(
         result = _serve(f"{CANONICAL}/pull/7")
         assert result.exit_code == 0, result.output
         with TestClient(app) as client:
-            assert _settle(client)["ref"] == "refs/pull/7/head"
+            assert settle(client)["ref"] == "refs/pull/7/head"
             base = client.get("/api/plugin/github/pull").json()["record"]["comparison"]["base"]
 
             def pin(body: dict[str, str]) -> dict[str, Any]:
@@ -1262,57 +1116,63 @@ def test_a_commit_url_newer_than_the_record_refreshes_the_pull_request_to_serve_
 def test_a_base_branch_folded_by_case_is_put_back(
     stand: _Stand, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The mirror update's check and restore wrap the pull request's fetch too."""
+    """The mirror update's check and restore wrap the pull request's fetch too.
 
-    restored: list[dict[str, str]] = []
+    A fold needs a filesystem that ignores case, so the check is told it found one. The
+    fetch and the restore are Git's: the base branch the fetch advanced is back.
+    """
 
     async def ignores_case(target: Any) -> bool:
         return True
 
-    async def restore(target: Any, before: dict[str, str], lock_fd: int) -> tuple[str, ...]:
-        restored.append(before)
-        return ()
-
     monkeypatch.setattr(pull_refs, "store_ignores_case", ignores_case)
     monkeypatch.setattr(pull_refs, "folded_refs", lambda **_: ("refs/remotes/origin/x",))
-    monkeypatch.setattr(pull_refs, "restore_mirror_refs", restore)
+    _move_origin_ref(stand, "refs/heads/topic", stand.origin["draft_head"])
     with pytest.raises(PullDataError) as folded:
         stand.refresh(7)
     assert folded.value.state == "fetch_failed" and "letter case" in str(folded.value)
-    assert restored and "refs/remotes/origin/topic" in restored[0]
+    mirrored = asyncio.run(ref_commit(stand.published, "refs/remotes/origin/topic"))
+    assert mirrored == stand.origin["topic"]
 
 
 def test_gh_runs_in_a_group_the_stop_path_can_kill(
-    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from metabrowser.builtin_plugins.github import gh as gh_module
+    """A gh that is still answering when the server stops is killed, and then forgotten."""
 
-    tracked: list[int] = []
-    forgotten: list[int] = []
-    monkeypatch.setattr(gh_module, "track_process_group", lambda proc: tracked.append(proc.pid))
-    monkeypatch.setattr(gh_module, "forget_process_group", lambda proc: forgotten.append(proc.pid))
-    assert asyncio.run(gh_account()) == READER
-    assert tracked and tracked == forgotten
+    started = tmp_path / "gh-started"
+    gh = tmp_path / "bin" / "gh"
+    gh.parent.mkdir()
+    gh.write_text(
+        f'#!/bin/sh\necho $$ > "{started}.new"\nmv "{started}.new" "{started}"\nexec sleep 50\n',
+        encoding="utf-8",
+    )
+    gh.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{gh.parent}{os.pathsep}{os.environ['PATH']}")
 
+    async def stopped_while_asking() -> int:
+        asking = asyncio.ensure_future(gh_account())
+        deadline = time.monotonic() + 20
+        while not started.exists():
+            assert time.monotonic() < deadline, "gh did not start"
+            await asyncio.sleep(0.01)
+        pid = int(started.read_text(encoding="utf-8"))
+        try:
+            # The leader of a group of its own, so the kill cannot reach this process.
+            assert os.getpgid(pid) == pid != os.getpgid(0)
+            kill_live_process_groups()
+            # Ended by the signal, not by gh's own deadline, which is a different error.
+            with pytest.raises(GhError, match=f"gh exited -{signal.SIGKILL.value} "):
+                await asyncio.wait_for(asking, 20)
+        finally:
+            with contextlib.suppress(ProcessLookupError):
+                os.kill(pid, signal.SIGKILL)
+        return pid
 
-def test_how_the_last_refresh_ended_is_kept_for_the_next_command(
-    stand: _Stand, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    stand.refresh(7)
-    kept = served_pull(stand.published, 7)
-    assert kept.last is not None and kept.last["outcome"] == "succeeded"
-    later = FETCHED_AT + timedelta(seconds=FRESHNESS_WINDOW_S * 2)
-    monkeypatch.setattr(pulls, "utc_now", lambda: later)
-    monkeypatch.setattr("metabrowser.builtin_plugins.github.gh.gh_executable", lambda: None)
-    with pytest.raises(PullDataError):
-        stand.refresh(7)
-    kept = served_pull(stand.published, 7)
-    assert kept.last is not None and kept.last["outcome"] == "gh_missing"
-    assert kept.fetched_at == "2026-09-17T12:00:00Z"
-    # Asked a moment ago, so the next command does not ask gh again within the window.
-    window = FRESHNESS_WINDOW_S
-    assert not kept.is_stale(later, window_s=window)
-    assert kept.is_stale(later + timedelta(seconds=window + 1), window_s=window)
+    pid = asyncio.run(stopped_while_asking())
+    with pytest.raises(ProcessLookupError):
+        os.killpg(pid, 0)
+    assert pid not in git_process._LIVE_PROCESS_GROUPS
 
 
 # ── final review: case folds, bad stamps, one-shot judgment, commit pins ──
@@ -1433,12 +1293,12 @@ def test_a_served_pull_requests_newer_commit_is_fetched_for_a_pin(
         result = _serve(f"{CANONICAL}/pull/7")
         assert result.exit_code == 0, result.output
         with TestClient(app) as client:
-            _settle(client)
+            settle(client)
             _move_pull_head(stand, head)
             stand.answer(scenario(stand.origin))
             asked = client.post("/api/source/pin", json={"oid": head}, headers=_JSON)
             assert asked.status_code == 202, asked.text
-            _settle(client)
+            settle(client)
             taken = client.post("/api/source/pin", json={"oid": head}, headers=_JSON)
             assert taken.status_code == 200, taken.text
             assert taken.json()["status"]["pin"] == head
@@ -1461,35 +1321,14 @@ def test_a_served_pull_requests_newer_commit_is_fetched_for_a_pin(
     ],
 )
 def test_the_commit_count_is_kept_only_within_its_bound(value: object, kept: int | None) -> None:
+    """A count outside the bound is dropped when GitHub sends it and refused in a record."""
+
     assert pulls._count(value) == kept
-
-
-def test_the_record_refuses_a_commit_count_past_its_bound() -> None:
-    side = {"ref": "topic", "sha": "a" * 40, "repository": "octo/demo"}
-    pull = {
-        "number": 7,
-        "title": "t",
-        "body": "",
-        "body_truncated": False,
-        "state": "closed",
-        "draft": False,
-        "merged": True,
-        "merged_by": None,
-        "commits": MAX_PULL_COMMITS,
-        "merge_commit_sha": None,
-        "mergeable": "unknown",
-        "labels": [],
-        "author": "octo",
-        "created_at": "2026-09-17T12:00:00Z",
-        "updated_at": "2026-09-17T12:00:00Z",
-        "merged_at": "2026-09-17T12:00:00Z",
-        "closed_at": "2026-09-17T12:00:00Z",
-        "base": side,
-        "head": side,
-        "html_url": "https://github.com/octo/demo/pull/7",
-    }
-    assert PullRequest.model_validate(pull).commits == MAX_PULL_COMMITS
-    with pytest.raises(ValidationError):
-        PullRequest.model_validate({**pull, "commits": MAX_PULL_COMMITS + 1})
-    with pytest.raises(ValidationError):
-        PullRequest.model_validate({**pull, "commits": -1})
+    if type(value) is int:
+        recorded = read_recording("github-pull-page-responses.json")["current"]["body"]
+        stored = {**recorded["record"]["pull"], "commits": value}
+        if kept is None:
+            with pytest.raises(ValidationError):
+                PullRequest.model_validate(stored)
+        else:
+            assert PullRequest.model_validate(stored).commits == kept
