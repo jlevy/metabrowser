@@ -76,8 +76,11 @@ class _Session:
         self.monkeypatch = monkeypatch
         self.home = isolate_cli(tmp_path, monkeypatch).home
         self.origin: Origin = copy_origin(built, tmp_path)
-        # Each pull request's record as last printed in full, by number.
-        self.printed: dict[int, Any] = {}
+        # Each pull request's record as last printed in full, by number, and the
+        # numbers printed in full, in order. The record is kept as JSON text, which
+        # holds the order of its keys: a dictionary comparison would not.
+        self.printed: dict[int, str] = {}
+        self.in_full: list[int] = []
         local = self.origin.url
 
         def remote_url_for(source: GitSource) -> str:
@@ -113,10 +116,11 @@ class _Session:
 
     def _once(self, found: re.Match[str]) -> str:
         record = json.loads(found.group(2))
-        number = record["number"]
-        if self.printed.get(number) == record:
+        number, text = record["number"], json.dumps(record)
+        if self.printed.get(number) == text:
             return f'{found.group(1)}"record": "<RECORD {number}>"'
-        self.printed[number] = record
+        self.printed[number] = text
+        self.in_full.append(number)
         return found.group(0)
 
     def run(self, *args: str) -> Invocation:
@@ -328,5 +332,5 @@ def test_golden_pull_requests_fetch_refresh_and_read_offline(
     assert str(tmp_path) not in rendered and str(session.home) not in rendered
     assert "file://" not in rendered
     # One full print of each distinct record: pull request 7's and pull request 8's.
-    assert rendered.count('"schema_version": 2,') == 2
+    assert session.in_full == [7, 8]
     check_golden("cli-github-pull-refresh.txt", rendered)
