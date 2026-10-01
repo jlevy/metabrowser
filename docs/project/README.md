@@ -61,6 +61,12 @@ links to the document that covers each in depth.
 - [A machine-readable contract for the API envelopes](specs/active/plan-2026-08-30-api-schema-and-contract.md)
 - [Functional UI and CLI parity](specs/active/plan-2026-09-10-functional-ui-cli-parity.md)
 
+## Reference Code
+
+- [Hosted Review Format and provider resources](reference/hosted-review-reference.md) —
+  unused reference code kept on this branch only; not on the critical path, not
+  maintained, and not to be merged
+
 ## Research
 
 - [Web diff viewer architecture and intermediate representations](research/research-2026-07-17-web-diff-viewer-architecture.md)
