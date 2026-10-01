@@ -52,57 +52,6 @@ def _count_tree_work(monkeypatch: pytest.MonkeyPatch) -> _Counters:
     return counters
 
 
-def test_wide_nested_listing_is_linear_in_directory_width(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A nested listing of D subdirectories must not do D*D work or D spawns.
-
-    ``same/`` holds D subdirectories sharing ONE tree OID, so every child
-    listing is served from a cache entry recorded under a sibling's path and
-    has to be reparented. ``diff/`` holds D distinct trees, so a cold listing
-    has D trees to read.
-    """
-
-    width = 48
-    files: dict[bytes, bytes] = {}
-    for index in range(width):
-        files[f"same/d{index:03d}/f.txt".encode()] = b"shared\n"
-        files[f"diff/d{index:03d}/f.txt".encode()] = f"distinct {index}\n".encode()
-    store, commit = fast_import_store(tmp_path, files)
-    counters = _count_tree_work(monkeypatch)
-
-    async def run() -> None:
-        async with pinned_client(store, commit) as (client, _subject):
-            for name in (b"same", b"diff"):
-                wire = GitPath.from_segments(name).to_wire()
-                counters.reset()
-                cold = await client.get(f"/api/tree?path={wire}&depth=2")
-                assert cold.status_code == 200
-                # One recursive index walk, not one spawn per child tree.
-                assert counters.ls_tree_spawns() <= 2, counters.spawns
-                assert counters.reparents <= 4 * width
-
-                counters.reset()
-                warm = await client.get(f"/api/tree?path={wire}&depth=2")
-                assert warm.status_code == 200
-                assert warm.json() == cold.json()
-                assert counters.ls_tree_spawns() == 0
-                # Unfixed: every child re-listed and rebuilt all D siblings.
-                assert counters.reparents <= 4 * width, counters.reparents
-
-                nodes = warm.json()["tree"]
-                assert len(nodes) == width
-                for index, node in enumerate(nodes):
-                    child = GitPath.from_segments(name, f"d{index:03d}".encode())
-                    assert node["path"] == child.to_wire()
-                    # A shared tree OID still lists under EACH parent path.
-                    assert [leaf["path"] for leaf in node["children"]] == [
-                        child.child(b"f.txt").to_wire()
-                    ]
-
-    asyncio.run(run())
-
-
 def test_warm_path_resolution_reparents_only_the_hit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -169,93 +118,6 @@ def _count_per_blob_work(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 
     monkeypatch.setattr(routes_module, "derive_ext", counting_derive_ext)
     return seen
-
-
-def test_whole_index_facts_are_derived_once_per_pin(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    blobs = 400
-    files = {
-        f"pkg{index % 8}/sub{index % 3}/mod_{index:04d}.{'py' if index % 2 else 'md'}".encode(): (
-            b"x" * (index % 7 + 1)
-        )
-        for index in range(blobs)
-    }
-    store, commit = fast_import_store(tmp_path, files)
-    seen = _count_per_blob_work(monkeypatch)
-    urls = (
-        "/api/tree?depth=1",
-        "/api/tree?depth=2&types=.py",
-        "/api/tree?depth=2&min_size=4",
-        "/api/index/progress",
-        "/api/index/meta",
-        "/api/capabilities",
-        "/api/rollup",
-        "/api/catalog",
-    )
-
-    async def run() -> None:
-        async with pinned_client(store, commit) as (client, _subject):
-            first: dict[str, Any] = {}
-            for url in urls:
-                response = await client.get(url)
-                assert response.status_code == 200, url
-                first[url] = response.json()
-            assert first["/api/tree?depth=2&types=.py"]["filtered"]["files"] == blobs // 2
-            assert first["/api/index/meta"]["indexed_files"] == blobs
-            assert len(first["/api/catalog"]["files"]) == blobs
-            for url in urls:
-                seen.clear()
-                response = await client.get(url)
-                assert response.json() == first[url], url
-                # A pin is immutable: a repeat may touch the nodes it lists,
-                # never every blob of the index again.
-                assert len(seen) < blobs // 4, (url, len(seen))
-
-    asyncio.run(run())
-
-
-def test_nav_tree_stops_nesting_at_its_node_budget(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    files = {
-        f"d{outer}/e{inner}/f{leaf}.txt".encode(): b"x"
-        for outer in range(6)
-        for inner in range(6)
-        for leaf in range(6)
-    }
-    store, commit = fast_import_store(tmp_path, files)
-    budget = 40
-    monkeypatch.setattr(routes_module, "GIT_NAV_TREE_MAX_NODES", budget)
-
-    def walk(nodes: list[dict[str, Any]]) -> tuple[int, int]:
-        total = lazy = 0
-        for node in nodes:
-            total += 1
-            children = node.get("children")
-            if node["type"] == "dir" and children is None:
-                assert node["has_children"] is True
-                lazy += 1
-            elif children:
-                nested_total, nested_lazy = walk(children)
-                total += nested_total
-                lazy += nested_lazy
-        return total, lazy
-
-    async def run() -> None:
-        async with pinned_client(store, commit) as (client, _subject):
-            response = await client.get("/api/tree?depth=20")
-            assert response.status_code == 200
-            tree = response.json()["tree"]
-            # Every direct child is present; nesting stops once the budget is spent.
-            assert [node["name"] for node in tree] == [f"d{outer}" for outer in range(6)]
-            total, lazy = walk(tree)
-            assert total <= budget
-            assert lazy > 0
-            # Totals come from the index, so a lazy directory is not dimmed as empty.
-            assert all(node["total_files"] == 36 for node in tree)
-
-    asyncio.run(run())
 
 
 def test_derived_facts_build_once_per_key_and_stay_bounded(
@@ -418,9 +280,16 @@ def _measure_wide_tree(tmp_path: Path, meter: _WorkMeter, width: int) -> dict[st
                 work[label] = meter.snapshot()
                 assert response.status_code == 200, (label, response.text)
                 if label.startswith(("same", "diff")):
-                    nodes = response.json()["tree"]
-                    assert len(nodes) == width, label
-                    assert all(len(node["children"]) == 1 for node in nodes), label
+                    listed = same if label.startswith("same") else diff
+                    children = [listed.child(f"d{index:04d}".encode()) for index in range(width)]
+                    # A shared tree OID still lists under each parent path, and a warm
+                    # answer is the cold one.
+                    assert [
+                        (node["path"], [leaf["path"] for leaf in node["children"]])
+                        for node in response.json()["tree"]
+                    ] == [
+                        (child.to_wire(), [child.child(b"f.txt").to_wire()]) for child in children
+                    ], label
             meter.reset()
             for index in range(width):
                 path = same.child(f"d{index:04d}".encode()).child(b"f.txt")
@@ -468,9 +337,11 @@ def test_nested_listing_and_lookup_work_grow_linearly_with_width(
         assert measured["lookup warm"].path_compares >= scale
         assert measured["diff cold"].tree_reads >= scale
         assert measured["diff warm"].nav_nodes >= 2 * scale
-        # A child listing reads one tree object; it never spawns ls-tree.
+        # A child listing reads one tree object; it never spawns ls-tree. One recursive
+        # index walk serves a cold listing, and a warm one spawns and reads nothing.
         assert all(work.ls_tree_spawns <= 1 for work in measured.values())
-        assert measured["same warm"].tree_reads == measured["diff warm"].tree_reads == 0
+        for warm in (measured["same warm"], measured["diff warm"]):
+            assert (warm.ls_tree_spawns, warm.tree_reads) == (0, 0)
 
 
 def _index_store(tmp_path: Path, blobs: int) -> tuple[Path, str]:
@@ -488,13 +359,16 @@ def _index_store(tmp_path: Path, blobs: int) -> tuple[Path, str]:
 
 
 def _per_blob_work(tmp_path: Path, seen: list[str], blobs: int) -> tuple[int, int]:
-    """(cold, warm) extension derivations over the chrome and listing routes."""
+    """(cold, warm) extension derivations over every route that reads whole-index facts."""
 
     store, commit = _index_store(tmp_path, blobs)
     urls = (
         "/api/tree?depth=1",
-        "/api/tree?depth=1&types=.py",
+        "/api/tree?depth=2&types=.py",
+        "/api/tree?depth=2&min_size=4",
+        "/api/index/progress",
         "/api/index/meta",
+        "/api/capabilities",
         "/api/rollup",
         "/api/catalog",
     )
@@ -502,12 +376,19 @@ def _per_blob_work(tmp_path: Path, seen: list[str], blobs: int) -> tuple[int, in
     async def run() -> tuple[int, int]:
         async with pinned_client(store, commit) as (client, _subject):
             seen.clear()
+            first: dict[str, Any] = {}
             for url in urls:
-                assert (await client.get(url)).status_code == 200, url
+                response = await client.get(url)
+                assert response.status_code == 200, url
+                first[url] = response.json()
             cold = len(seen)
+            assert first["/api/tree?depth=2&types=.py"]["filtered"]["files"] == blobs // 2
+            assert first["/api/index/meta"]["indexed_files"] == blobs
+            assert len(first["/api/catalog"]["files"]) == blobs
             seen.clear()
             for url in urls:
-                assert (await client.get(url)).status_code == 200, url
+                # A pin is immutable, so the memo's answer is the first answer.
+                assert (await client.get(url)).json() == first[url], url
             return cold, len(seen)
 
     return asyncio.run(run())
@@ -552,7 +433,26 @@ def _deep_store(tmp_path: Path, fanout: int) -> tuple[Path, str]:
     return fast_import_store(root, files)
 
 
-def _budgeted_listing(tmp_path: Path, meter: _WorkMeter, fanout: int) -> tuple[_Work, int]:
+def _count_nodes(nodes: list[dict[str, Any]]) -> tuple[int, int]:
+    """(nodes, lazy directories) in an SPA ``tree`` array, at every depth."""
+
+    total = lazy = 0
+    for node in nodes:
+        total += 1
+        children = node.get("children")
+        if node["type"] == "dir" and children is None:
+            assert node["has_children"] is True
+            lazy += 1
+        elif children:
+            nested_total, nested_lazy = _count_nodes(children)
+            total += nested_total
+            lazy += nested_lazy
+    return total, lazy
+
+
+def _budgeted_listing(
+    tmp_path: Path, meter: _WorkMeter, fanout: int, budget: int
+) -> tuple[_Work, int]:
     store, commit = _deep_store(tmp_path, fanout)
 
     async def run() -> tuple[_Work, int]:
@@ -560,7 +460,14 @@ def _budgeted_listing(tmp_path: Path, meter: _WorkMeter, fanout: int) -> tuple[_
             meter.reset()
             response = await client.get("/api/tree?depth=20")
             assert response.status_code == 200
-            return meter.snapshot(), len(response.json()["tree"])
+            tree = response.json()["tree"]
+            # Every direct child is present; nesting stops once the budget is spent.
+            assert [node["name"] for node in tree] == [f"d{outer:02d}" for outer in range(fanout)]
+            total, lazy = _count_nodes(tree)
+            assert total <= budget and lazy > 0, (total, lazy)
+            # Totals come from the index, so a lazy directory is not dimmed as empty.
+            assert all(node["total_files"] == fanout**2 for node in tree)
+            return meter.snapshot(), len(tree)
 
     return asyncio.run(run())
 
@@ -578,8 +485,8 @@ def test_deep_listing_work_is_bounded_by_the_node_budget(
     budget = 40
     monkeypatch.setattr(routes_module, "GIT_NAV_TREE_MAX_NODES", budget)
     meter = _WorkMeter(monkeypatch)
-    small, small_top = _budgeted_listing(tmp_path, meter, 4)
-    large, large_top = _budgeted_listing(tmp_path, meter, 8)
+    small, small_top = _budgeted_listing(tmp_path, meter, 4, budget)
+    large, large_top = _budgeted_listing(tmp_path, meter, 8, budget)
 
     assert (small_top, large_top) == (4, 8)
     for work, top in ((small, small_top), (large, large_top)):
