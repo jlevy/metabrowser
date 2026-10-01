@@ -1736,8 +1736,14 @@ async def index(request: Request) -> HTMLResponse:
   {optional_assets_block}
 </body>
 </html>"""
+    # A pin's page names the commit it was rendered for, and the server can switch to
+    # another. Back and forward show a document from the browser's cache without asking
+    # again, so a cached page would come back naming a commit the server no longer
+    # serves and every data request it made would be refused as `pin_changed`. Not
+    # storing it makes the browser ask, and the page it gets is the served pin's.
+    headers = {"Cache-Control": "no-store"} if git_pin else {}
     if get_capabilities().active_content:
-        return HTMLResponse(html)
+        return HTMLResponse(html, headers=headers)
     # An untrusted source: the page runs only what this server wrote. Every inline script
     # of the shell carries this response's nonce (capabilities.untrusted_shell_csp).
     nonce = secrets.token_urlsafe(18)
@@ -1746,6 +1752,7 @@ async def index(request: Request) -> HTMLResponse:
     return HTMLResponse(
         html,
         headers={
+            **headers,
             "Content-Security-Policy": untrusted_shell_csp(nonce, origin),
             "X-Frame-Options": "DENY",
         },
