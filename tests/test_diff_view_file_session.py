@@ -52,6 +52,7 @@ from tests.diff_view_file_fixture import (
     commits,
     view,
 )
+from tests.required_tools import needs_git, require_node
 from tests.source_mirror_fixture import FETCHED_AT
 from tests.test_cache_acquire import _allow_installed_git, _file_source
 from tests.test_source_freshness_session import _settle, _stand_in_times, _write_state
@@ -67,7 +68,7 @@ _PAGE_PIN = re.compile(r"window\.METABROWSER_SOURCE_PIN=(\{.*?\});</script>")
 posix_only = pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only")
 pytestmark = [
     posix_only,
-    pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required"),
+    needs_git,
 ]
 
 
@@ -257,8 +258,7 @@ def test_every_side_the_session_offers_is_a_file_at_its_commit(tmp_path: Path) -
     is not UTF-8 by its bytes.
     """
 
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(SESSION_JS)], capture_output=True, text=True, timeout=60, check=False
     )

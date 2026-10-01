@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import shutil
 import subprocess
 import sys
 import textwrap
@@ -17,6 +16,7 @@ from metabrowser.cache.locks import held_locks
 from metabrowser.cache.repository_store import open_revision
 from metabrowser.git.process import GitUnavailableError
 from metabrowser.git.tree_source import GitObjectUnavailableError, GitPath, GitPathError
+from tests.required_tools import needs_git
 from tests.test_cache_acquire import (
     _allow_installed_git,
     _file_source,
@@ -27,7 +27,7 @@ from tests.test_cache_acquire import (
 )
 
 pytestmark = [
-    pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required"),
+    needs_git,
     pytest.mark.skipif(os.name != "posix", reason="the cache is POSIX-only"),
 ]
 

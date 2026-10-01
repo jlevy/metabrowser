@@ -56,6 +56,7 @@ from metabrowser.cli.selection import pending_selection_opener
 from metabrowser.git.tree_source import GitRevisionSubject
 from metabrowser.mirror_refresh import serve_mirror
 from metabrowser.source import reset_source_session, serve_subject_opener
+from tests.required_tools import needs_git, require_node
 from tests.source_mirror_fixture import FETCHED_AT, build_origin
 from tests.test_cache_acquire import _allow_installed_git, _file_source
 
@@ -78,7 +79,7 @@ _STAND_IN_TIME = "2026-09-23T12:00:00Z"
 posix_only = pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only")
 pytestmark = [
     posix_only,
-    pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required"),
+    needs_git,
 ]
 
 
@@ -464,8 +465,7 @@ def transcript_pin_after_switch() -> str:
 
 
 def test_the_session_runs_on_the_recording() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(SESSION_JS)], capture_output=True, text=True, timeout=60, check=False
     )

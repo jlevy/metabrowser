@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
 from pathlib import Path
 
-import pytest
+from tests.required_tools import require_node
 
 CATALOG_UNICODE_ORDER_TEST_JS = (
     Path(__file__).resolve().parent / "dom" / "catalog-unicode-order-session.js"
@@ -15,8 +14,7 @@ CATALOG_UNICODE_ORDER_TEST_JS = (
 
 
 def test_catalog_unicode_order_js_assertions_pass() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(CATALOG_UNICODE_ORDER_TEST_JS)],
         capture_output=True,

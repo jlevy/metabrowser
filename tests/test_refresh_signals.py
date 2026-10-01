@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import shutil
 import signal
 import socket
 import subprocess
@@ -44,11 +43,12 @@ from metabrowser.cache.records import (
 )
 from metabrowser.cache.update import RefreshOutcome, update_store
 from tests.admitted_git import require_admitted_git
+from tests.required_tools import needs_git
 from tests.test_cache_acquire import _file_source, _git
 
 pytestmark = [
     pytest.mark.skipif(os.name != "posix", reason="process groups and flock are POSIX"),
-    pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required"),
+    needs_git,
 ]
 
 _STALE_AT = "2020-01-01T00:00:00Z"

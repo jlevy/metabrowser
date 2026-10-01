@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import io
 import os
-import shutil
 from pathlib import Path
 
 import pytest
@@ -16,10 +15,11 @@ from metabrowser.cache.urls import GitSource, classify_root_argument
 from metabrowser.cli import acquire_cli
 from metabrowser.git.process import UnsupportedGitVersionError
 from tests.github_origin import github_origin
+from tests.required_tools import needs_git
 from tests.test_cache_acquire import _allow_installed_git
 
 pytestmark = [
-    pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required"),
+    needs_git,
     pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only"),
 ]
 

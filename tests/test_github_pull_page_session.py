@@ -35,7 +35,6 @@ import copy
 import json
 import os
 import re
-import shutil
 import subprocess
 import threading
 import time
@@ -72,6 +71,7 @@ from tests.github_pull_fixture import (
     page,
     scenario,
 )
+from tests.required_tools import needs_git, require_node
 from tests.test_cache_acquire import _allow_installed_git
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -85,7 +85,7 @@ _MARKDOWN = "/api/plugin/github/pull-markdown"
 _PIN = "/api/source/pin"
 _PROSE = re.compile(r'<div class="kpress-prose[^"]*">(.*)</div></div></article>', re.S)
 pytestmark = [
-    pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required"),
+    needs_git,
     pytest.mark.skipif(os.name != "posix", reason="the fake gh is a POSIX script"),
 ]
 
@@ -373,8 +373,7 @@ def test_recording_is_what_a_served_pull_request_answers(
 
 
 def test_the_session_runs_on_the_recording() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(SESSION_JS)], capture_output=True, text=True, timeout=60, check=False
     )

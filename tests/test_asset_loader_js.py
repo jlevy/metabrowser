@@ -8,19 +8,17 @@ once. Both are invisible from a request count, so they are pinned here.
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 from pathlib import Path
 
-import pytest
+from tests.required_tools import require_node
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SHIM = Path(__file__).resolve().parent / "dom" / "asset-loader-behavior.js"
 
 
 def _run_shim() -> dict[str, object]:
-    if shutil.which("node") is None:
-        pytest.skip("node not available; skipping asset loader behavioral shim")
+    require_node()
     result = subprocess.run(
         ["node", str(SHIM), str(REPO_ROOT)],
         capture_output=True,

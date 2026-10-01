@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
 from pathlib import Path
 from unittest.mock import patch
@@ -20,6 +19,7 @@ from metabrowser.view_routes import (
     format_inventory_view_href,
     format_view_href,
 )
+from tests.required_tools import require_node
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ROUTE_SHIM = Path(__file__).resolve().parent / "dom" / "navigation-route-behavior.js"
@@ -29,8 +29,7 @@ runner = CliRunner()
 def test_navigation_target_url_codec() -> None:
     """The strict route module safely round-trips one canonical URL shape."""
 
-    if shutil.which("node") is None:
-        pytest.skip("node not available; skipping navigation route behavioral shim")
+    require_node()
 
     result = subprocess.run(
         ["node", str(ROUTE_SHIM), str(REPO_ROOT)],

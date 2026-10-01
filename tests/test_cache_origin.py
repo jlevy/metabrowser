@@ -5,7 +5,6 @@ from __future__ import annotations
 import base64
 import http.server
 import os
-import shutil
 import subprocess
 import threading
 from collections.abc import Iterator
@@ -26,6 +25,7 @@ from metabrowser.cache.origin import (
     origin_git_args,
 )
 from metabrowser.git.process import ACQUISITION_POLICY, git_environment
+from tests.required_tools import needs_git
 
 # Captured 2026-09-23 from Git 2.50.1 with LC_ALL=C; see cache/origin.py.
 CAPTURED = {
@@ -186,7 +186,7 @@ def challenge_port() -> Iterator[int]:
         server.server_close()
 
 
-@pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required")
+@needs_git
 @pytest.mark.skipif(os.name != "posix", reason="HOME=/dev/null is the POSIX spelling")
 def test_acquisition_git_reads_no_netrc(tmp_path: Path, challenge_port: int) -> None:
     """curl answers a challenge from $HOME/.netrc; acquisition Git's HOME has none.

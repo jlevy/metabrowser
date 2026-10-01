@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import shutil
 import subprocess
 from collections.abc import Iterator
 from pathlib import Path
@@ -19,11 +18,9 @@ from metabrowser.git.tree_source import GitRevisionSubject, git_revision_subject
 from metabrowser.server import app
 from metabrowser.source import attach_subject, reset_source_session
 from tests.diff_fixture_repo import build_diff_fixture
+from tests.required_tools import needs_git
 
-pytestmark = pytest.mark.skipif(
-    shutil.which("git") is None,
-    reason="git executable is required",
-)
+pytestmark = needs_git
 
 
 def _git_env(root: Path) -> dict[str, str]:

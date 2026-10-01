@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import shutil
 from pathlib import Path
 
 import pytest
@@ -29,11 +28,9 @@ from metabrowser.diff.format import (
 )
 from metabrowser.git.process import GitLocation, repository_store_target
 from tests.diff_fixture_repo import build_diff_fixture, git, materialize_tree
+from tests.required_tools import needs_git
 
-pytestmark = pytest.mark.skipif(
-    shutil.which("git") is None,
-    reason="git executable is required to build the fixture repositories",
-)
+pytestmark = needs_git
 
 
 @pytest.fixture(scope="module")

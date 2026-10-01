@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import shutil
 import subprocess
 from contextlib import suppress
 from dataclasses import replace
@@ -44,11 +43,9 @@ from metabrowser.source import (
     get_source_session,
     reset_source_session,
 )
+from tests.required_tools import needs_git
 
-pytestmark = pytest.mark.skipif(
-    shutil.which("git") is None,
-    reason="git executable is required",
-)
+pytestmark = needs_git
 
 _ZERO_OID = "0" * 40
 _LFS_POINTER = (

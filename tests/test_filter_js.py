@@ -2,18 +2,16 @@
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 from pathlib import Path
 
-import pytest
+from tests.required_tools import require_node
 
 DOM_DIR = Path(__file__).resolve().parent / "dom"
 
 
 def _run_node_suite(script: Path, expected_prefix: str) -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(script)],
         capture_output=True,

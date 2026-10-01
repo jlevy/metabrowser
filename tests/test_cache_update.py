@@ -48,13 +48,14 @@ from metabrowser.mirror_refresh import (
     SelectionNotACommitError,
     SelectionNotFoundError,
 )
+from tests.required_tools import needs_git
 from tests.test_cache_acquire import _allow_installed_git, _file_source, _git, _git_env
 
 posix_only = pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only")
 
 pytestmark = [
     posix_only,
-    pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required"),
+    needs_git,
 ]
 
 

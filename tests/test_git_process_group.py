@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import shutil
 import time
 from pathlib import Path
 from typing import Any
@@ -25,10 +24,11 @@ from metabrowser.git.process import (
     run_git,
     spawn_git_process,
 )
+from tests.required_tools import needs_git
 
 pytestmark = [
     pytest.mark.skipif(os.name != "posix", reason="process groups are POSIX-only"),
-    pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required"),
+    needs_git,
 ]
 
 

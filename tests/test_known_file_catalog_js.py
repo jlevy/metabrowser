@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 from pathlib import Path
 
-import pytest
+from tests.required_tools import require_node
 
 KNOWN_FILE_CATALOG_TEST_JS = (
     Path(__file__).resolve().parent / "dom" / "known-file-catalog-behavior.js"
@@ -14,8 +13,7 @@ KNOWN_FILE_CATALOG_TEST_JS = (
 
 
 def test_known_file_catalog_js_assertions_pass() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(KNOWN_FILE_CATALOG_TEST_JS)],
         capture_output=True,

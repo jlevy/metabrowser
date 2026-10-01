@@ -14,7 +14,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -23,12 +22,14 @@ from urllib.parse import quote
 
 import pytest
 
+from tests.required_tools import needs_node
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 LINKS_JS = REPO_ROOT / "src" / "metabrowser" / "builtin_plugins" / "markdown" / "links.js"
 
 pytestmark = [
     pytest.mark.skipif(os.name == "nt", reason="a Windows name cannot hold a backslash"),
-    pytest.mark.skipif(shutil.which("node") is None, reason="node not available"),
+    needs_node,
 ]
 
 _RESOLVE = r"""

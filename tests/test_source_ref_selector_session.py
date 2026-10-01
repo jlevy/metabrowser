@@ -26,7 +26,6 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -42,6 +41,7 @@ from metabrowser.cache.served_mirror import StoreMirror
 from metabrowser.git.tree_source import GitPath, GitRevisionSubject
 from metabrowser.mirror_refresh import serve_mirror
 from metabrowser.source import reset_source_session, serve_subject_opener
+from tests.required_tools import needs_git, require_node
 from tests.source_mirror_fixture import FETCHED_AT, build_origin
 from tests.test_cache_acquire import _allow_installed_git, _file_source
 from tests.test_source_freshness_session import _write_state
@@ -57,7 +57,7 @@ FEATURE = "refs/remotes/origin/feature"
 posix_only = pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only")
 pytestmark = [
     posix_only,
-    pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required"),
+    needs_git,
 ]
 
 
@@ -147,8 +147,7 @@ def test_recording_is_what_a_served_mirror_answers(
 
 
 def test_the_session_runs_on_the_recording() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(SESSION_JS)], capture_output=True, text=True, timeout=60, check=False
     )

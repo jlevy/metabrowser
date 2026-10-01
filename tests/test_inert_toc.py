@@ -11,15 +11,13 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import subprocess
 from pathlib import Path
 from typing import Any, Literal
 
-import pytest
-
 from metabrowser import kpress_adapter
 from tests.github_pull_fixture import allowlist_violations, html_tree
+from tests.required_tools import needs_node
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 RECORDED = REPO_ROOT / "tests" / "fixtures" / "inert-toc-render.json"
@@ -122,7 +120,7 @@ def test_an_entry_names_only_the_heading_kpress_gave_its_id() -> None:
     assert 'id="user-content-evil"' in inert["html"]
 
 
-@pytest.mark.skipif(shutil.which("node") is None, reason="node not available")
+@needs_node
 def test_the_session_plays_the_recorded_inert_render() -> None:
     """``tests/dom/markdown-inert-toc-session.js`` runs on the inert render recorded in
     ``tests/fixtures/inert-toc-render.json``: whether KPress drew a TOC, its anchored

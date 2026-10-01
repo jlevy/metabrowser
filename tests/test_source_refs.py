@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import shutil
 import subprocess
 from collections.abc import Iterator
 from pathlib import Path
@@ -27,12 +26,13 @@ from metabrowser.git.tree_source import GitPath, GitRevisionSubject
 from metabrowser.mirror_refresh import serve_mirror
 from metabrowser.source import reset_source_session, serve_subject_opener
 from metabrowser.source_routes import REFS_DEFAULT_LIMIT, REFS_MAX_QUERY_CHARS
+from tests.required_tools import needs_git
 from tests.test_cache_acquire import _file_source, _git, _git_env
 from tests.test_serve_pin import _home, _Origin, _origin, _serve, posix_only
 
 pytestmark = [
     posix_only,
-    pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required"),
+    needs_git,
 ]
 
 _JSON = {"content-type": "application/json"}

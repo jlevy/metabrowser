@@ -11,7 +11,6 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import shutil
 import subprocess
 import threading
 import time
@@ -93,10 +92,11 @@ from tests.github_pull_fixture import (
     page,
     scenario,
 )
+from tests.required_tools import needs_git
 from tests.test_cache_acquire import _allow_installed_git
 
 pytestmark = [
-    pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required"),
+    needs_git,
     pytest.mark.skipif(os.name != "posix", reason="the fake gh is a POSIX script"),
 ]
 

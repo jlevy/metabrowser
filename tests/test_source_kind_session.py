@@ -28,7 +28,6 @@ import asyncio
 import json
 import os
 import re
-import shutil
 import subprocess
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -42,6 +41,7 @@ from metabrowser.paths_safe import ROOT_DIR, _set_root_dir
 from metabrowser.server import app
 from metabrowser.source import AttachedFilesystemSubject, attach_subject, reset_source_session
 from tests.git_pin_harness import fast_import_store, pinned_client
+from tests.required_tools import needs_git, require_node
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SESSION_JS = REPO_ROOT / "tests" / "dom" / "source-kind-session.js"
@@ -80,7 +80,7 @@ _HEADING = re.compile(
 _PIN_REF = "refs/remotes/origin/topic"
 
 posix_only = pytest.mark.skipif(os.name != "posix", reason="folder identities are POSIX bytes")
-pytestmark = pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required")
+pytestmark = needs_git
 
 
 @asynccontextmanager
@@ -194,8 +194,7 @@ def test_fixture_is_what_the_server_serves_for_each_source_kind(tmp_path: Path) 
 
 
 def test_source_kind_session_agrees_with_the_served_kind() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(SESSION_JS)],
         capture_output=True,

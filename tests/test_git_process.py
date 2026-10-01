@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import shutil
 import stat
 from pathlib import Path
 
@@ -30,11 +29,9 @@ from metabrowser.git.process import (
     run_git,
     run_git_at,
 )
+from tests.required_tools import needs_git
 
-pytestmark = pytest.mark.skipif(
-    shutil.which("git") is None,
-    reason="git executable is required",
-)
+pytestmark = needs_git
 
 
 def test_acquisition_policy_isolates_config_and_disables_lazy_fetch() -> None:

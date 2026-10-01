@@ -33,7 +33,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import signal
 import stat
 import subprocess
@@ -57,6 +56,7 @@ from metabrowser.cache.urls import GitSource, classify_root_argument
 from metabrowser.cli.main import _run_cli
 from metabrowser.git import process as git_process
 from metabrowser.git.process import _REPO_PINNING_GIT_VARS
+from tests.required_tools import needs_git
 from tests.test_cache_acquire import _remove_owner_write, _restore_owner_write
 from tests.test_cli_cache_acquire_golden import (
     ORIGIN_REVISION,
@@ -76,7 +76,7 @@ skip_as_root = pytest.mark.skipif(
 
 pytestmark = [
     posix_only,
-    pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required"),
+    needs_git,
 ]
 
 CHILD_TIMEOUT: Final = 120

@@ -11,6 +11,7 @@ from urllib.parse import urljoin
 import pytest
 
 from metabrowser.git.process import _REPO_PINNING_GIT_VARS
+from tests.required_tools import require_git, require_node
 
 # Test discovery imports the server from several module scopes. Never let an
 # operator's shell or dotenv configuration alter collection or load external plugins.
@@ -48,6 +49,27 @@ def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
         "markers", "live_github: an opt-in test that talks to github.com with the real gh"
     )
+
+
+# ── Tests that must not be silently absent ─────────────────────────────────────
+# docs/e2e-testing.md ("Test Tiers") says which tier runs where.
+
+
+@pytest.fixture(scope="session")
+def node_on_path() -> str:
+    """Behind ``needs_node``: without Node the test fails; see ``tests/required_tools.py``.
+
+    Session scope puts it ahead of a module's own fixtures, which may spawn the tool.
+    """
+
+    return require_node()
+
+
+@pytest.fixture(scope="session")
+def git_on_path() -> str:
+    """Behind ``needs_git``: without Git the test fails; see ``tests/required_tools.py``."""
+
+    return require_git()
 
 
 @pytest.fixture(scope="session")

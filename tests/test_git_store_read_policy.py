@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import shutil
 from collections.abc import Sequence
 from dataclasses import replace
 from pathlib import Path
@@ -26,11 +25,9 @@ from metabrowser.git.process import (
 from metabrowser.git.tree_source import git_revision_subject
 from metabrowser.settings import GIT_SUBPROCESS_TIMEOUT_S
 from tests.git_pin_harness import fast_import_store
+from tests.required_tools import needs_git
 
-pytestmark = pytest.mark.skipif(
-    shutil.which("git") is None,
-    reason="git executable is required",
-)
+pytestmark = needs_git
 
 
 def test_store_read_policy_is_isolated_and_request_bounded() -> None:

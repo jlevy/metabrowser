@@ -3,15 +3,14 @@
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 from html.parser import HTMLParser
 from pathlib import Path
 
-import pytest
 from starlette.testclient import TestClient
 
 from metabrowser import server
+from tests.required_tools import require_node
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 FIXTURE_ROOT = Path(__file__).resolve().parent / "fixtures" / "obsidian-vault"
@@ -36,8 +35,7 @@ class _WikiMetadata(HTMLParser):
 
 
 def _preprocessed_readme() -> dict[str, object]:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(PREPROCESSOR), str(REPO_ROOT), str(FIXTURE_ROOT / "README.md")],
         capture_output=True,

@@ -57,6 +57,7 @@ from metabrowser.source import (
     reset_source_session,
     serve_subject_opener,
 )
+from tests.required_tools import needs_git
 from tests.test_cache_acquire import _git
 from tests.test_serve_pin import (
     _home,
@@ -70,7 +71,7 @@ from tests.test_serve_pin import (
 
 pytestmark = [
     posix_only,
-    pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required"),
+    needs_git,
 ]
 
 runner = CliRunner()

@@ -13,7 +13,6 @@ load a page of history, then request one commit's detail.
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
 from collections.abc import Iterator
 from pathlib import Path
@@ -31,11 +30,9 @@ from metabrowser.git.wire import (
     validate_git_repo_info,
 )
 from metabrowser.server import app
+from tests.required_tools import needs_git
 
-pytestmark = pytest.mark.skipif(
-    shutil.which("git") is None,
-    reason="git executable is required to build the fixture repository",
-)
+pytestmark = needs_git
 
 
 def _git(root: Path, *args: str) -> None:

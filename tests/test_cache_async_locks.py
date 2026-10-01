@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import shutil
 import subprocess
 import sys
 import textwrap
@@ -35,6 +34,7 @@ from metabrowser.cache.locks import (
 )
 from metabrowser.cancellable_thread import run_acquiring_thread
 from metabrowser.home import ensure_home
+from tests.required_tools import needs_git
 from tests.test_cache_acquire import _allow_installed_git, _file_source, _origin
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="cache locks are BSD flock locks")
@@ -46,7 +46,7 @@ HOLD_AT_MOST = 10.0
 TICK_S = 0.01
 TICKS = 20
 
-requires_git = pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required")
+requires_git = needs_git
 
 
 class _BoundedHolder:

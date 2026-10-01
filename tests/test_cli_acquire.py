@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import shutil
 from pathlib import Path
 
 import pytest
@@ -24,6 +23,7 @@ from metabrowser.git.process import (
     detect_git_version,
 )
 from metabrowser.git.tree_source import GitPath
+from tests.required_tools import needs_git
 from tests.test_cache_acquire import (
     _allow_installed_git,
     _git,
@@ -37,7 +37,7 @@ skip_as_root = pytest.mark.skipif(
     os.geteuid() == 0, reason="root is never denied by modes, so a denial cannot be staged"
 )
 
-pytestmark = pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required")
+pytestmark = needs_git
 
 runner = CliRunner()
 

@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 from pathlib import Path
 
-import pytest
+from tests.required_tools import require_node
 
 DOM_DIR = Path(__file__).resolve().parent / "dom"
 SUITES = (
@@ -18,8 +17,7 @@ SUITES = (
 
 
 def test_browser_keyboard_contract_suites_pass() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
 
     failures = []
     for suite in SUITES:

@@ -11,7 +11,6 @@ from __future__ import annotations
 import asyncio
 import os
 import re
-import shutil
 import subprocess
 import threading
 import time
@@ -34,10 +33,11 @@ from metabrowser.source import reset_source_session
 from metabrowser.source_routes import PIN_CHANGED_HEADER, PIN_HEADER
 from tests.git_pin_harness import git_env
 from tests.github_origin import FIRST_COMMIT, SECOND_COMMIT, github_origin
+from tests.required_tools import needs_git
 from tests.test_cache_acquire import _allow_installed_git
 
 pytestmark = [
-    pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required"),
+    needs_git,
     pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only"),
 ]
 

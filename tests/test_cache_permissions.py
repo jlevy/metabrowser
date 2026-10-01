@@ -15,7 +15,6 @@ import contextlib
 import errno
 import logging
 import os
-import shutil
 import stat
 import subprocess
 import sys
@@ -38,6 +37,7 @@ from metabrowser.home import (
     open_private_file,
     validate_private_home,
 )
+from tests.required_tools import needs_git
 
 pytestmark = pytest.mark.skipif(
     os.name != "posix",
@@ -579,7 +579,7 @@ def test_owner_permissions_are_never_widened(home: Path) -> None:
         (home / "cache").chmod(PRIVATE_DIRECTORY_MODE)
 
 
-@pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
+@needs_git
 def test_a_git_store_written_under_umask_077_validates_without_repair(
     home: Path, caplog: pytest.LogCaptureFixture
 ) -> None:

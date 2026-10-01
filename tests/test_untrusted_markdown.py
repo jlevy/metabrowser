@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import asyncio
 import re
-import shutil
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -30,6 +29,7 @@ from metabrowser.capabilities import (
 from metabrowser.server import app
 from tests.git_pin_harness import fast_import_store, pinned_client
 from tests.github_pull_fixture import allowlist_violations
+from tests.required_tools import needs_git
 from tests.test_inert_html import HOSTILE_README
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -39,7 +39,7 @@ SOURCES = [
 ]
 README_WIRE = "g1-UkVBRE1FLm1k"
 
-pytestmark = pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required")
+pytestmark = needs_git
 
 
 @pytest.fixture

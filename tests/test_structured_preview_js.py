@@ -7,18 +7,16 @@ ported preview logic honest without inventing a TS toolchain.
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 from pathlib import Path
 
-import pytest
+from tests.required_tools import require_node
 
 PREVIEW_TEST_JS = Path(__file__).resolve().parent / "dom" / "test-preview.js"
 
 
 def test_preview_js_assertions_pass() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(PREVIEW_TEST_JS)],
         capture_output=True,

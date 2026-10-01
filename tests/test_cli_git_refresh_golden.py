@@ -41,6 +41,7 @@ from typing import Any
 
 import pytest
 
+from tests.required_tools import needs_git
 from tests.source_mirror_fixture import build_origin
 from tests.test_cli_cache_acquire_golden import _elide_payload, _file_url, _isolate, _strip_logs
 from tests.test_cli_git_pin_golden import _Invocation, _ok, _refused
@@ -48,7 +49,7 @@ from tests.test_cli_golden import check_golden
 
 posix_only = pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only")
 
-pytestmark = pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required")
+pytestmark = needs_git
 
 FIRST = "fcb9d63c3c8533d1b929861f451a066e6d4f2d9e"
 SECOND = "42382ea2303b733e1e21b4bd6ddb974ca4e775eb"

@@ -33,7 +33,6 @@ from __future__ import annotations
 
 import os
 import re
-import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -46,12 +45,13 @@ from metabrowser.git.process import GitCommandError
 from metabrowser.git.tree_source import GitPath
 from tests.git_pin_harness import git_env
 from tests.github_origin import FIRST_COMMIT, SECOND_COMMIT, _commit, github_origin
+from tests.required_tools import needs_git
 from tests.test_cli_cache_acquire_golden import _isolate, _strip_logs
 from tests.test_cli_git_pin_golden import _Invocation, _run
 from tests.test_cli_golden import check_golden
 
 pytestmark = [
-    pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required"),
+    needs_git,
     pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only"),
 ]
 

@@ -22,7 +22,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import shutil
 import subprocess
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -42,6 +41,7 @@ from tests.cache_home_fixture import (
     LEFTOVER_STAGING_ENTRY,
     _stage_and_publish_store,
 )
+from tests.required_tools import needs_git
 from tests.test_cache_acquire import (
     _allow_installed_git,
     _remove_owner_write,
@@ -59,7 +59,7 @@ skip_as_root = pytest.mark.skipif(
     os.geteuid() == 0, reason="root is never denied by modes, so a denial cannot be staged"
 )
 
-pytestmark = pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required")
+pytestmark = needs_git
 
 runner = CliRunner()
 

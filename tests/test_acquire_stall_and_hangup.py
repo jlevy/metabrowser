@@ -33,11 +33,12 @@ from metabrowser.cli.hangup import (
 )
 from metabrowser.git.process import _REPO_PINNING_GIT_VARS
 from tests.admitted_git import require_admitted_git
+from tests.required_tools import needs_git
 from tests.test_cache_acquire import _allow_installed_git
 
 pytestmark = [
     pytest.mark.skipif(os.name != "posix", reason="signals and process groups are POSIX-only"),
-    pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required"),
+    needs_git,
 ]
 
 

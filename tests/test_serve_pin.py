@@ -18,7 +18,6 @@ import asyncio
 import io
 import os
 import re
-import shutil
 from collections.abc import AsyncGenerator, Awaitable, Callable, Iterator
 from contextlib import asynccontextmanager, redirect_stderr, redirect_stdout
 from dataclasses import dataclass
@@ -50,6 +49,7 @@ from metabrowser.source import (
     reset_source_session,
     serve_subject_opener,
 )
+from tests.required_tools import needs_git
 from tests.test_cache_acquire import _allow_installed_git, _file_source, _git
 from tests.test_cli_golden import _normalize, check_golden
 
@@ -57,7 +57,7 @@ posix_only = pytest.mark.skipif(os.name != "posix", reason="owner-only cache is 
 
 pytestmark = [
     posix_only,
-    pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required"),
+    needs_git,
 ]
 
 runner = CliRunner()

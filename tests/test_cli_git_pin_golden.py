@@ -67,7 +67,6 @@ from __future__ import annotations
 import io
 import json
 import os
-import shutil
 import subprocess
 from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import dataclass
@@ -80,12 +79,13 @@ from metabrowser.cli.main import _run_cli
 from metabrowser.git.tree_source import GitPath
 from metabrowser.settings import TEXT_PREVIEW_REQUEST_MAX_BYTES
 from tests.git_pin_harness import git_env
+from tests.required_tools import needs_git
 from tests.test_cli_cache_acquire_golden import _block, _file_url, _isolate
 from tests.test_cli_golden import check_golden
 
 posix_only = pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only")
 
-pytestmark = pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required")
+pytestmark = needs_git
 
 # Pinned by the fast-import recipe below: tree, committer identity and date,
 # and message are fixed, and a commit id is a function of nothing else.
