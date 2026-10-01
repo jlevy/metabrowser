@@ -275,6 +275,8 @@ GitHub URLs and HTTPS:
   The record names Files changed as two pinned commits, the merge base and the head, as
   GitHub computes it, and `/api/plugin/diff/comparison` now honors
   `base_policy=merge_base` for such a comparison.
+  Two commits that share no history have no merge base, and the route answers 404
+  `diff_comparison` with a message that says so.
   Reading pull requests needs `gh` 2.81.0 or newer signed in to github.com, because
   `gh api` refuses unauthenticated requests.
   A pull request that cannot be read does not stop the command: with a cached record,
@@ -450,6 +452,19 @@ Repository cache:
   No store read fetches from the origin.
   A pin always runs under the untrusted profile: `METAB_ACTIVE_CONTENT=1` and
   `METAB_ALLOW_EDITS=1` do not lift it, and `--allow-edits` on a pin is an error.
+
+- `--diff` does not open a URL or `file://` source.
+  `metab file:///path/to/repo --diff A..B` is refused with a message that says so and
+  names the modes that do open one.
+  It compares revisions of a repository served as a folder, as before.
+
+- Opening a URL or `file://` source needs a POSIX system.
+  The clone is kept under the application home, which is verified as private to the
+  current user with ownership and no-follow checks.
+  Where a platform lacks them, as Windows does, such a source is refused: “The
+  Metabrowser application home cannot be verified as private to the current user”, and
+  nothing is stored. Serving a folder does not use the home and is unaffected, which is
+  what the package’s `OS Independent` classifier still describes.
 
 - An argument that names an existing path is that path, whatever it resembles.
   A folder called `file:notes`, `a::b`, `me@host:dir`, `https:x`, or `-dash` (after
@@ -853,9 +868,11 @@ Content source:
   Inventory open and archive containers are not switched yet.
 
 - The content-trust profile applies to a Git pin.
-  `--untrusted`, `--no-active-content`, and `--allow-edits` take effect on `--show` and
-  `--api` of a `file://` pin the way they do on a directory, and `GET /api/capabilities`
-  on that pin carries the resolved block, so Preview is withdrawn there too.
+  A pin runs under the untrusted profile on `--show` and `--api` as it does when it is
+  served, and `GET /api/capabilities` on a pin carries the resolved block,
+  `active_content: false` and `mutations: false`, so Preview is withdrawn there too.
+  `--untrusted` and `--no-active-content` are accepted on a pin and change nothing;
+  `--allow-edits` is refused.
 
 - `/api/tree` on a Git pin nests at most 20,000 nodes below the listed directory.
   Direct children are always listed; a directory whose children no longer fit is the
