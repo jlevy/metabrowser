@@ -39,6 +39,7 @@ from metabrowser.git.tree_source import (
     GitRevisionSubject,
     git_revision_subject,
 )
+from metabrowser.plugin_api import resolve_content
 from metabrowser.server import app
 from metabrowser.settings import (
     SYNTAX_HIGHLIGHT_MAX_BYTES,
@@ -1297,6 +1298,45 @@ def test_git_file_raw_missing_blob_is_object_unavailable(tmp_path: Path) -> None
             assert _wire(b"README.md") in paths
             assert _wire(b"keep.txt") in paths
             assert str(store) not in catalog.text
+
+    asyncio.run(_run())
+
+
+def test_a_hook_reading_a_missing_blob_answers_the_read_error_and_no_size(tmp_path: Path) -> None:
+    """A blob the store lacks has no stored size, and a hook answers the failed read.
+
+    ``ContentRef.stored_size`` is None only here, and the structured hook's ``size`` is
+    taken from it. The bounded read fails first, so no envelope with a null ``size``
+    is answered for content that was never read.
+    """
+
+    work = tmp_path / "work"
+    store = tmp_path / "store.git"
+    work.mkdir()
+    _git(work, "init", "-q", "-b", "main")
+    (work / "gone.json").write_text('{"a": 1}\n', encoding="utf-8")
+    (work / "kept.json").write_text('{"b": 2}\n', encoding="utf-8")
+    _git(work, "add", "-A")
+    _git(work, "commit", "-qm", "two blobs")
+    commit = _git(work, "rev-parse", "HEAD").decode().strip()
+    missing_oid = _git(work, "rev-parse", "HEAD:gone.json").decode().strip()
+    _git(tmp_path, "clone", "--bare", "--template=", str(work), str(store), env_root=tmp_path)
+    _delete_store_blob(store, missing_oid)
+
+    async def _run() -> None:
+        async with _pinned_client(store, commit) as (client, _subject):
+            gone = await resolve_content(_wire(b"gone.json"))
+            kept = await resolve_content(_wire(b"kept.json"))
+            assert gone is not None and kept is not None
+            assert (gone.stored_size, kept.stored_size) == (None, len('{"b": 2}\n'))
+
+            route = "/api/plugin/structured/parsed"
+            missing = await client.get(route, params={"path": _wire(b"gone.json")})
+            assert missing.status_code == 404
+            assert missing.json()["code"] == "object_unavailable"
+            assert "size" not in missing.json()
+            present = await client.get(route, params={"path": _wire(b"kept.json")})
+            assert (present.status_code, present.json()["size"]) == (200, len('{"b": 2}\n'))
 
     asyncio.run(_run())
 
