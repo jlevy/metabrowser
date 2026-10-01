@@ -270,7 +270,8 @@ async def _fetch(published: PublishedSource, specs: list[str]) -> None:
         if state == "not_found_or_private":
             raise PullRefError(
                 "not_found_or_private",
-                "the origin has no such pull request, or Git has no credentials for it",
+                "the origin has no such pull request, or the repository is private and "
+                "could not be read",
             ) from exc
         if state is not None:
             raise PullRefError("network_error", "Git could not reach the origin") from exc

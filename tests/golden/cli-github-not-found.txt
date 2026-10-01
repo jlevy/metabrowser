@@ -1,0 +1,23 @@
+## gh is installed, so Git asks it for credentials: the message does not say there were none.
+# metab https://github.com/octo/absent --no-serve
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: https://github.com/octo/absent was not found, or it is private and could not be read (not_found_or_private); if it is private, sign in with gh auth login to an account that can read it; nothing was published
+# metab https://github.com/octo/absent --show README.md
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: https://github.com/octo/absent was not found, or it is private and could not be read (not_found_or_private); if it is private, sign in with gh auth login to an account that can read it; nothing was published
+## Without gh the same answer comes with the hint to install it.
+# metab https://github.com/octo/absent --no-serve
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: https://github.com/octo/absent was not found, or it is private and could not be read (not_found_or_private); if it is private, install GitHub CLI (gh) and sign in with gh auth login; nothing was published
+## Another host has no hint.
+# metab https://example.com/owner/absent.git --no-serve
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: https://example.com/owner/absent.git was not found, or it is private and could not be read (not_found_or_private); nothing was published

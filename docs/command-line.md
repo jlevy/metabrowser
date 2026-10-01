@@ -342,10 +342,14 @@ source, and none changes another source already in the cache.
   clone it fully first.
   An https origin names why, in parentheses: `not_found_or_private`,
   `network_unreachable`, `connection_interrupted`, `tls_failed`, `timed_out`,
-  `server_error`, `rate_limited`, `proxy_auth_required`, or `too_large`. `timed_out`
-  means the origin gave no answer to its first request within 30 seconds, or a transfer
-  moved less than 1000 bytes per second for 30 seconds; a clone that keeps making
-  progress is never stopped for taking long, only at the 900-second acquisition
+  `server_error`, `rate_limited`, `proxy_auth_required`, or `too_large`.
+  `not_found_or_private` means the origin did not show the repository: it does not
+  exist, or it is private and the request, anonymous or with the account `gh` answered
+  with, could not read it.
+  The origin does not say which, so neither does the message.
+  `timed_out` means the origin gave no answer to its first request within 30 seconds, or
+  a transfer moved less than 1000 bytes per second for 30 seconds; a clone that keeps
+  making progress is never stopped for taking long, only at the 900-second acquisition
   deadline.
 - **A repository whose branch or tag names differ only in letter case** (`Feature` and
   `feature`) is refused as `ref_case_collision` on a case-insensitive filesystem, such

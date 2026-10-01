@@ -40,7 +40,7 @@
     origin_unavailable: "The origin could not be read.",
     fetch_failed: "The fetch from the origin failed.",
     not_found_or_private:
-      "The origin says the repository does not exist, or it is private and the credentials offered do not open it.",
+      "The origin says the repository does not exist, or it is private and could not be read.",
     network_unreachable: "The origin's host could not be reached.",
     connection_interrupted: "The connection to the origin was interrupted.",
     tls_failed: "The secure connection to the origin failed.",

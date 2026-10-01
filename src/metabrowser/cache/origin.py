@@ -191,8 +191,12 @@ _PATTERNS: Final[tuple[tuple[RemoteFailureState, tuple[str, ...]], ...]] = (
     ),
 )
 
+# ``not_found_or_private`` makes no claim about credentials. The origin answers the same
+# way for a repository that does not exist, one read with no credentials, and one the
+# account a credential helper answered with cannot see, and Metabrowser never asks which
+# it was. What to do about it is the provider's hint.
 _STATE_TEXT: Final[dict[RemoteFailureState, str]] = {
-    "not_found_or_private": "was not found, or it is private and Git has no credentials for it",
+    "not_found_or_private": "was not found, or it is private and could not be read",
     "network_unreachable": "could not be reached; check the network connection",
     "connection_interrupted": "dropped the connection before the transfer finished; try again",
     "tls_failed": "failed the TLS security check",

@@ -19,7 +19,11 @@ from metabrowser.builtin_plugins.github.gh import GhError, gh_executable, run_gh
 from metabrowser.builtin_plugins.github.provider import MAX_FIRST_CLONE_KB, GithubProvider
 from metabrowser.cache.acquire import RepositoryTooLargeError
 from metabrowser.cache.origin import describe_remote_failure
-from metabrowser.cache.providers import installed_providers, repository_context_for
+from metabrowser.cache.providers import (
+    installed_providers,
+    provider_git_config,
+    repository_context_for,
+)
 from metabrowser.cache.urls import GitSource
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="the fake gh is a POSIX shell script")
@@ -147,9 +151,26 @@ def test_the_credential_hint_names_gh(tmp_path: Path, monkeypatch: pytest.Monkey
     monkeypatch.setenv("PATH", str(tmp_path))
     assert "install GitHub CLI (gh)" in (provider.credential_hint(SOURCE.normalized) or "")
     message = describe_remote_failure("not_found_or_private", SOURCE.normalized)
-    assert message.startswith("https://github.com/octo/demo was not found, or it is private")
-    assert "(not_found_or_private)" in message and "gh auth login" in message
-    assert message.endswith("nothing was published")
+    assert message == (
+        "https://github.com/octo/demo was not found, or it is private and could not be read "
+        "(not_found_or_private); if it is private, install GitHub CLI (gh) and sign in with "
+        "gh auth login; nothing was published"
+    )
+
+
+def test_a_not_found_message_does_not_say_git_has_no_credentials(fake_gh: Path) -> None:
+    """With ``gh`` installed, Git asks it for credentials, and an account that cannot
+    see the repository gets the same answer as no account. The message says the
+    repository was not found or could not be read, not that Git had no credentials."""
+
+    assert provider_git_config(SOURCE.normalized), "gh is Git's credential helper here"
+    message = describe_remote_failure("not_found_or_private", SOURCE.normalized)
+    assert message == (
+        "https://github.com/octo/demo was not found, or it is private and could not be read "
+        "(not_found_or_private); if it is private, sign in with gh auth login to an account "
+        "that can read it; nothing was published"
+    )
+    assert "no credentials" not in message
 
 
 def test_repository_context_for_a_github_mirror() -> None:

@@ -186,6 +186,10 @@ GitHub URLs and HTTPS:
   `network_unreachable`, `connection_interrupted`, `tls_failed`, `timed_out`,
   `server_error`, `rate_limited`, `proxy_auth_required`, or `too_large`, the last when
   `gh` reports a repository too large to clone within the acquisition deadline.
+  A `not_found_or_private` message says the repository was not found, or is private and
+  could not be read, and claims nothing about credentials: GitHub answers the same way
+  for a repository that does not exist, one read anonymously, and one the account `gh`
+  answered with cannot see.
   The size check asks github.com only, whatever host `GH_HOST` names.
   Git runs with `HOME=/dev/null` while it acquires, so curl reads no `~/.netrc`; `gh`
   alone is given the real home, without `GH_DEBUG`, `GH_HOST`, `GH_REPO`,
