@@ -3,9 +3,9 @@ type: is
 id: is-01m3teckg1zyphvywvrzkwe3df
 title: "Tests: cache suite — bind or drop self-checking contract fixtures, stop restating goldens in Python, and table-drive the repeats"
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 delegate: claude-code@spud10.local
 labels:
@@ -15,8 +15,12 @@ parent_id: is-01m3te95dfdnc80j5xywqje9ke
 hold: null
 hold_until: null
 created_at: 2026-10-01T00:38:49.086Z
-updated_at: 2026-10-01T10:30:15.944Z
+updated_at: 2026-10-01T14:18:10.639Z
 started_at: 2026-10-01T10:30:15.934Z
+closed_at: 2026-10-01T14:18:10.638Z
+close_reason: "PR #256: cache area Python test lines 9,369 -> 8,815, fixtures 2,235 -> 1,266, tryscript commands 66 -> 41; unread fixture keys and the self-checking state-machine walker removed (the two unbound machines are documentation tables in the architecture doc); permissions tests table-driven with the 17 replaced tests mapped row for row. 96 of 96 mutants killed, including the independent reviewer's; security evidence added for group- and world-writable ancestors and the refuse/keep file policies; the same-envelope wrong-slot pair tested in both directions. CI green on the head merged above #254. Follow-ups: mb-3hwh."
+resolution: null
+duplicate_of: null
 ---
 Part of the test-suite review epic. Survey of a896d8fe, 2026-09-30, read-only. All files are new since `origin/main`.
 
