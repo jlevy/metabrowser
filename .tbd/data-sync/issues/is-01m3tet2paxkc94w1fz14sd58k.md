@@ -3,9 +3,9 @@ type: is
 id: is-01m3tet2paxkc94w1fz14sd58k
 title: "Tests: record the baseline and make lines, durations and skips reportable for the review"
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 delegate: claude-code@spud10.local
 labels:
@@ -15,8 +15,12 @@ parent_id: is-01m3te95dfdnc80j5xywqje9ke
 hold: null
 hold_until: null
 created_at: 2026-10-01T00:46:10.625Z
-updated_at: 2026-10-01T10:32:08.750Z
+updated_at: 2026-10-01T12:49:20.910Z
 started_at: 2026-10-01T10:32:08.749Z
+closed_at: 2026-10-01T12:49:20.908Z
+close_reason: "PR #255: devtools/suite_report.py and make test-report print test files, lines, AST-counted test functions, dom/golden/fixture lines and tryscript commands for any commits, and per-file times and skip reasons from a CI job log; make test prints --durations and -rs. Baseline record: docs/project/reviews/review-2026-10-01-test-suite-baseline.md. Coverage tool: not added; the cost note for the user is in the PR body."
+resolution: null
+duplicate_of: null
 ---
 Part of the test-suite review epic. Do this first: the epic's accept rule needs the same numbers before and after every child.
 

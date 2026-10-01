@@ -5,7 +5,7 @@ title: "v0.12 test-suite review: maximum coverage, minimum test complexity"
 kind: epic
 status: open
 priority: 2
-version: 24
+version: 25
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 labels:
   - release:v0.12.0
@@ -34,7 +34,7 @@ child_order_hints:
   - is-01m3vmcns2ssaahzpc7bcgahqr
   - is-01m3vqyz7rb248ygvsq3jpgr9m
 created_at: 2026-10-01T00:36:56.339Z
-updated_at: 2026-10-01T12:45:22.544Z
+updated_at: 2026-10-01T12:49:22.075Z
 ---
 ## Goal
 
@@ -77,6 +77,8 @@ Tests grew 1.7x; pytest time grew 4.2x and tryscript time 3.7x. The `test` job r
 - Test lines (Python, DOM JS, goldens, fixtures) and run time (pytest and tryscript, from the CI `test (3.13)` job) are reported before and after in each PR and totalled here when the epic closes.
 
 ## Notes
+
+2026-10-01 baseline (mb-jqbg, PR #255): the dated record is docs/project/reviews/review-2026-10-01-test-suite-baseline.md; regenerate with 'make test-report REFS="<commits>"' and, for run time, a CI job log ('gh run view <run> --job <job> --log'). At that record: origin/main 6c278f3f has 203 test files / 49,436 lines / 1,930 test functions, pytest 64 s; the stack before the review (ea7fd9ba) 276 / 79,100 / 2,784, pytest 266 s; after the three machinery PRs (f9cd3e6b) 282 / 79,639 / 2,842, pytest 255 s. Done so far: mb-onzb (#252), mb-cxsk (#251), mb-99pm (#253), mb-haxx and mb-jqbg (#255). In review: mb-sqlv (#256), mb-79t3 (#257), mb-738k (#258). Lesson recorded for the remaining beads: every test-reduction PR gets the author's mutation table and an independent reviewer's own mutations; the reviewers found lost detections in #252, #255 and #258 that the authors' mutations missed (secondary assertions of deleted tests; stdout versus stderr in goldens).
 
 - Survey of 2026-09-30 was read-only at a896d8fe. Two PRs above #244 were in progress and are not covered.
 - Local `pytest --durations` was not run (machine load stayed above 40); the timings come from CI log timestamps at per-file resolution.
