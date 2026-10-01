@@ -93,8 +93,7 @@ lint-check:
 TRYSCRIPT := PATH="$(CURDIR)/tests/no-real-gh:$$PATH" npx --no-install tryscript
 
 test:
-	# TEMPORARY, reverted in the next commit: one full run in reversed module order (mb-onzb).
-	$(UV_RUN) pytest $$(ls tests/*.py | sort -r)
+	$(UV_RUN) pytest
 	$(TRYSCRIPT) run 'tests/golden/*.tryscript.md'
 
 # Acquisition and store-read tests on a real Git the acquisition floor admits,
