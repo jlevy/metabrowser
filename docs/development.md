@@ -67,6 +67,12 @@ uv --config-file uv.toml run --frozen pytest tests/test_plugin_loader.py::test_c
 # acquisition floor unpatched. They skip when that floor refuses the installed Git.
 make test-admitted-git
 
+# On a Mac, run the tests only macOS can run. No CI job runs them.
+make test-macos
+
+# Run the read-only smoke tests against public repositories on github.com.
+make test-live-github
+
 # Regenerate the CLI console goldens (tests/golden/) after an intended
 # surface change, then review the diff.
 make golden-update
@@ -77,6 +83,10 @@ uv --config-file uv.toml run --frozen metab ./tests/manual-fixtures --check-api
 # Start the development server with the manual browser corpus.
 uv --config-file uv.toml run --frozen metab ./tests/manual-fixtures --no-open
 ```
+
+`make test` fails when Node or Git is missing instead of skipping the tests that need
+them. [Test Tiers](e2e-testing.md#test-tiers) says what each test target covers, when it
+runs, and which skips are expected.
 
 Start v0.12 testing with the
 [alpha test plan](project/specs/active/plan-2026-09-22-v012-alpha-testing.md), which
@@ -523,7 +533,11 @@ pins them against homes that `tests/cache_home_fixture.py` builds with the produ
 writers. `--no-serve` is the one command that writes the cache.
 Its sessions, including interrupted and refused acquisitions, run in-process in
 `tests/test_cli_cache_acquire_golden.py` and `tests/test_cli_cache_recovery_golden.py`,
-because CI’s Git is below the acquisition floor; see
+with the acquisition floor substituted, because a transcript must pass on whatever Git
+the machine has and the floor refuses an older one.
+Ubuntu 24.04 packages Git 2.43.0, which is below the floor.
+The hosted CI runner currently ships a newer Git that the floor admits, but nothing here
+pins it; see
 [CLI-first delivery](project/specs/active/plan-2026-08-28-cli-first-delivery-map.md).
 
 ## Compatibility and Legacy Code

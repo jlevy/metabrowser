@@ -340,9 +340,9 @@ must still be `metab`. Sessions that write the cache through `--no-serve` — ac
 reuse, interruption recovery, fetch failure, and refusal — also read state through these
 routes, but they run in-process as `.txt` goldens from
 `tests/test_cli_cache_acquire_golden.py` and `tests/test_cli_cache_recovery_golden.py`,
-because CI’s Git is below the acquisition floor.
-`check_parity.py` reads only tryscript console blocks, so those sessions are not counted
-as the rows’ evidence.
+with the acquisition floor substituted, because a transcript must pass on a Git the
+floor refuses. `check_parity.py` reads only tryscript console blocks, so those sessions
+are not counted as the rows’ evidence.
 
 The exempt rows are the honest boundary.
 A server-sent-event response has no terminating envelope, so `--api` bounds the request

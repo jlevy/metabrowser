@@ -1,11 +1,12 @@
 """Gate for tests that must run on a real Git at or above the acquisition floor.
 
 Production refuses URL acquisition below the security floor in
-``tests/fixtures/repository-cache/git-version-gates.json``, and the ordinary CI
-runner's Git is below it, so most acquisition tests patch the floor. Tests gated
-here run the production floor unpatched instead. The full-clone acceptance tests
-use it to prove on each admitted release that acquisition leaves a complete store
-and that every read answers from that store with the origin gone.
+``tests/fixtures/repository-cache/git-version-gates.json``. The suite has to pass on
+whatever Git a machine has, and that may be below the floor (Ubuntu 24.04 packages
+2.43.0), so most acquisition tests patch the floor. Tests gated here run the
+production floor unpatched instead. The full-clone acceptance tests use it to prove
+on each admitted release that acquisition leaves a complete store and that every
+read answers from that store with the origin gone.
 
 Without ``METABROWSER_REQUIRE_ADMITTED_GIT`` a Git below the floor skips these
 tests. The CI ``admitted-git`` job builds admitted releases from source and sets

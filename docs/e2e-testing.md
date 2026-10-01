@@ -106,8 +106,88 @@ uv --config-file uv.toml run --frozen pytest tests/test_plugin_loader.py::test_c
 make verify
 ```
 
-Node-backed tests skip when Node is unavailable locally.
-CI provides Node and treats those contracts as required.
+Node and Git are prerequisites, so a test that needs one fails when it is missing.
+It fails in CI and locally alike: a run that skipped those tests would pass without
+checking any of the browser contracts under `tests/dom`. A developer who has no Node
+names it in `METABROWSER_ALLOW_MISSING_TOOLS`, and the tests that need it skip with that
+reason:
+
+```shell
+METABROWSER_ALLOW_MISSING_TOOLS=node uv --config-file uv.toml run --frozen pytest -rs
+```
+
+The variable takes `node`, `git`, or both separated by a comma.
+`tests/required_tools.py` is the gate, and a test asks it rather than looking the tool
+up itself.
+
+## Test Tiers
+
+`make test` is the default tier.
+Three outer tiers hold evidence that the default tier cannot produce on every machine.
+Each has one command, one way its tests are selected, and a stated time when it runs.
+
+| Tier | Command | Selected by | When it runs |
+| --- | --- | --- | --- |
+| Default | `make test` | everything that does not skip | Every pull request in CI, on each supported Python version on Ubuntu; the pre-push hook |
+| Admitted Git | `make test-admitted-git` | `ADMITTED_GIT_TESTS` in the `Makefile` | Every pull request in CI, on the lowest admitted Git release and the newest patched one |
+| macOS | `make test-macos` | the `macos_tier` marker | Never in CI. Part of `make test` on a Mac; run it there before a release |
+| Live GitHub | `make test-live-github` | the `live_github` marker | Never in CI. By hand, before a release and after a change to GitHub URL or pull request reading |
+
+**Admitted Git** runs acquisition, refresh, and store reads on Git releases the
+production floor admits.
+A test that asks for the floor through `require_admitted_git` or `_allow_installed_git`
+meets the real one there, unpatched.
+The same files also run in the default tier, where `_allow_installed_git` substitutes
+the floor so they pass on any Git.
+CI sets `METABROWSER_REQUIRE_ADMITTED_GIT`, which turns a below-floor skip into a
+failure; `tests/admitted_git.py` is that gate.
+A test in `tests/test_admitted_git_gate.py` fails when a module asks for the floor and
+is missing from the list.
+
+**macOS** covers what only that platform has: extended ACLs on the application home
+(`tests/test_cache_permissions.py`) and ref names that fold together on a
+case-insensitive file system (`tests/test_cache_update.py`,
+`tests/test_github_pulls.py`). CI runs on Ubuntu, so no CI job runs these tests.
+`make test-macos` sets `METABROWSER_REQUIRE_MACOS_TIER`, which turns a skip of one of
+them into a failure, so the target cannot pass on Linux or on a case-sensitive volume.
+
+**Live GitHub** covers what a fixture cannot: an anonymous HTTPS clone of a public
+repository, and `gh` reads of public pull requests.
+It is read-only and writes nothing to GitHub.
+It needs the network, an admitted Git, and a `gh` signed in to github.com; with the tier
+selected, a missing or signed-out `gh` fails.
+Every other test runs with a failing stand-in `gh` first on `PATH`.
+
+### Skips
+
+`make test` runs pytest with `-rs`, which prints each skipped test with its reason.
+In CI every skip belongs to an outer tier:
+
+- macOS tier: `extended ACLs are inspected only on macOS`,
+  `the file system is case-sensitive`, and
+  `the store's filesystem tells letter case apart`;
+- Live GitHub tier: `set METABROWSER_LIVE_GITHUB=1 to run`.
+
+Any other reason in a CI run means a test the suite is believed to run did not, and is a
+defect.
+
+A developer machine can add these:
+
+- `needs a Git the acquisition floor admits`, where the installed Git is below the
+  floor; the admitted-Git tier runs those tests in CI;
+- `the macOS filesystem rejects undecodable byte names`, on a Mac; CI runs that test;
+- `root is never denied by modes`, when the suite runs as root;
+- a POSIX-only reason, on a platform without POSIX modes, locks, signals, or FIFOs;
+- `is not on PATH, and METABROWSER_ALLOW_MISSING_TOOLS allows that`, after the opt-out
+  above.
+
+### Timeouts
+
+A test has 60 seconds, set in `pyproject.toml`. When that timeout fires it ends the
+whole run, not one test, so a bound inside a test must be shorter to do any good: a
+child process’s `timeout`, or a polling deadline, is at most 50 seconds.
+A test that needs longer carries its own `pytest.mark.timeout` with the measurement that
+forced it written beside it.
 
 ## Adding Coverage
 

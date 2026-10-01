@@ -113,8 +113,9 @@ compilation checks and installed-wheel smoke tests.
 ## Admitted Git in CI
 
 Production refuses repository acquisition below the Git security floor in
-`tests/fixtures/repository-cache/git-version-gates.json`, and the CI runner’s
-distribution Git reports a version below it.
+`tests/fixtures/repository-cache/git-version-gates.json`. Ubuntu’s packaged Git is below
+it, and the Git on the CI runner image is whatever that image ships, which this
+repository does not pin.
 The `admitted-git` CI job therefore builds Git from source, so acquisition and the
 full-clone acceptance tests run on releases production admits: the lowest admitted
 release and the newest patched one.
