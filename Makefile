@@ -115,7 +115,7 @@ test:
 	$(TRYSCRIPT) run 'tests/golden/*.tryscript.md'
 
 # The size of the suite by area, at the working tree or at the commits in REFS, and with
-# LOG the time each test file and golden took in that pytest output or CI job log:
+# LOG the time each test file and golden took in that CI job log:
 #   make test-report
 #   make test-report REFS="origin/main ." LOG=run.log
 # docs/e2e-testing.md ("Measuring the Suite") says how each number is taken.

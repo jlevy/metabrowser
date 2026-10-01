@@ -1,21 +1,19 @@
 """Measure the test suite: its size by area, and what a recorded run of it cost.
 
 A change to the tests is judged on numbers taken the same way before and after it: the
-lines of Python tests, of browser-contract JavaScript, of goldens and of fixtures, the
-tests each outer tier holds, and where a run spent its time. Counted by hand, those
-numbers cannot be reproduced by the next person, so this prints them from one command,
-at the working tree or at any commit.
+lines of Python tests, of browser-contract JavaScript, of goldens and of fixtures, and
+where a run spent its time. Counted by hand, those numbers cannot be reproduced by the
+next person, so this prints them from one command, at the working tree or at any commit.
 
     python -m devtools.suite_report                         # the working tree, by area
     python -m devtools.suite_report origin/main HEAD .      # commits side by side; `.` is the tree
     python -m devtools.suite_report --log run.log           # and what that run cost
 
-``--log`` takes the output of ``pytest -rs --durations=N``, or a CI log from
-``gh run view <run> --job <job> --log``. From a CI log the time of each test file and
-each tryscript golden is the gap between the timestamps of consecutive lines: pytest
-ends a file's progress line when the next file starts, and tryscript prints a golden's
-verdict when it finishes. From ``--durations`` it is the sum of the listed phases, which
-covers only the tests pytest listed. A skip is given the tier of the test it is in.
+``--log`` takes a CI job log from ``gh run view <run> --job <job> --log``. The time of
+each test file and each tryscript golden is the gap between the timestamps of consecutive
+lines: pytest ends a file's progress line when the next file starts, and tryscript prints
+a golden's verdict when it finishes. A pytest output with no timestamps gives the summary
+line and the skips ``-rs`` listed, and no times.
 
 Sizes come from the files alone, so they are the same on every machine. Run times are
 one run's: quote the run they came from.
@@ -42,20 +40,10 @@ from pathlib import Path
 from typing import Final
 
 from devtools import tryscript_blocks
-from devtools.check_goldens import makefile_list
 
 REPO_ROOT: Final = Path(__file__).resolve().parent.parent
 # The name that stands for the working tree where a commit is expected.
 WORKING_TREE: Final = "."
-# The tiers of docs/e2e-testing.md, as this report can tell them apart: a marker that
-# ``tests/conftest.py`` registers, or the Makefile list the admitted-Git job runs.
-ADMITTED_GIT: Final = "the admitted-Git tier"
-NO_TIER: Final = "no tier"
-
-_TEST_DEF: Final = re.compile(rb"^[ \t]*(?:async[ \t]+)?def test_", re.MULTILINE)
-# ``tests/conftest.py`` registers one marker for each tier a marker selects.
-_REGISTERED_MARKER: Final = re.compile(r'addinivalue_line\(\s*"markers",\s*"(\w+):')
-_ADMITTED_GIT_REASON: Final = re.compile(r'^ADMITTED_GIT_SKIP = "(.+)"$', re.MULTILINE)
 
 
 @dataclass(slots=True)
@@ -83,8 +71,6 @@ class Suite:
     fixtures: Size = field(default_factory=Size)
     other: Size = field(default_factory=Size)
     tryscript_commands: int = 0
-    # Test functions in each outer tier: by marker, and by the Makefile's admitted-Git list.
-    tiers: dict[str, int] = field(default_factory=lambda: dict[str, int]())
 
     @property
     def python(self) -> Size:
@@ -104,13 +90,32 @@ def line_count(data: bytes) -> int:
     return data.count(b"\n") + (1 if data and not data.endswith(b"\n") else 0)
 
 
-def read_tree(ref: str, root: Path = REPO_ROOT) -> dict[str, bytes]:
-    """``tests/`` and the ``Makefile``, from the working tree or from a commit."""
+def count_tests(source: bytes, path: str) -> int:
+    """The test functions pytest collects: at module level, and in a ``Test`` class.
 
-    wanted = ["tests", "Makefile"]
+    Read from the syntax tree, so a ``def test_`` at the start of a line inside a string
+    is not counted.
+    """
+
+    def is_test(node: ast.stmt) -> bool:
+        named = isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+        return named and node.name.startswith("test_")
+
+    count = 0
+    for node in ast.parse(source, filename=path).body:
+        if is_test(node):
+            count += 1
+        elif isinstance(node, ast.ClassDef) and node.name.startswith("Test"):
+            count += sum(is_test(member) for member in node.body)
+    return count
+
+
+def read_tree(ref: str, root: Path = REPO_ROOT) -> dict[str, bytes]:
+    """Every file under ``tests``, from the working tree or from a commit."""
+
     if ref == WORKING_TREE:
         listed = subprocess.run(
-            ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", *wanted],
+            ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "tests"],
             cwd=root,
             capture_output=True,
             check=True,
@@ -123,7 +128,7 @@ def read_tree(ref: str, root: Path = REPO_ROOT) -> dict[str, bytes]:
             if (root / path).is_file() and not (root / path).is_symlink()
         }
     archive = subprocess.run(
-        ["git", "archive", "--format=tar", ref, "--", *wanted],
+        ["git", "archive", "--format=tar", ref, "--", "tests"],
         cwd=root,
         capture_output=True,
         check=True,
@@ -143,72 +148,8 @@ def area_of(name: str) -> str:
     return name.removeprefix("test_").removesuffix(".py").split("_", 1)[0]
 
 
-def tier_name(marker: str) -> str:
-    return marker if marker in (ADMITTED_GIT, NO_TIER) else f"the `{marker}` tier"
-
-
-def tier_markers(files: Mapping[str, bytes]) -> list[str]:
-    conftest = files.get("tests/conftest.py", b"").decode("utf-8", "replace")
-    return sorted(set(_REGISTERED_MARKER.findall(conftest)))
-
-
-@dataclass(frozen=True, slots=True)
-class MarkedTest:
-    """A test function and the tier markers it carries, by the lines it spans."""
-
-    first_line: int
-    last_line: int
-    markers: frozenset[str]
-
-
-def marked_tests(source: str, markers: Sequence[str]) -> list[MarkedTest]:
-    """Each ``test_`` function with the markers on it, on its module, or in a decorator it names.
-
-    A marker reaches a test three ways here: written on it, through the module's
-    ``pytestmark``, or through a decorator defined in the module that applies it.
-    """
-
-    try:
-        tree = ast.parse(source)
-    except SyntaxError:
-        return []
-    named: dict[str, str] = {}
-    for node in tree.body:
-        text = ast.get_source_segment(source, node) or ""
-        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
-            named[node.name] = text
-        elif isinstance(node, ast.Assign):
-            named.update({t.id: text for t in node.targets if isinstance(t, ast.Name)})
-    found: list[MarkedTest] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
-            continue
-        if not node.name.startswith("test_"):
-            continue
-        texts = [named.get("pytestmark", "")]
-        for decorator in node.decorator_list:
-            texts.append(ast.get_source_segment(source, decorator) or "")
-            target = decorator.func if isinstance(decorator, ast.Call) else decorator
-            if isinstance(target, ast.Name):
-                texts.append(named.get(target.id, ""))
-        carried = "\n".join(texts)
-        first = min([node.lineno, *(decorator.lineno for decorator in node.decorator_list)])
-        found.append(
-            MarkedTest(
-                first,
-                node.end_lineno or node.lineno,
-                frozenset(m for m in markers if re.search(rf"\bmark\.{m}\b", carried)),
-            )
-        )
-    return found
-
-
 def measure(files: Mapping[str, bytes]) -> Suite:
     suite = Suite()
-    markers = tier_markers(files)
-    makefile = files.get("Makefile", b"").decode("utf-8", "replace")
-    admitted = set(makefile_list(makefile, "ADMITTED_GIT_TESTS"))
-    tiers: Counter[str] = Counter()
     for path, data in sorted(files.items()):
         parts = path.split("/")
         if parts[0] != "tests":
@@ -223,13 +164,8 @@ def measure(files: Mapping[str, bytes]) -> Suite:
         elif not parts[1].startswith("test_"):
             suite.helpers.add(data)
         else:
-            tests = len(_TEST_DEF.findall(data))
-            suite.areas.setdefault(area_of(parts[1]), Size()).add(data, tests=tests)
-            if path in admitted:
-                tiers[ADMITTED_GIT] += tests
-            for test in marked_tests(data.decode("utf-8", "replace"), markers):
-                tiers.update(test.markers)
-    suite.tiers = {tier_name(name): tiers[name] for name in [*markers, ADMITTED_GIT] if tiers[name]}
+            area = suite.areas.setdefault(area_of(parts[1]), Size())
+            area.add(data, tests=count_tests(data, path))
     return suite
 
 
@@ -250,10 +186,10 @@ def table(header: Sequence[str], rows: Iterable[Sequence[object]]) -> list[str]:
 
 def _measures(suite: Suite) -> list[tuple[str, int]]:
     python = suite.python
-    rows = [
+    return [
         ("`tests/test_*.py` files", python.files),
         ("`tests/test_*.py` lines", python.lines),
-        ("`def test_` functions", python.tests),
+        ("test functions", python.tests),
         ("test helper modules", suite.helpers.files),
         ("test helper lines", suite.helpers.lines),
         ("`tests/dom` files", suite.dom.files),
@@ -266,52 +202,38 @@ def _measures(suite: Suite) -> list[tuple[str, int]]:
         ("other files under `tests`", suite.other.files),
         ("other lines under `tests`", suite.other.lines),
     ]
-    return rows + [(f"tests in {name}", count) for name, count in suite.tiers.items()]
 
 
-def _largest_areas(suite: Suite, limit: int) -> list[str]:
+def _signed(change: int) -> str:
+    return f"{change:+,}" if change else "0"
+
+
+def render_tree(label: str, suite: Suite, *, areas: int) -> str:
+    """One tree: its largest areas, the rest folded into one row, then the totals."""
+
     ranked = sorted(suite.areas, key=lambda name: (-suite.areas[name].lines, name))
-    return ranked if limit <= 0 else ranked[:limit]
+    shown = ranked if areas <= 0 else ranked[:areas]
+    rows: list[Sequence[object]] = [
+        (name, suite.areas[name].files, suite.areas[name].lines, suite.areas[name].tests)
+        for name in shown
+    ]
+    rest = [suite.areas[name] for name in ranked[len(shown) :]]
+    if rest:
+        folded = (sum(size.files for size in rest), sum(size.lines for size in rest))
+        rows.append((f"{len(rest)} smaller areas", *folded, sum(size.tests for size in rest)))
+    python = suite.python
+    rows.append(("all Python tests", python.files, python.lines, python.tests))
+    lines = table(("Area", "Files", "Lines", "Test functions"), rows)
+    return "\n".join([*lines, "", *table(("Measure", label), _measures(suite))])
 
 
-def render(labels: Sequence[str], suites: Sequence[Suite], *, areas: int) -> str:
-    """One tree in full, or several side by side with the change from first to last."""
+def render_trees(labels: Sequence[str], suites: Sequence[Suite], *, areas: int) -> str:
+    """Several trees side by side, with the change from the first to the last."""
 
-    last = suites[-1]
-    if len(suites) == 1:
-        shown = _largest_areas(last, areas)
-        rows: list[Sequence[object]] = [
-            (name, last.areas[name].files, last.areas[name].lines, last.areas[name].tests)
-            for name in shown
-        ]
-        rest = [last.areas[name] for name in last.areas if name not in shown]
-        if rest:
-            rows.append(
-                (
-                    f"{len(rest)} smaller areas",
-                    sum(size.files for size in rest),
-                    sum(size.lines for size in rest),
-                    sum(size.tests for size in rest),
-                )
-            )
-        python = last.python
-        rows.append(("all Python tests", python.files, python.lines, python.tests))
-        lines = table(("Area", "Files", "Lines", "`def test_`"), rows)
-        lines += ["", *table(("Measure", labels[0]), _measures(last))]
-        return "\n".join(lines)
-
-    def signed(change: int) -> str:
-        return f"{change:+,}" if change else "0"
-
-    names = list(dict.fromkeys(name for suite in suites for name, _value in _measures(suite)))
     values = [dict(_measures(suite)) for suite in suites]
     rows = [
-        (
-            name,
-            *(v.get(name, 0) for v in values),
-            signed(values[-1].get(name, 0) - values[0].get(name, 0)),
-        )
-        for name in names
+        (name, *(value[name] for value in values), _signed(values[-1][name] - values[0][name]))
+        for name in values[0]
     ]
     lines = table(("Measure", *labels, "Change"), rows)
     # Side by side, the areas worth reading are the ones that changed, largest change first.
@@ -324,7 +246,7 @@ def render(labels: Sequence[str], suites: Sequence[Suite], *, areas: int) -> str
         key=lambda name: (-abs(by_area[name][-1] - by_area[name][0]), name),
     )
     area_rows = [
-        (name, *by_area[name], signed(by_area[name][-1] - by_area[name][0]))
+        (name, *by_area[name], _signed(by_area[name][-1] - by_area[name][0]))
         for name in (changed if areas <= 0 else changed[:areas])
     ]
     if area_rows:
@@ -345,24 +267,11 @@ _ANSI: Final = re.compile(r"(?:\x1b|\^\[)\[[0-9;]*m")
 _COLLECTED: Final = re.compile(r"^collected \d+ items?")
 _PROGRESS: Final = re.compile(r"^(?:(?P<file>\S+\.py) )?[.sxXEF]+(?:\s+\[\s*\d+%\])?$")
 _SUMMARY: Final = re.compile(r"^=+ (?P<summary>.*\bin [\d.]+s.*?) =+$")
-_DURATION: Final = re.compile(
-    r"^(?P<seconds>\d+\.\d+)s (?:call|setup|teardown)\s+(?P<file>\S+?\.py)::"
-)
-_SKIPPED: Final = re.compile(
-    r"^SKIPPED \[(?P<count>\d+)\] (?P<file>[^:]+):(?P<line>\d+): (?P<reason>.*)$"
-)
+_SKIPPED: Final = re.compile(r"^SKIPPED \[(?P<count>\d+)\] [^:]+:\d+: (?P<reason>.*)$")
 _TRYSCRIPT_START: Final = re.compile(r"\btryscript run\b")
 _TRYSCRIPT_FILE: Final = re.compile(
     r"^(?:PASS|FAIL) \S*?(?P<file>tests/golden/\S+\.tryscript\.md)$"
 )
-
-
-@dataclass(frozen=True, slots=True)
-class Skip:
-    count: int
-    file: str
-    line: int
-    reason: str
 
 
 @dataclass(slots=True)
@@ -372,12 +281,11 @@ class Run:
     job: str = ""
     other_jobs: list[str] = field(default_factory=lambda: list[str]())
     summary: str = ""
-    # Seconds per test file, from timestamps; empty for a log that has none.
+    # Seconds per test file and per golden, from timestamps; empty for a log that has none.
     files: dict[str, float] = field(default_factory=lambda: dict[str, float]())
-    # Seconds per test file, summed over the phases ``--durations`` listed.
-    listed: dict[str, float] = field(default_factory=lambda: dict[str, float]())
     goldens: dict[str, float] = field(default_factory=lambda: dict[str, float]())
-    skips: list[Skip] = field(default_factory=lambda: list[Skip]())
+    # Skipped cases by the reason ``-rs`` printed.
+    skips: Counter[str] = field(default_factory=lambda: Counter[str]())
 
 
 def _seconds(stamp: str) -> float:
@@ -414,15 +322,8 @@ def parse_log(text: str, *, job: str = "") -> Run:
             current = ""
             if summary := _SUMMARY.match(line):
                 run.summary = summary["summary"]
-        elif duration := _DURATION.match(line):
-            listed = run.listed.get(duration["file"], 0.0)
-            run.listed[duration["file"]] = listed + float(duration["seconds"])
         elif skipped := _SKIPPED.match(line):
-            run.skips.append(
-                Skip(
-                    int(skipped["count"]), skipped["file"], int(skipped["line"]), skipped["reason"]
-                )
-            )
+            run.skips[skipped["reason"]] += int(skipped["count"])
         elif _TRYSCRIPT_START.search(line):
             previous, in_tryscript = stamp, True
         elif in_tryscript and (golden := _TRYSCRIPT_FILE.match(line)):
@@ -432,31 +333,7 @@ def parse_log(text: str, *, job: str = "") -> Run:
     return run
 
 
-def skip_tiers(skips: Sequence[Skip], files: Mapping[str, bytes]) -> dict[str, int]:
-    """The skips of a run by tier: the marker on the test, or the admitted-Git reason."""
-
-    markers = tier_markers(files)
-    gates = files.get("tests/suite_gates.py", b"").decode("utf-8", "replace")
-    reason = _ADMITTED_GIT_REASON.search(gates)
-    tiers: Counter[str] = Counter()
-    for skip in skips:
-        source = files.get(skip.file, b"").decode("utf-8", "replace")
-        carried = [
-            marker
-            for test in marked_tests(source, markers)
-            if test.first_line <= skip.line <= test.last_line
-            for marker in sorted(test.markers)
-        ]
-        if carried:
-            tiers[carried[0]] += skip.count
-        elif reason is not None and reason[1] in skip.reason:
-            tiers[ADMITTED_GIT] += skip.count
-        else:
-            tiers[NO_TIER] += skip.count
-    return {tier_name(name): count for name, count in sorted(tiers.items())}
-
-
-def render_run(run: Run, files: Mapping[str, bytes], *, top: int) -> str:
+def render_run(run: Run, *, top: int) -> str:
     def slowest(durations: Mapping[str, float]) -> list[Sequence[object]]:
         ranked = sorted(durations.items(), key=lambda item: (-item[1], item[0]))
         return [
@@ -474,12 +351,8 @@ def render_run(run: Run, files: Mapping[str, bytes], *, top: int) -> str:
             f"{len(run.files)} test files, {total:.1f} s between their progress lines",
             *table(("Test file", "Seconds"), slowest(run.files)),
         ]
-    elif run.listed:
-        lines += [
-            "",
-            "No timestamps in this log. Seconds below are sums over the tests --durations listed.",
-            *table(("Test file", "Seconds listed"), slowest(run.listed)),
-        ]
+    else:
+        lines += ["", "No timestamps in this log, so no time per file; use a CI job log."]
     if run.goldens:
         total = sum(run.goldens.values())
         lines += [
@@ -488,9 +361,8 @@ def render_run(run: Run, files: Mapping[str, bytes], *, top: int) -> str:
             *table(("Golden", "Seconds"), slowest(run.goldens)),
         ]
     if run.skips:
-        skipped = sum(skip.count for skip in run.skips)
-        lines += ["", f"{skipped} skips listed by -rs"]
-        lines += table(("Tier", "Skips"), list(skip_tiers(run.skips, files).items()))
+        lines += ["", f"{run.skips.total()} skips listed by -rs"]
+        lines += table(("Reason", "Skips"), run.skips.most_common())
     else:
         lines += ["", "No skip is listed in this log: none happened, or pytest ran without -rs."]
     return "\n".join(lines)
@@ -520,19 +392,22 @@ def main(arguments: Sequence[str] | None = None) -> int:
         help="commits to measure; `.` is the working tree",
     )
     parser.add_argument("--areas", type=int, default=15, help="areas to list; 0 lists every one")
-    parser.add_argument("--log", type=Path, help="a pytest output or a CI job log to time")
+    parser.add_argument("--log", type=Path, help="a CI job log, or a pytest output, to read")
     parser.add_argument("--job", default="", help="the job to read from a log that holds several")
     parser.add_argument(
         "--top", type=int, default=15, help="slowest files to list; 0 lists every one"
     )
     args = parser.parse_args(arguments)
-    trees = [read_tree(ref) for ref in args.refs]
     labels = [describe(ref) for ref in args.refs]
-    print(render(labels, [measure(tree) for tree in trees], areas=args.areas))
+    suites = [measure(read_tree(ref)) for ref in args.refs]
+    if len(suites) == 1:
+        print(render_tree(labels[0], suites[0], areas=args.areas))
+    else:
+        print(render_trees(labels, suites, areas=args.areas))
     if args.log is not None:
         run = parse_log(args.log.read_text(encoding="utf-8", errors="replace"), job=args.job)
         print()
-        print(render_run(run, trees[-1], top=args.top))
+        print(render_run(run, top=args.top))
     return 0
 
 
