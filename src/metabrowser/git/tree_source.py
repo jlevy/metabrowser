@@ -169,12 +169,15 @@ def display_segment(segment: bytes) -> str:
     C1 includes U+009B, a one-character CSI, which a URL can spell as ``%C2%9B``. A
     format character (Unicode category Cf), such as U+202E RIGHT-TO-LEFT OVERRIDE or
     U+200B ZERO WIDTH SPACE, reorders or hides what is shown around it without being
-    seen, and a default-ignorable character such as U+3164 HANGUL FILLER, or the blank
-    braille pattern U+2800, is drawn as nothing or as a space; a name holding either
-    could pass for another in a listing, a ``path:`` line, or an error message. A
-    variation selector attached to a base, as in ``❤️.md``, is kept; one with no base,
-    as in ``README<U+FE0F>.md``, is not (see :mod:`metabrowser.invisible_chars`). The
-    wire form keeps every byte.
+    seen, and a default-ignorable character such as U+3164 HANGUL FILLER, the blank
+    braille pattern U+2800, or a space other than the ASCII one, such as U+00A0 NO-BREAK
+    SPACE or U+200A HAIR SPACE, is drawn as nothing or as a space; a name holding any of
+    them could pass for another in a listing, a ``path:`` line, or an error message.
+    U+2028 LINE SEPARATOR and U+2029 PARAGRAPH SEPARATOR would also split the line they
+    are printed on. A variation selector attached to a base, as in ``❤️.md``, is kept;
+    one with no base, as in ``README<U+FE0F>.md``, is not. Unassigned and private-use
+    code points are kept; :mod:`metabrowser.invisible_chars` says why. The wire form
+    keeps every byte.
     """
 
     text = segment.decode("utf-8", "replace")

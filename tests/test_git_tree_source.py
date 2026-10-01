@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 import subprocess
+import unicodedata
 from contextlib import suppress
 from dataclasses import replace
 from pathlib import Path
@@ -32,6 +33,7 @@ from metabrowser.git.tree_source import (
     read_store_blob,
     store_batch_reader_count,
 )
+from metabrowser.invisible_chars import SPACE_SEPARATORS
 from metabrowser.plugin_api import (
     UnsupportedSourceCapabilityError,
     require_source_capability,
@@ -655,8 +657,8 @@ def test_display_replaces_every_control_character_a_terminal_acts_on() -> None:
     assert display_segment(b"a\x1b[2Jb") == "a\ufffd[2Jb"
     assert display_segment(b"a\x7fb") == "a\ufffdb"
     assert display_segment("a\u009b2Jb\u0085c".encode()) == "a\ufffd2Jb\ufffdc"
-    # Printable text outside ASCII, including a no-break space, is kept.
-    assert display_segment("\u65e5\u672c \u00a0x".encode()) == "\u65e5\u672c \u00a0x"
+    # Printable text outside ASCII, and the ASCII space, are kept.
+    assert display_segment("\u65e5\u672c x\u00e9".encode()) == "\u65e5\u672c x\u00e9"
 
 
 def test_display_replaces_format_characters_that_reorder_or_hide_text() -> None:
@@ -682,6 +684,48 @@ def test_display_replaces_characters_drawn_as_nothing_or_as_a_space() -> None:
     for point in (0x3164, 0x115F, 0xFFA0, 0x034F, 0x2800, 0xFE0F, 0xFE00, 0xE0100):
         shown = display_segment(f"README{chr(point)}.md".encode())
         assert shown == "README\ufffd.md", hex(point)
+
+
+# Every space separator (Zs) but U+0020, with the line and paragraph separators.
+_UNICODE_SPACES = (0x00A0, 0x1680, *range(0x2000, 0x200B), 0x2028, 0x2029, 0x202F, 0x205F, 0x3000)
+
+
+def test_display_replaces_every_space_and_separator_but_the_ascii_space() -> None:
+    """``README<U+200A>.md`` reads as ``README.md``, and U+2028 splits the line it is on.
+
+    The URL reducer refuses each of the 18 raw as whitespace and offers the encoded
+    spelling, which reaches the display.
+    """
+
+    assert len(_UNICODE_SPACES) == 18
+    for point in _UNICODE_SPACES:
+        shown = display_segment(f"README{chr(point)}.md".encode())
+        assert shown == "README\ufffd.md", hex(point)
+        assert display_segment(f"{chr(point)}\u96ea".encode()) == "\ufffd\u96ea", hex(point)
+    assert display_segment(b"My Notes.md") == "My Notes.md"
+    assert display_segment("\u96ea \u6708.md".encode()) == "\u96ea \u6708.md"
+    # The table is the running Python's Zs, Zl, and Zp, less the ASCII space.
+    separators = {
+        point
+        for point in range(0x110000)
+        if unicodedata.category(chr(point)) in {"Zs", "Zl", "Zp"} and point != 0x20
+    }
+    assert separators == set(_UNICODE_SPACES)
+    listed = {point for low, high in SPACE_SEPARATORS for point in range(low, high + 1)}
+    assert listed == separators
+
+
+def test_display_keeps_private_use_and_unassigned_code_points() -> None:
+    """The reducer refuses these raw; the display keeps them, as ``invisible_chars`` says.
+
+    U+F8FF and U+10FFFD are private-use. U+0378 is unassigned and U+FFFF is a
+    noncharacter in every Unicode version, so this does not depend on the running
+    Python's data.
+    """
+
+    for point in (0xE000, 0xF8FF, 0xF0000, 0x10FFFD, 0x0378, 0xFFFF):
+        name = f"a{chr(point)}b.md"
+        assert display_segment(name.encode()) == name, hex(point)
 
 
 def test_display_keeps_a_variation_selector_attached_to_its_base() -> None:
