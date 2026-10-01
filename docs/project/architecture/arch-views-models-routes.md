@@ -344,16 +344,24 @@ because a subprocess cannot acquire on a Git below the acquisition floor.
 `check_parity.py` reads only tryscript console blocks, so those sessions are not counted
 as the rows’ evidence.
 
-A command is successful evidence for a route when it exits 0. One other case counts: a
-one-shot `POST` that starts work prints the route’s answer, waits, prints the status
-`after:` the work, and exits 1 when that work failed.
-When the route’s own `status:` line is 2xx and an `after:` line follows, the route
-answered, and that is what the row claims.
-`/api/plugin/github/pull-refresh` is covered this way: a refresh that completes needs
-`gh` and a fetch from the origin, which a subprocess transcript has neither of, so
-`cli-github-pull.tryscript.md` pins the `202`, the `gh_failed` status after it, and the
-exit status 1, and `cli-ui-github-pull-page.tryscript.md` replays the route’s recorded
-answers through a refresh that completes.
+A command is successful evidence for a route when it exits 0. One other shape counts,
+and only that shape: a one-shot `POST` that starts work prints the route’s answer,
+waits, prints the status `after:` the work, and exits 1 when that work failed.
+The route’s `status:` line must be `202`, an `after: /api/…` line must be directly
+followed by a 2xx `status:`, and the last line must be
+`Error: the refresh ended with <outcome>`. A truncated body, a follow-up that failed,
+and a refresh that did not finish each break one of those, and none of them is evidence.
+`/api/plugin/github/pull-refresh` is covered this way in `cli-github-pull.tryscript.md`,
+which pins the `202`, the `gh_failed` status after it, and the exit status 1. A refresh
+that completes needs `gh` and a fetch from the origin, and a subprocess transcript has
+neither. The completing command is pinned in-process instead:
+`cli-github-pull-refresh.txt` records
+`metab …/pull/7 --api /api/plugin/github/pull-refresh --data refresh.json` exiting 0,
+with the `202`, the `current` record after it, and the `gh` calls it made, and
+`cli-ui-github-pull-page.tryscript.md` replays the route’s recorded answers through a
+refresh that completes.
+`check_parity.py` does not read `.txt` transcripts, so that command is evidence a reader
+can check and the gate does not yet count.
 
 The exempt rows are the honest boundary.
 A server-sent-event response has no terminating envelope, so `--api` bounds the request

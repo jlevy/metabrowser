@@ -92,7 +92,9 @@ class _Session:
 
     def run(self, *args: str) -> Invocation:
         result = run_metab(args)
-        self.blocks.append(result.block(" ".join(quoted(arg) for arg in args), gh=self.gh_calls()))
+        # A request body lives in the sandbox; the transcript names the file alone.
+        shown = [arg.removeprefix(f"{self.tmp_path}/") for arg in args]
+        self.blocks.append(result.block(" ".join(quoted(arg) for arg in shown), gh=self.gh_calls()))
         return result
 
 
@@ -119,6 +121,22 @@ def test_golden_pull_requests_fetch_refresh_and_read_offline(
     assert envelope["record"]["comparison"]["base"] == origin["base"]
     refreshed = session.run(f"{PULL}/7", "--no-serve")
     assert refreshed.exit_code == 0, refreshed.stderr
+    # The route a page posts to, through a refresh that completes: the one-shot command
+    # prints the 202, waits, prints the record after it, and exits 0. A subprocess
+    # transcript cannot show this, because it has no `gh` and no origin to fetch from.
+    body = tmp_path / "refresh.json"
+    body.write_text("{}\n", encoding="utf-8")
+    routed = session.run(
+        f"{PULL}/7", "--api", "/api/plugin/github/pull-refresh", "--data", str(body)
+    )
+    assert routed.exit_code == 0, routed.stderr
+    started, _after, ended = routed.stdout.partition(
+        "after: /api/plugin/github/pull\nstatus: 200\n"
+    )
+    assert started.startswith("api: /api/plugin/github/pull-refresh\nstatus: 202\n")
+    assert json.loads(started[started.index("{") :])["refresh"] == "started"
+    assert json.loads(ended)["state"] == "current"
+    assert json.loads(ended)["record"] == envelope["record"]
     fork_commit = session.run(
         f"{PULL}/7/commits/{origin['fork_earlier'][:7]}", "--show", "src/app.txt"
     )
