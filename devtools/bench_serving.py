@@ -14,8 +14,9 @@ number, and separates the paths that only look alike:
   body served without one, and a ``304`` revalidation -- and only one of them
   costs anything. Averaging them together reports a cache hit rate, not a
   latency. The aggregated row is where the rollup's cost at corpus size is
-  defended: the test suite asserts what a rollup returns and how much it emits,
-  and no elapsed time, which on a shared runner measures the runner.
+  defended: the test suite asserts what a rollup returns, how much it emits and
+  how much of the index it reads, and no elapsed time, which on a shared runner
+  measures the runner.
 * A tree request at the root and at a subtree are different requests. Reporting
   them against response size is what makes a cost proportional to the index
   visible as one, instead of looking like a large response.
