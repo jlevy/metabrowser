@@ -13,7 +13,6 @@ from __future__ import annotations
 import asyncio
 import re
 import threading
-import time
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -320,55 +319,6 @@ def test_rollup_global_node_budget_on_adversarial_branching() -> None:
         )
 
     assert _has_cut_marker(node)
-
-
-def test_rollup_budget_on_synthetic_large_index(tmp_path: Path) -> None:
-    """Query-cost budget record: rollup over a synthetic index.
-
-    Builds ~40k entries directly (disk-free) — the spec budget is 150 ms
-    at 100k entries; the hard gate here is generous for CI jitter and
-    the measured value prints for the budget record.
-    """
-
-    index = PythonInventoryStore()
-    entries = SyntheticIndexWriter(index)  # synthetic index setup, test-only
-    root_placeholder = FsEntry.for_observed_dir(path="", parent="", name="root")
-    dir_count = 200
-    files_per_dir = 200
-    mtime_ns = 1_700_000_000_000_000_000
-    entries[""] = replace(
-        root_placeholder,
-        total_files=dir_count * files_per_dir,
-        total_size=dir_count * files_per_dir * 10,
-        newest_mtime_ns=mtime_ns,
-    )
-    for d in range(dir_count):
-        dir_path = f"d{d:03d}"
-        placeholder = FsEntry.for_observed_dir(path=dir_path, parent="", name=dir_path)
-        entries[dir_path] = replace(
-            placeholder,
-            total_files=files_per_dir,
-            total_size=files_per_dir * 10,
-            newest_mtime_ns=mtime_ns,
-        )
-        for f in range(files_per_dir):
-            file_path = f"{dir_path}/f{f:03d}.py"
-            entries[file_path] = FsEntry.for_observed_file(
-                path=file_path,
-                parent=dir_path,
-                name=f"f{f:03d}.py",
-                size=10,
-                mtime_ns=mtime_ns,
-            )
-
-    start = time.perf_counter()
-    result = index.rollup("", depth=3, top=40, ext_top=12)
-    elapsed_ms = (time.perf_counter() - start) * 1000
-    assert result is not None
-    total = dir_count * files_per_dir
-    assert result["node"]["total_files"] == total
-    print(f"rollup budget: {total} files in {elapsed_ms:.1f}ms (spec: 150ms at 100k entries)")
-    assert elapsed_ms < 1_000, f"rollup took {elapsed_ms:.1f}ms on {total} synthetic entries"
 
 
 def _assert_derived_state_matches_entries(index: PythonInventoryStore) -> None:

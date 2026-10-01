@@ -44,6 +44,7 @@ from metabrowser.cli.serve import (
 from metabrowser.dotenv import load_dotenv_chain
 from metabrowser.errors import CLIError
 from metabrowser.server_utils import MAX_TCP_PORT
+from tests.child_io import read_line
 
 runner = CliRunner()
 
@@ -389,7 +390,7 @@ def test_console_entry_point_treats_closed_output_pipe_as_success(tmp_path: Path
     ) as process:
         assert process.stdout is not None
         assert process.stderr is not None
-        assert process.stdout.readline().startswith("{")
+        assert read_line(process).startswith("{")
         process.stdout.close()
         stderr = process.stderr.read()
         returncode = process.wait(timeout=30)

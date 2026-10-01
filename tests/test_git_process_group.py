@@ -109,19 +109,22 @@ def test_a_cancellation_while_git_is_starting_kills_its_helpers(
 
     asyncio's own cleanup for an interrupted ``create_subprocess_exec`` kills only the
     ``git`` process, which leaves the helpers it already forked running. The spawn is
-    held open here, after the real process started, until the cancellation arrives,
-    which is the window a terminal hangup hit about one run in four.
+    held open here, after the real process started, until the cancellation has been
+    sent, which is the window a terminal hangup hit about one run in four. Held on an
+    event, not for a fixed time: a pause can end before the cancellation is sent, and
+    the test then passes on the ordinary path.
     """
 
     pid_file = tmp_path / "helper.pid"
     real_spawn = asyncio.create_subprocess_exec
     spawned = asyncio.Event()
+    cancellation_sent = asyncio.Event()
 
     async def slow_spawn(*args: Any, **kwargs: Any) -> asyncio.subprocess.Process:
         proc = await real_spawn(*args, **kwargs)
         spawned.set()
         await asyncio.to_thread(_wait_for_pid, pid_file)
-        await asyncio.sleep(0.2)
+        await cancellation_sent.wait()
         return proc
 
     monkeypatch.setattr(asyncio, "create_subprocess_exec", slow_spawn)
@@ -133,6 +136,7 @@ def test_a_cancellation_while_git_is_starting_kills_its_helpers(
         await spawned.wait()
         await asyncio.to_thread(_wait_for_pid, pid_file)
         task.cancel()
+        cancellation_sent.set()
         with pytest.raises(asyncio.CancelledError):
             await task
 

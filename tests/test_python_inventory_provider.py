@@ -460,8 +460,12 @@ async def _navigation_poll_reuses_one_coherent_read_boundary(
         assert cached_navigation.payload["summary"] == first_navigation.payload["summary"]
         assert cached.work.rows_visited < first.work.rows_visited
 
-        monkeypatch.setattr(python_provider, "_NAVIGATION_TALLY_REFRESH_FLOOR_S", 0.0)
-        await asyncio.sleep(0.02)
+        # Age the retained read past its refresh bound, in place of zeroing the floor
+        # and sleeping until the pass has aged past what it cost.
+        store = cast(PythonInventoryStore, handle)
+        memo = store._navigation_read_memo
+        assert memo is not None
+        store._navigation_read_memo = replace(memo, computed_at=memo.computed_at - 3600.0)
         refreshed = await handle.read(request)
         refreshed_navigation = refreshed.projection("navigation")
         assert isinstance(refreshed_navigation, NavigationProjection)
@@ -705,18 +709,23 @@ def test_priority_hint_returns_before_reference_refresh_finishes(
         handle = await _open_settled(tmp_path)
         release = asyncio.Event()
         started = asyncio.Event()
+        finished = asyncio.Event()
 
         async def blocked_refresh(*_args: object, **_kwargs: object) -> None:
             started.set()
             await release.wait()
+            finished.set()
 
         monkeypatch.setattr(handle, "_refresh_path", blocked_refresh)
         try:
+            # Both waits only break a hang. The refresh cannot finish until the hint
+            # has returned, so a hint that waited for it would never return.
             await asyncio.wait_for(
                 handle.prioritize(PriorityRequest(paths=("later",), max_depth=1)),
-                timeout=0.1,
+                timeout=1,
             )
             await asyncio.wait_for(started.wait(), timeout=1)
+            assert not finished.is_set()
         finally:
             release.set()
             await handle.close()

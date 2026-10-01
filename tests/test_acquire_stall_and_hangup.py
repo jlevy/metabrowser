@@ -21,9 +21,11 @@ import time
 from collections.abc import Iterator
 from pathlib import Path
 from types import FrameType
+from typing import Any
 
 import pytest
 
+from metabrowser.cache import acquire as acquire_module
 from metabrowser.cache.acquire import RemoteAccessError, acquire_source
 from metabrowser.cache.urls import GitSource
 from metabrowser.cli.hangup import (
@@ -109,13 +111,22 @@ def test_a_stalled_https_origin_fails_at_the_probe_deadline(
 ) -> None:
     _allow_installed_git(monkeypatch)
     monkeypatch.setattr("metabrowser.cache.acquire.REMOTE_PROBE_TIMEOUT_S", 1.0)
+    deadlines: list[float | None] = []
+    real_run_git = acquire_module.run_git
+
+    async def recording_run_git(args: list[str], **kwargs: Any) -> bytes:
+        deadlines.append(kwargs.get("timeout_s"))
+        return await real_run_git(args, **kwargs)
+
+    monkeypatch.setattr(acquire_module, "run_git", recording_run_git)
     url = f"https://127.0.0.1:{stalled_port}/stalled.git"
     source = GitSource(transport="https", form="url", normalized=url)
     home = tmp_path / "home"
-    started = time.monotonic()
     with pytest.raises(RemoteAccessError) as refused:
         asyncio.run(acquire_source(source, home=home))
-    assert time.monotonic() - started < 15
+    # The one Git command that ran had the probe deadline, and this origin never
+    # answers, so that deadline is what ended it. Recorded, not timed.
+    assert deadlines == [1.0]
     assert refused.value.state == "timed_out"
     assert str(refused.value) == (
         f"{url} stopped answering in time (timed_out); no answer within 1 s; nothing was published"
@@ -135,6 +146,8 @@ from metabrowser.git.process import ACQUISITION_POLICY, run_git
 pid_file = sys.argv[1]
 if sys.argv[3] == "ignore-hangup":
     signal.signal(signal.SIGHUP, signal.SIG_IGN)
+# The test's own marker: this process has taken delivery of every signal sent before it.
+signal.signal(signal.SIGUSR1, lambda *_: Path(pid_file).with_name("delivered").touch())
 script = f"!sleep 60 & echo $! > '{pid_file}'; wait"
 run_cancelling_on_hangup(
     run_git(["-c", f"alias.hang={script}", "hang"], cwd=Path(sys.argv[2]), policy=ACQUISITION_POLICY)
@@ -195,10 +208,15 @@ def test_an_ignored_hangup_stays_ignored(tmp_path: Path) -> None:
     child, helper = _start_child(tmp_path, "ignore-hangup")
     try:
         child.send_signal(signal.SIGHUP)
-        assert not _wait_for(lambda: child.poll() is not None, 1.5), "SIGHUP was not ignored"
-        assert _alive(helper)
+        # Wait on a marker, not for a while: once the child has handled the signal
+        # sent after the hangup, it has taken delivery of the hangup too.
+        child.send_signal(signal.SIGUSR1)
+        assert _wait_for((tmp_path / "delivered").exists), "the child never saw SIGUSR1"
+        assert child.poll() is None and _alive(helper), "SIGHUP was not ignored"
+        # The first cancelling signal handled sets the exit status, so a hangup that
+        # was acted on, and not yet finished with, still shows here as 129.
         child.send_signal(signal.SIGTERM)
-        assert child.wait(timeout=15) == TERMINATION_EXIT_STATUS
+        assert child.wait(timeout=15) == TERMINATION_EXIT_STATUS, "SIGHUP was not ignored"
         assert _wait_for(lambda: not _alive(helper), 5)
     finally:
         _reap(child, helper)

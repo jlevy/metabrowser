@@ -433,13 +433,21 @@ def test_every_close_joins_shutdown_even_if_the_first_caller_is_cancelled(
             with pytest.raises(asyncio.CancelledError):
                 await first
         second = asyncio.create_task(coordinator.close())
+        finished: list[str] = []
+        read.add_done_callback(lambda _task: finished.append("read"))
+        second.add_done_callback(lambda _task: finished.append("close"))
         try:
-            completed, _pending = await asyncio.wait({second}, timeout=0.01)
-            assert not completed, "close returned while a provider read was still running"
+            # Loop turns, not a pause: the fake provider does no I/O, so a close that
+            # did not wait for the read would have returned within these.
+            for _ in range(20):
+                await asyncio.sleep(0)
+            assert finished == [], "close returned while a provider read was still running"
+            assert not handle.closed
         finally:
             handle.read_gate.set()
             await read
             await asyncio.gather(first, second, return_exceptions=True)
+        assert finished == ["read", "close"]
         assert handle.closed
         assert handle.close_count == 1
         with pytest.raises(InventoryClosedError):
@@ -846,7 +854,9 @@ def test_page_session_pins_overlay_without_blocking_other_host_operations(tmp_pa
                 patch = asyncio.create_task(
                     coordinator.replace_decoration(path, InventoryDecoration(views=("source",)))
                 )
-                done, _ = await asyncio.wait({patch}, timeout=0.1)
+                # A hang breaker, not a budget: an update the session held up would
+                # not finish before the session ends, however long this waited.
+                done, _ = await asyncio.wait({patch}, timeout=1)
                 assert patch in done, "a page assembly must not hold up unrelated host updates"
                 after = await session.read(request)
                 assert after.version.overlay_revision == before.version.overlay_revision

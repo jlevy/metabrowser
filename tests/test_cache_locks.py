@@ -15,7 +15,6 @@ import subprocess
 import sys
 import textwrap
 import threading
-import time
 import types
 from collections.abc import Callable, Generator
 from pathlib import Path
@@ -44,6 +43,7 @@ from metabrowser.home import (
     ensure_home,
     open_private_file,
 )
+from tests.child_io import read_line
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="cache locks are BSD flock locks")
 fcntl = pytest.importorskip("fcntl")
@@ -102,31 +102,21 @@ class _Holder:
             stderr=subprocess.PIPE,
             text=True,
         )
-        assert self.process.stdout is not None
-        line = self.process.stdout.readline().strip()
+        line = read_line(self.process).strip()
         if line != "held":
             _, errors = self.process.communicate(timeout=CHILD_TIMEOUT)
             pytest.fail(f"lock holder did not start: {line!r} {errors}")
 
     def release(self) -> None:
-        assert self.process.stdin is not None and self.process.stdout is not None
+        assert self.process.stdin is not None
         self.process.stdin.write("\n")
         self.process.stdin.flush()
-        assert self.process.stdout.readline().strip() == "released"
+        assert read_line(self.process).strip() == "released"
         self.process.communicate(timeout=CHILD_TIMEOUT)
 
     def kill(self) -> None:
         self.process.send_signal(signal.SIGKILL)
         self.process.communicate(timeout=CHILD_TIMEOUT)
-
-
-def _eventually(predicate: Callable[[], bool], timeout: float = CHILD_TIMEOUT) -> bool:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        if predicate():
-            return True
-        time.sleep(0.01)
-    return predicate()
 
 
 # ── Order ──────────────────────────────────────────────────────────
@@ -227,6 +217,7 @@ def test_the_order_is_per_thread(home: Path) -> None:
         assert ready.wait(CHILD_TIMEOUT)
         done.set()
         thread.join(CHILD_TIMEOUT)
+    assert not thread.is_alive()
     assert outcome == [None]
 
 
@@ -300,6 +291,15 @@ def test_a_waiter_on_a_replaced_lock_file_retries_on_the_new_file(
         return real_open(home, relative_path)
 
     monkeypatch.setattr(locks, "_open_lock_file", counting_open)
+    real_flock = locks._flock  # pyright: ignore[reportPrivateUsage]
+    at_flock = threading.Event()
+
+    def observed_flock(fd: int, operation: int, path: Path) -> bool:
+        if threading.current_thread().name == "waiter":
+            at_flock.set()
+        return real_flock(fd, operation, path)
+
+    monkeypatch.setattr(locks, "_flock", observed_flock)
     acquired: list[CacheLock] = []
 
     def wait_for_lock() -> None:
@@ -307,10 +307,14 @@ def test_a_waiter_on_a_replaced_lock_file_retries_on_the_new_file(
 
     thread = threading.Thread(target=wait_for_lock, name="waiter")
     thread.start()
-    assert _eventually(lambda: opens == ["waiter"])
-    time.sleep(0.1)
+    # The waiter has opened the old file and is at its flock. Whether the removal
+    # lands before or during that call, the descriptor names the old file, which is
+    # what makes it retry; no pause is needed to tell the two apart.
+    assert at_flock.wait(CHILD_TIMEOUT)
+    assert opens == ["waiter"]
     first.remove_lock_file()
     thread.join(CHILD_TIMEOUT)
+    assert not thread.is_alive()
     assert len(acquired) == 1
     second = acquired[0]
     try:
@@ -336,6 +340,7 @@ def test_a_staging_liveness_lock_never_blocks(home: Path) -> None:
     thread = threading.Thread(target=other_thread)
     thread.start()
     thread.join(CHILD_TIMEOUT)
+    assert not thread.is_alive()
     holder_lock.release()
     assert len(outcome) == 1 and isinstance(outcome[0], LockBusyError)
 

@@ -17,7 +17,6 @@ import subprocess
 import sys
 import textwrap
 import threading
-import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -35,6 +34,7 @@ from metabrowser.cache.locks import (
 )
 from metabrowser.cancellable_thread import run_acquiring_thread
 from metabrowser.home import ensure_home
+from tests.child_io import read_line
 from tests.test_cache_acquire import _allow_installed_git, _file_source, _origin
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="cache locks are BSD flock locks")
@@ -74,8 +74,7 @@ class _BoundedHolder:
             stderr=subprocess.PIPE,
             text=True,
         )
-        assert self.process.stdout is not None
-        line = self.process.stdout.readline().strip()
+        line = read_line(self.process).strip()
         if line != "held":
             _, errors = self.process.communicate(timeout=CHILD_TIMEOUT)
             pytest.fail(f"lock holder did not start: {line!r} {errors}")
@@ -83,14 +82,14 @@ class _BoundedHolder:
     def release(self) -> str:
         """Ask the child to release; return ``asked``, or ``gave up`` if it timed out first."""
 
-        assert self.process.stdin is not None and self.process.stdout is not None
+        assert self.process.stdin is not None
         if self.process.poll() is None:
             try:
                 self.process.stdin.write("\n")
                 self.process.stdin.flush()
             except BrokenPipeError:
                 pass
-        how = self.process.stdout.readline().strip()
+        how = read_line(self.process).strip()
         self.process.communicate(timeout=CHILD_TIMEOUT)
         return how
 
@@ -162,11 +161,13 @@ def test_attempts_that_never_block_may_run_on_the_loop(tmp_path: Path) -> None:
 def test_work_a_cancelled_task_abandoned_is_released_when_it_finishes() -> None:
     """A thread cannot be interrupted; what it acquires after cancellation is released."""
 
+    working = threading.Event()
     proceed = threading.Event()
     released: list[str] = []
     done = threading.Event()
 
     def work() -> str:
+        working.set()
         proceed.wait(CHILD_TIMEOUT)
         return "acquired"
 
@@ -176,7 +177,7 @@ def test_work_a_cancelled_task_abandoned_is_released_when_it_finishes() -> None:
 
     async def scenario() -> None:
         waiting = asyncio.create_task(run_acquiring_thread(work, release=release))
-        await asyncio.sleep(TICK_S)
+        assert await asyncio.to_thread(working.wait, CHILD_TIMEOUT)
         waiting.cancel()
         with pytest.raises(asyncio.CancelledError):
             await waiting
@@ -249,10 +250,11 @@ def test_a_cancelled_acquisition_behind_a_busy_home_stops_promptly(
             with pytest.raises(asyncio.CancelledError):
                 await waiting
 
-        started = time.monotonic()
         asyncio.run(scenario())
-        elapsed = time.monotonic() - started
-        assert elapsed < HOLD_AT_MOST / 2, f"cancellation waited {elapsed:.1f}s for the lock"
+        # ``asyncio.run`` has joined its executor and returned, and the child still
+        # holds the lock: a wait that outlived the cancellation would have kept the
+        # run from returning until the child gave up.
+        assert holder.release() == "asked", "cancellation waited for the lock"
         assert held_locks() == ()
         # Python 3.14 logs an exception left in a shielded worker; an abandoned wait
         # must not leave one, or Ctrl-C prints a traceback.

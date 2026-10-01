@@ -142,15 +142,21 @@ def test_watcher_detects_new_file_after_walker_completes(tmp_path: Path) -> None
     async def _run() -> bool:
         config = replace(default_inventory_config(), watch_mode="poll")
         async with inventory_harness(tmp_path, config=config) as harness:
-            await asyncio.sleep(0.5)
-            new_file = tmp_path / "runs" / "x" / ".logs" / "fresh.jsonl"
-            new_file.write_text('{"event":"new"}\n')
             from metabrowser.inventory_engine.contract import (
                 EntryPresence,
                 EntryProjection,
                 EntryQuery,
+                LifecyclePhase,
                 ReadRequest,
             )
+
+            # The harness returns once discovery has settled, and the provider opens
+            # only after its watcher is installed. Assert that, in place of pausing
+            # and hoping both happened: this phase is "settled, with a live watcher".
+            _cursor, _version, state = await harness.runtime.coordinator.checkpoint()
+            assert state.phase is LifecyclePhase.WATCHING
+            new_file = tmp_path / "runs" / "x" / ".logs" / "fresh.jsonl"
+            new_file.write_text('{"event":"new"}\n')
 
             deadline = asyncio.get_running_loop().time() + 5.0
             while asyncio.get_running_loop().time() < deadline:

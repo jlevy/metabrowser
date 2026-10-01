@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 import shutil
-from collections.abc import Sequence
+from collections.abc import Coroutine, Sequence
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -169,16 +169,20 @@ def test_info_many_applies_the_batch_deadline_per_chunk(
 ) -> None:
     """A whole-tree size read must not share one fixed deadline.
 
-    Eight headers at 0.15 s each outlast a single 1 s deadline. In chunks of
-    two, each chunk needs 0.3 s of its own 1 s.
+    Counted, not timed: eight objects in chunks of two are four transactions, each
+    started under the batch deadline and each reading two headers. That the deadline
+    ends a stalled ``info_many`` is
+    ``test_batch_timeout_discards_actor_and_next_read_recovers`` in
+    ``tests/test_git_tree_source.py``.
     """
 
     files = {f"f{index}.txt".encode(): f"{index}\n".encode() for index in range(8)}
     store, commit = fast_import_store(tmp_path, files)
     real_read_header = tree_module._read_header
+    headers_per_deadline: list[int] = []
 
-    async def slow_header(reader: asyncio.StreamReader) -> bytes:
-        await asyncio.sleep(0.15)
+    async def counted_header(reader: asyncio.StreamReader) -> bytes:
+        headers_per_deadline[-1] += 1
         return await real_read_header(reader)
 
     async def run() -> None:
@@ -192,16 +196,19 @@ def test_info_many_applies_the_batch_deadline_per_chunk(
             oids = tuple(entry.oid for entry in entries)
             assert len(set(oids)) == 8
             actor = tree_module._BatchObjectReader(subject.tree_source.target)
+            real_within_deadline = actor._within_deadline
+
+            async def counted_deadline[T](transaction: Coroutine[Any, Any, T]) -> T:
+                headers_per_deadline.append(0)
+                return await real_within_deadline(transaction)
+
             try:
                 with monkeypatch.context() as scoped:
-                    scoped.setattr(tree_module, "_read_header", slow_header)
+                    scoped.setattr(tree_module, "_read_header", counted_header)
                     scoped.setattr(tree_module, "INFO_MANY_CHUNK_OBJECTS", 2, raising=False)
-                    scoped.setattr(
-                        tree_module,
-                        "BATCH_OBJECT_POLICY",
-                        replace(tree_module.BATCH_OBJECT_POLICY, timeout_s=1.0),
-                    )
+                    scoped.setattr(actor, "_within_deadline", counted_deadline)
                     infos = await actor.info_many(oids)
+                assert headers_per_deadline == [2, 2, 2, 2]
                 assert [info.size for info in infos.values() if info is not None] == [2] * 8
                 assert list(infos) == list(oids)
             finally:

@@ -48,6 +48,7 @@ from metabrowser.mirror_refresh import (
     SelectionNotACommitError,
     SelectionNotFoundError,
 )
+from tests.child_io import read_line
 from tests.test_cache_acquire import _allow_installed_git, _file_source, _git, _git_env
 
 posix_only = pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only")
@@ -587,15 +588,20 @@ def test_work_that_must_finish_finishes_however_often_it_is_cancelled() -> None:
 
     finished: list[bool] = []
 
-    async def work() -> None:
-        await asyncio.sleep(0.05)
-        finished.append(True)
-
     async def scenario() -> None:
+        may_finish = asyncio.Event()
+
+        async def work() -> None:
+            await may_finish.wait()
+            finished.append(True)
+
         job = asyncio.ensure_future(update_module._finish_despite_cancel(work()))
         for _ in range(3):
-            await asyncio.sleep(0.005)
+            await asyncio.sleep(0)
             job.cancel()
+        # The work is still running after three cancellations, and only now may end.
+        assert finished == []
+        may_finish.set()
         with pytest.raises(asyncio.CancelledError):
             await job
 
@@ -709,8 +715,7 @@ def test_a_fetch_lock_held_by_another_process_is_refreshing_elsewhere(
         text=True,
     )
     try:
-        assert holder.stdout is not None
-        assert holder.stdout.readline().strip() == "held"
+        assert read_line(holder).strip() == "held"
         before = mirror.state()
         assert _update(mirror) is RefreshOutcome.refreshing_elsewhere
         assert mirror.state() == before
@@ -780,13 +785,23 @@ def test_leftover_removal_touches_only_leftovers(tmp_path: Path) -> None:
     assert (git_dir / "config.lock").exists()
 
 
+def _serving_a_fetch(origin: Path) -> bool:
+    """Whether a ``git upload-pack`` for *origin* is running: the sending side of a fetch."""
+
+    listed = subprocess.run(
+        ["ps", "-A", "-o", "args="], capture_output=True, text=True, check=True
+    ).stdout
+    return any("upload-pack" in line and str(origin) in line for line in listed.splitlines())
+
+
 def test_a_cancelled_fetch_leaves_the_mirror_consistent(
     mirror: _Mirror, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Cancel a real fetch mid-transfer: refs are all old or all new, and the next refresh works.
 
-    The fetch runs unmodified; the wrapper only reports when Git has been started, so the
-    cancellation lands while its process group is transferring a large object.
+    The fetch runs unmodified; the wrapper only reports when Git has been started. The
+    cancellation is sent once the origin's ``upload-pack`` is seen running, which it is
+    for as long as the large object takes to pack, so it lands in the transfer.
     """
 
     import metabrowser.cache.update as update_module
@@ -818,8 +833,9 @@ def test_a_cancelled_fetch_leaves_the_mirror_consistent(
             )
         )
         await asyncio.wait_for(fetching.wait(), timeout=30)
-        # Long enough for Git to be transferring, far shorter than the transfer.
-        await asyncio.sleep(0.02)
+        deadline = asyncio.get_running_loop().time() + 30
+        while not job.done() and not await asyncio.to_thread(_serving_a_fetch, mirror.origin):
+            assert asyncio.get_running_loop().time() < deadline, "the origin never served"
         cancelled = not job.done()
         job.cancel()
         with contextlib.suppress(asyncio.CancelledError):
