@@ -14,9 +14,9 @@
 // The production modules load whole, the way the shell links them:
 // static/source-freshness.js owns polling, visibility, the label, the offer, the two
 // POST actions, and what becomes of a commit the mirror lacks; static/source-pin-guard.js
-// names the page's commit on its data
-// requests and reports a pin_changed refusal; static/git-history-window.js owns
-// what a failed history page means. Timers, the clock, visibility, and paint are
+// names the page's commit on its data requests, reports a pin_changed refusal, and
+// decides what a page brought back by Back or Forward does; static/git-history-window.js
+// owns what a failed history page means. Timers, the clock, visibility, and paint are
 // injected; each step prints the requests the page made, the timer it left, how many
 // times it painted, what it would paint, and whether it reloaded.
 
@@ -684,6 +684,188 @@ async function run() {
   }
   const guard = { page: recorded.refreshed.pin, sent, answered, reported };
 
+  // What a page does when Back or Forward brings it back. The page was rendered for the
+  // refreshed pin; the server answers the status it gave then, after the switch, or after
+  // a restart on a folder. Each landing prints how many times it asked the status route
+  // and how many times it reloaded.
+  async function land(name, play) {
+    let asked = 0;
+    let reloads = 0;
+    const waiting = [];
+    const guardian = pinGuard.createHistoryGuard(
+      {
+        status() {
+          asked += 1;
+          return new Promise((resolve, reject) => {
+            waiting.push({ resolve, reject });
+          });
+        },
+        reload() {
+          reloads += 1;
+        },
+      },
+      recorded.refreshed.pin,
+    );
+    await play({
+      guardian,
+      async answer(status) {
+        assert(waiting.length === 1, `${name}: one status request is waiting`);
+        waiting.shift().resolve(status);
+        await settle();
+      },
+      async fail() {
+        assert(waiting.length === 1, `${name}: one status request is waiting`);
+        waiting.shift().reject(new TypeError("fetch failed"));
+        await settle();
+      },
+    });
+    assert(waiting.length === 0, `${name}: no status request is left waiting`);
+    return { landing: name, asked, reloads };
+  }
+  const landing = [
+    await land("restored from the back/forward cache, nothing switched", async (page) => {
+      void page.guardian.loaded("navigate");
+      void page.guardian.shown(false);
+      void page.guardian.shown(true);
+      await page.answer(recorded.refreshed);
+    }),
+    await land("restored from the back/forward cache after a switch", async (page) => {
+      void page.guardian.loaded("navigate");
+      void page.guardian.shown(true);
+      await page.answer(recorded.after_switch);
+      // Shown again before the reload takes the page: it does not ask or reload twice.
+      void page.guardian.shown(true);
+      page.guardian.refused();
+    }),
+    await land("loaded from the HTTP cache by Back after a switch", async (page) => {
+      void page.guardian.loaded("back_forward");
+      void page.guardian.shown(false);
+      // The page's first data request is refused before the status answers.
+      page.guardian.refused();
+      await page.answer(recorded.after_switch);
+    }),
+    await land("loaded by Back, nothing switched, another tab switches later", async (page) => {
+      void page.guardian.loaded("back_forward");
+      await page.answer(recorded.refreshed);
+      // A refusal now is not this landing's: the freshness row offers the reload.
+      page.guardian.refused();
+    }),
+    await land("an ordinary load whose data request is refused", async (page) => {
+      void page.guardian.loaded("navigate");
+      void page.guardian.shown(false);
+      page.guardian.refused();
+    }),
+    await land("a reload, which is where a landing's reload ends", async (page) => {
+      void page.guardian.loaded("reload");
+      void page.guardian.shown(false);
+      page.guardian.refused();
+    }),
+    await land("restored after the server restarted on a folder", async (page) => {
+      void page.guardian.shown(true);
+      await page.answer(recorded.folder);
+    }),
+    await land("restored while the server does not answer", async (page) => {
+      void page.guardian.shown(true);
+      await page.fail();
+      void page.guardian.shown(true);
+      await page.answer(null);
+    }),
+  ];
+
+  // The same module as the server writes it into a pin's page: it finds the page's
+  // commit, wraps the page's fetch, and listens for `pageshow`. Each page prints the
+  // requests that reached the server (`+pin` when the request named the page's commit),
+  // the events it announced, and whether it reloaded.
+  async function servedPage(name, navigationType, statusNow, play) {
+    const requests = [];
+    const events = [];
+    const listeners = new Map();
+    let reloads = 0;
+    const window = {
+      METABROWSER_SOURCE_PIN: { pin: recorded.refreshed.pin, ref: recorded.refreshed.ref },
+      location: {
+        href: `http://127.0.0.1:8471/commit/${recorded.refreshed.pin}`,
+        reload() {
+          reloads += 1;
+        },
+      },
+      performance: { getEntriesByType: () => [{ type: navigationType }] },
+      addEventListener(type, handler) {
+        listeners.set(type, [...(listeners.get(type) ?? []), handler]);
+      },
+      dispatchEvent(event) {
+        events.push(`${event.type} ${event.detail.pin}`);
+        return true;
+      },
+      async fetch(input, init) {
+        const url = typeof input === "string" ? input : input.url;
+        const named = new Headers(init?.headers).get(pinGuard.PIN_HEADER);
+        requests.push(`GET ${url}${named === null ? "" : " +pin"}`);
+        if (url === "/api/source/status") {
+          return new Response(JSON.stringify(statusNow), { status: 200 });
+        }
+        // A data request: refused when the server serves another commit than it names.
+        return named === statusNow.pin
+          ? new Response("{}", { status: 200 })
+          : new Response(JSON.stringify(recorded.pin_changed.body), {
+              status: recorded.pin_changed.status,
+              headers: recorded.pin_changed.headers,
+            });
+      },
+    };
+    window.window = window;
+    class CustomEvent {
+      constructor(type, init) {
+        this.type = type;
+        this.detail = init.detail;
+      }
+    }
+    const context = vm.createContext({ window, CustomEvent, Headers, Request, Response, URL });
+    const file = path.join(staticDir, "source-pin-guard.js");
+    vm.runInContext(fs.readFileSync(file, "utf8"), context, { filename: file });
+    await settle();
+    await play({
+      window,
+      async pageshow(persisted) {
+        for (const handler of listeners.get("pageshow") ?? []) {
+          handler({ persisted });
+        }
+        await settle();
+      },
+    });
+    await settle();
+    return { page: name, requests, events, reloads };
+  }
+  const wired = [
+    await servedPage("first load", "navigate", recorded.refreshed, async (page) => {
+      await page.window.fetch("/api/tree?depth=1");
+      await page.pageshow(false);
+    }),
+    await servedPage("restored, nothing switched", "navigate", recorded.refreshed, async (page) => {
+      await page.pageshow(true);
+    }),
+    await servedPage("restored after a switch", "navigate", recorded.after_switch, async (page) => {
+      await page.pageshow(true);
+    }),
+    await servedPage(
+      "loaded from the HTTP cache by Back after a switch",
+      "back_forward",
+      recorded.after_switch,
+      async (page) => {
+        await page.window.fetch("/api/tree?depth=1");
+        await page.pageshow(false);
+      },
+    ),
+    await servedPage(
+      "another tab switched while this one stayed open",
+      "navigate",
+      recorded.after_switch,
+      async (page) => {
+        await page.window.fetch("/api/tree?depth=1");
+      },
+    ),
+  ];
+
   // What a failed history page means for the Git panel.
   const failures = [
     { name: "a refresh moved the refs", ...recorded.history_stale, initial: false },
@@ -705,7 +887,7 @@ async function run() {
     }),
   }));
 
-  return { steps, guard, history };
+  return { steps, guard, landing, wired, history };
 }
 
 run()

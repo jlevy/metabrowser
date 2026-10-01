@@ -691,10 +691,12 @@ Skip this phase when Phase 2.4 refused below-floor Git, and record the skip.
 It covers the rows of the
 [alpha manual matrix](project/specs/active/plan-2026-09-22-v012-alpha-testing.md) that a
 `file://` pin can run without GitHub: M03 (links, reload, and history within one
-revision), M05 (reopen with the origin gone), and M06 (hostile content with a populated
-cache), plus refresh and pin switching (5.6), and the part of M04 one server can show:
-switching branches within one repository.
-Stop every server you start with Ctrl-C.
+revision, and in 5.11 a changed file at either side of a diff), M05 (reopen with the
+origin gone), and M06 (hostile content with a populated cache), plus refresh and pin
+switching (5.6), and the part of M04 one server can show: switching branches within one
+repository.
+Section 5.11 also covers M08b on the stand-in pull request of 5.7. Stop every
+server you start with Ctrl-C.
 
 ### 5.1 Start the server
 
@@ -1164,6 +1166,101 @@ the selector opens, and no request leaves `127.0.0.1`.
 **Fail:** the list is empty after a fetch that brought refs; the served ref is not
 marked; a switch keeps an address the new revision lacks, or drops one it has; the page
 changes before a ref is chosen; a request fetches from the origin.
+
+### 5.11 View file from a diff (M03b and M08b; no network)
+
+Build the mirror of `tests/diff_view_file_fixture.py`, whose commit IDs are the same on
+every machine, and serve it:
+
+```shell
+QA_VF="$(mktemp -d "${TMPDIR:-/tmp}/mb-qa-viewfile.XXXXXX")"
+PYTHONPATH="$PWD" uv --config-file uv.toml run --frozen python -m tests.diff_view_file_fixture "${QA_VF}"
+uv --config-file uv.toml run --frozen metab "file://${QA_VF}/origin.git" --no-open --port 8476
+```
+
+`trunk` is `first` (`a5232ab93056`) then `second` (`6ac4c8b5eb94`), which the server
+pins. Open `http://127.0.0.1:8476/view/`, select the **Git** tab, and click `second`.
+
+1. The diff shows seven files, and each file bar ends with the sides the change has:
+   `README.md` and `latin1-�.txt` (a name that is not UTF-8) have **View at parent** and
+   **View file**; `added.txt` has only **View file**; `gone.txt` has only **View at
+   parent**; and `src/old_name.py → src/new_name.py` has both.
+   `link`, a symbolic link, and `vendor/lib`, a submodule, have neither: only a regular
+   file’s side opens. Hovering **View file** says
+   `Open README.md at 6ac4c8b5eb94, the commit this page shows`; hovering **View at
+   parent** says `Switch to a5232ab93056 and open README.md`.
+
+2. Click **View file** on `README.md`. The address becomes `/view/g1-UkVBRE1FLm1k`, the
+   document reads `First line, changed.`, and the file header starts with the full
+   commit `6ac4c8b5…`. Back returns to the commit’s diff, and Forward to the file.
+   Open the same **View file** in a new tab (Cmd-click or Ctrl-click, or copy the link’s
+   address into one): the same file at the same commit.
+
+3. Click **View at parent** on `src/old_name.py → src/new_name.py`. The page reloads at
+   `/view/g1-c3Jj/g1-b2xkX25hbWUucHk`, the navigation heading and the button under it
+   read `a5232ab93056`, the file is `src/old_name.py`, and the tree lists `gone.txt` and
+   no `added.txt`.
+
+4. Back. The commit’s diff opens again, now on the parent’s page, after one reload the
+   page does itself: the heading reads `a5232ab93056`, the tree lists the parent’s
+   files, and nothing says `Could not load files`. Every **View at parent** is the link
+   and every **View file** the switch, whose tooltip says
+   `Switch to 6ac4c8b5eb94 and open …`. Click **View file** on `latin1-�.txt`: the page
+   reloads on `6ac4c8b5eb94`, the file reads `a Latin-1 name, edited`, and the button
+   under the heading reads `Branch: trunk` again, not `Commit: …`.
+
+5. Click `first` in the **Git** tab instead: a commit with no parent has only **View
+   file** on each bar. Open `changes.patch` from the **Files** tab: a patch file’s bars
+   have no View file control, because its two sides are not commits.
+
+6. Back with nothing switched keeps the page.
+   Open the commit’s diff again, scroll it, click **View file** on `README.md`, and go
+   Back: the diff is where it was scrolled to, at once, and the network panel shows one
+   `/api/source/status` request and no request for the page.
+   From a second terminal, confirm the page is left to the browser’s cache:
+
+   ```shell
+   curl -s -D - -o /dev/null http://127.0.0.1:8476/view/ | grep -ci cache-control
+   ```
+
+   **Pass:** `0`. `explorations/history-landing/README.md` has the script that measures
+   both landings in Chrome.
+
+Then the pull request.
+Serve the stand-in of 5.7 (`--serve 7 8475`) and open
+`http://127.0.0.1:8475/pull/7/files`.
+
+7. `docs/new.md`, which the pull request adds, has only **View file**. `src/app.txt` has
+   **View at base**, whose tooltip names `f92fd713acd5`, the merge base rather than the
+   base branch’s tip, and **View file**, a link.
+8. Click **View file** on `src/app.txt`: the file opens from the served head and reads
+   `one` and `two`. Back returns to Files changed.
+9. Click **View at base** on `src/app.txt`: the page reloads on `f92fd713acd5` and the
+   file reads `one` only.
+   Back returns to Files changed on the base’s page: the status line says
+   `This page's code is f92fd713acd5, not the pull request's head 85fcb2fa9e77` with
+   **Switch to the head**, **View at base** is now the link, and **View file** the
+   switch. Click **View file** on `src/app.txt`: the file opens from the head, and the
+   button under the heading reads `Pull request: #7` again.
+
+**Pass:** every step as described; a switch sends one `POST /api/source/pin` naming the
+commit and the file’s `/view/` address, and nothing else changes the pin; no console
+errors; no request leaves `127.0.0.1`.
+
+**Fail:** a bar offers a side the change does not have, or the new path at the old side;
+a link opens the file at another commit than its tooltip names; **View file** folds the
+file instead of opening it; Back after a switch shows `Could not load files` or a page
+naming the commit served before the switch, or reloads more than once; Back with nothing
+switched loads the page again or loses its scroll position; the way back to a branch’s
+tip or a pull request’s head leaves the selector on `Commit: …`; a control on a symbolic
+link, a submodule, a patch file, or in a served folder.
+
+A folder served from an ordinary Git checkout shows the same diffs with no View file
+control: it has no file at a commit to open, only the working tree’s.
+
+With the network, repeat steps 7 to 9 on the real pull request of 5.7, or on
+`cli/cli#14128`, whose `internal/config/stub.go → internal/config/test.go` opens the old
+path at the base and the new one at the head.
 
 ## Phase 6: HTML Trust on the Integration Tip
 

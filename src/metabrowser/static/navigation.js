@@ -463,6 +463,39 @@
     return token.startsWith("g1-") && token.length > 3;
   }
 
+  /**
+   * The GitPath wire of a slash-separated path on a pinned revision, as `/view/`
+   * addresses it: `g1-` and the unpadded base64url of each segment's bytes. A string is
+   * its UTF-8 bytes; a name that is not UTF-8 is given as its bytes, since its display
+   * spelling holds replacement characters. Null for a path with no segment or an empty
+   * one, which no tree entry has.
+   *
+   * @param {string | Uint8Array} path
+   * @returns {string | null}
+   */
+  function gitPathWire(path) {
+    const bytes = typeof path === "string" ? new TextEncoder().encode(path) : path;
+    const tokens = [];
+    let start = 0;
+    for (let index = 0; index <= bytes.length; index += 1) {
+      if (index < bytes.length && bytes[index] !== 0x2f) {
+        continue;
+      }
+      if (index === start) {
+        return null;
+      }
+      let binary = "";
+      for (let at = start; at < index; at += 1) {
+        binary += String.fromCharCode(bytes[at]);
+      }
+      tokens.push(
+        `g1-${btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "")}`,
+      );
+      start = index + 1;
+    }
+    return tokens.join("/");
+  }
+
   /** Canonical unpadded base64url atom to replacement-safe UTF-8, or null.
    * @param {string} atom
    */
@@ -1333,6 +1366,7 @@
     createPreviewPaneLifecycle,
     createPullPageHost,
     displayPath,
+    gitPathWire,
     href,
     navigation,
     normalizeTarget,

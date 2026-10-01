@@ -80,6 +80,7 @@ from metabrowser.source_routes import PIN_HEADER
 from tests.git_pin_harness import git_env
 from tests.github_pull_fixture import (
     CANONICAL,
+    DEFAULT_BRANCH,
     FETCHED_AT,
     HOSTILE_COMMENT,
     READER,
@@ -1187,6 +1188,47 @@ def test_a_served_pull_request_pins_its_head_and_refreshes_beside_the_mirror(
             served.fetched_at = "2020-01-01T00:00:00Z"
             served._last_attempt = None  # pyright: ignore[reportPrivateUsage]
             assert client.get("/api/source/status").json()["stale"] is True
+    finally:
+        serve_mirror(None)
+        reset_source_session()
+        git_repo.clear_repo_cache()
+
+
+def test_a_switch_by_commit_id_back_to_the_head_keeps_the_pull_requests_ref(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """View file on Files changed switches by commit ID: to the merge base and back.
+
+    Back on the head, the server serves ``refs/pull/7/head`` again, so the selector
+    names the pull request rather than a bare commit, also after a branch was served
+    in between.
+    """
+
+    monkeypatch.setattr("metabrowser.cli.git_pin_cli.stop_on_interrupt", lambda: None)
+    monkeypatch.setattr(pulls, "utc_now", lambda: datetime.now(UTC).replace(microsecond=0))
+    head = stand.origin["fork_head"]
+    try:
+        result = _serve(f"{CANONICAL}/pull/7")
+        assert result.exit_code == 0, result.output
+        with TestClient(app) as client:
+            assert _settle(client)["ref"] == "refs/pull/7/head"
+            base = client.get("/api/plugin/github/pull").json()["record"]["comparison"]["base"]
+
+            def pin(body: dict[str, str]) -> dict[str, Any]:
+                answer = client.post("/api/source/pin", json=body, headers=_JSON)
+                assert answer.status_code == 200, answer.text
+                return answer.json()["status"]
+
+            at_base = pin({"oid": base})
+            assert (at_base["pin"], at_base["ref"], at_base["pull_request"]) == (base, None, 7)
+            at_head = pin({"oid": head})
+            assert (at_head["pin"], at_head["ref"]) == (head, "refs/pull/7/head")
+            # A branch served in between is the ref last served; the head is still the
+            # pull request's.
+            assert pin({"ref": DEFAULT_BRANCH})["ref"] == f"refs/remotes/origin/{DEFAULT_BRANCH}"
+            assert pin({"oid": base})["ref"] is None
+            again = pin({"oid": head})
+            assert (again["pin"], again["ref"]) == (head, "refs/pull/7/head")
     finally:
         serve_mirror(None)
         reset_source_session()

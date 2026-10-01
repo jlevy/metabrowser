@@ -34,6 +34,14 @@ require("node:vm").runInNewContext(fs.readFileSync(inertPath, "utf8"), inertCont
   filename: inertPath,
 });
 const inertHtml = inertContext.window.MetabrowserInertHtml;
+// The route codec, whose wire encoder the page uses for a review comment's file.
+const routeContext = { atob, btoa, TextDecoder, TextEncoder, Uint8Array };
+routeContext.window = routeContext;
+const routePath = path.join(repoRoot, "src/metabrowser/static/navigation.js");
+require("node:vm").runInNewContext(fs.readFileSync(routePath, "utf8"), routeContext, {
+  filename: routePath,
+});
+globalThis.window = { MetabrowserNavigationRoute: routeContext.MetabrowserNavigationRoute };
 
 function assert(condition, message) {
   if (!condition) {

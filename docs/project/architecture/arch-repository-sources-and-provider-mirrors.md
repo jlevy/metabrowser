@@ -26,8 +26,8 @@ replaces the planned parts of this document wherever they disagree.
 It retired blobless clones and convergence, private subject refs, revision leases,
 maintenance locks, fetch jobs, and credential leases; this document no longer describes
 them.
-Provider binding and local object-availability records exist today as hosted-review
-models; see [Hosted Review Model and Provider Boundary](arch-hosted-review-model.md).
+Provider binding and local object-availability records are not built; their retired
+design is in [Hosted Review Model and Provider Boundary](arch-hosted-review-model.md).
 Per-seam state is in [Implementation Seams](#implementation-seams).
 
 Metabrowser must be able to show the same hosted repository through several independent
@@ -225,6 +225,38 @@ visible half-entry, and the next acquisition of the same source reuses it.
 Nothing deletes a published store automatically.
 Attaching a user-owned checkout to a store, and merging stores by provider identity, are
 deferred by the thin-mirror plan.
+
+### Cache record contracts
+
+The records Metabrowser writes into the application home are enforced SoftSchema
+contracts. `cache/contracts.py` binds each contract ID to one Pydantic model in
+`cache/records.py` and one compiled Draft 2020-12 schema packaged under
+`data/cache-format/`, and `plugin_loader/artifact_contracts.py` checks each declaration
+and validates every record on read and on write.
+The registry is internal: nothing outside this package declares a contract, and there is
+no entry-point group or public type for one.
+A cache file names its contract, envelope, and status but never a schema path: the
+caller chooses the contract from the file’s place in the layout, so cached data cannot
+select the schema that validates it.
+`config.yml` is user-owned and validated permissively, so it is not in this table;
+`check_packaged_schemas` compiles it with the others.
+
+The table registers the installed contracts.
+`devtools/check_artifact_contracts.py` compares it with the cache’s declarations and
+runs each contract’s schema, semantic validator, positive and negative conformance
+corpus, and deterministic round trip.
+The distribution check runs the same inventory against isolated wheel and source
+distribution installs, so a declaration or evidence file that exists only in the source
+tree cannot pass.
+
+| Contract ID | Artifact profile | Envelope | Producers | Consumers | Corpus |
+| --- | --- | --- | --- | --- | --- |
+| `com.github.jlevy.metabrowser.cache:CacheLayout/v1` | `pure-yaml` | `layout` | `repository-cache` | `repository-cache` | `cache-records-conformance[layout]` |
+| `com.github.jlevy.metabrowser.cache:RepositorySource/v1` | `pure-yaml` | `source` | `repository-cache` | `repository-cache` | `cache-records-conformance[source,scp_source]` |
+| `com.github.jlevy.metabrowser.cache:RepositorySourceState/v1` | `pure-yaml` | `state` | `repository-cache` | `repository-cache` | `cache-records-conformance[source_state]` |
+| `com.github.jlevy.metabrowser.cache:RepositoryStore/v1` | `pure-yaml` | `store` | `repository-cache` | `repository-cache` | `cache-records-conformance[store]` |
+| `com.github.jlevy.metabrowser.cache:RepositoryStoreAlias/v1` | `pure-yaml` | `alias` | `repository-cache` | `repository-cache` | `cache-records-conformance[store_alias]` |
+| `com.github.jlevy.metabrowser.cache:RepositoryStoreState/v1` | `pure-yaml` | `state` | `repository-cache` | `repository-cache` | `cache-records-conformance[store_state,empty_store_state]` |
 
 ### Read path and performance
 
@@ -534,10 +566,9 @@ state. It never combines metadata for one object with content from another.
 The fixed lock order is:
 
 1. application-home lock for layout migration and global enumeration;
-2. source-alias lock for alias creation;
+2. source-alias lock for alias creation; and
 3. one or more repository-store locks in ascending `RepositoryStoreId` order for store
-   directory publication and store records; and
-4. provider-resource lock, whose use belongs to the provider plan.
+   directory publication and store records.
 
 Network work and long-running Git processes hold none of these locks, and a local
 checkout is never a lock target.
@@ -600,7 +631,7 @@ in [Views, Models, and Routes](arch-views-models-routes.md).
 | Revision tree | `git/tree_source.py`: `GitPath`, `GitTreeSource`, `GitRevisionSubject`, `list_tree`, `read_blob`; shared per-store `cat-file --batch-command --buffer` pool (`MAX_BATCH_READERS_PER_STORE`); `git/content_routes.py`: file, raw, tree, catalog, `split_git_container_wire`, and extension plugin kinds | Enumerate NUL-framed byte-safe full-OID trees and read size-gated blobs from a `RepositoryStoreTarget` with no materialization. `GitPath` wires are the identity on every route that accepts one, and blob kinds come from extension, basename, sniffed adapter, and bounded JSON/YAML/frontmatter mappings. The per-route projections are in [Git and Comparison Sources](arch-git-and-comparison-sources.md) |
 | Repository store | `cache/repository_store.py`: `open_revision`; `cache/records.py`: source aliases and store state; `cache/acquire.py`: `acquire_source`; `cache/reclaim.py`: staging sweep | `open_revision` checks that a commit is in the published store and returns its `GitRevisionSubject`, writing nothing and holding no lock. Acquisition fetches every object of a `file://` or `https://` source and publishes the store and its alias under the alias and store locks. Nothing deletes a published store |
 | Serving a pin | `source.py`: `serve_subject_opener`, `lifespan_subject`, `attach_owned_subject`, `close_owned_subject`; `server.py`: `_lifespan`, `_pin_label_html`; `cli/git_pin_cli.py`: `run_serve_pin`; `source_routes.py`: `source_status` | Serve mode acquires, resolves what the URL selects, proves that pin opens, and hands the server an opener, because a pin’s batch readers belong to the event loop that started them. The application lifespan opens the pin in the serving loop before the inventory reads the subject, attaches it, and closes whichever pin is served at shutdown; each start opens a fresh pin. `/api/source/status` and the navigation heading report the pin and the ref it was resolved from, and a pull-request URL’s number. On a served pin the cache routes and the `/raw/<path>` form answer `unsupported_for_subject`, and the untrusted profile is forced |
-| Refresh and pin switching | `cache/origin.py`: `ls_remote_head_args`, `mirror_fetch_args`, `mirror_prune_args`, `classify_remote_failure`; `cache/update.py`: `update_store`, `remove_interrupted_fetch_leftovers`; `cache/locks.py`: `store_fetch_lock`; `cache/resolve.py`: `resolve_pin`, `resolve_selection`, `ref_tip`, `list_mirror_refs`; `cache/served_mirror.py`: `StoreMirror`; `mirror_refresh.py`: `RefreshCoordinator`, `MirrorSession`, `serve_mirror`, `lifespan_refresh`; `source.py`: `replace_owned_subject`; `source_routes.py`: `api_source_refresh`, `api_source_pin`, `api_source_refs`, `view_on_pin`, `SourcePinGuard`; `static/source-freshness.js`, `static/source-pin-guard.js`, `static/source-ref-selector.js` | One fetch per refresh under the store’s fetch side lock, from the source’s URL, with typed outcomes, which the Git processes inherit so it stays held while any of them runs. The coordinator keeps background jobs on the application state keyed by store key, joins concurrent requests, runs at most two at once, and cancels them at shutdown; a Ctrl-C kills their process groups before it exits. Status freshness is answered from memory. One resolver serves URL opening and the pin route: exact ref names from one `for-each-ref` (branch, then tag, then commit ID). The ref selector lists the mirror’s branches or tags from one more `for-each-ref`, filtered and bounded in the route, and a switch that names the page’s `/view/` address answers where that page goes on the new pin. A pin replaces the served subject under a new generation, attaching the new subject before closing the old, so no request meets a moment with nothing served. In a server, a selection the mirror lacks starts one background fetch and answers `selection_pending`, then the switch or not found; a URL selection the mirror lacked at startup is served when that fetch brings it, under a new generation like any switch. The lifespan’s opener is left alone, so a restart serves the pin the banner announced. Serve mode refreshes a stale mirror once at startup and follows a refresh another process is running until it ends; one-shot modes never fetch unless asked. Any failure of the atomic fetch is followed by a prune of stale refs on their own and one more try, which clears a ref clash (`side` becoming `side/x`, a case-only rename) however Git words it; a clash that remains on a case-insensitive store, or a fetch that folded one ref into its case twin, puts every ref back and is `ref_case_collision`. A page on a pin names the commit it shows on its `fetch` data requests (`static/source-pin-guard.js`), and `SourcePinGuard` refuses another commit with `pin_changed`; the commit rather than the session generation is the token because a generation restarts at 1 in every server process |
+| Refresh and pin switching | `cache/origin.py`: `ls_remote_head_args`, `mirror_fetch_args`, `mirror_prune_args`, `classify_remote_failure`; `cache/update.py`: `update_store`, `remove_interrupted_fetch_leftovers`; `cache/locks.py`: `store_fetch_lock`; `cache/resolve.py`: `resolve_pin`, `resolve_selection`, `ref_tip`, `list_mirror_refs`; `cache/served_mirror.py`: `StoreMirror`; `mirror_refresh.py`: `RefreshCoordinator`, `MirrorSession`, `serve_mirror`, `lifespan_refresh`; `source.py`: `replace_owned_subject`; `source_routes.py`: `api_source_refresh`, `api_source_pin`, `api_source_refs`, `view_on_pin`, `SourcePinGuard`; `static/source-freshness.js`, `static/source-pin-guard.js`, `static/source-ref-selector.js` | One fetch per refresh under the store’s fetch side lock, from the source’s URL, with typed outcomes, which the Git processes inherit so it stays held while any of them runs. The coordinator keeps background jobs on the application state keyed by store key, joins concurrent requests, runs at most two at once, and cancels them at shutdown; a Ctrl-C kills their process groups before it exits. Status freshness is answered from memory. One resolver serves URL opening and the pin route: exact ref names from one `for-each-ref` (branch, then tag, then commit ID). The ref selector lists the mirror’s branches or tags from one more `for-each-ref`, filtered and bounded in the route, and a switch that names the page’s `/view/` address answers where that page goes on the new pin. A pin replaces the served subject under a new generation, attaching the new subject before closing the old, so no request meets a moment with nothing served. In a server, a selection the mirror lacks starts one background fetch and answers `selection_pending`, then the switch or not found; a URL selection the mirror lacked at startup is served when that fetch brings it, under a new generation like any switch. The lifespan’s opener is left alone, so a restart serves the pin the banner announced. Serve mode refreshes a stale mirror once at startup and follows a refresh another process is running until it ends; one-shot modes never fetch unless asked. Any failure of the atomic fetch is followed by a prune of stale refs on their own and one more try, which clears a ref clash (`side` becoming `side/x`, a case-only rename) however Git words it; a clash that remains on a case-insensitive store, or a fetch that folded one ref into its case twin, puts every ref back and is `ref_case_collision`. A page on a pin names the commit it shows on its `fetch` data requests (`static/source-pin-guard.js`), and `SourcePinGuard` refuses another commit with `pin_changed`; the commit rather than the session generation is the token because a generation restarts at 1 in every server process. Back and forward bring such a page back from the browser’s caches without asking, so on a history landing the same script asks the status route once and reloads the page, at most once, when another commit is served; the page stays cacheable, so a landing with nothing switched keeps the back/forward cache and its scroll position. A commit pinned by ID is served under the ref last served, or the served pull request’s head ref, when it is that ref’s tip, so a switch away and back by ID stays on the ref |
 | Remote discovery | `repository_context.py`: `discover_repository_context` | Read a checkout’s `origin` remote and `HEAD` without running Git, so a provider candidate can be recognized before any network work |
 | Providers and GitHub URLs | `cache/providers.py`: `RepositoryProvider`, `url_reducers`, `provider_git_config`, `check_first_clone`, `repository_context_for`, `open_pull_request`; `builtin_plugins/github/`: `GithubUrlReducer`, `GithubProvider`, `run_gh`; `cache/urls.py`: `RepositorySelection`, `ReducerRejection` | Core names no provider. The GitHub reducer turns web, raw, and SSH URLs into the canonical source plus a selection, or a typed refusal; the provider supplies the `gh` credential helper, the first-clone size check, a mirror’s `repository_context`, and the head a pull-request URL pins |
 | Pull-request records | `builtin_plugins/github/gh.py`: `gh_api`, `gh_account`; `builtin_plugins/github/pulls.py`: `refresh_pull_request`, `open_pull_request`; `builtin_plugins/github/pull_record.py`: `PullRecord`, `read_pull_record`, `write_pull_record`; `builtin_plugins/github/sidekick.py`: `pull_handler`, `pull_refresh_handler`; `builtin_plugins/github/pull_route.py`: `served_pull_envelope`; `builtin_plugins/github/served_pull.py`: `ServedPull`; `mirror_refresh.py`: `CompanionRefresh`; `cache/pull_refs.py`: `fetch_pull_head`, `comparison_endpoints` | Read a pull request with bounded, conditional `gh api` pages, fetch `refs/pull/<n>/head` under the store’s fetch side lock, compute the merge-base endpoints, and keep one record per pull request; serve it from the cache alone, and refresh it in the refresh coordinator beside the mirror. See [Pull-request records](#pull-request-records) |
@@ -616,8 +647,8 @@ lacks.
 | Area | Planned boundary | Responsibility |
 | --- | --- | --- |
 | Pull-request page | The GitHub plugin | The page that renders a pull request’s record and Files changed belongs to the next step of the [thin-mirror plan](../specs/active/plan-2026-09-23-v012-thin-mirror.md) |
-| Source attachments | A neutral provider-resources module for source binding and local-availability records | Map local and managed sources to stable provider repository identity without storing local paths or requiring a cache entry. `ProviderBinding`, `LocalGitObjectAvailability`, `AuthorizationContextRef`, and `authorization_context_key` live today in `builtin_plugins/hosted_review/models.py` and move under `mb-s0gv` |
-| Provider mirror | `provider_resources/store.py`: `stage_snapshot`, `publish_manifest`, `read_current`, `read_last_complete`, `lease_snapshot`, `reclaim_snapshots` | Publish one repository-scoped, auth-scoped mirror reused by every attachment. The package holds only `profiles.py` today |
+| Source attachments | A neutral provider-resources module for source binding and local-availability records | Map local and managed sources to stable provider repository identity without storing local paths or requiring a cache entry. `ProviderBinding`, `LocalGitObjectAvailability`, `AuthorizationContextRef`, and `authorization_context_key` are specified in [Hosted Review Model and Provider Boundary](arch-hosted-review-model.md) |
+| Provider mirror | `provider_resources/store.py`: `stage_snapshot`, `publish_manifest`, `read_current`, `read_last_complete`, `lease_snapshot`, `reclaim_snapshots` | Publish one repository-scoped, auth-scoped mirror reused by every attachment |
 | Provider ports | `plugin_api.py`: opaque `GitFetchCredentialLease`, `provider_fetch_authorization_context`, `RepositoryContentPort.open_subject`, `RepositoryObjectJobPort.request_selected_refs`, `ProviderResourceStorePort.stage`, `publish`, `read`, `lease` | Inject narrow cancellable capabilities with typed unavailable, authorization, stale-generation, and publication failures; selected-ref requests carry a non-secret context plus an unforgeable registry handle, never tokens, unrestricted sources, core stores, or paths |
 
 These names are the implementation plan, not registered surfaces.

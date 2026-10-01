@@ -143,6 +143,7 @@ def build_home(directory: Path, origin: Path) -> None:
 
 def write_bodies(directory: Path, origin: Path) -> None:
     first = _rev(origin, "refs/heads/topic~1")
+    second = _rev(origin, "refs/heads/topic")
     bodies = {
         "refresh.json": {},
         # What a page posts for a commit the mirror lacks, and a body the route refuses.
@@ -151,6 +152,8 @@ def write_bodies(directory: Path, origin: Path) -> None:
         "pin-feature.json": {"ref": "feature"},
         "pin-tag.json": {"ref": "v1"},
         "pin-oid.json": {"oid": first[:9]},
+        # The commit the served branch names now, by its ID.
+        "pin-tip-oid.json": {"oid": second},
         "pin-same.json": {"ref": "topic"},
         "pin-missing.json": {"ref": "gone"},
         "pin-syntax.json": {"ref": ":/first"},

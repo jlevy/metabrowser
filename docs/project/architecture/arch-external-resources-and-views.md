@@ -1,12 +1,22 @@
 # External Resources, Artifact Contracts, and Views
 
-**Status:** Accepted design; the provider-neutral model contracts, installed contract
-and resource-profile registries, and generic format inventory gate are implemented
-through Phase 0C.2. Provider binding and storage records are implemented as
-hosted-review models and are registered in the contract inventory below, which
-`devtools/check_artifact_contracts.py` checks; no provider adapter or store writes them
-yet. The neutral `provider_resources` package that is to own them, the provider store,
-the resource-kind registry, addressing, and views remain planned and unregistered.
+**Retired (2026-09-30):** this design is not on the v0.12 path.
+[Thin Mirror for Git and GitHub Browsing](../specs/active/plan-2026-09-23-v012-thin-mirror.md)
+stores pull-request data as plain validated JSON records and adds no resource-profile,
+resource-kind, provider-store, or hosted-address layer.
+The code that implemented this design’s first phases, the Hosted Review Format, the
+resource-profile registry, browser-parser evidence, the frontmatter Markdown artifact
+profile, and the `metabrowser.capabilities.v1` entry-point group, was removed from the
+v0.12 stack and is kept, unmaintained, on the `reference/v012-hosted-review` branch,
+tagged `reference/v012-hosted-review-2026-09-30`. File and symbol names below describe
+the code as it stood before that removal, so some no longer exist.
+
+**Status:** Design only.
+The one part in use is the artifact-contract registry, now internal, which validates the
+repository cache’s own records; its installed inventory is in
+[Cache record contracts](arch-repository-sources-and-provider-mirrors.md#cache-record-contracts).
+No resource profile, resource kind, provider store, hosted address, or view from this
+document exists in this tree.
 
 Metabrowser should be able to browse a useful object from an API or external system
 without turning that provider’s response shape into a core model or building a new UI
@@ -143,12 +153,14 @@ contracts or profiles, and the capability factories never become cache data.
 
 ### Installed contract and profile inventory
 
-The tables below register the installed format surface.
-Runtime admission verifies the exact packaged schema, corpus, and browser-parser bytes
-and their declared digests; the table records stable contract semantics rather than
-filesystem paths or generated hashes.
-A browser-parser entry is installed validation evidence, not a browser plugin, static
-asset, view, kind, or runtime registration.
+The installed inventory now registers only the repository cache’s record contracts, so
+its table and its check are in
+[Cache record contracts](arch-repository-sources-and-provider-mirrors.md#cache-record-contracts).
+The Hosted Review Format contracts and the two resource profiles this section listed
+were removed with their code.
+
+In the design, a browser-parser entry is installed validation evidence, not a browser
+plugin, static asset, view, kind, or runtime registration.
 `server-only` means the declaration explicitly forbids browser consumption and parser
 evidence. Browser-consumed declarations require parser evidence; consumer ID spelling
 never selects the rule.
@@ -159,43 +171,6 @@ The VM exposes only context-native `TextEncoder`, one-shot UTF-8 `TextDecoder`,
 object or function crosses the boundary.
 Type-sensitive JSON-domain comparison accepts complete cross-realm clones without
 accepting mutation, record loss, or primitive type changes.
-
-`devtools/check_artifact_contracts.py` compares both tables with installed capability
-declarations and runs the generic schema, semantic-validator, positive/negative corpus,
-deterministic artifact-profile round-trip, browser-parser, and profile evidence gate.
-The distribution check runs the same installed inventory against isolated wheel and
-source distribution installs, so a source-tree-only declaration or evidence file cannot
-pass.
-
-| Contract ID | Artifact profile | Envelope | Producers | Consumers | Corpus | Browser parser |
-| --- | --- | --- | --- | --- | --- | --- |
-| `com.github.jlevy.metabrowser.activity:RepositoryActivity/v1` | `pure-yaml` | `repository_activity` | `hosted-review-provider` | `hosted-review-service` | `repository-activity-conformance[*]` | `hosted-review-model:parseRepositoryActivity` |
-| `com.github.jlevy.metabrowser.cache:CacheLayout/v1` | `pure-yaml` | `layout` | `repository-cache` | `repository-cache` | `cache-records-conformance[layout]` | `server-only` |
-| `com.github.jlevy.metabrowser.cache:RepositorySource/v1` | `pure-yaml` | `source` | `repository-cache` | `repository-cache` | `cache-records-conformance[source,scp_source]` | `server-only` |
-| `com.github.jlevy.metabrowser.cache:RepositorySourceState/v1` | `pure-yaml` | `state` | `repository-cache` | `repository-cache` | `cache-records-conformance[source_state]` | `server-only` |
-| `com.github.jlevy.metabrowser.cache:RepositoryStore/v1` | `pure-yaml` | `store` | `repository-cache` | `repository-cache` | `cache-records-conformance[store]` | `server-only` |
-| `com.github.jlevy.metabrowser.cache:RepositoryStoreAlias/v1` | `pure-yaml` | `alias` | `repository-cache` | `repository-cache` | `cache-records-conformance[store_alias]` | `server-only` |
-| `com.github.jlevy.metabrowser.cache:RepositoryStoreState/v1` | `pure-yaml` | `state` | `repository-cache` | `repository-cache` | `cache-records-conformance[store_state,empty_store_state]` | `server-only` |
-| `com.github.jlevy.metabrowser.review:ChangeRequest/v1` | `frontmatter-md` | `change_request` | `hosted-review-provider` | `hosted-review-service` | `change-request-conformance[*]` | `hosted-review-model:parseChangeRequest` |
-| `com.github.jlevy.metabrowser.review:ChangeRequestComment/v1` | `frontmatter-md` | `change_request_comment` | `hosted-review-provider` | `hosted-review-service` | `review-records-conformance[change_request_comment]` | `hosted-review-model:parseChangeRequestComment` |
-| `com.github.jlevy.metabrowser.review:ChangeRequestIndex/v1` | `pure-yaml` | `change_request_index` | `hosted-review-provider` | `hosted-review-service` | `change-request-index-conformance[change_request_index,empty_change_request_index]` | `hosted-review-model:parseChangeRequestIndex` |
-| `com.github.jlevy.metabrowser.review:Check/v1` | `pure-yaml` | `check` | `hosted-review-provider` | `hosted-review-service` | `review-records-conformance[check_suite,check_run]` | `hosted-review-model:parseCheck` |
-| `com.github.jlevy.metabrowser.review:CommitStatus/v1` | `pure-yaml` | `commit_status` | `hosted-review-provider` | `hosted-review-service` | `review-records-conformance[commit_status]` | `hosted-review-model:parseCommitStatus` |
-| `com.github.jlevy.metabrowser.review:Review/v1` | `frontmatter-md` | `review` | `hosted-review-provider` | `hosted-review-service` | `review-records-conformance[review]` | `hosted-review-model:parseReview` |
-| `com.github.jlevy.metabrowser.review:ReviewComment/v1` | `frontmatter-md` | `review_comment` | `hosted-review-provider` | `hosted-review-service` | `review-records-conformance[review_comment,review_comment_reply]` | `hosted-review-model:parseReviewComment` |
-| `com.github.jlevy.metabrowser.review:ReviewThread/v1` | `pure-yaml` | `review_thread` | `hosted-review-provider` | `hosted-review-service` | `review-records-conformance[review_thread,review_thread_empty]` | `hosted-review-model:parseReviewThread` |
-| `com.github.jlevy.metabrowser.provider:HostedRepository/v1` | `pure-yaml` | `hosted_repository` | `provider-adapter` | `hosted-review-service,provider-resource-store` | `hosted-repository-conformance[hosted_repository]` | `hosted-review-model:parseHostedRepository` |
-| `com.github.jlevy.metabrowser.provider:ProviderBinding/v1` | `pure-yaml` | `provider_binding` | `provider-adapter` | `provider-resource-store` | `hosted-repository-conformance[provider_binding]` | `server-only` |
-| `com.github.jlevy.metabrowser.provider:ProviderSyncManifest/v1` | `pure-yaml` | `provider_sync_manifest` | `provider-adapter` | `provider-resource-store` | `provider-storage-conformance[provider_sync_manifest]` | `server-only` |
-| `com.github.jlevy.metabrowser.provider:ProviderViewPointer/v1` | `pure-yaml` | `provider_view_pointer` | `provider-adapter` | `provider-resource-store` | `provider-storage-conformance[provider_view_pointer]` | `server-only` |
-| `com.github.jlevy.metabrowser.provider:ResourceSet/v1` | `pure-yaml` | `resource_set` | `provider-adapter` | `provider-resource-store` | `provider-storage-conformance[resource_set]` | `server-only` |
-| `com.github.jlevy.metabrowser.provider:Retrieval/v1` | `pure-yaml` | `retrieval` | `provider-adapter` | `provider-resource-store` | `provider-storage-conformance[retrieval,deletion_retrieval]` | `server-only` |
-| `com.github.jlevy.metabrowser.provider:Tombstone/v1` | `pure-yaml` | `tombstone` | `provider-adapter` | `provider-resource-store` | `provider-storage-conformance[tombstone]` | `server-only` |
-
-| Profile ID | Target kind | Result contract | Collections | Pagination | Last complete |
-| --- | --- | --- | --- | --- | --- |
-| `com.github.jlevy.metabrowser.review:change-request-index/v1` | `provider_collection` | `com.github.jlevy.metabrowser.review:ChangeRequestIndex/v1` | `change_request_index=com.github.jlevy.metabrowser.review:ChangeRequestIndex/v1[1..1]` | `change_request_index=required` | `change_request_index` |
-| `com.github.jlevy.metabrowser.provider:repository-summary/v1` | `provider_object` | — | `repository=com.github.jlevy.metabrowser.provider:HostedRepository/v1[1..1]` | `repository=forbidden` | `repository` |
 
 ### Resource-kind registry
 

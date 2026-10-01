@@ -55,7 +55,9 @@ class _Mirror:
         self.busy_at = busy_at
         self.recorded_at = recorded_at
 
-    async def open_selection(self, *, ref: str | None, oid: str | None) -> GitRevisionSubject:
+    async def open_selection(
+        self, *, ref: str | None, oid: str | None, keep_refs: tuple[str, ...] = ()
+    ) -> GitRevisionSubject:
         raise AssertionError("not reached")
 
     async def refresh(self) -> RefreshResult:

@@ -46,6 +46,68 @@ function comparisonParams(key) {
   return { revision: key };
 }
 
+/**
+ * How this page opens a file at a commit, for the View file controls of a diff: its
+ * `/view/` address for the commit the page shows, and the pin route for any other. The
+ * server writes the commit a page shows into every page on a pinned revision and into
+ * no other, so a served folder, which has no file at a commit to open, gets `null` and
+ * no controls.
+ *
+ * Three things here are the shell's and the server's rather than the plugin SDK's: the
+ * page's pin (`METABROWSER_SOURCE_PIN`), the pin route, and the route codec's wire
+ * encoder (`MetabrowserNavigationRoute`). The SDK has no accessor for the first two,
+ * and the ref selector and the freshness row, which are shell code, read the global and
+ * call the route directly as well; there is no host path to share. Adding one would be
+ * a new public SDK surface, which the thin-mirror plan rules out for the alpha, and a
+ * built-in plugin ships with the shell and the server as one artifact, so these are
+ * internal contracts it may use, as the GitHub plugin posts to the pin route and the
+ * image and folder plugins use the route codec.
+ *
+ * @returns {import("./diff-view-file.js").ViewFileHost | null}
+ */
+function viewFileHost() {
+  const pin = window.METABROWSER_SOURCE_PIN?.pin;
+  if (typeof pin !== "string" || pin === "") {
+    return null;
+  }
+  return {
+    pin,
+    href(path) {
+      const wire = window.MetabrowserNavigationRoute.gitPathWire(path);
+      return wire === null ? null : mb.navigation.href({ path: wire });
+    },
+    onRestored(restored) {
+      /** @param {PageTransitionEvent} event */
+      const shown = (event) => {
+        if (event.persisted) {
+          restored();
+        }
+      };
+      window.addEventListener("pageshow", shown);
+      return () => window.removeEventListener("pageshow", shown);
+    },
+    // The ref selector's own request: a same-origin JSON POST, which content in a
+    // served page cannot make with a link, an image, or a form. The server answers any
+    // other content type with 415.
+    async switchPin(body) {
+      const response = await fetch("/api/source/pin", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        cache: "no-store",
+        body: JSON.stringify(body),
+      });
+      let decoded = null;
+      try {
+        decoded = await response.json();
+      } catch {
+        decoded = null;
+      }
+      return { status: response.status, body: decoded };
+    },
+    navigate: (href) => window.location.assign(href),
+  };
+}
+
 /** @param {HTMLElement} container @param {string} message */
 function renderFailure(container, message) {
   const notice = document.createElement("div");
@@ -111,6 +173,9 @@ mb.registerView("diff", "diff", {
     // A commit comparison already carries these totals beside its revision,
     // author, and age. Direct diff documents and two-endpoint comparisons own
     // their aggregate summary.
-    return mountDiffView(container, result.document, mb, { showSummary: !ctx.revision });
+    return mountDiffView(container, result.document, mb, {
+      showSummary: !ctx.revision,
+      viewFile: viewFileHost(),
+    });
   },
 });

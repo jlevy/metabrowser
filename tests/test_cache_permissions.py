@@ -1,6 +1,6 @@
 """Owner-only storage for the application home.
 
-Repository and provider cache content may be private, so every directory Metabrowser
+Repository cache content may be private, so every directory Metabrowser
 creates under the application home is ``0700`` and every file ``0600`` whatever the
 process umask, and a home that another principal could read, redirect, or replace is
 refused rather than written through. These tests build every case in a temporary
@@ -1005,10 +1005,10 @@ def test_refusals_name_a_remedy_but_never_the_path(
     assert errors[0].path == source
 
 
-def test_provider_storage_beside_a_user_checkout_leaves_the_checkout_unchanged(
+def test_cache_storage_beside_a_user_checkout_leaves_the_checkout_unchanged(
     tmp_path: Path,
 ) -> None:
-    """Attaching a checkout writes only below the home, never into or around the checkout."""
+    """Writing the cache touches only the home, never a checkout beside it."""
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -1021,9 +1021,9 @@ def test_provider_storage_beside_a_user_checkout_leaves_the_checkout_unchanged(
     before = {path: os.lstat(path) for path in (workspace, checkout, checkout / "README.md")}
     home = workspace / "home"
 
-    ensure_private_directory(home, "cache/provider-repositories/github/instance/repository")
-    ensure_private_directory(home, "cache/provider-bindings")
-    _write_file(home, "cache/provider-bindings/source-key.yml", b"binding\n")
+    ensure_private_directory(home, "cache/repository-stores/store-key/repository.git")
+    ensure_private_directory(home, "cache/sources/source-slug")
+    _write_file(home, "cache/sources/source-slug/source.yml", b"source\n")
     with pytest.raises(ValueError):
         ensure_private_directory(home, "../project")
 

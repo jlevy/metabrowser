@@ -757,7 +757,7 @@ def test_open_cache_resolves_metabrowser_home_when_no_home_is_given(
 @pytest.mark.parametrize("prepare", [open_cache, migrate_layout])
 @pytest.mark.parametrize(
     "directory",
-    ["sources", "repository-stores", "provider-bindings", "provider-repositories"],
+    ["sources", "repository-stores"],
 )
 def test_unrecognized_durable_cache_is_refused_without_any_mutation(
     tmp_path: Path, prepare: Callable[..., object], directory: str

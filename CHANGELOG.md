@@ -4,41 +4,6 @@ All notable changes to Metabrowser are documented here.
 
 ## 0.12.0 (unreleased)
 
-Plugin contracts:
-
-- Installed Python distributions can register versioned artifact contracts and resource
-  publication profiles through the new `metabrowser.capabilities.v1` entry-point group.
-  Contract discovery is separate from browser plugin manifests and operator plugin
-  directories, so it does not create a static asset root or change the browser SDK.
-
-- Hosted Review Format installs enforced SoftSchema contracts for its provider,
-  change-request, review, check, and activity records.
-  Packaged schemas and Pydantic semantics validate artifacts presented to the installed
-  registry; artifact metadata cannot select a schema, profile, parser, renderer, or
-  Python import path.
-
-- The generic artifact-format gate now derives every contract and resource profile from
-  the installed capability registry.
-  It checks schema and semantic validation, producer/consumer ownership, packaged
-  corpora, browser-parser evidence where declared, profile closure, and the maintained
-  architecture inventory.
-  Browser consumption is explicit rather than inferred from consumer names;
-  browser-consumed contracts require an import-free parser that runs over VM-realm
-  inputs with context-native browser primitives and no Node-only globals, host-realm
-  values, or dynamic code generation; server-only contracts cannot attach browser-parser
-  evidence. Distribution verification repeats the same inventory from isolated wheel and
-  source distribution installs instead of maintaining a separate built-in schema list.
-
-- The repository cache’s `f01` records install as enforced contracts through a
-  `repository-cache` capability provider, so `metab --doctor` now reports three
-  capability providers and 22 contracts.
-  The application home and `CACHEDIR.TAG` are created by the first `file://`
-  acquisition.
-
-- A collection name declared in a resource publication profile is limited to the same
-  128 characters as the collection name in a resource-set record, so a longer
-  declaration is rejected when the profile loads rather than invalidating every record.
-
 Plugin SDK:
 
 - **Breaking:** `PLUGIN_SDK_VERSION` is now `0.7`. The shared copy and Load more
@@ -340,6 +305,15 @@ Source views:
 
 Repository cache:
 
+- `metab --doctor` also checks the packaged cache record schemas, so an installation
+  whose schemas are missing or no longer match their models is reported there instead of
+  at the first acquisition.
+  A healthy result reads as before.
+
+- The cache validates the records it writes with SoftSchema, so `softschema==0.8.1` is a
+  new runtime dependency and the minimum `frontmatter-format` rises from 0.3.0 to 0.4.0,
+  which SoftSchema requires.
+
 - New read-only routes `/api/cache/layout`, `/api/cache/sources`,
   `/api/cache/source/<slug>`, and `/api/cache/stores` report the cache’s layout and
   config formats, abandoned staging entries the next sweep removes, sources with their
@@ -359,6 +333,7 @@ Repository cache:
   `/path/to/repo` is never rewritten into one — and `ext::` remote-helper syntax is
   rejected. `metab file://… --no-serve` fetches into the cache and prints slug, store
   identity, and revision without starting a server.
+  The application home and `CACHEDIR.TAG` are created by the first acquisition.
   A Git timeout, oversized output, missing executable, or failed command during that
   acquire is reported as its own error message without a traceback or a local path.
   `metab file://… --api /api/cache/…` acquires as a side effect, then inspects cache
@@ -495,6 +470,48 @@ Repository cache:
   answers `view_href`, where that page goes on the new revision.
   The address is checked before the switch: one that is not percent-encoded ASCII is
   refused with nothing changed, and a query or fragment is dropped.
+
+- On a served mirror, each file bar of a diff offers the changed file at either side of
+  the change, as GitHub’s View file does, for a commit’s diff and for a pull request’s
+  Files changed. **View file** opens the new side; **View at parent** (a commit’s diff)
+  or **View at base** (Files changed, where the base is the merge base) opens the old
+  side. A deleted file has only its old side, an added file only its new side, and a
+  renamed file opens its old path at the old side.
+  Only a regular file’s side is offered: a submodule has no file to show, and a symbolic
+  link would open its target rather than the link text the diff shows.
+  A side at the commit the page shows is a link to the file’s `/view/` address, so a new
+  tab, a copied link, and back and forward work as for any link.
+  A side at another commit is a button that switches the served pin to that commit with
+  `POST /api/source/pin` and opens the file there; its tooltip names the commit, and a
+  switch the server does not make, such as a commit the mirror lacks, is said under the
+  file bar while the page stays as it was.
+  There is no address for a file at a commit the server does not serve, so such a side
+  has no link to copy or open in a new tab.
+  A name that is not UTF-8 is addressed by its bytes.
+  A diff in a served folder, and a patch file’s diff, have no such control: a folder has
+  no file at a commit to open, only its working tree’s.
+
+- `POST /api/source/pin` with `{"oid": …}` keeps the ref when the commit is its tip.
+  A commit pinned by ID had no ref.
+  It is now served under the ref the server last served, or the served pull request’s
+  `refs/pull/<n>/head`, when it is that ref’s tip in the mirror, so going to another
+  commit and back by ID, as View file does, ends on the branch or the pull request
+  again: the selector names it and freshness follows it.
+  A commit ID that is the tip of the ref already served answers `changed: false`. Any
+  other commit pinned by ID still has no ref.
+
+- Back and forward onto a page whose commit the server no longer serves now land on the
+  commit it does serve.
+  A browser brings a page back from its back/forward cache or its HTTP cache without
+  asking the server, so after a pin switch (the selector’s, the freshness row’s, View
+  file’s) Back showed a page naming the commit served before, with “Could not load
+  files” and every data request refused as `pin_changed` until a reload.
+  On such a landing the page now asks `/api/source/status` once and reloads itself, at
+  most once, when another commit is served.
+  A landing with nothing switched is untouched: it stays in the back/forward cache and
+  keeps its scroll position.
+  A page that stayed open while another tab switched still gets the reload offer rather
+  than a reload.
 
 - The Git panel no longer rebuilds a different history under the rows on screen when the
   refs its walk was fingerprinted by moved, as a refresh, a pin switched in another tab,

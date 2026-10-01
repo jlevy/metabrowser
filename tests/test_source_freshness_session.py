@@ -384,6 +384,15 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         serve_mirror(StoreMirror.from_published(published))
         with TestClient(server.app) as client:
             recorded["origin_not_shown"] = client.get("/api/source/status").json()
+        # A server restarted on a folder, which serves no commit at all: what a page
+        # still open on the mirror, or brought back by Back, is told.
+        folder = tmp_path / "folder"
+        folder.mkdir()
+        serve_mirror(None)
+        reset_source_session()
+        server._set_root_dir(folder)
+        with TestClient(server.app) as client:
+            recorded["folder"] = client.get("/api/source/status").json()
     finally:
         serve_mirror(None)
         reset_source_session()
@@ -439,6 +448,7 @@ def test_recording_is_what_a_served_mirror_answers(
     assert recorded["commit_stale_unfetched"]["last_outcome"]["outcome"] == "origin_unavailable"
     shown = recorded["origin_not_shown"]
     assert (shown["stale"], shown["last_outcome"]["outcome"]) == (False, "not_found_or_private")
+    assert recorded["folder"]["pin"] is None
     rendered = json.dumps(recorded, indent=2, ensure_ascii=False) + "\n"
     if os.environ.get("GOLDEN_UPDATE") == "1":
         FIXTURE.write_text(rendered, encoding="utf-8")

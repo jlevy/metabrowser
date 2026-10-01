@@ -1,12 +1,15 @@
-"""Diagnostics for browser plugins and installed artifact capabilities.
+"""Plugin modes: diagnostics for the plugin discovery layer.
 
 Three modes on the ``metab`` CLI (parsing lives in
 :mod:`metabrowser.cli.main`):
 
 * ``metab --plugins``: table of every discovered plugin.
 * ``metab --plugin NAME``: full manifest dump for one plugin.
-* ``metab --doctor``: sanity-check every plugin and installed artifact-capability
-  provider. Exit code != 0 when any declaration is broken.
+* ``metab --doctor``: sanity-check every plugin, validating the
+  manifest, confirming sidekick handlers import, and checking for
+  asset and kind-id collisions across plugins. It also checks the
+  packaged cache record contracts. Exit code != 0 when any plugin
+  or contract is broken.
 
 These modes answer the operator question 'is my plugin loaded?'
 without having to start the server. They use the same discovery
@@ -221,28 +224,45 @@ def show_plugin(name: str, plugins_dir: list[Path] | None = None, *, as_json: bo
         raise typer.Exit(code=1)
 
 
-def doctor_plugins(plugins_dir: list[Path] | None = None, *, as_json: bool = False) -> None:
-    """Validate browser plugins and installed capabilities."""
-    from metabrowser.plugin_loader.artifact_contracts import (
-        CapabilityRegistryError,
-        build_installed_registries,
-    )
-    from metabrowser.plugin_loader.capability_discovery import discover_capability_sets
+def _cache_contract_problems() -> list[str]:
+    """Return what is wrong with the cache record contracts this installation ships.
 
+    The repository cache validates every record it reads and writes against these
+    packaged schemas, so a damaged or incomplete installation fails here rather than at
+    the first acquisition. The import is local because this module loads on every
+    ``metab`` start, and the contract registry pulls in the schema libraries that
+    ``--version`` and ``import metabrowser`` are tested not to load.
+    """
+    from metabrowser.cache.contracts import cache_contract_registry, check_packaged_schemas
+
+    problems: list[str] = []
+    try:
+        cache_contract_registry()
+    except (OSError, RuntimeError, ValueError) as exc:
+        problems.append(f"cache record contracts: {exc}")
+    try:
+        drifted = check_packaged_schemas()
+    except (OSError, RuntimeError, ValueError) as exc:
+        problems.append(f"cache record schemas: {exc}")
+    else:
+        # Each entry is "<schema file>: <diff>"; the file name is what a reader can act on.
+        problems.extend(
+            f"cache record schema '{entry.partition(':')[0]}' does not match its model"
+            for entry in drifted
+        )
+    return problems
+
+
+def doctor_plugins(plugins_dir: list[Path] | None = None, *, as_json: bool = False) -> None:
+    """Validate every discovered plugin and the packaged cache record contracts.
+
+    Exit non-zero on any problem.
+    """
     extra = resolve_extra_plugin_dirs(plugins_dir)
     result = discover_plugins(extra_dirs=extra)
-    capability_discovery = discover_capability_sets()
 
     problems: list[str] = list(result.errors)
-    contract_count = 0
-    profile_count = 0
-    try:
-        installed_registries = build_installed_registries(capability_discovery)
-    except CapabilityRegistryError as exc:
-        problems.append(str(exc))
-    else:
-        contract_count = len(installed_registries.contracts)
-        profile_count = len(installed_registries.resource_profiles)
+    problems.extend(_cache_contract_problems())
 
     # Cross-plugin: check kind ids declared at priority 100+ aren't claimed by
     # multiple plugins simultaneously (built-ins at priority 0 are allowed to
@@ -299,9 +319,6 @@ def doctor_plugins(plugins_dir: list[Path] | None = None, *, as_json: bool = Fal
                 {
                     "ok": not problems,
                     "plugin_count": len(result.plugins),
-                    "capability_provider_count": len(capability_discovery.providers),
-                    "artifact_contract_count": contract_count,
-                    "resource_profile_count": profile_count,
                     "problems": problems,
                 },
                 indent=2,
@@ -317,11 +334,7 @@ def doctor_plugins(plugins_dir: list[Path] | None = None, *, as_json: bool = Fal
             typer.echo(f"  • {problem}", err=True)
         raise typer.Exit(code=1)
 
-    typer.echo(
-        f"metab --doctor: {len(result.plugins)} plugin(s), "
-        f"{len(capability_discovery.providers)} capability provider(s), "
-        f"{contract_count} contract(s), {profile_count} profile(s) OK"
-    )
+    typer.echo(f"metab --doctor: {len(result.plugins)} plugin(s) OK")
 
 
 def _plugins_with_index_check(plugins: list[LoadedPlugin]) -> list[str]:

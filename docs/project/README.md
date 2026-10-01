@@ -26,11 +26,12 @@ links to the document that covers each in depth.
   — session subjects, worktree-free Git object stores, provider mirrors, and their
   concurrency and lifetime boundaries
 - [External resources, artifact contracts, and views](architecture/arch-external-resources-and-views.md)
-  — the entity/artifact/resource vocabulary, trusted contract/profile/kind registries,
-  transparent formats, and mapping workflow for external APIs
+  — retired design: the entity/artifact/resource vocabulary, trusted
+  contract/profile/kind registries, transparent formats, and mapping workflow for
+  external APIs
 - [Hosted review model and provider boundary](architecture/arch-hosted-review-model.md)
-  — provider-neutral change requests, GitHub adapter, plugin views, activity projection,
-  and cache lifetimes
+  — retired design: provider-neutral change requests, GitHub adapter, plugin views,
+  activity projection, and cache lifetimes
 - [File Diff Format v1](architecture/file-diff-format/file-diff-format.md)
 - [Diff sources, context, and anchoring](architecture/file-diff-format/diff-sources-and-anchoring.md)
 - [File Rollup Format v0.1](architecture/file-rollup-format/file-rollup-format.md)

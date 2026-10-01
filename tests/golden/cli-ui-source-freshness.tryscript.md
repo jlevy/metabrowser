@@ -30,6 +30,18 @@ The view says the origin lacks the commit only after such a fetch ran, says the
 fetch could not run when it did not, and reads a request that fails when the commit is
 asked for again as a load failure, not as an answer about the commit.
 
+Back and forward bring a page back without asking the server for it, so it can name a
+commit the server stopped serving after a pin switch.
+On such a landing, and only then, the page asks the status route once and reloads if
+another commit is served; a data request refused meanwhile says so sooner.
+`landing` is that decision for each way a page arrives: `asked` counts status requests
+and `reloads` reloads, never more than one.
+`wired` loads the same module as the server writes it into a pin’s page and shows the
+requests that reached the server (`+pin` when one named the page’s commit), the events
+the page announced, and whether it reloaded.
+A page that stayed open while another tab switched does not reload itself: the row
+offers it.
+
 This browserless session loads the production `static/source-freshness.js`,
 `static/source-pin-guard.js`, and `static/git-history-window.js` and plays the server’s
 side from `tests/fixtures/source-freshness-responses.json`: what the in-process
@@ -737,6 +749,95 @@ $ node tests/dom/source-freshness-session.js
       "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531"
     ]
   },
+  "landing": [
+    {
+      "landing": "restored from the back/forward cache, nothing switched",
+      "asked": 1,
+      "reloads": 0
+    },
+    {
+      "landing": "restored from the back/forward cache after a switch",
+      "asked": 1,
+      "reloads": 1
+    },
+    {
+      "landing": "loaded from the HTTP cache by Back after a switch",
+      "asked": 1,
+      "reloads": 1
+    },
+    {
+      "landing": "loaded by Back, nothing switched, another tab switches later",
+      "asked": 1,
+      "reloads": 0
+    },
+    {
+      "landing": "an ordinary load whose data request is refused",
+      "asked": 0,
+      "reloads": 0
+    },
+    {
+      "landing": "a reload, which is where a landing's reload ends",
+      "asked": 0,
+      "reloads": 0
+    },
+    {
+      "landing": "restored after the server restarted on a folder",
+      "asked": 1,
+      "reloads": 1
+    },
+    {
+      "landing": "restored while the server does not answer",
+      "asked": 2,
+      "reloads": 0
+    }
+  ],
+  "wired": [
+    {
+      "page": "first load",
+      "requests": [
+        "GET /api/tree?depth=1 +pin"
+      ],
+      "events": [],
+      "reloads": 0
+    },
+    {
+      "page": "restored, nothing switched",
+      "requests": [
+        "GET /api/source/status"
+      ],
+      "events": [],
+      "reloads": 0
+    },
+    {
+      "page": "restored after a switch",
+      "requests": [
+        "GET /api/source/status"
+      ],
+      "events": [],
+      "reloads": 1
+    },
+    {
+      "page": "loaded from the HTTP cache by Back after a switch",
+      "requests": [
+        "GET /api/source/status",
+        "GET /api/tree?depth=1 +pin"
+      ],
+      "events": [
+        "metabrowser:pin-changed 66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531"
+      ],
+      "reloads": 1
+    },
+    {
+      "page": "another tab switched while this one stayed open",
+      "requests": [
+        "GET /api/tree?depth=1 +pin"
+      ],
+      "events": [
+        "metabrowser:pin-changed 66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531"
+      ],
+      "reloads": 0
+    }
+  ],
   "history": [
     {
       "failure": "a refresh moved the refs",

@@ -90,9 +90,9 @@ Changing any of these versions requires a new review against the checks above.
 ### SoftSchema Review (September 15, 2026)
 
 `softschema==0.8.1` provides the installed contract registry, deterministic JSON Schema
-compilation, and structural plus Pydantic semantic validation used at provider-artifact
-boundaries. It is reviewed against 0.8.0. The Python change makes cross-field Pydantic
-errors JSON-serializable; its runtime dependencies are otherwise unchanged.
+compilation, and structural plus Pydantic semantic validation used for the repository
+cache’s records. It is reviewed against 0.8.0. The Python change makes cross-field
+Pydantic errors JSON-serializable; its runtime dependencies are otherwise unchanged.
 The locked wheel SHA-256 is
 `7a68e52483c7a8ab63e541bb3d0329dd728096a2c256ef501e9658175540d6ad`; the source archive
 SHA-256 is `e368eed680bf970b22790f4d90770dbdee290bedd6c0975ac51a6f1461b394e7`.
@@ -104,8 +104,11 @@ Its locked wheel SHA-256 is
 `71d6b416c6b05242d934b6228d2386311f2f9216d4d1d47549e6cadf7963fe76`; the source archive
 SHA-256 is `dd7bc579b50e12a236c03427826a9af14fd2029e20dcae927e68f7440538e75a`. The lock
 update must add SoftSchema, upgrade Frontmatter Format, and change nothing else.
-The full verification gate reruns the hosted-review codecs, schema compilation checks,
+The full verification gate reran the hosted-review codecs, schema compilation checks,
 installed-wheel smoke tests, and dependency audits.
+The hosted-review codecs were later removed from the v0.12 stack; SoftSchema now
+validates the repository cache’s record contracts, and the same gate reruns their schema
+compilation checks and installed-wheel smoke tests.
 
 ## Admitted Git in CI
 
