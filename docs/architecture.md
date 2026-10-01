@@ -336,8 +336,6 @@ which space it belongs to:
 | `/pull/<n>`, `/pull/<n>/files` | The served pull request’s page: its conversation, or its Files changed | A pull-request number, then an optional tab |
 | `/compare/<base>..<head>` | An explicit comparison (`...` for merge-base) | Two revisions |
 | `/compare/<spec>/<inner>` | One file’s diff inside that comparison | A comparison spec, then a path within it |
-| `/hosted/<provider-kind>/<instance-key>/<repository-key>/<resource-kind>/<resource-key>` | One provider-neutral hosted resource | Provider kind plus canonical typed address atoms for instance, repository, and resource identity |
-| `/hosted/<provider-kind>/<instance-key>/<repository-key>/<resource-kind>/<resource-key>/<inner>` | One child inside that hosted resource | A hosted-resource address, then a path within its container projection |
 
 Revisions are not paths in the served tree, so they get their own route rather than a
 sigil inside `/view/`: a commit named as a `/view/` path would either collide with a
@@ -384,18 +382,6 @@ forward, and reload keep it.
 The page belongs to the one pull request a server serves; a server serves one repository
 and at most one pull request, so the number selects nothing else.
 `/compare/` is specified here and not yet built.
-`/hosted/` is proposed for v0.12.0; the hosted-resource plugin owns its HTTP surface
-through the planned mounted-router SDK and its browser parse, format, apply, preview,
-popstate, replacement, and disposal lifecycle through a separate installed-plugin
-address-space registration.
-The shell arbitrates exactly one owner for an address and `metab --show` uses the same
-registration; neither core nor a mounted router hard-codes GitHub syntax.
-Provider instance, repository, and resource keys use the one reversible typed
-base64url-atom codec specified in
-[External Resources, Artifact Contracts, and Views](project/architecture/arch-external-resources-and-views.md).
-Provider web locators such as PR numbers or slash-containing release tags remain typed
-open selections until acquisition resolves their stable provider object identity; they
-are never inserted raw into this path.
 
 The query slot is carried verbatim: it exists so a query an author wrote survives
 resolution unchanged.
