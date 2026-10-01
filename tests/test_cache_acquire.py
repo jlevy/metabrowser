@@ -85,7 +85,7 @@ def _git(root: Path, *args: str) -> None:
 
 
 def _allow_installed_git(monkeypatch: pytest.MonkeyPatch) -> tuple[int, int, int]:
-    """Exercise fetch on the runner's Git without admitting it for URL opening.
+    """Exercise fetch on the installed Git, whatever its version, without admitting it.
 
     When the run names an admitted release (the CI ``admitted-git`` job), nothing
     is patched: the production floor itself must admit the Git on ``PATH``.

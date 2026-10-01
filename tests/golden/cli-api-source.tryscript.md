@@ -477,8 +477,8 @@ after it. That refresh found the lock held, so it reports `refreshing_elsewhere`
 fetches nothing, and the command exits 0 because a refresh is under way.
 The lock is tried before the installed Git is checked, so this answer is the same on
 every machine; refreshes that fetch, and one that fails and exits 1, are recorded
-in-process in `cli-git-refresh.txt`, because CI’s Git is below the floor a fetch
-requires.
+in-process in `cli-git-refresh.txt`, because a transcript has to pass on a Git below the
+floor a fetch requires.
 
 ```console
 $ METABROWSER_HOME=$PWD/home metab file://$PWD/origin.git --api /api/source/refresh --data refresh.json
