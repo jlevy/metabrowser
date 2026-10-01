@@ -140,6 +140,15 @@ times and commit IDs are literal; the placeholders that remain, each with the re
 fixture can pin it, are listed at the top of `tests/golden_harness.py`. For tryscript,
 `devtools/golden_fixup.py` is that list.
 
+A payload that a story reads many times is shown once.
+A pull envelope carries the whole record, so `cli-github-pull-refresh.txt` prints a
+record in full the first time and as `<RECORD n>` while a later read equals it, and
+`tests/fixtures/github-pull-page-responses.json` holds a record in the first answer that
+carried it and names that answer, `{"same_as": "current"}`, in the later ones, which the
+session reads back as that record.
+A record that differs is written in full, so a read that changed it shows as a whole
+record where the reference was.
+
 A transcript must not depend on how busy the machine is.
 The server logs a request slower than two seconds to stderr, which a transcript
 captures, so the Make targets run tryscript with `METABROWSER_SLOW_SERVER_MS` set past

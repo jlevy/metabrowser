@@ -14,12 +14,20 @@ The Git floor is replaced as in the other acquisition goldens
 (``tests/golden_harness.py``). The real ``gh`` and GitHub are the opt-in live smoke test,
 ``tests/test_github_pull_live_smoke.py``. Cached reads with no ``gh`` at all run as a
 subprocess in ``tests/golden/cli-github-pull.tryscript.md``.
+
+A pull envelope carries the whole record, and this story reads pull request 7's a
+dozen times. The transcript prints a record in full once and after that as
+``<RECORD n>``: the record of pull request *n*, equal to the last one printed in full.
+A record that differs is printed in full again, so a read that changed it shows as the
+whole record appearing where the label was.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import re
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -33,12 +41,20 @@ from tests.github_pull_fixture import (
     FETCHED_AT,
     Origin,
     account,
-    build_origin,
+    copy_origin,
     install_fake_gh,
     ok,
     scenario,
 )
-from tests.golden_harness import Invocation, check_golden, isolate_cli, quoted, run_metab
+from tests.golden_harness import (
+    Invocation,
+    Labels,
+    check_golden,
+    isolate_cli,
+    origin_identity,
+    quoted,
+    run_metab,
+)
 from tests.required_tools import needs_git
 
 pytestmark = [
@@ -47,16 +63,21 @@ pytestmark = [
 ]
 
 PULL = f"{CANONICAL}/pull"
+# A record as the CLI prints it inside an envelope: the key, then the object up to the
+# brace that closes it, which is the first one at the key's own indentation.
+_RECORD = re.compile(r'^( *)"record": (\{\n.*?\n\1\})', re.MULTILINE | re.DOTALL)
 
 
 class _Session:
     """The stand-in origin, the fake gh, and a transcript of what each command did."""
 
-    def __init__(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def __init__(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, built: Origin) -> None:
         self.tmp_path = tmp_path
         self.monkeypatch = monkeypatch
         self.home = isolate_cli(tmp_path, monkeypatch).home
-        self.origin: Origin = build_origin(tmp_path)
+        self.origin: Origin = copy_origin(built, tmp_path)
+        # Each pull request's record as last printed in full, by number.
+        self.printed: dict[int, Any] = {}
         local = self.origin.url
 
         def remote_url_for(source: GitSource) -> str:
@@ -90,11 +111,22 @@ class _Session:
         log.unlink()
         return calls
 
+    def _once(self, found: re.Match[str]) -> str:
+        record = json.loads(found.group(2))
+        number = record["number"]
+        if self.printed.get(number) == record:
+            return f'{found.group(1)}"record": "<RECORD {number}>"'
+        self.printed[number] = record
+        return found.group(0)
+
     def run(self, *args: str) -> Invocation:
         result = run_metab(args)
         # A request body lives in the sandbox; the transcript names the file alone.
         shown = [arg.removeprefix(f"{self.tmp_path}/") for arg in args]
-        self.blocks.append(result.block(" ".join(quoted(arg) for arg in shown), gh=self.gh_calls()))
+        printed = replace(result, stdout=_RECORD.sub(self._once, result.stdout))
+        self.blocks.append(
+            printed.block(" ".join(quoted(arg) for arg in shown), gh=self.gh_calls())
+        )
         return result
 
 
@@ -107,12 +139,16 @@ def _api(answers: dict[str, Any], path: str, entry: Any) -> dict[str, Any]:
 
 
 def test_golden_pull_requests_fetch_refresh_and_read_offline(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
 ) -> None:
-    session = _Session(tmp_path, monkeypatch)
+    session = _Session(tmp_path, monkeypatch, pull_origin)
     origin = session.origin
     online = scenario(origin)
 
+    session.blocks.append(
+        "## <RECORD n> is the record of pull request n, equal to the last one printed in "
+        "full above; a record that differs is printed in full.\n"
+    )
     first = session.run(f"{PULL}/7", "--api", "/api/plugin/github/pull")
     assert first.exit_code == 0, first.stderr
     envelope = first.payload()
@@ -274,7 +310,17 @@ def test_golden_pull_requests_fetch_refresh_and_read_offline(
     kept = session.run(f"{PULL}/7", "--api", "/api/plugin/github/pull")
     assert kept.exit_code == 0 and kept.payload()["record"] == envelope["record"]
 
-    rendered = "".join(session.blocks)
+    # The records and refresh stamps lie beside the source's own records, where the
+    # cache reads nothing as damage: the source and its store are published, with no
+    # problems. Read from a local root, which opens no source and asks gh nothing.
+    (tmp_path / "root").mkdir()
+    slug = origin_identity(CANONICAL).slug
+    cached = session.run(str(tmp_path / "root"), "--api", f"/api/cache/source/{slug}")
+    assert cached.exit_code == 0, cached.stderr
+
+    rendered = Labels().apply("".join(session.blocks))
     assert str(tmp_path) not in rendered and str(session.home) not in rendered
     assert "file://" not in rendered
+    # One full print of each distinct record: pull request 7's and pull request 8's.
+    assert rendered.count('"schema_version": 2,') == 2
     check_golden("cli-github-pull-refresh.txt", rendered)

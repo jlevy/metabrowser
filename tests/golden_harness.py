@@ -31,6 +31,11 @@ What a transcript may still replace, and why no fixture can pin it:
 Everything else is literal. Commit IDs are literal because every origin is built with
 :func:`pinned_git_env` or ``git fast-import``; times are literal because
 :func:`fix_clock` replaces the clock.
+
+One label stands for a value the transcript itself pins: ``<RECORD n>`` in
+``cli-github-pull-refresh.txt`` is a pull-request record equal to the one last printed
+in full above it, so each distinct record is shown once
+(``tests/test_cli_github_pull_golden.py``).
 """
 
 from __future__ import annotations
