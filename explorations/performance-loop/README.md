@@ -304,8 +304,8 @@ installs, and about 31k directories.
 The synthetic `build_corpus` can supplement that round but cannot replace it.
 From a cold start of each condition, report:
 
-- backend `first_row` from `compare_builds`: spawn to the first nonempty root
-  `/api/tree`;
+- backend `first_row` from `compare_builds`: from the first answered request to the
+  first nonempty root `/api/tree`, with `spawn_to_serving` for the start before it;
 - browser `first_row_ms` from the headed captures.
 
 A candidate whose first rows regress past the tolerance below, or cross the
@@ -677,22 +677,31 @@ An environment has no bytecode more easily than it seems:
   mode imports, which is a third state and not a stable one.
 
 `run` reads the state before the first round: every source file of the installed
-`metabrowser` distribution and of each distribution it requires, and whether bytecode
-the interpreter would load lies beside it.
-It measures when every build is `cached`, with all of them compiled, or every build is
-`uncached`, with none.
+`metabrowser` distribution and of each distribution it requires, and whether the
+bytecode file beside it is one the interpreter loads without compiling.
+That is a file whose header names this interpreter and the source’s modification time
+and size, or, for a hash-based file, the source’s hash where the file asks for the
+check. It measures when every build is `cached`, with all of them compiled, or every
+build is `uncached`, with none.
 Anything else it refuses, naming each build’s state and the `compileall` command that
 compiles the ones that need it.
 `--compile-bytecode` runs that command before the first round, which is what the recipe
-above does. No measured process writes bytecode, so the state read is the state of every
-round.
-Each record carries it as `bytecode`, `summarize` prints it in its first line, and
-a file holding records from both states is refused.
+above does. No process a run starts writes bytecode, so the state read is the state of
+every round. Each record carries it as `bytecode`, `summarize` prints it in its first
+line, and a file holding records from both states is refused.
 
 `cached` is what an installation runs from its second start, and the state a claim about
 a release is made in.
-The standard library is not read: both environments come from the same interpreter when
-`uv venv` creates them as the release recipe does.
+The standard library’s bytecode is not read.
+Each record names the interpreter its build ran on, as `python` and `python_base`, and
+builds whose interpreters report different versions are refused; both environments come
+from one interpreter when `uv venv` creates them as the release recipe does.
+
+A run writes a file of its own.
+`run` refuses an `--out` that already holds records, because pair numbers start at zero
+in every run, and `summarize` refuses a file with two records for one pair and build, or
+with a build recorded under two versions: such a file is not one comparison, and a
+summary of it once paired a second run’s control with the first run’s candidate.
 
 When a start-up number moves, the cause is an import.
 `python -X importtime` names it, and the fresh-interpreter `sys.modules` assertions in

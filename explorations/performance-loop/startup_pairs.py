@@ -133,9 +133,9 @@ def _fetch(url: str, *, timeout: float) -> tuple[float, int]:
 # on `--show` for builds that differ by 1.03x.
 #
 # The state is read from the files: each source of the installed `metabrowser`
-# distribution and of every distribution it requires, and whether a bytecode file the
-# interpreter would accept lies beside it. Two states can be measured, and a ratio is
-# only taken inside one:
+# distribution and of every distribution it requires, and whether the bytecode file
+# beside it is one the interpreter loads without compiling; `_BYTECODE_PROBE` says
+# exactly which. Two states can be measured, and a ratio is only taken inside one:
 #
 # - `cached`: every source has one. This is what an installation runs from its second
 #   start, and the state a claim about a release is made in.
@@ -149,9 +149,19 @@ DONT_WRITE_BYTECODE: Final = "PYTHONDONTWRITEBYTECODE"
 
 # Runs in the environment's own interpreter, with the standard library alone. A source
 # the interpreter cannot compile is not counted: no start imports it, and no compile
-# step can give it bytecode. The header test is the one `compileall` uses to skip a file
-# that is up to date, and it accepts a hash-based file, which the interpreter loads
-# without a timestamp.
+# step can give it bytecode.
+#
+# A bytecode file counts when its 16-byte header passes the test the import system
+# applies before it loads one (`SourceLoader.get_code`), at the interpreter's default
+# `--check-hash-based-pycs`:
+#
+# - the magic number is this interpreter's;
+# - a timestamp file records the source's modification time, in whole seconds, and its
+#   size, both modulo 2**32;
+# - a checked hash-based file records the hash of the source's bytes as they are now;
+# - an unchecked hash-based file is loaded whatever the source holds, so it counts.
+#
+# The body of the file is not read, so one cut short after its header counts too.
 _BYTECODE_PROBE: Final = r"""
 import importlib.metadata as metadata, importlib.util as util
 import json, os, re, struct, sys
@@ -159,11 +169,18 @@ import json, os, re, struct, sys
 def compiled(source):
     try:
         with open(util.cache_from_source(source), "rb") as handle:
-            head = handle.read(12)
-        if len(head) < 12 or head[:4] != util.MAGIC_NUMBER:
+            head = handle.read(16)
+        if len(head) < 16 or head[:4] != util.MAGIC_NUMBER:
             return False
-        flags, stamp = struct.unpack("<LL", head[4:])
-        return bool(flags & 1) or stamp == int(os.stat(source).st_mtime) & 0xFFFFFFFF
+        (flags,) = struct.unpack("<L", head[4:8])
+        if flags & 1:
+            if not flags & 2:
+                return True
+            with open(source, "rb") as handle:
+                return head[8:] == util.source_hash(handle.read())
+        stat = os.stat(source)
+        stamp = struct.pack("<LL", int(stat.st_mtime) & 0xFFFFFFFF, stat.st_size & 0xFFFFFFFF)
+        return head[8:] == stamp
     except (OSError, ValueError, NotImplementedError):
         return False
 
@@ -198,7 +215,15 @@ while queue:
     report[name] = [sources, have]
     roots.add(str(distribution.locate_file("")))
     queue += [re.match(r"[A-Za-z0-9._-]+", line)[0] for line in distribution.requires or ()]
-json.dump({"distributions": report, "roots": sorted(roots)}, sys.stdout)
+json.dump(
+    {
+        "distributions": report,
+        "roots": sorted(roots),
+        "python": sys.version,
+        "python_base": sys.base_prefix,
+    },
+    sys.stdout,
+)
 """
 
 
@@ -210,6 +235,10 @@ class BytecodeState:
     sources: int
     compiled: int
     roots: tuple[str, ...]
+    # `sys.version` and `sys.base_prefix` of the interpreter the build runs on. Its
+    # standard library's bytecode is not read, so a record says which one it was.
+    python: str
+    python_base: str
 
     @property
     def state(self) -> str:
@@ -261,6 +290,8 @@ def bytecode_state(metab: Path) -> BytecodeState:
         sources=sum(counts[0] for counts in distributions.values()),
         compiled=sum(counts[1] for counts in distributions.values()),
         roots=tuple(cast("list[str]", report["roots"])),
+        python=str(report["python"]),
+        python_base=str(report["python_base"]),
     )
 
 
@@ -279,13 +310,26 @@ def compile_bytecode(state: BytecodeState) -> None:
     )
 
 
-def settle_bytecode(builds: dict[str, Path], *, compile_missing: bool) -> str:
+def settle_bytecode(
+    builds: dict[str, Path], *, compile_missing: bool
+) -> tuple[str, dict[str, BytecodeState]]:
     """The one bytecode state every build is in, or a refusal that says how to get one.
 
     With *compile_missing*, an environment that is not `cached` is compiled first.
+    Returns the state and what was read of each build.
     """
 
     states = {name: bytecode_state(path) for name, path in builds.items()}
+    pythons = {state.python for state in states.values()}
+    if len(pythons) > 1:
+        # A different interpreter does different work to start, whatever it runs, and
+        # brings a standard library whose bytecode this does not read.
+        raise SystemExit(
+            "the builds run on different Python versions, so a ratio between them would "
+            "measure the interpreters:\n"
+            + "\n".join(f"  {name}: {state.python}" for name, state in states.items())
+            + "\nInstall every build into an environment made from one interpreter."
+        )
     if compile_missing:
         for name, state in states.items():
             if state.state != "cached":
@@ -306,7 +350,7 @@ def settle_bytecode(builds: dict[str, Path], *, compile_missing: bool) -> str:
                 "claim is made in",
                 flush=True,
             )
-        return state_name
+        return state_name, states
     lines = [
         "a ratio is taken only between builds in one bytecode state, all cached or all "
         "uncached, and these are not:"
@@ -451,6 +495,13 @@ def _version(metab: Path) -> str:
 def cmd_run(args: argparse.Namespace) -> int:
     tree = Path(cast(str, args.tree)).resolve()
     out = Path(cast(str, args.out))
+    if out.exists() and out.stat().st_size > 0:
+        # Pair numbers start at zero in every run, so a second run's records would
+        # share their keys with the first's, and a summary could not tell them apart.
+        raise SystemExit(
+            f"{out} already holds records. A run writes a file of its own: give a new "
+            "path, or remove this one."
+        )
     control = Path(cast(str, args.control)).resolve()
     candidates: dict[str, Path] = {}
     for spec in cast("list[str]", args.candidate):
@@ -464,10 +515,12 @@ def cmd_run(args: argparse.Namespace) -> int:
     versions = {name: _version(path) for name, path in builds.items()}
     for name, version in versions.items():
         print(f"{name}: {version}", flush=True)
-    bytecode = settle_bytecode(builds, compile_missing=cast(bool, args.compile_bytecode))
+    bytecode, environments = settle_bytecode(
+        builds, compile_missing=cast(bool, args.compile_bytecode)
+    )
     with tempfile.TemporaryDirectory(prefix="metab-startup-home-") as home_dir:
         home = Path(home_dir)
-        with out.open("a", encoding="utf-8") as stream:
+        with out.open("w", encoding="utf-8") as stream:
             for pair in range(cast(int, args.pairs)):
                 for candidate in candidates:
                     for build in ("control", candidate):
@@ -478,6 +531,8 @@ def cmd_run(args: argparse.Namespace) -> int:
                             "build": build,
                             "version": versions[build],
                             "bytecode": bytecode,
+                            "python": environments[build].python,
+                            "python_base": environments[build].python_base,
                             "load1": load,
                             "recorded_at": time.time(),
                             **_measure(builds[build], tree, home),
@@ -488,7 +543,17 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
-_NOT_METRICS = {"pair", "candidate", "build", "version", "bytecode", "load1", "recorded_at"}
+_NOT_METRICS = {
+    "pair",
+    "candidate",
+    "build",
+    "version",
+    "bytecode",
+    "python",
+    "python_base",
+    "load1",
+    "recorded_at",
+}
 # A record written before the state was read. Such a series may have been taken in
 # either state, or across both.
 BYTECODE_UNRECORDED: Final = "unrecorded"
@@ -514,10 +579,27 @@ def cmd_summarize(args: argparse.Namespace) -> int:
         for line in Path(cast(str, args.file)).read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
+    rows = [row for row in rows if row["candidate"] == candidate]
     rounds: dict[int, dict[str, dict[str, Any]]] = {}
+    versions: dict[str, set[str]] = {}
     for row in rows:
-        if row["candidate"] == candidate:
-            rounds.setdefault(int(row["pair"]), {})[str(row["build"])] = row
+        pair, build = int(row["pair"]), str(row["build"])
+        if build in rounds.setdefault(pair, {}):
+            # What a second run written into the same file looks like. Keeping either
+            # record would pair a measurement with one taken in another run.
+            raise SystemExit(
+                f"{args.file} holds more than one record for pair {pair} of {build!r} "
+                f"against candidate {candidate!r}: it is not the output of one run."
+            )
+        rounds[pair][build] = row
+        versions.setdefault(build, set()).add(str(row.get("version")))
+    mixed = {build: sorted(found) for build, found in versions.items() if len(found) > 1}
+    if mixed:
+        raise SystemExit(
+            "a build was recorded under more than one version, so these records are not "
+            "one comparison: "
+            + "; ".join(f"{build}: {', '.join(found)}" for build, found in sorted(mixed.items()))
+        )
     complete = [
         halves
         for _, halves in sorted(rounds.items())
@@ -526,9 +608,8 @@ def cmd_summarize(args: argparse.Namespace) -> int:
     if not complete:
         raise SystemExit(f"no complete pair for candidate {candidate!r}")
     loads = [float(halves[build]["load1"]) for halves in complete for build in halves]
-    # Every record of this candidate, not only the pairs kept above: a later run appended
-    # to the same file reuses the pair numbers, and its rows replace the earlier ones.
-    bytecode = recorded_bytecode([row for row in rows if row["candidate"] == candidate])
+    # Every record of this candidate, a half-finished last pair included.
+    bytecode = recorded_bytecode(rows)
     print(
         f"candidate={candidate} pairs={len(complete)} bytecode={bytecode} "
         f"load1 min={min(loads):.0f} median={statistics.median(loads):.0f} max={max(loads):.0f}"
@@ -583,7 +664,7 @@ def main() -> int:
         action="store_true",
         help="compile each environment that lacks bytecode before the first round",
     )
-    run.add_argument("--out", required=True, help="JSON Lines file to append to")
+    run.add_argument("--out", required=True, help="JSON Lines file to write; it must be new")
     run.set_defaults(handler=cmd_run)
 
     summarize = commands.add_parser("summarize", help="pair ratios for one candidate")
