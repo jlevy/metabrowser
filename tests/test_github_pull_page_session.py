@@ -165,7 +165,8 @@ def _stored_once(recorded: dict[str, Any]) -> dict[str, Any]:
         for envelope in (body, body.get("pull")):
             if not isinstance(envelope, dict) or not isinstance(envelope.get("record"), dict):
                 continue
-            key = json.dumps(envelope["record"], sort_keys=True)
+            # As text, in the order the server wrote it: reordered keys are a change.
+            key = json.dumps(envelope["record"])
             if key in holder:
                 envelope["record"] = {"same_as": holder[key]}
             elif envelope is body:
@@ -231,6 +232,11 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, built: Origin) -> d
 
             monkeypatch.setattr(served, "refresh", held)
             recorded["absent"] = _answer(client.get(_PULL))
+            # Asked again with that answer's tag, an absent pull request is a 304: a page
+            # polling one must not repaint on every poll. The session plays its own 304,
+            # so this answer is checked here and not recorded.
+            tag = {"if-none-match": recorded["absent"]["etag"]}
+            assert client.get(_PULL, headers=tag).status_code == 304
             recorded["refresh_started"] = _answer(client.post(_REFRESH, json={}, headers=JSON_BODY))
             recorded["pending"] = _answer(client.get(_PULL))
             release.set()
