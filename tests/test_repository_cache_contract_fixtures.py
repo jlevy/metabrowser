@@ -39,23 +39,34 @@ def _load(name: str) -> dict[str, Any]:
 # URL grammar: replayed through metabrowser.cache.urls
 
 
-def _outcome(value: str, defaults: dict[str, str]) -> dict[str, str]:
-    return urls.classification_as_fixture(urls.classify_root_argument(value, defaults=defaults))
+def _outcome(value: str) -> dict[str, str]:
+    """Classify *value* as the CLI does: with the production default ports, not the fixture's."""
+
+    return urls.classification_as_fixture(urls.classify_root_argument(value))
 
 
 def test_url_grammar_cases_have_one_frozen_outcome() -> None:
     grammar = _load("url-grammar.json")
-    defaults = cast(dict[str, str], grammar["default_ports"])
-    assert defaults == urls.DEFAULT_PORTS
+    assert grammar["default_ports"] == urls.DEFAULT_PORTS
     assert set(grammar["transports"]) == urls.GIT_SOURCE_SCHEMES
     ids = [case["id"] for case in grammar["cases"]]
     assert len(ids) == len(set(ids))
     mismatches = {
-        case["id"]: (_outcome(case["input"], defaults), case["expected"])
+        case["id"]: (_outcome(case["input"]), case["expected"])
         for case in grammar["cases"]
-        if _outcome(case["input"], defaults) != case["expected"]
+        if _outcome(case["input"]) != case["expected"]
     }
     assert mismatches == {}
+
+
+def test_a_local_path_keeps_the_argument_it_was_given() -> None:
+    """The fixture's outcome for a local path has no value, and the CLI serves this one."""
+
+    for case in _load("url-grammar.json")["cases"]:
+        if case["expected"]["outcome"] != "local_path":
+            continue
+        classified = urls.classify_root_argument(case["input"])
+        assert classified == urls.LocalPath(case["input"]), case["id"]
 
 
 def test_url_grammar_reasons_are_closed_and_exercised() -> None:
@@ -80,13 +91,12 @@ def test_url_grammar_reasons_are_closed_and_exercised() -> None:
 
 def test_url_grammar_normalization_is_idempotent_and_credential_free() -> None:
     grammar = _load("url-grammar.json")
-    defaults = cast(dict[str, str], grammar["default_ports"])
     for case in grammar["cases"]:
         expected = case["expected"]
         if expected["outcome"] != "git_source":
             continue
         normalized = expected["normalized"]
-        assert _outcome(normalized, defaults) == expected, case["id"]
+        assert _outcome(normalized) == expected, case["id"]
         assert "?" not in normalized and "#" not in normalized
         if expected["transport"] == "https":
             assert "@" not in normalized.split("/", 3)[2]
@@ -111,10 +121,8 @@ def test_the_identity_specification_matches_the_production_constants() -> None:
 
 def test_source_identity_and_slugs_are_reproducible() -> None:
     document = _load("source-identity.json")
-    grammar = _load("url-grammar.json")
-    defaults = cast(dict[str, str], grammar["default_ports"])
     for record in document["sources"]:
-        classified = _outcome(record["input"], defaults)
+        classified = _outcome(record["input"])
         assert classified["normalized"] == record["normalized"], record["input"]
         assert classified["transport"] == record["transport"]
         assert classified["form"] == record["form"]
@@ -135,12 +143,11 @@ def test_source_identity_and_slugs_are_reproducible() -> None:
 
 def test_identity_equivalence_classes_follow_the_grammar() -> None:
     document = _load("source-identity.json")
-    defaults = cast(dict[str, str], _load("url-grammar.json")["default_ports"])
     for group in document["equivalence"]:
         ids = {
             identity.source_identity(
-                cast(identity.GitTransport, _outcome(value, defaults)["transport"]),
-                _outcome(value, defaults)["normalized"],
+                cast(identity.GitTransport, _outcome(value)["transport"]),
+                _outcome(value)["normalized"],
             )
             for value in group["inputs"]
         }

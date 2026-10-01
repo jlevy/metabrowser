@@ -98,6 +98,16 @@ Error: ROOT is a local path; --no-serve acquires a file:// or https:// Git sourc
 ? 1
 ```
 
+A path the grammar has to decide is the path that was given.
+`a/b::c` holds `::`, so the grammar is asked; it names nothing here, and the error is
+about that path and not about the working directory.
+
+```console
+$ METABROWSER_HOME=$PWD/home metab a/b::c --walk
+Error: [CWD]/a/b::c is not a directory
+? 1
+```
+
 ## Test: an existing path is served, whatever its name resembles
 
 A folder may be called `file:notes`, `a::b`, `me@host:dir`, or `https:x`, names the
