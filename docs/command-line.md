@@ -47,7 +47,8 @@ looks accepted while being ignored.
 | `--check-api` | Run the navigation scenario as a pass/fail check |
 | `--no-serve` | Acquire a `file://` Git source into the cache without starting a server |
 | `--remote HOST` | Serve a remote directory over an SSH tunnel |
-| `--plugins`, `--plugin NAME`, `--doctor` | Inspect installed plugins |
+| `--plugins`, `--plugin NAME` | Inspect installed browser plugins |
+| `--doctor` | Validate browser plugins and installed artifact capabilities |
 
 Most modes are read-only.
 `--no-serve` writes a cache entry for a `file://` source.
@@ -485,6 +486,14 @@ metab --plugins
 metab --plugin markdown
 metab --doctor
 ```
+
+`--doctor` validates both browser plugins and installed `metabrowser.capabilities.v1`
+providers. A successful human-readable result reports the browser-plugin,
+capability-provider, artifact-contract, and resource-profile counts.
+`--doctor --json` exposes the same result as `plugin_count`,
+`capability_provider_count`, `artifact_contract_count`, `resource_profile_count`, and
+`problems`. Any discovery or registry error makes the command nonzero; a partial
+capability registry is never reported as usable.
 
 `--check-api` answers “is navigation healthy” in one line.
 For the underlying data, `--api` is the more direct tool.

@@ -1,24 +1,31 @@
-"""Check the installed artifact contracts against their durable architecture inventory."""
+"""Check installed artifact capabilities against their durable architecture inventory."""
 
 from __future__ import annotations
 
+import json
+import subprocess
 import sys
+import tempfile
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from metabrowser.cache.contracts import cache_contract_registry
-from metabrowser.plugin_loader.artifact_contracts import ContractRegistry, ContractRegistryError
+from metabrowser.plugin_loader.artifact_contracts import (
+    CapabilityRegistryError,
+    InstalledRegistries,
+    get_installed_registries,
+)
 from metabrowser.plugin_loader.artifact_inventory import (
     ContractInventoryEntry,
+    ResourceProfileInventoryEntry,
     check_installed_evidence,
     installed_artifact_inventory,
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-ARCHITECTURE_DOC = (
-    REPO_ROOT / "docs/project/architecture/arch-repository-sources-and-provider-mirrors.md"
-)
+ARCHITECTURE_DOC = REPO_ROOT / "docs/project/architecture/arch-external-resources-and-views.md"
+BROWSER_CHECK = Path(__file__).with_name("artifact-contract-browser-check.mjs")
+_NODE_TIMEOUT_SECONDS = 30
 
 _CONTRACT_HEADER = (
     "Contract ID",
@@ -27,6 +34,15 @@ _CONTRACT_HEADER = (
     "Producers",
     "Consumers",
     "Corpus",
+    "Browser parser",
+)
+_PROFILE_HEADER = (
+    "Profile ID",
+    "Target kind",
+    "Result contract",
+    "Collections",
+    "Pagination",
+    "Last complete",
 )
 
 
@@ -74,7 +90,105 @@ def _contract_values(contract: ContractInventoryEntry) -> tuple[str, ...]:
         ",".join(contract.producer_ids),
         ",".join(contract.consumer_ids),
         f"{contract.corpus_id}[{selectors}]",
+        contract.browser_parser_id or "server-only",
     )
+
+
+def _profile_values(profile: ResourceProfileInventoryEntry) -> tuple[str, ...]:
+    collections = ";".join(
+        f"{collection.name}={collection.artifact_contract_id}"
+        f"[{collection.minimum_artifacts}..{collection.maximum_artifacts}]"
+        for collection in profile.collections
+    )
+    pagination = ";".join(
+        f"{collection.name}={collection.pagination}" for collection in profile.collections
+    )
+    last_complete = ",".join(
+        collection.name
+        for collection in profile.collections
+        if collection.required_for_last_complete
+    )
+    return (
+        profile.target_kind,
+        profile.target_result_contract_id or "—",
+        collections,
+        pagination,
+        last_complete or "—",
+    )
+
+
+def _browser_evidence_problems(registries: InstalledRegistries) -> list[str]:
+    descriptors: list[dict[str, object]] = []
+    expected_case_count = 0
+    with tempfile.TemporaryDirectory(prefix="metabrowser-artifact-inventory-") as temp_dir:
+        evidence_root = Path(temp_dir)
+        for contract_id, installed in sorted(registries.contracts.items()):
+            spec = installed.spec
+            parser = spec.browser_parser
+            if parser is None:
+                continue
+            module_path = evidence_root / f"{parser.module_bytes_sha256}.mjs"
+            module_path.write_bytes(parser.module_bytes)
+            corpus_path = evidence_root / f"{spec.corpus.payload_sha256}.json"
+            corpus_path.write_bytes(spec.corpus.payload)
+            try:
+                corpus = json.loads(spec.corpus.payload)
+                selectors = set(spec.corpus_record_selectors)
+                selected_count = sum(
+                    (case.get("record") in selectors) if selectors else ("record" not in case)
+                    for case in corpus["cases"]
+                )
+            except (json.JSONDecodeError, KeyError, TypeError, AttributeError) as exc:
+                return [f"browser evidence cannot resolve {contract_id!r} corpus: {exc}"]
+            expected_case_count += selected_count
+            descriptors.append(
+                {
+                    "contract_id": contract_id,
+                    "module_path": str(module_path),
+                    "export_name": parser.export_name,
+                    "corpus_path": str(corpus_path),
+                    "record_selectors": spec.corpus_record_selectors,
+                    "expected_case_count": selected_count,
+                }
+            )
+        if not descriptors:
+            return []
+        descriptor_path = evidence_root / "descriptors.json"
+        descriptor_path.write_text(json.dumps(descriptors), encoding="utf-8")
+        try:
+            result = subprocess.run(
+                [
+                    "node",
+                    "--experimental-vm-modules",
+                    "--no-warnings",
+                    str(BROWSER_CHECK),
+                    str(descriptor_path),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=_NODE_TIMEOUT_SECONDS,
+                check=False,
+            )
+        except FileNotFoundError:
+            return ["browser evidence requires Node.js"]
+        except subprocess.TimeoutExpired:
+            return ["browser evidence timed out"]
+        except OSError as exc:
+            return [f"browser evidence could not start: {exc}"]
+    expected_output = (
+        f"artifact browser evidence OK ({len(descriptors)} parser(s), {expected_case_count} cases)"
+    )
+    if result.returncode == 0:
+        if result.stdout.strip() == expected_output and not result.stderr.strip():
+            return []
+        return [
+            "browser evidence exited successfully without its completion proof: "
+            f"stdout={result.stdout.strip()!r}, stderr={result.stderr.strip()!r}"
+        ]
+    output = result.stderr.strip() or result.stdout.strip()
+    if not output:
+        return [f"browser evidence exited {result.returncode} without diagnostics"]
+    return [f"browser evidence: {line}" for line in output.splitlines()]
 
 
 def _reconcile_rows(
@@ -122,33 +236,41 @@ def _reconcile_rows(
 
 def check(
     *,
-    contracts: ContractRegistry | None = None,
+    registries: InstalledRegistries | None = None,
     architecture_doc: Path = ARCHITECTURE_DOC,
 ) -> list[str]:
-    """Return corpus-evidence and architecture-registration problems.
-
-    The installed contracts are the repository cache's enforced records, the only
-    artifact contracts Metabrowser declares.
-    """
+    """Return installed-evidence and architecture-registration problems."""
     try:
-        if contracts is None:
-            contracts = cache_contract_registry()
-    except ContractRegistryError as exc:
-        return [f"installed contract registry failed: {exc}"]
-    problems = list(check_installed_evidence(contracts))
+        if registries is None:
+            registries = get_installed_registries()
+    except CapabilityRegistryError as exc:
+        return [f"installed capability registry failed: {exc}"]
+    problems = list(check_installed_evidence(registries))
+    problems.extend(_browser_evidence_problems(registries))
     try:
         document = architecture_doc.read_text(encoding="utf-8")
     except OSError as exc:
         return [*problems, f"cannot read architecture inventory {architecture_doc}: {exc}"]
+    inventory = installed_artifact_inventory(registries)
     problems.extend(
         _reconcile_rows(
             label="artifact contract",
             header=_CONTRACT_HEADER,
             expected={
-                contract.contract_id: _contract_values(contract)
-                for contract in installed_artifact_inventory(contracts)
+                contract.contract_id: _contract_values(contract) for contract in inventory.contracts
             },
             rows=_table_rows(document, _CONTRACT_HEADER),
+        )
+    )
+    problems.extend(
+        _reconcile_rows(
+            label="resource profile",
+            header=_PROFILE_HEADER,
+            expected={
+                profile.profile_id: _profile_values(profile)
+                for profile in inventory.resource_profiles
+            },
+            rows=_table_rows(document, _PROFILE_HEADER),
         )
     )
     return problems
@@ -161,7 +283,11 @@ def main() -> int:
         for problem in problems:
             print(f"artifact-contract inventory: {problem}", file=sys.stderr)
         return 1
-    print(f"artifact-contract inventory: {len(cache_contract_registry())} contract(s) OK")
+    inventory = installed_artifact_inventory()
+    print(
+        f"artifact-contract inventory: {len(inventory.contracts)} contract(s), "
+        f"{len(inventory.resource_profiles)} profile(s) OK"
+    )
     return 0
 
 

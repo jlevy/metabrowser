@@ -57,10 +57,11 @@ type StorePublication = Literal["published", "not_private", "damaged"]
 type ReferenceState = Literal[
     # At least one readable alias names the store.
     "referenced",
-    # Every alias was read and none names the store.
+    # Every alias was read and none names the store, and there is no provider data.
     "unreferenced",
     # A reference could not be ruled out: an unreadable alias, an unrecognized source
-    # entry, or a request whose record budget ran out before the alias scan finished.
+    # entry, provider data, or a request whose record budget ran out before the alias
+    # scan finished.
     "unknown",
 ]
 

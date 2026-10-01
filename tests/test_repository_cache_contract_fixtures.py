@@ -196,13 +196,28 @@ def test_every_claimed_suffix_width_is_a_typed_collision() -> None:
         )
 
 
-def test_store_keys_are_distinct_across_sources_and_object_formats() -> None:
+def test_provider_store_identity_is_domain_separated() -> None:
     document = _load("source-identity.json")
+    generic_ids = {
+        store["store_id"]
+        for record in document["sources"]
+        for store in record["generic_stores"].values()
+    }
+    for record in document["provider_stores"]:
+        expected = identity.provider_repository_store_id(
+            record["provider_kind"],
+            record["provider_instance"],
+            record["repository_opaque_id"],
+            record["object_format"],
+        )
+        assert record["store_id"] == expected
+        assert record["store_key"] == identity.store_key(expected)
+        assert expected not in generic_ids
     keys = [
         store["store_key"]
         for record in document["sources"]
         for store in record["generic_stores"].values()
-    ]
+    ] + [record["store_key"] for record in document["provider_stores"]]
     assert len(keys) == len(set(keys))
 
 
@@ -278,8 +293,11 @@ def _real_lock(home: Path, kind: LockKind, key: str | None) -> locks.CacheLock:
     if kind is LockKind.SOURCE_ALIAS:
         assert key is not None
         return locks.source_alias_lock(home, key)
-    assert kind is LockKind.REPOSITORY_STORE and key is not None
-    return locks.repository_store_lock(home, _store_key(key))
+    if kind is LockKind.REPOSITORY_STORE:
+        assert key is not None
+        return locks.repository_store_lock(home, _store_key(key))
+    assert key is not None
+    return locks.provider_resource_lock(home, key)
 
 
 def test_the_hierarchy_matches_the_production_ranks() -> None:
@@ -355,7 +373,8 @@ def test_lock_files_are_where_the_fixture_places_them(tmp_path: Path) -> None:
         with acquire() as lock:
             assert lock.relative_path == expected, name
             assert lock.path.is_file(), name
-    assert set(templates) == set(acquisitions)
+    # The provider plan owns the provider/resource spelling; only its rank is frozen here.
+    assert templates["provider_resource"] == "owned by the provider storage plan"
 
 
 # ----------------------------------------------------------------------------

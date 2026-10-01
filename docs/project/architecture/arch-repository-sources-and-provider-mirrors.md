@@ -26,8 +26,8 @@ replaces the planned parts of this document wherever they disagree.
 It retired blobless clones and convergence, private subject refs, revision leases,
 maintenance locks, fetch jobs, and credential leases; this document no longer describes
 them.
-Provider binding and local object-availability records are not built; their retired
-design is in [Hosted Review Model and Provider Boundary](arch-hosted-review-model.md).
+Provider binding and local object-availability records exist today as hosted-review
+models; see [Hosted Review Model and Provider Boundary](arch-hosted-review-model.md).
 Per-seam state is in [Implementation Seams](#implementation-seams).
 
 Metabrowser must be able to show the same hosted repository through several independent
@@ -225,38 +225,6 @@ visible half-entry, and the next acquisition of the same source reuses it.
 Nothing deletes a published store automatically.
 Attaching a user-owned checkout to a store, and merging stores by provider identity, are
 deferred by the thin-mirror plan.
-
-### Cache record contracts
-
-The records Metabrowser writes into the application home are enforced SoftSchema
-contracts. `cache/contracts.py` binds each contract ID to one Pydantic model in
-`cache/records.py` and one compiled Draft 2020-12 schema packaged under
-`data/cache-format/`, and `plugin_loader/artifact_contracts.py` checks each declaration
-and validates every record on read and on write.
-The registry is internal: nothing outside this package declares a contract, and there is
-no entry-point group or public type for one.
-A cache file names its contract, envelope, and status but never a schema path: the
-caller chooses the contract from the file’s place in the layout, so cached data cannot
-select the schema that validates it.
-`config.yml` is user-owned and validated permissively, so it is not in this table;
-`check_packaged_schemas` compiles it with the others.
-
-The table registers the installed contracts.
-`devtools/check_artifact_contracts.py` compares it with the cache’s declarations and
-runs each contract’s schema, semantic validator, positive and negative conformance
-corpus, and deterministic round trip.
-The distribution check runs the same inventory against isolated wheel and source
-distribution installs, so a declaration or evidence file that exists only in the source
-tree cannot pass.
-
-| Contract ID | Artifact profile | Envelope | Producers | Consumers | Corpus |
-| --- | --- | --- | --- | --- | --- |
-| `com.github.jlevy.metabrowser.cache:CacheLayout/v1` | `pure-yaml` | `layout` | `repository-cache` | `repository-cache` | `cache-records-conformance[layout]` |
-| `com.github.jlevy.metabrowser.cache:RepositorySource/v1` | `pure-yaml` | `source` | `repository-cache` | `repository-cache` | `cache-records-conformance[source,scp_source]` |
-| `com.github.jlevy.metabrowser.cache:RepositorySourceState/v1` | `pure-yaml` | `state` | `repository-cache` | `repository-cache` | `cache-records-conformance[source_state]` |
-| `com.github.jlevy.metabrowser.cache:RepositoryStore/v1` | `pure-yaml` | `store` | `repository-cache` | `repository-cache` | `cache-records-conformance[store]` |
-| `com.github.jlevy.metabrowser.cache:RepositoryStoreAlias/v1` | `pure-yaml` | `alias` | `repository-cache` | `repository-cache` | `cache-records-conformance[store_alias]` |
-| `com.github.jlevy.metabrowser.cache:RepositoryStoreState/v1` | `pure-yaml` | `state` | `repository-cache` | `repository-cache` | `cache-records-conformance[store_state,empty_store_state]` |
 
 ### Read path and performance
 
@@ -566,9 +534,10 @@ state. It never combines metadata for one object with content from another.
 The fixed lock order is:
 
 1. application-home lock for layout migration and global enumeration;
-2. source-alias lock for alias creation; and
+2. source-alias lock for alias creation;
 3. one or more repository-store locks in ascending `RepositoryStoreId` order for store
-   directory publication and store records.
+   directory publication and store records; and
+4. provider-resource lock, whose use belongs to the provider plan.
 
 Network work and long-running Git processes hold none of these locks, and a local
 checkout is never a lock target.
@@ -647,8 +616,8 @@ lacks.
 | Area | Planned boundary | Responsibility |
 | --- | --- | --- |
 | Pull-request page | The GitHub plugin | The page that renders a pull request’s record and Files changed belongs to the next step of the [thin-mirror plan](../specs/active/plan-2026-09-23-v012-thin-mirror.md) |
-| Source attachments | A neutral provider-resources module for source binding and local-availability records | Map local and managed sources to stable provider repository identity without storing local paths or requiring a cache entry. `ProviderBinding`, `LocalGitObjectAvailability`, `AuthorizationContextRef`, and `authorization_context_key` are specified in [Hosted Review Model and Provider Boundary](arch-hosted-review-model.md) |
-| Provider mirror | `provider_resources/store.py`: `stage_snapshot`, `publish_manifest`, `read_current`, `read_last_complete`, `lease_snapshot`, `reclaim_snapshots` | Publish one repository-scoped, auth-scoped mirror reused by every attachment |
+| Source attachments | A neutral provider-resources module for source binding and local-availability records | Map local and managed sources to stable provider repository identity without storing local paths or requiring a cache entry. `ProviderBinding`, `LocalGitObjectAvailability`, `AuthorizationContextRef`, and `authorization_context_key` live today in `builtin_plugins/hosted_review/models.py` and move under `mb-s0gv` |
+| Provider mirror | `provider_resources/store.py`: `stage_snapshot`, `publish_manifest`, `read_current`, `read_last_complete`, `lease_snapshot`, `reclaim_snapshots` | Publish one repository-scoped, auth-scoped mirror reused by every attachment. The package holds only `profiles.py` today |
 | Provider ports | `plugin_api.py`: opaque `GitFetchCredentialLease`, `provider_fetch_authorization_context`, `RepositoryContentPort.open_subject`, `RepositoryObjectJobPort.request_selected_refs`, `ProviderResourceStorePort.stage`, `publish`, `read`, `lease` | Inject narrow cancellable capabilities with typed unavailable, authorization, stale-generation, and publication failures; selected-ref requests carry a non-secret context plus an unforgeable registry handle, never tokens, unrestricted sources, core stores, or paths |
 
 These names are the implementation plan, not registered surfaces.

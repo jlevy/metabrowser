@@ -104,11 +104,8 @@ Its locked wheel SHA-256 is
 `71d6b416c6b05242d934b6228d2386311f2f9216d4d1d47549e6cadf7963fe76`; the source archive
 SHA-256 is `dd7bc579b50e12a236c03427826a9af14fd2029e20dcae927e68f7440538e75a`. The lock
 update must add SoftSchema, upgrade Frontmatter Format, and change nothing else.
-The full verification gate reran the hosted-review codecs, schema compilation checks,
+The full verification gate reruns the hosted-review codecs, schema compilation checks,
 installed-wheel smoke tests, and dependency audits.
-The hosted-review codecs were later removed from the v0.12 stack; SoftSchema now
-validates the repository cache’s record contracts, and the same gate reruns their schema
-compilation checks and installed-wheel smoke tests.
 
 ## Admitted Git in CI
 

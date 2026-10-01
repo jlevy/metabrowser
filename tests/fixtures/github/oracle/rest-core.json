@@ -1,0 +1,275 @@
+{
+  "recorded_from_public_api": true,
+  "responses": {
+    "repository": {
+      "id": 212613049,
+      "node_id": "MDEwOlJlcG9zaXRvcnkyMTI2MTMwNDk=",
+      "name": "cli",
+      "full_name": "cli/cli",
+      "private": false,
+      "visibility": "public",
+      "html_url": "https://github.com/cli/cli",
+      "clone_url": "https://github.com/cli/cli.git",
+      "default_branch": "trunk",
+      "created_at": "2019-10-03T15:24:53Z",
+      "updated_at": "2026-09-15T23:41:57Z",
+      "owner": {
+        "id": 59704711,
+        "node_id": "MDEyOk9yZ2FuaXphdGlvbjU5NzA0NzEx",
+        "login": "cli",
+        "html_url": "https://github.com/cli"
+      }
+    },
+    "pull_request_index_first_page": {
+      "request_page": 1,
+      "items_per_page": 2,
+      "link_relations": {
+        "next": 2,
+        "last": 2322
+      },
+      "items": [
+        {
+          "id": 4537805655,
+          "node_id": "PR_kwDODKw3uc8AAAABDnlrVw",
+          "number": 14462,
+          "html_url": "https://github.com/cli/cli/pull/14462",
+          "title": "Revert \"Use internal Apple codesign action\"",
+          "state": "closed",
+          "draft": false,
+          "created_at": "2026-09-15T14:00:37Z",
+          "updated_at": "2026-09-15T14:11:22Z",
+          "closed_at": "2026-09-15T14:11:21Z",
+          "merged_at": "2026-09-15T14:11:21Z",
+          "user": {
+            "id": 1611510,
+            "node_id": "MDQ6VXNlcjE2MTE1MTA=",
+            "login": "williammartin",
+            "html_url": "https://github.com/williammartin"
+          },
+          "base": {
+            "label": "cli:trunk",
+            "ref": "trunk",
+            "sha": "9eb4db2ba89017ea9dbcaed4f712dc4881f7f37b",
+            "repo": {
+              "id": 212613049,
+              "node_id": "MDEwOlJlcG9zaXRvcnkyMTI2MTMwNDk=",
+              "full_name": "cli/cli"
+            }
+          },
+          "head": {
+            "label": "cli:revert-14437-williammartin-apple-codesign-action",
+            "ref": "revert-14437-williammartin-apple-codesign-action",
+            "sha": "189706bccb1686c68fb73c5bd9013358320a9e71",
+            "repo": {
+              "id": 212613049,
+              "node_id": "MDEwOlJlcG9zaXRvcnkyMTI2MTMwNDk=",
+              "full_name": "cli/cli"
+            }
+          }
+        },
+        {
+          "id": 4536711877,
+          "node_id": "PR_kwDODKw3uc8AAAABDmi6xQ",
+          "number": 14461,
+          "html_url": "https://github.com/cli/cli/pull/14461",
+          "title": "Bump github.com/cli/go-gh/v2 to v2.16.1",
+          "state": "closed",
+          "draft": false,
+          "created_at": "2026-09-15T12:00:50Z",
+          "updated_at": "2026-09-15T13:30:25Z",
+          "closed_at": "2026-09-15T13:30:23Z",
+          "merged_at": "2026-09-15T13:30:23Z",
+          "user": {
+            "id": 634063,
+            "node_id": "MDQ6VXNlcjYzNDA2Mw==",
+            "login": "niik",
+            "html_url": "https://github.com/niik"
+          },
+          "base": {
+            "label": "cli:trunk",
+            "ref": "trunk",
+            "sha": "cac0dd795eeb5b9a448474fad7e295272fc5c486",
+            "repo": {
+              "id": 212613049,
+              "node_id": "MDEwOlJlcG9zaXRvcnkyMTI2MTMwNDk=",
+              "full_name": "cli/cli"
+            }
+          },
+          "head": {
+            "label": "cli:bump-go-gh",
+            "ref": "bump-go-gh",
+            "sha": "e09f1b1ca1176d8cef524adb8dfad0872d4b5620",
+            "repo": {
+              "id": 212613049,
+              "node_id": "MDEwOlJlcG9zaXRvcnkyMTI2MTMwNDk=",
+              "full_name": "cli/cli"
+            }
+          }
+        }
+      ]
+    },
+    "pull_request_index_terminal_page": {
+      "request_page": 2322,
+      "items_per_page": 2,
+      "link_relations": {
+        "previous": 2321,
+        "first": 1
+      },
+      "items": [
+        {
+          "id": 324495027,
+          "node_id": "MDExOlB1bGxSZXF1ZXN0MzI0NDk1MDI3",
+          "number": 1,
+          "html_url": "https://github.com/cli/cli/pull/1",
+          "title": "interactive pr list",
+          "state": "closed",
+          "draft": false,
+          "created_at": "2019-10-04T03:42:57Z",
+          "updated_at": "2026-03-02T23:23:35Z",
+          "closed_at": "2019-10-04T16:01:04Z",
+          "merged_at": "2019-10-04T16:01:04Z",
+          "user": {
+            "id": 98482,
+            "node_id": "MDQ6VXNlcjk4NDgy",
+            "login": "vilmibm",
+            "html_url": "https://github.com/vilmibm"
+          },
+          "base": {
+            "label": "cli:prototype",
+            "ref": "prototype",
+            "sha": "8ebaf1d3aaf3eef03b349d20338c83157b0bcfd7",
+            "repo": {
+              "id": 212613049,
+              "node_id": "MDEwOlJlcG9zaXRvcnkyMTI2MTMwNDk=",
+              "full_name": "cli/cli"
+            }
+          },
+          "head": {
+            "label": "cli:gh-pr",
+            "ref": "gh-pr",
+            "sha": "e9a3253762e768badaa1d4a5b3d267416d1e42f4",
+            "repo": {
+              "id": 212613049,
+              "node_id": "MDEwOlJlcG9zaXRvcnkyMTI2MTMwNDk=",
+              "full_name": "cli/cli"
+            }
+          }
+        }
+      ]
+    },
+    "pull_request": {
+      "id": 4506010893,
+      "node_id": "PR_kwDODKw3uc8AAAABDJRFDQ",
+      "number": 14430,
+      "html_url": "https://github.com/cli/cli/pull/14430",
+      "title": "Retire multi-account migration",
+      "body": "[scrubbed public body]",
+      "state": "closed",
+      "draft": false,
+      "locked": false,
+      "created_at": "2026-09-11T12:53:54Z",
+      "updated_at": "2026-09-11T22:50:15Z",
+      "closed_at": "2026-09-11T18:06:18Z",
+      "merged_at": "2026-09-11T18:06:18Z",
+      "merge_commit_sha": "ba51bb47799e308109a980fca846a90d164f5811",
+      "commits": 2,
+      "comments": 0,
+      "review_comments": 9,
+      "base": {
+        "ref": "trunk",
+        "sha": "7f0590c2b8050bb04c5af52291062e6825dda9df",
+        "repo": {
+          "id": 212613049,
+          "node_id": "MDEwOlJlcG9zaXRvcnkyMTI2MTMwNDk=",
+          "full_name": "cli/cli"
+        }
+      },
+      "head": {
+        "ref": "williammartin-fix-keyring-user-lookup",
+        "sha": "63db15cae4f7a344e203afa30b2df5ab2d98956d",
+        "repo": {
+          "id": 212613049,
+          "node_id": "MDEwOlJlcG9zaXRvcnkyMTI2MTMwNDk=",
+          "full_name": "cli/cli"
+        }
+      },
+      "user": {
+        "id": 1611510,
+        "node_id": "MDQ6VXNlcjE2MTE1MTA=",
+        "login": "williammartin",
+        "html_url": "https://github.com/williammartin"
+      },
+      "labels": [],
+      "assignees": [],
+      "milestone": null,
+      "requested_reviewers": [
+        {
+          "id": 634063,
+          "node_id": "MDQ6VXNlcjYzNDA2Mw==",
+          "login": "niik",
+          "html_url": "https://github.com/niik"
+        }
+      ],
+      "requested_teams": []
+    },
+    "check_suites": {
+      "total_count": 6,
+      "check_suites": [
+        {
+          "id": 93813005368,
+          "node_id": "CS_kwDODKw3uc8AAAAV17DcOA",
+          "status": "completed",
+          "conclusion": "success",
+          "created_at": "2026-09-11T17:55:47Z",
+          "updated_at": "2026-09-11T17:58:19Z",
+          "latest_check_runs_count": 2,
+          "head_sha": "63db15cae4f7a344e203afa30b2df5ab2d98956d",
+          "url": "https://api.github.com/repos/cli/cli/check-suites/93813005368",
+          "app": {
+            "id": 15368,
+            "node_id": "MDM6QXBwMTUzNjg=",
+            "slug": "github-actions",
+            "html_url": "https://github.com/apps/github-actions"
+          }
+        }
+      ]
+    },
+    "check_runs": {
+      "total_count": 11,
+      "check_runs": [
+        {
+          "id": 103365614261,
+          "node_id": "CR_kwDODKw3uc8AAAAYERIatQ",
+          "name": "lint",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-09-11T17:55:51Z",
+          "completed_at": "2026-09-11T17:58:18Z",
+          "html_url": "https://github.com/cli/cli/actions/runs/34630428362/job/103365614261",
+          "details_url": "https://github.com/cli/cli/actions/runs/34630428362/job/103365614261",
+          "head_sha": "63db15cae4f7a344e203afa30b2df5ab2d98956d",
+          "check_suite": {
+            "id": 93813005368
+          }
+        }
+      ]
+    },
+    "commit_status": {
+      "state": "success",
+      "sha": "2b28a816d043826f2ba10ff1d22ec3d94d2ed7c5",
+      "total_count": 1,
+      "statuses": [
+        {
+          "id": 53781659720,
+          "node_id": "SC_kwDOABYSQ88AAAAMhaMASA",
+          "state": "success",
+          "description": "checks completed successfully",
+          "target_url": "https://results.pre-commit.ci/run/github/1446467/1788910738.sIq1uC74Q7yXP4wNsQ3F7w",
+          "context": "pre-commit.ci - push",
+          "created_at": "2026-09-08T23:39:25Z",
+          "updated_at": "2026-09-08T23:39:25Z"
+        }
+      ]
+    }
+  }
+}

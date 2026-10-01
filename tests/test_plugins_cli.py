@@ -109,16 +109,28 @@ def test_plugins_show_unknown_plugin_json_emits_structured_error() -> None:
 def test_plugins_doctor_exits_zero_on_clean_install() -> None:
     result = _runner.invoke(_app, ["--doctor"])
     assert result.exit_code == 0
-    assert "11 plugin(s) OK" in result.stdout
+    assert (
+        "11 plugin(s), 3 capability provider(s), 22 contract(s), 2 profile(s) OK" in result.stdout
+    )
 
 
 def test_plugins_doctor_json_emits_structured_result() -> None:
     result = _runner.invoke(_app, ["--doctor", "--json"])
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
-    assert set(payload) == {"ok", "plugin_count", "problems"}
+    assert set(payload) == {
+        "ok",
+        "plugin_count",
+        "capability_provider_count",
+        "artifact_contract_count",
+        "resource_profile_count",
+        "problems",
+    }
     assert payload["ok"] is True
     assert payload["plugin_count"] > 0
+    assert payload["capability_provider_count"] == 3
+    assert payload["artifact_contract_count"] == 22
+    assert payload["resource_profile_count"] == 2
     assert payload["problems"] == []
 
 
@@ -166,7 +178,14 @@ def test_plugins_doctor_json_reports_a_damaged_cache_contract(damaged_cache_sche
 
     assert result.exit_code == 1
     payload = json.loads(result.stdout)
-    assert set(payload) == {"ok", "plugin_count", "problems"}
+    assert set(payload) == {
+        "ok",
+        "plugin_count",
+        "capability_provider_count",
+        "artifact_contract_count",
+        "resource_profile_count",
+        "problems",
+    }
     assert payload["ok"] is False
     assert any(problem.startswith("cache record contracts:") for problem in payload["problems"])
     assert any(damaged_cache_schemas in problem for problem in payload["problems"])

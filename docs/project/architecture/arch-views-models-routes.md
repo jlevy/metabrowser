@@ -39,11 +39,10 @@ model, and a model never learns which route reached it.
 That is what lets one diff renderer serve a patch file, a commit, and later a pull
 request without knowing the difference.
 
-The repository cache validates its own records against installed artifact contracts; see
-[Cache record contracts](arch-repository-sources-and-provider-mirrors.md#cache-record-contracts).
-Resource publication profiles and resource kinds belong to the retired design in
-[External Resources, Artifact Contracts, and Views](arch-external-resources-and-views.md)
-and are not built.
+Artifact contracts, resource publication profiles, and resource kinds are separate
+trusted registries. Their ownership and the mapping workflow for external APIs are
+defined in
+[External Resources, Artifact Contracts, and Views](arch-external-resources-and-views.md).
 
 Filesystem-backed models reach these layers through the
 [Inventory Provider Contract](arch-inventory-provider.md).
@@ -76,6 +75,17 @@ Two kinds are also **containers** — folder-like entries whose children are add
 (see [nav containers](arch-nav-containers.md)): `folder` (children are files and
 folders) and `diff` (children are the files a patch changes).
 
+The proposed v0.12 hosted-review plugin adds one route-backed kind only when its model,
+view, address, and parity evidence land together:
+
+| Planned kind | Matches | Views (default first) | Model | Bead |
+| --- | --- | --- | --- | --- |
+| `change-request` | A selected `/hosted/.../change-request/...` resource | Review, Diff, Source | `ChangeRequest/v1` plus a selected bundle of validated companions and File Diff Format by reference | `mb-83w0`, `mb-81p5` |
+
+It is item-like as a document and folder-like as a changed-file container.
+Repository summaries and PR index rows are route models and virtual-navigation data, not
+synthetic filesystem kinds.
+
 ### Shared Source rendering
 
 `text`, `structured`, `markdown`, and `html` all expose raw source from the file
@@ -103,18 +113,24 @@ The registry-to-vendored-grammar and registry-to-text-routing checks live in
 
 ## Documented data formats
 
-Complete formats have a schema, a conformance corpus, and implementations bound by it.
+Complete formats have a schema, a conformance corpus, and implementations bound by it;
+in-progress rows name the narrower authority already present.
 These formats are tool-neutral: nothing in a document references Metabrowser.
 
 | Format | Describes | Authority | Implementations |
 | --- | --- | --- | --- |
 | [File Diff Format v1](file-diff-format/file-diff-format.md) | A change set between two snapshots | `data/file-diff-format/file-diff.schema.json` | `metabrowser.diff.format` (Pydantic), `builtin_plugins/diff/diff-model.js` |
 | [File Rollup Format](file-rollup-format/file-rollup-format.md) | File classification and directory totals | `data/file-rollup-format/` | Python inventory, browser rollup projection |
+| [Hosted Review Format](arch-hosted-review-model.md) (in progress) | Provider-neutral repositories, change requests, reviews, threads, checks, status, freshness, and activity projections | Installed enforced SoftSchema contracts and resource profiles; Pydantic record validators; packaged conformance corpora; mechanically closed scrubbed GitHub coverage oracle with exact reduced-response shapes, field/value evidence, and executable identity recipes | Python registry, validators, and codecs plus registry-driven browser parsers for every browser-consumed contract; the generic installed inventory/evidence and isolated-wheel gates are implemented, while browser plugin registration and the GitHub adapter remain planned |
 
-The repository cache’s record contracts are an internal format, not one of these: their
-installed inventory is maintained by `devtools/check_artifact_contracts.py` in
-[Cache record contracts](arch-repository-sources-and-provider-mirrors.md#cache-record-contracts),
-and this map registers no route, kind, or view for them.
+The registry and composition rules that let later release, issue, or other external
+contracts reuse these layers are specified in
+[External Resources, Artifact Contracts, and Views](arch-external-resources-and-views.md).
+Its installed contract and profile tables are maintained by
+`devtools/check_artifact_contracts.py`; this map does not register a route, resource
+kind, or view for format-only capability declarations.
+A planned resource kind is added to the table above only when its model, route, views,
+CLI parity, and functional evidence land together.
 
 Everything else travels as an envelope on `/api/*`, versioned with the shell and the
 built-in plugins as one artifact — an internal contract, not a standard.
@@ -205,6 +221,16 @@ The page applies the same allowlist again, rebuilding the nodes it inserts.
 See
 [Pull-request records](arch-repository-sources-and-provider-mirrors.md#pull-request-records).
 
+The hosted-review slice registers these exact proposed resource routes with the browser
+address in the same implementation changes:
+
+| Planned route | Model | CLI evidence | Bead |
+| --- | --- | --- | --- |
+| `/api/hosted-review/<provider-kind>/<instance-key>/<repository-key>/repository` | `HostedRepository/v1` plus retrieval and manifest references | `metab --api`; `cli-github-repository.tryscript.md` | `mb-2oxp` |
+| `/api/hosted-review/<provider-kind>/<instance-key>/<repository-key>/change-requests?query_key=<key>` | One `ChangeRequestIndex/v1` observation | `metab --api`; `cli-github-pr-index.tryscript.md` | `mb-lnkl` |
+| `/api/hosted-review/<provider-kind>/<instance-key>/<repository-key>/change-requests/<resource-key>` | Selected `ChangeRequest/v1` bundle, including distinct top-level and review comments | `metab --api`; `cli-github-pr-open.tryscript.md` | `mb-h64t` |
+| `/api/hosted-review/<provider-kind>/<instance-key>/<repository-key>/change-requests/<resource-key>/comparison` | File Diff Format resolved from immutable base/head object IDs | `metab --api`; `cli-github-pr-open.tryscript.md` | `mb-81p5` |
+
 ### Planned plugin registration surfaces
 
 Browser and route declarations are additive installed-plugin capabilities only if
@@ -212,8 +238,9 @@ existing SDK 0.7 manifests and JavaScript calls keep their signatures and behavi
 They still require plugin-author documentation and a changelog entry.
 An existing browser-contract change instead bumps `PLUGIN_SDK_VERSION` and every
 built-in manifest in one commit, with no compatibility layer.
-The thin-mirror plan retired the router, address-space, provider-adapter, resource-kind,
-and nav-panel declarations for the alpha; their rows remain as design background.
+Artifact contracts and resource profiles use the separately versioned
+`metabrowser.capabilities.v1` installed-Python entry-point group and never enter browser
+plugin discovery or static asset loading.
 
 | Declaration or SDK call | Owns | Arbitration and lifecycle | Bead |
 | --- | --- | --- | --- |
@@ -222,6 +249,7 @@ and nav-panel declarations for the alpha; their rows remain as design background
 | `AddressSpaceSpec` / `registerAddressSpace` | Browser prefix, parse, format, apply, preview claim, startup, popstate, root replacement, disposal | Exactly one owner per address; browser and `metab --show` share the registration | `mb-6mle` |
 | `ProviderUrlReducerSpec` | Declared schemes/hosts and `NotApplicable`/`Reduced`/terminal `Rejected` reducer | Overlapping claims fail discovery; claimed rejection never falls through. Superseded for the alpha by the thin-mirror plan: the built-in GitHub reducer reaches `classify_root_argument(reducers=)` through `cache/providers.py`, with no public declaration | `mb-12cz` |
 | `ProviderAdapterSpec` | Provider/instance capability and trusted adapter factory | Duplicate claims fail; lifespan injects neutral ports and awaits cancellation/close | `mb-ji83` |
+| `ArtifactContractSpec` / `ResourceProfileSpec` via `metabrowser.capabilities.v1` | Packaged schema, parser, corpus, producer/consumer inventory, and publication bundle shape | Only installed Python distributions contribute; duplicate IDs, malformed declaration structure, invalid schemas, broken profile references, missing evidence, and architecture-table drift fail the build. Artifact content cannot register declarations. The installed capability, generic inventory, and isolated-wheel gates are implemented without registering a browser plugin or static asset | `mb-52iz`, `mb-vors` |
 | `ResourceKindSpec` | Route-backed semantic kind, item/container capabilities, primary contract, and views | Duplicate kind or view claims fail; route, browser, and CLI resolve the same selection | `mb-83w0` before `mb-81p5` |
 | `registerNavPanel` | Repository-scoped bounded virtual collection | Generation-checked loading, restoration, root replacement, and disposal | `mb-uh6p` |
 
@@ -422,6 +450,30 @@ SSE transport whose emitted snapshot is already owned by its data routes.
 | `navigation.filter-layout` | paint-exempt | `static/styles.css` | `local-only` | — | CSS geometry and disclosure motion require rendered layout; focused selectors and accessibility state are pinned in `tests/test_browser_filter_ui.py` and `tests/test_tree_keyboard_integration.py` |
 | `document.floating-ui-frame` | paint-exempt | `static/styles.css` | `local-only` | — | Where the `position: fixed` TOC drawer, its toggle, and its backdrop land while the preview pane scrolls is browser layout, and the repository has no browser harness to measure it. `tests/test_preview_frame_contract.py` pins by stylesheet text what places them: the shell wraps the scrolling `#preview-pane` in a non-scrolling `.preview-frame.kpress-frame` that declares a transform, and no rule in the shell’s, a built-in plugin’s, or KPress’s stylesheet gives the pane or an element between it and the TOC a property that makes a containing block for fixed descendants. Computed styles and rules a script adds are not checked. That the toggle stays in view at any scroll depth, in a trusted folder and a served mirror, is step 5 of section 5.9 of the v0.12 QA runbook |
 | `github.pull-page-paint` | paint-exempt | `builtin_plugins/github/pull-page.js#mountPullPage` | `local-only` | — | Building the page’s DOM, observing which texts scroll into view, loading the diff plugin and mounting its view, and the shell’s `app.js` callbacks the page host calls (load the plugin, render into the pane, `history.pushState`) need a rendered page. Every decision they act on is a session owner above: what a route, a tab link, the link to the served pull request, or a history landing does to the pane, and which superseded page is disposed (`navigation.pull-page-history`), whether the conversation repaints or asks again and what Files changed keeps (`github.pull-page-paint-decisions`), and what of a text’s HTML is inserted (`github.pull-page-inert-markup`). The route grammar, the shell and plugin wiring for the `pull-request` kind, and that only an inert template is parsed are pinned in `tests/test_pull_page_route.py`; the browser walkthrough is in the v0.12 QA runbook |
+
+### Planned v0.12 hosted-review functional rows
+
+These rows move into the enforced table in the same changes that add their production
+functions. All interaction rows enter through `node tests/dom/hosted-review-session.js`
+and are pinned together by `tests/golden/cli-ui-hosted-review.tryscript.md`; focused
+unit sessions may supplement but cannot replace that exact production path.
+
+| Aspect | Tier | Planned owner | Data inputs | Required production session |
+| --- | --- | --- | --- | --- |
+| `hosted-review.direct-lifecycle` | interaction | `static/plugin-address-spaces.js#parseAddress`, `static/plugin-address-spaces.js#applyAddress`, `builtin_plugins/hosted_review/hosted-review-view.js#prepareChangeRequestView`, `#mountChangeRequestView`, `#disposeChangeRequestView` | selected change-request and comparison routes above | direct `/hosted/.../change-request/...` startup, popstate, replacement, and failed-load recovery |
+| `hosted-review.panel-window` | interaction | `builtin_plugins/hosted_review/hosted-review-panel.js#createPullRequestPanel`, `#loadIndexPage` | change-request index route | bounded page load, virtualization window shift, stale and partial indicators |
+| `hosted-review.panel-selection` | interaction | `builtin_plugins/hosted_review/hosted-review-panel.js#openChangeRequest` | index and selected change-request routes | row selection opens the same direct address and changed-file container |
+| `hosted-review.panel-restoration` | interaction | `builtin_plugins/hosted_review/hosted-review-panel.js#restorePullRequestSelection` | index route | selection and expansion restore only for the same repository and query key |
+| `hosted-review.root-replacement` | interaction | `static/plugin-address-spaces.js#replaceRoot`, `builtin_plugins/hosted_review/hosted-review-panel.js#replaceRoot` | `local-only` | old requests, previews, index pages, and snapshot leases settle before the new root owns state |
+| `hosted-review.disposal` | interaction | `static/plugin-address-spaces.js#disposeAddress`, `builtin_plugins/hosted_review/hosted-review-view.js#disposeChangeRequestView`, `builtin_plugins/hosted_review/hosted-review-panel.js#dispose` | `local-only` | navigation away, failed replacement, root replacement, and shutdown dispose once |
+
+Every browser-consumed Hosted Review Format record has a named parser in
+`builtin_plugins/hosted_review/hosted-review-model.js` and runs the same valid/invalid
+corpus as Python: repository, index, change request, top-level comment, review, thread,
+review comment, check, status, and activity page.
+Provider binding, retrieval, resource-set, sync-manifest, pointer, and tombstone records
+remain server-only publication evidence and have no browser parser.
+No server aggregate may bypass those record validators.
 
 ## Adding something
 

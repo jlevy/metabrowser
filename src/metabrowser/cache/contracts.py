@@ -6,14 +6,15 @@ contract, envelope, and status, but never a schema path: the caller chooses the
 contract from the file's place in the layout, and validation uses only the packaged
 schema, so a cache-controlled ``softschema.schema`` cannot redirect it.
 
-The machine-owned records are ``enforced`` and form the artifact-contract registry that
-:func:`cache_contract_registry` builds. The format gate, the architecture table check,
-and the isolated-wheel smoke test all read that registry, so they cover exactly the
-declarations the cache validates against.
+The machine-owned records are ``enforced`` and join the installed artifact-contract
+registry through the ``repository-cache`` capability provider, so the generic inventory
+gate, the architecture table check, and the isolated-wheel smoke test cover them like
+any other installed contract. Reading the cache never depends on that discovery: the
+cache builds its own registry from the same declarations.
 
-``config.yml`` is user-owned and ``permissive``. The registry admits only enforced
-contracts, so the configuration contract is compiled, drift-checked, corpus-validated,
-and verified in the installed wheel here instead.
+``config.yml`` is user-owned and ``permissive``. The installed registry admits only
+enforced contracts, so the configuration contract is compiled, drift-checked,
+corpus-validated, and verified in the installed wheel here instead.
 """
 
 from __future__ import annotations
@@ -53,15 +54,18 @@ from metabrowser.cache.records import (
     RepositoryStoreAlias,
     RepositoryStoreState,
 )
-from metabrowser.plugin_loader.artifact_contracts import (
+from metabrowser.plugin_loader.artifact_contracts import ContractRegistry, build_contract_registry
+from metabrowser.plugin_loader.capability_discovery import LoadedCapabilitySet
+from metabrowser.plugin_loader.capability_types import (
     ArtifactContractSpec,
+    ArtifactValidationContext,
+    CapabilitySet,
     ConformanceCorpusSpec,
-    ContractRegistry,
-    build_contract_registry,
 )
 
 FORMAT_ROOT: Final = Path(__file__).resolve().parents[1] / "data/cache-format"
 SCHEMA_ROOT: Final = FORMAT_ROOT / "schemas"
+CAPABILITY_PROVIDER_ID: Final = "repository-cache"
 CACHE_RECORDS_CORPUS_ID: Final = "cache-records-conformance"
 APPLICATION_CONFIG_CORPUS_ID: Final = "application-config-conformance"
 # One invalid configuration can fail once per entry, and its reasons reach an API
@@ -175,8 +179,10 @@ ENFORCED_CACHE_CONTRACTS: Final = tuple(
 ARTIFACT_PROFILE: Final = SchemaProfile.pure_yaml
 
 
-def _validator_for(contract: CacheContract) -> Callable[[dict[str, Any]], object]:
-    def validate_record(values: dict[str, Any]) -> object:
+def _validator_for(
+    contract: CacheContract,
+) -> Callable[[dict[str, Any], ArtifactValidationContext], object]:
+    def validate_record(values: dict[str, Any], _context: ArtifactValidationContext) -> object:
         return contract.model.model_validate(values)
 
     return validate_record
@@ -220,6 +226,8 @@ def _artifact_contract(contract: CacheContract) -> ArtifactContractSpec:
         consumer_ids=_CONSUMERS,
         corpus=_corpus(contract.corpus_id),
         corpus_record_selectors=contract.corpus_record_selectors,
+        browser_consumed=False,
+        browser_parser=None,
     )
 
 
@@ -228,11 +236,22 @@ def _artifact_contracts() -> tuple[ArtifactContractSpec, ...]:
     return tuple(_artifact_contract(contract) for contract in ENFORCED_CACHE_CONTRACTS)
 
 
+def repository_cache_capabilities() -> CapabilitySet:
+    """Return the enforced cache contracts for the installed capability registry."""
+
+    return CapabilitySet(artifact_contracts=_artifact_contracts())
+
+
 @cache
 def cache_contract_registry() -> ContractRegistry:
-    """Return the registry of enforced cache contracts that cache reads validate against."""
+    """Return the registry cache reads validate against, built without plugin discovery."""
 
-    return build_contract_registry(_artifact_contracts())
+    provider = LoadedCapabilitySet(
+        provider_id=CAPABILITY_PROVIDER_ID,
+        source_distribution=None,
+        capabilities=repository_cache_capabilities(),
+    )
+    return build_contract_registry((provider,))
 
 
 def compile_contracts(*, check_only: bool = False) -> tuple[CompileResult, ...]:
@@ -360,6 +379,7 @@ __all__ = [
     "ARTIFACT_PROFILE",
     "CACHE_CONTRACTS",
     "CACHE_CONTRACT_BY_ID",
+    "CAPABILITY_PROVIDER_ID",
     "ENFORCED_CACHE_CONTRACTS",
     "FORMAT_ROOT",
     "MAX_CONFIG_REASONS",
@@ -373,5 +393,6 @@ __all__ = [
     "config_reasons",
     "parse_application_config",
     "record_reasons",
+    "repository_cache_capabilities",
     "validate_config_values",
 ]

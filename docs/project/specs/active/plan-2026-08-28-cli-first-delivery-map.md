@@ -76,7 +76,7 @@ parallel.
 | 5 | Measurement and source-binding correction, owner-only cache format, local-origin contract, worktree-free acquisition, content-source boundary, then immutable Git-tree source | `mb-ire2`, `mb-z2mc`, `mb-xa0p`, `mb-4gnu`, `mb-k54c`, `mb-dxmb`, `mb-h51g`, `mb-dg00`, `mb-3bna`, `mb-z335` | 0, 1 | Cache and contracts on #125–#140; acquisition #217 and consolidated source/pin #216 are ready for review but still owe acceptance and review |
 | 6 | HTML trust chain | `mb-cun0`, `mb-vib1`, `mb-d658` | 0 | Landed through #209 on `main`; its application to new URL and pin paths still needs proof |
 | 7 | Provider URL reducer, repository open, provider-selected refs, then immutable selected branch | `mb-12cz`, `mb-ew38`, `mb-jlon`, `mb-2xq7` | 5, 6 | Planned on new layers above the stabilized stack |
-| 8 | Hosted-review models | `mb-63ym` | 0 | Phase 0 records were on #134 and were removed from the stack on 2026-09-30; they are kept on the `reference/v012-hosted-review` branch, tagged `reference/v012-hosted-review-2026-09-30` |
+| 8 | Hosted-review models | `mb-63ym` | 0 | Phase 0 records on #134; provider runtime remains planned |
 | 9 | Bounded provider runner, `gh api` adapter, broker-pinned Git credential bridge, capability registry, auth-scoped store, repository summary, then direct PR bundle | `mb-y1ax`, `mb-p4sw`, `mb-s123`, `mb-ji83`, `mb-s0gv`, `mb-i3xc`, `mb-2oxp`, `mb-cbak`, `mb-h64t` | 5, 7, 8 | v0.12.0 |
 | 10 | Plugin router, address-space lifecycle, and direct PR document/diff | `mb-xzj3`, `mb-6mle`, `mb-81p5` | 6, 9 | v0.12.0 |
 | 11 | Query-keyed bounded PR index and virtual nav | `mb-lnkl`, `mb-uh6p`, `mb-iw1v` | 9, 10 | v0.12.0 |

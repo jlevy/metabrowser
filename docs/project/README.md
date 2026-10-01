@@ -26,12 +26,11 @@ links to the document that covers each in depth.
   — session subjects, worktree-free Git object stores, provider mirrors, and their
   concurrency and lifetime boundaries
 - [External resources, artifact contracts, and views](architecture/arch-external-resources-and-views.md)
-  — retired design: the entity/artifact/resource vocabulary, trusted
-  contract/profile/kind registries, transparent formats, and mapping workflow for
-  external APIs
+  — the entity/artifact/resource vocabulary, trusted contract/profile/kind registries,
+  transparent formats, and mapping workflow for external APIs
 - [Hosted review model and provider boundary](architecture/arch-hosted-review-model.md)
-  — retired design: provider-neutral change requests, GitHub adapter, plugin views,
-  activity projection, and cache lifetimes
+  — provider-neutral change requests, GitHub adapter, plugin views, activity projection,
+  and cache lifetimes
 - [File Diff Format v1](architecture/file-diff-format/file-diff-format.md)
 - [Diff sources, context, and anchoring](architecture/file-diff-format/diff-sources-and-anchoring.md)
 - [File Rollup Format v0.1](architecture/file-rollup-format/file-rollup-format.md)
@@ -61,6 +60,13 @@ links to the document that covers each in depth.
 - [CLI-first delivery: parity, Git status, and the repository cache](specs/active/plan-2026-08-28-cli-first-delivery-map.md)
 - [A machine-readable contract for the API envelopes](specs/active/plan-2026-08-30-api-schema-and-contract.md)
 - [Functional UI and CLI parity](specs/active/plan-2026-09-10-functional-ui-cli-parity.md)
+
+## Reference Code
+
+- [Hosted Review Format and provider resources](reference/hosted-review-reference.md) —
+  unused reference code kept on this branch and at the
+  `reference/v012-hosted-review-2026-09-30` tag only; not on the critical path, not
+  maintained, and not to be merged
 
 ## Research
 
