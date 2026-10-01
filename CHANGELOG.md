@@ -217,7 +217,27 @@ GitHub URLs and HTTPS:
   (`using the clone of <url> cached in ~/.metabrowser/cache, fetched 3 hours ago`), so a
   second run reads differently from a first; `--show`, `--api`, and `--check-api` stay
   silent on a cache hit.
-  stdout and every route’s answer are unchanged, and neither names a cache path.
+  stdout is unchanged.
+
+- A page served from a mirror is headed by the repository’s name, and says where the
+  mirror is kept. Opening `https://github.com/jlevy/squares` used to head the main view
+  with the full commit ID (`fe6399451f1c… / README.md`), and nothing on the page said
+  the files came out of `~/.metabrowser`. Now the navigation heading reads
+  `squares main fe6399451f1c` and the main heading `squares / README.md`: the name a
+  checkout of the repository would have, by one rule for every `https://` and `file://`
+  origin and for a pull request, with the ref and the short commit beside it.
+  The main heading ends with `mirror in ~/.metabrowser/cache/repository-stores/…`, and
+  the tooltip on the name and on that note says what the directory is:
+  `Mirror of <origin> at <commit>, stored in <location>: a bare Git repository, with no checked-out files.`
+  Nothing is checked out, so the location is never shown as the start of a file’s
+  address. The directory named is the store’s bare repository, where
+  `git -C <location> log --all` works, with your home directory as `~`.
+  `/api/source/status` reports the same as `name`, `origin`, and `location`; on a GitHub
+  mirror the name is lowercase, as the mirror’s canonical address is.
+  This is the one place a route’s answer names a path in the cache: file content,
+  listings, errors, and every other envelope still name none, and repository content
+  still cannot read it, since a mirror’s Markdown renders inert and `/raw` is a sandbox
+  with no access to `/api`.
 
 - Pull-request data:
   `metab https://github.com/owner/repo/pull/<n> --api /api/plugin/github/pull` reads the

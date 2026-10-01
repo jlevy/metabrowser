@@ -191,6 +191,94 @@ read blob or file bytes hold no Git import and no source-kind branch.
 Plugins receive leased, bounded reader ports, never unrestricted `ContentSource` objects
 or cache paths.
 
+### What a mirror’s page is called, and where it says it is kept
+
+A page of a served mirror is headed as a page of a folder is: by a name, with the place
+it is kept in sight (decided 2026-10-01, `mb-fndz`). It used to show the full commit ID
+where a folder shows its name, and nothing said its files came out of the cache.
+
+- **Name.** The served root is called by the repository’s name, as a checkout of it
+  would be: the rule `git clone` names its directory by.
+  It is the last path segment of the origin’s address, without a trailing `/.git` and
+  without a `.git` suffix, so `https://github.com/jlevy/squares`,
+  `file:///srv/squares.git`, and `file:///srv/squares/.git` are all `squares`. An
+  address whose path names nothing else is called by its host.
+  One rule serves every `https://` and `file://` origin and a pull-request pin
+  (`repository_name` in `cache/served_mirror.py`). The name stands in the navigation
+  heading, as the dimmed root of the main heading’s address, and in the heading’s
+  tooltip. A pin with no mirror has no origin to take a name from and is headed by its
+  ref and commit, as before.
+- **Commit.** The ref and the short commit follow the name in the navigation heading.
+  The full commit is in the headings’ tooltips and in `/api/source/status`, and every
+  data request of the page still names it.
+- **An origin is untrusted.** The name is display text and never a path.
+  A percent-escape is decoded, and the result passes through `display_segment`, so a
+  control character, a character drawn as nothing, and bytes that are not UTF-8 become
+  U+FFFD. A name longer than a directory can be called is cut with an ellipsis.
+  The server escapes it as HTML and the page escapes it again where it writes it.
+- **Location.** The page says where the mirror is kept, with the home directory as `~`
+  when the application home is under it and absolute otherwise, as a served folder’s
+  path is. The directory named is the store’s bare repository,
+  `cache/repository-stores/<store-key>/repository.git`, and not the source’s directory
+  under `cache/sources/<slug>`. That directory carries the repository’s name, but it
+  holds a few small records and no Git object: its size is kilobytes and `git -C` fails
+  there. The bare repository is what every page is read from, what the clone’s size is,
+  and where `git -C <location> log --all` works.
+  The name it lacks stands beside it.
+- **No folder is implied.** Nothing is checked out: each file is read from a Git object
+  at the pinned commit.
+  So the location is not the start of the address, where it would read as a folder
+  holding these files.
+  It is a note after the address, and the tooltip on the name and on the note says what
+  the directory is:
+  `Mirror of <origin> at <commit>, stored in <location>: a bare Git repository, with no checked-out files.`
+
+The stack kept every cache and store path out of every route’s answer.
+That rule now has one exception, held to an exact form:
+
+- **One model.** The status envelope (`SourceStatus` in `source_routes.py`) carries
+  `name`, `origin`, and `location`, each null for a folder and for a pin with no mirror.
+  `location` is the one field that names a path in the cache.
+  It is answered wherever the envelope is: `GET /api/source/status`, and the `status`
+  member of what `POST /api/source/pin` and `POST /api/source/refresh` answer.
+  `origin` is the source’s address, which for a `file://` origin is the path the reader
+  gave.
+- **One place on the page.** The shell writes the same text into two attributes of the
+  navigation heading, `data-mirror-location` and `data-mirror-tip`, as it writes a
+  folder’s path into `data-served-root`. The file header reads them back.
+- **Nothing else.** File content, listings, rollups, history, diffs, plugin hooks, and
+  every error stay path-free; the `/api/cache/` routes still answer
+  `unsupported_for_subject` on a served pin.
+  The location is display text: no route accepts it, and no path is ever built from it.
+- **Checked.** `tests/test_serve_pin.py` asks every registered GET route of a served
+  mirror for its answers and fails if the application home or the origin stands anywhere
+  but those two fields and those two attributes, each compared to its exact text.
+
+A served mirror is untrusted content, which is why the rule existed.
+The location still cannot be read by what a repository’s author writes.
+For it to leak, repository content would have to run script in the application’s origin,
+or apply a stylesheet to the application page and report what a selector matched to
+another host. Neither holds:
+
+- Repository Markdown and pull-request text reach the page only as the inert allowlist,
+  applied on the server and again in the page: no script, stylesheet, `style`, `class`,
+  `id`, or `data-*` survives, so nothing in a document runs or selects the heading.
+- The page’s Content-Security-Policy runs scripts only from the application’s static
+  paths and by a per-response nonce, takes stylesheets only from those paths, and keeps
+  images and requests on this origin, so there is nowhere to report to.
+  Nothing may frame the page.
+- `/raw` is an opaque-origin sandbox, and under the untrusted profile it runs no script
+  and serves no file as code.
+  A request from that origin is refused by the same-origin check on `/api`, and a page
+  it fetches from another origin is unreadable to it.
+
+[SECURITY.md](../../../SECURITY.md#content-trust-model) describes each of these, and
+`tests/test_serve_pin.py` holds them against a README that tries each way.
+
+One known limit: the GitHub reducer lowercases the owner and repository so that every
+spelling of a URL shares one mirror, so a GitHub repository is named in lowercase
+(`hello-world` for `octocat/Hello-World`).
+
 ## Shared Repository Store
 
 One logical repository store owns one worktree-free Git database: a read-only mirror of
@@ -755,8 +843,8 @@ in [Views, Models, and Routes](arch-views-models-routes.md).
 | Plugin and route bridge | `plugin_api.py`: `open_content`, `source_capabilities`, `require_source_capability`, filesystem-only path helpers; `server.py`, `events_route.py`, `git/routes.py`, `git/content_routes.py`, `git/repo.py`, `git/history.py`; `diff/adapters/git.py`: `GitDiffSource`; `builtin_plugins/diff/sidekick.py`: comparison, document, and children hooks; `builtin_plugins/binary/sidekick.py`: chunk hook; `builtin_plugins/structured`: parsed hook; `builtin_plugins/agent_log/sidekick.py`: charts hook; `plugin_loader/classify.py`: `classify_identity` | Resolve the active content-source handle rather than assuming the global root is a `Path`; capability-gate recency, ignore, watcher, activity, mutation, and Git listing sizes; honor a pinned `GitRevisionSubject` on Git collection, file, raw, tree, rollup, catalog, index status, capabilities, tree filter tallies, tree summary, filtered tree totals, include_ignored no-op, tree depth, file envelope ext, markdown frontmatter, text preview window, in-tree symlink follow including plugin sidekicks, diff-comparison including `GitDiffSource.content`, KPress, patch-file container, binary-chunk, identity-and-content-kind, structured-parsed, and agent-log routes, and image preview; keep route, CLI, and golden parity |
 | Revision tree | `git/tree_source.py`: `GitPath`, `GitTreeSource`, `GitRevisionSubject`, `list_tree`, `read_blob`; shared per-store `cat-file --batch-command --buffer` pool (`MAX_BATCH_READERS_PER_STORE`); `git/content_routes.py`: file, raw, tree, catalog, `split_git_container_wire`, and extension plugin kinds | Enumerate NUL-framed byte-safe full-OID trees and read size-gated blobs from a `RepositoryStoreTarget` with no materialization. `GitPath` wires are the identity on every route that accepts one, and blob kinds come from extension, basename, sniffed adapter, and bounded JSON/YAML/frontmatter mappings. The per-route projections are in [Git and Comparison Sources](arch-git-and-comparison-sources.md) |
 | Repository store | `cache/repository_store.py`: `open_revision`; `cache/records.py`: source aliases and store state; `cache/acquire.py`: `acquire_source`; `cache/reclaim.py`: staging sweep | `open_revision` checks that a commit is in the published store and returns its `GitRevisionSubject`, writing nothing and holding no lock. Acquisition fetches every object of a `file://` or `https://` source and publishes the store and its alias under the alias and store locks. Nothing deletes a published store |
-| Serving a pin | `source.py`: `serve_subject_opener`, `lifespan_subject`, `attach_owned_subject`, `close_owned_subject`; `server.py`: `_lifespan`, `_pin_label_html`; `cli/git_pin_cli.py`: `run_serve_pin`; `source_routes.py`: `source_status` | Serve mode acquires, resolves what the URL selects, proves that pin opens, and hands the server an opener, because a pin’s batch readers belong to the event loop that started them. The application lifespan opens the pin in the serving loop before the inventory reads the subject, attaches it, and closes whichever pin is served at shutdown; each start opens a fresh pin. `/api/source/status` and the navigation heading report the pin and the ref it was resolved from, and a pull-request URL’s number. On a served pin the cache routes and the `/raw/<path>` form answer `unsupported_for_subject`, and the untrusted profile is forced |
-| Refresh and pin switching | `cache/origin.py`: `ls_remote_head_args`, `mirror_fetch_args`, `mirror_prune_args`, `classify_remote_failure`; `cache/update.py`: `update_store`, `remove_interrupted_fetch_leftovers`; `cache/locks.py`: `store_fetch_lock`; `cache/resolve.py`: `resolve_pin`, `resolve_selection`, `ref_tip`, `list_mirror_refs`; `cache/served_mirror.py`: `StoreMirror`; `mirror_refresh.py`: `RefreshCoordinator`, `MirrorSession`, `serve_mirror`, `lifespan_refresh`; `source.py`: `replace_owned_subject`; `source_routes.py`: `api_source_refresh`, `api_source_pin`, `api_source_refs`, `view_on_pin`, `SourcePinGuard`; `static/source-freshness.js`, `static/source-pin-guard.js`, `static/source-ref-selector.js` | One fetch per refresh under the store’s fetch side lock, from the source’s URL, with typed outcomes, which the Git processes inherit so it stays held while any of them runs. The coordinator keeps background jobs on the application state keyed by store key, joins concurrent requests, runs at most two at once, and cancels them at shutdown; a Ctrl-C kills their process groups before it exits. Status freshness is answered from memory. One resolver serves URL opening and the pin route: exact ref names from one `for-each-ref` (branch, then tag, then commit ID). The ref selector lists the mirror’s branches or tags from one more `for-each-ref`, filtered and bounded in the route, and a switch that names the page’s `/view/` address answers where that page goes on the new pin. A pin replaces the served subject under a new generation, attaching the new subject before closing the old, so no request meets a moment with nothing served. In a server, a selection the mirror lacks starts one background fetch and answers `selection_pending`, then the switch or not found; a URL selection the mirror lacked at startup is served when that fetch brings it, under a new generation like any switch. The lifespan’s opener is left alone, so a restart serves the pin the banner announced. Serve mode refreshes a stale mirror once at startup and follows a refresh another process is running until it ends; one-shot modes never fetch unless asked. Any failure of the atomic fetch is followed by a prune of stale refs on their own and one more try, which clears a ref clash (`side` becoming `side/x`, a case-only rename) however Git words it; a clash that remains on a case-insensitive store, or a fetch that folded one ref into its case twin, puts every ref back and is `ref_case_collision`. A page on a pin names the commit it shows on its `fetch` data requests (`static/source-pin-guard.js`), and `SourcePinGuard` refuses another commit with `pin_changed`; the commit rather than the session generation is the token because a generation restarts at 1 in every server process. Back and forward bring such a page back from the browser’s caches without asking, so on a history landing the same script asks the status route once and reloads the page, at most once, when another commit is served; the page stays cacheable, so a landing with nothing switched keeps the back/forward cache and its scroll position. A commit pinned by ID is served under the ref last served, or the served pull request’s head ref, when it is that ref’s tip, so a switch away and back by ID stays on the ref |
+| Serving a pin | `source.py`: `serve_subject_opener`, `lifespan_subject`, `attach_owned_subject`, `close_owned_subject`; `server.py`: `_lifespan`, `_pin_label_html`; `cli/git_pin_cli.py`: `run_serve_pin`; `source_routes.py`: `source_status` | Serve mode acquires, resolves what the URL selects, proves that pin opens, and hands the server an opener, because a pin’s batch readers belong to the event loop that started them. The application lifespan opens the pin in the serving loop before the inventory reads the subject, attaches it, and closes whichever pin is served at shutdown; each start opens a fresh pin. `/api/source/status` and the navigation heading report the pin and the ref it was resolved from, a pull-request URL’s number, and for a served mirror the repository’s name, its origin, and where the mirror is kept ([What a mirror’s page is called](#what-a-mirrors-page-is-called-and-where-it-says-it-is-kept)). On a served pin the cache routes and the `/raw/<path>` form answer `unsupported_for_subject`, and the untrusted profile is forced |
+| Refresh and pin switching | `cache/origin.py`: `ls_remote_head_args`, `mirror_fetch_args`, `mirror_prune_args`, `classify_remote_failure`; `cache/update.py`: `update_store`, `remove_interrupted_fetch_leftovers`; `cache/locks.py`: `store_fetch_lock`; `cache/resolve.py`: `resolve_pin`, `resolve_selection`, `ref_tip`, `list_mirror_refs`; `cache/served_mirror.py`: `StoreMirror`, `repository_name`, `display_directory`; `mirror_refresh.py`: `RefreshCoordinator`, `MirrorSession`, `serve_mirror`, `lifespan_refresh`; `source.py`: `replace_owned_subject`; `source_routes.py`: `api_source_refresh`, `api_source_pin`, `api_source_refs`, `view_on_pin`, `SourcePinGuard`; `static/source-freshness.js`, `static/source-pin-guard.js`, `static/source-ref-selector.js` | One fetch per refresh under the store’s fetch side lock, from the source’s URL, with typed outcomes, which the Git processes inherit so it stays held while any of them runs. The coordinator keeps background jobs on the application state keyed by store key, joins concurrent requests, runs at most two at once, and cancels them at shutdown; a Ctrl-C kills their process groups before it exits. Status freshness is answered from memory. One resolver serves URL opening and the pin route: exact ref names from one `for-each-ref` (branch, then tag, then commit ID). The ref selector lists the mirror’s branches or tags from one more `for-each-ref`, filtered and bounded in the route, and a switch that names the page’s `/view/` address answers where that page goes on the new pin. A pin replaces the served subject under a new generation, attaching the new subject before closing the old, so no request meets a moment with nothing served. In a server, a selection the mirror lacks starts one background fetch and answers `selection_pending`, then the switch or not found; a URL selection the mirror lacked at startup is served when that fetch brings it, under a new generation like any switch. The lifespan’s opener is left alone, so a restart serves the pin the banner announced. Serve mode refreshes a stale mirror once at startup and follows a refresh another process is running until it ends; one-shot modes never fetch unless asked. Any failure of the atomic fetch is followed by a prune of stale refs on their own and one more try, which clears a ref clash (`side` becoming `side/x`, a case-only rename) however Git words it; a clash that remains on a case-insensitive store, or a fetch that folded one ref into its case twin, puts every ref back and is `ref_case_collision`. A page on a pin names the commit it shows on its `fetch` data requests (`static/source-pin-guard.js`), and `SourcePinGuard` refuses another commit with `pin_changed`; the commit rather than the session generation is the token because a generation restarts at 1 in every server process. Back and forward bring such a page back from the browser’s caches without asking, so on a history landing the same script asks the status route once and reloads the page, at most once, when another commit is served; the page stays cacheable, so a landing with nothing switched keeps the back/forward cache and its scroll position. A commit pinned by ID is served under the ref last served, or the served pull request’s head ref, when it is that ref’s tip, so a switch away and back by ID stays on the ref |
 | Remote discovery | `repository_context.py`: `discover_repository_context` | Read a checkout’s `origin` remote and `HEAD` without running Git, so a provider candidate can be recognized before any network work |
 | Providers and GitHub URLs | `cache/providers.py`: `RepositoryProvider`, `url_reducers`, `provider_git_config`, `check_first_clone`, `repository_context_for`, `open_pull_request`; `builtin_plugins/github/`: `GithubUrlReducer`, `GithubProvider`, `run_gh`; `cache/urls.py`: `RepositorySelection`, `ReducerRejection` | Core names no provider. The GitHub reducer turns web, raw, and SSH URLs into the canonical source plus a selection, or a typed refusal; the provider supplies the `gh` credential helper, the first-clone size check, a mirror’s `repository_context`, and the head a pull-request URL pins |
 | Pull-request records | `builtin_plugins/github/gh.py`: `gh_api`, `gh_account`; `builtin_plugins/github/pulls.py`: `refresh_pull_request`, `open_pull_request`; `builtin_plugins/github/pull_record.py`: `PullRecord`, `read_pull_record`, `write_pull_record`; `builtin_plugins/github/sidekick.py`: `pull_handler`, `pull_refresh_handler`; `builtin_plugins/github/pull_route.py`: `served_pull_envelope`; `builtin_plugins/github/served_pull.py`: `ServedPull`; `mirror_refresh.py`: `CompanionRefresh`; `cache/pull_refs.py`: `fetch_pull_head`, `comparison_endpoints` | Read a pull request with bounded, conditional `gh api` pages, fetch `refs/pull/<n>/head` under the store’s fetch side lock, compute the merge-base endpoints, and keep one record per pull request; serve it from the cache alone, and refresh it in the refresh coordinator beside the mirror. See [Pull-request records](#pull-request-records) |
