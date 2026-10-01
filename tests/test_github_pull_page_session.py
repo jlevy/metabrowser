@@ -21,7 +21,11 @@ The clock is fixed, so fetch times are literal. Entity tags are the session's ow
 the server's are scoped to the build; which answers share one is kept. The Markdown is
 cut down to the rendered text: KPress's icon sprite and asset manifest are KPress's
 contract, pinned by its own render goldens, and would tie this recording to its version.
-``make golden-update`` rewrites the recording and then the transcript.
+Every pull envelope carries the whole record, and the story reads one record many
+times, so the recording holds each distinct record once: an answer whose record an
+earlier answer carried names that answer, ``{"same_as": "current"}``, and the session
+reads it back as that record. ``make golden-update`` rewrites the recording and then
+the transcript.
 """
 
 from __future__ import annotations
@@ -32,7 +36,6 @@ import json
 import os
 import re
 import threading
-import time
 from dataclasses import replace
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -58,15 +61,16 @@ from tests.github_pull_fixture import (
     DEFAULT_BRANCH,
     FETCHED_AT,
     HOSTILE_COMMENT,
+    Origin,
     allowlist_violations,
-    build_origin,
+    copy_origin,
     html_tree,
     install_fake_gh,
     ok,
     page,
     scenario,
 )
-from tests.golden_harness import JSON_BODY, check_recording, run_session
+from tests.golden_harness import JSON_BODY, check_recording, run_session, settle
 from tests.required_tools import needs_git
 from tests.test_cache_acquire import _allow_installed_git
 
@@ -130,10 +134,6 @@ def _kpress_render(text: str) -> str:
     )
 
 
-def _markdown(response: Any) -> dict[str, Any]:
-    return _answer(response)
-
-
 def _session_tags(recorded: dict[str, Any]) -> dict[str, Any]:
     """Replace the server's entity tags with the session's own, keeping which are equal.
 
@@ -149,18 +149,35 @@ def _session_tags(recorded: dict[str, Any]) -> dict[str, Any]:
     return recorded
 
 
-def _settle(client: TestClient) -> None:
-    deadline = time.monotonic() + 50
-    while client.get("/api/source/status").json()["refreshing"]:
-        assert time.monotonic() < deadline, "the refresh did not finish"
-        time.sleep(0.02)
+def _stored_once(recorded: dict[str, Any]) -> dict[str, Any]:
+    """*recorded* with each distinct record written once; see the module docstring.
+
+    A record is held in full by the first pull-route answer that carried it. So a
+    one-field change to a pull request's record is one changed line of the recording.
+    """
+
+    holder: dict[str, str] = {}
+    for name, answer in recorded.items():
+        body = answer["body"]
+        if not isinstance(body, dict):
+            continue
+        # A pull-route answer is the envelope; a refresh answers one under ``pull``.
+        for envelope in (body, body.get("pull")):
+            if not isinstance(envelope, dict) or not isinstance(envelope.get("record"), dict):
+                continue
+            key = json.dumps(envelope["record"], sort_keys=True)
+            if key in holder:
+                envelope["record"] = {"same_as": holder[key]}
+            elif envelope is body:
+                holder[key] = name
+    return recorded
 
 
-def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, built: Origin) -> dict[str, Any]:
     home = tmp_path / "home"
     monkeypatch.setenv("METABROWSER_HOME", str(home))
     _allow_installed_git(monkeypatch)
-    origin = build_origin(tmp_path)
+    origin = copy_origin(built, tmp_path)
     monkeypatch.setattr(
         "metabrowser.cache.acquire.remote_url_for",
         lambda source: origin.url if source.normalized == CANONICAL else source.normalized,  # pyright: ignore[reportUnknownLambdaType, reportUnknownMemberType]
@@ -214,13 +231,10 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
 
             monkeypatch.setattr(served, "refresh", held)
             recorded["absent"] = _answer(client.get(_PULL))
-            recorded["absent_unchanged"] = _answer(
-                client.get(_PULL, headers={"if-none-match": recorded["absent"]["etag"]})
-            )
             recorded["refresh_started"] = _answer(client.post(_REFRESH, json={}, headers=JSON_BODY))
             recorded["pending"] = _answer(client.get(_PULL))
             release.set()
-            _settle(client)
+            settle(client)
             recorded["current"] = _answer(client.get(_PULL))
             record = recorded["current"]["body"]["record"]
             for part in (
@@ -229,7 +243,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
                 f"review/{record['reviews'][1]['id']}",
                 f"review_comment/{record['review_comments'][0]['id']}",
             ):
-                recorded[f"markdown {part.split('/')[0]}"] = _markdown(
+                recorded[f"markdown {part.split('/')[0]}"] = _answer(
                     client.get(_MARKDOWN, params={"part": part})
                 )
             recorded["markdown missing"] = _answer(
@@ -248,7 +262,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             recorded["refresh_again"] = _answer(client.post(_REFRESH, json={}, headers=JSON_BODY))
             recorded["stale_refreshing"] = _answer(client.get(_PULL))
             release.set()
-            _settle(client)
+            settle(client)
             recorded["refreshed_unchanged"] = _answer(client.get(_PULL))
 
             # A minute later a refresh reads one more comment, which carries markup
@@ -267,10 +281,10 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             answers["api"][comments_path] = ok(comments_path, [*comments, added])
             for name, value in install_fake_gh(tmp_path, answers).items():
                 monkeypatch.setenv(name, value)
-            recorded["refresh_third"] = _answer(client.post(_REFRESH, json={}, headers=JSON_BODY))
-            _settle(client)
+            client.post(_REFRESH, json={}, headers=JSON_BODY)
+            settle(client)
             recorded["refreshed"] = _answer(client.get(_PULL))
-            recorded["markdown added"] = _markdown(
+            recorded["markdown added"] = _answer(
                 client.get(_MARKDOWN, params={"part": f"issue_comment/{added['id']}"})
             )
             # What KPress alone makes of the same text, before the hook hardens it: the
@@ -290,7 +304,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             for number, name in ((8, "merged"), (9, "closed")):
                 session.companion = served_pull(published, number)
                 client.post(_REFRESH, json={}, headers=JSON_BODY)
-                _settle(client)
+                settle(client)
                 recorded[name] = _answer(client.get(_PULL))
 
             # GitHub then answers pull request 8 with no merger, and a refresh reads it.
@@ -301,7 +315,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
                 monkeypatch.setenv(name, value)
             session.companion = served_pull(published, 8)
             client.post(_REFRESH, json={}, headers=JSON_BODY)
-            _settle(client)
+            settle(client)
             recorded["merged_unattributed"] = _answer(client.get(_PULL))
     finally:
         serve_mirror(None)
@@ -310,14 +324,13 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
 
 
 def test_recording_is_what_a_served_pull_request_answers(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
 ) -> None:
-    recorded = _record(tmp_path, monkeypatch)
+    recorded = _record(tmp_path, monkeypatch, pull_origin)
     assert (recorded["absent"]["body"]["state"], recorded["absent"]["body"]["reason"]) == (
         "absent",
         "not_cached",
     )
-    assert recorded["absent_unchanged"]["status"] == 304
     assert recorded["refresh_started"]["body"]["pull"]["state"] == "pending"
     assert recorded["pending"]["body"]["refreshing"] is True
     assert recorded["current"]["body"]["state"] == "current"
@@ -354,49 +367,23 @@ def test_recording_is_what_a_served_pull_request_answers(
     assert (unattributed["merged"], unattributed["merged_by"]) == (True, None)
     check_recording(
         "github-pull-page-responses.json",
-        recorded,
+        _stored_once(recorded),
         transcript="cli-ui-github-pull-page.tryscript.md",
     )
 
 
-def test_the_session_runs_on_the_recording() -> None:
+def test_what_the_session_would_insert_is_inside_the_allowlist() -> None:
+    """The session's transcript is pinned by its golden; this parses what it would insert.
+
+    The golden shows the hostile comment's HTML as text. Whether that text holds only
+    allowlisted tags and attributes is a parse, which a reader of the golden cannot do
+    by eye: both what the hook sent and what the page's own defense rebuilt from KPress's
+    render alone.
+    """
+
     transcript = run_session("github-pull-page-session.js")
     steps = {step["step"]: step for step in transcript["steps"]}
-    assert steps["open with nothing cached"]["paint"]["canRefresh"] is True
-    assert steps["the record arrives"]["paint"]["status"] == "current"
-    assert steps["an unchanged answer is a 304"]["paints"] == 0
-    refreshed = steps["another refresh brought a comment full of markup"]
-    assert [item.split(" ")[0] for item in refreshed["paint"]["timeline"]][-1] == "comment"
-    assert refreshed["conversation"] == "repaint"
-    unchanged = steps["a refresh that changed no text keeps the conversation"]
-    assert unchanged["conversation"] == "reask"
     hook = steps["the hook sends the comment inert"]["markdown"][0].split(": ", 1)[1]
     assert allowlist_violations(hook) == []
     assert allowlist_violations(transcript["pageDefense"]) == []
     assert "build badge</a>" in transcript["pageDefense"]
-    assert transcript["filesChanged"][2] == "open on an older head: offer"
-    assert steps["a render of the older record is dropped"]["markdown"] == []
-    offer = steps["the record arrives"]["paint"]["headOffer"]
-    assert offer.endswith("[Switch to the head] -> refs/pull/7/head")
-    switched = steps["switch the pin to the head the record names"]
-    assert switched["requests"] == ['POST /api/source/pin {"ref":"refs/pull/7/head"}']
-    assert switched["reloads"] == 1
-    assert steps["reloaded on the head, nothing is offered"]["paint"]["headOffer"] is None
-    # The header says what github.com says in each state, and skipped checks are
-    # counted apart from neutral ones.
-    states = transcript["states"]
-    assert (
-        "] forker wants to merge 2 commits into octo:topic from forker:" in states["open"]["header"]
-    )
-    assert "] octo merged 1 commit into topic from guide-more" in states["merged"]["header"]
-    assert (
-        "[Closed] ghost wants to merge 1 commit into octo:topic from spam (deleted fork)"
-        in states["closed"]["header"]
-    )
-    # With no merger named, nobody is credited.
-    assert (
-        "[Merged] merged 1 commit into topic from guide-more"
-        in states["merged_unattributed"]["header"]
-    )
-    # A check run and the commit status succeeded; the other run was skipped.
-    assert states["merged"]["checks"] == {"success": 2, "skipped": 1}

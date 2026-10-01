@@ -46,7 +46,9 @@ REPO_ROOT: Final = Path(__file__).resolve().parent.parent
 # review in a pull request and commit is under 2,000 lines. Measured on 2026-09-30 with
 # `python -m devtools.check_goldens --report`, over the 57 goldens and 7 recorded
 # fixtures then in the tree (25,851 lines): the median file was 226 lines and the 90th
-# percentile 976. Two files were over 2,000, at 2,434 and 2,203, and are listed below.
+# percentile 976. Two files were over 2,000, at 2,434 and 2,203. The second, a recording
+# that repeated pull-request records, now holds each distinct record once and is inside
+# the budget; the first is listed below.
 # The largest inside it were a recording of 1,895 lines and a transcript of 1,217. So
 # the guideline's figure fails only what is already too long to read in one sitting, and
 # leaves the largest transcript room to grow by more than half before it must be split.
@@ -76,9 +78,6 @@ class Excepted:
 # entry whose file fits again, so the list cannot outlive its reasons.
 OVER_BUDGET: Final[dict[str, Excepted]] = {
     "tests/golden/cli-git-pin.txt": Excepted(2434, "mb-79t3 shards the pin transcript by scenario"),
-    "tests/fixtures/github-pull-page-responses.json": Excepted(
-        2203, "mb-738k stores each distinct pull-request record once"
-    ),
 }
 
 HARNESS: Final = "tests/golden_harness.py"
