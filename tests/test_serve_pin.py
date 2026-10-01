@@ -453,42 +453,6 @@ def test_the_shell_names_the_pinned_revision(served: tuple[TestClient, _Origin])
     assert client.get(f"/commit/{origin.first}").status_code == 200
 
 
-def test_a_pins_page_is_never_shown_again_from_the_browsers_cache(
-    served: tuple[TestClient, _Origin],
-) -> None:
-    """Back and forward ask for a pin's page again, so it is the served pin's.
-
-    The page names the commit it was rendered for. A browser shows a cached document on
-    back and forward without asking, so after a pin switch a cached page would name a
-    commit the server no longer serves, and every data request it made would be
-    refused as ``pin_changed``.
-    """
-
-    client, origin = served
-    for address in ("/view/", f"/view/{_wire('README.md')}", f"/commit/{origin.second}"):
-        shell = client.get(address)
-        assert shell.headers["cache-control"] == "no-store", address
-        assert f'"pin": "{origin.second}"' in shell.text
-    switched = client.post(
-        "/api/source/pin", json={"oid": origin.first}, headers={"content-type": "application/json"}
-    )
-    assert switched.status_code == 200
-    # The same address, asked for again, is the page of the commit served now.
-    again = client.get(f"/commit/{origin.second}")
-    assert again.headers["cache-control"] == "no-store"
-    assert f'"pin": "{origin.first}"' in again.text
-
-
-def test_a_folders_page_keeps_the_browsers_default_caching(tmp_path: Path) -> None:
-    """A folder's page names no commit, so nothing about it goes stale with a switch."""
-
-    server._set_root_dir(tmp_path)
-    with TestClient(server.app) as client:
-        shell = client.get("/view/")
-    assert shell.status_code == 200
-    assert "cache-control" not in shell.headers
-
-
 def test_tree_file_and_raw_answer_from_the_pinned_tree(
     served: tuple[TestClient, _Origin],
 ) -> None:

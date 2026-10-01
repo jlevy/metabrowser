@@ -469,13 +469,6 @@ Repository cache:
   A diff in a served folder, and a patch file’s diff, have no such control: a folder has
   no file at a commit to open, only its working tree’s.
 
-- A page on a pinned revision is served `Cache-Control: no-store`. The page names the
-  commit it was rendered for, and a browser shows a cached document on back and forward
-  without asking, so after any pin switch Back used to show a page naming the commit
-  served before, whose tree and file requests were refused as `pin_changed` until a
-  reload. Back now shows the page for the commit served now.
-  A folder’s page keeps the browser’s default caching.
-
 - The Git panel no longer rebuilds a different history under the rows on screen when the
   refs its walk was fingerprinted by moved, as a refresh, a pin switched in another tab,
   or a commit in a served checkout does.
