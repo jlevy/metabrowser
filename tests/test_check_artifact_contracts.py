@@ -31,6 +31,11 @@ _ITEM = "artifact contract 'example.test:Item/v1'"
 _NO_ROW = f"installed {_ITEM} has no architecture row"
 _TABLES: dict[str, tuple[str, list[str]]] = {
     "the-installed-declaration": (_HEADER + _ROW, []),
+    "another-table-after-the-contracts": (
+        f"{_HEADER}{_ROW}\n\nA second table, about something else.\n\n| Kind | View |\n"
+        "| --- | --- |\n| `markdown` | `rendered` |",
+        [],
+    ),
     "no-table": (
         "",
         [
@@ -70,6 +75,20 @@ def test_the_architecture_table_has_to_match_the_installed_declarations(
     tmp_path: Path, table: str, problems: list[str]
 ) -> None:
     assert _check(tmp_path, table, contract()) == problems
+
+
+def test_the_gate_prints_each_problem_and_exits_1(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """``make lint-check`` stops on the status, so a gate that reported and exited 0 passes."""
+
+    monkeypatch.setattr(check_artifact_contracts, "check", lambda: ["one row", "another row"])
+
+    assert check_artifact_contracts.main() == 1
+    assert capsys.readouterr().err.splitlines() == [
+        "artifact-contract inventory: one row",
+        "artifact-contract inventory: another row",
+    ]
 
 
 def test_a_corpus_that_proves_too_little_fails_the_gate_under_a_correct_table(
