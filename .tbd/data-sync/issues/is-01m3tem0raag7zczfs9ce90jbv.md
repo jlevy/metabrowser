@@ -3,9 +3,9 @@ type: is
 id: is-01m3tem0raag7zczfs9ce90jbv
 title: "Tests: golden machinery — one harness, a complete golden-update, a size check, and precise placeholders"
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 6
+version: 7
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 delegate: claude-code@spud10.local
 labels:
@@ -21,8 +21,12 @@ parent_id: is-01m3te95dfdnc80j5xywqje9ke
 hold: null
 hold_until: null
 created_at: 2026-10-01T00:42:52.032Z
-updated_at: 2026-10-01T04:49:36.155Z
+updated_at: 2026-10-01T10:29:20.690Z
 started_at: 2026-10-01T04:49:36.154Z
+closed_at: 2026-10-01T10:29:20.678Z
+close_reason: "PR #253: one golden harness (the only GOLDEN_UPDATE reader); make golden-update regenerates all 7 recordings and every golden and fails on any skip; devtools/check_goldens.py in lint (registration, piped or masked exit status, transcripts parsed as tryscript does, 2000-line budget with ceilings); placeholders tightened; pull-refresh records its honest exit status and the parity clause is narrowed, with an in-process golden showing the refresh completing. Review: one P1 and four P2s fixed. Merged above #251 with the loud Node gate and one skip judgement. CI green. The single-command golden-update no-op on the merged tree is owed on a quiet machine (parts verified); follow-up mb-y8rm."
+resolution: null
+duplicate_of: null
 ---
 Part of the test-suite review epic. Survey of a896d8fe, 2026-09-30, read-only. Area-specific golden work is in the area beads: sharding `cli-git-pin.txt` (git bead), de-duplicating the pull-request record and its `grep` slices (GitHub bead), the label-only UI blocks (Node runner bead). This bead covers the shared golden machinery and the remaining anti-patterns.
 
