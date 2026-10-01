@@ -164,21 +164,39 @@ BANNER_REVISION = "99d0343568d1b5119b4182bdf8162413989746c2"
 
 
 def test_golden_serve_pin_banner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """The banner names the source, the pinned commit, and the ref it was resolved from."""
+    """The banner names the source, the pinned commit, the ref, and where ``--path`` opens.
+
+    ``--path`` takes the spellings ``--show`` accepts and prints one canonical address:
+    a leading ``/`` or ``./`` is dropped, a wire is kept, and a directory gets a
+    trailing slash.
+    """
 
     _home(tmp_path, monkeypatch)
     pin_git_dates(monkeypatch)
     origin = _origin(tmp_path)
     assert origin.second == BANNER_REVISION
-    result = _serve(origin.url)
-    assert result.exit_code == 0, result.output
-    rendered = block(
-        "metab file://<ROOT>/origin.git --no-open",
-        result.exit_code,
-        normalize_console(result.stdout, tmp_path),
-        normalize_console(result.stderr, tmp_path),
+    selections = (
+        "images/logo.png",
+        "./README.md",
+        "/README.md",
+        _wire("images/logo.png"),
+        "images",
+        "images/",
+        "/",
     )
-    check_golden("serve-pin-banner.txt", rendered)
+    blocks: list[str] = []
+    for arguments in ((), *(("--path", selection) for selection in selections)):
+        result = _serve(origin.url, *arguments)
+        assert result.exit_code == 0, result.output
+        blocks.append(
+            block(
+                " ".join(["metab file://<ROOT>/origin.git --no-open", *arguments]),
+                result.exit_code,
+                normalize_console(result.stdout, tmp_path),
+                normalize_console(result.stderr, tmp_path),
+            )
+        )
+    check_golden("serve-pin-banner.txt", "".join(blocks))
 
 
 @pytest.mark.parametrize(
@@ -209,31 +227,6 @@ def test_serve_pin_refuses_allow_edits_before_acquiring(
     assert isinstance(result.exception, CLIError)
     assert "--allow-edits is not available on an acquired Git source" in str(result.exception)
     assert not home.exists()
-
-
-@pytest.mark.parametrize(
-    ("selection", "address"),
-    [
-        ("images/logo.png", f"/view/{_wire('images/logo.png')}"),
-        ("./README.md", f"/view/{_wire('README.md')}"),
-        ("/README.md", f"/view/{_wire('README.md')}"),
-        (_wire("images/logo.png"), f"/view/{_wire('images/logo.png')}"),
-        ("images", f"/view/{_wire('images')}/"),
-        ("images/", f"/view/{_wire('images')}/"),
-        ("/", "/view/"),
-    ],
-)
-def test_serve_pin_path_prints_the_canonical_address(
-    selection: str, address: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Spellings `--show` accepts deep-link, and a directory gets a trailing slash."""
-
-    _home(tmp_path, monkeypatch)
-    result = _serve(_origin(tmp_path).url, "--path", selection)
-    assert result.exit_code == 0, result.output
-    printed = re.search(r" at http://127\.0\.0\.1:8411(\S+)", result.stdout)
-    assert printed is not None, result.stdout
-    assert printed.group(1) == address
 
 
 def test_serve_pin_path_refuses_a_missing_path(
@@ -487,25 +480,26 @@ def test_tree_file_and_raw_answer_from_the_pinned_tree(
     assert page.headers["content-security-policy"] == _RAW_CSP_NO_SCRIPTS
 
 
-@pytest.mark.parametrize(
-    "path",
-    ["style.css", "page.html", _wire("style.css"), "images/logo.png"],
-)
 def test_the_raw_path_form_is_an_honest_refusal_on_a_pin(
-    path: str, served: tuple[TestClient, _Origin]
+    served: tuple[TestClient, _Origin],
 ) -> None:
-    """A relative reference inside a raw pinned document reaches a typed refusal (mb-g5je)."""
+    """A relative reference inside a raw pinned document reaches a typed refusal (mb-g5je).
+
+    The refusal comes before the path is read, so one pin answers for a file beside the
+    document, the document, a wire, and a nested path.
+    """
 
     client = served[0]
-    response = client.get(f"/raw/{path}")
-    assert response.status_code == 409
-    assert response.json() == {
-        "error": "source does not support raw_document_path",
-        "code": "unsupported_for_subject",
-        "capability": "raw_document_path",
-    }
-    assert response.headers["content-security-policy"] == _RAW_CSP_NO_SCRIPTS
-    assert response.headers["x-content-type-options"] == "nosniff"
+    for path in ("style.css", "page.html", _wire("style.css"), "images/logo.png"):
+        response = client.get(f"/raw/{path}")
+        assert response.status_code == 409, path
+        assert response.json() == {
+            "error": "source does not support raw_document_path",
+            "code": "unsupported_for_subject",
+            "capability": "raw_document_path",
+        }
+        assert response.headers["content-security-policy"] == _RAW_CSP_NO_SCRIPTS
+        assert response.headers["x-content-type-options"] == "nosniff"
 
 
 def test_history_commit_and_comparison_work_on_a_served_pin(

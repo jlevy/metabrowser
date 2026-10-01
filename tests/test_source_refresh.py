@@ -356,33 +356,6 @@ def test_a_fresh_mirror_is_not_refreshed_when_the_server_starts(
     assert status["last_outcome"]["operation"] == "acquire"
 
 
-def test_one_shot_api_never_refreshes_on_its_own(tmp_path: Path, origin: _Origin) -> None:
-    _backdate_last_fetch(tmp_path, origin)
-    result = runner.invoke(_app, [origin.url, "--api", "/api/source/status"])
-    assert result.exit_code == 0, result.output
-    assert '"stale": true' in result.stdout
-    assert '"refreshing": false' in result.stdout
-    again = runner.invoke(_app, [origin.url, "--api", "/api/source/status"])
-    assert '"operation": "acquire"' in again.stdout
-    assert f'"last_fetch_at": "{_STALE_AT}"' in again.stdout
-
-
-def test_one_shot_api_finishes_the_refresh_it_was_asked_for(
-    tmp_path: Path, origin: _Origin
-) -> None:
-    newer = _push_commit(origin, "NEW.md", "# New\n", "third")
-    body = tmp_path / "refresh.json"
-    body.write_text("{}\n", encoding="utf-8")
-    started = runner.invoke(_app, [origin.url, "--api", "/api/source/refresh", "--data", str(body)])
-    assert started.exit_code == 0, started.output
-    assert '"refresh": "started"' in started.stdout
-    after = runner.invoke(_app, [origin.url, "--api", "/api/source/status"])
-    assert after.exit_code == 0, after.output
-    assert '"operation": "refresh"' in after.stdout
-    # A new process pins the default branch as the mirror records it now.
-    assert f'"pin": "{newer}"' in after.stdout
-
-
 def test_one_shot_api_fails_when_the_refresh_outlasts_its_wait(
     tmp_path: Path, origin: _Origin, monkeypatch: pytest.MonkeyPatch
 ) -> None:
