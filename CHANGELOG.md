@@ -827,6 +827,22 @@ Fixes:
   to. The pane now scrolls inside a non-scrolling frame that holds the drawer, its
   toggle, and its backdrop, as KPress’s embedding contract asks.
 
+- In a served folder, the sixth address opened in one tab no longer waits for a
+  connection. A browser keeps a page it may show again on Back, with its open requests,
+  and opens six connections to a host.
+  Each kept page held its `/api/events` stream, so after five page loads the next page’s
+  requests waited until Chrome dropped a kept page: 55 to 56 s in Chrome 152, long
+  enough for a view to log `metabrowser plugin asset failed to load … (timed out)`. A
+  page now closes its event stream, and the live tail of a log, when the browser keeps
+  it, and opens them again when Back restores it.
+  The restored page starts from a fresh snapshot, as it does after a reconnect, so it
+  shows what changed while it was away.
+  Back still restores the page at its scroll position without loading it, and now does
+  so after more than a minute away: Chrome drops a kept page whose request is still open
+  after 60 s, so Back used to load such a page again.
+  0.11.0 had the same wait.
+  A pin’s page opens no stream and never had it.
+
 ## 0.11.0
 
 Content trust:
