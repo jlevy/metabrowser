@@ -573,6 +573,7 @@ invalid path rejection.
 $ node tests/dom/navigation-route-behavior.js
 {
   "verified": [
+    "without the codec a wire shows as written",
     "slash-bearing Git ref gets one encoded revision segment",
     "slash-bearing Git ref parses",
     "slash-bearing Git ref and inner path parse independently",

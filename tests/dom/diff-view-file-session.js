@@ -215,12 +215,17 @@ function loadNavigation() {
   sandbox.window = sandbox;
   sandbox.globalThis = sandbox;
   vm.createContext(sandbox);
-  const file = path.join(sourceRoot, "static/navigation.js");
-  vm.runInContext(fs.readFileSync(file, "utf8"), sandbox, { filename: file });
-  return sandbox.MetabrowserNavigationRoute;
+  // A pin's shell loads the GitPath codec ahead of navigation.js.
+  for (const name of ["git-path.js", "navigation.js"]) {
+    const file = path.join(sourceRoot, "static", name);
+    vm.runInContext(fs.readFileSync(file, "utf8"), sandbox, { filename: file });
+  }
+  return sandbox;
 }
 
-const route = loadNavigation();
+const navigationRealm = loadNavigation();
+const route = navigationRealm.MetabrowserNavigationRoute;
+const gitPath = navigationRealm.MetabrowserGitPath;
 
 // The page's requests, in order, and the pin requests waiting for the step to answer.
 const requests = [];
@@ -245,6 +250,7 @@ globalThis.document = {
   removeEventListener() {},
 };
 globalThis.window = {
+  MetabrowserGitPath: gitPath,
   MetabrowserNavigationRoute: route,
   location: {
     assign(href) {
@@ -520,7 +526,7 @@ async function main() {
     bars: bars(container),
   });
 
-  const patch = route.gitPathWire("changes.patch");
+  const patch = gitPath.wire("changes.patch");
   pluginData.set(pluginRoute("diff", "document", { path: patch }), recorded.patch.body);
   await open(recorded.page, { path: patch });
   step("a patch file names no commit", {

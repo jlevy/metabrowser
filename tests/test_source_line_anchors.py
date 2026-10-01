@@ -35,6 +35,11 @@ def test_shell_loads_line_anchors_with_the_view_compositor() -> None:
     response = asyncio.run(server.index(cast(Any, None)))
     html = bytes(response.body).decode()
     assert '<script src="/static/source-line-anchors.js' not in html
+    # Nor does a folder's shell carry the GitPath codec, which only a pin's page reads.
+    assert "/static/git-path.js" not in html
+    navigation = (STATIC / "navigation.js").read_text(encoding="utf-8")
+    assert "window.MetabrowserGitPath?.display(path)" in navigation
+    assert "function gitPathWire" not in navigation
     bundles = json.loads(
         html.split("window.METABROWSER_ASSET_BUNDLES=", 1)[1].split(";</script>", 1)[0]
     )

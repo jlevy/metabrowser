@@ -447,6 +447,12 @@ def test_the_shell_names_the_pinned_revision(served: tuple[TestClient, _Origin])
     assert f'<span class="header-revision">{origin.second[:12]}</span>' in shell.text
     assert 'window.METABROWSER_SOURCE_KIND="git_revision"' in shell.text
     assert "window.METABROWSER_REPOSITORY_CONTEXT=null" in shell.text
+    # The GitPath codec is a startup script here, ahead of the navigation module that
+    # displays a pin's paths with it. A folder's shell leaves it out:
+    # test_source_line_anchors.py holds that half.
+    assert shell.text.index('<script src="/static/git-path.js') < shell.text.index(
+        '<script src="/static/navigation.js'
+    )
     # A pinned address is a GitPath wire, and a filesystem spelling is refused.
     assert client.get(f"/view/{_wire('README.md')}").status_code == 200
     assert client.get("/view/README.md").status_code == 400

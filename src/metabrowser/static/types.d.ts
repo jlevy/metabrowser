@@ -190,7 +190,6 @@ type MetabrowserPreviewPaneLifecycle = Readonly<{
 type MetabrowserNavigationRouteRuntime = Readonly<{
   displayPath(path: string, sourceKind?: "filesystem" | "git_revision"): string;
   /** The GitPath wire of a path on a pinned revision; null when it has an empty segment. */
-  gitPathWire(path: string | Uint8Array): string | null;
   attachController(controller: MetabrowserNavigationController): () => void;
   commitFreshFileResponse(options: {
     cacheFile(data: Record<string, unknown>): void;
@@ -2700,6 +2699,11 @@ declare global {
     MetabrowserTreeKeyboardNavigation: MetabrowserTreeKeyboardRuntime;
     MetabrowserSourceAppend: MetabrowserSourceAppendRuntime;
     MetabrowserSourceLineAnchors: MetabrowserSourceLineAnchorsRuntime;
+    /** static/git-path.js, which only a pinned revision's shell loads. */
+    MetabrowserGitPath?: Readonly<{
+      display(path: string): string | null;
+      wire(path: string | Uint8Array): string | null;
+    }>;
     /** static/pull-route.js, the `pull-route` on-demand bundle. */
     MetabrowserPullRoute?: MetabrowserPullRouteRuntime;
     MetabrowserSourceFreshness?: MetabrowserSourceFreshnessRuntime;

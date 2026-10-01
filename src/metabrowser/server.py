@@ -1269,6 +1269,13 @@ async def index(request: Request) -> HTMLResponse:
     plugin_sdk_url = _static_asset_url("plugin-sdk.js")
     plugin_sdk_views_url = _static_asset_url("plugin-sdk-views.js")
     pull_route_url = _static_asset_url("pull-route.js")
+    # The GitPath wire codec, which only a pin's page uses and which it needs before
+    # its first paint: a startup script on a pin's shell and absent from a folder's,
+    # like the pin guard below. Measured 2026-10-01: 885 compressed bytes of
+    # navigation.js on every folder's page. See exp-037.
+    git_path_script = (
+        f'\n  <script src="{_static_asset_url("git-path.js")}"></script>' if git_pin else ""
+    )
     view_composition_url = _static_asset_url("view-composition.js")
     inert_html_url = _static_asset_url("inert-html.js")
     filter_state_url = _static_asset_url("filter-state.js")
@@ -1745,7 +1752,7 @@ async def index(request: Request) -> HTMLResponse:
   <script src="{directory_totals_store_url}"></script>
   <script src="{contribution_registry_url}"></script>
   <script src="{resource_context_url}"></script>
-  <script src="{view_state_url}"></script>
+  <script src="{view_state_url}"></script>{git_path_script}
   <script src="{navigation_url}"></script>
   <script src="{file_type_taxonomy_url}"></script>
   <script src="{plugin_sdk_url}"></script>

@@ -53,6 +53,19 @@ const route = sandbox.MetabrowserNavigationRoute;
 const pullSourcePath = path.join(repoRoot, "src/metabrowser/static/pull-route.js");
 vm.runInContext(fs.readFileSync(pullSourcePath, "utf8"), sandbox, { filename: pullSourcePath });
 const pullRoute = sandbox.MetabrowserPullRoute;
+// The GitPath wire codec, a startup script on a pinned revision's shell only. It is
+// loaded here after navigation.js to show that the order does not matter: displayPath
+// looks for it when it is called.
+const gitPathSourcePath = path.join(repoRoot, "src/metabrowser/static/git-path.js");
+equal(
+  "without the codec a wire shows as written",
+  route.displayPath("g1-UkVBRE1FLm1k", "git_revision"),
+  "g1-UkVBRE1FLm1k",
+);
+vm.runInContext(fs.readFileSync(gitPathSourcePath, "utf8"), sandbox, {
+  filename: gitPathSourcePath,
+});
+const gitPath = sandbox.MetabrowserGitPath;
 
 equal(
   "slash-bearing Git ref gets one encoded revision segment",
@@ -262,19 +275,15 @@ equal(
 for (const display of ["README.md", "docs/note.txt", "100%.html", "docs/雪.md", "a b/c?#.txt"]) {
   equal(
     `GitPath wire of ${display} displays as it`,
-    route.displayPath(route.gitPathWire(display), "git_revision"),
+    route.displayPath(gitPath.wire(display), "git_revision"),
     display,
   );
 }
-equal(
-  "GitPath wire is one token per segment",
-  route.gitPathWire("src/app.py"),
-  "g1-c3Jj/g1-YXBwLnB5",
-);
-equal("GitPath wire is unpadded base64url", route.gitPathWire("a?>"), "g1-YT8-");
+equal("GitPath wire is one token per segment", gitPath.wire("src/app.py"), "g1-c3Jj/g1-YXBwLnB5");
+equal("GitPath wire is unpadded base64url", gitPath.wire("a?>"), "g1-YT8-");
 equal(
   "GitPath wire of a name that is not UTF-8 is its bytes",
-  route.gitPathWire(Uint8Array.from([0x64, 0xe9, 0x2f, 0x66])),
+  gitPath.wire(Uint8Array.from([0x64, 0xe9, 0x2f, 0x66])),
   "g1-ZOk/g1-Zg",
 );
 for (const [label, bad] of [
@@ -284,7 +293,7 @@ for (const [label, bad] of [
   ["an empty segment", "a//b"],
   ["no bytes", new Uint8Array(0)],
 ]) {
-  equal(`${label} has no GitPath wire`, route.gitPathWire(bad), null);
+  equal(`${label} has no GitPath wire`, gitPath.wire(bad), null);
 }
 equal(
   "display filesystem g1-looking filename with explicit kind",

@@ -895,7 +895,7 @@ export function createPullController(deps, options) {
  * @param {string} path
  */
 export function gitPathWire(path) {
-  return window.MetabrowserNavigationRoute.gitPathWire(path) ?? "";
+  return window.MetabrowserGitPath?.wire(path) ?? "";
 }
 
 /**
