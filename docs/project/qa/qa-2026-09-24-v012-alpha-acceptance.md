@@ -6,6 +6,8 @@ M10b, M12, and M13 were not run because the thin-mirror plan defers them.
 This record is evidence for the landing decision (`mb-n2ro`), not that decision.
 The failed rows were rerun on the fixes in #243; see [Rerun on #243](#rerun-on-243). The
 [addendum](#addendum-2026-09-30) records what changed after the run.
+M03b and M08b were rerun on View file at the stack’s tip, and both pass; see
+[Rerun on #250](#rerun-on-250-view-file-landing-fixes).
 
 The procedure is the manual matrix in the
 [alpha testing plan](../specs/active/plan-2026-09-22-v012-alpha-testing.md), adapted to
@@ -117,13 +119,13 @@ All fixtures are public repositories, recorded at the observation time.
 | M02a | Pass | URL shapes, slash branch, and percent-encoded Unicode and space paths |
 | M02b | Fail (P3) | Raw Unicode or a space is refused without a recovery hint: `mb-tals` |
 | M03a | Pass | Relative links, reload, back and forward, second tab |
-| M03b | Fail (P3) | No way to open base or head files from a diff: `mb-zb5t` |
+| M03b | Fail (P3); pass in the [rerun on #250](#rerun-on-250-view-file-landing-fixes) | No way to open base or head files from a diff: `mb-zb5t`. View file adds the controls |
 | M04 | Pass |  |
 | M05 | Pass |  |
 | M06 | Pass |  |
 | M07 | Pass | Wording finding `mb-5wqg` |
 | M08a | Pass | Files changed matches GitHub; recorded OIDs agree with the mirror |
-| M08b | Fail (P3) | Base and head reached only by URL or CLI: `mb-zb5t` |
+| M08b | Fail (P3); pass in the [rerun on #250](#rerun-on-250-view-file-landing-fixes) | Base and head reached only by URL or CLI: `mb-zb5t`. View file adds the controls; a symbolic link or submodule in a pull request was not run |
 | M09 | Pass |  |
 | M10 | Pass for the cases run | Private, revoked, and live rate-limit cases not run |
 | M10b | Not run | Deferred (thin-mirror plan, Decisions) |
@@ -583,6 +585,104 @@ What changed after this run, without altering the results above:
 The alpha plan’s
 [Landing status](../specs/active/plan-2026-09-22-v012-alpha-testing.md#landing-status)
 lists what remains before the stack lands.
+
+## Rerun on #250 (View file, landing fixes)
+
+This is the rerun the addendum promises.
+M03b and M08b, which failed above for want of a control, were run on the tip of the
+linear stack, [#250](https://github.com/jlevy/metabrowser/pull/250), which holds View
+file ([#248](https://github.com/jlevy/metabrowser/pull/248)) and the landing fixes
+([#249](https://github.com/jlevy/metabrowser/pull/249)). The run also checks what #249
+changed and repeats a short smoke on the new wheel.
+
+| Item | Value |
+| --- | --- |
+| Head (`codex/v012-docs-reconcile`, #250) | `f9d88f503ac3f4ad0f006028072f92617467ddf9` |
+| Base (`codex/v012-landing-fixes`, #249) | `f54b2560d0049fa587572612258d3674d13b0608` |
+| `main` | `6c278f3f9e10aebcb34a207035aee7768a1bba0e` |
+| Wheel | `metabrowser-0.11.1.dev468+f9d88f50-py3-none-any.whl` from `make build`, whose distribution checks pass |
+| Platform | macOS 26.5.2 (25F84), arm64; load average 24–87 |
+| Tools | Git 2.50.1, gh 2.98.0, uv 0.12.8, Python 3.14.7, Node 24.19.0, KPress 0.3.5 |
+| Browser | The Claude desktop browser pane, Chrome 152.0.7977.130 |
+| Observation time | 2026-10-01, 04:50–05:09 UTC |
+
+The method is the one above: a clean uv-managed Python 3.14 environment in `<scratch>`
+with dependencies from `uv export --frozen --no-dev`, the installed `metab` entry point,
+and one fresh application home and cache.
+Servers ran on ports 8771–8777. Every gh call was a read-only GET of public data.
+
+The fixtures were public and recorded at the observation time:
+
+- `jlevy/metabrowser` commit `8d7fe7f0bd4ea491dca4015bc0b006199c3ef1bf`, on `main`,
+  whose parent is `da65dcd810d623256d03fe8725a12f36b76d24f0`. It modifies 4 files, adds
+  6, deletes 6, and renames 1 (at 95% similarity).
+- `cli/cli#14128` and `jlevy/metabrowser#3`, at the revisions under
+  [Fixtures](#fixtures).
+  GitHub’s comparison gives each one’s merge base as its recorded base: `c624f0ac…` and
+  `5dfb02e7…`. `trunk` has since moved to `fc4b137c…`.
+- The `file://` mirror of `tests/diff_view_file_fixture.py`, for the runbook’s section
+  5.11: `second` is `6ac4c8b5eb94…` and `first` is `a5232ab93056…`.
+- `octocat/Hello-World` at `7fd1a60b…`, for the checks of #249.
+
+The browser pane was hidden, as before.
+Each file was opened by a real click on its control.
+The page’s state was then read through its JavaScript: the address, the commit in the
+file header, the selector’s label, `/api/source/status`, and the blob ID that
+`/api/file` reports for the address.
+That blob ID was compared with `git rev-parse <commit>:<path>` for the commit rows, and
+with GitHub’s `repos/<owner>/<repo>/contents/<path>?ref=<commit>` for the pull-request
+rows. Reloads were `location.reload()`, confirmed by the navigation type `reload`,
+because the reload key did nothing in the hidden pane.
+
+| Row | Action | Expected | Actual | Result |
+| --- | --- | --- | --- | --- |
+| M03b controls | The diff of `8d7fe7f0`, on a server pinned to it | Each bar offers the sides its change has | 17 bars. Modified and renamed files have View at parent and View file, added files only View file, and deleted files only View at parent. View file is a link to `/view/…` “at 8d7fe7f0bd4e, the commit this page shows”; View at parent is a button, “Switch to da65dcd810d6 and open …” | Pass |
+| M03b modified | `README.md`: View file, then View at parent | The file at each commit | Head `1abb32a2…` (9280 bytes) under `8d7fe7f0…`; parent `846aa5fa…` (9278 bytes) under `da65dcd8…`, after one `POST /api/source/pin`. Both equal Git’s | Pass |
+| M03b added | `docs/project/README.md`: View file | The file at the head | `dfaff312…` under `8d7fe7f0…`; the path does not exist at the parent | Pass |
+| M03b deleted | `docs/specs/file-search.md`: View at parent | The file at the parent | `9d0fd78e…` under `da65dcd8…`; the path does not exist at the head | Pass |
+| M03b renamed | `docs/specs/metabrowser-v0.1.0.md → docs/project/specs/done/plan-2026-07-14-…`: View at parent, then View file | The old path at the parent and the new path at the head | Old path `c37ab565…` under `da65dcd8…`; new path `ad401138…` under `8d7fe7f0…` | Pass |
+| M03b navigation | After each of the six opens: reload, Back, Forward, and the link’s address in a second tab | Selection and revision survive; Back returns to the diff | In all 24 actions the address, the commit in the header, the selector (“Commit: …”), and the blob ID were unchanged. Back showed the 17-file diff each time. After a switch, Back landed on the diff, reloaded once by itself onto the served commit, and swapped which control is the link | Pass |
+| M03b second tab left open | A tab open on a file while the first tab switched the pin, twice | Content never silently switches to another commit | The tab kept its content under its own commit ID. Its data requests answered `409 pin_changed`, “the server now serves another revision; reload the page”. Loaded again, the address showed the served commit’s file under that commit’s ID | Pass |
+| M03b runbook 5.11, steps 1 and 3–5 | The fixture mirror | As the runbook describes | 7 bars; `link` (symbolic link) and `vendor/lib` (submodule) have no control; View at parent on the rename opens `src/old_name.py` under `a5232ab93056…`, with `gone.txt` and no `added.txt` in the tree; View at parent on `gone.txt` opens “gone soon”; from the parent’s page, View file on `latin1-�.txt`, a name that is not UTF-8, opens “a Latin-1 name, edited” and returns the selector to “Branch: trunk”; `first` has only View file; `changes.patch` has no control | Pass |
+| M08b controls | Files changed of `cli/cli#14128` | Each bar offers the sides its change has | 86 bars. The 84 modified files and the rename have View at base and View file; `git/test.go`, added, has only View file. View at base names `c624f0ac79b2`, the merge base, not `trunk`’s tip | Pass |
+| M08b head | View file on `cmd/gen-docs/main.go`, `git/test.go`, and `internal/config/test.go` (the rename’s new path) | The files at the recorded head | `d6a317f5…`, `aa873a14…`, and `6f096e94…` under `5dfc6b06…`, each equal to GitHub’s blob at the head | Pass |
+| M08b base | View at base on `cmd/gen-docs/main.go` and `internal/config/stub.go` (the rename’s old path) | The files at the merge base | `cb76f422…` and `fe5e277b…` under `c624f0ac…`, each equal to GitHub’s blob at the merge base. GitHub answers 404 for the new path at the base and for the old path at the head | Pass |
+| M08b selector | View at base, Back, then View file | The selector names the pull request again at the head | On the base the selector reads “Commit: c624f0ac79b2”, and Files changed says “This page’s code is c624f0ac79b2, not the pull request’s head 5dfc6b06b53e” with “Switch to the head”. After View file it reads “Pull request: #14128” on `refs/pull/14128/head`, and the line is gone | Pass |
+| M08b navigation | After each of the seven opens on the two pull requests: reload, Back, Forward, and the address in a second tab | Selection and revision survive; Back returns to Files changed | In all 28 actions the address, the commit, the selector, and the blob ID were unchanged, and Back showed Files changed with 86 or 91 bars | Pass |
+| M08b deletion and binary | `jlevy/metabrowser#3`: `devtools/biome.py` (deleted) and `images/metabrowser-overview.jpg` (added, binary) | Explicit states; no side the change lacks | The deletion has only View at base, which opens `8ca98335…` under `5dfb02e7…`, GitHub’s blob at the merge base. The JPEG’s diff reads “Binary file; no textual diff.”, and its View file opens the Image view (1280 × 720) of `14431ec6…`, GitHub’s blob at the head. The selector returns to “Pull request: #3” | Pass |
+| M08b symbolic link and submodule | — | No control | Not run on a pull request: neither public fixture changes one. The commit diff above shows none, and `viewFileSides` in `diff-view-file.js` decides for both surfaces | Not run |
+| #249: a folder named like a URL | `metab file:notes` in a directory holding the folder `file:notes`: `--walk`, `--show README.md`, and served | The folder is served | `--walk` lists `README.md`; `--show` reports `kind: markdown`; the browser renders the document, with `active_content: true`. A folder named `git@github.com:o/r` is walked the same way | Pass |
+| #249: a GitHub URL | `metab https://github.com/octocat/Hello-World`, `--no-serve` and served, in a directory holding the folder `https:/github.com/octocat/Hello-World` | GitHub opens, not the folder | Acquired store `sha256:b301cb88…` at `7fd1a60b…`, and the server says “Serving https://github.com/octocat/hello-world”. The one-slash spelling walks the folder | Pass |
+| #249: a commit the mirror lacks, inside the window | `/commit/5dfc6b06…` on the Hello-World mirror, 22 s after a fetch | The typed state with Retry | “Commit not found · fetched just now”, “This commit is not in the mirror as fetched just now.”, and Retry. The page sent no refresh. `--api /api/git/commit/<oid>` answers 404 `commit_not_found` | Pass |
+| #249: Retry | Retry clicked | A fetch, then what it found | “Fetching this commit…”, one `POST /api/source/refresh` (202), then “Commit not found · fetched just now” with “the fetch from the origin did not bring it: no branch or tag there reaches it.” | Pass |
+| #249: outside the window | The same address 15 min after the last fetch | The page fetches by itself | The same sequence without a click. “Could not load this commit.” never appeared | Pass |
+| Smoke: trusted folder | This checkout served as a folder | Markdown, source, and the Git panel render | `README.md` renders through KPress; `src/metabrowser/cli/main.py#L300-L305` is highlighted, with the gutter reading “Lines 300–305”; the Git tab lists the history, and the head commit shows its split diff with no View file control. No console errors | Pass |
+| Smoke: doctor | `metab --doctor` | `11 plugin(s) OK` | `metab --doctor: 11 plugin(s) OK` | Pass |
+
+Every row that ran passes, so no bead was filed.
+A symbolic link or submodule in a pull request is the one case not run.
+
+Three observations qualify the browser evidence:
+
+- **Back in this pane does not use the back/forward cache.** A marker set on `window`
+  was gone after Back, and the diff came back at the top, not where it was scrolled to.
+  That is the path the last table of `explorations/history-landing/README.md` records
+  for a browser with the cache off.
+  The runbook’s step 6 of section 5.11, that Back with nothing switched keeps the page
+  and its scroll position, was therefore not observable here.
+  The served pages carry no `Cache-Control` header, which that step also checks.
+- **One console error per Back after a switch.** On that path, as that document
+  describes, the page comes back naming the old commit, its request for the tree is
+  refused, and it reloads once.
+  The browser logs the refusal as “Failed to load resource: the server responded with a
+  status of 409 (Conflict)”, and the page warns `loadTree: HTTP 409`. The View file rows
+  logged no other error.
+  The page for a missing commit logs the two 404 answers of its routes the same way.
+  Section 5.11’s pass line says “no console errors” without this exception.
+- **A hidden page waits.** The commit view for a missing commit stays on “Loading
+  preview…” while the page is hidden, the limit #249 states.
+  The three rows above set `document.visibilityState` to `visible` and dispatched
+  `visibilitychange`, as the first run did for the freshness rows.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
