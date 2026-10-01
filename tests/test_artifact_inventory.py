@@ -10,6 +10,7 @@ import pytest
 
 from metabrowser.plugin_loader.artifact_contracts import (
     ArtifactContractSpec,
+    ArtifactProfile,
     ConformanceCorpusSpec,
     ContractRegistry,
     build_contract_registry,
@@ -250,6 +251,15 @@ def test_installed_inventory_requires_contract_wide_evidence_polarity(
     problems = check_installed_evidence(_contracts(_contract(corpus_payload=payload)))
 
     assert any(f"no {missing_evidence} evidence" in problem for problem in problems)
+
+
+@pytest.mark.parametrize("artifact_profile", ["frontmatter-md", "pure-yaml"])
+def test_installed_inventory_round_trips_both_artifact_profiles(
+    artifact_profile: ArtifactProfile,
+) -> None:
+    contract = replace(_contract(), artifact_profile=artifact_profile)
+
+    assert check_installed_evidence(_contracts(contract)) == ()
 
 
 def test_installed_inventory_rejects_lossy_dumpers() -> None:
