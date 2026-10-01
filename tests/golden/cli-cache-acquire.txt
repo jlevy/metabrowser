@@ -1,19 +1,21 @@
-# metab file://<ORIGIN> --no-serve
+## The first command fetches and publishes; the second reuses the store.
+# metab <ORIGIN-A> --no-serve
 exit: 0
 --- stdout ---
-acquired: <ORIGIN>
-slug: <SLUG>
-store: <STORE_ID>
+acquired: <ORIGIN-A>
+slug: <SLUG-A>
+store: <STORE-A>
 revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
 --- stderr ---
-# metab file://<ORIGIN> --no-serve
+# metab <ORIGIN-A> --no-serve
 exit: 0
 --- stdout ---
-acquired: <ORIGIN>
-slug: <SLUG>
-store: <STORE_ID>
+acquired: <ORIGIN-A>
+slug: <SLUG-A>
+store: <STORE-A>
 revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
 --- stderr ---
+## One source is published, aliased to the one store it acquired.
 # metab <ROOT> --api /api/cache/layout
 exit: 0
 --- stdout ---
@@ -47,17 +49,17 @@ status: 200
   "layout_format": "f01",
   "sources": [
     {
-      "slug": "<SLUG>",
+      "slug": "<SLUG-A>",
       "publication": "published",
       "identity": {
-        "id": "<SOURCE_ID>",
-        "display_url": "<ORIGIN>",
-        "clone_url": "<ORIGIN>",
+        "id": "<SOURCE-A>",
+        "display_url": "<ORIGIN-A>",
+        "clone_url": "<ORIGIN-A>",
         "transport": "file",
         "created_at": "2026-09-17T12:00:00Z"
       },
       "alias": {
-        "store_id": "<STORE_ID>",
+        "store_id": "<STORE-A>",
         "generation": 1,
         "updated_at": "2026-09-17T12:00:00Z"
       },
@@ -82,7 +84,7 @@ status: 200
   "layout_format": "f01",
   "stores": [
     {
-      "id": "<STORE_ID>",
+      "id": "<STORE-A>",
       "publication": "published",
       "identity": {
         "created_at": "2026-09-17T12:00:00Z",
@@ -104,7 +106,7 @@ status: 200
       "problems": [],
       "referenced_by": [
         {
-          "slug": "<SLUG>",
+          "slug": "<SLUG-A>",
           "generation": 1
         }
       ],
