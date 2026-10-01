@@ -53,6 +53,7 @@ from metabrowser.source import (
 from tests.golden_harness import (
     block,
     check_golden,
+    first_clone_stderr,
     fix_clock,
     label_home,
     normalize_console,
@@ -310,17 +311,18 @@ def test_a_pin_that_fails_to_reopen_in_the_server_exits_without_a_traceback(
     assert stderr.strip().endswith(
         "Error: Git could not open the cached repository store; see --log-level debug"
     ), stderr
-    # Before the banner the clone said where it went, which is the user's own home.
-    # From the error on, nothing names a local path, and the store path the failure
-    # carried is nowhere.
-    error = stderr[stderr.index("Error: ") :]
-    for text in (stdout, error):
+    # Before the banner the clone said where it went, which is the user's own cache
+    # directory, and that it was done: exactly those two lines, and then the error.
+    # Nothing else is on stderr, so nothing names the store or anything under the cache.
+    error = "Error: Git could not open the cached repository store; see --log-level debug\n"
+    assert re.fullmatch(
+        first_clone_stderr(origin.url, home, then="starting the server") + re.escape(error),
+        stderr,
+    ), stderr
+    for text in (stdout, stderr):
         assert "Traceback" not in text
         assert "Application startup failed" not in text
-        assert str(home) not in text
-    assert "Traceback" not in stderr and "Application startup failed" not in stderr
-    assert f"{home}/cache/x" not in stderr
-    assert str(tmp_path) not in error
+    assert str(home) not in stdout
 
 
 def test_a_folder_whose_startup_fails_exits_non_zero(
