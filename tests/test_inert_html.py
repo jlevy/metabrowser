@@ -9,6 +9,7 @@ handed to each.
 
 from __future__ import annotations
 
+import html
 import json
 import subprocess
 from html.parser import HTMLParser
@@ -159,6 +160,40 @@ def test_both_sides_make_the_same_inert_markup_of_a_hostile_document(
     assert _tokens(browser) == _tokens(server)
 
 
+HOSTILE_LINKS = json.loads(
+    (REPO_ROOT / "tests" / "fixtures" / "inert-html-hostile-links.json").read_text(encoding="utf-8")
+)
+
+
+def _numeric(text: str) -> str:
+    """*text* with every character written as a numeric character reference."""
+
+    return "".join(f"&#{ord(character)};" for character in text)
+
+
+@pytest.mark.parametrize("base", [None, PR_PAGE])
+@pytest.mark.parametrize("written", [lambda href: html.escape(href, quote=True), _numeric])
+def test_neither_side_keeps_a_link_that_is_not_http(base: str | None, written: Any) -> None:
+    """A link keeps its address only when it is ``http`` or ``https``, on both sides.
+
+    KPress's own sanitizer removes a ``javascript:`` link before either side sees it, so
+    a hostile document rendered through KPress never reaches this filter: a side that
+    kept every scheme passed every other test here. This corpus is fed to each side as
+    HTML, written plainly and as character references, which a parser reads the same.
+    """
+
+    refused, kept = HOSTILE_LINKS["refused"], HOSTILE_LINKS["kept"]
+    document = "".join(
+        f'<a href="{written(href)}">{name}</a>' for name, href in {**refused, **kept}.items()
+    )
+    expected = "".join(f"<a>{name}</a>" for name in refused) + "".join(
+        f'<a href="{href}" target="_blank" rel="noopener noreferrer">{name}</a>'
+        for name, href in kept.items()
+    )
+    assert harden(document, base) == expected
+    assert _node({"tree": html_tree(document), "base": base}) == expected
+
+
 def test_a_document_keeps_its_own_references_and_turns_outside_images_into_links() -> None:
     inert = harden(_kpress(HOSTILE_README))
     assert '<img src="docs/diagram.png" alt="diagram">' in inert
@@ -229,6 +264,8 @@ def test_the_session_plays_what_kpress_renders_of_the_hostile_readme() -> None:
     transcript = run_session("inert-html-session.js")
     assert allowlist_violations(transcript["document"], images=True) == []
     assert allowlist_violations(transcript["comment"]) == []
+    for mode in ("document", "comment"):
+        assert allowlist_violations(transcript["links"][mode]) == []
     assert transcript["inertRender"] == {"inert": True, "trusted": False}
 
 
