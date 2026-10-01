@@ -18,10 +18,11 @@ numbers.
 Everything goes to stderr. The destination is a path on the user's own terminal and is
 never part of a route's answer, which carries no cache path.
 
-Status lines are written from the event loop that awaits Git, so one that could not be
+Every line is written from the event loop that awaits Git, so one that could not be
 written at once is dropped (:func:`_writable_now`): a terminal stopped with Ctrl-S, or a
 pipe nobody reads, must not hold up the loop that enforces Git's deadline and delivers a
-cancellation.
+cancellation. A stream whose reader has gone is written to no more, and the command's
+exit status is not changed by it.
 """
 
 from __future__ import annotations
@@ -145,7 +146,9 @@ def _writable_now(stream: TextIO) -> bool:
     """Whether a write to *stream* would return at once.
 
     A stream with no descriptor, such as one a test captures into, always is; so is
-    any stream where the question cannot be asked, as on Windows.
+    any stream where the question cannot be asked, as on Windows. For a pipe the answer
+    holds for a line of up to ``PIPE_BUF`` bytes, 512 at the least, which is longer
+    than any line here unless the URL and the home path are both very long.
     """
 
     try:
@@ -190,13 +193,16 @@ class CloneReport:
         self._received: int | None = None
         self._last_shown = self._started
         self._drawn = 0
+        self._gone = False
 
     def phase(self, phase: str) -> None:
         """A phase of the clone has started; ``done`` ends it."""
 
         if not self._cloning:
             self._cloning = True
-            self._line(f"cloning {self._url} into {self._destination}")
+            self._write(f"cloning {self._url} into {self._destination}\n")
+            # The interval to the first status line runs from here, not from when the
+            # command started: what came before the clone may have taken a while.
             self._last_shown = _monotonic()
         if phase == "done":
             self._finish()
@@ -207,8 +213,9 @@ class CloneReport:
     def progress(self, progress: GitProgress) -> None:
         """Git reported how far the fetch has got."""
 
-        if progress.stage == "receiving" and progress.received_bytes is not None:
-            self._received = progress.received_bytes
+        # The size is what this side counted as it arrived, never the origin's word.
+        if progress.stage == "receiving" and not progress.remote:
+            self._received = progress.received_bytes or self._received
         self._status = describe_progress(progress)
         self._show()
 
@@ -235,15 +242,23 @@ class CloneReport:
             # that arrives in the same instant. The loop collects a cancelled task.
             ticker.cancel()
 
+    def end_status_line(self) -> None:
+        """End the status line on the terminal, so what is written next starts a line.
+
+        The line stays where it is, and the next status is drawn on a line of its own.
+        A log record written during the clone is preceded by this.
+        """
+
+        if self._drawn and self._write("\n"):
+            self._drawn = 0
+
     def close(self) -> None:
         """End a status line a failure or a cancellation left on the terminal.
 
         The line stays: it says how far the clone had got when it stopped.
         """
 
-        if self._drawn:
-            self._drawn = 0
-            self._write("\n")
+        self.end_status_line()
         self._cloning = False
 
     def cache_hit(self, last_fetch_at: str | None) -> None:
@@ -251,10 +266,15 @@ class CloneReport:
 
         line = f"using the clone of {self._url} cached in {self._destination}"
         age = _age_of(last_fetch_at)
-        self._line(line if age is None else f"{line}, fetched {age}")
+        self._write((line if age is None else f"{line}, fetched {age}") + "\n")
 
     def _elapsed(self) -> str:
         return format_elapsed(_monotonic() - self._started)
+
+    def _width(self) -> int:
+        # One column short of the terminal's, so the cursor never wraps to a second
+        # line that a carriage return could not take back.
+        return max(_columns(self._stream) - 1, 1)
 
     def _finish(self) -> None:
         line = f"cloned {self._url} in {self._elapsed()}"
@@ -262,11 +282,11 @@ class CloneReport:
             line += f" ({format_size(self._received)})"
         if self._then:
             line += f"; {self._then}"
-        if self._drawn:
-            self._write("\r" + " " * self._drawn + "\r")
-            self._drawn = 0
         self._cloning = False
-        self._line(line)
+        # The status line is blanked and the last line written over it, in one write.
+        blank = "\r" + " " * min(self._drawn, self._width()) + "\r" if self._drawn else ""
+        if self._write(blank + line + "\n"):
+            self._drawn = 0
 
     def _show(self, *, now: bool = False) -> None:
         """Show the status if it is due, or at once on a terminal when *now*.
@@ -283,27 +303,38 @@ class CloneReport:
                 return
         elif since < LOG_INTERVAL_S:
             return
-        if not _writable_now(self._stream):
-            return
-        self._last_shown = at
         status = f"{self._status} ({self._elapsed()})"
         if not self._terminal:
-            self._write(f"cloning {self._url}: {status}\n")
+            if self._write(f"cloning {self._url}: {status}\n"):
+                self._last_shown = at
             return
-        # One column short of the width, so the cursor never wraps to a second line
-        # that a carriage return could not take back.
-        status = status[: max(_columns(self._stream) - 1, 1)]
-        self._write("\r" + status + " " * max(self._drawn - len(status), 0))
-        self._drawn = len(status)
+        width = self._width()
+        status = status[:width]
+        # Blanks over what a longer status left, and never past the width: a terminal
+        # made narrower since then must not be made to wrap.
+        blanks = min(max(self._drawn - len(status), 0), width - len(status))
+        # A status that was dropped is due again at the next record or tick, not an
+        # interval later.
+        if self._write("\r" + status + " " * blanks):
+            self._last_shown = at
+            self._drawn = len(status)
 
-    def _line(self, text: str) -> None:
-        self._write(text + "\n")
+    def _write(self, text: str) -> bool:
+        """Write *text* at once, or not at all; whether it was written.
 
-    def _write(self, text: str) -> None:
-        # A stream that is closed or gone is not worth failing a clone over.
-        with contextlib.suppress(OSError, ValueError):
+        A stream that is closed, or whose reader has gone, is not worth failing a clone
+        over, and is not tried again.
+        """
+
+        if self._gone or not _writable_now(self._stream):
+            return False
+        try:
             self._stream.write(text)
             self._stream.flush()
+        except (OSError, ValueError):
+            self._gone = True
+            return False
+        return True
 
 
 def _age_of(timestamp: str | None) -> str | None:

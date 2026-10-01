@@ -131,8 +131,6 @@ def tilde_path(path: Path, user_home: Path) -> str:
     both first.
     """
 
-    if path == user_home:
-        return "~"
     try:
         relative = path.relative_to(user_home)
     except ValueError:

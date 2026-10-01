@@ -983,6 +983,14 @@ def _run_cli(argv: list[str], *, prog_name: str | None = None) -> None:
     stderr = PipeTrackingStream(original_stderr)
     sys.stdout = cast(TextIO, stdout)
     sys.stderr = cast(TextIO, stderr)
+
+    def silence_broken() -> bool:
+        if stdout.broken_pipe:
+            silence_broken_pipe(original_stdout)
+        if stderr.broken_pipe:
+            silence_broken_pipe(original_stderr)
+        return stdout.broken_pipe or stderr.broken_pipe
+
     try:
         try:
             _app(args=argv, prog_name=prog_name)
@@ -990,20 +998,17 @@ def _run_cli(argv: list[str], *, prog_name: str | None = None) -> None:
             typer.echo(f"Error: {exc}", err=True)
             raise SystemExit(1) from None
     except SystemExit as exc:
-        if exc.code == 1 and (stdout.broken_pipe or stderr.broken_pipe):
-            if stdout.broken_pipe:
-                silence_broken_pipe(original_stdout)
-            if stderr.broken_pipe:
-                silence_broken_pipe(original_stderr)
+        # A command that went on after a write to a closed stream, as a clone's
+        # progress does, still holds that text in the stream's buffer. Left there, it
+        # fails the interpreter's flush at exit, which turns a success into status 120.
+        if silence_broken() and exc.code == 1:
             return
         raise
     except BrokenPipeError:
-        if not (stdout.broken_pipe or stderr.broken_pipe):
+        if not silence_broken():
             raise
-        if stdout.broken_pipe:
-            silence_broken_pipe(original_stdout)
-        if stderr.broken_pipe:
-            silence_broken_pipe(original_stderr)
+    else:
+        silence_broken()
     finally:
         sys.stdout = original_stdout
         sys.stderr = original_stderr

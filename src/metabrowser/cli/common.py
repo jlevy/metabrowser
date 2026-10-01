@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from pathlib import Path
 from typing import Any, TextIO
@@ -100,8 +100,20 @@ def silence_broken_pipe(stream: TextIO) -> None:
         os.close(null_fd)
 
 
+class _AnnouncedStreamHandler(logging.StreamHandler[TextIO]):
+    """A stream handler that tells its owner a record is about to be written."""
+
+    def __init__(self, before_record: Callable[[], None]) -> None:
+        super().__init__()
+        self._before_record = before_record
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self._before_record()
+        super().emit(record)
+
+
 @contextmanager
-def cli_logging() -> Generator[None]:
+def cli_logging(before_record: Callable[[], None] | None = None) -> Generator[None]:
     """Scope a stderr handler to one CLI command that does not import the server.
 
     Attach the handler at the configured level so ``--walk --log-level debug``
@@ -109,6 +121,9 @@ def cli_logging() -> Generator[None]:
     Mirrors ``server._setup_perf_logging`` but stays lightweight (no
     server/plugin import). Restore process-global logger state so repeated
     in-process commands never retain a closed standard-error stream.
+
+    *before_record* is called before each record is written, for a command that
+    keeps a line of its own on the terminal and has to end it first.
     """
 
     # ``getattr(logging, name)`` would accept any module attribute, so a
@@ -121,7 +136,9 @@ def cli_logging() -> Generator[None]:
     logger = logging.getLogger("metabrowser")
     previous_level = logger.level
     previous_propagate = logger.propagate
-    handler = logging.StreamHandler()
+    handler: logging.StreamHandler[TextIO] = (
+        logging.StreamHandler() if before_record is None else _AnnouncedStreamHandler(before_record)
+    )
     handler.setFormatter(
         logging.Formatter("%(asctime)s %(name)s | %(message)s", datefmt="%H:%M:%S")
     )
@@ -137,7 +154,9 @@ def cli_logging() -> Generator[None]:
         logger.propagate = previous_propagate
 
 
-def maybe_cli_logging() -> AbstractContextManager[None]:
+def maybe_cli_logging(
+    before_record: Callable[[], None] | None = None,
+) -> AbstractContextManager[None]:
     """:func:`cli_logging` when a log level was requested, else nothing.
 
     For CLI stages that run before the server module attaches its own handler, so an
@@ -145,5 +164,5 @@ def maybe_cli_logging() -> AbstractContextManager[None]:
     """
 
     if os.environ.get("METABROWSER_LOG_LEVEL"):
-        return cli_logging()
+        return cli_logging(before_record)
     return nullcontext()
