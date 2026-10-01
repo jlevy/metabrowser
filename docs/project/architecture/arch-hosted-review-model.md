@@ -6,8 +6,9 @@ Pull-request data is stored as plain validated JSON records per
 and the provider boundary and snapshot store below are not built.
 The Hosted Review Format code this document describes, with its contracts, corpora,
 browser models, and GitHub coverage oracle, was removed from the v0.12 stack and is
-kept, unmaintained, on the `reference/v012-hosted-review` branch.
-File and symbol names below refer to that removed code.
+kept, unmaintained, on the `reference/v012-hosted-review` branch, tagged
+`reference/v012-hosted-review-2026-09-30`. File and symbol names below refer to that
+removed code.
 
 **Status:** Design only; nothing in this document is implemented in this tree.
 No record family, contract, corpus, coverage oracle, provider adapter, cache, route,
