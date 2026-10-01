@@ -189,6 +189,8 @@ type MetabrowserPreviewPaneLifecycle = Readonly<{
 
 type MetabrowserNavigationRouteRuntime = Readonly<{
   displayPath(path: string, sourceKind?: "filesystem" | "git_revision"): string;
+  /** The GitPath wire of a path on a pinned revision; null when it has an empty segment. */
+  gitPathWire(path: string | Uint8Array): string | null;
   attachController(controller: MetabrowserNavigationController): () => void;
   commitFreshFileResponse(options: {
     cacheFile(data: Record<string, unknown>): void;

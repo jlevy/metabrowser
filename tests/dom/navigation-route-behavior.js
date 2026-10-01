@@ -36,6 +36,7 @@ const sandbox = {
   atob,
   btoa,
   TextDecoder,
+  TextEncoder,
   Uint8Array,
 };
 sandbox.window = sandbox;
@@ -248,6 +249,34 @@ equal(
   route.displayPath("g1-UkVBRE1FLm1k"),
   "g1-UkVBRE1FLm1k",
 );
+// The encoder is the decoder's inverse, and the one place a page spells a wire.
+for (const display of ["README.md", "docs/note.txt", "100%.html", "docs/雪.md", "a b/c?#.txt"]) {
+  equal(
+    `GitPath wire of ${display} displays as it`,
+    route.displayPath(route.gitPathWire(display), "git_revision"),
+    display,
+  );
+}
+equal(
+  "GitPath wire is one token per segment",
+  route.gitPathWire("src/app.py"),
+  "g1-c3Jj/g1-YXBwLnB5",
+);
+equal("GitPath wire is unpadded base64url", route.gitPathWire("a?>"), "g1-YT8-");
+equal(
+  "GitPath wire of a name that is not UTF-8 is its bytes",
+  route.gitPathWire(Uint8Array.from([0x64, 0xe9, 0x2f, 0x66])),
+  "g1-ZOk/g1-Zg",
+);
+for (const [label, bad] of [
+  ["an empty path", ""],
+  ["a leading slash", "/a"],
+  ["a trailing slash", "a/"],
+  ["an empty segment", "a//b"],
+  ["no bytes", new Uint8Array(0)],
+]) {
+  equal(`${label} has no GitPath wire`, route.gitPathWire(bad), null);
+}
 equal(
   "display filesystem g1-looking filename with explicit kind",
   route.displayPath("g1-UkVBRE1FLm1k", "filesystem"),
