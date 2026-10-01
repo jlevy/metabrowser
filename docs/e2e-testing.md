@@ -104,8 +104,8 @@ the only reader of `GOLDEN_UPDATE`. It serves the two kinds of expectation pytes
 `devtools/golden_fixup.py`, then the in-process drivers.
 A session’s transcript is built from its recording, so recording first is what stops a
 transcript being rewritten from a stale input.
-The recorders and drivers run through `devtools/golden_update.py`, which fails when any
-of their tests was skipped: a host without Node, or with a Git below the acquisition
+The recorders and drivers run through `devtools/golden_update.py`, under which no test
+may skip (see [Skips](#skips)): a host without Node, or with a Git below the acquisition
 floor, cannot report that it regenerated what it skipped.
 
 `devtools/check_goldens.py`, part of `make lint-check`, keeps that true and keeps a
@@ -234,6 +234,10 @@ or the test fails:
 
 Any other reason in a CI run means a test the suite is believed to run did not, so it
 fails there. `tests/suite_gates.py` holds these rules.
+
+`make golden-update` sets `METABROWSER_STRICT_SKIPS=all`, the same switch at the level
+where no skip stands, tier or not: a recorder or driver that skipped regenerated
+nothing.
 
 When the live tier is selected, two of its tests may still skip for the data on
 github.com that day: `has no branch with a slash today` and

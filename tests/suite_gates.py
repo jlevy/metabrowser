@@ -7,7 +7,10 @@ A skipped test is judged against the tier it belongs to (``docs/e2e-testing.md``
   github.com holds today;
 - in strict mode, which ``make test`` turns on in CI, any other skip must be the
   admitted-Git tier's. A reason outside the tiers means a test the suite is believed
-  to run did not.
+  to run did not;
+- where ``METABROWSER_STRICT_SKIPS=all``, which ``make golden-update`` sets, no test may
+  skip, whatever its tier or reason: a recorder or driver that skipped regenerated
+  nothing, and the update would report that it had.
 
 A test is also judged on what it asked for: a module that reaches the Git floor has to
 be in ``ADMITTED_GIT_TESTS``, or the admitted-git job never runs it unpatched.
@@ -28,6 +31,8 @@ from tests.admitted_git import take_floor_request
 REQUIRE_MACOS_TIER_ENV = "METABROWSER_REQUIRE_MACOS_TIER"
 LIVE_GITHUB_ENV = "METABROWSER_LIVE_GITHUB"
 STRICT_SKIPS_ENV = "METABROWSER_STRICT_SKIPS"
+# The value under which no skip stands at all; ``devtools/golden_update.py`` sets it.
+STRICT_SKIPS_ALL = "all"
 
 # What a live test may still skip for once its tier is selected: github.com's data.
 LIVE_DATA_SKIPS = ("has no branch with a slash today", "has no open pull request today")
@@ -38,6 +43,11 @@ ADMITTED_GIT_SKIP = "needs a Git the acquisition floor admits"
 def refused_skip(markers: Collection[str], reason: str, environ: Mapping[str, str]) -> str | None:
     """Why this skip has to fail instead, or ``None`` when it may stand."""
 
+    if environ.get(STRICT_SKIPS_ENV) == STRICT_SKIPS_ALL:
+        return (
+            f"{STRICT_SKIPS_ENV}={STRICT_SKIPS_ALL}, so no test may skip: what this one "
+            f"writes was not regenerated on this machine: {reason}"
+        )
     if "macos_tier" in markers:
         if environ.get(REQUIRE_MACOS_TIER_ENV) == "1":
             return f"{REQUIRE_MACOS_TIER_ENV}=1, so a macOS-tier test may not skip: {reason}"

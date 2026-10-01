@@ -1,103 +1,138 @@
-"""``devtools/golden_update.py`` fails when a module it ran skipped a test.
+"""``make golden-update`` cannot pass by skipping.
 
-``make golden-update`` says it regenerates everything. A skipped recorder regenerates
-nothing, so a skip there has to be a failure and not a line in a summary.
+It claims to regenerate everything. A skipped recorder regenerates nothing, so
+``devtools/golden_update.py`` runs its modules with ``METABROWSER_STRICT_SKIPS=all``, the
+level of the suite's own skip judgement (``tests/suite_gates.py``) at which no skip
+stands. The probes below are collected only by the nested runs, which name ``probe_*``
+as their tests, so they go through ``tests/conftest.py`` as a real update does.
 """
 
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
+from devtools import golden_update
 from devtools.check_goldens import UPDATE_ENV
+from tests.suite_gates import (
+    ADMITTED_GIT_SKIP,
+    STRICT_SKIPS_ALL,
+    STRICT_SKIPS_ENV,
+    refused_skip,
+)
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent
+PROBE_OUT_ENV = "METABROWSER_TEST_PROBE_OUT"
+MAX_INNER_BOUND_S = 50
 
-WRITES = """\
-import os
-from pathlib import Path
 
-def test_writes_when_updating():
-    assert os.environ["GOLDEN_UPDATE"] == "1"
-    (Path(__file__).parent / "written.txt").write_text("regenerated\\n")
-"""
-SKIPS = """\
-import pytest
+def probe_a_recorder_that_writes() -> None:
+    assert os.environ[UPDATE_ENV] == "1"
+    Path(os.environ[PROBE_OUT_ENV]).write_text("regenerated\n", encoding="utf-8")
 
-@pytest.mark.skipif(True, reason="node not available")
-def test_skipped_by_mark():
-    raise AssertionError("not run")
 
-def test_skipped_in_its_body():
-    pytest.skip("git is below the acquisition floor")
+def probe_a_recorder_below_the_git_floor() -> None:
+    pytest.skip(f"{ADMITTED_GIT_SKIP}; found 'git version 2.39.5'")
 
-@pytest.mark.xfail(reason="a known failure is not a skip")
-def test_expected_failure():
+
+def probe_a_recorder_without_node() -> None:
+    pytest.skip("node is not on PATH, and METABROWSER_ALLOW_MISSING_TOOLS allows that")
+
+
+@pytest.mark.macos_tier
+def probe_a_macos_tier_recorder_that_skips() -> None:
+    pytest.skip("the file system is case-sensitive")
+
+
+@pytest.mark.xfail(reason="a known failure is not a skip", strict=True)
+def probe_an_expected_failure() -> None:
     raise AssertionError("expected")
-"""
-MODULE_SKIP = 'import pytest\n\npytest.skip("POSIX only", allow_module_level=True)\n'
 
 
-def _run(tmp_path: Path, **modules: str) -> subprocess.CompletedProcess[str]:
-    paths: list[str] = []
-    for name, source in modules.items():
-        path = tmp_path / f"test_{name}.py"
-        path.write_text(source, encoding="utf-8")
-        paths.append(str(path))
-    env = {name: value for name, value in os.environ.items() if name != UPDATE_ENV}
-    return subprocess.run(
-        [sys.executable, "-m", "devtools.golden_update", *paths],
+def _update(tmp_path: Path, *selection: str) -> tuple[subprocess.CompletedProcess[str], Path]:
+    out = tmp_path / "written.txt"
+    this = str(Path(__file__).relative_to(ROOT))
+    options = ["-v", "-p", "no:cacheprovider", "-p", "no:sugar", "-o", "python_functions=probe_*"]
+    environment = {
+        name: value
+        for name, value in os.environ.items()
+        if name not in {UPDATE_ENV, STRICT_SKIPS_ENV}
+    }
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "devtools.golden_update",
+            *options,
+            f"--basetemp={tmp_path / 'nested'}",
+            *selection,
+            this,
+        ],
+        cwd=ROOT,
+        env={**environment, PROBE_OUT_ENV: str(out)},
         capture_output=True,
         text=True,
-        cwd=REPO_ROOT,
-        env=env,
-        timeout=50,
+        timeout=MAX_INNER_BOUND_S,
         check=False,
     )
+    return completed, out
 
 
-def test_a_run_with_no_skip_updates_and_passes(tmp_path: Path) -> None:
-    result = _run(tmp_path, writes=WRITES)
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert (tmp_path / "written.txt").read_text(encoding="utf-8") == "regenerated\n"
+def test_an_update_that_skips_nothing_writes_and_passes(tmp_path: Path) -> None:
+    completed, out = _update(tmp_path, "-k", "writes or expected_failure")
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert out.read_text(encoding="utf-8") == "regenerated\n"
 
 
-@pytest.mark.parametrize(
-    ("source", "reasons"),
-    [
-        (
-            SKIPS,
-            [
-                "::test_skipped_by_mark: node not available",
-                "::test_skipped_in_its_body: git is below the acquisition floor",
-            ],
-        ),
-        (MODULE_SKIP, ["test_skipping.py: POSIX only"]),
-    ],
-    ids=["tests", "module"],
-)
-def test_a_skip_fails_the_run_and_is_named(source: str, reasons: list[str], tmp_path: Path) -> None:
-    result = _run(tmp_path, writes=WRITES, skipping=source)
-    assert result.returncode == 1, result.stdout + result.stderr
-    assert f"{len(reasons)} test(s) were skipped" in result.stderr
-    for reason in reasons:
-        assert reason in result.stderr
-    assert "test_expected_failure" not in result.stderr
+def test_any_skip_fails_the_update_and_is_named(tmp_path: Path) -> None:
+    completed, out = _update(tmp_path)
+    report = completed.stdout
+    outcomes = dict(re.findall(r"::(probe_\w+) ([A-Z]+)", report))
+    assert outcomes == {
+        "probe_a_recorder_that_writes": "PASSED",
+        # The admitted-Git tier's skip stands in strict mode, and not in an update.
+        "probe_a_recorder_below_the_git_floor": "FAILED",
+        "probe_a_recorder_without_node": "FAILED",
+        "probe_a_macos_tier_recorder_that_skips": "FAILED",
+        "probe_an_expected_failure": "XFAIL",
+    }, report + completed.stderr
+    assert completed.returncode == 1
+    assert report.count(f"{STRICT_SKIPS_ENV}={STRICT_SKIPS_ALL}, so no test may skip") >= 3
+    assert "needs a Git the acquisition floor admits" in report
     # What could be regenerated was: the failure is about what was not.
-    assert (tmp_path / "written.txt").is_file()
+    assert out.is_file()
+
+
+def test_the_update_uses_the_suites_own_skip_judgement() -> None:
+    """One place says which skips are allowed, and an update asks it for none."""
+
+    assert (golden_update.STRICT_SKIPS_ENV, golden_update.STRICT_SKIPS_ALL) == (
+        STRICT_SKIPS_ENV,
+        STRICT_SKIPS_ALL,
+    )
+    everything = {STRICT_SKIPS_ENV: STRICT_SKIPS_ALL}
+    for markers, reason in [
+        ((), f"{ADMITTED_GIT_SKIP}; found 'git 2.39'"),
+        ({"macos_tier"}, "the file system is case-sensitive"),
+        ({"live_github"}, "set METABROWSER_LIVE_GITHUB=1 to run"),
+        ((), "root is never denied by modes"),
+    ]:
+        refusal = refused_skip(markers, reason, everything)
+        assert refusal is not None and reason in refusal
 
 
 def test_no_module_is_a_usage_error() -> None:
-    result = subprocess.run(
+    completed = subprocess.run(
         [sys.executable, "-m", "devtools.golden_update"],
         capture_output=True,
         text=True,
-        cwd=REPO_ROOT,
-        timeout=50,
+        cwd=ROOT,
+        timeout=MAX_INNER_BOUND_S,
         check=False,
     )
-    assert result.returncode == 2 and "usage:" in result.stderr
+    assert completed.returncode == 2 and "usage:" in completed.stderr
