@@ -6,7 +6,10 @@ restores them so `make golden-update` is a single reviewable step:
 
 * `[ROOT_ARG]` for the literal `[ROOT]` metavar in Typer's usage line, which
   tryscript would otherwise substitute with the test-file directory
-* `[CWD]` for the sandbox directory in walk envelopes
+* `[CWD]` for the sandbox directory in walk envelopes, and after `file://` in the
+  address a served mirror says it mirrors
+* `[STORE_KEY]` for the key of the store a served mirror says it is kept in, which is
+  derived from that address
 * `[BUILTIN]` for the absolute checkout prefix of builtin plugin paths
 * `[VERSION]` for the installed package version
 * the second copy of the KPress asset manifest in the shell transcript
@@ -65,9 +68,15 @@ class UnexpectedTime(ValueError):
 
 FIXUPS: list[tuple[str, str]] = [
     (r"Usage: metab \[OPTIONS\] \[ROOT\]", "Usage: metab [OPTIONS] [ROOT_ARG]"),
+    # A served mirror's origin is a file:// address of the sandbox. Its scheme is part
+    # of what the status answered and stays; the next rule would take it with the path.
+    (r'(file://)[^\s"]*/tryscript-[A-Za-z0-9]+', r"\1[CWD]"),
     # Not \S*: the sandbox path is often quoted in a JSON envelope, and a
     # non-space run swallows the opening quote along with the path.
     (r'[^\s"]*/tryscript-[A-Za-z0-9]+', "[CWD]"),
+    # The key of the store a served mirror says it is kept in. It is derived from the
+    # origin's address, which is the sandbox's, so no fixture can pin it.
+    (r"(/cache/repository-stores/)[0-9a-f]{64}(/repository\.git)", r"\1[STORE_KEY]\2"),
     (r"/\S*/builtin_plugins", "[BUILTIN]"),
     # The trailing group is the build annotation a checkout adds; see
     # metabrowser.build_version. It varies per commit, so it elides with the

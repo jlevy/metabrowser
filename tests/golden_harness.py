@@ -551,6 +551,39 @@ def isolate_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> CliSandbox:
 
 JSON_BODY: Final = {"content-type": "application/json"}
 
+# What stands in a recording for the directory a recorder builds in, for the application
+# home inside it, and for the key of each store it serves, in the order it names them.
+# A stand-in key is not hexadecimal, so nothing takes it for a real one:
+# devtools/golden_fixup.py patterns a real key in a transcript, and a session's
+# transcript must keep these literal.
+SANDBOX_STAND_IN: Final = "/sandbox"
+APPLICATION_HOME_STAND_IN: Final = "/sandbox/application-home"
+STORE_KEY_STAND_INS: Final = ("store-key-1", "store-key-2")
+
+
+def stand_in_sandbox(
+    recorded: Any, sandbox: Path, *store_keys: str, home: Path | None = None
+) -> Any:
+    """*recorded* without what names this run: its directory, and its stores' keys.
+
+    A served mirror's status says what it mirrors and where it is kept. Both are paths
+    under the directory the recorder built them in, and a store's key is derived from
+    its origin's address, so from that directory too. Each exact value is replaced
+    wherever it stands, and nothing is replaced by a field's name: a path a response
+    should not carry shows in the recording as ``/sandbox/…`` rather than being hidden.
+
+    *home* is the application home when a location spells it out, which it does when
+    the home is not under the user's home directory.
+    """
+
+    assert len(store_keys) <= len(STORE_KEY_STAND_INS), "add a stand-in for each store served"
+    text = json.dumps(recorded)
+    for key, stand_in in zip(store_keys, STORE_KEY_STAND_INS, strict=False):
+        text = text.replace(key, stand_in)
+    if home is not None:
+        text = text.replace(json.dumps(str(home))[1:-1], APPLICATION_HOME_STAND_IN)
+    return json.loads(text.replace(json.dumps(str(sandbox))[1:-1], SANDBOX_STAND_IN))
+
 
 def answer(response: Any) -> dict[str, Any]:
     """One response as a session replays it: the status and the decoded body."""

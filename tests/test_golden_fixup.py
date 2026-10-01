@@ -39,6 +39,12 @@ def _fixed(body: str) -> str:
             "path: /opt/checkout/src/metabrowser/builtin_plugins/markdown\n",
             "path: [BUILTIN]/markdown\n",
         ),
+        (
+            '  "origin": "file:///private/var/folders/x/T/tryscript-AbC123/origin.git",\n'
+            '  "location": "~/cache/repository-stores/' + "0f" * 32 + '/repository.git",\n',
+            '  "origin": "file://[CWD]/origin.git",\n'
+            '  "location": "~/cache/repository-stores/[STORE_KEY]/repository.git",\n',
+        ),
         ("metab 0.12.0a1 (3 commits past v0.11.0, dirty)\n", "metab [VERSION]\n"),
         (
             '  "html": "<svg xmlns=\\"http://www.w3.org/2000/svg\\" style=\\"display: none\\">'
@@ -80,6 +86,7 @@ def _fixed(body: str) -> str:
         "usage-metavar",
         "sandbox-path",
         "builtin-path",
+        "mirror-origin-and-location",
         "version",
         "icon-sprite",
         "diagnostic-line",
@@ -109,6 +116,8 @@ def test_captured_output_gets_its_pattern_back(captured: str, restored: str) -> 
         '  "schema_version": 2,\n  "version": 1,\n',
         # Rendered HTML with no sprite is the document itself.
         '  "html": "\\n<div><div><p>This teaches it <strong>two</strong>.</p></div></div>"\n',
+        # A store identity and a commit are not a location's store key.
+        '  "store_id": "sha256:' + "0f" * 32 + '",\n',
         # A watcher-shaped key outside the watcher's trio, and prose.
         '  "mode": "100644",\n  "state": "current",\n',
         "The diagnostic is reported in `version`.\n",
@@ -120,6 +129,7 @@ def test_captured_output_gets_its_pattern_back(captured: str, restored: str) -> 
         "other-times",
         "other-versions",
         "plain-html",
+        "store-identity",
         "other-modes",
         "prose",
     ],

@@ -52,6 +52,7 @@ from tests.golden_harness import (
     check_recording,
     run_session,
     serve_published,
+    stand_in_sandbox,
 )
 from tests.required_tools import needs_git
 from tests.source_mirror_fixture import FETCHED_AT
@@ -107,8 +108,14 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             "latin1": view(LATIN1_NAME),
         },
     }
+    keys: list[str] = []
+
+    def served(published: PublishedSource) -> PublishedSource:
+        keys.append(published.store_key)
+        return published
+
     try:
-        serve_published(_acquire(origin, home))
+        serve_published(served(_acquire(origin, home)))
         with TestClient(server.app) as client:
 
             def comparison(**params: str) -> dict[str, Any]:
@@ -143,7 +150,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         other = tmp_path / "other"
         other.mkdir()
         other_origin = source_mirror_fixture.build_origin(other)
-        serve_published(_acquire(other_origin, home), serving=True)
+        serve_published(served(_acquire(other_origin, home)), serving=True)
         with TestClient(server.app) as client:
             _settle(client)
             lacking = {"oid": ids["first"], "view": readme}
@@ -166,7 +173,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             recorded["folder_refused"] = _switch(client, lacking)
     finally:
         serve_mirror(None)
-    return _stand_in_times(recorded)
+    return stand_in_sandbox(_stand_in_times(recorded), tmp_path, *keys, home=home)
 
 
 def test_recording_is_what_the_servers_answer(
