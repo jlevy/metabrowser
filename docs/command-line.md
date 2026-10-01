@@ -42,6 +42,11 @@ Two rules decide between the readings, in this order:
    Only an argument that names nothing on disk is read as an scp-like address or refused
    as a malformed URL or remote-helper syntax.
 
+A path that exists but that the process may not read is a usage error
+(`Path 'x' is not readable.`, exit status 2), not a tree that serves as empty.
+An empty argument is refused as `invalid ROOT (empty)`; write `.` for the current
+directory.
+
 With no mode flag, `metab ROOT` starts the server and opens a browser, the way `open`
 opens a folder on macOS.
 

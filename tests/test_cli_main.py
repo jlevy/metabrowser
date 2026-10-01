@@ -1065,6 +1065,46 @@ def test_cli_follows_a_symlink_whose_name_looks_like_a_source(
     assert "Git source" not in str(dangling.exception)
 
 
+@pytest.mark.skipif(os.name != "posix", reason="POSIX modes")
+@pytest.mark.skipif(
+    os.name == "posix" and os.geteuid() == 0,
+    reason="root is never denied by modes, so a denial cannot be staged",
+)
+@pytest.mark.parametrize(
+    "mode",
+    [["--walk"], ["--api", "/api/tree?depth=1"], ["--no-open"], ["--check-api"]],
+)
+def test_cli_refuses_a_root_it_cannot_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: list[str]
+) -> None:
+    """An existing path the process may not read is a usage error, as it was while ROOT
+    was a path argument, not a tree that walks or serves as empty."""
+    monkeypatch.chdir(tmp_path)
+    locked = tmp_path / "locked"
+    locked.mkdir()
+    (locked / "a.txt").write_text("a")
+    secret = tmp_path / "secret.txt"
+    secret.write_text("s")
+    locked.chmod(0)
+    secret.chmod(0)
+    try:
+        with (
+            patch("metabrowser.cli.serve._QuietForceExitServer") as server_cls,
+            patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
+        ):
+            folder = runner.invoke(_app, ["locked", *mode])
+            file = runner.invoke(_app, ["secret.txt", *mode])
+    finally:
+        locked.chmod(0o755)
+        secret.chmod(0o644)
+
+    server_cls.assert_not_called()
+    assert folder.exit_code == 2
+    assert "Invalid value for '[ROOT]': Path 'locked' is not readable." in _plain_output(folder)
+    assert file.exit_code == 2
+    assert "Path 'secret.txt' is not readable." in _plain_output(file)
+
+
 def test_cli_file_url_is_a_git_source_and_is_not_walked(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

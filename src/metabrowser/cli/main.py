@@ -326,6 +326,23 @@ def _names_existing_path(value: str) -> bool:
     return os.path.lexists(value)
 
 
+def _local_root(ctx: typer.Context, value: str) -> Path:
+    """The local path *value* names, refused when it exists and cannot be read.
+
+    While ROOT was a path argument, Click made this check: an entry the process may not
+    read was a usage error, not a tree that walks or serves as empty. A path that does
+    not exist passes, and the mode it reaches says so.
+    """
+    try:
+        os.stat(value)
+    except (OSError, ValueError):
+        return Path(value)
+    if not os.access(value, os.R_OK):
+        param = next((param for param in ctx.command.params if param.name == "root"), None)
+        raise typer.BadParameter(f"Path {value!r} is not readable.", ctx=ctx, param=param)
+    return Path(value)
+
+
 def _classified_root(ctx: typer.Context, root: str | None, mode: str) -> Path | GitSource:
     """Return a local path or a classified Git source, or fail the invocation."""
     if root is None:
@@ -341,13 +358,13 @@ def _classified_root(ctx: typer.Context, root: str | None, mode: str) -> Path | 
         ctx.fail(f"ROOT is required for {_MODE_LABELS[mode]}; {hint}")
     assert root is not None
     if _is_plain_local_root(root) or _names_existing_path(root):
-        return Path(root)
+        return _local_root(ctx, root)
     from metabrowser.cache.providers import url_reducers
     from metabrowser.cache.urls import LocalPath, RejectedRoot, classify_root_argument
 
     classified = classify_root_argument(root, reducers=url_reducers())
     if isinstance(classified, LocalPath):
-        return Path(classified.value)
+        return _local_root(ctx, classified.value)
     if isinstance(classified, RejectedRoot):
         detail = f": {classified.detail}" if classified.detail else ""
         raise CLIError(f"invalid ROOT ({classified.reason}){detail}")
