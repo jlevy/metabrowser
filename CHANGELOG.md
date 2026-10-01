@@ -577,6 +577,8 @@ Content trust:
   (`X-Frame-Options: DENY`); and no plugins, `<base>`, or form submission.
   `/raw` refuses a browsed file requested as a script, stylesheet, worker, or worklet,
   and sends JavaScript and CSS as `text/plain`. See SECURITY.md.
+  The help for `--untrusted` and `--no-active-content` now says that they render
+  Markdown inert and apply this policy, not only that `/raw` loses `allow-scripts`.
 
 - In an inert render, a query alone and root-relative `/api`, `/_debug`, and `/raw`
   references lose their address, as does any link or image past the link enhancer’s

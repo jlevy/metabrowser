@@ -97,9 +97,12 @@ The server binds `127.0.0.1:8411` by default and walks a bounded port range if t
 is taken.
 Do not change `--host` to expose a served root to an untrusted network; see the
 [security policy](../SECURITY.md).
-`--untrusted` (`METAB_UNTRUSTED=1`) is the conservative content-trust profile: it
-disables script execution on `/raw` and keeps mutations off.
-`--no-active-content` (`METAB_ACTIVE_CONTENT=0`) is the individual switch for scripts.
+`--untrusted` (`METAB_UNTRUSTED=1`) is the conservative content-trust profile: it turns
+active content off and keeps mutations off.
+`--no-active-content` (`METAB_ACTIVE_CONTENT=0`) is the individual switch for active
+content. With it off, Markdown renders as an allowlist of inert markup, the page carries
+a strict Content-Security-Policy, and `/raw` omits `allow-scripts` from its sandbox; the
+[security policy](../SECURITY.md) has the details.
 `--allow-edits` (`METAB_ALLOW_EDITS=1`) publishes the mutations capability; no write
 route consumes it yet.
 A flag beats the environment, so `--untrusted` stays conservative whatever the `METAB_*`

@@ -571,8 +571,8 @@ def _metab(
     untrusted: bool = typer.Option(
         False,
         "--untrusted",
-        help="Conservative content-trust profile: disable active content on "
-        "/raw (drop allow-scripts) and keep mutations off. Individual flags "
+        help="Conservative content-trust profile: turn active content off, as "
+        "--no-active-content does, and keep mutations off. Individual flags "
         "override it. Env: METAB_UNTRUSTED=1. Applies when serving and to "
         "--api, --show, and --check-api.",
         rich_help_panel=_PANEL_SHARED,
@@ -580,7 +580,8 @@ def _metab(
     no_active_content: bool = typer.Option(
         False,
         "--no-active-content",
-        help="Disable script execution on content surfaces: /raw omits "
+        help="Turn active content off: Markdown renders as inert markup, the "
+        "page carries a strict Content-Security-Policy, and /raw omits "
         "allow-scripts from its sandbox. Env: METAB_ACTIVE_CONTENT=0. "
         "Applies when serving and to --api, --show, and --check-api.",
         rich_help_panel=_PANEL_SHARED,
