@@ -50,7 +50,6 @@ class MachineReplay:
     def __init__(self, name: str) -> None:
         document = _document()
         self.machine = next(m for m in document["machines"] if m["name"] == name)
-        self.states = {state["name"]: state for state in self.machine["states"]}
         self.state: str = self.machine["initial"]
         self.events: list[str] = []
 
@@ -68,10 +67,6 @@ class MachineReplay:
         )
         self.state = candidates[0]["to"]
         self.events.append(observed.event)
-
-    @property
-    def visible(self) -> bool:
-        return cast(bool, self.states[self.state]["visible"])
 
 
 def _scenario(scenario_id: str) -> dict[str, Any]:
@@ -140,7 +135,7 @@ def test_the_sweep_skips_a_live_staging_entry_and_removes_a_dead_one(home: Path)
     dead_file.write_bytes(b"partial")
     dead_file.chmod(0o400)
     owner = _Child(home, 'lock = locks.staging_entry_lock(home, "a-live")')
-    replay = MachineReplay("startup_sweep")
+    replay = MachineReplay(scenario["machine"])
     try:
         report = sweep_staging(home, observer=replay)
     finally:
@@ -148,7 +143,6 @@ def test_the_sweep_skips_a_live_staging_entry_and_removes_a_dead_one(home: Path)
 
     assert replay.events == scenario["events"]
     assert replay.state == scenario["expected_final"]
-    assert replay.visible is scenario["expected_visible"]
     assert report.removed == ("cache/staging/b-dead",)
     assert report.live == ("cache/staging/a-live",)
     assert (home / "cache/staging/a-live").is_dir()

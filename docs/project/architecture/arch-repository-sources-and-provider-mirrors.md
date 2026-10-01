@@ -725,11 +725,16 @@ module’s own description is the authority for those.
 
 #### After a crash
 
+The startup sweep’s machine is in the fixture and has no states table here.
+It changes nothing durable before it lists the staging entries, and a crash in any state
+after that is `sweep_restarts`.
+
 | Recovery | Visible afterwards | What happens |
 | --- | --- | --- |
 | `nothing_to_recover` | unchanged | No durable state changed before the crash. |
 | `staging_swept` | no | The startup sweep finds the staging entry’s lock free and deletes the entry. A SIGKILLed clone leaves its destination and a temporary pack behind (`explorations/repository-cache/results/concurrency.json`), so staging is never inside a published path. |
 | `unreferenced_store_kept` | no | The crash released the acquisition’s locks after its store was published and before its alias was. A published store that no alias names is not visible. It stays in place, and the next acquisition of the same source reuses it and publishes the alias. |
+| `sweep_restarts` | unchanged | The sweep is idempotent and runs again at the next startup. |
 | `fetch_interrupted` | unchanged | The atomic fetch moved every ref or none, and objects it wrote stay unreferenced. A killed Git can leave `packed-refs.lock`, `refs/**.lock`, a temporary loose object, or a temporary pack; the next refresh removes them under the store’s fetch lock before it fetches, which it can take only once no Git from the interrupted refresh is alive. `state.yml` still records the previous fetch. |
 | `prune_interrupted` | unchanged | Some refs whose branch or tag the origin deleted are gone and others are not; each deletion is whole, and no commit is removed. The next refresh prunes the rest. |
 | `record_behind` | unchanged | The refs moved but `state.yml` still names the previous default revision and fetch time. Nothing reads the record to find a commit, and the next refresh rewrites it. |

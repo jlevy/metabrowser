@@ -1,8 +1,7 @@
 {
   "schema": "metabrowser-repository-cache-state-machines-v1",
   "decided": "2026-09-16",
-  "provenance": "Written by hand from the design in docs/project/architecture/arch-repository-sources-and-provider-mirrors.md (Locks and Deletion); there is no generator. Everything structural here is replayed against production: the hierarchy, the side locks, the lock-file paths, and the sequences through metabrowser.cache.locks (tests/test_repository_cache_contract_fixtures.py), and the startup_sweep machine with its scenario through metabrowser.cache.reclaim (tests/test_cache_reclaim.py). The strings named basis, unmeasured, rules, protects, acquisition, why, effect, and action are rationale and nothing reads them. The acquisition and refresh machines, which no test replays, are tables in that document.",
-  "visibility": "A state is visible when an ordinary open, catalog scan, or served subject can observe the entry or result it describes.",
+  "provenance": "Written by hand from the design in docs/project/architecture/arch-repository-sources-and-provider-mirrors.md (Locks and Deletion); there is no generator. The replays read these keys and no others: each hierarchy lock's name, rank, and path, each side lock's name and path, and each sequence's steps and valid, through metabrowser.cache.locks (tests/test_repository_cache_contract_fixtures.py); and the machine's initial state, each transition's from, event, to, and holds, and the scenario's machine, events, and expected_final, through metabrowser.cache.reclaim (tests/test_cache_reclaim.py). The rest, which is schema, decided, primitive, rules, protects, acquisition, why_outside_the_hierarchy, why, and effect, is rationale that nothing reads. The acquisition and refresh machines, and what a crash leaves in each state, are tables in that document.",
   "locks": {
     "primitive": {
       "kind": "flock",
@@ -13,21 +12,18 @@
       {
         "name": "home",
         "rank": 1,
-        "multiple": false,
         "path": "cache/locks/home.lock",
         "protects": "layout migration and brief global enumeration for catalog scans and sweeps"
       },
       {
         "name": "source_alias",
         "rank": 2,
-        "multiple": true,
         "path": "cache/locks/sources/<slug>.lock",
         "protects": "slug claim and alias creation; several aliases lock in ascending slug order"
       },
       {
         "name": "repository_store",
         "rank": 3,
-        "multiple": true,
         "path": "cache/locks/stores/<store-key>.lock",
         "protects": "store directory publication and store records; several stores lock in ascending key order. It is held only for those short steps, never across network work or a long-running Git process such as fetch"
       }
@@ -35,14 +31,12 @@
     "side_locks": [
       {
         "name": "staging_entry",
-        "mode": "exclusive",
         "path": "cache/locks/staging/<entry>.lock",
         "acquisition": "taken before cache/staging/<entry>/ is created and held by its one owner for the entry's whole life, including network work; every other process only tries it without blocking",
         "why_outside_the_hierarchy": "It is a liveness marker nobody waits on, so holding it across network work cannot block another operation."
       },
       {
         "name": "store_fetch",
-        "mode": "exclusive",
         "path": "cache/locks/stores/<store-key>.fetch.lock",
         "acquisition": "tried without blocking by a refresh of a published store and held through its network work, stale-lock cleanup, and the record rewrite; the Git processes that write the store inherit its descriptor, so it stays held while any of them runs, even after the process that took it has died; a refresh that finds it busy reports that another process is refreshing the store and does not wait",
         "why_outside_the_hierarchy": "It is held across network work, which no hierarchy lock may be, and nobody waits on it. The store lock is still taken under it, briefly, to rewrite state.yml."
@@ -149,40 +143,16 @@
       }
     ]
   },
-  "crash_recovery": {
-    "nothing_to_recover": {
-      "visible_after": "unchanged",
-      "action": "No durable state changed before the crash."
-    },
-    "sweep_restarts": {
-      "visible_after": "unchanged",
-      "action": "The sweep is idempotent and runs again at the next startup."
-    }
-  },
   "machines": [
     {
       "name": "startup_sweep",
-      "owner_phase": "1A",
       "initial": "idle",
-      "states": [
-        { "name": "idle", "visible": false, "terminal": false, "on_crash": "nothing_to_recover" },
-        {
-          "name": "enumerating",
-          "visible": false,
-          "terminal": false,
-          "on_crash": "sweep_restarts"
-        },
-        { "name": "inspecting", "visible": false, "terminal": false, "on_crash": "sweep_restarts" },
-        { "name": "removing", "visible": false, "terminal": false, "on_crash": "sweep_restarts" },
-        { "name": "done", "visible": false, "terminal": true }
-      ],
       "transitions": [
         {
           "from": "idle",
           "event": "begin",
           "to": "enumerating",
           "holds": ["home"],
-          "network": false,
           "effect": "List entry names under staging/ only."
         },
         {
@@ -190,7 +160,6 @@
           "event": "listed",
           "to": "inspecting",
           "holds": [],
-          "network": false,
           "effect": "Release the home lock before any per-entry work."
         },
         {
@@ -198,7 +167,6 @@
           "event": "entry_lock_busy",
           "to": "inspecting",
           "holds": [],
-          "network": false,
           "effect": "A live owner holds the entry's lock; skip it."
         },
         {
@@ -206,7 +174,6 @@
           "event": "entry_lock_acquired",
           "to": "removing",
           "holds": ["staging_entry"],
-          "network": false,
           "effect": "Nobody owns the entry and the lock file's identity rechecks."
         },
         {
@@ -214,7 +181,6 @@
           "event": "removed",
           "to": "inspecting",
           "holds": ["staging_entry"],
-          "network": false,
           "effect": "Delete the directory, tolerating read-only Git object files, then remove the lock file and release it."
         },
         {
@@ -222,7 +188,6 @@
           "event": "exhausted",
           "to": "done",
           "holds": [],
-          "network": false,
           "effect": "Every listed entry was skipped or removed."
         }
       ]
@@ -240,8 +205,7 @@
         "removed",
         "exhausted"
       ],
-      "expected_final": "done",
-      "expected_visible": false
+      "expected_final": "done"
     }
   ]
 }
