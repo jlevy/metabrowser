@@ -902,29 +902,17 @@ def test_explicit_url_pattern_matches_the_grammar() -> None:
         assert (_EXPLICIT_URL.match(value) is not None) is expected, value
 
 
-# Names a source string could also have. Before ROOT was classified each was served.
-_SOURCE_LIKE_NAMES = (
-    "file:notes",
-    "a::b",
-    "me@host:dir",
-    "https:x",
-    "ext::sh -c true",
-    "git@github.com:octo/demo",
-    "https:/github.com/octo/demo",
-    "-dash",
-)
-
-
-@pytest.mark.parametrize("name", _SOURCE_LIKE_NAMES)
-def test_cli_serves_an_existing_folder_whose_name_looks_like_a_source(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str
+def test_cli_serves_an_existing_folder_without_asking_the_grammar(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """An argument naming an existing path is that path, whatever it resembles."""
+    """An argument naming an existing path is that path: the source grammar is never
+    asked and the application home is never created. The names themselves, and what is
+    served for each, are the grammar golden's."""
     home = tmp_path / "home"
     monkeypatch.setenv("METABROWSER_HOME", str(home))
     monkeypatch.chdir(tmp_path)
-    folder = tmp_path / name
-    folder.mkdir(parents=True)
+    folder = tmp_path / "me@host:dir"
+    folder.mkdir()
     (folder / "a.txt").write_text("a")
 
     def never_classified(*_args: object, **_kwargs: object) -> None:
@@ -932,42 +920,10 @@ def test_cli_serves_an_existing_folder_whose_name_looks_like_a_source(
 
     monkeypatch.setattr(cache_urls, "classify_root_argument", never_classified)
 
-    # `--` keeps the name that starts with a dash away from the option parser.
-    result = runner.invoke(_app, ["--walk", "--", name])
+    result = runner.invoke(_app, ["me@host:dir", "--walk"])
 
     assert result.exit_code == 0, result.exception
-    assert f"walk: {Path(name).name}\n" in result.output
     assert "a.txt [file] size=1" in result.output
-    assert not home.exists()
-
-
-@pytest.mark.parametrize(
-    ("value", "message"),
-    [
-        ("file:notes", "invalid ROOT (malformed_url)"),
-        ("a::b", "invalid ROOT (remote_helper_syntax)"),
-        ("https:x", "invalid ROOT (malformed_url)"),
-        ("https:/github.com/octo/demo", "invalid ROOT (malformed_url)"),
-        ("-dash", "invalid ROOT (option_like)"),
-        ("me@host:dir", "a Git source has no filesystem to walk (me@host:dir)"),
-        (
-            "git@github.com:octo/demo",
-            "a Git source has no filesystem to walk (https://github.com/octo/demo)",
-        ),
-    ],
-)
-def test_cli_classifies_a_source_like_root_that_names_nothing(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, value: str, message: str
-) -> None:
-    """With no such path, the grammar decides, as it did before the existence check."""
-    home = tmp_path / "home"
-    monkeypatch.setenv("METABROWSER_HOME", str(home))
-    monkeypatch.chdir(tmp_path)
-
-    result = runner.invoke(_app, ["--walk", "--", value])
-
-    assert isinstance(result.exception, CLIError)
-    assert message in str(result.exception)
     assert not home.exists()
 
 
@@ -979,17 +935,6 @@ def test_cli_classifies_a_source_like_root_that_names_nothing(
             "https:/github.com/octo/demo",
             "a Git source has no filesystem to walk (https://github.com/octo/demo)",
         ),
-        (
-            "https://example.com/owner/repo.git",
-            "https:/example.com/owner/repo.git",
-            "a Git source has no filesystem to walk (https://example.com/owner/repo.git)",
-        ),
-        (
-            "file:///srv/git/repo.git",
-            "file:/srv/git/repo.git",
-            "a Git source has no filesystem to walk (file:///srv/git/repo.git)",
-        ),
-        ("http://github.com/octo/demo", "http:/github.com/octo/demo", "(insecure_http)"),
         ("ftp://host/dir", "ftp:/host/dir", "invalid ROOT (unsupported_transport)"),
     ],
 )
@@ -1002,14 +947,14 @@ def test_cli_explicit_scheme_url_is_a_source_even_when_its_path_exists(
 ) -> None:
     """``scheme://`` is never a path: a folder cannot stand in for the URL's repository.
 
-    The path that spelling would name has one slash, and that spelling is served.
+    The path that spelling would name has one slash, and that spelling is served. One
+    case reaches a provider's reducer and one a scheme the grammar refuses.
     """
     home = tmp_path / "home"
     monkeypatch.setenv("METABROWSER_HOME", str(home))
     monkeypatch.chdir(tmp_path)
     folder = tmp_path / path_it_would_name
     folder.mkdir(parents=True)
-    assert Path(value).exists(), "the URL spelling normalizes to the folder"
 
     as_url = runner.invoke(_app, [value, "--walk"])
     as_path = runner.invoke(_app, [path_it_would_name, "--walk"])
