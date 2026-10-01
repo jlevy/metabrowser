@@ -126,7 +126,6 @@ ADMITTED_GIT_TESTS := \
 	tests/test_cli_acquire.py \
 	tests/test_cli_cache_acquire_golden.py \
 	tests/test_cli_git_pin_golden.py \
-	tests/test_cli_git_pin_show_selection.py \
 	tests/test_serve_pin.py \
 	tests/test_cache_update.py \
 	tests/test_source_refresh.py \
