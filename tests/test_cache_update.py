@@ -815,6 +815,11 @@ def _receiving_the_large_object(git_dir: Path) -> bool:
     return any(size >= 1024 * 1024 for size in _temporary_objects(git_dir).values())
 
 
+# Commits, pushes, and fetches a 48 MiB object, then refreshes again. CI takes about
+# 12 s for this whole module. On a 10-core M1 Pro, while the load average ran between
+# 47 and 210, this test took 56 s: within 4 s of the suite's 60 s default, which ends
+# the whole run. The waits inside it still sum to 40 s.
+@pytest.mark.timeout(180)
 def test_a_cancelled_fetch_leaves_the_mirror_consistent(
     mirror: _Mirror, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -855,7 +860,7 @@ def test_a_cancelled_fetch_leaves_the_mirror_consistent(
             )
         )
         git_dir = mirror.published.git_dir
-        # The two bounds sum to 40 s, under the suite's 60 s per-test timeout.
+        # The two bounds sum to 40 s, well inside this test's own timeout.
         await asyncio.wait_for(fetching.wait(), timeout=10)
         deadline = asyncio.get_running_loop().time() + 30
         while not job.done() and not await asyncio.to_thread(_receiving_the_large_object, git_dir):
