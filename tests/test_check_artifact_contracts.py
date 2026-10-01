@@ -1,81 +1,82 @@
+"""The architecture table of installed contracts, compared with the declarations.
+
+``make lint-check`` runs ``devtools/check_artifact_contracts.py`` on the repository's own
+table and the cache's contracts. These cases give it a table for the synthetic contract in
+``tests/artifact_contract_fixture.py`` and state every problem it reports.
+"""
+
 from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from devtools import check_artifact_contracts
-from tests.test_artifact_inventory import _contracts
-
-
-def _architecture_doc(tmp_path: Path, *, contract_rows: str) -> Path:
-    path = tmp_path / "architecture.md"
-    path.write_text(
-        "# Architecture\n\n"
-        "| Contract ID | Artifact profile | Envelope | Producers | Consumers | Corpus |\n"
-        "| --- | --- | --- | --- | --- | --- |\n"
-        f"{contract_rows}\n",
-        encoding="utf-8",
-    )
-    return path
-
-
-_CONTRACT_ROW = (
-    "| `org.example.widgets:Widget/v1` | `pure-yaml` | `widget` | `example-provider` | "
-    "`example-browser,example-store` | `widget-conformance[widget]` |"
+from metabrowser.plugin_loader.artifact_contracts import (
+    ArtifactContractSpec,
+    build_contract_registry,
 )
+from tests.artifact_contract_fixture import VALID_CASE, contract, corpus
+
+_HEADER = (
+    "| Contract ID | Artifact profile | Envelope | Producers | Consumers | Corpus |\n"
+    "| --- | --- | --- | --- | --- | --- |\n"
+)
+_ROW = (
+    "| `example.test:Item/v1` | `pure-yaml` | `item` | `example-provider` | "
+    "`example-browser,example-store` | `item-conformance[item]` |"
+)
+_ORPHAN = _ROW.replace("Item/v1", "Orphan/v1")
+_ITEM = "artifact contract 'example.test:Item/v1'"
+_NO_ROW = f"installed {_ITEM} has no architecture row"
+_TABLES: dict[str, tuple[str, list[str]]] = {
+    "the-installed-declaration": (_HEADER + _ROW, []),
+    "no-table": (
+        "",
+        [
+            "architecture document has no Contract ID | Artifact profile | Envelope | "
+            "Producers | Consumers | Corpus table"
+        ],
+    ),
+    "a-row-with-too-few-cells": (
+        _HEADER + "| `example.test:Item/v1` | `pure-yaml` |",
+        ["artifact contract architecture table has a malformed row", _NO_ROW],
+    ),
+    "another-contract-twice": (
+        f"{_HEADER}{_ORPHAN}\n{_ORPHAN}",
+        [
+            "artifact contract 'example.test:Orphan/v1' has a duplicate architecture row",
+            _NO_ROW,
+            "architecture artifact contract 'example.test:Orphan/v1' is not installed",
+        ],
+    ),
+    "every-record-where-one-selector-is-declared": (
+        _HEADER + _ROW.replace("[item]", "[*]"),
+        [f"{_ITEM} Corpus is 'item-conformance[*]'; expected 'item-conformance[item]'"],
+    ),
+}
 
 
-def test_real_architecture_inventory_passes() -> None:
-    assert check_artifact_contracts.check() == []
-
-
-def test_architecture_inventory_matches_exact_installed_declarations(tmp_path: Path) -> None:
-    architecture_doc = _architecture_doc(
-        tmp_path,
-        contract_rows=_CONTRACT_ROW,
+def _check(tmp_path: Path, table: str, spec: ArtifactContractSpec) -> list[str]:
+    document = tmp_path / "architecture.md"
+    document.write_text(f"# Architecture\n\n{table}\n", encoding="utf-8")
+    return check_artifact_contracts.check(
+        contracts=build_contract_registry((spec,)), architecture_doc=document
     )
 
-    assert (
-        check_artifact_contracts.check(
-            contracts=_contracts(),
-            architecture_doc=architecture_doc,
-        )
-        == []
-    )
+
+@pytest.mark.parametrize(("table", "problems"), _TABLES.values(), ids=_TABLES)
+def test_the_architecture_table_has_to_match_the_installed_declarations(
+    tmp_path: Path, table: str, problems: list[str]
+) -> None:
+    assert _check(tmp_path, table, contract()) == problems
 
 
-def test_architecture_inventory_rejects_missing_orphan_and_duplicate_rows(tmp_path: Path) -> None:
-    orphan_row = _CONTRACT_ROW.replace(
-        "org.example.widgets:Widget/v1",
-        "org.example.widgets:Orphan/v1",
-        1,
-    )
-    architecture_doc = _architecture_doc(
-        tmp_path,
-        contract_rows=f"{orphan_row}\n{orphan_row}",
-    )
+def test_a_corpus_that_proves_too_little_fails_the_gate_under_a_correct_table(
+    tmp_path: Path,
+) -> None:
+    only_valid_cases = contract(corpus=corpus(VALID_CASE))
 
-    problems = check_artifact_contracts.check(
-        contracts=_contracts(),
-        architecture_doc=architecture_doc,
-    )
-
-    assert any(
-        _CONTRACT_ROW.split("`")[1] in problem and "no architecture row" in problem
-        for problem in problems
-    )
-    assert any("Orphan/v1" in problem and "not installed" in problem for problem in problems)
-    assert any("Orphan/v1" in problem and "duplicate" in problem for problem in problems)
-
-
-def test_architecture_inventory_rejects_inexact_contract_semantics(tmp_path: Path) -> None:
-    architecture_doc = _architecture_doc(
-        tmp_path,
-        contract_rows=_CONTRACT_ROW.replace("widget-conformance[widget]", "widget-conformance[*]"),
-    )
-
-    problems = check_artifact_contracts.check(
-        contracts=_contracts(),
-        architecture_doc=architecture_doc,
-    )
-
-    assert any("Widget/v1" in problem and "Corpus" in problem for problem in problems)
+    assert _check(tmp_path, _HEADER + _ROW, only_valid_cases) == [
+        f"{_ITEM} selected corpus cases have no invalid evidence"
+    ]

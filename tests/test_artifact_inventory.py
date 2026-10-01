@@ -1,17 +1,21 @@
+"""The corpus evidence engine: what a contract's packaged corpus has to prove.
+
+``devtools/check_artifact_contracts.py`` and the installed-wheel smoke test run this
+engine over the cache's contracts. Here it runs over the synthetic contract in
+``tests/artifact_contract_fixture.py`` with one thing wrong at a time, and each case
+states every problem the engine reports, in order.
+"""
+
 from __future__ import annotations
 
-import hashlib
 import json
 from collections.abc import Callable
-from dataclasses import asdict, replace
 from typing import Any, cast
 
 import pytest
 
 from metabrowser.plugin_loader.artifact_contracts import (
     ArtifactContractSpec,
-    ConformanceCorpusSpec,
-    ContractRegistry,
     build_contract_registry,
 )
 from metabrowser.plugin_loader.artifact_inventory import (
@@ -20,376 +24,198 @@ from metabrowser.plugin_loader.artifact_inventory import (
     installed_artifact_inventory,
     validate_installed_evidence,
 )
+from tests.artifact_contract_fixture import (
+    CONTRACT_ID,
+    EMPTY_NAME_CASE,
+    RESERVED_NAME_CASE,
+    VALID_CASE,
+    contract,
+    corpus,
+    schema,
+)
 
-_CONTRACT_ID = "org.example.widgets:Widget/v1"
+Dumper = Callable[[object], dict[str, Any]]
 
-
-def _encoded_schema() -> bytes:
-    schema: dict[str, Any] = {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "type": "object",
-        "properties": {"name": {"type": "string", "minLength": 1}},
-        "required": ["name"],
-        "additionalProperties": False,
-        "x-softschema": {"contract": _CONTRACT_ID},
-    }
-    canonical = json.dumps(schema, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    schema["x-softschema"]["schema_sha256"] = hashlib.sha256(canonical.encode()).hexdigest()
-    return json.dumps(schema, sort_keys=True, separators=(",", ":")).encode()
-
-
-def _encoded_typed_value_schema() -> bytes:
-    scalar_schema = {"type": ["integer", "boolean"]}
-    schema: dict[str, Any] = {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "type": "object",
-        "properties": {
-            "value": scalar_schema,
-            "nested": {
-                "type": "object",
-                "properties": {"value": scalar_schema},
-                "required": ["value"],
-                "additionalProperties": False,
-            },
-        },
-        "required": ["nested", "value"],
-        "additionalProperties": False,
-        "x-softschema": {"contract": _CONTRACT_ID},
-    }
-    canonical = json.dumps(schema, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    schema["x-softschema"]["schema_sha256"] = hashlib.sha256(canonical.encode()).hexdigest()
-    return json.dumps(schema, sort_keys=True, separators=(",", ":")).encode()
+_NO_VALID = "selected corpus cases have no valid evidence"
+_NO_INVALID = "selected corpus cases have no invalid evidence"
+_NOT_PRESERVED = "case 'valid' dumper did not preserve the validated corpus record"
 
 
-def _validate_widget(value: dict[str, Any]) -> dict[str, Any]:
-    if value["name"] == "reserved":
-        raise ValueError("reserved widget name")
-    return dict(value)
+def _problems(spec: ArtifactContractSpec) -> list[str]:
+    """What the engine reports for *spec*, without the prefix that names the contract."""
+
+    prefix = f"artifact contract {CONTRACT_ID!r} "
+    problems = check_installed_evidence(build_contract_registry((spec,)))
+    assert all(problem.startswith(prefix) for problem in problems)
+    return [problem.removeprefix(prefix) for problem in problems]
 
 
-def _dump_widget(value: object) -> dict[str, Any]:
-    return dict(cast(dict[str, Any], value))
+def _raising_dumper(_record: object) -> dict[str, Any]:
+    raise RuntimeError("synthetic dumper failure")
 
 
-def _validate_typed_value(value: dict[str, Any]) -> dict[str, Any]:
-    return dict(value)
+def _document_case(record: object) -> ArtifactContractSpec:
+    """A contract with no selectors, whose one case carries a ``record`` key anyway."""
+
+    evidence = corpus(VALID_CASE | {"record": record}, base_document={"name": "accepted"})
+    return contract(corpus=evidence, corpus_record_selectors=())
 
 
-def _corpus_payload() -> bytes:
-    return json.dumps(
-        {
-            "base_records": {"widget": {"name": "accepted"}},
-            "cases": [
-                {
-                    "name": "valid-widget",
-                    "record": "widget",
-                    "changes": [],
-                    "expect": "valid",
-                },
-                {
-                    "name": "structurally-invalid-widget",
-                    "record": "widget",
-                    "changes": [{"path": ["name"], "value": ""}],
-                    "expect": "invalid",
-                },
-                {
-                    "name": "semantically-invalid-widget",
-                    "record": "widget",
-                    "changes": [{"path": ["name"], "value": "reserved"}],
-                    "expect": "invalid",
-                },
-            ],
-        },
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode()
-
-
-def _contract(*, corpus_payload: bytes | None = None) -> ArtifactContractSpec:
-    schema_bytes = _encoded_schema()
-    payload = corpus_payload if corpus_payload is not None else _corpus_payload()
-    schema = cast(dict[str, Any], json.loads(schema_bytes))
-    return ArtifactContractSpec(
-        contract_id=_CONTRACT_ID,
-        artifact_profile="pure-yaml",
-        envelope="widget",
-        schema_bytes=schema_bytes,
-        schema_bytes_sha256=hashlib.sha256(schema_bytes).hexdigest(),
-        schema_digest=cast(str, schema["x-softschema"]["schema_sha256"]),
-        validate_record=_validate_widget,
-        dump_record=_dump_widget,
-        producer_ids=("example-provider",),
-        consumer_ids=("example-browser", "example-store"),
-        corpus=ConformanceCorpusSpec(
-            corpus_id="widget-conformance",
-            media_type="application/json",
-            payload=payload,
-            payload_sha256=hashlib.sha256(payload).hexdigest(),
+_NO_DOCUMENT_CASES = [
+    "case 'valid' record must be a nonempty string",
+    "contract with no record selectors has no document cases",
+    _NO_VALID,
+    _NO_INVALID,
+]
+_INCOMPLETE: dict[str, tuple[ArtifactContractSpec, list[str]]] = {
+    "selector-the-corpus-does-not-hold": (
+        contract(corpus_record_selectors=("missing",)),
+        [
+            "selector 'missing' is absent from corpus base_records",
+            "selector 'missing' has no cases",
+            _NO_VALID,
+            _NO_INVALID,
+        ],
+    ),
+    "case-on-an-unknown-base-record": (
+        contract(
+            corpus=corpus(
+                VALID_CASE, EMPTY_NAME_CASE, VALID_CASE | {"name": "orphan", "record": "absent"}
+            )
         ),
-        corpus_record_selectors=("widget",),
-    )
+        ["case 'orphan' names unknown base record 'absent'"],
+    ),
+    "case-expected-valid-and-rejected": (
+        contract(
+            corpus=corpus(VALID_CASE, EMPTY_NAME_CASE, RESERVED_NAME_CASE | {"expect": "valid"})
+        ),
+        ["case 'reserved-name' expected valid but was rejected: reserved item name"],
+    ),
+    "case-expected-invalid-and-accepted": (
+        contract(
+            corpus=corpus(
+                VALID_CASE, EMPTY_NAME_CASE, VALID_CASE | {"name": "passes", "expect": "invalid"}
+            )
+        ),
+        ["case 'passes' expected invalid but was accepted"],
+    ),
+    "change-at-a-path-that-does-not-resolve": (
+        contract(
+            corpus=corpus(
+                VALID_CASE | {"changes": [{"path": ["missing", "nested"], "value": 1}]},
+                EMPTY_NAME_CASE,
+            )
+        ),
+        [
+            "case 'valid' has an invalid mutation path: "
+            "mutation path ['missing', 'nested'] does not resolve"
+        ],
+    ),
+    "no-invalid-case": (contract(corpus=corpus(VALID_CASE)), [_NO_INVALID]),
+    "no-valid-case": (contract(corpus=corpus(EMPTY_NAME_CASE, RESERVED_NAME_CASE)), [_NO_VALID]),
+    "dumper-that-changes-the-record": (
+        contract(dump_record=lambda _record: {"name": "changed-by-dumper"}),
+        [_NOT_PRESERVED],
+    ),
+    "dumper-that-raises": (
+        contract(dump_record=_raising_dumper),
+        ["case 'valid' dumper raised RuntimeError: synthetic dumper failure"],
+    ),
+    "document-case-with-a-null-record": (_document_case(None), _NO_DOCUMENT_CASES),
+    "document-case-with-a-numeric-record": (_document_case(1), _NO_DOCUMENT_CASES),
+}
 
 
-def _typed_value_contract(
-    dump_record: Callable[[object], dict[str, Any]],
-) -> ArtifactContractSpec:
-    schema_bytes = _encoded_typed_value_schema()
-    schema = cast(dict[str, Any], json.loads(schema_bytes))
-    corpus_payload = json.dumps(
-        {
-            "base_records": {"widget": {"value": 1, "nested": {"value": 1}}},
-            "cases": [
-                {
-                    "name": "valid-typed-value",
-                    "record": "widget",
-                    "changes": [],
-                    "expect": "valid",
-                },
-                {
-                    "name": "invalid-extra-field",
-                    "record": "widget",
-                    "changes": [{"path": ["extra"], "value": True}],
-                    "expect": "invalid",
-                },
-            ],
-        },
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode()
-    return replace(
-        _contract(corpus_payload=corpus_payload),
-        schema_bytes=schema_bytes,
-        schema_bytes_sha256=hashlib.sha256(schema_bytes).hexdigest(),
-        schema_digest=cast(str, schema["x-softschema"]["schema_sha256"]),
-        validate_record=_validate_typed_value,
-        dump_record=dump_record,
-    )
-
-
-def _contracts(contract: ArtifactContractSpec | None = None) -> ContractRegistry:
-    return build_contract_registry((contract or _contract(),))
-
-
-def test_installed_inventory_executes_structural_and_semantic_corpus_evidence() -> None:
-    contract = _contract()
-    contracts = _contracts(contract)
+def test_a_complete_corpus_passes_and_the_inventory_carries_its_digests() -> None:
+    spec = contract()
+    contracts = build_contract_registry((spec,))
 
     assert check_installed_evidence(contracts) == ()
     assert validate_installed_evidence(contracts) is contracts
-
+    # The fields the architecture table shows are compared in
+    # tests/test_check_artifact_contracts.py; these two are in no table.
     (entry,) = installed_artifact_inventory(contracts)
-    assert entry.contract_id == _CONTRACT_ID
-    assert entry.producer_ids == ("example-provider",)
-    assert entry.consumer_ids == ("example-browser", "example-store")
-    assert entry.corpus_record_selectors == ("widget",)
-    assert entry.schema_bytes_sha256 == contract.schema_bytes_sha256
-    assert entry.corpus_payload_sha256 == contract.corpus.payload_sha256
-    assert "declaring_module" not in json.dumps(asdict(entry))
+    assert entry.schema_bytes_sha256 == spec.schema_bytes_sha256
+    assert entry.corpus_payload_sha256 == spec.corpus.payload_sha256
 
 
-def test_installed_inventory_rejects_missing_and_zero_case_selectors() -> None:
-    contract = replace(_contract(), corpus_record_selectors=("missing",))
-    contracts = _contracts(contract)
-
-    problems = check_installed_evidence(contracts)
-
-    assert any("missing" in problem and "base_records" in problem for problem in problems)
-    assert any("missing" in problem and "no cases" in problem for problem in problems)
+@pytest.mark.parametrize(("spec", "problems"), _INCOMPLETE.values(), ids=_INCOMPLETE)
+def test_incomplete_or_contradicted_evidence_is_reported(
+    spec: ArtifactContractSpec, problems: list[str]
+) -> None:
+    assert _problems(spec) == problems
 
 
-def test_installed_inventory_rejects_orphan_cases_and_wrong_expectations() -> None:
-    corpus = cast(dict[str, Any], json.loads(_corpus_payload()))
-    corpus["cases"].append(
-        {
-            "name": "orphan-case",
-            "record": "absent",
-            "changes": [],
-            "expect": "valid",
-        }
-    )
-    corpus["cases"][2]["expect"] = "valid"
-    payload = json.dumps(corpus, sort_keys=True, separators=(",", ":")).encode()
-    contracts = _contracts(_contract(corpus_payload=payload))
+def test_reported_problems_refuse_the_installed_registry() -> None:
+    contracts = build_contract_registry((contract(corpus=corpus(VALID_CASE)),))
 
-    problems = check_installed_evidence(contracts)
-
-    assert any(
-        "orphan-case" in problem and "unknown base record" in problem for problem in problems
-    )
-    assert any(
-        "semantically-invalid-widget" in problem and "expected valid" in problem
-        for problem in problems
-    )
-    with pytest.raises(ContractInventoryError, match="semantically-invalid-widget"):
+    with pytest.raises(ContractInventoryError, match=_NO_INVALID):
         validate_installed_evidence(contracts)
 
 
-def test_installed_inventory_rejects_malformed_mutation_paths() -> None:
-    corpus = cast(dict[str, Any], json.loads(_corpus_payload()))
-    corpus["cases"][0]["changes"] = [{"path": ["missing", "nested"], "value": True}]
-    payload = json.dumps(corpus, sort_keys=True, separators=(",", ":")).encode()
-    contracts = _contracts(_contract(corpus_payload=payload))
-
-    problems = check_installed_evidence(contracts)
-
-    assert any("valid-widget" in problem and "mutation path" in problem for problem in problems)
+# ── Values a dumper may and may not change ─────────────────────────────────────
 
 
-@pytest.mark.parametrize(
-    ("retained_expectation", "missing_evidence"),
-    [("valid", "invalid"), ("invalid", "valid")],
-)
-def test_installed_inventory_requires_contract_wide_evidence_polarity(
-    retained_expectation: str,
-    missing_evidence: str,
-) -> None:
-    corpus = cast(dict[str, Any], json.loads(_corpus_payload()))
-    corpus["cases"] = [case for case in corpus["cases"] if case["expect"] == retained_expectation]
-    payload = json.dumps(corpus, sort_keys=True, separators=(",", ":")).encode()
+def _typed_values(dump_record: Dumper, value: object = 1) -> ArtifactContractSpec:
+    """A contract whose ``value`` and ``nested.value`` are each an integer or a boolean."""
 
-    problems = check_installed_evidence(_contracts(_contract(corpus_payload=payload)))
-
-    assert any(f"no {missing_evidence} evidence" in problem for problem in problems)
-
-
-def test_installed_inventory_rejects_lossy_dumpers() -> None:
-    def dump_lossy_widget(_value: object) -> dict[str, Any]:
-        return {"name": "changed-by-dumper"}
-
-    contract = replace(_contract(), dump_record=dump_lossy_widget)
-
-    problems = check_installed_evidence(_contracts(contract))
-
-    assert any(
-        "valid-widget" in problem and "did not preserve the validated corpus record" in problem
-        for problem in problems
-    )
-
-
-def test_installed_inventory_reports_raising_dumpers() -> None:
-    def dump_raising_widget(_value: object) -> dict[str, Any]:
-        raise RuntimeError("synthetic dumper failure")
-
-    contract = replace(_contract(), dump_record=dump_raising_widget)
-
-    problems = check_installed_evidence(_contracts(contract))
-
-    assert any(
-        "valid-widget" in problem
-        and "dumper raised RuntimeError: synthetic dumper failure" in problem
-        for problem in problems
-    )
-
-
-@pytest.mark.parametrize(
-    "lossy_path",
-    [None, ("value",), ("nested", "value")],
-    ids=["exact", "top-level-int-to-bool", "nested-int-to-bool"],
-)
-def test_installed_inventory_uses_type_sensitive_record_preservation(
-    lossy_path: tuple[str, ...] | None,
-) -> None:
-    def dump_typed_value(value: object) -> dict[str, Any]:
-        dumped = cast(dict[str, Any], json.loads(json.dumps(value)))
-        if lossy_path == ("value",):
-            dumped["value"] = True
-        elif lossy_path == ("nested", "value"):
-            nested = cast(dict[str, Any], dumped["nested"])
-            nested["value"] = True
-        return dumped
-
-    problems = check_installed_evidence(_contracts(_typed_value_contract(dump_typed_value)))
-
-    if lossy_path is None:
-        assert problems == ()
-    else:
-        assert any(
-            "valid-typed-value" in problem
-            and "did not preserve the validated corpus record" in problem
-            for problem in problems
-        )
-
-
-@pytest.mark.parametrize(
-    "lossy_path",
-    [("value",), ("nested", "value")],
-    ids=["top-level-int-to-bool", "nested-int-to-bool"],
-)
-def test_installed_inventory_uses_type_sensitive_round_trip_preservation(
-    lossy_path: tuple[str, ...],
-) -> None:
-    original_value: object | None = None
-
-    def dump_typed_value(value: object) -> dict[str, Any]:
-        nonlocal original_value
-        if original_value is None:
-            original_value = value
-        dumped = cast(dict[str, Any], json.loads(json.dumps(value)))
-        if value is not original_value:
-            if lossy_path == ("value",):
-                dumped["value"] = True
-            else:
-                nested = cast(dict[str, Any], dumped["nested"])
-                nested["value"] = True
-        return dumped
-
-    problems = check_installed_evidence(_contracts(_typed_value_contract(dump_typed_value)))
-
-    assert any(
-        "valid-typed-value" in problem and "round trip did not preserve semantics" in problem
-        for problem in problems
-    )
-
-
-def test_installed_inventory_allows_integral_float_normalization() -> None:
-    def dump_normalized_value(value: object) -> dict[str, Any]:
-        dumped = cast(dict[str, Any], json.loads(json.dumps(value)))
-        dumped["value"] = 1
-        nested = cast(dict[str, Any], dumped["nested"])
-        nested["value"] = 1
-        return dumped
-
-    contract = _typed_value_contract(dump_normalized_value)
-    corpus = cast(dict[str, Any], json.loads(contract.corpus.payload))
-    corpus["base_records"]["widget"] = {
-        "value": 1.0,
-        "nested": {"value": 1.0},
+    scalar = {"type": ["integer", "boolean"]}
+    nested = {
+        "type": "object",
+        "properties": {"value": scalar},
+        "required": ["value"],
+        "additionalProperties": False,
     }
-    payload = json.dumps(corpus, sort_keys=True, separators=(",", ":")).encode()
-    contract = replace(
-        contract,
-        corpus=replace(
-            contract.corpus,
-            payload=payload,
-            payload_sha256=hashlib.sha256(payload).hexdigest(),
-        ),
-    )
-
-    assert check_installed_evidence(_contracts(contract)) == ()
-
-
-@pytest.mark.parametrize("record", [None, 1])
-def test_document_scope_requires_an_absent_record_key(record: object) -> None:
-    corpus = {
-        "base_document": {"name": "accepted"},
-        "cases": [
-            {
-                "name": "malformed-document-case",
-                "record": record,
-                "changes": [],
-                "expect": "valid",
-            }
-        ],
+    extra = VALID_CASE | {
+        "name": "extra-field",
+        "changes": [{"path": ["extra"], "value": 1}],
+        "expect": "invalid",
     }
-    payload = json.dumps(corpus, sort_keys=True, separators=(",", ":")).encode()
-    contract = replace(
-        _contract(corpus_payload=payload),
-        corpus_record_selectors=(),
+    evidence = corpus(
+        VALID_CASE, extra, base_records={"item": {"value": value, "nested": {"value": value}}}
     )
+    typed = schema(properties={"value": scalar, "nested": nested}, required=["nested", "value"])
+    return contract(corpus=evidence, dump_record=dump_record, **typed)
 
-    problems = check_installed_evidence(_contracts(contract))
 
-    assert any(
-        "malformed-document-case" in problem and "record must be a nonempty string" in problem
-        for problem in problems
-    )
+def _dumper(change: Callable[[dict[str, Any]], None], *, after_round_trip: bool = False) -> Dumper:
+    """A dumper that applies *change* to its copy: always, or only to a re-read record."""
+
+    seen: list[object] = []
+
+    def dump(record: object) -> dict[str, Any]:
+        seen.append(record)
+        dumped = cast(dict[str, Any], json.loads(json.dumps(record)))
+        if not after_round_trip or record is not seen[0]:
+            change(dumped)
+        return dumped
+
+    return dump
+
+
+def _top_level(value: object) -> Callable[[dict[str, Any]], None]:
+    return lambda dumped: dumped.update(value=value)
+
+
+def _nested(value: object) -> Callable[[dict[str, Any]], None]:
+    return lambda dumped: dumped["nested"].update(value=value)
+
+
+@pytest.mark.parametrize("change", [_top_level(True), _nested(True)], ids=["top-level", "nested"])
+def test_a_dumper_that_turns_an_integer_into_a_boolean_has_changed_the_record(
+    change: Callable[[dict[str, Any]], None],
+) -> None:
+    assert _problems(_typed_values(_dumper(change))) == [_NOT_PRESERVED]
+    assert _problems(_typed_values(_dumper(change, after_round_trip=True))) == [
+        "case 'valid' pure-yaml round trip did not preserve semantics"
+    ]
+
+
+def test_a_dumper_may_write_an_integral_float_as_an_integer() -> None:
+    def to_integers(dumped: dict[str, Any]) -> None:
+        _top_level(1)(dumped)
+        _nested(1)(dumped)
+
+    # The control: a dumper that changes nothing leaves nothing to report.
+    assert _problems(_typed_values(_dumper(lambda _dumped: None))) == []
+    assert _problems(_typed_values(_dumper(to_integers), value=1.0)) == []
