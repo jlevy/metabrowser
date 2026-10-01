@@ -54,6 +54,7 @@ from tests.golden_harness import (
     block,
     check_golden,
     fix_clock,
+    label_home,
     normalize_console,
     pin_git_dates,
 )
@@ -179,7 +180,7 @@ def test_golden_serve_pin_banner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     trailing slash.
     """
 
-    _home(tmp_path, monkeypatch)
+    home = _home(tmp_path, monkeypatch)
     pin_git_dates(monkeypatch)
     # The first command clones and says how long it took; the others say how long ago.
     fix_clock(monkeypatch)
@@ -203,7 +204,7 @@ def test_golden_serve_pin_banner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
                 " ".join(["metab file://<ROOT>/origin.git --no-open", *arguments]),
                 result.exit_code,
                 normalize_console(result.stdout, tmp_path),
-                normalize_console(result.stderr, tmp_path),
+                normalize_console(label_home(result.stderr, home), tmp_path),
             )
         )
     check_golden("serve-pin-banner.txt", "".join(blocks))
