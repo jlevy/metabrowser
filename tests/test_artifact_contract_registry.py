@@ -4,9 +4,9 @@ The repository cache builds this registry from its packaged schemas and reads an
 every record through it (``metabrowser/cache/contracts.py``, ``cache/atomic.py``). These
 cases use the one synthetic contract in ``tests/artifact_contract_fixture.py``, so each
 refusal has a single cause. The cache's own contracts go through the same functions in
-``tests/test_cache_records.py``, which also holds the refusal of a payload that names
-another contract or another status, and ``tests/test_cache_atomic.py`` holds the turn of
-a refusal into a ``RecordError``.
+``tests/test_cache_records.py``, which also holds the refusal of a status other than
+``enforced``, and ``tests/test_cache_atomic.py`` holds the turn of a refusal into a
+``RecordError``.
 """
 
 from __future__ import annotations
@@ -89,7 +89,7 @@ _REFUSED_DECLARATIONS: dict[str, tuple[str, dict[str, Any]]] = {
         "corpus payload digest",
         {"corpus": replace(contract().corpus, payload=b'{"changed":true}')},
     ),
-    "repeated-selector": ("corpus_record_selectors", {"corpus_record_selectors": ("item", "item")}),
+    "repeated-selector": ("must be unique", {"corpus_record_selectors": ("item", "item")}),
 }
 
 
@@ -176,6 +176,22 @@ def test_a_payload_outside_its_contract_is_refused(match: str, payload: bytes) -
 
     with pytest.raises(ValueError, match=match):
         validate_artifact(payload, expected_contract_id=CONTRACT_ID, contracts=registry)
+
+
+def test_a_payload_naming_another_installed_contract_is_refused_whatever_its_envelope() -> None:
+    """Two of the cache's contracts share the envelope ``state``; only the ID parts them."""
+
+    other_id = "example.test:Other/v1"
+    other = contract(contract_id=other_id, **schema(**{"x-softschema": {"contract": other_id}}))
+    registry = build_contract_registry((contract(), other))
+    assert registry[other_id].spec.envelope == registry[CONTRACT_ID].spec.envelope
+
+    with pytest.raises(ValueError, match="does not match its expected contract"):
+        validate_artifact(
+            _PAYLOAD.replace(CONTRACT_ID.encode(), other_id.encode()),
+            expected_contract_id=CONTRACT_ID,
+            contracts=registry,
+        )
 
 
 def test_enforced_record_validation_closes_an_open_source_schema() -> None:
