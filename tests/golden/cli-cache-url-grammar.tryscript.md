@@ -11,7 +11,9 @@ env:
   GIT_CONFIG_NOSYSTEM: "1"
 before: >-
   mkdir -p file:notes a::b me@host:dir https:x ./-dash
-  https:/example.com/served/repo.git &&
+  https:/example.com/served/repo.git git@github.com:octo/demo ext::folder &&
+  printf 'local\n' > git@github.com:octo/demo/local.txt &&
+  printf 'ext\n' > ext::folder/ext.txt &&
   printf '# Notes\n' > file:notes/README.md &&
   printf 'b\n' > a::b/b.txt &&
   printf 'dir\n' > me@host:dir/dir.txt &&
@@ -229,6 +231,48 @@ totals: total_files=1 total_size=5
 entries:
   . [dir] files=1 size=5
   dash.txt [file] size=5
+? 0
+```
+
+An scp-like address is a path too when the path exists.
+`git@github.com:octo/demo` names the folder `demo` inside `git@github.com:octo` here, so
+that folder is walked and GitHub is never asked; only `scheme://`, below, is exempt from
+this.
+With no such folder the same shape is the GitHub repository, which `--walk` refuses
+before acquiring.
+
+```console
+$ METABROWSER_HOME=$PWD/home metab git@github.com:octo/demo --walk
+walk: demo
+status: done
+counts: files=1 dirs=1 symlinks=0
+totals: total_files=1 total_size=6
+
+entries:
+  . [dir] files=1 size=6
+  local.txt [file] size=6
+? 0
+```
+
+```console
+$ METABROWSER_HOME=$PWD/home metab git@github.com:octo/absent --walk
+Error: --walk runs the filesystem inventory walker, and a Git source has no filesystem to walk (https://github.com/octo/absent). Read a pinned tree with --api '/api/tree?depth=N', or --walk a local directory.
+? 1
+```
+
+Remote-helper syntax that names a folder is that folder; with none it is refused, as in
+a later test.
+
+```console
+$ METABROWSER_HOME=$PWD/home metab ext::folder --walk
+walk: ext::folder
+status: done
+counts: files=1 dirs=1 symlinks=0
+totals: total_files=1 total_size=4
+
+entries:
+  . [dir] files=1 size=4
+  ext.txt [file] size=4
 ? 0
 ```
 

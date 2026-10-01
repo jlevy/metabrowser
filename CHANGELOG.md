@@ -381,11 +381,14 @@ Repository cache:
   source: no path needs that spelling, so a pasted URL opens the same thing in every
   working directory and a local folder cannot stand in for the repository it names.
   `metab https://host/x` therefore no longer serves a folder at `https:/host/x`; write
-  that path with one slash, or as `./https://host/x`. A path that exists but that the
-  process may not read is a usage error, as in 0.11 (`Path 'x' is not readable.`, exit
-  status 2), not a tree that walks or serves as empty.
-  An empty argument, `metab ""`, is refused as `invalid ROOT (empty)`, where 0.11 read
-  it as the current directory.
+  that path with one slash, or as `./https://host/x`. An scp-like address has no such
+  exemption: `git@github.com:o/r` names a local folder of that name when the working
+  directory has one, as in 0.11, and the GitHub repository only when it does not;
+  `https://github.com/o/r` always opens the repository.
+  A path that exists but that the process may not read is a usage error, as in 0.11
+  (`Path 'x' is not readable.`, exit status 2), not a tree that walks or serves as
+  empty. An empty argument, `metab ""`, is refused as `invalid ROOT (empty)`, where 0.11
+  read it as the current directory.
 
 - `metab file://…` serves the acquired source in the browser, pinned to the commit its
   default branch named at the store’s last fetch, until Ctrl-C. Every page reads from

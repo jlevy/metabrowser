@@ -41,6 +41,10 @@ Two rules decide between the readings, in this order:
    is opened, and a symbolic link is followed, as for any other name.
    Only an argument that names nothing on disk is read as an scp-like address or refused
    as a malformed URL or remote-helper syntax.
+   This covers an scp-like address: `git@github.com:o/r` names the folder `r` inside
+   `git@github.com:o` when the working directory has one, and the GitHub repository only
+   when it does not. Write `https://github.com/o/r` to open the repository whatever the
+   directory holds.
 
 A path that exists but that the process may not read is a usage error
 (`Path 'x' is not readable.`, exit status 2), not a tree that serves as empty.
