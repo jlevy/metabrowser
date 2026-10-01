@@ -27,8 +27,11 @@ import tempfile
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Final
 from urllib.parse import unquote, urlsplit
 from urllib.request import url2pathname
+
+from devtools import tryscript_blocks
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 MAP_DOC = REPO_ROOT / "docs/project/architecture/arch-views-models-routes.md"
@@ -93,58 +96,20 @@ class GoldenCommand:
 
 
 def _console_commands(golden: str) -> list[GoldenCommand]:
-    """Parse executable tryscript commands with their output and exit status."""
+    """The commands tryscript runs in a transcript, with their output and exit status.
 
-    commands: list[GoldenCommand] = []
-    in_console = False
-    command_parts: list[str] = []
-    output: list[str] = []
-    status: int | None = None
+    Found the way tryscript finds them (``devtools/tryscript_blocks.py``), so a block it
+    does not run, such as one whose fence is indented, is not evidence here either.
+    """
 
-    def finish() -> None:
-        nonlocal command_parts, output, status
-        if command_parts:
-            command = " ".join(part.removesuffix("\\").rstrip() for part in command_parts)
-            commands.append(
-                GoldenCommand(
-                    command=command,
-                    output=tuple(output),
-                    # Tryscript only prints ``? N`` for an expected nonzero
-                    # exit. An omitted marker is the ordinary success form.
-                    status=0 if status is None else status,
-                )
-            )
-        command_parts = []
-        output = []
-        status = None
-
-    for line in golden.splitlines():
-        stripped = line.strip()
-        if stripped == "```console":
-            finish()
-            in_console = True
-            continue
-        if stripped == "```" and in_console:
-            finish()
-            in_console = False
-            continue
-        if not in_console:
-            continue
-        if stripped.startswith("$ "):
-            finish()
-            command_parts = [stripped[2:]]
-            continue
-        if command_parts and command_parts[-1].endswith("\\") and stripped.startswith("> "):
-            command_parts.append(stripped[2:])
-            continue
-        match = re.fullmatch(r"\? (-?\d+)", stripped)
-        if command_parts and match is not None:
-            status = int(match.group(1))
-            continue
-        if command_parts:
-            output.append(stripped)
-    finish()
-    return commands
+    return [
+        GoldenCommand(
+            command=block.command,
+            output=tuple(line.strip() for line in block.output),
+            status=block.status,
+        )
+        for block in tryscript_blocks.blocks(golden)
+    ]
 
 
 def _command_parts(command: str) -> list[str]:
@@ -210,11 +175,49 @@ def _command_exercises(command: str, surface: str, cli: str) -> bool:
     return False
 
 
+_REFRESH_ENDED: Final = re.compile(r"Error: the refresh ended with \w+")
+
+
+def _route_answered(command: GoldenCommand, surface: str) -> bool:
+    """Whether the route answered 202 in a command that exited non-zero for the work it began.
+
+    A one-shot ``POST`` that starts work prints the route's answer, waits for the work,
+    prints the status ``after:`` it, and exits 1 when the work failed. The route was
+    reached and answered; what failed is what it started, which the transcript also
+    shows. So the route's own ``status:`` line is what counts, and only in exactly that
+    shape, each part of which rules out a non-zero exit that means something else:
+
+    - ``status: 202`` directly under the route's ``api:`` line. Any other status is not
+      "work started";
+    - an ``after: /api/…`` line directly followed by ``status: 2xx``. The follow-up was
+      read, and read successfully;
+    - the last line is ``Error: the refresh ended with <outcome>``. A body truncated
+      mid-response and a refresh that did not finish each end with a different error,
+      and neither says how the work ended.
+    """
+
+    output = [line for line in command.output if line]
+    for index, line in enumerate(output):
+        if not line.startswith("api: "):
+            continue
+        if not _route_token_matches(line.removeprefix("api: "), surface):
+            continue
+        if output[index + 1 : index + 2] != ["status: 202"]:
+            return False
+        followed = any(
+            re.fullmatch(r"after: /api/\S+", first) is not None
+            and re.fullmatch(r"status: 2\d\d", second) is not None
+            for first, second in zip(output[index + 2 :], output[index + 3 :], strict=False)
+        )
+        return followed and _REFRESH_ENDED.fullmatch(output[-1]) is not None
+    return False
+
+
 def _exercises(golden: str, surface: str, cli: str, *, successful_only: bool) -> bool:
     """Whether a transcript attempts, or successfully runs, a route surface."""
 
     return any(
-        (not successful_only or command.status == 0)
+        (not successful_only or command.status == 0 or _route_answered(command, surface))
         and _command_exercises(command.command, surface, cli)
         for command in _console_commands(golden)
     )

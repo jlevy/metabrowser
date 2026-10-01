@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from devtools import check_parity
+from tests.required_tools import needs_node
 
 _HEADER = "| Surface | Status | CLI | Golden or reason |\n| --- | --- | --- | --- |\n"
 _FUNCTIONAL_HEADER = (
@@ -148,6 +149,7 @@ def test_an_unknown_status_is_reported(
     assert any("/api/tree" in problem and "is not one of" in problem for problem in problems)
 
 
+@needs_node
 def test_the_real_table_passes() -> None:
     assert check_parity.check() == []
 
@@ -469,6 +471,7 @@ def test_an_owner_filename_in_session_source_is_not_execution_evidence(
     )
 
 
+@needs_node
 def test_importing_an_owner_does_not_prove_its_behavior_function_ran(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -522,6 +525,7 @@ def test_importing_an_owner_does_not_prove_its_behavior_function_ran(
     )
 
 
+@needs_node
 def test_checker_controlled_coverage_proves_a_declared_function_ran(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -542,6 +546,7 @@ def test_checker_controlled_coverage_proves_a_declared_function_ran(
     assert problems == []
 
 
+@needs_node
 def test_executing_an_unrelated_function_does_not_credit_the_declared_symbol(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -562,6 +567,7 @@ def test_executing_an_unrelated_function_does_not_credit_the_declared_symbol(
     assert any("did not execute owner function" in problem for problem in problems)
 
 
+@needs_node
 def test_a_missing_interaction_owner_function_is_reported(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -582,6 +588,7 @@ def test_a_missing_interaction_owner_function_is_reported(
     )
 
 
+@needs_node
 def test_a_duplicate_interaction_owner_function_is_ambiguous(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -978,6 +985,113 @@ def test_a_nonzero_route_command_is_not_successful_evidence(
     problems = check_parity.check()
 
     assert any("/api/tree" in problem and "no successful exact" in problem for problem in problems)
+
+
+_ANSWERED = "api: /api/tree\nstatus: 202\n{}\n"
+_AWAITED = "after: /api/status\nstatus: 200\n{}\n"
+_ENDED = "Error: the refresh ended with gh_failed"
+
+
+@pytest.mark.parametrize(
+    ("output", "counts"),
+    [
+        # The route answered 202; the refresh it started failed, which exits 1.
+        (_ANSWERED + _AWAITED + _ENDED, True),
+        # A 2xx status and a non-zero exit with nothing awaited is a truncated body.
+        ("api: /api/tree\nstatus: 200\n{\nError: failed mid-response", False),
+        # A YAML body that holds an `after` key, truncated mid-response.
+        (
+            "api: /api/tree\nstatus: 202\nrefresh: started\nafter: /api/status\nstatus: 200\n"
+            "Error: /api/tree answered HTTP 202 and then failed mid-response; "
+            "the body above is truncated",
+            False,
+        ),
+        # The follow-up itself failed, so nothing says how the work ended.
+        (_ANSWERED + "after: /api/status\nstatus: 500\n{}\n" + _ENDED, False),
+        # The refresh did not finish: the exit status is the timeout's.
+        (
+            _ANSWERED + _AWAITED + "Error: the refresh did not finish within 120s and was stopped",
+            False,
+        ),
+        # 204 is not "work started".
+        ("api: /api/tree\nstatus: 204\n" + _AWAITED + _ENDED, False),
+        # An `after:` line that names no route, or whose status is not the next line.
+        (_ANSWERED + "after: later\nstatus: 200\n{}\n" + _ENDED, False),
+        (_ANSWERED + "after: /api/status\n{}\nstatus: 200\n" + _ENDED, False),
+        ("api: /api/tree\nstatus: 409\n{}\n" + _AWAITED + _ENDED, False),
+        # Another route's answer is not this route's.
+        ("api: /api/treetop\nstatus: 202\n{}\n" + _AWAITED + _ENDED, False),
+    ],
+    ids=[
+        "answered-then-awaited",
+        "truncated",
+        "truncated-yaml-with-after-key",
+        "after-route-failed",
+        "refresh-timed-out",
+        "no-content",
+        "after-names-no-route",
+        "after-status-not-adjacent",
+        "refused",
+        "another-route",
+    ],
+)
+def test_a_route_that_answered_before_its_awaited_work_failed_is_evidence(
+    output: str,
+    counts: bool,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    only_tree: None,
+) -> None:
+    golden_dir = tmp_path / "golden"
+    _write_golden(
+        golden_dir,
+        "awaited.tryscript.md",
+        f"```console\n$ metab root --api /api/tree --data body.json\n{output}\n? 1\n```\n",
+    )
+    monkeypatch.setattr(check_parity, "GOLDEN_DIR", golden_dir)
+    monkeypatch.setattr(
+        check_parity,
+        "MAP_DOC",
+        _write_map(tmp_path, "| `/api/tree` | covered | `--api` | `awaited.tryscript.md` |"),
+    )
+
+    problems = check_parity.check()
+
+    assert any("no successful exact" in problem for problem in problems) is not counts
+
+
+@pytest.mark.parametrize(
+    ("golden", "evidence"),
+    [
+        ("```console\n$ metab root --api /api/tree\n{}\n? 0\n```\n", True),
+        # tryscript runs a `bash` fence as it runs a `console` one.
+        ("```bash\n$ metab root --api /api/tree\n{}\n```\n", True),
+        # An indented fence opens nothing, so tryscript never runs this command.
+        ("  ```console\n  $ metab root --api /api/tree\n  {}\n  ```\n", False),
+        ("```shell\n$ metab root --api /api/tree\n{}\n```\n", False),
+        ("```console\n$ metab root --api /api/tree\n{}\n", False),
+    ],
+    ids=["console", "bash", "indented-fence", "other-info-string", "unclosed-fence"],
+)
+def test_only_a_block_tryscript_runs_is_evidence(
+    golden: str,
+    evidence: bool,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    only_tree: None,
+) -> None:
+    golden_dir = tmp_path / "golden"
+    _write_golden(golden_dir, "block.tryscript.md", golden)
+    monkeypatch.setattr(check_parity, "GOLDEN_DIR", golden_dir)
+    monkeypatch.setattr(
+        check_parity,
+        "MAP_DOC",
+        _write_map(tmp_path, "| `/api/tree` | covered | `--api` | `block.tryscript.md` |"),
+    )
+
+    problems = check_parity.check()
+
+    assert any("never exercises it" in problem for problem in problems) is not evidence
 
 
 def test_an_error_golden_can_supplement_successful_route_evidence(

@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 from pathlib import Path
 
-import pytest
+from tests.required_tools import require_node
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SHIM = Path(__file__).resolve().parent / "dom" / "file-navigation-lazy-asset-session.js"
@@ -15,8 +14,7 @@ APP_JS = REPO_ROOT / "src" / "metabrowser" / "static" / "app.js"
 
 
 def test_navigation_assets_share_ownership_and_failure_semantics() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available; skipping file-navigation browserless session")
+    require_node()
     result = subprocess.run(
         ["node", str(SHIM), str(REPO_ROOT)],
         capture_output=True,

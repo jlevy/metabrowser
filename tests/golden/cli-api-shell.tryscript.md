@@ -7,6 +7,9 @@ env:
   TZ: "UTC"
   METABROWSER_PLUGINS_DIRS: ""
   METABROWSER_LOG_LEVEL: "WARNING"
+patterns:
+  CLOCK: '\d{2}:\d{2}:\d{2}'
+  COUNT: '\d+'
 before: >-
   mkdir -p shellroot &&
   printf '# Sample\n\nHello.\n' > shellroot/README.md &&
@@ -656,17 +659,17 @@ status: 200
 
 ## Test: the pending-tally diagnostic accepts a POST body
 
-`version` is the provider’s change-batch counter when the diagnostic ran, elided because
-no reader depends on the count and a provider that batches differently is not thereby
-defective.
+`version` is the provider’s change-batch counter when the diagnostic ran.
+It is matched as a number rather than pinned, because no reader depends on the count and
+a provider that batches differently is not thereby defective.
 
-The route logs a diagnostic line to stderr by design; it carries a wall-clock timestamp
-and is elided. The envelope is pinned exactly, with `elapsed_ms` normalized because it
-moves with load and hardware even when a small fixture makes it repeat locally.
+The route logs a diagnostic line to stderr by design: the client’s report and the
+server’s snapshot, after the wall-clock time the logger writes, which is matched as a
+time of day. Everything else in the line and the envelope is pinned exactly.
 
 ```console
 $ metab shellroot --api /api/diagnostics/pending-tallies --data shellroot/diag.json
-[..]
+[CLOCK] metabrowser.events_route | pending folder tallies diagnostic id=pending-tally-unknown client={"pending":[],"reason":"golden"} server={"diagnostic_id":"pending-tally-unknown","events":{"bus_started":true,"connections":0,"latest_event_id":0},"inventory":{"contract":"inventory-provider-v1","provider":"python","requested_paths":[],"status":"done","version":[COUNT],"walker_task":"done"}}
 api: /api/diagnostics/pending-tallies
 status: 200
 {
@@ -676,7 +679,7 @@ status: 200
     "walker_task": "done",
     "provider": "python",
     "contract": "inventory-provider-v1",
-    "version": [..],
+    "version": [COUNT],
     "requested_paths": []
   },
   "events": {
@@ -701,11 +704,10 @@ Error: /api/diagnostics/pending-tallies returned HTTP 405
 
 ## Test: rendering a document
 
-The rendered `html` and its `assets` are elided.
-They carry a KPress icon sprite of tens of kilobytes, which would make this transcript
-unreviewable and would churn on every KPress upgrade without telling a reader anything
-the surrounding fields do not.
-The envelope around them is pinned exactly.
+The rendered `html` starts with the icon sprite KPress inlines ahead of every document:
+one hidden `<svg>` of tens of kilobytes, the same whatever the document.
+Its contents are elided; the `<article>` after it, which is the render of this document,
+is pinned, and so is the asset manifest and the rest of the envelope.
 
 ```console
 $ metab shellroot --api '/api/kpress/render?path=README.md&view=document'
@@ -713,7 +715,7 @@ api: /api/kpress/render?path=README.md&view=document
 status: 200
 {
   "type": "kpress-rendered-document",
-  "html": "[..]",
+  "html": "<svg xmlns=\"http://www.w3.org/2000/svg\" style=\"display: none\">[..]</svg>\n<article class=\"kpress kpress-doc kpress-print-surface\" data-kpress-profile=\"document\" data-kpress-fonts=\"custom\" data-kpress-card=\"on\" data-kpress-table-wide-min-columns=\"6\" data-kpress-table-wide-min-row-chars=\"100\" aria-label=\"README.md\"><div class=\"kpress-doc-layout kpress-content-with-toc\" data-kpress-toc-rail=\"reserved\"><div class=\"kpress-prose kpress-long-text\"><h1 id=\"sample\">Sample</h1>\n<p>Hello.</p></div></div></article>",
   "profile": "document",
   "printable": true,
   "assets": {
@@ -873,8 +875,10 @@ status: 200
 `--data` sends the body, which is the path the browser uses when the Source view has
 been transformed.
 It reaches a different branch of the handler than the query form above:
-the rendered heading below comes from `source_text`, not from the file on disk, which is
-what proves the override took effect.
+the rendered heading and paragraph below come from `source_text`, not from the file on
+disk, which is what proves the override took effect.
+The asset manifest is the one pinned in full by the test above, so its lines are elided
+here.
 
 ```console
 $ metab shellroot --api /api/kpress/render --data shellroot/render.json
@@ -882,146 +886,11 @@ api: /api/kpress/render
 status: 200
 {
   "type": "kpress-rendered-document",
-  "html": "[..]<h1 id=\"overridden\">Overridden</h1>[..]",
+  "html": "<svg xmlns=\"http://www.w3.org/2000/svg\" style=\"display: none\">[..]</svg>\n<article class=\"kpress kpress-doc kpress-print-surface\" data-kpress-profile=\"document\" data-kpress-fonts=\"custom\" data-kpress-card=\"on\" data-kpress-table-wide-min-columns=\"6\" data-kpress-table-wide-min-row-chars=\"100\" aria-label=\"README.md\"><div class=\"kpress-doc-layout kpress-content-with-toc\" data-kpress-toc-rail=\"reserved\"><div class=\"kpress-prose kpress-long-text\"><h1 id=\"overridden\">Overridden</h1>\n<p>Body.</p></div></div></article>",
   "profile": "document",
   "printable": true,
   "assets": {
-    "schema_version": "kpress-asset-manifest-v2",
-    "assets": [
-      {
-        "id": "css/style-tokens.css",
-        "kind": "package",
-        "path": "css/style-tokens.css",
-        "mode": "hosted",
-        "media_type": "text/css",
-        "content_hash": "8aeaaafb77d8ec54",
-        "output_path": "css/style-tokens.css",
-        "public_url": "/kpress-static/v0.3.5/css/style-tokens.css",
-        "entry_point": true,
-        "loading": "stylesheet"
-      },
-      {
-        "id": "css/syntax.css",
-        "kind": "package",
-        "path": "css/syntax.css",
-        "mode": "hosted",
-        "media_type": "text/css",
-        "content_hash": "807cf5be35b5a8dd",
-        "output_path": "css/syntax.css",
-        "public_url": "/kpress-static/v0.3.5/css/syntax.css",
-        "entry_point": true,
-        "loading": "stylesheet"
-      },
-      {
-        "id": "css/document.css",
-        "kind": "package",
-        "path": "css/document.css",
-        "mode": "hosted",
-        "media_type": "text/css",
-        "content_hash": "49d55a2dbac06488",
-        "output_path": "css/document.css",
-        "public_url": "/kpress-static/v0.3.5/css/document.css",
-        "entry_point": true,
-        "loading": "stylesheet"
-      },
-      {
-        "id": "css/components.css",
-        "kind": "package",
-        "path": "css/components.css",
-        "mode": "hosted",
-        "media_type": "text/css",
-        "content_hash": "3899b614d6672436",
-        "output_path": "css/components.css",
-        "public_url": "/kpress-static/v0.3.5/css/components.css",
-        "entry_point": true,
-        "loading": "stylesheet"
-      },
-      {
-        "id": "css/print.css",
-        "kind": "package",
-        "path": "css/print.css",
-        "mode": "hosted",
-        "media_type": "text/css",
-        "content_hash": "86c6396bc77060cd",
-        "output_path": "css/print.css",
-        "public_url": "/kpress-static/v0.3.5/css/print.css",
-        "entry_point": true,
-        "loading": "stylesheet"
-      },
-      {
-        "id": "fonts/pt-serif-latin-400-normal.woff2",
-        "kind": "package",
-        "path": "fonts/pt-serif-latin-400-normal.woff2",
-        "mode": "hosted",
-        "media_type": "font/woff2",
-        "content_hash": "4271064a37f3ffc0",
-        "output_path": "fonts/pt-serif-latin-400-normal.woff2",
-        "public_url": "/kpress-static/v0.3.5/fonts/pt-serif-latin-400-normal.woff2",
-        "entry_point": false,
-        "loading": "resource"
-      },
-      {
-        "id": "fonts/pt-serif-latin-700-normal.woff2",
-        "kind": "package",
-        "path": "fonts/pt-serif-latin-700-normal.woff2",
-        "mode": "hosted",
-        "media_type": "font/woff2",
-        "content_hash": "bf23a7a4eebedbb8",
-        "output_path": "fonts/pt-serif-latin-700-normal.woff2",
-        "public_url": "/kpress-static/v0.3.5/fonts/pt-serif-latin-700-normal.woff2",
-        "entry_point": false,
-        "loading": "resource"
-      },
-      {
-        "id": "fonts/pt-serif-latin-400-italic.woff2",
-        "kind": "package",
-        "path": "fonts/pt-serif-latin-400-italic.woff2",
-        "mode": "hosted",
-        "media_type": "font/woff2",
-        "content_hash": "cb373bde18855c82",
-        "output_path": "fonts/pt-serif-latin-400-italic.woff2",
-        "public_url": "/kpress-static/v0.3.5/fonts/pt-serif-latin-400-italic.woff2",
-        "entry_point": false,
-        "loading": "resource"
-      },
-      {
-        "id": "fonts/pt-serif-latin-700-italic.woff2",
-        "kind": "package",
-        "path": "fonts/pt-serif-latin-700-italic.woff2",
-        "mode": "hosted",
-        "media_type": "font/woff2",
-        "content_hash": "3cb3cfab3c562cbb",
-        "output_path": "fonts/pt-serif-latin-700-italic.woff2",
-        "public_url": "/kpress-static/v0.3.5/fonts/pt-serif-latin-700-italic.woff2",
-        "entry_point": false,
-        "loading": "resource"
-      },
-      {
-        "id": "fonts/source-sans-3-latin-wght-normal.woff2",
-        "kind": "package",
-        "path": "fonts/source-sans-3-latin-wght-normal.woff2",
-        "mode": "hosted",
-        "media_type": "font/woff2",
-        "content_hash": "7a19a7027e125257",
-        "output_path": "fonts/source-sans-3-latin-wght-normal.woff2",
-        "public_url": "/kpress-static/v0.3.5/fonts/source-sans-3-latin-wght-normal.woff2",
-        "entry_point": false,
-        "loading": "resource"
-      },
-      {
-        "id": "fonts/source-sans-3-latin-wght-italic.woff2",
-        "kind": "package",
-        "path": "fonts/source-sans-3-latin-wght-italic.woff2",
-        "mode": "hosted",
-        "media_type": "font/woff2",
-        "content_hash": "9a15dafc2c2b2414",
-        "output_path": "fonts/source-sans-3-latin-wght-italic.woff2",
-        "public_url": "/kpress-static/v0.3.5/fonts/source-sans-3-latin-wght-italic.woff2",
-        "entry_point": false,
-        "loading": "resource"
-      }
-    ],
-    "import_map": {}
+...
   },
   "diagnostics": [],
   "widgets": {},

@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 from pathlib import Path
 
-import pytest
-
 from metabrowser.file_type_filters import serialize_file_type_registry
+from tests.required_tools import require_node
 
 CONFORMANCE = (
     Path(__file__).resolve().parents[1]
@@ -18,8 +16,7 @@ CONFORMANCE = (
 
 
 def test_file_type_taxonomy_js_assertions_pass(tmp_path: Path) -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     script = Path(__file__).parent / "dom" / "file-type-taxonomy-behavior.js"
     fixture = tmp_path / "file-type-registry.json"
     fixture.write_text(json.dumps(serialize_file_type_registry()), encoding="utf-8")
@@ -48,8 +45,7 @@ def test_file_type_identity_is_one_taxonomy() -> None:
     Python and TypeScript were the same. What has to be pinned is the relation.
     """
 
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     script = Path(__file__).parent / "dom" / "file-type-identity-behavior.js"
     result = subprocess.run(
         ["node", str(script)],

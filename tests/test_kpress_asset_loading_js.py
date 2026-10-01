@@ -9,19 +9,17 @@ cannot validate.
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 from pathlib import Path
 
-import pytest
+from tests.required_tools import require_node
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SHIM = Path(__file__).resolve().parent / "dom" / "kpress-asset-loading.js"
 
 
 def test_kpress_browser_assets_honor_manifest_loading_modes() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available; skipping JS-side KPress asset-loading shim")
+    require_node()
 
     result = subprocess.run(
         ["node", str(SHIM), str(REPO_ROOT)],

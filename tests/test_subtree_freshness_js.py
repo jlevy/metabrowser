@@ -2,16 +2,14 @@
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 from pathlib import Path
 
-import pytest
+from tests.required_tools import require_node
 
 
 def test_subtree_freshness_after_live_changes() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     shim = Path(__file__).parent / "dom" / "subtree-freshness-behavior.js"
     result = subprocess.run(
         ["node", str(shim)], capture_output=True, text=True, timeout=20, check=False

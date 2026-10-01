@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 from pathlib import Path
 
-import pytest
+from tests.required_tools import require_node
 
 CATALOG_FEED_LARGE_TEST_JS = (
     Path(__file__).resolve().parent / "dom" / "catalog-feed-large-session.js"
@@ -14,8 +13,7 @@ CATALOG_FEED_LARGE_TEST_JS = (
 
 
 def test_large_catalog_feed_js_assertions_pass() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", "--expose-gc", str(CATALOG_FEED_LARGE_TEST_JS)],
         capture_output=True,

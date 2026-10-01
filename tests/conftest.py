@@ -11,6 +11,8 @@ from urllib.parse import urljoin
 import pytest
 
 from metabrowser.git.process import _REPO_PINNING_GIT_VARS
+from tests import suite_gates
+from tests.required_tools import require_git, require_node
 
 # Test discovery imports the server from several module scopes. Never let an
 # operator's shell or dotenv configuration alter collection or load external plugins.
@@ -48,6 +50,34 @@ def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
         "markers", "live_github: an opt-in test that talks to github.com with the real gh"
     )
+    config.addinivalue_line(
+        "markers",
+        "macos_tier: runs only on macOS, on its extended ACLs or its case-insensitive "
+        "file system; `make test-macos` runs these alone and fails if one skips",
+    )
+    # The hooks that judge a skip against its tier; see tests/suite_gates.py.
+    config.pluginmanager.register(suite_gates)
+
+
+# ── Tests that must not be silently absent ─────────────────────────────────────
+# docs/e2e-testing.md ("Test Tiers") says which tier runs where.
+
+
+@pytest.fixture(scope="session")
+def node_on_path() -> str:
+    """Behind ``needs_node``: without Node the run stops; see ``tests/required_tools.py``.
+
+    Session scope puts it ahead of a module's own fixtures, which may spawn the tool.
+    """
+
+    return require_node()
+
+
+@pytest.fixture(scope="session")
+def git_on_path() -> str:
+    """Behind ``needs_git``: without Git the run stops; see ``tests/required_tools.py``."""
+
+    return require_git()
 
 
 @pytest.fixture(scope="session")
@@ -114,6 +144,53 @@ def _reset_served_mirror() -> Generator[None, None, None]:  # pyright: ignore[re
     serve_mirror(None)
     yield
     serve_mirror(None)
+
+
+@pytest.fixture(autouse=True)
+def _reset_served_source() -> Generator[None, None, None]:  # pyright: ignore[reportUnusedFunction]
+    """Give every test a fresh source session, and put back the served root it found.
+
+    The session, its generation counter, the subject opener and the served root are
+    process globals. Rendering the shell, serving a folder or attaching a subject
+    leaves them behind, so a later test would count its generations from where an
+    earlier one stopped and pass in one module order only. With this fixture a test
+    sets a root or attaches a subject and needs no ``try``/``finally`` to undo it.
+
+    Two things stay with the test. A subject it opened is its own to close: the reset
+    only drops the reference. And a reset in a test body is still right where the test
+    models a second server process.
+    """
+    from metabrowser import paths_safe
+    from metabrowser.source import reset_source_session
+
+    root = paths_safe.ROOT_DIR
+    reset_source_session()
+    yield
+    if root != paths_safe.ROOT_DIR:
+        # Fires the root callbacks, so per-root caches do not outlive the root either.
+        paths_safe._set_root_dir(root)  # pyright: ignore[reportPrivateUsage]
+    reset_source_session()
+
+
+@pytest.fixture(autouse=True)
+def _restore_environment() -> Generator[None, None, None]:  # pyright: ignore[reportUnusedFunction]
+    """Put back whatever a test, or the code it ran, changed in ``os.environ``.
+
+    The CLI exports what it resolves: ``--log-level`` and the dotenv chain both write
+    ``os.environ``. ``monkeypatch.delenv`` on a name that is absent records no undo, so
+    a value written that way outlived its test. A debug log level left by a dotenv
+    test then put tracebacks into the stderr of every in-process command that ran
+    after it, which the default module order happened to hide.
+    """
+    # pytest keeps the running test's name in this one and rewrites it for each phase.
+    own = "PYTEST_CURRENT_TEST"
+    before = {name: value for name, value in os.environ.items() if name != own}
+    yield
+    for name in os.environ.keys() - before.keys() - {own}:
+        del os.environ[name]
+    for name, value in before.items():
+        if os.environ.get(name) != value:
+            os.environ[name] = value
 
 
 @pytest.fixture(autouse=True)

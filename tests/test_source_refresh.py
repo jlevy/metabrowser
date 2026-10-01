@@ -57,6 +57,7 @@ from metabrowser.source import (
     reset_source_session,
     serve_subject_opener,
 )
+from tests.required_tools import needs_git
 from tests.test_cache_acquire import _git
 from tests.test_serve_pin import (
     _home,
@@ -70,7 +71,7 @@ from tests.test_serve_pin import (
 
 pytestmark = [
     posix_only,
-    pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required"),
+    needs_git,
 ]
 
 runner = CliRunner()
@@ -86,13 +87,11 @@ def _wire(display: str) -> str:
 
 
 @pytest.fixture(autouse=True)
-def _isolated_session(  # pyright: ignore[reportUnusedFunction]
+def _no_interrupt_handler(  # pyright: ignore[reportUnusedFunction]
     monkeypatch: pytest.MonkeyPatch,
-) -> Iterator[None]:
+) -> None:
     monkeypatch.setattr("metabrowser.cli.git_pin_cli.stop_on_interrupt", lambda: None)
     monkeypatch.delenv("METABROWSER_LOG_LEVEL", raising=False)
-    yield
-    reset_source_session()
 
 
 def _work(origin: _Origin) -> Path:
@@ -387,18 +386,25 @@ def test_one_shot_api_finishes_the_refresh_it_was_asked_for(
 def test_one_shot_api_fails_when_the_refresh_outlasts_its_wait(
     tmp_path: Path, origin: _Origin, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    ended: list[str] = []
+
     async def slow_update(home: Path, store_key: str, *, remote_url: str) -> StoreUpdate:
-        await asyncio.sleep(60)
+        try:
+            # Far longer than the wait under test; it only ends a refresh nothing stopped.
+            await asyncio.sleep(30)
+        except asyncio.CancelledError:
+            ended.append("cancelled")
+            raise
+        ended.append("finished")
         return StoreUpdate(RefreshOutcome.succeeded, _FUTURE)
 
     monkeypatch.setattr("metabrowser.cache.served_mirror.update_store", slow_update)
     monkeypatch.setattr("metabrowser.cli.api_cli._REFRESH_DRAIN_S", 0.2)
     body = tmp_path / "refresh.json"
     body.write_text("{}\n", encoding="utf-8")
-    started = time.monotonic()
     result = runner.invoke(_app, [origin.url, "--api", "/api/source/refresh", "--data", str(body)])
     # Leaving stopped the refresh instead of waiting for it.
-    assert time.monotonic() - started < 30
+    assert ended == ["cancelled"]
     assert result.exit_code != 0
     assert '"refreshing": true' in result.stdout
     assert str(result.exception) == "the refresh did not finish within 0.2s and was stopped"
@@ -642,6 +648,7 @@ def test_the_coordinator_bounds_concurrent_jobs_across_keys() -> None:
         coordinator = RefreshCoordinator(limit=2)
         running = 0
         peak = 0
+        at_the_limit = asyncio.Event()
         release = asyncio.Event()
         answers: list[str] = []
 
@@ -649,6 +656,8 @@ def test_the_coordinator_bounds_concurrent_jobs_across_keys() -> None:
             nonlocal running, peak
             running += 1
             peak = max(peak, running)
+            if running == 2:
+                at_the_limit.set()
             await release.wait()
             running -= 1
 
@@ -658,7 +667,9 @@ def test_the_coordinator_bounds_concurrent_jobs_across_keys() -> None:
         for key in ("a", "b", "c", "a"):
             answers.append(coordinator.start(key, job))
         answers.append(coordinator.start("d", failing))
-        await asyncio.sleep(0.05)
+        # Every job was scheduled before this resumes, so one past the limit would
+        # already have raised the peak.
+        await asyncio.wait_for(at_the_limit.wait(), timeout=5)
         release.set()
         await coordinator.drain(timeout_s=5)
         await coordinator.aclose()
@@ -786,19 +797,16 @@ def test_a_switch_attaches_the_new_pin_before_it_closes_the_old() -> None:
         raise AssertionError("the opener only runs in a lifespan")
 
     serve_subject_opener(never_called)
-    try:
-        first, second = _Subject("first"), _Subject("second")
-        attach_owned_subject(first)  # type: ignore[arg-type]
-        before = get_source_session().generation
-        session = asyncio.run(replace_owned_subject(second))  # type: ignore[arg-type]
-        assert session.subject is second
-        assert session.generation == before + 1
-        assert observed == ["close first while serving second"]
-        # Shutdown is the one moment nothing is served, and a request then is refused.
-        asyncio.run(close_owned_subject())
-        assert observed[-1] == "close second while serving nothing"
-    finally:
-        reset_source_session()
+    first, second = _Subject("first"), _Subject("second")
+    attach_owned_subject(first)  # type: ignore[arg-type]
+    before = get_source_session().generation
+    session = asyncio.run(replace_owned_subject(second))  # type: ignore[arg-type]
+    assert session.subject is second
+    assert session.generation == before + 1
+    assert observed == ["close first while serving second"]
+    # Shutdown is the one moment nothing is served, and a request then is refused.
+    asyncio.run(close_owned_subject())
+    assert observed[-1] == "close second while serving nothing"
 
 
 # ── Review fixes ─────────────────────────────────────────────────────

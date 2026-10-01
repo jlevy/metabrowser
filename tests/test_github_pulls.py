@@ -11,7 +11,6 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import shutil
 import subprocess
 import threading
 import time
@@ -75,7 +74,7 @@ from metabrowser.mirror_refresh import (
     serve_mirror,
 )
 from metabrowser.server import app
-from metabrowser.source import attach_subject, reset_source_session
+from metabrowser.source import attach_subject
 from metabrowser.source_routes import PIN_HEADER
 from tests.git_pin_harness import git_env
 from tests.github_pull_fixture import (
@@ -93,10 +92,11 @@ from tests.github_pull_fixture import (
     page,
     scenario,
 )
+from tests.required_tools import needs_git
 from tests.test_cache_acquire import _allow_installed_git
 
 pytestmark = [
-    pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required"),
+    needs_git,
     pytest.mark.skipif(os.name != "posix", reason="the fake gh is a POSIX script"),
 ]
 
@@ -526,7 +526,6 @@ def pinned_pull(stand: _Stand) -> Iterator[tuple[_Stand, TestClient]]:
             yield stand, client
     finally:
         serve_mirror(None)
-        reset_source_session()
         git_repo.clear_repo_cache()
 
 
@@ -1040,7 +1039,7 @@ def test_a_pull_request_head_is_pinned_by_its_ref(stand: _Stand) -> None:
 
 
 def _settle(client: TestClient) -> dict[str, Any]:
-    deadline = time.monotonic() + 60
+    deadline = time.monotonic() + 50
     while True:
         status = client.get("/api/source/status").json()
         if not status["refreshing"]:
@@ -1190,7 +1189,6 @@ def test_a_served_pull_request_pins_its_head_and_refreshes_beside_the_mirror(
             assert client.get("/api/source/status").json()["stale"] is True
     finally:
         serve_mirror(None)
-        reset_source_session()
         git_repo.clear_repo_cache()
 
 
@@ -1231,7 +1229,6 @@ def test_a_switch_by_commit_id_back_to_the_head_keeps_the_pull_requests_ref(
             assert (again["pin"], again["ref"]) == (head, "refs/pull/7/head")
     finally:
         serve_mirror(None)
-        reset_source_session()
         git_repo.clear_repo_cache()
 
 
@@ -1259,7 +1256,6 @@ def test_a_commit_url_newer_than_the_record_refreshes_the_pull_request_to_serve_
             assert (status["pin"], status["selection_state"]) == (head, None)
     finally:
         serve_mirror(None)
-        reset_source_session()
         git_repo.clear_repo_cache()
 
 
@@ -1362,6 +1358,7 @@ def test_a_base_branch_the_store_spells_otherwise_is_neither_fetched_nor_compare
     assert endpoints.base_from == "base_sha"
 
 
+@pytest.mark.macos_tier
 def test_a_base_branch_folded_on_disk_does_not_fail_the_record(stand: _Stand) -> None:
     """On a case-insensitive filesystem only: the store keeps ``Feature/x`` as ``feature/x``."""
 
@@ -1447,7 +1444,6 @@ def test_a_served_pull_requests_newer_commit_is_fetched_for_a_pin(
             assert taken.json()["status"]["pin"] == head
     finally:
         serve_mirror(None)
-        reset_source_session()
         git_repo.clear_repo_cache()
 
 

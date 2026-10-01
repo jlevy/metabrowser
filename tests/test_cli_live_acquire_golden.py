@@ -1,7 +1,8 @@
 """Golden transcript of real ``metab`` subprocesses acquiring a ``file://`` origin.
 
 The other acquisition goldens run the CLI in process with the Git floor patched,
-because the ordinary CI runner's Git is below it. This one patches nothing: each
+because they must pass on whatever Git a machine has, which may be below it (the
+hosted CI runner's is 2.55.0, which the floor admits). This one patches nothing: each
 command is a separate ``metab`` process that detects the Git on ``PATH``, applies
 the production floor, acquires every object into a fresh home, and reads the
 result. It skips where no admitted Git is installed and cannot skip in the CI
@@ -12,10 +13,6 @@ The origin allows filters, and the store is still complete. The transcript pins
 first open, the cache hit, a nested read, and the commit whose diff reads a blob
 that only history holds; then the origin is moved away and the cache hit and that
 commit are read again from the store alone.
-
-Regenerate after an intended change with:
-
-    GOLDEN_UPDATE=1 uv --config-file uv.toml run --frozen pytest tests/test_cli_live_acquire_golden.py
 """
 
 from __future__ import annotations
@@ -24,7 +21,6 @@ import os
 import shutil
 import subprocess
 import sys
-from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -32,51 +28,28 @@ import pytest
 from metabrowser.git.process import _REPO_PINNING_GIT_VARS
 from metabrowser.git.tree_source import GitPath
 from tests.admitted_git import require_admitted_git
-from tests.test_cli_cache_acquire_golden import _block, _file_url
-from tests.test_cli_golden import check_golden
+from tests.golden_harness import (
+    Invocation,
+    Labels,
+    check_golden,
+    file_url,
+    pinned_git,
+    strip_logs,
+)
 
-pytestmark = pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only")
+pytestmark = [
+    pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only"),
+    # Seven cold starts of the installed ``metab``. CI takes about 5 s. A 10-core M1 Pro
+    # at load average 62-86 took 49 s, too close to the suite's 60 s default, which
+    # also preempted the 120 s bound on each start.
+    pytest.mark.timeout(180),
+]
 
-# Pinned by the identity, dates, and recipe in ``_two_commit_origin``.
+# Pinned by the identity and dates of ``pinned_git_env`` and the recipe in
+# ``_two_commit_origin``.
 FIRST_REVISION = "042f85f6d00e35e36494a3c201048675cd24abc7"
 SECOND_REVISION = "cf318083ef13511a14c0532985bdb24bd59d2787"
 OLD_WIRE = GitPath.from_segments(b"notes", b"old.txt").to_wire()
-
-
-@dataclass(frozen=True, slots=True)
-class _Result:
-    """The fields ``_block`` reads from a CLI result."""
-
-    exit_code: int
-    stdout: str
-    stderr: str
-
-
-def _git_env() -> dict[str, str]:
-    env = {key: value for key, value in os.environ.items() if key not in _REPO_PINNING_GIT_VARS}
-    env.update(
-        {
-            "GIT_AUTHOR_NAME": "Test",
-            "GIT_AUTHOR_EMAIL": "test@example.com",
-            "GIT_COMMITTER_NAME": "Test",
-            "GIT_COMMITTER_EMAIL": "test@example.com",
-            "GIT_AUTHOR_DATE": "2020-01-01T00:00:00Z",
-            "GIT_COMMITTER_DATE": "2020-01-01T00:00:00Z",
-            "GIT_CONFIG_GLOBAL": os.devnull,
-            "GIT_CONFIG_NOSYSTEM": "1",
-        }
-    )
-    return env
-
-
-def _git(root: Path, *args: str) -> str:
-    return subprocess.run(
-        ["git", "-C", str(root), *args],
-        check=True,
-        capture_output=True,
-        text=True,
-        env=_git_env(),
-    ).stdout.strip()
 
 
 def _two_commit_origin(tmp_path: Path) -> Path:
@@ -85,18 +58,18 @@ def _two_commit_origin(tmp_path: Path) -> Path:
     work = tmp_path / "work"
     origin = tmp_path / "origin.git"
     work.mkdir()
-    _git(work, "init", "-q", "--initial-branch=topic")
+    pinned_git(work, "init", "-q", "--initial-branch=topic")
     (work / "notes").mkdir()
     (work / "notes" / "old.txt").write_text("first draft\n", encoding="utf-8")
-    _git(work, "add", "-A")
-    _git(work, "-c", "commit.gpgsign=false", "commit", "-qm", "first")
+    pinned_git(work, "add", "-A")
+    pinned_git(work, "-c", "commit.gpgsign=false", "commit", "-qm", "first")
     (work / "notes" / "old.txt").write_text("second draft\n", encoding="utf-8")
-    _git(work, "-c", "commit.gpgsign=false", "commit", "-qam", "second")
-    _git(work, "clone", "-q", "--bare", "--template=", "--", str(work), str(origin))
-    _git(origin, "config", "uploadpack.allowFilter", "true")
-    _git(origin, "config", "uploadpack.allowAnySHA1InWant", "true")
-    assert _git(origin, "rev-parse", "HEAD~1") == FIRST_REVISION
-    assert _git(origin, "rev-parse", "HEAD") == SECOND_REVISION
+    pinned_git(work, "-c", "commit.gpgsign=false", "commit", "-qam", "second")
+    pinned_git(work, "clone", "-q", "--bare", "--template=", "--", str(work), str(origin))
+    pinned_git(origin, "config", "uploadpack.allowFilter", "true")
+    pinned_git(origin, "config", "uploadpack.allowAnySHA1InWant", "true")
+    assert pinned_git(origin, "rev-parse", "HEAD~1") == FIRST_REVISION
+    assert pinned_git(origin, "rev-parse", "HEAD") == SECOND_REVISION
     return origin
 
 
@@ -107,7 +80,7 @@ def _metab() -> str:
     return found
 
 
-def _run(home: Path, *args: str) -> _Result:
+def _run(home: Path, *args: str) -> Invocation:
     env = {key: value for key, value in os.environ.items() if key not in _REPO_PINNING_GIT_VARS}
     env.update(
         {
@@ -127,14 +100,16 @@ def _run(home: Path, *args: str) -> _Result:
         stdin=subprocess.DEVNULL,
         timeout=120,
     )
-    return _Result(completed.returncode, completed.stdout, completed.stderr)
+    return Invocation(
+        completed.returncode, strip_logs(completed.stdout), strip_logs(completed.stderr)
+    )
 
 
 def test_golden_live_full_acquire_and_offline_read(tmp_path: Path) -> None:
     require_admitted_git()
     home = tmp_path / "home"
     origin = _two_commit_origin(tmp_path)
-    url = _file_url(origin)
+    url = file_url(origin)
 
     first = _run(home, url, "--no-serve")
     again = _run(home, url, "--no-serve")
@@ -155,22 +130,21 @@ def test_golden_live_full_acquire_and_offline_read(tmp_path: Path) -> None:
     assert offline_commit.stdout == commit.stdout
 
     commit_label = f"file://<ORIGIN> --api /api/git/commit/{SECOND_REVISION}"
-    rendered = "".join(
-        [
-            _block("file://<ORIGIN> --no-serve", first, origin_url=url, api=False),
-            _block("file://<ORIGIN> --no-serve", again, origin_url=url, api=False),
-            _block("file://<ORIGIN> --show notes/old.txt", shown, origin_url=url, api=False),
-            _block(
-                f"file://<ORIGIN> --api /api/file?path={OLD_WIRE}",
-                current,
-                origin_url=url,
-                api=False,
-            ),
-            _block(commit_label, commit, origin_url=url, api=False),
-            "# (the origin is moved away)\n",
-            _block("file://<ORIGIN> --no-serve", offline, origin_url=url, api=False),
-            _block(commit_label, offline_commit, origin_url=url, api=False),
-        ]
+    labels = Labels()
+    labels.origin(url, store="STORE_ID", source="SOURCE_ID")
+    rendered = labels.apply(
+        "".join(
+            [
+                first.block("file://<ORIGIN> --no-serve"),
+                again.block("file://<ORIGIN> --no-serve"),
+                shown.block("file://<ORIGIN> --show notes/old.txt"),
+                current.block(f"file://<ORIGIN> --api /api/file?path={OLD_WIRE}"),
+                commit.block(commit_label),
+                "# (the origin is moved away)\n",
+                offline.block("file://<ORIGIN> --no-serve"),
+                offline_commit.block(commit_label),
+            ]
+        )
     )
     assert str(tmp_path) not in rendered
     check_golden("cli-cache-acquire-live.txt", rendered)

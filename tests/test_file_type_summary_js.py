@@ -2,19 +2,17 @@
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 from pathlib import Path
 
-import pytest
+from tests.required_tools import require_node
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = Path(__file__).resolve().parent / "dom" / "file-type-summary-behavior.js"
 
 
 def test_file_type_summary_behavior() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node is unavailable")
+    require_node()
     result = subprocess.run(
         ["node", str(SCRIPT), str(REPO_ROOT)],
         capture_output=True,

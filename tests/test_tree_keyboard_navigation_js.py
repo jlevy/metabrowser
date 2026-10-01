@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 from pathlib import Path
 
-import pytest
+from tests.required_tools import require_node
 
 TREE_KEYBOARD_TEST_JS = (
     Path(__file__).resolve().parent / "dom" / "tree-keyboard-navigation-behavior.js"
@@ -14,8 +13,7 @@ TREE_KEYBOARD_TEST_JS = (
 
 
 def test_tree_keyboard_navigation_js_assertions_pass() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(TREE_KEYBOARD_TEST_JS)],
         capture_output=True,

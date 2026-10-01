@@ -244,11 +244,13 @@ $ metab --help
 The full help is pinned once, above.
 This test asserts only the relationship, so a help change is a single diff: any line
 where the two outputs differ is printed and fails the transcript.
+Each command writes to a file so its own exit status is the one printed.
 
 ```console
-$ metab > bare.txt; echo "exit: $?"; metab --help | diff bare.txt - && echo "identical to metab --help"
-exit: 0
-identical to metab --help
+$ metab > bare.txt; echo "metab: exit $?"; metab --help > help.txt; echo "metab --help: exit $?"; diff bare.txt help.txt && echo "identical"
+metab: exit 0
+metab --help: exit 0
+identical
 ? 0
 ```
 

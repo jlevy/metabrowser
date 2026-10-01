@@ -8,15 +8,14 @@ an unrelated one. ``/view/`` addresses stay wire identities, which is what
 keeps a tracked file from capturing a route.
 
 The CLI runs in process with ``require_acquisition_git`` patched, the same
-boundary ``tests/test_cli_git_pin_golden.py`` uses, because the CI runner's Git
-is below the acquisition floor.
+boundary ``tests/test_cli_git_pin_golden.py`` uses, because the test must pass
+on whatever Git a machine has, which may be below the acquisition floor.
 """
 
 from __future__ import annotations
 
 import json
 import os
-import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -27,11 +26,13 @@ from typer.testing import CliRunner
 from metabrowser.cli.main import _app
 from metabrowser.git.process import _REPO_PINNING_GIT_VARS
 from metabrowser.git.tree_source import GitPath
-from tests.test_cli_cache_acquire_golden import _allow_installed_git, _file_url
+from tests.golden_harness import file_url
+from tests.required_tools import needs_git
+from tests.test_cache_acquire import _allow_installed_git
 
 posix_only = pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only")
 
-pytestmark = pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required")
+pytestmark = needs_git
 
 runner = CliRunner()
 
@@ -74,7 +75,7 @@ def wire_shaped_origin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
     (work / "g1-data" / "x.md").write_text("data\n", encoding="utf-8")
     _git(work, "add", "-A")
     _git(work, "commit", "-qm", "first")
-    return _file_url(work)
+    return file_url(work)
 
 
 def _show(url: str, selection: str) -> dict[str, Any]:

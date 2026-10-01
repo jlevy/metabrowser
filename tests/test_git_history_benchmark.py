@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 from pathlib import Path
 
@@ -28,11 +27,9 @@ from metabrowser.settings import (
     GIT_HISTORY_WINDOW_OVERSCAN_ROWS,
     GIT_LOG_DEFAULT_LIMIT,
 )
+from tests.required_tools import needs_git
 
-pytestmark = pytest.mark.skipif(
-    shutil.which("git") is None,
-    reason="git executable is required to build history corpora",
-)
+pytestmark = needs_git
 
 
 def test_measured_history_budgets_remain_structurally_bounded() -> None:

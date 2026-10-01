@@ -2,19 +2,17 @@
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 from pathlib import Path
 
-import pytest
+from tests.required_tools import require_node
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TREE_NODE_NAME_TEST_JS = Path(__file__).resolve().parent / "dom" / "tree-node-name-behavior.js"
 
 
 def test_tree_row_names_follow_the_served_source_kind() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(TREE_NODE_NAME_TEST_JS), str(REPO_ROOT)],
         capture_output=True,

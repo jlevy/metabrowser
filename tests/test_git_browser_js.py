@@ -12,11 +12,10 @@ correctness lives in CSS cascade order rather than in either module.
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 from pathlib import Path
 
-import pytest
+from tests.required_tools import require_node
 
 _DOM_DIR = Path(__file__).resolve().parent / "dom"
 GIT_GRAPH_TEST_JS = _DOM_DIR / "git-graph-behavior.js"
@@ -25,8 +24,7 @@ GIT_PANEL_TEST_JS = _DOM_DIR / "git-panel-behavior.js"
 
 
 def _run_node_suite(script: Path) -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(script)],
         capture_output=True,

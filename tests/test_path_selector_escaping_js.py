@@ -2,18 +2,16 @@
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 from pathlib import Path
 
-import pytest
+from tests.required_tools import require_node
 
 PATH_SELECTOR_TEST_JS = Path(__file__).resolve().parent / "dom" / "path-selector-escaping.js"
 
 
 def test_path_selector_escaping_round_trips() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(PATH_SELECTOR_TEST_JS)],
         capture_output=True,

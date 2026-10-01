@@ -14,7 +14,6 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-import shutil
 import subprocess
 from pathlib import Path
 from typing import Any, cast
@@ -22,6 +21,7 @@ from typing import Any, cast
 import pytest
 
 from metabrowser import server as proc_browser
+from tests.required_tools import require_node
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SESSION = Path(__file__).resolve().parent / "dom" / "preview-pane-state-session.js"
@@ -54,8 +54,7 @@ def _render_index_html() -> str:
 
 @pytest.fixture(scope="module")
 def session() -> dict[str, Any]:
-    if shutil.which("node") is None:
-        pytest.skip("node not available; skipping preview pane browserless session")
+    require_node()
     result = subprocess.run(
         ["node", str(SESSION)],
         capture_output=True,

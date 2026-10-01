@@ -9,18 +9,16 @@ branch. See explorations/performance-loop/experiments/exp-002.
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 from pathlib import Path
 
-import pytest
+from tests.required_tools import require_node
 
 SHIM = Path(__file__).resolve().parent / "dom" / "subtree-prefetch-viewport-behavior.js"
 
 
 def test_subtree_prefetch_is_bounded_to_the_nav_viewport() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(SHIM)],
         capture_output=True,

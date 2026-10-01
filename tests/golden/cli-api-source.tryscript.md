@@ -7,6 +7,8 @@ env:
   TZ: "UTC"
   METABROWSER_PLUGINS_DIRS: ""
   METABROWSER_LOG_LEVEL: "ERROR"
+patterns:
+  TIMESTAMP: '\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z'
 before: >-
   unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX GIT_NAMESPACE GIT_CEILING_DIRECTORIES &&
   uv --config-file "$TRYSCRIPT_TEST_DIR/../../uv.toml" run --frozen --no-sync
@@ -477,8 +479,8 @@ after it. That refresh found the lock held, so it reports `refreshing_elsewhere`
 fetches nothing, and the command exits 0 because a refresh is under way.
 The lock is tried before the installed Git is checked, so this answer is the same on
 every machine; refreshes that fetch, and one that fails and exits 1, are recorded
-in-process in `cli-git-refresh.txt`, because CI’s Git is below the floor a fetch
-requires.
+in-process in `cli-git-refresh.txt`, because a transcript has to pass on a Git below the
+floor a fetch requires.
 
 ```console
 $ METABROWSER_HOME=$PWD/home metab file://$PWD/origin.git --api /api/source/refresh --data refresh.json
@@ -523,7 +525,7 @@ status: 200
   "last_outcome": {
     "operation": "refresh",
     "outcome": "refreshing_elsewhere",
-    "at": "[..]"
+    "at": "[TIMESTAMP]"
   },
   "refreshing": false,
   "stale": true,
@@ -586,7 +588,7 @@ status: 200
   "last_outcome": {
     "operation": "refresh",
     "outcome": "refreshing_elsewhere",
-    "at": "[..]"
+    "at": "[TIMESTAMP]"
   },
   "refreshing": false,
   "stale": true,

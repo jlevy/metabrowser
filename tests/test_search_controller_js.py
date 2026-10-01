@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 from pathlib import Path
 
-import pytest
+from tests.required_tools import require_node
 
 SEARCH_CONTROLLER_TEST_JS = (
     Path(__file__).resolve().parent / "dom" / "search-controller-behavior.js"
@@ -18,8 +17,7 @@ SEARCH_CONTROLLER_PROFILE_JS = (
 
 
 def test_search_controller_js_assertions_pass() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(SEARCH_CONTROLLER_TEST_JS)],
         capture_output=True,
@@ -35,8 +33,7 @@ def test_search_controller_js_assertions_pass() -> None:
 
 
 def test_search_controller_profile_stays_bounded_and_responsive() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(SEARCH_CONTROLLER_PROFILE_JS)],
         capture_output=True,

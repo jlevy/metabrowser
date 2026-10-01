@@ -8,6 +8,8 @@ env:
   TZ: "UTC"
   METABROWSER_PLUGINS_DIRS: ""
   METABROWSER_LOG_LEVEL: "WARNING"
+patterns:
+  TIMESTAMP: '\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z'
 before: >-
   uv --config-file "$TRYSCRIPT_TEST_DIR/../../uv.toml" run --frozen --no-sync
   --project "$TRYSCRIPT_TEST_DIR/../.." python "$TRYSCRIPT_TEST_DIR/../github_pull_fixture.py" .
@@ -865,7 +867,7 @@ status: 200
     "outcome": "gh_failed",
     "message": "gh exited 1 without an HTTP response",
     "reset_at": null,
-    "at": "[..]"
+    "at": "[TIMESTAMP]"
   },
   "comparison_route": null,
   "record": null
@@ -893,7 +895,7 @@ status: 200
     "outcome": "gh_failed",
     "message": "gh exited 1 without an HTTP response",
     "reset_at": null,
-    "at": "[..]"
+    "at": "[TIMESTAMP]"
   },
   "comparison_route": null,
   "record": null
@@ -921,7 +923,7 @@ status: 200
     "outcome": "gh_failed",
     "message": "gh exited 1 without an HTTP response",
     "reset_at": null,
-    "at": "[..]"
+    "at": "[TIMESTAMP]"
   },
   "comparison_route": null,
   "record": null
@@ -932,19 +934,39 @@ status: 200
 ## Test: the source status names the served pull request
 
 The pin is `refs/pull/7/head`, so status reads its tip as `latest`. The source is
-`stale` when the mirror or the pull request’s record is older than the freshness window,
-as both are here. A one-shot command reports this and fetches nothing.
+`stale` when the mirror or the pull request’s record is older than the freshness window:
+here the record is, and the mirror, which the fixture fetched a moment ago, is not.
+Its fetch time is the fixture’s wall clock, the one value below that is a pattern.
+A one-shot command reports this and fetches nothing.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/7 --api /api/source/status | grep -E '"(ref|latest|refreshing|stale|pull_request)"'
+$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/7 --api /api/source/status
 selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+api: /api/source/status
+status: 200
+{
+  "subject": "git_revision",
+  "generation": 1,
+  "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
   "ref": "refs/pull/7/head",
+  "ref_name": "refs/pull/7/head",
+  "refreshable": true,
   "latest": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+  "ref_on_origin": true,
+  "last_fetch_at": "[TIMESTAMP]",
+  "last_outcome": {
+    "operation": "acquire",
+    "outcome": "succeeded",
+    "at": "[TIMESTAMP]"
+  },
   "refreshing": false,
   "stale": true,
   "pull_request": 7,
+  "selection_state": null,
+  "selection_href": null
+}
 ? 0
 ```
 
@@ -954,14 +976,21 @@ pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 `202` without waiting for it, with the envelope as of that moment, so `refreshing` is
 true. `status_route` names the route that reports how it ended: the one-shot command
 waits for the refresh, prints that route `after` it, and exits 1 when it failed.
-Here `gh` fails, which leaves the record as it was.
+Here `gh` fails, which leaves the record as it was, so the command exits 1. Both
+envelopes carry the whole record, pinned in full by the first test above, so the output
+goes to a file and the next command shows the lines that say what happened.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/7 --api /api/plugin/github/pull-refresh --data refresh.json | grep -E '^(api|status|after|  "(refresh|status_route|refreshing)"|    "(state|number|refreshing|outcome)")'
+$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/7 --api /api/plugin/github/pull-refresh --data refresh.json > refresh-7.txt
 selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 Error: the refresh ended with gh_failed
+? 1
+```
+
+```console
+$ grep -E '^(api|status|after|  "(refresh|status_route|refreshing)"|    "(state|number|refreshing|outcome)")' refresh-7.txt
 api: /api/plugin/github/pull-refresh
 status: 202
   "refresh": "started",
@@ -978,26 +1007,60 @@ status: 200
 ```
 
 With no record cached the envelope is `pending` rather than `absent` while the refresh
-runs.
+runs, and there is no record to repeat, so this one is shown whole: the route answers
+`202`, the status `after` the refresh names `gh_failed`, and the command exits 1.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/14 --api /api/plugin/github/pull-refresh --data refresh.json | grep -E '^(api|status|after|  "(refresh|refreshing)"|    "(state|reason|number|refreshing|outcome)")'
+$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/14 --api /api/plugin/github/pull-refresh --data refresh.json
 selection: pull_request
 pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
 pull_request: 14 (not opened: pull request 14 of https://github.com/octo/demo: gh exited 1 without an HTTP response (gh_failed); the pin is the default branch)
-Error: the refresh ended with gh_failed
 api: /api/plugin/github/pull-refresh
 status: 202
+{
   "refresh": "started",
+  "pull": {
     "state": "pending",
     "reason": null,
+    "source": "https://github.com/octo/demo",
     "number": 14,
+    "pin": "c691256511d05858850bc7684ae062fea0d41132",
+    "fetched_at": null,
+    "fresh_for_s": 60.0,
     "refreshing": true,
+    "last_refresh": {
+      "outcome": "gh_failed",
+      "message": "gh exited 1 without an HTTP response",
+      "reset_at": null,
+      "at": "[TIMESTAMP]"
+    },
+    "comparison_route": null,
+    "record": null
+  },
+  "status_route": "/api/plugin/github/pull"
+}
 after: /api/plugin/github/pull
 status: 200
+{
+  "state": "absent",
+  "reason": "not_cached",
+  "source": "https://github.com/octo/demo",
+  "number": 14,
+  "pin": "c691256511d05858850bc7684ae062fea0d41132",
+  "fetched_at": null,
+  "fresh_for_s": 60.0,
   "refreshing": false,
+  "last_refresh": {
     "outcome": "gh_failed",
-? 0
+    "message": "gh exited 1 without an HTTP response",
+    "reset_at": null,
+    "at": "[TIMESTAMP]"
+  },
+  "comparison_route": null,
+  "record": null
+}
+Error: the refresh ended with gh_failed
+? 1
 ```
 
 A URL that selects no pull request has nothing to refresh, and a GET cannot start a
@@ -1082,27 +1145,21 @@ Error: /pull/7: this source serves no pull request
 
 `pull-markdown` renders one text of the record through KPress in its sanitized mode: the
 description (`body`), or one comment, review, or review comment by ID. The answer is the
-KPress render envelope with the record’s fetch time and the part, cut here to those
-fields and the rendered emphasis.
+record’s fetch time, the part, and its rendered HTML.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/pull-markdown?part=body' | grep -E '^  "(number|fetched_at|part|type)"|^status'
+$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/pull-markdown?part=body'
 selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+api: /api/plugin/github/pull-markdown?part=body
 status: 200
+{
   "number": 7,
   "fetched_at": "2026-09-17T12:00:00Z",
   "part": "body",
-? 0
-```
-
-```console
-$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/pull-markdown?part=body' | grep -o '<strong>two</strong>'
-selection: pull_request
-pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
-pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
-<strong>two</strong>
+  "html": "\n<div><div><p>The app counts to one.</p>\n<p>This teaches it <strong>two</strong>.</p></div></div>"
+}
 ? 0
 ```
 
@@ -1141,10 +1198,17 @@ Error: /api/plugin/github/pull-markdown?part=../body returned HTTP 400
 ## Test: the cache still reads the source as published
 
 The pull-request records live beside the source’s own records, where nothing reads them
-as damage.
+as damage. The envelope’s times are the fixture’s wall clock, so the command’s output
+goes to a file and the next command shows the publication state and problems of the
+source and of its store.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab root --api /api/cache/source/github-com--octo--demo--46386669dc01 | grep -E '"(publication|problems)"'
+$ METABROWSER_HOME=$PWD/home metab root --api /api/cache/source/github-com--octo--demo--46386669dc01 > cache-source.txt
+? 0
+```
+
+```console
+$ grep -E '"(publication|problems)"' cache-source.txt
     "publication": "published",
     "problems": [],
       "publication": "published",

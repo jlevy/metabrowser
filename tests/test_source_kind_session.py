@@ -14,22 +14,15 @@ attached folder and for a Git pin of the same names, the source-kind block and
 navigation heading the in-process application served at ``/view/`` and the SPA
 tree it answered at ``/api/tree?depth=2``, projected to name, path, type, and
 children, with the root it named. The first test here rebuilds both subjects and
-fails when the fixture no longer matches.
-
-Regenerate the fixture after an intended change, then the transcript:
-
-    GOLDEN_UPDATE=1 uv --config-file uv.toml run --frozen pytest tests/test_source_kind_session.py
-    npx --no-install tryscript run --update tests/golden/cli-ui-source-kind.tryscript.md
+fails when the fixture no longer matches; ``make golden-update`` rewrites the fixture and
+then the transcript.
 """
 
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 import re
-import shutil
-import subprocess
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path, PurePosixPath
@@ -38,14 +31,13 @@ from typing import Any
 import pytest
 from httpx2 import ASGITransport, AsyncClient
 
-from metabrowser.paths_safe import ROOT_DIR, _set_root_dir
+from metabrowser import paths_safe
+from metabrowser.paths_safe import _set_root_dir
 from metabrowser.server import app
 from metabrowser.source import AttachedFilesystemSubject, attach_subject, reset_source_session
-from tests.git_pin_harness import fast_import_store, pinned_client
-
-REPO_ROOT = Path(__file__).resolve().parent.parent
-SESSION_JS = REPO_ROOT / "tests" / "dom" / "source-kind-session.js"
-FIXTURE = REPO_ROOT / "tests" / "fixtures" / "source-kind-shell.json"
+from tests.git_pin_harness import fast_import_store, overwrite_tree, pinned_client
+from tests.golden_harness import check_recording, run_session
+from tests.required_tools import needs_git
 
 # The same names under both subjects. A literal percent is where a folder's
 # inventory identity escapes (``%25``) and a pin's display name does not. A
@@ -80,12 +72,12 @@ _HEADING = re.compile(
 _PIN_REF = "refs/remotes/origin/topic"
 
 posix_only = pytest.mark.skipif(os.name != "posix", reason="folder identities are POSIX bytes")
-pytestmark = pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required")
+pytestmark = needs_git
 
 
 @asynccontextmanager
 async def _folder_client(root: Path) -> AsyncGenerator[AsyncClient]:
-    original = ROOT_DIR
+    original = paths_safe.ROOT_DIR
     _set_root_dir(root)
     attach_subject(AttachedFilesystemSubject(root))
     try:
@@ -94,8 +86,12 @@ async def _folder_client(root: Path) -> AsyncGenerator[AsyncClient]:
             async with AsyncClient(transport=transport, base_url="http://testserver") as client:
                 yield client
     finally:
+        # A phase boundary, not teardown: the pin is observed after this, and must not
+        # find the folder still served. The folder's files are then overwritten, so
+        # a pin answered from them cannot match the pin's recording by accident.
         reset_source_session()
         _set_root_dir(original)
+        overwrite_tree(root)
 
 
 def _project(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -183,30 +179,11 @@ def test_fixture_is_what_the_server_serves_for_each_source_kind(tmp_path: Path) 
     served = _served(tmp_path)
     assert served["filesystem"]["shell"][0] == 'window.METABROWSER_SOURCE_KIND="filesystem";'
     assert served["git_revision"]["shell"][0] == 'window.METABROWSER_SOURCE_KIND="git_revision";'
-    rendered = json.dumps(served, indent=2, ensure_ascii=False) + "\n"
-    if os.environ.get("GOLDEN_UPDATE") == "1":
-        FIXTURE.write_text(rendered, encoding="utf-8")
-        return
-    assert FIXTURE.read_text(encoding="utf-8") == rendered, (
-        "the served shell or tree changed; regenerate with GOLDEN_UPDATE=1 "
-        "and update tests/golden/cli-ui-source-kind.tryscript.md"
-    )
+    check_recording("source-kind-shell.json", served, transcript="cli-ui-source-kind.tryscript.md")
 
 
 def test_source_kind_session_agrees_with_the_served_kind() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
-    result = subprocess.run(
-        ["node", str(SESSION_JS)],
-        capture_output=True,
-        text=True,
-        timeout=60,
-        check=False,
-    )
-    assert result.returncode == 0, (
-        f"source-kind session failed:\nstdout: {result.stdout!r}\nstderr: {result.stderr!r}"
-    )
-    observed = json.loads(result.stdout)
+    observed = run_session("source-kind-session.js")
     assert [kind["sourceKind"] for kind in observed] == ["filesystem", "git_revision"]
     folder, pin = observed
     assert folder["gates"]["inventoryEvents"]["eventSourcesOpened"] == 1

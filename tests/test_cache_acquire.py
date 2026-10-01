@@ -35,6 +35,7 @@ from metabrowser.git.process import (
 )
 from metabrowser.home import PrivateStorageError
 from tests.admitted_git import require_admitted_git, required_admitted_git
+from tests.required_tools import needs_git, require_git
 
 
 def _last_opened_at(home: Path, slug: str) -> str | None:
@@ -56,7 +57,7 @@ skip_as_root = pytest.mark.skipif(
     os.geteuid() == 0, reason="root is never denied by modes, so a denial cannot be staged"
 )
 
-pytestmark = pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required")
+pytestmark = needs_git
 
 
 def _git_env(root: Path) -> dict[str, str]:
@@ -84,16 +85,17 @@ def _git(root: Path, *args: str) -> None:
 
 
 def _allow_installed_git(monkeypatch: pytest.MonkeyPatch) -> tuple[int, int, int]:
-    """Exercise fetch on the runner's Git without admitting it for URL opening.
+    """Exercise fetch on the installed Git, whatever its version, without admitting it.
 
     When the run names an admitted release (the CI ``admitted-git`` job), nothing
     is patched: the production floor itself must admit the Git on ``PATH``.
     """
     if required_admitted_git() is not None:
         return require_admitted_git()
-    version, _raw = detect_git_version()
+    require_git()
+    version, raw = detect_git_version()
     if version is None:
-        pytest.skip("git version is unparseable")
+        pytest.fail(f"the installed Git's version is unparseable: {raw!r}")
     monkeypatch.setattr("metabrowser.cache.acquire.require_acquisition_git", lambda: version)
     # A refresh fetches from the same untrusted origin, so it checks the same floor.
     monkeypatch.setattr("metabrowser.cache.update.require_acquisition_git", lambda: version)

@@ -16,7 +16,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import shutil
 import subprocess
 from collections.abc import Iterator, Mapping, Sequence
 from pathlib import Path
@@ -65,11 +64,9 @@ from metabrowser.git.wire import (
     validate_git_ref,
     validate_git_repo_info,
 )
+from tests.required_tools import needs_git
 
-pytestmark = pytest.mark.skipif(
-    shutil.which("git") is None,
-    reason="git executable is required to build the fixture repositories",
-)
+pytestmark = needs_git
 
 
 # ── Fixture repositories ─────────────────────────────────────

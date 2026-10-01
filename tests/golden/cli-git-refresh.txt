@@ -12,11 +12,11 @@ status: 200
   "refreshable": true,
   "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
   "ref_on_origin": true,
-  "last_fetch_at": "<TIME>",
+  "last_fetch_at": "2026-09-17T12:00:00Z",
   "last_outcome": {
     "operation": "acquire",
     "outcome": "succeeded",
-    "at": "<TIME>"
+    "at": "2026-09-17T12:00:00Z"
   },
   "refreshing": false,
   "stale": false,
@@ -41,11 +41,11 @@ status: 202
     "refreshable": true,
     "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
     "ref_on_origin": true,
-    "last_fetch_at": "<TIME>",
+    "last_fetch_at": "2026-09-17T12:00:00Z",
     "last_outcome": {
       "operation": "acquire",
       "outcome": "succeeded",
-      "at": "<TIME>"
+      "at": "2026-09-17T12:00:00Z"
     },
     "refreshing": true,
     "stale": false,
@@ -65,11 +65,11 @@ status: 200
   "refreshable": true,
   "latest": "79c734ab2c794b6aa3ea3186ef7d8a6578981721",
   "ref_on_origin": true,
-  "last_fetch_at": "<TIME>",
+  "last_fetch_at": "2026-09-17T12:00:10Z",
   "last_outcome": {
     "operation": "refresh",
     "outcome": "succeeded",
-    "at": "<TIME>"
+    "at": "2026-09-17T12:00:10Z"
   },
   "refreshing": false,
   "stale": false,
@@ -92,11 +92,11 @@ status: 200
   "refreshable": true,
   "latest": "79c734ab2c794b6aa3ea3186ef7d8a6578981721",
   "ref_on_origin": true,
-  "last_fetch_at": "<TIME>",
+  "last_fetch_at": "2026-09-17T12:00:10Z",
   "last_outcome": {
     "operation": "refresh",
     "outcome": "succeeded",
-    "at": "<TIME>"
+    "at": "2026-09-17T12:00:10Z"
   },
   "refreshing": false,
   "stale": false,
@@ -121,11 +121,11 @@ status: 200
     "refreshable": true,
     "latest": "79c734ab2c794b6aa3ea3186ef7d8a6578981721",
     "ref_on_origin": true,
-    "last_fetch_at": "<TIME>",
+    "last_fetch_at": "2026-09-17T12:00:10Z",
     "last_outcome": {
       "operation": "refresh",
       "outcome": "succeeded",
-      "at": "<TIME>"
+      "at": "2026-09-17T12:00:10Z"
     },
     "refreshing": false,
     "stale": false,
@@ -151,11 +151,11 @@ status: 202
     "refreshable": true,
     "latest": "79c734ab2c794b6aa3ea3186ef7d8a6578981721",
     "ref_on_origin": true,
-    "last_fetch_at": "<TIME>",
+    "last_fetch_at": "2026-09-17T12:00:10Z",
     "last_outcome": {
       "operation": "refresh",
       "outcome": "succeeded",
-      "at": "<TIME>"
+      "at": "2026-09-17T12:00:10Z"
     },
     "refreshing": true,
     "stale": false,
@@ -175,11 +175,11 @@ status: 200
   "refreshable": true,
   "latest": "79c734ab2c794b6aa3ea3186ef7d8a6578981721",
   "ref_on_origin": true,
-  "last_fetch_at": "<TIME>",
+  "last_fetch_at": "2026-09-17T12:00:20Z",
   "last_outcome": {
     "operation": "refresh",
     "outcome": "succeeded",
-    "at": "<TIME>"
+    "at": "2026-09-17T12:00:20Z"
   },
   "refreshing": false,
   "stale": false,
@@ -204,11 +204,11 @@ status: 200
     "refreshable": true,
     "latest": null,
     "ref_on_origin": null,
-    "last_fetch_at": "<TIME>",
+    "last_fetch_at": "2026-09-17T12:00:20Z",
     "last_outcome": {
       "operation": "refresh",
       "outcome": "succeeded",
-      "at": "<TIME>"
+      "at": "2026-09-17T12:00:20Z"
     },
     "refreshing": false,
     "stale": false,
@@ -234,11 +234,11 @@ status: 200
     "refreshable": true,
     "latest": "79c734ab2c794b6aa3ea3186ef7d8a6578981721",
     "ref_on_origin": true,
-    "last_fetch_at": "<TIME>",
+    "last_fetch_at": "2026-09-17T12:00:20Z",
     "last_outcome": {
       "operation": "refresh",
       "outcome": "succeeded",
-      "at": "<TIME>"
+      "at": "2026-09-17T12:00:20Z"
     },
     "refreshing": false,
     "stale": false,
@@ -275,11 +275,11 @@ status: 200
     "refreshable": true,
     "latest": null,
     "ref_on_origin": null,
-    "last_fetch_at": "<TIME>",
+    "last_fetch_at": "2026-09-17T12:00:20Z",
     "last_outcome": {
       "operation": "refresh",
       "outcome": "succeeded",
-      "at": "<TIME>"
+      "at": "2026-09-17T12:00:20Z"
     },
     "refreshing": false,
     "stale": false,
@@ -305,11 +305,11 @@ status: 202
     "refreshable": true,
     "latest": "79c734ab2c794b6aa3ea3186ef7d8a6578981721",
     "ref_on_origin": true,
-    "last_fetch_at": "<TIME>",
+    "last_fetch_at": "2026-09-17T12:00:20Z",
     "last_outcome": {
       "operation": "refresh",
       "outcome": "succeeded",
-      "at": "<TIME>"
+      "at": "2026-09-17T12:00:20Z"
     },
     "refreshing": true,
     "stale": false,
@@ -329,11 +329,11 @@ status: 200
   "refreshable": true,
   "latest": "79c734ab2c794b6aa3ea3186ef7d8a6578981721",
   "ref_on_origin": true,
-  "last_fetch_at": "<TIME>",
+  "last_fetch_at": "2026-09-17T12:00:20Z",
   "last_outcome": {
     "operation": "refresh",
     "outcome": "origin_unavailable",
-    "at": "<TIME>"
+    "at": "2026-09-17T12:00:30Z"
   },
   "refreshing": false,
   "stale": false,
@@ -357,11 +357,11 @@ status: 200
   "refreshable": true,
   "latest": "79c734ab2c794b6aa3ea3186ef7d8a6578981721",
   "ref_on_origin": true,
-  "last_fetch_at": "<TIME>",
+  "last_fetch_at": "2026-09-17T12:00:20Z",
   "last_outcome": {
     "operation": "refresh",
     "outcome": "origin_unavailable",
-    "at": "<TIME>"
+    "at": "2026-09-17T12:00:30Z"
   },
   "refreshing": false,
   "stale": false,

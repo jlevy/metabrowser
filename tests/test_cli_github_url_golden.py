@@ -15,25 +15,19 @@ Pull-request URLs run against a ``gh`` that fails every command, so they show th
 fallback to what the mirror answers without pull-request data. Reading that data is
 ``tests/test_cli_github_pull_golden.py``, with a fake ``gh`` that answers.
 
-The Git floor is patched as in the other acquisition goldens, because CI's Git is below
-it. Real HTTPS is the opt-in live smoke test, ``tests/test_github_live_smoke.py``.
-Refusals that stop at classification need no Git and run as a subprocess in
-``tests/golden/cli-github-urls.tryscript.md``.
+The Git floor and the clock are replaced as in the other acquisition goldens
+(``tests/golden_harness.py``). Real HTTPS is the opt-in live smoke test,
+``tests/test_github_live_smoke.py``. Refusals that stop at classification need no Git
+and run as a subprocess in ``tests/golden/cli-github-urls.tryscript.md``.
 
 What an origin answers for a repository it does not show cannot be asked for without the
 network, so ``cli-github-not-found.txt`` answers ``ls-remote`` with the text Git printed
 for one; its test says what is substituted.
-
-Regenerate after an intended change with:
-
-    GOLDEN_UPDATE=1 uv --config-file uv.toml run --frozen pytest tests/test_cli_github_url_golden.py
 """
 
 from __future__ import annotations
 
 import os
-import re
-import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -46,12 +40,11 @@ from metabrowser.git.process import GitCommandError
 from metabrowser.git.tree_source import GitPath
 from tests.git_pin_harness import git_env
 from tests.github_origin import FIRST_COMMIT, SECOND_COMMIT, _commit, github_origin
-from tests.test_cli_cache_acquire_golden import _isolate, _strip_logs
-from tests.test_cli_git_pin_golden import _Invocation, _run
-from tests.test_cli_golden import check_golden
+from tests.golden_harness import Invocation, check_golden, isolate_cli, quoted, run_metab
+from tests.required_tools import needs_git
 
 pytestmark = [
-    pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required"),
+    needs_git,
     pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only"),
 ]
 
@@ -107,17 +100,8 @@ def _add_unicode_branch(origin: Path) -> None:
     )
 
 
-def _quoted(argument: str) -> str:
-    return f"'{argument}'" if any(ch in argument for ch in "?#& ") else argument
-
-
-def _block(args: list[str], result: _Invocation) -> str:
-    return (
-        f"# metab {' '.join(_quoted(arg) for arg in args)}\n"
-        f"exit: {result.exit_code}\n"
-        f"--- stdout ---\n{_strip_logs(result.stdout)}"
-        f"--- stderr ---\n{_strip_logs(result.stderr)}"
-    )
+def _block(args: list[str], result: Invocation) -> str:
+    return result.block(" ".join(quoted(arg) for arg in args))
 
 
 # U+2764 HEAVY BLACK HEART and U+FE0F VARIATION SELECTOR-16: the emoji ❤️.
@@ -187,13 +171,13 @@ REFUSED: list[list[str]] = [
 def test_golden_github_urls_open_through_a_local_stand_in(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    home = _isolate(tmp_path, monkeypatch)
+    home = isolate_cli(tmp_path, monkeypatch).home
     origin = github_origin(tmp_path)
     _add_unicode_branch(origin)
     _stand_in(monkeypatch, origin)
 
-    opened = [(args, _run(args)) for args in OPENED]
-    refused = [(args, _run(args)) for args in REFUSED]
+    opened = [(args, run_metab(args)) for args in OPENED]
+    refused = [(args, run_metab(args)) for args in REFUSED]
     for args, result in opened:
         assert result.exit_code == 0, (args, result.stdout, result.stderr)
     for args, result in refused:
@@ -251,9 +235,6 @@ def test_golden_github_urls_open_through_a_local_stand_in(
     check_golden("cli-github-url-open.txt", rendered)
 
 
-_ISO_TIME = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
-
-
 def _add_branch(origin: Path, name: str, commit: str) -> None:
     subprocess.run(
         ["git", "--git-dir", str(origin), "update-ref", f"refs/heads/{name}", commit],
@@ -274,16 +255,19 @@ def test_golden_a_selection_waits_for_the_refresh_it_asked_for(
     ``not_found``, or ``fetch_failed`` when the fetch could not run.
     """
 
-    home = _isolate(tmp_path, monkeypatch)
+    sandbox = isolate_cli(tmp_path, monkeypatch)
+    home = sandbox.home
     origin = github_origin(tmp_path)
     _stand_in(monkeypatch, origin)
-    assert _run([REPO, "--no-serve"]).exit_code == 0
+    assert run_metab([REPO, "--no-serve"]).exit_code == 0
     _add_branch(origin, "later", SECOND_COMMIT)
     body = tmp_path / "refresh.json"
     body.write_text("{}\n", encoding="utf-8")
 
-    def refresh(url: str) -> tuple[list[str], _Invocation]:
-        return [url, "--api", "/api/source/refresh", "--data", body.name], _run(
+    def refresh(url: str) -> tuple[list[str], Invocation]:
+        # Each fetch has its own time, so the transcript shows which one set last_fetch_at.
+        sandbox.clock.advance(10)
+        return [url, "--api", "/api/source/refresh", "--data", body.name], run_metab(
             [url, "--api", "/api/source/refresh", "--data", str(body)]
         )
 
@@ -302,7 +286,6 @@ def test_golden_a_selection_waits_for_the_refresh_it_asked_for(
     assert failed[1].exit_code == 1 and '"selection_state": "fetch_failed"' in failed[1].stdout
 
     rendered = "".join(_block(args, result) for args, result in (found, missing, failed))
-    rendered = _ISO_TIME.sub("<TIME>", rendered)
     assert str(tmp_path) not in rendered and str(home) not in rendered
     check_golden("cli-github-url-waits.txt", rendered)
 
@@ -340,7 +323,7 @@ def test_golden_a_repository_the_origin_does_not_show(
     commands fails every command, so the size check steps aside.
     """
 
-    home = _isolate(tmp_path, monkeypatch)
+    home = isolate_cli(tmp_path, monkeypatch).home
     real_run = acquire._run  # pyright: ignore[reportPrivateUsage]
     printed = {"stderr": _NOT_FOUND}
 
@@ -358,14 +341,14 @@ def test_golden_a_repository_the_origin_does_not_show(
     monkeypatch.setenv("PATH", f"{failing}{os.pathsep}{os.environ.get('PATH', '')}")
 
     with_gh = [
-        ([ABSENT, "--no-serve"], _run([ABSENT, "--no-serve"])),
-        ([ABSENT, "--show", "README.md"], _run([ABSENT, "--show", "README.md"])),
+        ([ABSENT, "--no-serve"], run_metab([ABSENT, "--no-serve"])),
+        ([ABSENT, "--show", "README.md"], run_metab([ABSENT, "--show", "README.md"])),
     ]
     monkeypatch.setattr("metabrowser.builtin_plugins.github.provider.gh_executable", lambda: None)
     printed["stderr"] = _NO_CREDENTIAL
-    without_gh = ([ABSENT, "--no-serve"], _run([ABSENT, "--no-serve"]))
+    without_gh = ([ABSENT, "--no-serve"], run_metab([ABSENT, "--no-serve"]))
     printed["stderr"] = _NOT_FOUND_ELSEWHERE
-    elsewhere = ([ELSEWHERE, "--no-serve"], _run([ELSEWHERE, "--no-serve"]))
+    elsewhere = ([ELSEWHERE, "--no-serve"], run_metab([ELSEWHERE, "--no-serve"]))
 
     for _args, result in (*with_gh, without_gh, elsewhere):
         assert result.exit_code == 1 and result.stdout == ""

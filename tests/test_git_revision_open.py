@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import shutil
 import subprocess
 import sys
 import textwrap
@@ -17,6 +16,8 @@ from metabrowser.cache.locks import held_locks
 from metabrowser.cache.repository_store import open_revision
 from metabrowser.git.process import GitUnavailableError
 from metabrowser.git.tree_source import GitObjectUnavailableError, GitPath, GitPathError
+from tests.child_io import read_line
+from tests.required_tools import needs_git
 from tests.test_cache_acquire import (
     _allow_installed_git,
     _file_source,
@@ -27,7 +28,7 @@ from tests.test_cache_acquire import (
 )
 
 pytestmark = [
-    pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required"),
+    needs_git,
     pytest.mark.skipif(os.name != "posix", reason="the cache is POSIX-only"),
 ]
 
@@ -169,8 +170,7 @@ def test_two_processes_read_two_oids_in_one_store_without_a_checkout(
         text=True,
     )
     try:
-        assert child.stdout is not None
-        assert child.stdout.readline().strip() == repr(b"first\n")
+        assert read_line(child).strip() == repr(b"first\n")
         # The child keeps its subject open while this process reads the other OID.
         assert asyncio.run(_read_readme(home, store_key, second)) == b"second\n"
         out, err = child.communicate("\n", timeout=CHILD_TIMEOUT)

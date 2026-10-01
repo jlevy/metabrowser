@@ -3,18 +3,16 @@
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 from pathlib import Path
 
-import pytest
+from tests.required_tools import require_node
 
 SESSION_JS = Path(__file__).resolve().parent / "dom" / "document-width-session.js"
 
 
 def test_document_width_session() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(SESSION_JS)],
         capture_output=True,

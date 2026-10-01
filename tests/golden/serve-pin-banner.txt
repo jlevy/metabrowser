@@ -2,6 +2,6 @@
 exit: 0
 --- stdout ---
 Serving file://<ROOT>/origin.git at http://127.0.0.1:8411/view/  [dev build: <STATE>]
-Revision: <REVISION> (topic)
+Revision: 99d0343568d1b5119b4182bdf8162413989746c2 (topic)
 Plugins: agent-log, binary, diff, folder, github, html, image, markdown, structured, text, unknown-jsonl
 --- stderr ---

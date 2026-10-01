@@ -1,19 +1,15 @@
 """Golden CLI transcript for a leased file:// Git pin over a multi-entry origin.
 
 Successful ``metab file:// --show`` / ``--api`` cannot run as a tryscript
-subprocess on ubuntu-latest: Git 2.43.0 is below the acquisition floor, which
-has no environment escape by design. These goldens invoke the production CLI
-in-process with only ``require_acquisition_git`` monkeypatched -- the same
-boundary as ``tests/test_cli_cache_acquire_golden.py`` -- and stay a ``.txt``
-transcript rather than a ``.tryscript.md`` one. Nothing binds a port.
+subprocess where the installed Git is below the acquisition floor, which has no
+environment escape by design. These goldens invoke the production CLI
+in-process with only ``require_acquisition_git`` and the clock replaced -- the
+same boundary as ``tests/test_cli_cache_acquire_golden.py`` -- and stay a
+``.txt`` transcript rather than a ``.tryscript.md`` one. Nothing binds a port.
 
 Commands run through ``_run_cli``, the entry point the ``metab`` console script
 uses, so a refused route records the exit code and the ``Error:`` line a user
 sees rather than a test-only rendering of the exception.
-
-Regenerate after an intended change with:
-
-    GOLDEN_UPDATE=1 uv --config-file uv.toml run --frozen pytest tests/test_cli_git_pin_golden.py
 
 The origin
 ----------
@@ -64,28 +60,22 @@ that names an object the store lacks, and acquisition refuses such an origin.
 
 from __future__ import annotations
 
-import io
-import json
 import os
-import shutil
 import subprocess
-from contextlib import redirect_stderr, redirect_stdout
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from metabrowser.cli.main import _run_cli
 from metabrowser.git.tree_source import GitPath
 from metabrowser.settings import TEXT_PREVIEW_REQUEST_MAX_BYTES
 from tests.git_pin_harness import git_env
-from tests.test_cli_cache_acquire_golden import _block, _file_url, _isolate
-from tests.test_cli_golden import check_golden
+from tests.golden_harness import Labels, check_golden, file_url, isolate_cli, ok, quoted, refused
+from tests.required_tools import needs_git
 
 posix_only = pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only")
 
-pytestmark = pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required")
+pytestmark = needs_git
 
 # Pinned by the fast-import recipe below: tree, committer identity and date,
 # and message are fixed, and a commit id is a function of nothing else.
@@ -202,44 +192,6 @@ def pin_origin(tmp_path: Path) -> Path:
     return origin
 
 
-@dataclass(frozen=True, slots=True)
-class _Invocation:
-    """The three fields ``_block`` records for one command."""
-
-    exit_code: int
-    stdout: str
-    stderr: str
-
-
-def _run(args: list[str]) -> _Invocation:
-    out = io.StringIO()
-    err = io.StringIO()
-    exit_code = 0
-    with redirect_stdout(out), redirect_stderr(err):
-        try:
-            _run_cli(args)
-        except SystemExit as exc:
-            exit_code = 0 if exc.code is None else int(exc.code)
-    return _Invocation(exit_code=exit_code, stdout=out.getvalue(), stderr=err.getvalue())
-
-
-def _ok(args: list[str]) -> _Invocation:
-    result = _run(args)
-    assert result.exit_code == 0, result.stdout + result.stderr
-    return result
-
-
-def _refused(args: list[str]) -> _Invocation:
-    result = _run(args)
-    assert result.exit_code == 1, result.stdout + result.stderr
-    assert "Error: " in result.stderr
-    return result
-
-
-def _payload(result: _Invocation) -> Any:
-    return json.loads(result.stdout[result.stdout.index("{") :])
-
-
 def _flatten(nodes: list[dict[str, Any]]) -> list[tuple[str, str]]:
     """Depth-first (display name, type) pairs of an SPA ``tree`` array."""
 
@@ -250,18 +202,12 @@ def _flatten(nodes: list[dict[str, Any]]) -> list[tuple[str, str]]:
     return flat
 
 
-def _shell(route: str) -> str:
-    """Quote a route the way the tryscript goldens do when it carries an ``&``."""
-
-    return f"'{route}'" if "&" in route else route
-
-
 @posix_only
 def test_golden_multi_entry_pin_show_and_api(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    home = _isolate(tmp_path, monkeypatch)
-    url = _file_url(pin_origin(tmp_path))
+    home = isolate_cli(tmp_path, monkeypatch).home
+    url = file_url(pin_origin(tmp_path))
 
     shows = [
         "README.md",
@@ -304,11 +250,11 @@ def test_golden_multi_entry_pin_show_and_api(
         f"/api/file?path={OVERSIZE_WIRE}&offset={TEXT_PREVIEW_REQUEST_MAX_BYTES + 1}",
     ]
 
-    shown = {selection: _ok([url, "--show", selection]) for selection in shows}
-    answered = {route: _ok([url, "--api", route]) for route in routes}
-    shown_refused = {selection: _refused([url, "--show", selection]) for selection in show_refusals}
-    refused = {route: _refused([url, "--api", route]) for route in api_refusals}
-    checked = _ok([url, "--check-api"])
+    shown = {selection: ok([url, "--show", selection]) for selection in shows}
+    answered = {route: ok([url, "--api", route]) for route in routes}
+    shown_refused = {selection: refused([url, "--show", selection]) for selection in show_refusals}
+    api_refused = {route: refused([url, "--api", route]) for route in api_refusals}
+    checked = ok([url, "--check-api"])
 
     # The transcript is the contract. These assertions name what a reader
     # should take from it, so a careless regeneration cannot quietly drop them.
@@ -321,7 +267,7 @@ def test_golden_multi_entry_pin_show_and_api(
     assert "kind: image" in shown["bin/glyph.png"].stdout
     assert "kind: binary" in shown["bin/sample.bin"].stdout
 
-    status = _payload(answered["/api/source/status"])
+    status = answered["/api/source/status"].payload()
     assert status["subject"] == "git_revision"
     assert status["pin"] == PIN_ORIGIN_REVISION
     assert status["ref"] == f"refs/remotes/origin/{PIN_ORIGIN_BRANCH}"
@@ -334,17 +280,17 @@ def test_golden_multi_entry_pin_show_and_api(
     assert "live filter: 409; unsupported_for_subject" in checked.stdout
     assert "result: pass" in checked.stdout
 
-    progress = _payload(answered["/api/index/progress"])
+    progress = answered["/api/index/progress"].payload()
     blob_count = len(PIN_ORIGIN_BLOBS)
     assert progress["indexed_files"] == blob_count
     assert progress["complete"] is True
 
-    chrome = _payload(answered["/api/tree?depth=0"])
+    chrome = answered["/api/tree?depth=0"].payload()
     assert chrome["entries"] == [] and chrome["tree"] == []
     assert chrome["summary"]["files"] == blob_count
     assert chrome["summary"]["size"] == sum(len(body) for _mode, _path, body in PIN_ORIGIN_BLOBS)
 
-    listing = _payload(answered["/api/tree?depth=2"])
+    listing = answered["/api/tree?depth=2"].payload()
     # Directories first, then name bytes: the order a folder listing uses
     # (tree.py), since the shell renders server order.
     names = [node["name"] for node in listing["tree"]]
@@ -371,7 +317,7 @@ def test_golden_multi_entry_pin_show_and_api(
     ]
 
     # The catalog keeps the recursive blob order, where "a/..." sorts after "a.txt".
-    catalog = _payload(answered["/api/catalog"])
+    catalog = answered["/api/catalog"].payload()
     assert [row["n"] for row in catalog["files"]][:7] == [
         "README.md",
         "a-b",
@@ -384,69 +330,43 @@ def test_golden_multi_entry_pin_show_and_api(
     assert catalog["complete"] is True
     assert len(catalog["files"]) == blob_count
 
-    assert _payload(answered["/api/file"])["readme_path"] == README_WIRE
-    nested = _payload(answered[f"/api/file?path={NESTED_WIRE}"])
+    assert answered["/api/file"].payload()["readme_path"] == README_WIRE
+    nested = answered[f"/api/file?path={NESTED_WIRE}"].payload()
     assert nested["content"] == "# Nested\n\nTwo levels down.\n"
     assert nested["display"] == "a/deep/nested.md"
     # The requested link stays the route identity; the object facts are the
     # followed blob's, which is why its oid is the README's.
-    followed = _payload(answered[f"/api/file?path={SYMLINK_WIRE}"])
+    followed = answered[f"/api/file?path={SYMLINK_WIRE}"].payload()
     assert followed["path"] == SYMLINK_WIRE
-    assert followed["oid"] == _payload(answered[f"/api/file?path={README_WIRE}"])["oid"]
-    assert _payload(answered[f"/api/file?path={LATIN1_WIRE}"])["display"] == "odd/latin-�.txt"
-    assert _payload(answered[f"/api/file?path={SCRIPT_WIRE}"])["mode"] == "100755"
-    assert _payload(answered[f"/api/file?path={GITLINK_WIRE}"])["type"] == "gitlink"
-    assert "status: 409" in refused["/api/recent"].stdout
-    assert _payload(refused["/api/recent"])["code"] == "unsupported_for_subject"
-    assert "status: 404" in refused[f"/api/file?path={ABSENT_WIRE}"].stdout
-    oversize = _payload(answered[f"/api/file?path={OVERSIZE_WIRE}&limit=64"])
+    assert followed["oid"] == answered[f"/api/file?path={README_WIRE}"].payload()["oid"]
+    assert answered[f"/api/file?path={LATIN1_WIRE}"].payload()["display"] == "odd/latin-�.txt"
+    assert answered[f"/api/file?path={SCRIPT_WIRE}"].payload()["mode"] == "100755"
+    assert answered[f"/api/file?path={GITLINK_WIRE}"].payload()["type"] == "gitlink"
+    assert "status: 409" in api_refused["/api/recent"].stdout
+    assert api_refused["/api/recent"].payload()["code"] == "unsupported_for_subject"
+    assert "status: 404" in api_refused[f"/api/file?path={ABSENT_WIRE}"].stdout
+    oversize = answered[f"/api/file?path={OVERSIZE_WIRE}&limit=64"].payload()
     assert oversize["size"] == TEXT_PREVIEW_REQUEST_MAX_BYTES + 1
     assert oversize["kind"] == "text" and oversize["content_truncated"] is True
     past = f"/api/file?path={OVERSIZE_WIRE}&offset={TEXT_PREVIEW_REQUEST_MAX_BYTES + 1}"
-    assert "status: 416" in refused[past].stdout
+    assert "status: 416" in api_refused[past].stdout
 
-    rendered = "".join(
-        [
-            *(
-                _block(
-                    f"file://<ORIGIN> --show {selection}",
-                    shown[selection],
-                    origin_url=url,
-                    api=False,
-                )
-                for selection in shows
-            ),
-            *(
-                _block(
-                    f"file://<ORIGIN> --show {selection}",
-                    shown_refused[selection],
-                    origin_url=url,
-                    api=False,
-                )
-                for selection in show_refusals
-            ),
-            *(
-                _block(
-                    f"file://<ORIGIN> --api {_shell(route)}",
-                    answered[route],
-                    origin_url=url,
-                    # The status envelope carries the acquisition's wall-clock times,
-                    # which no fixture can pin; every other route's answer is literal.
-                    api=route == "/api/source/status",
-                )
-                for route in routes
-            ),
-            *(
-                _block(
-                    f"file://<ORIGIN> --api {_shell(route)}",
-                    refused[route],
-                    origin_url=url,
-                    api=False,
-                )
-                for route in api_refusals
-            ),
-            _block("file://<ORIGIN> --check-api", checked, origin_url=url, api=False),
-        ]
+    labels = Labels()
+    labels.origin(url, store="STORE_ID", source="SOURCE_ID")
+    rendered = labels.apply(
+        "".join(
+            [
+                *(
+                    result.block(f"file://<ORIGIN> --show {selection}")
+                    for selection, result in (shown | shown_refused).items()
+                ),
+                *(
+                    result.block(f"file://<ORIGIN> --api {quoted(route)}")
+                    for route, result in (answered | api_refused).items()
+                ),
+                checked.block("file://<ORIGIN> --check-api"),
+            ]
+        )
     )
     assert str(tmp_path) not in rendered
     assert str(home) not in rendered

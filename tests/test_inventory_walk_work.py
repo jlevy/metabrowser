@@ -151,7 +151,7 @@ async def _wait_until_delivered(harness: Any) -> None:
     """Wait for the walk to settle and for the event bus to project its last change."""
 
     handle = harness.runtime.coordinator._handle
-    await handle.wait_until_done(timeout=60)
+    await handle.wait_until_done(timeout=50)
     for _ in range(6_000):
         cursor, _version, state = await harness.runtime.coordinator.checkpoint()
         settled = state.phase in {LifecyclePhase.READY, LifecyclePhase.WATCHING}

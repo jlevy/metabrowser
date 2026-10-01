@@ -8,19 +8,17 @@ the CLI goldens already pin.
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 from pathlib import Path
 
-import pytest
+from tests.required_tools import require_node
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DOM_DIR = Path(__file__).resolve().parent / "dom"
 
 
 def _run(script: str, marker: str) -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(DOM_DIR / script), str(REPO_ROOT)],
         capture_output=True,

@@ -15,7 +15,6 @@ import contextlib
 import errno
 import logging
 import os
-import shutil
 import stat
 import subprocess
 import sys
@@ -38,6 +37,7 @@ from metabrowser.home import (
     open_private_file,
     validate_private_home,
 )
+from tests.required_tools import needs_git
 
 pytestmark = pytest.mark.skipif(
     os.name != "posix",
@@ -120,13 +120,19 @@ def _another_uid() -> int:
 skip_as_root = pytest.mark.skipif(
     os.geteuid() == 0, reason="root is never denied by modes, so a denial cannot be staged"
 )
-darwin_only = pytest.mark.skipif(
+_skip_off_darwin = pytest.mark.skipif(
     sys.platform != "darwin",
     reason=(
         "extended ACLs are inspected only on macOS; a Linux POSIX ACL cannot exceed the "
         "group-class mask that 0700 and 0600 clear, as metabrowser/home.py records"
     ),
 )
+
+
+def darwin_only[Test: Callable[..., object]](test: Test) -> Test:
+    """Mark a test for the macOS tier, which CI does not run; see docs/e2e-testing.md."""
+
+    return pytest.mark.macos_tier(_skip_off_darwin(test))
 
 
 _PATHS_GIVEN_ACLS: list[Path] = []
@@ -579,7 +585,7 @@ def test_owner_permissions_are_never_widened(home: Path) -> None:
         (home / "cache").chmod(PRIVATE_DIRECTORY_MODE)
 
 
-@pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
+@needs_git
 def test_a_git_store_written_under_umask_077_validates_without_repair(
     home: Path, caplog: pytest.LogCaptureFixture
 ) -> None:

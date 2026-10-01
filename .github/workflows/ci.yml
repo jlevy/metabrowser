@@ -78,9 +78,11 @@ jobs:
 
   admitted-git:
     # Production refuses repository acquisition below the Git security floor
-    # (tests/fixtures/repository-cache/git-version-gates.json), and the runner's
-    # distribution Git reports a version below it. The `test` job therefore patches
-    # the floor, and nothing there acquires on a Git production would admit.
+    # (tests/fixtures/repository-cache/git-version-gates.json). The `test` job
+    # patches the floor so that it passes on any Git, so nothing there proves
+    # acquisition against the floor itself. Which Git that job gets follows the runner
+    # image: Ubuntu's own package is below the floor, and the image has shipped a newer
+    # one the floor admits (2.55.0 on 2026-10-01).
     #
     # This job builds the lowest admitted release and the newest patched one from
     # checksum-verified kernel.org source, puts that Git first on PATH for this job

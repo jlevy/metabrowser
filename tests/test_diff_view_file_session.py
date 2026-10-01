@@ -13,12 +13,8 @@ The first test here replays that story against real stores and fails when the re
 no longer matches.
 
 Commit IDs are real: both origins are written by ``git fast-import``. Fetch times are
-wall-clock values, so each is replaced by one fixed stand-in.
-
-Regenerate the recording after an intended change, then the transcript:
-
-    GOLDEN_UPDATE=1 uv --config-file uv.toml run --frozen pytest tests/test_diff_view_file_session.py
-    npx --no-install tryscript run --update tests/golden/cli-ui-diff-view-file.tryscript.md
+wall-clock values, so each is replaced by one fixed stand-in. ``make golden-update``
+rewrites the recording and then the transcript.
 """
 
 from __future__ import annotations
@@ -38,11 +34,9 @@ from starlette.testclient import TestClient
 from metabrowser import server
 from metabrowser.cache.acquire import PublishedSource, acquire_source
 from metabrowser.cache.records import StoreOperation
-from metabrowser.cache.repository_store import open_revision
-from metabrowser.cache.served_mirror import StoreMirror
-from metabrowser.git.tree_source import GitPath, GitRevisionSubject
+from metabrowser.git.tree_source import GitPath
 from metabrowser.mirror_refresh import serve_mirror
-from metabrowser.source import reset_source_session, serve_subject_opener
+from metabrowser.source import reset_source_session
 from tests import source_mirror_fixture
 from tests.diff_view_file_fixture import (
     LATIN1_NAME,
@@ -52,27 +46,27 @@ from tests.diff_view_file_fixture import (
     commits,
     view,
 )
+from tests.golden_harness import (
+    JSON_BODY,
+    answer,
+    check_recording,
+    run_session,
+    serve_published,
+)
+from tests.required_tools import needs_git
 from tests.source_mirror_fixture import FETCHED_AT
 from tests.test_cache_acquire import _allow_installed_git, _file_source
 from tests.test_source_freshness_session import _settle, _stand_in_times, _write_state
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-SESSION_JS = REPO_ROOT / "tests" / "dom" / "diff-view-file-session.js"
-FIXTURE = REPO_ROOT / "tests" / "fixtures" / "diff-view-file-responses.json"
-
-_JSON = {"content-type": "application/json"}
+SESSION = "diff-view-file-session.js"
 # What the shell writes into a page on a pin: the commit and ref it was rendered for.
 _PAGE_PIN = re.compile(r"window\.METABROWSER_SOURCE_PIN=(\{.*?\});</script>")
 
 posix_only = pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only")
 pytestmark = [
     posix_only,
-    pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required"),
+    needs_git,
 ]
-
-
-def _answer(response: Any) -> dict[str, Any]:
-    return {"status": response.status_code, "body": response.json()}
 
 
 def _page(client: TestClient) -> dict[str, Any] | None:
@@ -85,23 +79,8 @@ def _page(client: TestClient) -> dict[str, Any] | None:
 
 
 def _switch(client: TestClient, body: dict[str, str]) -> dict[str, Any]:
-    response = client.post("/api/source/pin", json=body, headers=_JSON)
-    return {"request": body, **_answer(response)}
-
-
-def _serve(published: PublishedSource, *, serving: bool = False) -> None:
-    async def opener() -> GitRevisionSubject:
-        return await open_revision(
-            home=published.home,
-            store_key=published.store_key,
-            commit_oid=published.default_revision,
-            store_identity=published.store_id,
-            ref=published.default_remote_ref,
-        )
-
-    reset_source_session()
-    serve_subject_opener(opener)
-    serve_mirror(StoreMirror.from_published(published), serving=serving)
+    response = client.post("/api/source/pin", json=body, headers=JSON_BODY)
+    return {"request": body, **answer(response)}
 
 
 def _acquire(origin: Path, home: Path) -> PublishedSource:
@@ -129,11 +108,11 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         },
     }
     try:
-        _serve(_acquire(origin, home))
+        serve_published(_acquire(origin, home))
         with TestClient(server.app) as client:
 
             def comparison(**params: str) -> dict[str, Any]:
-                return _answer(client.get("/api/plugin/diff/comparison", params=params))
+                return answer(client.get("/api/plugin/diff/comparison", params=params))
 
             recorded["page"] = _page(client)
             recorded["commit"] = comparison(revision=ids["second"])
@@ -144,7 +123,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
                 left=ids["base"], right=ids["second"], base_policy="merge_base"
             )
             patch = view("changes.patch").removeprefix("/view/")
-            recorded["patch"] = _answer(
+            recorded["patch"] = answer(
                 client.get("/api/plugin/diff/document", params={"path": patch})
             )
             recorded["switch_parent"] = _switch(
@@ -164,7 +143,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         other = tmp_path / "other"
         other.mkdir()
         other_origin = source_mirror_fixture.build_origin(other)
-        _serve(_acquire(other_origin, home), serving=True)
+        serve_published(_acquire(other_origin, home), serving=True)
         with TestClient(server.app) as client:
             _settle(client)
             lacking = {"oid": ids["first"], "view": readme}
@@ -187,7 +166,6 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             recorded["folder_refused"] = _switch(client, lacking)
     finally:
         serve_mirror(None)
-        reset_source_session()
     return _stand_in_times(recorded)
 
 
@@ -233,13 +211,8 @@ def test_recording_is_what_the_servers_answer(
     assert recorded["other_fetch_failed"]["body"]["code"] == "selection_fetch_failed"
     assert recorded["folder_page"] is None
     assert recorded["folder_refused"]["status"] == 409
-    rendered = json.dumps(recorded, indent=2, ensure_ascii=False) + "\n"
-    if os.environ.get("GOLDEN_UPDATE") == "1":
-        FIXTURE.write_text(rendered, encoding="utf-8")
-        return
-    assert FIXTURE.read_text(encoding="utf-8") == rendered, (
-        "the servers answer differently now; regenerate with GOLDEN_UPDATE=1 "
-        "and update tests/golden/cli-ui-diff-view-file.tryscript.md"
+    check_recording(
+        "diff-view-file-responses.json", recorded, transcript="cli-ui-diff-view-file.tryscript.md"
     )
 
 
@@ -257,14 +230,8 @@ def test_every_side_the_session_offers_is_a_file_at_its_commit(tmp_path: Path) -
     is not UTF-8 by its bytes.
     """
 
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
-    result = subprocess.run(
-        ["node", str(SESSION_JS)], capture_output=True, text=True, timeout=60, check=False
-    )
-    assert result.returncode == 0, f"stdout: {result.stdout!r}\nstderr: {result.stderr!r}"
     offered: set[tuple[str, str]] = set()
-    for step in json.loads(result.stdout)["steps"]:
+    for step in run_session(SESSION)["steps"]:
         for controls in step.get("bars", {}).values():
             for control in controls:
                 link = _LINK.search(control)

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import shutil
 import subprocess
 from contextlib import suppress
 from dataclasses import replace
@@ -42,13 +41,10 @@ from metabrowser.plugin_api import (
 from metabrowser.source import (
     attach_subject,
     get_source_session,
-    reset_source_session,
 )
+from tests.required_tools import needs_git
 
-pytestmark = pytest.mark.skipif(
-    shutil.which("git") is None,
-    reason="git executable is required",
-)
+pytestmark = needs_git
 
 _ZERO_OID = "0" * 40
 _LFS_POINTER = (
@@ -418,7 +414,6 @@ def test_git_revision_subject_gates_filesystem_hooks(tmp_path: Path) -> None:
             require_source_capability("index")
         finally:
             await subject.aclose()
-            reset_source_session()
 
     asyncio.run(_run())
 

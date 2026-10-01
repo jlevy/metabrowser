@@ -31,8 +31,13 @@ from tests.admitted_git import require_admitted_git
 LIVE_ENV = "METABROWSER_LIVE_GITHUB"
 
 pytestmark = [
+    pytest.mark.live_github,
     pytest.mark.skipif(os.environ.get(LIVE_ENV) != "1", reason=f"set {LIVE_ENV}=1 to run"),
     pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only"),
+    # Clones and reads over a real network. Measured on 2026-09-30 from a home
+    # connection, on a 10-core M1 Pro at load average 60-90: the seven live tests took
+    # 151 s, the slowest 38 s. The network is not ours to bound, so this is generous;
+    # it also has to exceed the 300 s bound on one ``metab`` call below.
     pytest.mark.timeout(600),
 ]
 
@@ -89,7 +94,7 @@ def _gh_json(*args: str) -> Any:
 
 def _require_signed_in_gh() -> None:
     if shutil.which("gh") is None:
-        pytest.skip("gh is not installed")
+        pytest.fail(f"{LIVE_ENV}=1 selected the live tier, which needs gh; it is not installed")
     status = subprocess.run(
         ["gh", "auth", "status", "--active", "--hostname", "github.com", "--json", "hosts"],
         check=False,
@@ -99,7 +104,7 @@ def _require_signed_in_gh() -> None:
         timeout=60,
     )
     if '"login"' not in status.stdout:
-        pytest.skip("gh is not signed in to github.com")
+        pytest.fail(f"{LIVE_ENV}=1 selected the live tier, but gh is not signed in to github.com")
 
 
 def _changed_paths(document: dict[str, Any]) -> set[str]:

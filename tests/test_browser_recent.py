@@ -271,16 +271,12 @@ def test_api_recent_preserves_envelope_and_validation(tmp_path: Path) -> None:
     _build_fixture(tmp_path)
 
     async def run() -> tuple[dict[str, Any], int]:
-        original_root = paths_safe.ROOT_DIR
         paths_safe._set_root_dir(tmp_path)
-        try:
-            async with inventory_harness(tmp_path) as harness:
-                response = await proc_browser.api_recent(cast(Any, _FakeRequest(harness.app)))
-                invalid = await proc_browser.api_recent(
-                    cast(Any, _FakeRequest(harness.app, {"window": "garbage"}))
-                )
-        finally:
-            paths_safe._set_root_dir(original_root)
+        async with inventory_harness(tmp_path) as harness:
+            response = await proc_browser.api_recent(cast(Any, _FakeRequest(harness.app)))
+            invalid = await proc_browser.api_recent(
+                cast(Any, _FakeRequest(harness.app, {"window": "garbage"}))
+            )
         return json.loads(bytes(response.body)), invalid.status_code
 
     body, invalid_status = asyncio.run(run())
@@ -308,26 +304,22 @@ def test_api_recent_accepts_the_full_navigation_filter_vocabulary(tmp_path: Path
     (tmp_path / "charlie" / "noise.txt").write_text("12345678", encoding="utf-8")
 
     async def run() -> dict[str, Any]:
-        original_root = paths_safe.ROOT_DIR
         paths_safe._set_root_dir(tmp_path)
-        try:
-            async with inventory_harness(tmp_path) as harness:
-                response = await proc_browser.api_recent(
-                    cast(
-                        Any,
-                        _FakeRequest(
-                            harness.app,
-                            {
-                                "window": "all",
-                                "types": ".md,README",
-                                "min_size": "7",
-                                "include_ignored": "0",
-                            },
-                        ),
-                    )
+        async with inventory_harness(tmp_path) as harness:
+            response = await proc_browser.api_recent(
+                cast(
+                    Any,
+                    _FakeRequest(
+                        harness.app,
+                        {
+                            "window": "all",
+                            "types": ".md,README",
+                            "min_size": "7",
+                            "include_ignored": "0",
+                        },
+                    ),
                 )
-        finally:
-            paths_safe._set_root_dir(original_root)
+            )
         return cast(dict[str, Any], json.loads(bytes(response.body)))
 
     body = asyncio.run(run())

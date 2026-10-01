@@ -7,7 +7,6 @@ A fake mirror and a fake companion drive the real :class:`MirrorSession` and
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Iterator
 from datetime import UTC, datetime
 
 import pytest
@@ -22,17 +21,8 @@ from metabrowser.mirror_refresh import (
     RefreshResult,
 )
 from metabrowser.repository_context import RepositoryContext
-from metabrowser.source import reset_source_session
 
 _OLD = "2020-01-01T00:00:00Z"
-
-
-@pytest.fixture(autouse=True)
-def _no_session_left() -> Iterator[None]:  # pyright: ignore[reportUnusedFunction]
-    """Observing reads the process's source session; leave none behind for later tests."""
-
-    yield
-    reset_source_session()
 
 
 def _now() -> str:

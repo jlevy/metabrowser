@@ -4,10 +4,11 @@
 #   devtools/build_admitted_git.sh VERSION PREFIX
 #
 # Production refuses repository acquisition below the Git security floor in
-# tests/fixtures/repository-cache/git-version-gates.json, and the CI runner's
-# distribution Git reports a version below it. The CI admitted-git job builds the
-# releases pinned here, so acquisition and the full-clone acceptance tests run on
-# a Git that production admits. SUPPLY-CHAIN-SECURITY.md ("Admitted Git in CI")
+# tests/fixtures/repository-cache/git-version-gates.json. Ubuntu's packaged Git is
+# below it, and the Git on the CI runner image is whatever that image ships, which
+# nothing here pins. The CI admitted-git job builds the releases pinned here, so
+# acquisition and the full-clone acceptance tests run on the lowest release production
+# admits and on the newest patched one. SUPPLY-CHAIN-SECURITY.md ("Admitted Git in CI")
 # records the review; devtools/check_supply_chain.py keeps its table, these pins,
 # and the job's matrix in agreement.
 #

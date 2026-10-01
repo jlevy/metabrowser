@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 from pathlib import Path
 
-import pytest
+from tests.required_tools import require_node
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SESSION_JS = Path(__file__).resolve().parent / "dom" / "html-preview-session.js"
@@ -15,8 +14,7 @@ PLUGIN_ROOT = REPO_ROOT / "src" / "metabrowser" / "builtin_plugins" / "html"
 
 
 def test_html_preview_session() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(SESSION_JS)],
         capture_output=True,

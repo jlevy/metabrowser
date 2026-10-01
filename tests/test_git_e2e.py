@@ -13,7 +13,6 @@ load a page of history, then request one commit's detail.
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
 from collections.abc import Iterator
 from pathlib import Path
@@ -31,11 +30,9 @@ from metabrowser.git.wire import (
     validate_git_repo_info,
 )
 from metabrowser.server import app
+from tests.required_tools import needs_git
 
-pytestmark = pytest.mark.skipif(
-    shutil.which("git") is None,
-    reason="git executable is required to build the fixture repository",
-)
+pytestmark = needs_git
 
 
 def _git(root: Path, *args: str) -> None:
@@ -69,13 +66,11 @@ def served_repo(tmp_path: Path) -> Iterator[Path]:
     _git(root, "commit", "-qm", "second commit\n\nwith a body")
     _git(root, "tag", "v1.0")
 
-    previous = paths_safe.ROOT_DIR
     paths_safe._set_root_dir(root)
     git_repo.clear_repo_cache()
     try:
         yield root
     finally:
-        paths_safe._set_root_dir(previous)
         git_repo.clear_repo_cache()
 
 
@@ -85,13 +80,11 @@ def served_plain(tmp_path: Path) -> Iterator[Path]:
     root.mkdir()
     (root / "note.txt").write_text("no repo")
 
-    previous = paths_safe.ROOT_DIR
     paths_safe._set_root_dir(root)
     git_repo.clear_repo_cache()
     try:
         yield root
     finally:
-        paths_safe._set_root_dir(previous)
         git_repo.clear_repo_cache()
 
 
@@ -162,7 +155,6 @@ def test_all_routes_answer_with_the_negative_envelope_outside_a_repo(served_plai
 def test_all_routes_hide_git_when_serving_a_repository_subdirectory(served_repo: Path) -> None:
     subdirectory = served_repo / "nested"
     subdirectory.mkdir()
-    previous = paths_safe.ROOT_DIR
     paths_safe._set_root_dir(subdirectory)
     git_repo.clear_repo_cache()
     try:
@@ -180,7 +172,6 @@ def test_all_routes_hide_git_when_serving_a_repository_subdirectory(served_repo:
             assert payload["is_repo"] is False, path
             assert payload["reason"] == "not_repo_root", path
     finally:
-        paths_safe._set_root_dir(previous)
         git_repo.clear_repo_cache()
 
 

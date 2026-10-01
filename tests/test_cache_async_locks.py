@@ -12,12 +12,10 @@ from __future__ import annotations
 
 import asyncio
 import os
-import shutil
 import subprocess
 import sys
 import textwrap
 import threading
-import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -35,6 +33,8 @@ from metabrowser.cache.locks import (
 )
 from metabrowser.cancellable_thread import run_acquiring_thread
 from metabrowser.home import ensure_home
+from tests.child_io import read_line
+from tests.required_tools import needs_git
 from tests.test_cache_acquire import _allow_installed_git, _file_source, _origin
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="cache locks are BSD flock locks")
@@ -46,13 +46,13 @@ HOLD_AT_MOST = 10.0
 TICK_S = 0.01
 TICKS = 20
 
-requires_git = pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required")
+requires_git = needs_git
 
 
 class _BoundedHolder:
-    """A child interpreter that holds one lock until told to release, or HOLD_AT_MOST."""
+    """A child interpreter that holds one lock until told to release, or *hold_at_most*."""
 
-    def __init__(self, home: Path, acquire: str) -> None:
+    def __init__(self, home: Path, acquire: str, *, hold_at_most: float = HOLD_AT_MOST) -> None:
         script = textwrap.dedent(
             f"""
             import select
@@ -68,14 +68,13 @@ class _BoundedHolder:
             """
         )
         self.process = subprocess.Popen(
-            [sys.executable, "-c", script, str(home), str(HOLD_AT_MOST)],
+            [sys.executable, "-c", script, str(home), str(hold_at_most)],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
         )
-        assert self.process.stdout is not None
-        line = self.process.stdout.readline().strip()
+        line = read_line(self.process).strip()
         if line != "held":
             _, errors = self.process.communicate(timeout=CHILD_TIMEOUT)
             pytest.fail(f"lock holder did not start: {line!r} {errors}")
@@ -83,14 +82,14 @@ class _BoundedHolder:
     def release(self) -> str:
         """Ask the child to release; return ``asked``, or ``gave up`` if it timed out first."""
 
-        assert self.process.stdin is not None and self.process.stdout is not None
+        assert self.process.stdin is not None
         if self.process.poll() is None:
             try:
                 self.process.stdin.write("\n")
                 self.process.stdin.flush()
             except BrokenPipeError:
                 pass
-        how = self.process.stdout.readline().strip()
+        how = read_line(self.process).strip()
         self.process.communicate(timeout=CHILD_TIMEOUT)
         return how
 
@@ -162,11 +161,13 @@ def test_attempts_that_never_block_may_run_on_the_loop(tmp_path: Path) -> None:
 def test_work_a_cancelled_task_abandoned_is_released_when_it_finishes() -> None:
     """A thread cannot be interrupted; what it acquires after cancellation is released."""
 
+    working = threading.Event()
     proceed = threading.Event()
     released: list[str] = []
     done = threading.Event()
 
     def work() -> str:
+        working.set()
         proceed.wait(CHILD_TIMEOUT)
         return "acquired"
 
@@ -176,7 +177,8 @@ def test_work_a_cancelled_task_abandoned_is_released_when_it_finishes() -> None:
 
     async def scenario() -> None:
         waiting = asyncio.create_task(run_acquiring_thread(work, release=release))
-        await asyncio.sleep(TICK_S)
+        # 20 s, so that with the 30 s wait below the two stay within 50 s.
+        assert await asyncio.to_thread(working.wait, 20)
         waiting.cancel()
         with pytest.raises(asyncio.CancelledError):
             await waiting
@@ -239,7 +241,11 @@ def test_a_cancelled_acquisition_behind_a_busy_home_stops_promptly(
     other = tmp_path / "other"
     other.mkdir()
     other_source = _file_source(_origin(other))
-    holder = _BoundedHolder(home, "locks.application_home_lock(home)")
+    # Half the usual hold: the bound this test has always had on how long the
+    # cancelled command may keep running, now kept by the child and not by a clock here.
+    holder = _BoundedHolder(
+        home, "locks.application_home_lock(home)", hold_at_most=HOLD_AT_MOST / 2
+    )
     try:
 
         async def scenario() -> None:
@@ -249,10 +255,11 @@ def test_a_cancelled_acquisition_behind_a_busy_home_stops_promptly(
             with pytest.raises(asyncio.CancelledError):
                 await waiting
 
-        started = time.monotonic()
         asyncio.run(scenario())
-        elapsed = time.monotonic() - started
-        assert elapsed < HOLD_AT_MOST / 2, f"cancellation waited {elapsed:.1f}s for the lock"
+        # ``asyncio.run`` has joined its executor and returned, and the child still
+        # holds the lock: a wait that outlived the cancellation would have kept the
+        # run from returning until the child gave up.
+        assert holder.release() == "asked", "cancellation waited for the lock"
         assert held_locks() == ()
         # Python 3.14 logs an exception left in a shielded worker; an abandoned wait
         # must not leave one, or Ctrl-C prints a traceback.

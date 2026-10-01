@@ -81,7 +81,7 @@ def _store_git(store: Path, *args: str) -> str:
         check=True,
         capture_output=True,
         env=_git_env() | {"GIT_NO_LAZY_FETCH": "1"},
-        timeout=60,
+        timeout=50,
     )
     return result.stdout.decode()
 

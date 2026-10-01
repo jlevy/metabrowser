@@ -11,18 +11,19 @@ missing value lands somewhere stated rather than in neutral.
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from tests.required_tools import needs_node
+
 PULL_PAGE_JS = (
     Path(__file__).resolve().parent.parent / "src/metabrowser/builtin_plugins/github/pull-page.js"
 )
 
-pytestmark = pytest.mark.skipif(shutil.which("node") is None, reason="node not available")
+pytestmark = needs_node
 
 # (status, conclusion) of a check run -> (tone, label).
 CHECK_RUNS: list[tuple[Any, Any, str, str]] = [
@@ -88,7 +89,7 @@ def results() -> dict[str, list[dict[str, str]]]:
         ["node", "-e", _RUN, PULL_PAGE_JS.as_uri(), json.dumps(payload)],
         capture_output=True,
         text=True,
-        timeout=60,
+        timeout=50,
         check=True,
     )
     return json.loads(completed.stdout)

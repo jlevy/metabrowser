@@ -451,9 +451,11 @@ It also happens to be the honest test: the failure modes that matter — a parti
 origin, interrupted publish, reuse-on-second-open — are all filesystem behavior, not
 network behavior.
 
-A live `metab file:// --no-serve` tryscript cannot run on ubuntu-latest today: the
-runner’s Git 2.43.0 is below the acquisition floor (2.43.7 / patched tracks), and
-distro-patched Git remains refuse.
+A live `metab file:// --no-serve` tryscript cannot be relied on: it runs on whatever Git
+the machine has, and Ubuntu’s packaged Git 2.43.0 is below the acquisition floor (2.43.7
+/ patched tracks), with distro-patched Git still refused.
+The hosted runner image has since shipped a Git the floor admits (2.55.0 on 2026-10-01),
+but nothing pins it.
 Until CI pins Git 2.50.1 (`mb-oueh`), acquire / reuse / staging-sweep / orphan-store
 reuse / read-only cache hit / last-opened-at evidence is
 `tests/test_cli_cache_acquire_golden.py`: the production CLI in-process, the floor
