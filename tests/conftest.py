@@ -12,9 +12,6 @@ import pytest
 
 from metabrowser.git.process import _REPO_PINNING_GIT_VARS
 
-# TEMPORARY (mb-onzb review): one CI run with tests/state_probe.py, removed by the next commit.
-pytest_plugins = ["tests.state_probe"]
-
 # Test discovery imports the server from several module scopes. Never let an
 # operator's shell or dotenv configuration alter collection or load external plugins.
 os.environ["METABROWSER_PLUGINS_DIRS"] = ""
