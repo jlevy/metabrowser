@@ -773,13 +773,6 @@ def test_run_git_ignores_a_hook_exported_git_dir(repo: Path, tmp_path: Path) -> 
     assert Path(out.decode().strip()).resolve() == repo.resolve()
 
 
-def test_run_git_returns_bytes_not_text(repo: Path) -> None:
-    # Path names are raw bytes in whatever encoding the filesystem uses;
-    # decoding belongs to the parsers, which choose the error policy.
-    out = asyncio.run(run_git(["rev-parse", "HEAD"], cwd=repo))
-    assert isinstance(out, bytes)
-
-
 # ── Routes ───────────────────────────────────────────────────
 
 

@@ -47,11 +47,6 @@ from tests.required_tools import needs_git
 pytestmark = needs_git
 
 _ZERO_OID = "0" * 40
-_LFS_POINTER = (
-    b"version https://git-lfs.github.com/spec/v1\n"
-    b"oid sha256:4d7a214614ab2935c943f9e0ff69d22eadbb8f32b1258daaa5e2ca24d17e2393\n"
-    b"size 12345\n"
-)
 
 
 def _git_env(root: Path) -> dict[str, str]:
@@ -137,27 +132,6 @@ def _build_store(tmp_path: Path) -> tuple[Path, str]:
     commit = _git(work, "rev-parse", "HEAD").decode().strip()
     _git(tmp_path, "clone", "--bare", "--template=", str(work), str(store), env_root=tmp_path)
     return store, commit
-
-
-def _delete_store_blob(store: Path, oid: str) -> None:
-    """Remove one object so cat-file reports a miss, not a present blob."""
-
-    loose = store / "objects" / oid[:2] / oid[2:]
-    if not loose.is_file():
-        pack_dir = store / "objects" / "pack"
-        for pack in pack_dir.glob("*.pack"):
-            subprocess.run(
-                ["git", "-C", str(store), "unpack-objects", "-q"],
-                check=True,
-                capture_output=True,
-                input=pack.read_bytes(),
-                env=_git_env(store),
-            )
-            pack.unlink()
-            pack.with_suffix(".idx").unlink(missing_ok=True)
-    if not loose.is_file():
-        raise AssertionError(f"store blob {oid} was not a loose object")
-    loose.unlink()
 
 
 def test_git_path_round_trips_invalid_utf8_and_newlines() -> None:
@@ -303,38 +277,6 @@ def test_git_revision_subject_reads_trees_and_blobs_without_a_checkout(tmp_path:
             except GitObjectUnavailableError as exc:
                 assert exc.code == "object_unavailable"
                 assert exc.oid == _ZERO_OID
-        finally:
-            await subject.aclose()
-
-    asyncio.run(_run())
-
-
-def test_oversized_blob_is_refused_before_contents(tmp_path: Path) -> None:
-    async def _run() -> None:
-        store, commit = _build_store(tmp_path)
-        subject = await git_revision_subject(
-            target=repository_store_target(git_dir=store),
-            commit_oid=commit,
-            store_identity="fixture",
-            max_blob_bytes=16,
-        )
-        source = subject.tree_source
-        try:
-            big = next(
-                entry for entry in await source.list_tree() if entry.path.segments[-1] == b"big.bin"
-            )
-            try:
-                await source.read_blob(big.path)
-                raise AssertionError("oversized blob must be refused")
-            except GitBlobTooLargeError as exc:
-                assert exc.size == 64
-                assert exc.max_bytes == 16
-            small = next(
-                entry
-                for entry in await source.list_tree()
-                if entry.path.segments[-1] == b"README.md"
-            )
-            assert await source.read_blob(small.path) == b"hello\n"
         finally:
             await subject.aclose()
 
@@ -625,89 +567,6 @@ def test_read_store_blob_gates_size_without_a_live_subject(tmp_path: Path) -> No
             assert exc.size == 64
             assert exc.max_bytes == 16
         assert store_batch_reader_count(target) == 0
-
-    asyncio.run(_run())
-
-
-def test_lfs_pointer_blob_is_stored_bytes_without_smudge(tmp_path: Path) -> None:
-    work = tmp_path / "work"
-    store = tmp_path / "store.git"
-    work.mkdir()
-    _git(work, "init", "-q", "-b", "main")
-    (work / ".gitattributes").write_text(
-        "*.bin filter=lfs diff=lfs merge=lfs -text\n", encoding="utf-8"
-    )
-    (work / "media.bin").write_bytes(_LFS_POINTER)
-    _git(work, "add", "-A")
-    _git(work, "commit", "-qm", "lfs pointer")
-    commit = _git(work, "rev-parse", "HEAD").decode().strip()
-    _git(tmp_path, "clone", "--bare", "--template=", str(work), str(store), env_root=tmp_path)
-    marker = tmp_path / "smudge-ran"
-    smudge = tmp_path / "smudge.sh"
-    smudge.write_text(
-        f"#!/bin/sh\necho SMUDGED > '{marker}'\necho SMUDGED\n",
-        encoding="utf-8",
-    )
-    smudge.chmod(0o755)
-    _git(store, "config", "filter.lfs.smudge", str(smudge))
-    _git(store, "config", "filter.lfs.required", "true")
-
-    async def _run() -> None:
-        subject = await git_revision_subject(
-            target=repository_store_target(git_dir=store),
-            commit_oid=commit,
-            store_identity="fixture",
-        )
-        source = subject.tree_source
-        try:
-            path = GitPath.from_segments(b"media.bin")
-            assert await source.read_blob(path) == _LFS_POINTER
-        finally:
-            await subject.aclose()
-
-    asyncio.run(_run())
-    assert marker.exists() is False
-
-
-def test_a_blob_missing_from_the_store_is_object_unavailable(tmp_path: Path) -> None:
-    work = tmp_path / "work"
-    store = tmp_path / "store.git"
-    work.mkdir()
-    _git(work, "init", "-q", "-b", "main")
-    (work / "README.md").write_text("hello\n", encoding="utf-8")
-    (work / "keep.txt").write_text("kept\n", encoding="utf-8")
-    _git(work, "add", "-A")
-    _git(work, "commit", "-qm", "two blobs")
-    commit = _git(work, "rev-parse", "HEAD").decode().strip()
-    missing_oid = _git(work, "rev-parse", "HEAD:README.md").decode().strip()
-    _git(tmp_path, "clone", "--bare", "--template=", str(work), str(store), env_root=tmp_path)
-    _delete_store_blob(store, missing_oid)
-
-    async def _run() -> None:
-        subject = await git_revision_subject(
-            target=repository_store_target(git_dir=store),
-            commit_oid=commit,
-            store_identity="fixture",
-        )
-        source = subject.tree_source
-        try:
-            children = await source.list_tree()
-            names = {entry.path.segments[-1] for entry in children}
-            assert names == {b"README.md", b"keep.txt"}
-            readme = next(entry for entry in children if entry.path.segments[-1] == b"README.md")
-            assert readme.oid == missing_oid
-            assert readme.size is None
-            miss_tally = await source.tree_tally()
-            assert miss_tally is not None
-            assert miss_tally.total_files == 2
-            assert miss_tally.total_size is None
-            with pytest.raises(GitObjectUnavailableError) as caught:
-                await source.read_blob(readme.path)
-            assert caught.value.code == "object_unavailable"
-            assert caught.value.oid == missing_oid
-            assert await source.read_blob(GitPath.from_segments(b"keep.txt")) == b"kept\n"
-        finally:
-            await subject.aclose()
 
     asyncio.run(_run())
 

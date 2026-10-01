@@ -46,6 +46,7 @@ _PNG_HEADER = b"\x89PNG\r\n\x1a\n" + b"\x00" * 120
 _BINARY = bytes(range(256)) * 4
 # Every fixture blob is larger than this, so every route below takes the windowed path.
 _CEILING = 64
+assert all(len(body) > _CEILING for body in (_LINES, _FRONTMATTER, _JSONL, _PNG_HEADER, _BINARY))
 
 
 def _wire(name: bytes) -> str:
@@ -303,11 +304,6 @@ def test_a_jsonl_blob_past_the_parser_ceiling_reports_it_like_the_filesystem(
             assert "JSONL content exceeds" in payload["error"]
 
     asyncio.run(run())
-
-
-def test_the_fixture_blobs_all_exceed_the_ceiling() -> None:
-    for body in (_LINES, _FRONTMATTER, _JSONL, _PNG_HEADER, _BINARY):
-        assert len(body) > _CEILING
 
 
 # ── Load more on a pin, through the production client ──────────────
