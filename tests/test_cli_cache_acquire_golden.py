@@ -189,6 +189,32 @@ def test_golden_file_url_acquire_and_reuse(tmp_path: Path, monkeypatch: pytest.M
     check_golden("cli-cache-acquire.txt", session.render())
 
 
+def test_the_home_label_is_refused_anywhere_but_the_two_whole_lines(tmp_path: Path) -> None:
+    """A transcript update cannot write a path under the cache directory into a golden."""
+
+    home = tmp_path / "home"
+    url = "file:///srv/origin.git"
+    allowed = (
+        f"cloning {url} into {home}/cache\n"
+        f"using the clone of {url} cached in {home}/cache, fetched 2 hours ago\n"
+        f"using the clone of {url} cached in {home}/cache, fetched <AGE>\n"
+        f"using the clone of {url} cached in {home}/cache\n"
+    )
+    assert label_home(allowed, home) == allowed.replace(str(home), HOME_LABEL)
+    for leaked in (
+        f"cloning {url} into {home}/cache/repository-stores/abc/repository.git\n",
+        f"cloning {url} into {home}/cache/staging/acq-0123456789ab\n",
+        f"cloning {url} into {home}\n",
+        f"using the clone of {url} cached in {home}/cache/repository-stores/abc, fetched 1 day ago\n",
+        f"cloning {url} into {home}/cache and more\n",
+        f"note: store at {home}/cache\n",
+        f'  "where": "{home}/cache"\n',
+        f"Error: could not read {home}/cache\n",
+    ):
+        with pytest.raises(AssertionError, match="outside a clone's own lines"):
+            label_home(leaked, home)
+
+
 FIRST_ORPHAN_KEY = "0" * 64
 
 
