@@ -285,6 +285,10 @@ Repository cache:
   at the first acquisition.
   A healthy result reads as before.
 
+- The cache validates the records it writes with SoftSchema, so `softschema==0.8.1` is a
+  new runtime dependency and the minimum `frontmatter-format` rises from 0.3.0 to 0.4.0,
+  which SoftSchema requires.
+
 - New read-only routes `/api/cache/layout`, `/api/cache/sources`,
   `/api/cache/source/<slug>`, and `/api/cache/stores` report the cache’s layout and
   config formats, abandoned staging entries the next sweep removes, sources with their
