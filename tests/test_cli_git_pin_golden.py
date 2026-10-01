@@ -327,16 +327,31 @@ class _Pin:
         check_golden(name, rendered)
 
 
+@pytest.fixture(scope="module")
+def sandbox(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """One directory for the module: both origins, and the application home beside them.
+
+    Whichever test runs first acquires an origin with its first command, and every
+    later command, in that test or another, is a cache hit, as it was when one test ran
+    them all. An origin and an acquisition per test cost about half a second each.
+    """
+
+    directory = tmp_path_factory.mktemp("pin")
+    pin_origin(directory)
+    _origin(directory, "names.git", NAMES_ORIGIN_BLOBS)
+    return directory
+
+
 @pytest.fixture
-def pin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> _Pin:
-    isolate_cli(tmp_path, monkeypatch)
-    session = _Pin(tmp_path)
-    session.use(pin_origin(tmp_path))
+def pin(sandbox: Path, monkeypatch: pytest.MonkeyPatch) -> _Pin:
+    isolate_cli(sandbox, monkeypatch)
+    session = _Pin(sandbox)
+    session.use(sandbox / "origin.git")
     return session
 
 
 @posix_only
-def test_golden_pin_show(pin: _Pin, tmp_path: Path) -> None:
+def test_golden_pin_show(pin: _Pin) -> None:
     """``--show`` kinds and routes, and a typed selection read as a display name first."""
 
     for selection in (
@@ -351,7 +366,7 @@ def test_golden_pin_show(pin: _Pin, tmp_path: Path) -> None:
         pin.show(selection)
     pin.show("nope.txt", fails=True)
 
-    pin.use(_origin(tmp_path, "names.git", NAMES_ORIGIN_BLOBS)[0], "-NAMES")
+    pin.use(pin.sandbox / "names.git", "-NAMES")
     # A typed selection is a display name, so each tracked name resolves to itself,
     # wire-shaped or not; `g1-data` read as a wire would be another path.
     for selection in ("plain.md", "g1-notes.md", "g1-tools/x.md", "g1-data/x.md", "g1-data"):
