@@ -14,11 +14,11 @@ status: 202
     "refreshable": true,
     "latest": "523f476bbcbde731f18dec9d6875df8fe8db13f3",
     "ref_on_origin": true,
-    "last_fetch_at": "<TIME>",
+    "last_fetch_at": "2026-09-17T12:00:00Z",
     "last_outcome": {
       "operation": "acquire",
       "outcome": "succeeded",
-      "at": "<TIME>"
+      "at": "2026-09-17T12:00:00Z"
     },
     "refreshing": true,
     "stale": false,
@@ -38,11 +38,11 @@ status: 200
   "refreshable": true,
   "latest": "89e0fadf1d6368c47b9363ff7df0cd26b48d67df",
   "ref_on_origin": true,
-  "last_fetch_at": "<TIME>",
+  "last_fetch_at": "2026-09-17T12:00:10Z",
   "last_outcome": {
     "operation": "refresh",
     "outcome": "succeeded",
-    "at": "<TIME>"
+    "at": "2026-09-17T12:00:10Z"
   },
   "refreshing": false,
   "stale": false,
@@ -68,11 +68,11 @@ status: 202
     "refreshable": true,
     "latest": "523f476bbcbde731f18dec9d6875df8fe8db13f3",
     "ref_on_origin": true,
-    "last_fetch_at": "<TIME>",
+    "last_fetch_at": "2026-09-17T12:00:10Z",
     "last_outcome": {
       "operation": "refresh",
       "outcome": "succeeded",
-      "at": "<TIME>"
+      "at": "2026-09-17T12:00:10Z"
     },
     "refreshing": true,
     "stale": false,
@@ -92,11 +92,11 @@ status: 200
   "refreshable": true,
   "latest": "523f476bbcbde731f18dec9d6875df8fe8db13f3",
   "ref_on_origin": true,
-  "last_fetch_at": "<TIME>",
+  "last_fetch_at": "2026-09-17T12:00:20Z",
   "last_outcome": {
     "operation": "refresh",
     "outcome": "succeeded",
-    "at": "<TIME>"
+    "at": "2026-09-17T12:00:20Z"
   },
   "refreshing": false,
   "stale": false,
@@ -122,11 +122,11 @@ status: 202
     "refreshable": true,
     "latest": "523f476bbcbde731f18dec9d6875df8fe8db13f3",
     "ref_on_origin": true,
-    "last_fetch_at": "<TIME>",
+    "last_fetch_at": "2026-09-17T12:00:20Z",
     "last_outcome": {
       "operation": "refresh",
       "outcome": "succeeded",
-      "at": "<TIME>"
+      "at": "2026-09-17T12:00:20Z"
     },
     "refreshing": true,
     "stale": false,
@@ -146,11 +146,11 @@ status: 200
   "refreshable": true,
   "latest": "523f476bbcbde731f18dec9d6875df8fe8db13f3",
   "ref_on_origin": true,
-  "last_fetch_at": "<TIME>",
+  "last_fetch_at": "2026-09-17T12:00:20Z",
   "last_outcome": {
     "operation": "refresh",
     "outcome": "origin_unavailable",
-    "at": "<TIME>"
+    "at": "2026-09-17T12:00:30Z"
   },
   "refreshing": false,
   "stale": false,

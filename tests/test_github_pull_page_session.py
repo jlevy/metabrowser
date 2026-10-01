@@ -21,11 +21,7 @@ The clock is fixed, so fetch times are literal. Entity tags are the session's ow
 the server's are scoped to the build; which answers share one is kept. The Markdown is
 cut down to the rendered text: KPress's icon sprite and asset manifest are KPress's
 contract, pinned by its own render goldens, and would tie this recording to its version.
-
-Regenerate the recording after an intended change, then the transcript:
-
-    GOLDEN_UPDATE=1 uv --config-file uv.toml run --frozen pytest tests/test_github_pull_page_session.py
-    npx --no-install tryscript run --update tests/golden/cli-ui-github-pull-page.tryscript.md
+``make golden-update`` rewrites the recording and then the transcript.
 """
 
 from __future__ import annotations
@@ -36,7 +32,6 @@ import json
 import os
 import re
 import shutil
-import subprocess
 import threading
 import time
 from dataclasses import replace
@@ -72,13 +67,9 @@ from tests.github_pull_fixture import (
     page,
     scenario,
 )
+from tests.golden_harness import JSON_BODY, check_recording, run_session
 from tests.test_cache_acquire import _allow_installed_git
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-SESSION_JS = REPO_ROOT / "tests" / "dom" / "github-pull-page-session.js"
-FIXTURE = REPO_ROOT / "tests" / "fixtures" / "github-pull-page-responses.json"
-
-_JSON = {"content-type": "application/json"}
 _PULL = "/api/plugin/github/pull"
 _REFRESH = "/api/plugin/github/pull-refresh"
 _MARKDOWN = "/api/plugin/github/pull-markdown"
@@ -226,7 +217,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             recorded["absent_unchanged"] = _answer(
                 client.get(_PULL, headers={"if-none-match": recorded["absent"]["etag"]})
             )
-            recorded["refresh_started"] = _answer(client.post(_REFRESH, json={}, headers=_JSON))
+            recorded["refresh_started"] = _answer(client.post(_REFRESH, json={}, headers=JSON_BODY))
             recorded["pending"] = _answer(client.get(_PULL))
             release.set()
             _settle(client)
@@ -246,7 +237,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             )
             # The record names a head the fallback pin is not; the page offers it.
             recorded["switch_to_head"] = _switch(
-                client.post(_PIN, json={"ref": "refs/pull/7/head"}, headers=_JSON)
+                client.post(_PIN, json={"ref": "refs/pull/7/head"}, headers=JSON_BODY)
             )
             recorded["on_head"] = _answer(client.get(_PULL))
 
@@ -254,7 +245,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             clock[0] = FETCHED_AT + timedelta(minutes=5)
             recorded["stale"] = _answer(client.get(_PULL))
             release.clear()
-            recorded["refresh_again"] = _answer(client.post(_REFRESH, json={}, headers=_JSON))
+            recorded["refresh_again"] = _answer(client.post(_REFRESH, json={}, headers=JSON_BODY))
             recorded["stale_refreshing"] = _answer(client.get(_PULL))
             release.set()
             _settle(client)
@@ -276,7 +267,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             answers["api"][comments_path] = ok(comments_path, [*comments, added])
             for name, value in install_fake_gh(tmp_path, answers).items():
                 monkeypatch.setenv(name, value)
-            recorded["refresh_third"] = _answer(client.post(_REFRESH, json={}, headers=_JSON))
+            recorded["refresh_third"] = _answer(client.post(_REFRESH, json={}, headers=JSON_BODY))
             _settle(client)
             recorded["refreshed"] = _answer(client.get(_PULL))
             recorded["markdown added"] = _markdown(
@@ -298,7 +289,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             assert session is not None
             for number, name in ((8, "merged"), (9, "closed")):
                 session.companion = served_pull(published, number)
-                client.post(_REFRESH, json={}, headers=_JSON)
+                client.post(_REFRESH, json={}, headers=JSON_BODY)
                 _settle(client)
                 recorded[name] = _answer(client.get(_PULL))
 
@@ -309,7 +300,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             for name, value in install_fake_gh(tmp_path, answers).items():
                 monkeypatch.setenv(name, value)
             session.companion = served_pull(published, 8)
-            client.post(_REFRESH, json={}, headers=_JSON)
+            client.post(_REFRESH, json={}, headers=JSON_BODY)
             _settle(client)
             recorded["merged_unattributed"] = _answer(client.get(_PULL))
     finally:
@@ -362,24 +353,16 @@ def test_recording_is_what_a_served_pull_request_answers(
     assert (closed["state"], closed["merged"], closed["commits"]) == ("closed", False, 1)
     unattributed = recorded["merged_unattributed"]["body"]["record"]["pull"]
     assert (unattributed["merged"], unattributed["merged_by"]) == (True, None)
-    rendered = json.dumps(recorded, indent=2, ensure_ascii=False) + "\n"
-    if os.environ.get("GOLDEN_UPDATE") == "1":
-        FIXTURE.write_text(rendered, encoding="utf-8")
-        return
-    assert FIXTURE.read_text(encoding="utf-8") == rendered, (
-        "a served pull request answers differently now; regenerate with GOLDEN_UPDATE=1 "
-        "and update tests/golden/cli-ui-github-pull-page.tryscript.md"
+    check_recording(
+        "github-pull-page-responses.json",
+        recorded,
+        transcript="cli-ui-github-pull-page.tryscript.md",
     )
 
 
 def test_the_session_runs_on_the_recording() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
-    result = subprocess.run(
-        ["node", str(SESSION_JS)], capture_output=True, text=True, timeout=60, check=False
-    )
-    assert result.returncode == 0, f"stdout: {result.stdout!r}\nstderr: {result.stderr!r}"
-    steps = {step["step"]: step for step in json.loads(result.stdout)["steps"]}
+    transcript = run_session("github-pull-page-session.js")
+    steps = {step["step"]: step for step in transcript["steps"]}
     assert steps["open with nothing cached"]["paint"]["canRefresh"] is True
     assert steps["the record arrives"]["paint"]["status"] == "current"
     assert steps["an unchanged answer is a 304"]["paints"] == 0
@@ -388,7 +371,6 @@ def test_the_session_runs_on_the_recording() -> None:
     assert refreshed["conversation"] == "repaint"
     unchanged = steps["a refresh that changed no text keeps the conversation"]
     assert unchanged["conversation"] == "reask"
-    transcript = json.loads(result.stdout)
     hook = steps["the hook sends the comment inert"]["markdown"][0].split(": ", 1)[1]
     assert allowlist_violations(hook) == []
     assert allowlist_violations(transcript["pageDefense"]) == []

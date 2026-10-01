@@ -9,21 +9,11 @@ markdown-inert-toc-session.js`` plays that on the render recorded here.
 
 from __future__ import annotations
 
-import json
-import os
-import shutil
-import subprocess
-from pathlib import Path
 from typing import Any, Literal
-
-import pytest
 
 from metabrowser import kpress_adapter
 from tests.github_pull_fixture import allowlist_violations, html_tree
-
-REPO_ROOT = Path(__file__).resolve().parent.parent
-RECORDED = REPO_ROOT / "tests" / "fixtures" / "inert-toc-render.json"
-SESSION_JS = REPO_ROOT / "tests" / "dom" / "markdown-inert-toc-session.js"
+from tests.golden_harness import check_recording, run_session
 
 # A document long enough for a table of contents, with a repeated heading, a heading
 # named like the application's globals, a raw heading with its own id, and links to
@@ -122,34 +112,25 @@ def test_an_entry_names_only_the_heading_kpress_gave_its_id() -> None:
     assert 'id="user-content-evil"' in inert["html"]
 
 
-@pytest.mark.skipif(shutil.which("node") is None, reason="node not available")
 def test_the_session_plays_the_recorded_inert_render() -> None:
     """``tests/dom/markdown-inert-toc-session.js`` runs on the inert render recorded in
     ``tests/fixtures/inert-toc-render.json``: whether KPress drew a TOC, its anchored
     entries, and Python's HTML parse of the inert HTML, so the session never runs on
-    markup a test wrote by hand. Regenerate with GOLDEN_UPDATE=1, then update
-    tests/golden/cli-ui-inert-toc.tryscript.md."""
+    markup a test wrote by hand. ``make golden-update`` rewrites the recording and then
+    ``tests/golden/cli-ui-inert-toc.tryscript.md``."""
 
     inert = kpress_adapter.inert_render(_render(GUIDE, "on"))
-    recorded = (
-        json.dumps(
-            {
-                "toc": inert["toc"],
-                "headings": inert["model"]["headings"],
-                "tree": html_tree(inert["html"]),
-            },
-            indent=1,
-            ensure_ascii=False,
-        )
-        + "\n"
+    check_recording(
+        "inert-toc-render.json",
+        {
+            "toc": inert["toc"],
+            "headings": inert["model"]["headings"],
+            "tree": html_tree(inert["html"]),
+        },
+        transcript="cli-ui-inert-toc.tryscript.md",
+        indent=1,
     )
-    if os.environ.get("GOLDEN_UPDATE") == "1":
-        RECORDED.write_text(recorded, encoding="utf-8")
-    assert RECORDED.read_text(encoding="utf-8") == recorded
-    result = subprocess.run(
-        ["node", str(SESSION_JS)], capture_output=True, text=True, timeout=60, check=True
-    )
-    transcript = json.loads(result.stdout)
+    transcript = run_session("markdown-inert-toc-session.js")
     assert transcript["entries"][0] == {
         "level": "kpress-toc-level-1 toc-h1",
         "href": "#user-content-install",

@@ -69,15 +69,15 @@ status: 200
         "display_url": "<ORIGIN-A>",
         "clone_url": "<ORIGIN-A>",
         "transport": "file",
-        "created_at": "<TIME>"
+        "created_at": "2026-09-17T12:00:00Z"
       },
       "alias": {
         "store_id": "<STORE-A>",
         "generation": 1,
-        "updated_at": "<TIME>"
+        "updated_at": "2026-09-17T12:00:00Z"
       },
       "state": {
-        "last_opened_at": "<TIME>"
+        "last_opened_at": "2026-09-17T12:00:00Z"
       },
       "problems": []
     }

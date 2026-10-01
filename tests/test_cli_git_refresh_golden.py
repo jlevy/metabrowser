@@ -1,11 +1,11 @@
 """Golden transcript: refreshing a ``file://`` mirror and switching its pin, in-process.
 
-A refresh runs ``git fetch``, which the acquisition floor refuses on CI's Git, so this
-runs the production CLI in-process with only the floor patched -- the boundary
-``tests/test_cli_git_pin_golden.py`` uses -- and stays a ``.txt`` transcript. Every
-command is its own ``metab`` invocation, so what one command changes reaches the next
-only through the store, exactly as for a user running them one after another. Nothing
-binds a port.
+A refresh runs ``git fetch``, which the acquisition floor refuses on a Git below it, so
+this runs the production CLI in-process with only the floor and the clock replaced -- the
+boundary ``tests/test_cli_git_pin_golden.py`` uses -- and stays a ``.txt`` transcript.
+Every command is its own ``metab`` invocation, so what one command changes reaches the
+next only through the store, exactly as for a user running them one after another.
+Nothing binds a port.
 
 The origin is ``tests/source_mirror_fixture.py``'s, written with ``git fast-import`` so
 every commit ID is the same on every machine. Between the first status and the refresh,
@@ -21,12 +21,8 @@ missing commit's fetch starting nothing on the mirror just fetched, and a retry 
 all the same; the force-pushed-away commit and
 the deleted branch's commit still readable by ID; the deleted branch gone by name; and a
 refresh against a removed origin recorded as ``origin_unavailable``, which exits 1 while
-the mirror keeps serving. Fetch times are wall-clock values no fixture can pin, so they
-read ``<TIME>``.
-
-Regenerate after an intended change with:
-
-    GOLDEN_UPDATE=1 uv --config-file uv.toml run --frozen pytest tests/test_cli_git_refresh_golden.py
+the mirror keeps serving. The clock is fixed and the session moves it before each fetch,
+so the transcript shows which command set ``last_fetch_at`` and which left it alone.
 """
 
 from __future__ import annotations
@@ -41,10 +37,17 @@ from typing import Any
 
 import pytest
 
+from tests.golden_harness import (
+    Invocation,
+    Labels,
+    check_golden,
+    file_url,
+    isolate_cli,
+    ok,
+    pinned_git_env,
+    refused,
+)
 from tests.source_mirror_fixture import build_origin
-from tests.test_cli_cache_acquire_golden import _elide_payload, _file_url, _isolate, _strip_logs
-from tests.test_cli_git_pin_golden import _Invocation, _ok, _refused
-from tests.test_cli_golden import check_golden
 
 posix_only = pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only")
 
@@ -53,13 +56,6 @@ pytestmark = pytest.mark.skipif(shutil.which("git") is None, reason="git executa
 FIRST = "fcb9d63c3c8533d1b929861f451a066e6d4f2d9e"
 SECOND = "42382ea2303b733e1e21b4bd6ddb974ca4e775eb"
 FEATURE = "c7ae2a331f546e6a2431ed7093e9e430a9d1269b"
-
-
-def _git_env(directory: Path) -> dict[str, str]:
-    env = {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
-    env["GIT_CONFIG_GLOBAL"] = os.devnull
-    env["GIT_CONFIG_NOSYSTEM"] = "1"
-    return env
 
 
 def _move_origin(origin: Path) -> str:
@@ -75,7 +71,7 @@ def _move_origin(origin: Path) -> str:
         b"reset refs/tags/v2\nfrom :1\n\n"
         b"done\n"
     )
-    env = _git_env(origin.parent)
+    env = pinned_git_env()
     subprocess.run(
         ["git", "--git-dir", str(origin), "fast-import", "--quiet", "--done", "--force"],
         check=True,
@@ -115,43 +111,30 @@ def _sections(stdout: str) -> list[tuple[str, Any]]:
     return sections
 
 
-def _payload(result: _Invocation) -> Any:
+def _payload(result: Invocation) -> Any:
     return _sections(result.stdout)[0][1]
 
 
-def _after(result: _Invocation) -> Any:
+def _after(result: Invocation) -> Any:
     return _sections(result.stdout)[1][1]
-
-
-def _record(command: str, result: _Invocation) -> str:
-    stdout = "".join(
-        header + json.dumps(_elide_payload(payload), indent=2, ensure_ascii=False) + "\n"
-        for header, payload in _sections(_strip_logs(result.stdout))
-    )
-    return (
-        f"# metab {command}\n"
-        f"exit: {result.exit_code}\n"
-        f"--- stdout ---\n{stdout}"
-        f"--- stderr ---\n{_strip_logs(result.stderr)}"
-    )
 
 
 @posix_only
 def test_golden_refresh_and_pin_switching(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    _isolate(tmp_path, monkeypatch)
+    clock = isolate_cli(tmp_path, monkeypatch).clock
     origin = build_origin(tmp_path)
-    url = _file_url(origin)
+    url = file_url(origin)
     bodies = tmp_path / "bodies"
     bodies.mkdir()
     refresh = _body(bodies, "refresh.json", {})
 
     blocks: list[str] = []
 
-    def api(route: str, *, data: str | None = None, refused: bool = False) -> _Invocation:
+    def api(route: str, *, data: str | None = None, refuse: bool = False) -> Invocation:
         args = [url, "--api", route] + (["--data", data] if data else [])
-        result = _refused(args) if refused else _ok(args)
+        result = refused(args) if refuse else ok(args)
         shown = f"file://<ORIGIN> --api {route}" + (f" --data {Path(data).name}" if data else "")
-        blocks.append(_record(shown, result))
+        blocks.append(result.block(shown))
         return result
 
     before = _payload(api("/api/source/status"))
@@ -161,6 +144,7 @@ def test_golden_refresh_and_pin_switching(tmp_path: Path, monkeypatch: pytest.Mo
 
     rewritten = _move_origin(origin)
 
+    clock.advance(10)
     refreshed = api("/api/source/refresh", data=refresh)
     started = _payload(refreshed)
     assert started["refresh"] == "started"
@@ -184,6 +168,7 @@ def test_golden_refresh_and_pin_switching(tmp_path: Path, monkeypatch: pytest.Mo
     assert _payload(own)["refresh"] == "fresh"
     assert _payload(own)["status"]["refreshing"] is False
     assert len(_sections(own.stdout)) == 1, "nothing was started, so there is nothing to follow"
+    clock.advance(10)
     retried = api(
         "/api/source/refresh",
         data=_body(bodies, "commit-retry.json", {"for": "commit", "retry": True}),
@@ -196,7 +181,7 @@ def test_golden_refresh_and_pin_switching(tmp_path: Path, monkeypatch: pytest.Mo
     tag = _payload(api("/api/source/pin", data=_body(bodies, "pin-v2.json", {"ref": "v2"})))
     assert tag["status"]["pin"] == rewritten
     gone = api(
-        "/api/source/pin", data=_body(bodies, "pin-feature.json", {"ref": "feature"}), refused=True
+        "/api/source/pin", data=_body(bodies, "pin-feature.json", {"ref": "feature"}), refuse=True
     )
     assert _payload(gone)["code"] == "selection_not_found"
     kept = _payload(
@@ -205,7 +190,8 @@ def test_golden_refresh_and_pin_switching(tmp_path: Path, monkeypatch: pytest.Mo
     assert kept["status"]["pin"] == FEATURE
 
     shutil.rmtree(origin)
-    unreachable = api("/api/source/refresh", data=refresh, refused=True)
+    clock.advance(10)
+    unreachable = api("/api/source/refresh", data=refresh, refuse=True)
     assert "the refresh ended with origin_unavailable" in unreachable.stderr
     assert _after(unreachable)["last_outcome"]["outcome"] == "origin_unavailable"
     # The record keeps the outcome by name, so the next command reports it too.
@@ -216,6 +202,8 @@ def test_golden_refresh_and_pin_switching(tmp_path: Path, monkeypatch: pytest.Mo
     # The last successful fetch, the retry's, is kept; only the outcome records the failure.
     assert failed["last_fetch_at"] == _after(retried)["last_fetch_at"]
 
-    rendered = "".join(blocks)
+    labels = Labels()
+    labels.origin(url)
+    rendered = labels.apply("".join(blocks))
     assert str(tmp_path) not in rendered
     check_golden("cli-git-refresh.txt", rendered)

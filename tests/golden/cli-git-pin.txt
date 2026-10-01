@@ -178,11 +178,11 @@ status: 200
   "refreshable": true,
   "latest": "8653ceb4d5ca69e2e7e3b39d04645b3820233854",
   "ref_on_origin": true,
-  "last_fetch_at": "<TIME>",
+  "last_fetch_at": "2026-09-17T12:00:00Z",
   "last_outcome": {
     "operation": "acquire",
     "outcome": "succeeded",
-    "at": "<TIME>"
+    "at": "2026-09-17T12:00:00Z"
   },
   "refreshing": false,
   "stale": false,
@@ -191,7 +191,7 @@ status: 200
   "selection_href": null
 }
 --- stderr ---
-# metab file://<ORIGIN> --api /api/tree?depth=0
+# metab file://<ORIGIN> --api '/api/tree?depth=0'
 exit: 0
 --- stdout ---
 api: /api/tree?depth=0
@@ -362,7 +362,7 @@ status: 200
   ]
 }
 --- stderr ---
-# metab file://<ORIGIN> --api /api/tree?depth=2
+# metab file://<ORIGIN> --api '/api/tree?depth=2'
 exit: 0
 --- stdout ---
 api: /api/tree?depth=2
@@ -1246,7 +1246,7 @@ status: 200
   }
 }
 --- stderr ---
-# metab file://<ORIGIN> --api /api/rollup?depth=1
+# metab file://<ORIGIN> --api '/api/rollup?depth=1'
 exit: 0
 --- stdout ---
 api: /api/rollup?depth=1
@@ -1898,7 +1898,7 @@ status: 200
   "oid": "2aba9e6f68f6b11f98bee8a8d7b47693aca3fb43"
 }
 --- stderr ---
-# metab file://<ORIGIN> --api /api/file?path=g1-UkVBRE1FLm1k
+# metab file://<ORIGIN> --api '/api/file?path=g1-UkVBRE1FLm1k'
 exit: 0
 --- stdout ---
 api: /api/file?path=g1-UkVBRE1FLm1k
@@ -1946,7 +1946,7 @@ status: 200
   "highlight_disabled": false
 }
 --- stderr ---
-# metab file://<ORIGIN> --api /api/file?path=g1-YQ/g1-ZGVlcA/g1-bmVzdGVkLm1k
+# metab file://<ORIGIN> --api '/api/file?path=g1-YQ/g1-ZGVlcA/g1-bmVzdGVkLm1k'
 exit: 0
 --- stdout ---
 api: /api/file?path=g1-YQ/g1-ZGVlcA/g1-bmVzdGVkLm1k
@@ -1994,7 +1994,7 @@ status: 200
   "highlight_disabled": false
 }
 --- stderr ---
-# metab file://<ORIGIN> --api /api/file?path=g1-YQ
+# metab file://<ORIGIN> --api '/api/file?path=g1-YQ'
 exit: 0
 --- stdout ---
 api: /api/file?path=g1-YQ
@@ -2039,7 +2039,7 @@ status: 200
   "oid": "488995644342a4443f2cc5280e6a6d13f3a045fe"
 }
 --- stderr ---
-# metab file://<ORIGIN> --api /api/file?path=g1-Ymlu/g1-Z2x5cGgucG5n
+# metab file://<ORIGIN> --api '/api/file?path=g1-Ymlu/g1-Z2x5cGgucG5n'
 exit: 0
 --- stdout ---
 api: /api/file?path=g1-Ymlu/g1-Z2x5cGgucG5n
@@ -2070,7 +2070,7 @@ status: 200
   ]
 }
 --- stderr ---
-# metab file://<ORIGIN> --api /api/file?path=g1-ZGF0YQ/g1-ZXZlbnRzLmpzb25s
+# metab file://<ORIGIN> --api '/api/file?path=g1-ZGF0YQ/g1-ZXZlbnRzLmpzb25s'
 exit: 0
 --- stdout ---
 api: /api/file?path=g1-ZGF0YQ/g1-ZXZlbnRzLmpzb25s
@@ -2155,7 +2155,7 @@ status: 200
   "bytes_read": 18
 }
 --- stderr ---
-# metab file://<ORIGIN> --api /api/file?path=g1-bGlua3M/g1-dG8tcmVhZG1lLm1k
+# metab file://<ORIGIN> --api '/api/file?path=g1-bGlua3M/g1-dG8tcmVhZG1lLm1k'
 exit: 0
 --- stdout ---
 api: /api/file?path=g1-bGlua3M/g1-dG8tcmVhZG1lLm1k
@@ -2203,7 +2203,7 @@ status: 200
   "highlight_disabled": false
 }
 --- stderr ---
-# metab file://<ORIGIN> --api /api/file?path=g1-b2Rk/g1-bGF0aW4t6S50eHQ
+# metab file://<ORIGIN> --api '/api/file?path=g1-b2Rk/g1-bGF0aW4t6S50eHQ'
 exit: 0
 --- stdout ---
 api: /api/file?path=g1-b2Rk/g1-bGF0aW4t6S50eHQ
@@ -2242,7 +2242,7 @@ status: 200
   "highlight_disabled": false
 }
 --- stderr ---
-# metab file://<ORIGIN> --api /api/file?path=g1-dG9vbHM/g1-cnVuLnNo
+# metab file://<ORIGIN> --api '/api/file?path=g1-dG9vbHM/g1-cnVuLnNo'
 exit: 0
 --- stdout ---
 api: /api/file?path=g1-dG9vbHM/g1-cnVuLnNo
@@ -2281,7 +2281,7 @@ status: 200
   "highlight_disabled": false
 }
 --- stderr ---
-# metab file://<ORIGIN> --api /api/file?path=g1-dmVuZG9y
+# metab file://<ORIGIN> --api '/api/file?path=g1-dmVuZG9y'
 exit: 0
 --- stdout ---
 api: /api/file?path=g1-dmVuZG9y
@@ -2300,7 +2300,7 @@ status: 200
   "oid": "1111111111111111111111111111111111111111"
 }
 --- stderr ---
-# metab file://<ORIGIN> --api /api/plugin/structured/parsed?path=g1-YQ/g1-ZGVlcA/g1-cGF5bG9hZC5qc29u
+# metab file://<ORIGIN> --api '/api/plugin/structured/parsed?path=g1-YQ/g1-ZGVlcA/g1-cGF5bG9hZC5qc29u'
 exit: 0
 --- stdout ---
 api: /api/plugin/structured/parsed?path=g1-YQ/g1-ZGVlcA/g1-cGF5bG9hZC5qc29u
@@ -2326,7 +2326,7 @@ status: 200
   "truncated": false
 }
 --- stderr ---
-# metab file://<ORIGIN> --api /api/plugin/binary/chunk?path=g1-Ymlu/g1-c2FtcGxlLmJpbg
+# metab file://<ORIGIN> --api '/api/plugin/binary/chunk?path=g1-Ymlu/g1-c2FtcGxlLmJpbg'
 exit: 0
 --- stdout ---
 api: /api/plugin/binary/chunk?path=g1-Ymlu/g1-c2FtcGxlLmJpbg
@@ -2396,7 +2396,7 @@ status: 409
 }
 --- stderr ---
 Error: /api/recent returned HTTP 409
-# metab file://<ORIGIN> --api /api/file?path=g1-bm9wZS50eHQ
+# metab file://<ORIGIN> --api '/api/file?path=g1-bm9wZS50eHQ'
 exit: 1
 --- stdout ---
 api: /api/file?path=g1-bm9wZS50eHQ

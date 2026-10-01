@@ -100,7 +100,7 @@ status: 200
       "id": "<STORE-A>",
       "publication": "published",
       "identity": {
-        "created_at": "<TIME>",
+        "created_at": "2026-09-17T12:00:00Z",
         "acquisition": {
           "git_version": "<GIT_VERSION>",
           "object_format": "sha1"
@@ -109,11 +109,11 @@ status: 200
       "state": {
         "default_remote_ref": "refs/remotes/origin/topic",
         "default_revision": "8f05aafe23bbeade03ef581868a59e3c944ac5c4",
-        "last_fetch_at": "<TIME>",
+        "last_fetch_at": "2026-09-17T12:00:00Z",
         "last_operation": {
           "kind": "acquire",
           "outcome": "succeeded",
-          "at": "<TIME>"
+          "at": "2026-09-17T12:00:00Z"
         }
       },
       "problems": [],
@@ -148,15 +148,15 @@ status: 200
         "display_url": "<ORIGIN-A>",
         "clone_url": "<ORIGIN-A>",
         "transport": "file",
-        "created_at": "<TIME>"
+        "created_at": "2026-09-17T12:00:00Z"
       },
       "alias": {
         "store_id": "<STORE-A>",
         "generation": 1,
-        "updated_at": "<TIME>"
+        "updated_at": "2026-09-17T12:00:00Z"
       },
       "state": {
-        "last_opened_at": "<TIME>"
+        "last_opened_at": "2026-09-17T12:00:00Z"
       },
       "problems": []
     }

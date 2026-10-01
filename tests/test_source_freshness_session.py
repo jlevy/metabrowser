@@ -15,11 +15,7 @@ recording no longer matches.
 Fetch times are wall-clock values, so every one is replaced by one fixed stand-in; the
 backdated fetch the fixture writes stays literal. Commit IDs are
 real: the origin is ``tests/source_mirror_fixture.py``'s, written by ``git fast-import``.
-
-Regenerate the recording after an intended change, then the transcript:
-
-    GOLDEN_UPDATE=1 uv --config-file uv.toml run --frozen pytest tests/test_source_freshness_session.py
-    npx --no-install tryscript run --update tests/golden/cli-ui-source-freshness.tryscript.md
+``make golden-update`` rewrites the recording and then the transcript.
 """
 
 from __future__ import annotations
@@ -49,21 +45,24 @@ from metabrowser.cache.records import (
     RepositoryStoreState,
     StoreOperation,
 )
-from metabrowser.cache.repository_store import open_revision
 from metabrowser.cache.served_mirror import StoreMirror
 from metabrowser.cache.urls import LineSelection, RepositorySelection
 from metabrowser.cli.selection import pending_selection_opener
-from metabrowser.git.tree_source import GitRevisionSubject
 from metabrowser.mirror_refresh import serve_mirror
-from metabrowser.source import reset_source_session, serve_subject_opener
+from metabrowser.source import reset_source_session
+from tests.golden_harness import (
+    JSON_BODY,
+    answer,
+    check_recording,
+    read_recording,
+    run_session,
+    serve_published,
+)
 from tests.source_mirror_fixture import FETCHED_AT, build_origin
 from tests.test_cache_acquire import _allow_installed_git, _file_source
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-SESSION_JS = REPO_ROOT / "tests" / "dom" / "source-freshness-session.js"
-FIXTURE = REPO_ROOT / "tests" / "fixtures" / "source-freshness-responses.json"
-
-_JSON = {"content-type": "application/json"}
+RECORDING = "source-freshness-responses.json"
+TRANSCRIPT = "cli-ui-source-freshness.tryscript.md"
 
 
 def _utc_now() -> str:
@@ -192,17 +191,10 @@ class _Beside:
 
 def _commit_fetch(client: TestClient, *, retry: bool = False) -> Any:
     body: dict[str, Any] = {"for": "commit", "retry": True} if retry else {"for": "commit"}
-    return client.post("/api/source/refresh", json=body, headers=_JSON)
-
-
-def _answer(response: Any) -> dict[str, Any]:
-    return {"status": response.status_code, "body": response.json()}
+    return client.post("/api/source/refresh", json=body, headers=JSON_BODY)
 
 
 def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
-    # The recording holds session generations, which count from where an earlier test
-    # in this process left the source session.
-    reset_source_session()
     monkeypatch.setenv("METABROWSER_HOME", str(tmp_path / "home"))
     _allow_installed_git(monkeypatch)
     origin = build_origin(tmp_path)
@@ -212,30 +204,20 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     )
     _commit_on_topic(origin)
 
-    async def opener() -> GitRevisionSubject:
-        return await open_revision(
-            home=published.home,
-            store_key=published.store_key,
-            commit_oid=published.default_revision,
-            store_identity=published.store_id,
-            ref=published.default_remote_ref,
-        )
-
-    serve_subject_opener(opener)
     # Serve mode would refresh this stale mirror on its own; the recording starts where
     # the page opens it, so the page's own request is the one that starts the refresh.
-    serve_mirror(StoreMirror.from_published(published))
+    serve_published(published)
     recorded: dict[str, Any] = {}
     try:
         with TestClient(server.app) as client:
             recorded["stale"] = client.get("/api/source/status").json()
-            started = client.post("/api/source/refresh", json={}, headers=_JSON)
+            started = client.post("/api/source/refresh", json={}, headers=JSON_BODY)
             assert started.status_code == 202
             recorded["refresh_started"] = started.json()
             recorded["refreshed"] = _settle(client)
             history = client.get("/api/git/log", params={"limit": "1", "scope": "all"}).json()
             _git(origin, "branch", "side", recorded["refreshed"]["pin"])
-            assert client.post("/api/source/refresh", json={}, headers=_JSON).status_code == 202
+            assert client.post("/api/source/refresh", json={}, headers=JSON_BODY).status_code == 202
             _settle(client)
             stale_cursor = client.get(
                 "/api/git/log", params={"limit": "1", "scope": "all", "cursor": history["cursor"]}
@@ -243,7 +225,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             assert stale_cursor.status_code == 409
             recorded["history_stale"] = {"status": 409, "body": stale_cursor.json()}
             switched = client.post(
-                "/api/source/pin", json={"ref": recorded["refreshed"]["ref"]}, headers=_JSON
+                "/api/source/pin", json={"ref": recorded["refreshed"]["ref"]}, headers=JSON_BODY
             )
             assert switched.status_code == 200
             recorded["switched"] = switched.json()
@@ -262,11 +244,11 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
                 },
                 "body": refused_read.json(),
             }
-            refused = client.post("/api/source/pin", json={"ref": "gone"}, headers=_JSON)
+            refused = client.post("/api/source/pin", json={"ref": "gone"}, headers=JSON_BODY)
             recorded["pin_refused"] = {"status": refused.status_code, "body": refused.json()}
             away = tmp_path / "origin-away.git"
             shutil.move(origin, away)
-            assert client.post("/api/source/refresh", json={}, headers=_JSON).status_code == 202
+            assert client.post("/api/source/refresh", json={}, headers=JSON_BODY).status_code == 202
             recorded["failed"] = _settle(client)
         # A later start on a mirror last fetched long ago whose origin is gone: every
         # refresh the page asks for fails, so the page stays stale.
@@ -276,7 +258,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         )
         with TestClient(server.app) as client:
             recorded["unreachable"] = client.get("/api/source/status").json()
-            started = client.post("/api/source/refresh", json={}, headers=_JSON)
+            started = client.post("/api/source/refresh", json={}, headers=JSON_BODY)
             assert started.status_code == 202
             recorded["unreachable_started"] = started.json()
             recorded["unreachable_after"] = _settle(client)
@@ -284,7 +266,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             # because the last fetch is older than the freshness window, and the fetch
             # cannot run.
             asked = _commit_fetch(client)
-            recorded["commit_stale_started"] = _answer(asked)
+            recorded["commit_stale_started"] = answer(asked)
             recorded["commit_stale_unfetched"] = _settle(client)
         # A URL selection the mirror lacked when the page opened: a branch the origin
         # gained since, served once the refresh the page asks for brings it.
@@ -299,7 +281,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         )
         with TestClient(server.app) as client:
             recorded["selection_pending"] = client.get("/api/source/status").json()
-            started = client.post("/api/source/refresh", json={}, headers=_JSON)
+            started = client.post("/api/source/refresh", json={}, headers=JSON_BODY)
             assert started.status_code == 202
             recorded["selection_refresh_started"] = started.json()
             recorded["selection_found"] = _settle(client)
@@ -313,10 +295,13 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
                 pending_selection=pending_selection_opener(published, missing),
             )
             with TestClient(server.app) as client:
-                assert client.post("/api/source/refresh", json={}, headers=_JSON).status_code == 202
+                assert (
+                    client.post("/api/source/refresh", json={}, headers=JSON_BODY).status_code
+                    == 202
+                )
                 recorded[key] = _settle(client)
                 if key == "selection_fetch_failed":
-                    retried = client.post("/api/source/refresh", json={}, headers=_JSON)
+                    retried = client.post("/api/source/refresh", json={}, headers=JSON_BODY)
                     assert retried.status_code == 202
                     recorded["selection_retry_started"] = retried.json()
                     _settle(client)
@@ -332,21 +317,21 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         with TestClient(server.app) as client:
             # A fetch that just succeeded, so the page opens inside the window; the
             # origin gains the commit only after it.
-            assert client.post("/api/source/refresh", json={}, headers=_JSON).status_code == 202
+            assert client.post("/api/source/refresh", json={}, headers=JSON_BODY).status_code == 202
             _settle(client)
             unfetched = _commit_on_topic(origin)
             recorded["commit_page"] = client.get("/api/source/status").json()
             for key, oid in (("commit_missing", unfetched), ("commit_absent", _ABSENT_COMMIT)):
                 missing = client.get(f"/api/git/commit/{oid}")
-                recorded[key] = {"oid": oid, **_answer(missing)}
+                recorded[key] = {"oid": oid, **answer(missing)}
             # A request the route refuses is not an answer about the commit: here, one
             # from a page that shows another pin than the server serves.
             refused = client.get(
                 f"/api/git/commit/{unfetched}", headers={"x-metabrowser-pin": _ABSENT_COMMIT}
             )
-            recorded["commit_refused"] = {"oid": unfetched, **_answer(refused)}
+            recorded["commit_refused"] = {"oid": unfetched, **answer(refused)}
             # Inside the window a page's own request starts nothing.
-            recorded["commit_fresh"] = _answer(_commit_fetch(client))
+            recorded["commit_fresh"] = answer(_commit_fetch(client))
             assert client.get("/api/source/status").json() == recorded["commit_page"], (
                 "inside the freshness window a missing commit must not start a fetch"
             )
@@ -356,14 +341,14 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             beside.stale = True
             beside.hold()
             recorded["commit_beside_page"] = client.get("/api/source/status").json()
-            recorded["commit_beside_refresh"] = _answer(
-                client.post("/api/source/refresh", json={}, headers=_JSON)
+            recorded["commit_beside_refresh"] = answer(
+                client.post("/api/source/refresh", json={}, headers=JSON_BODY)
             )
-            recorded["commit_beside_only"] = _answer(_commit_fetch(client))
+            recorded["commit_beside_only"] = answer(_commit_fetch(client))
             # A reader's retry fetches the mirror, here waiting its turn behind that
             # refresh, and a page's own request then joins the fetch that is running.
-            recorded["commit_retry_started"] = _answer(_commit_fetch(client, retry=True))
-            recorded["commit_joined"] = _answer(_commit_fetch(client))
+            recorded["commit_retry_started"] = answer(_commit_fetch(client, retry=True))
+            recorded["commit_joined"] = answer(_commit_fetch(client))
             beside.release()
             recorded["commit_fetched"] = _settle(client)
             found = client.get(f"/api/git/commit/{unfetched}")
@@ -373,7 +358,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
                 "commit": found.json()["commit"]["id"],
             }
             still = client.get(f"/api/git/commit/{_ABSENT_COMMIT}")
-            recorded["commit_absent_after"] = {"oid": _ABSENT_COMMIT, **_answer(still)}
+            recorded["commit_absent_after"] = {"oid": _ABSENT_COMMIT, **answer(still)}
         # A mirror whose last refresh found the repository gone or private, inside the
         # window: the row says so in the words the command line uses.
         _write_state(
@@ -449,29 +434,13 @@ def test_recording_is_what_a_served_mirror_answers(
     shown = recorded["origin_not_shown"]
     assert (shown["stale"], shown["last_outcome"]["outcome"]) == (False, "not_found_or_private")
     assert recorded["folder"]["pin"] is None
-    rendered = json.dumps(recorded, indent=2, ensure_ascii=False) + "\n"
-    if os.environ.get("GOLDEN_UPDATE") == "1":
-        FIXTURE.write_text(rendered, encoding="utf-8")
-        return
-    assert FIXTURE.read_text(encoding="utf-8") == rendered, (
-        "a served mirror answers differently now; regenerate with GOLDEN_UPDATE=1 "
-        "and update tests/golden/cli-ui-source-freshness.tryscript.md"
-    )
-
-
-def transcript_pin_after_switch() -> str:
-    return json.loads(FIXTURE.read_text(encoding="utf-8"))["after_switch"]["pin"]
+    check_recording(RECORDING, recorded, transcript=TRANSCRIPT)
 
 
 def test_the_session_runs_on_the_recording() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
-    result = subprocess.run(
-        ["node", str(SESSION_JS)], capture_output=True, text=True, timeout=60, check=False
-    )
-    assert result.returncode == 0, f"stdout: {result.stdout!r}\nstderr: {result.stderr!r}"
-    steps = json.loads(result.stdout)["steps"]
-    by_name = {step["step"]: step for step in steps}
+    transcript = run_session("source-freshness-session.js")
+    recording = read_recording(RECORDING)
+    by_name = {step["step"]: step for step in transcript["steps"]}
     assert by_name["open a stale page"]["requests"] == [
         "GET /api/source/status",
         "POST /api/source/refresh {}",
@@ -482,7 +451,6 @@ def test_the_session_runs_on_the_recording() -> None:
     assert by_name["a refused switch says why and does not reload"]["reloads"] == 0
     polls = by_name["a stale page whose refresh fails asks once"]["requests"]
     assert len(polls) == 2 and all(request.startswith("GET ") for request in polls)
-    transcript = json.loads(result.stdout)
     history = {row["failure"]: row["means"] for row in transcript["history"]}
     assert history["a refresh moved the refs"] == "stale"
     assert by_name["an unchanged status is a 304"]["repaints"] == 0
@@ -490,9 +458,8 @@ def test_the_session_runs_on_the_recording() -> None:
     guard = transcript["guard"]
     assert [row["pin"] for row in guard["sent"]] == [guard["page"], None, None, guard["page"]]
     assert guard["answered"][-1] == 409
-    assert guard["reported"] == [transcript_pin_after_switch()]
+    assert guard["reported"] == [recording["after_switch"]["pin"]]
     # A page opened while its URL selection waited goes to the selection once, anchor kept.
-    recording = json.loads(FIXTURE.read_text(encoding="utf-8"))
     arrived = by_name["the fetch brought the selection; the page goes to it"]
     assert arrived["navigated"] == [recording["selection_found"]["selection_href"]]
     assert arrived["navigated"][0].endswith("#L1")

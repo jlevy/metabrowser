@@ -9,11 +9,11 @@ status: 200
   "state": "current",
   "layout": {
     "format": "f01",
-    "created_by": "<VERSION>"
+    "created_by": "0.11.0"
   },
   "config": {
     "format": "f01",
-    "written_by": "<VERSION>",
+    "written_by": "0.11.0",
     "upgrades": []
   },
   "reclamation": {
@@ -40,11 +40,11 @@ status: 200
   "state": "current",
   "layout": {
     "format": "f01",
-    "created_by": "<VERSION>"
+    "created_by": "0.11.0"
   },
   "config": {
     "format": "f01",
-    "written_by": "<VERSION>",
+    "written_by": "0.11.0",
     "upgrades": []
   },
   "reclamation": {

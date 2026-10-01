@@ -13,12 +13,8 @@ matches.
 
 The origin is ``tests/source_mirror_fixture.py``'s, written by ``git fast-import``, so
 every commit ID is the same on every machine, and its last fetch is recorded at the
-fixture's fixed time, so every status envelope is literal.
-
-Regenerate the recording after an intended change, then the transcript:
-
-    GOLDEN_UPDATE=1 uv --config-file uv.toml run --frozen pytest tests/test_source_ref_selector_session.py
-    npx --no-install tryscript run --update tests/golden/cli-ui-source-ref-selector.tryscript.md
+fixture's fixed time, so every status envelope is literal. ``make golden-update``
+rewrites the recording and then the transcript.
 """
 
 from __future__ import annotations
@@ -27,7 +23,6 @@ import asyncio
 import json
 import os
 import shutil
-import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -37,20 +32,24 @@ from starlette.testclient import TestClient
 from metabrowser import server
 from metabrowser.cache.acquire import acquire_source
 from metabrowser.cache.records import StoreOperation
-from metabrowser.cache.repository_store import open_revision
-from metabrowser.cache.served_mirror import StoreMirror
-from metabrowser.git.tree_source import GitPath, GitRevisionSubject
+from metabrowser.git.tree_source import GitPath
 from metabrowser.mirror_refresh import serve_mirror
-from metabrowser.source import reset_source_session, serve_subject_opener
+from metabrowser.source import reset_source_session
+from tests.golden_harness import (
+    JSON_BODY,
+    answer,
+    check_recording,
+    read_recording,
+    run_session,
+    serve_published,
+)
 from tests.source_mirror_fixture import FETCHED_AT, build_origin
 from tests.test_cache_acquire import _allow_installed_git, _file_source
 from tests.test_source_freshness_session import _write_state
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-SESSION_JS = REPO_ROOT / "tests" / "dom" / "source-ref-selector-session.js"
-FIXTURE = REPO_ROOT / "tests" / "fixtures" / "source-ref-selector-responses.json"
+RECORDING = "source-ref-selector-responses.json"
+TRANSCRIPT = "cli-ui-source-ref-selector.tryscript.md"
 
-_JSON = {"content-type": "application/json"}
 TOPIC = "refs/remotes/origin/topic"
 FEATURE = "refs/remotes/origin/feature"
 
@@ -65,14 +64,7 @@ def _view(display: str) -> str:
     return "/view/" + GitPath.from_display(display).to_wire()
 
 
-def _answer(response: Any) -> dict[str, Any]:
-    return {"status": response.status_code, "body": response.json()}
-
-
 def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
-    # The recording pins session generations, so start from a fresh session: an earlier
-    # test that renders the shell (server.index) opens one and leaves it behind.
-    reset_source_session()
     monkeypatch.setenv("METABROWSER_HOME", str(tmp_path / "home"))
     _allow_installed_git(monkeypatch)
     origin = build_origin(tmp_path)
@@ -80,27 +72,16 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     _write_state(
         published, operation=StoreOperation(kind="acquire", outcome="succeeded", at=FETCHED_AT)
     )
-
-    async def opener() -> GitRevisionSubject:
-        return await open_revision(
-            home=published.home,
-            store_key=published.store_key,
-            commit_oid=published.default_revision,
-            store_identity=published.store_id,
-            ref=published.default_remote_ref,
-        )
-
-    serve_subject_opener(opener)
-    serve_mirror(StoreMirror.from_published(published))
+    serve_published(published)
     recorded: dict[str, Any] = {"views": {"readme": _view("README.md"), "notes": _view("NOTES.md")}}
     try:
         with TestClient(server.app) as client:
 
             def listing(**params: str) -> dict[str, Any]:
-                return _answer(client.get("/api/source/refs", params=params))
+                return answer(client.get("/api/source/refs", params=params))
 
             def switch(body: dict[str, str]) -> dict[str, Any]:
-                return _answer(client.post("/api/source/pin", json=body, headers=_JSON))
+                return answer(client.post("/api/source/pin", json=body, headers=JSON_BODY))
 
             recorded["branches"] = listing(kind="branch")
             recorded["tags"] = listing(kind="tag")
@@ -136,25 +117,14 @@ def test_recording_is_what_a_served_mirror_answers(
     assert recorded["switch_same"]["body"]["changed"] is False
     assert "view_href" not in recorded["switch_no_view"]["body"]
     assert recorded["switch_missing"]["status"] == 404
-    rendered = json.dumps(recorded, indent=2, ensure_ascii=False) + "\n"
-    if os.environ.get("GOLDEN_UPDATE") == "1":
-        FIXTURE.write_text(rendered, encoding="utf-8")
-        return
-    assert FIXTURE.read_text(encoding="utf-8") == rendered, (
-        "a served mirror answers differently now; regenerate with GOLDEN_UPDATE=1 "
-        "and update tests/golden/cli-ui-source-ref-selector.tryscript.md"
-    )
+    check_recording(RECORDING, recorded, transcript=TRANSCRIPT)
 
 
 def test_the_session_runs_on_the_recording() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
-    result = subprocess.run(
-        ["node", str(SESSION_JS)], capture_output=True, text=True, timeout=60, check=False
-    )
-    assert result.returncode == 0, f"stdout: {result.stdout!r}\nstderr: {result.stderr!r}"
-    recording = json.loads(FIXTURE.read_text(encoding="utf-8"))
-    by_name = {step["step"]: step for step in json.loads(result.stdout)["steps"]}
+    by_name = {
+        step["step"]: step for step in run_session("source-ref-selector-session.js")["steps"]
+    }
+    recording = read_recording(RECORDING)
     assert by_name["the button names the served branch"]["requests"] == []
     assert by_name["opening asks for the branches"]["requests"] == [
         "GET /api/source/refs?kind=branch"

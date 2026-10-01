@@ -50,8 +50,8 @@ from metabrowser.source import (
     reset_source_session,
     serve_subject_opener,
 )
+from tests.golden_harness import block, check_golden, normalize_console, pin_git_dates
 from tests.test_cache_acquire import _allow_installed_git, _file_source, _git
-from tests.test_cli_golden import _normalize, check_golden
 
 posix_only = pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only")
 
@@ -162,21 +162,24 @@ def _serve(url: str, *extra: str) -> Any:
 
 # ── The command ─────────────────────────────────────────────────────
 
+# ``_origin``'s second commit once ``pin_git_dates`` fixes the dates its recipe inherits.
+BANNER_REVISION = "99d0343568d1b5119b4182bdf8162413989746c2"
+
 
 def test_golden_serve_pin_banner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The banner names the source, the pinned commit, and the ref it was resolved from."""
 
     _home(tmp_path, monkeypatch)
+    pin_git_dates(monkeypatch)
     origin = _origin(tmp_path)
+    assert origin.second == BANNER_REVISION
     result = _serve(origin.url)
     assert result.exit_code == 0, result.output
-    stdout = _normalize(result.stdout, tmp_path).replace(origin.second, "<REVISION>")
-    stderr = _normalize(result.stderr, tmp_path)
-    rendered = (
-        "# metab file://<ROOT>/origin.git --no-open\n"
-        f"exit: {result.exit_code}\n"
-        f"--- stdout ---\n{stdout}"
-        f"--- stderr ---\n{stderr}"
+    rendered = block(
+        "metab file://<ROOT>/origin.git --no-open",
+        result.exit_code,
+        normalize_console(result.stdout, tmp_path),
+        normalize_console(result.stderr, tmp_path),
     )
     check_golden("serve-pin-banner.txt", rendered)
 

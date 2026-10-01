@@ -10,14 +10,10 @@ does, with these substitutions and nothing else:
   call, which the transcript lists after each command;
 - the clock is fixed, so ``fetched_at`` and the record's state are the same every run.
 
-The Git floor is patched as in the other acquisition goldens, because CI's Git is below
-it. The real ``gh`` and GitHub are the opt-in live smoke test,
+The Git floor is replaced as in the other acquisition goldens
+(``tests/golden_harness.py``). The real ``gh`` and GitHub are the opt-in live smoke test,
 ``tests/test_github_pull_live_smoke.py``. Cached reads with no ``gh`` at all run as a
 subprocess in ``tests/golden/cli-github-pull.tryscript.md``.
-
-Regenerate after an intended change with:
-
-    GOLDEN_UPDATE=1 uv --config-file uv.toml run --frozen pytest tests/test_cli_github_pull_golden.py
 """
 
 from __future__ import annotations
@@ -43,9 +39,7 @@ from tests.github_pull_fixture import (
     ok,
     scenario,
 )
-from tests.test_cli_cache_acquire_golden import _isolate, _strip_logs
-from tests.test_cli_git_pin_golden import _Invocation, _run
-from tests.test_cli_golden import check_golden
+from tests.golden_harness import Invocation, check_golden, isolate_cli, quoted, run_metab
 
 pytestmark = [
     pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required"),
@@ -61,7 +55,7 @@ class _Session:
     def __init__(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         self.tmp_path = tmp_path
         self.monkeypatch = monkeypatch
-        self.home = _isolate(tmp_path, monkeypatch)
+        self.home = isolate_cli(tmp_path, monkeypatch).home
         self.origin: Origin = build_origin(tmp_path)
         local = self.origin.url
 
@@ -96,17 +90,9 @@ class _Session:
         log.unlink()
         return calls
 
-    def run(self, *args: str) -> _Invocation:
-        result = _run(list(args))
-        calls = self.gh_calls()
-        quoted = " ".join(f"'{arg}'" if any(ch in arg for ch in "?&") else arg for arg in args)
-        self.blocks.append(
-            f"# metab {quoted}\n"
-            f"exit: {result.exit_code}\n"
-            f"--- stdout ---\n{_strip_logs(result.stdout)}"
-            f"--- stderr ---\n{_strip_logs(result.stderr)}"
-            f"--- gh ---\n" + "".join(f"{call}\n" for call in calls)
-        )
+    def run(self, *args: str) -> Invocation:
+        result = run_metab(args)
+        self.blocks.append(result.block(" ".join(quoted(arg) for arg in args), gh=self.gh_calls()))
         return result
 
 
@@ -127,7 +113,7 @@ def test_golden_pull_requests_fetch_refresh_and_read_offline(
 
     first = session.run(f"{PULL}/7", "--api", "/api/plugin/github/pull")
     assert first.exit_code == 0, first.stderr
-    envelope = json.loads(first.stdout[first.stdout.index("{") :])
+    envelope = first.payload()
     assert envelope["state"] == "current"
     assert envelope["pin"] == origin["fork_head"]
     assert envelope["record"]["comparison"]["base"] == origin["base"]
@@ -144,7 +130,7 @@ def test_golden_pull_requests_fetch_refresh_and_read_offline(
     )
     offline = session.run(f"{PULL}/7", "--api", "/api/plugin/github/pull")
     assert offline.exit_code == 0, offline.stderr
-    assert json.loads(offline.stdout[offline.stdout.index("{") :])["record"] == envelope["record"]
+    assert offline.payload()["record"] == envelope["record"]
     stale = session.run(f"{PULL}/7", "--no-serve")
     assert stale.exit_code == 0 and "; the refresh failed: " in stale.stdout
     assert "(network_error))" in stale.stdout
@@ -153,7 +139,7 @@ def test_golden_pull_requests_fetch_refresh_and_read_offline(
     for number in (8, 9, 10):
         assert session.run(f"{PULL}/{number}", "--no-serve").exit_code == 0
     merged = session.run(f"{PULL}/8", "--api", "/api/plugin/github/pull")
-    assert json.loads(merged.stdout[merged.stdout.index("{") :])["record"]["comparison"] == {
+    assert merged.payload()["record"]["comparison"] == {
         "base": origin["base"],
         "head": origin["merged_head"],
         "base_commit": origin["topic_before_merge"],
@@ -265,13 +251,10 @@ def test_golden_pull_requests_fetch_refresh_and_read_offline(
     assert (
         missing.exit_code == 0 and "(gh_missing); the pin is the default branch)" in missing.stderr
     )
-    assert json.loads(missing.stdout[missing.stdout.index("{") :])["reason"] == "not_cached"
+    assert missing.payload()["reason"] == "not_cached"
     # The cached record outlived every failed refresh.
     kept = session.run(f"{PULL}/7", "--api", "/api/plugin/github/pull")
-    assert (
-        kept.exit_code == 0
-        and json.loads(kept.stdout[kept.stdout.index("{") :])["record"] == envelope["record"]
-    )
+    assert kept.exit_code == 0 and kept.payload()["record"] == envelope["record"]
 
     rendered = "".join(session.blocks)
     assert str(tmp_path) not in rendered and str(session.home) not in rendered
