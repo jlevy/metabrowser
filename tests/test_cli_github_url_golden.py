@@ -174,6 +174,12 @@ REFUSED: list[list[str]] = [
     # A variation selector with no base to attach to is drawn as nothing, so it does
     # too; the one after an emoji above is kept.
     [f"{REPO}/blob/topic/README%EF%B8%8F.md", "--no-serve"],
+    # The reducer's hint for a raw space other than the ASCII one: U+00A0 NO-BREAK SPACE
+    # and U+200A HAIR SPACE would read as README .md or README.md, and U+2028 LINE
+    # SEPARATOR would split the error line. Each reaches the message as U+FFFD.
+    [f"{REPO}/blob/topic/README%C2%A0.md", "--no-serve"],
+    [f"{REPO}/blob/topic/README%E2%80%8A.md", "--no-serve"],
+    [f"{REPO}/blob/topic/README%E2%80%A8.md", "--no-serve"],
 ]
 
 
@@ -226,19 +232,22 @@ def test_golden_github_urls_open_through_a_local_stand_in(
         "path: docs/My Notes.md\n"
         in by_command[f"{REPO}/blob/topic/docs/My Notes.md --no-serve"].stdout
     )
-    assert "\u009b" not in refused[-4][1].stderr and "\ufffd2J.md" in refused[-4][1].stderr
+    assert "\u009b" not in refused[-7][1].stderr and "\ufffd2J.md" in refused[-7][1].stderr
     override = by_command[f"{REPO}/blob/unicode/docs/a%E2%80%AEb.md --no-serve"].stdout
     assert "path: docs/a\ufffdb.md\n" in override
-    assert "\ufffd2J.md is not in" in refused[-5][1].stderr
-    for _args, result in refused[-3:]:
+    assert "\ufffd2J.md is not in" in refused[-8][1].stderr
+    for _args, result in refused[-6:]:
         assert "Error: README\ufffd.md is not in " in result.stderr
         assert "(path_not_found)" in result.stderr
+        # One line, whatever a consumer takes for a line break.
+        assert len(result.stderr.splitlines()) == 1
 
     rendered = label_home(
         "".join(_block(args, result) for args, result in [*opened, *refused]), home
     )
     assert chr(0x202E) not in rendered and chr(0x9B) not in rendered
     assert chr(0x3164) not in rendered and chr(0x2800) not in rendered
+    assert not {chr(0xA0), chr(0x200A), chr(0x2028)} & set(rendered)
     heart = by_command[f"{REPO}/blob/unicode/docs/{HEART}.md --no-serve"].stdout
     assert f"(branch unicode)\npath: docs/{HEART}.md\n" in heart
     assert str(tmp_path) not in rendered and str(home) not in rendered

@@ -115,9 +115,15 @@ GitHub URLs and HTTPS:
   U+FFFD like C0, so an error message cannot send a terminal an escape sequence, and so
   is a format character such as a right-to-left override (`%E2%80%AE`) or a zero-width
   space, and a character drawn as nothing or as a space, such as the Hangul filler
-  U+3164 (`%E3%85%A4`), a variation selector with no base, or the blank braille pattern
-  U+2800, on the `path:` line, in errors, and in a pinned tree’s file names, so a name
-  cannot pass for another.
+  U+3164 (`%E3%85%A4`), a variation selector with no base, the blank braille pattern
+  U+2800, or a space other than the ASCII one, such as a no-break space (`%C2%A0`) or a
+  hair space (`%E2%80%8A`), on the `path:` line, in errors, and in a pinned tree’s file
+  names, so a name cannot pass for another.
+  The line and paragraph separators U+2028 (`%E2%80%A8`) and U+2029 are shown as U+FFFD
+  too, so a message stays on one line.
+  Unassigned and private-use code points, which are refused raw in a URL, are displayed
+  as they are: a font draws them as a glyph or a missing-glyph mark, and which code
+  points are unassigned depends on the Python that is running.
   A ref, commit, or path the mirror does not have is reported by `--no-serve`, `--show`,
   and `--api` as `ref_not_found`, `commit_not_found`, or `path_not_found`; those modes
   read the mirror as it is and do not fetch.
@@ -421,6 +427,9 @@ Repository cache:
   The banner names the source and prints a `Revision:` line with the full commit and
   branch. `--path` deep-links a path within the pin, spelled as `--show` accepts it, and
   prints a directory’s address with a trailing slash.
+  The branch name on the `Revision:` line is the origin’s, so it is shown as a path is:
+  a control character in it, such as the one-character CSI U+009B, or an invisible
+  character, is U+FFFD, there as on a GitHub URL’s `pin:` line.
   If the pin cannot be opened again when the server starts, the command prints the same
   path-free error as `--show` and exits 1 rather than a traceback.
   The tree, file views, Markdown and its images, JSON, images, history, commit detail,
