@@ -1,0 +1,24 @@
+## Git's ls-remote is answered here with text Git printed when an origin did not show a repository; Git, gh, and the origin are not run.
+## gh is installed, so Git would ask it for credentials; the origin answers "Repository not found" for a refused credential and for no repository alike.
+# metab https://github.com/octo/absent --no-serve
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: https://github.com/octo/absent was not found, or it is private and could not be read (not_found_or_private); if it is private, sign in with gh auth login to an account that can read it; nothing was published
+# metab https://github.com/octo/absent --show README.md
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: https://github.com/octo/absent was not found, or it is private and could not be read (not_found_or_private); if it is private, sign in with gh auth login to an account that can read it; nothing was published
+## Without gh Git has no credential to offer and stops at the challenge ("could not read Username"); the hint is to install gh.
+# metab https://github.com/octo/absent --no-serve
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: https://github.com/octo/absent was not found, or it is private and could not be read (not_found_or_private); if it is private, install GitHub CLI (gh) and sign in with gh auth login; nothing was published
+## Another host answers 404, and there is no hint.
+# metab https://example.com/owner/absent.git --no-serve
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: https://example.com/owner/absent.git was not found, or it is private and could not be read (not_found_or_private); nothing was published

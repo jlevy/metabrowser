@@ -148,6 +148,55 @@
   font-weight: var(--weight-bold);
 }
 
+/* View file: a quiet text action at the end of the bar, the same whether
+   it is a link (the page has the file's address) or a button (following
+   it switches the served pin first). It stays visible, since it is how a
+   reader leaves the diff for the file, and takes the link color on hover
+   and focus like every other text action.
+   Set at the path's own size, not --ui-small-font-size: the control is a
+   centered box beside the toggle, and only text of the path's size
+   centers onto the path's baseline. Measured in Chromium at device pixel
+   ratio 2, a 12px link sat 0.75 px above the path's baseline and a 12px
+   button 0.5 px; at --nav-font-size both sit on it ("Row Text Shares a
+   Baseline" in the design system). */
+.metabrowser-diff-host .diff-file-view {
+  flex: none;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-sans);
+  font-size: var(--nav-font-size);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.metabrowser-diff-host .diff-file-view:hover,
+.metabrowser-diff-host .diff-file-view:focus-visible {
+  color: var(--link);
+  text-decoration: underline;
+}
+
+.metabrowser-diff-host .diff-file-view:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 1px;
+}
+
+.metabrowser-diff-host .diff-file-view[aria-busy="true"] {
+  cursor: progress;
+}
+
+/* Why a View file switch did not happen, under the bar so a collapsed
+   body does not hide it. */
+.metabrowser-diff-host .diff-file-notice {
+  border-bottom: 1px solid var(--border);
+}
+
+.metabrowser-diff-host .diff-file-notice[hidden] {
+  display: none;
+}
+
 .metabrowser-diff-host .diff-file-copy {
   /* A 20px hit target keeps the 24px row exact under its 1px border;
      the token re-scope leaves the icon-btn primitive untouched. */

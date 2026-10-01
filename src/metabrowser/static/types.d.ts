@@ -189,6 +189,8 @@ type MetabrowserPreviewPaneLifecycle = Readonly<{
 
 type MetabrowserNavigationRouteRuntime = Readonly<{
   displayPath(path: string, sourceKind?: "filesystem" | "git_revision"): string;
+  /** The GitPath wire of a path on a pinned revision; null when it has an empty segment. */
+  gitPathWire(path: string | Uint8Array): string | null;
   attachController(controller: MetabrowserNavigationController): () => void;
   commitFreshFileResponse(options: {
     cacheFile(data: Record<string, unknown>): void;
@@ -2264,6 +2266,42 @@ declare global {
     pull: { href: string; text: string } | null;
   };
 
+  /**
+   * What the commit view says about a commit the mirror lacks: being fetched, not
+   * found, or not fetched because the fetch did not run; `retry` offers the fetch
+   * again. `failed` is a commit route that failed, which says nothing about the commit.
+   */
+  type MetabrowserMissingCommitModel = {
+    state: "pending" | "not_found" | "fetch_failed" | "failed";
+    title: string;
+    detail: string;
+    retry: boolean;
+  };
+
+  /**
+   * How asking for a missing commit's fetch ended: the status then, why it could not be
+   * asked for or followed, whether a fetch of the mirror's branches and tags ran, and
+   * whether anything ran that could have brought the commit.
+   */
+  type MetabrowserSourceFetchEnd = {
+    status: MetabrowserSourceStatus | null;
+    error: string | null;
+    fetched: boolean;
+    waited: boolean;
+  };
+
+  /** The commit view's side of opening a commit the mirror lacks. */
+  type MetabrowserMissingCommitView = {
+    /**
+     * Ask the server for the commit again: `found` once it is painted, `missing` when
+     * the server still does not have it, `failed` when the request itself failed.
+     */
+    load(): Promise<"found" | "missing" | "failed">;
+    paint(model: MetabrowserMissingCommitModel): void;
+    isCurrent(): boolean;
+    now(): number;
+  };
+
   type MetabrowserSourceResponse = { status: number; etag: string | null; body: unknown };
 
   type MetabrowserSourceFreshnessDependencies = {
@@ -2284,7 +2322,11 @@ declare global {
   type MetabrowserSourceFreshnessController = Readonly<{
     start(): Promise<void>;
     poll(): Promise<void>;
-    requestRefresh(): Promise<void>;
+    requestRefresh(body?: Record<string, unknown>): Promise<string | null>;
+    fetchMissing(options?: {
+      retry?: boolean;
+      waiting?: () => void;
+    }): Promise<MetabrowserSourceFetchEnd>;
     acceptOffer(): Promise<void>;
     onVisibilityChange(): void;
     dispose(): void;
@@ -2309,7 +2351,21 @@ declare global {
       status: MetabrowserSourceStatus | null,
       page: { shown: MetabrowserSourcePage | null; nowMs: number; error?: string | null },
     ): MetabrowserSourceFreshnessModel;
+    describeMissingCommit(
+      status: MetabrowserSourceStatus | null,
+      page: {
+        phase: "fetching" | "ended";
+        nowMs: number;
+        error?: string | null;
+        fetched?: boolean;
+      },
+    ): MetabrowserMissingCommitModel;
     mount(element: HTMLElement): MetabrowserSourceFreshnessController;
+    openMissingCommit(
+      controller: Pick<MetabrowserSourceFreshnessController, "fetchMissing">,
+      view: MetabrowserMissingCommitView,
+      options?: { retry?: boolean },
+    ): Promise<"found" | "not_found" | "fetch_failed" | "failed" | "superseded">;
     relativeAge(iso: string | null, nowMs: number): string;
     selectionToOpen(
       status: MetabrowserSourceStatus | null,
@@ -2554,6 +2610,8 @@ declare global {
     removeNavPanel(panelId: string): void;
     renderPreviewHtml(html: string, claim: MetabrowserPreviewClaim): HTMLElement | null;
     renderPreviewNode(node: HTMLElement, claim: MetabrowserPreviewClaim): HTMLElement | null;
+    /** The page's freshness controller once it is mounted; null when a folder is served. */
+    sourceFreshness(): Promise<MetabrowserSourceFreshnessController | null>;
   };
   type MetabrowserPublicFileTypeTaxonomyRuntime = MetabrowserFileTypeTaxonomyRuntime;
   type MetabrowserPublicPreparedViewComposition = MetabrowserPreparedViewComposition;
@@ -2643,6 +2701,19 @@ declare global {
     MetabrowserSourcePinGuard?: Readonly<{
       PIN_CHANGED_HEADER: string;
       PIN_HEADER: string;
+      createHistoryGuard(
+        deps: {
+          status(): Promise<{ pin?: unknown } | null>;
+          reload(): void;
+        },
+        pin: string,
+      ): Readonly<{
+        loaded(navigationType: string): Promise<void>;
+        shown(persisted: boolean): Promise<void>;
+        refused(): void;
+        snapshot(): { asking: boolean; reloaded: boolean };
+      }>;
+      servesAnother(pin: string, served: { pin?: unknown } | null): boolean;
       guardFetch(
         fetchImpl: typeof fetch,
         pin: string,

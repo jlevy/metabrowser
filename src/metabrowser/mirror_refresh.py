@@ -70,6 +70,9 @@ ELSEWHERE_POLL_S: Final = 1.0
 ELSEWHERE_WAIT_S: Final = GIT_ACQUISITION_TIMEOUT_S
 
 type StartedOrJoined = Literal["started", "joined"]
+# How a request for the fetch a missing commit waits for was answered: the mirror's
+# fetch was started or joined, or the mirror is ``"fresh"`` and none was asked for.
+type CommitFetch = Literal["started", "joined", "fresh"]
 
 
 class SelectionError(Exception):
@@ -188,8 +191,14 @@ class ServedMirror(Protocol):
         """The single-flight key of this mirror's refresh: its store key."""
         ...
 
-    async def open_selection(self, *, ref: str | None, oid: str | None) -> GitRevisionSubject:
-        """Resolve a selection in the mirror and open it, or raise :class:`SelectionError`."""
+    async def open_selection(
+        self, *, ref: str | None, oid: str | None, keep_refs: tuple[str, ...] = ()
+    ) -> GitRevisionSubject:
+        """Resolve a selection in the mirror and open it, or raise :class:`SelectionError`.
+
+        A commit named by *oid* that is the tip of one of *keep_refs* is opened under
+        the first such ref rather than under none.
+        """
         ...
 
     async def refresh(self) -> RefreshResult:
@@ -476,6 +485,8 @@ class MirrorSession:
         self._recorded_with_result: RecordedFreshness | None = None
         self._last_success_at: str | None = None
         self._tip: tuple[str, str | None] | None = None
+        # The ref last served, kept while a commit pinned by ID is served under none.
+        self._last_ref: str | None = None
         self._pin_lock = asyncio.Lock()
         # The mirror's refresh and the pull request's each fetch into the store under its
         # fetch lock; within this server they take turns here first, so neither finds
@@ -615,6 +626,28 @@ class MirrorSession:
         if companion_stale:
             self.request_companion_refresh()
         return started
+
+    def request_commit_fetch(self, *, retry: bool) -> CommitFetch:
+        """Ask for the fetch a commit the mirror lacks waits for.
+
+        It is the fetch a pin by commit ID waits for: the mirror's own, of branches and
+        tags, whatever the state of the data served beside it, and that data's refresh
+        as well, since a pull request's head arrives only through it. A fetch of the
+        mirror that is already running is joined.
+
+        A page asks for this by itself when it opens a commit's address, and a link in
+        served content can send a reader to any address, so that request fetches only
+        what is older than :data:`FRESHNESS_WINDOW_S`: ``"fresh"`` says the mirror was
+        fetched inside the window and no fetch of it was started. *retry* is a reader's
+        own click, and always fetches.
+        """
+
+        now = _now_utc()
+        if retry or self._companion_stale(now):
+            self.request_companion_refresh()
+        if retry or self._mirror_stale(now) or self._coordinator.running(self.mirror.key):
+            return self.request_refresh(for_selection=True)
+        return "fresh"
 
     def request_companion_refresh(self) -> StartedOrJoined | None:
         """Start or join the refresh of the data served beside the mirror, if there is any."""
@@ -773,7 +806,9 @@ class MirrorSession:
 
         async with self._pin_lock:
             try:
-                subject = await self.mirror.open_selection(ref=ref, oid=oid)
+                subject = await self.mirror.open_selection(
+                    ref=ref, oid=oid, keep_refs=self._refs_to_keep()
+                )
             except SelectionNotFoundError as exc:
                 if not self._fetch_on_miss:
                     raise
@@ -800,6 +835,24 @@ class MirrorSession:
             else:
                 self._tip = None
             return True, session
+
+    def _refs_to_keep(self) -> tuple[str, ...]:
+        """The refs a commit pinned by ID is opened under when it is their tip.
+
+        View file on a diff switches by commit ID, to a base and back: without this the
+        way back to the head would leave the server on no ref, the selector reading
+        "Commit: …" where it read the branch or the pull request, and freshness no
+        longer following the ref. The ref last served comes first, then the served pull
+        request's head, GitHub's own ref for it.
+        """
+
+        current = _served_revision()
+        if current is not None and current.ref is not None:
+            self._last_ref = current.ref
+        pull_head = (
+            f"refs/pull/{self._pull_request}/head" if self._pull_request is not None else None
+        )
+        return tuple(dict.fromkeys(ref for ref in (self._last_ref, pull_head) if ref is not None))
 
     def _missing(
         self, key: tuple[str | None, str | None], not_found: SelectionNotFoundError
@@ -951,6 +1004,7 @@ __all__ = [
     "MAX_CONCURRENT_REFRESHES",
     "UNSERVED_FRESHNESS",
     "AmbiguousSelectionError",
+    "CommitFetch",
     "CompanionRefresh",
     "FreshnessFields",
     "InvalidSelectionError",

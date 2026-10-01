@@ -55,7 +55,9 @@ class _Mirror:
         self.busy_at = busy_at
         self.recorded_at = recorded_at
 
-    async def open_selection(self, *, ref: str | None, oid: str | None) -> GitRevisionSubject:
+    async def open_selection(
+        self, *, ref: str | None, oid: str | None, keep_refs: tuple[str, ...] = ()
+    ) -> GitRevisionSubject:
         raise AssertionError("not reached")
 
     async def refresh(self) -> RefreshResult:
@@ -161,3 +163,71 @@ def test_a_refresh_fetches_only_what_is_stale_and_a_pin_miss_only_the_mirror(
         return events
 
     assert sorted(asyncio.run(scenario())) == sorted(expected)
+
+
+@pytest.mark.parametrize(
+    ("mirror_fresh", "pull_stale", "retry", "answer", "expected"),
+    [
+        # Inside the freshness window a page's own request fetches nothing at all,
+        (True, False, False, "fresh", []),
+        # or only the stale pull request, and still says the mirror was not fetched.
+        (True, True, False, "fresh", ["pull start", "pull end"]),
+        # Outside the window it fetches the mirror, and the pull request when stale.
+        (False, False, False, "started", ["mirror"]),
+        (False, True, False, "started", ["mirror", "pull start", "pull end"]),
+        # A reader's retry fetches both, however fresh they are.
+        (True, False, True, "started", ["mirror", "pull start", "pull end"]),
+    ],
+)
+def test_a_commit_fetch_has_a_floor_that_only_a_retry_lifts(
+    mirror_fresh: bool, pull_stale: bool, retry: bool, answer: str, expected: list[str]
+) -> None:
+    """A link in served content can send a reader to any commit's address, so the fetch a
+    page asks for by itself runs only for what is older than the freshness window."""
+
+    async def scenario() -> tuple[str, list[str]]:
+        events: list[str] = []
+        coordinator = RefreshCoordinator()
+        mirror = _Mirror(events, fetched_at=_now() if mirror_fresh else _OLD)
+        session = MirrorSession(
+            mirror,
+            coordinator,
+            fetch_on_miss=True,
+            companion=_Companion(events, stale=pull_stale),
+        )
+        await session.observe()
+        answered = session.request_commit_fetch(retry=retry)
+        await _settle(coordinator)
+        return answered, events
+
+    answered, events = asyncio.run(scenario())
+    assert answered == answer
+    assert sorted(events) == sorted(expected)
+
+
+def test_a_commit_fetch_joins_the_mirror_fetch_but_not_the_pull_requests() -> None:
+    """A fetch of the mirror that is running is the fetch, even inside the window; a
+    refresh of the pull request alone is not, and the answer does not call it one."""
+
+    async def scenario() -> tuple[str, str, list[str]]:
+        events: list[str] = []
+        coordinator = RefreshCoordinator()
+        companion = _Companion(events, stale=False)
+        companion.gate = asyncio.Event()
+        session = MirrorSession(
+            _Mirror(events, fetched_at=_now()), coordinator, fetch_on_miss=True, companion=companion
+        )
+        await session.observe()
+        session.request_companion_refresh()
+        await companion.started.wait()
+        beside = session.request_commit_fetch(retry=False)
+        assert session.refreshing() is False and session.companion_refreshing() is True
+        session.request_refresh(for_selection=True)
+        joined = session.request_commit_fetch(retry=False)
+        companion.gate.set()
+        await _settle(coordinator)
+        return beside, joined, events
+
+    beside, joined, events = asyncio.run(scenario())
+    assert (beside, joined) == ("fresh", "joined")
+    assert events.count("mirror") == 1

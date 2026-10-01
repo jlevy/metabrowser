@@ -1,0 +1,1448 @@
+{
+  "commits": {
+    "first": "a5232ab93056074aa3dd87c7b3c28ca84081a6a0",
+    "second": "6ac4c8b5eb94eecbdb621d629b31066f050c75f1",
+    "base": "0dcf612c09184fad5b83f7c80e65dd3a6fb48e99"
+  },
+  "views": {
+    "readme": "/view/g1-UkVBRE1FLm1k",
+    "old_name": "/view/g1-c3Jj/g1-b2xkX25hbWUucHk",
+    "new_name": "/view/g1-c3Jj/g1-bmV3X25hbWUucHk",
+    "latin1": "/view/g1-bGF0aW4xLekudHh0"
+  },
+  "page": {
+    "pin": "6ac4c8b5eb94eecbdb621d629b31066f050c75f1",
+    "ref": "refs/remotes/origin/trunk"
+  },
+  "commit": {
+    "status": 200,
+    "body": {
+      "schema": "file-diff-v1",
+      "schema_version": 1,
+      "resolved": {
+        "comparison_id": "git:314b52cd65f62d3a",
+        "source": {
+          "name": "git"
+        },
+        "kind": "content",
+        "base_policy": "first_parent",
+        "left": {
+          "kind": "commit",
+          "id": "a5232ab93056074aa3dd87c7b3c28ca84081a6a0",
+          "symbolic": "6ac4c8b5eb94eecbdb621d629b31066f050c75f1"
+        },
+        "right": {
+          "kind": "commit",
+          "id": "6ac4c8b5eb94eecbdb621d629b31066f050c75f1"
+        },
+        "options": {
+          "context": 3,
+          "rename_detection": true,
+          "rename_similarity": 50
+        },
+        "warnings": []
+      },
+      "manifest": {
+        "files": [
+          {
+            "id": "f1",
+            "kind": "modified",
+            "old": {
+              "path": "README.md",
+              "entry_type": "file",
+              "mode": "100644",
+              "content": {
+                "kind": "git_object",
+                "oid": "11ef693690b79c92f3bc49c28af42395e7c5e131"
+              }
+            },
+            "new": {
+              "path": "README.md",
+              "entry_type": "file",
+              "mode": "100644",
+              "content": {
+                "kind": "git_object",
+                "oid": "fd873d671e05f4044eba6e6caa29844caf26971f"
+              }
+            },
+            "binary": false,
+            "availability": "ready",
+            "additions": 2,
+            "deletions": 1
+          },
+          {
+            "id": "f2",
+            "kind": "added",
+            "new": {
+              "path": "added.txt",
+              "entry_type": "file",
+              "mode": "100644",
+              "content": {
+                "kind": "git_object",
+                "oid": "fa49b077972391ad58037050f2a75f74e3671e92"
+              }
+            },
+            "binary": false,
+            "availability": "ready",
+            "additions": 1,
+            "deletions": 0
+          },
+          {
+            "id": "f3",
+            "kind": "deleted",
+            "old": {
+              "path": "gone.txt",
+              "entry_type": "file",
+              "mode": "100644",
+              "content": {
+                "kind": "git_object",
+                "oid": "3d3f93392e84a20160817a9c597490e4753c4420"
+              }
+            },
+            "binary": false,
+            "availability": "ready",
+            "additions": 0,
+            "deletions": 1
+          },
+          {
+            "id": "f4",
+            "kind": "modified",
+            "old": {
+              "path": "latin1-�.txt",
+              "path_b64": "bGF0aW4xLekudHh0",
+              "entry_type": "file",
+              "mode": "100644",
+              "content": {
+                "kind": "git_object",
+                "oid": "117429733fa72e52444bf313a05756fc321b9d9b"
+              }
+            },
+            "new": {
+              "path": "latin1-�.txt",
+              "path_b64": "bGF0aW4xLekudHh0",
+              "entry_type": "file",
+              "mode": "100644",
+              "content": {
+                "kind": "git_object",
+                "oid": "55aa3f973017187f9a4068311ea98c137af4dd5a"
+              }
+            },
+            "binary": false,
+            "availability": "ready",
+            "additions": 1,
+            "deletions": 1
+          },
+          {
+            "id": "f5",
+            "kind": "modified",
+            "old": {
+              "path": "link",
+              "entry_type": "symlink",
+              "mode": "120000",
+              "content": {
+                "kind": "git_object",
+                "oid": "42061c01a1c70097d1e4579f29a5adf40abdec95"
+              }
+            },
+            "new": {
+              "path": "link",
+              "entry_type": "symlink",
+              "mode": "120000",
+              "content": {
+                "kind": "git_object",
+                "oid": "eafc2aac7162cad4e1f335fab78ae18b297e49cc"
+              }
+            },
+            "binary": false,
+            "availability": "ready",
+            "additions": 1,
+            "deletions": 1
+          },
+          {
+            "id": "f6",
+            "kind": "renamed",
+            "old": {
+              "path": "src/old_name.py",
+              "entry_type": "file",
+              "mode": "100644",
+              "content": {
+                "kind": "git_object",
+                "oid": "78495b268f6b1ac51adbd86a48d867cb876d18f6"
+              }
+            },
+            "new": {
+              "path": "src/new_name.py",
+              "entry_type": "file",
+              "mode": "100644",
+              "content": {
+                "kind": "git_object",
+                "oid": "78495b268f6b1ac51adbd86a48d867cb876d18f6"
+              }
+            },
+            "similarity": 100,
+            "binary": false,
+            "availability": "ready",
+            "additions": 0,
+            "deletions": 0
+          },
+          {
+            "id": "f7",
+            "kind": "modified",
+            "old": {
+              "path": "vendor/lib",
+              "entry_type": "submodule",
+              "mode": "160000",
+              "content": {
+                "kind": "git_object",
+                "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              }
+            },
+            "new": {
+              "path": "vendor/lib",
+              "entry_type": "submodule",
+              "mode": "160000",
+              "content": {
+                "kind": "git_object",
+                "oid": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+              }
+            },
+            "binary": false,
+            "availability": "ready",
+            "additions": 1,
+            "deletions": 1
+          }
+        ],
+        "totals": {
+          "files": 7,
+          "additions": 6,
+          "deletions": 5,
+          "exact": true
+        },
+        "truncated": false
+      },
+      "patches": {
+        "f1": {
+          "file_id": "f1",
+          "hunks": [
+            {
+              "old_start": 1,
+              "old_count": 3,
+              "new_start": 1,
+              "new_count": 4,
+              "lines": [
+                {
+                  "op": "context",
+                  "text": "# Changes",
+                  "no_newline": false
+                },
+                {
+                  "op": "context",
+                  "text": "",
+                  "no_newline": false
+                },
+                {
+                  "op": "del",
+                  "text": "First line.",
+                  "no_newline": false
+                },
+                {
+                  "op": "add",
+                  "text": "First line, changed.",
+                  "no_newline": false
+                },
+                {
+                  "op": "add",
+                  "text": "Second line.",
+                  "no_newline": false
+                }
+              ]
+            }
+          ],
+          "truncated": false
+        },
+        "f2": {
+          "file_id": "f2",
+          "hunks": [
+            {
+              "old_start": 0,
+              "old_count": 0,
+              "new_start": 1,
+              "new_count": 1,
+              "lines": [
+                {
+                  "op": "add",
+                  "text": "new file",
+                  "no_newline": false
+                }
+              ]
+            }
+          ],
+          "truncated": false
+        },
+        "f3": {
+          "file_id": "f3",
+          "hunks": [
+            {
+              "old_start": 1,
+              "old_count": 1,
+              "new_start": 0,
+              "new_count": 0,
+              "lines": [
+                {
+                  "op": "del",
+                  "text": "gone soon",
+                  "no_newline": false
+                }
+              ]
+            }
+          ],
+          "truncated": false
+        },
+        "f4": {
+          "file_id": "f4",
+          "hunks": [
+            {
+              "old_start": 1,
+              "old_count": 1,
+              "new_start": 1,
+              "new_count": 1,
+              "lines": [
+                {
+                  "op": "del",
+                  "text": "a Latin-1 name",
+                  "no_newline": false
+                },
+                {
+                  "op": "add",
+                  "text": "a Latin-1 name, edited",
+                  "no_newline": false
+                }
+              ]
+            }
+          ],
+          "truncated": false
+        },
+        "f5": {
+          "file_id": "f5",
+          "hunks": [
+            {
+              "old_start": 1,
+              "old_count": 1,
+              "new_start": 1,
+              "new_count": 1,
+              "lines": [
+                {
+                  "op": "del",
+                  "text": "README.md",
+                  "no_newline": true
+                },
+                {
+                  "op": "add",
+                  "text": "docs/guide.md",
+                  "no_newline": true
+                }
+              ]
+            }
+          ],
+          "truncated": false
+        },
+        "f6": {
+          "file_id": "f6",
+          "hunks": [],
+          "truncated": false
+        },
+        "f7": {
+          "file_id": "f7",
+          "hunks": [
+            {
+              "old_start": 1,
+              "old_count": 1,
+              "new_start": 1,
+              "new_count": 1,
+              "lines": [
+                {
+                  "op": "del",
+                  "text": "Subproject commit aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "no_newline": false
+                },
+                {
+                  "op": "add",
+                  "text": "Subproject commit bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                  "no_newline": false
+                }
+              ]
+            }
+          ],
+          "truncated": false
+        }
+      }
+    }
+  },
+  "root": {
+    "status": 200,
+    "body": {
+      "schema": "file-diff-v1",
+      "schema_version": 1,
+      "resolved": {
+        "comparison_id": "git:7f7a124786bfaef4",
+        "source": {
+          "name": "git"
+        },
+        "kind": "content",
+        "base_policy": "first_parent",
+        "left": {
+          "kind": "empty",
+          "symbolic": "a5232ab93056074aa3dd87c7b3c28ca84081a6a0"
+        },
+        "right": {
+          "kind": "commit",
+          "id": "a5232ab93056074aa3dd87c7b3c28ca84081a6a0"
+        },
+        "options": {
+          "context": 3,
+          "rename_detection": true,
+          "rename_similarity": 50
+        },
+        "warnings": []
+      },
+      "manifest": {
+        "files": [
+          {
+            "id": "f1",
+            "kind": "added",
+            "new": {
+              "path": "README.md",
+              "entry_type": "file",
+              "mode": "100644",
+              "content": {
+                "kind": "git_object",
+                "oid": "11ef693690b79c92f3bc49c28af42395e7c5e131"
+              }
+            },
+            "binary": false,
+            "availability": "ready",
+            "additions": 3,
+            "deletions": 0
+          },
+          {
+            "id": "f2",
+            "kind": "added",
+            "new": {
+              "path": "changes.patch",
+              "entry_type": "file",
+              "mode": "100644",
+              "content": {
+                "kind": "git_object",
+                "oid": "703bc4bce546ed8e64bbe3ab8281c26ea0b2a35b"
+              }
+            },
+            "binary": false,
+            "availability": "ready",
+            "additions": 6,
+            "deletions": 0
+          },
+          {
+            "id": "f3",
+            "kind": "added",
+            "new": {
+              "path": "docs/guide.md",
+              "entry_type": "file",
+              "mode": "100644",
+              "content": {
+                "kind": "git_object",
+                "oid": "c8ffdc19ca0a1fd21e902a0cce6de79ebf7badd8"
+              }
+            },
+            "binary": false,
+            "availability": "ready",
+            "additions": 5,
+            "deletions": 0
+          },
+          {
+            "id": "f4",
+            "kind": "added",
+            "new": {
+              "path": "gone.txt",
+              "entry_type": "file",
+              "mode": "100644",
+              "content": {
+                "kind": "git_object",
+                "oid": "3d3f93392e84a20160817a9c597490e4753c4420"
+              }
+            },
+            "binary": false,
+            "availability": "ready",
+            "additions": 1,
+            "deletions": 0
+          },
+          {
+            "id": "f5",
+            "kind": "added",
+            "new": {
+              "path": "kept.txt",
+              "entry_type": "file",
+              "mode": "100644",
+              "content": {
+                "kind": "git_object",
+                "oid": "4eea88a852fde1261c409090a7aae3f0d957e349"
+              }
+            },
+            "binary": false,
+            "availability": "ready",
+            "additions": 1,
+            "deletions": 0
+          },
+          {
+            "id": "f6",
+            "kind": "added",
+            "new": {
+              "path": "latin1-�.txt",
+              "path_b64": "bGF0aW4xLekudHh0",
+              "entry_type": "file",
+              "mode": "100644",
+              "content": {
+                "kind": "git_object",
+                "oid": "117429733fa72e52444bf313a05756fc321b9d9b"
+              }
+            },
+            "binary": false,
+            "availability": "ready",
+            "additions": 1,
+            "deletions": 0
+          },
+          {
+            "id": "f7",
+            "kind": "added",
+            "new": {
+              "path": "link",
+              "entry_type": "symlink",
+              "mode": "120000",
+              "content": {
+                "kind": "git_object",
+                "oid": "42061c01a1c70097d1e4579f29a5adf40abdec95"
+              }
+            },
+            "binary": false,
+            "availability": "ready",
+            "additions": 1,
+            "deletions": 0
+          },
+          {
+            "id": "f8",
+            "kind": "added",
+            "new": {
+              "path": "src/old_name.py",
+              "entry_type": "file",
+              "mode": "100644",
+              "content": {
+                "kind": "git_object",
+                "oid": "78495b268f6b1ac51adbd86a48d867cb876d18f6"
+              }
+            },
+            "binary": false,
+            "availability": "ready",
+            "additions": 6,
+            "deletions": 0
+          },
+          {
+            "id": "f9",
+            "kind": "added",
+            "new": {
+              "path": "vendor/lib",
+              "entry_type": "submodule",
+              "mode": "160000",
+              "content": {
+                "kind": "git_object",
+                "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              }
+            },
+            "binary": false,
+            "availability": "ready",
+            "additions": 1,
+            "deletions": 0
+          }
+        ],
+        "totals": {
+          "files": 9,
+          "additions": 25,
+          "deletions": 0,
+          "exact": true
+        },
+        "truncated": false
+      },
+      "patches": {
+        "f1": {
+          "file_id": "f1",
+          "hunks": [
+            {
+              "old_start": 0,
+              "old_count": 0,
+              "new_start": 1,
+              "new_count": 3,
+              "lines": [
+                {
+                  "op": "add",
+                  "text": "# Changes",
+                  "no_newline": false
+                },
+                {
+                  "op": "add",
+                  "text": "",
+                  "no_newline": false
+                },
+                {
+                  "op": "add",
+                  "text": "First line.",
+                  "no_newline": false
+                }
+              ]
+            }
+          ],
+          "truncated": false
+        },
+        "f2": {
+          "file_id": "f2",
+          "hunks": [
+            {
+              "old_start": 0,
+              "old_count": 0,
+              "new_start": 1,
+              "new_count": 6,
+              "lines": [
+                {
+                  "op": "add",
+                  "text": "diff --git a/kept.txt b/kept.txt",
+                  "no_newline": false
+                },
+                {
+                  "op": "add",
+                  "text": "--- a/kept.txt",
+                  "no_newline": false
+                },
+                {
+                  "op": "add",
+                  "text": "+++ b/kept.txt",
+                  "no_newline": false
+                },
+                {
+                  "op": "add",
+                  "text": "@@ -1 +1 @@",
+                  "no_newline": false
+                },
+                {
+                  "op": "add",
+                  "text": "-unchanged",
+                  "no_newline": false
+                },
+                {
+                  "op": "add",
+                  "text": "+changed by the patch",
+                  "no_newline": false
+                }
+              ]
+            }
+          ],
+          "truncated": false
+        },
+        "f3": {
+          "file_id": "f3",
+          "hunks": [
+            {
+              "old_start": 0,
+              "old_count": 0,
+              "new_start": 1,
+              "new_count": 5,
+              "lines": [
+                {
+                  "op": "add",
+                  "text": "# Guide",
+                  "no_newline": false
+                },
+                {
+                  "op": "add",
+                  "text": "",
+                  "no_newline": false
+                },
+                {
+                  "op": "add",
+                  "text": "One.",
+                  "no_newline": false
+                },
+                {
+                  "op": "add",
+                  "text": "Two.",
+                  "no_newline": false
+                },
+                {
+                  "op": "add",
+                  "text": "Three.",
+                  "no_newline": false
+                }
+              ]
+            }
+          ],
+          "truncated": false
+        },
+        "f4": {
+          "file_id": "f4",
+          "hunks": [
+            {
+              "old_start": 0,
+              "old_count": 0,
+              "new_start": 1,
+              "new_count": 1,
+              "lines": [
+                {
+                  "op": "add",
+                  "text": "gone soon",
+                  "no_newline": false
+                }
+              ]
+            }
+          ],
+          "truncated": false
+        },
+        "f5": {
+          "file_id": "f5",
+          "hunks": [
+            {
+              "old_start": 0,
+              "old_count": 0,
+              "new_start": 1,
+              "new_count": 1,
+              "lines": [
+                {
+                  "op": "add",
+                  "text": "unchanged",
+                  "no_newline": false
+                }
+              ]
+            }
+          ],
+          "truncated": false
+        },
+        "f6": {
+          "file_id": "f6",
+          "hunks": [
+            {
+              "old_start": 0,
+              "old_count": 0,
+              "new_start": 1,
+              "new_count": 1,
+              "lines": [
+                {
+                  "op": "add",
+                  "text": "a Latin-1 name",
+                  "no_newline": false
+                }
+              ]
+            }
+          ],
+          "truncated": false
+        },
+        "f7": {
+          "file_id": "f7",
+          "hunks": [
+            {
+              "old_start": 0,
+              "old_count": 0,
+              "new_start": 1,
+              "new_count": 1,
+              "lines": [
+                {
+                  "op": "add",
+                  "text": "README.md",
+                  "no_newline": true
+                }
+              ]
+            }
+          ],
+          "truncated": false
+        },
+        "f8": {
+          "file_id": "f8",
+          "hunks": [
+            {
+              "old_start": 0,
+              "old_count": 0,
+              "new_start": 1,
+              "new_count": 6,
+              "lines": [
+                {
+                  "op": "add",
+                  "text": "def old():",
+                  "no_newline": false
+                },
+                {
+                  "op": "add",
+                  "text": "    return 1",
+                  "no_newline": false
+                },
+                {
+                  "op": "add",
+                  "text": "",
+                  "no_newline": false
+                },
+                {
+                  "op": "add",
+                  "text": "",
+                  "no_newline": false
+                },
+                {
+                  "op": "add",
+                  "text": "def keep():",
+                  "no_newline": false
+                },
+                {
+                  "op": "add",
+                  "text": "    return 2",
+                  "no_newline": false
+                }
+              ]
+            }
+          ],
+          "truncated": false
+        },
+        "f9": {
+          "file_id": "f9",
+          "hunks": [
+            {
+              "old_start": 0,
+              "old_count": 0,
+              "new_start": 1,
+              "new_count": 1,
+              "lines": [
+                {
+                  "op": "add",
+                  "text": "Subproject commit aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "no_newline": false
+                }
+              ]
+            }
+          ],
+          "truncated": false
+        }
+      }
+    }
+  },
+  "pull": {
+    "status": 200,
+    "body": {
+      "schema": "file-diff-v1",
+      "schema_version": 1,
+      "resolved": {
+        "comparison_id": "git:314b52cd65f62d3a",
+        "source": {
+          "name": "git"
+        },
+        "kind": "content",
+        "base_policy": "merge_base",
+        "left": {
+          "kind": "commit",
+          "id": "a5232ab93056074aa3dd87c7b3c28ca84081a6a0",
+          "symbolic": "0dcf612c09184fad5b83f7c80e65dd3a6fb48e99"
+        },
+        "right": {
+          "kind": "commit",
+          "id": "6ac4c8b5eb94eecbdb621d629b31066f050c75f1",
+          "symbolic": "6ac4c8b5eb94eecbdb621d629b31066f050c75f1"
+        },
+        "options": {
+          "context": 3,
+          "rename_detection": true,
+          "rename_similarity": 50
+        },
+        "warnings": []
+      },
+      "manifest": {
+        "files": [
+          {
+            "id": "f1",
+            "kind": "modified",
+            "old": {
+              "path": "README.md",
+              "entry_type": "file",
+              "mode": "100644",
+              "content": {
+                "kind": "git_object",
+                "oid": "11ef693690b79c92f3bc49c28af42395e7c5e131"
+              }
+            },
+            "new": {
+              "path": "README.md",
+              "entry_type": "file",
+              "mode": "100644",
+              "content": {
+                "kind": "git_object",
+                "oid": "fd873d671e05f4044eba6e6caa29844caf26971f"
+              }
+            },
+            "binary": false,
+            "availability": "ready",
+            "additions": 2,
+            "deletions": 1
+          },
+          {
+            "id": "f2",
+            "kind": "added",
+            "new": {
+              "path": "added.txt",
+              "entry_type": "file",
+              "mode": "100644",
+              "content": {
+                "kind": "git_object",
+                "oid": "fa49b077972391ad58037050f2a75f74e3671e92"
+              }
+            },
+            "binary": false,
+            "availability": "ready",
+            "additions": 1,
+            "deletions": 0
+          },
+          {
+            "id": "f3",
+            "kind": "deleted",
+            "old": {
+              "path": "gone.txt",
+              "entry_type": "file",
+              "mode": "100644",
+              "content": {
+                "kind": "git_object",
+                "oid": "3d3f93392e84a20160817a9c597490e4753c4420"
+              }
+            },
+            "binary": false,
+            "availability": "ready",
+            "additions": 0,
+            "deletions": 1
+          },
+          {
+            "id": "f4",
+            "kind": "modified",
+            "old": {
+              "path": "latin1-�.txt",
+              "path_b64": "bGF0aW4xLekudHh0",
+              "entry_type": "file",
+              "mode": "100644",
+              "content": {
+                "kind": "git_object",
+                "oid": "117429733fa72e52444bf313a05756fc321b9d9b"
+              }
+            },
+            "new": {
+              "path": "latin1-�.txt",
+              "path_b64": "bGF0aW4xLekudHh0",
+              "entry_type": "file",
+              "mode": "100644",
+              "content": {
+                "kind": "git_object",
+                "oid": "55aa3f973017187f9a4068311ea98c137af4dd5a"
+              }
+            },
+            "binary": false,
+            "availability": "ready",
+            "additions": 1,
+            "deletions": 1
+          },
+          {
+            "id": "f5",
+            "kind": "modified",
+            "old": {
+              "path": "link",
+              "entry_type": "symlink",
+              "mode": "120000",
+              "content": {
+                "kind": "git_object",
+                "oid": "42061c01a1c70097d1e4579f29a5adf40abdec95"
+              }
+            },
+            "new": {
+              "path": "link",
+              "entry_type": "symlink",
+              "mode": "120000",
+              "content": {
+                "kind": "git_object",
+                "oid": "eafc2aac7162cad4e1f335fab78ae18b297e49cc"
+              }
+            },
+            "binary": false,
+            "availability": "ready",
+            "additions": 1,
+            "deletions": 1
+          },
+          {
+            "id": "f6",
+            "kind": "renamed",
+            "old": {
+              "path": "src/old_name.py",
+              "entry_type": "file",
+              "mode": "100644",
+              "content": {
+                "kind": "git_object",
+                "oid": "78495b268f6b1ac51adbd86a48d867cb876d18f6"
+              }
+            },
+            "new": {
+              "path": "src/new_name.py",
+              "entry_type": "file",
+              "mode": "100644",
+              "content": {
+                "kind": "git_object",
+                "oid": "78495b268f6b1ac51adbd86a48d867cb876d18f6"
+              }
+            },
+            "similarity": 100,
+            "binary": false,
+            "availability": "ready",
+            "additions": 0,
+            "deletions": 0
+          },
+          {
+            "id": "f7",
+            "kind": "modified",
+            "old": {
+              "path": "vendor/lib",
+              "entry_type": "submodule",
+              "mode": "160000",
+              "content": {
+                "kind": "git_object",
+                "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              }
+            },
+            "new": {
+              "path": "vendor/lib",
+              "entry_type": "submodule",
+              "mode": "160000",
+              "content": {
+                "kind": "git_object",
+                "oid": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+              }
+            },
+            "binary": false,
+            "availability": "ready",
+            "additions": 1,
+            "deletions": 1
+          }
+        ],
+        "totals": {
+          "files": 7,
+          "additions": 6,
+          "deletions": 5,
+          "exact": true
+        },
+        "truncated": false
+      },
+      "patches": {
+        "f1": {
+          "file_id": "f1",
+          "hunks": [
+            {
+              "old_start": 1,
+              "old_count": 3,
+              "new_start": 1,
+              "new_count": 4,
+              "lines": [
+                {
+                  "op": "context",
+                  "text": "# Changes",
+                  "no_newline": false
+                },
+                {
+                  "op": "context",
+                  "text": "",
+                  "no_newline": false
+                },
+                {
+                  "op": "del",
+                  "text": "First line.",
+                  "no_newline": false
+                },
+                {
+                  "op": "add",
+                  "text": "First line, changed.",
+                  "no_newline": false
+                },
+                {
+                  "op": "add",
+                  "text": "Second line.",
+                  "no_newline": false
+                }
+              ]
+            }
+          ],
+          "truncated": false
+        },
+        "f2": {
+          "file_id": "f2",
+          "hunks": [
+            {
+              "old_start": 0,
+              "old_count": 0,
+              "new_start": 1,
+              "new_count": 1,
+              "lines": [
+                {
+                  "op": "add",
+                  "text": "new file",
+                  "no_newline": false
+                }
+              ]
+            }
+          ],
+          "truncated": false
+        },
+        "f3": {
+          "file_id": "f3",
+          "hunks": [
+            {
+              "old_start": 1,
+              "old_count": 1,
+              "new_start": 0,
+              "new_count": 0,
+              "lines": [
+                {
+                  "op": "del",
+                  "text": "gone soon",
+                  "no_newline": false
+                }
+              ]
+            }
+          ],
+          "truncated": false
+        },
+        "f4": {
+          "file_id": "f4",
+          "hunks": [
+            {
+              "old_start": 1,
+              "old_count": 1,
+              "new_start": 1,
+              "new_count": 1,
+              "lines": [
+                {
+                  "op": "del",
+                  "text": "a Latin-1 name",
+                  "no_newline": false
+                },
+                {
+                  "op": "add",
+                  "text": "a Latin-1 name, edited",
+                  "no_newline": false
+                }
+              ]
+            }
+          ],
+          "truncated": false
+        },
+        "f5": {
+          "file_id": "f5",
+          "hunks": [
+            {
+              "old_start": 1,
+              "old_count": 1,
+              "new_start": 1,
+              "new_count": 1,
+              "lines": [
+                {
+                  "op": "del",
+                  "text": "README.md",
+                  "no_newline": true
+                },
+                {
+                  "op": "add",
+                  "text": "docs/guide.md",
+                  "no_newline": true
+                }
+              ]
+            }
+          ],
+          "truncated": false
+        },
+        "f6": {
+          "file_id": "f6",
+          "hunks": [],
+          "truncated": false
+        },
+        "f7": {
+          "file_id": "f7",
+          "hunks": [
+            {
+              "old_start": 1,
+              "old_count": 1,
+              "new_start": 1,
+              "new_count": 1,
+              "lines": [
+                {
+                  "op": "del",
+                  "text": "Subproject commit aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "no_newline": false
+                },
+                {
+                  "op": "add",
+                  "text": "Subproject commit bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                  "no_newline": false
+                }
+              ]
+            }
+          ],
+          "truncated": false
+        }
+      }
+    }
+  },
+  "patch": {
+    "status": 200,
+    "body": {
+      "schema": "file-diff-v1",
+      "schema_version": 1,
+      "resolved": {
+        "comparison_id": "patch:4f7d86f0dd233293",
+        "source": {
+          "name": "patch"
+        },
+        "kind": "content",
+        "base_policy": "direct",
+        "left": {
+          "kind": "patch"
+        },
+        "right": {
+          "kind": "patch"
+        },
+        "options": {
+          "context": 3,
+          "rename_detection": true
+        },
+        "warnings": []
+      },
+      "manifest": {
+        "files": [
+          {
+            "id": "f1",
+            "kind": "modified",
+            "old": {
+              "path": "kept.txt",
+              "entry_type": "file",
+              "mode": "100644",
+              "content": {
+                "kind": "empty"
+              }
+            },
+            "new": {
+              "path": "kept.txt",
+              "entry_type": "file",
+              "mode": "100644",
+              "content": {
+                "kind": "empty"
+              }
+            },
+            "binary": false,
+            "availability": "ready",
+            "additions": 1,
+            "deletions": 1
+          }
+        ],
+        "totals": {
+          "files": 1,
+          "additions": 1,
+          "deletions": 1,
+          "exact": true
+        },
+        "truncated": false
+      },
+      "patches": {
+        "f1": {
+          "file_id": "f1",
+          "hunks": [
+            {
+              "old_start": 1,
+              "old_count": 1,
+              "new_start": 1,
+              "new_count": 1,
+              "lines": [
+                {
+                  "op": "del",
+                  "text": "unchanged",
+                  "no_newline": false
+                },
+                {
+                  "op": "add",
+                  "text": "changed by the patch",
+                  "no_newline": false
+                }
+              ]
+            }
+          ],
+          "truncated": false
+        }
+      }
+    }
+  },
+  "switch_parent": {
+    "request": {
+      "oid": "a5232ab93056074aa3dd87c7b3c28ca84081a6a0",
+      "view": "/view/g1-c3Jj/g1-b2xkX25hbWUucHk"
+    },
+    "status": 200,
+    "body": {
+      "changed": true,
+      "status": {
+        "subject": "git_revision",
+        "generation": 2,
+        "pin": "a5232ab93056074aa3dd87c7b3c28ca84081a6a0",
+        "ref": null,
+        "ref_name": null,
+        "refreshable": true,
+        "latest": null,
+        "ref_on_origin": null,
+        "last_fetch_at": "2026-09-17T12:00:05Z",
+        "last_outcome": {
+          "operation": "acquire",
+          "outcome": "succeeded",
+          "at": "2026-09-17T12:00:05Z"
+        },
+        "refreshing": false,
+        "stale": true,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      },
+      "view_href": "/view/g1-c3Jj/g1-b2xkX25hbWUucHk"
+    }
+  },
+  "page_at_parent": {
+    "pin": "a5232ab93056074aa3dd87c7b3c28ca84081a6a0",
+    "ref": null
+  },
+  "switch_gone": {
+    "request": {
+      "oid": "a5232ab93056074aa3dd87c7b3c28ca84081a6a0",
+      "view": "/view/g1-Z29uZS50eHQ"
+    },
+    "status": 200,
+    "body": {
+      "changed": false,
+      "status": {
+        "subject": "git_revision",
+        "generation": 2,
+        "pin": "a5232ab93056074aa3dd87c7b3c28ca84081a6a0",
+        "ref": null,
+        "ref_name": null,
+        "refreshable": true,
+        "latest": null,
+        "ref_on_origin": null,
+        "last_fetch_at": "2026-09-17T12:00:05Z",
+        "last_outcome": {
+          "operation": "acquire",
+          "outcome": "succeeded",
+          "at": "2026-09-17T12:00:05Z"
+        },
+        "refreshing": false,
+        "stale": true,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      },
+      "view_href": "/view/g1-Z29uZS50eHQ"
+    }
+  },
+  "switch_head": {
+    "request": {
+      "oid": "6ac4c8b5eb94eecbdb621d629b31066f050c75f1",
+      "view": "/view/g1-c3Jj/g1-bmV3X25hbWUucHk"
+    },
+    "status": 200,
+    "body": {
+      "changed": true,
+      "status": {
+        "subject": "git_revision",
+        "generation": 3,
+        "pin": "6ac4c8b5eb94eecbdb621d629b31066f050c75f1",
+        "ref": "refs/remotes/origin/trunk",
+        "ref_name": "trunk",
+        "refreshable": true,
+        "latest": "6ac4c8b5eb94eecbdb621d629b31066f050c75f1",
+        "ref_on_origin": true,
+        "last_fetch_at": "2026-09-17T12:00:05Z",
+        "last_outcome": {
+          "operation": "acquire",
+          "outcome": "succeeded",
+          "at": "2026-09-17T12:00:05Z"
+        },
+        "refreshing": false,
+        "stale": true,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      },
+      "view_href": "/view/g1-c3Jj/g1-bmV3X25hbWUucHk"
+    }
+  },
+  "other_pending": {
+    "request": {
+      "oid": "a5232ab93056074aa3dd87c7b3c28ca84081a6a0",
+      "view": "/view/g1-UkVBRE1FLm1k"
+    },
+    "status": 202,
+    "body": {
+      "error": "the mirror is fetching from its origin; ask again when it finishes",
+      "code": "selection_pending",
+      "refresh": "started",
+      "status": {
+        "subject": "git_revision",
+        "generation": 1,
+        "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+        "ref": "refs/remotes/origin/topic",
+        "ref_name": "topic",
+        "refreshable": true,
+        "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+        "ref_on_origin": true,
+        "last_fetch_at": "2026-09-23T12:00:00Z",
+        "last_outcome": {
+          "operation": "refresh",
+          "outcome": "succeeded",
+          "at": "2026-09-23T12:00:00Z"
+        },
+        "refreshing": true,
+        "stale": false,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      }
+    }
+  },
+  "other_not_found": {
+    "request": {
+      "oid": "a5232ab93056074aa3dd87c7b3c28ca84081a6a0",
+      "view": "/view/g1-UkVBRE1FLm1k"
+    },
+    "status": 404,
+    "body": {
+      "error": "no commit with that ID is in the mirror",
+      "code": "selection_not_found"
+    }
+  },
+  "other_fetch_failed": {
+    "request": {
+      "oid": "a5232ab93056074aa3dd87c7b3c28ca84081a6a0",
+      "view": "/view/g1-UkVBRE1FLm1k"
+    },
+    "status": 502,
+    "body": {
+      "error": "the mirror could not fetch from its origin (origin_unavailable); ask again to try again",
+      "code": "selection_fetch_failed"
+    }
+  },
+  "folder_page": null,
+  "folder_refused": {
+    "request": {
+      "oid": "a5232ab93056074aa3dd87c7b3c28ca84081a6a0",
+      "view": "/view/g1-UkVBRE1FLm1k"
+    },
+    "status": 409,
+    "body": {
+      "error": "source does not support pin",
+      "code": "unsupported_for_subject",
+      "capability": "pin"
+    }
+  }
+}

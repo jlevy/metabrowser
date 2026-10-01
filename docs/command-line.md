@@ -27,6 +27,30 @@ effect of serving them, `--show`, `--api`, or `--check-api`; ssh stays closed.
 `--show`, `--api`, and `--check-api` inspect that pin in-process without binding a port.
 Acquired content always runs under the untrusted profile.
 A bare filesystem path is never treated as a clone origin.
+
+Two rules decide between the readings, in this order:
+
+1. An argument that starts with `scheme://` is always a source, whatever exists on disk.
+   No path needs that spelling — the system reads `https://host/x` as the path
+   `https:/host/x` — so a pasted URL opens the same thing in every working directory,
+   and a local folder cannot stand in, under the local trust profile, for the repository
+   a URL names. Write the path with one slash, or as `./https://host/x`, to serve such a
+   folder.
+2. Any other argument that names an existing path is that path.
+   A folder called `file:notes`, `a::b`, `me@host:dir`, or `https:x` is served, a file
+   is opened, and a symbolic link is followed, as for any other name.
+   Only an argument that names nothing on disk is read as an scp-like address or refused
+   as a malformed URL or remote-helper syntax.
+   This covers an scp-like address: `git@github.com:o/r` names the folder `r` inside
+   `git@github.com:o` when the working directory has one, and the GitHub repository only
+   when it does not. Write `https://github.com/o/r` to open the repository whatever the
+   directory holds.
+
+A path that exists but that the process may not read is a usage error
+(`Path 'x' is not readable.`, exit status 2), not a tree that serves as empty.
+An empty argument is refused as `invalid ROOT (empty)`; write `.` for the current
+directory.
+
 With no mode flag, `metab ROOT` starts the server and opens a browser, the way `open`
 opens a folder on macOS.
 
@@ -72,9 +96,12 @@ The server binds `127.0.0.1:8411` by default and walks a bounded port range if t
 is taken.
 Do not change `--host` to expose a served root to an untrusted network; see the
 [security policy](../SECURITY.md).
-`--untrusted` (`METAB_UNTRUSTED=1`) is the conservative content-trust profile: it
-disables script execution on `/raw` and keeps mutations off.
-`--no-active-content` (`METAB_ACTIVE_CONTENT=0`) is the individual switch for scripts.
+`--untrusted` (`METAB_UNTRUSTED=1`) is the conservative content-trust profile: it turns
+active content off and keeps mutations off.
+`--no-active-content` (`METAB_ACTIVE_CONTENT=0`) is the individual switch for active
+content. With it off, Markdown renders as an allowlist of inert markup, the page carries
+a strict Content-Security-Policy, and `/raw` omits `allow-scripts` from its sandbox; the
+[security policy](../SECURITY.md) has the details.
 `--allow-edits` (`METAB_ALLOW_EDITS=1`) publishes the mutations capability; no write
 route consumes it yet.
 A flag beats the environment, so `--untrusted` stays conservative whatever the `METAB_*`
@@ -125,6 +152,13 @@ branch again, as its banner says.
 A branch or tag deleted upstream leaves the mirror, but no commit does, so an older pin
 stays readable after a force-push.
 If the origin is gone the row says the refresh failed and the pin keeps serving.
+A `/commit/<id>` address for a commit the mirror does not have is fetched for only when
+the mirror is older than the one-minute freshness window: the page says it is fetching,
+then opens the commit, says the commit was not found when the fetch ran without bringing
+it, or says it was not fetched, with the reason, when the fetch could not run.
+On a mirror fetched inside the window nothing is fetched, because a link in a served
+page can lead to any such address; the page says the commit is not in the mirror as
+fetched. Either way **Retry** fetches.
 
 A served pin always runs under the untrusted profile: `--untrusted` is implied, the
 `METAB_*` enables are ignored, and `--allow-edits` is an error.
@@ -135,11 +169,15 @@ cached sources is served beside it; inspect the cache with
 
 `/api/source/status` reports the pinned commit and ref and the mirror’s freshness.
 `POST /api/source/refresh` starts a refresh, or joins the running one, and answers at
-once. `POST /api/source/pin` switches the served commit to a branch, a tag, or a commit
-ID in the mirror, with a JSON body such as `{"ref": "feature"}` or `{"oid": "3f2a9c1"}`.
-In a server, one the mirror lacks answers `202` with `selection_pending` and fetches
-once; asked again after that fetch, it switches or answers `404`. `--api` never fetches
-for it and answers `404` at once.
+once.
+With the body `{"for": "commit"}` it is the fetch a missing commit waits for, which
+starts a fetch of the mirror only outside the freshness window and otherwise answers
+`fresh`; adding `"retry": true` always fetches.
+`POST /api/source/pin` switches the served commit to a branch, a tag, or a commit ID in
+the mirror, with a JSON body such as `{"ref": "feature"}` or `{"oid": "3f2a9c1"}`. In a
+server, one the mirror lacks answers `202` with `selection_pending` and fetches once;
+asked again after that fetch, it switches or answers `404`. `--api` never fetches for it
+and answers `404` at once.
 A pin request may also name the page’s address, as in
 `{"ref": "feature", "view": "/view/…"}`; the answer’s `view_href` is then that address
 when the new revision has the entry, or `/view/` when it does not.
@@ -322,10 +360,14 @@ source, and none changes another source already in the cache.
   clone it fully first.
   An https origin names why, in parentheses: `not_found_or_private`,
   `network_unreachable`, `connection_interrupted`, `tls_failed`, `timed_out`,
-  `server_error`, `rate_limited`, `proxy_auth_required`, or `too_large`. `timed_out`
-  means the origin gave no answer to its first request within 30 seconds, or a transfer
-  moved less than 1000 bytes per second for 30 seconds; a clone that keeps making
-  progress is never stopped for taking long, only at the 900-second acquisition
+  `server_error`, `rate_limited`, `proxy_auth_required`, or `too_large`.
+  `not_found_or_private` means the origin did not show the repository: it does not
+  exist, or it is private and the request, anonymous or with the account `gh` answered
+  with, could not read it.
+  The origin does not say which, so neither does the message.
+  `timed_out` means the origin gave no answer to its first request within 30 seconds, or
+  a transfer moved less than 1000 bytes per second for 30 seconds; a clone that keeps
+  making progress is never stopped for taking long, only at the 900-second acquisition
   deadline.
 - **A repository whose branch or tag names differ only in letter case** (`Feature` and
   `feature`) is refused as `ref_case_collision` on a case-insensitive filesystem, such

@@ -25,6 +25,8 @@ The canonical command is ``metab``; ``metabrowser`` is an alias.
 
 from __future__ import annotations
 
+import os
+import re
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, TextIO, cast
@@ -293,6 +295,54 @@ def _is_plain_local_root(value: str) -> bool:
     return at <= 0 or "/" in value[:at] or ":" not in value[at + 1 :]
 
 
+# A scheme followed by ``//``, the one spelling that is always a source string. It is
+# ``_SCHEME`` in ``cache/urls.py``, repeated because ordinary local browsing must not
+# import that module; ``test_explicit_url_pattern_matches_the_grammar`` pins the pair.
+_EXPLICIT_URL = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
+
+
+def _names_existing_path(value: str) -> bool:
+    """Return True when *value* is served as the existing local path it names.
+
+    The rule for ROOT, in order:
+
+    1. An argument that starts with ``scheme://`` is a source string, whatever exists
+       on disk. No shell or file manager spells a path that way: the path it would
+       name is ``scheme:/rest``, with one slash, and that spelling or ``./scheme://rest``
+       reaches it. So a pasted URL opens the same thing in every working directory,
+       and a folder cannot stand in, under the local trust profile, for the repository
+       a URL names.
+    2. Any other argument that names an existing filesystem entry is that path, as it
+       was before ROOT was classified: a folder called ``file:notes``, ``a::b``,
+       ``me@host:dir``, or ``https:x`` is served, a file is opened, and a symbolic
+       link is followed. A dangling link counts, so it gets the local path's error
+       rather than a refusal that describes a URL.
+    3. Everything else is classified by the grammar, so an scp-like address, a
+       malformed URL, or remote-helper syntax that names nothing on disk is refused
+       or acquired exactly as the grammar says.
+    """
+    if value == "" or _EXPLICIT_URL.match(value) is not None:
+        return False
+    return os.path.lexists(value)
+
+
+def _local_root(ctx: typer.Context, value: str) -> Path:
+    """The local path *value* names, refused when it exists and cannot be read.
+
+    While ROOT was a path argument, Click made this check: an entry the process may not
+    read was a usage error, not a tree that walks or serves as empty. A path that does
+    not exist passes, and the mode it reaches says so.
+    """
+    try:
+        os.stat(value)
+    except (OSError, ValueError):
+        return Path(value)
+    if not os.access(value, os.R_OK):
+        param = next((param for param in ctx.command.params if param.name == "root"), None)
+        raise typer.BadParameter(f"Path {value!r} is not readable.", ctx=ctx, param=param)
+    return Path(value)
+
+
 def _classified_root(ctx: typer.Context, root: str | None, mode: str) -> Path | GitSource:
     """Return a local path or a classified Git source, or fail the invocation."""
     if root is None:
@@ -307,14 +357,14 @@ def _classified_root(ctx: typer.Context, root: str | None, mode: str) -> Path | 
         hint = hints.get(mode, "pass the required root")
         ctx.fail(f"ROOT is required for {_MODE_LABELS[mode]}; {hint}")
     assert root is not None
-    if _is_plain_local_root(root):
-        return Path(root)
+    if _is_plain_local_root(root) or _names_existing_path(root):
+        return _local_root(ctx, root)
     from metabrowser.cache.providers import url_reducers
     from metabrowser.cache.urls import LocalPath, RejectedRoot, classify_root_argument
 
     classified = classify_root_argument(root, reducers=url_reducers())
     if isinstance(classified, LocalPath):
-        return Path(classified.value)
+        return _local_root(ctx, classified.value)
     if isinstance(classified, RejectedRoot):
         detail = f": {classified.detail}" if classified.detail else ""
         raise CLIError(f"invalid ROOT ({classified.reason}){detail}")
@@ -521,8 +571,8 @@ def _metab(
     untrusted: bool = typer.Option(
         False,
         "--untrusted",
-        help="Conservative content-trust profile: disable active content on "
-        "/raw (drop allow-scripts) and keep mutations off. Individual flags "
+        help="Conservative content-trust profile: turn active content off, as "
+        "--no-active-content does, and keep mutations off. Individual flags "
         "override it. Env: METAB_UNTRUSTED=1. Applies when serving and to "
         "--api, --show, and --check-api.",
         rich_help_panel=_PANEL_SHARED,
@@ -530,7 +580,8 @@ def _metab(
     no_active_content: bool = typer.Option(
         False,
         "--no-active-content",
-        help="Disable script execution on content surfaces: /raw omits "
+        help="Turn active content off: Markdown renders as inert markup, the "
+        "page carries a strict Content-Security-Policy, and /raw omits "
         "allow-scripts from its sandbox. Env: METAB_ACTIVE_CONTENT=0. "
         "Applies when serving and to --api, --show, and --check-api.",
         rich_help_panel=_PANEL_SHARED,

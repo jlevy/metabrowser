@@ -258,7 +258,12 @@ async def api_git_commit(request: Request) -> JSONResponse:
         return _git_failure_response(exc)
 
     if detail is None:
-        return JSONResponse({"error": "unknown revision"}, status_code=404)
+        # Typed, so the browser can tell a commit the repository does not have, which a
+        # mirror's next fetch may bring, from a request that failed. This route never
+        # fetches: a GET starts no network work.
+        return JSONResponse(
+            {"error": "unknown revision", "code": "commit_not_found"}, status_code=404
+        )
 
     return JSONResponse(dict(detail))
 

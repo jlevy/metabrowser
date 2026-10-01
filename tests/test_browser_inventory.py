@@ -34,7 +34,6 @@ import asyncio
 import logging
 from dataclasses import replace
 from pathlib import Path
-from time import monotonic, sleep
 from typing import Any
 
 import pytest
@@ -64,9 +63,13 @@ from metabrowser.walker import depth_of as _depth_of
 from metabrowser.walker import walk_tree
 
 
-class _SlowValuesEntries(dict[str, FsEntry]):
+class _CountingValuesEntries(dict[str, FsEntry]):
+    """Counts full scans: ``values()`` is how a caller visits every entry."""
+
+    values_calls = 0
+
     def values(self) -> Any:
-        sleep(0.1)
+        self.values_calls += 1
         return super().values()
 
 
@@ -1049,23 +1052,16 @@ def test_inventory_pending_repair_does_not_scan_all_entries_on_event_loop() -> N
         active=False,
     )
     assert _apply_entries(inv, [root, child]) == 2
-    inv._entries = _SlowValuesEntries(inv._entries)
+    assert inv._entries[""].total_files is None, "the root must be pending for the repair"
+    entries = _CountingValuesEntries(inv._entries)
+    inv._entries = entries
 
-    async def _run() -> float:
-        ticked_at = 0.0
+    inv._repair_pending_dir_aggregates()
 
-        async def _tick() -> None:
-            nonlocal ticked_at
-            await asyncio.sleep(0.01)
-            ticked_at = monotonic()
-
-        started_at = monotonic()
-        ticker = asyncio.create_task(_tick())
-        inv._repair_pending_dir_aggregates()
-        await ticker
-        return ticked_at - started_at
-
-    assert asyncio.run(_run()) < 0.05
+    # Counted, not timed: a bound on elapsed time fails on a loaded machine and passes
+    # for a scan that happens to be quick.
+    assert entries.values_calls == 0
+    assert inv._entries[""].total_files == 1
 
 
 def test_inventory_pending_repair_failure_surfaces_failed_status(tmp_path: Path) -> None:

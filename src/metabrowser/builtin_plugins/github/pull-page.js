@@ -889,22 +889,13 @@ export function createPullController(deps, options) {
 
 /**
  * The GitPath wire of a slash-separated repository path, as `/view/` addresses a file
- * on a pinned revision: `g1-` and the unpadded base64url of each segment's UTF-8.
+ * on a pinned revision, by the route codec's encoder. A path that is not one a tree
+ * entry has (an empty segment) has no wire and addresses the root.
  *
  * @param {string} path
  */
 export function gitPathWire(path) {
-  return path
-    .split("/")
-    .filter((segment) => segment !== "")
-    .map((segment) => {
-      let binary = "";
-      for (const byte of new TextEncoder().encode(segment)) {
-        binary += String.fromCharCode(byte);
-      }
-      return `g1-${btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "")}`;
-    })
-    .join("/");
+  return window.MetabrowserNavigationRoute.gitPathWire(path) ?? "";
 }
 
 /**

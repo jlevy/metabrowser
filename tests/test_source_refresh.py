@@ -452,6 +452,43 @@ def test_pin_selections_resolve_in_the_mirror_and_refusals_are_typed(
     assert served.get("/api/source/status").json()["pin"] == origin.first
 
 
+def test_a_commit_id_at_the_tip_of_the_ref_last_served_keeps_the_ref(
+    served: TestClient, origin: _Origin
+) -> None:
+    """A switch by commit ID to another commit and back stays on the ref it left.
+
+    View file on a diff switches by commit ID. Without this the way back to the branch
+    tip left the server on no ref: the selector read "Commit: …" and freshness stopped
+    following the branch.
+    """
+
+    topic = "refs/remotes/origin/topic"
+    # The tip of the ref served is what is served already.
+    same = _post(served, "/api/source/pin", {"oid": origin.second}).json()
+    assert (same["changed"], same["status"]["ref"]) == (False, topic)
+    away = _post(served, "/api/source/pin", {"oid": origin.first}).json()
+    assert (away["changed"], away["status"]["pin"], away["status"]["ref"]) == (
+        True,
+        origin.first,
+        None,
+    )
+    back = _post(served, "/api/source/pin", {"oid": origin.second[:12]}).json()["status"]
+    assert (back["pin"], back["ref"], back["ref_name"]) == (origin.second, topic, "topic")
+    # Freshness follows the ref again.
+    assert (back["latest"], back["ref_on_origin"]) == (origin.second, True)
+    # A commit that is not the tip of the ref last served has no ref, as before.
+    again = _post(served, "/api/source/pin", {"oid": origin.first}).json()["status"]
+    assert again["ref"] is None
+    # After the branch moves in the mirror, its old tip is only a commit.
+    newer = _push_commit(origin, "later.txt", "later\n", "third")
+    assert _post(served, "/api/source/refresh").status_code == 202
+    _settle(served)
+    old_tip = _post(served, "/api/source/pin", {"oid": origin.second}).json()["status"]
+    assert (old_tip["pin"], old_tip["ref"]) == (origin.second, None)
+    tip = _post(served, "/api/source/pin", {"oid": newer}).json()["status"]
+    assert (tip["pin"], tip["ref"]) == (newer, topic)
+
+
 def test_a_branch_pushed_after_serving_began_is_fetched_once_and_served(
     served: TestClient, origin: _Origin
 ) -> None:
@@ -556,6 +593,47 @@ def test_a_same_origin_page_may_post(served: TestClient) -> None:
     _settle(served)
 
 
+def test_a_commit_fetch_inside_the_window_starts_nothing_until_a_retry(
+    served: TestClient,
+) -> None:
+    """The route enforces the floor itself: a page's own request for a missing commit's
+    fetch is answered ``fresh`` on a mirror fetched inside the window, whatever the page
+    decided, and only a retry fetches."""
+
+    fresh = _post(served, "/api/source/refresh", {"for": "commit"})
+    assert fresh.status_code == 200
+    assert fresh.json()["refresh"] == "fresh"
+    assert fresh.json()["status"]["refreshing"] is False
+    assert served.get("/api/source/status").json()["last_outcome"]["operation"] == "acquire"
+
+    retried = _post(served, "/api/source/refresh", {"for": "commit", "retry": True})
+    assert retried.status_code == 202
+    assert retried.json()["refresh"] == "started"
+    assert _settle(served)["last_outcome"] == {
+        "operation": "refresh",
+        "outcome": "succeeded",
+        "at": served.get("/api/source/status").json()["last_fetch_at"],
+    }
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"for": "branch"},
+        {"retry": True},
+        {"for": "commit", "retry": "yes"},
+        {"for": "commit", "oid": "0" * 40},
+    ],
+)
+def test_a_malformed_refresh_request_is_refused_and_starts_nothing(
+    served: TestClient, body: dict[str, Any]
+) -> None:
+    refused = _post(served, "/api/source/refresh", body)
+    assert refused.status_code == 400
+    assert refused.json()["code"] == "invalid_request"
+    assert served.get("/api/source/status").json()["refreshing"] is False
+
+
 # ── The coordinator ──────────────────────────────────────────────────
 
 
@@ -599,7 +677,9 @@ class _BusyMirror:
     def __init__(self, at: str) -> None:
         self.at = at
 
-    async def open_selection(self, *, ref: str | None, oid: str | None) -> GitRevisionSubject:
+    async def open_selection(
+        self, *, ref: str | None, oid: str | None, keep_refs: tuple[str, ...] = ()
+    ) -> GitRevisionSubject:
         raise AssertionError("not reached")
 
     async def refresh(self) -> RefreshResult:

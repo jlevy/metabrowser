@@ -10,6 +10,14 @@
 // When the server serves another pin than the one the page was rendered for -- another
 // tab switched it, or a data request came back `pin_changed` -- it offers a reload.
 //
+// A commit the mirror lacks is an address not fetched too. The commit view hands it to
+// `openMissingCommit`, which asks through the page's controller for the fetch such a
+// commit waits for, waits for it to end, and then opens the commit or says, in the
+// row's own words, that the origin did not have it or that the fetch could not run. A
+// link in served content can send a reader to any commit's address, so a page asks for
+// that fetch by itself only when something is older than the server's freshness window;
+// inside it the view says the commit is not in the mirror as fetched, and offers Retry.
+//
 // Every decision lives here without a DOM: `describe` turns a status into what the
 // label says and offers, and `createController` owns polling, visibility, and the
 // two POST actions through injected dependencies. `mount` is the browser glue that
@@ -34,8 +42,7 @@
   const OUTCOME_DETAIL = Object.freeze({
     origin_unavailable: "The origin could not be read.",
     fetch_failed: "The fetch from the origin failed.",
-    not_found_or_private:
-      "The origin says the repository does not exist, or it is private and the credentials offered do not open it.",
+    not_found_or_private: "The repository was not found, or it is private and could not be read.",
     network_unreachable: "The origin's host could not be reached.",
     connection_interrupted: "The connection to the origin was interrupted.",
     tls_failed: "The secure connection to the origin failed.",
@@ -185,6 +192,157 @@
     return { visible: true, tone, label, detail, offer, error, pull };
   }
 
+  // What the commit view says about a commit the mirror lacks. The states are the ones a
+  // URL selection passes through, named for a commit instead of the page's address.
+  /** @type {Readonly<Record<"pending" | "not_found" | "fetch_failed" | "no_mirror", string>>} */
+  const MISSING_COMMIT_DETAIL = Object.freeze({
+    pending: "This commit is not in the mirror yet; it opens when the fetch brings it.",
+    not_found:
+      "This commit is not in the mirror, and the fetch from the origin did not bring it: no branch or tag there reaches it.",
+    fetch_failed: "This commit is not in the mirror, and it could not be fetched.",
+    no_mirror: "This commit is not in the repository.",
+  });
+
+  /**
+   * What the commit view says and offers for a commit the mirror lacks. Pure.
+   *
+   * While a fetch it waits for runs, *page.phase* is `"fetching"`. Afterwards *status*
+   * is the status then, *page.error* why the fetch could not be asked for or followed,
+   * and *page.fetched* whether a fetch of the mirror's branches and tags ran for this
+   * commit. Only then does the view say the origin does not offer it. When none ran --
+   * the mirror was fetched inside the freshness window, or only the data beside it was
+   * refreshed -- the view says only that the commit is not in the mirror as fetched.
+   *
+   * @param {MetabrowserSourceStatus | null} status
+   * @param {{phase: "fetching" | "ended", nowMs: number, error?: string | null, fetched?: boolean}} page
+   * @returns {MetabrowserMissingCommitModel}
+   */
+  function describeMissingCommit(status, page) {
+    if (page.phase === "fetching") {
+      return {
+        state: "pending",
+        title: "Fetching this commit…",
+        detail: MISSING_COMMIT_DETAIL.pending,
+        retry: false,
+      };
+    }
+    const error = page.error ?? null;
+    if (status === null) {
+      return {
+        state: "fetch_failed",
+        title: "Commit not fetched",
+        detail: `${MISSING_COMMIT_DETAIL.fetch_failed} ${error ?? "The server did not answer"}.`,
+        retry: true,
+      };
+    }
+    if (status.subject !== "git_revision" || !status.refreshable) {
+      return {
+        state: "not_found",
+        title: "Commit not found",
+        detail: MISSING_COMMIT_DETAIL.no_mirror,
+        retry: false,
+      };
+    }
+    const age = relativeAge(status.last_fetch_at, page.nowMs);
+    if (error !== null) {
+      return {
+        state: "fetch_failed",
+        title: `Commit not fetched · fetched ${age}`,
+        detail: `${MISSING_COMMIT_DETAIL.fetch_failed} ${error}.`,
+        retry: true,
+      };
+    }
+    if (page.fetched !== true) {
+      return {
+        state: "not_found",
+        title: `Commit not found · fetched ${age}`,
+        detail: `This commit is not in the mirror as fetched ${age}.`,
+        retry: true,
+      };
+    }
+    const outcome = status.last_outcome;
+    if (
+      outcome !== null &&
+      outcome.operation === "refresh" &&
+      !QUIET_OUTCOMES.has(outcome.outcome)
+    ) {
+      return {
+        state: "fetch_failed",
+        title: `Commit not fetched · fetched ${age}`,
+        detail: `${MISSING_COMMIT_DETAIL.fetch_failed} ${OUTCOME_DETAIL[outcome.outcome] ?? OUTCOME_DETAIL.failed}`,
+        retry: true,
+      };
+    }
+    return {
+      state: "not_found",
+      title: `Commit not found · fetched ${age}`,
+      detail: MISSING_COMMIT_DETAIL.not_found,
+      retry: true,
+    };
+  }
+
+  // The commit route failed for a reason other than the commit being absent.
+  /** @type {MetabrowserMissingCommitModel} */
+  const COMMIT_LOAD_FAILED = Object.freeze({
+    state: "failed",
+    title: "Could not load this commit.",
+    detail: "",
+    retry: false,
+  });
+
+  /**
+   * Show a commit the served mirror lacks: ask for the fetch it waits for, say so while
+   * one runs, and then open the commit or say why not.
+   *
+   * *view.load* asks the server for the commit again: `"found"` once it has painted
+   * it, `"missing"` when the server still does not have it, and `"failed"` when the
+   * request failed, which is not an answer about the commit and is painted as a load
+   * failure. *view.isCurrent* is false once the reader has gone elsewhere, and nothing
+   * is painted after that. *options.retry* is the reader's own click, which fetches
+   * however fresh the mirror is.
+   *
+   * @param {Pick<MetabrowserSourceFreshnessController, "fetchMissing">} controller
+   * @param {MetabrowserMissingCommitView} view
+   * @param {{retry?: boolean}} [options]
+   * @returns {Promise<"found" | "not_found" | "fetch_failed" | "failed" | "superseded">}
+   */
+  async function openMissingCommit(controller, view, options = {}) {
+    const ended = await controller.fetchMissing({
+      retry: options.retry === true,
+      waiting() {
+        if (view.isCurrent()) {
+          view.paint(describeMissingCommit(null, { phase: "fetching", nowMs: view.now() }));
+        }
+      },
+    });
+    if (!view.isCurrent()) {
+      return "superseded";
+    }
+    // Asked again only when something ran that could have brought the commit, and was
+    // followed to its end.
+    if (ended.waited && ended.error === null) {
+      const loaded = await view.load();
+      if (loaded === "found") {
+        return "found";
+      }
+      if (!view.isCurrent()) {
+        return "superseded";
+      }
+      if (loaded === "failed") {
+        view.paint(COMMIT_LOAD_FAILED);
+        return "failed";
+      }
+    }
+    const model = describeMissingCommit(ended.status, {
+      phase: "ended",
+      nowMs: view.now(),
+      error: ended.error,
+      fetched: ended.fetched,
+    });
+    view.paint(model);
+    return model.state === "not_found" ? "not_found" : "fetch_failed";
+  }
+
   /**
    * Where a page should go when a URL selection it was opened for has arrived. Pure.
    *
@@ -261,6 +419,24 @@
     let openedSelection = false;
     /** @type {string | null} */
     let error = null;
+    // Callers waiting for the next poll or refresh request to end, or for disposal.
+    /** @type {Array<() => void>} */
+    let changeWaiters = [];
+
+    function notifyChange() {
+      const waiting = changeWaiters;
+      changeWaiters = [];
+      for (const resume of waiting) {
+        resume();
+      }
+    }
+
+    /** @returns {Promise<void>} */
+    function nextChange() {
+      return new Promise((resolve) => {
+        changeWaiters.push(resolve);
+      });
+    }
 
     function render() {
       const model = describe(status, { shown, nowMs: deps.now(), error });
@@ -284,7 +460,9 @@
       if (disposed || !deps.isVisible()) {
         return;
       }
-      const delay = status?.refreshing ? FAST_POLL_MS : SLOW_POLL_MS;
+      // A poll that failed backs off to the slow interval: a server that stopped while
+      // a refresh ran must not be asked every second for as long as the page is open.
+      const delay = status?.refreshing && error === null ? FAST_POLL_MS : SLOW_POLL_MS;
       timer = deps.schedule(() => {
         timer = null;
         void poll();
@@ -337,21 +515,38 @@
       }
       render();
       scheduleNext();
+      notifyChange();
     }
 
-    async function requestRefresh() {
+    /**
+     * Ask for a refresh and take the status the server answers with. Answers what the
+     * server did -- `"started"`, `"joined"`, or `"fresh"` -- or `null` when the request
+     * was refused or failed.
+     *
+     * @param {Record<string, unknown>} [body]
+     * @returns {Promise<string | null>}
+     */
+    async function requestRefresh(body = {}) {
       if (disposed || status === null || !status.refreshable) {
-        return;
+        notifyChange();
+        return null;
       }
       refreshAskedWhileVisible = true;
+      /** @type {string | null} */
+      let answered = null;
       try {
-        const response = await deps.request("POST", REFRESH_ROUTE, { body: {} });
-        const body = /** @type {{status?: unknown} | null} */ (response.body);
-        if (response.status === 202 && body !== null && isStatus(body.status)) {
-          accept(body.status);
+        const response = await deps.request("POST", REFRESH_ROUTE, { body });
+        const answer = /** @type {{refresh?: unknown, status?: unknown} | null} */ (response.body);
+        if (
+          (response.status === 202 || response.status === 200) &&
+          answer !== null &&
+          isStatus(answer.status)
+        ) {
+          accept(answer.status);
           // The envelope changed; the next poll must not be answered by a 304.
           etag = null;
           error = null;
+          answered = typeof answer.refresh === "string" ? answer.refresh : "started";
         } else {
           error = `Refresh refused (HTTP ${response.status})`;
         }
@@ -362,6 +557,60 @@
         render();
         scheduleNext();
       }
+      notifyChange();
+      return answered;
+    }
+
+    /**
+     * Ask for the fetch a commit the mirror lacks waits for, and answer when nothing is
+     * refreshing any more: the status then, why the fetch could not be asked for or
+     * followed, whether a fetch of the mirror ran (`fetched`), and whether anything ran
+     * that could have brought the commit (`waited`).
+     *
+     * A page asks by itself only when something is older than the freshness window or
+     * already refreshing; the server holds the mirror's fetch to the same floor, so a
+     * request this code did not make cannot pass it. *options.retry* is a reader's
+     * click and always fetches. The server joins a fetch of the mirror that is running
+     * and answers `"fresh"` when it starts none, so a refresh of the data beside the
+     * mirror is never taken for a fetch of its branches. *options.waiting* is called
+     * once, when there is a refresh to wait for. The waiting rides the page's own
+     * polls, so a hidden page waits until it is shown, and it ends at the first poll
+     * that fails: a server that stopped is not waited for.
+     *
+     * @param {{retry?: boolean, waiting?: () => void}} [options]
+     * @returns {Promise<MetabrowserSourceFetchEnd>}
+     */
+    async function fetchMissing(options = {}) {
+      const retry = options.retry === true;
+      // The first status may still be on its way.
+      while (!disposed && status === null && error === null) {
+        if (polling || !deps.isVisible()) {
+          await nextChange();
+        } else {
+          await poll();
+        }
+      }
+      if (disposed || status === null || !status.refreshable) {
+        return { status, error, fetched: false, waited: false };
+      }
+      if (!retry && !status.stale && !status.refreshing) {
+        return { status, error: null, fetched: false, waited: false };
+      }
+      const answered = await requestRefresh(
+        retry ? { for: "commit", retry: true } : { for: "commit" },
+      );
+      if (disposed || answered === null || status === null) {
+        return { status, error, fetched: false, waited: false };
+      }
+      const fetched = answered === "started" || answered === "joined";
+      const waited = fetched || status.refreshing;
+      if (status.refreshing) {
+        options.waiting?.();
+      }
+      while (!disposed && status !== null && status.refreshing && error === null) {
+        await nextChange();
+      }
+      return { status, error, fetched, waited };
     }
 
     async function acceptOffer() {
@@ -413,12 +662,14 @@
     function dispose() {
       disposed = true;
       clearTimer();
+      notifyChange();
     }
 
     return Object.freeze({
       start: () => poll(),
       poll,
       requestRefresh,
+      fetchMissing,
       acceptOffer,
       onVisibilityChange,
       dispose,
@@ -610,7 +861,9 @@
     SLOW_POLL_MS,
     createController,
     describe,
+    describeMissingCommit,
     mount,
+    openMissingCommit,
     relativeAge,
     selectionToOpen,
   });

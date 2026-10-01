@@ -131,7 +131,8 @@ status: 200
 
 ## Test: pinning an abbreviated commit ID
 
-A commit pinned by ID has no ref, so there is no `latest` to compare with.
+A commit pinned by ID that is not the tip of the ref served has no ref, so there is no
+`latest` to compare with.
 
 ```console
 $ METABROWSER_HOME=$PWD/home metab file://$PWD/origin.git --api /api/source/pin --data pin-oid.json
@@ -148,6 +149,44 @@ status: 200
     "refreshable": true,
     "latest": null,
     "ref_on_origin": null,
+    "last_fetch_at": "2026-09-17T12:00:05Z",
+    "last_outcome": {
+      "operation": "acquire",
+      "outcome": "succeeded",
+      "at": "2026-09-17T12:00:05Z"
+    },
+    "refreshing": false,
+    "stale": true,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  }
+}
+? 0
+```
+
+## Test: a commit ID that is the tip of the ref served keeps the ref
+
+View file on a diff switches by commit ID. A commit that is the tip of the ref the
+server was serving is served under that ref, so a reader who went to another commit and
+came back by ID is on the branch again, with a `latest` to compare with.
+Here the ID is the served branch’s own tip, so nothing changes.
+
+```console
+$ METABROWSER_HOME=$PWD/home metab file://$PWD/origin.git --api /api/source/pin --data pin-tip-oid.json
+api: /api/source/pin
+status: 200
+{
+  "changed": false,
+  "status": {
+    "subject": "git_revision",
+    "generation": 1,
+    "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "refreshable": true,
+    "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "ref_on_origin": true,
     "last_fetch_at": "2026-09-17T12:00:05Z",
     "last_outcome": {
       "operation": "acquire",
@@ -208,6 +247,25 @@ status: 404
   "code": "selection_not_found"
 }
 Error: /api/source/pin returned HTTP 404
+? 1
+```
+
+## Test: a commit the mirror does not have is named, and nothing is fetched
+
+The commit route reads the mirror alone.
+A commit ID no object in it has answers `commit_not_found`; the route is a GET, so it
+starts no fetch, and a served page asks for one itself through
+`POST /api/source/refresh`.
+
+```console
+$ METABROWSER_HOME=$PWD/home metab file://$PWD/origin.git --api /api/git/commit/0123456789abcdef0123456789abcdef01234567
+api: /api/git/commit/0123456789abcdef0123456789abcdef01234567
+status: 404
+{
+  "error": "unknown revision",
+  "code": "commit_not_found"
+}
+Error: /api/git/commit/0123456789abcdef0123456789abcdef01234567 returned HTTP 404
 ? 1
 ```
 
@@ -474,4 +532,81 @@ status: 200
   "selection_href": null
 }
 ? 0
+```
+
+## Test: a commit’s fetch is asked for by name, and a stale mirror gets it
+
+A page that opens a commit the mirror lacks posts `{"for": "commit"}`. A link in served
+content can send a reader to such an address, so this request fetches the mirror only
+when its last fetch is older than the freshness window, as this one’s is: the answer is
+`started`. On a mirror fetched inside the window it is `fresh` and nothing starts, which
+`cli-git-refresh.txt` records, since that takes a fetch.
+The fetch lock is still held, so the fetch that started reports `refreshing_elsewhere`.
+
+```console
+$ METABROWSER_HOME=$PWD/home metab file://$PWD/origin.git --api /api/source/refresh --data commit-fetch.json
+api: /api/source/refresh
+status: 202
+{
+  "refresh": "started",
+  "status": {
+    "subject": "git_revision",
+    "generation": 1,
+    "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "refreshable": true,
+    "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-17T12:00:05Z",
+    "last_outcome": {
+      "operation": "acquire",
+      "outcome": "succeeded",
+      "at": "2026-09-17T12:00:05Z"
+    },
+    "refreshing": true,
+    "stale": true,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  }
+}
+after: /api/source/status
+status: 200
+{
+  "subject": "git_revision",
+  "generation": 1,
+  "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+  "ref": "refs/remotes/origin/topic",
+  "ref_name": "topic",
+  "refreshable": true,
+  "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+  "ref_on_origin": true,
+  "last_fetch_at": "2026-09-17T12:00:05Z",
+  "last_outcome": {
+    "operation": "refresh",
+    "outcome": "refreshing_elsewhere",
+    "at": "[..]"
+  },
+  "refreshing": false,
+  "stale": true,
+  "pull_request": null,
+  "selection_state": null,
+  "selection_href": null
+}
+? 0
+```
+
+## Test: a refresh request that names anything else is refused
+
+```console
+$ METABROWSER_HOME=$PWD/home metab file://$PWD/origin.git --api /api/source/refresh --data refresh-branch.json
+api: /api/source/refresh
+status: 400
+{
+  "error": "\"for\" may only be \"commit\"",
+  "code": "invalid_request"
+}
+Error: /api/source/refresh returned HTTP 400
+? 1
 ```

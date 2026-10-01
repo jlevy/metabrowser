@@ -13,7 +13,9 @@ filtered and bounded, with the default branch first and the served ref marked. I
 the mirror alone, never the network.
 
 ``POST /api/source/refresh`` starts a background refresh of the served mirror, or joins
-the one running, and returns at once. ``POST /api/source/pin`` switches the served pin
+the one running, and returns at once. With ``{"for": "commit"}`` it is the fetch a
+commit the mirror lacks waits for, which a page asks for by itself only when the mirror
+is older than the freshness window. ``POST /api/source/pin`` switches the served pin
 to a branch, tag, or commit in the mirror. Both change state or start work, so both are
 POST routes with a JSON body behind the application's same-origin guard: content inside
 an untrusted page cannot reach them with a link, an image, or a form.
@@ -307,24 +309,51 @@ def _error(message: str, code: str, status_code: int) -> JSONResponse:
     return JSONResponse({"error": message, "code": code}, status_code=status_code)
 
 
+def _refresh_request(body: dict[str, Any]) -> tuple[bool, bool]:
+    """Whether a refresh request is for a missing commit, and whether it is a retry."""
+
+    unknown = sorted(set(body) - {"for", "retry"})
+    if unknown:
+        raise _BadRequestError('a refresh request names only "for" and "retry"')
+    purpose = body.get("for")
+    retry = body.get("retry", False)
+    if purpose is not None and purpose != "commit":
+        raise _BadRequestError('"for" may only be "commit"')
+    if not isinstance(retry, bool) or (retry and purpose is None):
+        raise _BadRequestError('"retry" is true or false, and goes with "for"')
+    return purpose == "commit", retry
+
+
 async def api_source_refresh(request: Request) -> JSONResponse:
     """``POST /api/source/refresh`` — start or join a refresh of the served mirror.
 
     Returns ``202`` as soon as the job is scheduled; the response never waits on the
     network. ``refresh`` says whether this request started the job or joined one that
     was running, and ``status`` is the envelope as of that moment.
+
+    ``{"for": "commit"}`` asks for the fetch a commit the mirror lacks waits for
+    (:meth:`~metabrowser.mirror_refresh.MirrorSession.request_commit_fetch`): the
+    mirror's branches and tags, and the data served beside it. A page sends it by
+    itself for a commit's address, so it fetches the mirror only when the last fetch is
+    older than the freshness window; inside the window ``refresh`` is ``"fresh"`` and
+    no mirror fetch starts, and the answer is ``200`` unless a refresh of the data
+    beside the mirror is running. ``"retry": true`` is a reader's own click and always
+    fetches.
     """
 
     try:
-        await _json_object(request)
+        for_commit, retry = _refresh_request(await _json_object(request))
         mirror = _served_mirror(request, "refresh")
     except _BadRequestError as exc:
         return _error(str(exc), "invalid_request", exc.status_code)
     except UnsupportedSourceCapabilityError as exc:
         return JSONResponse(unsupported_source_payload(exc), status_code=409)
-    started = mirror.request_refresh()
+    started = mirror.request_commit_fetch(retry=retry) if for_commit else mirror.request_refresh()
+    status = source_status(mirror)
+    # Nothing scheduled and nothing running is an answer, not accepted work.
+    accepted = started != "fresh" or status["refreshing"]
     return JSONResponse(
-        {"refresh": started, "status": dict(source_status(mirror))}, status_code=202
+        {"refresh": started, "status": dict(status)}, status_code=202 if accepted else 200
     )
 
 

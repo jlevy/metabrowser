@@ -20,6 +20,10 @@ it. Real HTTPS is the opt-in live smoke test, ``tests/test_github_live_smoke.py`
 Refusals that stop at classification need no Git and run as a subprocess in
 ``tests/golden/cli-github-urls.tryscript.md``.
 
+What an origin answers for a repository it does not show cannot be asked for without the
+network, so ``cli-github-not-found.txt`` answers ``ls-remote`` with the text Git printed
+for one; its test says what is substituted.
+
 Regenerate after an intended change with:
 
     GOLDEN_UPDATE=1 uv --config-file uv.toml run --frozen pytest tests/test_cli_github_url_golden.py
@@ -32,10 +36,13 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
+from typing import Any
 
 import pytest
 
+from metabrowser.cache import acquire
 from metabrowser.cache.urls import GitSource
+from metabrowser.git.process import GitCommandError
 from metabrowser.git.tree_source import GitPath
 from tests.git_pin_harness import git_env
 from tests.github_origin import FIRST_COMMIT, SECOND_COMMIT, _commit, github_origin
@@ -298,3 +305,84 @@ def test_golden_a_selection_waits_for_the_refresh_it_asked_for(
     rendered = _ISO_TIME.sub("<TIME>", rendered)
     assert str(tmp_path) not in rendered and str(home) not in rendered
     check_golden("cli-github-url-waits.txt", rendered)
+
+
+# What Git 2.50.1 printed with LC_ALL=C when an origin did not show a repository;
+# ``tests/test_cache_origin.py`` holds the captured set. With a credential that the
+# origin refuses, and for a repository that does not exist, GitHub answers "not found";
+# with no credential to offer, Git stops at the challenge. Another host's 404 is Git's
+# own message with no ``remote:`` line.
+_NOT_FOUND = (
+    "remote: Repository not found.\nfatal: repository 'https://github.com/octo/absent/' not found"
+)
+_NO_CREDENTIAL = (
+    "fatal: could not read Username for 'https://github.com': terminal prompts disabled"
+)
+_NOT_FOUND_ELSEWHERE = "fatal: repository 'https://example.com/owner/absent.git/' not found"
+ABSENT = "https://github.com/octo/absent"
+ELSEWHERE = "https://example.com/owner/absent.git"
+
+
+def test_golden_a_repository_the_origin_does_not_show(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """What ``metab`` says when an https origin answers that a repository is not there.
+
+    An origin answers alike for a repository that does not exist, one read with no
+    credentials, and one the account a credential helper answered with cannot see, so
+    the message claims nothing about credentials; the provider's hint says what to do.
+
+    No request leaves the machine, and one thing is substituted: ``ls-remote``, the
+    first command that would reach the origin, raises with the text Git printed in that
+    situation. So Git, ``gh``, and the origin are not exercised here, and the
+    transcript's first line says so. Classifying the text, the message, the hint, and
+    the exit status are production code. The ``gh`` on ``PATH`` in the first two
+    commands fails every command, so the size check steps aside.
+    """
+
+    home = _isolate(tmp_path, monkeypatch)
+    real_run = acquire._run  # pyright: ignore[reportPrivateUsage]
+    printed = {"stderr": _NOT_FOUND}
+
+    async def not_shown(args: list[str], **kwargs: Any) -> bytes:
+        if "ls-remote" in args:
+            raise GitCommandError(args, 128, printed["stderr"])
+        return await real_run(args, **kwargs)
+
+    monkeypatch.setattr(acquire, "_run", not_shown)
+    failing = tmp_path / "failing-gh"
+    failing.mkdir()
+    gh = failing / "gh"
+    gh.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+    gh.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{failing}{os.pathsep}{os.environ.get('PATH', '')}")
+
+    with_gh = [
+        ([ABSENT, "--no-serve"], _run([ABSENT, "--no-serve"])),
+        ([ABSENT, "--show", "README.md"], _run([ABSENT, "--show", "README.md"])),
+    ]
+    monkeypatch.setattr("metabrowser.builtin_plugins.github.provider.gh_executable", lambda: None)
+    printed["stderr"] = _NO_CREDENTIAL
+    without_gh = ([ABSENT, "--no-serve"], _run([ABSENT, "--no-serve"]))
+    printed["stderr"] = _NOT_FOUND_ELSEWHERE
+    elsewhere = ([ELSEWHERE, "--no-serve"], _run([ELSEWHERE, "--no-serve"]))
+
+    for _args, result in (*with_gh, without_gh, elsewhere):
+        assert result.exit_code == 1 and result.stdout == ""
+    sources = home / "cache" / "sources"
+    assert not sources.is_dir() or list(sources.iterdir()) == []
+
+    rendered = (
+        "## Git's ls-remote is answered here with text Git printed when an origin did not "
+        "show a repository; Git, gh, and the origin are not run.\n"
+        "## gh is installed, so Git would ask it for credentials; the origin answers "
+        '"Repository not found" for a refused credential and for no repository alike.\n'
+        + "".join(_block(args, result) for args, result in with_gh)
+        + "## Without gh Git has no credential to offer and stops at the challenge "
+        '("could not read Username"); the hint is to install gh.\n'
+        + _block(*without_gh)
+        + "## Another host answers 404, and there is no hint.\n"
+        + _block(*elsewhere)
+    )
+    assert str(tmp_path) not in rendered and str(home) not in rendered
+    check_golden("cli-github-not-found.txt", rendered)

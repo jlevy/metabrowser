@@ -139,6 +139,27 @@ GitHub URLs and HTTPS:
   newline is not one. github.com links inside a rendered README of a served GitHub mirror
   open inside the pin, as they already did for a served checkout of the repository.
 
+- A served page opened at `/commit/<id>` for a commit the mirror does not have now says
+  what is known instead of “Could not load this commit.”
+  When the mirror is older than the freshness window the page fetches in the background
+  and shows “Fetching this commit…”, then opens the commit when the fetch brings it,
+  says “Commit not found” when the fetch ran and the origin’s branches and tags do not
+  reach it, or says “Commit not fetched” with the reason when the fetch could not run.
+  On a mirror fetched inside the window the page fetches nothing by itself, because a
+  link in a served page can lead to any commit’s address, and says the commit is not in
+  the mirror as fetched; **Retry**, offered in each of these states, always fetches.
+  The page claims a fetch of branches and tags only when one ran: a refresh of a served
+  pull request’s record alone is waited for and not called one.
+  `/api/git/commit/<id>` names the miss as `commit_not_found`, still with HTTP 404, and
+  never fetches; in a served folder, which has no mirror to fetch into, the page says
+  the commit is not in the repository.
+  A request that fails for another reason, including one that fails when the commit is
+  asked for again after the fetch, still reads “Could not load this commit.”
+  `POST /api/source/refresh` takes `{"for": "commit"}` for that fetch: it fetches the
+  mirror only outside the freshness window, joins a fetch that is running, and otherwise
+  answers `fresh`; `"retry": true` always fetches, and any other key is refused as
+  `invalid_request`.
+
 - `https://` sources are acquired, anonymously for a public repository.
   When `gh` is installed it is Git’s credential helper for `https://github.com` only,
   after every configured helper is cleared, so `gh auth login` opens a private
@@ -147,6 +168,10 @@ GitHub URLs and HTTPS:
   `network_unreachable`, `connection_interrupted`, `tls_failed`, `timed_out`,
   `server_error`, `rate_limited`, `proxy_auth_required`, or `too_large`, the last when
   `gh` reports a repository too large to clone within the acquisition deadline.
+  A `not_found_or_private` message says the repository was not found, or is private and
+  could not be read, and claims nothing about credentials: GitHub answers the same way
+  for a repository that does not exist, one read anonymously, and one the account `gh`
+  answered with cannot see.
   The size check asks github.com only, whatever host `GH_HOST` names.
   Git runs with `HOME=/dev/null` while it acquires, so curl reads no `~/.netrc`; `gh`
   alone is given the real home, without `GH_DEBUG`, `GH_HOST`, `GH_REPO`,
@@ -348,6 +373,24 @@ Repository cache:
   A pin always runs under the untrusted profile: `METAB_ACTIVE_CONTENT=1` and
   `METAB_ALLOW_EDITS=1` do not lift it, and `--allow-edits` on a pin is an error.
 
+- An argument that names an existing path is that path, whatever it resembles.
+  A folder called `file:notes`, `a::b`, `me@host:dir`, `https:x`, or `-dash` (after
+  `--`) is served, a file is opened, and a symbolic link is followed, as in 0.11. Only
+  an argument that names nothing on disk is read as an scp-like address or refused as a
+  malformed URL or remote-helper syntax.
+  The one exception is an argument that starts with `scheme://`, which is always a
+  source: no path needs that spelling, so a pasted URL opens the same thing in every
+  working directory and a local folder cannot stand in for the repository it names.
+  `metab https://host/x` therefore no longer serves a folder at `https:/host/x`; write
+  that path with one slash, or as `./https://host/x`. An scp-like address has no such
+  exemption: `git@github.com:o/r` names a local folder of that name when the working
+  directory has one, as in 0.11, and the GitHub repository only when it does not;
+  `https://github.com/o/r` always opens the repository.
+  A path that exists but that the process may not read is a usage error, as in 0.11
+  (`Path 'x' is not readable.`, exit status 2), not a tree that walks or serves as
+  empty. An empty argument, `metab ""`, is refused as `invalid ROOT (empty)`, where 0.11
+  read it as the current directory.
+
 - `metab file://…` serves the acquired source in the browser, pinned to the commit its
   default branch named at the store’s last fetch, until Ctrl-C. Every page reads from
   the store; only the background refresh below reaches the origin.
@@ -445,6 +488,48 @@ Repository cache:
   The address is checked before the switch: one that is not percent-encoded ASCII is
   refused with nothing changed, and a query or fragment is dropped.
 
+- On a served mirror, each file bar of a diff offers the changed file at either side of
+  the change, as GitHub’s View file does, for a commit’s diff and for a pull request’s
+  Files changed. **View file** opens the new side; **View at parent** (a commit’s diff)
+  or **View at base** (Files changed, where the base is the merge base) opens the old
+  side. A deleted file has only its old side, an added file only its new side, and a
+  renamed file opens its old path at the old side.
+  Only a regular file’s side is offered: a submodule has no file to show, and a symbolic
+  link would open its target rather than the link text the diff shows.
+  A side at the commit the page shows is a link to the file’s `/view/` address, so a new
+  tab, a copied link, and back and forward work as for any link.
+  A side at another commit is a button that switches the served pin to that commit with
+  `POST /api/source/pin` and opens the file there; its tooltip names the commit, and a
+  switch the server does not make, such as a commit the mirror lacks, is said under the
+  file bar while the page stays as it was.
+  There is no address for a file at a commit the server does not serve, so such a side
+  has no link to copy or open in a new tab.
+  A name that is not UTF-8 is addressed by its bytes.
+  A diff in a served folder, and a patch file’s diff, have no such control: a folder has
+  no file at a commit to open, only its working tree’s.
+
+- `POST /api/source/pin` with `{"oid": …}` keeps the ref when the commit is its tip.
+  A commit pinned by ID had no ref.
+  It is now served under the ref the server last served, or the served pull request’s
+  `refs/pull/<n>/head`, when it is that ref’s tip in the mirror, so going to another
+  commit and back by ID, as View file does, ends on the branch or the pull request
+  again: the selector names it and freshness follows it.
+  A commit ID that is the tip of the ref already served answers `changed: false`. Any
+  other commit pinned by ID still has no ref.
+
+- Back and forward onto a page whose commit the server no longer serves now land on the
+  commit it does serve.
+  A browser brings a page back from its back/forward cache or its HTTP cache without
+  asking the server, so after a pin switch (the selector’s, the freshness row’s, View
+  file’s) Back showed a page naming the commit served before, with “Could not load
+  files” and every data request refused as `pin_changed` until a reload.
+  On such a landing the page now asks `/api/source/status` once and reloads itself, at
+  most once, when another commit is served.
+  A landing with nothing switched is untouched: it stays in the back/forward cache and
+  keeps its scroll position.
+  A page that stayed open while another tab switched still gets the reload offer rather
+  than a reload.
+
 - The Git panel no longer rebuilds a different history under the rows on screen when the
   refs its walk was fingerprinted by moved, as a refresh, a pin switched in another tab,
   or a commit in a served checkout does.
@@ -526,6 +611,8 @@ Content trust:
   (`X-Frame-Options: DENY`); and no plugins, `<base>`, or form submission.
   `/raw` refuses a browsed file requested as a script, stylesheet, worker, or worklet,
   and sends JavaScript and CSS as `text/plain`. See SECURITY.md.
+  The help for `--untrusted` and `--no-active-content` now says that they render
+  Markdown inert and apply this policy, not only that `/raw` loses `allow-scripts`.
 
 - **Changed for a folder on disk:** `--untrusted` and `--no-active-content`, and their
   `METAB_UNTRUSTED=1` and `METAB_ACTIVE_CONTENT=0` forms, now apply both entries above
