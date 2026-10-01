@@ -768,9 +768,13 @@ def test_run_git_ignores_a_hook_exported_git_dir(repo: Path, tmp_path: Path) -> 
 
     poisoned = {**os.environ, "GIT_DIR": str(decoy / ".git")}
     with mock.patch.dict(os.environ, poisoned, clear=True):
-        out = asyncio.run(run_git(["rev-parse", "--show-toplevel"], cwd=repo))
-    # The answer must be the repo at cwd, not the decoy GIT_DIR names.
-    assert Path(out.decode().strip()).resolve() == repo.resolve()
+        git_dir = asyncio.run(run_git(["rev-parse", "--absolute-git-dir"], cwd=repo))
+        head = asyncio.run(run_git(["rev-parse", "HEAD"], cwd=repo))
+    # The repository is the one at cwd, not the one GIT_DIR names. The work tree is
+    # not the question to ask: with GIT_DIR set it is cwd either way.
+    assert Path(git_dir.decode().strip()).resolve() == (repo / ".git").resolve()
+    # The decoy has no commit, so a HEAD at all is the repo's.
+    assert len(head.strip()) == 40
 
 
 # ── Routes ───────────────────────────────────────────────────
