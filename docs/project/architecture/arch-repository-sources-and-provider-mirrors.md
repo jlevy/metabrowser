@@ -247,14 +247,14 @@ The distribution check runs the same inventory against isolated wheel and source
 distribution installs, so a declaration or evidence file that exists only in the source
 tree cannot pass.
 
-| Contract ID | Artifact profile | Envelope | Producers | Consumers | Corpus |
-| --- | --- | --- | --- | --- | --- |
-| `com.github.jlevy.metabrowser.cache:CacheLayout/v1` | `pure-yaml` | `layout` | `repository-cache` | `repository-cache` | `cache-records-conformance[layout]` |
-| `com.github.jlevy.metabrowser.cache:RepositorySource/v1` | `pure-yaml` | `source` | `repository-cache` | `repository-cache` | `cache-records-conformance[source,scp_source]` |
-| `com.github.jlevy.metabrowser.cache:RepositorySourceState/v1` | `pure-yaml` | `state` | `repository-cache` | `repository-cache` | `cache-records-conformance[source_state]` |
-| `com.github.jlevy.metabrowser.cache:RepositoryStore/v1` | `pure-yaml` | `store` | `repository-cache` | `repository-cache` | `cache-records-conformance[store]` |
-| `com.github.jlevy.metabrowser.cache:RepositoryStoreAlias/v1` | `pure-yaml` | `alias` | `repository-cache` | `repository-cache` | `cache-records-conformance[store_alias]` |
-| `com.github.jlevy.metabrowser.cache:RepositoryStoreState/v1` | `pure-yaml` | `state` | `repository-cache` | `repository-cache` | `cache-records-conformance[store_state,empty_store_state]` |
+| Contract ID | Artifact profile | Envelope | Producers | Consumers | Corpus | Browser parser |
+| --- | --- | --- | --- | --- | --- | --- |
+| `com.github.jlevy.metabrowser.cache:CacheLayout/v1` | `pure-yaml` | `layout` | `repository-cache` | `repository-cache` | `cache-records-conformance[layout]` | `server-only` |
+| `com.github.jlevy.metabrowser.cache:RepositorySource/v1` | `pure-yaml` | `source` | `repository-cache` | `repository-cache` | `cache-records-conformance[source,scp_source]` | `server-only` |
+| `com.github.jlevy.metabrowser.cache:RepositorySourceState/v1` | `pure-yaml` | `state` | `repository-cache` | `repository-cache` | `cache-records-conformance[source_state]` | `server-only` |
+| `com.github.jlevy.metabrowser.cache:RepositoryStore/v1` | `pure-yaml` | `store` | `repository-cache` | `repository-cache` | `cache-records-conformance[store]` | `server-only` |
+| `com.github.jlevy.metabrowser.cache:RepositoryStoreAlias/v1` | `pure-yaml` | `alias` | `repository-cache` | `repository-cache` | `cache-records-conformance[store_alias]` | `server-only` |
+| `com.github.jlevy.metabrowser.cache:RepositoryStoreState/v1` | `pure-yaml` | `state` | `repository-cache` | `repository-cache` | `cache-records-conformance[store_state,empty_store_state]` | `server-only` |
 
 ### Read path and performance
 

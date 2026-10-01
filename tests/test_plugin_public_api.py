@@ -14,6 +14,7 @@ from metabrowser import (
     ArtifactDecompressionLimitError,
     ArtifactDecompressionTimeoutError,
     ArtifactPath,
+    BrowserParserSpec,
     CapabilitySet,
     ConformanceCorpusSpec,
     JsonlParseLimitError,
@@ -33,6 +34,7 @@ PLUGIN_API_EXPORTS = {
     "ArtifactDecompressionLimitError",
     "ArtifactDecompressionTimeoutError",
     "ArtifactPath",
+    "BrowserParserSpec",
     "CapabilitySet",
     "ConformanceCorpusSpec",
     "ContentReadError",
@@ -102,8 +104,10 @@ def test_sidekick_runtime_helpers_are_public() -> None:
 
 def test_installed_capability_declaration_types_are_public() -> None:
     assert ArtifactContractSpec.__module__ == "metabrowser.plugin_loader.capability_types"
+    assert BrowserParserSpec.__module__ == "metabrowser.plugin_loader.capability_types"
     assert CapabilitySet.__module__ == "metabrowser.plugin_loader.capability_types"
     assert ConformanceCorpusSpec.__module__ == "metabrowser.plugin_loader.capability_types"
+    assert "browser_consumed" in ArtifactContractSpec.__dataclass_fields__
 
 
 def test_public_import_does_not_load_capability_registry_dependencies() -> None:

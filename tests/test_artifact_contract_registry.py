@@ -21,6 +21,7 @@ from metabrowser.plugin_loader.artifact_contracts import (
 from metabrowser.plugin_loader.capability_discovery import LoadedCapabilitySet
 from metabrowser.plugin_loader.capability_types import (
     ArtifactProfile,
+    BrowserParserSpec,
     ConformanceCorpusSpec,
 )
 
@@ -94,6 +95,8 @@ def _contract(contract_id: str = _CONTRACT_ID) -> ArtifactContractSpec:
             payload_sha256=_schema_bytes_digest(corpus_payload),
         ),
         corpus_record_selectors=("fixture-record",),
+        browser_consumed=False,
+        browser_parser=None,
     )
 
 
@@ -234,7 +237,7 @@ def test_registry_rejects_schema_digest_id_and_remote_reference_mismatches() -> 
         )
 
 
-def test_registry_verifies_resolvable_corpus_evidence() -> None:
+def test_registry_verifies_resolvable_corpus_and_browser_parser_evidence() -> None:
     contract = _contract()
     with pytest.raises(CapabilityRegistryError, match="corpus payload digest"):
         build_contract_registry(
@@ -245,6 +248,90 @@ def test_registry_verifies_resolvable_corpus_evidence() -> None:
                         replace(
                             contract,
                             corpus=replace(contract.corpus, payload=b'{"changed":true}'),
+                        ),
+                    ),
+                ),
+            )
+        )
+
+    module_bytes = b"export function parseItem(value) { return value; }\n"
+    parser = BrowserParserSpec(
+        module_id="fixture-model",
+        module_bytes=module_bytes,
+        module_bytes_sha256=_schema_bytes_digest(module_bytes),
+        export_name="parseItem",
+    )
+    with pytest.raises(CapabilityRegistryError, match="browser-consumed"):
+        build_contract_registry(
+            (
+                _provider(
+                    "fixture",
+                    contracts=(replace(contract, browser_consumed=True),),
+                ),
+            )
+        )
+    with pytest.raises(CapabilityRegistryError, match="browser_consumed must be a boolean"):
+        build_contract_registry(
+            (
+                _provider(
+                    "fixture",
+                    contracts=(replace(contract, browser_consumed=cast(Any, None)),),
+                ),
+            )
+        )
+    with pytest.raises(CapabilityRegistryError, match="server-only"):
+        build_contract_registry(
+            (
+                _provider(
+                    "fixture",
+                    contracts=(replace(contract, browser_parser=parser),),
+                ),
+            )
+        )
+    build_contract_registry(
+        (
+            _provider(
+                "fixture",
+                contracts=(
+                    replace(
+                        contract,
+                        browser_consumed=True,
+                        browser_parser=parser,
+                    ),
+                ),
+            ),
+        )
+    )
+    for malformed_parser in (
+        replace(parser, module_id=cast(Any, None)),
+        replace(parser, export_name=cast(Any, None)),
+        replace(parser, export_name=cast(Any, True)),
+    ):
+        with pytest.raises(CapabilityRegistryError, match="browser parser must name"):
+            build_contract_registry(
+                (
+                    _provider(
+                        "fixture",
+                        contracts=(
+                            replace(
+                                contract,
+                                browser_consumed=True,
+                                browser_parser=malformed_parser,
+                            ),
+                        ),
+                    ),
+                )
+            )
+    with pytest.raises(CapabilityRegistryError, match="browser parser module digest"):
+        build_contract_registry(
+            (
+                _provider(
+                    "fixture",
+                    contracts=(
+                        replace(
+                            contract,
+                            browser_consumed=True,
+                            browser_parser=replace(parser, module_bytes=b"changed"),
                         ),
                     ),
                 ),

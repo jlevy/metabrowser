@@ -65,6 +65,7 @@ format:
 	$(MAKE) format-markdown
 	$(UV_RUN) ruff format src tests devtools explorations
 	npx --no-install biome format --write \
+		devtools/artifact-contract-browser-check.mjs \
 		src/metabrowser/static src/metabrowser/builtin_plugins tests/dom explorations \
 		biome.json package.json tsconfig.json tsconfig.legacy.json
 

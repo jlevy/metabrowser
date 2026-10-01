@@ -159,6 +159,7 @@ def test_installed_specs_carry_the_packaged_schema_bytes_and_digests() -> None:
         assert spec.schema_bytes_sha256 == hashlib.sha256(schema_bytes).hexdigest()
         assert spec.schema_digest == SchemaView.load(contract.schema_path).schema_sha256
         assert spec.artifact_profile == "pure-yaml"
+        assert spec.browser_consumed is False
         assert spec.corpus_record_selectors == contract.corpus_record_selectors
 
 

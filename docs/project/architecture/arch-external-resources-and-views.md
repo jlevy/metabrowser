@@ -4,9 +4,9 @@
 [Thin Mirror for Git and GitHub Browsing](../specs/active/plan-2026-09-23-v012-thin-mirror.md)
 stores pull-request data as plain validated JSON records and adds no resource-profile,
 resource-kind, provider-store, or hosted-address layer.
-The code that implemented this design’s first phases, the Hosted Review Format, the
-resource-profile registry, and browser-parser evidence, was removed from the v0.12 stack
-and is kept, unmaintained, on the `reference/v012-hosted-review` branch.
+The code that implemented this design’s first phases, the Hosted Review Format and the
+resource-profile registry, was removed from the v0.12 stack and is kept, unmaintained,
+on the `reference/v012-hosted-review` branch.
 File and symbol names below describe the code as it stood before that removal, so some
 no longer exist.
 

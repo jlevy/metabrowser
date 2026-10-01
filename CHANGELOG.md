@@ -11,13 +11,19 @@ Plugin contracts:
   Contract discovery is separate from browser plugin manifests and operator plugin
   directories, so it does not create a static asset root or change the browser SDK.
   Packaged schemas and Pydantic semantics validate artifacts presented to the installed
-  registry; artifact metadata cannot select a schema, renderer, or Python import path.
+  registry; artifact metadata cannot select a schema, parser, renderer, or Python import
+  path.
 
 - The generic artifact-format gate derives every contract from the installed capability
   registry. It checks schema and semantic validation, producer/consumer ownership,
-  packaged corpora, and the maintained architecture inventory.
-  Distribution verification repeats the same inventory from isolated wheel and source
-  distribution installs instead of maintaining a separate built-in schema list.
+  packaged corpora, browser-parser evidence where declared, and the maintained
+  architecture inventory.
+  Browser consumption is explicit rather than inferred from consumer names;
+  browser-consumed contracts require an import-free parser that runs over VM-realm
+  inputs with context-native browser primitives and no Node-only globals, host-realm
+  values, or dynamic code generation; server-only contracts cannot attach browser-parser
+  evidence. Distribution verification repeats the same inventory from isolated wheel and
+  source distribution installs instead of maintaining a separate built-in schema list.
 
 - The repository cache’s `f01` records install as enforced contracts through a
   `repository-cache` capability provider, so `metab --doctor` now reports one capability

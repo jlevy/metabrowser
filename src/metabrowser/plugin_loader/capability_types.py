@@ -25,6 +25,21 @@ class ConformanceCorpusSpec:
 
 
 @dataclass(frozen=True, slots=True)
+class BrowserParserSpec:
+    """Immutable self-contained browser-parser module evidence."""
+
+    module_id: str
+    module_bytes: bytes
+    module_bytes_sha256: str
+    export_name: str
+
+    @property
+    def parser_id(self) -> str:
+        """Return the stable module/export identity used in inventories."""
+        return f"{self.module_id}:{self.export_name}"
+
+
+@dataclass(frozen=True, slots=True)
 class ArtifactContractSpec:
     """Trusted installed declaration for one versioned artifact contract."""
 
@@ -40,6 +55,8 @@ class ArtifactContractSpec:
     consumer_ids: tuple[str, ...]
     corpus: ConformanceCorpusSpec
     corpus_record_selectors: tuple[str, ...]
+    browser_consumed: bool
+    browser_parser: BrowserParserSpec | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,6 +76,7 @@ class CapabilitySet:
 __all__ = [
     "ArtifactContractSpec",
     "ArtifactProfile",
+    "BrowserParserSpec",
     "CapabilitySet",
     "ConformanceCorpusSpec",
 ]

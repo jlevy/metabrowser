@@ -28,6 +28,7 @@ from metabrowser.paths_safe import (
 )
 from metabrowser.plugin_loader.capability_types import (
     ArtifactContractSpec,
+    BrowserParserSpec,
     CapabilitySet,
     ConformanceCorpusSpec,
 )
@@ -98,6 +99,7 @@ __all__ = [
     "ArtifactDecompressionLimitError",
     "ArtifactDecompressionTimeoutError",
     "ArtifactPath",
+    "BrowserParserSpec",
     "CapabilitySet",
     "ConformanceCorpusSpec",
     "ContentReadError",

@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import configparser
+import json
 import os
 import subprocess
 import tarfile
+import tempfile
 import tomllib
 import zipfile
 from collections.abc import Mapping
@@ -42,10 +44,14 @@ KEYBOARD_STATIC_ASSETS = {
 }
 CAPABILITY_ENTRY_POINT_GROUP = "metabrowser.capabilities.v1"
 ISOLATED_PYTHON_ENV_VARS = ("PYTHONHOME", "PYTHONOPTIMIZE", "PYTHONPATH")
+BROWSER_EVIDENCE_CHECK = ROOT / "devtools" / "artifact-contract-browser-check.mjs"
+BROWSER_EVIDENCE_TIMEOUT_SECONDS = 30
 
 CAPABILITY_SMOKE_SCRIPT = dedent(
     """
+    import json
     import sys
+    from pathlib import Path
 
     import metabrowser
     from metabrowser import ArtifactContractSpec, CapabilitySet, ConformanceCorpusSpec
@@ -65,7 +71,9 @@ CAPABILITY_SMOKE_SCRIPT = dedent(
     from metabrowser.plugin_loader.artifact_inventory import validate_installed_evidence
     from metabrowser.plugin_loader.capability_discovery import discover_capability_sets
 
-    expected_provider_ids = frozenset(sys.argv[1:])
+    evidence_root = Path(sys.argv[1])
+    expected_provider_ids = frozenset(sys.argv[2:])
+    _require(evidence_root.is_dir(), "caller-owned browser evidence directory is absent")
     _require(expected_provider_ids, "project metadata declared no capability providers")
     discovery = discover_capability_sets()
     actual_provider_ids = frozenset(provider.provider_id for provider in discovery.providers)
@@ -85,6 +93,43 @@ CAPABILITY_SMOKE_SCRIPT = dedent(
         "installed artifact-contract registry lost a provider declaration",
     )
 
+    descriptors = []
+    for contract_id, installed in sorted(capabilities.contracts.items()):
+        spec = installed.spec
+        if not spec.browser_consumed:
+            continue
+        parser = spec.browser_parser
+        _require(parser is not None, f"browser-consumed contract {contract_id!r} has no parser")
+        module_path = evidence_root / f"{parser.module_bytes_sha256}.mjs"
+        corpus_path = evidence_root / f"{spec.corpus.payload_sha256}.json"
+        for path, payload in (
+            (module_path, parser.module_bytes),
+            (corpus_path, spec.corpus.payload),
+        ):
+            if path.exists():
+                _require(path.read_bytes() == payload, f"installed evidence collision at {path.name}")
+            else:
+                path.write_bytes(payload)
+        corpus = json.loads(spec.corpus.payload)
+        selectors = set(spec.corpus_record_selectors)
+        selected_count = sum(
+            (case.get("record") in selectors) if selectors else ("record" not in case)
+            for case in corpus["cases"]
+        )
+        descriptors.append(
+            {
+                "contract_id": contract_id,
+                "module_path": str(module_path),
+                "export_name": parser.export_name,
+                "corpus_path": str(corpus_path),
+                "record_selectors": spec.corpus_record_selectors,
+                "expected_case_count": selected_count,
+            }
+        )
+    (evidence_root / "descriptors.json").write_text(
+        json.dumps(descriptors, sort_keys=True, separators=(",", ":")),
+        encoding="utf-8",
+    )
     _require(metabrowser.__version__, "installed distribution has no version")
     print(metabrowser.__version__)
     """
@@ -446,12 +491,90 @@ def _run_installed_python_smoke(
     return result.stdout.strip()
 
 
+def _browser_evidence_expected_output(descriptor_path: Path, evidence_root: Path) -> str:
+    try:
+        decoded = cast(object, json.loads(descriptor_path.read_text(encoding="utf-8")))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError("installed browser evidence descriptor is unreadable") from exc
+    if not isinstance(decoded, list):
+        raise RuntimeError("installed browser evidence descriptor must be an array")
+    descriptors = cast(list[object], decoded)
+    case_count = 0
+    evidence_root = evidence_root.resolve()
+    for index, descriptor_value in enumerate(descriptors):
+        if not isinstance(descriptor_value, dict):
+            raise RuntimeError(f"installed browser evidence descriptor {index} is not an object")
+        descriptor = cast(dict[object, object], descriptor_value)
+        for field in ("module_path", "corpus_path"):
+            value = descriptor.get(field)
+            if not isinstance(value, str) or not value:
+                raise RuntimeError(f"installed browser evidence descriptor {index} has no {field}")
+            path = Path(value).resolve()
+            if not path.is_relative_to(evidence_root) or not path.is_file():
+                raise RuntimeError(
+                    f"installed browser evidence descriptor {index} {field} escapes its handoff"
+                )
+        expected_case_count = descriptor.get("expected_case_count")
+        if (
+            isinstance(expected_case_count, bool)
+            or not isinstance(expected_case_count, int)
+            or expected_case_count < 0
+        ):
+            raise RuntimeError(
+                f"installed browser evidence descriptor {index} has an invalid case count"
+            )
+        case_count += expected_case_count
+    return f"artifact browser evidence OK ({len(descriptors)} parser(s), {case_count} cases)"
+
+
+def _run_installed_browser_evidence(artifact: Path, evidence_root: Path) -> None:
+    descriptor_path = evidence_root / "descriptors.json"
+    expected_output = _browser_evidence_expected_output(descriptor_path, evidence_root)
+    try:
+        result = subprocess.run(
+            [
+                "node",
+                "--experimental-vm-modules",
+                "--no-warnings",
+                str(BROWSER_EVIDENCE_CHECK),
+                str(descriptor_path),
+            ],
+            cwd=ROOT,
+            env=_isolated_install_environment(),
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=BROWSER_EVIDENCE_TIMEOUT_SECONDS,
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError(f"installed {artifact.name} browser evidence requires Node.js") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"installed {artifact.name} browser evidence timed out") from exc
+    except OSError as exc:
+        raise RuntimeError(
+            f"installed {artifact.name} browser evidence could not start: {exc}"
+        ) from exc
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip()
+        if not detail:
+            detail = f"browser harness exited {result.returncode} without diagnostics"
+        raise RuntimeError(f"installed {artifact.name} browser evidence failed: {detail}")
+    if result.stdout.strip() != expected_output or result.stderr.strip():
+        raise RuntimeError(
+            f"installed {artifact.name} browser evidence exited without its completion proof: "
+            f"stdout={result.stdout.strip()!r}, stderr={result.stderr.strip()!r}"
+        )
+
+
 def _smoke_installed_capabilities(artifact: Path, expected_entry_points: Mapping[str, str]) -> None:
-    _run_installed_python_smoke(
-        artifact,
-        CAPABILITY_SMOKE_SCRIPT,
-        arguments=tuple(sorted(expected_entry_points)),
-    )
+    with tempfile.TemporaryDirectory(prefix="metabrowser-installed-evidence-") as temp_dir:
+        evidence_root = Path(temp_dir)
+        _run_installed_python_smoke(
+            artifact,
+            CAPABILITY_SMOKE_SCRIPT,
+            arguments=(str(evidence_root), *sorted(expected_entry_points)),
+        )
+        _run_installed_browser_evidence(artifact, evidence_root)
 
 
 def _smoke_install(wheel: Path) -> None:

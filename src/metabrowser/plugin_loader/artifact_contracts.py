@@ -28,6 +28,7 @@ from softschema.validate import parse_frontmatter_text, parse_yaml_text
 from metabrowser.plugin_loader.capability_types import (
     ArtifactContractSpec,
     ArtifactProfile,
+    BrowserParserSpec,
     CapabilitySet,
     ConformanceCorpusSpec,
 )
@@ -43,6 +44,8 @@ type ContractRegistry = Mapping[str, InstalledArtifactContract]
 _CONTRACT_ID_RE = re.compile(r"^[a-z][a-z0-9.-]*:[A-Za-z][A-Za-z0-9._-]*/v[1-9][0-9]*$")
 _STABLE_TOKEN_RE = re.compile(r"^[a-z][a-z0-9._:-]*$")
 _SCHEMA_DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
+_BROWSER_MODULE_ID_RE = re.compile(r"^[a-z][a-z0-9._-]*$")
+_BROWSER_EXPORT_NAME_RE = re.compile(r"^[A-Za-z_$][A-Za-z0-9_$]*$")
 _ARTIFACT_PROFILES = frozenset({"frontmatter-md", "pure-yaml"})
 _ENFORCED_STATUS = "enforced"
 _JSON_SCHEMA_DRAFT = "https://json-schema.org/draft/2020-12/schema"
@@ -301,6 +304,8 @@ def _validate_contract_spec(spec: ArtifactContractSpec) -> dict[str, Any]:
     validate_record = _runtime_descriptor_value(spec.validate_record)
     dump_record = _runtime_descriptor_value(spec.dump_record)
     corpus = _runtime_descriptor_value(spec.corpus)
+    browser_consumed = _runtime_descriptor_value(spec.browser_consumed)
+    browser_parser = _runtime_descriptor_value(spec.browser_parser)
     if not isinstance(contract_id, str) or _CONTRACT_ID_RE.fullmatch(contract_id) is None:
         raise CapabilityRegistryError("artifact contract ID must be namespaced and versioned")
     if not isinstance(artifact_profile, str) or artifact_profile not in _ARTIFACT_PROFILES:
@@ -341,6 +346,40 @@ def _validate_contract_spec(spec: ArtifactContractSpec) -> dict[str, Any]:
         field_name="corpus_record_selectors",
         allow_empty=True,
     )
+    if type(browser_consumed) is not bool:
+        raise CapabilityRegistryError(
+            f"artifact contract {spec.contract_id!r} browser_consumed must be a boolean"
+        )
+    if browser_consumed and browser_parser is None:
+        raise CapabilityRegistryError(
+            f"browser-consumed artifact contract {spec.contract_id!r} requires browser parser evidence"
+        )
+    if not browser_consumed and browser_parser is not None:
+        raise CapabilityRegistryError(
+            f"server-only artifact contract {spec.contract_id!r} cannot declare browser parser evidence"
+        )
+    if browser_parser is not None:
+        if not isinstance(browser_parser, BrowserParserSpec):
+            raise CapabilityRegistryError(
+                f"artifact contract {spec.contract_id!r} browser parser must name a JS export"
+            )
+        module_id = _runtime_descriptor_value(browser_parser.module_id)
+        export_name = _runtime_descriptor_value(browser_parser.export_name)
+        if (
+            not isinstance(module_id, str)
+            or _BROWSER_MODULE_ID_RE.fullmatch(module_id) is None
+            or not isinstance(export_name, str)
+            or _BROWSER_EXPORT_NAME_RE.fullmatch(export_name) is None
+        ):
+            raise CapabilityRegistryError(
+                f"artifact contract {spec.contract_id!r} browser parser must name a JS export"
+            )
+        _require_packaged_bytes(
+            _runtime_descriptor_value(browser_parser.module_bytes),
+            _runtime_descriptor_value(browser_parser.module_bytes_sha256),
+            contract_id=spec.contract_id,
+            field_name="browser parser module",
+        )
     return _validated_schema(spec)
 
 
@@ -600,6 +639,7 @@ def serialize_artifact(
 __all__ = [
     "ArtifactContractSpec",
     "ArtifactProfile",
+    "BrowserParserSpec",
     "CapabilityRegistryError",
     "CapabilitySet",
     "ConformanceCorpusSpec",
