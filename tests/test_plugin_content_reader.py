@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from strif import file_mtime_hash
 
 from metabrowser import paths_safe
 from metabrowser.git.tree_source import (
@@ -24,6 +25,7 @@ from metabrowser.git.tree_source import (
     GitPath,
     git_revision_subject,
 )
+from metabrowser.inventory_engine.contract import canonical_inventory_path
 from metabrowser.paths_safe import _set_root_dir
 from metabrowser.plugin_api import (
     ArtifactDecompressionLimitError,
@@ -218,6 +220,30 @@ def test_resolution_reports_a_fingerprint_that_tracks_the_bytes(tmp_path: Path) 
     attach_subject(AttachedFilesystemSubject(root))
     before, after = asyncio.run(fingerprints())
     assert before != after
+
+
+def test_a_folder_fingerprint_is_the_mtime_hash_every_other_route_gives(tmp_path: Path) -> None:
+    """Resolution builds it from the one ``stat`` it takes the size from; strif's is the reference."""
+
+    root = tmp_path / "fs"
+    root.mkdir()
+    names = ("note.bin", "data.json.gz", "two words.yaml", "calf\u00e9.json", ".hidden.json")
+    for index, name in enumerate(names):
+        (root / name).write_bytes(b"x" * (index + 1))
+    _set_root_dir(root)
+
+    async def hook() -> list[tuple[str, int | None]]:
+        found: list[tuple[str, int | None]] = []
+        for name in names:
+            ref = await resolve_content(canonical_inventory_path(name))
+            assert ref is not None, name
+            found.append((ref.fingerprint, ref.stored_size))
+        return found
+
+    attach_subject(AttachedFilesystemSubject(root))
+    assert asyncio.run(hook()) == [
+        (file_mtime_hash(root / name), index + 1) for index, name in enumerate(names)
+    ]
 
 
 def test_a_resolved_reference_echoes_a_client_usable_identity(tmp_path: Path) -> None:

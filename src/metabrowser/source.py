@@ -23,7 +23,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import IO, TYPE_CHECKING, Protocol, runtime_checkable
 
-from strif import file_mtime_hash
+from strif import clean_alphanum_hash
 
 import metabrowser.paths_safe as paths_safe
 from metabrowser.content_errors import ContentReadError, ContentUnavailableError
@@ -344,6 +344,20 @@ def _filesystem_failures(artifact: ArtifactPath) -> Generator[None]:
         raise ContentUnavailableError(artifact.disk_path.name) from exc
 
 
+def _fingerprint_and_size(path: Path) -> tuple[str, int]:
+    """``strif.file_mtime_hash`` of *path* and the file's size, from one ``stat``.
+
+    The fingerprint is the one every other route gives the file, and it is built from
+    the size, so asking strif for it and the file for its size would stat twice. The
+    key is spelled as strif spells it; ``tests/test_plugin_content_reader.py`` holds
+    the two equal.
+    """
+
+    stat = path.stat()
+    key = f"{path.name}-{stat.st_size}-{stat.st_mtime_ns}"
+    return clean_alphanum_hash(key, max_length=64), stat.st_size
+
+
 class FilesystemContentSource:
     """Identity and document resolution against one exact filesystem root."""
 
@@ -373,8 +387,7 @@ class FilesystemContentSource:
             return None
         artifact = ArtifactPath(handle.path)
         try:
-            fingerprint = file_mtime_hash(handle.path)
-            stored_size = handle.path.stat().st_size
+            fingerprint, stored_size = _fingerprint_and_size(handle.path)
         except OSError:
             # Unlinked or replaced between the resolve and the hash. There is
             # nothing readable at this identity after all.

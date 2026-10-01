@@ -1453,8 +1453,9 @@ class _GitBlobReader:
     async def stat(self) -> ContentStat:
         size = self.entry.size
         if size is None:
-            # A listing that could not attach sizes, or a blob reached by
-            # following a symlink out of a listing that did.
+            # A listing attaches a size to every blob the store holds, one reached
+            # through a symlink included, so this is a blob it lacks. Asking for it
+            # by name answers that as `object_unavailable`.
             size = (await self.source.object_info(self.entry.oid)).size
         return ContentStat(size=size)
 
