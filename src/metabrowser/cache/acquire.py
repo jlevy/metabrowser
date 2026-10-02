@@ -7,6 +7,11 @@ through ``--no-serve``, ``--api``, and ``--show``; ssh stays closed. A bare path
 reaches here. Both commands against the origin are built by
 :mod:`metabrowser.cache.origin`: the protocol allowlist, the measured stall bound, and a
 provider's credential helper.
+
+A caller that wants to show a first clone running passes two reporters: one is told each
+phase as it starts, and the other each progress record of the fetch, as numbers
+(:mod:`metabrowser.git.progress`). Neither is given a path, and a cache hit calls
+neither.
 """
 
 from __future__ import annotations
@@ -94,6 +99,7 @@ from metabrowser.git.process import (
     require_acquisition_git,
     run_git,
 )
+from metabrowser.git.progress import GitProgress
 from metabrowser.home import PrivateStorageError, SharedEntryPolicy, ensure_private_directory
 
 log = logging.getLogger(__name__)
@@ -156,6 +162,7 @@ class RepositoryTooLargeError(RemoteAccessError):
 
 
 type PhaseReporter = Callable[[str], None]
+type ProgressReporter = Callable[[GitProgress], None]
 
 
 def remote_url_for(source: GitSource) -> str:
@@ -298,6 +305,7 @@ async def _run(
     cwd: Path | None = None,
     git_dir: Path | None = None,
     timeout_s: float | None = None,
+    on_progress: ProgressReporter | None = None,
 ) -> bytes:
     require_no_hierarchy_locks("git")
     if git_dir is not None:
@@ -306,6 +314,7 @@ async def _run(
             target=repository_store_target(git_dir=git_dir),
             policy=ACQUISITION_POLICY,
             timeout_s=timeout_s,
+            on_progress=on_progress,
         )
     if cwd is None:
         raise TypeError("cwd or git_dir is required")
@@ -328,13 +337,18 @@ async def _require_ref_at(git_dir: Path, ref: str, revision: str) -> None:
 
 
 async def acquire_into_staging(
-    source: GitSource, *, home: Path, on_phase: PhaseReporter | None = None
+    source: GitSource,
+    *,
+    home: Path,
+    on_phase: PhaseReporter | None = None,
+    on_progress: ProgressReporter | None = None,
 ) -> StagingAcquisition:
     """Fetch *source* into a new staging store and validate it.
 
     ``file://`` and ``https://`` sources are acquired here. The returned object holds
     the staging liveness lock until :meth:`StagingAcquisition.abandon`. *on_phase* is
-    told each phase as it starts.
+    told each phase as it starts. With *on_progress* the fetch runs with ``--progress``
+    and each record Git writes is passed on as numbers; without it Git reports none.
     """
     if source.transport not in _ACQUIRED_TRANSPORTS:
         raise AcquisitionError(
@@ -406,7 +420,11 @@ async def acquire_into_staging(
         try:
             # Every object: a published store is complete, so no read ever needs the
             # origin again, and an origin that would honor a filter is not asked to.
-            updated = await _run(mirror_fetch_args(remote_url, prune=False), git_dir=git_dir)
+            updated = await _run(
+                mirror_fetch_args(remote_url, prune=False, progress=on_progress is not None),
+                git_dir=git_dir,
+                on_progress=on_progress,
+            )
         except GitCommandError as exc:
             if _PARTIAL_CLONE_SOURCE.search(exc.stderr_summary):
                 raise PartialCloneSourceError(
@@ -458,6 +476,7 @@ class PublishedSource:
 
     ``fetched`` is true when the call that returned it fetched the store from the origin
     just now, so a ref the mirror lacks is not one a second fetch would bring.
+    ``last_fetch_at`` is when the store was last fetched, as its record says.
     """
 
     home: Path
@@ -471,6 +490,7 @@ class PublishedSource:
     default_remote_ref: str
     default_revision: str
     fetched: bool = field(default=False, compare=False)
+    last_fetch_at: str | None = field(default=None, compare=False)
 
 
 def _touch_last_opened(published: PublishedSource) -> None:
@@ -616,6 +636,7 @@ def _published(
     object_format: ObjectFormat,
     default_remote_ref: str,
     default_revision: str,
+    last_fetch_at: str | None,
 ) -> PublishedSource:
     return PublishedSource(
         home=home,
@@ -628,6 +649,7 @@ def _published(
         object_format=object_format,
         default_remote_ref=default_remote_ref,
         default_revision=default_revision,
+        last_fetch_at=last_fetch_at,
     )
 
 
@@ -698,6 +720,7 @@ def _publish_store_and_alias(
                 store.acquisition.object_format,
                 state.default_remote_ref,
                 state.default_revision,
+                state.last_fetch_at,
             )
     finally:
         if alias_lock.held:
@@ -755,6 +778,7 @@ def _find_published(source: GitSource, home: Path) -> PublishedSource | None:
         store.acquisition.object_format,
         state.default_remote_ref,
         state.default_revision,
+        state.last_fetch_at,
     )
 
 
@@ -782,7 +806,11 @@ def publish_from_staging(staged: StagingAcquisition) -> PublishedSource:
 
 
 async def acquire_source(
-    source: GitSource, *, home: Path, on_phase: PhaseReporter | None = None
+    source: GitSource,
+    *,
+    home: Path,
+    on_phase: PhaseReporter | None = None,
+    on_progress: ProgressReporter | None = None,
 ) -> PublishedSource:
     """Return a published ``file://`` or ``https://`` source, fetching only on a miss.
 
@@ -794,7 +822,8 @@ async def acquire_source(
     ``open_cache``, so neither refusal creates the application home or completes an
     empty directory into an ``f01`` skeleton. A miss that is allowed to fetch then
     opens the cache (and sweeps staging) and fetches, telling *on_phase* each phase
-    as it starts. A future layout is refused before any write.
+    as it starts and *on_progress* how far the fetch has got. A future layout is refused
+    before any write.
     """
 
     if source.transport not in _ACQUIRED_TRANSPORTS:
@@ -812,7 +841,9 @@ async def acquire_source(
     found, home = await run_lock_section(functools.partial(_find_or_open_cache, source, home))
     if found is not None:
         return found
-    staged = await acquire_into_staging(source, home=home, on_phase=on_phase)
+    staged = await acquire_into_staging(
+        source, home=home, on_phase=on_phase, on_progress=on_progress
+    )
     _report(on_phase, "publishing")
     published = await run_lock_section(functools.partial(_publish_and_touch, staged))
     _report(on_phase, "done")
@@ -865,6 +896,7 @@ __all__ = [
     "FetchFailedError",
     "PartialCloneSourceError",
     "PhaseReporter",
+    "ProgressReporter",
     "PublishedSource",
     "RefCaseCollisionError",
     "RemoteAccessError",

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -23,6 +24,7 @@ from metabrowser.git.process import (
     UnsupportedGitVersionError,
 )
 from metabrowser.git.tree_source import GitPath
+from tests.golden_harness import cache_hit_stderr, first_clone_stderr
 from tests.required_tools import needs_git
 from tests.test_cache_acquire import (
     _allow_installed_git,
@@ -69,20 +71,27 @@ def test_no_serve_acquires_a_file_source_and_prints_logical_identity(
     assert list((home / STAGING).iterdir()) == []
     assert any((home / SOURCES).iterdir())
     assert "repository.git" not in result.output
-    assert str(home) not in result.output
+    # What it printed as data names no place on disk. stderr says where clones are
+    # kept, the cache directory, and that the clone is done, and nothing else: no line
+    # names the store's own directory under it.
+    assert str(home) not in result.stdout
+    assert re.fullmatch(first_clone_stderr(url, home), result.stderr), result.stderr
 
 
 @posix_only
 def test_a_second_no_serve_reuses_the_published_store(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _isolate_home(tmp_path, monkeypatch)
+    home = _isolate_home(tmp_path, monkeypatch)
     url = _file_url(_origin(tmp_path))
     first = runner.invoke(_app, [url, "--no-serve"])
     second = runner.invoke(_app, [url, "--no-serve"])
     assert first.exit_code == 0, first.output
     assert second.exit_code == 0, second.output
-    assert first.output == second.output
+    assert first.stdout == second.stdout
+    # The second run is visibly not a clone, and each says only its own lines.
+    assert re.fullmatch(first_clone_stderr(url, home), first.stderr), first.stderr
+    assert re.fullmatch(cache_hit_stderr(url, home), second.stderr), second.stderr
 
 
 @posix_only
@@ -96,11 +105,14 @@ def test_file_url_api_cache_layout_acquires_then_inspects(
     assert "api: /api/cache/layout" in result.output
     assert '"home": "present"' in result.output
     assert '"state": "current"' in result.output
+    assert re.fullmatch(first_clone_stderr(url, home), result.stderr), result.stderr
     slug = next(path.name for path in (home / SOURCES).iterdir() if path.is_dir())
     listed = runner.invoke(_app, [url, "--api", "/api/cache/sources"])
     assert listed.exit_code == 0, listed.output
     assert slug in listed.output
     assert '"publication": "published"' in listed.output
+    # A route mode says nothing of a clone it found in the cache.
+    assert listed.stderr == ""
 
 
 @posix_only
@@ -225,7 +237,8 @@ def test_file_url_api_tree_attaches_the_default_pin(
     assert '"subject": "git_revision"' in result.output
     assert '"kind": "tree"' in result.output
     assert "README" in result.output
-    assert str(home) not in result.output
+    assert str(home) not in result.stdout
+    assert re.fullmatch(first_clone_stderr(url, home), result.stderr), result.stderr
     assert "repository.git" not in result.output
 
 
@@ -431,7 +444,8 @@ def test_no_serve_reuses_a_cache_hit_when_the_home_has_no_owner_write(
     try:
         second = runner.invoke(_app, [url, "--no-serve"])
         assert second.exit_code == 0, second.output
-        assert second.output == first.output
+        assert second.stdout == first.stdout
+        assert re.fullmatch(cache_hit_stderr(url, home), second.stderr), second.stderr
         assert list((home / STAGING).iterdir()) == []
     finally:
         _restore_owner_write(home)

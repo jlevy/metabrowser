@@ -50,7 +50,6 @@ import asyncio
 import base64
 import re
 import threading
-import unicodedata
 from array import array
 from bisect import bisect_left
 from collections import OrderedDict
@@ -77,7 +76,7 @@ from metabrowser.git.process import (
     terminate_git_process,
 )
 from metabrowser.git.wire import is_full_revision
-from metabrowser.invisible_chars import hidden_at
+from metabrowser.invisible_chars import FORMAT_CHARS, INVISIBLE_CHARS, SELECTOR_CHARS, hidden_at
 from metabrowser.settings import INVENTORY_MAX_FILES, TEXT_PREVIEW_REQUEST_MAX_BYTES
 from metabrowser.source import (
     MAX_CONTAINER_INNER_DEPTH,
@@ -162,6 +161,31 @@ class GitBatchProtocolError(GitError):
     """The cat-file actor returned a truncated or unexpected frame."""
 
 
+# What display_segment replaces wherever it stands: C0, DEL, C1, the format characters,
+# and the characters drawn as nothing or as a space.
+_REPLACED: Final[frozenset[str]] = (
+    frozenset(map(chr, (*range(0x20), *range(0x7F, 0xA0)))) | FORMAT_CHARS | INVISIBLE_CHARS
+)
+# Every character it may replace: those, and the variation selectors, which are replaced
+# only where they have no base. A name holding none of these is returned as decoded.
+#
+# display_segment runs once per entry of a listing or rollup, up to INVENTORY_MAX_FILES
+# times in one request, so a name costs set lookups and nothing per character in Python
+# unless it holds a suspect. Measured 2026-10-01 on CPython 3.14.7: 100,000 names a
+# pass, nine back-to-back pairs alternating an earlier function with this one, and the
+# ratio of CPU time taken per adjacent pair; the machine was loaded, so only the ratios
+# mean anything. "First" replaced C0, DEL, and C1 only, with no ASCII fast path, before
+# format and invisible characters were handled. "Walk" asked ``unicodedata.category``
+# and walked the range tables for every character of a name outside ASCII.
+#
+#   name                              this / first    this / walk
+#   ドキュメント概要-123.md               0.33 to 0.35    0.019 to 0.021
+#   document-summary-123.md           0.07 to 0.08    0.82 to 0.97 (the same two calls)
+#   <U+2764><U+FE0F> notes.md         0.96 to 1.05    0.055 to 0.058
+#   a<U+202E>b<U+3164>c<U+00A0>.md    0.82 to 0.85    0.059 to 0.063
+_SUSPECT: Final[frozenset[str]] = _REPLACED | SELECTOR_CHARS
+
+
 def display_segment(segment: bytes) -> str:
     """Replacement-safe UTF-8. C0, DEL, C1, format, and invisible characters become U+FFFD.
 
@@ -169,25 +193,28 @@ def display_segment(segment: bytes) -> str:
     C1 includes U+009B, a one-character CSI, which a URL can spell as ``%C2%9B``. A
     format character (Unicode category Cf), such as U+202E RIGHT-TO-LEFT OVERRIDE or
     U+200B ZERO WIDTH SPACE, reorders or hides what is shown around it without being
-    seen, and a default-ignorable character such as U+3164 HANGUL FILLER, or the blank
-    braille pattern U+2800, is drawn as nothing or as a space; a name holding either
-    could pass for another in a listing, a ``path:`` line, or an error message. A
-    variation selector attached to a base, as in ``❤️.md``, is kept; one with no base,
-    as in ``README<U+FE0F>.md``, is not (see :mod:`metabrowser.invisible_chars`). The
-    wire form keeps every byte.
+    seen, and a default-ignorable character such as U+3164 HANGUL FILLER, the blank
+    braille pattern U+2800, or a space other than the ASCII one, such as U+00A0 NO-BREAK
+    SPACE or U+200A HAIR SPACE, is drawn as nothing or as a space; a name holding any of
+    them could pass for another in a listing, a ``path:`` line, or an error message.
+    U+2028 LINE SEPARATOR and U+2029 PARAGRAPH SEPARATOR would also split the line they
+    are printed on. A variation selector attached to a base, as in ``❤️.md``, is kept;
+    one with no base, as in ``README<U+FE0F>.md``, is not. Unassigned and private-use
+    code points are kept; :mod:`metabrowser.invisible_chars` says why. The wire form
+    keeps every byte.
     """
 
     text = segment.decode("utf-8", "replace")
     if text.isascii() and text.isprintable():
         return text
+    if _SUSPECT.isdisjoint(text):
+        return text
+    # A suspect character that is not always replaced is a variation selector.
     return "".join(
-        "\ufffd"
-        if ord(ch) < 0x20
-        or 0x7F <= ord(ch) <= 0x9F
-        or unicodedata.category(ch) == "Cf"
-        or hidden_at(text, index)
-        else ch
-        for index, ch in enumerate(text)
+        [
+            "\ufffd" if ch in _SUSPECT and (ch in _REPLACED or hidden_at(text, index)) else ch
+            for index, ch in enumerate(text)
+        ]
     )
 
 
@@ -1101,11 +1128,13 @@ class GitTreeSource:
         # The requested path stays the route identity even when a symlink was
         # followed, matching what ``/api/file`` and ``/raw`` echo back. The
         # extension comes from the resolved leaf, which is what a kind check
-        # has to see.
+        # has to see. The size is the one its tree listing attached, which is
+        # absent only for a blob the store does not hold.
         return ContentRef(
             identity=path.to_wire(),
             logical_ext=blob_logical_ext(entry.path),
             fingerprint=entry.oid,
+            stored_size=entry.size,
             reader=_GitBlobReader(source=self, entry=entry),
         )
 
@@ -1424,8 +1453,9 @@ class _GitBlobReader:
     async def stat(self) -> ContentStat:
         size = self.entry.size
         if size is None:
-            # A listing that could not attach sizes, or a blob reached by
-            # following a symlink out of a listing that did.
+            # A listing attaches a size to every blob the store holds, one reached
+            # through a symlink included, so this is a blob it lacks. Asking for it
+            # by name answers that as `object_unavailable`.
             size = (await self.source.object_info(self.entry.oid)).size
         return ContentStat(size=size)
 

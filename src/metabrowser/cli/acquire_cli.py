@@ -5,32 +5,26 @@ what a provider web URL pointed at. ``--api /api/cache/…`` acquires as a side 
 then issues the route against an empty throwaway root so cache inspection cannot expose
 origin objects through ``/api/tree``. Non-cache ``--api`` / ``--show`` of a pin is
 ``git_pin_cli``. ssh stays closed. Acquired content is never served on a listening port.
-A first clone reports its phases on a terminal, and a terminal hangup cancels it like
-Ctrl-C.
+A first clone says on stderr where it goes, how far it has got, and when it is done
+(:mod:`metabrowser.cli.clone_report`), and a terminal hangup cancels it like Ctrl-C.
 """
 
 from __future__ import annotations
 
 import logging
-import sys
 import tempfile
-import time
 from pathlib import Path
 from typing import Final
 
 import typer
 
-from metabrowser.cache.acquire import (
-    AcquisitionError,
-    PhaseReporter,
-    PublishedSource,
-    acquire_source,
-)
+from metabrowser.cache.acquire import AcquisitionError, PublishedSource, acquire_source
 from metabrowser.cache.atomic import RecordError
 from metabrowser.cache.layout import FutureLayoutFormatError, LayoutError
 from metabrowser.cache.locks import LockBusyError
 from metabrowser.cache.urls import GitSource
 from metabrowser.cli.asgi_client import INDEX_READY_TIMEOUT_S
+from metabrowser.cli.clone_report import CloneReport, cache_directory_display
 from metabrowser.cli.common import apply_log_level, maybe_cli_logging
 from metabrowser.cli.hangup import run_cancelling_on_hangup
 from metabrowser.cli.selection import (
@@ -104,38 +98,36 @@ def _is_cache_inspect_route(route: str) -> bool:
     return is_cache_inspect_route(route)
 
 
-def terminal_phase_reporter(source: GitSource) -> PhaseReporter | None:
-    """Report a first clone's phases and elapsed time on stderr, when it is a terminal.
-
-    Like Git's own progress, nothing is written to a pipe or a file, so a captured
-    transcript is unchanged by how long a clone took.
-    """
-
-    if not sys.stderr.isatty():
-        return None
-    started = time.monotonic()
-
-    def report(phase: str) -> None:
-        elapsed = time.monotonic() - started
-        typer.echo(f"cloning {source.normalized}: {phase} ({elapsed:.1f} s)", err=True)
-
-    return report
-
-
-async def acquire_for_cli(source: GitSource) -> PublishedSource:
+async def acquire_for_cli(
+    source: GitSource, *, announce_hit: bool = False, then: str = ""
+) -> PublishedSource:
     """Publish *source* into ``METABROWSER_HOME``, mapping failures to ``CLIError``.
 
     Every CLI entry point that acquires goes through here — ``--no-serve``, cache
-    ``--api``, and the Git-pin ``--show`` / ``--api`` modes — so none of them lets a
-    raw ``GitError`` reach the user with its argument vector or staging path.
+    ``--api``, serve mode, and the Git-pin ``--show`` / ``--api`` modes — so none of
+    them lets a raw ``GitError`` reach the user with its argument vector or staging
+    path, and a first clone reports itself the same way in each: where it goes, how
+    far it has got, and that it is done, on stderr, followed by *then*, what the
+    command does next.
+
+    With *announce_hit*, a source that was already cloned says so in one line. The
+    modes that open a source, serve mode and ``--no-serve``, ask for it. ``--show`` and
+    ``--api`` do not: a script runs them again and again against one clone, and their
+    stderr says only what the URL selected.
     """
+    try:
+        home = application_home()
+    except ApplicationHomeError as exc:
+        raise CLIError(str(exc)) from exc
+    report = CloneReport(source.normalized, cache_directory_display(home), then=then)
     try:
         # The server's handler is not attached yet on these paths, so an explicit
         # ``--log-level`` needs its own, or Git's failure text is never printed.
-        with maybe_cli_logging():
-            return await acquire_source(
-                source, home=application_home(), on_phase=terminal_phase_reporter(source)
-            )
+        with maybe_cli_logging(report.end_status_line):
+            async with report.ticking():
+                published = await acquire_source(
+                    source, home=home, on_phase=report.phase, on_progress=report.progress
+                )
     except _ACQUIRE_CLI_ERRORS as exc:
         raise CLIError(str(exc)) from exc
     except RecordError as exc:
@@ -143,12 +135,17 @@ async def acquire_for_cli(source: GitSource) -> PublishedSource:
         raise CLIError(_UNREADABLE_RECORD) from exc
     except GitError as exc:
         raise CLIError(_git_failure_message(exc)) from exc
+    finally:
+        report.close()
+    if announce_hit and not published.fetched:
+        report.cache_hit(published.last_fetch_at)
+    return published
 
 
-def acquire_published_source(source: GitSource) -> PublishedSource:
+def acquire_published_source(source: GitSource, *, announce_hit: bool = False) -> PublishedSource:
     """Publish *source* into ``METABROWSER_HOME`` and return the alias."""
 
-    return run_cancelling_on_hangup(acquire_for_cli(source))
+    return run_cancelling_on_hangup(acquire_for_cli(source, announce_hit=announce_hit))
 
 
 def run_no_serve(root: Path | GitSource, *, log_level: str = "") -> None:
@@ -157,7 +154,7 @@ def run_no_serve(root: Path | GitSource, *, log_level: str = "") -> None:
     apply_log_level(log_level)
     if isinstance(root, Path):
         raise CLIError("ROOT is a local path; --no-serve acquires a file:// or https:// Git source")
-    published = acquire_published_source(root)
+    published = acquire_published_source(root, announce_hit=True)
     typer.echo(f"acquired: {published.source.normalized}")
     typer.echo(f"slug: {published.slug}")
     typer.echo(f"store: {published.store_id}")

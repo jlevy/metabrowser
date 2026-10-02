@@ -17,7 +17,8 @@ Three properties are deliberate:
   chunks lets the cap fire while the output is still small.
 * **stderr never reaches the client.** Git writes absolute local paths
   into its error text. It is logged and dropped; the caller gets a typed
-  error instead.
+  error instead. Where it is logged, it is logged through :func:`loggable`:
+  part of it is whatever an origin sent, and a log goes to a terminal.
 
 Acquisition reuses this runner. Named policies add ``stdin=DEVNULL``,
 umask ``077``, isolated Git configuration, and ``GIT_NO_LAZY_FETCH``;
@@ -36,14 +37,17 @@ import re
 import shutil
 import signal
 import subprocess
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
-from typing import Final, Literal
+from typing import TYPE_CHECKING, Final, Literal
 
 from metabrowser.content_errors import ContentReadError
 from metabrowser.settings import GIT_SUBPROCESS_MAX_BYTES, GIT_SUBPROCESS_TIMEOUT_S
+
+if TYPE_CHECKING:
+    from metabrowser.git.progress import GitProgress
 
 log = logging.getLogger(__name__)
 
@@ -315,16 +319,34 @@ class UnsupportedGitVersionError(GitError):
         self.required = required
 
 
+def loggable(text: str) -> str:
+    """*text* as a log may print it: nothing in it acts on a terminal.
+
+    Git's stderr holds whatever the origin sent, and a log's handler writes to a
+    terminal. Every character that is not printable becomes its visible escape
+    (``\\x1b``, ``\\r``, ``\\u202e``), so an escape sequence, a carriage return, a
+    backspace, or a bidirectional override is read and not obeyed. A line break stays,
+    since the text is several lines.
+    """
+
+    if text.isascii() and text.isprintable():
+        return text
+    return "".join(
+        ch if ch == "\n" or ch.isprintable() else ch.encode("unicode_escape").decode("ascii")
+        for ch in text
+    )
+
+
 def failure_detail(exc: GitError) -> str:
     """Log text for a git failure, including git's own stderr.
 
     Separate from ``str(exc)`` so the stderr text — which routinely
     carries absolute local paths — reaches a log line and only a log
     line. A caller that puts an exception message into a response body
-    still gets the path-free form.
+    still gets the path-free form. The stderr text is :func:`loggable`.
     """
     summary = getattr(exc, "stderr_summary", "")
-    return f"{exc}: {summary}" if summary else str(exc)
+    return f"{exc}: {loggable(summary)}" if summary else str(exc)
 
 
 @cache
@@ -510,6 +532,30 @@ async def _read_capped(stream: asyncio.StreamReader | None, max_bytes: int) -> t
     return b"".join(chunks), overflowed
 
 
+async def _read_stderr(
+    stream: asyncio.StreamReader | None,
+    on_progress: Callable[[GitProgress], None] | None,
+) -> tuple[bytes, bool]:
+    """Drain stderr for the log, handing progress records to *on_progress* as numbers.
+
+    Without *on_progress* this is the capped drain. With it, a record of the shape
+    ``git fetch --progress`` prints is parsed into a :class:`GitProgress` and dropped,
+    and only the rest counts toward the cap: a long fetch writes more progress than the
+    cap holds, and the error that explains a failure comes after it. No text Git or the
+    origin wrote reaches the caller; see :mod:`metabrowser.git.progress`.
+    """
+    if stream is None or on_progress is None:
+        return await _read_capped(stream, _STDERR_MAX_BYTES)
+    # Imported where progress is read: every Git read loads this module, a folder's
+    # among them, and only a first clone reads progress.
+    from metabrowser.git.progress import ProgressSplitter
+
+    splitter = ProgressSplitter(on_progress, _STDERR_MAX_BYTES)
+    while chunk := await stream.read(_READ_CHUNK_BYTES):
+        splitter.feed(chunk)
+    return splitter.finish(), False
+
+
 async def run_git(
     args: Sequence[str],
     *,
@@ -520,6 +566,7 @@ async def run_git(
     max_bytes: int | None = None,
     pass_fds: Sequence[int] = (),
     stdin_bytes: bytes | None = None,
+    on_progress: Callable[[GitProgress], None] | None = None,
 ) -> bytes:
     """Run ``git`` with *args* in *cwd* and return raw stdout.
 
@@ -534,6 +581,9 @@ async def run_git(
     *pass_fds* are descriptors Git inherits, such as a lock it must hold for
     as long as it runs, even if this process dies first. *stdin_bytes* is written
     to Git's stdin, which is then closed, as ``update-ref --stdin`` reads it.
+    *on_progress* is called, on the event loop, with each progress record a command
+    run with ``--progress`` writes to stderr. It changes nothing else: the deadline,
+    the output cap, and what a cancellation kills are the same with or without it.
 
     Raises :class:`GitUnavailableError`, :class:`GitTimeoutError`,
     :class:`GitOutputTooLargeError`, or :class:`GitCommandError`.
@@ -554,7 +604,7 @@ async def run_git(
     # sequence deadlocks as soon as git fills the pipe we are not
     # reading, which a repository with a lot of output will do.
     stdout_task = asyncio.ensure_future(_read_capped(proc.stdout, max_bytes))
-    stderr_task = asyncio.ensure_future(_read_capped(proc.stderr, _STDERR_MAX_BYTES))
+    stderr_task = asyncio.ensure_future(_read_stderr(proc.stderr, on_progress))
 
     async def feed_stdin() -> None:
         if stdin_bytes is None or proc.stdin is None:
@@ -605,7 +655,7 @@ async def run_git(
         # terminal every few seconds for anyone browsing a directory that is
         # not a repository. Callers that treat a failure as a failure log it
         # themselves, with :func:`failure_detail` for this same text.
-        log.debug("git %s exited %s: %s", " ".join(args), returncode, stderr_summary)
+        log.debug("git %s exited %s: %s", " ".join(args), returncode, loggable(stderr_summary))
         raise GitCommandError(args, returncode, stderr_summary)
 
     return stdout
@@ -914,6 +964,7 @@ __all__ = [
     "git_executable",
     "forget_process_group",
     "kill_live_process_groups",
+    "loggable",
     "parse_git_version",
     "parsed_git_version_as_fixture",
     "repository_store_target",

@@ -13,6 +13,7 @@ import pytest
 
 from metabrowser.git.tree_source import GitRevisionSubject
 from metabrowser.mirror_refresh import (
+    MirrorDisplay,
     MirrorRef,
     MirrorSession,
     RecordedFreshness,
@@ -72,6 +73,10 @@ class _Mirror:
 
     def repository_context(self, *, revision: str, branch: str | None) -> RepositoryContext | None:
         return None
+
+    @property
+    def display(self) -> MirrorDisplay:
+        return MirrorDisplay(name="store", origin="file:///origin.git", location="/store")
 
 
 class _Companion:

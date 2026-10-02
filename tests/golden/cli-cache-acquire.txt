@@ -1,4 +1,4 @@
-## The first command fetches and publishes; the second reuses the store.
+## The first command says where it clones to and that it is done, then prints what it published; the second prints the same and says it reused the clone.
 # metab <ORIGIN-A> --no-serve
 exit: 0
 --- stdout ---
@@ -7,6 +7,8 @@ slug: <SLUG-A>
 store: <STORE-A>
 revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
 --- stderr ---
+cloning <ORIGIN-A> into <HOME>/cache
+cloned <ORIGIN-A> in 0.0 s
 # metab <ORIGIN-A> --no-serve
 exit: 0
 --- stdout ---
@@ -15,6 +17,7 @@ slug: <SLUG-A>
 store: <STORE-A>
 revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
 --- stderr ---
+using the clone of <ORIGIN-A> cached in <HOME>/cache, fetched less than a minute ago
 ## One source is published, aliased to the one store it acquired.
 # metab <ROOT> --api /api/cache/layout
 exit: 0

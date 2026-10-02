@@ -6,6 +6,8 @@ slug: github-com--octo--demo--46386669dc01
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
 --- stderr ---
+cloning https://github.com/octo/demo into <HOME>/cache
+cloned https://github.com/octo/demo in 0.0 s
 # metab https://www.github.com/octo/demo/ --no-serve
 exit: 0
 --- stdout ---
@@ -14,6 +16,7 @@ slug: github-com--octo--demo--46386669dc01
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
 --- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
 # metab git@github.com:octo/demo.git --no-serve
 exit: 0
 --- stdout ---
@@ -22,6 +25,7 @@ slug: github-com--octo--demo--46386669dc01
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
 --- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
 # metab 'https://github.com:443/octo/demo?tab=readme-ov-file#readme' --no-serve
 exit: 0
 --- stdout ---
@@ -30,6 +34,7 @@ slug: github-com--octo--demo--46386669dc01
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
 --- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
 # metab https://github.com/octo/demo/tree/release/v1/docs --no-serve
 exit: 0
 --- stdout ---
@@ -41,6 +46,7 @@ selection: tree
 pin: 89e0fadf1d6368c47b9363ff7df0cd26b48d67df (branch release/v1)
 path: docs
 --- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
 # metab 'https://github.com/octo/demo/blob/topic/README.md?plain=1&utm_source=chat#L3-L4' --no-serve
 exit: 0
 --- stdout ---
@@ -54,6 +60,7 @@ path: README.md
 lines: L3-L4
 plain: true
 --- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
 # metab 'https://github.com/octo/demo/blob/v1.0/docs/v1.md#L1C3-L1C9' --no-serve
 exit: 0
 --- stdout ---
@@ -66,6 +73,7 @@ pin: 89e0fadf1d6368c47b9363ff7df0cd26b48d67df (tag v1.0)
 path: docs/v1.md
 lines: L1C3-L1C9
 --- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
 # metab https://github.com/octo/demo/tree/refs/tags/same --no-serve
 exit: 0
 --- stdout ---
@@ -76,6 +84,7 @@ revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
 selection: tree
 pin: 89e0fadf1d6368c47b9363ff7df0cd26b48d67df (tag same)
 --- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
 # metab https://github.com/octo/demo/tree/523f/docs --no-serve
 exit: 0
 --- stdout ---
@@ -87,6 +96,7 @@ selection: tree
 pin: 89e0fadf1d6368c47b9363ff7df0cd26b48d67df (branch 523f)
 path: docs
 --- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
 # metab https://github.com/octo/demo/commit/523F476 --no-serve
 exit: 0
 --- stdout ---
@@ -97,6 +107,7 @@ revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
 selection: commit
 pin: 523f476bbcbde731f18dec9d6875df8fe8db13f3 (commit)
 --- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
 # metab https://github.com/octo/demo/pull/7/files --no-serve
 exit: 0
 --- stdout ---
@@ -108,6 +119,7 @@ selection: pull_request
 pin: 523f476bbcbde731f18dec9d6875df8fe8db13f3 (default branch topic)
 pull_request: 7 (not opened: pull request 7 of https://github.com/octo/demo: gh exited 1 without an HTTP response (gh_failed); the pin is the default branch)
 --- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
 # metab https://github.com/octo/demo/pull/7/commits/89e0fad --no-serve
 exit: 0
 --- stdout ---
@@ -119,6 +131,7 @@ selection: commit
 pin: 89e0fadf1d6368c47b9363ff7df0cd26b48d67df (commit)
 pull_request: 7 (not opened: pull request 7 of https://github.com/octo/demo: gh exited 1 without an HTTP response (gh_failed))
 --- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
 # metab https://raw.githubusercontent.com/octo/demo/refs/heads/release/v1/docs/v1.md --no-serve
 exit: 0
 --- stdout ---
@@ -130,6 +143,7 @@ selection: blob
 pin: 89e0fadf1d6368c47b9363ff7df0cd26b48d67df (branch release/v1)
 path: docs/v1.md
 --- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
 # metab https://raw.githubusercontent.com/octo/demo/topic/docs/My%20Notes.md --no-serve
 exit: 0
 --- stdout ---
@@ -141,6 +155,7 @@ selection: blob
 pin: 523f476bbcbde731f18dec9d6875df8fe8db13f3 (branch topic)
 path: docs/My Notes.md
 --- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
 # metab 'https://github.com/octo/demo/blob/release/v1/docs/v1.md#L1' --show docs/v1.md
 exit: 0
 --- stdout ---
@@ -312,6 +327,7 @@ selection: blob
 pin: 523f476bbcbde731f18dec9d6875df8fe8db13f3 (default branch topic)
 path: docs/guide.md
 --- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
 # metab 'https://github.com/octo/demo/blob/topic/docs/My Notes.md' --no-serve
 exit: 0
 --- stdout ---
@@ -323,6 +339,7 @@ selection: blob
 pin: 523f476bbcbde731f18dec9d6875df8fe8db13f3 (branch topic)
 path: docs/My Notes.md
 --- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
 # metab https://github.com/octo/demo/blob/topic/docs/My%20Notes.md --no-serve
 exit: 0
 --- stdout ---
@@ -334,6 +351,7 @@ selection: blob
 pin: 523f476bbcbde731f18dec9d6875df8fe8db13f3 (branch topic)
 path: docs/My Notes.md
 --- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
 # metab 'https://raw.githubusercontent.com/octo/demo/topic/docs/My Notes.md' --no-serve
 exit: 0
 --- stdout ---
@@ -345,6 +363,7 @@ selection: blob
 pin: 523f476bbcbde731f18dec9d6875df8fe8db13f3 (branch topic)
 path: docs/My Notes.md
 --- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
 # metab 'https://github.com/octo/demo/blob/unicode/docs/雪.md#L1' --no-serve
 exit: 0
 --- stdout ---
@@ -357,6 +376,7 @@ pin: 722d29ccaa40b81210e6a316f1940d90087a8a8a (branch unicode)
 path: docs/雪.md
 lines: L1
 --- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
 # metab 'https://github.com/octo/demo/blob/unicode/docs/%E9%9B%AA.md#L1' --no-serve
 exit: 0
 --- stdout ---
@@ -369,6 +389,7 @@ pin: 722d29ccaa40b81210e6a316f1940d90087a8a8a (branch unicode)
 path: docs/雪.md
 lines: L1
 --- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
 # metab https://github.com/octo/demo/blob/unicode/docs/a%E2%80%AEb.md --no-serve
 exit: 0
 --- stdout ---
@@ -380,6 +401,7 @@ selection: blob
 pin: 722d29ccaa40b81210e6a316f1940d90087a8a8a (branch unicode)
 path: docs/a�b.md
 --- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
 # metab https://github.com/octo/demo/blob/unicode/docs/❤️.md --no-serve
 exit: 0
 --- stdout ---
@@ -391,6 +413,7 @@ selection: blob
 pin: 722d29ccaa40b81210e6a316f1940d90087a8a8a (branch unicode)
 path: docs/❤️.md
 --- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
 # metab https://github.com/octo/demo/blob/unicode/docs/%E2%9D%A4%EF%B8%8F.md --no-serve
 exit: 0
 --- stdout ---
@@ -402,6 +425,7 @@ selection: blob
 pin: 722d29ccaa40b81210e6a316f1940d90087a8a8a (branch unicode)
 path: docs/❤️.md
 --- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
 # metab https://github.com/octo/demo/tree/nope/docs --no-serve
 exit: 1
 --- stdout ---
@@ -410,6 +434,7 @@ slug: github-com--octo--demo--46386669dc01
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
 --- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
 Error: the mirror of https://github.com/octo/demo has no branch, tag, or commit that begins the URL's path (ref_not_found)
 # metab https://github.com/octo/demo/blob/topic/docs/missing.md --show README.md
 exit: 1
@@ -424,6 +449,7 @@ slug: github-com--octo--demo--46386669dc01
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
 --- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
 Error: the mirror of https://github.com/octo/demo has no commit 0000000 (commit_not_found)
 # metab https://github.com/octo/demo/tree/tree-tag --no-serve
 exit: 1
@@ -433,6 +459,7 @@ slug: github-com--octo--demo--46386669dc01
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
 --- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
 Error: the URL names an object in https://github.com/octo/demo that is not a commit (not_a_commit)
 # metab https://github.com/octo/demo/pull/7/commits/abcdef0 --api /api/git/repo
 exit: 1
@@ -447,6 +474,7 @@ slug: github-com--octo--demo--46386669dc01
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
 --- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
 Error: the mirror of https://github.com/octo/demo has no branch, tag, or commit that begins the URL's path (ref_not_found)
 # metab https://github.com/octo/demo/blob/topic/docs/%E2%80%AE2J.md --no-serve
 exit: 1
@@ -456,6 +484,7 @@ slug: github-com--octo--demo--46386669dc01
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
 --- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
 Error: docs/�2J.md is not in https://github.com/octo/demo at topic (path_not_found)
 # metab https://github.com/octo/demo/blob/topic/docs/%C2%9B2J.md --no-serve
 exit: 1
@@ -465,6 +494,7 @@ slug: github-com--octo--demo--46386669dc01
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
 --- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
 Error: docs/�2J.md is not in https://github.com/octo/demo at topic (path_not_found)
 # metab https://github.com/octo/demo/blob/topic/README%E3%85%A4.md --no-serve
 exit: 1
@@ -474,6 +504,7 @@ slug: github-com--octo--demo--46386669dc01
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
 --- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
 Error: README�.md is not in https://github.com/octo/demo at topic (path_not_found)
 # metab https://github.com/octo/demo/blob/topic/README%E2%A0%80.md --no-serve
 exit: 1
@@ -483,6 +514,7 @@ slug: github-com--octo--demo--46386669dc01
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
 --- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
 Error: README�.md is not in https://github.com/octo/demo at topic (path_not_found)
 # metab https://github.com/octo/demo/blob/topic/README%EF%B8%8F.md --no-serve
 exit: 1
@@ -492,4 +524,35 @@ slug: github-com--octo--demo--46386669dc01
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
 --- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
+Error: README�.md is not in https://github.com/octo/demo at topic (path_not_found)
+# metab https://github.com/octo/demo/blob/topic/README%C2%A0.md --no-serve
+exit: 1
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
+--- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
+Error: README�.md is not in https://github.com/octo/demo at topic (path_not_found)
+# metab https://github.com/octo/demo/blob/topic/README%E2%80%8A.md --no-serve
+exit: 1
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
+--- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
+Error: README�.md is not in https://github.com/octo/demo at topic (path_not_found)
+# metab https://github.com/octo/demo/blob/topic/README%E2%80%A8.md --no-serve
+exit: 1
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 523f476bbcbde731f18dec9d6875df8fe8db13f3
+--- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
 Error: README�.md is not in https://github.com/octo/demo at topic (path_not_found)

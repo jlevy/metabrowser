@@ -50,6 +50,7 @@ from tests.golden_harness import (
     Labels,
     check_golden,
     isolate_cli,
+    label_home,
     origin_identity,
     quoted,
     run_metab,
@@ -327,7 +328,7 @@ def test_golden_pull_requests_fetch_refresh_and_read_offline(
     cached = session.run(str(tmp_path / "root"), "--api", f"/api/cache/source/{slug}")
     assert cached.exit_code == 0, cached.stderr
 
-    rendered = Labels().apply("".join(session.blocks))
+    rendered = label_home(Labels().apply("".join(session.blocks)), session.home)
     assert str(tmp_path) not in rendered and str(session.home) not in rendered
     assert "file://" not in rendered
     # One full print of each distinct record: pull request 7's and pull request 8's.

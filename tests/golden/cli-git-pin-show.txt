@@ -7,6 +7,8 @@ kind: markdown
 views: rendered (default), source
 model: text envelope; size=17 content_bytes=17 content_truncated=False
 --- stderr ---
+cloning <ORIGIN> into <HOME>/cache
+cloned <ORIGIN> in 0.0 s
 # metab file://<ORIGIN> --show a/deep/nested.md
 exit: 0
 --- stdout ---
@@ -75,6 +77,8 @@ kind: markdown
 views: rendered (default), source
 model: text envelope; size=6 content_bytes=6 content_truncated=False
 --- stderr ---
+cloning <ORIGIN-NAMES> into <HOME>/cache
+cloned <ORIGIN-NAMES> in 0.0 s
 # metab file://<ORIGIN-NAMES> --show g1-notes.md
 exit: 0
 --- stdout ---

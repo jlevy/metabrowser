@@ -800,6 +800,92 @@ def test_address_gives_way_from_the_root_end_and_never_cuts_a_segment() -> None:
     assert "overflow: hidden" in crumb_block
 
 
+def test_a_mirrors_note_takes_nothing_from_the_address_and_is_whole_or_absent() -> None:
+    """The rules that place a served mirror's note, its name, and its commit's copy control.
+
+    What they do to a heading is layout, which needs a rendered page; the widths are
+    measured in Chrome and recorded beside the note's rule. This pins what orders it.
+
+    The note is written with the address and drawn after a file's copy control. It
+    gives way before the root's name does, by the ratio the root's own rule measured as
+    the least that takes no sliver from the next part. Gone, it occupies nothing: it has
+    no padding, its spacers are content, and its negative margin is the breadcrumb's
+    gap. And it is never a stub: the text has a basis the row must fit, or it wraps out
+    of the one line the note shows. What it does show ends in an ellipsis, because the
+    start of the path says it is the cache and the end is a store's hexadecimal key.
+    """
+
+    css = _read_styles_css()
+
+    def block(selector: str) -> str:
+        start = css.index(f"\n{selector} {{")
+        return css[start : css.index("}", start)]
+
+    def shrink(selector: str) -> float:
+        match = re.search(r"flex(?:-shrink)?:\s*(?:[\d.]+\s+)?([\d.]+)", block(selector))
+        assert match is not None, f"{selector} declares no shrink weight"
+        return float(match.group(1))
+
+    note = block(".file-header-mirror")
+    assert shrink(".file-header-mirror") >= 5000 * shrink(".file-header-root")
+    assert "order: 1;" in note
+    gap = re.search(r"gap: (\d+px);", block(".folder-breadcrumb"))
+    assert gap is not None
+    assert f"margin: 0 -{gap.group(1)} 0 auto;" in note
+    assert "padding" not in note
+    for declaration in ("min-width: 0;", "overflow: hidden;", "flex-wrap: wrap;", "height: "):
+        assert declaration in note, declaration
+    # Its two spacers are flex items of the note, so they shrink away with it.
+    assert "flex: 0 0 10px;" in block(".file-header-mirror::before")
+    assert f"flex: 0 0 {gap.group(1)};" in block(".file-header-mirror::after")
+    text = block(".file-header-mirror-text")
+    assert re.search(r"flex: 1 0 \d+em;", text), "the text has no basis to wrap below"
+    for declaration in ("min-width: 0;", "overflow: hidden;", "text-overflow: ellipsis;"):
+        assert declaration in text, declaration
+    # The end is cut, not the start, and the same for a mirror's name in both headings:
+    # a path's own rule reverses the direction, and a mirror's root undoes that.
+    assert "direction" not in note + text
+    assert "direction: ltr;" in block(".mirror-source .file-header-root")
+    assert "direction: rtl;" in block(".file-header-root")
+    # In the design's tokens: muted, at the summary's size, and no color of its own.
+    assert "color: var(--muted);" in note and "font-size: var(--ui-small-font-size);" in note
+    assert not re.search(r"#[0-9a-fA-F]{3,8}\b|rgb\(|oklch\(", note + text)
+
+    # In the navigation heading the ref narrows before the name, and the commit never.
+    # The copy control keeps its size, and shows as the file header's does.
+    assert shrink(".header-ref") > 1
+    assert "flex: none;" in block(".header-revision")
+    assert "flex: none;" in block(".header-copy")
+    assert "opacity: 1;" in block(".app-header:hover .header-copy")
+
+
+def test_only_a_mirrors_line_of_a_tooltip_wraps_and_every_other_tooltip_is_as_it_was() -> None:
+    """A served mirror's tooltip holds runs wider than its box; no other tooltip changes.
+
+    The origin, a commit ID, and a path ending in a 64-digit key are each one unbroken
+    run, so the mirror's line breaks where the box ends. The rule is that line's alone.
+    Put on the tooltip itself, with ``anywhere``, it changed every folder's tooltip: a
+    run could then break while the box was measured for its place, so a long file name's
+    tooltip near the window's edge became two lines flush against the edge. Where a
+    tooltip lands is layout, measured in Chrome and recorded beside the rule; this pins
+    that the one tooltip every page uses declares nothing about wrapping.
+    """
+
+    css = _read_styles_css()
+    start = css.index("\n.custom-tooltip {")
+    tooltip = css[start : css.index("}", start)]
+    for wrapping in ("overflow-wrap", "word-break", "word-wrap", "white-space", "hyphens"):
+        assert wrapping not in tooltip, wrapping
+    assert "max-width: 360px;" in tooltip
+    # ``break-word`` breaks a run that does not fit; ``anywhere`` also lets it break
+    # while the box is measured, which is what narrowed a tooltip.
+    start = css.index("\n.tip-mirror {")
+    assert css[start : css.index("}", start)].split("{")[1].split() == [
+        "overflow-wrap:",
+        "break-word;",
+    ]
+
+
 def test_navigation_heading_shows_only_the_root_name() -> None:
     """The heading renders the basename; the served root rides alongside.
 

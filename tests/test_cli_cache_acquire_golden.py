@@ -14,7 +14,8 @@ identity, store identity, and slug depend on the sandbox path, so they become
 per-origin labels such as ``<ORIGIN-A>``, ``<SOURCE-A>``, ``<STORE-A>``, and
 ``<SLUG-A>``; equal labels are equal values. Revisions, refs, publication and reference
 states, counts, messages, and every recorded time are literal, and no transcript names
-a pack file or a cache path. The origin branch is ``topic`` so the remote-tracking ref
+a pack file or a path inside the cache. The application home is ``<HOME>``, and only
+the two stderr lines that say where clones are kept may name it. The origin branch is ``topic`` so the remote-tracking ref
 is not the default-branch spelling public hygiene rejects; ``--initial-branch`` still
 pins the name so it does not vary by Git version.
 
@@ -35,12 +36,15 @@ from metabrowser.cache.layout import migrate_layout
 from metabrowser.home import ensure_home
 from tests.cache_home_fixture import FIXTURE_VERSION, _stage_and_publish_store
 from tests.golden_harness import (
+    HOME_LABEL,
     FixedClock,
+    Invocation,
     Labels,
     block,
     check_golden,
     file_url,
     isolate_cli,
+    label_home,
     pinned_git,
     run_metab,
 )
@@ -90,6 +94,7 @@ class Session:
     labels: Labels = field(default_factory=Labels)
     blocks: list[str] = field(default_factory=list[str])
     child_ran: bool = False
+    homes: dict[Path, str] = field(default_factory=dict[Path, str])
 
     def origin(self, letter: str, url: str) -> None:
         """Label every sandbox-dependent value derived from the origin at *url*."""
@@ -99,26 +104,30 @@ class Session:
     def note(self, text: str) -> None:
         self.blocks.append(f"## {text}\n")
 
-    def run(self, command: str, args: Sequence[str], *, exit_code: int = 0) -> str:
+    def run(self, command: str, args: Sequence[str], *, exit_code: int = 0) -> Invocation:
         """Run one command through the console script's error rendering."""
 
         result = run_metab(args)
         assert result.exit_code == exit_code, f"{command}: {result}"
         self.blocks.append(block(command, result.exit_code, result.stdout, result.stderr))
-        return result.stdout + result.stderr
+        return result
 
     def inspect(self, route: str, *, exit_code: int = 0) -> str:
+        """The envelope a cache route answered with, read from a local root."""
+
         return self.run(
             f"metab <ROOT> --api {route}", [str(self.root), "--api", route], exit_code=exit_code
-        )
+        ).stdout
 
-    def no_serve(self, letter: str, url: str, *, exit_code: int = 0) -> str:
+    def no_serve(self, letter: str, url: str, *, exit_code: int = 0) -> Invocation:
         return self.run(
             f"metab <ORIGIN-{letter}> --no-serve", [url, "--no-serve"], exit_code=exit_code
         )
 
     def render(self) -> str:
         text = self.labels.apply("".join(self.blocks))
+        for home, label in self.homes.items():
+            text = label_home(text, home, label)
         if self.child_ran:
             # What a killed child published carries its own clock's times.
             text = self.clock.elide_other_times(text)
@@ -136,7 +145,9 @@ def open_session(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Sessi
     monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
     root = tmp_path / "root"
     root.mkdir()
-    return Session(tmp_path=tmp_path, root=root, clock=sandbox.clock), sandbox.home
+    session = Session(tmp_path=tmp_path, root=root, clock=sandbox.clock)
+    session.homes[sandbox.home] = HOME_LABEL
+    return session, sandbox.home
 
 
 def test_golden_file_url_acquire_and_reuse(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -144,12 +155,26 @@ def test_golden_file_url_acquire_and_reuse(tmp_path: Path, monkeypatch: pytest.M
     url = file_url(named_origin(tmp_path, "a"))
     session.origin("A", url)
 
-    session.note("The first command fetches and publishes; the second reuses the store.")
+    session.note(
+        "The first command says where it clones to and that it is done, then prints what "
+        "it published; the second prints the same and says it reused the clone."
+    )
     first = session.no_serve("A", url)
-    assert session.no_serve("A", url) == first
-    assert ORIGIN_REVISION in first
-    assert str(home) not in first
-    assert "Serving" not in first
+    cache = f"{home}/cache"
+    assert first.stderr == f"cloning {url} into {cache}\ncloned {url} in 0.0 s\n"
+    again = session.no_serve("A", url)
+    assert again.stdout == first.stdout
+    assert again.stderr == (
+        f"using the clone of {url} cached in {cache}, fetched less than a minute ago\n"
+    )
+    assert ORIGIN_REVISION in first.stdout
+    # The identity lines are data, and no data names a place on disk; nor does either
+    # stream name the store's own directory or a staging entry.
+    assert str(home) not in first.stdout
+    for stream in (first.stderr, again.stderr):
+        assert "repository-stores" not in stream
+        assert "staging" not in stream
+    assert "Serving" not in first.stdout + first.stderr
 
     session.note("One source is published, aliased to the one store it acquired.")
     session.inspect("/api/cache/layout")
@@ -162,6 +187,44 @@ def test_golden_file_url_acquire_and_reuse(tmp_path: Path, monkeypatch: pytest.M
     assert '"object_format": "sha1"' in stores
 
     check_golden("cli-cache-acquire.txt", session.render())
+
+
+def test_the_home_label_is_refused_anywhere_but_the_whole_lines_that_may_name_it(
+    tmp_path: Path,
+) -> None:
+    """A transcript update cannot write a path under the cache directory into a golden."""
+
+    home = tmp_path / "home"
+    url = "file:///srv/origin.git"
+    allowed = (
+        f"cloning {url} into {home}/cache\n"
+        f"using the clone of {url} cached in {home}/cache, fetched 2 hours ago\n"
+        f"using the clone of {url} cached in {home}/cache, fetched <AGE>\n"
+        f"using the clone of {url} cached in {home}/cache\n"
+        # A served mirror's status says where it is kept: the store's bare repository,
+        # by its key or by the key's label.
+        f'  "location": "{home}/cache/repository-stores/{"0f" * 32}/repository.git",\n'
+        f'    "location": "{home}/cache/repository-stores/<STORE_KEY-A>/repository.git",\n'
+    )
+    assert label_home(allowed, home) == allowed.replace(str(home), HOME_LABEL)
+    for leaked in (
+        f"cloning {url} into {home}/cache/repository-stores/abc/repository.git\n",
+        f"cloning {url} into {home}/cache/staging/acq-0123456789ab\n",
+        f"cloning {url} into {home}\n",
+        f"using the clone of {url} cached in {home}/cache/repository-stores/abc, fetched 1 day ago\n",
+        f"cloning {url} into {home}/cache and more\n",
+        f"note: store at {home}/cache\n",
+        f'  "where": "{home}/cache"\n',
+        f"Error: could not read {home}/cache\n",
+        # Only the location, and only the store's repository.
+        f'  "store": "{home}/cache/repository-stores/{"0f" * 32}/repository.git",\n',
+        f'  "location": "{home}/cache/repository-stores/{"0f" * 32}",\n',
+        f'  "location": "{home}/cache/sources/local--origin--0123456789ab",\n',
+        f'  "location": "{home}/cache/repository-stores/{"0f" * 32}/repository.git/objects",\n',
+        f'  "error": "not found in {home}/cache/repository-stores/{"0f" * 32}/repository.git",\n',
+    ):
+        with pytest.raises(AssertionError, match="outside the lines that may name it"):
+            label_home(leaked, home)
 
 
 FIRST_ORPHAN_KEY = "0" * 64

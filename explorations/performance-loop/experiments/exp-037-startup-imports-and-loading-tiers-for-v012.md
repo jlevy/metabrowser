@@ -39,7 +39,9 @@ experiment:
       outside every work tree, 12 back-to-back pairs per candidate, control then
       candidate; tier-probe.mjs for the browser half, and run.py serve and capture, the
       gate's own harness, for the startup-script metric. Output stayed under .bench/ and
-      is summarized here
+      is summarized here. Every start-up series ran in environments with no compiled
+      bytecode; the addendum of 2026-10-01 in the body says what that changes and gives
+      the series with bytecode
   results:
     - metric: cli_show_instr_millions
       control_median: 7400.8
@@ -827,6 +829,91 @@ and the candidate alike, and more often under load.
 Code blocks and the paragraphs after them move.
 It is recorded here so that the next reader of a layout-shift number does not attribute
 it to whatever changed last.
+
+## Addendum, 2026-10-01: these ratios were taken without bytecode
+
+Every start-up figure above, in [Start-up work](#start-up-work) and in the front matter,
+was measured in environments that held no compiled bytecode.
+The shell that built and ran them sets `PYTHONDONTWRITEBYTECODE`, and `uv pip install`
+compiles nothing unless asked, so each start compiled every module it imported.
+The counts say so: the control did 7,401M instructions for `--show` here, and 2,445M in
+an environment with bytecode.
+An uncompiled install of the later head did 7,706M on the day of this addendum.
+
+Nothing above is wrong about what it measured, and both builds were in the same state,
+so its ratios are ratios between like conditions.
+They are not the ratios of an installation, which compiles on its first start and never
+again. About two thirds of each count above is compilation, in both builds.
+
+### The series with bytecode
+
+Taken at `c16912f8`, the head of the stack on 2026-10-01, against v0.11.0, both
+environments fully compiled: 15 back-to-back pairs under a load average of 12–16.
+`c16912f8` is later than this round’s candidate, `9a56f513`, so this is the stack’s
+start-up cost as it stood on that day and not a repeat of the same two builds.
+
+Instructions retired, in millions, as the median of 15 rounds; the ratio is the median
+pair ratio with the smallest and largest pair:
+
+| Metric | v0.11.0 | `c16912f8` | Ratio | Above 1.05x | Above 1.1x |
+| --- | --- | --- | --- | --- | --- |
+| `--show README.md` | 2,445 | 2,522 | 1.033 (1.01–1.07) | 2/15 | 0/15 |
+| `--api /api/tree` | 2,402 | 2,489 | 1.040 (1.00–1.08) | 4/15 | 0/15 |
+| `--version` | 1,896 | 1,879 | 0.994 (0.96–1.01) | 0/15 | 0/15 |
+| Server spawn to first `/api` | 2,652 | 2,746 | 1.039 (1.02–1.07) | 2/15 | 0/15 |
+| `--doctor` | 1,963 | 3,490 | 1.779 (1.73–1.82) | 15/15 | 15/15 |
+| Shell `/`, first request | 115.3 | 116.8 | 1.023 (0.96–1.07) | 2/15 | 0/15 |
+| Shell `/`, warm | 106.3 | 105.8 | 1.000 (0.98–1.03) | 0/15 | 0/15 |
+
+Wall time, in milliseconds, from the same 15 pairs:
+
+| Metric | v0.11.0 | `c16912f8` | Ratio | CPU time ratio |
+| --- | --- | --- | --- | --- |
+| `--show README.md` | 528 | 577 | 1.068 (0.94–1.49) | 1.068 (0.96–1.24) |
+| `--api /api/tree` | 577 | 601 | 1.028 (0.74–1.39) | 1.044 (0.88–1.29) |
+| `--version` | 384 | 413 | 1.026 (0.59–1.52) | 1.029 (0.73–1.15) |
+| Server spawn to first `/api` | 513 | 503 | 0.980 (0.49–1.15) | not recorded |
+| `--doctor` | 385 | 629 | 1.533 (0.71–2.82) | 1.579 (1.08–1.85) |
+
+Peak memory footprint moved by 1.025x for `--show`, 1.023x for `--api`, 0.993x for
+`--version`, and 1.186x for `--doctor`.
+
+What this changes in the reading of the round:
+
+- The medians of the four start-up metrics are within 1.05x with bytecode as they were
+  without it: 1.033, 1.040, 0.994 and 1.039, against 1.038, 1.034, 0.996 and 1.026.
+- The verdict’s “no pair of any of the four exceeded 1.05x” describes the series without
+  bytecode. With it, at the later head, 2, 4, 0 and 2 pairs of 15 do, and none exceeds
+  1.1x.
+- `--doctor` does 1.78x the work and takes about 250 ms longer, 385 ms to 629 ms.
+  Without bytecode it read 1.54x: the 3,090M it added there, part of it compiling the
+  schema libraries it imports, stood on a base of 5,721M, and the 1,527M it adds with
+  bytecode stands on 1,963M. The cause is the one given under
+  [What remains, and why](#what-remains-and-why).
+- The wall-time pairs this round said were still owed have now been taken, on a machine
+  that was not quiet. A pair of `--show` runs spans 0.94–1.49, so the medians give a
+  direction and are not a careful result.
+
+It changes neither the verdict nor the results in the front matter, which record what
+this round measured.
+The front matter’s `record` now says which state that was.
+
+### The reading that prompted this
+
+A first attempt at the wall-clock series ran a control whose environment held bytecode
+beside a candidate whose environment held none.
+Twelve pairs read 3.155x for `--show` (3.05–3.23), 3.196x for `--api`, 2.854x for
+`--version`, 3.506x from server spawn to the first `/api` answer, and 4.475x for
+`--doctor`, every pair above 1.3x, while the shell’s first and warm requests read 1.020x
+and 1.002x. That was the compiler, not the builds.
+
+`startup_pairs.py` now reads each environment’s bytecode before the first round, refuses
+a series whose builds are not all compiled or all uncompiled, compiles them first under
+`--compile-bytecode`, and writes the state into every record; see
+[Start-Up Work, in Pairs](../README.md#start-up-work-in-pairs).
+The records behind this addendum were taken before that field existed, and `summarize`
+prints `bytecode=unrecorded` for them.
+They stayed out of the repository, as this round’s did.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

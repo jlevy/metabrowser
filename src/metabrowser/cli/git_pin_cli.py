@@ -49,6 +49,7 @@ from metabrowser.cli.hangup import run_cancelling_on_hangup
 from metabrowser.cli.plugin_paths import apply_extra_plugin_dirs
 from metabrowser.cli.selection import (
     PullOpen,
+    display_ref,
     open_pull_for_cli,
     pending_selection_opener,
     require_selected_path,
@@ -71,6 +72,7 @@ from metabrowser.git.tree_source import (
     split_git_container_wire,
 )
 from metabrowser.mirror_refresh import CompanionRefresh, serve_mirror
+from metabrowser.normalize import MIRROR_LOCATION_PATHS
 from metabrowser.source import (
     SubjectOpenError,
     attach_owned_subject,
@@ -170,16 +172,19 @@ class _Selected:
         return self.published.source.selection
 
 
-async def _select(source: GitSource, *, allow_pending: bool) -> _Selected:
+async def _select(source: GitSource, *, allow_pending: bool, serving: bool = False) -> _Selected:
     """Acquire *source*, open the pull request it names, and resolve its selection.
 
     With *allow_pending*, a ref or commit a fetch could bring is not an error: the
     default branch is selected and ``pending`` is set. A mirror this call just cloned
     was fetched a moment ago, so there a missing selection is not found at once rather
-    than waiting on a second fetch.
+    than waiting on a second fetch. *serving* is serve mode, which says when it opens a
+    source from the cache and, after a clone, that the server is next.
     """
 
-    published = await acquire_for_cli(source)
+    published = await acquire_for_cli(
+        source, announce_hit=serving, then="starting the server" if serving else ""
+    )
     selection = source.selection
     if selection is None or selection.kind == "repository":
         return _Selected(
@@ -400,6 +405,8 @@ def run_pin_api(
                 log_level=log_level,
                 index_timeout_s=index_timeout_s,
                 normalize_root=published.git_dir,
+                # The status says where the mirror is kept, which is that directory.
+                normalize_keep=MIRROR_LOCATION_PATHS,
                 untrusted=True,
                 no_active_content=no_active_content,
                 allow_edits=False,
@@ -453,7 +460,7 @@ async def _prove_servable(source: GitSource, *, path: str) -> _ServablePin:
     ``--path`` wins over the URL's own path.
     """
 
-    selected = await _select(source, allow_pending=True)
+    selected = await _select(source, allow_pending=True, serving=True)
     subject = await _open_pin(selected)
     try:
         if path:
@@ -527,7 +534,8 @@ def run_serve_pin(
     stop_on_interrupt()
     selected = servable.selected
     ref = ref_short_name(selected.ref)
-    revision = selected.commit + (f" ({ref})" if ref else "")
+    # The ref is the origin's: displayed as the ``pin:`` line displays it, never raw.
+    revision = selected.commit + (f" ({display_ref(ref)})" if ref else "")
     serve_until_interrupted(
         served=selected.published.source.normalized,
         view_href=servable.view_href,

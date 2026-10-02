@@ -98,6 +98,16 @@ class SourceStatus(TypedDict):
     has no pin, so all three are ``None``. The freshness fields are described by
     :class:`~metabrowser.mirror_refresh.FreshnessFields`; they are empty and
     ``refreshable`` is false unless the subject is a served mirror.
+
+    ``name``, ``origin``, and ``location`` are what a served mirror's page shows where
+    a folder's shows its name and path, from
+    :class:`~metabrowser.mirror_refresh.MirrorDisplay`: the repository's name as a
+    checkout would have it, the address it mirrors, and where the mirror is kept. All
+    three are ``None`` for a folder and for a pin with no mirror. ``location`` is the
+    one field of any route's answer that names a path in the cache, and ``origin`` is
+    the source's address as given, which for a ``file://`` source is a path of the
+    reader's. Both are display text, with the home directory as ``~`` when they are
+    under it: no route takes either back as an input.
     """
 
     subject: str
@@ -105,6 +115,9 @@ class SourceStatus(TypedDict):
     pin: str | None
     ref: str | None
     ref_name: str | None
+    name: str | None
+    origin: str | None
+    location: str | None
     refreshable: bool
     latest: str | None
     ref_on_origin: bool | None
@@ -128,12 +141,16 @@ def source_status(mirror: MirrorSession | None = None) -> SourceStatus:
         freshness: FreshnessFields = (
             mirror.freshness_fields(pin) if mirror is not None else UNSERVED_FRESHNESS
         )
+        display = mirror.mirror.display if mirror is not None else None
         return SourceStatus(
             subject=pin.kind,
             generation=session.generation,
             pin=pin.commit_oid,
             ref=pin.ref,
             ref_name=ref_short_name(pin.ref),
+            name=display.name if display is not None else None,
+            origin=display.origin if display is not None else None,
+            location=display.location if display is not None else None,
             **freshness,
         )
     return SourceStatus(
@@ -142,6 +159,9 @@ def source_status(mirror: MirrorSession | None = None) -> SourceStatus:
         pin=None,
         ref=None,
         ref_name=None,
+        name=None,
+        origin=None,
+        location=None,
         **UNSERVED_FRESHNESS,
     )
 

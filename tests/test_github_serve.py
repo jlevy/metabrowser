@@ -16,6 +16,7 @@ import threading
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
+from urllib.parse import quote
 
 import pytest
 from starlette.testclient import TestClient
@@ -131,6 +132,40 @@ def _push_branch(origin: Path, tmp_path: Path, name: str) -> str:
         env=env,
     )
     return commit
+
+
+@pytest.mark.parametrize(
+    ("name", "shown"),
+    [
+        # U+009B is a one-character CSI: raw, a terminal would run ``2J`` and clear.
+        ("a\u009b2Jb", "a\ufffd2Jb"),
+        # U+200B ZERO WIDTH SPACE: raw, the name would read as ``zerowidth``.
+        ("zero\u200bwidth", "zero\ufffdwidth"),
+    ],
+    ids=["c1-control", "invisible"],
+)
+def test_the_banner_displays_a_ref_name_as_the_pin_line_does(
+    origin: Path, tmp_path: Path, name: str, shown: str
+) -> None:
+    """A branch name is the origin's, and Git accepts one a terminal would act on.
+
+    The URL selects the branch by its encoded spelling. ``Revision:`` names it as
+    ``pin:`` does under ``--no-serve``, through the display that replaces what a
+    terminal would run or a reader would not see.
+    """
+
+    commit = _push_branch(origin, tmp_path, name)
+    url = f"{REPO}/tree/{quote(name)}"
+
+    served = _serve(url)
+    assert served.exit_code == 0, served.output
+    assert f"Revision: {commit} ({shown})\n" in served.stdout
+    assert not {"\u009b", "\u200b"} & set(served.output)
+
+    reset_source_session()
+    printed = runner.invoke(_app, [url, "--no-serve"])
+    assert printed.exit_code == 0, printed.output
+    assert f"pin: {commit} (branch {shown})\n" in printed.stdout
 
 
 def test_a_selection_the_mirror_lacks_is_fetched_once_then_served(

@@ -23,7 +23,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import IO, TYPE_CHECKING, Protocol, runtime_checkable
 
-from strif import file_mtime_hash
+from strif import clean_alphanum_hash
 
 import metabrowser.paths_safe as paths_safe
 from metabrowser.content_errors import ContentReadError, ContentUnavailableError
@@ -195,17 +195,25 @@ class ContentReader(Protocol):
 class ContentRef:
     """An opaque reference to one readable content object.
 
-    It carries the three facts resolution already established and a hook needs
+    It carries the facts resolution already established and a hook needs
     before it reads anything: the identity to echo back to the client, the
-    logical extension to dispatch on, and a fingerprint that changes exactly
+    logical extension to dispatch on, a fingerprint that changes exactly
     when the bytes can have, so a hook keys its own cache on it without knowing
-    whether that is an mtime hash or a blob object id. It is not a path, a
-    cache location, or a handle on the source.
+    whether that is an mtime hash or a blob object id, and the size the source
+    stores. It is not a path, a cache location, or a handle on the source.
+
+    ``stored_size`` is the length of the object as the source holds it: a
+    file's size on disk, which for a compressed artifact is its compressed
+    size, and a blob's length. It costs no read, unlike the logical size
+    :class:`ContentStat` validates, and the two differ exactly for a compressed
+    artifact. It is None only for a blob a pin's store does not hold, which no
+    read will return either.
     """
 
     identity: str
     logical_ext: str
     fingerprint: str
+    stored_size: int | None
     reader: ContentReader = field(repr=False, compare=False)
 
 
@@ -336,6 +344,20 @@ def _filesystem_failures(artifact: ArtifactPath) -> Generator[None]:
         raise ContentUnavailableError(artifact.disk_path.name) from exc
 
 
+def _fingerprint_and_size(path: Path) -> tuple[str, int]:
+    """``strif.file_mtime_hash`` of *path* and the file's size, from one ``stat``.
+
+    The fingerprint is the one every other route gives the file, and it is built from
+    the size, so asking strif for it and the file for its size would stat twice. The
+    key is spelled as strif spells it; ``tests/test_plugin_content_reader.py`` holds
+    the two equal.
+    """
+
+    stat = path.stat()
+    key = f"{path.name}-{stat.st_size}-{stat.st_mtime_ns}"
+    return clean_alphanum_hash(key, max_length=64), stat.st_size
+
+
 class FilesystemContentSource:
     """Identity and document resolution against one exact filesystem root."""
 
@@ -365,7 +387,7 @@ class FilesystemContentSource:
             return None
         artifact = ArtifactPath(handle.path)
         try:
-            fingerprint = file_mtime_hash(handle.path)
+            fingerprint, stored_size = _fingerprint_and_size(handle.path)
         except OSError:
             # Unlinked or replaced between the resolve and the hash. There is
             # nothing readable at this identity after all.
@@ -374,6 +396,7 @@ class FilesystemContentSource:
             identity=_identity_for(handle.path) or identity,
             logical_ext=artifact.logical_ext,
             fingerprint=fingerprint,
+            stored_size=stored_size,
             reader=_FilesystemContentReader(artifact),
         )
 

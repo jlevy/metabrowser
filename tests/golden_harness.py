@@ -22,15 +22,20 @@ sandbox path, a pinned Git environment, and a fixed clock.
 What a transcript may still replace, and why no fixture can pin it:
 
 - ``<ROOT>``, ``<ORIGIN…>``, ``<PATH-…>``: the pytest sandbox path and URLs built on it;
+- ``<HOME>``: the application home under that sandbox, where a first clone says it goes;
 - ``<SLUG…>``, ``<STORE…>``, ``<SOURCE…>``: identities hashed from such a URL;
 - ``<VERSION>``, ``<STATE>``: the installed package version and its build annotation;
 - ``<GIT_VERSION>``: the Git on ``PATH``;
 - ``<TIME>``: a time written by a process the fixed clock cannot reach, which is a
-  child killed mid-publication.
+  child killed mid-publication;
+- ``<ELAPSED>``, ``<AGE>``: how long a clone took, and how long ago a cached one was
+  fetched, as a real ``metab`` process says them: nothing replaces that process's
+  clocks (:func:`elide_clone_timing`).
 
 Everything else is literal. Commit IDs are literal because every origin is built with
 :func:`pinned_git_env` or ``git fast-import``; times are literal because
-:func:`fix_clock` replaces the clock.
+:func:`fix_clock` replaces the clock, the one a clone's elapsed time is read from
+included, so a clone always took ``0.0 s`` and never reaches its first status line.
 
 Two markers stand for text the transcript itself pins, so a payload that repeats is
 shown once. Each is written by its driver after comparing, never assumed, so what
@@ -74,6 +79,7 @@ from metabrowser.cache.identity import cache_slug, repository_store_id, source_i
 from metabrowser.cache.repository_store import open_revision
 from metabrowser.cache.served_mirror import StoreMirror
 from metabrowser.cache.urls import GitSource, classify_root_argument
+from metabrowser.cli import clone_report
 from metabrowser.cli.main import _run_cli
 from metabrowser.git.process import _REPO_PINNING_GIT_VARS
 from metabrowser.git.tree_source import GitRevisionSubject
@@ -98,6 +104,7 @@ CLOCK_START: Final = datetime(2026, 9, 17, 12, 0, tzinfo=UTC)
 _LOG_LINE: Final = re.compile(r"^\d{2}:\d{2}:\d{2} \S+ \| .*\n?", re.MULTILINE)
 _TIMESTAMP: Final = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
 TIME_PLACEHOLDER: Final = "<TIME>"
+HOME_LABEL: Final = "<HOME>"
 
 
 def updating() -> bool:
@@ -245,6 +252,18 @@ class Invocation:
 
         return json.loads(self.stdout[self.stdout.index("{") :])
 
+    @property
+    def error(self) -> str:
+        """The ``Error:`` line a refusal printed, without what a clone said before it.
+
+        A first clone names its URL and the cache directory on stderr before it can
+        fail, and both are the user's own. What a failure must not carry is in the
+        message: a staging path, Git's argument vector, Git's own text.
+        """
+
+        start = self.stderr.index("Error: ")
+        return self.stderr[start:]
+
 
 def run_metab(args: Sequence[str]) -> Invocation:
     """Run one ``metab`` command in-process through the console script's entry point.
@@ -342,6 +361,9 @@ class Labels:
         self.add(identity.url, f"<ORIGIN{suffix}>")
         self.add(identity.path, f"<PATH{suffix}>")
         self.add(identity.store_id, f"<{store}{suffix}>")
+        # The store's directory is named by its key, which a served mirror's status
+        # shows in its location.
+        self.add(identity.store_id.removeprefix("sha256:"), f"<STORE_KEY{suffix}>")
         self.add(identity.source_id, f"<{source}{suffix}>")
         self.add(identity.slug, f"<SLUG{suffix}>")
         return identity
@@ -350,6 +372,85 @@ class Labels:
         for actual in sorted(self.labels, key=len, reverse=True):
             text = text.replace(actual, self.labels[actual])
         return _RECORDED_GIT.sub(r'\1"<GIT_VERSION>"', text)
+
+
+_CLONED_IN: Final = re.compile(r"^(cloned \S+ in )\d+(?:\.\d)? s", re.MULTILINE)
+_CLONE_STATUS: Final = re.compile(r"^cloning \S+: .* \(\d+(?:\.\d)? s\)\n", re.MULTILINE)
+_FETCHED_AGO: Final = re.compile(
+    r"^(using the clone of .*, fetched )(?:less than a minute|\d+ (?:minute|hour|day)s?) ago$",
+    re.MULTILINE,
+)
+ELAPSED_PLACEHOLDER: Final = "<ELAPSED>"
+AGE_PLACEHOLDER: Final = "<AGE>"
+
+
+def elide_clone_timing(stderr: str) -> str:
+    """What an unpatched ``metab`` process said of its clone, without the machine's speed.
+
+    The time the clone took becomes ``<ELAPSED>``, and how long ago a later command
+    found it fetched becomes ``<AGE>``. A status line, which is written only when a
+    clone has run ten seconds since its last line, is removed: whether one appears says
+    how loaded the machine was and nothing about the command.
+    """
+
+    stderr = _CLONE_STATUS.sub("", stderr)
+    stderr = _CLONED_IN.sub(rf"\g<1>{ELAPSED_PLACEHOLDER}", stderr)
+    return _FETCHED_AGO.sub(rf"\g<1>{AGE_PLACEHOLDER}", stderr)
+
+
+# The lines of a command's output that name the application home, whole. Two are a
+# command's own stderr and say where clones are kept: a URL, the home's cache directory
+# and nothing under it, and for a hit how long ago it was fetched. The third is the one
+# field of a route's answer that names a path in the cache: the location of a served
+# mirror in its status, which is the store's bare repository and nothing else.
+_HOME_LINES: Final = (
+    r"cloning \S+ into {home}/cache",
+    r"using the clone of \S+ cached in {home}/cache"
+    r"(?:, fetched (?:less than a minute ago|\d+ (?:minute|hour|day)s? ago|<AGE>))?",
+    r'\s*"location": "{home}/cache/repository-stores/(?:<STORE_KEY[^>"]*>|[0-9a-f]{{64}})'
+    r'/repository\.git",',
+)
+
+
+def first_clone_stderr(url: str, home: Path, *, then: str = "") -> str:
+    """A pattern for everything a first clone writes to stderr when it is not timed.
+
+    For a test whose clock is the machine's: where the clone goes, and that it is done,
+    in so many seconds and with a size if Git reported one. Match it whole, so that a
+    line naming a store or a staging entry cannot stand beside these two.
+    """
+
+    done = re.escape(f"cloned {url} in ") + r"\d+(?:\.\d)? s(?: \([\d.]+ (?:bytes?|[KMG]iB)\))?"
+    following = re.escape(f"; {then}") if then else ""
+    return re.escape(f"cloning {url} into {home}/cache\n") + done + following + r"\n"
+
+
+def cache_hit_stderr(url: str, home: Path) -> str:
+    """A pattern for the one line a cache hit writes to stderr, with whatever age."""
+
+    age = r"(?:less than a minute|\d+ (?:minute|hour|day)s?) ago"
+    return re.escape(f"using the clone of {url} cached in {home}/cache, fetched ") + age + r"\n"
+
+
+def label_home(text: str, home: Path, label: str = HOME_LABEL) -> str:
+    """*text* with the application home *home* as *label*, checked to be where it may be.
+
+    A first clone says where it goes and a cache hit says where it was found, each in
+    one line of stderr, and a served mirror's status says where the mirror is kept, in
+    its ``location``. The home is named nowhere else in what a command prints: not in an
+    identity line or an error, and not in any other field of a route's answer. The
+    clone's lines name the cache directory and stop, and the location is the store's
+    bare repository exactly: a line that went on to a staging entry, or named a store
+    anywhere else, is refused here, before an update could write it into a transcript.
+    """
+
+    labelled = text.replace(str(home), label)
+    allowed = [re.compile(line.format(home=re.escape(label))) for line in _HOME_LINES]
+    for line in labelled.splitlines():
+        assert label not in line or any(pattern.fullmatch(line) for pattern in allowed), (
+            f"the application home is named outside the lines that may name it: {line}"
+        )
+    return labelled
 
 
 def _stamp(instant: datetime) -> str:
@@ -390,7 +491,9 @@ def fix_clock(monkeypatch: pytest.MonkeyPatch) -> FixedClock:
     through. The clock that function reads is replaced rather than the function, so
     every module that imported the name reads the fixed clock whenever it was imported,
     and no binding outlives the test. The mirror's freshness reads its own ``_now_utc``,
-    replaced with the same instant so ``stale`` is a function of the fixture.
+    replaced with the same instant so ``stale`` is a function of the fixture. What a
+    clone says of itself reads a monotonic clock, which stands still: its elapsed time
+    is ``0.0 s`` however loaded the machine, and no status line is ever due.
     """
 
     clock = FixedClock()
@@ -402,6 +505,7 @@ def fix_clock(monkeypatch: pytest.MonkeyPatch) -> FixedClock:
 
     monkeypatch.setattr(records, "datetime", ClockDatetime)
     monkeypatch.setattr(mirror_refresh, "_now_utc", clock.read)
+    monkeypatch.setattr(clone_report, "_monotonic", float)
     return clock
 
 
@@ -484,6 +588,39 @@ def isolate_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> CliSandbox:
 # ── Recording what a served mirror answers ──────────────────────────
 
 JSON_BODY: Final = {"content-type": "application/json"}
+
+# What stands in a recording for the directory a recorder builds in, for the application
+# home inside it, and for the key of each store it serves, in the order it names them.
+# A stand-in key is not hexadecimal, so nothing takes it for a real one:
+# devtools/golden_fixup.py patterns a real key in a transcript, and a session's
+# transcript must keep these literal.
+SANDBOX_STAND_IN: Final = "/sandbox"
+APPLICATION_HOME_STAND_IN: Final = "/sandbox/application-home"
+STORE_KEY_STAND_INS: Final = ("store-key-1", "store-key-2")
+
+
+def stand_in_sandbox(
+    recorded: Any, sandbox: Path, *store_keys: str, home: Path | None = None
+) -> Any:
+    """*recorded* without what names this run: its directory, and its stores' keys.
+
+    A served mirror's status says what it mirrors and where it is kept. Both are paths
+    under the directory the recorder built them in, and a store's key is derived from
+    its origin's address, so from that directory too. Each exact value is replaced
+    wherever it stands, and nothing is replaced by a field's name: a path a response
+    should not carry shows in the recording as ``/sandbox/…`` rather than being hidden.
+
+    *home* is the application home when a location spells it out, which it does when
+    the home is not under the user's home directory.
+    """
+
+    assert len(store_keys) <= len(STORE_KEY_STAND_INS), "add a stand-in for each store served"
+    text = json.dumps(recorded)
+    for key, stand_in in zip(store_keys, STORE_KEY_STAND_INS, strict=False):
+        text = text.replace(key, stand_in)
+    if home is not None:
+        text = text.replace(json.dumps(str(home))[1:-1], APPLICATION_HOME_STAND_IN)
+    return json.loads(text.replace(json.dumps(str(sandbox))[1:-1], SANDBOX_STAND_IN))
 
 
 def answer(response: Any) -> dict[str, Any]:

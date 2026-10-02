@@ -9,6 +9,9 @@ env:
   METABROWSER_LOG_LEVEL: "ERROR"
   GIT_CONFIG_GLOBAL: "/dev/null"
   GIT_CONFIG_SYSTEM: "/dev/null"
+patterns:
+  APP_HOME: '[^\s"]+/home'
+  STORE_KEY: '[0-9a-f]{64}'
 before: >-
   unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX GIT_NAMESPACE GIT_CEILING_DIRECTORIES &&
   PYTHONPATH="$TRYSCRIPT_TEST_DIR/../.."
@@ -149,6 +152,9 @@ status: 200
     "pin": "a5232ab93056074aa3dd87c7b3c28ca84081a6a0",
     "ref": null,
     "ref_name": null,
+    "name": "origin",
+    "origin": "file://[CWD]/origin.git",
+    "location": "[APP_HOME]/cache/repository-stores/[STORE_KEY]/repository.git",
     "refreshable": true,
     "latest": null,
     "ref_on_origin": null,

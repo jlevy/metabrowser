@@ -238,6 +238,70 @@ async function main() {
     "unclosed front matter should stay one Markdown block",
   );
 
+  // A partly loaded file is the notice, the code, then the Load more footer, in that
+  // order: a reader who reached the end of what loaded finds the control there. Front
+  // matter does not change it, though it shows as one block while more remains.
+  const partialOrder = (content) => {
+    markdownModule.renderMarkdownSource(
+      sourceContainer,
+      {
+        raw: { content, ext: ".md", content_truncated: true, bytes_read: 64, size: 4096 },
+      },
+      ready.metabrowser,
+    );
+    const html = sourceContainer.innerHTML;
+    const at = (text) => {
+      const first = html.indexOf(text);
+      check(
+        first >= 0 && html.indexOf(text, first + 1) < 0,
+        `a partly loaded Markdown Source should have exactly one ${text}`,
+      );
+      return first;
+    };
+    return {
+      html,
+      notice: at('<div class="notice partial-notice metabrowser-source-truncation-warning"'),
+      wrap: at('<div class="content-copy-wrap">'),
+      code: at('<pre class="code-block'),
+      codeEnd: at("</pre></div>"),
+      footer: at('<div class="notice partial-notice metabrowser-source-more-footer"'),
+    };
+  };
+  for (const content of ["# Heading\nbody\n", "---\ntitle: Example\n---\n# Heading\n"]) {
+    const partial = partialOrder(content);
+    check(
+      partial.notice === 0 &&
+        partial.notice < partial.wrap &&
+        partial.wrap < partial.code &&
+        partial.code < partial.codeEnd &&
+        partial.codeEnd + "</pre></div>".length === partial.footer,
+      "a partly loaded Markdown Source should be the notice, the code, then the footer",
+    );
+    const footer = partial.html.slice(partial.footer);
+    check(
+      footer.includes('data-position="bottom"') &&
+        footer.includes('class="btn metabrowser-load-more"') &&
+        footer.endsWith("Load more</button></div>") &&
+        footer.indexOf("</div>") === footer.length - "</div>".length,
+      "the Load more footer should be the last thing in a partly loaded Markdown Source",
+    );
+    check(
+      partial.html.slice(0, partial.wrap).includes('data-position="top"'),
+      "the notice ahead of the code should be the top one",
+    );
+  }
+  markdownModule.renderMarkdownSource(
+    sourceContainer,
+    { raw: { content: "# Heading\nbody\n", ext: ".md" } },
+    ready.metabrowser,
+  );
+  check(
+    sourceContainer.innerHTML.startsWith('<div class="content-copy-wrap">') &&
+      sourceContainer.innerHTML.endsWith("</pre></div>") &&
+      !sourceContainer.innerHTML.includes("partial-notice"),
+    "a whole Markdown Source should have neither notice nor footer",
+  );
+
   const source = "/* first line\n+ * second line */";
   const lines = await ready.metabrowser.highlightSyntax(source, "javascript");
   check(Array.isArray(lines), "ready grammar should return token lines");

@@ -304,8 +304,8 @@ installs, and about 31k directories.
 The synthetic `build_corpus` can supplement that round but cannot replace it.
 From a cold start of each condition, report:
 
-- backend `first_row` from `compare_builds`: spawn to the first nonempty root
-  `/api/tree`;
+- backend `first_row` from `compare_builds`: from the first answered request to the
+  first nonempty root `/api/tree`, with `spawn_to_serving` for the start before it;
 - browser `first_row_ms` from the headed captures.
 
 A candidate whose first rows regress past the tolerance below, or cross the
@@ -421,6 +421,25 @@ uv --config-file uv.toml run --frozen python -m devtools.compare_builds \
 
 `compare_builds` does not yet attest those installs against the wheel bytes, so read the
 `versions` and `resolved` fields before the timings.
+
+Its `spawn_to_serving`, printed as `start=`, runs from spawn to the first answered
+request, so it includes the build importing itself, and with it the bytecode trap that
+[Start-Up Work, in Pairs](#start-up-work-in-pairs) describes: two environments in
+different bytecode states differ about threefold there for that reason alone.
+`compare_builds` does not check the state.
+Read `start=` only when both environments were installed the same way, with
+`--compile-bytecode` on both `uv pip install` lines for the state an installation runs
+in.
+
+The trap ends where the server starts answering.
+For one wheel with and without bytecode, each of a server’s first requests for the
+shell, the tree, a file, the catalog, a rollup, and a plugin’s data hook did the same
+work to within 1%, and so did the scan of a 20,000-file tree, at 5,376M instructions
+against 5,396M in the rounds that polled it equally often (2026-10-01, five rounds).
+`first_row` and `index_done` are counted from the first answered request, and everything
+the browser half records starts after it, so `run.py serve` and `capture` need no
+bytecode step. Their `spawn_to_profile_start_ms` does span the imports; it is a
+diagnostic, and no gate reads it.
 
 Read `valid` before reading the timings.
 It is true only when every run completed, the corpus fingerprint stayed fixed, required
@@ -621,7 +640,8 @@ them for a quiet machine:
 $UV explorations/performance-loop/startup_pairs.py run \
   --tree /path/to/folder --pairs 9 --out .bench/startup-pairs.jsonl \
   --control /envs/release/bin/metab \
-  --candidate candidate=/envs/candidate/bin/metab
+  --candidate candidate=/envs/candidate/bin/metab \
+  --compile-bytecode
 
 $UV explorations/performance-loop/startup_pairs.py summarize .bench/startup-pairs.jsonl \
   --candidate candidate --suffix _instr --ratios
@@ -634,6 +654,54 @@ server from spawn to its first `/api/routes` answer, and the shell fetched cold 
 warm. `--suffix _ms` and `--suffix _cpu_ms` summarize the wall and CPU columns of the
 same file. Instructions retired are read through macOS interfaces; elsewhere only the
 time columns are recorded.
+
+**Every build is measured in one bytecode state.** A start that finds no compiled
+bytecode compiles each module it imports, and that is most of its work.
+For one wheel in two environments, a server did 9,344M instructions from spawn to an
+accepted connection without bytecode and 2,805M with it (2026-10-01, five rounds).
+So a build with bytecode beside one without reads as a regression of that size, whatever
+the builds are: a compiled v0.11.0 against an uncompiled candidate read 3.2x on `--show`
+in 12 pairs of 12, where the two builds compiled alike differ by 1.03x.
+
+An environment has no bytecode more easily than it seems:
+
+- `uv pip install` compiles nothing unless it is given `--compile-bytecode`. A fresh
+  install of the wheel and what it requires left 0 of 1,322 source files compiled, and
+  1,322 with the flag.
+- Python compiles a module on its first import and keeps the result, unless
+  `PYTHONDONTWRITEBYTECODE` is set.
+  Some agent shells set it, and an environment built and used under it never gains
+  bytecode. exp-037 measured both of its builds that way.
+- Reinstalling the package removes its bytecode and leaves its dependencies’.
+  One `metab --version` afterwards compiled 63 of the package’s 156 files, the ones that
+  mode imports, which is a third state and not a stable one.
+
+`run` reads the state before the first round: every source file of the installed
+`metabrowser` distribution and of each distribution it requires, and whether the
+bytecode file beside it is one the interpreter loads without compiling.
+That is a file whose header names this interpreter and the source’s modification time
+and size, or, for a hash-based file, the source’s hash where the file asks for the
+check. It measures when every build is `cached`, with all of them compiled, or every
+build is `uncached`, with none.
+Anything else it refuses, naming each build’s state and the `compileall` command that
+compiles the ones that need it.
+`--compile-bytecode` runs that command before the first round, which is what the recipe
+above does. No process a run starts writes bytecode, so the state read is the state of
+every round. Each record carries it as `bytecode`, `summarize` prints it in its first
+line, and a file holding records from both states is refused.
+
+`cached` is what an installation runs from its second start, and the state a claim about
+a release is made in.
+The standard library’s bytecode is not read.
+Each record names the interpreter its build ran on, as `python` and `python_base`, and
+builds whose interpreters report different versions are refused; both environments come
+from one interpreter when `uv venv` creates them as the release recipe does.
+
+A run writes a file of its own.
+`run` refuses an `--out` that already holds records, because pair numbers start at zero
+in every run, and `summarize` refuses a file with two records for one pair and build, or
+with a build recorded under two versions: such a file is not one comparison, and a
+summary of it once paired a second run’s control with the first run’s candidate.
 
 When a start-up number moves, the cause is an import.
 `python -X importtime` names it, and the fresh-interpreter `sys.modules` assertions in
@@ -891,8 +959,13 @@ moves afterwards.
 
 The shift figures are read by cloning a region stripped to the markup its pending render
 emits, inserting it beside the real one, and subtracting.
-They remain useful beside CLS because they name which reserved region moved and can be
-reconstructed after settle; CLS is page-wide and must observe the visible transition.
+“Beside” is beside the region as its container sees it: a region that is the only child
+of an element that frames it, as `#preview-pane` is of `.preview-frame`, has its
+stand-in placed beside that element, inside a copy of it.
+Placed inside the frame it would share the frame’s space with the region, which read
+half the pane as missing until harness version 23. They remain useful beside CLS because
+they name which reserved region moved and can be reconstructed after settle; CLS is
+page-wide and must observe the visible transition.
 They are layout facts, so they have no run-to-run variance: three runs of exp-010 gave
 identical values where `first_row_ms` swung 213–533 ms.
 

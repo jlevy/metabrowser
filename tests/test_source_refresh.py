@@ -39,6 +39,7 @@ from metabrowser.cli.main import _app
 from metabrowser.git.tree_source import GitPath, GitRevisionSubject, store_batch_reader_count
 from metabrowser.mirror_refresh import (
     LastOutcome,
+    MirrorDisplay,
     MirrorRef,
     MirrorSession,
     RecordedFreshness,
@@ -683,6 +684,10 @@ class _BusyMirror:
 
     def repository_context(self, *, revision: str, branch: str | None) -> RepositoryContext | None:
         return None
+
+    @property
+    def display(self) -> MirrorDisplay:
+        return MirrorDisplay(name="store", origin="file:///origin.git", location="/store")
 
 
 @pytest.mark.parametrize(

@@ -2206,6 +2206,9 @@ declare global {
     pin: string | null;
     ref: string | null;
     ref_name: string | null;
+    name: string | null;
+    origin: string | null;
+    location: string | null;
     refreshable: boolean;
     latest: string | null;
     ref_on_origin: boolean | null;
@@ -2735,6 +2738,12 @@ declare global {
     }>;
     /** The pin and ref a pin's page was rendered for; absent on a folder. */
     METABROWSER_SOURCE_PIN?: MetabrowserSourcePage;
+    /** static/mirror-heading.js, which only a served mirror's page carries. */
+    MetabrowserMirrorHeading?: Readonly<{
+      mountCommitCopy(): void;
+      note(): string;
+      tip(detail?: string): string;
+    }>;
     MetabrowserViewState: MetabrowserViewStateRuntime;
     MetabrowserViewComposition: MetabrowserViewCompositionRuntime;
     MetabrowserTreemapLayout: MetabrowserTreemapLayoutApi;

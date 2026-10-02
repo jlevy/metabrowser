@@ -4,7 +4,8 @@ A local TCP server that accepts and never answers stands in for a stalled origin
 https helper waits in the TLS handshake, where curl's low-speed bound does not apply,
 so the ``ls-remote`` deadline is what ends it. The hangup tests send ``SIGHUP`` to a
 process waiting on acquisition Git and require that Git and the helpers it forked die
-with it rather than keep fetching as orphans.
+with it rather than keep fetching as orphans. They hold as well for a Git whose progress
+is being read, as a first clone's is.
 """
 
 from __future__ import annotations
@@ -35,6 +36,7 @@ from metabrowser.cli.hangup import (
 )
 from metabrowser.git.process import _REPO_PINNING_GIT_VARS
 from tests.admitted_git import require_admitted_git
+from tests.github_origin import github_origin
 from tests.required_tools import needs_git
 from tests.test_cache_acquire import _allow_installed_git
 
@@ -145,13 +147,26 @@ from metabrowser.cli.hangup import run_cancelling_on_hangup
 from metabrowser.git.process import ACQUISITION_POLICY, run_git
 
 pid_file = sys.argv[1]
+# Ctrl-C interrupts this script whatever disposition the test runner handed down.
+signal.signal(signal.SIGINT, signal.default_int_handler)
 if sys.argv[3] == "ignore-hangup":
     signal.signal(signal.SIGHUP, signal.SIG_IGN)
 # The test's own marker: this process has taken delivery of every signal sent before it.
 signal.signal(signal.SIGUSR1, lambda *_: Path(pid_file).with_name("delivered").touch())
 script = f"!sleep 60 & echo $! > '{pid_file}'; wait"
+on_progress = None
+if sys.argv[3] == "reading-progress":
+    # A Git that reports progress for as long as it runs, to a reader that takes it.
+    report = "while :; do printf 'Receiving objects:  10%% (1/10)\\r' >&2; sleep 0.05; done"
+    script = f"!sleep 60 & echo $! > '{pid_file}'; {report}"
+    on_progress = lambda _record: Path(pid_file).with_name("progress").touch()
 run_cancelling_on_hangup(
-    run_git(["-c", f"alias.hang={script}", "hang"], cwd=Path(sys.argv[2]), policy=ACQUISITION_POLICY)
+    run_git(
+        ["-c", f"alias.hang={script}", "hang"],
+        cwd=Path(sys.argv[2]),
+        policy=ACQUISITION_POLICY,
+        on_progress=on_progress,
+    )
 )
 """
 
@@ -185,17 +200,28 @@ def _reap(child: subprocess.Popen[bytes], helper: int) -> None:
         os.kill(helper, signal.SIGKILL)
 
 
+@pytest.mark.parametrize("mode", ["default", "reading-progress"])
 @pytest.mark.parametrize(
     ("sent", "status"),
-    [(signal.SIGHUP, HANGUP_EXIT_STATUS), (signal.SIGTERM, TERMINATION_EXIT_STATUS)],
+    [
+        (signal.SIGHUP, HANGUP_EXIT_STATUS),
+        (signal.SIGTERM, TERMINATION_EXIT_STATUS),
+        (signal.SIGINT, -signal.SIGINT),
+    ],
 )
 def test_hangup_or_termination_cancels_acquisition_git_and_its_helpers(
-    tmp_path: Path, sent: signal.Signals, status: int
+    tmp_path: Path, sent: signal.Signals, status: int, mode: str
 ) -> None:
-    """Any Git: the helper is ``sleep`` forked by a Git alias, as in the timeout test."""
+    """Any Git: the helper is ``sleep`` forked by a Git alias, as in the timeout test.
 
-    child, helper = _start_child(tmp_path, "default")
+    Ctrl-C is here too: ``asyncio.run`` cancels the main task for it, and the child,
+    which is this test's script and not the CLI, then dies of the interrupt it re-raises.
+    """
+
+    child, helper = _start_child(tmp_path, mode)
     try:
+        if mode == "reading-progress":
+            assert _wait_for((tmp_path / "progress").exists), "no progress was read"
         child.send_signal(sent)
         assert child.wait(timeout=15) == status, child.stderr.read() if child.stderr else ""
         assert _wait_for(lambda: not _alive(helper), 5), f"the helper outlived {sent.name}"
@@ -244,6 +270,48 @@ def test_the_previous_handlers_are_restored() -> None:
         for number, handler in zip((signal.SIGHUP, signal.SIGTERM), before, strict=True):
             if handler is not None:
                 signal.signal(number, handler)
+
+
+@pytest.fixture
+def stderr_whose_reader_has_gone() -> Iterator[int]:
+    """The write end of a pipe nobody reads, as ``2>&1 | head -1`` leaves a command."""
+
+    reader, writer = os.pipe()
+    os.close(reader)
+    try:
+        yield writer
+    finally:
+        os.close(writer)
+
+
+def test_a_stderr_whose_reader_has_gone_does_not_change_the_exit_status(
+    tmp_path: Path, stderr_whose_reader_has_gone: int
+) -> None:
+    """The installed CLI, unpatched: a clone's lines that could not be written cost nothing.
+
+    Text left in stderr's buffer fails the interpreter's flush at exit, which reports
+    status 120 for a command that succeeded. Both a first clone and a cache hit write
+    to stderr before they write their answer.
+    """
+
+    require_admitted_git()
+    env = _child_env()
+    env.update({"METABROWSER_HOME": str(tmp_path / "home"), "METABROWSER_LOG_LEVEL": "ERROR"})
+    url = f"file://{github_origin(tmp_path).resolve()}"
+    for mode in (["--api", "/api/git/repo"], ["--no-serve"]):
+        finished = subprocess.run(
+            [_metab(), url, *mode],
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=stderr_whose_reader_has_gone,
+            timeout=50,
+            check=False,
+        )
+        assert finished.returncode == 0, (mode, finished.stdout)
+        assert finished.stdout != b""
+    # The second command found what the first cloned.
+    assert len(list((tmp_path / "home" / "cache" / "repository-stores").iterdir())) == 1
 
 
 def _metab() -> str:

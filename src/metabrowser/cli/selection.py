@@ -150,7 +150,7 @@ async def resolve_for_cli(
 
 
 def _missing_path_message(source_url: str, resolved: ResolvedSelection) -> str:
-    where = _shown(resolved.name) if resolved.name else resolved.commit[:12]
+    where = display_ref(resolved.name) if resolved.name else resolved.commit[:12]
     return f"{GitPath(resolved.path).display()} is not in {source_url} at {where} (path_not_found)"
 
 
@@ -250,14 +250,19 @@ def selection_view_href(selection: RepositorySelection, resolved: ResolvedSelect
     return href
 
 
-def _shown(name: str) -> str:
-    """A ref name from the origin, with control characters a terminal would act on replaced."""
+def display_ref(name: str) -> str:
+    """A ref name from the origin, as a line of output shows it.
+
+    The origin chooses its ref names, and Git accepts one holding a C1 control or an
+    invisible character, so a name is displayed as a path segment is: what a terminal
+    would act on, and what a reader would not see, is U+FFFD.
+    """
 
     return display_segment(name.encode("utf-8", "surrogateescape"))
 
 
 def _pin_label(resolved: ResolvedSelection) -> str:
-    name = _shown(resolved.name or "")
+    name = display_ref(resolved.name or "")
     if resolved.via == "default":
         return f"default branch {name}"
     if resolved.via == "commit":
@@ -315,6 +320,7 @@ def selection_banner(
 
 __all__ = [
     "PullOpen",
+    "display_ref",
     "open_pull_for_cli",
     "pending_selection_opener",
     "require_selected_path",

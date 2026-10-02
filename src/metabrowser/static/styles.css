@@ -1314,9 +1314,10 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* A pinned revision's heading: the ref at the heading's weight, then its short
-   commit, muted. The full commit is the served root, shown in the heading's
-   tooltip and the file header's prefix. */
+/* A pinned revision's heading: the repository's name at the heading's weight,
+   then the ref and the short commit, muted. The full commit is in the
+   heading's tooltip. A pin with no mirror has no name, and its ref stands in
+   the name's place. */
 .header-revision {
   flex: none;
   margin-left: 6px;
@@ -1334,6 +1335,37 @@ body {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* A served mirror's heading is the repository's name, the ref, then the commit.
+   The ref gives way before the name does: the ref selector under the heading
+   names it too. */
+.header-ref {
+  flex: 0 1000 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* The control that copies the full commit stands right after the short one, so
+   a mirror's heading ends at its text and the menu keeps the far end. It shows
+   while the pointer is over the header, as the file header's copy control does. */
+.mirror-source .header-path {
+  flex-grow: 0;
+}
+.mirror-source .settings-toggle {
+  margin-left: auto;
+}
+.header-copy {
+  flex: none;
+  margin-left: -4px;
+}
+.app-header:hover .header-copy {
+  opacity: 1;
+  pointer-events: auto;
+}
+.header-copy.copied {
+  color: var(--status-success);
+  opacity: 1;
+  pointer-events: auto;
 }
 /* ── Text buttons — shared labelled action primitive ─────────────
    A compact action with a persistent surface and border. Use-site
@@ -3429,6 +3461,82 @@ html[data-prose-font="sans"] {
 .file-header-root > bdi {
   direction: ltr;
 }
+/* A served mirror's root is the repository's name, which is cut at its end as
+   it is in the navigation heading: the start of a path is the same on every
+   page, and the start of a name is the name. */
+.mirror-source .file-header-root {
+  direction: ltr;
+}
+/* Where a served mirror is kept, after the address. A mirror's root is the
+   repository's name, and no directory holds its files: they are read from a
+   bare Git repository in the cache. So that directory is not the start of the
+   address, where it would read as a folder of these files. It stands apart at
+   the far end, muted and at the summary's size, and its tooltip says what it is.
+   `order` puts it there: it is written with the address, ahead of a file's copy
+   control, and drawn after it.
+
+   It takes nothing from the address. Its shrink weight is 5000 times the
+   root's, the ratio .file-header-root measured as the least that takes no
+   sliver from the next part, so it is gone before the root's name narrows. And
+   when it is gone it occupies nothing: its two spacers are content, which
+   shrinks to zero with it, and its negative margin gives back the gap the
+   breadcrumb puts before every part.
+
+   It is whole or it is absent, never a stub. The note is one line of a
+   wrapping row, clipped to that line: a spacer, then the text at a basis of
+   14em, which is `mirror in ~/.metabrowser/cache/` and a few characters. When
+   the row is narrower than that the text wraps to the second line, which is
+   clipped away. Wider, the text fills the row and ends in an ellipsis rather
+   than starting with one, because the start is what says where the mirror is
+   and the end is a store's hexadecimal key.
+
+   Measured 2026-10-01 in Chrome 152, on a mirror's page at
+   squares / docs / deep / nested / a-rather-long-file-name-for-the-heading.md,
+   by the main heading's width. At every width below, the root's name, each
+   crumb, and the copy control measure what they do with the note removed.
+
+     heading   note    its text
+     1500px    715px   whole, 703px
+     1140px    566px   554px, ending in an ellipsis
+      800px    226px   214px
+      760px    186px   174px
+      660px     86px   absent
+      580px      6px   absent
+      560px      0     absent; the root's name is the next to narrow */
+.file-header-mirror {
+  order: 1;
+  flex: 0 100000000 auto;
+  min-width: 0;
+  margin: 0 -2px 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  height: 1.5em;
+  line-height: 1.5;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+  font-weight: var(--weight-normal);
+}
+/* The first line is as tall as the note whatever is on it, so a text that wraps
+   starts below the note's box and not at its top. */
+.file-header-mirror::before {
+  content: "";
+  flex: 0 0 10px;
+  height: 1.5em;
+}
+.file-header-mirror::after {
+  content: "";
+  flex: 0 0 2px;
+}
+.file-header-mirror-text {
+  flex: 1 0 14em;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+}
 .folder-crumb-sep {
   color: var(--muted);
 }
@@ -4366,6 +4474,22 @@ pre.code-block.metabrowser-source-lines > code {
 }
 .custom-tooltip.visible {
   opacity: 1;
+}
+/* A served mirror's line of a tooltip: its origin, a commit ID, and a path whose
+   last part is a 64-digit key, each one unbroken run that is wider than the box.
+   Such a run breaks where the box ends. The rule is this line's alone: every
+   other tooltip is laid out as before, so none wraps or is placed differently.
+   `break-word` and not `anywhere`, which lets a run break when the box is
+   measured for its place and so narrows a tooltip near the window's edge.
+
+   Measured 2026-10-01 in Chrome 152 on a plain folder, against the branch
+   below this one: the tooltip of the crumb
+   a-rather-long-file-name-for-the-heading.md is one line, 277.56 by 33.59px,
+   at left 327.43, 286.71, 274.84, and 907.42px in windows 700, 620, 560, and
+   1280px wide, on both. With `anywhere` on the tooltip itself it was two
+   lines at 560px, 165.31px wide and flush against the window's edge. */
+.tip-mirror {
+  overflow-wrap: break-word;
 }
 
 /* ── Modal dialog — shared blocking overlay primitive ───────────

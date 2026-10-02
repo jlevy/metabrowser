@@ -40,7 +40,14 @@ from metabrowser.git.process import GitCommandError
 from metabrowser.git.tree_source import GitPath
 from tests.git_pin_harness import git_env
 from tests.github_origin import FIRST_COMMIT, SECOND_COMMIT, _commit, github_origin
-from tests.golden_harness import Invocation, check_golden, isolate_cli, quoted, run_metab
+from tests.golden_harness import (
+    Invocation,
+    check_golden,
+    isolate_cli,
+    label_home,
+    quoted,
+    run_metab,
+)
 from tests.required_tools import needs_git
 
 pytestmark = [
@@ -167,6 +174,12 @@ REFUSED: list[list[str]] = [
     # A variation selector with no base to attach to is drawn as nothing, so it does
     # too; the one after an emoji above is kept.
     [f"{REPO}/blob/topic/README%EF%B8%8F.md", "--no-serve"],
+    # The reducer's hint for a raw space other than the ASCII one: U+00A0 NO-BREAK SPACE
+    # and U+200A HAIR SPACE would read as README .md or README.md, and U+2028 LINE
+    # SEPARATOR would split the error line. Each reaches the message as U+FFFD.
+    [f"{REPO}/blob/topic/README%C2%A0.md", "--no-serve"],
+    [f"{REPO}/blob/topic/README%E2%80%8A.md", "--no-serve"],
+    [f"{REPO}/blob/topic/README%E2%80%A8.md", "--no-serve"],
 ]
 
 
@@ -219,17 +232,24 @@ def test_golden_github_urls_open_through_a_local_stand_in(
         "path: docs/My Notes.md\n"
         in by_command[f"{REPO}/blob/topic/docs/My Notes.md --no-serve"].stdout
     )
-    assert "\u009b" not in refused[-4][1].stderr and "\ufffd2J.md" in refused[-4][1].stderr
+    assert "\u009b" not in refused[-7][1].stderr and "\ufffd2J.md" in refused[-7][1].stderr
     override = by_command[f"{REPO}/blob/unicode/docs/a%E2%80%AEb.md --no-serve"].stdout
     assert "path: docs/a\ufffdb.md\n" in override
-    assert "\ufffd2J.md is not in" in refused[-5][1].stderr
-    for _args, result in refused[-3:]:
+    assert "\ufffd2J.md is not in" in refused[-8][1].stderr
+    for _args, result in refused[-6:]:
         assert "Error: README\ufffd.md is not in " in result.stderr
         assert "(path_not_found)" in result.stderr
+        # One line, whatever a consumer takes for a line break, after the line that
+        # says the clone was reused.
+        assert len(result.error.splitlines()) == 1
+        assert len(result.stderr.splitlines()) == 2
 
-    rendered = "".join(_block(args, result) for args, result in [*opened, *refused])
+    rendered = label_home(
+        "".join(_block(args, result) for args, result in [*opened, *refused]), home
+    )
     assert chr(0x202E) not in rendered and chr(0x9B) not in rendered
     assert chr(0x3164) not in rendered and chr(0x2800) not in rendered
+    assert not {chr(0xA0), chr(0x200A), chr(0x2028)} & set(rendered)
     heart = by_command[f"{REPO}/blob/unicode/docs/{HEART}.md --no-serve"].stdout
     assert f"(branch unicode)\npath: docs/{HEART}.md\n" in heart
     assert str(tmp_path) not in rendered and str(home) not in rendered
@@ -287,7 +307,12 @@ def test_golden_a_selection_waits_for_the_refresh_it_asked_for(
     assert missing[1].exit_code == 0 and '"selection_state": "not_found"' in missing[1].stdout
     assert failed[1].exit_code == 1 and '"selection_state": "fetch_failed"' in failed[1].stdout
 
-    rendered = "".join(_block(args, result) for args, result in (found, missing, failed))
+    # The status says where the mirror is kept, and names the home nowhere else. A
+    # GitHub mirror's store key is derived from its canonical address, so it is the
+    # same on every machine and stays literal.
+    rendered = label_home(
+        "".join(_block(args, result) for args, result in (found, missing, failed)), home
+    )
     assert str(tmp_path) not in rendered and str(home) not in rendered
     check_golden("cli-github-url-waits.txt", rendered)
 
@@ -369,5 +394,6 @@ def test_golden_a_repository_the_origin_does_not_show(
         + "## Another host answers 404, and there is no hint.\n"
         + _block(*elsewhere)
     )
+    rendered = label_home(rendered, home)
     assert str(tmp_path) not in rendered and str(home) not in rendered
     check_golden("cli-github-not-found.txt", rendered)

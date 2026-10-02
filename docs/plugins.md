@@ -321,7 +321,13 @@ async def summary_handler(request):
   truncation from a short file — and it is the only trustworthy answer for a compressed
   artifact, whose declared length lives in a trailer nothing verifies until the stream
   is decoded.
-- `stat_content(ref)` is the separate call for a validated logical size.
+- `ref.stored_size` is the size the source stores: a file’s size on disk, which for a
+  compressed artifact is its compressed size, and a blob’s length on a pin.
+  Resolution already has it, so it costs no read.
+  It is `None` only for a blob a pin’s store does not hold, which no read returns
+  either. The structured plugin’s `parsed` route reports it as `size`.
+- `stat_content(ref)` is the separate call for a validated logical size, which differs
+  from the stored size exactly for a compressed artifact.
   It can cost a full decode and can fail, so reach for it only when the response
   genuinely needs a total, the way the binary plugin’s view needs one for its scrollbar.
 - `resolve_content_container(identity, suffixes=(".patch",))` resolves a

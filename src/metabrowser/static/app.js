@@ -308,6 +308,11 @@ function servedRoot() {
   return queryHtml(".header-path")?.dataset.servedRoot || "";
 }
 
+// What a served mirror's page adds to its headings; see static/mirror-heading.js.
+function mirrorHeading(part) {
+  return window.MetabrowserMirrorHeading?.[part]() ?? "";
+}
+
 // The shell's delegated controls (the address crumbs, the parent button, print, and
 // copy path) carry the SDK's per-page owner mark, and their document listeners act
 // only on a marked element: a trusted folder's Markdown keeps class, id, and data-*,
@@ -356,7 +361,12 @@ function headerAddressHtml(path, isFile) {
       `<button type="button" class="${cls}" ${attr}="${esc(walked)}"${ownedControlAttr()} data-tip-text="${esc(window.MetabrowserNavigationRoute.displayPath(walked))}">${esc(window.MetabrowserNavigationRoute.displayPath(segments[i]))}</button>`,
     );
   }
-  return prefix + rootCrumb + crumbs.join('<span class="folder-crumb-sep">/</span>');
+  return (
+    prefix +
+    rootCrumb +
+    crumbs.join('<span class="folder-crumb-sep">/</span>') +
+    mirrorHeading("note")
+  );
 }
 
 function getExt(name) {
@@ -1470,7 +1480,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // well, which showed the reader two tooltips saying the same thing.
     if (!d.tipName) {
       showTooltip(
-        `${esc(d.servedRoot || "")}<div class="tip-detail">Jump to root</div>`,
+        `${esc(d.servedRoot || "")}${mirrorHeading("tip")}<div class="tip-detail">Jump to root</div>`,
         headerPath,
       );
       return;
@@ -1481,7 +1491,10 @@ document.addEventListener("DOMContentLoaded", () => {
       parseTipNumber(d.tipSize),
       parseTipNumber(d.tipMtime),
     );
-    showTooltip(`${folderTip}<div class="tip-detail">Jump to root</div>`, headerPath);
+    showTooltip(
+      `${folderTip}${mirrorHeading("tip")}<div class="tip-detail">Jump to root</div>`,
+      headerPath,
+    );
   });
   headerPath.addEventListener("mouseleave", hideTooltip);
 });
@@ -2709,11 +2722,12 @@ function shouldPrefetchFile(item) {
   if (+(item.dataset.tipSize || 0) > FILE_PREFETCH_MAX_BYTES) {
     return false;
   }
-  // For .gz files the server attaches `data-logical-ext`; key the
-  // "skip prefetch for JSONL" rule off the inner extension so
-  // `events.jsonl.gz` is treated identically to `events.jsonl`.
+  // No name ending `.jsonl` is prefetched: /api/file parses such a file whole
+  // into events instead of answering a bounded text window. `data-logical-ext`
+  // is the inner extension of a .gz; `data-ext` is a compound tail
+  // (`.codex.jsonl`), and all a pin's wire path has, so match its end.
   var ext = (item.dataset.logicalExt || item.dataset.ext || getExt(path)).toLowerCase();
-  return ext !== ".jsonl";
+  return !ext.endsWith(".jsonl");
 }
 
 function abortHoverPrefetch() {

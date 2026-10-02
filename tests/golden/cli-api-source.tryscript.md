@@ -9,6 +9,8 @@ env:
   METABROWSER_LOG_LEVEL: "ERROR"
 patterns:
   TIMESTAMP: '\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z'
+  APP_HOME: '[^\s"]+/home'
+  STORE_KEY: '[0-9a-f]{64}'
 before: >-
   unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX GIT_NAMESPACE GIT_CEILING_DIRECTORIES &&
   uv --config-file "$TRYSCRIPT_TEST_DIR/../../uv.toml" run --frozen --no-sync
@@ -44,6 +46,52 @@ status: 200
   "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
   "ref": "refs/remotes/origin/topic",
   "ref_name": "topic",
+  "name": "origin",
+  "origin": "file://[CWD]/origin.git",
+  "location": "[APP_HOME]/cache/repository-stores/[STORE_KEY]/repository.git",
+  "refreshable": true,
+  "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+  "ref_on_origin": true,
+  "last_fetch_at": "2026-09-17T12:00:05Z",
+  "last_outcome": {
+    "operation": "acquire",
+    "outcome": "succeeded",
+    "at": "2026-09-17T12:00:05Z"
+  },
+  "refreshing": false,
+  "stale": true,
+  "pull_request": null,
+  "selection_state": null,
+  "selection_href": null
+}
+? 0
+```
+
+## Test: status names the repository and says where its mirror is kept
+
+`name` is what a checkout of the origin would be called, `origin` the address it
+mirrors, and `location` the store’s bare Git repository, which every page is read from.
+A page’s headings show all three where a folder’s show its name and path.
+
+In every other command of this transcript the application home is outside the home
+directory, so the location is absolute, and `--api` prints it as the route answered it.
+Here the home directory is set to the application home, so the location is spelled as a
+reader’s is, with `~`. The origin is outside it and stays as given.
+The store’s key is derived from the origin’s address, which is the sandbox’s.
+
+```console
+$ HOME=$PWD/home METABROWSER_HOME=$PWD/home metab file://$PWD/origin.git --api /api/source/status
+api: /api/source/status
+status: 200
+{
+  "subject": "git_revision",
+  "generation": 1,
+  "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+  "ref": "refs/remotes/origin/topic",
+  "ref_name": "topic",
+  "name": "origin",
+  "origin": "file://[CWD]/origin.git",
+  "location": "~/cache/repository-stores/[STORE_KEY]/repository.git",
   "refreshable": true,
   "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
   "ref_on_origin": true,
@@ -79,6 +127,9 @@ status: 200
     "pin": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
     "ref": "refs/remotes/origin/feature",
     "ref_name": "feature",
+    "name": "origin",
+    "origin": "file://[CWD]/origin.git",
+    "location": "[APP_HOME]/cache/repository-stores/[STORE_KEY]/repository.git",
     "refreshable": true,
     "latest": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
     "ref_on_origin": true,
@@ -112,6 +163,9 @@ status: 200
     "pin": "fcb9d63c3c8533d1b929861f451a066e6d4f2d9e",
     "ref": "refs/tags/v1",
     "ref_name": "v1",
+    "name": "origin",
+    "origin": "file://[CWD]/origin.git",
+    "location": "[APP_HOME]/cache/repository-stores/[STORE_KEY]/repository.git",
     "refreshable": true,
     "latest": "fcb9d63c3c8533d1b929861f451a066e6d4f2d9e",
     "ref_on_origin": true,
@@ -148,6 +202,9 @@ status: 200
     "pin": "fcb9d63c3c8533d1b929861f451a066e6d4f2d9e",
     "ref": null,
     "ref_name": null,
+    "name": "origin",
+    "origin": "file://[CWD]/origin.git",
+    "location": "[APP_HOME]/cache/repository-stores/[STORE_KEY]/repository.git",
     "refreshable": true,
     "latest": null,
     "ref_on_origin": null,
@@ -186,6 +243,9 @@ status: 200
     "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
     "ref": "refs/remotes/origin/topic",
     "ref_name": "topic",
+    "name": "origin",
+    "origin": "file://[CWD]/origin.git",
+    "location": "[APP_HOME]/cache/repository-stores/[STORE_KEY]/repository.git",
     "refreshable": true,
     "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
     "ref_on_origin": true,
@@ -219,6 +279,9 @@ status: 200
     "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
     "ref": "refs/remotes/origin/topic",
     "ref_name": "topic",
+    "name": "origin",
+    "origin": "file://[CWD]/origin.git",
+    "location": "[APP_HOME]/cache/repository-stores/[STORE_KEY]/repository.git",
     "refreshable": true,
     "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
     "ref_on_origin": true,
@@ -414,6 +477,9 @@ status: 200
     "pin": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
     "ref": "refs/remotes/origin/feature",
     "ref_name": "feature",
+    "name": "origin",
+    "origin": "file://[CWD]/origin.git",
+    "location": "[APP_HOME]/cache/repository-stores/[STORE_KEY]/repository.git",
     "refreshable": true,
     "latest": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
     "ref_on_origin": true,
@@ -450,6 +516,9 @@ status: 200
     "pin": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
     "ref": "refs/remotes/origin/feature",
     "ref_name": "feature",
+    "name": "origin",
+    "origin": "file://[CWD]/origin.git",
+    "location": "[APP_HOME]/cache/repository-stores/[STORE_KEY]/repository.git",
     "refreshable": true,
     "latest": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
     "ref_on_origin": true,
@@ -494,6 +563,9 @@ status: 202
     "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
     "ref": "refs/remotes/origin/topic",
     "ref_name": "topic",
+    "name": "origin",
+    "origin": "file://[CWD]/origin.git",
+    "location": "[APP_HOME]/cache/repository-stores/[STORE_KEY]/repository.git",
     "refreshable": true,
     "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
     "ref_on_origin": true,
@@ -518,6 +590,9 @@ status: 200
   "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
   "ref": "refs/remotes/origin/topic",
   "ref_name": "topic",
+  "name": "origin",
+  "origin": "file://[CWD]/origin.git",
+  "location": "[APP_HOME]/cache/repository-stores/[STORE_KEY]/repository.git",
   "refreshable": true,
   "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
   "ref_on_origin": true,
@@ -557,6 +632,9 @@ status: 202
     "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
     "ref": "refs/remotes/origin/topic",
     "ref_name": "topic",
+    "name": "origin",
+    "origin": "file://[CWD]/origin.git",
+    "location": "[APP_HOME]/cache/repository-stores/[STORE_KEY]/repository.git",
     "refreshable": true,
     "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
     "ref_on_origin": true,
@@ -581,6 +659,9 @@ status: 200
   "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
   "ref": "refs/remotes/origin/topic",
   "ref_name": "topic",
+  "name": "origin",
+  "origin": "file://[CWD]/origin.git",
+  "location": "[APP_HOME]/cache/repository-stores/[STORE_KEY]/repository.git",
   "refreshable": true,
   "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
   "ref_on_origin": true,

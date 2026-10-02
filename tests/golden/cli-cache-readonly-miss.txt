@@ -7,6 +7,8 @@ slug: <SLUG-A>
 store: <STORE-A>
 revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
 --- stderr ---
+cloning <ORIGIN-A> into <HOME>/cache
+cloned <ORIGIN-A> in 0.0 s
 ## A is reused. A new source B is refused, and nothing in the home changes.
 # metab <ORIGIN-A> --no-serve
 exit: 0
@@ -16,6 +18,7 @@ slug: <SLUG-A>
 store: <STORE-A>
 revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
 --- stderr ---
+using the clone of <ORIGIN-A> cached in <HOME>/cache, fetched less than a minute ago
 # metab <ORIGIN-B> --no-serve
 exit: 1
 --- stdout ---
@@ -30,3 +33,5 @@ slug: <SLUG-B>
 store: <STORE-B>
 revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
 --- stderr ---
+cloning <ORIGIN-B> into <HOME>/cache
+cloned <ORIGIN-B> in 0.0 s

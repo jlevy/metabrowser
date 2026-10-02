@@ -15,6 +15,7 @@ from metabrowser.cache import acquire as acquire_module
 from metabrowser.cache.acquire import (
     AcquisitionError,
     PartialCloneSourceError,
+    ProgressReporter,
     RemoteUnavailableError,
     ValidationFailedError,
     acquire_into_staging,
@@ -250,8 +251,11 @@ def test_a_default_branch_that_does_not_resolve_to_the_observed_head_is_refused(
         cwd: Path | None = None,
         git_dir: Path | None = None,
         timeout_s: float | None = None,
+        on_progress: ProgressReporter | None = None,
     ) -> bytes:
-        result = await real_run(args, cwd=cwd, git_dir=git_dir, timeout_s=timeout_s)
+        result = await real_run(
+            args, cwd=cwd, git_dir=git_dir, timeout_s=timeout_s, on_progress=on_progress
+        )
         if "ls-remote" in args:
             _git(work, "commit", "-q", "--allow-empty", "-m", "moved")
             _git(work, "push", "-q", str(origin), "topic")

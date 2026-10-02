@@ -45,6 +45,7 @@ from metabrowser.git.process import (
     GitOutputTooLargeError,
     GitTimeoutError,
     failure_detail,
+    loggable,
     run_git,
 )
 from metabrowser.git.repo import repo_info
@@ -732,6 +733,20 @@ def test_failure_detail_carries_stderr_that_the_exception_message_withholds() ->
     assert "/srv/example/repo" not in str(failure)
     assert "/srv/example/repo" in failure_detail(failure)
     assert failure_detail(GitTimeoutError("git log exceeded 5s")) == "git log exceeded 5s"
+
+
+def test_gits_stderr_is_logged_with_nothing_a_terminal_would_act_on() -> None:
+    """Part of it is whatever an origin sent, and a log's handler writes to a terminal."""
+
+    sent = "remote: \x1b[2J\x1b]0;owned\x07 \x08\x00\r\u009b31m \u202e \u00a0 ok\nfatal: early EOF"
+    detail = failure_detail(GitCommandError(["fetch"], 128, sent))
+    assert detail == (
+        "git fetch exited 128: remote: \\x1b[2J\\x1b]0;owned\\x07 \\x08\\x00\\r\\x9b31m "
+        "\\u202e \\xa0 ok\nfatal: early EOF"
+    )
+    assert loggable("fatal: /srv/repo is corrupt\nhint: résumé ❤\n") == (
+        "fatal: /srv/repo is corrupt\nhint: résumé ❤\n"
+    )
 
 
 def test_route_failure_warning_reports_git_stderr(

@@ -64,18 +64,21 @@ CHILD_TIMEOUT: Final = 50
 # A Git release below the acquisition floor.
 BELOW_FLOOR_GIT: Final = ((2, 43, 0), "git version 2.43.0")
 
-# The child is the production CLI with two substitutions: the acquisition floor admits
-# the installed Git, as in every in-process acquisition golden, and the publication
-# after the first ``survive`` ones kills the process before its rename can commit.
+# The child is the production CLI with three substitutions: the acquisition floor admits
+# the installed Git and the clock a clone reads its elapsed time from stands still, as
+# in every in-process acquisition golden, and the publication after the first
+# ``survive`` ones kills the process before its rename can commit.
 _KILLED_AT_PUBLICATION: Final = textwrap.dedent(
     """
     import os, signal, sys, time
     from metabrowser.cache import acquire
+    from metabrowser.cli import clone_report
     from metabrowser.cli.main import _run_cli
     from metabrowser.git.process import detect_git_version
 
     version, _raw = detect_git_version()
     acquire.require_acquisition_git = lambda: version
+    clone_report._monotonic = float
     publish = acquire.publish_entry
     survive = int(sys.argv[1])
     published = 0
@@ -155,7 +158,7 @@ def test_golden_interrupted_before_store_publication(
     assert '"sources": []' in session.inspect("/api/cache/sources")
 
     session.note("The next acquisition sweeps the entry, fetches again, and publishes.")
-    assert ORIGIN_REVISION in session.no_serve("A", url)
+    assert ORIGIN_REVISION in session.no_serve("A", url).stdout
     assert '"staging_entries": 0' in session.inspect("/api/cache/layout")
     assert '"reference_state": "referenced"' in session.inspect("/api/cache/stores")
     assert '"publication": "published"' in session.inspect("/api/cache/sources")
@@ -190,7 +193,7 @@ def test_golden_interrupted_between_store_and_alias_publication(
         "The next acquisition fetches again, finds the same store already published, "
         "reuses it, and publishes the alias."
     )
-    assert ORIGIN_REVISION in session.no_serve("A", url)
+    assert ORIGIN_REVISION in session.no_serve("A", url).stdout
     assert orphan.name == store_key(origin_identity(url).store_id)
     assert orphan.stat().st_ino == orphan_inode
     layout = session.inspect("/api/cache/layout")
@@ -238,7 +241,7 @@ def test_golden_fetch_failures_leave_other_sources_untouched(
     for letter, (why, path) in failures.items():
         session.note(f"Source {letter}, {why}, fails without publishing anything.")
         failed = session.no_serve(letter, file_url(path), exit_code=1)
-        assert str(tmp_path) not in failed
+        assert str(tmp_path) not in failed.stdout + failed.error
     session.note("The route mode refuses the same way and never issues the route.")
     session.run(
         "metab <ORIGIN-MISSING> --api /api/cache/sources",
@@ -256,13 +259,14 @@ def test_golden_fetch_failures_leave_other_sources_untouched(
     assert _snapshot(home / "cache" / "repository-stores") == snapshot
 
     session.note("A is still a cache hit, and another spelling of A normalizes to A.")
-    assert session.no_serve("A", url) == first
+    hit = session.no_serve("A", url)
+    assert hit.stdout == first.stdout
     path_a = url.removeprefix("file://")
     folded = session.run(
         "metab FILE://LocalHost<PATH-A>/ --no-serve",
         [f"FILE://LocalHost{path_a}/", "--no-serve"],
     )
-    assert folded == first
+    assert (folded.stdout, folded.stderr) == (hit.stdout, hit.stderr)
     assert _snapshot(home / "cache" / "repository-stores") == snapshot
 
     check_golden("cli-cache-fetch-failures.txt", session.render())
@@ -297,7 +301,7 @@ def test_golden_below_floor_git_refuses_a_miss_and_still_reuses_a_hit(
         "and the application home is not created."
     )
     refused = session.no_serve("A", url_a, exit_code=1)
-    assert "unsupported Git version (git version 2.43.0)" in refused
+    assert "unsupported Git version (git version 2.43.0)" in refused.stderr
     assert not home.exists()
     session.run(
         "metab <ORIGIN-A> --api /api/cache/layout",
@@ -329,7 +333,7 @@ def test_golden_below_floor_git_refuses_a_miss_and_still_reuses_a_hit(
         "Below the floor again, with origin A moved away, A is reused without Git, and a "
         "new source B is refused without changing the home."
     )
-    assert session.no_serve("A", url_a) == acquired
+    assert session.no_serve("A", url_a).stdout == acquired.stdout
     before = _snapshot(home)
     session.no_serve("B", url_b, exit_code=1)
     assert _snapshot(home) == before
@@ -370,12 +374,12 @@ def test_golden_refusals_name_their_repair(tmp_path: Path, monkeypatch: pytest.M
     )
     home.chmod(0o755)
     before = _snapshot(home)
-    assert "Run chmod 700 on it" in session.no_serve("A", url_a, exit_code=1)
-    assert "Run chmod 700 on it" in session.no_serve("B", url_b, exit_code=1)
+    assert "Run chmod 700 on it" in session.no_serve("A", url_a, exit_code=1).stderr
+    assert "Run chmod 700 on it" in session.no_serve("B", url_b, exit_code=1).stderr
     assert _snapshot(home) == before
     session.note("After chmod 700, A is reused and B is acquired.")
     home.chmod(0o700)
-    assert session.no_serve("A", url_a) == acquired
+    assert session.no_serve("A", url_a).stdout == acquired.stdout
     session.no_serve("B", url_b)
 
     session.note("A home written by a newer release is refused before anything is written.")
@@ -386,11 +390,12 @@ def test_golden_refusals_name_their_repair(tmp_path: Path, monkeypatch: pytest.M
     )
     before = _snapshot(home)
     refused = session.no_serve("A", url_a, exit_code=1)
-    assert "Upgrade Metabrowser" in refused
+    assert "Upgrade Metabrowser" in refused.stderr
     assert _snapshot(home) == before
 
     session.note("Another METABROWSER_HOME, as the message suggests, acquires independently.")
     other = tmp_path / "other-home"
+    session.homes[other] = "<OTHER-HOME>"
     monkeypatch.setenv("METABROWSER_HOME", str(other))
     session.no_serve("A", url_a)
     assert _snapshot(home) == before
@@ -414,9 +419,9 @@ def test_golden_a_home_without_owner_write_refuses_a_miss_and_reuses_a_hit(
     try:
         before = _snapshot(home)
         session.note("A is reused. A new source B is refused, and nothing in the home changes.")
-        assert session.no_serve("A", url_a) == acquired
+        assert session.no_serve("A", url_a).stdout == acquired.stdout
         refused = session.no_serve("B", url_b, exit_code=1)
-        assert str(tmp_path) not in refused
+        assert str(tmp_path) not in refused.stdout + refused.error
         assert _snapshot(home) == before
     finally:
         _restore_owner_write(home)

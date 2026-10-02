@@ -43,6 +43,7 @@ from tests.golden_harness import (
     check_golden,
     file_url,
     isolate_cli,
+    label_home,
     ok,
     pinned_git_env,
     refused,
@@ -122,7 +123,8 @@ def _after(result: Invocation) -> Any:
 
 @posix_only
 def test_golden_refresh_and_pin_switching(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    clock = isolate_cli(tmp_path, monkeypatch).clock
+    sandbox = isolate_cli(tmp_path, monkeypatch)
+    clock = sandbox.clock
     origin = build_origin(tmp_path)
     url = file_url(origin)
     bodies = tmp_path / "bodies"
@@ -205,6 +207,6 @@ def test_golden_refresh_and_pin_switching(tmp_path: Path, monkeypatch: pytest.Mo
 
     labels = Labels()
     labels.origin(url)
-    rendered = labels.apply("".join(blocks))
+    rendered = label_home(labels.apply("".join(blocks)), sandbox.home)
     assert str(tmp_path) not in rendered
     check_golden("cli-git-refresh.txt", rendered)

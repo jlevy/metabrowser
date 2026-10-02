@@ -40,6 +40,7 @@ from tests.golden_harness import (
     read_recording,
     run_session,
     serve_published,
+    stand_in_sandbox,
 )
 from tests.required_tools import needs_git
 from tests.source_mirror_fixture import FETCHED_AT, build_origin
@@ -97,7 +98,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             recorded["switch_missing"] = switch({"ref": "refs/remotes/origin/gone"})
     finally:
         serve_mirror(None)
-    return recorded
+    return stand_in_sandbox(recorded, tmp_path, published.store_key, home=published.home)
 
 
 def test_recording_is_what_a_served_mirror_answers(

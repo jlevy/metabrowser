@@ -151,7 +151,8 @@ It claims only `github.com` and `raw.githubusercontent.com`.
   the baseline. When `gh` is available, the repository size from `repos/<o>/<r>` is
   checked first, and a clone that cannot finish inside the acquisition deadline is
   refused with a typed state rather than killed partway.
-  The first clone reports its phase and elapsed time; a full progress parser can follow.
+  The first clone says on stderr where it goes, then reports Git’s own progress, read as
+  numbers and never passed through as text, with the elapsed time (`mb-4cg7`).
 
 ### Serving and pin switching
 
@@ -165,6 +166,17 @@ It claims only `github.com` and `raw.githubusercontent.com`.
   that moves a ref turns an open cursor into a typed stale state with a reload action.
 - `repository_context` is supplied for GitHub mirrors, so github.com links inside a
   rendered README open locally.
+- A served mirror’s page is headed by the repository’s name, as a checkout of it would
+  be called (`squares` for `https://github.com/jlevy/squares`), with the ref and the
+  short commit beside it, and says where the mirror is kept, with the home directory as
+  `~` (decided 2026-10-01, `mb-fndz`). The location is the store’s bare repository,
+  shown as a note after the address and in the headings’ tooltips, never as the start of
+  a file’s address: the mirror has no working tree.
+  A control beside the short commit copies the full one.
+  `/api/source/status` reports the same as `name`, `origin`, and `location`, and
+  `location` is the one field of any route’s answer that names a path in the cache;
+  [the architecture document](../../architecture/arch-repository-sources-and-provider-mirrors.md#what-a-mirrors-page-is-called-and-where-it-says-it-is-kept)
+  holds the rule and its bounds.
 
 ### Background refresh
 
@@ -331,6 +343,11 @@ Follow-up pull requests extend those steps, in stack order:
 | [#256](https://github.com/jlevy/metabrowser/pull/256) | Tests: the cache suite | `mb-sqlv` |
 | [#258](https://github.com/jlevy/metabrowser/pull/258) | Tests: the GitHub pull-request suite and a hostile-link corpus for both inert layers | `mb-738k` |
 | [#257](https://github.com/jlevy/metabrowser/pull/257) | Tests: the Git pin and source suite; the pin transcript split into shards | `mb-79t3` |
+| [#259](https://github.com/jlevy/metabrowser/pull/259) | Unicode spaces replaced in displayed paths; display speed restored; the serve banner’s ref escaped | `mb-2on0` |
+| [#261](https://github.com/jlevy/metabrowser/pull/261) | A first clone says where it goes and shows progress; a cache hit says so | `mb-4cg7` |
+| [#263](https://github.com/jlevy/metabrowser/pull/263) | A served mirror is headed by the repository’s name and says where it is kept ([Decision (2026-10-01)](#decision-2026-10-01-by-the-user)) | `mb-fndz` |
+| [#264](https://github.com/jlevy/metabrowser/pull/264) | Three regular-folder behaviors restored to 0.11.0, found by the landing gate; bytecode-controlled start-up pairs | `mb-y28u` |
+| [#265](https://github.com/jlevy/metabrowser/pull/265) | The release checklist rehearsed against v0.11.0 (exp-038) | `mb-cf6y` |
 | [#260](https://github.com/jlevy/metabrowser/pull/260) | The QA walk-through, the per-layer review ledger, and the landing status | `mb-65pn` |
 
 The test pull requests from #252 on are the release work of the test-suite review
@@ -376,6 +393,41 @@ Enterprise hosts, issues, and rebind.
   This replaces the earlier default of explicit refresh only.
 - Opt-in live smoke tests may clone public repositories and make read-only `gh api`
   calls.
+
+## Decision (2026-10-01, by the user)
+
+After opening `https://github.com/jlevy/squares` on the stack’s tip, where the main
+heading read `fe6399451f1c01635c12c9aa5c176822da5dbc42 / README.md` and nothing said
+where the repository was stored:
+
+> the name of the folder in the main view nav and titles should not be an inscrutable
+> hash just because we opened up the folder from a github url.
+> the apparent folder should be the name of the repo, as it would be if it was checked
+> out. and it should be visible where that folder actually resides, it should not be
+> hidden, it should be in our .metabrowser cache directory.
+> this could be via tooltips at least, and perhaps a better indicator using
+> ~/.metabrowser etc on the main heading on the page view, as we do with other regular
+> folders
+
+- A served mirror shows the repository’s name wherever it showed a commit ID as its
+  root: the navigation heading, the main heading’s address, and the heading’s tooltip.
+  The commit stays beside the ref, short, with the full commit in the tooltips.
+- A served mirror shows where it is kept, in the main heading and in a tooltip, with the
+  home directory as `~`.
+- This changes a rule the stack held, that no route’s answer names a cache or store
+  path. The location is now named in one field of the status envelope and in the page’s
+  heading, and nowhere else.
+  Untrusted content still cannot read it.
+- Decided while implementing (`mb-fndz`): the directory named is the store’s bare
+  repository, where the Git objects are, and not the source’s record directory; and the
+  page says it is a bare repository with no checked-out files, because there is no
+  folder of these files to point at.
+- The status also carries the origin, as the reader gave it and in display form: a
+  `file://` origin is a path of theirs, shown with the home directory as `~` when it is
+  under it, as the location is.
+  No route’s answer spells the home directory out when it can be abbreviated.
+- The full commit is copied from a control beside the short one, since the main heading
+  no longer spells it.
 
 ## Open Engineering Choices
 
