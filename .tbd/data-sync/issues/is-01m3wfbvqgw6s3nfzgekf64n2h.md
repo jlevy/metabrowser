@@ -3,9 +3,9 @@ type: is
 id: is-01m3wfbvqgw6s3nfzgekf64n2h
 title: A mirrored repository shows a commit hash as its folder name and hides where it is stored
 kind: bug
-status: in_progress
+status: closed
 priority: 2
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 delegate: claude-code@spud10.local
 labels:
@@ -17,8 +17,12 @@ parent_id: is-01m36k3w9vgwy97c9hcj2sqrs5
 hold: null
 hold_until: null
 created_at: 2026-10-01T19:34:22.189Z
-updated_at: 2026-10-01T19:34:25.684Z
+updated_at: 2026-10-02T00:39:22.764Z
 started_at: 2026-10-01T19:34:25.682Z
+closed_at: 2026-10-02T00:39:22.755Z
+close_reason: "PR #263: a mirrored repository shows its name in the main heading, nav header, tree root and tab title, with the short commit beside the ref and a copy control for the full commit; the heading shows 'mirror in <location>' (the bare store directory, with ~) and a tooltip saying it is a bare repository with no checked-out files. One display location in /api/source/status and the heading; a file:// origin under the home is shown with ~; every other route, header and error still names no cache path (sweep widened; five leak mutations fail it). Regular folders: three null fields added to /api/source/status, +82 bytes of app.js, tooltip geometry identical to base. Independent review: P1 tooltip regression and three P2s fixed; 76 of 76 mutations killed; CI green. Decision recorded in the thin-mirror plan."
+resolution: null
+duplicate_of: null
 ---
 Reported by the user 2026-10-01 after opening https://github.com/jlevy/squares with the stack tip: the main view's breadcrumb root is the full 40-hex commit ('fe6399451f1c01635c12c9aa5c176822da5dbc42 / README.md'), and nothing on the page says where the repository is stored. The user's decision, in their words: 'the name of the folder in the main view nav and titles should not be an inscrutable hash just because we opened up the folder from a github url. the apparent folder should be the name of the repo, as it would be if it was checked out. and it should be visible where that folder actually resides, it should not be hidden, it should be in our .metabrowser cache directory. this could be via tooltips at least, and perhaps a better indicator using ~/.metabrowser etc on the main heading on the page view, as we do with other regular folders'.
 
