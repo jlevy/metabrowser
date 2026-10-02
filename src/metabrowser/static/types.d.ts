@@ -189,10 +189,6 @@ type MetabrowserPreviewPaneLifecycle = Readonly<{
 
 type MetabrowserNavigationRouteRuntime = Readonly<{
   displayPath(path: string, sourceKind?: "filesystem" | "git_revision"): string;
-  servedRootAddress(
-    served: { servedRoot?: string; mirrorLocation?: string; mirrorTip?: string },
-    esc: (text: unknown) => string,
-  ): { prefix: string; note: string };
   /** The GitPath wire of a path on a pinned revision; null when it has an empty segment. */
   attachController(controller: MetabrowserNavigationController): () => void;
   commitFreshFileResponse(options: {
@@ -2742,6 +2738,12 @@ declare global {
     }>;
     /** The pin and ref a pin's page was rendered for; absent on a folder. */
     METABROWSER_SOURCE_PIN?: MetabrowserSourcePage;
+    /** static/mirror-heading.js, which only a served mirror's page carries. */
+    MetabrowserMirrorHeading?: Readonly<{
+      mountCommitCopy(): void;
+      note(): string;
+      tip(detail?: string): string;
+    }>;
     MetabrowserViewState: MetabrowserViewStateRuntime;
     MetabrowserViewComposition: MetabrowserViewCompositionRuntime;
     MetabrowserTreemapLayout: MetabrowserTreemapLayoutApi;

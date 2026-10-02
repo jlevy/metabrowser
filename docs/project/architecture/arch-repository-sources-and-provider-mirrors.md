@@ -204,15 +204,18 @@ where a folder shows its name, and nothing said its files came out of the cache.
   It is the last path segment of the origin’s address, without a trailing `/.git` and
   without a `.git` suffix, so `https://github.com/jlevy/squares`,
   `file:///srv/squares.git`, and `file:///srv/squares/.git` are all `squares`. An
-  address whose path names nothing else is called by its host.
+  address whose path names nothing else is called by its host, and a segment that is
+  only dots before `.git`, such as `..git`, keeps its suffix, since `.` is no name.
   One rule serves every `https://` and `file://` origin and a pull-request pin
   (`repository_name` in `cache/served_mirror.py`). The name stands in the navigation
   heading, as the dimmed root of the main heading’s address, and in the heading’s
   tooltip. A pin with no mirror has no origin to take a name from and is headed by its
   ref and commit, as before.
-- **Commit.** The ref and the short commit follow the name in the navigation heading.
-  The full commit is in the headings’ tooltips and in `/api/source/status`, and every
-  data request of the page still names it.
+- **Commit.** The ref and the short commit follow the name in the navigation heading,
+  and a control after the short commit copies the full one, through the SDK’s
+  owner-stamped copy delegate.
+  The full commit is also in the headings’ tooltips and in `/api/source/status`, and
+  every data request of the page still names it.
 - **An origin is untrusted.** The name is display text and never a path.
   A percent-escape is decoded, and the result passes through `display_segment`, so a
   control character, a character drawn as nothing, and bytes that are not UTF-8 become
@@ -231,9 +234,17 @@ where a folder shows its name, and nothing said its files came out of the cache.
   at the pinned commit.
   So the location is not the start of the address, where it would read as a folder
   holding these files.
-  It is a note after the address, and the tooltip on the name and on the note says what
-  the directory is:
+  It is a note after the address, and the tooltip on the name, on the note, and on the
+  navigation heading says what the directory is:
   `Mirror of <origin> at <commit>, stored in <location>: a bare Git repository, with no checked-out files.`
+  The note is whole or absent: a pane too narrow for its start shows none of it, and it
+  takes no width from the address.
+- **Only a mirror’s page.** `static/mirror-heading.js` draws the note, the tooltip line,
+  and the copy control.
+  The server writes it inline into a served mirror’s page and into no other, as it does
+  the pin guard, so a folder’s page carries none of it; the shell reaches it through one
+  hook that returns nothing when the module is absent.
+  Only the mirror’s line of a tooltip wraps; the tooltip every page uses is unchanged.
 
 The stack kept every cache and store path out of every route’s answer.
 That rule now has one exception, held to an exact form:
@@ -243,18 +254,25 @@ That rule now has one exception, held to an exact form:
   `location` is the one field that names a path in the cache.
   It is answered wherever the envelope is: `GET /api/source/status`, and the `status`
   member of what `POST /api/source/pin` and `POST /api/source/refresh` answer.
-  `origin` is the source’s address, which for a `file://` origin is the path the reader
-  gave.
+  `origin` is the source’s address as the reader gave it, in display form: for a
+  `file://` origin it is a path of theirs, shown with the home directory as `~` when it
+  is under it (`file://~/git/squares.git`), by the same rule as the location.
+  No answer spells the home directory out when it can be abbreviated.
+  `metab --api` prints `location` as answered, the one field a pin’s output does not
+  rewrite to `<ROOT>`.
 - **One place on the page.** The shell writes the same text into two attributes of the
   navigation heading, `data-mirror-location` and `data-mirror-tip`, as it writes a
-  folder’s path into `data-served-root`. The file header reads them back.
+  folder’s path into `data-served-root`. `static/mirror-heading.js` reads them back.
 - **Nothing else.** File content, listings, rollups, history, diffs, plugin hooks, and
   every error stay path-free; the `/api/cache/` routes still answer
   `unsupported_for_subject` on a served pin.
   The location is display text: no route accepts it, and no path is ever built from it.
 - **Checked.** `tests/test_serve_pin.py` asks every registered GET route of a served
-  mirror for its answers and fails if the application home or the origin stands anywhere
-  but those two fields and those two attributes, each compared to its exact text.
+  mirror for its answers, error answers among them, and the two POST routes that change
+  the served pin for each kind of answer they give.
+  It fails if the application home, the origin’s path, the store’s key, or the name of
+  the stores’ directory stands anywhere in a body or a header but those two fields and
+  those two attributes, each compared to its exact text.
 
 A served mirror is untrusted content, which is why the rule existed.
 The location still cannot be read by what a repository’s author writes.

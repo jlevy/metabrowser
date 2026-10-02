@@ -21,6 +21,7 @@ from metabrowser.cache.served_mirror import (
     UNNAMED_REPOSITORY,
     StoreMirror,
     display_directory,
+    display_origin,
     repository_name,
 )
 from metabrowser.cache.urls import GitSource
@@ -43,6 +44,11 @@ _STORE_KEY = "ab" * 32
         # One suffix is the convention; a second is part of the name.
         ("https://example.com/a/tool.git.git", "tool.git"),
         ("https://example.com/a/.github", ".github"),
+        # Dots alone are no name, so the suffix that makes one of them stays.
+        ("https://example.com/a/..git", "..git"),
+        ("https://example.com/a/...git", "...git"),
+        ("https://example.com/a/.git.git", ".git"),
+        ("https://example.com/a/a..git", "a."),
     ],
 )
 def test_a_repository_is_named_as_a_checkout_of_it_would_be(address: str, name: str) -> None:
@@ -139,6 +145,41 @@ def test_a_location_outside_the_home_directory_is_absolute(
     assert display_directory(tmp_path / "user") == "~"
 
 
+def test_a_file_origin_under_the_home_directory_is_shown_with_a_tilde(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No answer spells out the home directory when it can be abbreviated (mb-fndz).
+
+    The origin is the address the reader gave, and for a ``file://`` source that is a
+    path of theirs. It is shown as the location is: under the home directory with ``~``,
+    and as it is otherwise. What follows the home directory keeps its escapes.
+    """
+
+    home = tmp_path / "home dir" / "user"
+    monkeypatch.setenv("HOME", str(home))
+    encoded = "file://" + str(tmp_path) + "/home%20dir/user"
+
+    assert display_origin(f"{encoded}/git/squares.git") == "file://~/git/squares.git"
+    assert display_origin(f"{encoded}/git/a%3Cb%3E.git") == "file://~/git/a%3Cb%3E.git"
+    assert display_origin(encoded) == "file://~"
+    # Outside it, a sibling whose name starts like it, and the directory above it.
+    for outside in (
+        f"file://{tmp_path}/elsewhere/squares.git",
+        f"{encoded}-other/squares.git",
+        "file://" + str(tmp_path) + "/home%20dir",
+        "file:///squares.git",
+    ):
+        assert display_origin(outside) == outside
+    # Only a file:// address is a path. Another host's path is its own.
+    https = "https://example.com" + str(tmp_path) + "/home%20dir/user/squares.git"
+    assert display_origin(https) == https
+
+    display = _mirror(home / ".metabrowser", f"{encoded}/git/squares.git").display
+    assert display.origin == "file://~/git/squares.git"
+    assert display.name == "squares"
+    assert str(tmp_path) not in "".join((display.name, display.origin, display.location))
+
+
 def test_a_control_character_in_the_location_or_the_origin_is_replaced(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -149,3 +190,9 @@ def test_a_control_character_in_the_location_or_the_origin_is_replaced(
     # The origin is shown as it is addressed, escapes and all; only its name is decoded.
     assert display.origin == "https://example.com/a/ok%C2%9Bname.git"
     assert display.name == "ok\ufffdname"
+
+    # The URL grammar refuses an address with a raw control character, and the display
+    # does not rely on that: an escape sequence in one is replaced like any other.
+    raw = _mirror(tmp_path, "https://example.com/a/red\x1b[31m.git").display
+    assert raw.origin == "https://example.com/a/red\ufffd[31m.git"
+    assert display_origin("file:///srv/a\x9bb.git") == "file:///srv/a\ufffdb.git"

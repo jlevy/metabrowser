@@ -9,6 +9,7 @@ env:
   METABROWSER_LOG_LEVEL: "ERROR"
 patterns:
   TIMESTAMP: '\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z'
+  APP_HOME: '[^\s"]+/home'
   STORE_KEY: '[0-9a-f]{64}'
 before: >-
   unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX GIT_NAMESPACE GIT_CEILING_DIRECTORIES &&
@@ -47,7 +48,7 @@ status: 200
   "ref_name": "topic",
   "name": "origin",
   "origin": "file://[CWD]/origin.git",
-  "location": "<ROOT>",
+  "location": "[APP_HOME]/cache/repository-stores/[STORE_KEY]/repository.git",
   "refreshable": true,
   "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
   "ref_on_origin": true,
@@ -72,10 +73,10 @@ status: 200
 mirrors, and `location` the store’s bare Git repository, which every page is read from.
 A page’s headings show all three where a folder’s show its name and path.
 
-The home directory is set to the application home here, so the location is spelled as a
-reader’s is, with `~`. In every other command of this transcript the application home is
-outside the home directory, so the location is absolute; `--api` then prints it as
-`<ROOT>`, as it prints a served folder’s own path.
+In every other command of this transcript the application home is outside the home
+directory, so the location is absolute, and `--api` prints it as the route answered it.
+Here the home directory is set to the application home, so the location is spelled as a
+reader’s is, with `~`. The origin is outside it and stays as given.
 The store’s key is derived from the origin’s address, which is the sandbox’s.
 
 ```console
@@ -128,7 +129,7 @@ status: 200
     "ref_name": "feature",
     "name": "origin",
     "origin": "file://[CWD]/origin.git",
-    "location": "<ROOT>",
+    "location": "[APP_HOME]/cache/repository-stores/[STORE_KEY]/repository.git",
     "refreshable": true,
     "latest": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
     "ref_on_origin": true,
@@ -164,7 +165,7 @@ status: 200
     "ref_name": "v1",
     "name": "origin",
     "origin": "file://[CWD]/origin.git",
-    "location": "<ROOT>",
+    "location": "[APP_HOME]/cache/repository-stores/[STORE_KEY]/repository.git",
     "refreshable": true,
     "latest": "fcb9d63c3c8533d1b929861f451a066e6d4f2d9e",
     "ref_on_origin": true,
@@ -203,7 +204,7 @@ status: 200
     "ref_name": null,
     "name": "origin",
     "origin": "file://[CWD]/origin.git",
-    "location": "<ROOT>",
+    "location": "[APP_HOME]/cache/repository-stores/[STORE_KEY]/repository.git",
     "refreshable": true,
     "latest": null,
     "ref_on_origin": null,
@@ -244,7 +245,7 @@ status: 200
     "ref_name": "topic",
     "name": "origin",
     "origin": "file://[CWD]/origin.git",
-    "location": "<ROOT>",
+    "location": "[APP_HOME]/cache/repository-stores/[STORE_KEY]/repository.git",
     "refreshable": true,
     "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
     "ref_on_origin": true,
@@ -280,7 +281,7 @@ status: 200
     "ref_name": "topic",
     "name": "origin",
     "origin": "file://[CWD]/origin.git",
-    "location": "<ROOT>",
+    "location": "[APP_HOME]/cache/repository-stores/[STORE_KEY]/repository.git",
     "refreshable": true,
     "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
     "ref_on_origin": true,
@@ -478,7 +479,7 @@ status: 200
     "ref_name": "feature",
     "name": "origin",
     "origin": "file://[CWD]/origin.git",
-    "location": "<ROOT>",
+    "location": "[APP_HOME]/cache/repository-stores/[STORE_KEY]/repository.git",
     "refreshable": true,
     "latest": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
     "ref_on_origin": true,
@@ -517,7 +518,7 @@ status: 200
     "ref_name": "feature",
     "name": "origin",
     "origin": "file://[CWD]/origin.git",
-    "location": "<ROOT>",
+    "location": "[APP_HOME]/cache/repository-stores/[STORE_KEY]/repository.git",
     "refreshable": true,
     "latest": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
     "ref_on_origin": true,
@@ -564,7 +565,7 @@ status: 202
     "ref_name": "topic",
     "name": "origin",
     "origin": "file://[CWD]/origin.git",
-    "location": "<ROOT>",
+    "location": "[APP_HOME]/cache/repository-stores/[STORE_KEY]/repository.git",
     "refreshable": true,
     "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
     "ref_on_origin": true,
@@ -591,7 +592,7 @@ status: 200
   "ref_name": "topic",
   "name": "origin",
   "origin": "file://[CWD]/origin.git",
-  "location": "<ROOT>",
+  "location": "[APP_HOME]/cache/repository-stores/[STORE_KEY]/repository.git",
   "refreshable": true,
   "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
   "ref_on_origin": true,
@@ -633,7 +634,7 @@ status: 202
     "ref_name": "topic",
     "name": "origin",
     "origin": "file://[CWD]/origin.git",
-    "location": "<ROOT>",
+    "location": "[APP_HOME]/cache/repository-stores/[STORE_KEY]/repository.git",
     "refreshable": true,
     "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
     "ref_on_origin": true,
@@ -660,7 +661,7 @@ status: 200
   "ref_name": "topic",
   "name": "origin",
   "origin": "file://[CWD]/origin.git",
-  "location": "<ROOT>",
+  "location": "[APP_HOME]/cache/repository-stores/[STORE_KEY]/repository.git",
   "refreshable": true,
   "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
   "ref_on_origin": true,

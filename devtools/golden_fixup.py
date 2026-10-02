@@ -8,8 +8,9 @@ restores them so `make golden-update` is a single reviewable step:
   tryscript would otherwise substitute with the test-file directory
 * `[CWD]` for the sandbox directory in walk envelopes, and after `file://` in the
   address a served mirror says it mirrors
-* `[STORE_KEY]` for the key of the store a served mirror says it is kept in, which is
-  derived from that address
+* `[APP_HOME]` for the application home in the location a served mirror's status
+  reports, and `[STORE_KEY]` for the store's key in it when the origin is a sandbox
+  address, from which the key is derived
 * `[BUILTIN]` for the absolute checkout prefix of builtin plugin paths
 * `[VERSION]` for the installed package version
 * the second copy of the KPress asset manifest in the shell transcript
@@ -69,14 +70,26 @@ class UnexpectedTime(ValueError):
 FIXUPS: list[tuple[str, str]] = [
     (r"Usage: metab \[OPTIONS\] \[ROOT\]", "Usage: metab [OPTIONS] [ROOT_ARG]"),
     # A served mirror's origin is a file:// address of the sandbox. Its scheme is part
-    # of what the status answered and stays; the next rule would take it with the path.
+    # of what the status answered and stays; the sandbox rule would take it with the path.
     (r'(file://)[^\s"]*/tryscript-[A-Za-z0-9]+', r"\1[CWD]"),
+    # The application home in the location a served mirror's status reports, which is
+    # the sandbox's `home`. Its own pattern, ahead of the sandbox rule: what follows it
+    # is the layout under the home, which stays literal.
+    (
+        r'("location": ")[^\s"]*/tryscript-[A-Za-z0-9]+/home(/cache/repository-stores/)',
+        r"\1[APP_HOME]\2",
+    ),
     # Not \S*: the sandbox path is often quoted in a JSON envelope, and a
     # non-space run swallows the opening quote along with the path.
     (r'[^\s"]*/tryscript-[A-Za-z0-9]+', "[CWD]"),
-    # The key of the store a served mirror says it is kept in. It is derived from the
-    # origin's address, which is the sandbox's, so no fixture can pin it.
-    (r"(/cache/repository-stores/)[0-9a-f]{64}(/repository\.git)", r"\1[STORE_KEY]\2"),
+    # The key of the store in that location, when the mirror's origin is a file://
+    # address of the sandbox: the key is derived from the address, so no fixture can
+    # pin it. A hosted origin's key is the same on every machine and stays literal.
+    (
+        r'("origin": "file://\[CWD\][^"\n]*",\n\s*"location": "[^"\n]*/cache/repository-stores/)'
+        r'[0-9a-f]{64}(/repository\.git")',
+        r"\1[STORE_KEY]\2",
+    ),
     (r"/\S*/builtin_plugins", "[BUILTIN]"),
     # The trailing group is the build annotation a checkout adds; see
     # metabrowser.build_version. It varies per commit, so it elides with the

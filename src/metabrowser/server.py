@@ -1186,9 +1186,10 @@ def _mirror_heading_attrs(status: SourceStatus) -> str:
     """The navigation heading's attributes that say where a served mirror is kept.
 
     `data-mirror-location` is the status's `location` and `data-mirror-tip` the sentence
-    around it. The file header reads both back, as it reads `data-served-root`. These
-    two attributes of the page and the status envelope are the only places a response
-    names a path in the cache.
+    around it. `static/mirror-heading.js` reads both back, as the file header reads
+    `data-served-root`, which on a served mirror is the repository's name. These two
+    attributes of the page and the status envelope are the only places a response names
+    a path in the cache.
     """
 
     tip = _mirror_tip(status)
@@ -1196,6 +1197,21 @@ def _mirror_heading_attrs(status: SourceStatus) -> str:
         return ""
     location = html_escape(status["location"] or "", quote=True)
     return f' data-mirror-location="{location}" data-mirror-tip="{html_escape(tip, quote=True)}"'
+
+
+@functools.cache
+def _mirror_heading_script() -> str:
+    """`static/mirror-heading.js`, as a served mirror's shell carries it inline.
+
+    Only a mirror's page has a note, a location, or a commit to copy, so the code for
+    them is written into that page and is no startup script of a folder's. Read where a
+    mirror is first served, so a folder's server never reads it.
+    """
+
+    script = STATIC_DIR.joinpath("mirror-heading.js").read_text(encoding="utf-8")
+    if "</script" in script.lower():
+        raise RuntimeError("mirror-heading.js cannot be safely embedded in the index shell")
+    return script
 
 
 def _served_root_str() -> str:
@@ -1293,6 +1309,9 @@ async def index(request: Request, *, pull_page: bool = False) -> HTMLResponse:
         # what the file header's prefix and this heading's tooltip call the root.
         initial_root = html_escape(status["name"] or pin_oid, quote=True)
         mirror_attrs = _mirror_heading_attrs(status)
+        # What styles a mirror's headings apart from a folder's: its root is a name,
+        # which is cut at its end, and its commit has a copy control beside it.
+        mirror_class = " mirror-source" if mirror_attrs else ""
         # Core holds no provider URL grammar: the served mirror asks the installed
         # providers, and only a hosted repository's has an answer (a GitHub mirror's
         # comes from the GitHub plugin). A file:// mirror, or a pin with no mirror,
@@ -1305,7 +1324,7 @@ async def index(request: Request, *, pull_page: bool = False) -> HTMLResponse:
     else:
         initial_path = _initial_path_html()
         initial_root = html_escape(_display_root_str(), quote=True)
-        mirror_attrs = ""
+        mirror_attrs = mirror_class = ""
         repository_context = await asyncio.to_thread(
             discover_repository_context, session_filesystem_root()
         )
@@ -1442,6 +1461,8 @@ async def index(request: Request, *, pull_page: bool = False) -> HTMLResponse:
             f"<script>window.METABROWSER_SOURCE_PIN={page_pin};</script>"
             f"<script>{_SOURCE_PIN_GUARD_SCRIPT}</script>"
         )
+        if mirror_attrs:
+            repository_context_block += f"<script>{_mirror_heading_script()}</script>"
     # Read preferences from host-only cookies (not localStorage): cookies
     # ignore the port, so the choice is shared across every metabrowser instance
     # on this host (each folder server lands on its own port). Runs before the
@@ -1687,15 +1708,13 @@ async def index(request: Request, *, pull_page: bool = False) -> HTMLResponse:
   <link rel="stylesheet" href="{styles_url}">
 </head>
 <body>
-  <main class="container">
+  <main class="container{mirror_class}">
     <div class="tree-pane" id="tree-pane">
       <header class="app-header">
         <!-- data-served-root is the one place the absolute root is written:
              the file header reads it back to render its dimmed prefix, so
              the two headers cannot disagree about what the root is. It is also
-             what this heading's tooltip is built from. A served mirror's root
-             is the repository's name, and data-mirror-location and
-             data-mirror-tip say where the mirror is kept.
+             what this heading's tooltip is built from.
 
              No data-tip-text here, deliberately. This element has a tooltip of
              its own in app.js — the folder's counts and age, not just its

@@ -104,8 +104,10 @@ class SourceStatus(TypedDict):
     :class:`~metabrowser.mirror_refresh.MirrorDisplay`: the repository's name as a
     checkout would have it, the address it mirrors, and where the mirror is kept. All
     three are ``None`` for a folder and for a pin with no mirror. ``location`` is the
-    one field of any route's answer that names a path in the cache. It is display
-    text, with the home directory as ``~``: no route takes it back as an input.
+    one field of any route's answer that names a path in the cache, and ``origin`` is
+    the source's address as given, which for a ``file://`` source is a path of the
+    reader's. Both are display text, with the home directory as ``~`` when they are
+    under it: no route takes either back as an input.
     """
 
     subject: str

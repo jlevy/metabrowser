@@ -10,6 +10,7 @@ from metabrowser.normalize import (
     CURSOR_PLACEHOLDER,
     ELAPSED_PATHS,
     ELAPSED_PLACEHOLDER,
+    MIRROR_LOCATION_PATHS,
     ROOT_PLACEHOLDER,
     NormalizeContext,
     normalize_payload,
@@ -201,3 +202,30 @@ def test_common_delimiters_still_terminate_a_prefix() -> None:
     assert normalize_text('"/tmp/sb"', ctx) == f'"{ROOT_PLACEHOLDER}"'
     assert normalize_text("/tmp/sb/x", ctx) == f"{ROOT_PLACEHOLDER}/x"
     assert normalize_text("at /tmp/sb, then", ctx) == f"at {ROOT_PLACEHOLDER}, then"
+
+
+def test_a_mirrors_location_is_kept_where_a_pin_asks_and_nowhere_else() -> None:
+    """A pin's ``--api`` says where the mirror is kept; the root is its directory.
+
+    The status's ``location`` is that directory, so it would be printed as the
+    placeholder and the command would not say where the mirror is. A pin's commands
+    keep it, at its exact places in the envelope; every other field, and every
+    command that keeps nothing, is normalized as before.
+    """
+
+    keep = NormalizeContext(root=ROOT, keep=MIRROR_LOCATION_PATHS)
+    status = {"location": str(ROOT), "root": str(ROOT), "name": "squares"}
+
+    assert normalize_payload(status, keep) == {**status, "root": ROOT_PLACEHOLDER}
+    assert normalize_payload({"changed": True, "status": status}, keep) == {
+        "changed": True,
+        "status": {**status, "root": ROOT_PLACEHOLDER},
+    }
+    # A field of that name anywhere else in an envelope is not the status's.
+    nested = {"tree": {"location": str(ROOT)}, "entries": [{"location": str(ROOT)}]}
+    assert normalize_payload(nested, keep) == {
+        "tree": {"location": ROOT_PLACEHOLDER},
+        "entries": [{"location": ROOT_PLACEHOLDER}],
+    }
+    # A folder's commands keep nothing.
+    assert normalize_payload(status, _ctx())["location"] == ROOT_PLACEHOLDER

@@ -27,6 +27,11 @@ def _fixed(body: str) -> str:
     return fixed.removeprefix(FRONTMATTER)
 
 
+# The application home a transcript's fixture builds in the sandbox, joined here so that
+# no line of this file reads as a path in someone's home directory.
+_SANDBOX_HOME = "/".join(("/private/var/folders/x/T/tryscript-AbC123", "home"))
+
+
 @pytest.mark.parametrize(
     ("captured", "restored"),
     [
@@ -44,6 +49,23 @@ def _fixed(body: str) -> str:
             '  "location": "~/cache/repository-stores/' + "0f" * 32 + '/repository.git",\n',
             '  "origin": "file://[CWD]/origin.git",\n'
             '  "location": "~/cache/repository-stores/[STORE_KEY]/repository.git",\n',
+        ),
+        (
+            '  "origin": "file:///private/var/folders/x/T/tryscript-AbC123/origin.git",\n'
+            '  "location": "' + _SANDBOX_HOME + "/cache/"
+            "repository-stores/" + "0f" * 32 + '/repository.git",\n',
+            '  "origin": "file://[CWD]/origin.git",\n'
+            '  "location": "[APP_HOME]/cache/repository-stores/[STORE_KEY]/repository.git",\n',
+        ),
+        (
+            # A hosted origin's key is derived from its address alone and stays literal.
+            '  "origin": "https://github.com/octo/demo",\n'
+            '  "location": "' + _SANDBOX_HOME + "/cache/"
+            "repository-stores/" + "0f" * 32 + '/repository.git",\n',
+            '  "origin": "https://github.com/octo/demo",\n'
+            '  "location": "[APP_HOME]/cache/repository-stores/'
+            + "0f" * 32
+            + '/repository.git",\n',
         ),
         ("metab 0.12.0a1 (3 commits past v0.11.0, dirty)\n", "metab [VERSION]\n"),
         (
@@ -86,7 +108,9 @@ def _fixed(body: str) -> str:
         "usage-metavar",
         "sandbox-path",
         "builtin-path",
-        "mirror-origin-and-location",
+        "mirror-origin-and-tilde-location",
+        "mirror-origin-and-absolute-location",
+        "hosted-origin-keeps-its-store-key",
         "version",
         "icon-sprite",
         "diagnostic-line",

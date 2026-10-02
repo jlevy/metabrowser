@@ -24,6 +24,7 @@ as a reader's is.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import re
 from html.parser import HTMLParser
@@ -37,6 +38,7 @@ from starlette.testclient import TestClient
 from metabrowser import server
 from metabrowser.cache.acquire import PublishedSource, acquire_source
 from metabrowser.cache.urls import GitSource, classify_root_argument
+from tests.git_pin_harness import fast_import_store, pinned_client
 from tests.golden_harness import (
     SANDBOX_STAND_IN,
     STORE_KEY_STAND_INS,
@@ -59,6 +61,9 @@ _HOSTILE = "a<b>&\u202ex.git"
 _HOSTILE_HOME = 'odd"<&>home'
 
 _TITLE = re.compile(r"<title>(.*?)</title>")
+_PAGE_PIN = re.compile(r"<script>window\.METABROWSER_SOURCE_PIN=(\{[^<]*\});</script>")
+_MAIN_CLASS = re.compile(r'<main class="([^"]*)">')
+_MIRROR_MODULE = (server.STATIC_DIR / "mirror-heading.js").read_text(encoding="utf-8")
 _HEADING = re.compile(r'<a href="/view/" class="header-path"[^>]*>(.*?)</a>', re.S)
 
 posix_only = pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only")
@@ -90,11 +95,19 @@ def _page(client: TestClient, kind: str) -> dict[str, Any]:
     attributes.feed(shell.text)
     assert attributes.dataset is not None
     status = client.get("/api/source/status").json()
+    page_pin = _PAGE_PIN.findall(shell.text)
+    assert len(page_pin) == (kind == "git_revision"), page_pin
     return {
         "kind": kind,
         "title": _TITLE.findall(shell.text),
         "heading": _HEADING.findall(shell.text),
         "dataset": attributes.dataset,
+        # The commit and ref the page was rendered for, which a pin's page carries.
+        "pagePin": json.loads(page_pin[0]) if page_pin else None,
+        # Whether the shell carries the module that draws a mirror's headings, whole
+        # and inline. The session runs it for exactly the pages that had it.
+        "mirrorModule": f"<script>{_MIRROR_MODULE}</script>" in shell.text,
+        "mainClass": _MAIN_CLASS.findall(shell.text),
         "status": {key: status[key] for key in ("name", "origin", "location", "pin", "ref_name")},
     }
 
@@ -140,6 +153,7 @@ def _served(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     for page in recorded.values():
         (page["title"],) = page["title"]
         (page["heading"],) = page["heading"]
+        (page["mainClass"],) = page["mainClass"]
     return recorded
 
 
@@ -149,9 +163,15 @@ def test_fixture_is_what_the_server_serves_for_a_folder_and_for_a_mirror(
     served = _served(tmp_path, monkeypatch)
 
     folder, mirror, hostile = served["folder"], served["mirror"], served["hostile"]
-    # A folder's root is its path, and a status has nothing to say of a mirror.
+    # A folder's root is its path, a status has nothing to say of a mirror, and its
+    # page carries nothing of one: no attribute, no class, no module, no pin.
     assert folder["dataset"] == {"servedRoot": "~/wrk/squares"}
     assert folder["status"] == dict.fromkeys(("name", "origin", "location", "pin", "ref_name"))
+    assert (folder["mainClass"], folder["mirrorModule"], folder["pagePin"]) == (
+        "container",
+        False,
+        None,
+    )
     for page, home, key in (
         (mirror, ".metabrowser", STORE_KEY_STAND_INS[0]),
         (hostile, _HOSTILE_HOME, STORE_KEY_STAND_INS[1]),
@@ -165,13 +185,55 @@ def test_fixture_is_what_the_server_serves_for_a_folder_and_for_a_mirror(
             f"Mirror of {status['origin']} at {status['pin']}, stored in {status['location']}: "
             "a bare Git repository, with no checked-out files."
         )
+        assert page["pagePin"]["pin"] == status["pin"]
+        assert (page["mainClass"], page["mirrorModule"]) == ("container mirror-source", True)
     assert mirror["status"]["name"] == "squares"
-    assert mirror["status"]["origin"] == f"file://{SANDBOX_STAND_IN}/user/git/squares.git"
+    # The origins are under the home directory, so neither is spelled out.
+    assert mirror["status"]["origin"] == "file://~/git/squares.git"
     # The override is shown as U+FFFD in the name, and stays an escape in the address.
     assert hostile["status"]["name"] == "a<b>&\ufffdx"
-    assert hostile["status"]["origin"].endswith("/a%3Cb%3E&%E2%80%AEx.git")
+    assert hostile["status"]["origin"] == "file://~/git/a%3Cb%3E&%E2%80%AEx.git"
     assert "a&lt;b&gt;&amp;\ufffdx" in hostile["heading"]
+    assert SANDBOX_STAND_IN not in json.dumps(served)
     check_recording(RECORDING, served, transcript=TRANSCRIPT)
+
+
+def test_a_pin_with_no_mirror_is_headed_as_before_and_carries_nothing_of_one(
+    tmp_path: Path,
+) -> None:
+    """A pin served straight from a store has no origin, so nothing of a mirror's applies.
+
+    Its root is the full commit, as it was: it is the only name the pin has. Its page is
+    not marked as a mirror's, names no location, and does not carry the module, which
+    would otherwise put a copy control beside a commit the main heading already spells.
+    """
+
+    store, commit = fast_import_store(tmp_path, {b"README.md": b"# Pinned\n"})
+
+    async def page() -> dict[str, Any]:
+        async with pinned_client(store, commit, ref="refs/remotes/origin/topic") as (client, _):
+            shell = (await client.get("/view/")).text
+            status = (await client.get("/api/source/status")).json()
+        attributes = _HeadingAttributes()
+        attributes.feed(shell)
+        return {
+            "dataset": attributes.dataset,
+            "mainClass": _MAIN_CLASS.findall(shell),
+            "module": _MIRROR_MODULE in shell,
+            "heading": _HEADING.findall(shell),
+            "status": [status[key] for key in ("name", "origin", "location")],
+        }
+
+    assert asyncio.run(page()) == {
+        "dataset": {"servedRoot": commit},
+        "mainClass": ["container"],
+        "module": False,
+        "heading": [
+            '<span class="path"><span class="path-base">topic</span></span>'
+            f'<span class="header-revision">{commit[:12]}</span>'
+        ],
+        "status": [None, None, None],
+    }
 
 
 def test_the_session_names_a_mirror_and_says_where_it_is_kept() -> None:
@@ -179,15 +241,34 @@ def test_the_session_names_a_mirror_and_says_where_it_is_kept() -> None:
 
     assert folder["mainHeading"]["file"]["text"] == "~/wrk/squares / docs / guide.md"
     location = f"~/.metabrowser/cache/repository-stores/{STORE_KEY_STAND_INS[0]}/repository.git"
-    assert mirror["navigationHeading"]["text"] == f"squares topic {mirror['status']['pin'][:12]}"
+    pin = mirror["status"]["pin"]
+    sentence = (
+        f"Mirror of file://~/git/squares.git at {pin}, stored in {location}: "
+        "a bare Git repository, with no checked-out files."
+    )
+    assert mirror["navigationHeading"]["text"] == f"squares topic {pin[:12]}"
     assert (
         mirror["mainHeading"]["file"]["text"] == f"squares / docs / guide.md mirror in {location}"
     )
-    assert mirror["mainHeading"]["root"] == f"squares / mirror in {location}"
-    assert mirror["navigationTooltip"]["afterTreeLoad"] == (
-        f"squares 3 files 140 bytes Mirror of file://{SANDBOX_STAND_IN}/user/git/squares.git at "
-        f"{mirror['status']['pin']}, stored in {location}: a bare Git repository, with no "
-        "checked-out files. Jump to root"
-    )
+    assert mirror["mainHeading"]["root"] == f"\u2191 squares / mirror in {location}"
+    assert mirror["tooltips"] == {
+        "navigationHeading": {
+            "served": f"squares {sentence} Jump to root",
+            "afterTreeLoad": f"squares 3 files 140 bytes {sentence} Jump to root",
+        },
+        "rootName": sentence,
+        "note": sentence,
+    }
+    # The full commit is copied from the control beside the short one.
+    copy = mirror["navigationHeading"]["commitCopy"]
+    assert copy["copied"] == [pin] and copy["ownerStamped"] is True
+    assert copy["attributes"]["aria-label"] == f"Copy commit {pin}"
+    assert folder["navigationHeading"]["commitCopy"] is None
+    assert folder["tooltips"]["rootName"] is None and folder["tooltips"]["note"] is None
     assert hostile["mainHeading"]["file"]["text"].startswith("a<b>&\ufffdx / docs / guide.md ")
-    assert {page["title"] for page in (folder, mirror, hostile)} == {"Metabrowser"}
+    for page in (folder, mirror, hostile):
+        assert page["title"] == {
+            "served": "Metabrowser",
+            "afterEveryStep": "Metabrowser",
+            "writes": [],
+        }

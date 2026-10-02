@@ -14,6 +14,7 @@ nowhere that its files came out of ``~/.metabrowser``, hid both (decided 2026-10
 from __future__ import annotations
 
 import asyncio
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -52,6 +53,8 @@ REPOSITORY_NAME_MAX_CHARS: Final = 255
 # What a repository is called when its address names nothing: ``file:///.git``.
 UNNAMED_REPOSITORY: Final = "repository"
 _PORT: Final = re.compile(r":[0-9]+$")
+# What is left of a segment that is no name once ``.git`` is taken off.
+_NO_NAME: Final = frozenset({"", ".", ".."})
 
 
 def repository_name(address: str) -> str:
@@ -62,7 +65,8 @@ def repository_name(address: str) -> str:
     so ``https://github.com/jlevy/squares``, ``file:///srv/squares.git``, and
     ``file:///srv/squares/.git`` are all ``squares``. An address whose path names
     nothing else is called by its host, and by :data:`UNNAMED_REPOSITORY` when it has
-    none.
+    none. A segment that is nothing but dots before ``.git``, such as ``..git``, keeps
+    its suffix, since ``.`` and ``..`` are no names.
 
     *address* is a source's normalized address, which the origin's owner chose. A
     percent-escape is decoded, so a name reads as it is written, and the result goes
@@ -81,12 +85,43 @@ def repository_name(address: str) -> str:
     if segments and segments[-1] == ".git":
         segments.pop()
     raw = segments[-1] if segments else _PORT.sub("", authority.rpartition("@")[2])
-    if raw.endswith(".git") and raw != ".git":
+    # The suffix comes off only when a name is left: ``..git`` is not called ``.``,
+    # which is no name and reads as the directory itself.
+    if raw.removesuffix(".git") not in _NO_NAME:
         raw = raw.removesuffix(".git")
     name = display_segment(unquote_to_bytes(raw)) or UNNAMED_REPOSITORY
     if len(name) > REPOSITORY_NAME_MAX_CHARS:
         name = name[: REPOSITORY_NAME_MAX_CHARS - 1] + "\u2026"
     return name
+
+
+def display_origin(address: str) -> str:
+    """*address* as a page shows it: a ``file://`` address under the home directory with it as ``~``.
+
+    The address of ``git/squares.git`` in the home directory is shown as
+    ``file://~/git/squares.git``, by the rule :func:`display_directory` shows the
+    mirror's own location by, so that no
+    answer spells out the home directory when it can be abbreviated. The home directory
+    is compared as spelled, segment by segment, each decoded as the address encodes it;
+    what follows it is left as the address has it, escapes and all. Any other address
+    is shown as it is. A control or invisible character is replaced, as in every name
+    shown.
+    """
+
+    shown = address
+    prefix = "file:///"
+    if address.startswith(prefix):
+        try:
+            home = Path.home()
+        except (OSError, RuntimeError):
+            home = None
+        segments = address.removeprefix(prefix).split("/")
+        depth = len(home.parts) - 1 if home is not None else 0
+        if home is not None and depth and len(segments) >= depth:
+            leading = Path("/", *(os.fsdecode(unquote_to_bytes(part)) for part in segments[:depth]))
+            if tilde_path(leading, home) == "~":
+                shown = "file://" + "/".join(["~", *segments[depth:]])
+    return display_segment(shown.encode("utf-8", "surrogateescape"))
 
 
 def display_directory(directory: Path) -> str:
@@ -151,7 +186,7 @@ class StoreMirror:
         origin = self.source.normalized
         return MirrorDisplay(
             name=repository_name(origin),
-            origin=display_segment(origin.encode("utf-8", "surrogateescape")),
+            origin=display_origin(origin),
             location=display_directory(self._repository),
         )
 
@@ -247,5 +282,6 @@ __all__ = [
     "UNNAMED_REPOSITORY",
     "StoreMirror",
     "display_directory",
+    "display_origin",
     "repository_name",
 ]

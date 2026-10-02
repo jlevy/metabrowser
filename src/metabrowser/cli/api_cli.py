@@ -215,9 +215,10 @@ def _emit_api_response(
     *,
     fmt: str,
     normalize_root: Path,
+    normalize_keep: tuple[tuple[str, ...], ...] = (),
     after: tuple[str, ApiResponse] | None = None,
 ) -> None:
-    ctx = NormalizeContext(root=normalize_root)
+    ctx = NormalizeContext(root=normalize_root, keep=normalize_keep)
     _echo_envelope("api", route, response, ctx, fmt)
 
     # An envelope built from an index that never finished is not the envelope
@@ -252,11 +253,16 @@ async def aissue_on_active_session(
     log_level: str = "",
     index_timeout_s: float = INDEX_READY_TIMEOUT_S,
     normalize_root: Path,
+    normalize_keep: tuple[tuple[str, ...], ...] = (),
     untrusted: bool = False,
     no_active_content: bool = False,
     allow_edits: bool = False,
 ) -> None:
-    """Issue one request against the already-attached subject. No ``_set_root_dir``."""
+    """Issue one request against the already-attached subject. No ``_set_root_dir``.
+
+    *normalize_keep* names envelope fields printed as answered, where *normalize_root*
+    would otherwise be rewritten.
+    """
 
     if not route.startswith("/api/"):
         raise CLIError(f"route must begin with /api/; got {route}")
@@ -280,7 +286,13 @@ async def aissue_on_active_session(
         server.app, route, body=_request_body(data), index_timeout_s=index_timeout_s
     )
     _emit_api_response(
-        route, response, index_detail, fmt=fmt, normalize_root=normalize_root, after=after
+        route,
+        response,
+        index_detail,
+        fmt=fmt,
+        normalize_root=normalize_root,
+        normalize_keep=normalize_keep,
+        after=after,
     )
 
 
