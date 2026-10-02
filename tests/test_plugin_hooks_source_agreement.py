@@ -24,6 +24,7 @@ import pytest
 from cachetools import LRUCache
 from httpx2 import ASGITransport, AsyncClient
 
+import metabrowser.builtin_plugins.binary.sidekick as binary_sidekick
 import metabrowser.builtin_plugins.structured as structured_sidekick
 import metabrowser.builtin_plugins.structured.parser as structured_parser
 from metabrowser import paths_safe
@@ -153,6 +154,27 @@ def test_structured_parsed_reports_the_stored_size_past_the_cap(
     assert _content_fields(folder) == _content_fields(pinned)
     assert (folder["truncated"], folder["parsed"]) == (True, None)
     assert folder["size"] == pinned["size"] == len(CONFIG) > cap
+
+
+def test_a_byte_bound_below_zero_answers_the_same_on_both(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A setting below zero is settled in the hook, so a pin answers as a folder does.
+
+    The content reader refuses a negative bound on both source kinds; neither hook
+    passes one to it.
+    """
+
+    monkeypatch.setattr(binary_sidekick, "BINARY_PREVIEW_CHUNK_BYTES", -1)
+    folder, pinned = _both(tmp_path / "chunk", "/api/plugin/binary/chunk", "nul.bin", offset="300")
+    assert _content_fields(folder) == _content_fields(pinned)
+    assert (folder["type"], folder["bytes_read"], folder["has_more"]) == ("binary_chunk", 0, True)
+
+    monkeypatch.setattr(structured_sidekick, "STRUCTURED_PARSE_MAX_BYTES", -1)
+    monkeypatch.setattr(structured_parser, "_PAYLOAD_CACHE", LRUCache(maxsize=4))
+    folder, pinned = _both(tmp_path / "cap", "/api/plugin/structured/parsed", "config.json")
+    assert _content_fields(folder) == _content_fields(pinned)
+    assert (folder["type"], folder["truncated"], folder["parsed"]) == ("structured", True, None)
 
 
 def test_agent_log_charts_report_the_same_tallies(tmp_path: Path) -> None:
