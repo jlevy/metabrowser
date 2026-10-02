@@ -7,9 +7,10 @@ It lists what review each pull request of the v0.12 stack had, as the pull reque
 beads recorded it on 2026-10-01. For today’s state, run the commands under
 [How This Ledger Was Built](#how-this-ledger-was-built).
 
-**Scope:** One row per pull request, in stack order, from `main` to the tip
-[#257](https://github.com/jlevy/metabrowser/pull/257) at `373b59a9`. The landing
-checklist in the
+**Scope:** One row per pull request, in stack order, from `main` to
+[#265](https://github.com/jlevy/metabrowser/pull/265) at `481b64b7`, the top of GitHub
+stack [#218](https://github.com/jlevy/metabrowser/stack/218). The landing checklist in
+the
 [alpha test plan](../specs/active/plan-2026-09-22-v012-alpha-testing.md#recording-results-and-landing)
 asks for this ledger after all functional changes.
 The previous one is the
@@ -17,7 +18,9 @@ The previous one is the
 a comment on #216 that covers the stack through #225. This record is evidence for the
 landing decision (`mb-n2ro`), not that decision.
 [#260](https://github.com/jlevy/metabrowser/pull/260), which adds this ledger, sits
-above #257, changes documents only, and has no row.
+above #265, changes documents only, and has no row.
+Nor has the layer being written above #265 to fix the two regressions the landing gate’s
+data differential found: it had no pull request when this record was last revised.
 
 ## Limits
 
@@ -38,8 +41,8 @@ Read these before the table; they bound what any row can mean.
   merges of the layers below; where a head also carries a later commit of its own, the
   row says so. Every reviewed commit a row names is an ancestor of that pull request’s
   current head, checked with `git merge-base --is-ancestor`.
-- **Nobody has reviewed the final tip as a whole, line by line.** The reviews of the
-  whole stack that exist are:
+- **Nobody has reviewed the final tip as a whole, line by line.** The reviews and
+  comparisons of the whole stack that exist are:
   - the readiness review of 2026-09-22 named above, of the stack through #225;
   - the landing-risk review of 2026-09-30, whose findings are the beads `mb-n80y`,
     `mb-4kuc`, `mb-2nu0`, and `mb-myum`, fixed in
@@ -48,7 +51,15 @@ Read these before the table; they bound what any row can mean.
   - the regression and performance check against `main` of 2026-09-30, recorded in
     `mb-l8c2` and answered by [#254](https://github.com/jlevy/metabrowser/pull/254);
   - the acceptance runs in
-    [QA: v0.12 alpha acceptance](../qa/qa-2026-09-24-v012-alpha-acceptance.md).
+    [QA: v0.12 alpha acceptance](../qa/qa-2026-09-24-v012-alpha-acceptance.md);
+  - the landing gate (`mb-2g6f`) of 2026-10-01, which compares the stack with v0.11.0 on
+    regular folders: an evidence audit of every test and golden that existed on v0.11.0,
+    and a data differential over routes, CLI modes, headers, and plugins.
+    [Changes to existing behavior](review-2026-10-01-v012-changes-to-existing-behavior.md)
+    holds what they found.
+    Both ran at #259’s head, below the last four layers;
+  - the release rehearsal against v0.11.0 (`mb-cf6y`, exp-038,
+    [#265](https://github.com/jlevy/metabrowser/pull/265)), run at #261’s head.
 - **A row summarizes; the pull request is the record.** Finding counts are the ones the
   description or comment states.
   Where a description and its own table disagree, the row gives both.
@@ -60,23 +71,24 @@ Read these before the table; they bound what any row can mean.
 | Stabilization | The foundation layers’ reviews of 2026-09-15 to 2026-09-22: passes by agents other than the author, the stabilization re-review of 2026-09-20 and 21, dispositions posted as comments on each pull request, and the readiness review that summarizes them. Bead `mb-gacf` holds the stabilization notes |
 | Independent | A review by an agent other than the author, recorded in the pull request’s description, or for #225 in a comment, with its findings and what was done about each |
 | Coordinator | Read by the coordinating agent only |
-| In review | An independent review had not been recorded in the pull request when this record was written |
+
 | None | No independent review; the row says what the change is |
 
 ## Summary
 
-Of the 39 pull requests in the chain:
+Of the 44 pull requests in the chain:
 
 | Kind | Count | Pull requests |
 | --- | ---: | --- |
 | Stabilization | 7 | #125, #134, #136, #139, #140, #217, #216 |
-| Independent | 28 | #225, #226, #227, #228, #229, #230, #231, #232, #233, #234, #235, #239, #236, #238, #237, #240, #243, #246, #248, #249, #252, #251, #253, #255, #254, #256, #258, #257 |
-| Coordinator | 1 | #242 |
-| In review | 1 | #244 |
-| None | 2 | #241, #250 |
+| Independent | 32 | #225, #226, #227, #228, #229, #230, #231, #232, #233, #234, #235, #239, #236, #238, #237, #240, #243, #244, #246, #248, #249, #252, #251, #253, #255, #254, #256, #258, #257, #261, #263, #264 |
+| Coordinator | 2 | #242, #259 |
+| None | 3 | #241, #250, #265 |
 
+Two pull requests are outside the chain and are the last rows:
 [#247](https://github.com/jlevy/metabrowser/pull/247), the do-not-merge reference
-branch, is outside the chain and is the last row.
+branch, and [#262](https://github.com/jlevy/metabrowser/pull/262), the page-connection
+fix, which is held until after the landing.
 
 Every pull request’s CI passes on its current head.
 #125 to #225 show seven checks and the rest nine: the two `admitted-git` jobs arrived
@@ -116,7 +128,7 @@ Commits are abbreviated.
 | [#240](https://github.com/jlevy/metabrowser/pull/240) | Heading anchors and a table of contents for untrusted documents; backslash links | Independent security review. Merges only since | No P0 or P1. One P2 (backslash links had no end-to-end test) and every P3 fixed in `edef33c5` | 9 of 9 at `6fd37ce9` ([run](https://github.com/jlevy/metabrowser/actions/runs/36076244144)) |
 | [#241](https://github.com/jlevy/metabrowser/pull/241) | The alpha acceptance record. Documents only; a draft | None. It is itself a record of testing | Its four findings are beads, fixed in #243 and #248 | 9 of 9 at `17d031ae` ([run](https://github.com/jlevy/metabrowser/actions/runs/36076279217)) |
 | [#243](https://github.com/jlevy/metabrowser/pull/243) | Acceptance fixes: the table-of-contents toggle, raw characters in GitHub URLs, the pull-request header | Independent. One documentation commit followed (`df5bbbed`, the rerun record), then a merge | No P0, P1, or P2. Eight P3, each fixed in its own commit | 9 of 9 at `65df8653` ([run](https://github.com/jlevy/metabrowser/actions/runs/36076283885)) |
-| [#244](https://github.com/jlevy/metabrowser/pull/244) | Fork-qualified pull-request header; default-ignorable characters escaped in displayed paths | In review. Its description records no review; beads `mb-2on0` and `mb-mw0t` hold findings from an independent review of 2026-10-01 | Not final, and this row is to be completed. `mb-2on0` has three findings, with fixes in the draft [#259](https://github.com/jlevy/metabrowser/pull/259), which is not yet in the chain; `mb-mw0t` holds the rest, left open | 9 of 9 at `a896d8fe` ([run](https://github.com/jlevy/metabrowser/actions/runs/36077428696)) |
+| [#244](https://github.com/jlevy/metabrowser/pull/244) | Fork-qualified pull-request header; default-ignorable characters escaped in displayed paths | Independent, on 2026-10-01 at the stack’s then tip, `373b59a9`. Its description records no review; beads `mb-2on0` and `mb-mw0t` hold the findings, and #259’s description names them | Three findings fixed in #259 (`mb-2on0`): Unicode spaces and line separators shown raw in displayed paths, a slowdown of the display function on names outside ASCII, and a ref name printed raw in the serve banner. The rest are left open in `mb-mw0t`. The coordinator reports the severities as no P0 or P1 and three P2; no record read for this ledger states them | 9 of 9 at `a896d8fe` ([run](https://github.com/jlevy/metabrowser/actions/runs/36077428696)) |
 | [#246](https://github.com/jlevy/metabrowser/pull/246) | Removes the unused Hosted Review Format, provider-resource code, and the public capability surface | Independent | No P0 or P1. One P2 (stale `--doctor` help) and six P3 fixed, among them `--doctor` validating the cache record contracts and the provider-store reservations (`mb-31qs`) | 9 of 9 at `d59b600c` ([run](https://github.com/jlevy/metabrowser/actions/runs/36804946275)) |
 | [#248](https://github.com/jlevy/metabrowser/pull/248) | View file at either side of a changed file | Independent | One P1 (`Cache-Control: no-store` defeated the back/forward cache; replaced by a pin check on history landings), three P2, and nine P3, all answered. The review found the feature itself correct and secure | 9 of 9 at `e4eca29f` ([run](https://github.com/jlevy/metabrowser/actions/runs/36809212257)) |
 | [#249](https://github.com/jlevy/metabrowser/pull/249) | Landing fixes: folders with URL-like names, the state for an unfetched commit, not-found wording | Independent. Merges only since `f1a85ba6` | No P0 or P1. Two P2, six P3, and four minor items, each fixed in its own commit | 9 of 9 at `f54b2560` ([run](https://github.com/jlevy/metabrowser/actions/runs/36815298638)) |
@@ -129,7 +141,13 @@ Commits are abbreviated.
 | [#256](https://github.com/jlevy/metabrowser/pull/256) | Tests: the cache suite | Independent. Merges only since `8ed1bd53` | No P0 or P1. Two P2, two security gaps that the base had too, and five P3, all fixed; each of the reviewer’s mutants now fails a named test. Follow-up `mb-3hwh` | 9 of 9 at `1bceb1aa` ([run](https://github.com/jlevy/metabrowser/actions/runs/36874105098)) |
 | [#258](https://github.com/jlevy/metabrowser/pull/258) | Tests: the GitHub pull-request suite and the hostile-link corpus | Independent. The reviewer re-ran 24 of the author’s 37 mutations and ran 80 of its own. Merges only since `0acc6001` | Six lost detections restored and five older gaps closed. 111 of 117 mutations fail a test; five are left to `mb-3ulm` and one is equivalent. An observation is `mb-k4ks` | 9 of 9 at `1c1e6b09` ([run](https://github.com/jlevy/metabrowser/actions/runs/36876356036)) |
 | [#257](https://github.com/jlevy/metabrowser/pull/257) | Tests: the Git pin and source suite; the pin golden as six shards | Independent. The reviewer re-ran 38 of the author’s mutations and ran 61 of its own. A merge and one documentation commit followed (`373b59a9`), and the mutation tally was run again on that head | One P1 (three `READ_POLICY` assertions lost, restored in `5444c6e9`), smaller items, and safety boundaries no test held on the base either, now tested. All 83 of the author’s mutants and 57 of the reviewer’s 61 are caught; three of the rest are equivalent and one is an uncalled method (`mb-snpr`) | 9 of 9 at `373b59a9` ([run](https://github.com/jlevy/metabrowser/actions/runs/36886011227)) |
+| [#259](https://github.com/jlevy/metabrowser/pull/259) | The three fixes from #244’s review: Unicode spaces replaced in displayed paths; the display function’s speed restored; the serve banner’s ref escaped | Coordinator, who read the diff. Not independently reviewed (`mb-2on0`’s close reason) | None recorded. The author compared the rewritten display function with the one before it over every code point in 14 contexts on four Python builds, with no mismatch, and names a test that fails without each fix | 9 of 9 at `f62c16b1` ([run](https://github.com/jlevy/metabrowser/actions/runs/36896717618)) |
+| [#261](https://github.com/jlevy/metabrowser/pull/261) | A first clone says where it goes and shows progress; a cache hit says so | Independent | No P0 or P1. The findings are fixed in `b025d139` to `c16912f8`; `mb-4cg7` counts four P2 (exit status 120 when stderr’s reader had gone, a regression; Git’s stderr written raw at debug level; loosened no-leak tests; unpinned wiring) and the P3s. Not done, by the description: the first `gh` read for a pull-request URL is still silent | 9 of 9 at `c16912f8` ([run](https://github.com/jlevy/metabrowser/actions/runs/36920222346)) |
+| [#263](https://github.com/jlevy/metabrowser/pull/263) | A mirrored repository is headed by its name and says where it is stored; `name`, `origin`, and `location` in `/api/source/status` | Independent | One P1 (a tooltip rule changed a regular folder’s tooltips; restored to the base’s), three P2, and nine smaller findings, each fixed; 76 of 76 mutations caught, the reviewer’s among them. Found afterwards, running the runbook for this record: `mb-hj9h`, a long repository name cut with an ellipsis while the note still shows, open | 9 of 9 at `76677bc7` ([run](https://github.com/jlevy/metabrowser/actions/runs/36946303494)) |
+| [#264](https://github.com/jlevy/metabrowser/pull/264) | Landing-gate fixes: regular-folder behaviors restored to v0.11.0, two lost assertions re-pinned, changelog entries, start-up pairs that control bytecode | Independent. Merges only since the fixes | One P1, a third difference from v0.11.0 in the structured route, older than this pull request (bytes that are not UTF-8, and compressed files that cannot be decoded), fixed in `a2a3f1cf`; three P2 and the P3s fixed in the eight commits after `8dd19053`; 47 of 47 mutations caught. One answer still differs from v0.11.0 on purpose: an unopenable file answers 404 without a host path | 9 of 9 at `8879c4de` ([run](https://github.com/jlevy/metabrowser/actions/runs/36947448513)) |
+| [#265](https://github.com/jlevy/metabrowser/pull/265) | The release checklist’s steps 1 to 5 rehearsed against v0.11.0: exp-038, ledger rows, and the regenerated performance report. No product code | None. It is a record of measurement | Its own findings, the `--doctor` cost, the `frame_missing_px` probe, and the changelog gaps, are answered in #264 or left to the user (`mb-cf6y`) | 9 of 9 at `481b64b7` ([run](https://github.com/jlevy/metabrowser/actions/runs/36947693543)) |
 | [#247](https://github.com/jlevy/metabrowser/pull/247) | Outside the chain: the removed hosted-review code, kept as an unmaintained reference branch. A draft that is never merged | None of its own. It restores what #246 removes, so #246’s review is the review of the boundary | None recorded | 9 of 9 at `b10a2fa8` ([run](https://github.com/jlevy/metabrowser/actions/runs/36805938982)) |
+| [#262](https://github.com/jlevy/metabrowser/pull/262) | Outside the chain: a page kept in the back/forward cache releases its event stream (`mb-tdmd`). A draft, held until after the landing | Independent | One P1 (Back onto a page with a type filter un-filters the tree), two P2 groups, and P3s, none fixed yet (`mb-tdmd`’s notes). The review is why it is held out: without it, regular pages behave as in v0.11.0, which has the same stall | 9 of 9 at `a7f7c8bc` ([run](https://github.com/jlevy/metabrowser/actions/runs/36916957466)) |
 
 ## How This Ledger Was Built
 
@@ -150,9 +168,11 @@ tbd show mb-79t3
   name.
 - **What followed a review** is
   `git log --no-merges <reviewed commit>..<head> ^<base branch>`.
-- **Stack order** is the chain the command under Pins in the
-  [QA runbook](../../qa-v012-repository-library.md#pins) prints, confirmed by checking
-  that each head contains the head below it.
+- **Stack order** is that of GitHub stack #218
+  (`gh api repos/jlevy/metabrowser/stacks/218 --jq '[.pull_requests[].number]'`), which
+  the chain command under Pins in the
+  [QA runbook](../../qa-v012-repository-library.md#pins) also prints; each head was
+  checked to contain the head below it.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
