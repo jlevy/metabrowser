@@ -361,6 +361,9 @@ class Labels:
         self.add(identity.url, f"<ORIGIN{suffix}>")
         self.add(identity.path, f"<PATH{suffix}>")
         self.add(identity.store_id, f"<{store}{suffix}>")
+        # The store's directory is named by its key, which a served mirror's status
+        # shows in its location.
+        self.add(identity.store_id.removeprefix("sha256:"), f"<STORE_KEY{suffix}>")
         self.add(identity.source_id, f"<{source}{suffix}>")
         self.add(identity.slug, f"<SLUG{suffix}>")
         return identity
@@ -395,12 +398,17 @@ def elide_clone_timing(stderr: str) -> str:
     return _FETCHED_AGO.sub(rf"\g<1>{AGE_PLACEHOLDER}", stderr)
 
 
-# The two lines of a command's stderr that say where clones are kept, whole: a URL, the
-# home's cache directory and nothing under it, and for a hit how long ago it was fetched.
+# The lines of a command's output that name the application home, whole. Two are a
+# command's own stderr and say where clones are kept: a URL, the home's cache directory
+# and nothing under it, and for a hit how long ago it was fetched. The third is the one
+# field of a route's answer that names a path in the cache: the location of a served
+# mirror in its status, which is the store's bare repository and nothing else.
 _HOME_LINES: Final = (
     r"cloning \S+ into {home}/cache",
     r"using the clone of \S+ cached in {home}/cache"
     r"(?:, fetched (?:less than a minute ago|\d+ (?:minute|hour|day)s? ago|<AGE>))?",
+    r'\s*"location": "{home}/cache/repository-stores/(?:<STORE_KEY[^>"]*>|[0-9a-f]{{64}})'
+    r'/repository\.git",',
 )
 
 
@@ -428,20 +436,19 @@ def label_home(text: str, home: Path, label: str = HOME_LABEL) -> str:
     """*text* with the application home *home* as *label*, checked to be where it may be.
 
     A first clone says where it goes and a cache hit says where it was found, each in
-    one line of stderr. The home is named nowhere else in what a command prints: not in
-    an identity line or an error, and not in a route's answer. The one answer that does
-    name a path under it, the status's ``location`` of a served mirror, is the served
-    store's own directory, which ``--api`` prints as ``<ROOT>`` as it prints a served
-    folder's path. And those lines name the cache directory and stop: a line that went
-    on to a store or a staging entry under it is refused here, before an update could
-    write it into a transcript.
+    one line of stderr, and a served mirror's status says where the mirror is kept, in
+    its ``location``. The home is named nowhere else in what a command prints: not in an
+    identity line or an error, and not in any other field of a route's answer. The
+    clone's lines name the cache directory and stop, and the location is the store's
+    bare repository exactly: a line that went on to a staging entry, or named a store
+    anywhere else, is refused here, before an update could write it into a transcript.
     """
 
     labelled = text.replace(str(home), label)
     allowed = [re.compile(line.format(home=re.escape(label))) for line in _HOME_LINES]
     for line in labelled.splitlines():
         assert label not in line or any(pattern.fullmatch(line) for pattern in allowed), (
-            f"the application home is named outside a clone's own lines: {line}"
+            f"the application home is named outside the lines that may name it: {line}"
         )
     return labelled
 

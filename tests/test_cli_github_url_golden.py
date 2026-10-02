@@ -307,7 +307,12 @@ def test_golden_a_selection_waits_for_the_refresh_it_asked_for(
     assert missing[1].exit_code == 0 and '"selection_state": "not_found"' in missing[1].stdout
     assert failed[1].exit_code == 1 and '"selection_state": "fetch_failed"' in failed[1].stdout
 
-    rendered = "".join(_block(args, result) for args, result in (found, missing, failed))
+    # The status says where the mirror is kept, and names the home nowhere else. A
+    # GitHub mirror's store key is derived from its canonical address, so it is the
+    # same on every machine and stays literal.
+    rendered = label_home(
+        "".join(_block(args, result) for args, result in (found, missing, failed)), home
+    )
     assert str(tmp_path) not in rendered and str(home) not in rendered
     check_golden("cli-github-url-waits.txt", rendered)
 
