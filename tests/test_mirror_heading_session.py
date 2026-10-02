@@ -38,6 +38,7 @@ from starlette.testclient import TestClient
 from metabrowser import server
 from metabrowser.cache.acquire import PublishedSource, acquire_source
 from metabrowser.cache.urls import GitSource, classify_root_argument
+from tests.git_pin_harness import fast_import_store, pinned_client
 from tests.golden_harness import (
     SANDBOX_STAND_IN,
     STORE_KEY_STAND_INS,
@@ -195,6 +196,44 @@ def test_fixture_is_what_the_server_serves_for_a_folder_and_for_a_mirror(
     assert "a&lt;b&gt;&amp;\ufffdx" in hostile["heading"]
     assert SANDBOX_STAND_IN not in json.dumps(served)
     check_recording(RECORDING, served, transcript=TRANSCRIPT)
+
+
+def test_a_pin_with_no_mirror_is_headed_as_before_and_carries_nothing_of_one(
+    tmp_path: Path,
+) -> None:
+    """A pin served straight from a store has no origin, so nothing of a mirror's applies.
+
+    Its root is the full commit, as it was: it is the only name the pin has. Its page is
+    not marked as a mirror's, names no location, and does not carry the module, which
+    would otherwise put a copy control beside a commit the main heading already spells.
+    """
+
+    store, commit = fast_import_store(tmp_path, {b"README.md": b"# Pinned\n"})
+
+    async def page() -> dict[str, Any]:
+        async with pinned_client(store, commit, ref="refs/remotes/origin/topic") as (client, _):
+            shell = (await client.get("/view/")).text
+            status = (await client.get("/api/source/status")).json()
+        attributes = _HeadingAttributes()
+        attributes.feed(shell)
+        return {
+            "dataset": attributes.dataset,
+            "mainClass": _MAIN_CLASS.findall(shell),
+            "module": _MIRROR_MODULE in shell,
+            "heading": _HEADING.findall(shell),
+            "status": [status[key] for key in ("name", "origin", "location")],
+        }
+
+    assert asyncio.run(page()) == {
+        "dataset": {"servedRoot": commit},
+        "mainClass": ["container"],
+        "module": False,
+        "heading": [
+            '<span class="path"><span class="path-base">topic</span></span>'
+            f'<span class="header-revision">{commit[:12]}</span>'
+        ],
+        "status": [None, None, None],
+    }
 
 
 def test_the_session_names_a_mirror_and_says_where_it_is_kept() -> None:

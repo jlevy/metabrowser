@@ -60,6 +60,7 @@ from tests.golden_harness import (
     fix_clock,
     label_home,
     normalize_console,
+    ok,
     origin_identity,
     pin_git_dates,
 )
@@ -152,6 +153,14 @@ def _no_interrupt_handler(  # pyright: ignore[reportUnusedFunction]
 
     monkeypatch.setattr("metabrowser.cli.git_pin_cli.stop_on_interrupt", lambda: None)
     monkeypatch.delenv("METABROWSER_LOG_LEVEL", raising=False)
+
+
+def _body(tmp_path: Path, body: object) -> str:
+    """A request body in a file, as ``--data`` takes one."""
+
+    path = tmp_path / "body.json"
+    path.write_text(json.dumps(body) + "\n", encoding="utf-8")
+    return str(path)
 
 
 def _home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
@@ -564,6 +573,34 @@ def test_the_status_and_the_page_say_where_the_mirror_is_kept(
         assert switched.json()["status"]["name"] == "origin"
         assert str(user) not in switched.text
         assert f'data-mirror-tip="{tip(origin.first)}">' in client.get("/view/").text
+
+
+def test_the_api_mode_prints_where_the_mirror_is_kept(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``metab <url> --api /api/source/status`` says where the mirror is (mb-fndz).
+
+    The application home is outside the home directory here, so the location is
+    absolute, and it is the directory a pin's output is normalized against. It was
+    printed as ``<ROOT>``, which says nothing. It is printed as answered, and it is the
+    only thing that is: a path under it anywhere else is still rewritten.
+    """
+
+    home = _home(tmp_path, monkeypatch)
+    origin = _origin(tmp_path)
+    store_key = origin_identity(origin.url).store_id.removeprefix("sha256:")
+    location = str(home / "cache" / "repository-stores" / store_key / "repository.git")
+
+    status = ok([origin.url, "--api", "/api/source/status"])
+    assert status.payload()["location"] == location
+    assert status.payload()["origin"] == origin.url
+    assert "<ROOT>" not in status.stdout
+
+    switched = ok(
+        [origin.url, "--api", "/api/source/pin", "--data", _body(tmp_path, {"oid": origin.first})]
+    )
+    assert switched.payload()["status"]["location"] == location
+    assert switched.stdout.count(str(home)) == 1
 
 
 # A document that tries each way a repository's author could read the heading: run
