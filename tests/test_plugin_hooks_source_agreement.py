@@ -58,6 +58,7 @@ FILES: dict[bytes, bytes] = {
     b"session.jsonl": LOG,
     b"config.json": CONFIG,
     b"change.patch": PATCH,
+    b"refused.rej": PATCH,
     b"nul.bin": BYTES,
 }
 
@@ -225,3 +226,59 @@ def test_a_hook_refuses_the_other_kind_of_identity(tmp_path: Path) -> None:
 
     (tmp_path / "git").mkdir(parents=True, exist_ok=True)
     assert asyncio.run(_run()) == [404, 404]
+
+
+def _diff_responses(tmp_path: Path, route: str, native: str, inner: str = "") -> tuple[Any, Any]:
+    """One diff hook's response for *native*, or a virtual child of it, on both sources."""
+
+    suffix = f"/{inner}" if inner else ""
+
+    async def _run() -> tuple[Any, Any]:
+        async with _folder_client(tmp_path) as client:
+            folder = await client.get(route, params={"path": f"{native}{suffix}"})
+        store, commit = fast_import_store(tmp_path / "git", FILES)
+        async with pinned_client(store, commit) as (client, _subject):
+            pinned = await client.get(route, params={"path": f"{_wire(native)}{suffix}"})
+        assert str(store) not in pinned.text
+        return folder, pinned
+
+    (tmp_path / "git").mkdir(parents=True, exist_ok=True)
+    return asyncio.run(_run())
+
+
+@pytest.mark.parametrize(
+    ("native", "kinds"),
+    [("refused.rej", ["modified", "deleted"]), ("config.json", [])],
+    ids=["a-diff-under-another-name", "a-file-holding-no-diff"],
+)
+def test_diff_document_parses_a_file_whatever_it_is_called_on_both(
+    tmp_path: Path, native: str, kinds: list[str]
+) -> None:
+    """The document hook reads the file it is given; its name is the kind system's business.
+
+    A plugin may add match rules to the ``diff`` kind, so ``/api/file`` can send the
+    Diff view to a file that is not named ``.patch`` or ``.diff``, and the view's data
+    request must not then answer 404. 0.11.0 parsed any file under a folder, and a pin
+    answers as the folder does: the read is bounded the same way on both, and a pin
+    serves every blob this hook can reach through ``/api/file`` already.
+    """
+
+    folder, pinned = _diff_responses(tmp_path, "/api/plugin/diff/document", native)
+    assert (folder.status_code, pinned.status_code) == (200, 200), (folder.text, pinned.text)
+    assert [change["kind"] for change in folder.json()["manifest"]["files"]] == kinds
+    assert bool(folder.json()["resolved"]["warnings"]) is (not kinds)
+    assert folder.json() == pinned.json()
+
+
+def test_diff_container_stays_scoped_to_patch_names_on_both(tmp_path: Path) -> None:
+    """Child rows and virtual children exist only inside ``.patch`` and ``.diff`` files."""
+
+    children = _diff_responses(tmp_path / "rows", "/api/plugin/diff/children", "refused.rej")
+    assert [response.status_code for response in children] == [404, 404]
+    assert [response.json()["error"] for response in children] == ["diff_children"] * 2
+
+    inner = _diff_responses(
+        tmp_path / "inner", "/api/plugin/diff/document", "refused.rej", "src/app.py"
+    )
+    assert [response.status_code for response in inner] == [404, 404]
+    assert [response.json()["error"] for response in inner] == ["diff_document"] * 2
