@@ -941,6 +941,19 @@ Fixes:
   cannot be opened; `/api/file` shows such a file as bytes and never sends it to the
   Diff view.
 
+- A byte limit set below zero gives a typed, empty answer on every value.
+  This applies to `STRUCTURED_PARSE_MAX_BYTES`, `METABROWSER_BINARY_PREVIEW_BYTES`,
+  `METABROWSER_BINARY_PREVIEW_MAX_BYTES`, and
+  `METABROWSER_BINARY_PREVIEW_MAX_CHUNK_BYTES`. 0.11.0 answered by accident of
+  arithmetic: at -1 the binary route returned an empty chunk, at -2 it read the rest of
+  the file with no bound, and at -3 or lower it answered the degraded `plugin_error`
+  envelope; a compressed file answered `plugin_error` or a parse error that quoted the
+  reader’s own bound check.
+  Now a negative structured limit answers `truncated` for every file, a negative chunk
+  size answers an empty chunk and says whether bytes remain, and a negative offset
+  ceiling answers 404. Zero is unchanged, except that a compressed structured file at
+  `STRUCTURED_PARSE_MAX_BYTES=0` answers `truncated` instead of that parse error.
+
 - Load more on a large text file in a pin advances its notice and continues the text.
   A pin’s later window reported its own length as `bytes_read`, where the filesystem
   reports the cursor past the window, so after Load more the notice kept reading

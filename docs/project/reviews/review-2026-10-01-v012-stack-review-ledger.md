@@ -19,9 +19,9 @@ a comment on #216 that covers the stack through #225. This record is evidence fo
 landing decision (`mb-n2ro`), not that decision.
 [#260](https://github.com/jlevy/metabrowser/pull/260), which adds this ledger, sits at
 the top of the stack, changes documents only, and has no row.
-Nor has [#267](https://github.com/jlevy/metabrowser/pull/267), the layer between #265
-and #260 that fixes the regressions the landing gate’s data and browser differentials
-found (`mb-55tr`): its independent review had not run when this record was last revised.
+[#267](https://github.com/jlevy/metabrowser/pull/267), the layer between #265 and #260
+(`mb-55tr`), has a row: a coordinator review only, with its independent review still
+owed.
 
 ## Limits
 
@@ -77,13 +77,13 @@ Read these before the table; they bound what any row can mean.
 
 ## Summary
 
-Of the 44 pull requests in the chain:
+Of the 44 pull requests in the chain below #267 and #260:
 
 | Kind | Count | Pull requests |
 | --- | ---: | --- |
 | Stabilization | 7 | #125, #134, #136, #139, #140, #217, #216 |
 | Independent | 32 | #225, #226, #227, #228, #229, #230, #231, #232, #233, #234, #235, #239, #236, #238, #237, #240, #243, #244, #246, #248, #249, #252, #251, #253, #255, #254, #256, #258, #257, #261, #263, #264 |
-| Coordinator | 2 | #242, #259 |
+| Coordinator | 2 | #242, #259 (and #267, above the 44, until its independent review is done) |
 | None | 3 | #241, #250, #265 |
 
 Two pull requests are outside the chain and are the last rows:
@@ -147,6 +147,7 @@ Commits are abbreviated.
 | [#263](https://github.com/jlevy/metabrowser/pull/263) | A mirrored repository is headed by its name and says where it is stored; `name`, `origin`, and `location` in `/api/source/status` | Independent | One P1 (a tooltip rule changed a regular folder’s tooltips; restored to the base’s), three P2, and nine smaller findings, each fixed; 76 of 76 mutations caught, the reviewer’s among them. Found afterwards, running the runbook for this record: `mb-hj9h`, a long repository name cut with an ellipsis while the note still shows, open | 9 of 9 at `76677bc7` ([run](https://github.com/jlevy/metabrowser/actions/runs/36946303494)) |
 | [#264](https://github.com/jlevy/metabrowser/pull/264) | Landing-gate fixes: regular-folder behaviors restored to v0.11.0, two lost assertions re-pinned, changelog entries, start-up pairs that control bytecode | Independent. Merges only since the fixes | One P1, a third difference from v0.11.0 in the structured route, older than this pull request (bytes that are not UTF-8, and compressed files that cannot be decoded), fixed in `a2a3f1cf`; three P2 and the P3s fixed in the eight commits after `8dd19053`; 47 of 47 mutations caught. One answer still differs from v0.11.0 on purpose: an unopenable file answers 404 without a host path | 9 of 9 at `8879c4de` ([run](https://github.com/jlevy/metabrowser/actions/runs/36947448513)) |
 | [#265](https://github.com/jlevy/metabrowser/pull/265) | The release checklist’s steps 1 to 5 rehearsed against v0.11.0: exp-038, ledger rows, and the regenerated performance report. No product code | None. It is a record of measurement | Its own findings, the `--doctor` cost, the `frame_missing_px` probe, and the changelog gaps, are answered in #264 or left to the user (`mb-cf6y`) | 9 of 9 at `481b64b7` ([run](https://github.com/jlevy/metabrowser/actions/runs/36947693543)) |
+| [#267](https://github.com/jlevy/metabrowser/pull/267) | Landing-gate fixes, second round: six regular-folder differences from v0.11.0 that the data and browser differentials found (structured cache size zero, the diff document hook on any file name, `--show` dotenv reads, a stray attribute on tree folder rows, the 21px line pitch of unhighlighted source, byte limits below zero) | Coordinator. An independent review was started twice and cut off by a usage limit both times before it reported; it had re-run the first mutations. It is owed (`mb-55tr`) | The coordinator read the source changes and found no P0 or P1. The author’s mutation table covers each fix. The data differential and the evidence audit were re-run at this head | 9 of 9 at `14fcdb85` |
 | [#247](https://github.com/jlevy/metabrowser/pull/247) | Outside the chain: the removed hosted-review code, kept as an unmaintained reference branch. A draft that is never merged | None of its own. It restores what #246 removes, so #246’s review is the review of the boundary | None recorded | 9 of 9 at `b10a2fa8` ([run](https://github.com/jlevy/metabrowser/actions/runs/36805938982)) |
 | [#262](https://github.com/jlevy/metabrowser/pull/262) | Outside the chain: a page kept in the back/forward cache releases its event stream (`mb-tdmd`). A draft, held until after the landing | Independent | One P1 (Back onto a page with a type filter un-filters the tree), two P2 groups, and P3s, none fixed yet (`mb-tdmd`’s notes). The review is why it is held out: without it, regular pages behave as in v0.11.0, which has the same stall | 9 of 9 at `a7f7c8bc` ([run](https://github.com/jlevy/metabrowser/actions/runs/36916957466)) |
 
