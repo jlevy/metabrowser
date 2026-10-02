@@ -3,9 +3,12 @@
 ``GET /api/plugin/diff/document?path=<rel>`` parses the patch file into
 File Diff Format and returns the hydrated document — the same shape
 ``metab --diff`` emits and the conformance corpus validates, so the
-browser model never sees a plugin-specific envelope. A virtual path
+browser model never sees a plugin-specific envelope. The file is parsed
+whatever it is called, because the kind system, which a plugin may extend,
+decides which files open in this view. A virtual path
 ``<patch>/<inner>`` (the container contract) returns the same document
-narrowed to that one file change. On a pinned Git revision the patch
+narrowed to that one file change, inside a ``.patch`` or ``.diff`` file only.
+On a pinned Git revision the patch
 address is a ``GitPath`` ``g1-`` prefix; the inner path is the remainder.
 
 ``GET /api/plugin/diff/children?path=<rel>`` lists the change entries as
@@ -51,11 +54,14 @@ from metabrowser.inventory_engine.contract import canonical_inventory_path
 from metabrowser.plugin_api import (
     ContentReadError,
     read_content_window,
+    resolve_content,
     resolve_content_container,
 )
 
 if TYPE_CHECKING:
     from starlette.requests import Request
+
+    from metabrowser.plugin_api import ContentRef
 
 _PATCH_EXTS = (".patch", ".diff")
 
@@ -78,20 +84,41 @@ def _parse_bytes(data: bytes) -> ChangeSetDocument:
     return parse_unified_patch(data[: MAX_PATCH_BYTES + 1])
 
 
+async def _resolve_patch(subpath: str, *, any_name: bool) -> tuple[ContentRef, str] | None:
+    """The content a request names, and the inner path when it names a virtual child.
+
+    With ``any_name``, a file the request names itself is read whatever it is
+    called. Which files are diffs is the kind system's decision, and a plugin may
+    add match rules to the ``diff`` kind, so the name is not this hook's to check.
+    That is what 0.11.0 did, and a file holding no diff answers an empty change
+    set with a warning.
+
+    ``<patch>/<inner>`` is the container contract, and stays scoped to this
+    plugin's own extensions: the content reader performs the nearest-container
+    walk and resolves a virtual child only inside a file this plugin claims. The
+    reader compares the logical extension, so ``change.patch.gz`` is claimed too.
+    """
+
+    if any_name:
+        direct = await resolve_content(subpath)
+        if direct is not None:
+            return direct, ""
+    return await resolve_content_container(subpath, suffixes=_PATCH_EXTS)
+
+
 async def _patch_document(
-    subpath: str, *, error_kind: str
+    subpath: str, *, error_kind: str, any_name: bool = False
 ) -> tuple[ChangeSetDocument, str] | JSONResponse:
     """Resolve a real or virtual patch identity and parse it.
 
-    The content reader performs the nearest-container walk, scoped to this
-    plugin's own extensions so one plugin cannot open another's files, and the
-    bounded read; the parse runs in the thread pool. One byte past the cap
-    keeps the parser's own truncation reporting authoritative, and bounding the
-    read keeps a multi-GB file from ever landing in memory on the request path.
+    The content reader performs the resolution and the bounded read; the parse
+    runs in the thread pool. One byte past the cap keeps the parser's own
+    truncation reporting authoritative, and bounding the read keeps a multi-GB
+    file from ever landing in memory on the request path.
     """
 
     try:
-        found = await resolve_content_container(subpath, suffixes=_PATCH_EXTS)
+        found = await _resolve_patch(subpath, any_name=any_name)
         if found is None:
             return _error(error_kind, "This file is not available.", 404, path=subpath)
         ref, inner = found
@@ -144,7 +171,7 @@ def _narrow_to_path(document: ChangeSetDocument, inner: str) -> ChangeSetDocumen
 async def document_handler(request: Request) -> JSONResponse:
     """One patch file — or one change inside it — as a ChangeSetDocument."""
     subpath = request.query_params.get("path", "")
-    opened = await _patch_document(subpath, error_kind="diff_document")
+    opened = await _patch_document(subpath, error_kind="diff_document", any_name=True)
     if isinstance(opened, JSONResponse):
         return opened
     document, inner = opened

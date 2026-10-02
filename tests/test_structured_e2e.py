@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from cachetools import LRUCache
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
@@ -206,6 +207,33 @@ def test_parsed_endpoint_answers_a_changed_file_afresh(
     answers = (first, grown, same_size)
     assert len({answer.json()["mtime_hash"] for answer in answers}) == 3
     assert len({answer.headers["ETag"] for answer in answers}) == 3
+
+
+@pytest.mark.parametrize("size", [0, -1])
+def test_parsed_endpoint_parses_every_request_when_the_cache_holds_nothing(
+    size: int, tmp_path: Path, structured_app: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``STRUCTURED_CACHE_SIZE`` of zero or less caches nothing, and is not an error.
+
+    That is how 0.11.0's ``functools.lru_cache`` read the setting. A cachetools cache
+    of that size refuses every store, and the route answered the degraded
+    ``plugin_error`` envelope for every structured file.
+    """
+
+    # The variable is read once at import, into a cache of exactly that size.
+    assert structured_parser._PAYLOAD_CACHE.maxsize == structured_parser.STRUCTURED_CACHE_SIZE
+    cache: LRUCache[Any, Any] = LRUCache(maxsize=size)
+    monkeypatch.setattr(structured_parser, "_PAYLOAD_CACHE", cache)
+    (tmp_path / "data.json").write_bytes(b'{"a": 1, "b": [2, 3]}')
+
+    for _ in range(2):
+        response = structured_app.get("/api/plugin/structured/parsed", params={"path": "data.json"})
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["type"] == "structured", body
+        assert (body["parsed"], body["parse_error"]) == ({"a": 1, "b": [2, 3]}, None)
+        assert response.headers["ETag"]
+    assert len(cache) == 0
 
 
 def test_parsed_endpoint_reads_bytes_as_a_text_mode_open_does(

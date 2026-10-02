@@ -924,6 +924,23 @@ Fixes:
   `parse_error: "PermissionError: [Errno 13] Permission denied: '<the file's absolute path>'"`.
   It now answers 404 `content_unavailable` and names the served path.
 
+- `/api/plugin/diff/document` and `/api/plugin/diff/children` no longer answer with a
+  path on the host either.
+  For a file they could not open, such as a patch without read permission, 0.11.0
+  answered the degraded `plugin_error` envelope with
+  `detail: "PermissionError: [Errno 13] Permission denied: '<the file's absolute path>'"`
+  and logged a traceback.
+  They now answer 404 `diff_document` or `diff_children` and name the served path.
+
+- A compressed patch is read as the patch it holds.
+  `change.patch.gz` is the `diff` kind, but 0.11.0 parsed its compressed bytes:
+  `/api/plugin/diff/document` answered that it recognized no diff, and
+  `/api/plugin/diff/children` and a virtual child `change.patch.gz/<path>` answered 404.
+  The three now read the patch the file holds.
+  A compressed file whose stream cannot be decoded answers the same 404 as a file that
+  cannot be opened; `/api/file` shows such a file as bytes and never sends it to the
+  Diff view.
+
 - Load more on a large text file in a pin advances its notice and continues the text.
   A pin’s later window reported its own length as `bytes_read`, where the filesystem
   reports the cursor past the window, so after Load more the notice kept reading

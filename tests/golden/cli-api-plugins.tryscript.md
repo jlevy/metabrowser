@@ -17,10 +17,13 @@ env:
   GIT_COMMITTER_DATE: "2020-01-01T00:00:00Z"
 before: >-
   unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX GIT_NAMESPACE GIT_CEILING_DIRECTORIES &&
-  mkdir -p hookroot &&
+  mkdir -p hookroot rejplugin/rejdiff &&
+  printf '[plugin]\nname = "rejdiff"\nsdk_version = "0.7"\n[[kind]]\nid = "diff"\nmatch = { exts = [".rej"] }\npriority = 10\n' > rejplugin/rejdiff/manifest.toml &&
+  printf '// The built-in diff plugin draws the view.\n' > rejplugin/rejdiff/index.js &&
   cd hookroot &&
   printf '{"a": 1, "b": [2, 3]}\n' > data.json &&
   printf -- '--- a/x.txt\n+++ b/x.txt\n@@ -1 +1 @@\n-old\n+new\n' > change.patch &&
+  printf -- '--- a/y.txt\n+++ b/y.txt\n@@ -1 +1 @@\n-was\n+is\n' > change.rej &&
   printf '{"type":"system","subtype":"init","session_id":"s1","model":"m1"}\n' > session.jsonl &&
   printf '\000\001\002bin' > blob.bin &&
   git init -q --initial-branch=main . &&
@@ -38,6 +41,38 @@ Each is reachable at `/api/plugin/<plugin>/<route>`, and none had a transcript.
 
 ```console
 $ metab hookroot --api '/api/plugin/structured/parsed?path=data.json'
+api: /api/plugin/structured/parsed?path=data.json
+status: 200
+{
+  "type": "structured",
+  "path": "data.json",
+  "ext": ".json",
+  "mtime_hash": "data_json_22_1700000000000000000_oxzwjuzo4dpggg9x1isunq5frrzx07a",
+  "size": 22,
+  "parsed": {
+    "a": 1,
+    "b": [
+      2,
+      3
+    ]
+  },
+  "pretty_yaml": "a: 1\nb:\n  - 2\n  - 3\n",
+  "node_count": 5,
+  "max_depth": 2,
+  "comments_supported": false,
+  "parse_error": null,
+  "truncated": false
+}
+? 0
+```
+
+## Test: a structured cache of size zero still answers
+
+`STRUCTURED_CACHE_SIZE` is an operator setting.
+Zero, or less, caches nothing and every request parses; it is not an error.
+
+```console
+$ STRUCTURED_CACHE_SIZE=0 metab hookroot --api '/api/plugin/structured/parsed?path=data.json'
 api: /api/plugin/structured/parsed?path=data.json
 status: 200
 {
@@ -195,6 +230,92 @@ status: 200
       "truncated": false
     }
   }
+}
+? 0
+```
+
+## Test: a file a plugin made the diff kind, under another name
+
+A plugin may add match rules to a built-in kind.
+This one makes `.rej` files the `diff` kind, so `/api/file` sends the Diff view to
+`change.rej`.
+
+```console
+$ metab hookroot --plugins-dir rejplugin --api '/api/file?path=change.rej' > file.txt
+? 0
+```
+
+```console
+$ grep -E '^  "(kind|path)":|^      "(id|label)":' file.txt
+  "kind": "diff",
+      "id": "diff",
+      "label": "Diff",
+  "path": "change.rej",
+? 0
+```
+
+The view’s data request is then answered whatever the file is called, with the changes
+the file holds.
+
+```console
+$ metab hookroot --plugins-dir rejplugin --api '/api/plugin/diff/document?path=change.rej' > document.txt
+? 0
+```
+
+```console
+$ grep -E '^status|"(op|text|path|warnings)":' document.txt
+status: 200
+    "warnings": []
+          "path": "y.txt",
+          "path": "y.txt",
+              "op": "del",
+              "text": "was",
+              "op": "add",
+              "text": "is",
+? 0
+```
+
+## Test: a file that holds no diff is an empty change set, not a missing file
+
+```console
+$ metab hookroot --api '/api/plugin/diff/document?path=tracked.txt'
+api: /api/plugin/diff/document?path=tracked.txt
+status: 200
+{
+  "schema": "file-diff-v1",
+  "schema_version": 1,
+  "resolved": {
+    "comparison_id": "patch:b640e840b19d3786",
+    "source": {
+      "name": "patch"
+    },
+    "kind": "content",
+    "base_policy": "direct",
+    "left": {
+      "kind": "patch"
+    },
+    "right": {
+      "kind": "patch"
+    },
+    "options": {
+      "context": 3,
+      "rename_detection": true
+    },
+    "warnings": [
+      "no diff sections recognized in this input"
+    ]
+  },
+  "manifest": {
+    "files": [],
+    "totals": {
+      "files": 0,
+      "additions": 0,
+      "deletions": 0,
+      "exact": true
+    },
+    "truncated": false
+  },
+  "patches": {}
 }
 ? 0
 ```

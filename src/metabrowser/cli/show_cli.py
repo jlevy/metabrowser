@@ -320,7 +320,11 @@ async def ashow_active(
     no_active_content: bool = False,
     allow_edits: bool = False,
 ) -> None:
-    """Report one selection against the already-attached subject."""
+    """Report one selection against the already-attached subject.
+
+    This is a pin's entry point, which gets here before any server import, so the
+    dotenv chain and the plugin directories are published here.
+    """
 
     load_dotenv_chain()
     from metabrowser.capabilities import apply_capabilities
@@ -331,8 +335,27 @@ async def ashow_active(
         allow_edits=allow_edits,
     )
     apply_log_level(log_level)
-    display_path = _display_selection(path)
     _prepare_plugins(plugins_dir)
+    await _ashow_prepared(
+        path=path,
+        fmt=fmt,
+        index_timeout_s=index_timeout_s,
+        normalize_root=normalize_root,
+        filesystem_root=filesystem_root,
+    )
+
+
+async def _ashow_prepared(
+    *,
+    path: str,
+    fmt: str,
+    index_timeout_s: float,
+    normalize_root: Path,
+    filesystem_root: Path | None,
+) -> None:
+    """Report one selection once the environment and the plugin registry are set."""
+
+    display_path = _display_selection(path)
 
     from metabrowser import server
 
@@ -480,35 +503,6 @@ async def ashow_active(
     )
 
 
-def run_show_active(
-    *,
-    path: str,
-    fmt: str = "text",
-    plugins_dir: list[Path] | None = None,
-    log_level: str = "",
-    index_timeout_s: float = INDEX_READY_TIMEOUT_S,
-    normalize_root: Path,
-    filesystem_root: Path | None,
-    untrusted: bool = False,
-    no_active_content: bool = False,
-    allow_edits: bool = False,
-) -> None:
-    asyncio.run(
-        ashow_active(
-            path=path,
-            fmt=fmt,
-            plugins_dir=plugins_dir,
-            log_level=log_level,
-            index_timeout_s=index_timeout_s,
-            normalize_root=normalize_root,
-            filesystem_root=filesystem_root,
-            untrusted=untrusted,
-            no_active_content=no_active_content,
-            allow_edits=allow_edits,
-        )
-    )
-
-
 def run_show(
     root: Path,
     *,
@@ -529,24 +523,28 @@ def run_show(
     # Plugin discovery runs once when `metabrowser.server` is imported, so the
     # dotenv chain and the plugin directories have to be published first or
     # `--plugins-dir` reaches an already-frozen registry and `--show` reports a
-    # different kind than the route `--api` issues. The pin entry point reaches
-    # `ashow_active` before any server import, so it prepares them itself.
+    # different kind than the route `--api` issues. They are published once: the
+    # chain is read here and by the plugin-directory resolution, as in 0.11.0, and a
+    # malformed `.env` is reported that many times and no more.
     load_dotenv_chain()
     apply_log_level(log_level)
     _prepare_plugins(plugins_dir)
 
     from metabrowser import server
+    from metabrowser.capabilities import apply_capabilities
 
     server._set_root_dir(resolved)
-    run_show_active(
-        path=path,
-        fmt=fmt,
-        plugins_dir=plugins_dir,
-        log_level=log_level,
-        index_timeout_s=index_timeout_s,
-        normalize_root=resolved,
-        filesystem_root=resolved,
+    apply_capabilities(
         untrusted=untrusted,
         no_active_content=no_active_content,
         allow_edits=allow_edits,
+    )
+    asyncio.run(
+        _ashow_prepared(
+            path=path,
+            fmt=fmt,
+            index_timeout_s=index_timeout_s,
+            normalize_root=resolved,
+            filesystem_root=resolved,
+        )
     )

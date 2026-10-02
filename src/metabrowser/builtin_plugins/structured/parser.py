@@ -204,6 +204,15 @@ def lookup_structured_payload(
 def remember_structured_payload(
     identity: str, ext: str, fingerprint: str, payload: StructuredPayload
 ) -> None:
+    """Keep *payload* for the next request, when the cache holds anything at all.
+
+    ``STRUCTURED_CACHE_SIZE`` of zero or less means cache nothing and parse every
+    request, which is how ``functools.lru_cache`` read it through 0.11.0. A
+    cachetools cache of that size refuses every store instead, so it is not asked.
+    """
+
+    if _PAYLOAD_CACHE.maxsize < 1:
+        return
     _PAYLOAD_CACHE[(identity, ext, fingerprint)] = payload
 
 
