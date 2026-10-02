@@ -13,12 +13,12 @@ URL, inspect the intended immutable content, and reopen previously acquired cont
 offline. A directly addressed PR must work without first populating a discovery index.
 Tests must prove the installed application path as well as the individual contracts.
 
-Implementation is one linear chain of open pull requests above `main`. GitHub’s formal
-[stack 218](https://github.com/jlevy/metabrowser/stack/218) lists only its foundation
-layers, through #226; the QA runbook’s
-[Pins](../../../qa-v012-repository-library.md#pins) section lists the whole chain and
-finds its top. Keep the stack together until it is stabilized; an intermediate testing
-milestone does not authorize merging a lower layer.
+Implementation is one linear chain of open pull requests above `main`, linked on GitHub
+as [stack 218](https://github.com/jlevy/metabrowser/stack/218). The QA runbook’s
+[Pins](../../../qa-v012-repository-library.md#pins) section lists the chain, including a
+layer not yet linked to the stack, and finds its top.
+Keep the stack together until it is stabilized; an intermediate testing milestone does
+not authorize merging a lower layer.
 The landing coordinator is `mb-n2ro`.
 
 The [thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md) owns the v0.12 feature
@@ -359,89 +359,108 @@ landing/release; this testing plan performs neither.
 
 ### Landing status
 
-Recorded 2026-10-01. Four commands give the current state, and they win where this
-section disagrees:
+Recorded 2026-10-01, late.
+These commands give the current state, and they win where this section disagrees:
 
 - `tbd list --label release:v0.12.0` lists the open v0.12 beads;
 - `tbd show mb-n2ro` names the beads that block landing;
-- the chain command under [Pins](../../../qa-v012-repository-library.md#pins) in the QA
-  runbook lists the stack and its top pull request;
-- `gh pr checks <top pull request>` shows its CI.
+- `gh api repos/jlevy/metabrowser/stacks/218 --jq '[.pull_requests[].number]'` lists the
+  stack, and the chain command under [Pins](../../../qa-v012-repository-library.md#pins)
+  in the QA runbook also lists a layer not yet linked to it;
+- `gh pr checks <pull request>` shows a layer’s CI.
 
-**Verified on the tip.** The
-[QA record’s addendum of 2026-10-01](../../qa/qa-2026-09-24-v012-alpha-acceptance.md#addendum-2026-10-01)
-holds the commit, the counts, and the ratios of this verification.
+**The stack.** The chain from #125 to
+[#265](https://github.com/jlevy/metabrowser/pull/265) is one native GitHub stack,
+[#218](https://github.com/jlevy/metabrowser/stack/218), with base `main`. Until
+2026-10-01 the chain was split across three native stacks, with twelve pull requests in
+none; the two upper groupings were dissolved and their pull requests appended to #218.
+No branch, base, or head changed.
+Two layers are still to be appended to its top with `gh stack link 218 <pr>`, when they
+are ready: the layer above #265 that fixes the two regressions named below, and then
+[#260](https://github.com/jlevy/metabrowser/pull/260), which carries this section.
+Two pull requests stay outside it:
+[#247](https://github.com/jlevy/metabrowser/pull/247), the do-not-merge reference
+branch, and [#262](https://github.com/jlevy/metabrowser/pull/262), below.
 
-- `make lint-check` and the full `make test` pass locally on the tip.
-  CI passes on every pull request’s head, including both `admitted-git` jobs and
-  `stack-integration`, which merges `main` into the head it tests.
-- `make golden-update`, run as one command on a clean tree, changes nothing.
-- The acceptance runs pass for T0 through T2, with M03’s and M08’s base and head rows in
-  the record’s “Rerun on #250”.
-- Startup against v0.11.0, measured in CPU time and in instructions, is within the 1.1x
-  tolerance `mb-67s1` states for `--show`, `--api`, and `--version`. `--doctor` does
-  more work by design, because it now validates the cache record contracts.
-  exp-037 under `explorations/performance-loop/experiments/` and `mb-67s1` hold the
-  measurements.
-- The stack is one linear chain that contains `main`:
-  `git merge-base --is-ancestor origin/main <tip>` succeeds.
-- Every pull request has a row in the
-  [review ledger](../../reviews/review-2026-10-01-v012-stack-review-ledger.md), which
-  also states what that review evidence does not cover.
+**Gates, and their state.**
 
-**Remaining before landing.**
+- **The landing gate** (`mb-2g6f`, in progress): regular-folder behavior is unchanged
+  from v0.11.0 except for documented changes.
+  It has three checks.
+  - The evidence audit is done.
+    It found two unexplained regular-folder differences, the review of their fix found a
+    third, and all three are restored in
+    [#264](https://github.com/jlevy/metabrowser/pull/264) (`mb-y28u`, closed).
+  - The data differential is done: it reports no unexplained difference, and two
+    regressions, `STRUCTURED_CACHE_SIZE=0` breaking structured views and
+    `/api/plugin/diff/document` answering 404 for a file not named `.patch` or `.diff`.
+    Both are being fixed in the layer above #265 (`mb-55tr`).
+  - The browser differential had not reported when this was written.
 
-- **Wall-clock startup pairs** (`mb-67s1`). The pairs taken so far were noise, because
-  other jobs loaded the machine.
-  They are owed on a machine that stays quiet for about ten minutes, unless the user
-  accepts the CPU-time and instruction evidence in their place.
-- **The review of #244.** Its findings are `mb-2on0`, whose fixes are in the draft
-  [#259](https://github.com/jlevy/metabrowser/pull/259), not yet part of the chain, and
-  `mb-mw0t`, left open.
-  The ledger’s row for #244 is to be completed.
-- **One finding to disposition** (`mb-tdmd`). After about five full page loads in one
-  tab, the next page can wait for a connection, because pages kept for Back each hold
-  their event stream open.
-  `origin/main` has the same code; it was not run on 0.11.0. The QA record’s addendum
-  has the measurements.
-- **The checks only the user can make**, which are Part 4 of the runbook’s
+  Its accept rule also asks for the written list of intended changes to existing
+  behavior, which is
+  [Changes to existing behavior](../../reviews/review-2026-10-01-v012-changes-to-existing-behavior.md),
+  for the user to sign off.
+
+- **The release rehearsal** (`mb-cf6y`, in progress; exp-038, #265): steps 1, 2, 4, and
+  5 of the release checklist pass.
+  Step 3, the previous-release performance loop, is unresolved: equivalence passes, and
+  every responsiveness and correctness gate passes; the wall-clock gates failed for both
+  builds, v0.11.0 as often as the candidate, on a loaded machine.
+  A run on a quiet machine, on the final tip, is owed.
+
+- **These documents** (`mb-65pn`, in progress): #260.
+
+**Closed.**
+
+- `mb-67s1`: start-up against v0.11.0, measured with compiled bytecode in both builds.
+  Instructions retired are within 1.04x for `--show`, `--api`, `--version`, and a
+  server’s first answer.
+  `--doctor` does 1.78x the work by design, because it now validates the cache record
+  contracts. `make golden-update` is a no-op on a clean tree.
+  The
+  [QA record](../../qa/qa-2026-09-24-v012-alpha-acceptance.md#second-addendum-2026-10-01)
+  holds the figures.
+- `mb-y28u`: the fixes in #264.
+- `mb-gnr9`: the acceptance runs, T0 through T2, in the QA record.
+
+**Held until after the landing.** `mb-tdmd`: after about five full page loads in one tab
+of a served folder, the next page waits for a connection.
+v0.11.0 does the same, and a mirrored repository is not affected.
+Its fix, #262, is out of the stack, because its review found that it would change how a
+regular page behaves on Back.
+The Pulls tab is [planned](plan-2026-10-01-github-pulls-tab.md) only, and starts after
+the landing.
+
+**Review.** The
+[review ledger](../../reviews/review-2026-10-01-v012-stack-review-ledger.md) has a row
+for every pull request in the stack and states its limits: no person has reviewed the
+stack, and no pull request has a GitHub review decision.
+
+**The user’s decisions and checks.**
+
+- Accept `--doctor` taking about 250 ms longer.
+- Sign off the list of intended changes to existing behavior.
+- Whether to add a macOS CI job, since no CI job runs the macOS tier; the options are in
+  [#251](https://github.com/jlevy/metabrowser/pull/251)’s description.
+- Whether the admitted-Git test files keep running in every job of the test matrix as
+  well as in the `admitted-git` jobs; also in #251’s description.
+- Whether to add a line-coverage tool; the cost is set out in
+  [#255](https://github.com/jlevy/metabrowser/pull/255)’s description.
+- The checks only a person can make, which are Part 4 of the runbook’s
   [walk-through](../../../qa-v012-repository-library.md#walk-through-this-yourself):
-  - Safari and Firefox as well as Chrome.
-    The acceptance runs used one Chromium pane that was hidden for most rows, so they
-    read DOM state and network traffic rather than pixels.
-  - The user’s own GitHub account with a private repository it can read, and one it
-    cannot. This is row M10, which stays blocked until an operator-owned private fixture
-    exists.
-  - A third-party plugin against Plugin SDK 0.7, where one exists.
-    A plugin that writes copy or Load more markup by hand gets a button that silently
-    does nothing until it migrates; the `CHANGELOG.md` entry for the break gives the
-    migration.
-- **The user’s decisions:**
-  - approval to land (`mb-n2ro`);
-  - whether to add a macOS CI job, since no CI job runs the macOS tier (the options are
-    in [#251](https://github.com/jlevy/metabrowser/pull/251)’s description);
-  - whether the admitted-Git test files keep running in every job of the test matrix as
-    well as in the `admitted-git` jobs (also in #251’s description);
-  - whether to add a line-coverage tool (the cost is set out in
-    [#255](https://github.com/jlevy/metabrowser/pull/255)’s description);
-  - whether CPU-time and instruction evidence stands in for the wall-clock pairs
-    (`mb-67s1`).
-- **The checklist above.** No person has reviewed the stack, and no pull request has a
-  GitHub review decision; the ledger says what review each layer did have.
-  [#241](https://github.com/jlevy/metabrowser/pull/241), the acceptance record, is still
-  a draft, and so is [#260](https://github.com/jlevy/metabrowser/pull/260), which
-  carries this section.
+  Safari and Firefox as well as Chrome; a private repository the user’s account can read
+  and one it cannot, which is row M10 and stays blocked until an operator-owned private
+  fixture exists; and a third-party plugin against Plugin SDK 0.7, where one exists.
+- The merge method, a merge commit or a squash, which is still open.
+- Approval to land (`mb-n2ro`).
 
-**Not blocking.** The test-suite review (`mb-06up`) is not among the beads that block
-`mb-n2ro`. Its open children follow the release, and
-`tbd list --parent mb-06up --status open` lists them; one, `mb-weez`, still carries the
-release label.
-`tbd list --parent mb-hall --status open` lists the other open follow-ups.
-
-**Landing method.** Landing is one fast-forward of `main` to the stack’s tip, on the
-user’s approval. No layer merges separately.
-`main` must be an ancestor of the tip at that moment, which the merge-based restacks
-preserve and `git merge-base --is-ancestor origin/main <tip>` confirms.
+**Landing method.** Landing is `gh stack merge` on stack #218, bottom to top and
+all-or-nothing, only on the user’s explicit approval.
+No pull request is retargeted to `main`: that would flatten the stack.
+`gh stack merge` checks that each pull request is open and not a draft, and
+[#241](https://github.com/jlevy/metabrowser/pull/241), the acceptance record, is still a
+draft, as #260 is.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

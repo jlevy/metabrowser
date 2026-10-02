@@ -125,7 +125,8 @@ record on both builds:
 | The same route decoded strictly: a file with bytes that are not UTF-8, and a compressed file that cannot be decoded, answered differently | #264’s independent review | Restored. A Latin-1 `.json` opens as a tree with U+FFFD on both |
 
 Two more, found by the data differential, are **not yet fixed** at #265. Both still
-reproduced when run for this record, and both are being fixed in the layer above #265:
+reproduced when run for this record, and both are being fixed in the layer above #265
+(`mb-55tr`):
 
 | Difference | On v0.11.0 | On the stack |
 | --- | --- | --- |

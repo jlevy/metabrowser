@@ -348,12 +348,13 @@ Follow-up pull requests extend those steps, in stack order:
 | [#263](https://github.com/jlevy/metabrowser/pull/263) | A served mirror is headed by the repository’s name and says where it is kept ([Decision (2026-10-01)](#decision-2026-10-01-by-the-user)) | `mb-fndz` |
 | [#264](https://github.com/jlevy/metabrowser/pull/264) | Three regular-folder behaviors restored to 0.11.0, found by the landing gate; bytecode-controlled start-up pairs | `mb-y28u` |
 | [#265](https://github.com/jlevy/metabrowser/pull/265) | The release checklist rehearsed against v0.11.0 (exp-038) | `mb-cf6y` |
-| [#260](https://github.com/jlevy/metabrowser/pull/260) | The QA walk-through, the per-layer review ledger, and the landing status | `mb-65pn` |
+| The layer above #265 | Two regular-folder regressions the landing gate’s data differential found: `STRUCTURED_CACHE_SIZE=0`, and the diff document hook on a file not named `.patch` or `.diff` | `mb-55tr` |
+| [#260](https://github.com/jlevy/metabrowser/pull/260) | The QA walk-through, the per-layer review ledger, the list of changes to existing behavior, and the landing status | `mb-65pn` |
 
 The test pull requests from #252 on are the release work of the test-suite review
 (`mb-06up`), whose remaining children follow the release.
 The [review ledger](../../reviews/review-2026-10-01-v012-stack-review-ledger.md) records
-how each pull request through #257 was reviewed.
+how each pull request through #265 was reviewed.
 
 Later: the pull-request list and pull requests on a local checkout
 ([GitHub Pulls tab](plan-2026-10-01-github-pulls-tab.md)), inline review anchoring, SSH,

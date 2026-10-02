@@ -20,7 +20,8 @@ landing decision (`mb-n2ro`), not that decision.
 [#260](https://github.com/jlevy/metabrowser/pull/260), which adds this ledger, sits
 above #265, changes documents only, and has no row.
 Nor has the layer being written above #265 to fix the two regressions the landing gate’s
-data differential found: it had no pull request when this record was last revised.
+data differential found (`mb-55tr`): it had no pull request when this record was last
+revised.
 
 ## Limits
 
