@@ -959,8 +959,13 @@ moves afterwards.
 
 The shift figures are read by cloning a region stripped to the markup its pending render
 emits, inserting it beside the real one, and subtracting.
-They remain useful beside CLS because they name which reserved region moved and can be
-reconstructed after settle; CLS is page-wide and must observe the visible transition.
+“Beside” is beside the region as its container sees it: a region that is the only child
+of an element that frames it, as `#preview-pane` is of `.preview-frame`, has its
+stand-in placed beside that element, inside a copy of it.
+Placed inside the frame it would share the frame’s space with the region, which read
+half the pane as missing until harness version 23. They remain useful beside CLS because
+they name which reserved region moved and can be reconstructed after settle; CLS is
+page-wide and must observe the visible transition.
 They are layout facts, so they have no run-to-run variance: three runs of exp-010 gave
 identical values where `first_row_ms` swung 213–533 ms.
 
