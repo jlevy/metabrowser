@@ -172,6 +172,7 @@ It claims only `github.com` and `raw.githubusercontent.com`.
   `~` (decided 2026-10-01, `mb-fndz`). The location is the store’s bare repository,
   shown as a note after the address and in the headings’ tooltips, never as the start of
   a file’s address: the mirror has no working tree.
+  A control beside the short commit copies the full one.
   `/api/source/status` reports the same as `name`, `origin`, and `location`, and
   `location` is the one field of any route’s answer that names a path in the cache;
   [the architecture document](../../architecture/arch-repository-sources-and-provider-mirrors.md#what-a-mirrors-page-is-called-and-where-it-says-it-is-kept)
@@ -402,6 +403,12 @@ where the repository was stored:
   repository, where the Git objects are, and not the source’s record directory; and the
   page says it is a bare repository with no checked-out files, because there is no
   folder of these files to point at.
+- The status also carries the origin, as the reader gave it and in display form: a
+  `file://` origin is a path of theirs, shown with the home directory as `~` when it is
+  under it, as the location is.
+  No route’s answer spells the home directory out when it can be abbreviated.
+- The full commit is copied from a control beside the short one, since the main heading
+  no longer spells it.
 
 ## Open Engineering Choices
 

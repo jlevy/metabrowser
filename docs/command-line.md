@@ -269,16 +269,19 @@ All of this is stderr, and stdout carries what it carried before.
 A page served from a mirror is headed by the repository’s name, as a checkout of it
 would be called: the last segment of the origin’s address without `.git`, so `squares`
 for `https://github.com/jlevy/squares` and for `file:///srv/squares.git`. The ref and
-the short commit follow it, and the main heading reads `squares / README.md`.
+the short commit follow it, with a control that copies the full commit, and the main
+heading reads `squares / README.md`.
 
 The page also says where the mirror is kept.
-The main heading ends with a note, `mirror in ~/.metabrowser/cache/repository-stores/…`,
-and the tooltip on the name and on the note gives the origin, the full commit, and the
-whole path. That directory is a bare Git repository: nothing is checked out, and each
-page is read from a Git object at the pinned commit, so no folder holds these files.
+When the pane has room, the main heading ends with a note,
+`mirror in ~/.metabrowser/cache/repository-stores/…`; the tooltip on the name, on the
+note, and on the navigation heading gives the origin, the full commit, and the whole
+path. That directory is a bare Git repository: nothing is checked out, and each page is
+read from a Git object at the pinned commit, so no folder holds these files.
 `git -C <location> log --all` works there.
 
-The same three facts are data in `/api/source/status`:
+The same three facts are data in `/api/source/status`, and `--api` prints them as the
+route answered them:
 
 ```shell
 metab https://github.com/owner/repo --api /api/source/status
@@ -286,14 +289,15 @@ metab https://github.com/owner/repo --api /api/source/status
 
 - `name` is the repository’s name.
   A GitHub repository’s is lowercase, as its canonical address is.
-- `origin` is the address the mirror was cloned from.
+- `origin` is the address the mirror was cloned from, as you gave it.
+  A `file://` address under your home directory is shown with `~`:
+  `file://~/git/squares.git`.
 - `location` is the mirror’s bare repository, with your home directory as `~` when
-  `METABROWSER_HOME` is under it.
-  When it is not, the location is absolute, and `--api` prints it as `<ROOT>`, as it
-  prints a served folder’s own path.
+  `METABROWSER_HOME` is under it, and absolute when it is not.
 
 `location` is the only place a route’s answer names a path in the cache.
 File content, listings, errors, and every other envelope name none.
+All three fields are `null` for a folder.
 
 ### GitHub URLs
 

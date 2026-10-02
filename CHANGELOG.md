@@ -230,18 +230,25 @@ GitHub URLs and HTTPS:
   `squares main fe6399451f1c` and the main heading `squares / README.md`: the name a
   checkout of the repository would have, by one rule for every `https://` and `file://`
   origin and for a pull request, with the ref and the short commit beside it.
-  The main heading ends with `mirror in ~/.metabrowser/cache/repository-stores/…`, and
-  the tooltip on the name and on that note says what the directory is:
+  A control after the short commit copies the full one.
+  The main heading ends with `mirror in ~/.metabrowser/cache/repository-stores/…` when
+  the pane has room for it, and the tooltip on the name, on that note, and on the
+  navigation heading says what the directory is:
   `Mirror of <origin> at <commit>, stored in <location>: a bare Git repository, with no checked-out files.`
   Nothing is checked out, so the location is never shown as the start of a file’s
   address. The directory named is the store’s bare repository, where
-  `git -C <location> log --all` works, with your home directory as `~`.
-  `/api/source/status` reports the same as `name`, `origin`, and `location`; on a GitHub
-  mirror the name is lowercase, as the mirror’s canonical address is.
+  `git -C <location> log --all` works.
+  `/api/source/status` reports the same as `name`, `origin`, and `location`, and `--api`
+  prints them as answered.
+  The location, and a `file://` origin, have your home directory as `~` when they are
+  under it, so nothing spells the home directory out when it can be abbreviated.
+  On a GitHub mirror the name is lowercase, as the mirror’s canonical address is.
   This is the one place a route’s answer names a path in the cache: file content,
   listings, errors, and every other envelope still name none, and repository content
   still cannot read it, since a mirror’s Markdown renders inert and `/raw` is a sandbox
-  with no access to `/api`.
+  with no access to `/api`. A folder’s page is as it was.
+  One thing a folder’s server answers differs: `/api/source/status` carries the three
+  new fields, each `null`.
 
 - Pull-request data:
   `metab https://github.com/owner/repo/pull/<n> --api /api/plugin/github/pull` reads the
