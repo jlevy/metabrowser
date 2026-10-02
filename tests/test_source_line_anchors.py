@@ -145,6 +145,40 @@ def test_load_more_keeps_the_tab_the_reader_is_on() -> None:
     assert "await renderFile(nextCached, activeView || undefined, previewClaim, {" in load_more
 
 
+def test_gutter_and_code_take_one_line_height() -> None:
+    """One property sets the line height of both columns, so a number is on its line.
+
+    Code that is not highlighted keeps the pitch it had before the gutter. It was an
+    inline box in a block ``<pre>``, and a line was as tall as the ``<pre>``'s line
+    height, 21px, where a block's lines are as tall as its own, 18px. As a grid item it
+    is a block, so the stylesheet gives it the ``<pre>``'s: ``1lh`` in ``line-height``
+    is the parent's line height. Highlighted code was a block already and keeps 18px.
+
+    How tall a line is drawn is paint. Chrome's measurements are beside the rule in
+    ``static/styles.css``; what is held here is the rule that produces them, and
+    ``tests/dom/syntax-token-sdk-behavior.js`` holds that the renderer writes the class
+    it selects on exactly the code that is not highlighted.
+    """
+
+    css = (STATIC / "styles.css").read_text(encoding="utf-8")
+    shared = "line-height: var(--mb-source-line-height, 1.5);"
+    code = _rule(css, "pre.code-block.metabrowser-source-lines > code")
+    gutter = _rule(css, ".source-line-numbers")
+    assert shared in code
+    assert shared in gutter
+    assert code.count("\n  line-height:") == gutter.count("\n  line-height:") == 1
+    # The fallback is the line height every code block has.
+    assert "line-height: 1.5;" in _rule(css, ".code-block code")
+    # Set where the code is not highlighted, on the element both columns inherit from,
+    # and nowhere else. `:has()` is in a rule of its own, which an engine without it
+    # drops whole, leaving both columns the fallback.
+    unhighlighted = _rule(css, "pre.code-block.metabrowser-source-lines:has(> code.no-highlight)")
+    assert unhighlighted.split() == ["--mb-source-line-height:", "1lh;"]
+    assert css.count("--mb-source-line-height:") == 1
+    # The grid is what makes the code a block; without it this rule would not be needed.
+    assert "display: grid;" in _rule(css, "pre.code-block.metabrowser-source-lines")
+
+
 def test_gutter_and_highlight_use_the_code_line_box() -> None:
     css = (STATIC / "styles.css").read_text(encoding="utf-8")
     code = _rule(css, ".code-block code")
@@ -152,7 +186,6 @@ def test_gutter_and_highlight_use_the_code_line_box() -> None:
     for declaration in (
         "font-family: var(--font-mono);",
         "font-size: var(--mono-block-font-size);",
-        "line-height: 1.5;",
     ):
         assert declaration in code
         assert declaration in gutter

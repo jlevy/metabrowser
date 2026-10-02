@@ -4144,17 +4144,35 @@ pre.code-block code.hljs {
    and a multiple of `1lh` drifts off its line far down a large file. A view may
    stack several code blocks, such as a Markdown file's front matter and its body,
    beside one gutter; the script counts them in --mb-source-parts and offsets each
-   block's band by the lines above it in --mb-line-offset. */
+   block's band by the lines above it in --mb-line-offset.
+
+   The code and the gutter take one line height, --mb-source-line-height. As a grid
+   item the code is a block, and a block's lines are as tall as its own line height:
+   18px at the default sizes. That is what highlighted code always was, because
+   `pre code.hljs` is a block. Code that is not highlighted, which is a file or a
+   loaded window past the highlight bound, was an inline box in a block <pre>
+   before the gutter, and a line of it was as tall as the <pre>'s line height: 21px.
+   So for that code the property is `1lh`, which in `line-height` is the parent's
+   line height, the <pre>'s, and such a file is as tall as it was. Measured in
+   Chrome 152 at 100%: a 40,000-line text file's block is 840,032px, as in 0.11.0,
+   where the code's own line height made it 720,032px; at 110% a line is 23.08px
+   against 0.11.0's 23.11px, because the two round differently. One property
+   decides both columns, so an engine without :has() or `lh` gives both the code's
+   own line height and the numbers stay on their lines. */
 pre.code-block.metabrowser-source-lines {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: start;
   overflow: visible;
 }
+pre.code-block.metabrowser-source-lines:has(> code.no-highlight) {
+  --mb-source-line-height: 1lh;
+}
 pre.code-block.metabrowser-source-lines > code {
   grid-column: 2;
   min-width: 0;
   overflow-x: auto;
+  line-height: var(--mb-source-line-height, 1.5);
 }
 .source-line-numbers {
   position: relative;
@@ -4164,7 +4182,7 @@ pre.code-block.metabrowser-source-lines > code {
   color: var(--muted);
   font-family: var(--font-mono);
   font-size: var(--mono-block-font-size);
-  line-height: 1.5;
+  line-height: var(--mb-source-line-height, 1.5);
   text-align: right;
   white-space: pre;
   cursor: pointer;

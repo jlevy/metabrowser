@@ -178,6 +178,43 @@ async function main() {
     "shared source renderer should highlight extensionless source names",
   );
 
+  // Code that is not highlighted is written `no-highlight`, as a child of the gridded
+  // <pre>, and nothing else is. The stylesheet selects exactly that
+  // (`pre.code-block.metabrowser-source-lines:has(> code.no-highlight)`) to give such
+  // a window the line pitch it had before the gutter; tests/test_source_line_anchors.py
+  // holds the rule.
+  const unhighlighted =
+    /<pre class="code-block metabrowser-source-lines"><span class="source-line-numbers"[^>]*>[^<]*<\/span><code class="plaintext no-highlight">/;
+  const pastTheBound = `${"x".repeat(79)}\n`.repeat((512 * 1024) / 80 + 1);
+  check(
+    new TextEncoder().encode(pastTheBound).length > 512 * 1024,
+    "the fixture should be past the highlight bound",
+  );
+  for (const [label, data] of [
+    ["a text file past the highlight bound", { content: pastTheBound, ext: ".txt" }],
+    ["a source file past the highlight bound", { content: pastTheBound, ext: ".py" }],
+    [
+      "a file the server will not highlight",
+      { content: "a\n", ext: ".py", highlight_disabled: true },
+    ],
+  ]) {
+    ready.metabrowser.renderSourceView(sourceContainer, data);
+    check(unhighlighted.test(sourceContainer.innerHTML), `${label} should be written no-highlight`);
+  }
+  for (const [label, data] of [
+    ["a text file within the bound", { content: pastTheBound.slice(0, 512 * 1024), ext: ".txt" }],
+    ["a source file", { content: "a = 1\n", ext: ".py" }],
+    ["a file with no known language", { content: "a\n", ext: ".zzz" }],
+  ]) {
+    ready.metabrowser.renderSourceView(sourceContainer, data);
+    const pre = sourceContainer.innerHTML.slice(sourceContainer.innerHTML.indexOf("<pre"));
+    check(
+      pre.startsWith('<pre class="code-block metabrowser-source-lines">') &&
+        !pre.includes("no-highlight"),
+      `${label} is highlighted, so it should not be written no-highlight`,
+    );
+  }
+
   const markdownSource = fs.readFileSync(
     path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/source.js"),
     "utf-8",
