@@ -20,6 +20,7 @@ import json
 import os
 import re
 import sys
+import time
 from collections.abc import AsyncGenerator, Awaitable, Callable, Iterator
 from contextlib import asynccontextmanager, redirect_stderr, redirect_stdout
 from dataclasses import dataclass
@@ -505,10 +506,13 @@ def test_the_status_and_the_page_say_where_the_mirror_is_kept(
     file header to read back as it reads the served root.
     """
 
-    origin = _origin(tmp_path)
-    user = tmp_path / "user"
-    user.mkdir()
+    # Everything is under the reader's home directory: the application home, as it is
+    # by default, and the origin, as a repository of their own would be. So an answer
+    # that spelled the home directory out anywhere would be caught below.
+    user = tmp_path.resolve() / "user"
     home = user / ".metabrowser"
+    origin = _origin(user / "git")
+    assert origin.url == f"file://{user}/git/origin.git"
     monkeypatch.setenv("HOME", str(user))
     monkeypatch.setenv("METABROWSER_HOME", str(home))
     _allow_installed_git(monkeypatch)
@@ -517,37 +521,48 @@ def test_the_status_and_the_page_say_where_the_mirror_is_kept(
 
     (store,) = (home / "cache" / "repository-stores").iterdir()
     location = f"~/.metabrowser/cache/repository-stores/{store.name}/repository.git"
+    shown_origin = "file://~/git/origin.git"
     # It is what it is said to be: a bare repository, with the pinned commit in it.
     assert (store / "repository.git" / "HEAD").is_file()
     assert not (store / "repository.git" / ".git").exists()
 
     def tip(commit: str) -> str:
         return (
-            f"Mirror of {origin.url} at {commit}, stored in {location}: "
+            f"Mirror of {shown_origin} at {commit}, stored in {location}: "
             "a bare Git repository, with no checked-out files."
         )
 
     with TestClient(server.app) as client:
-        status = client.get("/api/source/status").json()
+        answered = client.get("/api/source/status")
+        status = answered.json()
         assert status["name"] == "origin"
-        assert status["origin"] == origin.url
+        assert status["origin"] == shown_origin
         assert status["location"] == location
 
-        shell = client.get(f"/view/{_wire('README.md')}").text
+        page = client.get(f"/view/{_wire('README.md')}")
         assert (
             f'data-served-root="origin" data-mirror-location="{location}" '
             f'data-mirror-tip="{tip(origin.second)}">'
-        ) in shell
-        # Abbreviated wherever it stands: the home directory is spelled out nowhere.
-        assert str(user) not in shell
-        assert str(user) not in json.dumps(status)
+        ) in page.text
+        # A mirror's page is marked as one, and carries the module that draws the note
+        # and the commit's copy control, inline and whole.
+        assert '<main class="container mirror-source">' in page.text
+        module = (server.STATIC_DIR / "mirror-heading.js").read_text(encoding="utf-8")
+        assert page.text.count(f">{module}</script>") == 1
+        # Abbreviated wherever it stands: no answer spells the home directory out, in
+        # its body or in a header, though the origin and the mirror are both under it.
+        for response in (answered, page, client.get("/view/"), client.get("/api/tree")):
+            assert str(user) not in response.text, response.url
+            assert str(user) not in str(response.headers), response.url
 
         # Another commit of the same repository is the same mirror in the same place,
         # and the sentence names the commit now served.
         switched = client.post("/api/source/pin", json={"oid": origin.first})
         assert switched.status_code == 200, switched.text
         assert switched.json()["status"]["location"] == location
+        assert switched.json()["status"]["origin"] == shown_origin
         assert switched.json()["status"]["name"] == "origin"
+        assert str(user) not in switched.text
         assert f'data-mirror-tip="{tip(origin.first)}">' in client.get("/view/").text
 
 
@@ -833,44 +848,92 @@ def _probe_urls(
             urls.append(f"{path}?revision={pin_commit}&file={probe}")
             urls.append(f"{path}?left={other_commit}&right={pin_commit}&file={probe}")
             urls.append(f"{path}?left={pin_commit}&right={other_commit}")
+            # A request the route's own validation refuses, for its error answer.
+            urls.append(f"{path}?kind=bogus&limit=-1&depth=x&q=" + "q" * 300)
             continue
         filled = re.sub(r"\{revision\}|\{rest:path\}", other_commit, path)
         filled = re.sub(r"\{[^}]+\}", probe, filled)
         urls.append(filled)
+    if path.startswith("/pull/"):
+        # A pull-request address is a number: the page that says none is served.
+        urls.append("/pull/7")
     return urls
 
 
-# The routes that answer with the page, and the one that answers with the status.
+# The routes that answer with the page, and where each source route's answer holds the
+# status envelope: the status route's is the envelope, and the two POST routes carry it
+# as ``status`` when they have one to give.
 _PAGE_ROUTES = ("/view/{path:path}", "/commit/{rest:path}", "/pull/{rest:path}")
 _STATUS_ROUTE = "/api/source/status"
+_PIN_ROUTE = "/api/source/pin"
+_REFRESH_ROUTE = "/api/source/refresh"
+_STATUS_AT: dict[str, str | None] = {
+    _STATUS_ROUTE: None,
+    _PIN_ROUTE: "status",
+    _REFRESH_ROUTE: "status",
+}
 
 
-def _without_what_a_mirror_may_name(
-    route: Route, response: Any, *, origin: str, location: str, commit: str
-) -> str:
-    """The answer's text without the mirror's origin and location, each checked in place.
+@dataclass(frozen=True, slots=True)
+class _ServedMirror:
+    """What a served mirror's answers may name, and what no answer may."""
 
-    A served mirror says where it is kept and what it mirrors (mb-fndz), and the rule
-    is exact about where: the status envelope's ``origin`` and ``location``, and the two
-    attributes of the page's navigation heading that carry the same text. Each is
-    checked to be exactly that text and then taken out, so whatever the caller finds in
-    what is left stands somewhere the rule does not allow. Every other route's answer
-    comes back whole.
-    """
+    origin: str
+    location: str
+    home: Path
+    origin_path: Path
+    store_key: str
 
-    text: str = response.text
-    if route.path == _STATUS_ROUTE and response.status_code == 200:
-        body = response.json()
-        assert (body.pop("origin"), body.pop("location")) == (origin, location)
-        return json.dumps(body)
-    if route.path in _PAGE_ROUTES and response.status_code == 200:
-        heading = (
-            f' data-mirror-location="{location}" data-mirror-tip="Mirror of {origin} at '
-            f'{commit}, stored in {location}: a bare Git repository, with no checked-out files."'
+    def sentence(self, commit: str) -> str:
+        return (
+            f"Mirror of {self.origin} at {commit}, stored in {self.location}: "
+            "a bare Git repository, with no checked-out files."
         )
-        assert text.count(heading) == 1, route.path
-        return text.replace(heading, "")
-    return text
+
+    def remainder(self, path: str, response: Any, *, commit: str) -> tuple[str, bool]:
+        """The answer, headers and body, without the mirror's origin and location.
+
+        A served mirror says where it is kept and what it mirrors (mb-fndz), and the
+        rule is exact about where: the ``origin`` and ``location`` of the status
+        envelope, wherever a source route answers with it, and the two attributes of the
+        page's navigation heading that carry the same text. Each is checked to be
+        exactly that text and then taken out, so whatever is found in what is left
+        stands somewhere the rule does not allow: another field, another route, an error
+        message, a header. The second value says whether anything was taken out.
+        """
+
+        headers = "".join(f"{name}: {value}\n" for name, value in response.headers.items())
+        text: str = response.text
+        if path in _STATUS_AT:
+            try:
+                body = response.json()
+            except ValueError:
+                body = None
+            member = _STATUS_AT[path]
+            status = body if member is None else body.get(member) if body else None
+            if isinstance(status, dict) and "subject" in status:
+                named = (status.pop("origin"), status.pop("location"))
+                assert named == (self.origin, self.location), (path, named)
+                return headers + json.dumps(body), True
+        if path in _PAGE_ROUTES and response.status_code == 200:
+            heading = (
+                f' data-mirror-location="{self.location}" data-mirror-tip="{self.sentence(commit)}"'
+            )
+            assert text.count(heading) == 1, path
+            return headers + text.replace(heading, ""), True
+        return headers + text, False
+
+    def assert_unnamed(self, path: str, response: Any, *, commit: str, where: object) -> bool:
+        """Nothing of the cache or the origin stands outside the two allowed places.
+
+        Not the application home or the origin's path, and not the parts a location is
+        made of either: the store's key, or the name of the directory the stores are in.
+        """
+
+        rest, named = self.remainder(path, response, commit=commit)
+        for private in (str(self.home), str(self.origin_path), self.store_key, "repository-stores"):
+            assert private not in rest, (private, where, response.status_code)
+        return named
 
 
 def test_a_served_pin_reads_nothing_outside_its_own_store(
@@ -884,11 +947,13 @@ def test_a_served_pin_reads_nothing_outside_its_own_store(
     The cache records that name the other source are refused outright, and a request
     from the sandboxed preview origin cannot read ``/api`` at all.
 
-    No answer names the application home or the served origin either, with one
-    exception that is held to its exact form: the status envelope and the page's
-    heading say where the served mirror is kept and what it mirrors
-    (``_without_what_a_mirror_may_name``). A file's content, a listing, an error, and
-    every other envelope still name no path.
+    No answer names the application home or the served origin either, nor the store's
+    key or the directory the stores are in, with one exception that is held to its exact
+    form: the status envelope and the page's heading say where the served mirror is kept
+    and what it mirrors (``_ServedMirror.remainder``). That covers each answer's
+    headers as well as its body, the error answers of the GET routes, and what the two
+    POST routes that change the served pin answer, their refusals included. A file's
+    content, a listing, an error, and every other envelope still name no path.
     """
 
     home = _home(tmp_path, monkeypatch)
@@ -937,7 +1002,13 @@ def test_a_served_pin_reads_nothing_outside_its_own_store(
     store_key = origin_identity(origin.url).store_id.removeprefix("sha256:")
     location = str(home / "cache" / "repository-stores" / store_key / "repository.git")
     assert Path(location, "HEAD").is_file()
-    named = 0
+    mirror = _ServedMirror(
+        origin=origin.url,
+        location=location,
+        home=home,
+        origin_path=origin.path,
+        store_key=store_key,
+    )
     with TestClient(server.app) as client:
         # The probe can see a leak: the pin's own content does come back.
         own = client.get("/api/file", params={"path": _wire("README.md")})
@@ -945,25 +1016,76 @@ def test_a_served_pin_reads_nothing_outside_its_own_store(
         assert client.get(f"/api/git/commit/{other.first}").status_code == 404
         # The provider diagnostic has no provider to report on a pin.
         assert client.get("/_debug/inventory").json()["capability"] == "filesystem"
+        named: set[str] = set()
+        errored: set[str] = set()
         for route, url in probed:
             response = client.get(url)
             assert _OTHER_SOURCE_CANARY not in response.text, url
             assert _WORKING_DIRECTORY_CANARY not in response.text, url
             assert str(other.path) not in response.text, url
-            rest = _without_what_a_mirror_may_name(
-                route, response, origin=origin.url, location=location, commit=origin.second
-            )
-            named += rest != response.text
-            assert str(home) not in rest, url
-            assert str(origin.path) not in rest, url
-        # The exception was met: the status and the page did name the location.
-        assert named >= 2
+            if mirror.assert_unnamed(route.path, response, commit=origin.second, where=url):
+                named.add(route.path)
+            if response.status_code >= 400:
+                errored.add(route.path)
+        # The exception was met: the status and each page did name the location. And
+        # the sweep read error answers too, the listing's own refusal among them.
+        assert named == {_STATUS_ROUTE, *_PAGE_ROUTES}
+        assert {"/api/source/refs", "/api/file", "/api/tree"} <= errored
+
+        # The two routes that change what is served, with every kind of answer each
+        # gives: a switch and its status, a selection the mirror lacks while the fetch
+        # for it runs and after it ends, and each refusal.
+        def post(path: str, body: object, *, commit: str) -> Any:
+            response = client.post(path, json=body)
+            if mirror.assert_unnamed(path, response, commit=commit, where=(path, body)):
+                named.add(f"POST {path} {response.status_code}")
+            return response
+
+        def settled() -> None:
+            deadline = time.monotonic() + 50
+            while client.get(_STATUS_ROUTE).json()["refreshing"]:
+                assert time.monotonic() < deadline, "the refresh did not finish"
+                time.sleep(0.02)
+
+        assert post(_REFRESH_ROUTE, {}, commit=origin.second).status_code in (200, 202)
+        settled()
+        assert post(_REFRESH_ROUTE, {"for": "branch"}, commit=origin.second).status_code == 400
+        assert (
+            post(_REFRESH_ROUTE, ["not", "an", "object"], commit=origin.second).status_code == 400
+        )
+        assert post(_PIN_ROUTE, {"ref": ":/first"}, commit=origin.second).status_code == 400
+        assert post(_PIN_ROUTE, {}, commit=origin.second).status_code == 400
+        assert post(_PIN_ROUTE, {"ref": "x" * 5000}, commit=origin.second).status_code == 413
+        # A branch the mirror lacks: pending while the one fetch for it runs, then
+        # refused in the route's own words, which is where an error message would leak.
+        assert post(_PIN_ROUTE, {"ref": "gone"}, commit=origin.second).status_code == 202
+        settled()
+        missing = post(_PIN_ROUTE, {"ref": "gone"}, commit=origin.second)
+        assert (missing.status_code, missing.json()["code"]) == (404, "selection_not_found")
+        # Another cached source's commit is not in this store.
+        assert post(_PIN_ROUTE, {"oid": other.first}, commit=origin.second).status_code in (
+            202,
+            404,
+        )
+        settled()
+        switched = post(_PIN_ROUTE, {"oid": origin.first}, commit=origin.first)
+        assert (switched.status_code, switched.json()["changed"]) == (200, True)
+        # The page of the commit now served names it in the same two attributes.
+        after = client.get("/view/")
+        assert mirror.assert_unnamed(_PAGE_ROUTES[0], after, commit=origin.first, where="/view/")
+        assert post(_PIN_ROUTE, {"oid": origin.second}, commit=origin.second).status_code == 200
+        assert {
+            f"POST {_REFRESH_ROUTE} 202",
+            f"POST {_PIN_ROUTE} 202",
+            f"POST {_PIN_ROUTE} 200",
+        } <= named | {f"POST {_REFRESH_ROUTE} 200"}
+
         # The one POST that reads content: KPress rendering, by path and by source.
         for probe in probes:
             rendered = client.post("/api/kpress/render", json={"path": probe, "view": "document"})
             assert _OTHER_SOURCE_CANARY not in rendered.text, probe
             assert _WORKING_DIRECTORY_CANARY not in rendered.text, probe
-            assert str(home) not in rendered.text, probe
+            mirror.assert_unnamed("/api/kpress/render", rendered, commit=origin.second, where=probe)
 
         for route in ("/api/cache/layout", "/api/cache/sources", "/api/cache/stores"):
             refused = client.get(route)
