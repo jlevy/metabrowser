@@ -10,6 +10,7 @@ env:
   METABROWSER_LOG_LEVEL: "WARNING"
 patterns:
   TIMESTAMP: '\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z'
+  APP_HOME: '[^\s"]+/home'
 before: >-
   uv --config-file "$TRYSCRIPT_TEST_DIR/../../uv.toml" run --frozen --no-sync
   --project "$TRYSCRIPT_TEST_DIR/../.." python "$TRYSCRIPT_TEST_DIR/../github_pull_fixture.py" .
@@ -779,6 +780,9 @@ status: 200
   "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
   "ref": "refs/pull/7/head",
   "ref_name": "refs/pull/7/head",
+  "name": "demo",
+  "origin": "https://github.com/octo/demo",
+  "location": "[APP_HOME]/cache/repository-stores/65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4/repository.git",
   "refreshable": true,
   "latest": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
   "ref_on_origin": true,

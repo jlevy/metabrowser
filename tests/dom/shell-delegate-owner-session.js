@@ -40,6 +40,7 @@ const LIFTED = [
   "esc",
   "queryHtml",
   "servedRoot",
+  "mirrorHeading",
   "eventTargetElement",
   "ownedControlAttr",
   "isOwnedControl",

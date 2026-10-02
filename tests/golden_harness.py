@@ -361,6 +361,9 @@ class Labels:
         self.add(identity.url, f"<ORIGIN{suffix}>")
         self.add(identity.path, f"<PATH{suffix}>")
         self.add(identity.store_id, f"<{store}{suffix}>")
+        # The store's directory is named by its key, which a served mirror's status
+        # shows in its location.
+        self.add(identity.store_id.removeprefix("sha256:"), f"<STORE_KEY{suffix}>")
         self.add(identity.source_id, f"<{source}{suffix}>")
         self.add(identity.slug, f"<SLUG{suffix}>")
         return identity
@@ -395,12 +398,17 @@ def elide_clone_timing(stderr: str) -> str:
     return _FETCHED_AGO.sub(rf"\g<1>{AGE_PLACEHOLDER}", stderr)
 
 
-# The two lines of a command's stderr that say where clones are kept, whole: a URL, the
-# home's cache directory and nothing under it, and for a hit how long ago it was fetched.
+# The lines of a command's output that name the application home, whole. Two are a
+# command's own stderr and say where clones are kept: a URL, the home's cache directory
+# and nothing under it, and for a hit how long ago it was fetched. The third is the one
+# field of a route's answer that names a path in the cache: the location of a served
+# mirror in its status, which is the store's bare repository and nothing else.
 _HOME_LINES: Final = (
     r"cloning \S+ into {home}/cache",
     r"using the clone of \S+ cached in {home}/cache"
     r"(?:, fetched (?:less than a minute ago|\d+ (?:minute|hour|day)s? ago|<AGE>))?",
+    r'\s*"location": "{home}/cache/repository-stores/(?:<STORE_KEY[^>"]*>|[0-9a-f]{{64}})'
+    r'/repository\.git",',
 )
 
 
@@ -428,17 +436,19 @@ def label_home(text: str, home: Path, label: str = HOME_LABEL) -> str:
     """*text* with the application home *home* as *label*, checked to be where it may be.
 
     A first clone says where it goes and a cache hit says where it was found, each in
-    one line of stderr. The home is named nowhere else: not in a route's answer, an
-    identity line, or an error. And those lines name the cache directory and stop: a
-    line that went on to a store or a staging entry under it is refused here, before
-    an update could write it into a transcript.
+    one line of stderr, and a served mirror's status says where the mirror is kept, in
+    its ``location``. The home is named nowhere else in what a command prints: not in an
+    identity line or an error, and not in any other field of a route's answer. The
+    clone's lines name the cache directory and stop, and the location is the store's
+    bare repository exactly: a line that went on to a staging entry, or named a store
+    anywhere else, is refused here, before an update could write it into a transcript.
     """
 
     labelled = text.replace(str(home), label)
     allowed = [re.compile(line.format(home=re.escape(label))) for line in _HOME_LINES]
     for line in labelled.splitlines():
         assert label not in line or any(pattern.fullmatch(line) for pattern in allowed), (
-            f"the application home is named outside a clone's own lines: {line}"
+            f"the application home is named outside the lines that may name it: {line}"
         )
     return labelled
 
@@ -578,6 +588,39 @@ def isolate_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> CliSandbox:
 # ── Recording what a served mirror answers ──────────────────────────
 
 JSON_BODY: Final = {"content-type": "application/json"}
+
+# What stands in a recording for the directory a recorder builds in, for the application
+# home inside it, and for the key of each store it serves, in the order it names them.
+# A stand-in key is not hexadecimal, so nothing takes it for a real one:
+# devtools/golden_fixup.py patterns a real key in a transcript, and a session's
+# transcript must keep these literal.
+SANDBOX_STAND_IN: Final = "/sandbox"
+APPLICATION_HOME_STAND_IN: Final = "/sandbox/application-home"
+STORE_KEY_STAND_INS: Final = ("store-key-1", "store-key-2")
+
+
+def stand_in_sandbox(
+    recorded: Any, sandbox: Path, *store_keys: str, home: Path | None = None
+) -> Any:
+    """*recorded* without what names this run: its directory, and its stores' keys.
+
+    A served mirror's status says what it mirrors and where it is kept. Both are paths
+    under the directory the recorder built them in, and a store's key is derived from
+    its origin's address, so from that directory too. Each exact value is replaced
+    wherever it stands, and nothing is replaced by a field's name: a path a response
+    should not carry shows in the recording as ``/sandbox/…`` rather than being hidden.
+
+    *home* is the application home when a location spells it out, which it does when
+    the home is not under the user's home directory.
+    """
+
+    assert len(store_keys) <= len(STORE_KEY_STAND_INS), "add a stand-in for each store served"
+    text = json.dumps(recorded)
+    for key, stand_in in zip(store_keys, STORE_KEY_STAND_INS, strict=False):
+        text = text.replace(key, stand_in)
+    if home is not None:
+        text = text.replace(json.dumps(str(home))[1:-1], APPLICATION_HOME_STAND_IN)
+    return json.loads(text.replace(json.dumps(str(sandbox))[1:-1], SANDBOX_STAND_IN))
 
 
 def answer(response: Any) -> dict[str, Any]:

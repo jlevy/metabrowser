@@ -72,6 +72,7 @@ from metabrowser.git.tree_source import (
     split_git_container_wire,
 )
 from metabrowser.mirror_refresh import CompanionRefresh, serve_mirror
+from metabrowser.normalize import MIRROR_LOCATION_PATHS
 from metabrowser.source import (
     SubjectOpenError,
     attach_owned_subject,
@@ -404,6 +405,8 @@ def run_pin_api(
                 log_level=log_level,
                 index_timeout_s=index_timeout_s,
                 normalize_root=published.git_dir,
+                # The status says where the mirror is kept, which is that directory.
+                normalize_keep=MIRROR_LOCATION_PATHS,
                 untrusted=True,
                 no_active_content=no_active_content,
                 allow_edits=False,

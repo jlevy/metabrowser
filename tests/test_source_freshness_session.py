@@ -57,6 +57,7 @@ from tests.golden_harness import (
     read_recording,
     run_session,
     serve_published,
+    stand_in_sandbox,
 )
 from tests.required_tools import needs_git
 from tests.source_mirror_fixture import FETCHED_AT, build_origin
@@ -381,7 +382,9 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             recorded["folder"] = client.get("/api/source/status").json()
     finally:
         serve_mirror(None)
-    return _stand_in_times(recorded)
+    return stand_in_sandbox(
+        _stand_in_times(recorded), tmp_path, published.store_key, home=published.home
+    )
 
 
 def test_recording_is_what_a_served_mirror_answers(

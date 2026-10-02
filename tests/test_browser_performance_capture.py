@@ -6,6 +6,7 @@ import json
 import subprocess
 from pathlib import Path
 
+from tests.golden_harness import run_session
 from tests.required_tools import require_node
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -492,6 +493,24 @@ for (const [field, value] of [
         "phase_labels",
     ):
         assert f"{field}:" in result.stdout
+
+
+def test_probe_measures_a_framed_region_beside_its_frame() -> None:
+    """A stand-in is laid out by the container that sizes the region, not inside its frame.
+
+    The preview pane is a column's only child since it was wrapped in ``.preview-frame``.
+    A stand-in placed in that column took half of it, so ``frame_missing_px`` read 450 px
+    of a 900 px pane as missing though the shell ships the pane at full height. A region
+    with siblings is measured as before.
+    """
+
+    shapes = run_session("probe-stand-in-behavior.js")
+
+    full = {"settled": 900, "shipped": 900, "restored": True}
+    assert shapes["pane_in_the_row"] == full
+    assert shapes["pane_alone_in_a_frame"] == full
+    assert shapes["pane_alone_in_two_frames"] == full
+    assert shapes["region_with_siblings"] == {"settled": 300, "shipped": 225, "restored": True}
 
 
 def test_probe_exports_the_profile_time_origin() -> None:

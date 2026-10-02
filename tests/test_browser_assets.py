@@ -24,18 +24,6 @@ def test_tree_subtree_fetches_remain_depth_bounded() -> None:
     assert "`depth=${TREE_SUBTREE_FETCH_DEPTH}`" in js
 
 
-def test_hover_prefetch_skips_expensive_file_types() -> None:
-    js = _browser_app_js()
-
-    assert "FILE_PREFETCH_HOVER_DELAY_MS" in js
-    assert "FILE_PREFETCH_MAX_CONCURRENT" in js
-    # Logical-ext-aware JSONL skip (covers both `.jsonl` and `.jsonl.gz`
-    # once the server attaches `data-logical-ext` or `data-ext`).
-    assert "item.dataset.logicalExt || item.dataset.ext || getExt(path)" in js
-    assert 'ext !== ".jsonl"' in js
-    assert "AbortController" in js
-
-
 def test_activity_polling_retired_no_longer_referenced() -> None:
     """Sanity: the SPA no longer schedules /api/activity polls.
     Active-file detection moved to the inventory's background

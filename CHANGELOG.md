@@ -28,12 +28,19 @@ Plugin SDK:
   anchors, so every view that uses it gets both.
   The code is still the `<code>` inside `pre.code-block`, now beside a
   `span.source-line-numbers`; the copy button still copies only the code.
+  The markup it writes has LF where the source has CRLF or a lone CR, so that the gutter
+  counts the lines the browser shows.
+  The text in the page and the text the copy button copies are what they were: the
+  browser’s HTML parser already read both as LF when 0.11.0 assigned the markup.
 
 - `ensureKindAssets(kind)` rejects when the SDK’s own view helpers cannot be fetched.
   Those helpers, `renderSourceView` among them, are no longer part of the shell’s
   startup scripts; the SDK has them in place before any plugin’s code runs, so a plugin
   calls them exactly as before.
   When they cannot be fetched no plugin code has run, and the next call tries again.
+  While it waits for them it starts each plugin’s stylesheets and appends one
+  `<link rel="modulepreload">` per plugin module to the document head, so the module is
+  fetched early. Each module is still evaluated once, by the import that follows.
 
 - `window.metabrowser.sourceKind()` reports whether the served tree is a filesystem root
   or a `git_revision` pin.
@@ -60,16 +67,18 @@ Plugin SDK:
 - A hook that only needs bytes reads them on either source kind through
   `resolve_content`, `resolve_content_container`, `stat_content`, and
   `read_content_window`, over an opaque `ContentRef` that carries the identity to echo
-  back, the logical extension to dispatch on, and a fingerprint that changes when the
-  bytes do. Every read takes a required `max_bytes` and reports whether content continues
-  past the window; there is no unbounded variant, and the bound is on bytes rather than
-  on a decoded string.
-  Failures are one catchable `ContentReadError` family carrying a stable `code` and the
-  `http_status` Metabrowser’s own routes answer with, so a hook writes one error path
-  for a missing object, an oversized blob, an unreadable compressed stream, and a
-  timeout alike. The four built-in data hooks — binary bytes, structured parse, agent-log
-  charts, and diff documents — now read this way and no longer branch on the source
-  kind. These are additions to the Python helper surface; no manifest, kind, or
+  back, the logical extension to dispatch on, a fingerprint that changes when the bytes
+  do, and `stored_size`, the size the source stores: a file’s size on disk, which for a
+  compressed artifact is its compressed size, and a blob’s length.
+  Every read takes a required `max_bytes` and reports whether content continues past the
+  window; there is no unbounded variant, and the bound is on bytes rather than on a
+  decoded string. Failures are one catchable `ContentReadError` family carrying a stable
+  `code` and the `http_status` Metabrowser’s own routes answer with, so a hook writes
+  one error path for a missing object, an oversized blob, an unreadable compressed
+  stream, and a timeout alike.
+  The four built-in data hooks — binary bytes, structured parse, agent-log charts, and
+  diff documents — now read this way and no longer branch on the source kind.
+  These are additions to the Python helper surface; no manifest, kind, or
   `window.metabrowser` call changes.
   `content_source()`, added earlier in this unreleased series and never part of a
   release, is gone: it handed a hook the raw active source, which is what the content
@@ -221,7 +230,44 @@ GitHub URLs and HTTPS:
   (`using the clone of <url> cached in ~/.metabrowser/cache, fetched 3 hours ago`), so a
   second run reads differently from a first; `--show`, `--api`, and `--check-api` stay
   silent on a cache hit.
-  stdout and every route’s answer are unchanged, and neither names a cache path.
+  stdout is unchanged.
+
+- A page served from a mirror is headed by the repository’s name, and says where the
+  mirror is kept. Opening `https://github.com/jlevy/squares` used to head the main view
+  with the full commit ID (`fe6399451f1c… / README.md`), and nothing on the page said
+  the files came out of `~/.metabrowser`. Now the navigation heading reads
+  `squares main fe6399451f1c` and the main heading `squares / README.md`: the name a
+  checkout of the repository would have, by one rule for every `https://` and `file://`
+  origin and for a pull request, with the ref and the short commit beside it.
+  A control after the short commit copies the full one.
+  The main heading ends with `mirror in ~/.metabrowser/cache/repository-stores/…` when
+  the pane has room for it, and the tooltip on the name, on that note, and on the
+  navigation heading says what the directory is:
+  `Mirror of <origin> at <commit>, stored in <location>: a bare Git repository, with no checked-out files.`
+  Nothing is checked out, so the location is never shown as the start of a file’s
+  address. The directory named is the store’s bare repository, where
+  `git -C <location> log --all` works.
+  `/api/source/status` reports the same as `name`, `origin`, and `location`, and `--api`
+  prints them as answered.
+  The location, and a `file://` origin, have your home directory as `~` when they are
+  under it, so nothing spells the home directory out when it can be abbreviated.
+  On a GitHub mirror the name is lowercase, as the mirror’s canonical address is.
+  This is the one place a route’s answer names a path in the cache: file content,
+  listings, errors, and every other envelope still name none, and repository content
+  still cannot read it, since a mirror’s Markdown renders inert and `/raw` is a sandbox
+  with no access to `/api`. A folder’s page is as it was.
+  One thing a folder’s server answers differs: `/api/source/status` carries the three
+  new fields, each `null`.
+
+- The pull-request page and its routes are a new built-in plugin, `github`, and a
+  built-in plugin loads whatever is served.
+  So it is listed for a plain folder too: `metab --plugins` has a `github` row, the
+  `Plugins:` line a server prints when it starts names it, and `metab --doctor` counts
+  one plugin more than 0.11.0 did.
+  On a folder it serves nothing: `/api/plugin/github/pull` answers `state: "absent"`
+  with `reason: "no_pull_request"`, `/api/plugin/github/pull-markdown?part=body` answers
+  409 `no_pull_request`, and `--show /pull/<n>` says the source serves no pull request.
+  Without a valid `part`, `pull-markdown` answers 400 `invalid_part` on any source.
 
 - Pull-request data:
   `metab https://github.com/owner/repo/pull/<n> --api /api/plugin/github/pull` reads the
@@ -236,6 +282,8 @@ GitHub URLs and HTTPS:
   The record names Files changed as two pinned commits, the merge base and the head, as
   GitHub computes it, and `/api/plugin/diff/comparison` now honors
   `base_policy=merge_base` for such a comparison.
+  Two commits that share no history have no merge base, and the route answers 404
+  `diff_comparison` with a message that says so.
   Reading pull requests needs `gh` 2.81.0 or newer signed in to github.com, because
   `gh api` refuses unauthenticated requests.
   A pull request that cannot be read does not stop the command: with a cached record,
@@ -351,6 +399,11 @@ Repository cache:
   whose schemas are missing or no longer match their models is reported there instead of
   at the first acquisition.
   A healthy result reads as before.
+  The check costs time: `--doctor` takes about 250 ms longer than in 0.11.0, 385 ms to
+  629 ms of wall time and 350 ms to 560 ms of CPU time on an Apple M1 Pro, and does
+  1.78x the work in instructions retired.
+  That is the median of 15 back-to-back pairs of installed wheels with compiled
+  bytecode, taken on 2026-10-01 under a load average of 12 to 16.
 
 - The cache validates the records it writes with SoftSchema, so `softschema==0.8.1` is a
   new runtime dependency and the minimum `frontmatter-format` rises from 0.3.0 to 0.4.0,
@@ -406,6 +459,19 @@ Repository cache:
   No store read fetches from the origin.
   A pin always runs under the untrusted profile: `METAB_ACTIVE_CONTENT=1` and
   `METAB_ALLOW_EDITS=1` do not lift it, and `--allow-edits` on a pin is an error.
+
+- `--diff` does not open a URL or `file://` source.
+  `metab file:///path/to/repo --diff A..B` is refused with a message that says so and
+  names the modes that do open one.
+  It compares revisions of a repository served as a folder, as before.
+
+- Opening a URL or `file://` source needs a POSIX system.
+  The clone is kept under the application home, which is verified as private to the
+  current user with ownership and no-follow checks.
+  Where a platform lacks them, as Windows does, such a source is refused: “The
+  Metabrowser application home cannot be verified as private to the current user”, and
+  nothing is stored. Serving a folder does not use the home and is unaffected, which is
+  what the package’s `OS Independent` classifier still describes.
 
 - An argument that names an existing path is that path, whatever it resembles.
   A folder called `file:notes`, `a::b`, `me@host:dir`, `https:x`, or `-dash` (after
@@ -638,7 +704,10 @@ Content trust:
   KPress drew one, and `model.headings` pointing at the anchors.
   Trusted folders render as before.
   The pull-request page uses the same allowlist, now in core
-  (`src/metabrowser/inert_html.py`, `static/inert-html.js`).
+  (`src/metabrowser/inert_html.py`, `static/inert-html.js`). The Markdown plugin has
+  three more files for it, which `metab --plugin markdown` lists among its assets:
+  `inert-render.js`, `inert-toc.js`, and `place-rendered.js`, which places a render and
+  imports the other two on the first inert one.
 
 - With active content off the application page carries a Content-Security-Policy:
   scripts run only from the application’s `/static/` and `/plugin-static/` paths and the
@@ -730,6 +799,8 @@ Content source:
   `path_glob` stays filesystem-only.
   `/api/plugin/structured/parsed` reads the blob by `GitPath` and uses the object id as
   the cache key instead of a filesystem mtime.
+  Its `size` on a pin is the blob’s length; on a folder it is the file’s size on disk,
+  as in 0.11.0. Neither is capped at the parse limit.
   `/api/file` for a Git `.jsonl` blob is a parsed JSONL envelope; adapter sniffing
   claims `agent-log` when the bytes match Claude, Gemini, or Pi.
   `/api/plugin/agent-log/charts` reads that blob by `GitPath`. `/api/rollup` on a pin
@@ -804,9 +875,11 @@ Content source:
   Inventory open and archive containers are not switched yet.
 
 - The content-trust profile applies to a Git pin.
-  `--untrusted`, `--no-active-content`, and `--allow-edits` take effect on `--show` and
-  `--api` of a `file://` pin the way they do on a directory, and `GET /api/capabilities`
-  on that pin carries the resolved block, so Preview is withdrawn there too.
+  A pin runs under the untrusted profile on `--show` and `--api` as it does when it is
+  served, and `GET /api/capabilities` on a pin carries the resolved block,
+  `active_content: false` and `mutations: false`, so Preview is withdrawn there too.
+  `--untrusted` and `--no-active-content` are accepted on a pin and change nothing;
+  `--allow-edits` is refused.
 
 - `/api/tree` on a Git pin nests at most 20,000 nodes below the listed directory.
   Direct children are always listed; a directory whose children no longer fit is the
@@ -844,6 +917,12 @@ Fixes:
   address, which a browser reads as a separator, still is everywhere; under the
   untrusted profile the inert allowlist drops an escaped backslash from any reference.
   Wiki links refuse a backslash as before.
+
+- `/api/plugin/structured/parsed` no longer answers with a path on the host.
+  For a JSON or YAML file it could not open, such as one without read permission, 0.11.0
+  answered 200 with
+  `parse_error: "PermissionError: [Errno 13] Permission denied: '<the file's absolute path>'"`.
+  It now answers 404 `content_unavailable` and names the served path.
 
 - Load more on a large text file in a pin advances its notice and continues the text.
   A pin’s later window reported its own length as `bytes_read`, where the filesystem

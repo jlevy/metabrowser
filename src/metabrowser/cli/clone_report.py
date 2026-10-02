@@ -15,8 +15,9 @@ Git's own progress, which :mod:`metabrowser.git.progress` hands over as integers
 text Git or the origin wrote is printed here, only this module's words and those
 numbers.
 
-Everything goes to stderr. The destination is a path on the user's own terminal and is
-never part of a route's answer, which carries no cache path.
+Everything goes to stderr. The destination is the cache directory, named on the user's
+own terminal. A route's answer names a path in the cache in one place only: the
+``location`` of a served mirror in :class:`metabrowser.source_routes.SourceStatus`.
 
 Every line is written from the event loop that awaits Git, so one that could not be
 written at once is dropped (:func:`_writable_now`): a terminal stopped with Ctrl-S, or a

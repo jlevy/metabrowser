@@ -13,6 +13,7 @@ renderer rewrite when ``ruamel.yaml`` round-trip-with-comments lands.
 
 from __future__ import annotations
 
+import io
 import json
 import logging
 import os
@@ -182,16 +183,14 @@ def _collapse_yaml_documents(docs: list[Any]) -> Any:
     return meaningful or None
 
 
-# A payload plus the byte count that produced it, so a cache hit can answer
-# the envelope's `size` without re-reading the content.
-CachedPayload = tuple[StructuredPayload, int]
-
-_PAYLOAD_CACHE: LRUCache[tuple[str, str, str], CachedPayload] = LRUCache(
+_PAYLOAD_CACHE: LRUCache[tuple[str, str, str], StructuredPayload] = LRUCache(
     maxsize=STRUCTURED_CACHE_SIZE
 )
 
 
-def lookup_structured_payload(identity: str, ext: str, fingerprint: str) -> CachedPayload | None:
+def lookup_structured_payload(
+    identity: str, ext: str, fingerprint: str
+) -> StructuredPayload | None:
     """A payload parsed earlier for content that has not changed since.
 
     Keyed by the content reader's own fingerprint -- an mtime hash under an
@@ -203,7 +202,7 @@ def lookup_structured_payload(identity: str, ext: str, fingerprint: str) -> Cach
 
 
 def remember_structured_payload(
-    identity: str, ext: str, fingerprint: str, payload: CachedPayload
+    identity: str, ext: str, fingerprint: str, payload: StructuredPayload
 ) -> None:
     _PAYLOAD_CACHE[(identity, ext, fingerprint)] = payload
 
@@ -240,6 +239,32 @@ def _payload_from_parsed(parsed: Any, *, label: str) -> StructuredPayload:
     )
 
 
+def error_payload(exc: Exception) -> StructuredPayload:
+    """Content that could not be read as a tree, with the reason the client shows."""
+
+    return StructuredPayload(
+        parsed=None,
+        pretty_yaml="",
+        node_count=0,
+        max_depth=0,
+        parse_error=f"{type(exc).__name__}: {exc}",
+        truncated=False,
+    )
+
+
+def decode_text(data: bytes) -> str:
+    """*data* as the text a file opened in text mode reads as.
+
+    That is how 0.11.0 read a file, and what its answers depend on: a byte that is
+    not UTF-8 becomes U+FFFD and the rest still parses, so a Latin-1 file opens as a
+    tree; and CRLF and a lone CR read as LF, so a parse error counts lines and columns
+    as an editor does. Decoding strictly turned the first into a `UnicodeDecodeError`
+    and a Source view. A leading byte order mark is kept, as it was.
+    """
+
+    return io.TextIOWrapper(io.BytesIO(data), encoding="utf-8", errors="replace").read()
+
+
 def parse_structured_bytes(data: bytes, ext: str) -> StructuredPayload:
     """Parse JSON/YAML bytes. The only parse entry point; bounds are the caller's.
 
@@ -251,14 +276,7 @@ def parse_structured_bytes(data: bytes, ext: str) -> StructuredPayload:
     if len(data) > STRUCTURED_PARSE_MAX_BYTES:
         return truncated_payload()
     try:
-        parsed = _parse_text(data.decode("utf-8"), ext)
+        parsed = _parse_text(decode_text(data), ext)
     except Exception as exc:
-        return StructuredPayload(
-            parsed=None,
-            pretty_yaml="",
-            node_count=0,
-            max_depth=0,
-            parse_error=f"{type(exc).__name__}: {exc}",
-            truncated=False,
-        )
+        return error_payload(exc)
     return _payload_from_parsed(parsed, label="bytes")

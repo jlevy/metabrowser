@@ -189,7 +189,9 @@ def test_golden_file_url_acquire_and_reuse(tmp_path: Path, monkeypatch: pytest.M
     check_golden("cli-cache-acquire.txt", session.render())
 
 
-def test_the_home_label_is_refused_anywhere_but_the_two_whole_lines(tmp_path: Path) -> None:
+def test_the_home_label_is_refused_anywhere_but_the_whole_lines_that_may_name_it(
+    tmp_path: Path,
+) -> None:
     """A transcript update cannot write a path under the cache directory into a golden."""
 
     home = tmp_path / "home"
@@ -199,6 +201,10 @@ def test_the_home_label_is_refused_anywhere_but_the_two_whole_lines(tmp_path: Pa
         f"using the clone of {url} cached in {home}/cache, fetched 2 hours ago\n"
         f"using the clone of {url} cached in {home}/cache, fetched <AGE>\n"
         f"using the clone of {url} cached in {home}/cache\n"
+        # A served mirror's status says where it is kept: the store's bare repository,
+        # by its key or by the key's label.
+        f'  "location": "{home}/cache/repository-stores/{"0f" * 32}/repository.git",\n'
+        f'    "location": "{home}/cache/repository-stores/<STORE_KEY-A>/repository.git",\n'
     )
     assert label_home(allowed, home) == allowed.replace(str(home), HOME_LABEL)
     for leaked in (
@@ -210,8 +216,14 @@ def test_the_home_label_is_refused_anywhere_but_the_two_whole_lines(tmp_path: Pa
         f"note: store at {home}/cache\n",
         f'  "where": "{home}/cache"\n',
         f"Error: could not read {home}/cache\n",
+        # Only the location, and only the store's repository.
+        f'  "store": "{home}/cache/repository-stores/{"0f" * 32}/repository.git",\n',
+        f'  "location": "{home}/cache/repository-stores/{"0f" * 32}",\n',
+        f'  "location": "{home}/cache/sources/local--origin--0123456789ab",\n',
+        f'  "location": "{home}/cache/repository-stores/{"0f" * 32}/repository.git/objects",\n',
+        f'  "error": "not found in {home}/cache/repository-stores/{"0f" * 32}/repository.git",\n',
     ):
-        with pytest.raises(AssertionError, match="outside a clone's own lines"):
+        with pytest.raises(AssertionError, match="outside the lines that may name it"):
             label_home(leaked, home)
 
 

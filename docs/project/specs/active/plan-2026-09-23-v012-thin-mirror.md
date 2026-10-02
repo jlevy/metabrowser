@@ -166,6 +166,17 @@ It claims only `github.com` and `raw.githubusercontent.com`.
   that moves a ref turns an open cursor into a typed stale state with a reload action.
 - `repository_context` is supplied for GitHub mirrors, so github.com links inside a
   rendered README open locally.
+- A served mirror’s page is headed by the repository’s name, as a checkout of it would
+  be called (`squares` for `https://github.com/jlevy/squares`), with the ref and the
+  short commit beside it, and says where the mirror is kept, with the home directory as
+  `~` (decided 2026-10-01, `mb-fndz`). The location is the store’s bare repository,
+  shown as a note after the address and in the headings’ tooltips, never as the start of
+  a file’s address: the mirror has no working tree.
+  A control beside the short commit copies the full one.
+  `/api/source/status` reports the same as `name`, `origin`, and `location`, and
+  `location` is the one field of any route’s answer that names a path in the cache;
+  [the architecture document](../../architecture/arch-repository-sources-and-provider-mirrors.md#what-a-mirrors-page-is-called-and-where-it-says-it-is-kept)
+  holds the rule and its bounds.
 
 ### Background refresh
 
@@ -324,6 +335,7 @@ Follow-up pull requests extend those steps, in stack order:
 | [#248](https://github.com/jlevy/metabrowser/pull/248) | View file at either side of a changed file, from a commit’s diff or Files changed | `mb-zb5t` |
 | [#249](https://github.com/jlevy/metabrowser/pull/249) | Existing folders with URL-like names are served; a state for an unfetched commit; not-found wording | `mb-n80y`, `mb-4kuc`, `mb-2nu0` |
 | [#250](https://github.com/jlevy/metabrowser/pull/250) | Plans, roadmap, architecture documents, and changelog brought in line with the delivered stack | `mb-myum` |
+| [#263](https://github.com/jlevy/metabrowser/pull/263) | A served mirror is headed by the repository’s name and says where it is kept ([Decision (2026-10-01)](#decision-2026-10-01-by-the-user)) | `mb-fndz` |
 
 Later: pull-request list, inline review anchoring, SSH, Enterprise hosts, issues,
 checkout attachment, and rebind.
@@ -362,6 +374,41 @@ checkout attachment, and rebind.
   This replaces the earlier default of explicit refresh only.
 - Opt-in live smoke tests may clone public repositories and make read-only `gh api`
   calls.
+
+## Decision (2026-10-01, by the user)
+
+After opening `https://github.com/jlevy/squares` on the stack’s tip, where the main
+heading read `fe6399451f1c01635c12c9aa5c176822da5dbc42 / README.md` and nothing said
+where the repository was stored:
+
+> the name of the folder in the main view nav and titles should not be an inscrutable
+> hash just because we opened up the folder from a github url.
+> the apparent folder should be the name of the repo, as it would be if it was checked
+> out. and it should be visible where that folder actually resides, it should not be
+> hidden, it should be in our .metabrowser cache directory.
+> this could be via tooltips at least, and perhaps a better indicator using
+> ~/.metabrowser etc on the main heading on the page view, as we do with other regular
+> folders
+
+- A served mirror shows the repository’s name wherever it showed a commit ID as its
+  root: the navigation heading, the main heading’s address, and the heading’s tooltip.
+  The commit stays beside the ref, short, with the full commit in the tooltips.
+- A served mirror shows where it is kept, in the main heading and in a tooltip, with the
+  home directory as `~`.
+- This changes a rule the stack held, that no route’s answer names a cache or store
+  path. The location is now named in one field of the status envelope and in the page’s
+  heading, and nowhere else.
+  Untrusted content still cannot read it.
+- Decided while implementing (`mb-fndz`): the directory named is the store’s bare
+  repository, where the Git objects are, and not the source’s record directory; and the
+  page says it is a bare repository with no checked-out files, because there is no
+  folder of these files to point at.
+- The status also carries the origin, as the reader gave it and in display form: a
+  `file://` origin is a path of theirs, shown with the home directory as `~` when it is
+  under it, as the location is.
+  No route’s answer spells the home directory out when it can be abbreviated.
+- The full commit is copied from a control beside the short one, since the main heading
+  no longer spells it.
 
 ## Open Engineering Choices
 

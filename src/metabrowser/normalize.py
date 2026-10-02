@@ -51,11 +51,25 @@ ELAPSED_PATHS: tuple[tuple[str, ...], ...] = (
 )
 
 
+# Where a served mirror's status says the mirror is kept: ``location`` in the envelope
+# of ``/api/source/status``, and in the ``status`` member of what the pin and refresh
+# routes answer. It is the store's own directory, which is also the root a pin's
+# output is normalized against, so it would be printed as the placeholder. It is the
+# one path the envelope exists to report, so a pin's commands keep it; a transcript
+# patterns the part of it no fixture can pin (``devtools/golden_fixup.py``, and the
+# labels in ``tests/golden_harness.py``).
+MIRROR_LOCATION_PATHS: tuple[tuple[str, ...], ...] = (
+    ("location",),
+    ("status", "location"),
+)
+
+
 @dataclass(frozen=True, slots=True)
 class NormalizeContext:
-    """The served root whose sandbox path is rewritten."""
+    """The served root whose sandbox path is rewritten, and the fields kept as they are."""
 
     root: Path
+    keep: tuple[tuple[str, ...], ...] = ()
 
 
 # A prefix matches only where a real delimiter follows, so `/tmp/sb` rewrites
@@ -85,6 +99,8 @@ def normalize_payload(value: Any, ctx: NormalizeContext) -> Any:
 
 
 def _normalize(value: Any, ctx: NormalizeContext, *, path: tuple[str, ...]) -> Any:
+    if path in ctx.keep:
+        return value
     if path in CURSOR_PATHS and isinstance(value, str) and value:
         return CURSOR_PLACEHOLDER
     if path in ELAPSED_PATHS and isinstance(value, (int, float)) and not isinstance(value, bool):

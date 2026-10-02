@@ -1128,11 +1128,13 @@ class GitTreeSource:
         # The requested path stays the route identity even when a symlink was
         # followed, matching what ``/api/file`` and ``/raw`` echo back. The
         # extension comes from the resolved leaf, which is what a kind check
-        # has to see.
+        # has to see. The size is the one its tree listing attached, which is
+        # absent only for a blob the store does not hold.
         return ContentRef(
             identity=path.to_wire(),
             logical_ext=blob_logical_ext(entry.path),
             fingerprint=entry.oid,
+            stored_size=entry.size,
             reader=_GitBlobReader(source=self, entry=entry),
         )
 
@@ -1451,8 +1453,9 @@ class _GitBlobReader:
     async def stat(self) -> ContentStat:
         size = self.entry.size
         if size is None:
-            # A listing that could not attach sizes, or a blob reached by
-            # following a symlink out of a listing that did.
+            # A listing attaches a size to every blob the store holds, one reached
+            # through a symlink included, so this is a blob it lacks. Asking for it
+            # by name answers that as `object_unavailable`.
             size = (await self.source.object_info(self.entry.oid)).size
         return ContentStat(size=size)
 

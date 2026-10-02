@@ -124,8 +124,9 @@ metab file:///path/to/origin.git --path docs/guide.md --no-open
 Serving a `file://` source acquires it, or reuses the cached store, and serves the
 commit its default branch names in the store: the commit it named at the last fetch.
 The banner prints the source and a `Revision:` line with the full commit and the branch;
-the navigation heading shows the branch and short commit, and hovering it shows the full
-commit.
+the navigation heading shows the repository’s name, then the branch and short commit,
+and hovering it shows the full commit and where the mirror is kept; see
+[What a mirror’s page is called](#what-a-mirrors-page-is-called).
 `--path` takes a path within that commit, spelled as `--show` accepts it (`docs`,
 `docs/`, `./docs`, or a `GitPath` wire), and the banner prints a directory’s address
 with a trailing slash.
@@ -261,8 +262,42 @@ start no clone. `--show`, `--api`, and `--check-api` print nothing for a cache h
 script runs them many times against one clone, and `/api/source/status` reports the last
 fetch as data.
 
-All of this is stderr.
-stdout carries what it carried before, and no route’s answer names a cache path.
+All of this is stderr, and stdout carries what it carried before.
+
+### What a mirror’s page is called
+
+A page served from a mirror is headed by the repository’s name, as a checkout of it
+would be called: the last segment of the origin’s address without `.git`, so `squares`
+for `https://github.com/jlevy/squares` and for `file:///srv/squares.git`. The ref and
+the short commit follow it, with a control that copies the full commit, and the main
+heading reads `squares / README.md`.
+
+The page also says where the mirror is kept.
+When the pane has room, the main heading ends with a note,
+`mirror in ~/.metabrowser/cache/repository-stores/…`; the tooltip on the name, on the
+note, and on the navigation heading gives the origin, the full commit, and the whole
+path. That directory is a bare Git repository: nothing is checked out, and each page is
+read from a Git object at the pinned commit, so no folder holds these files.
+`git -C <location> log --all` works there.
+
+The same three facts are data in `/api/source/status`, and `--api` prints them as the
+route answered them:
+
+```shell
+metab https://github.com/owner/repo --api /api/source/status
+```
+
+- `name` is the repository’s name.
+  A GitHub repository’s is lowercase, as its canonical address is.
+- `origin` is the address the mirror was cloned from, as you gave it.
+  A `file://` address under your home directory is shown with `~`:
+  `file://~/git/squares.git`.
+- `location` is the mirror’s bare repository, with your home directory as `~` when
+  `METABROWSER_HOME` is under it, and absolute when it is not.
+
+`location` is the only place a route’s answer names a path in the cache.
+File content, listings, errors, and every other envelope name none.
+All three fields are `null` for a folder.
 
 ### GitHub URLs
 

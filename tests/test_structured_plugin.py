@@ -186,22 +186,20 @@ def test_payload_cache_is_keyed_on_the_content_fingerprint(tmp_path: Path) -> No
 
     f = tmp_path / "a.json"
     f.write_text('{"v": 1}')
-    first = f.read_bytes()
     parser_mod.remember_structured_payload(
-        "a.json", ".json", "h1", (parse_structured_bytes(first, ".json"), len(first))
+        "a.json", ".json", "h1", parse_structured_bytes(f.read_bytes(), ".json")
     )
     assert parser_mod.lookup_structured_payload("a.json", ".json", "h2") is None
 
     f.write_text('{"v": 2}')
-    second = f.read_bytes()
     parser_mod.remember_structured_payload(
-        "a.json", ".json", "h2", (parse_structured_bytes(second, ".json"), len(second))
+        "a.json", ".json", "h2", parse_structured_bytes(f.read_bytes(), ".json")
     )
 
     stale = parser_mod.lookup_structured_payload("a.json", ".json", "h1")
     fresh = parser_mod.lookup_structured_payload("a.json", ".json", "h2")
-    assert stale is not None and stale[0].parsed == {"v": 1}
-    assert fresh is not None and fresh[0].parsed == {"v": 2}
+    assert stale is not None and stale.parsed == {"v": 1}
+    assert fresh is not None and fresh.parsed == {"v": 2}
 
 
 def test_node_count_and_depth_primitive() -> None:
