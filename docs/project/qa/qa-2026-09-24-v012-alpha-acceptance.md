@@ -8,8 +8,9 @@ The failed rows were rerun on the fixes in #243; see [Rerun on #243](#rerun-on-2
 [addendum](#addendum-2026-09-30) records what changed after the run.
 M03b and M08b were rerun on View file at the stack’s tip, and both pass; see
 [Rerun on #250](#rerun-on-250-view-file-landing-fixes).
-The [addendum of 2026-10-01](#addendum-2026-10-01) records the verification of the final
-tip, which is not an acceptance rerun.
+The [addendum of 2026-10-01](#addendum-2026-10-01) records the verification of the tip
+as it was at #257, which is not an acceptance rerun, and the
+[second addendum](#second-addendum-2026-10-01) what followed the same day.
 
 The procedure is the manual matrix in the
 [alpha testing plan](../specs/active/plan-2026-09-22-v012-alpha-testing.md), adapted to
@@ -802,6 +803,86 @@ it.
   window of about 315,000 very short lines.
   Stock Chrome opened the same file in about 3 s, so this is recorded as a limit of that
   pane, and the runbook’s fixture uses ordinary line lengths.
+
+## Second Addendum (2026-10-01)
+
+What followed the first addendum the same day, as the stack grew from #257 to #265. It
+changes no result above.
+No row of the manual matrix was run again.
+
+### Start-Up Against v0.11.0, With Compiled Bytecode
+
+The first addendum’s start-up pairs, and exp-037 before them, were taken in a shell that
+sets `PYTHONDONTWRITEBYTECODE`, so neither build had compiled bytecode and each start
+compiled every module it imported.
+The comparison was repeated with bytecode compiled in both environments: fifteen
+back-to-back pairs of v0.11.0 against a wheel built from #261’s head, `c16912f8`, at a
+load average of 12 to 16 (`mb-67s1`, now closed).
+
+| Mode | Instructions retired, median pair ratio | Pairs above 1.1x | Wall clock, median pair ratio |
+| --- | ---: | ---: | ---: |
+| `--show` | 1.033 | 0 of 15 | 1.068 (528 to 577 ms) |
+| `--api /api/tree` | 1.040 | 0 of 15 | 1.028 (577 to 601 ms) |
+| `--version` | 0.994 | 0 of 15 | 1.026 (384 to 413 ms) |
+| Server spawn to its first `/api` answer | 1.039 | 0 of 15 | 0.980 (513 to 503 ms) |
+| `--doctor` | 1.779 | 15 of 15 | 1.533 (385 to 629 ms) |
+
+Start-up does 3 to 4 percent more work, and serving is unchanged.
+The wall-clock ratios of single pairs still spread, from 0.94 to 1.49 for `--show`, with
+7 of its 15 pairs above 1.1x, so the instruction counts are the steadier reading.
+`--doctor` is about 250 ms slower by design, since it validates the cache record
+contracts (#246); accepting that is the user’s decision.
+#264 makes `startup_pairs.py` refuse to compare builds in different bytecode states, and
+exp-037 has a dated addendum.
+
+### The Release Rehearsal
+
+The release checklist’s steps 1 to 5 were rehearsed on `c16912f8` against v0.11.0
+(`mb-cf6y`; exp-038; [#265](https://github.com/jlevy/metabrowser/pull/265)). Nothing was
+tagged, released, or merged.
+
+| Step | Result |
+| --- | --- |
+| 1. Clean worktree, candidate confirmed | Pass |
+| 2. `make verify` | Pass in one run: 3,877 tests passed and 8 skipped, seven of the live-GitHub tier and one that the macOS file system cannot run; 38 tryscript goldens; clean audits; distribution checks |
+| 3. Previous-release performance loop | Not cleared. Four `compare_builds` runs found no row or tally difference, `--walk` output was byte-identical, and every responsiveness and correctness gate passed in all 32 headed captures. The `first_row_ms` wall-clock gate was missed by both builds on a loaded machine: v0.11.0 in 6 of 11 captures with bytecode, the candidate in 5 of 11 |
+| 4. CI on the exact commit | Pass, 9 of 9 |
+| 5. Changes reviewed, version proposed | 0.12.0. The changelog gaps it found are corrected in #264 |
+
+Still owed: the headed pairs and the backend pairs on a quiet machine, on the final tip,
+with bytecode in both environments.
+
+### The Landing Gate
+
+The gate (`mb-2g6f`) compares the stack with v0.11.0 on regular folders.
+Its evidence audit and its data differential ran at #259’s head, `f62c16b1`; its browser
+differential had not reported when this was written.
+[Changes to existing behavior](../reviews/review-2026-10-01-v012-changes-to-existing-behavior.md)
+holds what they found: the intended changes, the three differences restored in #264, and
+two regressions being fixed above #265.
+
+### Runbook Steps Run on #265’s Tree
+
+The steps the runbook changed for #261 and #263 were run on #265’s tree (`25540fa2`,
+which adds only documents) with an isolated application home and a `file://` origin, in
+stock Chrome 152, headless.
+
+| Step | What ran | Result |
+| --- | --- | --- |
+| Pins | The stack listing, the chain, the fork check, and `ALPHA_PR` | Stack #218 lists #125 to #265. The fork check printed `#260, #259`, because #260’s base had not yet been moved onto #265; with that base simulated the chain ends at #260 and the check prints nothing |
+| 4.1 | `--no-serve` twice | `cloning … into <scratch home>/cache`, then `cloned … in 9.5 s (14.2 MiB)`; the second run prints the one `using the clone …` line; the identity lines are the same |
+| 5.1, 5.2 | Serve the pin; the wire | stdout names no cache path. The status carries `name`, an `origin` under the home directory as `file://~/…`, and the `location`. `/raw`, `/api/cache/sources`, and the opaque origin answer as written |
+| 5.3, steps 1 and 2 | The mirror’s headings | The navigation heading reads name, branch, commit; the branch gives way first as the column narrows, then the name. The copy control copies the full commit. The `mirror in` note is whole or absent. `git -C <location> log` lists commits |
+| 5.11, steps 2 to 4 | View file on the fixture mirror | The headings read `origin trunk 6ac4c8b5eb94` and `origin a5232ab93056`, as the step now says |
+
+**Finding.** `mb-hj9h`: on a mirror whose name is long
+(`metabrowser-v012-landing-docs`), the name is drawn with an ellipsis while the note
+still shows. The name’s box is 2/64 of a pixel narrower than its text when the note is
+cut. A mirror named `squares` or `metabrowser` does not show it.
+Step 2 of 5.3 names it.
+
+**Not run.** 4.8 and 4.9, which clone from github.com: their text follows #261’s
+description.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
