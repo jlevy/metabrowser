@@ -124,9 +124,9 @@ record on both builds:
 | `size` in `/api/plugin/structured/parsed` was the decoded bytes read, capped at the parse limit, where v0.11.0 answered the size on disk | The evidence audit, and the data differential independently | Restored. A 69-byte `small.json.gz` answers `size: 69` on both |
 | The same route decoded strictly: a file with bytes that are not UTF-8, and a compressed file that cannot be decoded, answered differently | #264’s independent review | Restored. A Latin-1 `.json` opens as a tree with U+FFFD on both |
 
-Two more, found by the data differential, are **not yet fixed** at #265. Both still
-reproduced when run for this record, and both are being fixed in the layer above #265
-(`mb-55tr`):
+Two more, found by the data differential, are **not fixed** at #265. Both still
+reproduced there when run for this record, and both are fixed in
+[#267](https://github.com/jlevy/metabrowser/pull/267) (`mb-55tr`):
 
 | Difference | On v0.11.0 | On the stack |
 | --- | --- | --- |

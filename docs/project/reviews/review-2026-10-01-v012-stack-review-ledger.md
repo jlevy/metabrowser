@@ -17,11 +17,11 @@ The previous one is the
 [stack readiness review of 2026-09-22](https://github.com/jlevy/metabrowser/pull/216#issuecomment-5786877244),
 a comment on #216 that covers the stack through #225. This record is evidence for the
 landing decision (`mb-n2ro`), not that decision.
-[#260](https://github.com/jlevy/metabrowser/pull/260), which adds this ledger, sits
-above #265, changes documents only, and has no row.
-Nor has the layer being written above #265 to fix the two regressions the landing gate’s
-data differential found (`mb-55tr`): it had no pull request when this record was last
-revised.
+[#260](https://github.com/jlevy/metabrowser/pull/260), which adds this ledger, sits at
+the top of the stack, changes documents only, and has no row.
+Nor has [#267](https://github.com/jlevy/metabrowser/pull/267), the layer between #265
+and #260 that fixes the regressions the landing gate’s data and browser differentials
+found (`mb-55tr`): its independent review had not run when this record was last revised.
 
 ## Limits
 

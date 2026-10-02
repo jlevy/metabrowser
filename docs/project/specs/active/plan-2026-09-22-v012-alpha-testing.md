@@ -376,8 +376,9 @@ These commands give the current state, and they win where this section disagrees
 none; the two upper groupings were dissolved and their pull requests appended to #218.
 No branch, base, or head changed.
 Two layers are still to be appended to its top with `gh stack link 218 <pr>`, when they
-are ready: the layer above #265 that fixes the two regressions named below, and then
-[#260](https://github.com/jlevy/metabrowser/pull/260), which carries this section.
+are ready: [#267](https://github.com/jlevy/metabrowser/pull/267), which fixes the
+regressions named below, and then [#260](https://github.com/jlevy/metabrowser/pull/260),
+which carries this section.
 Two pull requests stay outside it:
 [#247](https://github.com/jlevy/metabrowser/pull/247), the do-not-merge reference
 branch, and [#262](https://github.com/jlevy/metabrowser/pull/262), below.
@@ -394,8 +395,14 @@ branch, and [#262](https://github.com/jlevy/metabrowser/pull/262), below.
   - The data differential is done: it reports no unexplained difference, and two
     regressions, `STRUCTURED_CACHE_SIZE=0` breaking structured views and
     `/api/plugin/diff/document` answering 404 for a file not named `.patch` or `.diff`.
-    Both are being fixed in the layer above #265 (`mb-55tr`).
-  - The browser differential had not reported when this was written.
+    Both are fixed in [#267](https://github.com/jlevy/metabrowser/pull/267) (`mb-55tr`),
+    which also restores two browser differences: a stray attribute on every tree folder
+    row, and the 21px line pitch of source that is not highlighted.
+  - The browser differential is done on an earlier head (`f62c16b1`): 1,320 steps, no
+    error or failed action on either build, and the accept rule not yet met.
+    The hover prefetch it reports is fixed in #264, two more are fixed in #267, and one
+    (a below-the-fold image fetched earlier, with no cause established) is open.
+    All three checks are owed a run on the final head.
 
   Its accept rule also asks for the written list of intended changes to existing
   behavior, which is
