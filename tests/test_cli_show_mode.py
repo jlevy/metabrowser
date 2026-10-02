@@ -119,6 +119,34 @@ def test_show_does_not_leak_the_sandbox_path(root: Path, capsys: Any) -> None:
     assert str(root) not in capsys.readouterr().out
 
 
+def test_show_on_a_folder_reads_the_dotenv_chain_as_often_as_0_11_0(
+    root: Path, monkeypatch: pytest.MonkeyPatch, capsys: Any
+) -> None:
+    """Once itself and once resolving plugin directories, before the server import.
+
+    python-dotenv warns about a malformed ``.env`` each time the chain is read, so each
+    further read repeats every warning. The shared core a pin also enters read it twice
+    more, after the server was imported and the registry was already fixed.
+    """
+
+    from metabrowser import dotenv
+    from metabrowser.cli import plugin_paths, show_cli
+
+    reads: list[int] = []
+
+    def counted() -> list[Path]:
+        reads.append(1)
+        return dotenv.load_dotenv_chain()
+
+    monkeypatch.setattr(show_cli, "load_dotenv_chain", counted)
+    monkeypatch.setattr(plugin_paths, "load_dotenv_chain", counted)
+
+    run_show(root, path="README.md")
+
+    assert "kind: markdown" in capsys.readouterr().out
+    assert len(reads) == 2
+
+
 def test_show_reports_a_missing_path_as_an_error(root: Path) -> None:
     with pytest.raises(CLIError, match="404"):
         run_show(root, path="missing.md")
