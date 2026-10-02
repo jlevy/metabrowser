@@ -145,16 +145,23 @@ Keep its name and contents out of anything you record.
 Verify the live SHAs before a run.
 They move.
 
-The v0.12 work is one linear chain of open pull requests above `main`. GitHub’s formal
-stack [#218](https://github.com/jlevy/metabrowser/stack/218) lists only the foundation
-layers, through #226
-(`gh api repos/jlevy/metabrowser/stacks/218 --jq '[.pull_requests[].number]'`); the pull
-requests above them chain on by base branch, so the top of that stack is not the tip.
+The v0.12 work is one linear chain of open pull requests above `main`, linked on GitHub
+as stack [#218](https://github.com/jlevy/metabrowser/stack/218). This lists the stack
+from the bottom:
+
+```shell
+gh api repos/jlevy/metabrowser/stacks/218 \
+  --jq '.pull_requests[] | "#\(.number) \(.head.ref)"'
+```
+
+A layer that is not yet linked to the stack chains onto its top by base branch, so the
+stack’s last pull request may not be the tip.
 Two branches sit beside the chain and are left out of the commands below:
 `reference/v012-hosted-review`, a do-not-merge branch, and
 `codex/v012-page-connections`, the fix for `mb-tdmd`, which is held until after the
-landing. This lists the chain from the bottom, and its last line is the pull request to
-test:
+landing.
+This lists the chain from each open pull request’s base and head, linked or not,
+and its last line is the pull request to test:
 
 ```shell
 gh pr list --repo jlevy/metabrowser --state open --limit 200 \
@@ -213,8 +220,9 @@ git fetch -q origin main
 git merge-base --is-ancestor origin/main HEAD; echo "exit:$?"
 ```
 
-**Pass:** The fork check printed nothing, `ALPHA_PR` is the number on the chain’s last
-line, every check passes, and both ancestry commands print `exit:0`.
+**Pass:** The chain begins with the stack’s pull requests in the stack’s order, the fork
+check printed nothing, `ALPHA_PR` is the number on the chain’s last line, every check
+passes, and both ancestry commands print `exit:0`.
 
 Run both the Repository Library and HTML regression steps on the same selected
 integration tip. HTML trust has landed and is inherited through `main`; no separate
