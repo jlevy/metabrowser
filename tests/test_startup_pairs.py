@@ -80,6 +80,17 @@ def _harness() -> Any:
 pairs = _harness()
 
 
+@pytest.fixture(autouse=True)
+def _environment_package_only(monkeypatch: pytest.MonkeyPatch) -> None:  # pyright: ignore[reportUnusedFunction]
+    """The stand-in ``metab`` imports the package its own environment holds.
+
+    A ``PYTHONPATH`` in the shell that runs the tests would put another ``metabrowser``
+    ahead of it, as it would for a real build under the harness.
+    """
+
+    monkeypatch.delenv("PYTHONPATH", raising=False)
+
+
 def _distribution(
     site: Path, name: str, files: dict[str, str], *, requires: tuple[str, ...] = ()
 ) -> None:
@@ -366,11 +377,10 @@ def test_a_run_writes_no_bytecode_and_lets_no_process_it_starts_write_any(
         started.append((" ".join(command), options.get("env")))
         return real_popen(command, **options)
 
-    monkeypatch.setattr(pairs.subprocess, "Popen", popen)
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(pairs.subprocess, "Popen", popen)
+        records = _run(tmp_path, builds)
 
-    records = _run(tmp_path, builds)
-
-    monkeypatch.undo()
     assert [row["bytecode"] for row in records] == ["uncached", "uncached"]
     # Each start imported the package and what it requires, and left nothing behind.
     for metab in builds.values():
