@@ -77,13 +77,17 @@ Run each step on the public repository it names, then repeat steps 1 to 3 with a
 repository and a pull request of your own.
 
 1. **A repository URL.** The two `metab` commands of 4.8, and its served check.
-   **Pass:** `acquired:` names the canonical `https://github.com/<owner>/<repo>`, and
-   the second command answers from the cache with no clone.
+   **Pass:** the first clone says on stderr where it goes
+   (`cloning … into <scratch home>/cache`), shows its progress, and ends with a
+   `cloned …` line; `acquired:` names the canonical `https://github.com/<owner>/<repo>`;
+   and the second command answers from the cache with no clone.
+   The served page is headed by the repository’s name, not a commit ID, and says where
+   the mirror is kept, as steps 1 and 2 of 5.3 describe.
 2. **A file URL with lines.** Serve
    `https://github.com/<owner>/<repo>/blob/<branch>/<path>#L10-L20` the way 4.8 serves
    its `README#L1`, for a file of at least 20 lines.
    **Pass:** the banner’s `Selection:` line names the file and `#L10-L20`, and the page
-   opens on that file with lines 10 to 20 highlighted and line 10 in view, as in step 9
+   opens on that file with lines 10 to 20 highlighted and line 10 in view, as in step 10
    of 5.3.
 3. **A pull-request URL.** The command at the end of 5.7, and its steps 1 to 6.
    **Pass:** the page matches the pull request on github.com, including its Files
@@ -109,8 +113,9 @@ or shows a different revision.
 
 1. **Safari and Firefox, as well as Chrome.** Repeat 3.4 and 5.3 in each.
    Look at what a hidden pane cannot show: focus rings while tabbing, the layout at each
-   width, the HTML Preview frame, the print preview, and Back in steps 4 and 6 of 5.11,
-   which each browser’s back/forward cache treats differently.
+   width, what gives way as a mirror’s headings narrow (steps 1 and 2 of 5.3), the HTML
+   Preview frame, the print preview, and Back in steps 4 and 6 of 5.11, which each
+   browser’s back/forward cache treats differently.
    **Pass:** the same results in all three.
    **Fail:** a check that passes in one browser only.
 2. **A private repository your account can read.**
@@ -145,12 +150,16 @@ stack [#218](https://github.com/jlevy/metabrowser/stack/218) lists only the foun
 layers, through #226
 (`gh api repos/jlevy/metabrowser/stacks/218 --jq '[.pull_requests[].number]'`); the pull
 requests above them chain on by base branch, so the top of that stack is not the tip.
-This lists the chain from the bottom, and its last line is the pull request to test:
+Two branches sit beside the chain and are left out of the commands below:
+`reference/v012-hosted-review`, a do-not-merge branch, and
+`codex/v012-page-connections`, the fix for `mb-tdmd`, which is held until after the
+landing. This lists the chain from the bottom, and its last line is the pull request to
+test:
 
 ```shell
 gh pr list --repo jlevy/metabrowser --state open --limit 200 \
   --json number,baseRefName,headRefName,isDraft \
-  --jq 'map(select(.headRefName | startswith("reference/") | not)) as $prs
+  --jq 'map(select(.headRefName | test("^reference/|^codex/v012-page-connections$") | not)) as $prs
         | $prs[] | select(.number == 125)
         | recurse(.headRefName as $head | $prs[] | select(.baseRefName == $head))
         | "#\(.number) \(.headRefName)\(if .isDraft then " (draft)" else "" end)"'
@@ -164,14 +173,14 @@ This prints a line for each fork and nothing while the chain is linear:
 ```shell
 gh pr list --repo jlevy/metabrowser --state open --limit 200 \
   --json number,baseRefName,headRefName \
-  --jq 'map(select(.baseRefName != "main" and (.headRefName | startswith("reference/") | not)))
+  --jq 'map(select(.baseRefName != "main"
+                    and (.headRefName | test("^reference/|^codex/v012-page-connections$") | not)))
         | group_by(.baseRefName)[] | select(length > 1)
         | "forked at \(.[0].baseRefName): \(map("#\(.number)") | join(", "))"'
 ```
 
 If it prints anything, stop and ask which line to test.
-These commands leave out `reference/v012-hosted-review`, a do-not-merge branch beside
-the chain. Do not check out the superseded crumb slices (#208, #210, #211–#215).
+Do not check out the superseded crumb slices (#208, #210, #211–#215).
 
 | Lane | PR | Branch | Tip | What it adds |
 | --- | --- | --- | --- | --- |
@@ -185,7 +194,7 @@ push:
 ```shell
 ALPHA_PR="$(gh pr list --repo jlevy/metabrowser --state open --limit 200 \
   --json number,baseRefName,headRefName \
-  --jq 'map(select(.headRefName | startswith("reference/") | not)) as $prs
+  --jq 'map(select(.headRefName | test("^reference/|^codex/v012-page-connections$") | not)) as $prs
         | [$prs[] | select(.number == 125)
            | recurse(.headRefName as $head | $prs[] | select(.baseRefName == $head))]
         | last | .number')"
@@ -918,6 +927,9 @@ and up to about a minute, while its requests wait for a connection; it may then 
 Back each hold one connection open.
 Clicking files in the tree does not load a new page and is not affected; if a page
 stalls, open the address in a new tab and close the old one.
+This is unchanged from 0.11.0, which stalls the same way, and a mirrored repository is
+not affected, because its pages open no event stream.
+The fix is held until after the landing (`mb-tdmd`).
 
 **Pass:** Every check as described, in both themes.
 The console shows no error except the browser’s own request for `/favicon.ico`, which
@@ -977,10 +989,11 @@ between the two, and in a pipe a whole status line appears only if the clone run
 ten seconds. The second prints one line,
 `using the clone of ${FILE_URL} cached in <scratch home>/cache, fetched less than a minute ago`,
 and no `cloning` line.
-Those lines are the only place the scratch home may be named, in this step and in every
-later one that clones or reuses the store; none names the store’s own directory under
-`repository-stores` or a staging entry.
-Staging is empty after publish.
+Those lines are the only place a command’s output may name the scratch home, in this
+step and in every later one that clones or reuses the store; none names the store’s own
+directory under `repository-stores` or a staging entry.
+The one exception is the mirror’s `location`, which `/api/source/status` answers and a
+served page shows (5.2 and 5.3). Staging is empty after publish.
 
 **Fail:** Port bind; different store on the second call without a reason; home paths in
 stdout; a `cloning` line on the second call; raw Git progress text such as
@@ -1132,7 +1145,13 @@ uv --config-file uv.toml run --frozen metab \
 The first command prints `acquired: https://github.com/octocat/hello-world`, then
 `selection: blob`, a `pin:` on `branch master`, `path: README`, and `lines: L1`. The
 second answers from the cache with the same revision and no clone.
-On a terminal, the first clone reports its phases and elapsed time on stderr.
+The first clone reports on stderr in every mode, in a pipe as on a terminal: the
+destination line, `cloning … into <scratch home>/cache`; then its progress, as one
+status line redrawn in place on a terminal and as a whole line at most every ten seconds
+otherwise; then `cloned <url> in <time> (<size>)`. A cache hit prints one line,
+`using the clone of <url> cached in <scratch home>/cache, fetched <age>`, under
+`--no-serve` and when serving, and no clone line at all under `--show`, `--api`, and
+`--check-api`, so the second command says nothing of a clone.
 A signed-in `gh` is used only for github.com, and a public repository needs none.
 The smoke test calls the real `gh` only for the read-only size check; its clones run
 with a fake `gh` that answers nothing.
@@ -1161,7 +1180,8 @@ network.
 ### 4.9 A terminal hangup cancels a first clone
 
 Start a first clone of a large public repository in a terminal you can close, then close
-the terminal while it reports `fetching every object`.
+the terminal while it reports `receiving objects`, which the status line reaches within
+seconds of `fetching every object`.
 
 **Pass:** No `git` or `git-remote-https` process for that URL remains
 (`ps -A -o pid,args | grep remote-https`), and the scratch home’s `cache/staging` is
@@ -1245,11 +1265,15 @@ uv --config-file uv.toml run --frozen metab "${FILE_URL}" --no-open --port 8471
 
 **Pass:** `Serving ${FILE_URL} at http://127.0.0.1:8471/view/`, then
 `Revision: <full commit> (<branch>)` with the `revision:` from 4.1 and this checkout’s
-current branch, then `Plugins: …`. No cache path in the output.
-The process keeps serving.
+current branch, then `Plugins: …`. stdout names no cache path.
+stderr names the cache directory and stops there:
+`using the clone of ${FILE_URL} cached in <scratch home>/cache, fetched …`, or on a
+first run the `cloning … into <scratch home>/cache` line and
+`cloned … in <time>; starting the server`. The process keeps serving.
 If the port was taken, use the one the banner names below.
 
-**Fail:** A refusal; a different revision; a `METABROWSER_HOME` path in the output.
+**Fail:** A refusal; a different revision; a `METABROWSER_HOME` path on stdout; a store,
+staging, or `repository.git` path on stderr.
 
 Starting instead with `--path docs/` or `--path ./README.md` prints a URL ending in the
 directory’s `/view/g1-…/` or the file’s `/view/g1-…`; `--path nope.txt` exits 1 with
@@ -1271,7 +1295,12 @@ curl -s "$BASE/api/capabilities"; echo
 **Pass:**
 
 - `/api/source/status` has `"subject": "git_revision"`, `"pin"` equal to the `Revision:`
-  commit, `"ref": "refs/remotes/origin/<branch>"`, and `"ref_name": "<branch>"`.
+  commit, `"ref": "refs/remotes/origin/<branch>"`, and `"ref_name": "<branch>"`. It
+  names the mirror: `"name": "<name>"`, where `<name>` is the last segment of
+  `${FILE_URL}` without a `.git` suffix; `"origin"` equal to `${FILE_URL}`; and
+  `"location": "<scratch home>/cache/repository-stores/<64 hex digits>/repository.git"`.
+  An origin or a scratch home under your home directory is shown with `~` (`file://~/…`,
+  `~/…`).
 - `/raw?path=…` answers 200 with
   `content-security-policy: sandbox allow-popups allow-forms allow-downloads` (no
   `allow-scripts`) and `x-content-type-options: nosniff`.
@@ -1281,64 +1310,84 @@ curl -s "$BASE/api/capabilities"; echo
 - The opaque-origin request answers 403.
 - `/api/capabilities` reports `"active_content": false` and `"mutations": false`.
 
-**Fail:** Another source’s slug or a home path in any body; `allow-scripts` on `/raw`; a
-200 from `/api/cache/…` or from the opaque origin.
+**Fail:** Another source’s slug in any body; a home path anywhere but the status’s
+`location` (and its `origin`, when the origin is under the scratch home); a store key or
+`repository-stores` in any other field or header; `allow-scripts` on `/raw`; a 200 from
+`/api/cache/…` or from the opaque origin.
 
 ### 5.3 Browse the pin (M03)
 
 Open `http://127.0.0.1:8471/view/` in a browser, with its developer tools open.
 
-1. The navigation heading shows the branch, then a muted 12-character commit.
-   Narrow the navigation column: the branch name truncates with an ellipsis and the
-   commit stays visible.
-   Hovering the heading shows the full commit, the file count, and the size, and the
-   count and size equal `/api/rollup?depth=0` (a symlink counts as a file on a pin).
-   The file header prefix is the full commit.
-2. The tree lists this repository’s top-level entries with sizes; folders expand.
+1. The navigation heading shows the repository’s name, `<name>`, then the branch and a
+   12-character commit, both muted.
+   Widen the navigation column until all three show, then narrow it: the branch gives
+   way first, then the name truncates at its end, and the commit stays visible.
+   Move the pointer over the header: a copy control appears right after the commit; its
+   tooltip is `Copy commit`, and clicking it copies the full 40-character commit.
+   Hovering the heading shows `<name>`, the file count, the size, then
+   `Mirror of <origin> at <full commit>, stored in <location>: a bare Git repository, with no checked-out files.`,
+   with the origin and location as the status of 5.2 spells them; the count and size
+   equal `/api/rollup?depth=0` (a symlink counts as a file on a pin).
+   The file header prefix is `<name>`, not a commit.
+2. Open `README.md` in a window at least 1100px wide.
+   The file header reads `<name> / README.md`, then, toward the right and before the
+   file’s size, a muted `mirror in <location>`, cut with an ellipsis at its end if it
+   does not fit. Hovering the note, or `<name>` in the file header, shows the same
+   `Mirror of … with no checked-out files.` sentence, wrapped inside the tooltip.
+   Narrow the window: the note disappears whole (never a one- or two-letter stub) before
+   `<name>` or any part of the path narrows, and the file name is the last thing to
+   shorten. In a terminal, `git -C <location> log --all --oneline | head -3` lists
+   commits, and `curl -s "$BASE/api/source/status"` reports the same `name`, `origin`,
+   and `location`. One known defect (`mb-hj9h`): a name of about 24 characters or more
+   can lose its last letters to an ellipsis while the note still shows.
+   A checkout made by 0.1 is named `checkout` and does not show it.
+3. The tree lists this repository’s top-level entries with sizes; folders expand.
    The filter bar has no recency filter and no “Show ignored” control, and neither has
    the root folder’s Overview.
-3. `README.md` renders as a document, and its image (`images/metabrowser-overview.jpg`)
+4. `README.md` renders as a document, and its image (`images/metabrowser-overview.jpg`)
    loads. A relative link to another document opens it inside the pin, at a `/view/g1-…`
    address.
-4. A Markdown file’s Source tab, `package.json` (Tree), an image, and a binary file each
+5. A Markdown file’s Source tab, `package.json` (Tree), an image, and a binary file each
    open in their usual view.
-5. An HTML file offers only its Source tab.
-6. The Git tab lists history starting at the pinned commit.
+6. An HTML file offers only its Source tab.
+7. The Git tab lists history starting at the pinned commit.
    Selecting a commit shows its detail and a split or unified diff.
    Reloading that `/commit/…` address reopens the same commit.
-7. Reload a `/view/g1-…` address, use back and forward, and open a copied link in a
+8. Reload a `/view/g1-…` address, use back and forward, and open a copied link in a
    second tab: the same file and revision open each time.
-8. A text file over 2 MB (commit one to a scratch origin if the pinned repository has
+9. A text file over 2 MB (commit one to a scratch origin if the pinned repository has
    none) opens with “Showing 2.0 MB of …” above and below.
    Each Load more raises that figure in both notices, and the text continues where it
    stopped rather than repeating.
-9. Open `pyproject.toml` with `#L10-L20` added to its address.
-   Line numbers run beside the code, lines 10–20 are highlighted, and line 10 is
-   scrolled into view. Click line number 5: the address ends in `#L5`, the page does not
-   scroll, and Back leaves the file rather than returning to `#L10-L20`. Shift-click
-   line number 12: the address ends in `#L5-L12` and those lines are highlighted.
-   Edit the address to `#L30` and press Enter: line 30 is highlighted and scrolled to.
-   Edit it to `#L99999`: no line is highlighted, and a notice says the line is past the
-   end of the file and how many lines it has.
-   Copy the address into a second tab: the same lines are highlighted there.
-10. Press Tab until the line numbers take focus, which draws a focus ring around them.
+10. Open `pyproject.toml` with `#L10-L20` added to its address.
+    Line numbers run beside the code, lines 10–20 are highlighted, and line 10 is
+    scrolled into view. Click line number 5: the address ends in `#L5`, the page does not
+    scroll, and Back leaves the file rather than returning to `#L10-L20`. Shift-click
+    line number 12: the address ends in `#L5-L12` and those lines are highlighted.
+    Edit the address to `#L30` and press Enter: line 30 is highlighted and scrolled to.
+    Edit it to `#L99999`: no line is highlighted, and a notice says the line is past the
+    end of the file and how many lines it has.
+    Copy the address into a second tab: the same lines are highlighted there.
+11. Press Tab until the line numbers take focus, which draws a focus ring around them.
     Down moves the anchor one line and the address follows it; Shift+Down twice extends
     it to three lines; Page Down, Home, and End move it and bring the line into view.
     With VoiceOver on, each key reads the highlighted lines, such as “Lines 30–32”.
-11. Open `README.md` with `#L3-L5` added to its address, then with `?plain=1` and no
+12. Open `README.md` with `#L3-L5` added to its address, then with `?plain=1` and no
     anchor. Both open the Source tab rather than the document, and the first highlights
     lines 3–5. A Markdown file with front matter shows the front matter highlighted as
     YAML with the body’s numbering continuing below it, and an anchor in the body
     highlights the body’s lines.
-12. Open `package.json` (Tree), edit the address to end in `#L5`, then select the Source
+13. Open `package.json` (Tree), edit the address to end in `#L5`, then select the Source
     tab: line 5 is highlighted and scrolled into view.
 
 **Pass:** Every step as described; no console errors; no request leaves `127.0.0.1`.
 
-**Fail:** A blank heading, a different commit anywhere, a Preview tab on HTML, a broken
-image, a partial-content notice that keeps its figure after Load more, a line number
-beside the wrong line, a Markdown anchor that opens the document, or a request to
-another host.
+**Fail:** A blank heading, a commit ID where the repository’s name should be, a
+different commit anywhere, a `mirror in …` note that starts the address or shows as a
+stub, a tooltip whose text runs past its box, a Preview tab on HTML, a broken image, a
+partial-content notice that keeps its figure after Load more, a line number beside the
+wrong line, a Markdown anchor that opens the document, or a request to another host.
 
 ### 5.4 Reopen with the origin gone (M05)
 
@@ -1730,20 +1779,21 @@ pins. Open `http://127.0.0.1:8476/view/`, select the **Git** tab, and click `sec
    parent** says `Switch to a5232ab93056 and open README.md`.
 
 2. Click **View file** on `README.md`. The address becomes `/view/g1-UkVBRE1FLm1k`, the
-   document reads `First line, changed.`, and the file header starts with the full
-   commit `6ac4c8b5…`. Back returns to the commit’s diff, and Forward to the file.
+   document reads `First line, changed.`, and the file header starts with the
+   repository’s name, `origin`, while the navigation heading reads `origin`, the branch,
+   and `6ac4c8b5eb94`. Back returns to the commit’s diff, and Forward to the file.
    Open the same **View file** in a new tab (Cmd-click or Ctrl-click, or copy the link’s
    address into one): the same file at the same commit.
 
 3. Click **View at parent** on `src/old_name.py → src/new_name.py`. The page reloads at
-   `/view/g1-c3Jj/g1-b2xkX25hbWUucHk`, the navigation heading and the button under it
-   read `a5232ab93056`, the file is `src/old_name.py`, and the tree lists `gone.txt` and
-   no `added.txt`.
+   `/view/g1-c3Jj/g1-b2xkX25hbWUucHk`, the navigation heading reads
+   `origin a5232ab93056` and the button under it names `a5232ab93056`, the file is
+   `src/old_name.py`, and the tree lists `gone.txt` and no `added.txt`.
 
 4. Back. The commit’s diff opens again, now on the parent’s page, after one reload the
-   page does itself: the heading reads `a5232ab93056`, the tree lists the parent’s
-   files, and nothing says `Could not load files`. Every **View at parent** is the link
-   and every **View file** the switch, whose tooltip says
+   page does itself: the heading reads `origin a5232ab93056`, the tree lists the
+   parent’s files, and nothing says `Could not load files`. Every **View at parent** is
+   the link and every **View file** the switch, whose tooltip says
    `Switch to 6ac4c8b5eb94 and open …`. Click **View file** on `latin1-�.txt`: the page
    reloads on `6ac4c8b5eb94`, the file reads `a Latin-1 name, edited`, and the button
    under the heading reads `Branch: trunk` again, not `Commit: …`.
@@ -1924,6 +1974,11 @@ While executing, treat these as bugs if they happen:
 - Filesystem `--show` failing on this repository’s real paths
 - Pin `--show` / `--api` failing on those same paths when Git meets the floor
 - Cache inspect exposing origin objects through `/api/tree` on a cache route
+- A cache, store, or staging path anywhere but the three places that may name one: the
+  `location` of `/api/source/status`, a served mirror’s headings and their tooltips, and
+  the cache directory in stderr’s `cloning …` and `using the clone …` lines
+- A served mirror headed by a commit ID in place of the repository’s name
+- A first clone that prints nothing for more than about ten seconds while it runs
 - An existing folder refused because its name looks like a source, or a `scheme://`
   argument served as a folder
 - An unreadable folder walked or served as an empty tree
