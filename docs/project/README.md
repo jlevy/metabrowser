@@ -82,6 +82,10 @@ links to the document that covers each in depth.
 
 ## Reviews
 
+- [Changes to existing behavior in the v0.12 stack](reviews/review-2026-10-01-v012-changes-to-existing-behavior.md)
+  — the intended changes to what v0.11.0 already did, for sign-off: each with its
+  changelog entry, its pull request, and how it was checked against the v0.11.0 wheel;
+  and the unintended differences the landing gate found
 - [Per-layer review ledger for the v0.12 stack](reviews/review-2026-10-01-v012-stack-review-ledger.md)
   — what review each pull request of the stack had, its findings and their disposition,
   CI on each head, and the limits of that evidence
