@@ -3,27 +3,32 @@
 // A folder's page is headed by the folder's name, and its main heading starts with the
 // folder's path. A served mirror's page showed the full commit ID in both places and
 // said nowhere that its files came out of the cache (mb-fndz). It is now headed by the
-// repository's name, as a checkout would be called, and its main heading ends with a
-// note saying where the mirror is kept, whose tooltip says what that directory is.
+// repository's name, as a checkout would be called, with a control that copies the
+// full commit beside the short one, and its main heading ends with a note saying where
+// the mirror is kept, whose tooltip says what that directory is.
 //
 // The input is what the in-process application served, recorded in
 // tests/fixtures/mirror-heading-shell.json by tests/test_mirror_heading_session.py: for
-// a folder, a mirror, and a mirror whose origin has markup and an invisible character in
-// its name, the tab title, the navigation heading and its data attributes, and the
-// fields of /api/source/status the heading is rendered from.
+// a folder, a mirror, and a mirror whose origin and application home have markup in
+// their names, the tab title, the navigation heading and its data attributes, the
+// commit the page was rendered for, whether the shell carried
+// static/mirror-heading.js, and the fields of /api/source/status the heading is
+// rendered from.
 //
-// Per subject, a fresh context loads navigation.js whole, with git-path.js ahead of it
-// on a mirror as the shell does, and runs the shell's own heading code lifted out of
-// app.js, which cannot load without a document: the main heading's address for the root
-// and for a nested file, and the navigation heading's tooltip before and after the tree
-// has loaded. The served root comes from servedRootAddress in navigation.js.
+// Per subject, a fresh context is a page: mirror-heading.js runs first when the shell
+// carried it, as its inline script does, then the production SDK and its modules load
+// whole. The shell's own heading code is lifted verbatim from app.js, which cannot
+// load without a document: the folder header and the file header's address, and the
+// block that wires the navigation heading's tooltip. Nothing here composes a heading:
+// every string below is what that code returned or showed.
 //
-// What the transcript shows, per subject: each of those as HTML and as the text a
-// reader sees. It fails unless a folder's page is unchanged, a mirror's address starts
-// with the repository's name and never names a commit or a path, the note and the
-// tooltips are the only places the location stands, the tooltip names the origin and
-// the full commit, a hostile name is escaped wherever it is written, and no script sets
-// the tab title, which stays the one the server wrote.
+// The steps, each observed and printed:
+// - the page loads: DOMContentLoaded mounts the commit's copy control on a mirror;
+// - the main heading is rendered for the root folder and for a nested file;
+// - the pointer enters the navigation heading before and after the tree has loaded,
+//   then the root's name and the note in the main heading;
+// - the copy control is clicked, through the SDK's delegated listener.
+// `document.title` is watched across all of them: no step may write it.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -36,24 +41,52 @@ const served = JSON.parse(
   fs.readFileSync(path.join(repoRoot, "tests/fixtures/mirror-heading-shell.json"), "utf8"),
 );
 
+const PRODUCTION_MODULES = [
+  "request-error.js",
+  "formatters.js",
+  "inventory-scope.js",
+  "contribution-registry.js",
+  "resource-context.js",
+  "view-state.js",
+  "navigation.js",
+  "plugin-sdk.js",
+];
+
 // The heading code, lifted verbatim from app.js.
 const LIFTED = [
   "esc",
+  "queryHtml",
   "sizeClass",
   "isPendingNumber",
   "parseTipNumber",
   "formatCount",
   "formatTimestamp",
   "formatExactSize",
-  "servedRootAddress",
+  "servedRoot",
+  "mirrorHeading",
   "ownedControlAttr",
   "headerAddressHtml",
-  "servedRootTooltipHtml",
+  "renderFolderHeader",
   "_tipSize",
   "_tipCount",
   "treeTooltipNameHtml",
   "folderTooltipHtml",
 ];
+// The statement that wires the navigation heading's tooltip, from its comment to its end.
+const TOOLTIP_BLOCK = /\n\/\/ Header hover tooltip[\s\S]*?\n\}\);\n/;
+
+// What the lifted code calls that does not branch on the subject. The tooltip is the
+// application's one tooltip, which mirror-heading.js reaches as plugins do.
+const COLLABORATORS = `
+var ICONS = { print: "" };
+function showTooltip(html, anchor) {
+  __shown.push({ html: html, anchor: anchor });
+}
+function hideTooltip() {
+  __shown.push(null);
+}
+window.MetabrowserTooltip = { show: showTooltip, hide: hideTooltip };
+`;
 
 // One nested file, by the identity each subject's routes give it.
 const NESTED = { filesystem: "docs/guide.md", git_revision: "g1-ZG9jcw/g1-Z3VpZGUubWQ" };
@@ -72,6 +105,14 @@ function lift(name) {
   return match[0];
 }
 
+function escaped(value) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 /** The text a reader sees: tags dropped, entities decoded. */
 function text(html) {
   return html
@@ -85,20 +126,130 @@ function text(html) {
     .trim();
 }
 
-/** Every tooltip an element of *html* carries. */
-function tips(html) {
-  return [...html.matchAll(/data-tip-text="([^"]*)"/g)].map((match) => text(match[1]));
+class Element {}
+class HTMLElement extends Element {}
+
+/** An element with attributes, a dataset over its data-* attributes, and a class list. */
+class FakeElement extends HTMLElement {
+  constructor(tag, attributes = {}) {
+    super();
+    this.tagName = tag.toUpperCase();
+    this.attributes = new Map(Object.entries(attributes));
+    this.listeners = {};
+    this.nextElementSibling = null;
+    this.innerHTML = "";
+    const attrs = this.attributes;
+    const name = (key) => `data-${key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`;
+    this.dataset = new Proxy(
+      {},
+      {
+        get: (_target, key) => (typeof key === "string" ? attrs.get(name(key)) : undefined),
+        set: (_target, key, value) => {
+          attrs.set(name(key), String(value));
+          return true;
+        },
+        has: (_target, key) => attrs.has(name(key)),
+        ownKeys: () =>
+          [...attrs.keys()]
+            .filter((key) => key.startsWith("data-"))
+            .map((key) => key.slice(5).replace(/-([a-z])/g, (_m, c) => c.toUpperCase())),
+        getOwnPropertyDescriptor: (_target, key) =>
+          attrs.has(name(key))
+            ? { value: attrs.get(name(key)), enumerable: true, configurable: true, writable: true }
+            : undefined,
+      },
+    );
+    const classes = () => (attrs.get("class") || "").split(/\s+/).filter(Boolean);
+    this.classList = {
+      contains: (cls) => classes().includes(cls),
+      add: (cls) => attrs.set("class", [...new Set([...classes(), cls])].join(" ")),
+      remove: (cls) =>
+        attrs.set(
+          "class",
+          classes()
+            .filter((have) => have !== cls)
+            .join(" "),
+        ),
+    };
+  }
+  set className(value) {
+    this.attributes.set("class", value);
+  }
+  get className() {
+    return this.attributes.get("class") || "";
+  }
+  set type(value) {
+    this.attributes.set("type", value);
+  }
+  getAttribute(name) {
+    return this.attributes.has(name) ? this.attributes.get(name) : null;
+  }
+  setAttribute(name, value) {
+    this.attributes.set(name, String(value));
+  }
+  addEventListener(type, listener) {
+    this.listeners[type] = [...(this.listeners[type] || []), listener];
+  }
+  after(node) {
+    this.nextElementSibling = node;
+  }
+  matches(selector) {
+    return selector.split(",").some((one) => {
+      const single = one.trim();
+      const attribute = /^\[([\w-]+)\]$/.exec(single);
+      if (attribute) {
+        return this.attributes.has(attribute[1]);
+      }
+      assert(single.startsWith("."), `unsupported selector ${single}`);
+      return this.classList.contains(single.slice(1));
+    });
+  }
+  closest(selector) {
+    return this.matches(selector) ? this : null;
+  }
 }
 
-function createContext(kind, dataset) {
-  const heading = { dataset };
+/** The data attributes an element was served or given, by their dataset names. */
+function datasetOf(element) {
+  return Object.fromEntries(Object.keys(element.dataset).map((key) => [key, element.dataset[key]]));
+}
+
+function createPage(subject) {
+  const { kind, title, dataset, pagePin, mirrorModule } = served[subject];
+  const heading = new FakeElement("a", { class: "header-path" });
+  for (const [key, value] of Object.entries(dataset)) {
+    heading.dataset[key] = value;
+  }
+  const page = { heading, shown: [], copied: [], titleWrites: [], listeners: {}, wiring: null };
+  let currentTitle = title;
+  const document = {
+    get title() {
+      return currentTitle;
+    },
+    set title(value) {
+      page.titleWrites.push(value);
+      currentTitle = value;
+    },
+    addEventListener(type, listener) {
+      const registered = { listener, by: page.wiring };
+      page.listeners[type] = [...(page.listeners[type] || []), registered];
+    },
+    createElement: (tag) => new FakeElement(tag),
+    querySelector: (selector) => (selector === ".header-path" ? heading : null),
+    querySelectorAll: () => [],
+    documentElement: {},
+  };
   const sandbox = {
+    __shown: page.shown,
     Array,
     Date,
+    Element,
+    HTMLElement,
     JSON,
     Map,
     Number,
     Object,
+    Promise,
     Set,
     String,
     TextDecoder,
@@ -106,166 +257,281 @@ function createContext(kind, dataset) {
     Uint8Array,
     atob,
     btoa,
+    clearTimeout() {},
     console,
     decodeURIComponent,
+    document,
     encodeURIComponent,
-    document: {
-      querySelector(selector) {
-        return selector === ".header-path" ? heading : null;
+    location: { origin: "http://127.0.0.1:8411", pathname: "/view/" },
+    navigator: {
+      clipboard: {
+        writeText(value) {
+          page.copied.push(value);
+          return Promise.resolve();
+        },
       },
     },
-    location: { origin: "http://127.0.0.1:8411", pathname: "/view/" },
+    // The copy control's feedback resets on a timer the session never needs to run.
+    setTimeout: () => 0,
     METABROWSER_SOURCE_KIND: kind,
     METABROWSER_PATH_ENCODING: "bytes",
-    // The shared formatter runtime, which only chooses a size's weight class.
-    MetabrowserFormatters: { sizeClass: () => "", countClass: () => "" },
   };
+  if (pagePin) {
+    sandbox.METABROWSER_SOURCE_PIN = pagePin;
+  }
   sandbox.window = sandbox;
   sandbox.globalThis = sandbox;
   vm.createContext(sandbox);
-  for (const name of kind === "git_revision"
-    ? ["git-path.js", "navigation.js"]
-    : ["navigation.js"]) {
+  const load = (name) => {
     const absolute = path.join(staticDir, name);
+    page.wiring = name;
     vm.runInContext(fs.readFileSync(absolute, "utf8"), sandbox, { filename: absolute });
+  };
+  // The shell's inline scripts run before any script it links.
+  if (mirrorModule) {
+    load("mirror-heading.js");
   }
-  // `queryHtml` is the shell's typed querySelector; nothing in it reads the subject.
-  vm.runInContext(
-    `function queryHtml(selector) { return document.querySelector(selector); }\n${LIFTED.map(lift).join("\n")}`,
-    sandbox,
-    { filename: "app-heading.js" },
-  );
-  return sandbox;
+  for (const name of PRODUCTION_MODULES) {
+    if (name === "navigation.js" && kind === "git_revision") {
+      load("git-path.js");
+    }
+    load(name);
+  }
+  page.wiring = "app.js";
+  const tooltipBlock = appSource.match(TOOLTIP_BLOCK);
+  assert(tooltipBlock, "the navigation heading's tooltip block was not found in app.js");
+  vm.runInContext(`${COLLABORATORS}${LIFTED.map(lift).join("\n")}${tooltipBlock[0]}`, sandbox, {
+    filename: "app.js (lifted)",
+  });
+  page.sandbox = sandbox;
+  page.title = () => currentTitle;
+  return page;
 }
 
-function observe(subject) {
-  const { kind, title, heading, dataset, status } = served[subject];
-  const sandbox = createContext(kind, { ...dataset });
-  const note = sandbox.servedRootAddress().note;
-  // A folder's header and a file's both end their address with the note.
-  const root = sandbox.headerAddressHtml("", false) + note;
-  const file = sandbox.headerAddressHtml(NESTED[kind], true) + note;
-  const tipBefore = sandbox.servedRootTooltipHtml({ ...dataset });
-  // The tree's first load names the tooltip by the served root, as the shell does.
-  const tipAfter = sandbox.servedRootTooltipHtml({
-    ...dataset,
-    tipName: dataset.servedRoot,
-    ...TALLY,
-  });
+/** Fire the page's document listeners of *type* that *scripts* registered. */
+function dispatch(page, type, event, scripts) {
+  for (const { listener, by } of page.listeners[type] || []) {
+    if (!scripts || scripts.includes(by)) {
+      listener(event);
+    }
+  }
+}
+
+/** What the tooltip shows when the pointer enters *target*, or null. */
+function hover(page, target) {
+  page.shown.length = 0;
+  if (target === page.heading) {
+    for (const listener of page.heading.listeners.mouseenter || []) {
+      listener({ target });
+    }
+  } else {
+    dispatch(page, "mouseenter", { target }, ["mirror-heading.js"]);
+  }
+  const shown = page.shown.at(-1);
+  if (!shown) {
+    return null;
+  }
+  assert(shown.anchor === target, "a tooltip was anchored to another element");
+  return shown.html;
+}
+
+async function observe(subject) {
+  const { kind, heading: servedHeading, status } = served[subject];
+  const page = createPage(subject);
+  const { sandbox } = page;
+
+  // The page loads.
+  dispatch(page, "DOMContentLoaded", {}, ["mirror-heading.js", "app.js"]);
+
+  // The main heading, as the shell renders a folder's and a file's. Each control
+  // carries the page's owner mark, which is drawn anew on every load.
+  const owner = sandbox.metabrowser.delegateOwnerAttribute();
+  assert(/^ data-mb-owner="[0-9a-f]{32}"$/.test(owner), "the page has no owner mark");
+  const root = sandbox.renderFolderHeader({ path: "" });
+  const file = sandbox.headerAddressHtml(NESTED[kind], true);
+  assert(file.split(owner).length === 4, "a crumb of the address is not an owned control");
+
+  // The pointer enters the navigation heading, before and after the tree has loaded.
+  const tipBefore = hover(page, page.heading);
+  Object.assign(page.heading.dataset, { tipName: page.heading.dataset.servedRoot, ...TALLY });
+  const tipAfter = hover(page, page.heading);
+  // Then the root's name and the note, which the shell built above.
+  const tipName = hover(page, new FakeElement("span", { class: "file-header-root" }));
+  const tipNote = hover(page, new FakeElement("span", { class: "file-header-mirror-text" }));
+
+  // The copy control beside the short commit, and a click on it.
+  const control = page.heading.nextElementSibling;
+  let commitCopy = null;
+  if (control) {
+    dispatch(page, "click", { target: control });
+    await Promise.resolve();
+    await Promise.resolve();
+    commitCopy = {
+      attributes: Object.fromEntries(
+        [...control.attributes].filter(([name]) => name !== "data-mb-owner"),
+      ),
+      ownerStamped: sandbox.MetabrowserPluginHost.isOwnedDelegate(control),
+      copied: [...page.copied],
+    };
+  }
+
   return {
     subject,
     kind,
     status,
-    title,
-    navigationHeading: { html: heading, text: text(heading) },
+    title: {
+      served: served[subject].title,
+      afterEveryStep: page.title(),
+      writes: page.titleWrites,
+    },
+    navigationHeading: { html: servedHeading, text: text(servedHeading), commitCopy },
     mainHeading: {
       root: text(root),
-      file: { html: file, text: text(file), tooltips: [...new Set(tips(file))] },
+      file: { html: file.replaceAll(owner, " data-mb-owner"), text: text(file) },
     },
-    navigationTooltip: { served: text(tipBefore), afterTreeLoad: text(tipAfter) },
+    tooltips: {
+      navigationHeading: { served: text(tipBefore), afterTreeLoad: text(tipAfter) },
+      rootName: tipName === null ? null : text(tipName),
+      note: tipNote === null ? null : text(tipNote),
+    },
     // Kept out of the transcript: what the assertions below read.
-    raw: { root, file, tipAfter },
+    raw: { root, file, tipAfter, tipName, tipNote, heading: datasetOf(page.heading) },
   };
 }
 
-const observed = Object.keys(served).map(observe);
-const [folder, mirror, hostile] = observed;
-
-assert(
-  !/document\.title/.test(appSource),
-  "a script sets the tab title; the session pins only the one the server writes",
-);
-for (const page of observed) {
-  assert(page.title === "Metabrowser", `${page.subject}: the tab is titled ${page.title}`);
-}
-
-// A folder's page is what it was: its path, then the address, and nothing about a mirror.
-assert(
-  folder.mainHeading.file.text === `${served.folder.dataset.servedRoot} / docs / guide.md`,
-  `a folder's address reads ${folder.mainHeading.file.text}`,
-);
-assert(
-  folder.mainHeading.root === `${served.folder.dataset.servedRoot} /`,
-  "a folder's root changed",
-);
-assert(!folder.raw.file.includes("file-header-mirror"), "a folder showed a mirror note");
-assert(
-  folder.mainHeading.file.tooltips.every((tip) => !tip.startsWith("Mirror of")),
-  "a folder's heading says it is a mirror",
-);
-assert(
-  !folder.navigationTooltip.afterTreeLoad.includes("Mirror"),
-  "a folder's tooltip says mirror",
-);
-
-for (const page of [mirror, hostile]) {
-  const { name, origin, location, pin, ref_name: ref } = page.status;
-  const where = `mirror in ${location}`;
-  const sentence = `Mirror of ${origin} at ${pin}, stored in ${location}: a bare Git repository, with no checked-out files.`;
-  const { root, file } = page.mainHeading;
-
-  // The repository's name is the root, in both headings, with the commit beside it.
-  assert(
-    page.navigationHeading.text === `${name} ${ref} ${pin.slice(0, 12)}`,
-    `${page.subject}: the navigation heading reads ${page.navigationHeading.text}`,
-  );
-  assert(root === `${name} / ${where}`, `${page.subject}: the root reads ${root}`);
-  assert(
-    file.text === `${name} / docs / guide.md ${where}`,
-    `${page.subject}: a file's address reads ${file.text}`,
-  );
-  // The address is the name and the path under it: no commit, and no directory.
-  const address = file.text.slice(0, file.text.indexOf(where));
-  assert(!address.includes(pin.slice(0, 12)), `${page.subject}: the address names the commit`);
-  assert(!address.includes(location), `${page.subject}: the address names the cache`);
-  // The note follows the last crumb; it is not the address's prefix.
-  assert(
-    file.html.indexOf("file-header-mirror") > file.html.lastIndexOf("folder-crumb"),
-    `${page.subject}: the note is not after the address`,
-  );
-  // Both the name and the note say what the directory is, and that says the full commit.
-  assert(
-    tips(file.html).filter((tip) => tip === sentence).length === 2,
-    `${page.subject}: the heading's tooltips are ${JSON.stringify(file.tooltips)}`,
-  );
-  for (const tip of [page.navigationTooltip.served, page.navigationTooltip.afterTreeLoad]) {
-    assert(tip.startsWith(name), `${page.subject}: the tooltip is not named ${name}`);
-    assert(tip.includes(sentence), `${page.subject}: the tooltip does not say what the mirror is`);
-    assert(tip.endsWith("Jump to root"), `${page.subject}: the tooltip lost its action`);
+async function main() {
+  const observed = [];
+  for (const subject of Object.keys(served)) {
+    observed.push(await observe(subject));
   }
-}
+  const [folder, mirror, hostile] = observed;
 
-// Markup in a name, an address, or a path is text wherever it is written: each stands
-// escaped, once per place the page writes it, and never raw.
-function escaped(value) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-for (const key of ["name", "origin", "location"]) {
-  const value = hostile.status[key];
-  assert(escaped(value) !== value, `the hostile ${key} has no markup to escape: ${value}`);
-  for (const html of [hostile.raw.root, hostile.raw.file, hostile.raw.tipAfter]) {
-    assert(html.includes(escaped(value)), `the hostile ${key} is missing from ${html}`);
-    assert(!html.includes(value), `the hostile ${key} was written as markup: ${html}`);
+  // No step wrote the tab's title, which stays the one the server wrote.
+  for (const page of observed) {
+    assert(page.title.writes.length === 0, `${page.subject}: a step set the tab title`);
+    assert(page.title.afterEveryStep === "Metabrowser", `${page.subject}: the tab is retitled`);
   }
-}
-assert(
-  hostile.navigationHeading.html.includes(escaped(hostile.status.name)),
-  "the name is missing",
-);
-assert(!hostile.navigationHeading.html.includes(hostile.status.name), "the name is markup");
-assert(
-  hostile.status.name === "a<b>&\ufffdx",
-  `the hostile origin is named ${JSON.stringify(hostile.status.name)}`,
-);
 
-console.log(
-  JSON.stringify(
-    observed.map(({ raw: _raw, ...page }) => page),
-    null,
-    2,
-  ),
-);
+  // A folder's page is what it was: its path, then the address, and nothing of a mirror.
+  const folderRoot = served.folder.dataset.servedRoot;
+  assert(
+    folder.mainHeading.root === `\u2191 ${folderRoot} /`,
+    `a folder's root reads ${folder.mainHeading.root}`,
+  );
+  assert(
+    folder.mainHeading.file.text === `${folderRoot} / docs / guide.md`,
+    `a folder's address reads ${folder.mainHeading.file.text}`,
+  );
+  assert(
+    folder.tooltips.navigationHeading.served === `${folderRoot} Jump to root` &&
+      folder.tooltips.navigationHeading.afterTreeLoad ===
+        `${folderRoot} 3 files 140 bytes Jump to root`,
+    "a folder's tooltip changed",
+  );
+  assert(
+    !/mirror/i.test(folder.raw.root + folder.raw.file + folder.raw.tipAfter) &&
+      folder.tooltips.rootName === null &&
+      folder.tooltips.note === null &&
+      folder.navigationHeading.commitCopy === null,
+    "a folder's page shows something of a mirror",
+  );
+
+  for (const page of [mirror, hostile]) {
+    const { name, origin, location, pin, ref_name: ref } = page.status;
+    const where = `mirror in ${location}`;
+    const sentence = `Mirror of ${origin} at ${pin}, stored in ${location}: a bare Git repository, with no checked-out files.`;
+    const { root, file } = page.mainHeading;
+
+    // The repository's name is the root, in both headings, with the commit beside it.
+    assert(
+      page.navigationHeading.text === `${name} ${ref} ${pin.slice(0, 12)}`,
+      `${page.subject}: the navigation heading reads ${page.navigationHeading.text}`,
+    );
+    assert(root === `\u2191 ${name} / ${where}`, `${page.subject}: the root reads ${root}`);
+    assert(
+      file.text === `${name} / docs / guide.md ${where}`,
+      `${page.subject}: a file's address reads ${file.text}`,
+    );
+    // The address is the name and the path under it: no commit, and no directory.
+    const address = file.text.slice(0, file.text.indexOf(where));
+    assert(!address.includes(pin.slice(0, 12)), `${page.subject}: the address names the commit`);
+    assert(!address.includes(location), `${page.subject}: the address names the cache`);
+    // The note follows the last crumb; it is not the address's prefix.
+    for (const html of [page.raw.root, file.html]) {
+      assert(
+        html.indexOf("file-header-mirror") > html.lastIndexOf("folder-crumb"),
+        `${page.subject}: the note is not after the address`,
+      );
+      assert(
+        html.split("file-header-mirror-text").length === 2,
+        `${page.subject}: a heading does not hold exactly one note`,
+      );
+    }
+    // The name, the note, and the navigation heading each say what the directory is.
+    assert(page.tooltips.rootName === sentence, `${page.subject}: the name's tooltip is wrong`);
+    assert(page.tooltips.note === sentence, `${page.subject}: the note's tooltip is wrong`);
+    const { served: before, afterTreeLoad: after } = page.tooltips.navigationHeading;
+    assert(before === `${name} ${sentence} Jump to root`, `${page.subject}: tooltip: ${before}`);
+    assert(
+      after === `${name} 3 files 140 bytes ${sentence} Jump to root`,
+      `${page.subject}: tooltip after the tree loads: ${after}`,
+    );
+    // The mirror's line of a tooltip is the one that wraps.
+    for (const html of [page.raw.tipAfter, page.raw.tipName, page.raw.tipNote]) {
+      assert(/class="(tip-detail )?tip-mirror"/.test(html), `${page.subject}: no tip-mirror line`);
+    }
+    // The full commit can be copied from beside the short one, by the SDK's delegate.
+    const { commitCopy } = page.navigationHeading;
+    assert(commitCopy !== null, `${page.subject}: no copy control beside the commit`);
+    assert(
+      commitCopy.ownerStamped && commitCopy.attributes["data-mb-copy-text"] === pin,
+      `${page.subject}: the copy control does not carry the full commit`,
+    );
+    assert(
+      JSON.stringify(commitCopy.copied) === JSON.stringify([pin]),
+      `${page.subject}: a click copied ${JSON.stringify(commitCopy.copied)}`,
+    );
+    assert(
+      commitCopy.attributes["data-tip-text"] === "Copied!",
+      `${page.subject}: the copy control gave no feedback`,
+    );
+  }
+
+  // Markup in a name, an address, or a path is text wherever it is written: each stands
+  // escaped where the page writes it, and never raw.
+  for (const key of ["name", "origin", "location"]) {
+    const value = hostile.status[key];
+    assert(escaped(value) !== value, `the hostile ${key} has no markup to escape: ${value}`);
+    const written = {
+      name: [
+        hostile.raw.root,
+        hostile.raw.file,
+        hostile.raw.tipAfter,
+        hostile.navigationHeading.html,
+      ],
+      origin: [hostile.raw.tipAfter, hostile.raw.tipName, hostile.raw.tipNote],
+      location: [hostile.raw.root, hostile.raw.file, hostile.raw.tipAfter, hostile.raw.tipNote],
+    }[key];
+    for (const html of written) {
+      assert(html.includes(escaped(value)), `the hostile ${key} is missing from ${html}`);
+      assert(!html.includes(value), `the hostile ${key} was written as markup: ${html}`);
+    }
+  }
+  assert(
+    hostile.status.name === "a<b>&�x",
+    `the hostile origin is named ${JSON.stringify(hostile.status.name)}`,
+  );
+
+  console.log(
+    JSON.stringify(
+      observed.map(({ raw: _raw, ...page }) => page),
+      null,
+      2,
+    ),
+  );
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
