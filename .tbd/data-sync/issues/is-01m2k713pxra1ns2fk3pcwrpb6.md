@@ -5,7 +5,7 @@ title: "v0.12 thin-mirror stack: coordinate landing"
 kind: task
 status: in_progress
 priority: 1
-version: 66
+version: 67
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 refs:
   - kind: other
@@ -47,12 +47,14 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: blocked
 hold_until: null
 created_at: 2026-09-15T18:59:49.596Z
-updated_at: 2026-10-01T10:32:14.622Z
+updated_at: 2026-10-02T04:28:51.805Z
 started_at: 2026-09-16T21:24:51.532Z
 ---
 Coordinate landing of the v0.12 stack: one linear chain of open PRs, main <- #125 ... #244 (#241 is the draft acceptance record), plus the PRs above #244 that finish stabilization. Keep exact base/head relationships, per-layer review dispositions, green per-layer CI and top integration evidence against current main, and keep beads and specs aligned. Gates: mb-hall and mb-gnr9. SSH, the PR list and panel, inline review anchors, checkout attachment and rebind are deferred by the user's 2026-09-23 decision and do not gate landing. Hold every layer until the user explicitly approves; then land the tip as one fast-forward of main (merging lower layers one at a time would put retired-design states on main).
 
 ## Notes
+
+2026-10-01 (late): the chain is ONE native GitHub stack. Until now it was split across three native stacks (#218: #125-#226; #245: #233-#244; #266: #253-#265) with twelve PRs in none; #245 and #266 were dissolved with 'gh stack unstack <n>' and their PRs, plus the twelve, appended with 'gh stack link 218 ...'. Stack #218 now holds all 44 PRs, #125 ... #265, in chain order, base main; no branch, base or head changed; verified with 'gh api repos/jlevy/metabrowser/stacks'. #241 marked ready (a draft blocks 'gh stack merge'). Owed on top, each appended with 'gh stack link 218 <pr>': the gate-fixes-2 layer (mb-55tr) and #260 (docs). Landing is 'gh stack merge' on stack 218 per 'tbd shortcut stacked-prs', only on the user's explicit approval; the merge method (merge commit or squash) is the user's open decision. Never retarget a chain PR to main (it flattens the stack). The earlier fast-forward-push plan is withdrawn.
 
 2026-10-01: ready chain is main <- #125 ... <- #250 <- #252 (test isolation) <- #251 (missing tools loud, tiers, bounds) <- #253 (golden machinery), restacked by merges with bases set through gh; all green. In review: #254 (startup cost; folder shell 173 KB against the 175 KB gate; lint check for the budget), to be restacked above the test PRs. In progress on branches from #253: mb-79t3, mb-738k, mb-sqlv, mb-haxx+mb-jqbg. Owed on a quiet machine (this machine is loaded by unrelated jobs, load over 100): wall-clock startup pairs against main (explorations/performance-loop/startup_pairs.py) and the single-command make golden-update no-op on the merged tree. Decisions left for the user: macOS CI job; admitted-Git duplication across the test matrix; a line-coverage tool; landing approval.
 
