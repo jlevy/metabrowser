@@ -5,7 +5,7 @@ title: "Final landing docs for the v0.12 stack: QA playbook refresh, review ledg
 kind: task
 status: in_progress
 priority: 2
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 delegate: claude-code@spud10.local
 labels:
@@ -15,12 +15,14 @@ parent_id: is-01m36k3w9vgwy97c9hcj2sqrs5
 hold: null
 hold_until: null
 created_at: 2026-10-01T15:49:36.040Z
-updated_at: 2026-10-02T04:38:18.637Z
+updated_at: 2026-10-02T20:47:26.813Z
 started_at: 2026-10-01T15:51:06.955Z
 ---
 The docs at the stack tip predate the last ten PRs (#251-#258, #254). Refresh docs/qa-v012-repository-library.md (stale Phase 1 intro, Phase 3 title, Phase 7 table, 'stack #218' naming; missing: checks only the user can make, a browser pass over standard features on a plain folder, URL-like folder names, the test tiers, --doctor) with a short walk-through section; refresh the landing status in the alpha-testing plan and the follow-ups table in the thin-mirror plan; add the per-layer review ledger the landing checklist asks for (last one is the #216 comment of 2026-09-22); record the tip's verification (full local gate, golden-update no-op, CPU-time pairs).
 
 ## Notes
+
+2026-10-02: #260 is ready, in stack #218 at the top, head 2b2fad34, CI green. Still owed on it: fill in the final landing-gate and rehearsal results, the #267 review row in the ledger, and a CHANGELOG entry for negative byte bounds. Close after those.
 
 2026-10-01 (second round), head c268d9e6 pushed to codex/v012-landing-docs (draft PR #260; base still to be moved onto #265 by the coordinator). Runbook follows #261 and #263 (stderr clone lines; name, origin, location; the mirror's headings; 5.3 renumbered; 5.11 headings) and Pins reads native stack #218 and leaves out #262's branch. Ledger through #265: 44 chain rows (7 stabilization, 32 independent, 2 coordinator, 3 none) plus #247 and #262. New record: docs/project/reviews/review-2026-10-01-v012-changes-to-existing-behavior.md, each row checked against the v0.11.0 wheel or taken from the gate's audit or data differential. Landing status rewritten for gh stack merge on stack #218. QA record: second addendum. Run on this tree with an isolated home and a file:// origin: 4.1, 5.1, 5.2, 5.3 steps 1-2, 5.11 steps 2-4, Pins. Filed mb-hj9h (a long repository name cut with an ellipsis beside the mirror note). Both mb-55tr regressions reproduce on this tree. Not run: 4.8, 4.9, the live GitHub tier. Not closed: the coordinator owns closing.
 

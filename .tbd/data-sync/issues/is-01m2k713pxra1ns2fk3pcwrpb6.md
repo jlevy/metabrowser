@@ -5,7 +5,7 @@ title: "v0.12 thin-mirror stack: coordinate landing"
 kind: task
 status: in_progress
 priority: 1
-version: 68
+version: 69
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 refs:
   - kind: other
@@ -47,12 +47,119 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: blocked
 hold_until: null
 created_at: 2026-09-15T18:59:49.596Z
-updated_at: 2026-10-02T19:38:40.116Z
+updated_at: 2026-10-02T20:47:23.013Z
 started_at: 2026-09-16T21:24:51.532Z
 ---
 Coordinate landing of the v0.12 stack: one linear chain of open PRs, main <- #125 ... #244 (#241 is the draft acceptance record), plus the PRs above #244 that finish stabilization. Keep exact base/head relationships, per-layer review dispositions, green per-layer CI and top integration evidence against current main, and keep beads and specs aligned. Gates: mb-hall and mb-gnr9. SSH, the PR list and panel, inline review anchors, checkout attachment and rebind are deferred by the user's 2026-09-23 decision and do not gate landing. Hold every layer until the user explicitly approves; then land the tip as one fast-forward of main (merging lower layers one at a time would put retired-design states on main).
 
 ## Notes
+
+2026-10-02 HANDOFF (full text also as a comment on PR #260 and in metabrowser-landing-gate-evidence/HANDOFF.md beside the main checkout):
+# Handoff: landing the v0.12 stack (written 2026-10-02, about 14:00 local)
+
+This is the state of the v0.12 landing work for the next agent. The coordinating bead is
+`mb-n2ro`; run `tbd show mb-n2ro` first.
+
+## Where it stands
+
+- **One native GitHub stack, #218**, base `main`, 46 PRs in order: #125 … #265, then #267
+  (gate fixes 2) and #260 (docs, QA runbook, review ledger) at the top. Check it with
+  `gh api 'repos/jlevy/metabrowser/stacks?per_page=100'`. Every base is the branch below,
+  no drafts, all CLEAN, CI green on the top two heads: #267 `14fcdb85`, #260 `2b2fad34`.
+- `main` is still v0.11.0 (`6c278f3f`). **Nothing is merged, tagged or released, and
+  nothing may be without the owner's explicit approval.**
+- Outside the stack on purpose: #247 (do-not-merge reference of removed code), #262
+  (page-connection fix, held until after landing, `mb-tdmd`), #51, #87, #219 (unrelated,
+  based on `main`).
+- Every worktree is clean. Worktrees are siblings of the main checkout, named
+  `metabrowser-v012-<name>`.
+
+## In flight when this was written (may be lost with the session)
+
+1. **Independent review of #267: not finished, no report recorded.** If `mb-55tr` has no
+   review note, run it again: an agent that did not write #267 reviews
+   `codex/v012-gate-fixes-2` against `codex/v012-release-check` (six fixes: structured
+   cache size 0, diff document hook on any file name, `--show` dotenv reads, stray
+   attribute on tree folder rows, 21 px line pitch for unhighlighted source, negative
+   byte bounds), with its own mutation checks.
+2. **Data differential and evidence audit on `14fcdb85`**, started 13:46 as a detached
+   job. Progress is in `landing-gate/final/status.log` in the session scratchpad; if that
+   directory is gone, re-run from this folder (below).
+
+## What is left, in order
+
+1. Finish the review of #267; fix findings on #267's branch (new commits, no rewrite),
+   then merge that branch into `codex/v012-landing-docs` and push.
+2. Add a CHANGELOG entry (on #260's branch) for negative byte-bound settings: v0.11.0
+   read unbounded at -2 and answered `plugin_error` at -3 and below; the stack answers a
+   typed empty result for every negative value.
+3. On the final head, all three landing-gate checks against v0.11.0 on a regular folder
+   (bead `mb-2g6f`; accept rule: zero unexplained differences):
+   - data: `data/run.sh <v0.11.0 metab> <tip metab> --jobs 6` (about 90 minutes; run it
+     detached, a 30-minute background limit killed the first attempt);
+   - evidence audit: `audit/run.sh origin/<top product branch>`;
+   - browser: `browser/run.sh <v0.11.0 metab> <tip metab>` (node 24, Chrome, ports
+     8851–8858; about 45 minutes).
+   The harness sources and the reports from the earlier head (`f62c16b1`) are in this
+   folder. Corpora and builds were not copied: `data/build_corpora.py` and
+   `browser/make_corpus.mjs` rebuild them; build the tip wheel with
+   `uv --config-file uv.toml build --wheel`, export constraints with
+   `uv --config-file uv.toml export --frozen --no-dev --no-emit-project --no-hashes`, and
+   install both builds into fresh environments with bytecode compiled
+   (`env -u PYTHONDONTWRITEBYTECODE <env>/bin/python -m compileall -q <env>/lib`).
+4. `make verify` on the final head (it passed on `8879c4de`, #264: 3,952 Python and 266
+   browser tests).
+5. Release rehearsal step 3 on a quiet machine with no agents running (bead `mb-cf6y`):
+   5 headed pairs and 5 `compare_builds` pairs, recorded as exp-039
+   (`release-check/rerun.sh`; see `explorations/performance-loop/` and exp-038 on #265).
+6. Update the review ledger and landing status on #260 with the results; close `mb-55tr`,
+   `mb-2g6f`, `mb-cf6y`, `mb-65pn`.
+7. On the owner's approval only: `gh stack merge 218 --yes` with the method the owner
+   chooses, then confirm `git diff <tested head> origin/main` is empty and watch CI.
+
+## Known findings and their state
+
+- Fixed in #264: hover prefetch of compound `.jsonl` names; `size` and decoding in
+  `/api/plugin/structured/parsed`.
+- Fixed in #267: the six items above.
+- Open, owner's call: a below-the-fold image fetched earlier on the root overview (5 of 6
+  captures, no cause found); two extra module requests (Markdown and diff views); JSONL
+  log rows no longer exposed as clickable in the accessibility tree.
+- Deliberate changes with no CHANGELOG entry, listed in
+  `docs/project/reviews/review-2026-10-01-v012-changes-to-existing-behavior.md` on #260:
+  `--end-of-options` on `git rev-parse`; `base_policy` validation answering 400.
+- Follow-ups, not blocking: `mb-hj9h` (long repository name cut in the heading), `mb-32y6`
+  (math as raw TeX in a mirror), `mb-tdmd` (#262), `mb-mw0t`, and the Pulls tab plan
+  (`docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md`, beads `mb-lnkl`,
+  `mb-iw1v`, `mb-cbak`), which is planned only.
+
+## Decisions waiting on the owner
+
+1. Merge method for `gh stack merge`: merge commits or squash.
+2. Whether to rehearse the stack merge on a two-PR scratch stack first.
+3. Three local-only branches, committed but not on GitHub: `claude/v011-cache-measurements`,
+   `claude/pr-74-review-merge-a180e7`, `test/git-pin-golden`. Pushing them means skipping
+   the pre-push gate, which would run on old code.
+4. Accept `--doctor` being about 250 ms slower (1.78x, by design).
+5. Sign off the list of intended changes to v0.11.0 behavior (the record above).
+6. Manual checks nobody has run: Safari, Firefox, a private repository, third-party
+   plugins; and walking `docs/qa-v012-repository-library.md`.
+7. The three open browser findings above.
+
+## Rules this work has followed
+
+- Never rewrite or reset a stack branch: new commits, restack by merge, group with
+  `gh stack link 218 <pr>`. Never retarget a stacked PR to `main`. `gh stack sync` and
+  `rebase` force-push; ask the owner before using them.
+- Every PR gets an independent review by an agent that did not write it.
+- Never bare `uv run`, `python` or `pip`; use Make targets or
+  `uv --config-file uv.toml run --frozen …`.
+- Push through the pre-push gate (about 13 minutes); do not use `--no-verify`.
+- Never print credentials; live tests use public repositories and read-only `gh api`.
+- Never kill processes by pattern; never use the real `~/.metabrowser` in tests.
+- `tbd update --notes` overwrites: read and merge the existing notes first.
+- The installed `metab` on this machine is `0.11.1.dev640+8879c4de` (#264), not the top
+  of the stack.
 
 2026-10-02: native stack #218 now holds all 46 PRs, #125 ... #265, #267 (gate fixes 2, mb-55tr), #260 (docs), verified through the stacks API: every base is the branch below, none is a draft, all CLEAN, each head contains its base. #267 head 9c758f6f and #260 head 0f7f6c2c are CI green. Every worktree is clean. Outside the stack by design: #247 (reference, do not merge), #262 (held, mb-tdmd), #51, #87, #219 (unrelated, on main). Running: the independent review of #267 and one more commit on it (negative byte bounds answer as 0.11.0). Then owed on the final head: merge #267 into #260's branch, the three landing-gate checks, make verify, the quiet-machine performance pairs (exp-039). Local-only branches not on GitHub, awaiting the user's word on pushing past the pre-push gate: claude/v011-cache-measurements, claude/pr-74-review-merge-a180e7, test/git-pin-golden.
 
