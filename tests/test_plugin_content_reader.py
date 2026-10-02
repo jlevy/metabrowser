@@ -167,6 +167,31 @@ def test_a_read_never_returns_more_than_its_maximum(tmp_path: Path) -> None:
         assert lengths == [1, 7, 4096, len(BODY)]
 
 
+def test_a_read_refuses_a_negative_bound_and_a_negative_offset(tmp_path: Path) -> None:
+    """A bound below zero is a caller's mistake, and the read says so on both kinds.
+
+    A hook whose bound comes from a setting an operator can put below zero settles
+    that before it reads; the structured and binary hooks do, and their own tests
+    hold what they answer.
+    """
+
+    async def hook(identity: str) -> list[str]:
+        ref = await resolve_content(identity)
+        assert ref is not None
+        refusals: list[str] = []
+        for window in ({"offset": 0, "max_bytes": -1}, {"offset": -1, "max_bytes": 4}):
+            with pytest.raises(ValueError, match="cannot be negative") as refusal:
+                await read_content_window(ref, **window)
+            refusals.append(str(refusal.value))
+        return refusals
+
+    for refusals in _both(tmp_path, hook, "note.bin"):
+        assert refusals == [
+            "content read bound cannot be negative",
+            "content offset cannot be negative",
+        ]
+
+
 def test_stat_reports_the_validated_logical_size(tmp_path: Path) -> None:
     async def hook(identity: str) -> ContentStat:
         ref = await resolve_content(identity)

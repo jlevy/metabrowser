@@ -131,8 +131,16 @@ async def _parse(ref: ContentRef, ext: str) -> StructuredPayload:
     same reason: the file is there, and the Source view says what is wrong with
     it. Both are what 0.11.0 answered. Content that is gone or cannot be opened
     stays the read's own error.
+
+    Under a negative cap nothing fits, so nothing is read and every file is
+    ``truncated``. That is 0.11.0's answer for a file that is not compressed: it
+    compared the file's size with the cap before opening it, and every size, an
+    empty file's too, is past a negative cap. The read itself refuses a negative
+    bound, so the setting is settled here and never reaches it.
     """
 
+    if STRUCTURED_PARSE_MAX_BYTES < 0:
+        return truncated_payload()
     try:
         window = await read_content_window(ref, max_bytes=STRUCTURED_PARSE_MAX_BYTES)
     except ContentReadError as exc:

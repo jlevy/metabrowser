@@ -221,7 +221,18 @@ async def chunk_handler(request: Request) -> JSONResponse:
                 max_preview_bytes=ceiling,
             )
         limit = min(limit, max(readable - offset, 0))
-        window = await read_content_window(ref, offset=offset, max_bytes=limit)
+        # A setting below zero reaches here as a negative offset or a negative limit:
+        # a requested offset is clamped to the ceiling, the default limit is the
+        # configured chunk size, and a requested limit is clamped to the per-request
+        # maximum. The read refuses both, so they are settled here, as 0.11.0 answered
+        # them. Seeking to a negative offset failed, which was the file being gone. A
+        # limit of -1 read nothing and said whether bytes remain, which is what a limit
+        # of zero reads; a lower one read the rest of the file with no bound, or
+        # failed in the read, and reads nothing here either. The envelope and its ETag
+        # keep the limit as it was computed.
+        if offset < 0:
+            return _unavailable(subpath)
+        window = await read_content_window(ref, offset=offset, max_bytes=max(limit, 0))
     except ContentReadError as exc:
         return _read_failure(subpath, exc, ceiling)
 

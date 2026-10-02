@@ -98,6 +98,33 @@ status: 200
 ? 0
 ```
 
+## Test: a negative parse cap answers truncated
+
+`STRUCTURED_PARSE_MAX_BYTES` is an operator setting too.
+Nothing fits under a cap below zero, so the file is not read and the Tree view falls
+back to Source.
+
+```console
+$ STRUCTURED_PARSE_MAX_BYTES=-1 metab hookroot --api '/api/plugin/structured/parsed?path=data.json'
+api: /api/plugin/structured/parsed?path=data.json
+status: 200
+{
+  "type": "structured",
+  "path": "data.json",
+  "ext": ".json",
+  "mtime_hash": "data_json_22_1700000000000000000_oxzwjuzo4dpggg9x1isunq5frrzx07a",
+  "size": 22,
+  "parsed": null,
+  "pretty_yaml": "",
+  "node_count": 0,
+  "max_depth": 0,
+  "comments_supported": false,
+  "parse_error": null,
+  "truncated": true
+}
+? 0
+```
+
 ## Test: a bounded byte chunk
 
 ```console
@@ -118,6 +145,89 @@ status: 200
   "content_base64": "AAECYg=="
 }
 ? 0
+```
+
+## Test: a byte bound below zero reads nothing
+
+The bytes view has three settings, and each is taken below zero.
+A default chunk size below zero, and a requested limit clamped to a maximum below zero,
+read nothing and say whether bytes remain.
+
+```console
+$ METABROWSER_BINARY_PREVIEW_BYTES=-1 metab hookroot --api '/api/plugin/binary/chunk?path=blob.bin'
+api: /api/plugin/binary/chunk?path=blob.bin
+status: 200
+{
+  "type": "binary_chunk",
+  "path": "blob.bin",
+  "offset": 0,
+  "bytes_read": 0,
+  "next_offset": 0,
+  "logical_size": 6,
+  "max_preview_bytes": 33554432,
+  "has_more": true,
+  "preview_limited": false,
+  "mtime_hash": "blob_bin_6_1700000000000000000_ek42qv3e8bektxrxugw0221o2uupcq0",
+  "content_base64": ""
+}
+? 0
+```
+
+```console
+$ METABROWSER_BINARY_PREVIEW_MAX_CHUNK_BYTES=-1 metab hookroot --api '/api/plugin/binary/chunk?path=blob.bin&offset=2&limit=4'
+api: /api/plugin/binary/chunk?path=blob.bin&offset=2&limit=4
+status: 200
+{
+  "type": "binary_chunk",
+  "path": "blob.bin",
+  "offset": 2,
+  "bytes_read": 0,
+  "next_offset": 2,
+  "logical_size": 6,
+  "max_preview_bytes": 33554432,
+  "has_more": true,
+  "preview_limited": false,
+  "mtime_hash": "blob_bin_6_1700000000000000000_ek42qv3e8bektxrxugw0221o2uupcq0",
+  "content_base64": ""
+}
+? 0
+```
+
+Nothing is inside a ceiling below zero.
+The first window is empty and says the preview is limited, and there is no later window:
+an offset is clamped to the ceiling, which is no place in the file.
+
+```console
+$ METABROWSER_BINARY_PREVIEW_MAX_BYTES=-1 metab hookroot --api '/api/plugin/binary/chunk?path=blob.bin'
+api: /api/plugin/binary/chunk?path=blob.bin
+status: 200
+{
+  "type": "binary_chunk",
+  "path": "blob.bin",
+  "offset": 0,
+  "bytes_read": 0,
+  "next_offset": 0,
+  "logical_size": 6,
+  "max_preview_bytes": -1,
+  "has_more": false,
+  "preview_limited": true,
+  "mtime_hash": "blob_bin_6_1700000000000000000_ek42qv3e8bektxrxugw0221o2uupcq0",
+  "content_base64": ""
+}
+? 0
+```
+
+```console
+$ METABROWSER_BINARY_PREVIEW_MAX_BYTES=-1 metab hookroot --api '/api/plugin/binary/chunk?path=blob.bin&offset=2'
+api: /api/plugin/binary/chunk?path=blob.bin&offset=2
+status: 404
+{
+  "type": "binary_chunk_error",
+  "error": "This file is no longer available.",
+  "path": "blob.bin"
+}
+Error: /api/plugin/binary/chunk?path=blob.bin&offset=2 returned HTTP 404
+? 1
 ```
 
 ## Test: agent-log charts

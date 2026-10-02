@@ -333,6 +333,55 @@ def test_parsed_endpoint_answers_truncated_for_a_compressed_file_past_a_resource
     assert body["size"] == ARTIFACT_MAX_COMPRESSED_BYTES + 1
 
 
+@pytest.mark.parametrize("cap", [-1, -2, -5000])
+def test_parsed_endpoint_answers_truncated_for_every_file_under_a_negative_cap(
+    cap: int, tmp_path: Path, structured_app: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``STRUCTURED_PARSE_MAX_BYTES`` below zero: nothing fits, so nothing is read.
+
+    0.11.0 compared a file's size with the cap before opening it, and every size is
+    past a negative cap, an empty file's too, so each answered ``truncated`` and the
+    Tree view fell back to Source. The read refuses a negative bound, and the route
+    answered the degraded ``plugin_error`` envelope for every structured file.
+
+    A file that cannot be opened is not opened, so it is ``truncated`` as well. A
+    compressed file is too: 0.11.0 answered it ``parse_error: "ValueError:
+    decompressed output bound must be positive"``, which is its reader refusing the
+    bound and is not restored.
+    """
+
+    monkeypatch.setattr(structured_sidekick, "STRUCTURED_PARSE_MAX_BYTES", cap)
+    monkeypatch.setattr(structured_parser, "_PAYLOAD_CACHE", LRUCache(maxsize=8))
+    files = {
+        "small.json": b'{"a": 1}\n',
+        "empty.json": b"",
+        "config.yaml": b"a: 1\n",
+        "empty.yaml": b"",
+        "small.json.gz": gzip.compress(b'{"a": 1}\n'),
+        "locked.json": b'{"a": 1}\n',
+    }
+    for name, content in files.items():
+        (tmp_path / name).write_bytes(content)
+    (tmp_path / "locked.json").chmod(0)
+
+    for name in files:
+        response = structured_app.get("/api/plugin/structured/parsed", params={"path": name})
+        assert response.status_code == 200, (name, response.text)
+        body = response.json()
+        assert body["type"] == "structured", (name, body)
+        assert (body["truncated"], body["parsed"], body["parse_error"]) == (True, None, None), name
+        assert (body["pretty_yaml"], body["node_count"], body["max_depth"]) == ("", 0, 0), name
+        assert body["size"] == (tmp_path / name).stat().st_size, name
+        assert response.headers["ETag"], name
+
+    # A file that is not there, and one the plugin does not parse, answer as at any cap.
+    missing = structured_app.get("/api/plugin/structured/parsed", params={"path": "absent.json"})
+    assert missing.status_code == 404
+    (tmp_path / "note.md").write_bytes(b"# hello\n")
+    wrong = structured_app.get("/api/plugin/structured/parsed", params={"path": "note.md"})
+    assert wrong.status_code == 400
+
+
 def test_parsed_endpoint_names_no_host_path_for_a_file_it_cannot_open(
     tmp_path: Path, structured_app: TestClient
 ) -> None:
