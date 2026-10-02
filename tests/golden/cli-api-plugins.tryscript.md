@@ -63,6 +63,38 @@ status: 200
 ? 0
 ```
 
+## Test: a structured cache of size zero still answers
+
+`STRUCTURED_CACHE_SIZE` is an operator setting.
+Zero, or less, caches nothing and every request parses; it is not an error.
+
+```console
+$ STRUCTURED_CACHE_SIZE=0 metab hookroot --api '/api/plugin/structured/parsed?path=data.json'
+api: /api/plugin/structured/parsed?path=data.json
+status: 200
+{
+  "type": "structured",
+  "path": "data.json",
+  "ext": ".json",
+  "mtime_hash": "data_json_22_1700000000000000000_oxzwjuzo4dpggg9x1isunq5frrzx07a",
+  "size": 22,
+  "parsed": {
+    "a": 1,
+    "b": [
+      2,
+      3
+    ]
+  },
+  "pretty_yaml": "a: 1\nb:\n  - 2\n  - 3\n",
+  "node_count": 5,
+  "max_depth": 2,
+  "comments_supported": false,
+  "parse_error": null,
+  "truncated": false
+}
+? 0
+```
+
 ## Test: a bounded byte chunk
 
 ```console
