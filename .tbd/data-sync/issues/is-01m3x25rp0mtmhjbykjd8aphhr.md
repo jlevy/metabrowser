@@ -5,17 +5,17 @@ title: A mirror's long repository name is cut with an ellipsis while the 'mirror
 kind: bug
 status: in_progress
 priority: 3
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 delegate: codex@spud10.local
 labels:
   - release:v0.12.0
 dependencies: []
-parent_id: is-01m36k3w9vgwy97c9hcj2sqrs5
+parent_id: is-01m402dbhn3zsc1h896f3xnrsq
 hold: null
 hold_until: null
 created_at: 2026-10-02T01:03:05.405Z
-updated_at: 2026-10-03T05:05:52.102Z
+updated_at: 2026-10-03T05:06:26.318Z
 started_at: 2026-10-03T05:05:52.101Z
 ---
 Found 2026-10-01 while running the new step 2 of 5.3 in docs/qa-v012-repository-library.md (PR #263's file-header note) on the stack's tip 25540fa2, in stock Chrome 152.0.7977.83, headless, over the DevTools protocol.
