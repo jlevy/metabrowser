@@ -3,18 +3,20 @@ type: is
 id: is-01m3w6kfrrb809dp01jdcwb498
 title: "After about five full page loads in one tab, the next page waits for a connection: pages in the back/forward cache keep their event stream open"
 kind: bug
-status: open
+status: in_progress
 priority: 2
-version: 6
+version: 8
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
-delegate: claude-code@spud10.local
+delegate: codex@spud10.local
 labels: []
-dependencies: []
+dependencies:
+  - type: blocks
+    target: is-01m402f1j3r01mrjj2adyczdpm
 parent_id: is-01m36k3w9vgwy97c9hcj2sqrs5
 hold: null
 hold_until: null
 created_at: 2026-10-01T17:01:14.875Z
-updated_at: 2026-10-01T20:47:17.563Z
+updated_at: 2026-10-03T05:05:52.706Z
 started_at: 2026-10-01T17:25:22.341Z
 ---
 Found 2026-10-01 while running the new browser step 3.4 of docs/qa-v012-repository-library.md on the stack tip 373b59a9 (a plain trusted folder, `metab <folder> --no-open`), driven in stock Chrome 152.0.7977.83, headless, over the DevTools protocol with `Page.navigate` for each address.
