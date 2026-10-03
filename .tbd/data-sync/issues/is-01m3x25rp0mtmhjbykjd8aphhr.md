@@ -5,7 +5,7 @@ title: A mirror's long repository name is cut with an ellipsis while the 'mirror
 kind: bug
 status: in_progress
 priority: 3
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 delegate: codex@spud10.local
 labels:
@@ -15,7 +15,7 @@ parent_id: is-01m402dbhn3zsc1h896f3xnrsq
 hold: null
 hold_until: null
 created_at: 2026-10-02T01:03:05.405Z
-updated_at: 2026-10-03T05:20:08.587Z
+updated_at: 2026-10-03T06:14:39.119Z
 started_at: 2026-10-03T05:05:52.101Z
 ---
 Found 2026-10-01 while running the new step 2 of 5.3 in docs/qa-v012-repository-library.md (PR #263's file-header note) on the stack's tip 25540fa2, in stock Chrome 152.0.7977.83, headless, over the DevTools protocol.
@@ -40,4 +40,4 @@ The runbook's 5.3 step 2 names this as a known defect.
 
 ## Notes
 
-Candidate fix: mirror note flex basis zero and grow only into remaining space. In-app browser measurement at 12 heading widths from 250 to 1350px: before root lost up to 0.0390625px with the note present; after root equals note-removed baseline exactly at every width. Updated stylesheet assertion. Full gate and delivery pending.
+Candidate fix: mirror note flex basis zero and grow only into remaining space. In-app browser measurement at 12 heading widths from 250 to 1350px: before root lost up to 0.0390625px with the note present; after root equals note-removed baseline exactly at every width. Updated stylesheet assertion. Storage epic mb-j2b7 changes the default location to ~/.cache/metabrowser and the override to METABROWSER_CACHE_DIR; retain the original measurements as historical evidence and repeat release QA against the new display paths. Full gate and delivery pending.
