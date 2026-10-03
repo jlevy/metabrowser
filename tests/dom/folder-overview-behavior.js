@@ -98,6 +98,32 @@ global.window = { METABROWSER_SETTINGS: {} };
     JSON.stringify(fileOverviewPanel),
   );
   check(
+    "File Overview hides when the envelope has no dir rollup",
+    fileOverviewPanel.required === false &&
+      fileOverviewPanel.resolve({ path: "g1-UkVBRE1FLm1k", raw: { git_kind: "tree" } }) === null,
+  );
+  check(
+    "File Overview hides Git dir tallies that omit sizes",
+    fileOverviewPanel.resolve({
+      path: "",
+      raw: { git_kind: "tree", dir: { total_files: 9 } },
+    }) === null,
+  );
+  check(
+    "File Overview mounts Git dir tallies that include sizes",
+    fileOverviewPanel.resolve({
+      path: "",
+      raw: { git_kind: "tree", dir: { total_files: 9, total_size: 100 } },
+    }).key === "",
+  );
+  check(
+    "File Overview still mounts when dir aggregates are present",
+    fileOverviewPanel.resolve({
+      path: "src",
+      raw: { dir: { state: "complete", mtime: null } },
+    }).key === "src",
+  );
+  check(
     "neither body registers a section of its own",
     !fileTotalsPanelSource.includes("placement:") && !fileTypeSummarySource.includes("placement:"),
   );
@@ -145,6 +171,11 @@ global.window = { METABROWSER_SETTINGS: {} };
     },
   };
   const readmePanel = readmePanelModule.createReadmePanel(readmeMb);
+  check(
+    "README panel keys off a GitPath wire identity",
+    JSON.stringify(readmePanelModule.resolveReadme({ raw: { readme_path: "g1-UkVBRE1FLm1k" } })) ===
+      JSON.stringify({ key: "g1-UkVBRE1FLm1k", data: { path: "g1-UkVBRE1FLm1k" } }),
+  );
   const readmeContainer = new Element("div");
   const readmeMount = readmePanel.mount(
     readmeContainer,

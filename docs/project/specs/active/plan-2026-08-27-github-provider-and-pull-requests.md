@@ -1,29 +1,64 @@
-# Feature: GitHub Provider — Content Model, Acquisition, and Pull Requests
+# Feature: Hosted Review Model and GitHub Provider
 
-**Date:** 2026-08-27
+**Date:** 2026-08-27 (refreshed 2026-09-22)
 
 **Author:** Joshua Levy (with LLM assistance)
 
-**Status:** Draft
+**Superseded in part (2026-09-23):** the remaining v0.12 phases follow
+[Thin Mirror for Git and GitHub Browsing](plan-2026-09-23-v012-thin-mirror.md), which
+replaces this plan wherever they disagree.
+The built foundation and its record below stay as background.
+
+**Addendum (2026-09-30):** the Phase 0 through 0D hosted-review foundation this plan
+records as built was removed from the stack because the thin-mirror design does not use
+it: the Hosted Review Format, its resource profiles, browser-parser evidence, the
+frontmatter Markdown artifact profile, the `metabrowser.capabilities.v1` entry-point
+group, the cache’s provider-store reservations, and the GitHub coverage oracle.
+It is kept, unmaintained, on the `reference/v012-hosted-review` branch, tagged
+`reference/v012-hosted-review-2026-09-30`.
+
+**Status:** None of this plan’s hosted-review design is in the v0.12 tree.
+The Phase 0 through 0D foundation was built on stack
+[#218](https://github.com/jlevy/metabrowser/stack/218) and then removed, as the addendum
+above records. Phases 2 through 4A are superseded: the thin-mirror plan’s
+[Delivery](plan-2026-09-23-v012-thin-mirror.md#delivery) section names the pull requests
+that open GitHub URLs, read pull-request records with `gh`, and render the pull-request
+page in their place, so the unchecked items in those phases will not be done as written.
+The pull-request index and panel (Phases 3C and 4B) and anchored review threads (Phase
+4C) are deferred by the user’s 2026-09-23 decision.
+Phases 5 and 6, hosted releases, and GitLab remain later work and need re-planning
+against the thin mirror before they start.
+Landing is `mb-n2ro` and requires the user’s explicit approval; the
+[alpha test plan](plan-2026-09-22-v012-alpha-testing.md#landing-status) lists what
+remains before it.
 
 ## Vision
 
-Once a repository is in the local cache, Git already answers most questions about it:
-history, revisions, diffs, and file content all work through the shipped pipeline.
+Once Metabrowser recognizes a repository source, Git answers most questions about its
+content: history, revisions, diffs, and files all flow through the shared repository
+store or an attached local checkout.
 What Git cannot answer is what happened *around* the code — the pull request that
 proposed a change, the review that argued about it, the checks that gated it.
 
 This plan adds that layer, and only that layer.
-It reads GitHub, normalizes it into strict versioned records, stores them as immutable
-snapshots beside the cached repository, and renders them through views that resolve
-every piece of code content back to Git object ids.
+GitHub is the first provider adapter, not the durable domain model.
+The adapter normalizes GitHub into strict provider-neutral hosted-review records, stores
+them as immutable snapshots in a shared repository-scoped provider mirror, and renders
+them through plugin views that resolve code content back to Git object IDs.
 
 Git stays authoritative for content, history, and diffs.
 Provider records describe hosted state and *refer to* immutable Git object ids; they
 never replace the object database.
-A pull-request comparison is a Git comparison with provider context layered around it,
-which is why it reuses the existing File Diff Format pipeline rather than introducing a
-second one.
+A pull or merge request is a hosted-review document that references a Git comparison.
+Its patch reuses File Diff Format, its base and head reuse revision content, and its
+title, description, lifecycle, reviews, threads, checks, merge state, and freshness stay
+available through the richer hosted-review format.
+A provider resource is published through generic artifact-contract and resource-profile
+registries, then selected through a resource-kind and view registry.
+That path is reusable for GitHub releases and other external systems; GitHub-specific
+URL, acquisition, auth, badges, and actions remain plugin customizations.
+A future GitLab adapter (`mb-51uj`) is a named consumer of the same boundary, but this
+release adds only GitHub behavior and only fields proven by that implementation.
 
 ## Why this is a separate plan
 
@@ -32,9 +67,11 @@ This work was Phases 4 through 7 of the
 It moved here because the two have diverged in every dimension that matters for
 planning:
 
-- **Different dependencies.** The generic cache is gated on the content-trust chain and
-  on the Git-status clean predicate.
-  This plan is gated on the cache existing and on nothing else.
+- **Different dependencies.** Generic worktree-free acquisition is independent of
+  Git-status; only an attached user filesystem subject needs working-tree status.
+  Serving fetched remote content is gated on the content-trust chain.
+  Provider modeling can start independently; provider acquisition needs only a stable
+  source attachment plus the narrow job and selected-ref foundation in `mb-jlon`.
 - **Different risk.** The cache is filesystem and format work whose failure modes are
   local and recoverable.
   This is network, authentication, rate-limit, and pagination work whose failure modes
@@ -45,6 +82,52 @@ planning:
 The repository-library plan keeps the generic phases: format foundation, acquisition and
 URL opening, catalog and refresh, the chooser, and large-repository support.
 
+## v0.12.0 Milestone
+
+The v0.12.0 milestone is one PR-first vertical slice:
+
+- bind a managed source or user-owned GitHub checkout and publish its repository
+  summary;
+- open any advertised and authorized branch through the generic repository
+  revision-source layer;
+- hydrate an immutable bundle for a directly addressed pull request and fetch only that
+  PR’s Git refs through core;
+- then cache a bounded, paginated pull-request index with explicit completeness and
+  freshness;
+- open a repository or `/pull/<number>` GitHub URL directly, including a PR that is not
+  present in the cached index; and
+- render repository and PR views offline through the existing Git, revision-content, and
+  File Diff Format paths.
+
+The index is a later discovery cache, not a prerequisite for direct addressing.
+Opening a direct PR URL fetches that one PR into its independently addressed current
+bundle without rewriting an index as though the item matched that index’s query.
+The navigation view may surface the selected item beside an existing index, but the
+stored index remains an honest observation of its own filter, sort, and bounds.
+Issue and timeline records and views move to `mb-9rrc`; stacked-PR projections remain in
+`mb-glxc`. Both stay in this plan as later phases so the release boundary does not erase
+the larger content-model design.
+
+The long-lived layer boundaries, format profiles, plugin ownership, activity projection,
+and virtual navigation containers are specified in
+[Hosted Review Model and Provider Boundary](../../architecture/arch-hosted-review-model.md).
+Shared Git stores, attached local checkouts, repository-scoped provider mirrors, and
+multi-client behavior are specified in
+[Repository Sources and Provider Mirrors](../../architecture/arch-repository-sources-and-provider-mirrors.md).
+The general entity/artifact/resource vocabulary, trusted registries, transparent
+Markdown/YAML formats, and external-system mapping workflow are specified in
+[External Resources, Artifact Contracts, and Views](../../architecture/arch-external-resources-and-views.md).
+
+The v0.10.0 release gate is closed: the release tag points at the accepted release
+commit, and the fetched `main` branch contains it.
+The design branch has merged that released `main`, and the first implementation branch
+is a formal stack above the design pull request.
+Each stacked implementation pull request keeps one independently reviewable phase; it
+may be built on the preceding phase before that base lands.
+The internal beads are subtasks within that one phase pull request, not separate pull
+requests. When a base lands, the next pull request is retargeted or rebased, its exact
+phase diff is rechecked, and the full handoff gate runs again before merge.
+
 ## What this plan needs from the cache
 
 Named precisely, because the dependency was previously stated as “Phase 2 job/storage
@@ -52,28 +135,32 @@ primitives”, which is broader than what is actually required.
 
 | Needed | Why | Where it lives |
 | --- | --- | --- |
-| A published cache entry with a stable identity | Provider records hang off a repository that already exists locally | Repository library Phase 1B |
+| A stable source attachment | Provider resources can be enabled for either a managed URL source or a user-owned checkout, without persisting its local path | Repository subject and binding correction |
+| An optional shared repository store | Branch, revision, diff, and PR content need immutable Git objects; provider metadata does not require an eager clone | Repository library Phase 1B |
 | Atomic publication and no-replace rename | Snapshot sets and manifests need the same publication guarantee the cache uses | Repository library Phase 1A |
-| Application-home locking | Provider refresh must not race generic refresh on one entry | Repository library Phase 1A |
-| Job progress, cancellation, and stage outcomes | A provider refresh is a long multi-stage operation that must report per-stage results | Repository library Phase 2 |
-| Core Git ref fetching on request | Pull-request heads live in refs the plugin asks core to fetch; the plugin never runs Git | Repository library Phase 2 |
+| Lock hierarchy and store/subject leases | Provider publication must coordinate with purge, ref mutation, readers, and reclamation without holding a lock across network work | Repository library Phase 1A plus provider-store kernel `mb-i3xc` |
+| Owner-only application home | Private repositories and provider records must not be exposed through permissive cache directories | Cache security `mb-xa0p` |
+| Job progress, cancellation, and stage outcomes | A provider refresh is a long multi-stage operation that must report per-stage results | Repository library extraction `mb-jlon` |
+| Core Git ref fetching on request | Pull-request heads live in refs the plugin asks core to fetch; the plugin never runs Git | Repository library extraction `mb-jlon` |
+| Provider capability and lifecycle registry | Hosted-review services must discover, inject, and close adapters without importing GitHub | Provider SDK `mb-ji83` |
 
-The catalog, the chooser, purge, and size accounting are **not** prerequisites.
-If scheduling requires it, the two rows attributed to repository-library Phase 2 are a
-small extraction — the job lifecycle and ref fetching — and can be delivered ahead of
-the rest of that phase.
+The catalog, chooser, purge, and size accounting in `mb-0ybg` are **not** prerequisites.
+The job lifecycle and selected-ref fetching have therefore been extracted into
+`mb-jlon`, which can land before the full generic management phase.
 
-## GitHub Browsing Content Model v1
+## Provider-Neutral Hosted Review Model v1
 
-“Full GitHub content model” is bounded here to the read-only repository-browsing domain.
-GitHub exposes many administrative and product APIs that do not contribute to browsing
-source, issues, or code review.
+The model covers the read-only hosted-review domain, not every product surface a code
+host exposes. Administrative APIs and unrelated project-management objects do not
+contribute to browsing source or reviewing a change.
 Claiming to model all of them would leave the phase with no completion criterion.
 
-Phase 1 models the complete v1 browsing set before Phase 2 performs an API request.
-It lands Pydantic models, compiled SoftSchema contracts, field documentation, normalized
-fixtures, invalid fixtures, relationship tests, and a format inventory.
+Phase 0 models the repository and change-request subset before Phase 3 performs an API
+request. It lands Pydantic models, compiled SoftSchema contracts, field documentation,
+normalized fixtures, invalid fixtures, relationship tests, and a format inventory.
 No renderer reads a provider record that the inventory does not register.
+The issue, timeline, and stack families extend the same closed registry in later phases;
+they do not block the PR-first model from becoming usable.
 
 ### The corpus needs a coverage oracle, not just fixtures
 
@@ -85,12 +172,11 @@ model. Hand-authored normalized fixtures avoid that.
 They also cannot answer a different question.
 A fixture proves the model is self-consistent and that validation rejects what it
 should. It cannot prove that GitHub actually supplies a modeled field, or supplies it
-over the transport Phase 2 chooses.
+over the transport Phase 3 uses.
 Nothing in a hand-written corpus fails when a field turns out to be unobtainable, so the
-discovery lands in Phase 2, after roughly sixteen contracts and their fixtures are
-frozen.
+discovery lands in Phase 3, after the initial contracts and their fixtures are frozen.
 
-Phase 1 therefore validates its inventory against a small set of **recorded, scrubbed**
+Phase 0 therefore validates its inventory against a small set of **recorded, scrubbed**
 real responses, used only as a coverage oracle:
 
 - captured once, from public repositories, with tokens, rate-limit headers, and volatile
@@ -102,88 +188,208 @@ real responses, used only as a coverage oracle:
   supplied it.
 
 A field that no recorded response supplies is not automatically wrong — it may be
-derived, or intentionally Metabrowser-owned like `PullRequestStack/v1`. It just has to
+derived, or intentionally Metabrowser-owned like `ChangeRequestStack/v1`. It just has to
 be labeled as such deliberately rather than by omission.
 
 This keeps the review’s ordering (the model leads) while removing its blind spot (the
-model is unfalsifiable until Phase 2).
+model is unfalsifiable until Phase 3).
 
-### Transport is already partly decided, and the model should say so
+### One provider port, one v0.12.0 transport
 
-The example below records `review_decision` and `counts.reviews`. Both are GraphQL
-fields with no REST equivalent — REST returns neither a review decision nor a review
-count — so the browsing model as written presumes GraphQL as the primary source for pull
-requests, with REST filling gaps.
+The hosted-review port is provider-neutral; its first implementation is
+`GitHubGhAdapter`, backed by the installed `gh` CLI and explicit `gh api` requests.
+This keeps authentication, active-account selection, GitHub Enterprise host handling,
+REST, and GraphQL behind GitHub’s supported client while Metabrowser owns bounds,
+normalization, immutable snapshots, and errors.
 
-That is a reasonable choice and it is not what
-[Decisions Deferred to Their Evidence Phase](plan-2026-08-11-open-repo-from-git-url.md#decisions-deferred-to-their-evidence-phase)
-currently claims. What remains open for Phase 2 is which transport serves each
-*acquisition*, and that stays open.
-What is already settled is that some modeled fields are GraphQL-only, and the durable
-record still must not expose that.
-Phase 1 marks each such field so the constraint is visible: either the field is
-obtainable and the oracle proves it, or it is optional with an explicit `not_requested`
-state rather than a hole discovered during adapter work.
+The adapter does not run `gh pr view` as a second presentation model.
+It uses explicit REST endpoints or GraphQL queries through `gh api`, maps each response
+immediately into the hosted-review contracts, and discards the raw response.
+GraphQL is expected for review decisions and aggregate review state that REST does not
+provide; each modeled field names its acquisition source in the coverage oracle without
+exposing that transport in the durable domain record.
+
+The adapter invokes one page at a time and never uses `gh api --paginate`, because the
+application’s own item, page, byte, time, and cancellation limits must stop the walk.
+It also avoids `gh api --cache`; Metabrowser’s validated provider store is the cache of
+record, and an opaque transport cache would create a second freshness authority.
+Every request uses a fixed endpoint template or checked-in GraphQL document with
+explicit variables serialized as bounded JSON on standard input through
+`gh api --input -`. Raw untrusted values never become path fragments, `-f`/`-F` fields,
+headers, or option-like arguments; the few REST path components a fixed template
+requires pass a typed allowlist and percent-encoding builder before becoming one
+argument.
+
+The runner asks `gh api --include` for response metadata, parses the status line and an
+allowlist of rate-limit, validator, request-ID, content-type, and API-version headers,
+then parses the bounded body separately.
+GraphQL `data` accompanied by `errors`, null nodes, unexpected content types, and output
+truncation are typed incomplete or failed outcomes rather than success.
+Each GitHub host has an explicit REST API version, `Accept` profile, and checked-in
+query identity; an Enterprise host that cannot satisfy them reports
+`unsupported_provider_version` instead of silently changing semantics.
+Verbose command output is forbidden.
+
+Authentication is a typed preflight and recovery path:
+
+- `gh auth status --active --hostname <host> --json hosts` diagnoses the selected host
+  without `--show-token`; the adapter parses the JSON status because `gh` documents JSON
+  mode as exiting successfully even when an account has an authentication problem;
+- preflight selects an explicit login, then a short-lived trusted `GhCredentialSession`
+  broker runs `gh auth token --hostname <host> --user <login>` once, retains the token
+  only in broker memory, and injects it through the appropriate `GH_TOKEN` or
+  `GH_ENTERPRISE_TOKEN` child environment for every `gh api --hostname <host>` process
+  in that acquisition; the token is never an argument, file, application message, log,
+  diagnostic, or cache value;
+- that same broker may register a short-lived `GitFetchCredentialLease` in the core
+  lease registry, bound to the provider kind, provider instance, selected stable
+  principal, authorization-context key, visibility partition, expiry, cancellation
+  generation, and exact credential-free HTTPS repository sources; the plugin passes the
+  opaque handle to the core repository port but cannot inspect, forge, or serialize it;
+- the first request in that pinned session resolves `/user` and freezes the stable
+  opaque principal ID in `AuthorizationContextRef`; every subsequent page and endpoint
+  is spawned by the same broker session, so a concurrent external `gh auth switch`
+  cannot change the principal, and a lost broker or rejected token aborts publication
+  rather than reopening under the newly active account;
+- missing CLI, missing login, insufficient scope, permission loss, rate limiting, and
+  network failure remain distinct provider states; and
+- a request path never starts interactive login.
+  The UI gives the user a copyable `gh auth login --hostname <host>` recovery command
+  and retries only after an explicit action.
+
+Every `gh` process uses a no-shell, bounded, cancellable runner with capped standard
+input, stdout, and stderr plus a sanitized environment.
+The credential broker keeps its credential state in the short-lived process, terminates
+all children on cancellation, keeps its lease registrations live until every Git run
+using them finishes, then revokes them and discards its credential state, and returns
+only bounded response frames, opaque lease registrations, and typed failures to the
+parent. It answers only the Git askpass requests core armed for one run, lease, and
+source URL, directly, so the token never passes through the parent application.
+Secrets, auth output, request headers, child environments, and raw error bodies never
+enter logs or cache records.
+A later direct-HTTP GitHub adapter or GitLab adapter may implement the same port if
+measurement or deployment needs justify it; neither changes the common format or views.
 
 ### Record families
 
 | Family | Contracts | Purpose |
 | --- | --- | --- |
-| Provider storage | `ProviderBinding/v1`, `Retrieval/v1`, `SyncManifest/v1`, `ResourceSet/v1`, `Tombstone/v1` | Bind the generic entry to a stable GitHub repository, describe acquisition, and publish complete snapshot sets |
-| Repository | `GitHubRepository/v1` | Stable provider identity, owner/name, URLs, visibility, default branch, and provider timestamps |
-| Work items | `GitHubIssue/v1`, `GitHubIssueComment/v1`, `GitHubTimelineEvent/v1` | Issues and their bounded discussion and state history |
-| Pull requests | `GitHubPullRequest/v1`, `GitHubPullRequestReview/v1`, `GitHubReviewThread/v1`, `GitHubReviewComment/v1` | Review state, Git endpoints, decisions, threads, and line anchors |
-| Commit signals | `GitHubCheckSuite/v1`, `GitHubCheckRun/v1`, `GitHubCommitStatus/v1` | Mutable provider conclusions attached to an immutable commit ID |
-| Derived relationships | `PullRequestStack/v1` | Explicit, provenance-bearing dependency edges and display order; never presented as a native GitHub object |
+| Provider storage | `ProviderBinding/v1`, `AuthorizationContextRef`, `Retrieval/v1`, `ProviderSyncManifest/v1`, `ResourceSet/v1`, `ProviderViewPointer/v1`, `Tombstone/v1` | Bind a conservative source identity to a stable hosted repository, describe the non-secret auth context and acquisition, and publish atomic repository-scoped snapshot sets |
+| Repository | `HostedRepository/v1` | Stable provider identity, owner/name, URLs, visibility, default branch, and provider timestamps |
+| Work items (later, `mb-9rrc`) | `Issue/v1`, `IssueComment/v1`, `TimelineEvent/v1` | Issues and their bounded discussion and state history |
+| Change requests | `ChangeRequestIndex/v1`, `ChangeRequest/v1`, `ChangeRequestComment/v1`, `Review/v1`, `ReviewThread/v1`, `ReviewComment/v1` | Bounded discovery summaries plus selected pull- or merge-request state, top-level conversation, Git endpoints, decisions, threads, and anchors |
+| Commit signals | `Check/v1`, `CommitStatus/v1` | Mutable provider conclusions attached to an immutable commit ID |
+| Activity projection | `RepositoryActivity/v1` | A bounded, source-neutral page of commit or change-request references for history-style navigation |
+| Derived relationships (later, `mb-glxc`) | `ChangeRequestStack/v1` | Explicit, provenance-bearing dependency edges and display order; never presented as a provider-native object |
+| Releases (later, `mb-7srn`) | `Release/v1`, `ReleaseAsset/v1`, `ReleaseIndex/v1` | Prose-bearing releases, separately mutable asset metadata, and bounded discovery; the provider-storage kernel and view framework are reused without widening PR records |
+
+The first mapping matrix is reviewed as part of the format, not left implicit in adapter
+code:
+
+| GitHub concept | Hosted-review projection | Boundary |
+| --- | --- | --- |
+| Repository node and `nameWithOwner` | `HostedRepository/v1` and `ProviderObjectRef` | Provider coordinates remain provenance; stable opaque identity is authoritative |
+| Pull request | `ChangeRequest/v1` | `provider_ref.object_kind: pull_request`; a future GitLab merge request uses the same common record with another provider kind |
+| Base, head, and merge commit | `RevisionRef` and `ComparisonRef` | Full Git object IDs; provider observation is explicit, local object availability is reported separately, and content stays in Git; a deleted fork may leave head repository identity null while the ref and OID remain |
+| Draft, open, closed, merged, locked | Common lifecycle and capability fields | Unknown provider values normalize to `unknown`, never to a guessed state |
+| Review decision and requested reviewers | Change-request review summary | Aggregate state is distinct from the bounded review collection |
+| Top-level conversation comment | `ChangeRequestComment/v1` | Distinct from a diff discussion; keeps Markdown body and lifecycle but has no review anchor |
+| Review, review thread, review comment | `Review/v1`, `ReviewThread/v1`, `ReviewComment/v1` | Review YAML owns identity, nullable author, disposition, lifecycle, timestamps, and relationships while an optional Markdown body owns summary prose; anchors preserve provider and immutable comparison identity; an unavailable original commit stays observed rather than becoming `not_requested`; file-level, line, and range forms remain distinct; mapping failure stays unresolved |
+| Check suite, check run, commit status | `Check/v1`, `CommitStatus/v1` | Attached to immutable revision IDs; suite names and run-style timestamps remain null when the suite API does not expose them; provider-only details use a declared companion record |
+| Labels, assignees, milestone | Common bounded references | Only values consumed by discovery or detail views enter v0.12.0 |
+| Provider timestamps and API observations | Object timestamps plus `Retrieval/v1` | Hosted state and retrieval freshness never share one timestamp |
+
+SoftSchema maturity follows the evidence without weakening checked-in contracts:
+
+1. Exploratory notes may use soft or permissive schemas while field meaning and
+   consumers are still being reviewed; they are not conformance artifacts.
+2. Every checked-in conformance artifact is enforced from its first machine-checked
+   version. Pydantic models compile deterministic schemas, and Python and browser
+   consumers validate the same corpus and semantic invariants.
+3. Before provider acquisition publishes durable cache entries, the installed host
+   registry binds every released contract to its packaged schema, and undeclared fields
+   fail.
+
+No artifact in the conformance corpus or released provider cache is permissive.
+Persisted timestamps use canonical RFC 3339 UTC strings with required seconds and `Z`.
+Zero milliseconds are omitted and a nonzero fraction has exactly three digits.
+Adapters convert offsets to UTC and truncate finer precision toward the earlier
+millisecond at acquisition, which keeps Python and browser validation and ordering
+exact. Provider links use canonical ASCII HTTPS syntax with a lowercase DNS host, no
+credentials or default port, and uppercase hexadecimal percent escapes.
+Readers accept finite integral JSON numbers and canonical serialization writes integer
+YAML; all persisted integers stay within JavaScript’s exact range.
 
 Small values such as `ActorRef`, `RepositoryRef`, `Label`, `MilestoneRef`,
-`GitObjectRef`, and `CollectionState` are nested `$defs`, not independently refreshed
-files. An actor reference carries enough identity and display information to render when
-no full actor resource was fetched.
+`GitObjectRef`, collection coverage, and `AuthorizationContextRef` are nested `$defs`,
+not independently refreshed files.
+An actor reference carries enough identity and display information to render when no
+full actor resource was fetched.
+`AuthorizationContextRef` carries only stable namespace identity: provider kind,
+provider instance, anonymous/authenticated mode, a stable opaque principal ID for
+authenticated publications, and an optional normalized capability-partition fingerprint
+when the provider proves that capability partition changes object visibility.
+Display login, observed scopes or capabilities, and observation time belong to the
+retrieval observation and never enter the authorization-context key.
+Neither record carries a token, credential-store path, environment value, or raw auth
+output. If an authenticated adapter cannot resolve a stable opaque principal ID, it
+returns a typed authorization-unavailable state instead of publishing into a shared
+authenticated namespace.
 
-Issue and pull-request records are separate closed contracts.
-A pull request is not also written as an issue record, so common provider fields do not
-acquire two authorities.
+Issue and change-request records are separate closed contracts.
+A GitHub pull request is not also written as an issue record, so common provider fields
+do not acquire two authorities.
 Shared code may project either type into an in-memory work-item summary.
 It does not use an open union or an untyped `data` mapping on disk.
 
 ### Identity and Git references
 
-Every provider object stores the stable GitHub node ID when available, its repository
-ID, its human URL, and its repository-local number where applicable.
+Every provider object stores a minimal `ProviderObjectRef`: provider kind, provider
+instance, object kind, and stable opaque provider ID. The owning domain record stores
+repository identity, human URL, and repository-local number where applicable.
 File paths use a safe digest or encoded resource key; the full provider ID inside the
 record is authoritative.
 Repository renames change display coordinates, not provider identity or generic cache
 identity.
 
-Pull requests record:
+Change requests record:
 
-- stable pull-request and repository IDs, number, URL, title, body, author, state,
-  draft/locked flags, provider timestamps, labels, assignees, milestone, and review
-  decision;
-- base and head repository IDs, ref names, and full Git object IDs;
+- stable change-request and repository IDs, provider-native kind, number, URL, title,
+  nullable author, normalized state, draft/locked flags, provider timestamps, labels,
+  assignees, milestone, and review decision;
+- the base repository ID, nullable head repository ID, ref names, and full Git object
+  IDs;
 - an optional merge object ID and its observation state;
 - requested reviewers and teams as bounded references; and
 - provider-reported aggregate counts where GitHub exposes them without fetching a
   collection.
 
-The proposed strict core is concrete enough to fixture before acquisition work:
+The proposed `frontmatter-md` artifact is concrete enough to fixture before acquisition
+work:
 
-```yaml
+```markdown
+---
 softschema:
-  contract: com.github.jlevy.metabrowser.github:GitHubPullRequest/v1
-  envelope: pull_request
+  contract: com.github.jlevy.metabrowser.review:ChangeRequest/v1
+  envelope: change_request
   status: enforced
-pull_request:
-  id: PR_kwDOExample
-  repository_id: R_kgDOExample
+change_request:
+  id: github:github.com:R_kgDOExample:pull:123
+  provider_ref:
+    provider: github
+    instance: github.com
+    object_kind: pull_request
+    opaque_id: PR_kwDOExample
+  repository:
+    provider: github
+    instance: github.com
+    opaque_id: R_kgDOExample
   number: 123
   url: https://github.com/example/project/pull/123
   title: Add repository caching
-  body: ""
   author:
-    id: U_kgDOExample
-    login: octocat
+    provider_opaque_id: U_kgDOExample
+    handle: octocat
     url: https://github.com/octocat
   state: open
   draft: false
@@ -192,62 +398,147 @@ pull_request:
   updated_at: "2026-08-26T15:30:00Z"
   closed_at: null
   merged_at: null
-  base:
-    repository_id: R_kgDOExample
-    ref: main
-    oid: 0123456789abcdef0123456789abcdef01234567
-    availability: present
-  head:
-    repository_id: R_kgDOFork
-    ref: cache-design
-    oid: 89abcdef0123456789abcdef0123456789abcdef
-    availability: present
-  merge_commit: null
+  comparison:
+    base:
+      repository_id: R_kgDOExample
+      ref: main
+      oid: 0123456789abcdef0123456789abcdef01234567
+      observation: observed
+    head:
+      repository_id: R_kgDOFork
+      ref: cache-design
+      oid: 89abcdef0123456789abcdef0123456789abcdef
+      observation: observed
+    merge_commit_oid: null
+    merge_commit_observation: not_requested
   labels: []
   assignees: []
   milestone: null
-  requested_reviewers: []
-  requested_teams: []
-  review_decision: review_required
+  review:
+    decision: required
+    requested_people: []
+    requested_teams: []
   counts:
     commits: 4
-    issue_comments: 2
+    discussion_comments: 2
     reviews: 1
+---
+This pull request adds a versioned repository cache and makes repeated URL opens reuse
+the validated local entry.
 ```
 
-Phase 1 freezes the exact field set and enum policy from representative fixtures.
+YAML is authoritative for every value software consumes.
+The Markdown body is the provider’s PR description, preserved as reader-facing content;
+no route, index, or view parses it to recover fields.
+That lets the existing Markdown renderer present the description under the untrusted
+profile while the hosted-review plugin composes the structured header, reviews, checks,
+threads, and diff around it.
+`ChangeRequestComment/v1`, `Review/v1`, and `ReviewComment/v1` use the same
+`frontmatter-md` split.
+Review YAML owns identity, author, normalized disposition, lifecycle, timestamps, and
+relationships; its optional Markdown body owns the untrusted review-summary prose.
+Comment YAML holds identity, author, timestamps, minimized/deleted state, links, and any
+typed anchor, while its Markdown body holds the untrusted provider prose.
+`ChangeRequestIndex/v1`, manifests, retrieval records, threads, checks, status, and
+other compact companion objects use `pure-yaml` because their whole payload is
+structured or they refer to one of those comment artifacts.
+
+Phase 0 freezes the exact field set, artifact profiles, and enum policy from
+representative fixtures.
 It may split a field into another typed record, but it cannot replace a modeled field
 with an opaque provider payload.
 
 Content and diffs are read from Git by object ID. Provider commits and files are fetched
 only when they carry provider-only annotations or prove collection completeness.
-Review anchors store path, side, line or range, original commit ID, current commit ID
-when available, and an explicit outdated/unresolved state.
+`ReviewAnchor` is a closed tagged union.
+A file anchor stores the path but no line; a line anchor stores path, side, and one
+line; a range anchor stores path plus independently sided `start` and `end` endpoints.
+All forms store original commit ID, current commit ID when available, comparison
+identity, and explicit current, outdated, unresolved, or unmappable state.
 The UI never invents a current line when an anchor cannot be mapped.
+
+Phase 0B.2 freezes the exact fields, enums, path-byte convention, bundle relationships,
+and repository-activity semantics in
+[Hosted Review Model and Provider Boundary](../../architecture/arch-hosted-review-model.md#review-signal-and-activity-contracts).
+Its implementation surface is fixed before provider mapping begins:
+
+| File | Phase 0B.2 responsibility |
+| --- | --- |
+| `hosted_review/models.py` | Add the closed comment, review, thread, anchor, check, status, and activity models; `validate_*`/`dump_*` entry points; `validate_hosted_review_bundle`; and semantic invariants |
+| `hosted_review/artifacts.py` | Add deterministic `serialize_*_artifact` and `validate_*_artifact` functions only for prose-bearing change-request comments, reviews, and review comments |
+| `data/hosted-review-format/review-records-conformance.json` | Portable normalized and invalid review, anchor, relationship, check, and status cases |
+| `data/hosted-review-format/repository-activity-conformance.json` | Portable commit/change-request projection, ordering, coverage, continuation, and truncation cases |
+| `tests/test_hosted_review_record_models.py` | Model, anchor, lifecycle, relationship, and bundle invariants |
+| `tests/test_hosted_review_activity_models.py` | Activity kind, freshness, revision, ordering, bound, and partiality invariants |
+| `tests/test_hosted_review_artifacts.py` | Opaque Markdown preservation, empty review summary, contract/envelope rejection, and snapshot identity |
+| `devtools/check_distribution.py` | Wheel, sdist, and isolated installed-wheel inventory and corpus smoke evidence |
+
+These formats are unreleased and have no independent consumer or persisted released
+data.
+Phase 0B.2 therefore updates producers, tests, docs, and fixtures together and does
+not add compatibility aliases, dual readers, or migration paths.
 
 ### Completeness, freshness, and absence
 
-Every collection entry in a resource-set or sync manifest reports one of
-`not_requested`, `partial`, `complete`, or `unavailable`, plus bounded pagination
-information. A missing comments list is therefore not silently interpreted as “no
-comments.”
+A sync transaction reports `staged`, `committed`, or `failed` independently of the
+coverage of any collection it contains.
+Every collection entry in a committed resource set reports one of `not_requested`,
+`partial`, `complete`, or `unavailable`, plus bounded pagination information.
+A missing comments list is therefore not silently interpreted as “no comments.”
 Truncation records its reason, limit, and next cursor or page when one exists.
+A REST page failure, GraphQL response with `errors`, null resource node, malformed body,
+or bounded-runner truncation cannot produce `complete` coverage.
+Failure-class partial truncations carry a typed failed retrieval with a matching reason;
+bounded partial truncations contain only their successful page retrievals.
 
-Provider `created_at` and `updated_at` describe the GitHub object.
+Provider `created_at` and `updated_at` describe the hosted object.
 Retrieval time, transport, API version, query identity, HTTP validators, rate-limit
-observation, and normalization version belong to retrieval metadata.
+observation, display login, observed scopes or capabilities, and normalization version
+belong to retrieval metadata.
 This prevents a conditional HTTP detail from becoming part of the domain object’s
 identity.
 
-A confirmed deletion receives a tombstone.
-Authentication failure, permission loss, rate limiting, and a resource never fetched are
-distinct states. Refresh does not turn any of them into deletion.
+`ChangeRequestIndex/v1` is a bounded discovery projection, not a bag of complete PR
+records. Each row contains only stable identity, number, URL, title, state, draft state,
+nullable author, base/head labels, and provider timestamps needed to choose a PR. It
+contains no review or check summary.
+The index records its requested state filter and stable sort with a deterministic
+unsigned UTF-8 provider-ID tie-breaker, tagged page continuations, declared item, page,
+byte, and time bounds, collection state, and remote consistency: `provider_snapshot`,
+`best_effort_window`, or `unknown`. The enclosing resource set owns first and last
+observation times, per-page retrieval references, coverage, and remote consistency; the
+referenced retrieval records own validators, rate-limit observations, and transport
+details. The sync manifest closes over those records so an unchanged index can reuse its
+immutable snapshot. Rows deduplicate by stable provider ID. Changing query inputs
+produces a new immutable observation; it does not silently reinterpret an existing
+index. Reviews, threads, checks, descriptions, and Git-ref availability belong to the
+selected PR bundle and are never multiplied across list rows.
+
+`complete` means the provider reported the requested query exhausted before an item,
+page, byte, or time bound was hit.
+Hitting a bound yields `partial` plus its truncation reason and continuation.
+Completeness never means every PR resource is hydrated or that a best-effort multi-page
+window was observed at one provider instant.
+
+A v1 tombstone requires a typed provider deletion event or deleted marker for the exact
+provider object and repository after a matching live snapshot was observed under the
+same authorization context.
+The prior live observation may come from an earlier committed snapshot.
+A provider deletion event time, or the retrieval time of a deleted marker, must follow
+it; the deletion retrieval and tombstone observation must be causally ordered inside the
+new committed sync transaction.
+A GitHub `404`, GraphQL null node, authentication failure, permission loss, rate limit,
+or resource never fetched is `not_found_under_context`, `unavailable`, or another typed
+outcome—not deletion.
+Those states retain the last-known observation and never synthesize a tombstone.
+Corroborated absence remains deferred until a later contract has a profile-defined
+exhaustive collection; the filtered pull-request index cannot supply that evidence.
 
 ### Stacked pull requests
 
-GitHub does not provide one universal stacked-pull-request object.
-`PullRequestStack/v1` is a Metabrowser projection over pull requests and Git history.
-It contains:
+Code hosts do not provide one universal stacked-change-request object.
+`ChangeRequestStack/v1` is a Metabrowser projection over change requests and Git
+history. It contains:
 
 - the ordered member pull-request IDs;
 - directed edges with a controlled relation such as `depends_on`;
@@ -259,47 +550,80 @@ It contains:
   definitive.
 
 The model never silently treats numbering, creation time, or adjacent branches as a
-dependency. Phase 1 defines and fixtures the record.
-Phase 4 implements derivation and navigation after ordinary PR snapshots and views are
-stable.
+dependency. The later stack phase defines and fixtures the record, then implements
+derivation and navigation after ordinary PR snapshots and views are stable.
 
 ## Provider Snapshot Storage
 
-GitHub records are mutable observations, but cache publication should still be atomic
-and old data should remain readable during refresh.
-The provider directory begins in Phase 2:
+Provider records are mutable observations, but cache publication remains atomic and old
+data remains readable during refresh.
+Provider state is keyed by stable hosted repository identity, not by one generic source
+or checkout. Its logical layout begins in Phase 3:
 
 ```text
-<entry>/providers/github/
-├── binding.yml
-├── objects/
-│   └── <kind>/
-│       └── <resource-key>/
-│           └── <snapshot-id>.yml
-├── manifests/
-│   └── <sync-id>.yml
-└── views/
-    ├── repository/current.yml
-    ├── issues/<number>/current.yml
-    └── pull-requests/<number>/current.yml
+cache/
+├── provider-bindings/
+│   └── <source-key>.yml
+└── provider-repositories/
+    └── <provider>/<instance-key>/<repository-key>/
+        ├── objects/
+        │   └── <kind>/<resource-key>/<snapshot-id>.<md-or-yml>
+        ├── manifests/
+        │   └── <sync-id>.yml
+        └── views/
+            └── <auth-context-key>/
+                ├── repository/<profile-key>/{current,last-complete}.yml
+                ├── pull-requests/index/<profile-key>/<query-key>/{current,last-complete}.yml
+                └── pull-requests/<resource-key>/<profile-key>/{current,last-complete}.yml
 ```
 
+A source holds exactly one `ProviderBinding/v1`, so `<source-key>.yml` is one file
+rather than a per-provider directory; binding one source to a different provider,
+instance, or opaque repository ID is a rebind conflict, not a second file.
 An object snapshot is immutable after publication.
 Its snapshot ID is derived from its contract ID and canonical normalized payload.
 Retrieval time, validators, query identity, and rate-limit state live in the sync
 manifest, so a conditional response can reuse an unchanged object instead of writing a
 byte-different copy.
-A sync manifest names the exact object snapshots, collection states, and failures that
-make up one completed acquisition.
-Each small `current.yml` is an atomic `ResourceSet/v1` pointer to a completed manifest;
-the browser never follows staging files or a half-written multi-page response.
+A resource set names the exact object snapshots and collection states for one logical
+repository, change request, or query target.
+A sync manifest names the resource sets, transaction state, authorization context,
+retrieval evidence, and failures that make up one acquisition.
+`<auth-context-key>` is a safe digest of only the stable, non-secret
+`AuthorizationContextRef` identity fields.
+Observation time, display login, and observed scopes or capabilities stay in retrieval
+metadata, so a repeat preflight for the same principal advances the same pointers while
+a validator or denial observed under one principal cannot mutate another principal’s
+pointers.
+`<query-key>` is a deterministic digest of the complete normalized index query,
+including provider instance, state filter, sort, and declared bounds.
+`<profile-key>` is a deterministic digest of the resource-profile contract ID, version,
+and normalized required/optional collection configuration.
+A profile revision never competes for the prior profile’s pointers; both remain
+independently readable until the ordinary retention policy makes the older profile
+unreachable. The plugin may nominate one conventional query as the UI default, but it is
+an alias to that exact key rather than a queryless second authority.
+Each small `current.yml` is a `ProviderViewPointer/v1` that names an immutable resource
+set and a committed manifest; `last-complete.yml` retains the newest resource set whose
+declared required-collection profile is complete.
+The browser never follows staging files or a half-written multi-page response.
 
-The physical layout remains an implementation hypothesis until Phase 1 fixtures measure
+An interrupted, invalid, or failed transaction leaves both pointers untouched.
+A valid committed manifest may contain explicitly partial or unavailable collections and
+become `current.yml`, allowing the UI to show the newest honest observation while
+`last-complete.yml` stays readable.
+Every profile slot required for complete fallback must have an attempted outcome before
+current advances; `not_requested` remains valid for optional slots but a no-attempt
+required slot cannot replace a useful observation.
+The transaction state therefore never doubles as a completeness flag.
+
+The physical layout remains an implementation hypothesis until Phase 0 fixtures measure
 path length, object counts, YAML size, parse time, and snapshot duplication.
 The invariants are fixed: immutable snapshots, atomic current manifests, strict
-contracts, safe path keys, explicit completeness, and no cross-entry writes.
+contracts, safe path keys, explicit completeness, repository-scoped sharing, and
+authorization-scoped pointers and validators.
 If measurement favors a sharded or indexed equivalent, the architecture map and layout
-format must say so before Phase 2 writes released data.
+format must say so before Phase 3 writes released data.
 
 Raw API responses are not authoritative and are not stored by default.
 A future bounded diagnostic capture, if justified, belongs under a separate
@@ -308,35 +632,79 @@ retention policy.
 
 ## GitHub Acquisition Boundary
 
-Phase 2 adds a built-in GitHub plugin after the model phase.
+Phase 3 adds a built-in GitHub provider plugin after the model, cache, and URL phases.
 It maps REST or GraphQL responses into transport-neutral records; the durable schema
 does not expose response shape, pagination syntax, or client-library types.
 
-The provider binding resolves a generic cache entry to a stable GitHub repository ID
-without changing the cache source digest.
-Credentials remain in `gh`, the operating system credential store, or another explicit
-provider adapter. The plugin reports which credential source it used but never reads a
-secret into a cache record.
+The provider binding resolves a conservative credential-free source identity to a stable
+GitHub repository ID without changing the source digest or requiring a managed cache
+entry. An attached local checkout contributes remote candidates only; no absolute path
+enters the binding. Several local clones and URL forms may bind to the same stable
+repository, while ambiguous remotes require an explicit choice.
+The v0.12.0 adapter invokes `gh api`. Long-lived credentials remain in `gh`, its
+operating-system credential store, or its supported token environment.
+A trusted, short-lived core broker asks `gh auth token` for the explicitly selected
+login, retains the returned token only in broker memory, and injects it only into child
+`gh api` environments for that acquisition.
+The plugin receives authentication capability, stable principal identity, bounded
+responses, and typed failure state; it never receives the token, and no secret enters a
+cache record, application message, or diagnostic.
 
 Initial acquisition is on demand:
 
 - repository summary for the repository tab;
-- one issue bundle when an issue URL or chooser selection requests it; and
-- one pull-request bundle, including the bounded collections needed by the first PR
-  view.
+- a bounded, paginated PR index for repository discovery, carrying explicit freshness,
+  page cursors, truncation reason, and `partial` or `complete` collection state; and
+- one selected pull-request bundle, including only the bounded collections needed by the
+  first PR view.
+
+Listing a PR never fetches its Git refs.
+Selecting it does. A direct `/pull/<number>` URL may bypass the index and hydrate only
+that PR, so an old, closed, or not-yet-indexed pull request remains addressable.
+Issue acquisition is the later `mb-9rrc` expansion.
 
 Bulk mirroring is not required.
-Conditional requests, cursor continuation, API budgets, field and collection bounds, and
-rate-limit reporting are part of the acquisition contract.
-A completed provider refresh atomically publishes a new manifest.
-A failed or partial refresh leaves the previous current manifest readable and exposes
-the new failure separately.
+The mirror covers the enabled resource profiles and queries, not every field or endpoint
+on GitHub.com. Conditional requests, cursor continuation, API budgets, field and
+collection bounds, and rate-limit reporting are part of the acquisition contract.
+A committed provider refresh atomically publishes a new manifest.
+A failed refresh leaves the pointers unchanged and exposes its staged diagnostics; a
+structurally valid partial refresh may become current with its partiality visible and
+the previous complete manifest retained at `last-complete.yml`.
+
+The provider process performs network work with no application-home, source-alias,
+repository-store, or provider lock held.
+Publication takes the source-alias lock and ordered repository-store locks only when Git
+state or binding participates, then the provider/resource lock; it revalidates expected
+object IDs, profile, generations, source binding, and authorization context before
+compare-and-swap publication of the manifest and pointer.
+The application-home lock is reserved for layout migration and global sweeps; it is
+never nested inside a repository-store or provider lock.
 
 Selected pull requests may require fetching provider refs into a Metabrowser-owned Git
 ref namespace. The plugin asks the core Git cache service to do that work.
 It does not run Git itself.
-Every base, head, and merge object records whether the object is present, fetchable,
-unavailable because a fork disappeared, or outside the configured acquisition bound.
+The request carries the persistent non-secret authorization context and, for an
+authenticated observation, an opaque `GitFetchCredentialLease` handle registered by a
+pinned `GhCredentialSession` whose authorization-context key equals the observation’s; a
+fetch deferred until content is requested may use a later session for the same key.
+Before job lookup, core reads the lease’s provider, instance, stable principal,
+authorization-context key, visibility partition, expiry, revocation, cancellation
+generation, and exact provider-declared credential-free HTTPS sources from its registry
+entry and compares them with the request.
+Provider-principal fetches never fall back to the attached checkout’s remote, ambient
+Git credentials, SSH agents, or a newly active `gh` account.
+`git/process.py` projects a valid lease through a packaged askpass bridge to the broker;
+the token never enters argv, the child environment, files, ref names, cache records, or
+diagnostics. The run’s environment, configuration, and prompt-binding isolation is
+defined in
+[Repository Sources and Provider Mirrors](../../architecture/arch-repository-sources-and-provider-mirrors.md#fetch-and-credentials).
+Provider-observed object identity is stored independently from local object
+availability. The selected-ref service reports `not_requested`, `present`,
+`missing_fetchable`, `fetch_failed`, `unavailable`, or `outside_bound` without rewriting
+the provider snapshot merely because an object arrives.
+A fetched ref is verified against the provider-observed full object ID before a combined
+view can publish.
 
 ## Retention and Reclamation
 
@@ -348,15 +716,20 @@ snapshot’s contents, not its lifetime.
 
 | Held | Retained because | Reclaimed by |
 | --- | --- | --- |
-| Snapshots referenced by the current manifest | They are the view being served | Never, while that manifest is current |
-| Snapshots referenced only by superseded manifests | One prior generation is worth keeping for diagnosis after a bad refresh | Bounded generation count; older manifests and the snapshots only they reference are collectable |
+| Snapshots referenced by current or `last-complete` | They are the newest observation and complete fallback | Never, while either pointer retains them |
+| Snapshots referenced by the bounded diagnostic predecessor | One prior generation is worth keeping for diagnosis after a bad refresh | Replaced only after the next validated generation commits |
+| Snapshots referenced by an explicit archival pin | The user chose to preserve that observation | Explicit unpin or purge only |
+| Snapshots referenced only by older superseded manifests | They exceed the bounded diagnostic policy | Older manifests and snapshots only they reference are collectable |
 | Snapshots referenced by no retained manifest | Nothing can reach them | Swept with the superseded manifests that orphaned them |
-| Everything, for an offline or deleted source | The last validated set may be the only surviving copy | Never automatically; explicit purge only |
 
-The sweep runs under the same application-home lock as generic reclamation, and never
-collects a snapshot a live session is serving.
-A provider store whose source is gone is the case that must not be swept on a timer — it
-is precisely when the cached copy is irreplaceable.
+The global sweep briefly uses the application-home lock only to enumerate eligible
+repository stores and provider repositories.
+Per-repository work then follows source-alias lock → ordered repository-store locks →
+provider/resource lock when needed and honors OS-lock-backed reader leases; it never
+collects a snapshot or Git object a live session is serving.
+Offline or deleted sources follow the same reachability rule, so an old unreachable
+generation does not accumulate forever while the last validated reachable observation is
+never automatically removed.
 
 ## Security and Trust
 
@@ -371,102 +744,774 @@ at all.
 Provider records are validated before publication and bounded by file, field, and
 collection limits established from fixtures and browser measurements, so a hostile or
 merely enormous response cannot become an unbounded document or an unbounded render.
+Everything kept under the application home is owner-only, and remote acquisition or
+provider publication fails closed when that cannot be verified.
+[Owner-only storage](plan-2026-08-11-open-repo-from-git-url.md#owner-only-storage)
+states the enforced rules, including the macOS ACL checks, the Windows refusal, and why
+provider state is published by atomic replacement rather than written in place.
+Ordinary read-only browsing of a local path outside the application home remains
+available.
 
 Schema selection comes from the installed registry, never from a path inside a cache
 file. Provider object ids and URLs never become filesystem paths without safe encoding
 and containment checks.
 Credentials stay in `gh`, the OS credential store, or an explicit provider adapter; the
 plugin reports which source it used and never reads a secret into a record, a log, or a
-browser response.
+browser response. Browser renderers insert provider text through text nodes or the
+existing untrusted Markdown path, never `innerHTML`; provider-supplied links accept
+validated `https` URLs only.
+
+## Implementation Coordinates
+
+The implementation uses domain and provider plugins over a neutral provider-resource
+service. `src/metabrowser/provider_resources/` owns content-neutral identity and storage
+records, the shared minimal `HostedRepository/v1` contract and repository-summary
+profile, publication validation, and the store behind `ProviderResourceStorePort`.
+`hosted_review` owns change-request contracts, routes, and views; the future
+`hosted_releases` plugin owns release contracts, routes, and views.
+`github` owns URL syntax, `gh`, GitHub response mapping, and named GitHub companion
+records. Core owns plugin mounting, safe repository services, subprocess policy, and
+lifecycle. Phase 0B.1 stages the unreleased neutral records beside their first consumer;
+`mb-s0gv` moves them without compatibility aliases before `mb-i3xc` implements the store
+or another domain plugin consumes them.
+
+### Core and plugin-SDK changes
+
+| File | Existing seam | Planned change |
+| --- | --- | --- |
+| `src/metabrowser/plugin_loader/manifest.py` | `PluginManifest`, `DataHookSpec`, file `KindRule` and `ViewSpec` | Keep the browser and file-kind manifest unchanged in Phase 0C.1; later add `ResourceKindSpec`, `RouterSpec`, `AddressSpaceSpec`, `ProviderUrlReducerSpec`, and `ProviderAdapterSpec` only when their browser, route, or lifecycle surfaces ship |
+| `src/metabrowser/plugin_loader/capability_types.py` | `ArtifactContractSpec`, `ConformanceCorpusSpec`, `BrowserParserSpec`, `ArtifactValidationContext`, `CapabilitySet` | Define the dependency-light public declaration surface, including explicit browser consumption, immutable packaged corpus, and self-contained browser-parser evidence, without loading schema parsers, validators, or discovery during an ordinary `import metabrowser` |
+| `src/metabrowser/plugin_loader/capability_discovery.py` | `discover_capability_sets` | Load versioned `metabrowser.capabilities.v1` entry points only from installed distributions; reject duplicate providers and any partial discovery result; never load backend capabilities from operator directories or viewed data |
+| `src/metabrowser/plugin_loader/artifact_contracts.py` | `build_contract_registry`, `build_resource_profile_registry`, `validate_record`, `validate_artifact`, `serialize_artifact` | Install trusted contract and publication-profile objects returned by capability factories; verify exact schema, corpus, and browser-module bytes separately from the independently recomputed logical schema identity; artifacts may name but never supply a schema, profile, parser, renderer, or Python import path |
+| `src/metabrowser/plugin_loader/artifact_inventory.py` | `installed_artifact_inventory`, `check_installed_evidence`, `validate_installed_evidence` | Derive one generic inventory from installed contract/profile declarations; require positive and negative selected cases; and verify structural, semantic, deterministic serialization, and declared artifact-profile round-trip evidence without a built-in contract-name list |
+| `src/metabrowser/plugin_loader/static_assets.py` | `_resolve_sidekick`, `build_plugin_routes` | Build one Starlette `Mount` per installed router and preserve its methods, streaming, headers, and status codes; keep exact data hooks for simple GET/POST models |
+| `src/metabrowser/plugin_loader/provider_urls.py` (new) | — | Load trusted installed reducers; arbitrate `NotApplicable`, `Reduced`, and terminal `Rejected` outcomes; refuse duplicate scheme/host claims; and dispatch without importing a provider in cache or CLI code |
+| `src/metabrowser/plugin_loader/provider_capabilities.py` (new) | `build_provider_registry`, `create_provider`, `close_provider`, `close_all` | Build the provider/instance capability registry, inject provider-neutral ports, reject duplicate claims, and await adapter cancellation and close |
+| `src/metabrowser/plugin_loader/provider_addresses.py` (new) | `encode_provider_address_atom`, `decode_provider_address_atom`, `parse_hosted_address`, `format_hosted_address` | Encode provider instance, repository opaque ID, and provider-object opaque ID as typed canonical unpadded-base64url atoms; reject wrong roles, padding, noncanonical encodings, invalid UTF-8, dot segments, and bounds violations |
+| `src/metabrowser/plugin_api.py` | opaque `GitFetchCredentialLease`, `provider_fetch_authorization_context`, `RepositoryContentPort.open_subject`, `RepositoryObjectJobPort.request_selected_refs`, `ProviderResourceStorePort.stage`, `publish`, `read`, `lease` | Define the public opaque registry handle; validate an `AuthorizationContextRef`, derive its canonical key, and map it once to an internal `ProviderPrincipal`; and inject narrow cancellable ports with typed unavailable, authorization, stale-generation, and publication failures; selected-ref requests never accept a token, unrestricted `ContentSource`, cache path, checkout path, or provider schema |
+| `src/metabrowser/provider_resources/models.py` (new; `mb-jlon` moves `AuthorizationContextRef`, `authorization_context_key`, `LocalObjectAvailability`, and `LocalGitObjectAvailability` first, `mb-s0gv` the rest) | provider kind/instance scalars, `ProviderObjectRef`, `RepositoryRef`, `AuthorizationContextRef`, `LocalObjectAvailability` and `LocalGitObjectAvailability`, generic object/collection targets, source-based `ProviderBinding`, retrieval records, `ResourceSet`, `ProviderSyncManifest`, pointers, tombstones, profile declarations, closure validators, and the shared minimal `HostedRepository` | Own provider-content-neutral identity, source attachment, publication, and repository-summary records plus trusted-profile application independently of any domain plugin; `ChangeRequest`, `Release`, and their companions remain domain-plugin records; the observation-guarded `local_git_object_availability` and `local_merge_commit_availability` helpers stay in `hosted_review/models.py` beside the revision records they read |
+| `src/metabrowser/provider_resources/store.py` (new, `mb-i3xc`) | `ProviderStore`, `stage_snapshot`, `publish_manifest`, `read_current`, `read_last_complete`, `lease_snapshot`, `reclaim_snapshots` | Implement stable-repository-scoped and auth-scoped immutable snapshots, atomic query-key pointers, reader leases, diagnostic retention, and bounded reachability reclamation behind the port |
+| `src/metabrowser/cache/repository_store.py`, `src/metabrowser/cache/jobs.py`, `src/metabrowser/git/process.py`, `src/metabrowser/git/tree_source.py` (new) | `resolve_store`, `fetch_selected_refs`, `request_selected_refs`, `GitFetchCredentialLeaseRegistry`, `validate_git_fetch_credential_lease`, `lease_revision`, `run_git`, `spawn_git_process`, askpass bridge, `GitTreeSource`, `list_tree`, `read_blob` | Share a worktree-free Git database across sessions and attachments; own the lease registry and validate every request’s context, source, expiry, revocation, and cancellation from it before job lookup; serve concurrent full-OID revisions without switching a checkout; keep one Git runner and project credentials through an isolated askpass bridge without ambient fallback |
+| `src/metabrowser/provider_process.py` (new, `mb-y1ax`) | mirrors `git/process.py` policy | `open_gh_credential_session`, `issue_git_fetch_credential_lease` and revocation through the core lease registry, broker-owned `run_provider_command(stdin=...)`, askpass replies for exact registered source URLs, `terminate_provider_command`, bounded response parsing, credential-state disposal on broker exit, child cleanup, and typed missing/timeout/output/cancelled failures for no-shell provider CLIs |
+| `src/metabrowser/static/plugin-sdk.js` | `registerView`, `fetchPluginData` | Add registered route-backed resource kinds, disposal-returning `registerAddressSpace`, `registerNavPanel`, and a provider-neutral bounded virtual-collection controller |
+| `src/metabrowser/static/plugin-address-spaces.js` (new) | `createAddressSpaceRegistry`, `parseAddress`, `formatAddress`, `applyAddress`, `replaceRoot`, `disposeAddress` | Arbitrate one browser-address owner and run its startup, popstate, preview, replacement, and disposal lifecycle without provider branches |
+| `src/metabrowser/static/navigation.js` | `href`, `parse`, `commitHref` | Dispatch parse, format, selection application, popstate, and preview claims through the one installed address-space owner; preserve core address behavior |
+| `src/metabrowser/static/app.js` | internal `registerNavPanel`, `removeNavPanel`, preview claims | Publish the narrow SDK adapters; start and dispose plugin address spaces and panels on replacement/root change; keep preview ownership generation-checked |
+| `src/metabrowser/static/git-history-window.js` | `createPageCache`, `createVirtualWindow` | Extract or publish the provider-neutral paging/virtualization primitives once; update `git-panel.js` and hosted review together, with no compatibility wrapper |
+| `src/metabrowser/cli/show_cli.py` | `run_show` | Resolve plugin address spaces and resource kinds through the same parser, model, and view registry as the browser, including `/hosted/...` |
+| `src/metabrowser/server.py` | `build_plugin_routes`, `_lifespan` | Mount plugin routers before catch-all shells, construct registered provider adapters with explicit dependencies, await their cancellation/close on shutdown, and keep all provider routes in plugins |
+
+`RouterSpec` is the implementation of `mb-xzj3`; `AddressSpaceSpec` is the separate
+browser lifecycle in `mb-6mle`; `ProviderAdapterSpec` is the capability and lifespan
+registry in `mb-ji83`. The router is required because an exact single-segment data hook
+cannot honestly own
+`/hosted/<provider-kind>/<instance-key>/<repository-key>/<resource-kind>/<resource-key>`
+or resource routes with path parameters and conditional responses.
+The address-space spec is required because mounting HTTP does not teach navigation to
+parse, format, restore, or dispose that address.
+Operator-directory plugins remain JavaScript-only.
+Artifact contracts and resource profiles use the separately versioned installed-Python
+capability group and do not enter browser plugin discovery, `/plugin-static`, or
+`window.metabrowser`. The later browser and route capabilities are additive only while
+existing manifests and JavaScript calls keep their signatures and behavior, so optional
+declarations may retain SDK 0.6 with plugin-author documentation and a `CHANGELOG.md`
+note. If implementation changes an existing signature or semantic contract,
+`PLUGIN_SDK_VERSION` and every built-in manifest change in the same commit; no dual
+contract is kept.
+
+### Hosted-review plugin
+
+| File | Key types and functions | Responsibility |
+| --- | --- | --- |
+| `src/metabrowser/builtin_plugins/hosted_review/manifest.toml` | kinds, views, router, scripts, styles | Deferred until the first route-backed kind or view; Phase 0C.1 registers only installed Python capabilities and exposes no browser asset root |
+| `models.py` | `ChangeRequest`, comments, reviews, threads, anchors, checks, statuses, and activity | Closed hosted-review domain models; Phase 0B.1 neutral identity/storage records and `HostedRepository` move to `provider_resources/models.py` under `mb-s0gv` before store implementation |
+| `resource_profiles.py` | change-request profile declarations and `resolve_resource_profile` | Trusted hosted-review publication declarations for ordered collection contracts, cardinality, pagination, and last-complete requirements; the repository-summary profile moves with `HostedRepository` to `provider_resources` |
+| `contracts.py` | `HOSTED_REVIEW_CONTRACTS`, `compile_contracts`, `validate_contract_values`, `provider_resource_capabilities`, `hosted_review_capabilities` | Plugin-local SoftSchema declarations consumed by the installed host registry, semantic validation, deterministic schema compilation, and installed capability factories |
+| `artifacts.py` | `serialize_change_request_artifact`, `parse_frontmatter_artifact`, `validate_change_request_artifact`, `snapshot_identity` | Encode only a validated ChangeRequest and decode enforced `frontmatter-md` artifacts through frontmatter-format without owning filesystem publication; hash normalized YAML plus the complete Markdown body, including an empty body |
+| `service.py` | `HostedReviewProvider`, `get_repository`, `get_change_request`, `list_change_requests`, `refresh_resource` | Change-request orchestration over `ProviderResourceStorePort` with typed completeness, freshness, and failure states |
+| `routes.py` | `build_router`, `repository_resource`, `change_request_resource`, `change_request_index`, `hosted_resource_shell` | Plugin-owned read routes and canonical hosted-resource document shell |
+| `hosted-review-model.js` | `parseChangeRequest`, then parsers for the remaining browser-consumed records | Browser validation against the same contract corpus; the Phase 0A module stays unregistered, DOM-free, and network-free |
+| `data/hosted-review-format/change-request-conformance.json` | `base_document`, named valid/invalid mutations | Portable Python/browser oracle for closed keys, lifecycle, identity relationships, canonical timestamps and URLs, exact integer bounds, and Git object IDs |
+| `hosted-review-view.js` | `prepareChangeRequestView`, `mountChangeRequestView`, `disposeChangeRequestView` | Compose metadata, Markdown description, reviews/checks, revision links, and File Diff Format |
+| `hosted-review-panel.js` | `createPullRequestPanel`, `loadIndexPage`, `openChangeRequest`, `dispose` | Virtual Pull Requests collection and item-like/folder-like rows |
+| `index.js`, `styles.css` | registrations and presentation | Register views/panels and use existing design tokens with measured loading tiers |
+
+The plugin router returns provider-neutral documents and projections.
+It calls the Git comparison adapter by full object IDs and the existing revision-content
+routes for base or head files; it neither copies provider fields into File Diff Format
+nor reads a GitHub snapshot directly.
+The exact first routes are
+`/api/hosted-review/<provider-kind>/<instance-key>/<repository-key>/repository`,
+`/change-requests?query_key=<key>`, `/change-requests/<change-key>`, and
+`/change-requests/<change-key>/comparison` under that repository prefix, plus the
+browser address
+`/hosted/<provider-kind>/<instance-key>/<repository-key>/change-request/<resource-key>[/<inner>]`.
+`metab --api` and `metab --show` use those exact registrations rather than a parallel
+CLI resolver.
+
+### GitHub provider plugin
+
+| File | Key types and functions | Responsibility |
+| --- | --- | --- |
+| `src/metabrowser/builtin_plugins/github/manifest.toml` | URL reducer, provider adapter, optional companion views | Register GitHub without adding a GitHub branch to core |
+| `urls.py` | `reduce_github_url`, `github_clone_source`, `parse_github_selection` | Recognize public and configured Enterprise repository/tree/blob/commit/pull forms and return an ordinary source plus selection candidates |
+| `auth.py` | `preflight_gh_auth`, `open_credential_session`, `resolve_principal_identity`, `auth_recovery` | Parse non-secret `gh auth status --active --hostname ... --json hosts`, select the explicit login, open one broker-pinned credential session, resolve the stable opaque principal through the fixed bounded identity request, request broker-registered leases for exact provider-declared HTTPS Git sources through `issue_git_fetch_credential_lease`, separate stable context identity from volatile observations, and produce typed recovery states |
+| `queries.py` | `viewer_identity_request`, `repository_request`, `change_request_request`, `change_request_index_request`, `reviews_request`, `checks_request` | Fixed REST paths and checked-in GraphQL documents, including the fixed `/user` identity request; explicit JSON variables, query hashes, API/Accept profiles, and one-page bounds |
+| `adapter.py` | `GitHubGhAdapter`, `request_page`, `parse_included_response`, `get_repository`, `get_change_request`, `list_change_requests` | Implement the common provider port with `gh api --include --input - --hostname`; parse allowlisted metadata, body, GraphQL errors, and nulls; never use `gh pr view`, field flags, `--paginate`, `--cache`, or verbose output |
+| `mapping.py` | `map_repository`, `map_change_request`, `map_change_request_comment`, `map_review`, `map_thread`, `map_review_comment`, `map_check`, `map_status` | Normalize each response immediately into common records or a declared GitHub companion; preserve an optional review summary as the `Review/v1` Markdown body |
+| `sidekick.py` | `build_provider`, `refresh_repository`, `refresh_change_request`, `refresh_index` | Bind the adapter to the hosted-review service and repository job/ref ports |
+
+The URL reducer can ship before `gh` acquisition.
+Repository and branch URLs therefore use generic Git credentials and the repository
+cache; only hosted-review metadata and direct PR hydration require the provider adapter
+and `gh` authentication.
+
+### Fixtures, tests, goldens, and parity
+
+| Surface | Files |
+| --- | --- |
+| Common contracts | `tests/fixtures/hosted_review/valid/`, `invalid/`, `tests/test_hosted_review_models.py`, `tests/test_hosted_review_contracts.py`; include review artifacts with and without a Markdown summary body, and run the same corpus through every Python and browser parser |
+| Coverage oracle and GitHub mapping | `tests/fixtures/github/oracle/`, `tests/test_github_coverage.py`, `tests/test_github_mapping.py` |
+| Auth and transport | `tests/test_provider_process.py`, `tests/test_github_auth.py`, `tests/test_github_adapter.py`: explicit-login token selection, broker-only secret handling, opaque Git lease issuance, simulated external account switch between pages, broker loss, cancellation/reap, and mixed-principal publication refusal |
+| Provider-selected Git transport | `tests/test_repository_jobs.py`, `tests/test_git_process.py`, `tests/test_github_selected_refs.py`: canonical context conversion, provider-kind and visibility-partition non-coalescing, registry lookup rejecting forged or unregistered handles, context/lease mismatch, expiry, and revocation for starting and joining requests, no ambient fallback, token-only private fixture with ambient Git auth disabled, principal mismatch, `.netrc`, SSH agent, trace-variable, helper, `insteadOf`, extra-header, template, and repository-local configuration isolation with no helper store, redirect refusal, askpass arming and disarming with normalized URL matching, deferred fetch under a later equal-key session, a local HTTPS fixture with a test certificate authority, broker revocation, fork and deleted-fork sources, cancellation/reap, and secret absence from Git and askpass argv, ordinary environments, diagnostics, files, records, and refs |
+| Atomic provider cache | `tests/test_provider_resource_store.py`, `tests/test_provider_resource_service.py`: auth contexts, staged/committed/failed transactions, partial current plus `last-complete`, lock order, leases, offline/deleted retention, and reclamation races; domain orchestration remains in `tests/test_hosted_review_service.py` |
+| Plugin routing and registries | `tests/test_plugin_manifest.py`, `tests/test_plugin_routes.py`, `tests/test_plugin_address_spaces.py`, `tests/test_provider_capabilities.py`, `tests/test_hosted_review_routes.py` |
+| View and nav lifecycle | `tests/dom/hosted-review-session.js` runs exact production address, document, panel-window, selection, restoration, root-replacement, and disposal owners; focused component cases stay in `hosted-review-view.js` and `hosted-review-panel.js` |
+| CLI goldens | `tests/golden/cli-github-repository.tryscript.md`, `cli-github-pr-open.tryscript.md`, `cli-github-pr-index.tryscript.md`, `cli-github-pr-offline.tryscript.md`, `cli-ui-hosted-review.tryscript.md` |
+| Registered formats and surfaces | `devtools/check_artifact_contracts.py`, `devtools/check_parity.py`, `docs/project/architecture/arch-external-resources-and-views.md`, `docs/project/architecture/arch-views-models-routes.md`, `tests/test_artifact_inventory.py`, `tests/test_check_artifact_contracts.py`, `tests/test_views_models_routes.py`, `tests/test_distribution_policy.py` |
+
+No test contacts GitHub or a real credential store.
+Recorded responses are scrubbed inputs to mapping and coverage tests; fake executable
+fixtures exercise the exact provider-process path.
+They include hostile structured metadata: markup-like titles and actor names, bidi and
+control characters, unsafe URL schemes, oversized values, malformed included-response
+headers, GraphQL `data` plus `errors`, null nodes, and output truncation.
+A production-mount browser session proves text-node insertion, untrusted Markdown,
+HTTPS-only provider links, preview ownership, and disposal rather than asserting a test
+renderer. A separate opt-in live smoke test may validate public GitHub and Enterprise
+behavior, but it is not part of `make verify` and cannot substitute for the hermetic
+suite.
 
 ## Phased Implementation Plan
 
-### Phase 1: Browsing model and schema corpus — no network
+The design boundary is fixed before network or view work.
+Implementation follows the user-visible dependency chain rather than treating “GitHub
+support” as one feature.
 
-- [ ] Write the contract inventory in this plan as Pydantic models and deterministic
-  compiled schemas, using simple closed objects and local `$defs`.
-- [ ] Define stable IDs, repository refs, Git object refs, provider timestamps,
-  retrieval metadata, completeness, pagination, tombstones, and unknown enum handling.
-- [ ] Define issue, PR, review, thread, comment, check, status, timeline, and stack
-  relationships without an opaque payload field or raw API authority.
-- [ ] Build representative normalized fixtures for open, closed, merged, draft, forked,
-  deleted, inaccessible, partial, paginated, outdated-anchor, unknown-enum, and stacked
-  cases.
-- [ ] Capture the scrubbed recorded-response oracle and add the check that every modeled
-  field is either present in a recorded response, or explicitly marked derived or
-  optional with a `not_requested` state.
-- [ ] Measure the proposed immutable-object and atomic-manifest layout; freeze or revise
-  it before released provider data is written.
-- [ ] Register every record and view surface in the architecture map and add an
-  inventory test that fails when a contract lacks a producer, consumer, schema, or
-  fixture.
+### Phase 0: Hosted Review Format and plugin boundary (`mb-63ym`)
 
-### Phase 2: Binding, acquisition, and provider cache
+Phase 0 is decomposed into mergeable, file-level beads so the contract can mature
+without registering a partial product surface:
 
-- [ ] Add the provider storage interface, namespace allocation, immutable snapshot
-  writer, sync manifest, and atomic current pointers.
-- [ ] Add GitHub repository binding without changing generic cache identity.
-- [ ] Map bounded REST or GraphQL responses into the Phase 1 contracts; support
-  conditional requests, cursors, rate limits, tombstones, and partial outcomes.
-- [ ] Fetch repository, selected issue, and selected PR bundles on demand; keep the last
-  completed manifest readable on refresh failure.
-- [ ] Ask core to fetch selected provider refs, and record availability for every Git
-  object reference.
-- [ ] Add refresh controls and stage-level diagnostics without making provider refresh
-  part of a generic cache hit.
+Phase 0A adds no manifest, route, view, cache, network, credential, provider, SDK, or
+dependency behavior; it is a dormant semantic and artifact-codec kernel.
 
-### Phase 3: Repository, issue, and pull-request views
+| Slice | Bead | Files and functions | Exit evidence |
+| --- | --- | --- | --- |
+| 0A.1 contract freeze | `mb-u8n8` | This plan and `arch-hosted-review-model.md`; freeze `ProviderObjectRef`, `RepositoryRef`, `RevisionRef`, `ComparisonRef`, `ChangeRequest`, frontmatter authority, canonical scalars, and dormancy | Design and implementation names agree |
+| 0A.2 Python kernel | `mb-tf5b` | `hosted_review/models.py`: closed/frozen references and `ChangeRequest`, `validate_change_request`, `dump_change_request` | Focused lifecycle, identity, availability, count, and hostile-text tests |
+| 0A.3 artifact codec | `mb-ja7z` | `hosted_review/artifacts.py`: `serialize_change_request_artifact`, `parse_frontmatter_artifact`, `validate_change_request_artifact`, `snapshot_identity` | Only a validated model can receive the enforced contract marker; deterministic bytes preserve nulls, empty collections, and the complete opaque Markdown body |
+| 0A.4 portable corpus | `mb-sezk` | `data/hosted-review-format/change-request-conformance.json` and Python harness | Named open, draft, merged-fork, unknown-state, invalid-scalar, and cross-record cases |
+| 0A.5 browser kernel | `mb-wiuu` | `hosted-review-model.js`: `parseChangeRequest`; browserless Node harness | Python and exact production JavaScript accept and reject the same corpus; unexpected defects escape |
+| 0A.6 installed evidence | `mb-02bg` | `devtools/check_distribution.py` plus the architecture map | Wheel and sdist contain the kernel; isolated-wheel validation passes; discovery remains the existing nine plugins |
+| 0A.7 stacked review | `mb-c08x` | Git branch and draft pull request based on `codex/v011-hosted-review-design` | Review shortcuts, `make verify`, tbd sync, exact-stack diff, and final CI summary |
+| Stack landing | `mb-n2ro` | Completed formal phase pull requests, fetched bases, and each exact phase diff | After explicit approval, land in order; retarget the next phase; recheck scope; rerun `make verify`; obtain final green CI; and confirm `main` contains each merged layer |
+| 0B.1 storage records | `mb-pnz5` | One formal pull request: architecture/spec freeze; `models.py` provider namespace, auth, retrieval, generic object/collection publication, repository, tombstone, and index records; trusted `resource_profiles.py`; existing JavaScript namespace validators; three portable corpora; focused tests; distribution proof | Closed auth-scoped publication, repository, index, extensible resource-profile, and failure-state fixtures with independent review and green CI |
+| 0B.2 review records | `mb-915y` coordinates `mb-n9fo` and `mb-qpbu` | `models.py` and `artifacts.py`: comments, reviews, threads, anchors, checks, statuses, activity, review, and formal PR publication | Relationship, partiality, body/no-body fixtures, independent review, `make verify`, and green CI |
+| 0B.3 GitHub oracle | `mb-rla6` coordinates `mb-oc1h` and `mb-e95m` | `tests/fixtures/github/oracle/`, `test_github_coverage.py`, mapping matrix, review, and formal PR publication | Every common field is observed, derived, or explicitly unavailable; inputs are scrubbed and public-safe; CI is green |
+| 0C.1 SoftSchema contracts | `mb-lqae` coordinates `mb-52iz` and `mb-vepa` | Plugin-local `contracts.py`, versioned installed-Python capability discovery, artifact-contract and resource-profile registries, deterministic packaged schemas, explicit built-in schema inclusion and isolated-wheel smoke in `check_distribution.py`, the first-party SoftSchema dependency selected and shipped in this phase, review, and formal PR publication | Enforced contract/profile registry and Python/browser/schema/corpus agreement with green CI; named built-in schemas survive wheel installation; no manifest, route, kind, view, or static asset is registered |
+| 0C.2 format gate | `mb-dhz8` coordinates `mb-vors` and `mb-ci0t` | Generic contract/profile inventory, inventory-driven distribution and installed-evidence gates, architecture registration, parity evidence, review, and formal PR publication | Every shipped contract/profile has its schema, semantics, producer, consumer, fixture, installed-artifact check, and green CI without a hard-coded built-in list |
 
-- [ ] Add plugin-owned repository and issue views with explicit loading, stale, partial,
-  unavailable, offline, and refresh states.
-- [ ] Render PR comparisons through the existing Git adapter, File Diff Format, and diff
-  plugin.
-- [ ] Layer title, author, state, checks, reviews, threads, and freshness around the Git
-  comparison; preserve incomplete-collection indicators.
-- [ ] Render changed Markdown at the PR head through the existing revision-content path.
-- [ ] Map review anchors only when their Git identity and line context are sufficient;
-  otherwise show the original anchor as outdated or unresolved.
+Phase 0C.2 adds no cache, provider, network, route, kind, view, manifest, or
+static-asset surface.
+Its maintained implementation coordinates are:
 
-### Phase 4: Stacked pull requests and cross-object projections
+| File | Functions or evidence | Phase 0C.2 responsibility |
+| --- | --- | --- |
+| `plugin_loader/artifact_inventory.py` | `installed_artifact_inventory`, `check_installed_evidence`, `validate_installed_evidence` | Project deterministic contract/profile metadata; require positive and negative selected cases; and run each valid case through structural, semantic, deterministic serialization, and artifact-profile round-trip checks |
+| `devtools/check_artifact_contracts.py` | `check`, `main` | Compare every installed declaration and exact profile semantics with the architecture inventory; reject missing, orphaned, duplicated, or inexact rows; and execute browser-consumed parser bytes against VM-realm inputs with only context-native `TextEncoder`, one-shot UTF-8 `TextDecoder`, `atob`, and `btoa`, imports and dynamic code disabled, and type-sensitive JSON-domain preservation checks |
+| `devtools/check_distribution.py` | isolated source-distribution and wheel inventory checks | Reconcile provider entry points with project metadata, then derive packaged schemas, corpora, parser modules, and contract/profile counts from each installed artifact rather than a built-in filename list |
+| `arch-external-resources-and-views.md` | installed contract and profile tables | Register the exact current format surface while labeling browser parser modules as evidence rather than runtime plugin bindings |
+| `tests/test_artifact_inventory.py`, `tests/test_check_artifact_contracts.py`, `tests/test_distribution_policy.py` | focused corpus, architecture-drift, and distribution regressions | Pin the generic gate and prevent a source-tree-only declaration from passing installed-artifact verification |
 
-- [ ] Implement stack derivation against the Phase 1 contract with explicit evidence,
+Phase 0B.3 is a no-network evidence and reconciliation slice.
+The oracle may require the smallest correction to an existing common model when exact
+provider evidence disproves the current contract.
+Such a correction updates every affected producer, consumer, corpus, test, and document
+in this slice; it does not justify speculative fields, provider behavior, or a new
+runtime surface.
+
+| Phase 0B.3 surface | File- and function-level responsibility | Exit evidence |
+| --- | --- | --- |
+| Python common model | `builtin_plugins/hosted_review/models.py`: reconcile `RevisionRef`, `GitObjectRef`, `ChangeRequest`, `ChangeRequestIndexRow`, and `Check` validators only where the oracle proves nullability, identity, or lifecycle facts | Existing public validators accept every corrected corpus record and continue to reject invented or internally inconsistent states |
+| Browser common model | `builtin_plugins/hosted_review/hosted-review-model.js`: keep `parseChangeRequest` and its nested reference/actor checks aligned with the evidence-driven Python corrections | Exact production JavaScript accepts and rejects the same ChangeRequest corpus as Python |
+| Portable corpora | `change-request-conformance.json`, `change-request-index-conformance.json`, `review-records-conformance.json`, and `repository-activity-conformance.json`: encode nullable authors, deleted-fork repository identity, unavailable original revisions, suite/run timestamp distinctions, and activity projection limits | All four corpora pass Python and applicable browser conformance harnesses with named valid and invalid cases |
+| Focused common-model tests | `test_hosted_review_models.py`, `test_hosted_review_record_models.py`, and `test_hosted_review_activity_models.py`: pin each corrected invariant and its counterexample | Focused hosted-review model, record, and activity suites pass |
+| Public evidence oracle | `tests/fixtures/github/oracle/manifest.json`, request documents, reduced response files, `field-inventory.json`, and `hostile-synthetic.json`; `tests/test_github_coverage.py`: validate exact request provenance, closed response shapes, RFC 6901 pointers, field/value dispositions, executable identity recipes, public safety, and runtime/package isolation | Every modeled field and closed value has mechanically resolved evidence or an explicit owned/unavailable disposition; no test contacts a network |
+| Durable documentation | This plan, `arch-hosted-review-model.md`, and `arch-views-models-routes.md`: record the proven provider boundary, test-only oracle authority, and absence of adapter/route/registry behavior | Documentation agrees with the checked contract and names Phase 0C or later for unimplemented runtime surfaces |
+
+Phase 0B.1 is one pull request with the following bead sequence:
+
+| Bead | Internal result |
+| --- | --- |
+| `mb-tznv` | Freeze namespace, publication, query-key, consistency, and tombstone contracts in the plan and architecture |
+| `mb-fvbn` | Apply canonical provider kind and instance scalars to Python and the existing ChangeRequest browser parser |
+| `mb-vyb2` | Add stable authorization-context identity, retrieval observations, and deterministic auth keys |
+| `mb-jgcm` | Add resource sets, pointers, manifests, collection coverage, continuations, failures, and tombstone evidence |
+| `mb-yc62` | Add auth-independent provider bindings, hosted-repository records, rename validation, and explicit rebind conflict detection |
+| `mb-28zj` | Add bounded query-keyed change-request indexes, deterministic ordering, pagination, and consistency claims |
+| `mb-iwsx` | Generalize provider-object/provider-collection targets, collection pages, neutral storage contract IDs, and trusted namespaced resource-profile declarations; prove a synthetic release index adds no storage-kernel variant |
+| `mb-k28s` | Add portable storage, repository, and index corpora plus focused semantic and installed-artifact evidence |
+| `mb-1utg` | Run independent reviews and `make verify`, publish the formal pull request with `gh`, and wait for final green CI |
+
+Every remaining Phase 0 slice uses the same explicit implementation/publication pair:
+
+| Formal phase PR | Implementation bead | Review and publication bead | Exact stacked base |
+| --- | --- | --- | --- |
+| 0B.2 | `mb-n9fo` | `mb-qpbu` | Green Phase 0B.1 head |
+| 0B.3 | `mb-oc1h` | `mb-e95m` | Green Phase 0B.2 head |
+| 0C.1 | `mb-52iz` | `mb-vepa` | Green Phase 0B.3 head |
+| 0C.2 | `mb-vors` | `mb-ci0t` | Green Phase 0C.1 head |
+
+Each phase coordinator closes only after its implementation and publication children are
+complete. `mb-n2ro` depends on every publication bead and alone owns explicit-approval
+landing, retargeting, exact-diff revalidation, and post-land CI; no phase implementation
+or publication bead merges another phase.
+
+- [x] Write the provider-neutral contract inventory as Pydantic models and deterministic
+  compiled SoftSchema contracts, using simple closed objects and local `$defs`.
+- [x] Use `frontmatter-md` for `ChangeRequest/v1`, with all consumed fields in YAML and
+  the provider description as the reader-facing Markdown body; use the same profile for
+  reviews, top-level comments, and review comments with Markdown prose, and `pure-yaml`
+  for indexes, manifests, and compact structured companion records.
+- [x] Define stable provider and local IDs, repository refs, Git object refs, provider
+  timestamps, non-secret stable authorization-context identity separate from retrieval
+  observations, transaction state, completeness, pagination consistency, tombstone
+  proof, unknown enums, and explicit provider companion records.
+- [x] Keep provider storage content-neutral: persist generic provider-object or
+  provider-collection targets and namespaced profile IDs, then resolve ordered
+  collection contracts, cardinality, pagination, and last-complete requirements only
+  through the trusted installed resource-profile registry.
+- [x] Define repository, change request, top-level comment, review, thread, review
+  comment, file/line/range anchor, check, status, and activity relationships without an
+  opaque payload or provider-shaped view model.
+- [x] Build normalized and invalid fixtures for open, closed, merged, draft, forked,
+  deleted, inaccessible, partial, paginated, direct-addressed, outdated-anchor, and
+  unknown-enum cases.
+- [x] Add one GitHub terminology-to-common-model mapping matrix and prove every common
+  field has a consumer; do not add speculative GitLab-only fields.
+- [x] Capture the scrubbed response oracle and require every modeled field to be
+  observed, deterministically derived, Metabrowser-owned, or explicitly
+  optional/unavailable.
+- [x] Register the installed contract and resource-profile formats in the architecture
+  map and add a generic inventory check that fails when a declaration lacks its schema,
+  semantics, producer, consumer, positive/negative corpus evidence, deterministic
+  artifact-profile round trip, browser-parser evidence when browser-consumed, profile
+  closure, installed-artifact proof, or exact architecture row.
+  Keep proposed routes, resource kinds, views, cache paths, and provider adapters
+  unregistered until their implementation phases.
+
+Phase 0D (`mb-z2mc`, published by `mb-9u45`) corrects the unreleased kernel on the
+shared-mirror design head, with no compatibility layer:
+
+- [x] Replace `ProviderBinding.entry_id` and the provider-binding retrieval target’s
+  `entry_id` with a credential-free `source_id`; resolve provenance only from a
+  successful retrieval with the exact source and repository; accept many sources bound
+  to one repository; and reject one source bound to another `RepositoryRef` as a rebind
+  conflict in both successor and binding-set validation.
+- [x] Name the provider revision vocabulary `RevisionObservation` (`observed`,
+  `unavailable`, `not_requested`) with `observation`, `merge_commit_observation`, and
+  `comparison_observed` fields across Python, compiled schemas, corpora, the browser
+  parser, and the GitHub coverage oracle.
+- [x] Add the non-persisted `LocalObjectAvailability` vocabulary and
+  `LocalGitObjectAvailability` report, absent from every provider record schema, plus
+  the observation-guarded `local_git_object_availability` and
+  `local_merge_commit_availability` constructors that enforce the provider-observed
+  object-ID rule the plain model cannot; register no route, kind, view, contract, or
+  cache path for it.
+
+### Phase 1: Robust generic repository cache (`mb-ire2` through `mb-dg00`)
+
+This phase is owned by the
+[repository-library plan](plan-2026-08-11-open-repo-from-git-url.md), but it is the
+first implementation prerequisite here.
+Phase 1A is on nondraft [#140](https://github.com/jlevy/metabrowser/pull/140) with green
+CI; final stack review remains open.
+file:// acquire is ready for review on
+[#217](https://github.com/jlevy/metabrowser/pull/217). The source boundary and leased
+Git-tree pin share ready-for-review
+[#216](https://github.com/jlevy/metabrowser/pull/216). https/ssh acquire, HTTP serving,
+and the remaining `mb-dg00` goldens are not done.
+
+- [x] Publish the versioned application home, strict source/store records, locks, atomic
+  no-replace promotion, quarantine, trash, and deterministic inspection routes.
+- [x] Enforce owner-only application-home permissions through `mb-xa0p`, and freeze the
+  home → source alias → ordered repository stores → provider/resource lock order without
+  holding any lock across network work.
+- [ ] Acquire one generic Git URL into a shared worktree-free store through the single
+  bounded Git process boundary.
+- [ ] Route a full-OID Git-tree subject through the content-source lifecycle and prove
+  offline reuse, concurrent distinct revisions, interruption recovery, and future-format
+  refusal in goldens.
+
+### Phase 2: GitHub URLs, selected refs, and branches (`mb-12cz`, `mb-s1lt`, `mb-ew38`, `mb-jlon`, `mb-bf94`, `mb-2xq7`)
+
+**Addendum (2026-09-30):** superseded by the
+[thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md), whose GitHub URL open step
+(#231, `mb-bgs7`) delivers it; the unchecked items below will not be done as written.
+
+The GitHub implementation after Phase 0 also uses one formal stacked pull request per
+phase. Every publication bead requires independent review, the review shortcut,
+`make verify`, a formal draft PR created with `gh`, exact base/head branch names and
+OIDs, final green CI, and registration with `mb-n2ro`; it never merges the PR. The next
+implementation depends on the preceding green publication bead.
+The stack is linear.
+The content-trust chain (`mb-cun0` → `mb-vib1`) was reviewed in `mb-d658` and landed
+through #209 on `main`. It requires no separate layer atop the current stack.
+Before Phase 2A begins, `mb-j439` records one integration head containing the exact
+shared-mirror design, Phase 0D source-binding correction, generic repository store,
+cache goldens, immutable Git-tree source, and the landed untrusted-profile commits.
+It verifies every recorded OID as an ancestor and runs `make verify`; Phase 2A cannot
+choose one prerequisite lineage while omitting another.
+
+| Formal phase PR | Implementation beads | Review/publication bead | Exact stacked base |
+| --- | --- | --- | --- |
+| Design correction | `mb-js6t` | `mb-c0m0` | Green Phase 0C.2 head |
+| 0D source-binding correction | `mb-z2mc` | `mb-9u45` | Green shared-mirror design head |
+| 1A cache format foundation | `mb-ire2`, `mb-xa0p`, `mb-4gnu`, `mb-k54c` | `mb-lm5m` | Green Phase 0D head |
+| 1B-a worktree-free acquisition | `mb-dxmb`, `mb-h51g`, `mb-dg00` | `mb-k900` | Green Phase 1A head |
+| 1B-b and 1B-c source boundary and immutable Git-tree source | `mb-3bna`, `mb-z335` | `mb-tsdc`, `mb-hoae` | Ready-for-review #216 over the green acquisition head; both reviews cover the consolidated PR |
+| Untrusted-content profile | `mb-cun0`, `mb-vib1` | `mb-d658` | Landed through #209 on `main`; verify its commits in the Phase 2A integration base |
+| 2A repository URL open | `mb-12cz`, `mb-s1lt`, `mb-ew38` | `mb-innz` | Exact green current stack tip recorded by `mb-j439`, including reviewed source/pin and landed trust commits |
+| 2B provider jobs, selected refs, and background convergence | `mb-jlon`, `mb-bgn8` | `mb-bf94` | Green Phase 2A head |
+| 2C selected-branch integration | `mb-2xq7` | `mb-9aku` | Green Phase 2B head |
+| 3A provider foundation | `mb-y1ax`, `mb-p4sw`, `mb-s123`, `mb-ji83`, `mb-s0gv`, `mb-i3xc`, `mb-2oxp`, `mb-cbak` | `mb-k7lc` | Green Phase 2C head |
+| 3B direct PR cache | `mb-h64t` | `mb-cpco` | Green Phase 3A head |
+| 4A direct PR view | `mb-xzj3`, `mb-6mle`, `mb-83w0`, `mb-81p5` | `mb-79sz` | Green Phase 3B head; direct addressing and viewing require no discovery index |
+| 3C bounded PR index | `mb-lnkl` | `mb-bue2` | Green Phase 4A direct-view head |
+| 4B PR navigation | `mb-uh6p`, `mb-iw1v` | `mb-r596` | Green Phase 3C index head |
+| 4C review anchors | `mb-rldc` | `mb-mx8q` | Green Phase 4B head |
+
+`mb-n2ro` is the sole approval-gated landing coordinator for Phase 0 and these v0.12
+GitHub phases. A later branch may be constructed on the exact green PR head while an
+earlier PR waits to land, but no phase skips its publication bead or changes its
+recorded base silently.
+
+- [ ] Register the GitHub reducer through the provider-neutral URL plugin seam and
+  recognize canonical repository, tree, blob, commit, raw, and `/pull/<number>` forms;
+  reject credentials, ambiguous hosts, and syntax the grammar does not own.
+- [ ] Require declared scheme/host claims and `NotApplicable`, `Reduced`, or terminal
+  `Rejected` outcomes; reject overlapping claims and prove reducer ordering cannot
+  change an address’s owner.
+- [ ] Resolve a managed source or attached local repository before invoking a provider
+  adapter, and reuse the canonical escaped path-identity codec for every selection.
+- [ ] Resolve any advertised and authorized branch, including names with slashes, to a
+  full object ID and serve it from one shared worktree-free store without moving or
+  creating a checkout.
+- [ ] Preserve a directly addressed PR target even when the provider index is absent,
+  stale, partial, or does not contain that number.
+- [ ] Apply the untrusted-content profile before serving fetched repository or provider
+  content.
+
+### Phase 3: GitHub `gh` adapter, binding, and provider cache (`mb-y1ax`, `mb-p4sw`, `mb-s123`, `mb-s0gv`, `mb-cbak`, `mb-duu7`, `mb-wx32`)
+
+#### Phase 3A: Transport, auth, binding, and snapshot kernel (`mb-y1ax`, `mb-p4sw`, `mb-s123`, `mb-ji83`, `mb-s0gv`, `mb-i3xc`, `mb-2oxp`, `mb-cbak`)
+
+**Addendum (2026-09-30):** superseded by the
+[thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md).
+Its PR data step (#232, `mb-nkmq`) runs `gh` with fixed arguments and uses it as Git’s
+credential helper.
+The credential lease bridge, provider binding, and snapshot kernel are
+retired, and attaching a user’s checkout (`mb-cbak`) is deferred; the unchecked items
+below will not be done as written.
+
+- [ ] Define the provider transport port, then implement only `GitHubGhAdapter` with
+  bounded `gh api` REST/GraphQL calls and explicit host selection.
+- [ ] Register the adapter through `ProviderAdapterSpec`; reject duplicate
+  provider/instance claims, inject only provider-neutral ports, and await cancellation
+  and close during root replacement and application shutdown.
+- [ ] Route every provider command through the shared no-shell, bounded, cancellable
+  subprocess runner (`mb-y1ax`); pass variables as bounded JSON stdin, parse `--include`
+  status plus allowlisted headers separately from the body, and cap and sanitize stdin,
+  stdout, stderr, environment, and diagnostics before an adapter sees them.
+- [ ] Add non-secret auth preflight and typed recovery states for missing `gh`, missing
+  login, insufficient scope, permission loss, rate limiting, network failure, and
+  cancellation. Pin the selected login in one broker-owned `GhCredentialSession`, resolve
+  that credential’s stable opaque principal ID through a bounded fixed `/user` request,
+  run every acquisition request through the same session, keep login/scopes as retrieval
+  observations, and never start interactive login on a request path.
+- [ ] Let the pinned broker (`mb-y1ax`) register short-lived `GitFetchCredentialLease`
+  entries in the Phase 2B core registry for exact provider-declared credential-free
+  HTTPS repository sources, and revoke them when its session ends.
+  Keep `AuthorizationContextRef` as the serializable namespace and the lease as a
+  separate unforgeable execution handle.
+- [ ] Measure and implement the cross-platform askpass bridge through the sole
+  `git/process.py` runner (`mb-s123`) under the environment, configuration, and
+  prompt-binding isolation in
+  [Repository Sources and Provider Mirrors](../../architecture/arch-repository-sources-and-provider-mirrors.md#fetch-and-credentials):
+  an allowlisted environment with no `.netrc`, SSH agent, injected configuration, or
+  trace variables; a temporary empty-template repository with no system or global
+  configuration, credential helpers, hooks, or non-HTTPS protocols; and disabled
+  redirects with one password prompt that the broker answers only for the lease’s exact
+  source URL. Replace Phase 2B’s pre-Git `git_credentials_unavailable` refusal with this
+  projection, never an ambient fallback.
+- [ ] Add GitHub repository binding from conservative source identity to stable opaque
+  repository identity without changing generic source identity or requiring a managed
+  cache entry.
+- [ ] Discover provider remote candidates for a user-owned checkout without writing its
+  files or `.git`; bind one unambiguous choice, require an explicit choice for multiple
+  GitHub remotes, and reuse the same provider repository across local clones and URL
+  sources.
+- [ ] Implement
+  [explicit rebind](../../architecture/arch-hosted-review-model.md#explicit-rebind)
+  before the store persists any binding (`mb-s0gv`, `mb-i3xc`), so a repository that is
+  deleted and recreated, or a name registered again after a transfer, cannot leave its
+  source failing closed forever:
+  - report `rebind_required` with the bound and observed `RepositoryRef` and the
+    observing retrieval, refuse provider refresh for that source, and keep serving its
+    previous snapshots as stale;
+  - add `ProviderBindingRebind/v1` with its schema, corpus, inventory row, and a rebind
+    validator, leaving `validate_provider_binding_successor` strict;
+  - accept a rebind only from an explicit local-user action that names the expected
+    previous and successor `RepositoryRef`, with a fresh successful successor binding
+    retrieval, a previous-identity retrieval classified `explicitly_deleted`, `moved`,
+    or `unresolved`, and the same provider kind and instance, all validated under the
+    source-alias → provider/resource lock order;
+  - move and rewrite no snapshot, keep reader leases on previous snapshots valid, fail a
+    sync staged under the previous binding at publication, and apply the per-disposition
+    retention rule, listing detached repositories with their size in cache inspection;
+  - expose binding inspection and the rebind action as routes with `metab --api` goldens
+    for `bound`, `rebind_required`, `detached`, a successful rebind, and each typed
+    refusal, and test that opening or refreshing a source never rebinds it.
+- [ ] Publish immutable provider-resource snapshots through the `mb-i3xc` store kernel
+  behind `ProviderResourceStorePort`: auth-context and query-key pointers, distinct
+  transaction and collection states, atomic current plus `last-complete`, reader leases,
+  and bounded reachability reclamation.
+- [ ] Perform acquisition without locks, then revalidate the source binding, expected
+  object IDs when applicable, and auth context under source-alias → ordered
+  repository-store → provider/resource lock order before publication.
+  Omit a lock only when that owner is neither observed nor mutated, and assert that
+  reduced lock set in the publication operation.
+- [ ] Publish and inspect `HostedRepository/v1` before any PR acquisition; keep raw API
+  responses, credentials, and transport cache entries out of durable state.
+- [ ] Permit repository summary, PR index, and direct PR snapshots before a shared Git
+  store exists; create or hydrate that store only when a revision-content view requests
+  selected objects.
+- [ ] Add stage-level progress, cancellation, rate-limit observations, and diagnostics
+  without turning provider refresh into a generic cache hit.
+
+#### Phase 3B: Directly addressed PR bundle (`mb-h64t`)
+
+**Addendum (2026-09-30):** superseded by the
+[thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md), whose PR data step (#232)
+stores one validated JSON record per pull request and fetches `refs/pull/<n>/head`; the
+unchecked items below will not be done as written.
+
+- [ ] Fetch a selected `ChangeRequest/v1` frontmatter artifact and its bounded review,
+  top-level conversation comment, thread, review-comment, check, and status companions,
+  including `Review/v1` artifacts both with and without summary prose and a
+  direct-addressed PR absent from the index.
+- [ ] Ask core to fetch only the selected base, head, and optional merge refs into a
+  Metabrowser namespace; listing PRs fetches no refs.
+  Name the provider-declared HTTPS source for every base, head, and merge object,
+  including forks and the base repository’s `refs/pull/<n>/head` and
+  `refs/pull/<n>/merge` when a fork is deleted, and use a lease whose
+  authorization-context key equals that of the observation that recorded the full object
+  IDs, including when the fetch is deferred until content is requested.
+- [ ] Prove the selected bundle, comparison object IDs, partiality, and typed
+  unavailable states are inspectable and reusable offline before an index or nav panel
+  exists.
+- [ ] Prove a token-only private fixture succeeds with ambient Git authentication
+  disabled; a different ambient Git principal, external `gh auth switch`, lease expiry,
+  revocation, broker loss, and cancellation cannot mix principals or leak a token and
+  instead produce typed recovery states.
+  A conflicting `.netrc` login, credential helper, SSH `insteadOf` rewrite, extra
+  authorization header, or cross-host redirect never receives or supplies the
+  credential.
+
+#### Phase 3C: Bounded PR discovery index (`mb-lnkl`)
+
+**Addendum (2026-09-30):** deferred by the user’s 2026-09-23 decision (`mb-lnkl`), and
+to be re-planned against the thin mirror before work starts.
+
+- [ ] Publish a bounded `ChangeRequestIndex/v1` with explicit query, pages, cursors,
+  stable sort/tie-breaker, per-page provenance, first/last observation times, remote
+  consistency, completeness, freshness, and truncation; do not use `gh --paginate`,
+  `gh --cache`, or durable raw API responses.
+- [ ] Keep index summaries separate from selected bundles; listing never fetches PR Git
+  refs or hydrates descriptions, reviews, review/check summaries, threads, checks, or
+  patches.
+- [ ] Let direct hydration supplement an index without requiring the item to match its
+  filter, sort, or current bounded window.
+
+### Phase 4: Hosted-review views and virtual PR collection (`mb-r19i`)
+
+#### Phase 4A: Direct PR document and comparison (`mb-xzj3`, `mb-6mle`, `mb-83w0`, `mb-81p5`)
+
+**Addendum (2026-09-30):** superseded by the
+[thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md), whose PR view step (#233,
+`mb-vrl7`) renders the pull-request page inside the GitHub plugin, with no public
+router, address-space, or resource-kind SDK; the unchecked items below will not be done
+as written.
+
+- [ ] Mount plugin-owned browser and resource routes with path parameters and honest
+  responses; retain exact data hooks for simple models.
+- [ ] Register route-backed `change-request` through `ResourceKindSpec`, then register
+  `/hosted/<provider-kind>/<instance-key>/<repository-key>/change-request/<resource-key>`
+  through `AddressSpaceSpec` so the same parser, formatter, selection application,
+  preview claim, startup, popstate, root-replacement, and disposal lifecycle drives the
+  browser and `metab --show`.
+- [ ] Render the frontmatter artifact as a directly addressed PR document without an
+  index or nav panel: validated title, identity, actors, state, merge/review/check
+  summaries, freshness, and the Markdown description.
+- [ ] Render the selected PR comparison through the existing Git adapter, File Diff
+  Format, and diff plugin; render base/head Markdown through revision content.
+- [ ] Show reviews, checks, merge state, partiality, offline state, refresh status, and
+  unavailable refs without adding provider fields to File Diff Format.
+
+#### Phase 4B: Pull Requests virtual collection (`mb-uh6p`, `mb-iw1v`)
+
+**Addendum (2026-09-30):** deferred by the user’s 2026-09-23 decision (`mb-iw1v`). The
+public nav-panel SDK (`mb-uh6p`) is retired.
+
+- [ ] Add the repository-scoped plugin SDK surface (`mb-uh6p`) for virtual nav
+  collections, including loading, error, replacement, restoration, and disposal.
+- [ ] Register a Pull Requests nav panel backed by the cached index, reusing Git
+  history’s bounded paging, virtualization, focus, selection, and restoration patterns.
+- [ ] Model the panel root as a virtual folder-like collection and each PR as an
+  item-like document plus a folder-like container whose children are changed files.
+- [ ] Project commit summaries and PR rows through `RepositoryActivity/v1` when sharing
+  history UI mechanics; retain separate Git and provider authorities and do not invent a
+  mixed global order when pagination cannot support one.
+- [ ] Drive counts and folder visibility from the complete bounded index model, not the
+  currently mounted rows.
+
+#### Phase 4C: Anchored review threads (`mb-rldc`)
+
+**Addendum (2026-09-30):** deferred by the user’s 2026-09-23 decision (`mb-rldc`). The
+pull-request page lists each review comment with its file and line.
+
+- [ ] Deliver provider-neutral review threads and diff anchors after direct comparison
+  rendering is stable, with explicit outdated, unresolved, and unmappable states.
+- [ ] Cover file-level, single-line, and range anchors as a closed tagged union.
+  Map only when immutable Git identity and line context are sufficient; otherwise show
+  the provider’s original anchor without inventing a current line.
+
+### Phase 5: Issues and timelines (`mb-9rrc`)
+
+- [ ] Add closed provider-neutral issue, issue-comment, and timeline-event contracts and
+  fixtures to the format inventory.
+- [ ] Decide whether the primary issue artifact uses `frontmatter-md`, based on the same
+  consumed-values/body split as change requests.
+- [ ] Acquire bounded issue bundles on direct URL or selection with the same snapshot,
+  freshness, partiality, and offline rules as PR bundles.
+- [ ] Add issue and timeline views without changing core routes or renderers.
+
+### Phase 6: Stacked change requests and cross-object projections (`mb-glxc`)
+
+- [ ] Implement stack derivation against the common contract with explicit evidence,
   algorithm version, conflicts, and cycles.
 - [ ] Add adapter points for explicit stack metadata without hard-coding a third-party
   tool into core or treating heuristics as fact.
 - [ ] Add stack navigation, aggregate status, and adjacent comparisons as derived views
-  over immutable PR and Git snapshots.
-- [ ] Recompute projections when any input snapshot changes; never mutate source PR
-  records to store derived order.
+  over immutable change-request and Git snapshots.
+- [ ] Recompute projections when any input snapshot changes; never mutate source records
+  to store derived order.
+
+### Later sibling: Hosted releases (`mb-7srn`)
+
+Releases are the next proof that the framework is a general external-resource system,
+not a PR-only stack.
+They remain outside the initial v0.12 PR slice unless the milestone is expanded
+explicitly. Each row is one formal stacked pull request; its implementation child is
+followed by an independent review/publication child, and `mb-kk47` alone owns
+approval-gated landing, retargeting, exact-diff revalidation, and post-merge
+verification.
+
+| Formal phase PR | Implementation | Review/publication | Result |
+| --- | --- | --- | --- |
+| R0 contracts (`mb-g6ed`) | `mb-42j7` | `mb-5m4h` | `Release/v1` frontmatter, `ReleaseAsset/v1` and `ReleaseIndex/v1` pure YAML, profile declarations, corpora, parsers, schemas, and architecture evidence |
+| R1 GitHub mapping (`mb-esj2`) | `mb-xj80` | `mb-npdt` | Scrubbed public coverage oracle and fixed bounded `gh api` normalization; every field observed, derived, optional, or unavailable |
+| R2 direct cache (`mb-aw0x`) | `mb-nz6a` | `mb-2u4m` | `/releases/tag/<tag>` reduction, one immutable Release plus bounded asset metadata, exact tag revision observation, partial/offline publication, and no implicit asset-byte download |
+| R3 direct views (`mb-bbw8`) | `mb-oo4w` | `mb-g74x` | Registered `release` resource kind, generic hosted address, Release and Source views, exact tag revision, asset children, CLI parity, and browserless lifecycle evidence |
+| R4 discovery/nav (`mb-fkcs`) | `mb-1742` | `mb-gp0k` | Bounded release index, explicit pagination/completeness, Releases virtual collection, restoration/disposal, and optional activity projection |
+
+`Release/v1` uses `frontmatter-md`: YAML contains provider/repository identity,
+canonical URL, tag, exact tag-revision observation, normalized title, optional author,
+publication state, release stage, creation time, and optional `released_at`; the
+complete release notes are the Markdown body and participate in snapshot identity.
+GitHub `published_at` maps to `released_at`. `target_commitish`, generated-note
+controls, mutable “latest” status, and other fields without a common consumer stay out
+of v1.
+
+`ReleaseAsset/v1` is separate so mutable asset observations do not rewrite release
+notes. The detail profile accepts exactly one Release plus `0..N` assets, where the
+installed profile declares `N`; an over-bound provider result publishes explicit
+partial/truncation evidence rather than growing without limit.
+The index profile accepts exactly one ReleaseIndex.
+Asset bytes remain an explicit on-demand content workflow.
+The direct release path lands before its list and nav panel, matching the direct-PR
+sequence.
+
+The release phases are implementation-ready at these file and function seams:
+
+| Phase | Files and functions | Required evidence |
+| --- | --- | --- |
+| R0 contracts | `builtin_plugins/hosted_releases/release_models.py`: `Release`, `ReleaseAsset`, `ReleaseIndex`; `artifacts.py`: `serialize_release_artifact`, `parse_release_artifact`, `serialize_release_asset_artifact`, `parse_release_asset_artifact`, `serialize_release_index_artifact`, `parse_release_index_artifact`, `release_snapshot_identity`; `contracts.py`; `resource_profiles.py`; `hosted-releases-model.js`: `parseRelease`, `parseReleaseAsset`, `parseReleaseIndex` | Three valid/invalid corpora, Python/browser agreement, schemas, map rows, distribution inventory, bounded `0..N` asset declaration, and proof that `provider_resources` is reused without importing `hosted_review` |
+| R1 GitHub mapping | `builtin_plugins/github/release_queries.py`: `build_release_detail_request`, `build_release_assets_request`; `release_mapping.py`: `map_github_release`, `map_github_release_asset`, `map_github_release_row` | Fixed bounded detail/asset `gh api` inputs, scrubbed detail/asset/index-row oracle, null/error coverage, and every field classified observed, derived, optional, or unavailable; R4 owns the list request that consumes the row mapper |
+| R2 direct cache | `builtin_plugins/github/urls.py`: `reduce_github_url`, `parse_github_release_selection`; `builtin_plugins/hosted_releases/service.py`: `get_release`, `refresh_release`; `plugin_loader/provider_addresses.py`: `format_hosted_address` | Stable object-ID resolution from a typed tag locator, auth-scoped current/last-complete, exact observed tag OID, bounded asset metadata, offline/partial tests, and no implicit asset-byte fetch |
+| R3 direct view | `builtin_plugins/hosted_releases/routes.py`: `release_resource`, `release_asset_resource`, `hosted_resource_shell`; `hosted-releases-view.js`: `prepareReleaseView`, `mountReleaseView`, `disposeReleaseView`; manifest/index/styles | Registered resource kind, Release and Source views, item/container children, text-safe metadata, untrusted Markdown, exact tag revision, CLI parity, production-JavaScript lifecycle golden, and distribution evidence |
+| R4 discovery/nav | `builtin_plugins/github/release_queries.py`: `build_release_index_request`; `builtin_plugins/hosted_releases/service.py`: `list_releases`, `refresh_release_index`; `hosted-releases-panel.js`: `createReleasesPanel`, `loadIndexPage`, `openRelease`, `restoreReleaseSelection`, `replaceRoot`, `dispose` | The bounded list request consumes R1’s `map_github_release_row`; query identity, pagination, truncation, offline behavior, bounded counts, virtual-list restoration/replacement/disposal, CLI golden, browserless golden, parity rows, and distribution checks |
+
+### Later provider: GitLab (`mb-51uj`)
+
+- [ ] Implement the same provider port for GitLab merge requests, discussions,
+  pipelines, auth, pagination, and selected refs after the GitHub-first format and views
+  have shipped.
+- [ ] Add only fields observed from that adapter and only provider-specific companion
+  records with named consumers; do not widen v0.12.0 contracts speculatively.
+
+## Incremental Shipping Map
+
+| Slice | Depends on | Mergeable result |
+| --- | --- | --- |
+| v0.12 start (`mb-xxhi`) | v0.10.0 release `mb-i57d` | Implementation branch starts from the released `main` commit |
+| Hosted Review 0A (`mb-u8n8` through `mb-c08x`) | Released v0.10.0 baseline and design PR | Dormant pre-schema ChangeRequest models, typed frontmatter codec, portable Python/browser corpus, and installed-artifact proof |
+| Hosted Review 0B (`mb-pnz5`, `mb-915y`, `mb-rla6`) | Exact head of the preceding formal phase pull request | One pull request per no-network phase for provider storage, repository, review, signal, activity records, and the scrubbed GitHub coverage oracle; each is retargeted and revalidated when its base lands |
+| Hosted Review 0C (`mb-lqae`, `mb-dhz8`) | Phase 0B | Compiled enforced schemas, installed host registry, complete inventory, distribution, and parity gate |
+| Shared-mirror design (`mb-js6t`, `mb-c0m0`) | Green Phase 0C.2 | Long-lived source, Git-store, provider-mirror, multi-client, and phase contracts are independently reviewed before code changes |
+| Hosted Review 0D (`mb-z2mc`, `mb-9u45`) | Shared-mirror design | Unreleased entry-bound records become source bindings, and provider OIDs are independent of local availability |
+| Cache format (`mb-ire2`, `mb-xa0p`, `mb-4gnu`, `mb-k54c`, `mb-lm5m`) | Green Hosted Review 0D | Versioned source/store records and logical inspection routes are independently reviewed |
+| Generic store (`mb-dxmb`, `mb-h51g`, `mb-dg00`, `mb-k900`) | Green cache-format PR | Any supported Git source resolves to one worktree-free store reusable offline |
+| Content-source boundary (`mb-3bna`, `mb-tsdc`) | Green generic-store PR | Existing filesystem serving runs through one generation- and capability-aware source session |
+| Immutable revision source (`mb-z335`, `mb-hoae`) | Green content-source PR | Concurrent full-OID trees and blobs are browseable without a checkout or shared index |
+| Untrusted-content profile (`mb-cun0`, `mb-vib1`, `mb-d658`) | Landed on `main` through #209 and inherited by stack #218 | Fetched content is served only through sandboxed raw responses, same-origin API proof, and the capability-gated untrusted profile |
+| GitHub URL opening (`mb-12cz`, `mb-s1lt`, `mb-ew38`) | Green source/pin PR and verified trust integration | Any supported GitHub repository URL opens without the GitHub API |
+| Provider jobs and selected refs (`mb-jlon`, `mb-bf94`) | Green worktree-free acquisition and repository URL-open PRs | Bounded, cancellable, full-OID-verified selected-ref acquisition is independently reviewed before any branch or PR view uses it |
+| Selected branch (`mb-2xq7`, `mb-9aku`) | Green provider-job and selected-ref PR | Any exposed and authorized branch opens as another immutable subject |
+| GitHub transport and repository summary (`mb-y1ax`, `mb-p4sw`, `mb-s123`, `mb-ji83`, `mb-i3xc`, `mb-2oxp`, `mb-cbak`) | Format, generic jobs, owner-only cache | Auth, adapter lifecycle, broker-pinned Git credential projection, shared snapshot kernel, and one offline repository summary for managed or attached sources |
+| Direct PR cache (`mb-h64t`) | Transport, summary, selected refs, credential lease bridge | Any directly addressed and authorized PR has one reusable bundle |
+| Direct PR view (`mb-xzj3`, `mb-6mle`, `mb-83w0`, `mb-81p5`) | Direct PR cache, trust profile | One GitHub PR URL opens its registered common document and full comparison offline through the generic hosted address |
+| PR index (`mb-lnkl`) | Direct PR cache | A bounded discovery cache lists PR summaries without fetching refs |
+| PR nav (`mb-uh6p`, `mb-iw1v`) | Direct PR view, index | Pull Requests appears as a virtual repository collection |
+| Review anchors (`mb-rldc`) | Direct PR comparison | Threads render at honest current, outdated, or unresolved locations |
+| Hosted releases R0-R4 (`mb-7srn`) | Contract/profile/resource-kind registries and GitHub provider store | One direct release works before a bounded Releases collection; each release phase is a separately reviewed formal PR |
+
+The direct-PR path intentionally crosses Phase 4A before Phase 3C is needed by a user
+surface. This is not a dependency inversion: the index and direct bundle are sibling
+cache products. It lets the smallest complete workflow ship and be tested before
+discovery UI increases acquisition and browser scope.
 
 ## Testing Strategy
 
-- **Provider contracts:** every valid fixture passes structural and semantic validation;
-  every invalid fixture fails with a stable code and path; unknown provider enum values
-  normalize without opening the record schema.
+- **Hosted-review contracts:** every valid frontmatter and pure-YAML fixture passes
+  structural and semantic validation in producer and consumer implementations; invalid
+  fixtures fail with stable codes and paths; unknown provider enum values normalize
+  without opening the record schema; no common contract contains a GitHub-only field.
+- **Installed registries:** unknown, duplicate, incomplete, or conflicting contract,
+  resource-profile, resource-kind, and view declarations fail; cached data cannot
+  provide a declaration; a synthetic release-index profile validates and closes over
+  generic retrieval evidence without adding a storage target variant.
+  The generic format inventory checks every installed contract and profile against its
+  packaged evidence and maintained architecture row without a built-in ID allowlist.
+- **Frontmatter artifacts:** complete PR descriptions, top-level comments, and review
+  comments round-trip as Markdown bodies; structured consumers read only YAML; hostile
+  fences and Markdown remain bounded and untrusted; and snapshot identity changes when
+  either authoritative metadata or the body changes.
 - **Coverage oracle:** every modeled field is present in at least one recorded, scrubbed
-  response, or is explicitly marked derived or optional with a `not_requested` state.
-- **Provider snapshots:** multi-page and partial refreshes publish only complete
-  manifests; a failed refresh leaves the old current set; deletion, permission loss,
-  not-requested, and rate-limit outcomes remain distinct.
+  response, or is explicitly marked deterministically derived, Metabrowser-owned, or
+  optional/unavailable.
+- **Provider snapshots:** only structurally valid committed manifests move `current`;
+  valid partial collections remain visibly partial while `last-complete` stays readable;
+  failed transactions leave pointers unchanged; profile IDs and versions have distinct
+  pointer namespaces; authorization contexts, tombstone proof, deletion, permission
+  loss, not-requested, and rate-limit outcomes remain distinct.
+- **Credential sessions:** every endpoint and page in one acquisition uses the token and
+  stable opaque principal pinned by one broker session, and every provider-selected Git
+  fetch, immediate or deferred, uses a lease whose authorization-context key equals the
+  observation’s; a simulated external `gh auth switch`, ambient Git account mismatch,
+  token revocation, lease expiry, provider or visibility-partition mismatch, broker
+  crash, or child cancellation cannot reopen under another account, coalesce under a
+  weaker context, or publish a mixed-principal manifest.
+  A token-only private fixture succeeds with ambient Git authentication disabled, and no
+  secret reaches the parent or plugin environment, any Git or askpass argv or ordinary
+  child environment, parent diagnostics, files, refs, or persisted state.
+  The sole child environment exception is the documented sanitized credential variable
+  of each broker-owned `gh api` child.
+  A conflicting `.netrc` login, SSH agent, helper, SSH `insteadOf` rewrite, or extra
+  header in system, global, environment-injected, template, or repository-local Git
+  configuration is neither consulted nor written; a Git trace variable prints no token;
+  a cross-host redirect fails typed; an unarmed, disarmed, or URL-mismatched askpass
+  request receives no answer; and a forged, unregistered, or revoked lease handle fails
+  for both starting and joining requests.
+- **Attachments and sharing:** a user-owned checkout fetches provider data without any
+  write to its files or `.git`; two local clones plus HTTPS and SSH URL sources that
+  resolve to one stable repository reuse one provider mirror; ambiguous remotes require
+  explicit selection; one alias’s authentication failure or cancellation does not affect
+  another; purging one consumer leaves data reachable by another.
+- **Git object coordination:** two processes serve different full-OID branches or PR
+  heads concurrently from one worktree-free repository store; source/auth-incompatible
+  fetch jobs do not coalesce; selected-ref force-push races cannot publish mismatched
+  provider metadata and Git content; fork objects use their provider-declared HTTPS
+  sources, including base-repository pull refs after fork deletion; provider-principal
+  jobs never fall back to ambient Git credentials; a deferred or failed Git fetch does
+  not erase the provider-observed object ID.
+- **Refresh and reclamation:** unchanged refreshes reuse immutable artifacts while
+  publishing new retrieval evidence; multi-endpoint observations record their
+  consistency window; shared OS leases prevent reclamation across processes, process
+  exit releases crashed readers, and reclamation waits for the exclusive generation or
+  store lock before moving state to trash.
+- **PR index:** exact query-key pointers, configured bounds, stable ordering, per-page
+  provenance, pagination cursors, remote consistency, freshness, and completeness are
+  visible; rows contain no review/check summaries; list acquisition fetches no PR refs;
+  a direct PR URL works without a warm or complete index; raw provider responses never
+  become durable authority.
+- **Adapter and auth:** fixtures cover fixed REST and GraphQL mappings, `--include`
+  parsing, JSON stdin, GraphQL data-with-errors and nulls, GitHub Enterprise version
+  support, missing CLI/login/scope, permission loss, rate limits, cancellation,
+  malformed output, and output bounds without exposing a credential; no test uses an
+  interactive login, field flags, verbose output, or `gh --paginate`.
 - **Relationships:** all references resolve within a manifest or carry an explicit
   unavailable state; stack cycles and missing members are reported, not repaired by
   guessing.
-- **Views:** loading, stale, partial, unavailable, and offline states each render
-  distinctly; incomplete-collection indicators survive; a review anchor that cannot be
-  mapped shows as outdated rather than pointing at an invented line.
-- **Distribution:** the installed wheel contains every registered model, compiled
-  schema, plugin asset, and format inventory.
+- **Views:** every browser-consumed record passes its packaged validator; hostile
+  provider strings are inserted as text or untrusted Markdown; provider links are
+  HTTPS-only; loading, stale, partial, unavailable, and offline states each render
+  distinctly; incomplete-collection indicators survive; file, line, and range anchors
+  that cannot be mapped show as outdated rather than pointing at an invented line.
+- **Navigation:** a cached PR index populates the virtual Pull Requests collection;
+  paging and virtualization do not change counts or folder visibility; selecting a row
+  opens its hosted-review document; expanding it exposes the same changed-file views as
+  any other comparison.
+- **Parity:** repository and PR routes, records, auth/query-scoped pointers, URL
+  reduction, address lifecycle, direct-view lifecycle, panel window/selection/
+  restoration, root replacement, and disposal each receive an architecture-map row and
+  the exact `tests/dom/hosted-review-session.js` production-path golden.
+- **Distribution:** the installed wheel and source distribution contain every registered
+  model, compiled schema, plugin asset, and format inventory.
+  Both isolated-install smokes derive this set from installed capabilities rather than a
+  second hard-coded contract list.
   `make verify` remains the handoff gate.
 
 ## Rollout and Compatibility
 
-Every contract in this plan is unreleased.
-There is no legacy provider reader to preserve, and no speculative compatibility layer
-is added for one.
+Hosted Review Format and provider-store contracts in this plan are unreleased.
+Plugin SDK 0.6, by contrast, is the v0.10.0 public baseline.
+Artifact contracts and resource profiles use the new, separately versioned
+`metabrowser.capabilities.v1` installed-Python extension surface; changing its contract
+requires a new entry-point group version, not a browser SDK compatibility shim.
+The planned router, address-space, reducer, provider-adapter, and nav-panel declarations
+may remain optional additive SDK 0.6 capabilities only while every existing manifest and
+`window.metabrowser` call keeps its signature and behavior; their implementation must
+update plugin-author documentation and `CHANGELOG.md`. Any changed existing signature or
+semantic contract bumps `PLUGIN_SDK_VERSION` and all built-in manifests in the same
+commit, with no dual compatibility layer.
 
-Once released, provider cache data is expendable only when it can actually be
-reacquired. An offline or deleted source retains its last validated immutable snapshots
-until an explicit retention or purge operation removes them.
+Once released, provider reclamation preserves `current`, `last-complete`, one diagnostic
+predecessor, explicit archival pins, and any reader-leased snapshot regardless of
+whether the source can be reacquired.
+Older unreachable generations remain safely reclaimable even when the source is offline
+or deleted; the last validated reachable observation is never automatically removed.
 
 ## References
 
@@ -478,6 +1523,8 @@ until an explicit retention or purge operation removes them.
   — the review that separated this plan from the cache
 - [Git and comparison sources](../../architecture/arch-git-and-comparison-sources.md) —
   the provider boundary this plan must not cross
+- [Hosted Review Model and Provider Boundary](../../architecture/arch-hosted-review-model.md)
+  — the durable format, adapter, activity, view, and cache boundaries
 - [File Diff Format v1](../../architecture/file-diff-format/file-diff-format.md)
 
 <!-- This document follows common-doc-guidelines.md.

@@ -17,6 +17,13 @@
   /** Keep a small overflow before pruning so insertion does not sort every match. */
   const RETAINED_RESULT_MULTIPLIER = 2;
 
+  /** @param {string} path */
+  function knownFileDisplayPath(path) {
+    return typeof window.MetabrowserNavigationRoute?.displayPath === "function"
+      ? window.MetabrowserNavigationRoute.displayPath(path)
+      : path.replaceAll("%25", "%");
+  }
+
   /**
    * @typedef {object} MetabrowserKnownFile
    * @property {string} basename
@@ -242,7 +249,7 @@
           for (let index = chunkStart; index < chunkEnd; index += 1) {
             throwIfAborted(signal);
             const file = snapshot.files[index];
-            const match = matcher.matchPath(query, file.path.replaceAll("%25", "%"));
+            const match = matcher.matchPath(query, knownFileDisplayPath(file.path));
             if (!match) {
               continue;
             }
@@ -263,7 +270,7 @@
       retained.sort((left, right) => matcher.compareMatches(left.match, right.match));
       const ordered = retained.slice(0, maxResults);
       const results = ordered.map(({ file, match }, index) => {
-        const displayPath = file.path.replaceAll("%25", "%");
+        const displayPath = knownFileDisplayPath(file.path);
         const separator = displayPath.lastIndexOf("/");
         return Object.freeze({
           description: separator >= 0 ? displayPath.slice(0, separator) : "",

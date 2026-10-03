@@ -31,6 +31,11 @@ class FakeElement {
     this.attributes.set(name, value);
   }
 
+  // A trusted render is HTML text here, never parsed: no inert article to find.
+  querySelector() {
+    return null;
+  }
+
   replaceWith(replacement) {
     const index = this.parentElement.elements.indexOf(this);
     this.parentElement.elements[index] = replacement;
@@ -114,6 +119,14 @@ async function loadModule() {
       "utf8",
     )
     .replace('"./toc-intersection-fallback.js"', JSON.stringify(tocFallbackUrl))
+    .replace(
+      '"./place-rendered.js"',
+      JSON.stringify(
+        require("node:url").pathToFileURL(
+          path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/place-rendered.js"),
+        ).href,
+      ),
+    )
     .replace('"./markdown-worker-client.js"', JSON.stringify(workerUrl))
     .replace('"./wiki-parser.js"', JSON.stringify(parserUrl));
   const transclusionUrl = `data:text/javascript;base64,${Buffer.from(transclusionSource).toString("base64")}`;

@@ -31,7 +31,12 @@ from metabrowser.plugin_loader.classify import (
     _JSON_CLASSIFICATION_MAX_BYTES,
     CompiledKindRule,
     build_classifier,
+    classify_identity,
     collect_folder_markers,
+    frontmatter_from_bytes,
+    json_mapping_from_bytes,
+    parse_frontmatter_bytes,
+    yaml_mapping_from_bytes,
 )
 from metabrowser.plugin_loader.discovery import (
     LoadedPlugin,
@@ -73,7 +78,7 @@ def make_plugin_dir(tmp_path: Path):
 
 def test_deferred_plugin_asset_lifecycle_is_sdk_0_5() -> None:
     """Selected-kind loading is a released lifecycle break, not an additive 0.4 change."""
-    assert PLUGIN_SDK_VERSION == "0.6"
+    assert PLUGIN_SDK_VERSION == "0.7"
 
 
 def test_manifest_minimum_fields(make_plugin_dir) -> None:
@@ -82,7 +87,7 @@ def test_manifest_minimum_fields(make_plugin_dir) -> None:
         """
 [plugin]
 name = "p1"
-sdk_version = "0.6"
+sdk_version = "0.7"
 
 [[kind]]
 id = "myk"
@@ -157,7 +162,7 @@ id = "myk"
 match = { ext = ".myk" }
 """,
     )
-    with pytest.raises(ValueError, match=r"targets browser SDK '0\.4'.*provides '0\.6'"):
+    with pytest.raises(ValueError, match=r"targets browser SDK '0\.4'.*provides '0\.7'"):
         load_manifest(plugin_dir / "manifest.toml")
 
 
@@ -167,7 +172,7 @@ def test_manifest_rejects_empty_match(make_plugin_dir) -> None:
         """
 [plugin]
 name = "p2"
-sdk_version = "0.6"
+sdk_version = "0.7"
 
 [[kind]]
 id = "myk"
@@ -184,7 +189,7 @@ def test_manifest_rejects_duplicate_view_ids(make_plugin_dir) -> None:
         """
 [plugin]
 name = "p3"
-sdk_version = "0.6"
+sdk_version = "0.7"
 
 [[kind]]
 id = "myk"
@@ -210,7 +215,7 @@ def test_manifest_rejects_multiple_defaults(make_plugin_dir) -> None:
         """
 [plugin]
 name = "p4"
-sdk_version = "0.6"
+sdk_version = "0.7"
 
 [[kind]]
 id = "myk"
@@ -238,7 +243,7 @@ def test_manifest_rejects_bad_sidekick(make_plugin_dir) -> None:
         """
 [plugin]
 name = "p5"
-sdk_version = "0.6"
+sdk_version = "0.7"
 
 [[kind]]
 id = "myk"
@@ -303,7 +308,7 @@ def test_discovery_reports_manifest_missing_index_js(make_plugin_dir, tmp_path: 
         """
 [plugin]
 name = "broken"
-sdk_version = "0.6"
+sdk_version = "0.7"
 
 [[kind]]
 id = "x"
@@ -329,7 +334,7 @@ def test_discovery_finds_extra_dir_plugin(make_plugin_dir, tmp_path: Path) -> No
         """
 [plugin]
 name = "myplug"
-sdk_version = "0.6"
+sdk_version = "0.7"
 
 [[kind]]
 id = "myk"
@@ -350,7 +355,7 @@ def test_entry_point_calls_documented_plugin_dir_factory(
         """
 [plugin]
 name = "entrypoint-plugin"
-sdk_version = "0.6"
+sdk_version = "0.7"
 
 [[kind]]
 id = "entrypoint-kind"
@@ -439,6 +444,137 @@ def test_classifier_priority_wins(tmp_path: Path) -> None:
     ]
     classifier = build_classifier(rules)
     assert classifier(_ctx(f)) == "report"
+
+
+def test_classify_identity_matches_ext_adapter_and_content_predicates() -> None:
+    rules = [
+        CompiledKindRule(
+            rule=KindRule(
+                id="agent-log",
+                match=KindMatch(ext=".jsonl", adapter="claude"),
+                priority=100,
+            ),
+            plugin_name="agent-log",
+            discovery_index=0,
+        ),
+        CompiledKindRule(
+            rule=KindRule(
+                id="analysis-report",
+                match=KindMatch(ext=".json", json_has_key="schema"),
+                priority=100,
+            ),
+            plugin_name="reports",
+            discovery_index=1,
+        ),
+        CompiledKindRule(
+            rule=KindRule(
+                id="derived",
+                match=KindMatch(ext=".md", path_glob="**/derived/**/*.md"),
+                priority=50,
+            ),
+            plugin_name="derived",
+            discovery_index=2,
+        ),
+        CompiledKindRule(
+            rule=KindRule(
+                id="structured",
+                match=KindMatch(exts=[".json", ".yaml", ".yml"]),
+                priority=0,
+            ),
+            plugin_name="structured",
+            discovery_index=3,
+        ),
+        CompiledKindRule(
+            rule=KindRule(
+                id="diff",
+                match=KindMatch(exts=[".patch", ".diff"]),
+                priority=0,
+            ),
+            plugin_name="diff",
+            discovery_index=4,
+        ),
+        CompiledKindRule(
+            rule=KindRule(
+                id="report",
+                match=KindMatch(ext=".md", frontmatter_has_key="report"),
+                priority=100,
+            ),
+            plugin_name="reports-md",
+            discovery_index=6,
+        ),
+        CompiledKindRule(
+            rule=KindRule(
+                id="spec",
+                match=KindMatch(ext=".yaml", yaml_has_key="kind"),
+                priority=100,
+            ),
+            plugin_name="specs",
+            discovery_index=7,
+        ),
+        CompiledKindRule(
+            rule=KindRule(
+                id="marker",
+                match=KindMatch(folder_marker="pyproject.toml"),
+                priority=0,
+            ),
+            plugin_name="folder",
+            discovery_index=5,
+        ),
+    ]
+    assert classify_identity(rules, ext=".json", basename="config.json") == "structured"
+    assert classify_identity(rules, ext=".patch", basename="change.patch") == "diff"
+    assert classify_identity(rules, ext=".jsonl", basename="events.jsonl") is None
+    assert (
+        classify_identity(rules, ext=".jsonl", basename="events.jsonl", adapter="claude")
+        == "agent-log"
+    )
+    assert (
+        classify_identity(
+            rules,
+            ext=".json",
+            basename="resources.json",
+            json_top_level={"schema": "example.resources/v1"},
+        )
+        == "analysis-report"
+    )
+    assert (
+        classify_identity(rules, ext=".json", basename="resources.json", json_top_level={"x": 1})
+        == "structured"
+    )
+    assert (
+        classify_identity(
+            rules,
+            ext=".md",
+            basename="note.md",
+            frontmatter={"report": True},
+        )
+        == "report"
+    )
+    assert classify_identity(rules, ext=".md", basename="note.md") is None
+    assert (
+        classify_identity(rules, ext=".yaml", basename="spec.yaml", yaml_top_level={"kind": "x"})
+        == "spec"
+    )
+    assert classify_identity(rules, ext="", basename="pyproject.toml") == "marker"
+
+
+def test_blob_content_mappings_from_bytes() -> None:
+    assert json_mapping_from_bytes(b'{"name": "pin"}') == {"name": "pin"}
+    assert json_mapping_from_bytes(b'["not", "an", "object"]') is None
+    assert (
+        json_mapping_from_bytes(b'{"x":"' + (b"y" * _JSON_CLASSIFICATION_MAX_BYTES) + b'"}') is None
+    )
+    assert yaml_mapping_from_bytes(b"kind: spec\ncount: 1\n") == {"kind": "spec", "count": 1}
+    assert yaml_mapping_from_bytes(b"- not a mapping\n") is None
+    assert frontmatter_from_bytes(b"---\nreport: true\n---\nbody\n") == {"report": True}
+    assert frontmatter_from_bytes(b"# no frontmatter\n") is None
+    assert parse_frontmatter_bytes(b"---\ntitle: Pin\n---\nbody\n") == ({"title": "Pin"}, None)
+    mapping, error = parse_frontmatter_bytes(
+        b"---\n: : : not valid yaml\nbad indent\n---\n\nbody\n"
+    )
+    assert mapping is None
+    assert error
+    assert parse_frontmatter_bytes(b"# no frontmatter\n") == (None, None)
 
 
 def test_classifier_returns_none_when_nothing_matches(tmp_path: Path) -> None:
@@ -842,7 +978,6 @@ def test_classify_path_glob_matches_under_subtree(tmp_path: Path) -> None:
         discovery_index=0,
     )
     assert build_classifier([rule])(_ctx(md)) == "derived-markdown"
-    _set_root_dir(Path())
 
 
 def test_classify_path_glob_rejects_outside_subtree(tmp_path: Path) -> None:
@@ -859,7 +994,6 @@ def test_classify_path_glob_rejects_outside_subtree(tmp_path: Path) -> None:
         discovery_index=0,
     )
     assert build_classifier([rule])(_ctx(plain)) is None
-    _set_root_dir(Path())
 
 
 def test_manifest_rejects_yaml_value_prefix_without_key() -> None:

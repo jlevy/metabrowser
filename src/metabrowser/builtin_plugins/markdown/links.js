@@ -24,10 +24,11 @@ const VIDEO_EXTENSIONS = new Set([".m4v", ".mov", ".mp4", ".ogv", ".webm"]);
  * @property {string} authoredTarget
  * @property {string=} label
  * @property {"navigate" | "embed"} action
+ * @property {"filesystem" | "git_revision"=} sourceKind
  */
 
 /** @typedef {"image" | "audio" | "video" | "resource"} MediaKind */
-/** @typedef {Readonly<{completePrefix: boolean, reverseSlashes: readonly number[], sourcePath: string}>} PreparedSourcePath */
+/** @typedef {Readonly<{completePrefix: boolean, reverseSlashes: readonly number[], sourcePath: string, sourceKind: "filesystem" | "git_revision"}>} PreparedSourcePath */
 /** @typedef {Readonly<{done: boolean, pathVisits: number, result: PreparedSourcePath | null}>} SourcePathStep */
 /** @typedef {Readonly<{step: (maxPathVisits: number) => SourcePathStep}>} TrustedSourcePathContext */
 
@@ -47,7 +48,7 @@ const VIDEO_EXTENSIONS = new Set([".m4v", ".mov", ".mp4", ".ogv", ".webm"]);
  */
 export function resolveStandardTarget(intent) {
   const value = validateIntentShape(intent);
-  return resolvePreparedTarget(value, prepareSourcePath(value.sourcePath));
+  return resolvePreparedTarget(value, prepareSourcePath(value.sourcePath, value.sourceKind));
 }
 
 /**
@@ -56,9 +57,10 @@ export function resolveStandardTarget(intent) {
  * only authored URL segments are decoded and re-escaped.
  *
  * @param {string} sourcePath
+ * @param {"filesystem" | "git_revision"=} sourceKind
  */
-export function createStandardLinkResolutionContext(sourcePath) {
-  const preparedSource = prepareSourcePath(sourcePath);
+export function createStandardLinkResolutionContext(sourcePath, sourceKind) {
+  const preparedSource = prepareSourcePath(sourcePath, sourceKind);
   return strictStandardLinkResolutionContext(sourcePath, preparedSource);
 }
 
@@ -75,13 +77,16 @@ export function createStandardLinkResolutionContext(sourcePath) {
  *
  * @param {string} sourcePath
  * @param {TrustedSourcePathContext=} sourceContext
+ * @param {"filesystem" | "git_revision"=} sourceKind
  */
-export function createTrustedStandardLinkResolutionContext(sourcePath, sourceContext) {
+export function createTrustedStandardLinkResolutionContext(sourcePath, sourceContext, sourceKind) {
   if (typeof sourcePath !== "string" || !sourcePath) {
     throw new TypeError("standard link source path is invalid");
   }
   const immediateSource =
-    sourcePath.length <= MAX_AUTHORED_TARGET_LENGTH ? prepareTrustedSourcePath(sourcePath) : null;
+    sourcePath.length <= MAX_AUTHORED_TARGET_LENGTH
+      ? prepareTrustedSourcePath(sourcePath, sourceKind)
+      : null;
   return Object.freeze({
     /** @param {unknown} intent */
     begin(intent) {
@@ -228,6 +233,13 @@ function validateIntentShape(intent) {
   if (value.label !== undefined && typeof value.label !== "string") {
     throw new TypeError("standard link label must be a string");
   }
+  if (
+    value.sourceKind !== undefined &&
+    value.sourceKind !== "filesystem" &&
+    value.sourceKind !== "git_revision"
+  ) {
+    throw new TypeError("standard link sourceKind must be filesystem or git_revision");
+  }
   return /** @type {Readonly<LinkIntent>} */ (value);
 }
 
@@ -245,8 +257,8 @@ function validateAuthoredTarget(authoredTarget) {
   return null;
 }
 
-/** @param {string} sourcePath @returns {PreparedSourcePath} */
-function prepareSourcePath(sourcePath) {
+/** @param {string} sourcePath @param {"filesystem" | "git_revision"=} sourceKind @returns {PreparedSourcePath} */
+function prepareSourcePath(sourcePath, sourceKind) {
   if (typeof sourcePath !== "string" || !sourcePath) {
     throw new TypeError("standard link source path is invalid");
   }
@@ -280,11 +292,11 @@ function prepareSourcePath(sourcePath) {
   if (invalidSourceSegment(sourcePath, segmentStart, sourcePath.length)) {
     throw new TypeError("standard link source path must already be normalized");
   }
-  return prepareTrustedSourcePath(sourcePath);
+  return prepareTrustedSourcePath(sourcePath, sourceKind);
 }
 
-/** @param {string} sourcePath @returns {PreparedSourcePath} */
-function prepareTrustedSourcePath(sourcePath) {
+/** @param {string} sourcePath @param {"filesystem" | "git_revision"=} sourceKind @returns {PreparedSourcePath} */
+function prepareTrustedSourcePath(sourcePath, sourceKind) {
   const reverseSlashes = [];
   for (let index = sourcePath.length - 1; index >= 0; index -= 1) {
     if (sourcePath.charCodeAt(index) === 47) {
@@ -294,6 +306,7 @@ function prepareTrustedSourcePath(sourcePath) {
   return Object.freeze({
     completePrefix: true,
     reverseSlashes: Object.freeze(reverseSlashes),
+    sourceKind: sourceKind === "git_revision" ? "git_revision" : "filesystem",
     sourcePath,
   });
 }
@@ -344,6 +357,16 @@ function splitAuthoredTarget(authoredTarget) {
 }
 
 /**
+ * A decoded path segment as a served folder's inventory spells it: `%` is `%25` and, on
+ * POSIX, a backslash is `%5C`.
+ *
+ * @param {string} segment
+ */
+function inventoryName(segment) {
+  return segment.replaceAll("%", "%25").replaceAll("\\", "%5C");
+}
+
+/**
  * @param {string} sourcePath
  * @param {PreparedSourcePath | null} preparedSource
  * @param {string} encodedPath
@@ -359,6 +382,7 @@ function resolveLogicalPath(sourcePath, preparedSource, encodedPath) {
     return "";
   }
   const trailingSlash = relative.endsWith("/");
+  const gitSource = preparedSource?.sourceKind === "git_revision";
   const segments = [];
   let parentPops = 0;
   const rawSegments = relative.split("/");
@@ -378,7 +402,10 @@ function resolveLogicalPath(sourcePath, preparedSource, encodedPath) {
     if (segment.includes("/")) {
       return unsafe("encoded-path-separator");
     }
-    if (segment.includes("\\")) {
+    // An escaped backslash (`%5C`; a literal one never reaches here) names a served
+    // folder's file whose POSIX name holds one, which the inventory spells `%5C`. A Git
+    // pin's paths never hold one, and its routes refuse it.
+    if (gitSource && segment.includes("\\")) {
       return unsafe("backslash-path");
     }
     if (segment.includes("\0")) {
@@ -398,9 +425,11 @@ function resolveLogicalPath(sourcePath, preparedSource, encodedPath) {
       parentPops += 1;
       continue;
     }
-    segments.push(segment.replaceAll("%", "%25"));
+    segments.push(segment);
   }
-  const authored = segments.join("/");
+  const authored = gitSource
+    ? encodeGitPathAuthored(segments)
+    : segments.map(inventoryName).join("/");
   let base = "";
   if (!rooted) {
     if (!preparedSource) {
@@ -418,6 +447,34 @@ function resolveLogicalPath(sourcePath, preparedSource, encodedPath) {
   }
   const path = base && authored ? `${base}/${authored}` : base || authored;
   return trailingSlash && path ? `${path}/` : path;
+}
+
+/** @param {string} name */
+function encodeGitPathSegment(name) {
+  const bytes = new TextEncoder().encode(name);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 1) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  const atom = btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+  return `g1-${atom}`;
+}
+
+/** @param {string[]} names */
+function encodeGitPathAuthored(names) {
+  return names.map(encodeGitPathSegment).join("/");
+}
+
+/**
+ * The GitPath wire of a slash-separated display path, keeping a trailing slash.
+ *
+ * @param {string} path
+ */
+export function gitPathWireForDisplayPath(path) {
+  const trailingSlash = path.endsWith("/");
+  const names = path.split("/").filter((name) => name !== "");
+  const wire = encodeGitPathAuthored(names);
+  return trailingSlash && wire ? `${wire}/` : wire;
 }
 
 /**

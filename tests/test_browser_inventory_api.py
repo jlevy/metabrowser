@@ -93,7 +93,6 @@ def test_api_tree_pages_provider_reads_independently_of_the_discovery_budget(
     _build_fixture(tmp_path)
 
     async def _run() -> tuple[int, ...]:
-        original_root = paths_safe.ROOT_DIR
         paths_safe._set_root_dir(tmp_path)
         server_namespace = cast(dict[str, Any], vars(proc_browser))
         original_assemble = server_namespace["assemble_tree_pages"]
@@ -117,7 +116,6 @@ def test_api_tree_pages_provider_reads_independently_of_the_discovery_budget(
                 return tuple(observed_page_bounds)
         finally:
             server_namespace["assemble_tree_pages"] = original_assemble
-            paths_safe._set_root_dir(original_root)
 
     assert asyncio.run(_run()) == (
         INVENTORY_TREE_PAGE_ROWS,
@@ -140,19 +138,15 @@ def test_api_tree_uses_inventory_when_populated(tmp_path: Path) -> None:
 
     async def _run() -> dict[str, Any]:
 
-        original_root = paths_safe.ROOT_DIR
         paths_safe._set_root_dir(tmp_path)
-        try:
-            async with inventory_harness(tmp_path) as harness:
-                resp = await proc_browser.api_tree(cast(Any, _FakeRequest(app=harness.app)))
-                tallies = await proc_browser.api_tree(
-                    cast(
-                        Any,
-                        _FakeRequest({"depth": "0"}, app=harness.app),
-                    )
+        async with inventory_harness(tmp_path) as harness:
+            resp = await proc_browser.api_tree(cast(Any, _FakeRequest(app=harness.app)))
+            tallies = await proc_browser.api_tree(
+                cast(
+                    Any,
+                    _FakeRequest({"depth": "0"}, app=harness.app),
                 )
-        finally:
-            paths_safe._set_root_dir(original_root)
+            )
         rows = json.loads(bytes(resp.body))
         # Rows and tallies now come from different requests; merge them here so
         # the assertions below still read as one description of the surface.
@@ -193,16 +187,12 @@ def test_api_tree_tallies_share_one_provider_read(tmp_path: Path) -> None:
     _build_fixture(tmp_path)
 
     async def run() -> dict[str, Any]:
-        original_root = paths_safe.ROOT_DIR
         paths_safe._set_root_dir(tmp_path)
-        try:
-            async with inventory_harness(tmp_path) as harness:
-                response = await proc_browser.api_tree(
-                    cast(Any, _FakeRequest({"depth": "0"}, app=harness.app))
-                )
-                return json.loads(bytes(response.body))
-        finally:
-            paths_safe._set_root_dir(original_root)
+        async with inventory_harness(tmp_path) as harness:
+            response = await proc_browser.api_tree(
+                cast(Any, _FakeRequest({"depth": "0"}, app=harness.app))
+            )
+            return json.loads(bytes(response.body))
 
     body = asyncio.run(run())
     assert body["summary"]["files"] == 5
@@ -213,23 +203,19 @@ def test_api_tree_uses_provider_presence_instead_of_parallel_filesystem_truth(
     tmp_path: Path,
 ) -> None:
     async def run() -> int:
-        original_root = paths_safe.ROOT_DIR
         paths_safe._set_root_dir(tmp_path)
-        try:
-            async with inventory_harness(tmp_path) as harness:
-                (tmp_path / "appeared-without-observation").mkdir()
-                response = await proc_browser.api_tree(
-                    cast(
-                        Any,
-                        _FakeRequest(
-                            {"path": "appeared-without-observation", "depth": "1"},
-                            app=harness.app,
-                        ),
-                    )
+        async with inventory_harness(tmp_path) as harness:
+            (tmp_path / "appeared-without-observation").mkdir()
+            response = await proc_browser.api_tree(
+                cast(
+                    Any,
+                    _FakeRequest(
+                        {"path": "appeared-without-observation", "depth": "1"},
+                        app=harness.app,
+                    ),
                 )
-                return response.status_code
-        finally:
-            paths_safe._set_root_dir(original_root)
+            )
+            return response.status_code
 
     assert asyncio.run(run()) == 404
 
@@ -264,31 +250,27 @@ def test_api_tree_uses_pending_inventory_without_filesystem_fallback(
     monkeypatch.setattr(proc_browser, "_dir_tree", fail_filesystem_walk)
 
     async def run() -> dict[str, Any]:
-        original_root = paths_safe.ROOT_DIR
         paths_safe._set_root_dir(tmp_path)
-        try:
-            async with inventory_harness(tmp_path, settle=False) as harness:
-                while True:
-                    read = await harness.runtime.coordinator.read(
-                        ReadRequest(queries=(EntryQuery(query_id="parent", path="runs/local"),))
-                    )
-                    parent = read.result.projection("parent")
-                    assert isinstance(parent, EntryProjection)
-                    if parent.presence is EntryPresence.PRESENT:
-                        break
-                    await asyncio.sleep(0)
-                response = await proc_browser.api_tree(
-                    cast(
-                        Any,
-                        _FakeRequest(
-                            {"path": "runs/local", "depth": "2"},
-                            app=harness.app,
-                        ),
-                    )
+        async with inventory_harness(tmp_path, settle=False) as harness:
+            while True:
+                read = await harness.runtime.coordinator.read(
+                    ReadRequest(queries=(EntryQuery(query_id="parent", path="runs/local"),))
                 )
-                return json.loads(bytes(response.body))
-        finally:
-            paths_safe._set_root_dir(original_root)
+                parent = read.result.projection("parent")
+                assert isinstance(parent, EntryProjection)
+                if parent.presence is EntryPresence.PRESENT:
+                    break
+                await asyncio.sleep(0)
+            response = await proc_browser.api_tree(
+                cast(
+                    Any,
+                    _FakeRequest(
+                        {"path": "runs/local", "depth": "2"},
+                        app=harness.app,
+                    ),
+                )
+            )
+            return json.loads(bytes(response.body))
 
     body = asyncio.run(run())
     assert body["tally_cache_status"] == "scanning"
@@ -310,19 +292,15 @@ def test_a_row_request_does_not_pay_for_the_tallies(tmp_path: Path) -> None:
     _build_fixture(tmp_path)
 
     async def _run() -> tuple[dict[str, Any], dict[str, Any]]:
-        original_root = paths_safe.ROOT_DIR
         paths_safe._set_root_dir(tmp_path)
-        try:
-            async with inventory_harness(tmp_path) as harness:
-                rows = await proc_browser.api_tree(cast(Any, _FakeRequest(app=harness.app)))
-                tallies = await proc_browser.api_tree(
-                    cast(
-                        Any,
-                        _FakeRequest({"depth": "0"}, app=harness.app),
-                    )
+        async with inventory_harness(tmp_path) as harness:
+            rows = await proc_browser.api_tree(cast(Any, _FakeRequest(app=harness.app)))
+            tallies = await proc_browser.api_tree(
+                cast(
+                    Any,
+                    _FakeRequest({"depth": "0"}, app=harness.app),
                 )
-        finally:
-            paths_safe._set_root_dir(original_root)
+            )
         return json.loads(bytes(rows.body)), json.loads(bytes(tallies.body))
 
     rows, tallies = asyncio.run(_run())

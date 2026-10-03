@@ -8,19 +8,17 @@ the CLI goldens already pin.
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 from pathlib import Path
 
-import pytest
+from tests.required_tools import require_node
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DOM_DIR = Path(__file__).resolve().parent / "dom"
 
 
 def _run(script: str, marker: str) -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(DOM_DIR / script), str(REPO_ROOT)],
         capture_output=True,
@@ -52,3 +50,7 @@ def test_diff_intraline_refines_changed_runs() -> None:
 
 def test_diff_render_model_caches_progressive_refinement() -> None:
     _run("diff-render-model-behavior.js", "diff render model OK")
+
+
+def test_diff_view_file_decides_sides_addresses_and_switches() -> None:
+    _run("diff-view-file-behavior.js", "diff view file OK")

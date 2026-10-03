@@ -14,6 +14,7 @@ Covers the contract in
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import gzip
 import json
@@ -23,10 +24,15 @@ from typing import Any
 from unittest.mock import Mock
 
 import pytest
+from starlette.applications import Starlette
+from starlette.testclient import TestClient
 
 from metabrowser import server
 from metabrowser.builtin_plugins.binary import sidekick
 from metabrowser.gz_io import ArtifactPath
+from metabrowser.plugin_loader.discovery import _try_load_plugin
+from metabrowser.plugin_loader.static_assets import build_plugin_routes
+from metabrowser.source import read_artifact_window
 
 ALL_BYTES = bytes(range(256))
 
@@ -45,7 +51,7 @@ def _chunk(path: str, **params: object) -> tuple[int, dict[str, Any]]:
     request = Mock(spec=["query_params", "headers"])
     request.query_params = _FakeQuery(query)
     request.headers = {}
-    response = sidekick.chunk_handler(request)
+    response = asyncio.run(sidekick.chunk_handler(request))
     return response.status_code, json.loads(bytes(response.body))
 
 
@@ -144,10 +150,10 @@ def test_read_byte_chunk_reports_more_without_returning_it(tmp_path: Path) -> No
     target = tmp_path / "a.bin"
     target.write_bytes(ALL_BYTES)
 
-    payload, has_more = sidekick.read_byte_chunk(ArtifactPath(target), 0, 10)
+    window = read_artifact_window(ArtifactPath(target), 0, 10)
 
-    assert payload == ALL_BYTES[:10]
-    assert has_more is True
+    assert window.data == ALL_BYTES[:10]
+    assert window.has_more is True
 
 
 # ── Ceilings and windows ───────────────────────────────────────────
@@ -394,3 +400,132 @@ def test_response_path_is_served_root_relative(tmp_path: Path) -> None:
     _, body = _chunk("sub/a.bin")
 
     assert body["path"] == "sub/a.bin"
+
+
+# ── A setting below zero ───────────────────────────────────────────
+#
+# Each of the three settings is read as an integer and 0.11.0 took a negative one. It
+# reaches the read as a negative limit (the default chunk size, or a requested limit
+# clamped to the per-request maximum) or as a negative offset (a requested offset
+# clamped to the ceiling). The content reader refuses both, and the route answered the
+# degraded ``plugin_error`` envelope, so these go through the route as it is mounted.
+
+_BINARY_DIR = Path(sidekick.__file__).resolve().parent
+
+
+@pytest.fixture
+def binary_route(tmp_path: Path) -> TestClient:
+    server._set_root_dir(tmp_path)
+    (tmp_path / "a.bin").write_bytes(ALL_BYTES)
+    (tmp_path / "empty.bin").write_bytes(b"")
+    (tmp_path / "a.bin.gz").write_bytes(gzip.compress(ALL_BYTES))
+    plugin = _try_load_plugin(_BINARY_DIR, source="builtin:test")
+    assert plugin is not None and not isinstance(plugin, str), plugin
+    return TestClient(Starlette(routes=build_plugin_routes([plugin])))
+
+
+def _route_chunk(
+    client: TestClient, path: str, **params: object
+) -> tuple[int, dict[str, Any], str]:
+    query = {"path": path, **{name: str(value) for name, value in params.items()}}
+    response = client.get("/api/plugin/binary/chunk", params=query)
+    return response.status_code, response.json(), response.headers.get("ETag", "")
+
+
+def _empty_chunk(body: dict[str, Any]) -> tuple[Any, ...]:
+    return (
+        body["type"],
+        body["bytes_read"],
+        body["next_offset"] - body["offset"],
+        body["content_base64"],
+    )
+
+
+@pytest.mark.parametrize("chunk", [-1, -2, -5000])
+def test_a_negative_default_chunk_size_reads_nothing_and_says_whether_bytes_remain(
+    chunk: int, binary_route: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``METABROWSER_BINARY_PREVIEW_BYTES`` below zero: an empty chunk, as 0.11.0 at -1.
+
+    At -1, 0.11.0 read nothing and reported that more remained wherever the offset was
+    inside the file. Below that it read the rest of the file with no bound (-2) or
+    failed in the read with ``plugin_error`` (-3 and lower); neither is restored, and
+    every negative size answers as -1 did.
+    """
+
+    monkeypatch.setattr(sidekick, "BINARY_PREVIEW_CHUNK_BYTES", chunk)
+
+    for name in ("a.bin", "a.bin.gz"):
+        for offset, more in ((0, True), (100, True), (256, False), (9999, False)):
+            status, body, etag = _route_chunk(binary_route, name, offset=offset)
+            assert status == 200, (name, offset, body)
+            assert _empty_chunk(body) == ("binary_chunk", 0, 0, ""), (name, offset, body)
+            assert (body["offset"], body["has_more"]) == (offset, more), (name, body)
+            assert (body["logical_size"], body["preview_limited"]) == (256, False), name
+            # The address of the window is the one 0.11.0 gave it.
+            assert etag.endswith(f'-{offset}-{chunk}"'), etag
+    status, body, _etag = _route_chunk(binary_route, "empty.bin")
+    assert (status, _empty_chunk(body), body["has_more"]) == (
+        200,
+        ("binary_chunk", 0, 0, ""),
+        False,
+    )
+
+    # A request that names its own limit is not the default's business.
+    status, body, _etag = _route_chunk(binary_route, "a.bin", offset=10, limit=3)
+    assert (status, _payload(body), body["has_more"]) == (200, ALL_BYTES[10:13], True)
+
+
+@pytest.mark.parametrize("maximum", [-1, -2, -5000])
+def test_a_negative_per_request_maximum_reads_nothing_for_a_named_limit(
+    maximum: int, binary_route: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``METABROWSER_BINARY_PREVIEW_MAX_CHUNK_BYTES`` below zero clamps a limit below zero."""
+
+    monkeypatch.setattr(sidekick, "BINARY_PREVIEW_MAX_CHUNK_BYTES", maximum)
+
+    for name in ("a.bin", "a.bin.gz"):
+        for offset, more in ((0, True), (100, True), (256, False)):
+            status, body, etag = _route_chunk(binary_route, name, offset=offset, limit=64)
+            assert status == 200, (name, offset, body)
+            assert _empty_chunk(body) == ("binary_chunk", 0, 0, ""), (name, offset, body)
+            assert (body["offset"], body["has_more"]) == (offset, more), (name, body)
+            assert etag.endswith(f'-{offset}-{maximum}"'), etag
+
+    # The default limit is not clamped, so a request without one reads as before.
+    status, body, _etag = _route_chunk(binary_route, "a.bin")
+    assert (status, _payload(body), body["has_more"]) == (200, ALL_BYTES, False)
+
+
+@pytest.mark.parametrize("ceiling", [-1, -2, -5000])
+def test_a_negative_ceiling_loads_nothing_and_has_no_later_window(
+    ceiling: int, binary_route: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``METABROWSER_BINARY_PREVIEW_MAX_BYTES`` below zero.
+
+    Nothing is inside a negative ceiling, so the first window is empty and says the
+    preview is limited. A requested offset is clamped to the ceiling, and 0.11.0 could
+    not seek there: it answered that the file was no longer available.
+    """
+
+    monkeypatch.setattr(sidekick, "BINARY_PREVIEW_MAX_BYTES", ceiling)
+
+    for name in ("a.bin", "a.bin.gz", "empty.bin"):
+        for params in ({}, {"limit": 64}):
+            status, body, _etag = _route_chunk(binary_route, name, **params)
+            assert status == 200, (name, params, body)
+            assert _empty_chunk(body) == ("binary_chunk", 0, 0, ""), (name, params, body)
+            assert (body["has_more"], body["preview_limited"]) == (False, True), (name, body)
+            assert body["max_preview_bytes"] == ceiling
+
+    for name in ("a.bin", "a.bin.gz"):
+        for params in ({"offset": 4}, {"offset": 4, "limit": 8}, {"offset": 256}):
+            status, body, _etag = _route_chunk(binary_route, name, **params)
+            assert (status, body) == (
+                404,
+                {
+                    "type": "binary_chunk_error",
+                    "error": "This file is no longer available.",
+                    "path": name,
+                },
+            ), (name, params)

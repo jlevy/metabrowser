@@ -16,7 +16,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import shutil
 import subprocess
 from collections.abc import Iterator, Mapping, Sequence
 from pathlib import Path
@@ -46,6 +45,7 @@ from metabrowser.git.process import (
     GitOutputTooLargeError,
     GitTimeoutError,
     failure_detail,
+    loggable,
     run_git,
 )
 from metabrowser.git.repo import repo_info
@@ -65,11 +65,9 @@ from metabrowser.git.wire import (
     validate_git_ref,
     validate_git_repo_info,
 )
+from tests.required_tools import needs_git
 
-pytestmark = pytest.mark.skipif(
-    shutil.which("git") is None,
-    reason="git executable is required to build the fixture repositories",
-)
+pytestmark = needs_git
 
 
 # ── Fixture repositories ─────────────────────────────────────
@@ -737,6 +735,20 @@ def test_failure_detail_carries_stderr_that_the_exception_message_withholds() ->
     assert failure_detail(GitTimeoutError("git log exceeded 5s")) == "git log exceeded 5s"
 
 
+def test_gits_stderr_is_logged_with_nothing_a_terminal_would_act_on() -> None:
+    """Part of it is whatever an origin sent, and a log's handler writes to a terminal."""
+
+    sent = "remote: \x1b[2J\x1b]0;owned\x07 \x08\x00\r\u009b31m \u202e \u00a0 ok\nfatal: early EOF"
+    detail = failure_detail(GitCommandError(["fetch"], 128, sent))
+    assert detail == (
+        "git fetch exited 128: remote: \\x1b[2J\\x1b]0;owned\\x07 \\x08\\x00\\r\\x9b31m "
+        "\\u202e \\xa0 ok\nfatal: early EOF"
+    )
+    assert loggable("fatal: /srv/repo is corrupt\nhint: résumé ❤\n") == (
+        "fatal: /srv/repo is corrupt\nhint: résumé ❤\n"
+    )
+
+
 def test_route_failure_warning_reports_git_stderr(
     repo: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -771,16 +783,13 @@ def test_run_git_ignores_a_hook_exported_git_dir(repo: Path, tmp_path: Path) -> 
 
     poisoned = {**os.environ, "GIT_DIR": str(decoy / ".git")}
     with mock.patch.dict(os.environ, poisoned, clear=True):
-        out = asyncio.run(run_git(["rev-parse", "--show-toplevel"], cwd=repo))
-    # The answer must be the repo at cwd, not the decoy GIT_DIR names.
-    assert Path(out.decode().strip()).resolve() == repo.resolve()
-
-
-def test_run_git_returns_bytes_not_text(repo: Path) -> None:
-    # Path names are raw bytes in whatever encoding the filesystem uses;
-    # decoding belongs to the parsers, which choose the error policy.
-    out = asyncio.run(run_git(["rev-parse", "HEAD"], cwd=repo))
-    assert isinstance(out, bytes)
+        git_dir = asyncio.run(run_git(["rev-parse", "--absolute-git-dir"], cwd=repo))
+        head = asyncio.run(run_git(["rev-parse", "HEAD"], cwd=repo))
+    # The repository is the one at cwd, not the one GIT_DIR names. The work tree is
+    # not the question to ask: with GIT_DIR set it is cwd either way.
+    assert Path(git_dir.decode().strip()).resolve() == (repo / ".git").resolve()
+    # The decoy has no commit, so a HEAD at all is the repo's.
+    assert len(head.strip()) == 40
 
 
 # ── Routes ───────────────────────────────────────────────────
@@ -916,6 +925,8 @@ def test_route_commit_returns_404_for_an_unknown_object(repo: Path) -> None:
         api_git_commit(_FakeRequest(path_params={"revision": "0" * 40}))  # pyright: ignore[reportArgumentType]
     )
     assert response.status_code == 404
+    # Named, so the browser tells a commit the repository lacks from a failed request.
+    assert _json(response) == {"error": "unknown revision", "code": "commit_not_found"}
 
 
 def test_route_commit_preserves_operational_git_failures(repo: Path) -> None:

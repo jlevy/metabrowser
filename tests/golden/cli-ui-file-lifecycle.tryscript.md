@@ -160,7 +160,23 @@ while re-opening a path the pane already shows only delivers its fragment.
 The inventory stream’s `onopen` retries only a selection that failed as unreachable, and
 because `selectFile` claims before its first `await`, a duplicate open does not retry
 twice. The startup settle shows the prompt only for a `/commit/` route no Git view
-claimed.
+claimed. An address with a line anchor or `plain=1` opens its file in the Source view,
+and any other fragment or query in the file’s default view; a line anchor added to the
+file already shown selects its Source tab without loading the file again.
+A view that plugin navigation names outright wins over the address’s.
+
+The asset loader and the plugin SDK in these scenarios are the production scripts, and
+what they fetch on demand is the production file, delivered a turn after it is asked
+for. A page that loads at a line-anchored address waits for the module that reads the
+anchor, which arrives with the view compositor, and opens the Source view.
+That fetch overlaps revealing the row, and a plain address asks for nothing first.
+The pull-request page’s routes are a startup script of a pull-request address only: a
+folder’s addresses never ask for them, and a history landing on a page’s address fetches
+them and then mounts the page.
+When on-demand code does not arrive, the pane says that: a failed file, or a
+pull-request page that could not load, never the prompt to select a file or the message
+that no plugin renders the page.
+Asking again fetches only what failed.
 
 ```console
 $ node tests/dom/preview-pane-state-session.js
@@ -681,9 +697,195 @@ $ node tests/dom/preview-pane-state-session.js
           "shows": "loading mb-delayed-loading: Loading preview…"
         }
       }
+    },
+    "anchoredAddressesOpenSource": {
+      "renderedViews": [
+        "README.md: source",
+        "guide.md: source",
+        "notes.md: default view",
+        "other.md: default view",
+        "chosen.md: rendered"
+      ],
+      "tabClicks": [
+        "notes.md: source"
+      ],
+      "fragments": 8
+    },
+    "coldAnchoredAddress": {
+      "lineAnchorsAtStartup": "undefined",
+      "scriptRequests": [
+        "view-composition.js",
+        "plugin-sdk-views.js"
+      ],
+      "renderedViews": [
+        "a.py: source"
+      ],
+      "pane": {
+        "claim": 1,
+        "owner": "file",
+        "path": "a.py",
+        "phase": "content",
+        "shows": "rendered-view: text a.py"
+      },
+      "whileTheRowIsRevealed": {
+        "anchoredAddress": {
+          "requestedMeanwhile": [
+            "view-composition.js",
+            "plugin-sdk-views.js"
+          ],
+          "renderedViews": [
+            "a.py: source"
+          ]
+        },
+        "plainAddress": {
+          "requestedMeanwhile": [],
+          "renderedViews": [
+            "a.py: default view"
+          ]
+        }
+      }
+    },
+    "pullRouteLoadsOnDemand": {
+      "folderAddresses": {
+        "scriptRequests": [
+          "view-composition.js",
+          "plugin-sdk-views.js"
+        ],
+        "hostCreated": false
+      },
+      "pullAddress": {
+        "scriptRequests": [
+          "plugin-sdk-views.js"
+        ],
+        "pane": {
+          "claim": 1,
+          "owner": "pull-request",
+          "path": null,
+          "phase": "external",
+          "shows": "preview-empty: No plugin renders pull-request pages here."
+        },
+        "afterTabLanding": {
+          "scriptRequests": [
+            "plugin-sdk-views.js"
+          ]
+        }
+      },
+      "notAPullAddress": {
+        "scriptRequests": [
+          "pull-route.js"
+        ],
+        "pane": {
+          "claim": 1,
+          "owner": "none",
+          "path": null,
+          "phase": "idle",
+          "shows": "preview-empty: Select a file to preview."
+        }
+      },
+      "historyLandingWithoutHost": {
+        "before": {
+          "scriptRequests": [],
+          "hostCreated": false
+        },
+        "scriptRequests": [
+          "pull-route.js",
+          "plugin-sdk-views.js"
+        ],
+        "pane": {
+          "claim": 1,
+          "owner": "pull-request",
+          "path": null,
+          "phase": "external",
+          "shows": "preview-empty: No plugin renders pull-request pages here."
+        }
+      }
+    },
+    "onDemandCodeRefused": {
+      "viewHelpersOpeningAFile": {
+        "failed": {
+          "pane": {
+            "claim": 1,
+            "owner": "file",
+            "path": "notes.md",
+            "phase": "error",
+            "shows": "preview-empty preview-error: Could not open this file. Failed to load asset: /static/plugin-sdk-views.js"
+          },
+          "scriptRequests": [
+            "view-composition.js",
+            "plugin-sdk-views.js"
+          ]
+        },
+        "reopened": {
+          "outcome": {
+            "status": "opened",
+            "focusesPreview": true
+          },
+          "pane": {
+            "claim": 2,
+            "owner": "file",
+            "path": "notes.md",
+            "phase": "content",
+            "shows": "rendered-view: text notes.md"
+          },
+          "scriptRequests": [
+            "plugin-sdk-views.js"
+          ]
+        }
+      },
+      "pullRoutesAtAPullAddress": {
+        "pane": {
+          "claim": 1,
+          "owner": "pull-request",
+          "path": null,
+          "phase": "external",
+          "shows": "preview-empty preview-error: Could not load the pull-request page. Refresh the page to try again."
+        },
+        "scriptRequests": [
+          "pull-route.js"
+        ]
+      },
+      "pullRoutesOnAHistoryLanding": {
+        "pane": {
+          "claim": 2,
+          "owner": "pull-request",
+          "path": null,
+          "phase": "external",
+          "shows": "preview-empty preview-error: Could not load the pull-request page. Refresh the page to try again."
+        },
+        "scriptRequests": [
+          "pull-route.js"
+        ]
+      },
+      "viewHelpersOnThePullPage": {
+        "failed": {
+          "pane": {
+            "claim": 1,
+            "owner": "pull-request",
+            "path": null,
+            "phase": "external",
+            "shows": "preview-empty preview-error: Could not load the pull-request page. Refresh the page to try again."
+          },
+          "scriptRequests": [
+            "plugin-sdk-views.js"
+          ]
+        },
+        "nextRoute": {
+          "pane": {
+            "claim": 2,
+            "owner": "pull-request",
+            "path": null,
+            "phase": "external",
+            "shows": "preview-empty: No plugin renders pull-request pages here."
+          },
+          "scriptRequests": [
+            "plugin-sdk-views.js"
+          ]
+        }
+      }
     }
   }
 }
+? 0
 ```
 
 <!-- This document follows common-doc-guidelines.md.

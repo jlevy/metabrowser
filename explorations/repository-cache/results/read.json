@@ -1,0 +1,2664 @@
+{
+  "environment": {
+    "cpu": "Apple M1 Pro",
+    "git_build_options": [
+      "cpu: arm64",
+      "no commit associated with this build",
+      "sizeof-long: 8",
+      "sizeof-size_t: 8",
+      "shell-path: /bin/sh"
+    ],
+    "git_version": "git version 2.50.1",
+    "logical_cpus": 10,
+    "machine": "arm64",
+    "memory_bytes": 34359738368,
+    "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+    "python": "3.14.7"
+  },
+  "finished_at": "2026-09-17T04:57:38+00:00",
+  "parameters": {
+    "reps": 5,
+    "timeout_s": 900.0
+  },
+  "rows": [
+    {
+      "backfill_s": 0.463,
+      "first_parent_commits": 20,
+      "head": "d73fa1cdcbd8b1465c151db8924ba58b1dd14e35",
+      "head_tree_blobs": 236,
+      "objects_backfilled": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 26322,
+        "packs": 2,
+        "promisor_packs": 2,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 12965
+      },
+      "objects_blobless": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 17051,
+        "packs": 1,
+        "promisor_packs": 1,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 4022
+      },
+      "objects_full": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 26353,
+        "packs": 1,
+        "promisor_packs": 0,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 12969
+      },
+      "op": "subjects",
+      "other_tip": "a82e942870b6472bb40017349cca772c242eb1ad",
+      "other_tip_unique_blobs": 7,
+      "repository": "flask",
+      "revision_content_blobs": 55
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "inventory_ls_tree",
+      "output_bytes": 19412,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "full",
+      "wall": {
+        "cv": 0.022,
+        "max": 0.0089,
+        "median": 0.0086,
+        "min": 0.0085,
+        "n": 5,
+        "stdev": 0.0002
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "inventory_ls_tree_long",
+      "output_bytes": 21300,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "full",
+      "wall": {
+        "cv": 0.03,
+        "max": 0.0093,
+        "median": 0.0088,
+        "min": 0.0087,
+        "n": 5,
+        "stdev": 0.0003
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 20,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "path_identity_ls_tree",
+      "output_bytes": 1632,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "full",
+      "wall": {
+        "cv": 0.024,
+        "max": 0.1767,
+        "median": 0.1713,
+        "min": 0.1668,
+        "n": 5,
+        "stdev": 0.0042
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 20,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "path_identity_rev_parse",
+      "output_bytes": 820,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "full",
+      "wall": {
+        "cv": 0.026,
+        "max": 0.1749,
+        "median": 0.1681,
+        "min": 0.1636,
+        "n": 5,
+        "stdev": 0.0044
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "history_scope_refs",
+      "output_bytes": 4574,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "full",
+      "wall": {
+        "cv": 0.046,
+        "max": 0.0091,
+        "median": 0.0085,
+        "min": 0.0081,
+        "n": 5,
+        "stdev": 0.0004
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "history_page",
+      "output_bytes": 48548,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "full",
+      "wall": {
+        "cv": 0.032,
+        "max": 0.0404,
+        "median": 0.0388,
+        "min": 0.0371,
+        "n": 5,
+        "stdev": 0.0012
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "history_count",
+      "output_bytes": 5,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "full",
+      "wall": {
+        "cv": 0.011,
+        "max": 0.0367,
+        "median": 0.0359,
+        "min": 0.0358,
+        "n": 5,
+        "stdev": 0.0004
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 20,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "commit_detail_raw_only",
+      "output_bytes": 8988,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "full",
+      "wall": {
+        "cv": 0.021,
+        "max": 0.1862,
+        "median": 0.1787,
+        "min": 0.1765,
+        "n": 5,
+        "stdev": 0.0038
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 20,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "commit_detail",
+      "output_bytes": 9175,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "full",
+      "wall": {
+        "cv": 0.021,
+        "max": 0.2077,
+        "median": 0.2033,
+        "min": 0.1968,
+        "n": 5,
+        "stdev": 0.0043
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 40,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "comparison_manifest",
+      "output_bytes": 21301,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "full",
+      "wall": {
+        "cv": 0.066,
+        "max": 0.4323,
+        "median": 0.3964,
+        "min": 0.3691,
+        "n": 5,
+        "stdev": 0.0263
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 20,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "deferred_patches",
+      "output_bytes": 1724229,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "full",
+      "wall": {
+        "cv": 0.029,
+        "max": 0.2195,
+        "median": 0.2127,
+        "min": 0.2049,
+        "n": 5,
+        "stdev": 0.0062
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 55,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "revision_content",
+      "output_bytes": 2307065,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "full",
+      "wall": {
+        "cv": 0.066,
+        "max": 0.535,
+        "median": 0.496,
+        "min": 0.4593,
+        "n": 5,
+        "stdev": 0.0329
+      }
+    },
+    {
+      "blobs": 236,
+      "blobs_per_s": 16688,
+      "missing": 2,
+      "op": "batch_read_head_tree",
+      "output_bytes": 1882857,
+      "repository": "flask",
+      "variant": "full",
+      "wall": {
+        "cv": 0.037,
+        "max": 0.015,
+        "median": 0.0141,
+        "min": 0.0137,
+        "n": 5,
+        "stdev": 0.0005
+      }
+    },
+    {
+      "blobs": 7,
+      "missing": 0,
+      "op": "batch_read_other_branch_unique",
+      "repository": "flask",
+      "variant": "full",
+      "wall": {
+        "max": 0.0088,
+        "median": 0.0088,
+        "min": 0.0088,
+        "n": 1
+      }
+    },
+    {
+      "body_bytes": 1870682,
+      "first_response_ms": 7.322,
+      "latency": {
+        "max_ms": 4.476,
+        "n": 236,
+        "p50_ms": 0.026,
+        "p95_ms": 0.073,
+        "p99_ms": 0.451
+      },
+      "missing": 0,
+      "op": "batch_command_actor",
+      "repository": "flask",
+      "requests": 236,
+      "variant": "full"
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "objects_fetched": 0,
+      "op": "inventory_ls_tree",
+      "output_bytes": 19412,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "blobless_lazy",
+      "wall": {
+        "max": 0.0088,
+        "median": 0.0088,
+        "min": 0.0088,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 230,
+      "maintenance_spawns": 0,
+      "objects_fetched": 230,
+      "op": "inventory_ls_tree_long",
+      "output_bytes": 21300,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "blobless_lazy",
+      "wall": {
+        "max": 10.6737,
+        "median": 10.6737,
+        "min": 10.6737,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 20,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "objects_fetched": 0,
+      "op": "path_identity_ls_tree",
+      "output_bytes": 1632,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "blobless_lazy",
+      "wall": {
+        "max": 0.178,
+        "median": 0.178,
+        "min": 0.178,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 20,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "objects_fetched": 0,
+      "op": "path_identity_rev_parse",
+      "output_bytes": 820,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "blobless_lazy",
+      "wall": {
+        "max": 0.1795,
+        "median": 0.1795,
+        "min": 0.1795,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "objects_fetched": 0,
+      "op": "history_scope_refs",
+      "output_bytes": 4574,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "blobless_lazy",
+      "wall": {
+        "max": 0.0086,
+        "median": 0.0086,
+        "min": 0.0086,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "objects_fetched": 0,
+      "op": "history_page",
+      "output_bytes": 48548,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "blobless_lazy",
+      "wall": {
+        "max": 0.038,
+        "median": 0.038,
+        "min": 0.038,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "objects_fetched": 0,
+      "op": "history_count",
+      "output_bytes": 5,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "blobless_lazy",
+      "wall": {
+        "max": 0.0356,
+        "median": 0.0356,
+        "min": 0.0356,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 20,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "objects_fetched": 0,
+      "op": "commit_detail_raw_only",
+      "output_bytes": 8988,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "blobless_lazy",
+      "wall": {
+        "max": 0.1849,
+        "median": 0.1849,
+        "min": 0.1849,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 20,
+      "lazy_fetches": 20,
+      "maintenance_spawns": 0,
+      "objects_fetched": 96,
+      "op": "commit_detail",
+      "output_bytes": 9175,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "blobless_lazy",
+      "wall": {
+        "max": 0.9679,
+        "median": 0.9679,
+        "min": 0.9679,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 40,
+      "lazy_fetches": 21,
+      "maintenance_spawns": 0,
+      "objects_fetched": 212,
+      "op": "comparison_manifest",
+      "output_bytes": 21301,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "blobless_lazy",
+      "wall": {
+        "max": 1.2282,
+        "median": 1.2282,
+        "min": 1.2282,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 20,
+      "lazy_fetches": 20,
+      "maintenance_spawns": 0,
+      "objects_fetched": 212,
+      "op": "deferred_patches",
+      "output_bytes": 1724229,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "blobless_lazy",
+      "wall": {
+        "max": 0.9946,
+        "median": 0.9946,
+        "min": 0.9946,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 55,
+      "lazy_fetches": 55,
+      "maintenance_spawns": 0,
+      "objects_fetched": 55,
+      "op": "revision_content",
+      "output_bytes": 2307065,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "blobless_lazy",
+      "wall": {
+        "max": 2.61,
+        "median": 2.61,
+        "min": 2.61,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "inventory_ls_tree",
+      "output_bytes": 19412,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "blobless_no_lazy",
+      "wall": {
+        "cv": 0.036,
+        "max": 0.0096,
+        "median": 0.0091,
+        "min": 0.0088,
+        "n": 5,
+        "stdev": 0.0003
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "inventory_ls_tree_long",
+      "output_bytes": 21300,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "blobless_no_lazy",
+      "wall": {
+        "cv": 0.045,
+        "max": 0.0161,
+        "median": 0.0146,
+        "min": 0.0144,
+        "n": 5,
+        "stdev": 0.0007
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 20,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "path_identity_ls_tree",
+      "output_bytes": 1632,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "blobless_no_lazy",
+      "wall": {
+        "cv": 0.011,
+        "max": 0.1767,
+        "median": 0.1742,
+        "min": 0.1726,
+        "n": 5,
+        "stdev": 0.0019
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 20,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "path_identity_rev_parse",
+      "output_bytes": 820,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "blobless_no_lazy",
+      "wall": {
+        "cv": 0.01,
+        "max": 0.1741,
+        "median": 0.1727,
+        "min": 0.1698,
+        "n": 5,
+        "stdev": 0.0016
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "history_scope_refs",
+      "output_bytes": 4574,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "blobless_no_lazy",
+      "wall": {
+        "cv": 0.037,
+        "max": 0.0092,
+        "median": 0.0086,
+        "min": 0.0084,
+        "n": 5,
+        "stdev": 0.0003
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "history_page",
+      "output_bytes": 48548,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "blobless_no_lazy",
+      "wall": {
+        "cv": 0.019,
+        "max": 0.0393,
+        "median": 0.0382,
+        "min": 0.0374,
+        "n": 5,
+        "stdev": 0.0007
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "history_count",
+      "output_bytes": 5,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "blobless_no_lazy",
+      "wall": {
+        "cv": 0.005,
+        "max": 0.0361,
+        "median": 0.0359,
+        "min": 0.0357,
+        "n": 5,
+        "stdev": 0.0002
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 20,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "commit_detail_raw_only",
+      "output_bytes": 8988,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "blobless_no_lazy",
+      "wall": {
+        "cv": 0.016,
+        "max": 0.1935,
+        "median": 0.1883,
+        "min": 0.1858,
+        "n": 5,
+        "stdev": 0.0029
+      }
+    },
+    {
+      "error_classes": ["promisor_fetch_failed"],
+      "invocations": 20,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "commit_detail",
+      "output_bytes": 0,
+      "repository": "flask",
+      "returncodes_nonzero": 20,
+      "variant": "blobless_no_lazy",
+      "wall": {
+        "cv": 0.007,
+        "max": 1.8882,
+        "median": 1.8683,
+        "min": 1.8542,
+        "n": 5,
+        "stdev": 0.0133
+      }
+    },
+    {
+      "error_classes": ["promisor_fetch_failed"],
+      "invocations": 40,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "comparison_manifest",
+      "output_bytes": 6666,
+      "repository": "flask",
+      "returncodes_nonzero": 21,
+      "variant": "blobless_no_lazy",
+      "wall": {
+        "cv": 0.009,
+        "max": 2.1327,
+        "median": 2.0981,
+        "min": 2.0852,
+        "n": 5,
+        "stdev": 0.0181
+      }
+    },
+    {
+      "error_classes": ["promisor_fetch_failed"],
+      "invocations": 20,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "deferred_patches",
+      "output_bytes": 0,
+      "repository": "flask",
+      "returncodes_nonzero": 20,
+      "variant": "blobless_no_lazy",
+      "wall": {
+        "cv": 0.004,
+        "max": 1.8393,
+        "median": 1.8333,
+        "min": 1.8203,
+        "n": 5,
+        "stdev": 0.0075
+      }
+    },
+    {
+      "error_classes": ["other"],
+      "invocations": 55,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "revision_content",
+      "output_bytes": 0,
+      "repository": "flask",
+      "returncodes_nonzero": 55,
+      "variant": "blobless_no_lazy",
+      "wall": {
+        "cv": 0.064,
+        "max": 0.5425,
+        "median": 0.4821,
+        "min": 0.4714,
+        "n": 5,
+        "stdev": 0.032
+      }
+    },
+    {
+      "blobs": 236,
+      "blobs_per_s": 16899,
+      "missing": 236,
+      "op": "batch_read_head_tree",
+      "output_bytes": 11564,
+      "repository": "flask",
+      "variant": "blobless_no_lazy",
+      "wall": {
+        "cv": 0.025,
+        "max": 0.0144,
+        "median": 0.014,
+        "min": 0.0134,
+        "n": 5,
+        "stdev": 0.0004
+      }
+    },
+    {
+      "blobs": 7,
+      "missing": 7,
+      "op": "batch_read_other_branch_unique",
+      "repository": "flask",
+      "variant": "blobless_no_lazy",
+      "wall": {
+        "max": 0.008,
+        "median": 0.008,
+        "min": 0.008,
+        "n": 1
+      }
+    },
+    {
+      "body_bytes": 0,
+      "first_response_ms": 7.172,
+      "latency": {
+        "max_ms": 4.53,
+        "n": 236,
+        "p50_ms": 0.035,
+        "p95_ms": 0.043,
+        "p99_ms": 0.061
+      },
+      "missing": 236,
+      "op": "batch_command_actor",
+      "repository": "flask",
+      "requests": 236,
+      "variant": "blobless_no_lazy"
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "objects_fetched": 0,
+      "op": "inventory_ls_tree",
+      "output_bytes": 19412,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_lazy",
+      "wall": {
+        "max": 0.0087,
+        "median": 0.0087,
+        "min": 0.0087,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "objects_fetched": 0,
+      "op": "inventory_ls_tree_long",
+      "output_bytes": 21300,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_lazy",
+      "wall": {
+        "max": 0.0096,
+        "median": 0.0096,
+        "min": 0.0096,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 20,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "objects_fetched": 0,
+      "op": "path_identity_ls_tree",
+      "output_bytes": 1632,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_lazy",
+      "wall": {
+        "max": 0.1772,
+        "median": 0.1772,
+        "min": 0.1772,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 20,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "objects_fetched": 0,
+      "op": "path_identity_rev_parse",
+      "output_bytes": 820,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_lazy",
+      "wall": {
+        "max": 0.1741,
+        "median": 0.1741,
+        "min": 0.1741,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "objects_fetched": 0,
+      "op": "history_scope_refs",
+      "output_bytes": 4574,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_lazy",
+      "wall": {
+        "max": 0.0088,
+        "median": 0.0088,
+        "min": 0.0088,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "objects_fetched": 0,
+      "op": "history_page",
+      "output_bytes": 48548,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_lazy",
+      "wall": {
+        "max": 0.0381,
+        "median": 0.0381,
+        "min": 0.0381,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "objects_fetched": 0,
+      "op": "history_count",
+      "output_bytes": 5,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_lazy",
+      "wall": {
+        "max": 0.0359,
+        "median": 0.0359,
+        "min": 0.0359,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 20,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "objects_fetched": 0,
+      "op": "commit_detail_raw_only",
+      "output_bytes": 8988,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_lazy",
+      "wall": {
+        "max": 0.184,
+        "median": 0.184,
+        "min": 0.184,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 20,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "objects_fetched": 0,
+      "op": "commit_detail",
+      "output_bytes": 9175,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_lazy",
+      "wall": {
+        "max": 0.2055,
+        "median": 0.2055,
+        "min": 0.2055,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 40,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "objects_fetched": 0,
+      "op": "comparison_manifest",
+      "output_bytes": 21301,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_lazy",
+      "wall": {
+        "max": 0.4274,
+        "median": 0.4274,
+        "min": 0.4274,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 20,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "objects_fetched": 0,
+      "op": "deferred_patches",
+      "output_bytes": 1724229,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_lazy",
+      "wall": {
+        "max": 0.2376,
+        "median": 0.2376,
+        "min": 0.2376,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 55,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "objects_fetched": 0,
+      "op": "revision_content",
+      "output_bytes": 2307065,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_lazy",
+      "wall": {
+        "max": 0.5014,
+        "median": 0.5014,
+        "min": 0.5014,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "inventory_ls_tree",
+      "output_bytes": 19412,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_no_lazy",
+      "wall": {
+        "cv": 0.052,
+        "max": 0.0099,
+        "median": 0.0096,
+        "min": 0.0087,
+        "n": 5,
+        "stdev": 0.0005
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "inventory_ls_tree_long",
+      "output_bytes": 21300,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_no_lazy",
+      "wall": {
+        "cv": 0.069,
+        "max": 0.0107,
+        "median": 0.0101,
+        "min": 0.0091,
+        "n": 5,
+        "stdev": 0.0007
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 20,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "path_identity_ls_tree",
+      "output_bytes": 1632,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_no_lazy",
+      "wall": {
+        "cv": 0.03,
+        "max": 0.1838,
+        "median": 0.1749,
+        "min": 0.1705,
+        "n": 5,
+        "stdev": 0.0052
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 20,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "path_identity_rev_parse",
+      "output_bytes": 820,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_no_lazy",
+      "wall": {
+        "cv": 0.029,
+        "max": 0.1811,
+        "median": 0.1716,
+        "min": 0.1687,
+        "n": 5,
+        "stdev": 0.005
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "history_scope_refs",
+      "output_bytes": 4574,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_no_lazy",
+      "wall": {
+        "cv": 0.024,
+        "max": 0.0088,
+        "median": 0.0086,
+        "min": 0.0083,
+        "n": 5,
+        "stdev": 0.0002
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "history_page",
+      "output_bytes": 48548,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_no_lazy",
+      "wall": {
+        "cv": 0.05,
+        "max": 0.0423,
+        "median": 0.0385,
+        "min": 0.0374,
+        "n": 5,
+        "stdev": 0.002
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "history_count",
+      "output_bytes": 5,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_no_lazy",
+      "wall": {
+        "cv": 0.01,
+        "max": 0.037,
+        "median": 0.0362,
+        "min": 0.0361,
+        "n": 5,
+        "stdev": 0.0004
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 20,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "commit_detail_raw_only",
+      "output_bytes": 8988,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_no_lazy",
+      "wall": {
+        "cv": 0.02,
+        "max": 0.1926,
+        "median": 0.1879,
+        "min": 0.1832,
+        "n": 5,
+        "stdev": 0.0037
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 20,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "commit_detail",
+      "output_bytes": 9175,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_no_lazy",
+      "wall": {
+        "cv": 0.014,
+        "max": 0.216,
+        "median": 0.2116,
+        "min": 0.2082,
+        "n": 5,
+        "stdev": 0.0031
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 40,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "comparison_manifest",
+      "output_bytes": 21301,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_no_lazy",
+      "wall": {
+        "cv": 0.004,
+        "max": 0.3883,
+        "median": 0.3877,
+        "min": 0.3844,
+        "n": 5,
+        "stdev": 0.0016
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 20,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "deferred_patches",
+      "output_bytes": 1724229,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_no_lazy",
+      "wall": {
+        "cv": 0.024,
+        "max": 0.2231,
+        "median": 0.2141,
+        "min": 0.2098,
+        "n": 5,
+        "stdev": 0.0052
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 55,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "revision_content",
+      "output_bytes": 2307065,
+      "repository": "flask",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_no_lazy",
+      "wall": {
+        "cv": 0.061,
+        "max": 0.5647,
+        "median": 0.5098,
+        "min": 0.4875,
+        "n": 5,
+        "stdev": 0.0312
+      }
+    },
+    {
+      "blobs": 236,
+      "blobs_per_s": 15005,
+      "missing": 2,
+      "op": "batch_read_head_tree",
+      "output_bytes": 1882857,
+      "repository": "flask",
+      "variant": "backfilled_no_lazy",
+      "wall": {
+        "cv": 0.044,
+        "max": 0.0169,
+        "median": 0.0157,
+        "min": 0.0154,
+        "n": 5,
+        "stdev": 0.0007
+      }
+    },
+    {
+      "blobs": 7,
+      "missing": 5,
+      "op": "batch_read_other_branch_unique",
+      "repository": "flask",
+      "variant": "backfilled_no_lazy",
+      "wall": {
+        "max": 0.0093,
+        "median": 0.0093,
+        "min": 0.0093,
+        "n": 1
+      }
+    },
+    {
+      "body_bytes": 1870682,
+      "first_response_ms": 8.958,
+      "latency": {
+        "max_ms": 5.457,
+        "n": 236,
+        "p50_ms": 0.035,
+        "p95_ms": 0.092,
+        "p99_ms": 0.49
+      },
+      "missing": 0,
+      "op": "batch_command_actor",
+      "repository": "flask",
+      "requests": 236,
+      "variant": "backfilled_no_lazy"
+    },
+    {
+      "missing_before": 236,
+      "objects_fetched": 230,
+      "op": "explicit_tree_prefetch_other_tip",
+      "repository": "flask",
+      "returncode": 0,
+      "trace": {
+        "children": 3,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 0
+      },
+      "variant": "blobless",
+      "wall": {
+        "max": 0.0863,
+        "median": 0.0863,
+        "min": 0.0863,
+        "n": 1
+      }
+    },
+    {
+      "backfill_s": 5.09,
+      "first_parent_commits": 20,
+      "head": "8e5b0e34a5032760fa1916c39202a185d5fb0ea0",
+      "head_tree_blobs": 1927,
+      "objects_backfilled": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 117183,
+        "packs": 3,
+        "promisor_packs": 3,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 89328
+      },
+      "objects_blobless": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 64894,
+        "packs": 1,
+        "promisor_packs": 1,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 15726
+      },
+      "objects_full": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 118501,
+        "packs": 1,
+        "promisor_packs": 0,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 90782
+      },
+      "op": "subjects",
+      "other_tip": "a84646bf7d647f9b4b1d0186600c124db1e968d2",
+      "other_tip_unique_blobs": 203,
+      "repository": "mypy",
+      "revision_content_blobs": 149
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "inventory_ls_tree",
+      "output_bytes": 173760,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "full",
+      "wall": {
+        "cv": 0.884,
+        "max": 0.0482,
+        "median": 0.0117,
+        "min": 0.0106,
+        "n": 5,
+        "stdev": 0.0165
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "inventory_ls_tree_long",
+      "output_bytes": 189176,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "full",
+      "wall": {
+        "cv": 0.324,
+        "max": 0.03,
+        "median": 0.016,
+        "min": 0.0148,
+        "n": 5,
+        "stdev": 0.0063
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 20,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "path_identity_ls_tree",
+      "output_bytes": 1881,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "full",
+      "wall": {
+        "cv": 0.073,
+        "max": 0.2327,
+        "median": 0.2293,
+        "min": 0.1998,
+        "n": 5,
+        "stdev": 0.016
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 20,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "path_identity_rev_parse",
+      "output_bytes": 820,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "full",
+      "wall": {
+        "cv": 0.029,
+        "max": 0.2156,
+        "median": 0.2082,
+        "min": 0.2003,
+        "n": 5,
+        "stdev": 0.0059
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "history_scope_refs",
+      "output_bytes": 14067,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "full",
+      "wall": {
+        "cv": 0.024,
+        "max": 0.0107,
+        "median": 0.0103,
+        "min": 0.0101,
+        "n": 5,
+        "stdev": 0.0003
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "history_page",
+      "output_bytes": 53621,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "full",
+      "wall": {
+        "cv": 0.013,
+        "max": 0.0924,
+        "median": 0.091,
+        "min": 0.0893,
+        "n": 5,
+        "stdev": 0.0012
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "history_count",
+      "output_bytes": 6,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "full",
+      "wall": {
+        "cv": 0.042,
+        "max": 0.0971,
+        "median": 0.0907,
+        "min": 0.0888,
+        "n": 5,
+        "stdev": 0.0039
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 20,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "commit_detail_raw_only",
+      "output_bytes": 37005,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "full",
+      "wall": {
+        "cv": 0.097,
+        "max": 0.2758,
+        "median": 0.2332,
+        "min": 0.2171,
+        "n": 5,
+        "stdev": 0.0233
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 20,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "commit_detail",
+      "output_bytes": 32029,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "full",
+      "wall": {
+        "cv": 0.149,
+        "max": 0.3683,
+        "median": 0.3078,
+        "min": 0.2613,
+        "n": 5,
+        "stdev": 0.0472
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 40,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "comparison_manifest",
+      "output_bytes": 58422,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "full",
+      "wall": {
+        "cv": 0.07,
+        "max": 0.5958,
+        "median": 0.5621,
+        "min": 0.5132,
+        "n": 5,
+        "stdev": 0.0388
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 20,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "deferred_patches",
+      "output_bytes": 1000614,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "full",
+      "wall": {
+        "cv": 0.034,
+        "max": 0.3359,
+        "median": 0.3162,
+        "min": 0.3072,
+        "n": 5,
+        "stdev": 0.0107
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 149,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "revision_content",
+      "output_bytes": 7070732,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "full",
+      "wall": {
+        "cv": 0.074,
+        "max": 1.6925,
+        "median": 1.5249,
+        "min": 1.4176,
+        "n": 5,
+        "stdev": 0.1124
+      }
+    },
+    {
+      "blobs": 1927,
+      "blobs_per_s": 32521,
+      "missing": 29,
+      "op": "batch_read_head_tree",
+      "output_bytes": 20539817,
+      "repository": "mypy",
+      "variant": "full",
+      "wall": {
+        "cv": 0.007,
+        "max": 0.0601,
+        "median": 0.0593,
+        "min": 0.059,
+        "n": 5,
+        "stdev": 0.0004
+      }
+    },
+    {
+      "blobs": 203,
+      "missing": 14,
+      "op": "batch_read_other_branch_unique",
+      "repository": "mypy",
+      "variant": "full",
+      "wall": {
+        "max": 0.0243,
+        "median": 0.0243,
+        "min": 0.0243,
+        "n": 1
+      }
+    },
+    {
+      "body_bytes": 5169010,
+      "first_response_ms": 8.428,
+      "latency": {
+        "max_ms": 5.109,
+        "n": 500,
+        "p50_ms": 0.032,
+        "p95_ms": 0.102,
+        "p99_ms": 0.225
+      },
+      "missing": 0,
+      "op": "batch_command_actor",
+      "repository": "mypy",
+      "requests": 500,
+      "variant": "full"
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "objects_fetched": 0,
+      "op": "inventory_ls_tree",
+      "output_bytes": 173760,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "blobless_lazy",
+      "wall": {
+        "max": 0.0099,
+        "median": 0.0099,
+        "min": 0.0099,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 1753,
+      "maintenance_spawns": 0,
+      "objects_fetched": 1753,
+      "op": "inventory_ls_tree_long",
+      "output_bytes": 189176,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "blobless_lazy",
+      "wall": {
+        "max": 237.0274,
+        "median": 237.0274,
+        "min": 237.0274,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 20,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "objects_fetched": 0,
+      "op": "path_identity_ls_tree",
+      "output_bytes": 1881,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "blobless_lazy",
+      "wall": {
+        "max": 0.159,
+        "median": 0.159,
+        "min": 0.159,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 20,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "objects_fetched": 0,
+      "op": "path_identity_rev_parse",
+      "output_bytes": 820,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "blobless_lazy",
+      "wall": {
+        "max": 0.1592,
+        "median": 0.1592,
+        "min": 0.1592,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "objects_fetched": 0,
+      "op": "history_scope_refs",
+      "output_bytes": 14067,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "blobless_lazy",
+      "wall": {
+        "max": 0.009,
+        "median": 0.009,
+        "min": 0.009,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "objects_fetched": 0,
+      "op": "history_page",
+      "output_bytes": 53371,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "blobless_lazy",
+      "wall": {
+        "max": 0.0816,
+        "median": 0.0816,
+        "min": 0.0816,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "objects_fetched": 0,
+      "op": "history_count",
+      "output_bytes": 6,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "blobless_lazy",
+      "wall": {
+        "max": 0.0782,
+        "median": 0.0782,
+        "min": 0.0782,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 20,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "objects_fetched": 0,
+      "op": "commit_detail_raw_only",
+      "output_bytes": 37005,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "blobless_lazy",
+      "wall": {
+        "max": 0.1705,
+        "median": 0.1705,
+        "min": 0.1705,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 20,
+      "lazy_fetches": 20,
+      "maintenance_spawns": 0,
+      "objects_fetched": 248,
+      "op": "commit_detail",
+      "output_bytes": 31703,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "blobless_lazy",
+      "wall": {
+        "max": 1.0427,
+        "median": 1.0427,
+        "min": 1.0427,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 40,
+      "lazy_fetches": 23,
+      "maintenance_spawns": 0,
+      "objects_fetched": 492,
+      "op": "comparison_manifest",
+      "output_bytes": 58422,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "blobless_lazy",
+      "wall": {
+        "max": 1.7557,
+        "median": 1.7557,
+        "min": 1.7557,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 20,
+      "lazy_fetches": 20,
+      "maintenance_spawns": 0,
+      "objects_fetched": 492,
+      "op": "deferred_patches",
+      "output_bytes": 999906,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "blobless_lazy",
+      "wall": {
+        "max": 1.2728,
+        "median": 1.2728,
+        "min": 1.2728,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 149,
+      "lazy_fetches": 149,
+      "maintenance_spawns": 0,
+      "objects_fetched": 149,
+      "op": "revision_content",
+      "output_bytes": 7070732,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "blobless_lazy",
+      "wall": {
+        "max": 8.4045,
+        "median": 8.4045,
+        "min": 8.4045,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "inventory_ls_tree",
+      "output_bytes": 173760,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "blobless_no_lazy",
+      "wall": {
+        "cv": 0.038,
+        "max": 0.0117,
+        "median": 0.011,
+        "min": 0.0105,
+        "n": 5,
+        "stdev": 0.0004
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "inventory_ls_tree_long",
+      "output_bytes": 189176,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "blobless_no_lazy",
+      "wall": {
+        "cv": 0.035,
+        "max": 0.0574,
+        "median": 0.0554,
+        "min": 0.0526,
+        "n": 5,
+        "stdev": 0.0019
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 20,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "path_identity_ls_tree",
+      "output_bytes": 1881,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "blobless_no_lazy",
+      "wall": {
+        "cv": 0.058,
+        "max": 0.1928,
+        "median": 0.183,
+        "min": 0.1672,
+        "n": 5,
+        "stdev": 0.0105
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 20,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "path_identity_rev_parse",
+      "output_bytes": 820,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "blobless_no_lazy",
+      "wall": {
+        "cv": 0.028,
+        "max": 0.1684,
+        "median": 0.1615,
+        "min": 0.1566,
+        "n": 5,
+        "stdev": 0.0046
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "history_scope_refs",
+      "output_bytes": 14067,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "blobless_no_lazy",
+      "wall": {
+        "cv": 0.01,
+        "max": 0.0084,
+        "median": 0.0083,
+        "min": 0.0082,
+        "n": 5,
+        "stdev": 0.0001
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "history_page",
+      "output_bytes": 53371,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "blobless_no_lazy",
+      "wall": {
+        "cv": 0.012,
+        "max": 0.0836,
+        "median": 0.0816,
+        "min": 0.0811,
+        "n": 5,
+        "stdev": 0.001
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "history_count",
+      "output_bytes": 6,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "blobless_no_lazy",
+      "wall": {
+        "cv": 0.03,
+        "max": 0.0845,
+        "median": 0.0803,
+        "min": 0.0782,
+        "n": 5,
+        "stdev": 0.0024
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 20,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "commit_detail_raw_only",
+      "output_bytes": 37005,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "blobless_no_lazy",
+      "wall": {
+        "cv": 0.05,
+        "max": 0.1915,
+        "median": 0.1728,
+        "min": 0.1703,
+        "n": 5,
+        "stdev": 0.0087
+      }
+    },
+    {
+      "error_classes": ["promisor_fetch_failed"],
+      "invocations": 20,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "commit_detail",
+      "output_bytes": 0,
+      "repository": "mypy",
+      "returncodes_nonzero": 20,
+      "variant": "blobless_no_lazy",
+      "wall": {
+        "cv": 0.013,
+        "max": 9.8828,
+        "median": 9.7676,
+        "min": 9.554,
+        "n": 5,
+        "stdev": 0.1296
+      }
+    },
+    {
+      "error_classes": ["promisor_fetch_failed"],
+      "invocations": 40,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "comparison_manifest",
+      "output_bytes": 13699,
+      "repository": "mypy",
+      "returncodes_nonzero": 24,
+      "variant": "blobless_no_lazy",
+      "wall": {
+        "cv": 0.015,
+        "max": 12.7114,
+        "median": 12.5597,
+        "min": 12.2115,
+        "n": 5,
+        "stdev": 0.1894
+      }
+    },
+    {
+      "error_classes": ["promisor_fetch_failed"],
+      "invocations": 20,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "deferred_patches",
+      "output_bytes": 0,
+      "repository": "mypy",
+      "returncodes_nonzero": 20,
+      "variant": "blobless_no_lazy",
+      "wall": {
+        "cv": 0.01,
+        "max": 10.2886,
+        "median": 10.2601,
+        "min": 10.0506,
+        "n": 5,
+        "stdev": 0.0996
+      }
+    },
+    {
+      "error_classes": ["other"],
+      "invocations": 149,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "revision_content",
+      "output_bytes": 0,
+      "repository": "mypy",
+      "returncodes_nonzero": 149,
+      "variant": "blobless_no_lazy",
+      "wall": {
+        "cv": 0.031,
+        "max": 1.5014,
+        "median": 1.4501,
+        "min": 1.3898,
+        "n": 5,
+        "stdev": 0.0453
+      }
+    },
+    {
+      "blobs": 1927,
+      "blobs_per_s": 31984,
+      "missing": 1927,
+      "op": "batch_read_head_tree",
+      "output_bytes": 94423,
+      "repository": "mypy",
+      "variant": "blobless_no_lazy",
+      "wall": {
+        "cv": 0.011,
+        "max": 0.0611,
+        "median": 0.0602,
+        "min": 0.0598,
+        "n": 5,
+        "stdev": 0.0007
+      }
+    },
+    {
+      "blobs": 203,
+      "missing": 203,
+      "op": "batch_read_other_branch_unique",
+      "repository": "mypy",
+      "variant": "blobless_no_lazy",
+      "wall": {
+        "max": 0.0149,
+        "median": 0.0149,
+        "min": 0.0149,
+        "n": 1
+      }
+    },
+    {
+      "body_bytes": 0,
+      "first_response_ms": 7.771,
+      "latency": {
+        "max_ms": 4.147,
+        "n": 500,
+        "p50_ms": 0.036,
+        "p95_ms": 0.061,
+        "p99_ms": 0.084
+      },
+      "missing": 500,
+      "op": "batch_command_actor",
+      "repository": "mypy",
+      "requests": 500,
+      "variant": "blobless_no_lazy"
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "objects_fetched": 0,
+      "op": "inventory_ls_tree",
+      "output_bytes": 173760,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_lazy",
+      "wall": {
+        "max": 0.0107,
+        "median": 0.0107,
+        "min": 0.0107,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "objects_fetched": 0,
+      "op": "inventory_ls_tree_long",
+      "output_bytes": 189176,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_lazy",
+      "wall": {
+        "max": 0.0179,
+        "median": 0.0179,
+        "min": 0.0179,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 20,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "objects_fetched": 0,
+      "op": "path_identity_ls_tree",
+      "output_bytes": 1881,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_lazy",
+      "wall": {
+        "max": 0.1971,
+        "median": 0.1971,
+        "min": 0.1971,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 20,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "objects_fetched": 0,
+      "op": "path_identity_rev_parse",
+      "output_bytes": 820,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_lazy",
+      "wall": {
+        "max": 0.2246,
+        "median": 0.2246,
+        "min": 0.2246,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "objects_fetched": 0,
+      "op": "history_scope_refs",
+      "output_bytes": 14067,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_lazy",
+      "wall": {
+        "max": 0.0111,
+        "median": 0.0111,
+        "min": 0.0111,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "objects_fetched": 0,
+      "op": "history_page",
+      "output_bytes": 53621,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_lazy",
+      "wall": {
+        "max": 0.0913,
+        "median": 0.0913,
+        "min": 0.0913,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "objects_fetched": 0,
+      "op": "history_count",
+      "output_bytes": 6,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_lazy",
+      "wall": {
+        "max": 0.0867,
+        "median": 0.0867,
+        "min": 0.0867,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 20,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "objects_fetched": 0,
+      "op": "commit_detail_raw_only",
+      "output_bytes": 37005,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_lazy",
+      "wall": {
+        "max": 0.214,
+        "median": 0.214,
+        "min": 0.214,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 20,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "objects_fetched": 0,
+      "op": "commit_detail",
+      "output_bytes": 32029,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_lazy",
+      "wall": {
+        "max": 0.2796,
+        "median": 0.2796,
+        "min": 0.2796,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 40,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "objects_fetched": 0,
+      "op": "comparison_manifest",
+      "output_bytes": 58422,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_lazy",
+      "wall": {
+        "max": 0.5571,
+        "median": 0.5571,
+        "min": 0.5571,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 20,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "objects_fetched": 0,
+      "op": "deferred_patches",
+      "output_bytes": 1000614,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_lazy",
+      "wall": {
+        "max": 0.3471,
+        "median": 0.3471,
+        "min": 0.3471,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 149,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "objects_fetched": 0,
+      "op": "revision_content",
+      "output_bytes": 7070732,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_lazy",
+      "wall": {
+        "max": 1.4653,
+        "median": 1.4653,
+        "min": 1.4653,
+        "n": 1
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "inventory_ls_tree",
+      "output_bytes": 173760,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_no_lazy",
+      "wall": {
+        "cv": 0.019,
+        "max": 0.0114,
+        "median": 0.011,
+        "min": 0.0109,
+        "n": 5,
+        "stdev": 0.0002
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "inventory_ls_tree_long",
+      "output_bytes": 189176,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_no_lazy",
+      "wall": {
+        "cv": 0.031,
+        "max": 0.017,
+        "median": 0.0163,
+        "min": 0.0157,
+        "n": 5,
+        "stdev": 0.0005
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 20,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "path_identity_ls_tree",
+      "output_bytes": 1881,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_no_lazy",
+      "wall": {
+        "cv": 0.019,
+        "max": 0.1978,
+        "median": 0.194,
+        "min": 0.1886,
+        "n": 5,
+        "stdev": 0.0037
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 20,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "path_identity_rev_parse",
+      "output_bytes": 820,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_no_lazy",
+      "wall": {
+        "cv": 0.005,
+        "max": 0.1933,
+        "median": 0.1927,
+        "min": 0.1911,
+        "n": 5,
+        "stdev": 0.0009
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "history_scope_refs",
+      "output_bytes": 14067,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_no_lazy",
+      "wall": {
+        "cv": 0.022,
+        "max": 0.0105,
+        "median": 0.0103,
+        "min": 0.01,
+        "n": 5,
+        "stdev": 0.0002
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "history_page",
+      "output_bytes": 53621,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_no_lazy",
+      "wall": {
+        "cv": 0.02,
+        "max": 0.0951,
+        "median": 0.092,
+        "min": 0.091,
+        "n": 5,
+        "stdev": 0.0018
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "history_count",
+      "output_bytes": 6,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_no_lazy",
+      "wall": {
+        "cv": 0.005,
+        "max": 0.0889,
+        "median": 0.0885,
+        "min": 0.0879,
+        "n": 5,
+        "stdev": 0.0004
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 20,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "commit_detail_raw_only",
+      "output_bytes": 37005,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_no_lazy",
+      "wall": {
+        "cv": 0.02,
+        "max": 0.2045,
+        "median": 0.1955,
+        "min": 0.1949,
+        "n": 5,
+        "stdev": 0.004
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 20,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "commit_detail",
+      "output_bytes": 32029,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_no_lazy",
+      "wall": {
+        "cv": 0.005,
+        "max": 0.2586,
+        "median": 0.2577,
+        "min": 0.2556,
+        "n": 5,
+        "stdev": 0.0012
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 40,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "comparison_manifest",
+      "output_bytes": 58422,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_no_lazy",
+      "wall": {
+        "cv": 0.028,
+        "max": 0.5232,
+        "median": 0.4984,
+        "min": 0.4877,
+        "n": 5,
+        "stdev": 0.0138
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 20,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "deferred_patches",
+      "output_bytes": 1000614,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_no_lazy",
+      "wall": {
+        "cv": 0.007,
+        "max": 0.3081,
+        "median": 0.3066,
+        "min": 0.3024,
+        "n": 5,
+        "stdev": 0.0023
+      }
+    },
+    {
+      "error_classes": [],
+      "invocations": 149,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "op": "revision_content",
+      "output_bytes": 7070732,
+      "repository": "mypy",
+      "returncodes_nonzero": 0,
+      "variant": "backfilled_no_lazy",
+      "wall": {
+        "cv": 0.033,
+        "max": 1.6086,
+        "median": 1.5379,
+        "min": 1.4912,
+        "n": 5,
+        "stdev": 0.0513
+      }
+    },
+    {
+      "blobs": 1927,
+      "blobs_per_s": 29880,
+      "missing": 29,
+      "op": "batch_read_head_tree",
+      "output_bytes": 20539817,
+      "repository": "mypy",
+      "variant": "backfilled_no_lazy",
+      "wall": {
+        "cv": 0.013,
+        "max": 0.0656,
+        "median": 0.0645,
+        "min": 0.0635,
+        "n": 5,
+        "stdev": 0.0008
+      }
+    },
+    {
+      "blobs": 203,
+      "missing": 22,
+      "op": "batch_read_other_branch_unique",
+      "repository": "mypy",
+      "variant": "backfilled_no_lazy",
+      "wall": {
+        "max": 0.0247,
+        "median": 0.0247,
+        "min": 0.0247,
+        "n": 1
+      }
+    },
+    {
+      "body_bytes": 5169010,
+      "first_response_ms": 9.165,
+      "latency": {
+        "max_ms": 5.264,
+        "n": 500,
+        "p50_ms": 0.032,
+        "p95_ms": 0.106,
+        "p99_ms": 0.225
+      },
+      "missing": 0,
+      "op": "batch_command_actor",
+      "repository": "mypy",
+      "requests": 500,
+      "variant": "backfilled_no_lazy"
+    },
+    {
+      "missing_before": 1921,
+      "objects_fetched": 1747,
+      "op": "explicit_tree_prefetch_other_tip",
+      "repository": "mypy",
+      "returncode": 0,
+      "trace": {
+        "children": 3,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 0
+      },
+      "variant": "blobless",
+      "wall": {
+        "max": 0.542,
+        "median": 0.542,
+        "min": 0.542,
+        "n": 1
+      }
+    }
+  ],
+  "schema": "metabrowser-repository-cache-measurement-v1",
+  "started_at": "2026-09-17T04:48:23+00:00",
+  "suite": "read"
+}

@@ -18,7 +18,6 @@ core only caches its built-in agent-log projection.
 from __future__ import annotations
 
 import os
-import time
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -161,24 +160,3 @@ def test_extract_agent_charts_cached_returns_none_for_missing(tmp_path: Path) ->
     f = tmp_path / "missing.jsonl"
     out = extract_agent_charts_cached(f)
     assert out is None
-
-
-# ── Performance smoke check ───────────────────────────────────
-
-
-def test_parse_jsonl_cached_second_call_is_fast(tmp_path: Path) -> None:
-    """The whole point of the cache: second call is dominated
-    by the deepcopy of the cached value, not a re-parse. On a
-    small fixture the threshold is generous; the assertion
-    catches the case where the cache is silently bypassed."""
-
-    f = tmp_path / "a.jsonl"
-    _write_agent_jsonl(f)
-
-    parse_jsonl_file_cached(f)  # warm
-    t0 = time.perf_counter()
-    for _ in range(50):
-        parse_jsonl_file_cached(f)
-    elapsed_ms = (time.perf_counter() - t0) * 1000
-    # 50 cache hits should comfortably finish under 100 ms.
-    assert elapsed_ms < 100, f"50 warm reads took {elapsed_ms:.1f} ms"

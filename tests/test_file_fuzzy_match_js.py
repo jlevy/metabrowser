@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 from pathlib import Path
 
-import pytest
+from tests.required_tools import require_node
 
 FILE_FUZZY_MATCH_TEST_JS = Path(__file__).resolve().parent / "dom" / "file-fuzzy-match-behavior.js"
 FILE_FUZZY_MATCH_PROFILE_JS = (
@@ -15,8 +14,7 @@ FILE_FUZZY_MATCH_PROFILE_JS = (
 
 
 def test_file_fuzzy_match_js_assertions_pass() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(FILE_FUZZY_MATCH_TEST_JS)],
         capture_output=True,
@@ -32,8 +30,7 @@ def test_file_fuzzy_match_js_assertions_pass() -> None:
 
 
 def test_file_fuzzy_match_public_profile_completes() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(FILE_FUZZY_MATCH_PROFILE_JS)],
         capture_output=True,

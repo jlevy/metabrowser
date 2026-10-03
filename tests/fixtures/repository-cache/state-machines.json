@@ -1,0 +1,211 @@
+{
+  "schema": "metabrowser-repository-cache-state-machines-v1",
+  "decided": "2026-09-16",
+  "provenance": "Written by hand from the design in docs/project/architecture/arch-repository-sources-and-provider-mirrors.md (Locks and Deletion); there is no generator. The replays read these keys and no others: each hierarchy lock's name, rank, and path, each side lock's name and path, and each sequence's steps and valid, through metabrowser.cache.locks (tests/test_repository_cache_contract_fixtures.py); and the machine's initial state, each transition's from, event, to, and holds, and the scenario's machine, events, and expected_final, through metabrowser.cache.reclaim (tests/test_cache_reclaim.py). The rest, which is schema, decided, primitive, rules, protects, acquisition, why_outside_the_hierarchy, why, and effect, is rationale that nothing reads. The acquisition and refresh machines, and what a crash leaves in each state, are tables in that document.",
+  "locks": {
+    "primitive": {
+      "kind": "flock",
+      "basis": "BSD flock on a lock file opened O_CLOEXEC: an exclusive holder blocked a second exclusive request, and the lock was released 2.8 ms after its holder was SIGKILLed (results/platform.json). POSIX record locks (lockf/fcntl) are rejected: the lock silently vanished when the same process closed an unrelated descriptor for the file. flock state belongs to the open file description, so a request through a dup() of a held descriptor is granted rather than refused, while a request on a separate open() of the lock file contends with it (results/lockdescriptors.json).",
+      "unmeasured": "Only macOS APFS was measured, and CI runs only ubuntu-latest. Network filesystems can emulate flock with POSIX record locks, which behave like the rejected lockf. The format foundation therefore probes the application home at setup instead of trusting the platform: cross-process exclusion, survival of the lock when an unrelated descriptor for the lock file closes, and no-replace publication; a home that fails any probe is refused as unverifiable."
+    },
+    "hierarchy": [
+      {
+        "name": "home",
+        "rank": 1,
+        "path": "cache/locks/home.lock",
+        "protects": "layout migration and brief global enumeration for catalog scans and sweeps"
+      },
+      {
+        "name": "source_alias",
+        "rank": 2,
+        "path": "cache/locks/sources/<slug>.lock",
+        "protects": "slug claim and alias creation; several aliases lock in ascending slug order"
+      },
+      {
+        "name": "repository_store",
+        "rank": 3,
+        "path": "cache/locks/stores/<store-key>.lock",
+        "protects": "store directory publication and store records; several stores lock in ascending key order. It is held only for those short steps, never across network work or a long-running Git process such as fetch"
+      }
+    ],
+    "side_locks": [
+      {
+        "name": "staging_entry",
+        "path": "cache/locks/staging/<entry>.lock",
+        "acquisition": "taken before cache/staging/<entry>/ is created and held by its one owner for the entry's whole life, including network work; every other process only tries it without blocking",
+        "why_outside_the_hierarchy": "It is a liveness marker nobody waits on, so holding it across network work cannot block another operation."
+      },
+      {
+        "name": "store_fetch",
+        "path": "cache/locks/stores/<store-key>.fetch.lock",
+        "acquisition": "tried without blocking by a refresh of a published store and held through its network work, stale-lock cleanup, and the record rewrite; the Git processes that write the store inherit its descriptor, so it stays held while any of them runs, even after the process that took it has died; a refresh that finds it busy reports that another process is refreshing the store and does not wait",
+        "why_outside_the_hierarchy": "It is held across network work, which no hierarchy lock may be, and nobody waits on it. The store lock is still taken under it, briefly, to rewrite state.yml."
+      }
+    ],
+    "rules": [
+      "No network work, provider process, or long-running Git process runs while a hierarchy lock is held.",
+      "Every lock attempt uses its own open() of the lock file. Descriptors are never shared or duplicated between lock holders, including two holders in one process, because flock state belongs to the open file description and a second request through a duplicate would be granted the first holder's lock instead of contending with it.",
+      "Hierarchy locks are acquired in ascending rank, and within one rank in ascending key order; a lock is never re-acquired while held.",
+      "The home lock is never acquired while any narrower hierarchy lock is held.",
+      "Side locks are liveness markers and are only ever tried without blocking.",
+      "A store is published and the alias that names it is written by one holder of the source-alias lock and the store's lock, held from the store's publication through the alias commit, so every alias that names a store is written under that store's lock.",
+      "Nothing removes objects from a published store: automatic maintenance and gc stay off in its configuration and no operation runs gc, prune, or repack. A reader pinned to a full object ID therefore holds no lock and writes no ref.",
+      "Nothing deletes a published store. A store no alias names stays in place until an acquisition of its source reuses it; only the startup sweep of abandoned staging entries deletes anything.",
+      "Lock files live under cache/locks/ and are never inside a directory that publication or the sweep renames or deletes.",
+      "After acquiring any lock, the holder compares the locked descriptor's fstat with the path's lstat (device and inode) and releases and retries on a mismatch, because a sweep may have removed and recreated the lock file.",
+      "Liveness is decided by trying the entry's lock, not by age: a crashed holder releases within milliseconds, while no age can distinguish a slow clone from a dead one.",
+      "A refresh fetches into a published store only while it holds that store's fetch lock, and the Git processes that write the store inherit that lock, so it is held for exactly as long as a writer lives. Stale packed-refs.lock and refs/**.lock files and temporary objects and packs a killed Git left behind are therefore removed under it before the next fetch. Its fetch updates every ref atomically or none, a stale ref that clashes with that transaction is pruned in a separate deleting step first, and only the record rewrite that follows takes the store lock."
+    ],
+    "sequences": [
+      {
+        "id": "sweep-then-publish",
+        "steps": [
+          "home",
+          "release:home",
+          "network",
+          "source_alias:k1",
+          "repository_store:s1",
+          "release:repository_store",
+          "release:source_alias"
+        ],
+        "valid": true,
+        "why": "Enumerate briefly, stage without locks, then publish the store and its alias under the alias and store locks."
+      },
+      {
+        "id": "several-in-order",
+        "steps": [
+          "source_alias:a",
+          "source_alias:b",
+          "repository_store:s1",
+          "repository_store:s2"
+        ],
+        "valid": true,
+        "why": "Ascending rank, and ascending keys within a rank."
+      },
+      {
+        "id": "refetch-after-release",
+        "steps": [
+          "repository_store:s1",
+          "release:repository_store",
+          "network",
+          "repository_store:s1"
+        ],
+        "valid": true,
+        "why": "A lock may be taken again after release."
+      },
+      {
+        "id": "network-under-store-lock",
+        "steps": ["repository_store:s1", "network"],
+        "valid": false,
+        "why": "Network work under a hierarchy lock."
+      },
+      {
+        "id": "network-under-alias-lock",
+        "steps": ["source_alias:k1", "network"],
+        "valid": false,
+        "why": "Network work under a hierarchy lock."
+      },
+      {
+        "id": "store-before-alias",
+        "steps": ["repository_store:s1", "source_alias:k1"],
+        "valid": false,
+        "why": "Descending rank."
+      },
+      {
+        "id": "stores-descending",
+        "steps": ["repository_store:s2", "repository_store:s1"],
+        "valid": false,
+        "why": "Keys within a rank must ascend."
+      },
+      {
+        "id": "store-reentry",
+        "steps": ["repository_store:s1", "repository_store:s1"],
+        "valid": false,
+        "why": "Re-acquiring a held lock."
+      },
+      {
+        "id": "home-under-alias",
+        "steps": ["source_alias:k1", "home"],
+        "valid": false,
+        "why": "The home lock is never taken while holding a narrower lock."
+      },
+      {
+        "id": "home-twice",
+        "steps": ["home", "home"],
+        "valid": false,
+        "why": "The home lock is single."
+      },
+      {
+        "id": "unknown-lock",
+        "steps": ["checkout:x"],
+        "valid": false,
+        "why": "There is no checkout lock; a local checkout is never a lock target."
+      }
+    ]
+  },
+  "machines": [
+    {
+      "name": "startup_sweep",
+      "initial": "idle",
+      "transitions": [
+        {
+          "from": "idle",
+          "event": "begin",
+          "to": "enumerating",
+          "holds": ["home"],
+          "effect": "List entry names under staging/ only."
+        },
+        {
+          "from": "enumerating",
+          "event": "listed",
+          "to": "inspecting",
+          "holds": [],
+          "effect": "Release the home lock before any per-entry work."
+        },
+        {
+          "from": "inspecting",
+          "event": "entry_lock_busy",
+          "to": "inspecting",
+          "holds": [],
+          "effect": "A live owner holds the entry's lock; skip it."
+        },
+        {
+          "from": "inspecting",
+          "event": "entry_lock_acquired",
+          "to": "removing",
+          "holds": ["staging_entry"],
+          "effect": "Nobody owns the entry and the lock file's identity rechecks."
+        },
+        {
+          "from": "removing",
+          "event": "removed",
+          "to": "inspecting",
+          "holds": ["staging_entry"],
+          "effect": "Delete the directory, tolerating read-only Git object files, then remove the lock file and release it."
+        },
+        {
+          "from": "inspecting",
+          "event": "exhausted",
+          "to": "done",
+          "holds": [],
+          "effect": "Every listed entry was skipped or removed."
+        }
+      ]
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "sweep-skips-live-staging",
+      "machine": "startup_sweep",
+      "events": [
+        "begin",
+        "listed",
+        "entry_lock_busy",
+        "entry_lock_acquired",
+        "removed",
+        "exhausted"
+      ],
+      "expected_final": "done"
+    }
+  ]
+}

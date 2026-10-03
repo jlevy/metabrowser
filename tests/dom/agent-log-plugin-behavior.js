@@ -34,7 +34,15 @@ const dynamicUnknownEvent = { dataset: { kind: "unknown" }, style: { display: ""
 const container = {
   innerHTML: "",
   addEventListener: (type, listener) => {
-    listeners[type] = listener;
+    // Every listener of a type runs, as in a browser: the filter bar and the event
+    // toggle each delegate clicks on the container.
+    const previous = listeners[type];
+    listeners[type] = previous
+      ? (event) => {
+          previous(event);
+          listener(event);
+        }
+      : listener;
   },
   removeEventListener: () => {},
   contains: () => true,

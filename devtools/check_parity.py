@@ -27,8 +27,11 @@ import tempfile
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Final
 from urllib.parse import unquote, urlsplit
 from urllib.request import url2pathname
+
+from devtools import tryscript_blocks
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 MAP_DOC = REPO_ROOT / "docs/project/architecture/arch-views-models-routes.md"
@@ -93,58 +96,20 @@ class GoldenCommand:
 
 
 def _console_commands(golden: str) -> list[GoldenCommand]:
-    """Parse executable tryscript commands with their output and exit status."""
+    """The commands tryscript runs in a transcript, with their output and exit status.
 
-    commands: list[GoldenCommand] = []
-    in_console = False
-    command_parts: list[str] = []
-    output: list[str] = []
-    status: int | None = None
+    Found the way tryscript finds them (``devtools/tryscript_blocks.py``), so a block it
+    does not run, such as one whose fence is indented, is not evidence here either.
+    """
 
-    def finish() -> None:
-        nonlocal command_parts, output, status
-        if command_parts:
-            command = " ".join(part.removesuffix("\\").rstrip() for part in command_parts)
-            commands.append(
-                GoldenCommand(
-                    command=command,
-                    output=tuple(output),
-                    # Tryscript only prints ``? N`` for an expected nonzero
-                    # exit. An omitted marker is the ordinary success form.
-                    status=0 if status is None else status,
-                )
-            )
-        command_parts = []
-        output = []
-        status = None
-
-    for line in golden.splitlines():
-        stripped = line.strip()
-        if stripped == "```console":
-            finish()
-            in_console = True
-            continue
-        if stripped == "```" and in_console:
-            finish()
-            in_console = False
-            continue
-        if not in_console:
-            continue
-        if stripped.startswith("$ "):
-            finish()
-            command_parts = [stripped[2:]]
-            continue
-        if command_parts and command_parts[-1].endswith("\\") and stripped.startswith("> "):
-            command_parts.append(stripped[2:])
-            continue
-        match = re.fullmatch(r"\? (-?\d+)", stripped)
-        if command_parts and match is not None:
-            status = int(match.group(1))
-            continue
-        if command_parts:
-            output.append(stripped)
-    finish()
-    return commands
+    return [
+        GoldenCommand(
+            command=block.command,
+            output=tuple(line.strip() for line in block.output),
+            status=block.status,
+        )
+        for block in tryscript_blocks.blocks(golden)
+    ]
 
 
 def _command_parts(command: str) -> list[str]:
@@ -152,6 +117,23 @@ def _command_parts(command: str) -> list[str]:
         return shlex.split(command)
     except ValueError:
         return []
+
+
+_ENVIRONMENT_ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=.*", re.DOTALL)
+
+
+def _metab_parts(command: str) -> list[str]:
+    """The words of a ``metab`` command, after any leading environment assignments.
+
+    A transcript sets per-command state such as ``METABROWSER_HOME=$PWD/home`` this way,
+    because tryscript's frontmatter cannot name the sandbox path. Only assignments are
+    skipped, so another program behind them is still not ``metab``.
+    """
+
+    parts = _command_parts(command)
+    while parts and _ENVIRONMENT_ASSIGNMENT.fullmatch(parts[0]):
+        parts = parts[1:]
+    return parts if parts and parts[0] == "metab" else []
 
 
 def _route_token_matches(token: str, surface: str) -> bool:
@@ -173,8 +155,8 @@ def _option_value(parts: list[str], option: str) -> str | None:
 def _command_exercises(command: str, surface: str, cli: str) -> bool:
     """Whether one metab command reaches exactly the declared route shape."""
 
-    parts = _command_parts(command)
-    if not parts or parts[0] != "metab":
+    parts = _metab_parts(command)
+    if not parts:
         return False
     api_value = _option_value(parts, "--api")
     if "--api" in cli and api_value is not None and _route_token_matches(api_value, surface):
@@ -185,7 +167,7 @@ def _command_exercises(command: str, surface: str, cli: str) -> bool:
             return True
         if surface == "/api/plugin/diff/comparison" and _route_token_matches(show_value, "/commit"):
             return True
-        if surface in {"/view", "/commit"} and _route_token_matches(show_value, surface):
+        if surface in {"/view", "/commit", "/pull"} and _route_token_matches(show_value, surface):
             return True
     for mode, surfaces in _INDIRECT_MODES.items():
         if mode in parts and mode in cli and surface in surfaces:
@@ -193,11 +175,49 @@ def _command_exercises(command: str, surface: str, cli: str) -> bool:
     return False
 
 
+_REFRESH_ENDED: Final = re.compile(r"Error: the refresh ended with \w+")
+
+
+def _route_answered(command: GoldenCommand, surface: str) -> bool:
+    """Whether the route answered 202 in a command that exited non-zero for the work it began.
+
+    A one-shot ``POST`` that starts work prints the route's answer, waits for the work,
+    prints the status ``after:`` it, and exits 1 when the work failed. The route was
+    reached and answered; what failed is what it started, which the transcript also
+    shows. So the route's own ``status:`` line is what counts, and only in exactly that
+    shape, each part of which rules out a non-zero exit that means something else:
+
+    - ``status: 202`` directly under the route's ``api:`` line. Any other status is not
+      "work started";
+    - an ``after: /api/…`` line directly followed by ``status: 2xx``. The follow-up was
+      read, and read successfully;
+    - the last line is ``Error: the refresh ended with <outcome>``. A body truncated
+      mid-response and a refresh that did not finish each end with a different error,
+      and neither says how the work ended.
+    """
+
+    output = [line for line in command.output if line]
+    for index, line in enumerate(output):
+        if not line.startswith("api: "):
+            continue
+        if not _route_token_matches(line.removeprefix("api: "), surface):
+            continue
+        if output[index + 1 : index + 2] != ["status: 202"]:
+            return False
+        followed = any(
+            re.fullmatch(r"after: /api/\S+", first) is not None
+            and re.fullmatch(r"status: 2\d\d", second) is not None
+            for first, second in zip(output[index + 2 :], output[index + 3 :], strict=False)
+        )
+        return followed and _REFRESH_ENDED.fullmatch(output[-1]) is not None
+    return False
+
+
 def _exercises(golden: str, surface: str, cli: str, *, successful_only: bool) -> bool:
     """Whether a transcript attempts, or successfully runs, a route surface."""
 
     return any(
-        (not successful_only or command.status == 0)
+        (not successful_only or command.status == 0 or _route_answered(command, surface))
         and _command_exercises(command.command, surface, cli)
         for command in _console_commands(golden)
     )
@@ -211,11 +231,11 @@ def registered_surfaces() -> set[str]:
         # The path may sit on the line after `Route(` when the registration is
         # wrapped, which a pattern anchored to `Route("` misses entirely.
         for route in re.findall(r'Route\(\s*"([^"]+)"', path.read_text(encoding="utf-8")):
-            # Browser routes are surfaces too: `/view/<path>` and `/commit/<rev>`
+            # Browser routes are surfaces too: `/view/<path>`, `/commit/<rev>`, and `/pull/<n>`
             # are the addresses a reader lands on, and the four-layer model this
             # check enforces starts at the route. Enumerating only `/api/` left
             # them ungoverned even after --show learned to resolve them.
-            if route.startswith(("/api/", "/view", "/commit", "/raw", "/_debug")):
+            if route.startswith(("/api/", "/view", "/commit", "/pull", "/raw", "/_debug")):
                 # Route patterns carry placeholders; the table documents the shape.
                 surfaces.add(route.split("{", 1)[0].rstrip("/"))
     for manifest_path in sorted(BUILTIN_PLUGINS.glob("*/manifest.toml")):
@@ -248,8 +268,8 @@ def golden_kinds() -> set[str]:
     kinds: set[str] = set()
     for path in sorted(GOLDEN_DIR.glob("*.tryscript.md")):
         for command in _console_commands(path.read_text(encoding="utf-8")):
-            parts = _command_parts(command.command)
-            if command.status != 0 or not parts or parts[0] != "metab" or "--show" not in parts:
+            parts = _metab_parts(command.command)
+            if command.status != 0 or not parts or "--show" not in parts:
                 continue
             for line in command.output:
                 match = re.fullmatch(r"kind: ([a-z0-9][a-z0-9-]*)", line)

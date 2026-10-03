@@ -49,3 +49,9 @@ function quotedAttributeValue(value) {
     .replace(/[\n\r\f]/g, (character) => `\\${character.charCodeAt(0).toString(16)} `)
     .replace(/\0/g, "\\fffd ");
 }
+
+/**
+ * The most links and resources one render's link enhancer resolves; a render keeps
+ * the rest as authored, and an inert render drops their addresses (inert-render.js).
+ */
+export const MAX_ENHANCED_TARGETS = 4096;

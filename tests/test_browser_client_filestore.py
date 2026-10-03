@@ -10,7 +10,8 @@ Coverage:
 
 * ``sizeHtml(null)``, ``countHtml(null)``, and ``formatAge(null)`` produce
   ``tally-pending`` skeleton cells (the spec contract for
-  walker-in-progress dir aggregates).
+  walker-in-progress dir aggregates). Omitted (``undefined``) values
+  produce empty HTML: they are not pending.
 * ``startInventoryEventStream()`` opens an ``EventSource``
   against ``/api/events?scope=root-depth-2`` and registers
   listeners for ``fs.snapshot`` / ``fs.change`` /
@@ -61,7 +62,8 @@ def test_size_html_renders_tally_pending_for_null() -> None:
     # is structured and emits the expected class.
     fn_start = js.index("function sizeHtml(bytes, extraClass)")
     fn_block = js[fn_start : fn_start + 800]
-    assert "if (bytes === null || bytes === undefined)" in fn_block
+    assert "if (bytes === undefined)" in fn_block
+    assert "if (bytes === null)" in fn_block
     assert "tally-pending" in fn_block
 
 
@@ -224,10 +226,14 @@ def test_tree_tooltips_do_not_coerce_pending_aggregates_to_zero() -> None:
     js = _read_app_js()
     assert "function parseTipNumber(value)" in js
     assert "function nullableDataValue(n)" in js
+    assert "function dataTipNumberAttr(key, n)" in js
     assert "+d.tipFiles" not in js
     assert "+d.tipSize" not in js
-    assert 'data-tip-files="${nullableDataValue(node.total_files)}' in js
-    assert 'data-tip-size="${nullableDataValue(node.total_size)}' in js
+    assert 'dataTipNumberAttr("files", node.total_files)' in js
+    assert 'dataTipNumberAttr("size", node.total_size)' in js
+    assert 'dataTipNumberAttr("size", node.size)' in js
+    assert 'data-tip-size="${node.size || 0}"' not in js
+    assert 'data-tip-mtime="${node.mtime || 0}"' not in js
     # Pending aggregates render as tally skeleton blocks named for screen
     # readers, not as visible "Loading …" copy. See docs/design-system.md,
     # "Loading States Are Shapes, Not Sentences", enforced by
@@ -236,6 +242,30 @@ def test_tree_tooltips_do_not_coerce_pending_aggregates_to_zero() -> None:
     assert 'aria-label="Loading size"' in js
     assert "Loading file count…" not in js
     assert "Loading size…" not in js
+
+
+def test_omitted_tally_facts_are_not_pending() -> None:
+    """Git listings omit size/mtime; that is not a still-finalizing walker."""
+
+    js = _read_app_js()
+    size_start = js.index("function sizeHtml(bytes, extraClass)")
+    size_block = js[size_start : size_start + 700]
+    assert "if (bytes === undefined)" in size_block
+    assert "if (bytes === null)" in size_block
+    count_start = js.index("function countHtml(n, extraClass)")
+    count_block = js[count_start : count_start + 400]
+    assert "if (n === undefined)" in count_block
+    chip_start = js.index("function treeDirChipHtml(totalFiles, totalSize, options)")
+    chip_block = js[chip_start : chip_start + 500]
+    assert "totalFiles === undefined && totalSize === undefined" in chip_block
+    header_start = js.index("function renderFolderHeader(data)")
+    header_block = js[header_start : header_start + 1400]
+    assert "data.dir || {}" not in header_block
+    assert 'typeof data.dir === "object"' in header_block
+    parse_start = js.index("function parseTipNumber(value)")
+    parse_block = js[parse_start : parse_start + 500]
+    assert "if (value === undefined)" in parse_block
+    assert "return undefined" in parse_block
 
 
 def test_tree_tooltips_omit_duplicative_name() -> None:
@@ -704,9 +734,12 @@ def test_main_view_address_dims_the_root_and_leaves_no_dead_segment() -> None:
 
     js = _read_app_js()
     fn_start = js.index("function headerAddressHtml(path, isFile)")
-    fn_block = js[fn_start : fn_start + 1400]
+    fn_block = js[fn_start : fn_start + 1600]
     assert 'class="file-header-root"' in fn_block
     assert 'class="folder-crumb folder-crumb-root" data-nav-dir=""' in fn_block
+    # Every crumb is an owner-marked control; the click delegate ignores unmarked
+    # copies a document could write (tests/dom/shell-delegate-owner-session.js).
+    assert fn_block.count("${ownedControlAttr()}") == 2
     # The final component navigates too — as a file when it names one.
     assert 'last && isFile ? "data-nav-file" : "data-nav-dir"' in fn_block
     assert "folder-crumb-current" in fn_block
@@ -767,6 +800,92 @@ def test_address_gives_way_from_the_root_end_and_never_cuts_a_segment() -> None:
     assert "overflow: hidden" in crumb_block
 
 
+def test_a_mirrors_note_takes_nothing_from_the_address_and_is_whole_or_absent() -> None:
+    """The rules that place a served mirror's note, its name, and its commit's copy control.
+
+    What they do to a heading is layout, which needs a rendered page; the widths are
+    measured in Chrome and recorded beside the note's rule. This pins what orders it.
+
+    The note is written with the address and drawn after a file's copy control. It
+    gives way before the root's name does, by the ratio the root's own rule measured as
+    the least that takes no sliver from the next part. Gone, it occupies nothing: it has
+    no padding, its spacers are content, and its negative margin is the breadcrumb's
+    gap. And it is never a stub: the text has a basis the row must fit, or it wraps out
+    of the one line the note shows. What it does show ends in an ellipsis, because the
+    start of the path says it is the cache and the end is a store's hexadecimal key.
+    """
+
+    css = _read_styles_css()
+
+    def block(selector: str) -> str:
+        start = css.index(f"\n{selector} {{")
+        return css[start : css.index("}", start)]
+
+    def shrink(selector: str) -> float:
+        match = re.search(r"flex(?:-shrink)?:\s*(?:[\d.]+\s+)?([\d.]+)", block(selector))
+        assert match is not None, f"{selector} declares no shrink weight"
+        return float(match.group(1))
+
+    note = block(".file-header-mirror")
+    assert shrink(".file-header-mirror") >= 5000 * shrink(".file-header-root")
+    assert "order: 1;" in note
+    gap = re.search(r"gap: (\d+px);", block(".folder-breadcrumb"))
+    assert gap is not None
+    assert f"margin: 0 -{gap.group(1)} 0 auto;" in note
+    assert "padding" not in note
+    for declaration in ("min-width: 0;", "overflow: hidden;", "flex-wrap: wrap;", "height: "):
+        assert declaration in note, declaration
+    # Its two spacers are flex items of the note, so they shrink away with it.
+    assert "flex: 0 0 10px;" in block(".file-header-mirror::before")
+    assert f"flex: 0 0 {gap.group(1)};" in block(".file-header-mirror::after")
+    text = block(".file-header-mirror-text")
+    assert re.search(r"flex: 1 0 \d+em;", text), "the text has no basis to wrap below"
+    for declaration in ("min-width: 0;", "overflow: hidden;", "text-overflow: ellipsis;"):
+        assert declaration in text, declaration
+    # The end is cut, not the start, and the same for a mirror's name in both headings:
+    # a path's own rule reverses the direction, and a mirror's root undoes that.
+    assert "direction" not in note + text
+    assert "direction: ltr;" in block(".mirror-source .file-header-root")
+    assert "direction: rtl;" in block(".file-header-root")
+    # In the design's tokens: muted, at the summary's size, and no color of its own.
+    assert "color: var(--muted);" in note and "font-size: var(--ui-small-font-size);" in note
+    assert not re.search(r"#[0-9a-fA-F]{3,8}\b|rgb\(|oklch\(", note + text)
+
+    # In the navigation heading the ref narrows before the name, and the commit never.
+    # The copy control keeps its size, and shows as the file header's does.
+    assert shrink(".header-ref") > 1
+    assert "flex: none;" in block(".header-revision")
+    assert "flex: none;" in block(".header-copy")
+    assert "opacity: 1;" in block(".app-header:hover .header-copy")
+
+
+def test_only_a_mirrors_line_of_a_tooltip_wraps_and_every_other_tooltip_is_as_it_was() -> None:
+    """A served mirror's tooltip holds runs wider than its box; no other tooltip changes.
+
+    The origin, a commit ID, and a path ending in a 64-digit key are each one unbroken
+    run, so the mirror's line breaks where the box ends. The rule is that line's alone.
+    Put on the tooltip itself, with ``anywhere``, it changed every folder's tooltip: a
+    run could then break while the box was measured for its place, so a long file name's
+    tooltip near the window's edge became two lines flush against the edge. Where a
+    tooltip lands is layout, measured in Chrome and recorded beside the rule; this pins
+    that the one tooltip every page uses declares nothing about wrapping.
+    """
+
+    css = _read_styles_css()
+    start = css.index("\n.custom-tooltip {")
+    tooltip = css[start : css.index("}", start)]
+    for wrapping in ("overflow-wrap", "word-break", "word-wrap", "white-space", "hyphens"):
+        assert wrapping not in tooltip, wrapping
+    assert "max-width: 360px;" in tooltip
+    # ``break-word`` breaks a run that does not fit; ``anywhere`` also lets it break
+    # while the box is measured, which is what narrowed a tooltip.
+    start = css.index("\n.tip-mirror {")
+    assert css[start : css.index("}", start)].split("{")[1].split() == [
+        "overflow-wrap:",
+        "break-word;",
+    ]
+
+
 def test_navigation_heading_shows_only_the_root_name() -> None:
     """The heading renders the basename; the served root rides alongside.
 
@@ -782,8 +901,12 @@ def test_navigation_heading_shows_only_the_root_name() -> None:
     fn_block = js[fn_start : fn_start + 500]
     assert 'class="path-base"' in fn_block
     assert "path-dir" not in fn_block
-    # loadTree refreshes the label, and reads the root rather than rewriting it.
-    tree_start = js.index("pathEl.innerHTML = pathBaseHtml(data.root)")
+    # loadTree refreshes the label, and reads the root rather than rewriting it. A pin
+    # keeps the ref and commit the server rendered; tests/dom/source-kind-session.js
+    # runs both branches.
+    heading_start = js.index("function renderServedRootHeading(pathEl, root)")
+    assert "pathEl.innerHTML = pathBaseHtml(root)" in js[heading_start : heading_start + 400]
+    tree_start = js.index("renderServedRootHeading(pathEl, data.root)")
     assert "setServedRoot" not in js
     assert (
         "pathEl.dataset.tipName = pathEl.dataset.servedRoot" in js[tree_start : tree_start + 2600]

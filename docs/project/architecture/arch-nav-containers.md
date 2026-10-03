@@ -39,7 +39,8 @@ already does.
 | --- | --- | --- | --- |
 | Directory | Files and folders | Folder Overview | The file’s views |
 | Patch / diff file | One entry per file change | The change-set summary (the whole-document diff view) | That file’s diff, as view tabs (Diff, later Before/After) |
-| GitHub PR mirror | The PR’s changed files | PR summary: title, state, totals, description | Same as patch, plus review-thread anchors later |
+| Hosted-review collection | Cached change requests | Query, freshness, completeness, and offline summary | The change-request document and views |
+| Hosted change-request bundle | The change request’s changed files | Change summary: title, state, totals, description | Same as patch, plus hosted-review state and review-thread anchors |
 | Archive (`.zip`) | The archive’s members | Listing or summary | The member file’s ordinary views, by its own kind |
 
 The inner entries are ordinary item-like objects: a file change carries the diff view
@@ -70,7 +71,10 @@ manifest load; the hook returns `{children: [{name, path, badge?, muted?}]}` for
   ancestors — bounded, through the same safe-path gate — and letting the nearest
   existing *file* ancestor of a container kind claim everything beneath it.
   A real directory ancestor means the leaf is genuinely missing, so ordinary 404s are
-  unchanged.
+  unchanged. On a `GitRevisionSubject` there is no filesystem ancestor walk: contiguous
+  `g1-` tokens are the container’s `GitPath`, and anything after that prefix is the
+  virtual inner path. Only implemented patch/diff blobs claim an inner; archives remain
+  later.
 - **The views** of that kind render the virtual path, because the envelope carries the
   same `kind` plus `container` and `container_inner`. The diff plugin’s document hook
   answers a virtual path with the change set narrowed to that file, so the renderer
@@ -100,15 +104,44 @@ children hook groups by path and the narrowed document carries both halves.
   view. Core provides the contract; the diff plugin, an archive plugin, and a PR plugin
   provide the containers.
 
-## Materialization: transient caches, one discipline
+## Collection panels
 
-Containers whose children are not directly on disk — a PR that must be fetched, a patch
-anchoring against a base, an archive that must be unpacked — materialize into bounded,
-transient cache directories, and the ordinary serving path routes into the materialized
-tree. One mechanism with one eviction and bounds policy, shared across container kinds,
-not a per-kind cache.
-The git-specific acquisition workflow (reference clones, `refs/pull/N/head`, transient
-worktrees) is the diff plan’s instance of this.
+A folder-like container does not have to live in the Files tree.
+The planned Pull Requests nav panel exposes one virtual hosted-review collection whose
+children come from a bounded `ChangeRequestIndex/v1`. It reuses Git history’s paged
+loading, virtualization, roving selection, and restoration mechanics, while each
+selected PR uses the container behavior above to expose changed files.
+
+Counts, grouping, and folder visibility come from the complete bounded collection model,
+never from currently mounted rows.
+The collection overview makes its query, bounds, freshness, completeness, offline state,
+and refresh diagnostics visible.
+
+## Transient projections and the four cache lifetimes
+
+“Cache” does not name one interchangeable storage mechanism:
+
+1. The repository library durably owns a shared worktree-free Git object store and
+   private refs.
+2. A provider mirror durably owns immutable hosted-review snapshots and current
+   manifests under stable provider-repository and authorization identity, independently
+   of source aliases and local checkouts.
+3. A subsystem that genuinely needs filesystem bytes owns its bounded transient
+   projection. Archive extraction is one example; immutable Git subjects read trees and
+   blobs directly and do not create a filesystem projection.
+4. Inventory pages, comparison manifests, patches, and browser projections are bounded,
+   recomputable session caches.
+
+Only the third layer contains transient filesystem projections.
+Review anchors are provider-domain records in layer 2, while diff manifests and patches
+are recomputable records in layer 4; neither is a materialized directory.
+Projection types share low-level safe-path or lease helpers only after two implemented
+owners prove the same contract, and each owner keeps its own admission, bounds, and
+reclamation policy. The
+[repository-source architecture](arch-repository-sources-and-provider-mirrors.md) owns
+the worktree-free store and subject boundary; the
+[hosted-review architecture](arch-hosted-review-model.md) owns layer 2 and defines how
+the four compose.
 
 ## Zoom
 

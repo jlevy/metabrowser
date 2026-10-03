@@ -20,8 +20,18 @@ links to the document that covers each in depth.
 - [Python inventory cost](architecture/arch-python-inventory-cost.md) — what the
   reference engine’s walk spends per entry, and what is still on that path
 - [Git and comparison sources](architecture/arch-git-and-comparison-sources.md) — the
-  Git process boundary, the three-layer stack, and the rule for adding a comparison
+  Git process boundary, the four-layer stack, and the rule for adding a comparison
   source
+- [Repository sources and provider mirrors](architecture/arch-repository-sources-and-provider-mirrors.md)
+  — session subjects, worktree-free Git object stores, provider mirrors, and their
+  concurrency and lifetime boundaries
+- [External resources, artifact contracts, and views](architecture/arch-external-resources-and-views.md)
+  — retired design: the entity/artifact/resource vocabulary, trusted
+  contract/profile/kind registries, transparent formats, and mapping workflow for
+  external APIs
+- [Hosted review model and provider boundary](architecture/arch-hosted-review-model.md)
+  — retired design: provider-neutral change requests, GitHub adapter, plugin views,
+  activity projection, and cache lifetimes
 - [File Diff Format v1](architecture/file-diff-format/file-diff-format.md)
 - [Diff sources, context, and anchoring](architecture/file-diff-format/diff-sources-and-anchoring.md)
 - [File Rollup Format v0.1](architecture/file-rollup-format/file-rollup-format.md)
@@ -30,23 +40,34 @@ links to the document that covers each in depth.
 
 ## Active Feature Plans
 
+- [v0.12 thin mirror for Git and GitHub browsing](specs/active/plan-2026-09-23-v012-thin-mirror.md)
+  — the v0.12 design: full-clone mirrors refreshed with `git fetch`, `gh` for
+  authentication and pull-request data, and the pull request that delivered each step
+- [v0.12 alpha testing and stack acceptance](specs/active/plan-2026-09-22-v012-alpha-testing.md)
+  — executable foundation quick start, manual end-to-end matrix, automated coverage, and
+  the landing checklist and status
+- [GitHub Pulls tab for mirrors and local checkouts](specs/active/plan-2026-10-01-github-pulls-tab.md)
+  — planned, not started: a list of a repository’s pull requests beside Files and Git,
+  opening any of them, for a repository opened from a GitHub URL and for an existing
+  checkout; starts after the v0.12 stack lands
 - [Opt-in trusted-local file editing](specs/active/plan-2026-07-16-trusted-local-file-editing.md)
 - [Scanning state and recent directories](specs/active/plan-2026-07-16-scanning-state-and-recent-directories.md)
 - [Quick file finder and search providers](specs/active/plan-2026-07-17-scalable-file-search.md)
 - [Full-page HTML rendering and an explicit trust model](specs/active/plan-2026-08-06-html-rendering-and-trust-model.md)
 - [Menu primitives and gated file actions](specs/active/plan-2026-08-06-menu-primitives-and-file-actions.md)
+- [Git graph nav panel](specs/active/plan-2026-08-06-git-graph-view.md)
 - [Markdown navigation extensions](specs/active/plan-2026-08-13-markdown-navigation-extensions.md)
+- [General diff rendering](specs/active/plan-2026-08-17-general-diff-rendering.md)
 - [End-to-end load time, from the CLI to first paint](specs/active/plan-2026-08-21-load-time-performance.md)
-- [Git revision navigation performance](specs/active/plan-2026-08-25-git-revision-navigation-performance.md)
-- [GitHub provider: content model, acquisition, and pull requests](specs/active/plan-2026-08-27-github-provider-and-pull-requests.md)
+- [Hosted review model and GitHub provider](specs/active/plan-2026-08-27-github-provider-and-pull-requests.md)
 - [Git status and working-tree diffs](specs/active/plan-2026-08-26-git-status-and-working-tree-diffs.md)
 - [Mermaid diagram rendering](specs/active/plan-2026-08-21-mermaid-diagram-rendering.md)
 - [Repository library and open from a Git URL](specs/active/plan-2026-08-11-open-repo-from-git-url.md)
 - [Pluggable inventory engine](specs/active/plan-2026-08-23-pluggable-inventory-engine.md)
 - [Inventory provider refactor and fdu adoption](specs/active/plan-2026-08-23-inventory-provider-refactor-and-fdu-adoption.md)
-- [Unbounded logical Git history with bounded rendering](specs/active/plan-2026-08-25-unbounded-virtualized-git-history.md)
 - [CLI-first delivery: parity, Git status, and the repository cache](specs/active/plan-2026-08-28-cli-first-delivery-map.md)
 - [A machine-readable contract for the API envelopes](specs/active/plan-2026-08-30-api-schema-and-contract.md)
+- [Functional UI and CLI parity](specs/active/plan-2026-09-10-functional-ui-cli-parity.md)
 
 ## Research
 
@@ -61,6 +82,16 @@ links to the document that covers each in depth.
 
 ## Reviews
 
+- [Changes to existing behavior in the v0.12 stack](reviews/review-2026-10-01-v012-changes-to-existing-behavior.md)
+  — the intended changes to what v0.11.0 already did, for sign-off: each with its
+  changelog entry, its pull request, and how it was checked against the v0.11.0 wheel;
+  and the unintended differences the landing gate found
+- [Per-layer review ledger for the v0.12 stack](reviews/review-2026-10-01-v012-stack-review-ledger.md)
+  — what review each pull request of the stack had, its findings and their disposition,
+  CI on each head, and the limits of that evidence
+- [Test-suite baseline for the v0.12 test review](reviews/review-2026-10-01-test-suite-baseline.md)
+  — the size and CI run time of the suite at `main`, at the v0.12 stack before the
+  review, and after its first three pull requests, with the command behind each figure
 - [Delivery order for Git status, the repository cache, and providers](reviews/review-2026-08-27-delivery-order-for-status-cache-and-providers.md)
   — reviews the architecture and plans against the stated priority order, and finds the
   gates that order does not yet show
@@ -74,9 +105,19 @@ links to the document that covers each in depth.
   — review of the six-round load-time work, its eight findings and their fixes, plus
   principles and candidate hypotheses for the rounds after it
 
+## QA Runs
+
+- [v0.12 alpha acceptance on the integrated stack](qa/qa-2026-09-24-v012-alpha-acceptance.md)
+  — installed-wheel run of the manual matrix and the round-2 features, with build
+  identity, per-row results, and the beads filed for its findings
+
 ## Done Plans
 
 - [CLI parity and golden coverage](specs/done/plan-2026-08-21-cli-parity-and-golden-coverage.md)
+- [One file-type source of truth](specs/done/plan-2026-08-21-file-type-source-of-truth.md)
+- [Diff syntax highlighting and layouts](specs/done/plan-2026-08-24-diff-syntax-highlighting-and-layouts.md)
+- [Git revision navigation performance](specs/done/plan-2026-08-25-git-revision-navigation-performance.md)
+- [Unbounded logical Git history with bounded rendering](specs/done/plan-2026-08-25-unbounded-virtualized-git-history.md)
 - [Bounded binary byte preview](specs/done/plan-2026-08-11-binary-byte-preview.md)
 - [Metabrowser v0.1.0 standalone package](specs/done/plan-2026-07-14-metabrowser-v0.1.0-standalone-package.md)
 - [Flat single-command `metab` CLI](specs/done/plan-2026-07-27-metab-flat-cli.md)

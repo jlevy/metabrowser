@@ -45,6 +45,7 @@ from metabrowser.gz_io import ArtifactPath
 from metabrowser.jsonl_view import _LARGE_FILE_BYTES, _MAX_LINE_LEN
 from metabrowser.logutil.parsing import LogEvent, create_parser, detect_adapter
 from metabrowser.paths_safe import _safe_path
+from metabrowser.source import require_filesystem_hooks
 
 if TYPE_CHECKING:
     from starlette.requests import Request
@@ -302,6 +303,7 @@ async def api_stream(request: Request) -> Response:
     """SSE endpoint. Query params: ``path`` (required, JSONL file
     relative to served root), ``cursor`` (optional starting byte
     offset; default 0)."""
+    require_filesystem_hooks()
     subpath = request.query_params.get("path", "")
     target = _safe_path(subpath)
     if target is None or not target.is_file():

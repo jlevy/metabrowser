@@ -9,6 +9,7 @@ rule, and a ledger generated from the record.
 | --- | --- |
 | [git-history](git-history/README.md) | The server and browser cost shape for continuous, virtualized Git history, including the frozen v0.9.0 structural budgets |
 | [performance-loop](performance-loop/README.md) | How fast Metabrowser becomes usable — loading, responsiveness, visual stability, assets, the scan, and the server underneath, using the reusable [Web Performance Framework](../docs/web-performance-framework.md) |
+| [repository-cache](repository-cache/README.md) | Acquisition strategy and layout for the worktree-free repository store, blobless reads and lazy fetch, concurrent readers and fetches, maintenance, and the lock and rename primitives behind cache publication |
 
 Nothing here runs in CI. An exploration answers a question once; a benchmark defends an
 answer forever, and only the second earns a place in the release gate — which is what

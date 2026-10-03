@@ -1,0 +1,4 @@
+#!/bin/sh
+# A gh that fails every command, first on PATH in cli-github-pull.tryscript.md, so no
+# command there can reach a gh a developer has signed in.
+exit 1

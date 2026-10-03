@@ -339,6 +339,34 @@ async function main() {
   check("an explicit complete search includes fallback providers", fallbackCalls === 2);
   fallbackController.dispose();
 
+  sandbox.MetabrowserNavigationRoute = {
+    displayPath(path) {
+      if (path === "g1-ZG9jcw/g1-bm90ZS50eHQ") {
+        return "docs/note.txt";
+      }
+      return path.replaceAll("%25", "%");
+    },
+  };
+  const gitCatalog = sandbox.MetabrowserKnownFileCatalog.create();
+  gitCatalog.observeNavigation("g1-ZG9jcw/g1-bm90ZS50eHQ", ".txt");
+  gitCatalog.markComplete();
+  const gitProvider = sandbox.MetabrowserSearch.createLocalFileProvider({
+    catalog: gitCatalog,
+    matcher: sandbox.MetabrowserFileFuzzyMatch,
+    maxResults: 8,
+    syncThreshold: 8,
+  });
+  const gitBatch = await gitProvider.search(
+    { match: "fuzzy", query: "note", target: "file" },
+    { requestId: 20 },
+    new AbortController().signal,
+  );
+  equal(
+    "GitPath search matches display names and keeps the wire identity",
+    gitBatch.results.map((result) => [result.path, result.label, result.description]),
+    [["g1-ZG9jcw/g1-bm90ZS50eHQ", "note.txt", "docs"]],
+  );
+
   if (failures.length > 0) {
     process.stderr.write(`${failures.join("\n")}\n`);
     process.exit(1);

@@ -3,18 +3,16 @@
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 from pathlib import Path
 
-import pytest
+from tests.required_tools import require_node
 
 CATALOG_FEED_TEST_JS = Path(__file__).resolve().parent / "dom" / "catalog-feed-behavior.js"
 
 
 def test_catalog_feed_js_assertions_pass() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(CATALOG_FEED_TEST_JS)],
         capture_output=True,
@@ -25,4 +23,4 @@ def test_catalog_feed_js_assertions_pass() -> None:
     assert result.returncode == 0, (
         f"catalog feed assertions failed:\nstdout: {result.stdout!r}\nstderr: {result.stderr!r}"
     )
-    assert json.loads(result.stdout)["verified"], f"unexpected stdout: {result.stdout!r}"
+    assert json.loads(result.stdout)["observed"], f"unexpected stdout: {result.stdout!r}"

@@ -5,12 +5,16 @@ from __future__ import annotations
 import os
 from collections.abc import Generator
 from html.parser import HTMLParser
+from pathlib import Path
 from typing import NamedTuple
 from urllib.parse import urljoin
 
 import pytest
 
 from metabrowser.git.process import _REPO_PINNING_GIT_VARS
+from tests import suite_gates
+from tests.github_pull_fixture import Origin, build_origin, copy_origin
+from tests.required_tools import require_git, require_node
 
 # Test discovery imports the server from several module scopes. Never let an
 # operator's shell or dotenv configuration alter collection or load external plugins.
@@ -29,6 +33,121 @@ for _name in _REPO_PINNING_GIT_VARS:
     os.environ.pop(_name, None)
 
 
+# No test reaches the gh a developer is signed in to. A real ``gh auth git-credential``,
+# ``gh auth status``, or ``gh api`` call reads the keychain and can print or send a
+# token, so every test runs with a failing stand-in first on PATH, which each call
+# looks gh up on. The stand-in logs each call, with the test that made it, to
+# GH_GUARD_LOG, and the terminal summary reports them. A test that needs gh installs
+# its own fake later, which comes first; only the opt-in live smoke test, marked
+# ``live_github`` and run with METABROWSER_LIVE_GITHUB=1, sees the real one.
+_FAKE_GH = """#!/bin/sh
+printf '%s\\t%s\\n' "${PYTEST_CURRENT_TEST:-unknown}" "$*" >> "$METABROWSER_TEST_GH_LOG"
+echo "gh is not available to tests; install a fake gh for this test" >&2
+exit 1
+"""
+GH_GUARD_LOG_ENV = "METABROWSER_TEST_GH_LOG"
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    config.addinivalue_line(
+        "markers", "live_github: an opt-in test that talks to github.com with the real gh"
+    )
+    config.addinivalue_line(
+        "markers",
+        "macos_tier: runs only on macOS, on its extended ACLs or its case-insensitive "
+        "file system; `make test-macos` runs these alone and fails if one skips",
+    )
+    # The hooks that judge a skip against its tier; see tests/suite_gates.py.
+    config.pluginmanager.register(suite_gates)
+
+
+# ── Tests that must not be silently absent ─────────────────────────────────────
+# docs/e2e-testing.md ("Test Tiers") says which tier runs where.
+
+
+@pytest.fixture(scope="session")
+def node_on_path() -> str:
+    """Behind ``needs_node``: without Node the run stops; see ``tests/required_tools.py``.
+
+    Session scope puts it ahead of a module's own fixtures, which may spawn the tool.
+    """
+
+    return require_node()
+
+
+@pytest.fixture(scope="session")
+def git_on_path() -> str:
+    """Behind ``needs_git``: without Git the run stops; see ``tests/required_tools.py``."""
+
+    return require_git()
+
+
+@pytest.fixture(scope="session")
+def _pull_origin_built(  # pyright: ignore[reportUnusedFunction]
+    tmp_path_factory: pytest.TempPathFactory, git_on_path: str
+) -> Origin:
+    """The GitHub stand-in origin, built once. Only ``pull_origin`` reads it."""
+
+    return build_origin(tmp_path_factory.mktemp("github-pull-origin"))
+
+
+@pytest.fixture
+def pull_origin(tmp_path: Path, _pull_origin_built: Origin) -> Origin:
+    """This test's own copy of the GitHub stand-in origin, in its ``tmp_path``.
+
+    A test fetches from the origin and some move its refs, so none is handed the one the
+    session shares.
+    """
+
+    return copy_origin(_pull_origin_built, tmp_path)
+
+
+@pytest.fixture(scope="session")
+def _gh_guard_bin(tmp_path_factory: pytest.TempPathFactory) -> tuple[str, str]:  # pyright: ignore[reportUnusedFunction]
+    directory = tmp_path_factory.mktemp("no-real-gh")
+    gh = directory / "gh"
+    gh.write_text(_FAKE_GH, encoding="utf-8")
+    gh.chmod(0o755)
+    return str(directory), str(directory / "calls.log")
+
+
+@pytest.fixture(autouse=True)
+def _no_real_gh(  # pyright: ignore[reportUnusedFunction]
+    request: pytest.FixtureRequest, _gh_guard_bin: tuple[str, str]
+) -> Generator[None, None, None]:
+    """Put the failing stand-in gh first on PATH, except for the opt-in live smoke test.
+
+    Its own ``MonkeyPatch``, not the ``monkeypatch`` fixture: requesting that here would
+    set it up before every module's own autouse fixtures, so a test's patches would be
+    undone only after those fixtures' teardown had run against them.
+    """
+
+    live = request.node.get_closest_marker("live_github") is not None
+    if live and os.environ.get("METABROWSER_LIVE_GITHUB") == "1":
+        yield
+        return
+    directory, log = _gh_guard_bin
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setenv("PATH", directory + os.pathsep + os.environ.get("PATH", ""))
+        patch.setenv(GH_GUARD_LOG_ENV, log)
+        yield
+
+
+def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter) -> None:
+    """Say which tests would have run gh, so a new one is noticed."""
+
+    basetemp = terminalreporter.config._tmp_path_factory.getbasetemp()  # pyright: ignore[reportAttributeAccessIssue]
+    # pytest also links ``no-real-ghcurrent`` to the numbered directory; read each once.
+    logs = {log.resolve() for log in basetemp.glob("no-real-gh*/calls.log")}
+    calls = [line for log in sorted(logs) for line in log.read_text(encoding="utf-8").splitlines()]
+    if calls:
+        tests = sorted({line.split("\t", 1)[0].rsplit(" ", 1)[0] for line in calls})
+        terminalreporter.write_line(
+            f"gh guard: {len(calls)} gh call(s) reached the failing stand-in, "
+            f"from {len(tests)} test(s): " + ", ".join(tests)
+        )
+
+
 @pytest.fixture(autouse=True)
 def _reset_capabilities() -> Generator[None, None, None]:  # pyright: ignore[reportUnusedFunction]
     """Keep the process capability block isolated between tests."""
@@ -37,6 +156,63 @@ def _reset_capabilities() -> Generator[None, None, None]:  # pyright: ignore[rep
     set_capabilities(DEFAULT_CAPABILITIES)
     yield
     set_capabilities(DEFAULT_CAPABILITIES)
+
+
+@pytest.fixture(autouse=True)
+def _reset_served_mirror() -> Generator[None, None, None]:  # pyright: ignore[reportUnusedFunction]
+    """Never let a mirror one test served reach the next test's application lifespan."""
+    from metabrowser.mirror_refresh import serve_mirror
+
+    serve_mirror(None)
+    yield
+    serve_mirror(None)
+
+
+@pytest.fixture(autouse=True)
+def _reset_served_source() -> Generator[None, None, None]:  # pyright: ignore[reportUnusedFunction]
+    """Give every test a fresh source session, and put back the served root it found.
+
+    The session, its generation counter, the subject opener and the served root are
+    process globals. Rendering the shell, serving a folder or attaching a subject
+    leaves them behind, so a later test would count its generations from where an
+    earlier one stopped and pass in one module order only. With this fixture a test
+    sets a root or attaches a subject and needs no ``try``/``finally`` to undo it.
+
+    Two things stay with the test. A subject it opened is its own to close: the reset
+    only drops the reference. And a reset in a test body is still right where the test
+    models a second server process.
+    """
+    from metabrowser import paths_safe
+    from metabrowser.source import reset_source_session
+
+    root = paths_safe.ROOT_DIR
+    reset_source_session()
+    yield
+    if root != paths_safe.ROOT_DIR:
+        # Fires the root callbacks, so per-root caches do not outlive the root either.
+        paths_safe._set_root_dir(root)  # pyright: ignore[reportPrivateUsage]
+    reset_source_session()
+
+
+@pytest.fixture(autouse=True)
+def _restore_environment() -> Generator[None, None, None]:  # pyright: ignore[reportUnusedFunction]
+    """Put back whatever a test, or the code it ran, changed in ``os.environ``.
+
+    The CLI exports what it resolves: ``--log-level`` and the dotenv chain both write
+    ``os.environ``. ``monkeypatch.delenv`` on a name that is absent records no undo, so
+    a value written that way outlived its test. A debug log level left by a dotenv
+    test then put tracebacks into the stderr of every in-process command that ran
+    after it, which the default module order happened to hide.
+    """
+    # pytest keeps the running test's name in this one and rewrites it for each phase.
+    own = "PYTEST_CURRENT_TEST"
+    before = {name: value for name, value in os.environ.items() if name != own}
+    yield
+    for name in os.environ.keys() - before.keys() - {own}:
+        del os.environ[name]
+    for name, value in before.items():
+        if os.environ.get(name) != value:
+            os.environ[name] = value
 
 
 @pytest.fixture(autouse=True)

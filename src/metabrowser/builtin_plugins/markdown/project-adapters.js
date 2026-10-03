@@ -247,12 +247,17 @@ function decodedPublishedRoute(authoredTarget) {
         segments.pop();
         continue;
       }
-      if (segment.includes("/") || segment.includes("\\") || segment.includes("\0")) {
+      if (segment.includes("/") || segment.includes("\0")) {
         return null;
       }
       segments.push(segment);
     }
-    return segments.map((segment) => segment.replaceAll("%", "%25")).join("/");
+    // The standard resolver's spelling (links.js inventoryName): `%` is `%25` and a
+    // backslash `%5C`, which it admits only in a served folder, whose routes alone reach
+    // here with one.
+    return segments
+      .map((segment) => segment.replaceAll("%", "%25").replaceAll("\\", "%5C"))
+      .join("/");
   } catch (_error) {
     return null;
   }

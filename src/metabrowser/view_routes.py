@@ -16,6 +16,12 @@ from metabrowser.paths_safe import _safe_path
 
 VIEW_ROUTE_PREFIX = "/view/"
 COMMIT_ROUTE_PREFIX = "/commit/"
+PULL_ROUTE_PREFIX = "/pull/"
+# The tabs of a pull-request page after its number: the conversation is the page
+# itself, and `files` is its Files changed, spelled as github.com spells it.
+PULL_ROUTE_TABS = ("", "files")
+# A pull-request number as the GitHub URL reducer admits one.
+_PULL_NUMBER = re.compile(r"^[1-9][0-9]{0,9}$")
 _VIEW_ROUTE_PREFIX_BYTES = VIEW_ROUTE_PREFIX.encode()
 _MALFORMED_ESCAPE = re.compile(rb"%(?![0-9A-Fa-f]{2})")
 # A revision as it may appear in a route: an oid, or a ref name git
@@ -34,7 +40,7 @@ def format_view_href(logical_path: str) -> str:
     spelling already used by the browser codec.
     """
 
-    _validate_logical_segments(logical_path.split("/"))
+    _validate_logical_segments(logical_path.split("/"), native=True)
     return VIEW_ROUTE_PREFIX + "/".join(
         quote_from_bytes(_route_segment_bytes(segment), safe="")
         for segment in logical_path.split("/")
@@ -72,6 +78,38 @@ def format_commit_href(revision: str, inner_path: str = "") -> str:
     )
 
 
+def decode_view_logical_path(raw_path: bytes, *, native: bool = False) -> str | None:
+    """Decode one raw ``/view/`` path without filesystem containment.
+
+    The result is the slash-joined logical identity. A filesystem session still
+    has to pass :func:`decode_safe_view_path`. A Git revision session uses
+    that identity as a ``GitPath`` wire, optionally plus a container inner.
+
+    ``native`` is the served-folder reading, whose POSIX filenames may hold an
+    encoded backslash (see :func:`_validate_logical_segments`). A Git wire and its
+    container inner never do, so they keep refusing it.
+    """
+
+    if not raw_path.startswith(_VIEW_ROUTE_PREFIX_BYTES):
+        return None
+    raw_segments = raw_path[len(_VIEW_ROUTE_PREFIX_BYTES) :].split(b"/")
+    decoded_segments: list[str] = []
+    try:
+        for raw_segment in raw_segments:
+            # A literal backslash is never the canonical spelling (the formatter
+            # writes `%5C`), and a browser would have read it as a separator.
+            if _MALFORMED_ESCAPE.search(raw_segment) or b"\\" in raw_segment:
+                return None
+            decoded = unquote_to_bytes(raw_segment)
+            if b"/" in decoded or b"\0" in decoded:
+                return None
+            decoded_segments.append(_native_route_segment(decoded))
+        _validate_logical_segments(decoded_segments, native=native)
+    except (UnicodeDecodeError, ValueError):
+        return None
+    return "/".join(decoded_segments)
+
+
 def decode_safe_view_path(raw_path: bytes) -> str | None:
     """Decode one raw ``/view/`` path and require served-root containment.
 
@@ -82,23 +120,9 @@ def decode_safe_view_path(raw_path: bytes) -> str | None:
     paths beneath the root are safe and remain valid shell destinations.
     """
 
-    if not raw_path.startswith(_VIEW_ROUTE_PREFIX_BYTES):
+    logical_path = decode_view_logical_path(raw_path, native=True)
+    if logical_path is None:
         return None
-    raw_segments = raw_path[len(_VIEW_ROUTE_PREFIX_BYTES) :].split(b"/")
-    decoded_segments: list[str] = []
-    try:
-        for raw_segment in raw_segments:
-            if _MALFORMED_ESCAPE.search(raw_segment):
-                return None
-            decoded = unquote_to_bytes(raw_segment)
-            if any(forbidden in decoded for forbidden in (b"/", b"\\", b"\0")):
-                return None
-            decoded_segments.append(_native_route_segment(decoded))
-        _validate_logical_segments(decoded_segments)
-    except (UnicodeDecodeError, ValueError):
-        return None
-
-    logical_path = "/".join(decoded_segments)
     return logical_path if _safe_path(logical_path) is not None else None
 
 
@@ -157,8 +181,53 @@ def decode_safe_commit_route(raw_path: bytes) -> tuple[str, str] | None:
     return revision, "/".join(inner_segments)
 
 
-def _validate_logical_segments(segments: list[str]) -> None:
-    """Require the root, a normalized path, or a single trailing folder slash."""
+def format_pull_href(number: int, tab: str = "") -> str:
+    """Return the served pull request's page, ``/pull/<n>`` or ``/pull/<n>/files``."""
+
+    if _PULL_NUMBER.fullmatch(str(number)) is None or tab not in PULL_ROUTE_TABS:
+        raise ValueError("pull route requires a pull-request number and a known tab")
+    return f"{PULL_ROUTE_PREFIX}{number}" + (f"/{tab}" if tab else "")
+
+
+def decode_safe_pull_route(raw_path: bytes) -> tuple[int, str] | None:
+    """Decode ``/pull/<n>[/files]`` into (number, tab), or ``None``.
+
+    The page belongs to the pull request the server serves; which one that is, and
+    whether it is cached, is the pull route's answer, not this gate's. A trailing slash
+    names the same page.
+    """
+
+    if not raw_path.startswith(PULL_ROUTE_PREFIX.encode()):
+        return None
+    segments = raw_path[len(PULL_ROUTE_PREFIX) :].split(b"/")
+    if len(segments) > 1 and segments[-1] == b"":
+        segments.pop()
+    if len(segments) > 2:
+        return None
+    try:
+        number, tab = (
+            segments[0].decode("ascii"),
+            (segments[1].decode("ascii") if len(segments) == 2 else ""),
+        )
+    except UnicodeDecodeError:
+        return None
+    if (
+        _PULL_NUMBER.fullmatch(number) is None
+        or tab not in PULL_ROUTE_TABS
+        or (len(segments) == 2 and not tab)
+    ):
+        return None
+    return int(number), tab
+
+
+def _validate_logical_segments(segments: list[str], *, native: bool = False) -> None:
+    """Require the root, a normalized path, or a single trailing folder slash.
+
+    ``native`` segments are served-tree filenames. POSIX allows a backslash in one and
+    the inventory escapes it as ``%5C``, so the route codec carries it (as ``%5C``) to
+    stay total over the inventory; Windows reads it as a separator, so there it stays
+    refused, as it does in a commit route's Git path and a Git pin's view wire.
+    """
 
     final_index = len(segments) - 1
     for index, segment in enumerate(segments):
@@ -166,7 +235,7 @@ def _validate_logical_segments(segments: list[str]) -> None:
         if (
             (not segment and not trailing_folder_slash)
             or segment in {".", ".."}
-            or "\\" in segment
+            or ("\\" in segment and (not native or os.name == "nt"))
             or "\0" in segment
         ):
             raise ValueError("view path must be normalized and served-root-relative")

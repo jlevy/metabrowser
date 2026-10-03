@@ -1,0 +1,135 @@
+{
+  "environment": {
+    "cpu": "Apple M1 Pro",
+    "git_build_options": [
+      "cpu: arm64",
+      "no commit associated with this build",
+      "sizeof-long: 8",
+      "sizeof-size_t: 8",
+      "shell-path: /bin/sh"
+    ],
+    "git_version": "git version 2.50.1",
+    "logical_cpus": 10,
+    "machine": "arm64",
+    "memory_bytes": 34359738368,
+    "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+    "python": "3.14.7"
+  },
+  "finished_at": "2026-09-17T04:48:23+00:00",
+  "parameters": {
+    "timeout_s": 600.0
+  },
+  "rows": [
+    {
+      "case": "https_lazy_fetch",
+      "error_classes": [],
+      "invocations": 10,
+      "lazy_fetches": 10,
+      "maintenance_spawns": 0,
+      "objects_fetched": 64,
+      "op": "commit_detail",
+      "returncodes_nonzero": 0,
+      "s_per_lazy_fetch": 0.727,
+      "wall_s": 7.27
+    },
+    {
+      "case": "https_lazy_fetch",
+      "error_classes": [],
+      "invocations": 10,
+      "lazy_fetches": 0,
+      "maintenance_spawns": 0,
+      "objects_fetched": 0,
+      "op": "comparison_manifest",
+      "returncodes_nonzero": 0,
+      "s_per_lazy_fetch": null,
+      "wall_s": 0.213
+    },
+    {
+      "case": "https_lazy_fetch",
+      "error_classes": [],
+      "invocations": 10,
+      "lazy_fetches": 10,
+      "maintenance_spawns": 0,
+      "objects_fetched": 64,
+      "op": "deferred_patches",
+      "returncodes_nonzero": 0,
+      "s_per_lazy_fetch": 0.856,
+      "wall_s": 8.559
+    },
+    {
+      "case": "https_lazy_fetch",
+      "error_classes": [],
+      "invocations": 1,
+      "lazy_fetches": 230,
+      "maintenance_spawns": 0,
+      "objects_fetched": 230,
+      "op": "inventory_ls_tree_long",
+      "returncodes_nonzero": 0,
+      "s_per_lazy_fetch": 0.588,
+      "wall_s": 135.279
+    },
+    {
+      "case": "stalled_remote_default",
+      "error_class": "harness_timeout",
+      "lazy_fetches": 1,
+      "op": "cat_file_missing_blob",
+      "returncode": null,
+      "timed_out": true,
+      "wall_s": 20.004
+    },
+    {
+      "case": "stalled_remote_low_speed_3s",
+      "error_class": "promisor_fetch_failed",
+      "lazy_fetches": 1,
+      "op": "cat_file_missing_blob",
+      "returncode": 128,
+      "timed_out": false,
+      "wall_s": 3.128
+    },
+    {
+      "case": "refused_remote",
+      "error_class": "promisor_fetch_failed",
+      "lazy_fetches": 1,
+      "op": "cat_file_missing_blob",
+      "returncode": 128,
+      "timed_out": false,
+      "wall_s": 0.115
+    },
+    {
+      "case": "stalled_remote_no_lazy_env",
+      "error_class": "other",
+      "lazy_fetches": 0,
+      "op": "cat_file_missing_blob",
+      "returncode": 128,
+      "timed_out": false,
+      "wall_s": 0.008
+    },
+    {
+      "case": "stalled_remote_no_lazy_option",
+      "error_class": "other",
+      "lazy_fetches": 0,
+      "op": "cat_file_missing_blob",
+      "returncode": 128,
+      "timed_out": false,
+      "wall_s": 0.008
+    },
+    {
+      "case": "stalled_remote_promisor_false",
+      "error_class": "harness_timeout",
+      "lazy_fetches": 1,
+      "op": "cat_file_missing_blob",
+      "returncode": null,
+      "timed_out": true,
+      "wall_s": 20.004
+    },
+    {
+      "case": "batch_command_missing_frame",
+      "op": "cat_file_batch_command",
+      "returncode": 0,
+      "stdout": "64f56cac4f9d60020a39b9c2f803b1846796cf6d missing\n64f56cac4f9d60020a39b9c2f803b1846796cf6d missing\nd73fa1cdcbd8b1465c151db8924ba58b1dd14e35 commit 529\n"
+    }
+  ],
+  "schema": "metabrowser-repository-cache-measurement-v1",
+  "started_at": "2026-09-17T04:45:00+00:00",
+  "suite": "lazy"
+}

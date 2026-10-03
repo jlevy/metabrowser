@@ -621,7 +621,15 @@ file-header copy affordance, present wherever a filename is.
 Its content is left-aligned reading order — chevron, kind letter, filename in the
 shell’s file-path typography, then the stat pair beside the name — and the whole bar is
 one activation surface, the folder-row rule applied to a section header: clicking
-anywhere toggles, with only the copy control opting out.
+anywhere toggles, with only the copy and View file controls opting out.
+On a page that shows a pinned revision, the bar ends with quiet text actions that open
+the file at a side of the change: **View file**, and **View at parent** or **View at
+base** where the old side exists.
+They stay visible rather than revealing on hover, because they are how a reader leaves
+the diff for the file.
+An action is a link when the page already has the file’s address and a button when
+following it first switches the served pin; both look the same, and the tooltip says
+which commit opens and whether the pin switches.
 A collapsed section keeps the section’s own border as its single line.
 
 ### One Chevron, One Row Contract
@@ -648,7 +656,7 @@ unsettled rather than consistently offset.
 | File tree row, in Files and Recent | Name, age, size, and a container child’s change letter | Icon, chevron, activity spinner, loading skeletons |
 | Git history row | Subject, author, and age | Graph gutter, ref chips |
 | File and folder header | Path, file size, and folder summary | Parent button, badges, copy and print buttons, a summary still loading |
-| Diff file bar | Change letter, path, change stats, and notes | Chevron, copy button |
+| Diff file bar | Change letter, path, change stats, and notes | Chevron, View file controls, copy button |
 
 The row keeps `align-items: center`, and each text child opts in with
 `align-self: baseline`. A box aligned to the baseline would sit its bottom edge on the
@@ -663,6 +671,11 @@ A tree row’s `--ui-row-height` is the name’s line box plus the row’s 2px p
 the row height and the name’s line height together.
 The header’s path fills the header’s content box and centers its own crumbs, so the
 header’s text stays where centering put it at any header height.
+
+The diff file bar’s View file controls are boxes beside the toggle, not text inside it,
+so they are set at the path’s own size: text of one size centers onto one baseline.
+At `--ui-small-font-size` a link sat 0.75px above the path’s baseline and a button
+0.5px, measured in Chromium at a device pixel ratio of 2.
 
 The Git commit summary’s metadata line also sets two sizes and is deliberately not in
 the table.
@@ -1132,10 +1145,18 @@ The Git commit header therefore shows the short revision and copies the full com
 Explicit values use `data-mb-copy="text"`, carry their escaped payload in
 `data-mb-copy-text`, and name the resting action in `data-mb-copy-label`,
 `data-tip-text`, and `aria-label`. Source blocks use the same SDK delegate in `wrap`
-mode. Do not add a component-local clipboard listener or inline handler.
-The shared delegate owns successful, failed, and reset feedback, while the containing
-row owns when an `.icon-btn-reveal` becomes visible.
-Keep the button in the Tab order even while it is visually quiet.
+mode through `wrapWithCopy`. Do not add a component-local clipboard listener or inline
+handler.
+
+Build every such control with the page’s owner stamp: `mb.ownDelegate(element)` on an
+element, or `mb.delegateOwnerAttribute()` spliced into markup (`wrapWithCopy` and
+`partialNoticeHtml` stamp their own buttons).
+The delegate ignores an unstamped control, silently, because a trusted folder’s Markdown
+keeps `data-*` and can write the same attributes; the stamp is a value drawn when the
+page loads, which no document can carry.
+This has been required since plugin SDK 0.7. The shared delegate owns successful,
+failed, and reset feedback, while the containing row owns when an `.icon-btn-reveal`
+becomes visible. Keep the button in the Tab order even while it is visually quiet.
 
 `test_copyable_identifiers_share_the_copy_contract` maintains the registered path,
 diff-file, and Git-revision consumers.

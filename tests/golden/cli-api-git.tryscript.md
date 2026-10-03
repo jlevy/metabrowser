@@ -231,12 +231,16 @@ status: 200
 
 ## Test: an unknown revision is reported honestly
 
+The answer names the miss as `commit_not_found`, which the browser tells apart from a
+request that failed: the repository does not have the commit.
+
 ```console
 $ metab gitroot --api /api/git/commit/0000000000000000000000000000000000000000
 api: /api/git/commit/0000000000000000000000000000000000000000
 status: 404
 {
-  "error": "unknown revision"
+  "error": "unknown revision",
+  "code": "commit_not_found"
 }
 Error: /api/git/commit/0000000000000000000000000000000000000000 returned HTTP 404
 ? 1

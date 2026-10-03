@@ -137,6 +137,8 @@ async function importKpressModule(specifier) {
 // errorFetch returns 502, used for the third contract.
 let useErrorFetch = false;
 
+/** @type {Record<string, Array<(event: unknown) => void>>} */
+const documentListeners = {};
 const sandbox = {
   console: {
     log: (...a) => process.stderr.write(`[sdk:log] ${a.join(" ")}\n`),
@@ -155,6 +157,11 @@ const sandbox = {
     head: fakeParent,
     body: fakeParent,
     createElement: makeElement,
+    // The SDK's delegated click listeners (copy, Load more) are kept for the contract
+    // that clicks them.
+    addEventListener(type, listener) {
+      documentListeners[type] = [...(documentListeners[type] || []), listener];
+    },
     documentElement: {
       getAttribute(name) {
         if (name === "data-theme-mode") {
@@ -224,11 +231,74 @@ vm.runInContext(fs.readFileSync(sdkPath, "utf-8"), sandbox, {
   filename: "plugin-sdk.js",
   importModuleDynamically: importKpressModule,
 });
+// The helpers a view's renderer calls, which the shell loads with the compositor.
+vm.runInContext(
+  fs.readFileSync(path.join(path.dirname(sdkPath), "plugin-sdk-views.js"), "utf-8"),
+  sandbox,
+  { filename: "plugin-sdk-views.js" },
+);
 
 if (!sandbox.metabrowser || typeof sandbox.metabrowser.fetchKpressRender !== "function") {
   fail("plugin-sdk.js did not expose metabrowser.fetchKpressRender");
 }
 const { fetchCompleteText, fetchKpressRender, fetchText, loadKpressAssets } = sandbox.metabrowser;
+
+// ── Contract: Load more runs only a registered action, from the notice's button ──
+
+function check_load_more_runs_only_registered_actions() {
+  const clicks = documentListeners.click || [];
+  if (clicks.length === 0) {
+    return { ok: false, reason: "the SDK installed no delegated click listener" };
+  }
+  const calls = [];
+  // A page global a hostile element might name, and the shell's registered loader.
+  sandbox.open = () => calls.push("open");
+  sandbox.MetabrowserPluginHost.registerLoadMoreAction("loadMoreCurrentText", () =>
+    calls.push("shell"),
+  );
+  const notice = sandbox.metabrowser.partialNoticeHtml({ loaded: "1 KB", total: "2 KB" }, "top");
+  const ownNotice = sandbox.metabrowser.partialNoticeHtml({ loaded: "1", total: "2" }, "top", {
+    action: null,
+  });
+  // The owner mark the notice's button carries, drawn when the SDK loaded.
+  const owner = /data-mb-owner="([0-9a-f]{32})"/.exec(notice)?.[1] ?? null;
+  /**
+   * A click target: a button with the notice's class and `data-mb-load-more`, or any
+   * other element carrying the name. `mark` is its `data-mb-owner`: the notice's own
+   * button has the SDK's, and a copy a trusted folder's Markdown writes has none or a
+   * guess.
+   */
+  const target = (name, isNoticeButton, mark) => ({
+    closest(selector) {
+      return selector === "button.metabrowser-load-more[data-mb-load-more]" && isNoticeButton
+        ? this
+        : null;
+    },
+    getAttribute: (attribute) =>
+      attribute === "data-mb-load-more" ? name : attribute === "data-mb-owner" ? mark : null,
+  });
+  const click = (element) => {
+    for (const listener of clicks) {
+      listener({ target: element });
+    }
+  };
+  click(target("loadMoreCurrentText()", true, owner));
+  click(target("open()", true, owner)); // a real button naming an unregistered global
+  click(target("loadMoreCurrentText()", false, owner)); // an injected element, not a button
+  click(target("open()", false, null)); // an injected element naming a native
+  click(target("alert(document.cookie)", true, owner)); // not a bare name
+  // A document's copy of the notice's button: same class and name, no owner or a guess.
+  click(target("loadMoreCurrentText()", true, null));
+  click(target("loadMoreCurrentText()", true, "0".repeat(32)));
+  const ok =
+    owner !== null &&
+    calls.join(",") === "shell" &&
+    notice.includes('class="btn metabrowser-load-more"') &&
+    notice.includes('data-mb-load-more="loadMoreCurrentText()"') &&
+    !notice.includes("onclick") &&
+    !ownNotice.includes("data-mb-load-more");
+  return { ok, calls };
+}
 
 // ── Contract 1: _loadStylesheet waits for onload ──────────────────────────
 
@@ -671,20 +741,28 @@ async function check_selected_kind_plugin_assets() {
   const first = sandbox.metabrowser.ensureKindAssets("fixture-kind");
   const concurrent = sandbox.metabrowser.ensureKindAssets("fixture-kind");
   await new Promise((resolve) => setTimeout(resolve, 0));
-  const stylesheet = appended.at(-1);
-  if (stylesheet?.tagName !== "LINK" || appended.length !== firstAppend + 1) {
-    return { ok: false, detail: "selected-kind stylesheet was not loaded first" };
+  // The stylesheet and the module's preload go out together: neither is code that
+  // runs, so neither waits for the other. tests/dom/plugin-view-helpers-session.js
+  // holds what the plugin's code does wait for.
+  const [stylesheet, preload] = appended.slice(firstAppend);
+  if (
+    appended.length !== firstAppend + 2 ||
+    stylesheet?.getAttribute("rel") !== "stylesheet" ||
+    preload?.getAttribute("rel") !== "modulepreload" ||
+    preload.getAttribute("href") !== "/plugin-static/fixture/index.js"
+  ) {
+    return { ok: false, detail: "selected-kind stylesheet and module preload were not first" };
   }
   stylesheet.onload();
   await new Promise((resolve) => setTimeout(resolve, 0));
   const script = appended.at(-1);
-  if (script?.tagName !== "SCRIPT" || appended.length !== firstAppend + 2) {
+  if (script?.tagName !== "SCRIPT" || appended.length !== firstAppend + 3) {
     return { ok: false, detail: "selected-kind classic script was not loaded after styles" };
   }
   script.onload();
   await Promise.all([first, concurrent]);
   await sandbox.metabrowser.ensureKindAssets("fixture-kind");
-  if (appended.length !== firstAppend + 2) {
+  if (appended.length !== firstAppend + 3) {
     return { ok: false, detail: "selected-kind assets were loaded more than once" };
   }
   return { ok: true };
@@ -761,9 +839,10 @@ async function check_same_kind_plugins_follow_manifest_order() {
   const selectedKindAssets = await check_selected_kind_plugin_assets();
   const cachedPluginStylesheet = await check_cached_plugin_stylesheet_settles_without_onload();
   const sameKindOrder = await check_same_kind_plugins_follow_manifest_order();
+  const loadMore = check_load_more_runs_only_registered_actions();
 
   process.stdout.write(
-    `${JSON.stringify({ stylesheet, dedup, errorProp, assetRetry, cachedStylesheet, assetFailureFallback, transformedSource, fileCatalog, completeText, pathText, selectedKindAssets, cachedPluginStylesheet, sameKindOrder })}\n`,
+    `${JSON.stringify({ stylesheet, dedup, errorProp, assetRetry, cachedStylesheet, assetFailureFallback, transformedSource, fileCatalog, completeText, pathText, selectedKindAssets, cachedPluginStylesheet, sameKindOrder, loadMore })}\n`,
   );
 
   if (
@@ -779,7 +858,8 @@ async function check_same_kind_plugins_follow_manifest_order() {
     !pathText.ok ||
     !selectedKindAssets.ok ||
     !cachedPluginStylesheet.ok ||
-    !sameKindOrder.ok
+    !sameKindOrder.ok ||
+    !loadMore.ok
   ) {
     process.exit(1);
   }

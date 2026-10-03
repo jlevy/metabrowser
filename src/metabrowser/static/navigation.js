@@ -212,6 +212,11 @@
       return null;
     }
     const encodedPath = pathname.slice(ROUTE_PREFIX.length);
+    // A literal backslash is never the canonical spelling (`href` writes `%5C`), and
+    // a browser reads one in an http(s) path as a separator.
+    if (encodedPath.includes("\\")) {
+      return null;
+    }
     const rawSegments = encodedPath.split("/");
     if (rawSegments.some((segment, index) => !segment && index !== rawSegments.length - 1)) {
       return null;
@@ -258,11 +263,33 @@
     return encodePath(path).replace(/%25([0-9A-F]{2})/g, "%$1");
   }
 
-  /** Display literal percent signs; undecodable platform bytes stay visibly escaped.
+  /** Display a path identity. GitPath wires decode to UTF-8 names; inventory
+   * identities show literal percent signs. Undecodable platform bytes stay escaped.
+   * Git decoding requires an explicit git_revision source, not a g1- filename.
    * @param {string} path
+   * @param {string=} sourceKind
    */
-  function displayPath(path) {
-    return path.replaceAll("%25", "%");
+  function displayPath(path, sourceKind) {
+    const kind =
+      sourceKind ||
+      (typeof window !== "undefined" && window.METABROWSER_SOURCE_KIND === "git_revision"
+        ? "git_revision"
+        : "filesystem");
+    if (kind === "git_revision") {
+      // git-path.js, which the server writes into a pin's shell ahead of this script.
+      // app.js stops a pin's page that lacks it before any name is shown.
+      const gitDisplay = window.MetabrowserGitPath?.display(path) ?? null;
+      if (gitDisplay !== null) {
+        return gitDisplay;
+      }
+    }
+    // A POSIX backslash is the one other escape a readable name carries: the
+    // inventory spells it `%5C` because the canonical grammar refuses it. Windows
+    // names cannot hold one, and there `%5C` can be the low half of a code unit.
+    if (window.METABROWSER_PATH_ENCODING === "utf16") {
+      return path.replaceAll("%25", "%");
+    }
+    return path.replace(/%(25|5C)/g, (_match, hex) => (hex === "25" ? "%" : "\\"));
   }
 
   /** Convert URL bytes into the provider's lossless identity, including POSIX names
@@ -289,7 +316,7 @@
       }
     }
     try {
-      return decodeURIComponent(segment).replaceAll("%", "%25");
+      return escapeDecoded(decodeURIComponent(segment));
     } catch (_error) {
       let result = "";
       for (let index = 0; index < segment.length; ) {
@@ -310,7 +337,7 @@
             break;
           }
           try {
-            result += decodeURIComponent(part).replaceAll("%", "%25");
+            result += escapeDecoded(decodeURIComponent(part));
             index += part.length;
             decoded = true;
             break;
@@ -325,6 +352,21 @@
       }
       return result;
     }
+  }
+
+  /** Apply the inventory's escapes to decoded URL text: `%` is `%25`, and in a POSIX
+   * served folder a backslash is `%5C`, as `canonical_inventory_name` spells them. A Git
+   * pin's wires and container inners never hold one, so there it stays and `parse`
+   * refuses it.
+   * @param {string} decoded
+   * @returns {string}
+   */
+  function escapeDecoded(decoded) {
+    const escaped = decoded.replaceAll("%", "%25");
+    return window.METABROWSER_PATH_ENCODING === "utf16" ||
+      window.METABROWSER_SOURCE_KIND === "git_revision"
+      ? escaped
+      : escaped.replaceAll("\\", "%5C");
   }
 
   /** @param {string} value @param {string} prefix */

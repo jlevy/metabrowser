@@ -7,6 +7,7 @@ import subprocess
 import tarfile
 import zipfile
 from pathlib import Path
+from textwrap import dedent
 
 from devtools.public_hygiene import find_hygiene_findings
 
@@ -35,6 +36,115 @@ KEYBOARD_STATIC_ASSETS = {
     "overlay-layer.js",
     "tree-keyboard-navigation.js",
 }
+ISOLATED_PYTHON_ENV_VARS = ("PYTHONHOME", "PYTHONOPTIMIZE", "PYTHONPATH")
+
+CONTRACT_SMOKE_SCRIPT = dedent(
+    """
+    import sys
+
+    import metabrowser
+
+
+    def _require(condition, message):
+        if not condition:
+            raise RuntimeError(message)
+
+
+    _require(
+        all(name not in sys.modules for name in ("frontmatter_format", "jsonschema", "softschema")),
+        "importing metabrowser loaded heavyweight schema dependencies",
+    )
+
+    from metabrowser.cache.contracts import cache_contract_registry
+    from metabrowser.plugin_loader.artifact_inventory import validate_installed_evidence
+
+    contracts = validate_installed_evidence(cache_contract_registry())
+    _require(contracts, "installed contract registry has no artifact contracts")
+    _require(metabrowser.__version__, "installed distribution has no version")
+    print(metabrowser.__version__)
+    """
+).strip()
+
+WHEEL_SMOKE_SCRIPT = dedent(
+    """
+    from importlib.resources import files
+
+    import metabrowser
+    from metabrowser.file_type_registry import load_file_type_registry
+    from metabrowser.kpress_adapter import render_kpress_view
+    from metabrowser.plugin_loader.discovery import discover_plugins
+    from metabrowser.cache.contracts import check_packaged_schemas
+
+
+    def _require(condition, message):
+        if not condition:
+            raise RuntimeError(message)
+
+
+    registry = load_file_type_registry()
+    plugins = discover_plugins()
+    names = {plugin.name for plugin in plugins.plugins}
+    required = {
+        "agent-log",
+        "binary",
+        "diff",
+        "folder",
+        "github",
+        "html",
+        "image",
+        "markdown",
+        "structured",
+        "text",
+        "unknown-jsonl",
+    }
+    rendered = render_kpress_view(
+        source_text="# Wheel smoke\\n",
+        source_path="smoke.md",
+        kind="markdown",
+        view="rendered",
+        ext=".md",
+        mtime_hash="wheel-smoke",
+        size=14,
+    )
+    _require(metabrowser.__version__, "installed wheel has no version")
+    _require(registry.family("javascript") is not None, "installed file-type registry is incomplete")
+    package = files("metabrowser")
+    required_assets = (
+        "static/app.js",
+        "static/document-width.js",
+        "static/keyboard-help.js",
+        "static/keyboard-shortcuts.js",
+        "static/overlay-layer.js",
+        "static/plugin-sdk-views.js",
+        "static/tree-keyboard-navigation.js",
+        "static/view-composition.js",
+        "builtin_plugins/folder/overview.js",
+        "builtin_plugins/diff/diff-view.js",
+        "builtin_plugins/image/index.js",
+        "builtin_plugins/image/styles.css",
+        "builtin_plugins/html/index.js",
+        "builtin_plugins/html/styles.css",
+        "builtin_plugins/html/detect.py",
+        "builtin_plugins/markdown/dom-traversal.js",
+        "builtin_plugins/markdown/markdown-worker.js",
+        "builtin_plugins/markdown/markdown-worker-client.js",
+        "builtin_plugins/markdown/markdown-worker-operations.js",
+        "builtin_plugins/markdown/reconciliation-coordinator.js",
+        "data/file-diff-format/file-diff.schema.json",
+        "builtin_plugins/folder/file_type_summary.css",
+    )
+    missing_assets = [asset for asset in required_assets if not package.joinpath(asset).is_file()]
+    _require(not missing_assets, f"installed wheel is missing assets: {missing_assets}")
+    _require(required == names, f"installed plugin set differs: expected {sorted(required)}, found {sorted(names)}")
+    _require(not plugins.errors, f"installed plugin discovery failed: {plugins.errors}")
+    _require("Wheel smoke" in rendered["html"], "installed KPress renderer returned unexpected HTML")
+    # The permissive config contract is outside the enforced registry the contract
+    # smoke covers, so every packaged cache schema is compiled against its model here.
+    schema_drift = check_packaged_schemas()
+    _require(not schema_drift, f"installed cache schemas drifted from their models: {schema_drift}")
+    print(metabrowser.__version__)
+    """
+).strip()
 
 
 def _single_wheel() -> Path:
@@ -167,74 +277,55 @@ def _inspect_sdist(sdist: Path) -> None:
                 _check_text_member(member.name, extracted.read())
 
 
-def _smoke_install(wheel: Path) -> None:
+def _isolated_install_environment() -> dict[str, str]:
     env = os.environ.copy()
+    for name in ISOLATED_PYTHON_ENV_VARS:
+        env.pop(name, None)
     env.setdefault("UV_EXCLUDE_NEWER", "14 days")
-    uv_command = ["uv", "--config-file", str(ROOT / "uv.toml")]
+    return env
+
+
+def _run_installed_python_smoke(artifact: Path, script: str) -> str:
     python_command = [
-        *uv_command,
+        "uv",
+        "--config-file",
+        str(ROOT / "uv.toml"),
         "run",
         "--isolated",
         "--no-project",
         "--with",
-        str(wheel),
+        str(artifact),
         "python",
+        "-I",
         "-c",
-        (
-            "from importlib.resources import files; "
-            "import metabrowser; "
-            "from metabrowser.file_type_registry import load_file_type_registry; "
-            "from metabrowser.kpress_adapter import render_kpress_view; "
-            "from metabrowser.plugin_loader.discovery import discover_plugins; "
-            "registry = load_file_type_registry(); "
-            "plugins = discover_plugins(); "
-            "names = {plugin.name for plugin in plugins.plugins}; "
-            "required = {'agent-log', 'binary', 'diff', 'folder', 'html', 'image', "
-            "'markdown', 'structured', 'text', 'unknown-jsonl'}; "
-            "rendered = render_kpress_view(source_text='# Wheel smoke\\n', "
-            "source_path='smoke.md', kind='markdown', view='rendered', ext='.md', "
-            "mtime_hash='wheel-smoke', size=14); "
-            "assert metabrowser.__version__; "
-            "assert registry.family('javascript') is not None; "
-            "static = files('metabrowser').joinpath('static'); "
-            "assets = ('app.js', 'document-width.js', 'keyboard-help.js', 'keyboard-shortcuts.js', "
-            "'overlay-layer.js', 'tree-keyboard-navigation.js', 'view-composition.js'); "
-            "assert all(static.joinpath(asset).is_file() for asset in assets); "
-            "assert files('metabrowser').joinpath('builtin_plugins/folder/overview.js').is_file(); "
-            "assert files('metabrowser').joinpath('builtin_plugins/diff/diff-view.js').is_file(); "
-            "assert files('metabrowser').joinpath('builtin_plugins/image/index.js').is_file(); "
-            "assert files('metabrowser').joinpath('builtin_plugins/image/styles.css').is_file(); "
-            "assert files('metabrowser').joinpath('builtin_plugins/html/index.js').is_file(); "
-            "assert files('metabrowser').joinpath('builtin_plugins/html/styles.css').is_file(); "
-            "assert files('metabrowser').joinpath('builtin_plugins/html/detect.py').is_file(); "
-            "assert files('metabrowser').joinpath("
-            "'builtin_plugins/markdown/dom-traversal.js').is_file(); "
-            "assert files('metabrowser').joinpath("
-            "'builtin_plugins/markdown/markdown-worker.js').is_file(); "
-            "assert files('metabrowser').joinpath("
-            "'builtin_plugins/markdown/markdown-worker-client.js').is_file(); "
-            "assert files('metabrowser').joinpath("
-            "'builtin_plugins/markdown/markdown-worker-operations.js').is_file(); "
-            "assert files('metabrowser').joinpath("
-            "'builtin_plugins/markdown/reconciliation-coordinator.js').is_file(); "
-            "assert files('metabrowser').joinpath("
-            "'data/file-diff-format/file-diff.schema.json').is_file(); "
-            "assert files('metabrowser').joinpath('builtin_plugins/folder/file_type_summary.css').is_file(); "
-            "assert required == names; "
-            "assert not plugins.errors; "
-            "assert 'Wheel smoke' in rendered['html']; "
-            "print(metabrowser.__version__)"
-        ),
+        script,
     ]
-    python_result = subprocess.run(
-        python_command,
-        cwd=ROOT,
-        env=env,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    expected_version = python_result.stdout.strip()
+    try:
+        result = subprocess.run(
+            python_command,
+            cwd=ROOT,
+            env=_isolated_install_environment(),
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        detail = exc.stderr if isinstance(exc.stderr, str) and exc.stderr.strip() else exc.stdout
+        if not isinstance(detail, str) or not detail.strip():
+            detail = str(exc)
+        raise RuntimeError(f"installed {artifact.name} smoke failed: {detail.strip()}") from exc
+    return result.stdout.strip()
+
+
+def _smoke_installed_contracts(artifact: Path) -> None:
+    """Run every installed contract's packaged corpus evidence against one built artifact."""
+    _run_installed_python_smoke(artifact, CONTRACT_SMOKE_SCRIPT)
+
+
+def _smoke_install(wheel: Path) -> None:
+    env = _isolated_install_environment()
+    uv_command = ["uv", "--config-file", str(ROOT / "uv.toml")]
+    expected_version = _run_installed_python_smoke(wheel, WHEEL_SMOKE_SCRIPT)
 
     for command in ("metab", "metabrowser"):
         cli_command = [
@@ -294,6 +385,8 @@ def main() -> int:
     sdist = _single_sdist()
     _inspect_wheel(wheel)
     _inspect_sdist(sdist)
+    _smoke_installed_contracts(wheel)
+    _smoke_installed_contracts(sdist)
     _smoke_install(wheel)
     print(f"Distribution checks passed: {wheel.name}, {sdist.name}")
     return 0

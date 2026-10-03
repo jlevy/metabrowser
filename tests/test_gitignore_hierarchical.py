@@ -14,7 +14,6 @@ from __future__ import annotations
 import asyncio
 import os
 import random
-import shutil
 import subprocess
 import threading
 from pathlib import Path
@@ -28,6 +27,7 @@ from metabrowser.ignore_filter import HierarchicalGitIgnore
 from metabrowser.inventory_engine.contract import DirectoryProjection, DirectoryQuery, ReadRequest
 from metabrowser.tree import build_gitignore_check
 from tests.inventory_harness import inventory_harness
+from tests.required_tools import needs_git
 
 
 def _write(path: Path, content: str = "x\n") -> None:
@@ -162,7 +162,7 @@ def _init_fixture_repository(root: Path) -> None:
     )
 
 
-@pytest.mark.skipif(shutil.which("git") is None, reason="git not available")
+@needs_git
 def test_verdicts_match_git_check_ignore(tmp_path: Path) -> None:
     rng = random.Random(0x6A7)
     root = tmp_path / "repo"

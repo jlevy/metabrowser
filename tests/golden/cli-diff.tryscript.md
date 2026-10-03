@@ -105,7 +105,7 @@ The full ChangeSetDocument for the same comparison, exactly what the diff plugin
 comparison hook serves and the browser model validates.
 
 ```console
-$ metab repo --diff 'HEAD^..HEAD' --format json | head -24
+$ metab repo --diff 'HEAD^..HEAD' --format json
 {
   "manifest": {
     "files": [
@@ -130,6 +130,165 @@ $ metab repo --diff 'HEAD^..HEAD' --format json | head -24
             "kind": "git_object",
             "oid": "b8595995dba30b1cf7ee90f336b3e3356ee99e1b"
           },
+          "entry_type": "file",
+          "mode": "100644",
+          "path": "a.py"
+        }
+      },
+      {
+        "additions": 1,
+        "availability": "ready",
+        "binary": false,
+        "deletions": 0,
+        "id": "f2",
+        "kind": "renamed",
+        "new": {
+          "content": {
+            "kind": "git_object",
+            "oid": "2c1854573a40224de599dd57077637eb5f882072"
+          },
+          "entry_type": "file",
+          "mode": "100644",
+          "path": "h/u.py"
+        },
+        "old": {
+          "content": {
+            "kind": "git_object",
+            "oid": "7d4290a117a4ddcc11daae7ea675841033830c8f"
+          },
+          "entry_type": "file",
+          "mode": "100644",
+          "path": "u.py"
+        },
+        "similarity": 50
+      },
+      {
+        "additions": 1,
+        "availability": "ready",
+        "binary": false,
+        "deletions": 0,
+        "id": "f3",
+        "kind": "added",
+        "new": {
+          "content": {
+            "kind": "git_object",
+            "oid": "ce013625030ba8dba906f756967f9e9ca394464a"
+          },
+          "entry_type": "file",
+          "mode": "100644",
+          "path": "new.md"
+        }
+      }
+    ],
+    "totals": {
+      "additions": 3,
+      "deletions": 1,
+      "exact": true,
+      "files": 3
+    },
+    "truncated": false
+  },
+  "patches": {
+    "f1": {
+      "file_id": "f1",
+      "hunks": [
+        {
+          "lines": [
+            {
+              "no_newline": false,
+              "op": "context",
+              "text": "def f():"
+            },
+            {
+              "no_newline": false,
+              "op": "del",
+              "text": "    return 1"
+            },
+            {
+              "no_newline": false,
+              "op": "add",
+              "text": "    return 2"
+            }
+          ],
+          "new_count": 2,
+          "new_start": 1,
+          "old_count": 2,
+          "old_start": 1
+        }
+      ],
+      "truncated": false
+    },
+    "f2": {
+      "file_id": "f2",
+      "hunks": [
+        {
+          "lines": [
+            {
+              "no_newline": false,
+              "op": "context",
+              "text": "x = 1"
+            },
+            {
+              "no_newline": false,
+              "op": "add",
+              "text": "y = 2"
+            }
+          ],
+          "new_count": 2,
+          "new_start": 1,
+          "old_count": 1,
+          "old_start": 1
+        }
+      ],
+      "truncated": false
+    },
+    "f3": {
+      "file_id": "f3",
+      "hunks": [
+        {
+          "lines": [
+            {
+              "no_newline": false,
+              "op": "add",
+              "text": "hello"
+            }
+          ],
+          "new_count": 1,
+          "new_start": 1,
+          "old_count": 0,
+          "old_start": 0
+        }
+      ],
+      "truncated": false
+    }
+  },
+  "resolved": {
+    "base_policy": "direct",
+    "comparison_id": "git:10e5320d75eeeaf3",
+    "kind": "content",
+    "left": {
+      "id": "ac107eaa9009cb6012a76154510bfdd9927b5fc2",
+      "kind": "commit",
+      "symbolic": "HEAD^"
+    },
+    "options": {
+      "context": 3,
+      "rename_detection": true,
+      "rename_similarity": 50
+    },
+    "right": {
+      "id": "cde4cdc5bf066da46253dae484db273f8d35cb70",
+      "kind": "commit",
+      "symbolic": "HEAD"
+    },
+    "source": {
+      "name": "git"
+    },
+    "warnings": []
+  },
+  "schema": "file-diff-v1",
+  "schema_version": 1
+}
 ? 0
 ```
 

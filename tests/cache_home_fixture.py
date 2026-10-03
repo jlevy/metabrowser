@@ -1,0 +1,332 @@
+"""Reproducible application homes for the cache read routes and their golden transcript.
+
+Every home is written by the production writers: ``ensure_home`` and ``migrate_layout``
+create the skeleton and layout, stores and sources are staged and published with
+``publish_entry`` under the locks that own them, and aliases are written under the
+source-alias lock and the store lock. Addresses, versions, and timestamps are fixed, so
+identities, slugs, and records are identical on every machine.
+
+Run as a script, it builds every home the golden uses below one directory::
+
+    cache_home_fixture.py <directory>
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Final
+
+from metabrowser.cache.atomic import publish_entry, write_record_atomic
+from metabrowser.cache.identity import (
+    GitTransport,
+    ObjectFormat,
+    cache_slug,
+    repository_store_id,
+    source_identity,
+    store_key,
+)
+from metabrowser.cache.layout import migrate_layout
+from metabrowser.cache.locks import (
+    repository_store_lock,
+    source_alias_lock,
+    staging_entry_lock,
+)
+from metabrowser.cache.paths import (
+    LAYOUT_RECORD,
+    SOURCES,
+    STAGING,
+    source_directory,
+    source_record,
+    staging_entry,
+    store_directory,
+    store_record,
+)
+from metabrowser.cache.records import (
+    CACHE_LAYOUT_CONTRACT_ID,
+    REPOSITORY_SOURCE_CONTRACT_ID,
+    REPOSITORY_SOURCE_STATE_CONTRACT_ID,
+    REPOSITORY_STORE_ALIAS_CONTRACT_ID,
+    REPOSITORY_STORE_CONTRACT_ID,
+    REPOSITORY_STORE_STATE_CONTRACT_ID,
+    CacheLayout,
+    RepositorySource,
+    RepositorySourceState,
+    RepositoryStore,
+    RepositoryStoreAlias,
+    RepositoryStoreState,
+    StoreAcquisition,
+    StoreOperation,
+)
+from metabrowser.home import ensure_home, ensure_private_directory, write_private_file_atomic
+
+FIXTURE_VERSION: Final = "0.11.0"
+CREATED_AT: Final = "2026-09-17T12:00:00Z"
+FETCHED_AT: Final = "2026-09-17T12:00:05Z"
+ALIASED_AT: Final = "2026-09-17T12:00:06Z"
+REPOINTED_AT: Final = "2026-09-17T12:10:00Z"
+OPENED_AT: Final = "2026-09-17T12:30:00Z"
+FLASK_REVISION: Final = "5f4c1a2e8b0d9c7e6a5f4b3c2d1e0f9a8b7c6d5e"
+LEFTOVER_STAGING_ENTRY: Final = "acquire-interrupted"
+
+
+@dataclass(frozen=True, slots=True)
+class FixtureSource:
+    """A source's address and the identities derived from it."""
+
+    transport: GitTransport
+    address: str
+
+    @property
+    def id(self) -> str:
+        return source_identity(self.transport, self.address)
+
+    @property
+    def slug(self) -> str:
+        return cache_slug(self.transport, self.address, self.id, slug_owner=lambda _slug: None)
+
+    def store_key(self, object_format: ObjectFormat = "sha1") -> str:
+        return store_key(repository_store_id(self.id, object_format))
+
+
+FLASK_HTTPS: Final = FixtureSource("https", "https://github.com/pallets/flask")
+FLASK_SSH: Final = FixtureSource("ssh", "git@github.com:pallets/flask.git")
+CLICK: Final = FixtureSource("https", "https://github.com/pallets/click")
+WERKZEUG: Final = FixtureSource("https", "https://github.com/pallets/werkzeug")
+JINJA: Final = FixtureSource("https", "https://github.com/pallets/jinja")
+MARKUPSAFE: Final = FixtureSource("https", "https://github.com/pallets/markupsafe")
+ITSDANGEROUS: Final = FixtureSource("https", "https://github.com/pallets/itsdangerous")
+# Both flask spellings share the store the HTTPS source acquired.
+FLASK_STORE_KEY: Final = FLASK_HTTPS.store_key()
+# An acquisition interrupted after publishing its store and before its alias.
+ORPHAN_STORE_KEY: Final = CLICK.store_key()
+# A store nothing publishes, for an alias that dangles.
+MISSING_STORE_KEY: Final = WERKZEUG.store_key()
+# A name no slug spells, so the routes count it and never repeat it.
+UNRECOGNIZED_ENTRY: Final = "Private Notes"
+# Shaped like a token and nothing more. A record that fails validation can hold one, so
+# the report of the failure must not quote the record.
+RECORD_SECRET: Final = "ghp-examplesecrettokenvalue"
+
+
+def _stage_and_publish_store(home: Path, key: str, *, with_revision: bool) -> None:
+    entry = f"store-{key[:16]}"
+    staged = staging_entry(entry)
+    with staging_entry_lock(home, entry) as liveness:
+        ensure_private_directory(home, f"{staged}/repository.git/objects/pack")
+        # A physical Git file the routes must never expose.
+        write_private_file_atomic(
+            home, f"{staged}/repository.git/objects/pack/pack-{key[:40]}.pack", b"PACK"
+        )
+        write_record_atomic(
+            home,
+            f"{staged}/store.yml",
+            RepositoryStore(
+                id=f"sha256:{key}",
+                created_at=CREATED_AT,
+                acquisition=StoreAcquisition(git_version="2.50.1", object_format="sha1"),
+            ),
+            REPOSITORY_STORE_CONTRACT_ID,
+        )
+        write_record_atomic(
+            home,
+            f"{staged}/state.yml",
+            RepositoryStoreState(
+                default_remote_ref="refs/remotes/origin/trunk" if with_revision else None,
+                default_revision=FLASK_REVISION if with_revision else None,
+                last_fetch_at=FETCHED_AT,
+                last_operation=StoreOperation(kind="acquire", outcome="succeeded", at=FETCHED_AT),
+            ),
+            REPOSITORY_STORE_STATE_CONTRACT_ID,
+        )
+        with repository_store_lock(home, key) as store_lock:
+            publish_entry(home, staged, store_directory(key), owner=store_lock)
+        liveness.remove_lock_file()
+
+
+def _stage_and_publish_source(home: Path, source: FixtureSource, *, opened: bool) -> None:
+    entry = f"source-{source.id.removeprefix('sha256:')[:16]}"
+    staged = staging_entry(entry)
+    with staging_entry_lock(home, entry) as liveness:
+        ensure_private_directory(home, staged)
+        write_record_atomic(
+            home,
+            f"{staged}/source.yml",
+            RepositorySource(
+                id=source.id,
+                slug=source.slug,
+                display_url=source.address,
+                clone_url=source.address,
+                transport=source.transport,
+                created_at=CREATED_AT,
+            ),
+            REPOSITORY_SOURCE_CONTRACT_ID,
+        )
+        if opened:
+            write_record_atomic(
+                home,
+                f"{staged}/state.yml",
+                RepositorySourceState(last_opened_at=OPENED_AT),
+                REPOSITORY_SOURCE_STATE_CONTRACT_ID,
+            )
+        with source_alias_lock(home, source.slug) as alias_lock:
+            publish_entry(home, staged, source_directory(source.slug), owner=alias_lock)
+        liveness.remove_lock_file()
+
+
+def _attach(home: Path, source: FixtureSource, key: str, *, generation: int, at: str) -> None:
+    """Write the alias, the visibility commit, under the alias lock and the store lock."""
+
+    with source_alias_lock(home, source.slug), repository_store_lock(home, key):
+        write_record_atomic(
+            home,
+            source_record(source.slug, "store-alias.yml"),
+            RepositoryStoreAlias(
+                source_id=source.id,
+                store_id=f"sha256:{key}",
+                generation=generation,
+                updated_at=at,
+            ),
+            REPOSITORY_STORE_ALIAS_CONTRACT_ID,
+            replace=generation > 1,
+        )
+
+
+def build_empty_home(home: Path) -> None:
+    """A home with its skeleton, layout, and config, and nothing cached."""
+
+    ensure_home(home)
+    migrate_layout(home, version=FIXTURE_VERSION)
+
+
+def build_populated_home(home: Path) -> None:
+    """Publish and alias entries, and leave one abandoned staging entry.
+
+    - flask over HTTPS and over SSH are two sources aliasing one store; the SSH alias
+      was repointed once, so it is at generation 2.
+    - click's acquisition published its store and its source but not its alias, so the
+      source is unattached and the store is unreferenced.
+    - an interrupted acquisition left one staging entry for the next sweep.
+    """
+
+    build_empty_home(home)
+    _stage_and_publish_store(home, FLASK_STORE_KEY, with_revision=True)
+    _stage_and_publish_source(home, FLASK_HTTPS, opened=True)
+    _attach(home, FLASK_HTTPS, FLASK_STORE_KEY, generation=1, at=ALIASED_AT)
+    _stage_and_publish_source(home, FLASK_SSH, opened=False)
+    _attach(home, FLASK_SSH, FLASK_STORE_KEY, generation=1, at=ALIASED_AT)
+    _attach(home, FLASK_SSH, FLASK_STORE_KEY, generation=2, at=REPOINTED_AT)
+
+    _stage_and_publish_store(home, ORPHAN_STORE_KEY, with_revision=False)
+    _stage_and_publish_source(home, CLICK, opened=False)
+
+    ensure_private_directory(home, f"{staging_entry(LEFTOVER_STAGING_ENTRY)}/repository.git")
+
+
+def build_damaged_home(home: Path) -> None:
+    """The populated home with one entry damaged in each way a read can find.
+
+    Every source is published by the production writers first and damaged afterwards,
+    as a crash, a stray edit, or a ``chmod`` would leave it:
+
+    - click: ``source.yml`` fails validation, and holds a credential;
+    - flask over HTTPS: ``state.yml`` is not a state record;
+    - flask over SSH: ``store-alias.yml`` is not an alias record;
+    - itsdangerous: the entry's directory is readable by its group;
+    - jinja: the alias carries another source's identity;
+    - markupsafe: ``source.yml`` is readable by its group;
+    - werkzeug: the alias names a store that is not there;
+    - a directory in ``sources/`` whose name is not a slug;
+    - click's store has lost its ``state.yml``.
+    """
+
+    build_populated_home(home)
+    for source in (ITSDANGEROUS, JINJA, MARKUPSAFE, WERKZEUG):
+        _stage_and_publish_source(home, source, opened=False)
+    _attach(home, WERKZEUG, MISSING_STORE_KEY, generation=1, at=ALIASED_AT)
+    with source_alias_lock(home, JINJA.slug), repository_store_lock(home, FLASK_STORE_KEY):
+        write_record_atomic(
+            home,
+            source_record(JINJA.slug, "store-alias.yml"),
+            RepositoryStoreAlias(
+                source_id=FLASK_HTTPS.id,
+                store_id=f"sha256:{FLASK_STORE_KEY}",
+                generation=1,
+                updated_at=ALIASED_AT,
+            ),
+            REPOSITORY_STORE_ALIAS_CONTRACT_ID,
+        )
+    write_private_file_atomic(
+        home,
+        source_record(CLICK.slug, "source.yml"),
+        (
+            "softschema:\n"
+            f"  contract: {REPOSITORY_SOURCE_CONTRACT_ID}\n"
+            "  envelope: source\n"
+            "  status: enforced\n"
+            "source:\n"
+            f"  id: {CLICK.id}\n"
+            f"  slug: {CLICK.slug}\n"
+            f"  display_url: https://user:{RECORD_SECRET}@github.com/pallets/click\n"
+            f"  clone_url: https://user:{RECORD_SECRET}@github.com/pallets/click\n"
+            "  transport: https\n"
+            f"  created_at: {CREATED_AT}\n"
+        ).encode(),
+    )
+    write_private_file_atomic(
+        home, source_record(FLASK_HTTPS.slug, "state.yml"), b"state: nonsense\n"
+    )
+    write_private_file_atomic(
+        home, source_record(FLASK_SSH.slug, "store-alias.yml"), b"alias: nonsense\n"
+    )
+    ensure_private_directory(home, f"{SOURCES}/{UNRECOGNIZED_ENTRY}")
+    (home / store_record(ORPHAN_STORE_KEY, "state.yml")).unlink()
+    os.chmod(home / source_record(MARKUPSAFE.slug, "source.yml"), 0o640)
+    os.chmod(home / source_directory(ITSDANGEROUS.slug), 0o750)
+
+
+def build_shared_directories_home(home: Path) -> None:
+    """A private home in which two fixed cache directories let other users in."""
+
+    build_empty_home(home)
+    for directory in (SOURCES, STAGING):
+        os.chmod(home / directory, 0o755)
+
+
+def build_future_home(home: Path) -> None:
+    """A home whose layout a newer release wrote."""
+
+    ensure_home(home)
+    write_record_atomic(
+        home,
+        LAYOUT_RECORD,
+        CacheLayout(format="f02", created_by="0.12.0"),
+        CACHE_LAYOUT_CONTRACT_ID,
+    )
+
+
+def build_shared_home(home: Path) -> None:
+    """A valid home whose own mode lets other users read it."""
+
+    build_empty_home(home)
+    os.chmod(home, 0o755)
+
+
+def build_all(directory: Path) -> None:
+    """Build every home the golden transcript reads, plus the directory it serves."""
+
+    (directory / "root").mkdir(exist_ok=True)
+    build_empty_home(directory / "empty")
+    build_populated_home(directory / "populated")
+    build_damaged_home(directory / "damaged")
+    build_future_home(directory / "future")
+    build_shared_home(directory / "shared")
+    build_shared_directories_home(directory / "shared-directories")
+
+
+if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        raise SystemExit("usage: cache_home_fixture.py <directory>")
+    build_all(Path(sys.argv[1]).resolve())

@@ -1,0 +1,159 @@
+# metab file://<ORIGIN> --no-serve
+exit: 0
+--- stdout ---
+acquired: <ORIGIN>
+slug: <SLUG>
+store: <STORE_ID>
+revision: cf318083ef13511a14c0532985bdb24bd59d2787
+--- stderr ---
+cloning <ORIGIN> into <HOME>/cache
+cloned <ORIGIN> in <ELAPSED>
+# metab file://<ORIGIN> --no-serve
+exit: 0
+--- stdout ---
+acquired: <ORIGIN>
+slug: <SLUG>
+store: <STORE_ID>
+revision: cf318083ef13511a14c0532985bdb24bd59d2787
+--- stderr ---
+using the clone of <ORIGIN> cached in <HOME>/cache, fetched <AGE>
+# metab file://<ORIGIN> --show notes/old.txt
+exit: 0
+--- stdout ---
+show: notes/old.txt
+route: /view/g1-bm90ZXM/g1-b2xkLnR4dA
+kind: text
+views: source (default)
+model: text envelope; size=13 content_bytes=13 content_truncated=False
+--- stderr ---
+# metab file://<ORIGIN> --api /api/file?path=g1-bm90ZXM/g1-b2xkLnR4dA
+exit: 0
+--- stdout ---
+api: /api/file?path=g1-bm90ZXM/g1-b2xkLnR4dA
+status: 200
+{
+  "subject": "git_revision",
+  "size": 13,
+  "path": "g1-bm90ZXM/g1-b2xkLnR4dA",
+  "display": "notes/old.txt",
+  "mode": "100644",
+  "git_kind": "blob",
+  "symlink": false,
+  "gitlink": false,
+  "oid": "e7f97616de773dff5acf5bc9fa5777c6b1cacf43",
+  "ext": ".txt",
+  "type": "text",
+  "kind": "text",
+  "views": [
+    {
+      "id": "source",
+      "label": "Source",
+      "default": true,
+      "container_class": "content-body metabrowser-source-host",
+      "printable": true,
+      "print_profile": "source",
+      "render_runtime": "client"
+    }
+  ],
+  "content": "second draft\n",
+  "content_offset": 0,
+  "content_bytes": 13,
+  "bytes_read": 13,
+  "content_truncated": false,
+  "content_preview_limit": 2097152,
+  "content_max_preview_limit": 16777216,
+  "highlight_disabled": false
+}
+--- stderr ---
+# metab file://<ORIGIN> --api /api/git/commit/cf318083ef13511a14c0532985bdb24bd59d2787
+exit: 0
+--- stdout ---
+api: /api/git/commit/cf318083ef13511a14c0532985bdb24bd59d2787
+status: 200
+{
+  "is_repo": true,
+  "commit": {
+    "id": "cf318083ef13511a14c0532985bdb24bd59d2787",
+    "short_id": "cf31808",
+    "parent_ids": [
+      "042f85f6d00e35e36494a3c201048675cd24abc7"
+    ],
+    "author": {
+      "name": "Test",
+      "email": "test@example.com"
+    },
+    "authored_at": 1577836800.0,
+    "committed_at": 1577836800.0,
+    "subject": "second"
+  },
+  "body": "",
+  "stats": {
+    "files_changed": 1,
+    "files_modified": 1,
+    "files_added": 0,
+    "files_deleted": 0,
+    "additions": 1,
+    "deletions": 1
+  },
+  "files": [
+    {
+      "path": "notes/old.txt",
+      "status": "modified",
+      "additions": 1,
+      "deletions": 1
+    }
+  ],
+  "files_truncated": false
+}
+--- stderr ---
+# (the origin is moved away)
+# metab file://<ORIGIN> --no-serve
+exit: 0
+--- stdout ---
+acquired: <ORIGIN>
+slug: <SLUG>
+store: <STORE_ID>
+revision: cf318083ef13511a14c0532985bdb24bd59d2787
+--- stderr ---
+using the clone of <ORIGIN> cached in <HOME>/cache, fetched <AGE>
+# metab file://<ORIGIN> --api /api/git/commit/cf318083ef13511a14c0532985bdb24bd59d2787
+exit: 0
+--- stdout ---
+api: /api/git/commit/cf318083ef13511a14c0532985bdb24bd59d2787
+status: 200
+{
+  "is_repo": true,
+  "commit": {
+    "id": "cf318083ef13511a14c0532985bdb24bd59d2787",
+    "short_id": "cf31808",
+    "parent_ids": [
+      "042f85f6d00e35e36494a3c201048675cd24abc7"
+    ],
+    "author": {
+      "name": "Test",
+      "email": "test@example.com"
+    },
+    "authored_at": 1577836800.0,
+    "committed_at": 1577836800.0,
+    "subject": "second"
+  },
+  "body": "",
+  "stats": {
+    "files_changed": 1,
+    "files_modified": 1,
+    "files_added": 0,
+    "files_deleted": 0,
+    "additions": 1,
+    "deletions": 1
+  },
+  "files": [
+    {
+      "path": "notes/old.txt",
+      "status": "modified",
+      "additions": 1,
+      "deletions": 1
+    }
+  ],
+  "files_truncated": false
+}
+--- stderr ---

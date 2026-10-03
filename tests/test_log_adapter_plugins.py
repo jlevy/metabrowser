@@ -7,12 +7,27 @@ from typing import Any
 
 import pytest
 
+from metabrowser.logutil import parsing
 from metabrowser.logutil.parsing import (
     LogEvent,
     create_parser,
     detect_adapter,
     register_log_adapter,
 )
+
+
+@pytest.fixture(autouse=True)
+def _registered_adapters_stay_in_one_test(  # pyright: ignore[reportUnusedFunction]
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Register into a copy of the plugin adapter table, dropped when the test ends.
+
+    The table is a process global with no way to take a registration back. An adapter
+    left in it is asked about every JSONL file read afterwards, and the one whose
+    detector raises logged a traceback each time.
+    """
+
+    monkeypatch.setattr(parsing, "_PLUGIN_ADAPTERS", dict(parsing._PLUGIN_ADAPTERS))
 
 
 class _FixtureParser:

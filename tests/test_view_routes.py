@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from metabrowser.git.content_routes import decode_git_view_path
+from metabrowser.git.tree_source import GitPath
 from metabrowser.server import _set_root_dir
 from metabrowser.view_routes import decode_safe_commit_route, format_commit_href
 
@@ -65,3 +67,30 @@ def test_commit_inner_paths_need_not_exist_in_the_served_tree(tmp_path: Path) ->
         "abc123",
         "deleted/long/ago.txt",
     )
+
+
+def test_git_view_path_accepts_gitpath_wire_and_refuses_filesystem_spelling() -> None:
+    readme = GitPath.from_segments(b"README.md").to_wire()
+    nested = GitPath.from_segments(b"docs", b"note.txt").to_wire()
+    patch = GitPath.from_segments(b"change.patch").to_wire()
+    assert decode_git_view_path(b"/view/") == ""
+    assert decode_git_view_path(f"/view/{readme}".encode()) == readme
+    assert decode_git_view_path(f"/view/{nested}".encode()) == nested
+    assert decode_git_view_path(f"/view/{patch}/src/app.py".encode()) == f"{patch}/src/app.py"
+    assert decode_git_view_path(b"/view/README.md") is None
+    assert decode_git_view_path(b"/view/docs/note.txt") is None
+    assert decode_git_view_path(b"/view/../etc/passwd") is None
+    assert decode_git_view_path(b"/view/g1-@@@@") is None
+
+
+def test_git_view_path_refuses_an_encoded_backslash() -> None:
+    """Only a served folder's inventory escapes a backslash; a pin's paths never hold one.
+
+    The served-folder route carries `%5C` on POSIX (see test_browser_navigation.py), and
+    that allowance must not reach a GitPath wire or a container inner beneath it.
+    """
+
+    patch = GitPath.from_segments(b"change.patch").to_wire()
+    assert decode_git_view_path(f"/view/{patch}/src%5Capp.py".encode()) is None
+    assert decode_git_view_path(f"/view/{patch}%5C".encode()) is None
+    assert decode_git_view_path(b"/view/g1-YQ/x%5Cy") is None

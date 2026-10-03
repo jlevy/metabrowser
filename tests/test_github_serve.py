@@ -1,0 +1,364 @@
+"""Serve mode for GitHub URLs, with a local origin standing in for github.com.
+
+``metabrowser.cache.acquire.remote_url_for`` sends ``https://github.com/octo/demo`` to
+the ``file://`` origin in ``tests/github_origin.py`` for acquisition and refresh alike,
+so the store, the banner, and ``/api/source/status`` carry the canonical GitHub identity
+while nothing leaves the machine. The GitHub provider sees no ``gh``.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import os
+import re
+import subprocess
+import threading
+from pathlib import Path
+from typing import Any
+from unittest.mock import patch
+from urllib.parse import quote
+
+import pytest
+from starlette.testclient import TestClient
+from typer.testing import CliRunner
+
+from metabrowser import server
+from metabrowser.cache.served_mirror import StoreMirror
+from metabrowser.cache.urls import GitSource
+from metabrowser.cli.main import _app
+from metabrowser.git.tree_source import GitPath
+from metabrowser.mirror_refresh import RefreshResult
+from metabrowser.source import reset_source_session
+from metabrowser.source_routes import PIN_CHANGED_HEADER, PIN_HEADER
+from tests.git_pin_harness import git_env
+from tests.github_origin import FIRST_COMMIT, SECOND_COMMIT, github_origin
+from tests.golden_harness import settle
+from tests.required_tools import needs_git
+from tests.test_cache_acquire import _allow_installed_git
+
+pytestmark = [
+    needs_git,
+    pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only"),
+]
+
+REPO = "https://github.com/octo/demo"
+_JSON_HEADERS = {"content-type": "application/json"}
+runner = CliRunner()
+
+
+@pytest.fixture
+def origin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    monkeypatch.setenv("METABROWSER_HOME", str(tmp_path / "home"))
+    monkeypatch.delenv("METABROWSER_LOG_LEVEL", raising=False)
+    _allow_installed_git(monkeypatch)
+    built = github_origin(tmp_path)
+    local = f"file://{built.resolve()}"
+
+    def remote_url_for(source: GitSource) -> str:
+        return local if source.normalized == REPO else source.normalized
+
+    monkeypatch.setattr("metabrowser.cache.acquire.remote_url_for", remote_url_for)
+    # No gh at all, rather than conftest's failing stand-in: the provider imports the
+    # lookup by name, and a pull request's reads go through the gh module's own, so
+    # both are cleared and a pull request is gh_missing.
+    monkeypatch.setattr("metabrowser.builtin_plugins.github.provider.gh_executable", lambda: None)
+    monkeypatch.setattr("metabrowser.builtin_plugins.github.gh.gh_executable", lambda: None)
+    monkeypatch.setattr("metabrowser.cli.git_pin_cli.stop_on_interrupt", lambda: None)
+    return built
+
+
+def _serve(url: str) -> Any:
+    with (
+        patch("metabrowser.cli.serve._QuietForceExitServer") as server_class,
+        patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
+    ):
+        result = runner.invoke(_app, [url, "--no-open"])
+    if result.exit_code == 0:
+        assert server_class.call_args.args[0].app is server.app
+    return result
+
+
+def _served_line(stdout: str) -> str:
+    return next(line for line in stdout.splitlines() if line.startswith("Serving "))
+
+
+def test_a_blob_url_serves_its_branch_and_opens_at_the_file_and_lines(origin: Path) -> None:
+    result = _serve(f"{REPO}/blob/release/v1/docs/v1.md#L1-L2")
+    assert result.exit_code == 0, result.output
+    wire = GitPath.from_display("docs/v1.md").to_wire()
+    assert _served_line(result.stdout).startswith(
+        f"Serving {REPO} at http://127.0.0.1:8411/view/{wire}#L1-L2"
+    )
+    assert f"Revision: {SECOND_COMMIT} (release/v1)\n" in result.stdout
+    assert "Selection: blob docs/v1.md#L1-L2\n" in result.stdout
+    with TestClient(server.app) as client:
+        status = client.get("/api/source/status").json()
+        assert (status["pin"], status["ref_name"]) == (SECOND_COMMIT, "release/v1")
+        assert status["pull_request"] is None and status["selection_state"] is None
+        shell = client.get("/view/").text
+        context = re.search(r"window\.METABROWSER_REPOSITORY_CONTEXT=(\{[^<]*\});", shell)
+        assert context is not None, "a GitHub mirror has a repository context"
+        assert '"owner": "octo"' in context.group(1) and '"name": "demo"' in context.group(1)
+        assert f'"revision": "{SECOND_COMMIT}"' in context.group(1)
+        assert '"branch": "release/v1"' in context.group(1)
+
+
+def test_a_pull_request_it_cannot_open_serves_the_default_branch_and_says_why(
+    origin: Path,
+) -> None:
+    result = _serve(f"{REPO}/pull/7/files")
+    assert result.exit_code == 0, result.output
+    assert f"Revision: {FIRST_COMMIT} (topic)\n" in result.stdout
+    note = next(line for line in result.stdout.splitlines() if line.startswith("Pull request:"))
+    assert note.startswith(f"Pull request: 7 (not opened: pull request 7 of {REPO}: ")
+    assert note.endswith("(gh_missing); the pin is the default branch)")
+    with TestClient(server.app) as client:
+        status = client.get("/api/source/status").json()
+        assert (status["pin"], status["pull_request"]) == (FIRST_COMMIT, 7)
+
+
+def _push_branch(origin: Path, tmp_path: Path, name: str) -> str:
+    env = git_env(tmp_path)
+    commit = subprocess.run(
+        ["git", "--git-dir", str(origin), "rev-parse", "refs/heads/release/v1"],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    ).stdout.strip()
+    subprocess.run(
+        ["git", "--git-dir", str(origin), "update-ref", f"refs/heads/{name}", commit],
+        check=True,
+        env=env,
+    )
+    return commit
+
+
+@pytest.mark.parametrize(
+    ("name", "shown"),
+    [
+        # U+009B is a one-character CSI: raw, a terminal would run ``2J`` and clear.
+        ("a\u009b2Jb", "a\ufffd2Jb"),
+        # U+200B ZERO WIDTH SPACE: raw, the name would read as ``zerowidth``.
+        ("zero\u200bwidth", "zero\ufffdwidth"),
+    ],
+    ids=["c1-control", "invisible"],
+)
+def test_the_banner_displays_a_ref_name_as_the_pin_line_does(
+    origin: Path, tmp_path: Path, name: str, shown: str
+) -> None:
+    """A branch name is the origin's, and Git accepts one a terminal would act on.
+
+    The URL selects the branch by its encoded spelling. ``Revision:`` names it as
+    ``pin:`` does under ``--no-serve``, through the display that replaces what a
+    terminal would run or a reader would not see.
+    """
+
+    commit = _push_branch(origin, tmp_path, name)
+    url = f"{REPO}/tree/{quote(name)}"
+
+    served = _serve(url)
+    assert served.exit_code == 0, served.output
+    assert f"Revision: {commit} ({shown})\n" in served.stdout
+    assert not {"\u009b", "\u200b"} & set(served.output)
+
+    reset_source_session()
+    printed = runner.invoke(_app, [url, "--no-serve"])
+    assert printed.exit_code == 0, printed.output
+    assert f"pin: {commit} (branch {shown})\n" in printed.stdout
+
+
+def test_a_selection_the_mirror_lacks_is_fetched_once_then_served(
+    origin: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The first open acquires; a branch pushed later is fetched in the background.
+
+    Serving the selection once the fetch brings it is a pin switch like any other, so a
+    page rendered for the default pin while the fetch ran is refused as ``pin_changed``
+    rather than reading the new pin's files.
+    """
+
+    assert _serve(REPO).exit_code == 0
+    reset_source_session()
+    later = _push_branch(origin, tmp_path, "later")
+    fetch_may_run = threading.Event()
+    real_refresh = StoreMirror.refresh
+
+    async def gated_refresh(mirror: StoreMirror) -> RefreshResult:
+        await asyncio.to_thread(fetch_may_run.wait, 30)
+        return await real_refresh(mirror)
+
+    monkeypatch.setattr(StoreMirror, "refresh", gated_refresh)
+
+    result = _serve(f"{REPO}/tree/later/docs")
+    assert result.exit_code == 0, result.output
+    assert f"Revision: {FIRST_COMMIT} (topic)\n" in result.stdout
+    assert "Selection: tree not in the mirror yet" in result.stdout
+    with TestClient(server.app) as client:
+        waiting = client.get("/api/source/status").json()
+        assert (waiting["selection_state"], waiting["pin"]) == ("pending", FIRST_COMMIT)
+        shell = client.get("/view/").text
+        assert f'"pin": "{FIRST_COMMIT}"' in shell
+        fetch_may_run.set()
+        status = settle(client)
+        assert status["selection_state"] == "found"
+        assert (status["pin"], status["ref_name"]) == (later, "later")
+        # The switch is a pin switch like any other: a page rendered for the default
+        # branch names the commit it shows, and the guard refuses it with the new one.
+        stale_page = {PIN_HEADER: FIRST_COMMIT}
+        refused = client.get("/api/tree", params={"depth": "1"}, headers=stale_page)
+        assert refused.status_code == 409 and refused.json()["code"] == "pin_changed"
+        assert refused.headers[PIN_CHANGED_HEADER] == later
+
+
+def test_a_selection_no_fetch_brings_is_reported_not_found(origin: Path) -> None:
+    assert _serve(REPO).exit_code == 0
+    reset_source_session()
+    result = _serve(f"{REPO}/tree/never/docs")
+    assert result.exit_code == 0, result.output
+    with TestClient(server.app) as client:
+        status = settle(client)
+        assert status["selection_state"] == "not_found"
+        # Nothing was switched, so a page rendered for the default pin stays current.
+        assert status["pin"] == FIRST_COMMIT
+        page = {PIN_HEADER: FIRST_COMMIT}
+        assert client.get("/api/tree", params={"depth": "1"}, headers=page).status_code == 200
+
+
+def test_one_shot_modes_still_refuse_a_missing_selection(origin: Path) -> None:
+    result = runner.invoke(_app, [f"{REPO}/tree/never", "--api", "/api/source/status"])
+    assert result.exit_code == 1
+    assert "(ref_not_found)" in str(result.exception)
+
+
+def _gate(monkeypatch: pytest.MonkeyPatch) -> threading.Event:
+    """Hold every refresh until the returned event is set."""
+
+    may_run = threading.Event()
+    real_refresh = StoreMirror.refresh
+
+    async def gated_refresh(mirror: StoreMirror) -> RefreshResult:
+        await asyncio.to_thread(may_run.wait, 30)
+        return await real_refresh(mirror)
+
+    monkeypatch.setattr(StoreMirror, "refresh", gated_refresh)
+    return may_run
+
+
+def _pin(client: TestClient, body: dict[str, str]) -> Any:
+    return client.post("/api/source/pin", json=body, headers={"content-type": "application/json"})
+
+
+def test_a_pin_switch_while_the_selection_waits_is_not_undone_by_its_fetch(
+    origin: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The reader's own choice wins: the waiting selection is dropped, not served later."""
+
+    assert _serve(REPO).exit_code == 0
+    reset_source_session()
+    _push_branch(origin, tmp_path, "later")
+    fetch_may_run = _gate(monkeypatch)
+    assert _serve(f"{REPO}/tree/later/docs").exit_code == 0
+    with TestClient(server.app) as client:
+        switched = _pin(client, {"ref": "release/v1"})
+        assert switched.status_code == 200 and switched.json()["changed"] is True
+        assert switched.json()["status"]["selection_state"] == "superseded"
+        fetch_may_run.set()
+        status = settle(client)
+        assert (status["pin"], status["ref_name"]) == (SECOND_COMMIT, "release/v1")
+        assert (status["selection_state"], status["selection_href"]) == ("superseded", None)
+
+
+def test_a_found_selection_is_superseded_by_a_later_switch(origin: Path, tmp_path: Path) -> None:
+    assert _serve(REPO).exit_code == 0
+    reset_source_session()
+    _push_branch(origin, tmp_path, "later")
+    assert _serve(f"{REPO}/blob/later/docs/v1.md#L1-L2").exit_code == 0
+    with TestClient(server.app) as client:
+        found = settle(client)
+        assert found["selection_state"] == "found"
+        wire = GitPath.from_display("docs/v1.md").to_wire()
+        assert found["selection_href"] == f"/view/{wire}#L1-L2"
+        assert _pin(client, {"ref": "topic"}).status_code == 200
+        status = client.get("/api/source/status").json()
+        assert (status["selection_state"], status["selection_href"]) == ("superseded", None)
+
+
+def test_a_failed_fetch_is_not_reported_as_not_found(
+    origin: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The fetch did not run, so the selection waits for the next one, which serves it."""
+
+    assert _serve(REPO).exit_code == 0
+    reset_source_session()
+    later = _push_branch(origin, tmp_path, "later")
+    away = tmp_path / "origin-away.git"
+    origin.rename(away)
+    result = _serve(f"{REPO}/tree/later/docs")
+    assert result.exit_code == 0, result.output
+    with TestClient(server.app) as client:
+        failed = settle(client)
+        assert failed["selection_state"] == "fetch_failed"
+        assert failed["last_outcome"]["outcome"] == "origin_unavailable"
+        assert failed["pin"] == FIRST_COMMIT
+        # A pin request that waited for a fetch that failed says so, not "not found".
+        assert _pin(client, {"ref": "nope"}).status_code == 202
+        settle(client)
+        refused = _pin(client, {"ref": "nope"})
+        assert refused.status_code == 502
+        assert refused.json()["code"] == "selection_fetch_failed"
+        assert "origin_unavailable" in refused.json()["error"]
+        away.rename(origin)
+        started = client.post("/api/source/refresh", json={}, headers=_JSON_HEADERS)
+        assert started.json()["status"]["selection_state"] == "pending"
+        status = settle(client)
+        assert (status["selection_state"], status["pin"]) == ("found", later)
+
+
+def test_a_selection_missing_from_a_fresh_clone_is_not_found_at_once(origin: Path) -> None:
+    """The clone just fetched everything, so no second fetch is started for it."""
+
+    result = _serve(f"{REPO}/tree/never/docs")
+    assert result.exit_code == 1
+    assert "(ref_not_found)" in str(result.exception)
+
+
+def test_a_no_op_pin_switch_still_supersedes_a_waiting_selection(
+    origin: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Pinning what is already served is still the reader's choice."""
+
+    assert _serve(REPO).exit_code == 0
+    reset_source_session()
+    _push_branch(origin, tmp_path, "later")
+    fetch_may_run = _gate(monkeypatch)
+    assert _serve(f"{REPO}/tree/later/docs").exit_code == 0
+    with TestClient(server.app) as client:
+        same = _pin(client, {"ref": "topic"})
+        assert same.status_code == 200 and same.json()["changed"] is False
+        assert same.json()["status"]["selection_state"] == "superseded"
+        fetch_may_run.set()
+        status = settle(client)
+        assert (status["pin"], status["selection_state"]) == (FIRST_COMMIT, "superseded")
+
+
+def test_a_miss_is_judged_by_the_fetches_since_it_not_by_the_last_one(
+    origin: Path, tmp_path: Path
+) -> None:
+    """A fetch ran after the first miss, so a later failed fetch does not make it 502."""
+
+    assert _serve(REPO).exit_code == 0
+    reset_source_session()
+    assert _serve(REPO).exit_code == 0
+    with TestClient(server.app) as client:
+        settle(client)
+        assert _pin(client, {"ref": "first-miss"}).status_code == 202
+        settle(client)
+        origin.rename(tmp_path / "origin-away.git")
+        assert _pin(client, {"ref": "second-miss"}).status_code == 202
+        failed = settle(client)
+        assert failed["last_outcome"]["outcome"] == "origin_unavailable"
+        first = _pin(client, {"ref": "first-miss"})
+        assert (first.status_code, first.json()["code"]) == (404, "selection_not_found")
+        second = _pin(client, {"ref": "second-miss"})
+        assert (second.status_code, second.json()["code"]) == (502, "selection_fetch_failed")

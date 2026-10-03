@@ -17,6 +17,23 @@ function missingRequiredPerformanceLabels(requiredLabels, labelTotals) {
   return requiredLabels.filter((label) => !observed.has(label));
 }
 
+// The startup scripts the budget gates, and their size as the gate reports it. These
+// are functions of their own so that devtools/check_startup_scripts.py, which holds
+// the same budget on every lint without a browser, is tested against this arithmetic
+// and not against a description of it (tests/test_check_startup_scripts.py).
+function startupScriptResources(resources, domContentLoadedEventEnd) {
+  return resources.filter(
+    (r) =>
+      new URL(r.name).pathname.endsWith(".js") &&
+      !r.name.includes("/static/vendor/") &&
+      r.startTime < Number(domContentLoadedEventEnd),
+  );
+}
+
+function transferKb(list) {
+  return Math.round(list.reduce((total, r) => total + (r.transferSize || 0), 0) / 1024);
+}
+
 (async () => {
   const origin = performance.timeOrigin;
   // Freeze the navigation-time profile before this adapter runs its own
@@ -90,8 +107,7 @@ function missingRequiredPerformanceLabels(requiredLabels, labelTotals) {
     performance.getEntriesByType("resource")
   );
   const memory = /** @type {{ usedJSHeapSize?: number }} */ (performance).memory;
-  const kb = (list) =>
-    Math.round(list.reduce((total, r) => total + (r.transferSize || 0), 0) / 1024);
+  const kb = transferKb;
   const vendor = resources.filter((r) => r.name.includes("/static/vendor/"));
   const subtree = resources.filter((r) => r.name.includes("/api/tree?path="));
   // A preloaded script has Resource Timing initiator type `link`, and its later
@@ -99,10 +115,7 @@ function missingRequiredPerformanceLabels(requiredLabels, labelTotals) {
   // scripts and styles by the requested path so preloading changes scheduling,
   // not the category totals.
   const scripts = resources.filter((r) => new URL(r.name).pathname.endsWith(".js"));
-  const startupScripts = scripts.filter(
-    (r) =>
-      !r.name.includes("/static/vendor/") && r.startTime < Number(nav.domContentLoadedEventEnd),
-  );
+  const startupScripts = startupScriptResources(resources, nav.domContentLoadedEventEnd);
   const styles = resources.filter((r) => new URL(r.name).pathname.endsWith(".css"));
   const blockingStyleUrls = new Set(
     Array.from(document.querySelectorAll('link[rel~="stylesheet"]'))
@@ -291,10 +304,33 @@ function missingRequiredPerformanceLabels(requiredLabels, labelTotals) {
   // the pane fills its frame from first paint and only its contents are a
   // placeholder -- so do not "fix" this by measuring out of flow, which would
   // report the whole pane as missing.
+  //
+  // "Beside" means beside the region as its container sees it. An element that
+  // holds the region and nothing else is part of the region's own frame, and a
+  // stand-in put inside it would share with the region the space that element
+  // gives one child: `.preview-frame` is a column around `#preview-pane`, and a
+  // stand-in in that column took half of it, which read as 450 px of a 900 px
+  // pane missing though the shell ships the pane at its full height. So the
+  // stand-in is wrapped in a copy of each such element and placed beside the
+  // outermost one. A region with siblings, which is every region before the
+  // pane was framed and every other region since, is measured as it always was.
   function heightOfStandIn(reference, standIn) {
-    reference.parentNode.insertBefore(standIn, reference);
+    let anchor = reference;
+    let placed = standIn;
+    while (
+      anchor.parentElement &&
+      anchor.parentElement !== document.body &&
+      anchor.parentElement.children.length === 1
+    ) {
+      const frame = anchor.parentElement.cloneNode(false);
+      frame.removeAttribute("id");
+      frame.appendChild(placed);
+      placed = frame;
+      anchor = anchor.parentElement;
+    }
+    anchor.parentNode.insertBefore(placed, anchor);
     const height = Math.round(standIn.getBoundingClientRect().height);
-    standIn.remove();
+    placed.remove();
     return height;
   }
   function emptyHeight(element, pendingHtml) {

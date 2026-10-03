@@ -24,6 +24,14 @@ DOCKER_DIGEST = re.compile(r"^docker://[^@\s]+@sha256:[0-9a-fA-F]{64}$")
 NPM_REGISTRY_PREFIX = "https://registry.npmjs.org/"
 SHA512_PREFIX = "sha512-"
 UV_COOL_OFF = "14 days"
+ADMITTED_GIT_SCRIPT = "devtools/build_admitted_git.sh"
+ADMITTED_GIT_PIN = re.compile(
+    r"^\s*([0-9]+\.[0-9]+\.[0-9]+)\) sha256=([0-9a-f]{64}) ;;$", re.MULTILINE
+)
+ADMITTED_GIT_ROW = re.compile(
+    r"^\| ([0-9]+\.[0-9]+\.[0-9]+) \|[^|\n]*\| `([0-9a-f]{64})` \|$", re.MULTILINE
+)
+ADMITTED_GIT_MATRIX = re.compile(r"^\s*git: \[([^\]]*)\]", re.MULTILINE)
 
 
 def _read_json(path: Path) -> dict[str, object]:
@@ -126,12 +134,49 @@ def _check_workflows(root: Path, errors: list[str]) -> None:
             errors.append(f"{path.name}: post-publish smoke must refresh the package index")
 
 
+def _check_admitted_git(root: Path, errors: list[str]) -> None:
+    """The source-built CI Git: script pins, reviewed table, job matrix, and floors agree.
+
+    Checked only where the build script exists, because the job is its only consumer.
+    """
+    script = root / ADMITTED_GIT_SCRIPT
+    if not script.is_file():
+        return
+    pins = dict(ADMITTED_GIT_PIN.findall(script.read_text(encoding="utf-8")))
+    if not pins:
+        errors.append(f"{ADMITTED_GIT_SCRIPT} pins no Git release")
+    reviewed = dict(
+        ADMITTED_GIT_ROW.findall((root / "SUPPLY-CHAIN-SECURITY.md").read_text(encoding="utf-8"))
+    )
+    if reviewed != pins:
+        errors.append(
+            f"SUPPLY-CHAIN-SECURITY.md admitted Git table {reviewed} must match "
+            f"{ADMITTED_GIT_SCRIPT} pins {pins}"
+        )
+    workflow = (root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    matrix = ADMITTED_GIT_MATRIX.search(workflow)
+    tested: set[str] = set(re.findall(r'"([0-9.]+)"', matrix.group(1))) if matrix else set()
+    if not tested or not tested <= pins.keys():
+        errors.append(f"ci.yml admitted-git matrix {sorted(tested)} must name pinned releases")
+    gates = _read_json(root / "tests" / "fixtures" / "repository-cache" / "git-version-gates.json")
+    for gate in cast(list[dict[str, object]], gates.get("gates", [])):
+        if gate.get("name") != "acquisition":
+            continue
+        for field in ("minimum", "newest_patched"):
+            floor = ".".join(str(part) for part in cast(list[int], gate.get(field, [])))
+            if floor not in tested:
+                errors.append(
+                    f"ci.yml admitted-git matrix must test the acquisition {field} {floor}"
+                )
+
+
 def verify_supply_chain(root: Path = ROOT) -> None:
     """Raise with all repository supply-chain policy violations."""
     errors: list[str] = []
     _check_npm(root, errors)
     _check_uv(root, errors)
     _check_workflows(root, errors)
+    _check_admitted_git(root, errors)
     if errors:
         raise RuntimeError("Supply-chain policy violations:\n- " + "\n- ".join(errors))
 

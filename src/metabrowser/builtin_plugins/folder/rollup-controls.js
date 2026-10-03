@@ -50,7 +50,9 @@ export function createFolderRollupControls(mb) {
     }
     const filterControls = controls;
     const showMetric = parts.metric !== false;
-    const showIgnored = parts.ignored !== false;
+    // A pinned revision has no ignore state, so every file is counted either
+    // way and a switch for it would change nothing.
+    const showIgnored = parts.ignored !== false && mb.sourceKind?.() !== "git_revision";
     container.classList.add("folder-rollup-controls");
 
     /** @param {FolderRollupState} state */

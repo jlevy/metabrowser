@@ -13,22 +13,52 @@ Checked items below are supported today; unchecked items are planned work.
 | --- | --- | --- |
 | Markdown navigation | [Navigation extensions](docs/project/specs/active/plan-2026-08-13-markdown-navigation-extensions.md) | Baseline shipped; three items remain — see below |
 | File search | [Quick File finder and search providers](docs/project/specs/active/plan-2026-07-17-scalable-file-search.md) | Client finder shipped; server providers planned |
-| HTML trust model | [Full-page HTML rendering and trust model](docs/project/specs/active/plan-2026-08-06-html-rendering-and-trust-model.md) | Draft |
+| HTML trust model | [Full-page HTML rendering and trust model](docs/project/specs/active/plan-2026-08-06-html-rendering-and-trust-model.md) | Sandboxed `/raw`, same-origin `/api` proof, and `--untrusted` landed through #209; remaining plan work is tracked separately |
 | File actions | [Menu primitives and gated file actions](docs/project/specs/active/plan-2026-08-06-menu-primitives-and-file-actions.md) | Draft |
 | File editing | [Opt-in trusted-local file editing](docs/project/specs/active/plan-2026-07-16-trusted-local-file-editing.md) | Draft |
 | Scan state | [Scanning state and recent directories](docs/project/specs/active/plan-2026-07-16-scanning-state-and-recent-directories.md) | Draft |
 | Git surfaces | [Git graph nav panel](docs/project/specs/active/plan-2026-08-06-git-graph-view.md), [general diff rendering](docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md), [Git status and working-tree diffs](docs/project/specs/active/plan-2026-08-26-git-status-and-working-tree-diffs.md) | Graph panel, read-only Git API, and diff rendering shipped; working-tree status and `/compare/` remain, after CLI parity |
-| Repository library | [Repository library and open from a Git URL](docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md) | Draft; versioned cache and URL-open foundation first, after CLI parity. Serving is gated on the content-trust chain |
-| GitHub provider | [Content model, acquisition, and pull requests](docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md) | Draft; split from the repository library, depends on the generic cache |
+| Repository library | [Repository library and open from a Git URL](docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md) | v0.11.0 released. v0.12 is on unmerged stack [#218](https://github.com/jlevy/metabrowser/stack/218): an owner-only cache of full-clone mirrors acquired from `file://` and `https://` origins and served as immutable pins under the forced untrusted profile, with background refresh and pin switching, per the [thin-mirror plan](docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md). SSH, the catalog, the chooser, and very large repositories remain |
+| Hosted review and GitHub | [Hosted review model and GitHub provider](docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md), [architecture](docs/project/architecture/arch-hosted-review-model.md) | The provider-neutral Hosted Review Format records and their contract gates were removed from stack [#218](https://github.com/jlevy/metabrowser/stack/218) and are kept, unmaintained, on the `reference/v012-hosted-review` branch, tagged `reference/v012-hosted-review-2026-09-30`; the [thin-mirror plan](docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md) stores pull-request data as plain validated JSON records in the GitHub plugin. GitHub URLs, pull-request records, and the pull-request page are on the stack; the pull-request list, its panel, and inline review anchors are deferred beyond v0.12, and the [GitHub Pulls tab plan](docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md) designs the list, its tab, and pull requests on a local checkout. [Alpha testing](docs/project/specs/active/plan-2026-09-22-v012-alpha-testing.md#landing-status) lists what remains before landing |
 | Editor host | [VS Code extension host](docs/project/architecture/arch-vscode-extension-host.md) | Architecture only; no plan yet |
 | Load-time performance | [End-to-end load time](docs/project/specs/active/plan-2026-08-21-load-time-performance.md) | Draft |
 | Mermaid diagrams | [Mermaid diagram rendering](docs/project/specs/active/plan-2026-08-21-mermaid-diagram-rendering.md) | Draft; depends on load-time Phase 1 |
-| CLI parity and goldens | [CLI parity and golden coverage](docs/project/specs/done/plan-2026-08-21-cli-parity-and-golden-coverage.md), [CLI-first delivery](docs/project/specs/active/plan-2026-08-28-cli-first-delivery-map.md) | Mechanism delivered: `--api` and `--show` reach every route, `check_parity.py` gates the table, and reports the current counts when it runs. Git status and the repository cache are proved through it |
+| CLI parity and goldens | [CLI parity and golden coverage](docs/project/specs/done/plan-2026-08-21-cli-parity-and-golden-coverage.md), [functional UI parity](docs/project/specs/active/plan-2026-09-10-functional-ui-cli-parity.md), [CLI-first delivery](docs/project/specs/active/plan-2026-08-28-cli-first-delivery-map.md) | The route, kind, model, persisted-state, and functional-aspect gates have landed on `main` for the v0.10.0 release candidate. Git status, repository-cache state, and GitHub-provider behavior extend those same checked surfaces |
 
 Delivered plans keep their record in [done plans](docs/project/README.md#done-plans):
 the navigation baseline, folder Overview and file-type summaries, semantic file-type
 families, the shared taxonomy, filter controls, the bounded binary byte preview, the
 flat `metab` CLI, and the v0.1.0 package.
+
+## v0.12.0 Repository and GitHub Slice
+
+v0.12.0 lets a user paste a GitHub repository, file, commit, or pull-request URL and
+browse it from a local mirror: instant once seen, usable offline, and refreshed in the
+background.
+[Thin Mirror for Git and GitHub Browsing](docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md)
+is the design, and its Delivery section maps each step to its pull request (epic
+`mb-hall`).
+
+The work is one unmerged stack of pull requests above the released v0.11.0 `main`. The
+2026-09-24 acceptance run on an installed wheel is recorded in
+[QA: v0.12 alpha acceptance](docs/project/qa/qa-2026-09-24-v012-alpha-acceptance.md).
+[Landing status](docs/project/specs/active/plan-2026-09-22-v012-alpha-testing.md#landing-status)
+lists what remains before the stack lands, which waits for the user’s approval
+(`mb-n2ro`).
+
+Deferred beyond v0.12.0 by the user’s 2026-09-23 decision: SSH acquisition (`mb-bi2c`),
+the pull-request list and its panel (`mb-lnkl`, `mb-iw1v`), inline review anchors
+(`mb-rldc`), attaching a user’s own checkout (`mb-cbak`), and rebind.
+The
+[GitHub Pulls tab plan](docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md)
+designs the list, its tab, and pull requests on a checkout; that work starts after the
+stack lands.
+
+The complete roadmap remains larger than this release slice.
+Full generic cache management (`mb-0ybg`), the repository chooser (`mb-vmzy`), GitHub
+issues and timelines (`mb-9rrc`), stacked PR projections (`mb-glxc`), measured
+very-large-repository acquisition (`mb-dqvj`), and a GitLab provider (`mb-51uj`) remain
+tracked follow-ups.
 
 ## Markdown Navigation: What Is Not Done
 
@@ -102,10 +132,11 @@ Two known gaps sit outside that plan and are not regressions:
   with conflicts, staged, unstaged, and untracked groups above history
 - [ ] Build the `/compare/<base>..<head>` route, which
   [the URL grammar](docs/architecture.md) specifies and nothing serves yet
-- [ ] Add the
-  [repository library](docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md):
-  a versioned local cache that opens or reuses Git URLs, followed by refresh, a repo
-  chooser, and provider-owned metadata such as GitHub pull requests
+- [ ] Land the v0.12.0
+  [repository mirror and GitHub browsing](docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md):
+  a versioned local cache that opens or reuses Git and GitHub URLs at a selected branch,
+  tag, or commit, with pull-request pages; follow with the pull-request list, SSH, full
+  cache management, a repository chooser, issues, and stacked PRs
 
 Both entered core behind written plans, with the read-only boundary and bounded-cost
 model those plans required: the Git routes only read, every `git` subprocess is bounded
@@ -188,7 +219,8 @@ They are not part of the v0.1.0 core contract.
 
 - [ ] Settle the
   [HTML rendering and content-trust model](docs/project/specs/active/plan-2026-08-06-html-rendering-and-trust-model.md),
-  including sandboxed `/raw` responses and same-origin proof on `/api`
+  building on the sandboxed `/raw` responses, same-origin proof on `/api`, and
+  `--untrusted` profile that landed through #209
 - [ ] Enforce a strict Content Security Policy after replacing or nonce-enabling the
   remaining inline shell and plugin handlers
 

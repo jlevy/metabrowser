@@ -173,12 +173,12 @@ function sizeClass(bytes) {
   return window.MetabrowserFormatters.sizeClass(Number(bytes) || 0);
 }
 function sizeHtml(bytes, extraClass) {
-  // The provider emits ``null`` aggregates while a directory is still
-  // finalizing. Render as a skeleton cell
-  // so the row paints with shape; the SSE
-  // ``fs.change`` patch flow (applyCellPatch below) replaces it
-  // in place once the walker finalizes the dir.
-  if (bytes === null || bytes === undefined) {
+  // ``null`` means the filesystem walker is still finalizing this cell.
+  // An omitted value is not pending: Git listings have no size fact.
+  if (bytes === undefined) {
+    return "";
+  }
+  if (bytes === null) {
     var pendCls = `size tally-pending ${extraClass || ""}`.trim();
     return `<span class="${pendCls}"></span>`;
   }
@@ -197,8 +197,17 @@ function isPendingNumber(n) {
 function nullableDataValue(n) {
   return isPendingNumber(n) ? "" : String(n);
 }
+function dataTipNumberAttr(key, n) {
+  if (n === undefined) {
+    return "";
+  }
+  return ` data-tip-${key}="${esc(nullableDataValue(n))}"`;
+}
 function parseTipNumber(value) {
-  if (value === undefined || value === null || value === "") {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null || value === "") {
     return null;
   }
   var n = Number(value);
@@ -211,6 +220,9 @@ function countClass(n) {
   return window.MetabrowserFormatters.countClass(Number(n) || 0);
 }
 function countHtml(n, extraClass) {
+  if (n === undefined) {
+    return "";
+  }
   if (isPendingNumber(n)) {
     var pendCls = `count tally-pending ${extraClass || ""}`.trim();
     return `<span class="${pendCls}"></span>`;
@@ -233,9 +245,85 @@ function pathBaseHtml(path) {
   return `<span class="path"><span class="path-base">${esc(base || trimmed)}</span></span>`;
 }
 
+/**
+ * Settle the navigation heading once the tree has loaded. A folder shows the
+ * served root's name from the tree payload. A pinned revision keeps the heading
+ * the server rendered from its session, its ref and short commit: the tree's
+ * root there is the empty GitPath, which has no name to show.
+ */
+function renderServedRootHeading(pathEl, root) {
+  if (pathEl && !isGitRevisionSource()) {
+    pathEl.innerHTML = pathBaseHtml(root);
+  }
+}
+
+/**
+ * The served root's file count, size, and newest mtime, from its top-level rows.
+ * Same shape as a folder tooltip: the served root reads as "just another
+ * folder", the top-most one. Count and size are null while a directory's
+ * aggregate is still pending.
+ *
+ * A symlink counts the way the server's own tallies count it, so the heading
+ * agrees with /api/rollup. On a pinned revision a link is a blob, one file of
+ * its stored size; under a served folder it is not followed and counts for
+ * nothing.
+ */
+function rootTallyFromTopLevel(tree) {
+  var linksAreFiles = isGitRevisionSource();
+  var totalSize = 0;
+  var totalFiles = 0;
+  var newestMtime = 0;
+  var hasPendingAggregate = false;
+  for (var i = 0; i < tree.length; i++) {
+    var n = tree[i];
+    if (n.type === "dir") {
+      if (
+        n.total_size === null ||
+        n.total_size === undefined ||
+        n.total_files === null ||
+        n.total_files === undefined
+      ) {
+        hasPendingAggregate = true;
+      } else {
+        totalSize += n.total_size;
+        totalFiles += n.total_files;
+      }
+    } else if (n.type === "file" || (linksAreFiles && n.type === "symlink")) {
+      totalSize += n.size || 0;
+      totalFiles += 1;
+    }
+    if ((n.mtime || 0) > newestMtime) {
+      newestMtime = n.mtime || 0;
+    }
+  }
+  return {
+    files: hasPendingAggregate ? null : totalFiles,
+    size: hasPendingAggregate ? null : totalSize,
+    newestMtime: newestMtime,
+  };
+}
+
 // The served root, absolute, from the one element that carries it.
 function servedRoot() {
   return queryHtml(".header-path")?.dataset.servedRoot || "";
+}
+
+// What a served mirror's page adds to its headings; see static/mirror-heading.js.
+function mirrorHeading(part) {
+  return window.MetabrowserMirrorHeading?.[part]() ?? "";
+}
+
+// The shell's delegated controls (the address crumbs, the parent button, print, and
+// copy path) carry the SDK's per-page owner mark, and their document listeners act
+// only on a marked element: a trusted folder's Markdown keeps class, id, and data-*,
+// so it can spell the same markup. See `_delegateOwner` in plugin-sdk.js.
+function ownedControlAttr() {
+  return window.metabrowser?.delegateOwnerAttribute?.() ?? "";
+}
+
+/** @param {Element | null} element */
+function isOwnedControl(element) {
+  return window.MetabrowserPluginHost?.isOwnedDelegate?.(element) === true;
 }
 
 /**
@@ -260,8 +348,7 @@ function headerAddressHtml(path, isFile) {
   // <bdi> isolates the path from the start-truncation direction on the
   // wrapper; see .file-header-root. It carries no style of its own.
   var prefix = root ? `<span class="file-header-root"><bdi>${esc(root)}</bdi></span>` : "";
-  var rootCrumb =
-    '<button type="button" class="folder-crumb folder-crumb-root" data-nav-dir="" data-tip-text="Served root">/</button>';
+  var rootCrumb = `<button type="button" class="folder-crumb folder-crumb-root" data-nav-dir=""${ownedControlAttr()} data-tip-text="Served root">/</button>`;
   var segments = path ? path.split("/") : [];
   var crumbs = [];
   var walked = "";
@@ -271,10 +358,15 @@ function headerAddressHtml(path, isFile) {
     var attr = last && isFile ? "data-nav-file" : "data-nav-dir";
     var cls = last ? "folder-crumb folder-crumb-current" : "folder-crumb";
     crumbs.push(
-      `<button type="button" class="${cls}" ${attr}="${esc(walked)}" data-tip-text="${esc(window.MetabrowserNavigationRoute.displayPath(walked))}">${esc(window.MetabrowserNavigationRoute.displayPath(segments[i]))}</button>`,
+      `<button type="button" class="${cls}" ${attr}="${esc(walked)}"${ownedControlAttr()} data-tip-text="${esc(window.MetabrowserNavigationRoute.displayPath(walked))}">${esc(window.MetabrowserNavigationRoute.displayPath(segments[i]))}</button>`,
     );
   }
-  return prefix + rootCrumb + crumbs.join('<span class="folder-crumb-sep">/</span>');
+  return (
+    prefix +
+    rootCrumb +
+    crumbs.join('<span class="folder-crumb-sep">/</span>') +
+    mirrorHeading("note")
+  );
 }
 
 function getExt(name) {
@@ -1007,40 +1099,11 @@ async function loadTree(options = {}) {
       }
       knownFileCatalog?.observeInitialTree(data.tree);
       var pathEl = queryHtml(".header-path");
-      if (pathEl) {
-        pathEl.innerHTML = pathBaseHtml(data.root);
-      }
-      // Aggregate root size + file count + newest-mtime from top-level
-      // children. Same shape as a folder tooltip — the served root reads
-      // as "just another folder", the top-most one.
-      var totalSize = 0;
-      var totalFiles = 0;
-      var newestMtime = 0;
-      var hasPendingAggregate = false;
-      for (var i = 0; i < data.tree.length; i++) {
-        var n = data.tree[i];
-        if (n.type === "dir") {
-          if (
-            n.total_size === null ||
-            n.total_size === undefined ||
-            n.total_files === null ||
-            n.total_files === undefined
-          ) {
-            hasPendingAggregate = true;
-          } else {
-            totalSize += n.total_size;
-            totalFiles += n.total_files;
-          }
-        } else if (n.type === "file") {
-          totalSize += n.size || 0;
-          totalFiles += 1;
-        }
-        if ((n.mtime || 0) > newestMtime) {
-          newestMtime = n.mtime || 0;
-        }
-      }
-      var summaryFiles = hasPendingAggregate ? null : totalFiles;
-      var summarySize = hasPendingAggregate ? null : totalSize;
+      renderServedRootHeading(pathEl, data.root);
+      var rootTally = rootTallyFromTopLevel(data.tree);
+      var newestMtime = rootTally.newestMtime;
+      var summaryFiles = rootTally.files;
+      var summarySize = rootTally.size;
       // Per-entry pending check above isn't enough: a partial scan can finalize
       // every visible top-level dir before the walker is done, leaving the
       // summary at a stale "known but incomplete" value. The envelope-level
@@ -1417,7 +1480,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // well, which showed the reader two tooltips saying the same thing.
     if (!d.tipName) {
       showTooltip(
-        `${esc(d.servedRoot || "")}<div class="tip-detail">Jump to root</div>`,
+        `${esc(d.servedRoot || "")}${mirrorHeading("tip")}<div class="tip-detail">Jump to root</div>`,
         headerPath,
       );
       return;
@@ -1428,7 +1491,10 @@ document.addEventListener("DOMContentLoaded", () => {
       parseTipNumber(d.tipSize),
       parseTipNumber(d.tipMtime),
     );
-    showTooltip(`${folderTip}<div class="tip-detail">Jump to root</div>`, headerPath);
+    showTooltip(
+      `${folderTip}${mirrorHeading("tip")}<div class="tip-detail">Jump to root</div>`,
+      headerPath,
+    );
   });
   headerPath.addEventListener("mouseleave", hideTooltip);
 });
@@ -1460,6 +1526,9 @@ function treeRenderOptionsForElement(_el) {
 }
 
 function treeDirChipHtml(totalFiles, totalSize, options) {
+  if (totalFiles === undefined && totalSize === undefined) {
+    return "";
+  }
   if (treeDirMetric(options) === TREE_DIR_METRIC_COUNT) {
     return countHtml(totalFiles, "tree-item-size");
   }
@@ -1617,6 +1686,15 @@ function deferredTreePageHtml(nodes, options) {
   );
 }
 
+// A tree node's rendered name. A Git pin sends the display basename already
+// decoded, so decoding it again would read `g1-data` as a wire token and turn
+// `50%25-off.md` into `50%-off.md`. Only a filesystem identity carries the
+// escaping `displayPath` exists to undo.
+function treeNodeDisplayName(name) {
+  var text = name || "";
+  return isGitRevisionSource() ? text : window.MetabrowserNavigationRoute.displayPath(text);
+}
+
 // `options` is a small bag of render-mode flags forwarded into
 // recursive calls. Currently:
 //   options.dirMetric — "size" (default, Files panel) renders
@@ -1694,10 +1772,10 @@ function renderTreeNodes(nodes, isRoot, options) {
         labelId: folderLabelId,
       });
       parts.push(
-        `<div class="tree-item tree-folder ${stateClass}${mutedCls}"${folderAttributes} data-action="select-dir" data-path="${esc(node.path)}" data-tip-type="dir" data-tip-name="${esc(window.MetabrowserNavigationRoute.displayPath(node.name))}" data-tip-files="${nullableDataValue(node.total_files)}" data-tip-size="${nullableDataValue(node.total_size)}" data-tip-mtime="${nullableDataValue(node.mtime || 0)}">`,
+        `<div class="tree-item tree-folder ${stateClass}${mutedCls}"${folderAttributes} data-action="select-dir" data-path="${esc(node.path)}" data-tip-type="dir" data-tip-name="${esc(treeNodeDisplayName(node.name))}"${dataTipNumberAttr("files", node.total_files)}${dataTipNumberAttr("size", node.total_size)}${dataTipNumberAttr("mtime", node.mtime)}>`,
         `<span class="tree-toggle">${ICONS.toggle}</span>`,
         `<span class="tree-item-name" id="${folderLabelId}">`,
-        esc(window.MetabrowserNavigationRoute.displayPath(node.name)),
+        esc(treeNodeDisplayName(node.name)),
         "</span>",
         '<span class="tree-item-age-inline">',
         dirAge,
@@ -1754,12 +1832,12 @@ function renderTreeNodes(nodes, isRoot, options) {
         labelId: linkLabelId,
       });
       parts.push(
-        `<div class="tree-item tree-symlink${mutedCls}"${linkAttributes} data-action="select" data-path="${esc(node.path)}" data-tip-type="symlink" data-tip-name="${esc(window.MetabrowserNavigationRoute.displayPath(node.name))}" data-tip-mtime="${node.mtime || 0}">`,
+        `<div class="tree-item tree-symlink${mutedCls}"${linkAttributes} data-action="select" data-path="${esc(node.path)}" data-tip-type="symlink" data-tip-name="${esc(treeNodeDisplayName(node.name))}"${dataTipNumberAttr("mtime", node.mtime)}>`,
         '<span class="tree-item-icon">',
         ICONS.fileSymlink,
         "</span>",
         `<span class="tree-item-name" id="${linkLabelId}">`,
-        esc(window.MetabrowserNavigationRoute.displayPath(node.name)),
+        esc(treeNodeDisplayName(node.name)),
         "</span>",
         '<span class="tree-item-age-inline"><span class="tree-item-age">',
         linkAge,
@@ -1814,7 +1892,7 @@ function renderTreeNodes(nodes, isRoot, options) {
         });
       }
       parts.push(
-        `<div class="tree-item tree-file${container ? " tree-container collapsed" : ""}${mutedCls}"${fileAttributes} data-action="select" data-path="${esc(node.path)}"${container ? ` data-container-kind="${esc(container.kind)}" data-container-plugin="${esc(container.plugin)}" data-container-children="${esc(container.children)}"` : ""}${logicalExtAttr}${extAttr}${compressedAttr} data-tip-type="file" data-tip-name="${esc(window.MetabrowserNavigationRoute.displayPath(node.name))}" data-tip-size="${node.size || 0}" data-tip-mtime="${node.mtime || 0}">`,
+        `<div class="tree-item tree-file${container ? " tree-container collapsed" : ""}${mutedCls}"${fileAttributes} data-action="select" data-path="${esc(node.path)}"${container ? ` data-container-kind="${esc(container.kind)}" data-container-plugin="${esc(container.plugin)}" data-container-children="${esc(container.children)}"` : ""}${logicalExtAttr}${extAttr}${compressedAttr} data-tip-type="file" data-tip-name="${esc(treeNodeDisplayName(node.name))}"${dataTipNumberAttr("size", node.size)}${dataTipNumberAttr("mtime", node.mtime)}>`,
         container ? `<span class="tree-toggle">${ICONS.toggle}</span>` : "",
         '<span class="',
         iconCls,
@@ -1824,7 +1902,7 @@ function renderTreeNodes(nodes, isRoot, options) {
         compressionBadge,
         "</span>",
         `<span class="tree-item-name" id="${fileLabelId}">`,
-        esc(window.MetabrowserNavigationRoute.displayPath(node.name)),
+        esc(treeNodeDisplayName(node.name)),
         "</span>",
         '<span class="tree-item-age-inline"><span class="tree-item-age">',
         fileAge,
@@ -2415,10 +2493,17 @@ if (typeof window !== "undefined") {
  * including a plugin's. Tooltips are pointer-only supplementary detail;
  * keyboard focus uses the element's accessible name and dismisses any tooltip
  * left under a stationary pointer.
+ *
+ * Unlike the action delegates it is not owner-marked (see `ownedControlAttr`):
+ * it runs nothing, and plugins write plain `data-tip-text`. It does ignore a
+ * rendered document's own markup, which a trusted folder's Markdown keeps, so a
+ * document cannot label itself in the application's tooltip layer.
  */
 function tipTextAnchor(event) {
   var anchor = eventTargetElement(event)?.closest("[data-tip-text]");
-  return anchor instanceof HTMLElement ? anchor : null;
+  return anchor instanceof HTMLElement && !anchor.closest(".metabrowser-kpress-host")
+    ? anchor
+    : null;
 }
 
 /** @param {Event} e */
@@ -2449,6 +2534,9 @@ document.addEventListener("focusin", hideTooltip);
 // (exact bytes) for the precise-value read hovering implies; the
 // visual category (this number is a size) is carried by the class.
 function _tipSize(bytes) {
+  if (bytes === undefined) {
+    return "";
+  }
   if (isPendingNumber(bytes)) {
     return '<span class="tally-pending" role="status" aria-label="Loading size"></span>';
   }
@@ -2456,6 +2544,9 @@ function _tipSize(bytes) {
   return `<span class="${cls}">${formatExactSize(bytes || 0)}</span>`;
 }
 function _tipCount(n) {
+  if (n === undefined) {
+    return "";
+  }
   if (isPendingNumber(n)) {
     return (
       '<span class="tally-pending tally-pending-narrow" role="status"' +
@@ -2470,14 +2561,11 @@ function treeTooltipNameHtml(name, includeName) {
 }
 
 function fileTooltipHtml(name, size, mtime, includeName) {
+  var stamped = formatTimestamp(mtime);
   return (
     treeTooltipNameHtml(name, includeName) +
-    '<div class="tip-detail">' +
-    _tipSize(size) +
-    "</div>" +
-    '<div class="tip-detail">' +
-    formatTimestamp(mtime) +
-    "</div>"
+    (size === undefined ? "" : `<div class="tip-detail">${_tipSize(size)}</div>`) +
+    (stamped ? `<div class="tip-detail">${stamped}</div>` : "")
   );
 }
 
@@ -2492,17 +2580,12 @@ function symlinkTooltipHtml(name, mtime, includeName) {
 }
 
 function folderTooltipHtml(name, totalFiles, totalSize, mtime, includeName) {
+  var stamped = formatTimestamp(mtime);
   return (
     treeTooltipNameHtml(name, includeName) +
-    '<div class="tip-detail">' +
-    _tipCount(totalFiles) +
-    "</div>" +
-    '<div class="tip-detail">' +
-    _tipSize(totalSize) +
-    "</div>" +
-    '<div class="tip-detail">' +
-    formatTimestamp(mtime) +
-    "</div>"
+    (totalFiles === undefined ? "" : `<div class="tip-detail">${_tipCount(totalFiles)}</div>`) +
+    (totalSize === undefined ? "" : `<div class="tip-detail">${_tipSize(totalSize)}</div>`) +
+    (stamped ? `<div class="tip-detail">${stamped}</div>` : "")
   );
 }
 
@@ -2639,11 +2722,12 @@ function shouldPrefetchFile(item) {
   if (+(item.dataset.tipSize || 0) > FILE_PREFETCH_MAX_BYTES) {
     return false;
   }
-  // For .gz files the server attaches `data-logical-ext`; key the
-  // "skip prefetch for JSONL" rule off the inner extension so
-  // `events.jsonl.gz` is treated identically to `events.jsonl`.
-  var ext = (item.dataset.logicalExt || getExt(path)).toLowerCase();
-  return ext !== ".jsonl";
+  // No name ending `.jsonl` is prefetched: /api/file parses such a file whole
+  // into events instead of answering a bounded text window. `data-logical-ext`
+  // is the inner extension of a .gz; `data-ext` is a compound tail
+  // (`.codex.jsonl`), and all a pin's wire path has, so match its end.
+  var ext = (item.dataset.logicalExt || item.dataset.ext || getExt(path)).toLowerCase();
+  return !ext.endsWith(".jsonl");
 }
 
 function abortHoverPrefetch() {
@@ -3453,7 +3537,7 @@ async function refreshIndexProgress(force) {
 }
 
 function startIndexProgressPolling() {
-  if (indexProgressTimer) {
+  if (isGitRevisionSource() || indexProgressTimer) {
     return;
   }
   refreshIndexProgress(true);
@@ -3562,6 +3646,10 @@ function clearPreviewNavigationState(preview) {
  */
 function claimPreview(owner, selection) {
   cancelPendingFilePreviewStage();
+  // Whatever claims the pane next replaces the pull-request page, including a page
+  // for another pull request; only a tab change keeps it (createPullPageHost). There
+  // is no host, and so no page, until an address under /pull/ was opened.
+  pullPageHost?.dispose();
   const preview = document.getElementById("preview-pane");
   if (preview) {
     clearPreviewNavigationState(preview);
@@ -3803,6 +3891,7 @@ window.MetabrowserShell = Object.freeze({
   removeNavPanel,
   renderPreviewHtml,
   renderPreviewNode,
+  sourceFreshness,
 });
 
 // Toggle the nav chrome's drop shadow based on whether the
@@ -4500,7 +4589,7 @@ function filterTypeOptions() {
 // that a DOM walk cannot. This includes Live: it is the shortest
 // server-owned mtime window, not the specialized activity tracker.
 function filesPanelUsesRecentSource() {
-  if (!filterState) {
+  if (isGitRevisionSource() || !filterState) {
     return false;
   }
   var st = filterState.get();
@@ -4519,18 +4608,21 @@ function renderNavFilterBar() {
     '<div class="nav-filter-bar-main">' +
     // Age and type ride the always-visible row: they are the two
     // dimensions people reach for, and as dropdowns they cost a
-    // fraction of the width the segmented ramps did.
-    fc.menuGroupHtml({
-      key: "recency",
-      select: "one",
-      label: "Modified within",
-      options: filterRecencyOptions(),
-      value: st.recency,
-      anyLabel: "Any age",
-      anyValue: "all",
-      open: filterOpenMenu === "recency",
-      menuId: "filter-recency-menu",
-    }) +
+    // fraction of the width the segmented ramps did. A Git pin has no
+    // mtime, so recency is omitted rather than offered as a 409.
+    (isGitRevisionSource()
+      ? ""
+      : fc.menuGroupHtml({
+          key: "recency",
+          select: "one",
+          label: "Modified within",
+          options: filterRecencyOptions(),
+          value: st.recency,
+          anyLabel: "Any age",
+          anyValue: "all",
+          open: filterOpenMenu === "recency",
+          menuId: "filter-recency-menu",
+        })) +
     fc.menuGroupHtml({
       key: "types",
       label: "File type",
@@ -4590,12 +4682,14 @@ function renderNavFilterBar() {
       open: filterOpenMenu === "size",
       menuId: "filter-size-menu",
     }) +
-    fc.checkHtml({
-      key: "showIgnored",
-      label: "Show ignored",
-      checked: st.showIgnored,
-      tip: "Show gitignored entries, dimmed",
-    }) +
+    (isGitRevisionSource()
+      ? ""
+      : fc.checkHtml({
+          key: "showIgnored",
+          label: "Show ignored",
+          checked: st.showIgnored,
+          tip: "Show gitignored entries, dimmed",
+        })) +
     "</div></div>";
   bar.innerHTML = main + drawer;
 }
@@ -5044,8 +5138,7 @@ function showTextChunkLoadError() {
     "<strong>Could not load more content.</strong> Select Load more to try again.";
 }
 
-// Called by the generated file-header action.
-// biome-ignore lint/correctness/noUnusedVariables: referenced from generated HTML.
+// The partial-content notice's Load more, registered by name with the SDK below.
 async function loadMoreCurrentText() {
   if (textChunkLoadInFlight || !currentPath) {
     return;
@@ -5110,12 +5203,17 @@ async function loadMoreCurrentText() {
         document,
         window.metabrowser?.renderTextLoadMoreFooter?.(nextCached) || "",
       );
+      window.MetabrowserSourceLineAnchors?.refresh(document, nextCached);
       commitTextChunkCache(path, previewClaim, cached, nextCached, requested);
     } else {
-      await renderFile(nextCached, undefined, previewClaim, {
+      // The render replaces the whole file view; it keeps the tab the reader is on,
+      // such as a Markdown file's Source tab that Load more is filling.
+      var activeView = document.getElementById("preview-pane")?.dataset.activeView;
+      await renderFile(nextCached, activeView || undefined, previewClaim, {
         isCurrent: () => textChunkRequestOwnsPreview(path, previewClaim, cached),
         onCommit: () => {
           commitTextChunkCache(path, previewClaim, cached, nextCached, requested);
+          window.MetabrowserSourceLineAnchors?.refresh(document, nextCached);
         },
       });
     }
@@ -5417,18 +5515,25 @@ function renderFolderHeader(data) {
   var segments = path ? path.split("/") : [];
   var parent = segments.length > 0 ? segments.slice(0, -1).join("/") : null;
   var parentLabel =
-    parent === null ? "" : parent === "" ? "/" : `${segments[segments.length - 2]}/`;
+    parent === null
+      ? ""
+      : parent === ""
+        ? "/"
+        : `${window.MetabrowserNavigationRoute.displayPath(segments[segments.length - 2])}/`;
   var upButton =
     parent === null
       ? '<button type="button" class="btn parent-nav-btn parent-nav-btn-icon-only folder-up" data-tip-text="No parent folder" aria-label="No parent folder" disabled><span class="parent-nav-arrow" aria-hidden="true">↑</span></button>'
-      : `<button type="button" class="btn parent-nav-btn parent-nav-btn-icon-only folder-up" data-tip-text="Open ${esc(parentLabel)}" aria-label="Open parent folder ${esc(parentLabel)}" data-nav-dir="${esc(parent)}"><span class="parent-nav-arrow" aria-hidden="true">↑</span></button>`;
-  var summary = `<span class="folder-header-summary">${folderHeaderSummaryHtml(data.dir || {})}</span>`;
+      : `<button type="button" class="btn parent-nav-btn parent-nav-btn-icon-only folder-up" data-tip-text="Open ${esc(parentLabel)}" aria-label="Open parent folder ${esc(parentLabel)}" data-nav-dir="${esc(parent)}"${ownedControlAttr()}><span class="parent-nav-arrow" aria-hidden="true">↑</span></button>`;
+  var dir = data.dir && typeof data.dir === "object" ? data.dir : null;
+  var summary = dir
+    ? `<span class="folder-header-summary">${folderHeaderSummaryHtml(dir)}</span>`
+    : "";
   return (
     '<div class="file-header folder-header">' +
     upButton +
     `<span class="file-header-path folder-breadcrumb">${headerAddressHtml(path, false)}</span>` +
     summary +
-    '<button class="icon-btn file-header-icon file-header-print" id="print-view-btn" type="button" onclick="printActiveView()" data-tip-text="Print view" aria-label="Print view" hidden>' +
+    `<button class="icon-btn file-header-icon file-header-print" type="button"${ownedControlAttr()} data-tip-text="Print view" aria-label="Print view" hidden>` +
     (ICONS.print || "") +
     "</button>" +
     "</div>"
@@ -5442,10 +5547,11 @@ function folderHeaderSummaryHtml(dirInfo) {
   // countHtml, and formatAge(null) all render the tally-pending
   // skeleton the tree rows use, so the header paints with shape
   // instead of blanks until the live refresher patches it.
+  // Omitted aggregates are not pending: a Git tree envelope has no dir.
   return (
     sizeHtml(dirInfo.total_size, "file-header-size") +
     countHtml(dirInfo.total_files, "folder-header-count") +
-    `<span class="folder-header-age">${formatAge(dirInfo.mtime ?? null)}</span>`
+    `<span class="folder-header-age">${formatAge(dirInfo.mtime)}</span>`
   );
 }
 
@@ -5481,7 +5587,8 @@ function startFolderHeaderSubscription(path) {
     }
     var summaryEl = document.querySelector("#preview-pane .folder-header-summary");
     if (summaryEl) {
-      summaryEl.innerHTML = folderHeaderSummaryHtml(data.dir || {});
+      var dir = data.dir && typeof data.dir === "object" ? data.dir : null;
+      summaryEl.innerHTML = dir ? folderHeaderSummaryHtml(dir) : "";
     }
   });
 }
@@ -5579,8 +5686,14 @@ function viewMetaAttrs(view) {
   return attrs;
 }
 
+// The header's print button, found by class and owner mark. It carries no `id`: a
+// document's `<label for=…>` would otherwise click it, and its stamp would pass.
+function shellPrintButton() {
+  return Array.from(queryHtmlAll(".file-header-print")).find((btn) => isOwnedControl(btn)) || null;
+}
+
 function updatePrintButton(printable) {
-  var btn = document.getElementById("print-view-btn");
+  var btn = shellPrintButton();
   if (!btn) {
     return;
   }
@@ -5647,6 +5760,22 @@ if (typeof window !== "undefined") {
   window.printActiveView = printActiveView;
 }
 
+// The partial-content notice's Load more runs the shell's text loader by name.
+window.MetabrowserPluginHost?.registerLoadMoreAction?.("loadMoreCurrentText", loadMoreCurrentText);
+
+// The file header's print button, delegated rather than an inline handler: the page
+// policy for an untrusted source runs no inline handler.
+/** @param {Event} event */
+function onPrintViewClick(event) {
+  if (
+    event.target instanceof Element &&
+    isOwnedControl(event.target.closest(".file-header-print"))
+  ) {
+    printActiveView();
+  }
+}
+document.addEventListener("click", onPrintViewClick);
+
 document.addEventListener("metabrowser:view-print-state", () => {
   var preview = document.getElementById("preview-pane");
   if (preview?.dataset.activeView) {
@@ -5662,8 +5791,11 @@ async function loadViewComposition() {
   if (!assets) {
     throw new Error("Metabrowser asset loader is unavailable");
   }
+  // The line gutter and the SDK's view helpers are one bundle, fetched beside the
+  // compositor and not after it: every file view is mounted through here, so its
+  // renderer finds them without the plugin loader having to fetch them first.
   await _perf.measureAsync("fileNavigation:viewComposition", () =>
-    assets.ensureAsset("view-composition"),
+    Promise.all([assets.ensureAsset("view-composition"), assets.ensureAsset("sdk-views")]),
   );
   const composition = window.MetabrowserViewComposition;
   if (!composition) {
@@ -5790,14 +5922,14 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
           html +=
             '<span class="file-header-path folder-breadcrumb">' +
             headerAddressHtml(data.path, true) +
-            `<button class="icon-btn icon-btn-reveal file-header-copy" type="button" data-mb-copy="text" data-mb-copy-text="${esc(window.MetabrowserNavigationRoute.displayPath(data.path))}" data-mb-copy-label="Copy path" data-tip-text="Copy path" aria-label="Copy path">` +
+            `<button class="icon-btn icon-btn-reveal file-header-copy" type="button" data-mb-copy="text" data-mb-copy-text="${esc(window.MetabrowserNavigationRoute.displayPath(data.path))}"${ownedControlAttr()} data-mb-copy-label="Copy path" data-tip-text="Copy path" aria-label="Copy path">` +
             ICON_COPY +
             "</button>" +
             "</span>";
           html += badges;
           html += sizeHtml(data.size, "file-header-size");
           html +=
-            '<button class="icon-btn file-header-icon file-header-print" id="print-view-btn" type="button" onclick="printActiveView()" data-tip-text="Print view" aria-label="Print view" hidden>' +
+            `<button class="icon-btn file-header-icon file-header-print" type="button"${ownedControlAttr()} data-tip-text="Print view" aria-label="Print view" hidden>` +
             (ICONS.print || "") +
             "</button>";
           html += "</div>";
@@ -5996,12 +6128,12 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
   );
 }
 
-// The agent-log built-in plugin emits onclick="toggleEvent(this)"
-// in each log event header. This handler sits on window so the
-// inline onclick resolves at click time. Lazy-highlight on first
-// expand keeps initial render cheap on logs with thousands of events.
+// The agent-log built-in plugin calls toggleEvent from its delegated click
+// listener on each log event header; it sits on window so the plugin reaches
+// it. Lazy-highlight on first expand keeps initial render cheap on logs with
+// thousands of events.
 
-// biome-ignore lint/correctness/noUnusedVariables: referenced from generated plugin HTML.
+// biome-ignore lint/correctness/noUnusedVariables: called by the agent-log plugin through window.
 function toggleEvent(header) {
   var parent = header.parentElement;
   parent.classList.toggle("expanded");
@@ -6027,13 +6159,14 @@ function toggleEvent(header) {
 // Delegated handlers for header navigation controls. Copyable values use
 // the SDK-owned data-mb-copy contract, so path and revision identifiers
 // share clipboard and feedback behavior without inline handlers.
-document.addEventListener("click", (e) => {
+/** @param {Event} e */
+function onHeaderNavigationClick(e) {
   var origin = eventTargetElement(e);
   if (!origin) {
     return;
   }
   var navBtn = /** @type {HTMLElement | null} */ (origin.closest("[data-nav-dir]"));
-  if (navBtn && !navBtn.hasAttribute("disabled")) {
+  if (navBtn && isOwnedControl(navBtn) && !navBtn.hasAttribute("disabled")) {
     navigateToFolder(navBtn.dataset.navDir ?? "");
     return;
   }
@@ -6041,28 +6174,32 @@ document.addEventListener("click", (e) => {
   // re-opens what is already open, which is the point: every segment of the
   // address behaves alike.
   var fileBtn = /** @type {HTMLElement | null} */ (origin.closest("[data-nav-file]"));
-  if (fileBtn && !fileBtn.hasAttribute("disabled")) {
+  if (fileBtn && isOwnedControl(fileBtn) && !fileBtn.hasAttribute("disabled")) {
     void navigateToPath(fileBtn.dataset.navFile ?? "");
     return;
   }
-});
-
-// biome-ignore lint/correctness/noUnusedVariables: referenced from generated HTML.
-function copyContent(btn) {
-  var container = btn.closest(".content-copy-wrap");
-  var code = container?.querySelector("code");
-  var text = code ? code.textContent : "";
-  navigator.clipboard.writeText(text).then(() => {
-    btn.classList.add("copied");
-    btn.dataset.tipText = "Copied!";
-    setTimeout(() => {
-      btn.classList.remove("copied");
-      btn.dataset.tipText = "Copy content";
-    }, 1500);
-  });
 }
+document.addEventListener("click", onHeaderNavigationClick);
 
 // ── Tab switching ───────────────────────────────────────────────
+
+/**
+ * Select a tab of the file the preview pane shows, as a click on it does, unless it is
+ * already selected. A file still loading, or a view it lacks, has no tab to select.
+ *
+ * @param {string} path
+ * @param {string | null} tabId
+ */
+function showPreviewTab(path, tabId) {
+  var preview = document.getElementById("preview-pane");
+  if (!tabId || !preview || preview.dataset.renderedPath !== path) {
+    return;
+  }
+  var button = queryHtml(`#preview-pane > .tab-bar > .tab-btn[data-tab="${tabId}"]`);
+  if (button && !button.classList.contains("active")) {
+    button.click();
+  }
+}
 
 /** @param {ParentNode} [root] */
 function initTabs(root = document) {
@@ -6277,6 +6414,9 @@ var fileStore = new Map(); // path -> FsEntry
 var fileStoreSubscribers = [];
 var inventoryEventSource = null;
 var catalogFeedCanStart = false;
+function isGitRevisionSource() {
+  return window.METABROWSER_SOURCE_KIND === "git_revision";
+}
 // The startup crawl establishes the navigation baseline. Its snapshot and
 // incremental walker upserts are not user-visible file changes, so newly
 // mounted rows stay neutral until the first terminal inventory event. A
@@ -6597,12 +6737,12 @@ function computeCellPatch(entry, options) {
   var fileMtimeSec = entry.mtime_ns ? entry.mtime_ns / 1e9 : 0;
   return {
     kind: "file",
-    sizeHtml: sizeHtml(entry.size || 0, "tree-item-size"),
+    sizeHtml: sizeHtml(entry.size, "tree-item-size"),
     ageHtml:
       '<span class="tree-item-age">' +
       formatAge(fileMtimeSec) +
       '</span><span class="tree-item-activity"></span>',
-    tipSize: entry.size || 0,
+    tipSize: nullableDataValue(entry.size),
     tipMtime: fileMtimeSec,
     active: !!entry.active,
   };
@@ -6752,15 +6892,14 @@ function _buildRowHtml(entry, options) {
     esc(entry.path) +
     '" data-tip-type="file" data-tip-name="' +
     esc(name) +
-    '" data-tip-size="' +
-    (entry.size || 0) +
-    '" data-tip-mtime="' +
-    (entry.mtime_ns || 0) / 1e9 +
+    '"' +
+    dataTipNumberAttr("size", entry.size) +
+    dataTipNumberAttr("mtime", entry.mtime_ns ? entry.mtime_ns / 1e9 : undefined) +
     // Live-inserted rows need the filter's extension too, or a row
     // arriving over the event stream would be judged on its last
     // suffix while the rendered ones are judged on the index's.
-    (entry.ext ? `" data-ext="${esc(entry.ext)}` : "") +
-    '">' +
+    (entry.ext ? ` data-ext="${esc(entry.ext)}"` : "") +
+    ">" +
     '<span class="tree-item-icon file-identity-icon ' +
     fi.cls +
     (fi.style ? `" style="${esc(fi.style)}` : "") +
@@ -6778,7 +6917,7 @@ function _buildRowHtml(entry, options) {
     "</span>" +
     '<span class="tree-item-activity"></span>' +
     "</span>" +
-    sizeHtml(entry.size || 0, "tree-item-size") +
+    sizeHtml(entry.size, "tree-item-size") +
     "</div>"
   );
 }
@@ -7458,9 +7597,9 @@ function _createInventoryEventSource() {
 }
 
 function startInventoryEventStream() {
-  if (typeof EventSource === "undefined") {
-    // Graceful degradation: no live deltas, but the one-shot bulk
-    // fetch still gives the palette complete-as-of-fetch coverage.
+  if (isGitRevisionSource() || typeof EventSource === "undefined") {
+    // A Git pin is already complete and has no watcher. Missing EventSource
+    // is the same one-shot catalog path without live deltas.
     catalogFeedCanStart = true;
     quickFileCatalogFeed?.start();
     return;
@@ -7534,6 +7673,160 @@ function deliverNavigationFragment(target) {
   );
 }
 
+// ── Pull-request page ──────────────────────────────────────────
+//
+// /pull/<n>[/files] is the served pull request's address space. Its page is the view a
+// plugin registers for the `pull-request` kind, the GitHub plugin's. The host in
+// pull-route.js decides what a route does -- switch the shown page's tab or mount a
+// page -- and keeps the tab in the URL; the shell supplies the pane, loads that plugin,
+// and hands it the host's `open`. The view owns everything else: fetching the record,
+// polling, refreshing, and Files changed.
+//
+// Only an address under /pull/ needs pull-route.js. The server adds it to that
+// address's shell; a page that gets there through history takes the `pull-route`
+// bundle. The host is null until one was opened.
+var PULL_ROUTE_PREFIX = "/pull/";
+/** @type {ReturnType<NonNullable<Window["MetabrowserPullRoute"]>["createPullPageHost"]> | null} */
+var pullPageHost = null;
+
+/** The pull-request page's host, created once its module has arrived. */
+async function loadPullPageHost() {
+  if (pullPageHost) {
+    return pullPageHost;
+  }
+  if (!window.MetabrowserPullRoute) {
+    const assets = window.MetabrowserAssets;
+    if (!assets) {
+      throw new Error("Metabrowser asset loader is unavailable");
+    }
+    await assets.ensureAsset("pull-route");
+  }
+  const routes = window.MetabrowserPullRoute;
+  if (!routes) {
+    throw new Error("Metabrowser pull-request routes are unavailable");
+  }
+  pullPageHost ??= routes.createPullPageHost(pullPageHostDeps());
+  return pullPageHost;
+}
+
+/**
+ * The pane when the pull-request page's code could not be loaded.
+ *
+ * @param {number} [claim] The page's claim when it already holds the pane.
+ */
+function showPullPageLoadFailure(claim) {
+  var held = claim;
+  if (held === undefined) {
+    closeLiveStream();
+    currentPath = "";
+    setSelectedPath(null);
+    held = claimPreview("pull-request");
+    stopFolderHeaderSubscription();
+  }
+  renderPreviewHtml(
+    previewErrorHtml("Could not load the pull-request page.", "Refresh the page to try again."),
+    held,
+  );
+}
+
+function pullPageHostDeps() {
+  return {
+    claim: () => {
+      closeLiveStream();
+      currentPath = "";
+      setSelectedPath(null);
+      var claim = claimPreview("pull-request");
+      stopFolderHeaderSubscription();
+      return claim;
+    },
+    isCurrent: (claim) => isPreviewClaimCurrent(claim),
+    mount: async (claim, route, open) => {
+      var sdk = window.metabrowser;
+      var view = null;
+      try {
+        await sdk.ensureKindAssets("pull-request");
+        view = sdk.getRegisteredView("pull-request", "pull-request");
+      } catch (error) {
+        // Not the same as no plugin rendering such pages; the next route tries again.
+        console.error("metabrowser: the pull-request page could not load", error);
+        showPullPageLoadFailure(claim);
+        return null;
+      }
+      if (!isPreviewClaimCurrent(claim)) {
+        return null;
+      }
+      if (!view) {
+        renderPreviewHtml(
+          '<div class="preview-empty">No plugin renders pull-request pages here.</div>',
+          claim,
+        );
+        return null;
+      }
+      var host = document.createElement("div");
+      host.className = "content-body pull-request-host";
+      renderPreviewNode(host, claim);
+      return /** @type {{setTab?: (tab: string) => void, dispose?: () => void} | null} */ (
+        await view.render(host, {
+          kind: "pull-request",
+          number: route.number,
+          tab: route.tab,
+          open: open,
+        })
+      );
+    },
+    pathname: () => window.location.pathname,
+    pushHref: (href) => window.history.pushState(null, "", href),
+  };
+}
+
+// Back and forward can land on a pull-request route without changing a navigation
+// target -- between a page's tabs, or onto an entry a commit replaced -- so the
+// navigation controller does not see them; the host decides (pullHistoryAction).
+// This listener is added as app.js loads, before the controller starts and adds its own,
+// so it reads the target the controller held before this landing. With no host yet,
+// only a landing under /pull/ can be the page's, and it is applied once the host has
+// loaded, unless history has moved on by then.
+function applyPullHistoryLanding() {
+  var pathname = window.location.pathname;
+  var heldTarget = navigationController.current() !== null;
+  if (pullPageHost) {
+    pullPageHost.onHistory(pathname, heldTarget);
+    return;
+  }
+  if (!pathname.startsWith(PULL_ROUTE_PREFIX)) {
+    return;
+  }
+  loadPullPageHost().then(
+    (host) => {
+      if (window.location.pathname === pathname) {
+        host.onHistory(pathname, heldTarget);
+      }
+    },
+    (error) => {
+      console.error("metabrowser: the pull-request page could not load", error);
+      if (window.location.pathname === pathname) {
+        showPullPageLoadFailure();
+      }
+    },
+  );
+}
+window.addEventListener("popstate", applyPullHistoryLanding);
+
+/**
+ * The view *target*'s address asks a file to open in, once the line-anchor module that
+ * reads it has arrived with the view compositor (*loading*). A load that failed names
+ * no view, and the file's own load of the same bundle reports the failure.
+ *
+ * @param {{path: string, query?: string, fragment?: string}} target
+ * @param {ReturnType<typeof beginViewCompositionLoad>} loading
+ * @returns {Promise<"source" | null>}
+ */
+async function addressedView(target, loading) {
+  return (await loading).status === "ready"
+    ? (window.MetabrowserSourceLineAnchors?.preferredView(target) ?? null)
+    : null;
+}
+
 async function applyNavigationTarget(target, context) {
   if (!target) {
     // A null target usually means "no selection". A /commit/ URL is a
@@ -7543,14 +7836,45 @@ async function applyNavigationTarget(target, context) {
     if (window.MetabrowserNavigationRoute.parseCommit(window.location.pathname)) {
       return { status: "cancelled" };
     }
+    if (window.location.pathname.startsWith(PULL_ROUTE_PREFIX)) {
+      var pullHost = null;
+      try {
+        pullHost = await loadPullPageHost();
+      } catch (error) {
+        console.error("metabrowser: the pull-request page could not load", error);
+        if (context.isCurrent()) {
+          showPullPageLoadFailure();
+        }
+        return { status: "cancelled" };
+      }
+      if (!context.isCurrent()) {
+        return { status: "cancelled" };
+      }
+      var pullRoute = window.MetabrowserPullRoute?.parsePull(window.location.pathname);
+      if (pullRoute) {
+        return pullHost.show(pullRoute);
+      }
+    }
     showNavigationLanding();
     return { status: "cancelled" };
   }
   var path = target.path.replace(/\/$/, "");
+  // An address that anchors lines or carries `plain=1` opens the file's Source view.
+  // Only an address with a fragment or a query can ask for one, and reading it takes
+  // the line-anchor module, which arrives with the view compositor. That load starts
+  // here and is awaited where the view is chosen, so it overlaps revealing the row,
+  // and an address with neither goes on without it.
+  var anchorModule = target.fragment || target.query ? beginViewCompositionLoad() : null;
   // Only a pane that already shows or is loading this path can take the
   // fragment alone. After a failure, or once the Git panel owns the pane,
   // opening the same path again is a retry and has to load it.
   if (!context.pathChanged && previewPane.holds(path)) {
+    // A line anchor added to the file shown opens its Source tab, as opening it does.
+    var shownView = anchorModule ? await addressedView(target, anchorModule) : null;
+    if (!context.isCurrent()) {
+      return { status: "cancelled" };
+    }
+    showPreviewTab(path, shownView);
     deliverNavigationFragment(target);
     return {
       focusTarget: document.getElementById("preview-pane") || undefined,
@@ -7558,10 +7882,11 @@ async function applyNavigationTarget(target, context) {
     };
   }
   await revealInTree(path);
+  var preferredView = anchorModule ? await addressedView(target, anchorModule) : null;
   if (!context.isCurrent()) {
     return { status: "cancelled" };
   }
-  var outcome = await selectFile(path, context.viewId);
+  var outcome = await selectFile(path, context.viewId || preferredView || undefined);
   if (outcome.status === "opened" && context.isCurrent()) {
     deliverNavigationFragment(navigationController.current() || target);
   }
@@ -7858,10 +8183,72 @@ async function initDeferredShellTools() {
   document.documentElement.dataset.shellToolsReady = "true";
 }
 
+/**
+ * A served mirror's freshness row: when it was fetched and an offer when a refresh
+ * moved the pinned ref. Only a pin has one, and it is fetched on demand after the
+ * first tree request, so neither a folder nor the first rows ever wait for it.
+ * static/source-freshness.js owns every decision; this only mounts it.
+ */
+async function startSourceFreshness() {
+  var element = document.getElementById("source-freshness");
+  var assets = window.MetabrowserAssets;
+  if (!isGitRevisionSource() || !element || !assets) {
+    return null;
+  }
+  await assets.ensureAsset("source-freshness");
+  return window.MetabrowserSourceFreshness?.mount(element) ?? null;
+}
+
+/** @type {Promise<MetabrowserSourceFreshnessController | null> | null} */
+var sourceFreshnessStarted = null;
+
+/**
+ * The page's one freshness controller, mounted on first use: null when a folder is
+ * served. The commit view asks it to fetch for a commit the mirror lacks, so both read
+ * one status and a page never polls twice.
+ */
+function sourceFreshness() {
+  sourceFreshnessStarted ??= startSourceFreshness().catch((error) => {
+    // A failed asset load is not the answer for the rest of the page's life.
+    sourceFreshnessStarted = null;
+    throw error;
+  });
+  return sourceFreshnessStarted;
+}
+
+/**
+ * A served mirror's branch and tag selector. The server renders its element only for
+ * a pin with a mirror; the module is fetched on demand after the first tree request,
+ * and static/source-ref-selector.js owns every decision; this only mounts it.
+ */
+async function startSourceRefSelector() {
+  var element = document.getElementById("source-ref-selector");
+  var assets = window.MetabrowserAssets;
+  if (!isGitRevisionSource() || !element || !assets) {
+    return;
+  }
+  await assets.ensureAsset("source-ref-selector");
+  window.MetabrowserSourceRefSelector?.mount(element);
+}
+
 // app.js is the last core script in the body, so the tree container and every
 // cache used by its renderer are initialized here. Paint the server-carried
 // rows now instead of waiting for DOMContentLoaded. The authoritative request
 // below keeps the same baseline and reconciles into it.
+//
+// A pin's page names and addresses every file through the GitPath codec, a startup
+// script of its shell. Without it a row would show its wire for a name and a link
+// would address another file, so the page stops here and says so.
+if (isGitRevisionSource() && !window.MetabrowserGitPath) {
+  for (const id of ["tree-content", "preview-pane"]) {
+    const pane = document.getElementById(id);
+    if (pane) {
+      pane.innerHTML =
+        '<div class="preview-empty" role="alert">This page did not load completely. Refresh the page to try again.</div>';
+    }
+  }
+  throw new Error("metabrowser: git-path.js did not load on a pinned revision's page");
+}
 renderInitialTreeRows();
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -7899,6 +8286,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       console.error("metabrowser shell tools: init failed", { url: location.pathname }, error);
     })
     .finally(settleCommitRoutePreview);
+  sourceFreshness().catch((error) => {
+    console.error("metabrowser source freshness: init failed", error);
+  });
+  startSourceRefSelector().catch((error) => {
+    console.error("metabrowser ref selector: init failed", error);
+  });
   if (filesPanelUsesRecentSource()) {
     loadRecent(currentRecentFilterCursor());
   }

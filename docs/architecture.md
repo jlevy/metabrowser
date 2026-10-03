@@ -330,9 +330,10 @@ which space it belongs to:
 
 | Route | Selects | Path is |
 | --- | --- | --- |
-| `/view/<path>` | Content in the served tree | A served-root-relative path |
+| `/view/<path>` | Content in the served tree or a pinned Git revision | A served-root-relative path, or a `GitPath` wire when the session is a `GitRevisionSubject` |
 | `/commit/<rev>` | One commit’s change set, compared against its first parent | A revision |
 | `/commit/<rev>/<inner>` | One file’s diff inside that change set | A revision, then a path within the comparison |
+| `/pull/<n>`, `/pull/<n>/files` | The served pull request’s page: its conversation, or its Files changed | A pull-request number, then an optional tab |
 | `/compare/<base>..<head>` | An explicit comparison (`...` for merge-base) | Two revisions |
 | `/compare/<spec>/<inner>` | One file’s diff inside that comparison | A comparison spec, then a path within it |
 
@@ -346,7 +347,15 @@ The shape after the route is deliberately uniform —
 patch file and a commit are both containers whose children are file changes; only the
 container’s own address differs, so `/view/changes.patch/src/app.py` and
 `/commit/abc123/src/app.py` are the same grammar over two address spaces.
-A future archive or pull-request container needs no new rule.
+An archive or pull-request container uses the same inner-path rule in its own address
+space.
+
+A repository branch is not another browser address space.
+Repository opening resolves a branch name to a full object ID and pins a
+`GitRevisionSubject` over a worktree-free store; `/view/<path>` then addresses content
+with a `GitPath` wire identity, not a checkout.
+Public-safe repository context retains both the requested ref and resolved object ID so
+the moving name is never presented as immutable identity.
 
 Route invariants:
 
@@ -354,8 +363,9 @@ Route invariants:
   `/commit/<rev>` is the whole change set.
 - A served-tree path has a canonical lossless URL spelling.
   The route formatter uses ordinary UTF-8 percent encoding for Unicode, `%25` for a
-  literal percent, uppercase `%XX` for POSIX filename bytes that are not UTF-8, and the
-  browser codec’s WTF-8 spelling for a Windows unpaired UTF-16 code unit.
+  literal percent, `%5C` for a POSIX filename’s backslash (a literal backslash is
+  refused), uppercase `%XX` for POSIX filename bytes that are not UTF-8, and the browser
+  codec’s WTF-8 spelling for a Windows unpaired UTF-16 code unit.
   The server restores the platform path before its ordinary containment and symlink
   checks, so total filename identity does not weaken the served-root boundary.
 - Every selection the shell can make has a URL, and reloading it restores that
@@ -366,10 +376,20 @@ Route invariants:
 
 Path and fragment are implemented for `/view/`; `/commit/` is implemented for commit
 selection in the Git panel.
+`/pull/` is the served pull request’s page: the shell mounts the view a plugin registers
+for the `pull-request` kind, the GitHub plugin’s, and a tab is part of the URL, so back,
+forward, and reload keep it.
+The page belongs to the one pull request a server serves; a server serves one repository
+and at most one pull request, so the number selects nothing else.
 `/compare/` is specified here and not yet built.
 
-The query slot is currently carried verbatim and never interpreted: it exists so a query
-an author wrote, such as GitHub’s `?plain=1`, survives resolution unchanged.
+The query slot is carried verbatim: it exists so a query an author wrote survives
+resolution unchanged.
+The shell reads one document key, GitHub’s `plain=1`, for what it means on github.com:
+open the file’s Source view, as a `#L` line anchor also does.
+A fragment spelled as a line anchor is always one, as on github.com: a document element
+whose id is exactly `L10`, such as a heading named `L10`, is not reached by `#L10`,
+which opens the Source view at line 10 instead.
 
 That makes the query the one component with two authorities in it, so it is the one
 component that needs a reserved namespace.

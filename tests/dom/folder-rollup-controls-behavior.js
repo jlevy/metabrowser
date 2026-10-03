@@ -68,6 +68,19 @@ async function main() {
   }
   unmountScope();
 
+  // A pinned revision has no ignore state, so it is never offered the switch.
+  const pinned = module.createFolderRollupControls({ ...mb, sourceKind: () => "git_revision" });
+  const pinnedContainer = { innerHTML: "", classList: { add() {} } };
+  const checksBefore = renderedChecks.length;
+  const unmountPinned = pinned.mount(pinnedContainer);
+  if (
+    pinnedContainer.innerHTML !== "<span>metric</span>" ||
+    renderedChecks.length !== checksBefore
+  ) {
+    throw new Error(`a pin was offered Show ignored: ${pinnedContainer.innerHTML}`);
+  }
+  unmountPinned();
+
   const first = [];
   const second = [];
   const unsubscribeFirst = state.subscribe((value) => first.push(value));

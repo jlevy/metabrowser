@@ -1,0 +1,31 @@
+{
+  "environment": {
+    "cpu": "Apple M1 Pro",
+    "git_build_options": [
+      "cpu: arm64",
+      "no commit associated with this build",
+      "sizeof-long: 8",
+      "sizeof-size_t: 8",
+      "shell-path: /bin/sh"
+    ],
+    "git_version": "git version 2.50.1",
+    "logical_cpus": 10,
+    "machine": "arm64",
+    "memory_bytes": 34359738368,
+    "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+    "python": "3.14.7"
+  },
+  "finished_at": "2026-09-17T15:02:51+00:00",
+  "parameters": {},
+  "rows": [
+    {
+      "dup_of_lease_exclusive_granted": true,
+      "other_process_shared_granted_afterwards": false,
+      "primitive": "flock exclusive attempts while one descriptor holds a shared lease",
+      "separate_open_exclusive_granted": false
+    }
+  ],
+  "schema": "metabrowser-repository-cache-measurement-v1",
+  "started_at": "2026-09-17T15:02:50+00:00",
+  "suite": "lockdescriptors"
+}

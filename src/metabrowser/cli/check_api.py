@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -26,7 +25,7 @@ from metabrowser.cli.asgi_client import (
     wait_for_index,
 )
 from metabrowser.cli.common import apply_log_level
-from metabrowser.cli.plugin_paths import resolve_extra_plugin_dirs
+from metabrowser.cli.plugin_paths import apply_extra_plugin_dirs
 from metabrowser.dotenv import load_dotenv_chain
 from metabrowser.errors import CLIError
 
@@ -110,9 +109,18 @@ def _filtered_step(label: str, status_code: int, payload: Any) -> _CheckStep:
     return _CheckStep(label, status_code, fields, status_code == 200 and empty_dirs == 0)
 
 
-def _recent_step(status_code: int, payload: Any) -> _CheckStep:
+def _recent_step(status_code: int, payload: Any, *, recency: bool) -> _CheckStep:
     if not isinstance(payload, dict):
         return _CheckStep("live filter", status_code, "invalid JSON envelope", False)
+    if not recency:
+        # The subject has no mtimes, so the browser offers no recency filter and
+        # the route's honest answer is the typed refusal, not an empty result.
+        refused = (
+            status_code == 409
+            and payload.get("code") == "unsupported_for_subject"
+            and payload.get("capability") == "recency"
+        )
+        return _CheckStep("live filter", status_code, "unsupported_for_subject", refused)
     files = payload.get("total_matching")
     index_status = payload.get("tally_cache_status")
     if not isinstance(files, int) or not isinstance(index_status, str):
@@ -178,21 +186,41 @@ def run_api_check(
     if not resolved.is_dir():
         raise CLIError(f"{resolved} is not a directory")
 
-    extra_plugin_dirs = resolve_extra_plugin_dirs(plugins_dir)
-    os.environ["METABROWSER_PLUGINS_DIRS"] = os.pathsep.join(
-        str(plugin_dir) for plugin_dir in extra_plugin_dirs
-    )
+    apply_extra_plugin_dirs(plugins_dir)
 
     from metabrowser import server
 
     server._set_root_dir(resolved)
-    initial, live, cleared, index_result, final, final_tallies, filtered = asyncio.run(
-        _run_navigation_scenario(server.app, index_timeout_s=index_timeout_s)
-    )
+    asyncio.run(arun_api_check_active(label=str(root), index_timeout_s=index_timeout_s))
+
+
+async def arun_api_check_active(
+    *, label: str, index_timeout_s: float = INDEX_READY_TIMEOUT_S
+) -> None:
+    """Run the scenario against the subject already attached, and report it.
+
+    A subject without recency answers the live filter with its typed refusal,
+    which is what the browser relies on to hide that filter; anything else there
+    fails the check.
+    """
+
+    from metabrowser import server
+    from metabrowser.source import source_capabilities
+
+    recency = source_capabilities().recency
+    (
+        initial,
+        live,
+        cleared,
+        index_result,
+        final,
+        final_tallies,
+        filtered,
+    ) = await _run_navigation_scenario(server.app, index_timeout_s=index_timeout_s)
 
     steps_before_index = (
         _tree_probe_step("initial tree", initial.status_code, _read_json(initial)),
-        _recent_step(live.status_code, _read_json(live)),
+        _recent_step(live.status_code, _read_json(live), recency=recency),
         _tree_probe_step("cleared filter", cleared.status_code, _read_json(cleared)),
     )
     final_payload = _read_json(final)
@@ -204,7 +232,7 @@ def run_api_check(
         }
     final_step = _tree_step("final nav", final.status_code, final_payload)
     filtered_step = _filtered_step("filtered nav", filtered.status_code, _read_json(filtered))
-    typer.echo(f"api check: {root}")
+    typer.echo(f"api check: {label}")
     typer.echo("scenario: nav-live-clear-filter")
     for step in steps_before_index:
         typer.echo(f"{step.label}: {step.status_code}; {step.fields}")

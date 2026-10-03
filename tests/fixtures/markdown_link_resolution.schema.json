@@ -17,6 +17,7 @@
         "properties": {
           "id": { "type": "string", "minLength": 1 },
           "sourcePath": { "type": "string", "minLength": 1 },
+          "sourceKind": { "enum": ["filesystem", "git_revision"] },
           "canonicalUrl": { "type": "string", "pattern": "^/(view/|raw\\?path=)" },
           "intent": {
             "type": "object",

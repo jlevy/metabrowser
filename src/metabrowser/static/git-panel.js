@@ -51,6 +51,7 @@
    * @property {number | null} failedPage Logical page whose request failed.
    * @property {string | null} retryCursor Cursor retained for an in-place retry.
    * @property {boolean} retryInitial Whether the failed request starts a session.
+   * @property {boolean} stale The server answered that this walk's refs moved.
    * @property {boolean} endReached Git reported the real end of this session.
    * @property {string | null} headRevision
    * @property {string | null} headRef
@@ -84,6 +85,7 @@
       failedPage: null,
       retryCursor: null,
       retryInitial: false,
+      stale: false,
       endReached: false,
       headRevision: null,
       headRef: null,
@@ -123,6 +125,10 @@
   const detailCache = new Map();
   /** @type {Map<string, Promise<MetabrowserGitCommitDetail | null>>} */
   const detailInFlight = new Map();
+  // Commits the server answered `commit_not_found` for: the repository does not have
+  // them, which is not a failed request. Bounded like the detail cache.
+  /** @type {Set<string>} */
+  const missingRevisions = new Set();
   /**
    * @typedef {object} RevisionPreparation
    * @property {string} revision
@@ -294,6 +300,7 @@
       html +=
         '<button class="icon-btn icon-btn-reveal git-commit-revision-copy" type="button"' +
         ` data-mb-copy="text" data-mb-copy-text="${escapeHtml(commit.id)}"` +
+        (sdk()?.delegateOwnerAttribute() ?? "") +
         ' data-mb-copy-label="Copy revision" data-tip-text="Copy revision"' +
         ` aria-label="Copy revision">${copyIcon()}</button>`;
     }
@@ -354,6 +361,21 @@
   function apiFetch(path, params, options) {
     const query = params ? `?${new URLSearchParams(params).toString()}` : "";
     return fetch(`${path}${query}`, options);
+  }
+
+  /**
+   * The typed `code` of an error response, or null when it carries none.
+   *
+   * @param {Response} response
+   * @returns {Promise<string | null>}
+   */
+  async function errorCode(response) {
+    try {
+      const body = await response.json();
+      return typeof body?.code === "string" ? body.code : null;
+    } catch {
+      return null;
+    }
   }
 
   // ── Data ───────────────────────────────────────────────────
@@ -513,9 +535,18 @@
         return false;
       }
       if (!response.ok) {
-        recoverSession =
-          !options.initial &&
-          (response.status === 400 || response.status === 409 || response.status === 410);
+        const failure = historyWindowModule().classifyPageFailure({
+          status: response.status,
+          code: await errorCode(response),
+          initial: Boolean(options.initial),
+        });
+        if (requestGeneration !== historyGeneration || state !== requestState) {
+          return false;
+        }
+        recoverSession = failure === "recover";
+        if (failure === "stale") {
+          state.stale = true;
+        }
         throw new Error(`HTTP ${response.status}`);
       }
       const page = /** @type {MetabrowserGitLogPage} */ (await response.json());
@@ -547,7 +578,12 @@
       state.retryInitial = false;
       loaded = true;
     } catch {
-      if (requestGeneration === historyGeneration && state === requestState && !recoverSession) {
+      if (
+        requestGeneration === historyGeneration &&
+        state === requestState &&
+        !recoverSession &&
+        !state.stale
+      ) {
         state.failed = true;
         state.failedPage = expectedPage;
         state.retryCursor = cursor;
@@ -655,7 +691,7 @@
           return;
         }
         renderVirtualRows(true);
-        if (state.failed) {
+        if (state.failed || state.stale) {
           wantedRange = null;
         }
       }
@@ -736,12 +772,19 @@
         try {
           const response = await apiFetch(`/api/git/commit/${revision}`, undefined, { signal });
           if (!response.ok) {
+            if (response.status === 404 && (await errorCode(response)) === "commit_not_found") {
+              if (missingRevisions.size >= DETAIL_CACHE_SIZE) {
+                missingRevisions.clear();
+              }
+              missingRevisions.add(revision);
+            }
             return null;
           }
           const detail = await response.json();
           if (!detail?.is_repo) {
             return null;
           }
+          missingRevisions.delete(revision);
           // Insertion-ordered eviction: Map preserves insertion order, so
           // the first key is the oldest entry.
           if (detailCache.size >= DETAIL_CACHE_SIZE) {
@@ -796,8 +839,10 @@
       : undefined;
     // Speculative work may be replaced before the diff view awaits it. Attach
     // a rejection handler immediately while preserving the original promise
-    // for the view's existing error path.
+    // for the view's existing error path. The assets can fail too: the diff
+    // plugin's load is refused when the SDK's view helpers cannot be fetched.
     void comparison?.catch(() => {});
+    void assets.catch(() => {});
     return { assets, comparison };
   }
 
@@ -998,7 +1043,9 @@
       placeholder.className = "git-history-page-placeholder";
       placeholder.style.height = `${(ordinal - missingStart) * graphModule().SWIMLANE_HEIGHT}px`;
       placeholder.setAttribute("role", "status");
-      if (state.failed && state.failedPage !== null) {
+      if (state.stale) {
+        placeholder.appendChild(staleHistoryNotice());
+      } else if (state.failed && state.failedPage !== null) {
         const retry = document.createElement("button");
         retry.type = "button";
         retry.className = "btn git-history-retry";
@@ -1150,7 +1197,12 @@
       scroller.focus({ preventScroll: true });
       state.focusSuspended = true;
     }
-    if (mounted.length < range.end - range.start && !state.loading && !state.failed) {
+    if (
+      mounted.length < range.end - range.start &&
+      !state.loading &&
+      !state.failed &&
+      !state.stale
+    ) {
       scheduleRangeLoad(range);
     }
     if (
@@ -1423,6 +1475,30 @@
     }
   }
 
+  /**
+   * The typed stale state: the refs this walk was fingerprinted by moved, so the
+   * rows above are history as it was when the list loaded. Reloading starts a new
+   * walk over the refs as they are now.
+   *
+   * @returns {HTMLElement}
+   */
+  function staleHistoryNotice() {
+    const notice = document.createElement("div");
+    notice.className = "git-graph-more git-graph-more-failed git-history-stale";
+    notice.setAttribute("role", "status");
+    const text = document.createElement("span");
+    text.textContent = "History changed since this list loaded.";
+    const reload = document.createElement("button");
+    reload.type = "button";
+    reload.className = "btn git-history-reload";
+    reload.textContent = "Reload history";
+    reload.addEventListener("click", () => {
+      void refreshHistory();
+    });
+    notice.append(text, reload);
+    return notice;
+  }
+
   /** Retry the exact failed append or replay request. */
   async function retryFailedPage() {
     if (!state.failed || state.failedPage === null) {
@@ -1451,6 +1527,8 @@
       trailing.style.setProperty("--git-skeleton-row-height", `${graphModule().SWIMLANE_HEIGHT}px`);
       trailing.style.height = `${graphModule().SWIMLANE_HEIGHT * 2}px`;
       trailing.setAttribute("aria-label", "Loading more history");
+    } else if (state.stale) {
+      trailing = staleHistoryNotice();
     } else if (state.failed && state.failedPage === state.nextPageNumber) {
       trailing = document.createElement("div");
       trailing.className = "git-graph-more git-graph-more-failed";
@@ -1614,6 +1692,130 @@
   }
 
   /**
+   * The preview for a commit the repository does not have, or could not be asked about.
+   *
+   * @param {MetabrowserMissingCommitModel} model
+   * @param {(() => void) | null} retry
+   */
+  function missingCommitNode(model, retry) {
+    const node = document.createElement("div");
+    node.className = "preview-empty preview-error git-commit-missing";
+    node.dataset.state = model.state;
+    node.setAttribute("role", model.state === "pending" ? "status" : "alert");
+    const title = document.createElement("strong");
+    title.className = "preview-error-title";
+    title.textContent = model.title;
+    node.appendChild(title);
+    if (model.detail) {
+      const detail = document.createElement("span");
+      detail.className = "preview-error-detail";
+      detail.textContent = model.detail;
+      node.appendChild(detail);
+    }
+    if (model.retry && retry !== null) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "btn git-commit-missing-retry";
+      button.textContent = "Retry";
+      button.addEventListener("click", retry);
+      node.appendChild(button);
+    }
+    return node;
+  }
+
+  /**
+   * Say what is known about a commit the repository does not have, instead of that it
+   * could not be loaded. A folder's repository simply lacks it. A served mirror may only
+   * not have fetched it yet: static/source-freshness.js asks the page's freshness
+   * controller for the fetch such a commit waits for and then opens the commit or says
+   * why not. A page asks for that fetch by itself only when the mirror is older than
+   * the freshness window; Retry, the reader's own click, always asks.
+   *
+   * Resolves once the first state is painted, so the pane stays busy until it shows
+   * one. On a mirror a fetch from the origin goes on after that, and the view repaints
+   * when it ends.
+   *
+   * @param {string} revision
+   * @param {MetabrowserPreviewClaim} previewClaim
+   * @param {{retry?: boolean}} [options]
+   */
+  async function showMissingCommit(revision, previewClaim, options = {}) {
+    const bridge = shell();
+    if (!bridge) {
+      return;
+    }
+    const current = () =>
+      state.selectedId === revision && bridge.isPreviewClaimCurrent(previewClaim);
+    /** @type {() => void} */
+    let painted = () => {};
+    /** @type {Promise<void>} */
+    const firstPaint = new Promise((resolve) => {
+      painted = resolve;
+    });
+    /** @param {MetabrowserMissingCommitModel} model */
+    const paint = (model) => {
+      if (current()) {
+        const retry = () => void showMissingCommit(revision, previewClaim, { retry: true });
+        bridge.renderPreviewNode(missingCommitNode(model, retry), previewClaim);
+      }
+      painted();
+    };
+    /** @type {MetabrowserSourceFreshnessController | null} */
+    let controller = null;
+    try {
+      controller = await bridge.sourceFreshness();
+    } catch {
+      controller = null;
+    }
+    const freshness = window.MetabrowserSourceFreshness;
+    if (!current()) {
+      return;
+    }
+    if (controller === null || !freshness) {
+      paint({
+        state: "not_found",
+        title: "Commit not found",
+        detail: "This commit is not in the repository.",
+        retry: false,
+      });
+      return;
+    }
+    void freshness
+      .openMissingCommit(
+        controller,
+        {
+          load: async () => {
+            // A slot that found the commit missing holds that answer; ask again.
+            if (preparationSlot?.revision === revision) {
+              abortPreparation(preparationSlot);
+              preparationSlot = null;
+            }
+            missingRevisions.delete(revision);
+            const preparation = prepareRevision(revision, false);
+            const detail = preparation ? await preparation.detail : null;
+            if (!detail) {
+              // Absent is an answer about the commit; anything else is a failed request.
+              return missingRevisions.has(revision) ? "missing" : "failed";
+            }
+            if (current()) {
+              await renderCommitDetail(detail, previewClaim, preparation);
+            }
+            return "found";
+          },
+          paint,
+          isCurrent: current,
+          now: () => Date.now(),
+        },
+        { retry: options.retry === true },
+      )
+      .catch((error) => {
+        console.error("metabrowser git panel: opening a fetched commit failed", error);
+      })
+      .finally(painted);
+    await firstPaint;
+  }
+
+  /**
    * @param {string} revision
    * @param {{fromRoute?: boolean, rowElement?: HTMLElement}} [options]
    *   `fromRoute` when the URL is already this commit (restore on load), so
@@ -1743,10 +1945,16 @@
         }
         if (!detail) {
           disposeCommitDiff();
-          bridge.renderPreviewHtml(
-            '<div class="preview-empty">Could not load this commit.</div>',
-            previewClaim,
-          );
+          if (missingRevisions.has(revision)) {
+            // Waits for the first state only, so the pane stays busy until it shows
+            // one; a mirror's fetch from the origin continues after it.
+            await showMissingCommit(revision, previewClaim);
+          } else {
+            bridge.renderPreviewHtml(
+              '<div class="preview-empty">Could not load this commit.</div>',
+              previewClaim,
+            );
+          }
           clearPendingState();
           return;
         }
@@ -1963,7 +2171,7 @@
       return;
     }
     renderVirtualRows();
-    if (state.loading || state.failed || !state.cursor) {
+    if (state.loading || state.failed || state.stale || !state.cursor) {
       return;
     }
     const remaining = content.scrollHeight - content.scrollTop - content.clientHeight;
@@ -2059,6 +2267,7 @@
     // view serve pre-refresh refs for a row the graph just redrew.
     if (!options.preserveDetail) {
       detailCache.clear();
+      missingRevisions.clear();
     }
     state.loading = true;
     renderPanel();
@@ -2152,6 +2361,7 @@
     disposeHistoryState(state);
     state = emptyState();
     detailCache.clear();
+    missingRevisions.clear();
     refColors = new Map();
     started = false;
     shell()?.removeNavPanel("git");

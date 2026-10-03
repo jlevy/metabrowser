@@ -763,6 +763,108 @@ function equal(name, actual, expected) {
   }
   differentialContext.dispose();
 
+  const gitCurrent = "g1-ZG9jcw/g1-Y3VycmVudC5tZA";
+  const gitNote = "g1-ZG9jcw/g1-bm90ZS50eHQ";
+  const gitReadme = "g1-UkVBRE1FLm1k";
+  const gitPercent = "g1-MTAwJS5odG1s";
+  const gitSnapshot = {
+    complete: true,
+    files: [
+      { basename: "100%.html", path: gitPercent },
+      { basename: "README.md", path: gitReadme },
+      { basename: "current.md", path: gitCurrent },
+      { basename: "note.txt", path: gitNote },
+    ],
+  };
+  const gitWikiCases = [
+    {
+      id: "git-basename-note",
+      intent: {
+        authoredTarget: "note.txt",
+        action: "navigate",
+        sourceKind: "git_revision",
+        sourcePath: gitCurrent,
+      },
+      expected: { status: "internal", path: gitNote },
+      canonicalUrl: `/view/${gitNote}`,
+    },
+    {
+      id: "git-relative-note",
+      intent: {
+        authoredTarget: "./note.txt",
+        action: "navigate",
+        sourceKind: "git_revision",
+        sourcePath: gitCurrent,
+      },
+      expected: { status: "internal", path: gitNote },
+      canonicalUrl: `/view/${gitNote}`,
+    },
+    {
+      id: "git-qualified-note",
+      intent: {
+        authoredTarget: "docs/note.txt",
+        action: "navigate",
+        sourceKind: "git_revision",
+        sourcePath: gitCurrent,
+      },
+      expected: { status: "internal", path: gitNote },
+      canonicalUrl: `/view/${gitNote}`,
+    },
+    {
+      id: "git-rooted-readme",
+      intent: {
+        authoredTarget: "/README.md",
+        action: "navigate",
+        sourceKind: "git_revision",
+        sourcePath: gitCurrent,
+      },
+      expected: { status: "internal", path: gitReadme },
+      canonicalUrl: `/view/${gitReadme}`,
+    },
+    {
+      id: "git-percent-html",
+      intent: {
+        authoredTarget: "100%.html",
+        action: "navigate",
+        sourceKind: "git_revision",
+        sourcePath: gitCurrent,
+      },
+      expected: { status: "internal", path: gitPercent },
+      canonicalUrl: `/view/${gitPercent}`,
+    },
+    {
+      id: "git-qualified-miss",
+      intent: {
+        authoredTarget: "nested/note.txt",
+        action: "navigate",
+        sourceKind: "git_revision",
+        sourcePath: gitCurrent,
+      },
+      expected: { status: "missing", reason: "not-found" },
+    },
+    {
+      id: "filesystem-g1-looking-relative",
+      intent: {
+        authoredTarget: "./note.txt",
+        action: "navigate",
+        sourceKind: "filesystem",
+        sourcePath: gitCurrent,
+      },
+      expected: { status: "missing", reason: "not-found" },
+    },
+  ];
+  for (const testCase of gitWikiCases) {
+    const resolved = module.resolveWikiTarget(testCase.intent, gitSnapshot);
+    equal(testCase.id, resolved, testCase.expected);
+    if (testCase.canonicalUrl && resolved.status === "internal") {
+      equal(
+        `${testCase.id} canonical URL`,
+        navigationContext.window.MetabrowserNavigationRoute.href(resolved),
+        testCase.canonicalUrl,
+      );
+    }
+  }
+
   if (failures.length) {
     console.error(`markdown wiki resolver FAILURES:\n- ${failures.join("\n- ")}`);
     process.exit(1);

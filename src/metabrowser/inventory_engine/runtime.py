@@ -29,6 +29,7 @@ from metabrowser.settings import (
     INVENTORY_MAX_FILES,
     SSE_BUS_INVENTORY_QUEUE_SIZE,
 )
+from metabrowser.source import RepositorySubject
 
 
 def default_inventory_config() -> InventoryConfig:
@@ -104,6 +105,17 @@ class InventoryRuntime:
 
         version = await self.coordinator.open(root)
         self._root = await asyncio.to_thread(root.resolve)
+        return version
+
+    async def open_subject(self, subject: RepositorySubject) -> HostVersion:
+        """Open inventory for a navigable, indexable subject.
+
+        A Git pin leaves ``_root`` unset so projection invalidation stays off.
+        """
+
+        version = await self.coordinator.open_subject(subject)
+        root = subject.filesystem_root
+        self._root = None if root is None else await asyncio.to_thread(root.resolve)
         return version
 
     async def replace_root(self, root: Path) -> HostVersion:

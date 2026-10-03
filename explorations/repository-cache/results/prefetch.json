@@ -1,0 +1,180 @@
+{
+  "environment": {
+    "cpu": "Apple M1 Pro",
+    "git_build_options": [
+      "cpu: arm64",
+      "no commit associated with this build",
+      "sizeof-long: 8",
+      "sizeof-size_t: 8",
+      "shell-path: /bin/sh"
+    ],
+    "git_version": "git version 2.50.1",
+    "logical_cpus": 10,
+    "machine": "arm64",
+    "memory_bytes": 34359738368,
+    "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+    "python": "3.14.7"
+  },
+  "finished_at": "2026-09-17T05:47:07+00:00",
+  "parameters": {
+    "reps": 2,
+    "timeout_s": 900.0
+  },
+  "rows": [
+    {
+      "backfill": {
+        "disk_bytes": 14397440,
+        "missing_after_remainder": 0,
+        "missing_from_all_refs_after": 31,
+        "missing_from_head_after": 0,
+        "remainder_fetch_s": 0.767,
+        "remainder_returncode": 0,
+        "returncode": 0,
+        "s": 3.055
+      },
+      "blobless_clone_s": 2.063,
+      "blobless_missing_reachable_from_all_refs": 9302,
+      "blobless_missing_reachable_from_head": 9271,
+      "full_clone_s": 3.348,
+      "full_in_pack": 26353,
+      "rep": 0,
+      "repository": "flask",
+      "single_request_convergence": {
+        "disk_bytes": 14458880,
+        "error_class": "",
+        "fetch_s": 3.413,
+        "list_s": 0.358,
+        "missing_after": 0,
+        "returncode": 0,
+        "wanted": 9302
+      },
+      "subject_prefetch": {
+        "added_bytes": 5019245,
+        "error_class": "",
+        "fetch_s": 0.93,
+        "list_s": 0.041,
+        "requests": 1,
+        "returncode": 0,
+        "tree_missing_after": 0,
+        "wanted": 230
+      }
+    },
+    {
+      "backfill": {
+        "disk_bytes": 14643200,
+        "missing_after_remainder": 0,
+        "missing_from_all_refs_after": 31,
+        "missing_from_head_after": 0,
+        "remainder_fetch_s": 0.711,
+        "remainder_returncode": 0,
+        "returncode": 0,
+        "s": 2.516
+      },
+      "blobless_clone_s": 1.623,
+      "blobless_missing_reachable_from_all_refs": 9302,
+      "blobless_missing_reachable_from_head": 9271,
+      "full_clone_s": 4.007,
+      "full_in_pack": 26353,
+      "rep": 1,
+      "repository": "flask",
+      "single_request_convergence": {
+        "disk_bytes": 14745600,
+        "error_class": "",
+        "fetch_s": 2.872,
+        "list_s": 0.319,
+        "missing_after": 0,
+        "returncode": 0,
+        "wanted": 9302
+      },
+      "subject_prefetch": {
+        "added_bytes": 5019332,
+        "error_class": "",
+        "fetch_s": 1.331,
+        "list_s": 0.026,
+        "requests": 1,
+        "returncode": 0,
+        "tree_missing_after": 0,
+        "wanted": 230
+      }
+    },
+    {
+      "backfill": {
+        "disk_bytes": 107266048,
+        "missing_after_remainder": 0,
+        "missing_from_all_refs_after": 1318,
+        "missing_from_head_after": 0,
+        "remainder_fetch_s": 4.26,
+        "remainder_returncode": 0,
+        "returncode": 0,
+        "s": 21.762
+      },
+      "blobless_clone_s": 3.097,
+      "blobless_missing_reachable_from_all_refs": 53607,
+      "blobless_missing_reachable_from_head": 52289,
+      "full_clone_s": 8.812,
+      "full_in_pack": 118501,
+      "rep": 0,
+      "repository": "mypy",
+      "single_request_convergence": {
+        "disk_bytes": 106446848,
+        "error_class": "",
+        "fetch_s": 24.86,
+        "list_s": 1.746,
+        "missing_after": 0,
+        "returncode": 0,
+        "wanted": 53607
+      },
+      "subject_prefetch": {
+        "added_bytes": 20969167,
+        "error_class": "",
+        "fetch_s": 2.631,
+        "list_s": 0.079,
+        "requests": 1,
+        "returncode": 0,
+        "tree_missing_after": 0,
+        "wanted": 1753
+      }
+    },
+    {
+      "backfill": {
+        "disk_bytes": 107245568,
+        "missing_after_remainder": 0,
+        "missing_from_all_refs_after": 1318,
+        "missing_from_head_after": 0,
+        "remainder_fetch_s": 3.021,
+        "remainder_returncode": 0,
+        "returncode": 0,
+        "s": 22.467
+      },
+      "blobless_clone_s": 3.227,
+      "blobless_missing_reachable_from_all_refs": 53607,
+      "blobless_missing_reachable_from_head": 52289,
+      "full_clone_s": 17.754,
+      "full_in_pack": 118501,
+      "rep": 1,
+      "repository": "mypy",
+      "single_request_convergence": {
+        "disk_bytes": 106409984,
+        "error_class": "",
+        "fetch_s": 16.23,
+        "list_s": 1.836,
+        "missing_after": 0,
+        "returncode": 0,
+        "wanted": 53607
+      },
+      "subject_prefetch": {
+        "added_bytes": 20966444,
+        "error_class": "",
+        "fetch_s": 2.559,
+        "list_s": 0.107,
+        "requests": 1,
+        "returncode": 0,
+        "tree_missing_after": 0,
+        "wanted": 1753
+      }
+    }
+  ],
+  "schema": "metabrowser-repository-cache-measurement-v1",
+  "started_at": "2026-09-17T05:44:13+00:00",
+  "suite": "prefetch"
+}

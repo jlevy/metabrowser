@@ -149,20 +149,17 @@ def test_kpress_render_rejects_path_traversal(tmp_path: Path) -> None:
 def test_kpress_render_accepts_bounded_transformed_source(tmp_path: Path) -> None:
     server._set_root_dir(tmp_path)
     (tmp_path / "doc.md").write_text("# Original\n")
-    try:
-        response = TestClient(server.app).post(
-            "/api/kpress/render",
-            json={
-                "path": "doc.md",
-                "view": "rendered",
-                "profile": "document",
-                "source_text": (
-                    '<span class="metabrowser-wiki-link" data-mb-wiki-target="Note">Note</span>\n'
-                ),
-            },
-        )
-    finally:
-        server._set_root_dir(Path())
+    response = TestClient(server.app).post(
+        "/api/kpress/render",
+        json={
+            "path": "doc.md",
+            "view": "rendered",
+            "profile": "document",
+            "source_text": (
+                '<span class="metabrowser-wiki-link" data-mb-wiki-target="Note">Note</span>\n'
+            ),
+        },
+    )
 
     assert response.status_code == 200
     assert 'data-mb-wiki-target="Note"' in response.json()["html"]
@@ -171,17 +168,14 @@ def test_kpress_render_accepts_bounded_transformed_source(tmp_path: Path) -> Non
 def test_kpress_render_rejects_oversized_transformed_source(tmp_path: Path) -> None:
     server._set_root_dir(tmp_path)
     (tmp_path / "doc.md").write_text("# Original\n")
-    try:
-        response = TestClient(server.app).post(
-            "/api/kpress/render",
-            json={
-                "path": "doc.md",
-                "view": "rendered",
-                "source_text": "x" * (server._TEXT_PREVIEW_MAX_CHUNK_BYTES + 1),
-            },
-        )
-    finally:
-        server._set_root_dir(Path())
+    response = TestClient(server.app).post(
+        "/api/kpress/render",
+        json={
+            "path": "doc.md",
+            "view": "rendered",
+            "source_text": "x" * (server._TEXT_PREVIEW_MAX_CHUNK_BYTES + 1),
+        },
+    )
 
     assert response.status_code == 413
     assert response.json()["error"] == "Transformed source exceeds safety limits"
@@ -190,26 +184,23 @@ def test_kpress_render_rejects_oversized_transformed_source(tmp_path: Path) -> N
 def test_kpress_render_rejects_invalid_transformed_source_fields(tmp_path: Path) -> None:
     server._set_root_dir(tmp_path)
     (tmp_path / "doc.md").write_text("# Original\n")
-    try:
-        client = TestClient(server.app)
-        invalid_profile = client.post(
+    client = TestClient(server.app)
+    invalid_profile = client.post(
+        "/api/kpress/render",
+        json={"path": "doc.md", "view": "rendered", "profile": 7, "source_text": "# Doc"},
+    )
+    falsy_profiles = [
+        client.post(
             "/api/kpress/render",
-            json={"path": "doc.md", "view": "rendered", "profile": 7, "source_text": "# Doc"},
+            json={"path": "doc.md", "view": "rendered", "profile": falsy, "source_text": "# D"},
         )
-        falsy_profiles = [
-            client.post(
-                "/api/kpress/render",
-                json={"path": "doc.md", "view": "rendered", "profile": falsy, "source_text": "# D"},
-            )
-            for falsy in (False, 0)
-        ]
-        invalid_encoding = client.post(
-            "/api/kpress/render",
-            content=b'{"path":"doc.md","view":"rendered","source_text":"\\ud800"}',
-            headers={"content-type": "application/json"},
-        )
-    finally:
-        server._set_root_dir(Path())
+        for falsy in (False, 0)
+    ]
+    invalid_encoding = client.post(
+        "/api/kpress/render",
+        content=b'{"path":"doc.md","view":"rendered","source_text":"\\ud800"}',
+        headers={"content-type": "application/json"},
+    )
 
     assert invalid_profile.status_code == 400
     assert invalid_profile.json()["error"] == "Invalid render body fields"
@@ -557,3 +548,29 @@ def test_kpress_adapter_builds_runtime_request(monkeypatch) -> None:
     assert seen[0].kwargs["frontmatter"] == {"title": "One"}
     assert seen[0].kwargs["asset_url_prefix"] == "/kpress-static/"
     assert seen[0].kwargs["host"] == "metabrowser"
+
+
+def test_trusted_kpress_render_drops_a_label_that_could_click_a_shell_control(
+    tmp_path: Path,
+) -> None:
+    """A trusted folder keeps class, id, and data-*, but KPress removes `<label>`.
+
+    A `<label for=…>` click is a synthetic click on the named element, which would carry
+    a stamped shell control's owner mark (see tests/dom/shell-delegate-owner-session.js).
+    The shell gives stamped controls no id; this pins the second layer, so a KPress
+    change that starts keeping labels is noticed here.
+    """
+
+    server._set_root_dir(tmp_path)
+    (tmp_path / "doc.md").write_text(
+        '# T\n\n<label for="print-view-btn">Print</label>\n\n<label>Wrap <b>x</b></label>\n'
+    )
+    response = TestClient(server.app).get(
+        "/api/kpress/render", params={"path": "doc.md", "view": "rendered"}
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body.get("inert") is not True
+    assert "<label" not in body["html"]
+    assert "for=" not in body["html"]
+    assert "Print" in body["html"]

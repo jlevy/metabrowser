@@ -2,7 +2,7 @@
 name = "html"
 display_name = "HTML"
 version = "0.0.1"
-sdk_version = "0.6"
+sdk_version = "0.7"
 
 # Extension classification. The default tab is Preview; the server flips
 # it to Source for fragments and drops Preview when active content is off.

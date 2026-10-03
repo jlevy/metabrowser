@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 from pathlib import Path
 
-import pytest
+from tests.required_tools import require_node
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BEHAVIOR = REPO_ROOT / "tests" / "dom" / "folder-rollup-projection-behavior.js"
@@ -14,8 +13,7 @@ BEHAVIOR = REPO_ROOT / "tests" / "dom" / "folder-rollup-projection-behavior.js"
 
 def test_folder_rollup_projection_behavior() -> None:
     """Overview consumers share one lifecycle-bound normalized projection."""
-    if shutil.which("node") is None:
-        pytest.skip("node not available; skipping rollup projection behavior")
+    require_node()
     result = subprocess.run(
         ["node", str(BEHAVIOR), str(REPO_ROOT)],
         capture_output=True,

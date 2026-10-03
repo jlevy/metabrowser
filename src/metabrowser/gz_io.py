@@ -23,6 +23,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import IO, Any, cast
 
+from metabrowser.content_errors import ContentReadError
+
 # Single source of truth for supported on-disk compression suffixes.
 GZIP_SUFFIX: str = ".gz"
 GZIP_PARTIAL_SUFFIX: str = GZIP_SUFFIX + ".partial"
@@ -39,16 +41,25 @@ _DECOMPRESSED_CHUNK_BYTES = 64 * 1024
 _COMPRESSED_SIZE_CACHE_ENTRIES = 256
 
 
-class ArtifactCompressionError(OSError):
+class ArtifactCompressionError(ContentReadError, OSError):
     """A compressed artifact is malformed or violates its stream contract."""
+
+    code = "content_unreadable"
+    http_status = 422
 
 
 class ArtifactDecompressionLimitError(ArtifactCompressionError):
     """A compressed artifact exceeded a configured resource bound."""
 
+    code = "content_too_large"
+    http_status = 413
+
 
 class ArtifactDecompressionTimeoutError(ArtifactDecompressionLimitError):
     """A compressed artifact exceeded its decompression CPU-time budget."""
+
+    code = "content_timeout"
+    http_status = 504
 
 
 class _BoundedCompressedReader(io.RawIOBase):

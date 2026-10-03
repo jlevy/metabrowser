@@ -3,17 +3,15 @@
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 from pathlib import Path
-
-import pytest
 
 from metabrowser.settings import (
     TEXT_PREVIEW_CHUNK_BYTES,
     TEXT_PREVIEW_MAX_CHUNK_BYTES,
     TEXT_PREVIEW_REQUEST_MAX_BYTES,
 )
+from tests.required_tools import require_node
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SHIM = Path(__file__).resolve().parent / "dom" / "source-append-behavior.js"
@@ -23,8 +21,7 @@ SOURCE_APPEND_JS = REPO_ROOT / "src" / "metabrowser" / "static" / "source-append
 
 
 def test_source_append_contracts() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(SHIM), str(REPO_ROOT)],
         capture_output=True,
@@ -39,8 +36,7 @@ def test_source_append_contracts() -> None:
 
 
 def test_source_append_navigation_is_claimed_and_transactional() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(NAVIGATION_SHIM), str(REPO_ROOT)],
         capture_output=True,
@@ -100,8 +96,9 @@ def test_shell_appends_rather_than_rerendering() -> None:
     append_call = load_more.index("sourceAppend.appendSourceText")
     following = load_more[append_call : append_call + 1_200]
     # The fallback also asserts pane ownership: the Git panel renders into this
-    # same pane, so a late chunk must not repaint over it.
-    assert "await renderFile(nextCached, undefined, previewClaim" in following, (
+    # same pane, so a late chunk must not repaint over it. It keeps the active
+    # tab so a reader on the Source tab is not thrown back to the rendered view.
+    assert "await renderFile(nextCached, activeView || undefined, previewClaim" in following, (
         "the fallback render should remain reachable"
     )
     assert "onCommit:" in following

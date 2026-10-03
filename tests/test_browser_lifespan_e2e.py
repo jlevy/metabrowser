@@ -79,32 +79,29 @@ def test_full_lifespan_stack_serves_all_endpoints(tmp_path: Path) -> None:
         # imported binding doesn't affect call sites that
         # imported the name at module-load time.
         proc_browser._set_root_dir(tmp_path)
-        try:
-            async with proc_browser.app.router.lifespan_context(proc_browser.app):
-                # Wait for walker to drain.
-                await wait_until_settled(proc_browser.app.state.inventory_runtime, timeout=10.0)
-                # /api/tree
-                tree_resp = await proc_browser.api_tree(cast(Any, _FakeRequest()))
-                tree = json.loads(bytes(tree_resp.body))
-                # /api/recent
-                recent_resp = await proc_browser.api_recent(
-                    cast(Any, _FakeRequest({"window": "all", "limit": "100"}))
-                )
-                recent = json.loads(bytes(recent_resp.body))
-                # /api/index/meta
-                from metabrowser.events_route import (
-                    api_capabilities,
-                    api_index_meta,
-                )
+        async with proc_browser.app.router.lifespan_context(proc_browser.app):
+            # Wait for walker to drain.
+            await wait_until_settled(proc_browser.app.state.inventory_runtime, timeout=10.0)
+            # /api/tree
+            tree_resp = await proc_browser.api_tree(cast(Any, _FakeRequest()))
+            tree = json.loads(bytes(tree_resp.body))
+            # /api/recent
+            recent_resp = await proc_browser.api_recent(
+                cast(Any, _FakeRequest({"window": "all", "limit": "100"}))
+            )
+            recent = json.loads(bytes(recent_resp.body))
+            # /api/index/meta
+            from metabrowser.events_route import (
+                api_capabilities,
+                api_index_meta,
+            )
 
-                meta_resp = await api_index_meta(cast(Any, _FakeRequest()))
-                meta = json.loads(bytes(meta_resp.body))
-                # /api/capabilities
-                cap_resp = await api_capabilities(cast(Any, _FakeRequest()))
-                cap = json.loads(bytes(cap_resp.body))
-                return {"tree": tree, "recent": recent, "meta": meta, "cap": cap}
-        finally:
-            proc_browser._set_root_dir(Path())
+            meta_resp = await api_index_meta(cast(Any, _FakeRequest()))
+            meta = json.loads(bytes(meta_resp.body))
+            # /api/capabilities
+            cap_resp = await api_capabilities(cast(Any, _FakeRequest()))
+            cap = json.loads(bytes(cap_resp.body))
+            return {"tree": tree, "recent": recent, "meta": meta, "cap": cap}
 
     out = asyncio.run(_run())
 
@@ -142,15 +139,21 @@ def test_watcher_detects_new_file_after_walker_completes(tmp_path: Path) -> None
     async def _run() -> bool:
         config = replace(default_inventory_config(), watch_mode="poll")
         async with inventory_harness(tmp_path, config=config) as harness:
-            await asyncio.sleep(0.5)
-            new_file = tmp_path / "runs" / "x" / ".logs" / "fresh.jsonl"
-            new_file.write_text('{"event":"new"}\n')
             from metabrowser.inventory_engine.contract import (
                 EntryPresence,
                 EntryProjection,
                 EntryQuery,
+                LifecyclePhase,
                 ReadRequest,
             )
+
+            # The harness returns once discovery has settled, and the provider opens
+            # only after its watcher is installed. Assert that, in place of pausing
+            # and hoping both happened: this phase is "settled, with a live watcher".
+            _cursor, _version, state = await harness.runtime.coordinator.checkpoint()
+            assert state.phase is LifecyclePhase.WATCHING
+            new_file = tmp_path / "runs" / "x" / ".logs" / "fresh.jsonl"
+            new_file.write_text('{"event":"new"}\n')
 
             deadline = asyncio.get_running_loop().time() + 5.0
             while asyncio.get_running_loop().time() < deadline:
@@ -185,14 +188,11 @@ def test_recent_filter_includes_logs_state_files(tmp_path: Path) -> None:
 
     async def _run() -> set[str]:
         proc_browser._set_root_dir(tmp_path)
-        try:
-            async with inventory_harness(tmp_path) as harness:
-                request = _FakeRequest({"window": "all", "limit": "100"})
-                request.app = harness.app
-                recent_resp = await proc_browser.api_recent(cast(Any, request))
-                recent = json.loads(bytes(recent_resp.body))
-        finally:
-            proc_browser._set_root_dir(Path())
+        async with inventory_harness(tmp_path) as harness:
+            request = _FakeRequest({"window": "all", "limit": "100"})
+            request.app = harness.app
+            recent_resp = await proc_browser.api_recent(cast(Any, request))
+            recent = json.loads(bytes(recent_resp.body))
 
         # Recent's wire shape is unclustered (clustering is a
         # rendering concern owned by the SPA); pull leaf paths

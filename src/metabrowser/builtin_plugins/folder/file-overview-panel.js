@@ -96,12 +96,26 @@ export function createFileOverviewPanel(mb, palette, projectionPool, rollupContr
     label: "File Overview",
     placement: /** @type {const} */ ("summary"),
     presentation: /** @type {const} */ ("surface"),
-    required: true,
+    required: false,
     collapsible: true,
     defaultExpanded: true,
     printable: false,
-    /** @param {{path?: string}} context */
-    resolve: (context) => Object.freeze({ key: context.path || "", data: null }),
+    /** @param {{path?: string, raw?: unknown}} context */
+    resolve: (context) => {
+      const raw =
+        context.raw && typeof context.raw === "object"
+          ? /** @type {Record<string, unknown>} */ (context.raw)
+          : {};
+      // Git dir tallies omit mtime. File Overview mounts once sizes exist so
+      // /api/rollup can answer without inventing recency.
+      if (!raw.dir || typeof raw.dir !== "object") {
+        return null;
+      }
+      if (!("mtime" in raw.dir) && !("total_size" in raw.dir)) {
+        return null;
+      }
+      return Object.freeze({ key: context.path || "", data: null });
+    },
     /** @param {HTMLElement} container @param {{path?: string, raw?: unknown}} context @param {unknown} _data @param {{signal?: AbortSignal}} options */
     mount: (container, context, _data, options) =>
       mountFileOverviewPanel(

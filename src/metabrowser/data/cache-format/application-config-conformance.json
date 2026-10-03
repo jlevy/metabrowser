@@ -1,0 +1,93 @@
+{
+  "base_records": {
+    "config": {
+      "format": "f01",
+      "written_by": "0.11.0",
+      "upgrades": []
+    }
+  },
+  "cases": [
+    { "name": "config-created", "record": "config", "changes": [], "expect": "valid" },
+    {
+      "name": "config-after-an-upgrade",
+      "record": "config",
+      "changes": [
+        { "path": ["upgrades"], "value": [{ "version": "0.12.0", "at": "2026-12-01T09:00:00Z" }] }
+      ],
+      "expect": "valid"
+    },
+    {
+      "name": "config-keeps-unknown-top-level-settings",
+      "record": "config",
+      "changes": [{ "path": ["theme"], "value": { "accent": "teal", "density": 2 } }],
+      "expect": "valid"
+    },
+    {
+      "name": "config-keeps-unknown-upgrade-fields",
+      "record": "config",
+      "changes": [
+        {
+          "path": ["upgrades"],
+          "value": [{ "version": "0.12.0", "at": "2026-12-01T09:00:00Z", "from_format": "f01" }]
+        }
+      ],
+      "expect": "valid"
+    },
+    {
+      "name": "config-keeps-a-cache-root-it-does-not-honor",
+      "record": "config",
+      "changes": [
+        { "path": ["cache"], "value": { "root": "~/.metabrowser/cache", "refresh": "manual" } }
+      ],
+      "expect": "valid"
+    },
+    {
+      "name": "config-future-format-is-structurally-valid",
+      "record": "config",
+      "changes": [{ "path": ["format"], "value": "f02" }],
+      "expect": "valid"
+    },
+    {
+      "name": "config-known-format-must-be-a-format",
+      "record": "config",
+      "changes": [{ "path": ["format"], "value": "1" }],
+      "expect": "invalid"
+    },
+    {
+      "name": "config-known-upgrades-must-be-a-list",
+      "record": "config",
+      "changes": [{ "path": ["upgrades"], "value": { "version": "0.12.0" } }],
+      "expect": "invalid"
+    },
+    {
+      "name": "config-upgrade-timestamp-is-canonical",
+      "record": "config",
+      "changes": [{ "path": ["upgrades"], "value": [{ "version": "0.12.0", "at": "yesterday" }] }],
+      "expect": "invalid"
+    },
+    {
+      "name": "config-written-by-is-a-version",
+      "record": "config",
+      "changes": [{ "path": ["written_by"], "value": 11 }],
+      "expect": "invalid"
+    },
+    {
+      "name": "config-refuses-a-top-level-token",
+      "record": "config",
+      "changes": [{ "path": ["github_token"], "value": "ghp_example" }],
+      "expect": "invalid"
+    },
+    {
+      "name": "config-refuses-a-nested-password",
+      "record": "config",
+      "changes": [{ "path": ["provider"], "value": { "gitlab": { "password": "example" } } }],
+      "expect": "invalid"
+    },
+    {
+      "name": "config-allows-a-setting-that-only-mentions-tokens",
+      "record": "config",
+      "changes": [{ "path": ["token_budget"], "value": 4000 }],
+      "expect": "valid"
+    }
+  ]
+}

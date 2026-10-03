@@ -223,12 +223,8 @@ def test_duplicate_markdown_assets_are_absent() -> None:
 
 def test_index_starts_at_root_overview_even_when_readme_exists(tmp_path: Path) -> None:
     """No-hash startup leaves README discovery to the root Overview."""
-    previous_root = server._resolved_root_dir()
-    try:
-        (tmp_path / "README.md").write_text("# Fast first paint\n")
-        server._set_root_dir(tmp_path)
-        html = _index_html()
-    finally:
-        server._set_root_dir(previous_root)
+    (tmp_path / "README.md").write_text("# Fast first paint\n")
+    server._set_root_dir(tmp_path)
+    html = _index_html()
 
     assert "METABROWSER_INITIAL_PATH" not in html

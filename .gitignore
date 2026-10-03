@@ -9,6 +9,8 @@ trash/
 
 # JavaScript tool caches
 node_modules/
+# A pnpm content store created inside the checkout; it can link into attic/.
+.pnpm-store/
 
 # GitHub's standard Python .gitignore:
 

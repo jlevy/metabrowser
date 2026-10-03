@@ -43,7 +43,9 @@ def test_app_shell_tracks_active_printable_view() -> None:
     assert "data-print-profile" in src
     assert "data-render-runtime" in src
     assert 'data-active-view="false"' in src
-    assert 'id="print-view-btn"' in src
+    assert "function shellPrintButton()" in src
+    # No id, so a document's `<label for=…>` has nothing to click through.
+    assert 'id="print-view-btn"' not in src
     assert "function printActiveView()" in src
     assert "window.print()" in src
     assert "setActivePreviewView(tabId, container)" in src

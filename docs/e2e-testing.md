@@ -86,6 +86,86 @@ Regenerate with `make golden-update` **only to record an intended change**, then
 the diff line by line before committing it.
 A regenerated transcript nobody read turns a regression into a committed expectation.
 
+### One Harness and One Update Command
+
+`tests/golden_harness.py` is the one place an expectation is compared or rewritten, and
+the only reader of `GOLDEN_UPDATE`. It serves the two kinds of expectation pytest owns:
+
+- **In-process transcripts**, `tests/golden/*.txt`, for commands a subprocess cannot
+  run: serve mode, and acquisition, which a Git below the acquisition floor refuses.
+  A driver runs `metab` through the console script’s entry point and renders each
+  command’s line, exit status, and both streams in full, except a payload it shows once
+  ([What a Transcript May Replace](#what-a-transcript-may-replace)).
+- **Recorded response fixtures**, `tests/fixtures/*.json`, which a browserless session
+  replays so that it runs on what the server answered and not on envelopes a test wrote
+  by hand. The recorder replays the story against the real application and fails when the
+  committed recording no longer matches.
+
+`make golden-update` runs in dependency order: the recorders, then tryscript and
+`devtools/golden_fixup.py`, then the in-process drivers.
+A session’s transcript is built from its recording, so recording first is what stops a
+transcript being rewritten from a stale input.
+The recorders and drivers run through `devtools/golden_update.py`, under which no test
+may skip (see [Skips](#skips)): a host without Node, or with a Git below the acquisition
+floor, cannot report that it regenerated what it skipped.
+
+`devtools/check_goldens.py`, part of `make lint-check`, keeps that true and keeps a
+transcript from passing while wrong:
+
+- every module that calls the harness is in the Makefile list `golden-update` runs, the
+  recipe keeps the order above, and every committed `.txt` transcript is named by a
+  driver;
+- a `metab` or `node` invocation in a transcript is the last command of its block, or
+  the line prints its status with `; echo "exit: $?"` directly after it.
+  A block has one exit status, the last command’s, so a pipe, a `;`, or an `||` after
+  the command under test records another command’s status.
+  Redirect the command to a file, record its own `? N`, and filter the file in the next
+  block;
+- no transcript is empty, holds a command outside the blocks tryscript runs, or
+  annotates a test `skip` or `only`. tryscript runs a block that opens on an unindented
+  line of backticks and `console` or `bash`, and nothing else;
+  `devtools/tryscript_blocks.py` reads transcripts the way tryscript does, and
+  `check_parity.py` uses the same reading;
+- no golden or recording is over the review budget.
+  The limit, the measurement it was chosen from, and the files excepted until a named
+  bead shrinks them are beside `MAX_GOLDEN_LINES`. An excepted file has its line count
+  as a ceiling, so it can shrink and cannot grow.
+  `python -m devtools.check_goldens --report` prints the current distribution.
+
+### What a Transcript May Replace
+
+A value is replaced only when no fixture can pin it, and by a pattern as narrow as the
+value: a time is `[TIMESTAMP]` and a counter `[COUNT]`, not `[..]`. In-process
+transcripts fix the clock and build every origin with pinned identities and dates, so
+times and commit IDs are literal; the placeholders that remain, each with the reason no
+fixture can pin it, are listed at the top of `tests/golden_harness.py`. For tryscript,
+`devtools/golden_fixup.py` is that list.
+
+A payload that repeats is shown once, and a marker stands where it repeats.
+Each marker is written after comparing, so what stopped repeating is printed.
+
+- **A record a story reads many times.** A pull envelope carries the whole record, so
+  `cli-github-pull-refresh.txt` prints a record in full the first time and as
+  `<RECORD n>` while a later read equals it, and
+  `tests/fixtures/github-pull-page-responses.json` holds a record in the first answer
+  that carried it and names that answer, `{"same_as": "current"}`, in the later ones,
+  which the session reads back as that record.
+  A record that differs is written in full, so a read that changed it shows as a whole
+  record where the reference was.
+- **A run of lines a later command repeats.** Every `/api/tree` answer carries the whole
+  pin’s tallies, so `cli-git-pin-tree.txt` prints them in its first block, and each
+  later block says how many lines it repeats and where they begin:
+  `<157 lines, from … on, are the same as in '/api/tree?depth=0' above>`. The driver
+  finds the run by comparing the two outputs, so the lines that stopped repeating print,
+  and the marker’s count changes.
+
+A transcript must not depend on how busy the machine is.
+The server logs a request slower than two seconds to stderr, which a transcript
+captures, so the Make targets run tryscript with `METABROWSER_SLOW_SERVER_MS` set past
+tryscript’s own command timeout.
+Run tryscript through `make test` or `make golden-update`, or set that variable, when
+the machine is loaded.
+
 ### Distribution Tests
 
 `make build` inspects the wheel for required static assets and rejects repository-only
@@ -106,8 +186,151 @@ uv --config-file uv.toml run --frozen pytest tests/test_plugin_loader.py::test_c
 make verify
 ```
 
-Node-backed tests skip when Node is unavailable locally.
-CI provides Node and treats those contracts as required.
+Node and Git are prerequisites.
+The first test that needs one and finds it missing stops the run, with one message that
+names the tool and the way to opt out.
+It does so in CI and locally alike: a run that skipped those tests would pass without
+checking any of the browser contracts under `tests/dom`. A run that selects no test
+needing the tool is not affected.
+A developer who has no Node names it in `METABROWSER_ALLOW_MISSING_TOOLS`, and the tests
+that need it skip with that reason:
+
+```shell
+METABROWSER_ALLOW_MISSING_TOOLS=node uv --config-file uv.toml run --frozen pytest -rs
+```
+
+The variable takes `node`, `git`, or both separated by a comma.
+`tests/required_tools.py` is the gate, and a test asks it rather than looking the tool
+up itself; a test in `tests/test_suite_gates.py` fails when one does.
+
+## Test Tiers
+
+`make test` is the default tier.
+Three outer tiers hold evidence that the default tier cannot produce on every machine.
+Each has one command, one way its tests are selected, and a stated time when it runs.
+
+| Tier | Command | Selected by | When it runs |
+| --- | --- | --- | --- |
+| Default | `make test` | everything that does not skip | Every pull request in CI, on each supported Python version on Ubuntu; the pre-push hook |
+| Admitted Git | `make test-admitted-git` | `ADMITTED_GIT_TESTS` in the `Makefile` | Every pull request in CI, on the lowest admitted Git release and the newest patched one |
+| macOS | `make test-macos` | the `macos_tier` marker | Never in CI. Part of `make test` on a Mac; run it there before a release |
+| Live GitHub | `make test-live-github` | the `live_github` marker | Never in CI. By hand, before a release and after a change to GitHub URL or pull request reading |
+
+**Admitted Git** runs acquisition, refresh, and store reads on Git releases the
+production floor admits.
+A test that asks for the floor through `require_admitted_git` or `_allow_installed_git`
+meets the real one there, unpatched.
+The same files also run in the default tier, where `_allow_installed_git` substitutes
+the floor so they pass on any Git.
+CI sets `METABROWSER_REQUIRE_ADMITTED_GIT`, which turns a below-floor skip into a
+failure; `tests/admitted_git.py` is that gate.
+The list is kept by hand, so a test that asks for the floor from a module the list
+leaves out fails, wherever the helper it asked through lives.
+
+**macOS** covers what only that platform has: extended ACLs on the application home
+(`tests/test_cache_permissions.py`) and ref names that fold together on a
+case-insensitive file system (`tests/test_cache_update.py`,
+`tests/test_github_pulls.py`). CI runs on Ubuntu, so no CI job runs these tests.
+`make test-macos` sets `METABROWSER_REQUIRE_MACOS_TIER`, which turns a skip of one of
+them into a failure, so the target cannot pass on Linux or on a case-sensitive volume.
+
+**Live GitHub** covers what a fixture cannot: an anonymous HTTPS clone of a public
+repository, and `gh` reads of public pull requests.
+It is read-only and writes nothing to GitHub.
+It needs the network, an admitted Git, and a `gh` signed in to github.com.
+With the tier selected, a live test that skips for any of those fails; it may skip only
+for what github.com holds that day.
+Every other test runs with a failing stand-in `gh` first on `PATH`.
+
+### Skips
+
+`make test` runs pytest with `-rs`, which prints each skipped test with its reason, and
+with `--durations`, which lists the slowest tests.
+In CI it also sets `METABROWSER_STRICT_SKIPS`, and a skip has to belong to an outer tier
+or the test fails:
+
+- macOS tier: a test with the `macos_tier` marker.
+  Its reasons are `extended ACLs are inspected only on macOS`,
+  `the file system is case-sensitive`, and
+  `the store's filesystem tells letter case apart`;
+- Live GitHub tier: a test with the `live_github` marker, with
+  `set METABROWSER_LIVE_GITHUB=1 to run`;
+- Admitted-Git tier: `needs a Git the acquisition floor admits`, where the runner’s own
+  Git is below the floor.
+  The admitted-git job runs those tests.
+
+Any other reason in a CI run means a test the suite is believed to run did not, so it
+fails there. `tests/suite_gates.py` holds these rules.
+
+`make golden-update` sets `METABROWSER_STRICT_SKIPS=all`, the same switch at the level
+where no skip stands, tier or not: a recorder or driver that skipped regenerated
+nothing.
+
+When the live tier is selected, two of its tests may still skip for the data on
+github.com that day: `has no branch with a slash today` and
+`has no open pull request today`.
+
+Strict mode is off on a developer machine, which can add these:
+
+- `needs a Git the acquisition floor admits`, where the installed Git is below the
+  floor;
+- `the macOS filesystem rejects undecodable byte names`, on a Mac; CI runs that test;
+- `root is never denied by modes`, when the suite runs as root;
+- `symlinks are unavailable`, where the platform or the account cannot create one;
+- a POSIX-only reason, on a platform without POSIX modes, locks, signals, or FIFOs, and
+  `could not import 'fcntl'` for the lock and atomic-write modules there;
+- `is not on PATH, and METABROWSER_ALLOW_MISSING_TOOLS allows that`, after the opt-out
+  above.
+
+### Timeouts
+
+A test has 60 seconds, set in `pyproject.toml`. When that timeout fires it ends the
+whole run, not one test, so a bound inside a test must be shorter to do any good: a
+child process’s `timeout`, or a polling deadline, is at most 50 seconds.
+A test that needs longer carries its own `pytest.mark.timeout` with the measurement that
+forced it written beside it.
+A test in `tests/test_suite_gates.py` fails on a longer bound in a module that has not
+raised its budget.
+
+## Measuring the Suite
+
+A change to the tests is reviewed on numbers taken the same way before and after it.
+`devtools/suite_report.py` prints them, so nobody counts by hand and the next person
+gets the figures the last one did:
+
+```shell
+# The working tree: files, lines, and test functions by area, then the totals.
+make test-report
+
+# Commits side by side, with the change from the first to the last.
+# `.` is the working tree.
+make test-report REFS="origin/main ."
+
+# What one run cost: the time of each test file and each golden, and what it skipped.
+gh run view <run> --job <job> --log > run.log
+make test-report LOG=run.log
+```
+
+- An **area** is the first word of a test module’s name: `tests/test_cache_update.py` is
+  in `cache`.
+- **Lines** are counted from the files of the tree or commit alone, so they are the same
+  on every machine. An image is a file with no lines.
+- **Test functions** are the ones pytest collects, read from each module’s syntax tree:
+  `test_` functions at module level and `test_` methods of a `Test` class.
+  A parametrized function is one function, so this is lower than the number of cases a
+  run reports.
+- **Time** is read from a CI job log and belongs to that one run, so quote the run and
+  the job with it. A test file’s time is the gap between the timestamps of consecutive
+  progress lines: pytest ends a file’s line when the next file starts.
+  A golden’s time is the gap before tryscript printed its verdict.
+  A pytest output with no timestamps gives no time per file.
+  A developer machine under load gives other times; compare the CI `test (3.13)` job
+  with itself.
+- **Skips** are the cases `-rs` listed in the log, counted by reason.
+  [Skips](#skips) says which reason belongs to which tier.
+
+`python -m devtools.check_goldens --report` gives the size distribution of the goldens
+and recordings against their review budget.
 
 ## Adding Coverage
 
@@ -151,6 +374,12 @@ A plugin should cover:
 Keep consumer plugin fixtures in the consumer repository.
 The Metabrowser suite should use generic sample plugins so it cannot pass only because
 an unrelated workspace package happens to be installed.
+
+The [v0.12 alpha test plan](project/specs/active/plan-2026-09-22-v012-alpha-testing.md)
+sequences foundation testing, GitHub URL browsing, and direct PRs, with manual and
+automated scenarios and the landing checklist.
+The step-by-step procedure is
+[QA: v0.12 Repository Library](qa-v012-repository-library.md).
 
 ## Manual Browser Check
 

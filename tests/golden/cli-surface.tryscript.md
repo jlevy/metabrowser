@@ -34,12 +34,20 @@ $ metab --help
  Data modes read the same server the browser reads, without a browser or a
  listening port: --api issues one route, --show reports the four layers
  behind one selection, --walk dumps the inventory, --diff shows a change
- set. Diagnostics: --check-api, --plugins, --plugin, --doctor. Remote
- serving: --remote.
+ set. A file:// or https:// Git source, or a GitHub web URL, is served, shown,
+ or checked at the commit it selects under the untrusted profile; --no-serve
+ only acquires it into the cache. Diagnostics: --check-api, --plugins,
+ --plugin, --doctor.
+ Remote serving: --remote.
 
 ╭─ Arguments ──────────────────────────────────────────────────────────────────╮
-│   [root]      PATH  Root directory to serve, check, or walk; a file may be   │
-│                     served directly. With no ROOT and no mode, prints help.  │
+│   [root]      TEXT  Root directory to serve, check, or walk; a file may be   │
+│                     served directly. https, ssh, and file:// clone URLs and  │
+│                     GitHub web URLs are Git sources, not local paths. An     │
+│                     https:// or file:// source is acquired into the cache    │
+│                     and opened at the commit its URL selects, or its default │
+│                     branch's, always untrusted; --no-serve only acquires it; │
+│                     ssh stays closed. With no ROOT and no mode, prints help. │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Options ────────────────────────────────────────────────────────────────────╮
 │ --version          Show the installed version and exit.                      │
@@ -58,6 +66,8 @@ $ metab --help
 │                           kind, views, and a model summary.                  │
 │ --check-api               Run the navigation API scenario without a browser  │
 │                           or listening port.                                 │
+│ --no-serve                Acquire a file:// or https:// Git source into the  │
+│                           cache without starting a server.                   │
 │ --remote           HOST   SSH into HOST, start metab there, and tunnel it to │
 │                           localhost. Pass the remote directory with --path.  │
 │ --plugins                 List every discovered plugin.                      │
@@ -102,22 +112,25 @@ $ metab --help
 │                                              paths). Overrides               │
 │                                              METABROWSER_LOG_LEVEL. Applies  │
 │                                              when serving, walking, issuing  │
-│                                              --api or --show, or checking    │
-│                                              APIs.                           │
+│                                              --api or --show, checking APIs, │
+│                                              or acquiring with --no-serve.   │
 │ --untrusted                                  Conservative content-trust      │
-│                                              profile: disable active content │
-│                                              on /raw (drop allow-scripts)    │
-│                                              and keep mutations off.         │
+│                                              profile: turn active content    │
+│                                              off, as --no-active-content     │
+│                                              does, and keep mutations off.   │
 │                                              Individual flags override it.   │
 │                                              Env: METAB_UNTRUSTED=1. Applies │
 │                                              when serving and to --api,      │
 │                                              --show, and --check-api.        │
-│ --no-active-content                          Disable script execution on     │
-│                                              content surfaces: /raw omits    │
-│                                              allow-scripts from its sandbox. │
-│                                              Env: METAB_ACTIVE_CONTENT=0.    │
-│                                              Applies when serving and to     │
-│                                              --api, --show, and --check-api. │
+│ --no-active-content                          Turn active content off:        │
+│                                              Markdown renders as inert       │
+│                                              markup, the page carries a      │
+│                                              strict Content-Security-Policy, │
+│                                              and /raw omits allow-scripts    │
+│                                              from its sandbox. Env:          │
+│                                              METAB_ACTIVE_CONTENT=0. Applies │
+│                                              when serving and to --api,      │
+│                                              --show, and --check-api.        │
 │ --allow-edits                                Publish the mutations           │
 │                                              capability as on. No write      │
 │                                              route consumes it yet. Env:     │
@@ -218,6 +231,8 @@ $ metab --help
  metab . --api '/api/tree?depth=2'
  metab . --show README.md
  metab . --check-api
+ metab file:///path/to/repo.git
+ metab file:///path/to/repo.git --no-serve
  metab --remote example-host --path /srv/shared-files
  metab --plugins
  Guide: https://github.com/jlevy/metabrowser/blob/main/docs/command-line.md
@@ -229,11 +244,13 @@ $ metab --help
 The full help is pinned once, above.
 This test asserts only the relationship, so a help change is a single diff: any line
 where the two outputs differ is printed and fails the transcript.
+Each command writes to a file so its own exit status is the one printed.
 
 ```console
-$ metab > bare.txt; echo "exit: $?"; metab --help | diff bare.txt - && echo "identical to metab --help"
-exit: 0
-identical to metab --help
+$ metab > bare.txt; echo "metab: exit $?"; metab --help > help.txt; echo "metab --help: exit $?"; diff bare.txt help.txt && echo "identical"
+metab: exit 0
+metab --help: exit 0
+identical
 ? 0
 ```
 

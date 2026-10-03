@@ -11,6 +11,8 @@ from typing import Any, cast
 
 import pytest
 
+from tests.required_tools import needs_git
+
 ROOT = Path(__file__).resolve().parents[1]
 RUNNER = ROOT / "explorations" / "performance-loop" / "run.py"
 BUDGETS = ROOT / "explorations" / "performance-loop" / "performance-budgets.toml"
@@ -240,6 +242,7 @@ def test_pre_contract_inventory_declaration_has_an_explicit_serve_option(capsys:
         "metab 0.9.2.dev125+abcdef12 (+125 commits, 16211ccb, dirty)",
     ],
 )
+@needs_git
 def test_external_build_reference_matches_embedded_version_commit(version: str) -> None:
     module = _runner()
     build = module.MetabBuild(executable=Path("/installed/metab"), version=version)
@@ -259,6 +262,7 @@ def test_external_build_reference_matches_embedded_version_commit(version: str) 
     assert provenance["commit"] == "16211ccb6459836c9a0813f0c3b096eef38e17b3"
 
 
+@needs_git
 def test_external_build_reference_rejects_embedded_version_commit_mismatch() -> None:
     module = _runner()
     build = module.MetabBuild(
@@ -1128,7 +1132,7 @@ def test_fingerprint_traverses_after_the_pending_walk_and_hands_it_forward(
 
     monkeypatch.setattr(module, "_corpus_fingerprint", fingerprint)
 
-    assert module.cmd_fingerprint(argparse.Namespace(timeout=60.0)) == 0
+    assert module.cmd_fingerprint(argparse.Namespace(timeout=50.0)) == 0
 
     assert events == ["complete=False", "complete=False", "complete=True", "traversal"]
     pending = json.loads(module.PENDING.read_text(encoding="utf-8"))
@@ -1177,7 +1181,7 @@ def test_fingerprint_refuses_when_the_pending_server_is_not_answering(
     monkeypatch.setattr(module, "_corpus_fingerprint", traversal)
 
     with pytest.raises(SystemExit, match="not answering"):
-        module.cmd_fingerprint(argparse.Namespace(timeout=60.0))
+        module.cmd_fingerprint(argparse.Namespace(timeout=50.0))
     assert "corpus_state_after_run" not in json.loads(module.PENDING.read_text(encoding="utf-8"))
 
 
@@ -1192,7 +1196,7 @@ def test_a_series_refuses_a_change_below_the_root_during_its_first_recorded_run(
         encoding="utf-8",
     )
     _walk_completes_after(module, monkeypatch, 0, [])
-    assert module.cmd_fingerprint(argparse.Namespace(timeout=60.0)) == 0
+    assert module.cmd_fingerprint(argparse.Namespace(timeout=50.0)) == 0
 
     pending = _serve(module, tmp_path, monkeypatch, corpus)
     assert pending["corpus_fingerprint_baseline"] == module._corpus_fingerprint(corpus)

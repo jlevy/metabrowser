@@ -1,4 +1,5 @@
 import { acquireMarkdownWorkerClient } from "./markdown-worker-client.js";
+import { placeRendered } from "./place-rendered.js";
 import { initTocWithIntersectionFallback } from "./toc-intersection-fallback.js";
 
 /** Bounds recursive embedding depth. */
@@ -438,16 +439,35 @@ export function mountWikiTransclusion(container, sourceElement, resolved, mb, op
       if (!live()) {
         return;
       }
-      aside.innerHTML = rendered.html;
+      const { enhanced: nested, inert: inertRender } = await placeRendered(
+        aside,
+        rendered,
+        mb,
+        (root) =>
+          options.enhanceNested?.(root, resolved.path, {
+            budget,
+            chain: claim.chain,
+            signal: controller.signal,
+          }),
+      );
+      if (!live()) {
+        nested?.dispose?.();
+        return;
+      }
       aside.setAttribute("aria-busy", "false");
       aside.setAttribute("data-metabrowser-transclusion-status", "ready");
-      nestedHandle =
-        options.enhanceNested?.(aside, resolved.path, {
-          budget,
-          chain: claim.chain,
-          signal: controller.signal,
-        }) || null;
-      disposeToc = initTocWithIntersectionFallback(() => mb.kpressInitToc?.(aside) || null);
+      nestedHandle = nested || null;
+      const inert = inertRender?.inertArticle(aside);
+      disposeToc =
+        inertRender && inert
+          ? inertRender.wireInertToc(inert, {
+              open: (fragment) => {
+                void mb.navigation.open({ path: resolved.path, fragment }).catch((error) => {
+                  console.warn("Could not open the table of contents entry", error);
+                });
+              },
+            })
+          : initTocWithIntersectionFallback(() => mb.kpressInitToc?.(aside) || null);
     } catch (error) {
       if (disposed || options.signal?.aborted) {
         return;

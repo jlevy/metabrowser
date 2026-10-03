@@ -394,8 +394,11 @@ export function createMarkdownReconciliationCoordinator(mb, options = {}) {
   /** @param {AbortSignal=} signal @param {string=} sourcePath */
   function createScope(signal, sourcePath) {
     const active = !disposed && signal?.aborted !== true;
+    const sourceKind = mb.sourceKind?.() === "git_revision" ? "git_revision" : "filesystem";
     const sourceContext =
-      !active || sourcePath === undefined ? null : createTrustedWikiSourcePathContext(sourcePath);
+      !active || sourcePath === undefined
+        ? null
+        : createTrustedWikiSourcePathContext(sourcePath, sourceKind);
     /** @type {ScopeState} */
     const state = {
       abortListener: null,
@@ -406,7 +409,11 @@ export function createMarkdownReconciliationCoordinator(mb, options = {}) {
       standardContext:
         !active || sourcePath === undefined
           ? null
-          : createTrustedStandardLinkResolutionContext(sourcePath, sourceContext || undefined),
+          : createTrustedStandardLinkResolutionContext(
+              sourcePath,
+              sourceContext || undefined,
+              sourceKind,
+            ),
     };
 
     function disposeScope() {

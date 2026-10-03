@@ -18,6 +18,8 @@ adapter sniff (for JSONL), and a lazily-loaded YAML frontmatter dict.
 The wrapper is shared with the imperative fallback detector chain in
 ``file_kinds.py``.
 Declarative manifest rules are the supported plugin classification surface.
+``classify_identity`` is the Git-blob subset: extension, basename, sniffed
+adapter, and optional JSON/YAML/frontmatter mappings parsed from blob bytes.
 """
 
 from __future__ import annotations
@@ -71,15 +73,74 @@ def _json_top_level(
             payload = source.read(byte_limit + 1)
     except OSError:
         return None
-    if len(payload) > byte_limit:
+    return json_mapping_from_bytes(payload, byte_limit)
+
+
+def json_mapping_from_bytes(
+    data: bytes, byte_limit: int = _JSON_CLASSIFICATION_MAX_BYTES
+) -> dict[str, Any] | None:
+    """Return a small JSON document's top-level mapping from bytes."""
+
+    if len(data) > byte_limit:
         return None
     try:
-        parsed = json.loads(payload)
+        parsed = json.loads(data)
     except (UnicodeError, json.JSONDecodeError, ValueError):
         return None
-    if isinstance(parsed, dict):
-        return parsed
-    return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def yaml_mapping_from_bytes(
+    data: bytes, byte_limit: int = _YAML_PREFIX_BYTES
+) -> dict[str, Any] | None:
+    """Parse a bounded YAML prefix and return its top-level mapping."""
+
+    try:
+        parsed = yaml.safe_load(data[:byte_limit])
+    except yaml.YAMLError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def parse_frontmatter_bytes(
+    data: bytes, byte_limit: int = 256 * 1024
+) -> tuple[dict[str, Any] | None, str | None]:
+    """Parse YAML frontmatter from Markdown bytes.
+
+    Returns ``(mapping, None)`` on success, ``(None, None)`` if the opening
+    fence is absent, and ``(None, reason)`` when the fence is present but
+    unparsable. Classification still treats a parse failure as no mapping.
+    """
+
+    from frontmatter_format import FmFormatError, FmStyle, from_yaml_string
+    from ruamel.yaml.error import YAMLError
+
+    text = data[:byte_limit].decode("utf-8", errors="replace")
+    lines = text.splitlines(keepends=True)
+    if not lines or lines[0].rstrip() != FmStyle.yaml.start:
+        return None, None
+    metadata_lines: list[str] = []
+    for line in lines[1:]:
+        if line.rstrip() == FmStyle.yaml.end:
+            metadata_text = "".join(metadata_lines)
+            if not metadata_text:
+                return None, None
+            try:
+                parsed = from_yaml_string(metadata_text)
+            except (FmFormatError, YAMLError, ValueError, TypeError) as exc:
+                return None, str(exc)
+            if not isinstance(parsed, dict):
+                return None, None
+            return parsed, None
+        metadata_lines.append(line)
+    return None, f"Delimiter `{FmStyle.yaml.end}` for end of frontmatter not found"
+
+
+def frontmatter_from_bytes(data: bytes, byte_limit: int = 256 * 1024) -> dict[str, Any] | None:
+    """Parse YAML frontmatter from Markdown bytes. None if absent or unparsable."""
+
+    mapping, _error = parse_frontmatter_bytes(data, byte_limit)
+    return mapping
 
 
 def _yaml_top_level(path: Path, byte_limit: int = _YAML_PREFIX_BYTES) -> dict[str, Any] | None:
@@ -96,13 +157,7 @@ def _yaml_top_level(path: Path, byte_limit: int = _YAML_PREFIX_BYTES) -> dict[st
             prefix = f.read(byte_limit)
     except OSError:
         return None
-    try:
-        parsed = yaml.safe_load(prefix)
-    except yaml.YAMLError:
-        return None
-    if isinstance(parsed, dict):
-        return parsed
-    return None
+    return yaml_mapping_from_bytes(prefix, byte_limit)
 
 
 # Compiled pathspec cache, keyed by the raw glob string. The classifier
@@ -230,6 +285,92 @@ def _match_one(rule: KindMatch, ctx: FileContext) -> bool:
             if not isinstance(value, str) or not value.startswith(rule.yaml_value_prefix):
                 return False
     return True
+
+
+_IDENTITY_ONLY_SKIP_FIELDS: tuple[str, ...] = ("path_glob",)
+
+
+def classify_identity(
+    rules: list[CompiledKindRule],
+    *,
+    ext: str,
+    basename: str,
+    adapter: str | None = None,
+    json_top_level: dict[str, Any] | None = None,
+    yaml_top_level: dict[str, Any] | None = None,
+    frontmatter: dict[str, Any] | None = None,
+) -> str | None:
+    """Match plugin kinds from Git blob identity and optional parsed bytes.
+
+    ``path_glob`` rules stay filesystem-only: a Git blob has no served-root
+    path. JSON, YAML, and frontmatter predicates match only when the caller
+    supplies the parsed mapping.
+    """
+
+    for compiled in sorted(rules, key=lambda item: item.sort_key):
+        match = compiled.rule.match
+        if any(getattr(match, field) is not None for field in _IDENTITY_ONLY_SKIP_FIELDS):
+            continue
+        if match.ext is not None and ext != match.ext:
+            continue
+        if match.exts is not None and ext not in match.exts:
+            continue
+        if match.basename is not None and basename != match.basename:
+            continue
+        if match.folder_marker is not None and basename != match.folder_marker:
+            continue
+        if match.adapter is not None and adapter != match.adapter:
+            continue
+        if match.frontmatter_has_key is not None and (
+            frontmatter is None or match.frontmatter_has_key not in frontmatter
+        ):
+            continue
+        if match.frontmatter_schema_prefix is not None:
+            if frontmatter is None:
+                continue
+            schema = frontmatter.get("schema")
+            if not isinstance(schema, str) or not schema.startswith(
+                match.frontmatter_schema_prefix
+            ):
+                continue
+        if match.json_has_key is not None or match.json_value_prefix is not None:
+            if ext != ".json" or not isinstance(json_top_level, dict):
+                continue
+            if match.json_has_key is not None and match.json_has_key not in json_top_level:
+                continue
+            if match.json_value_prefix is not None:
+                if match.json_has_key is None:
+                    continue
+                value = json_top_level.get(match.json_has_key)
+                if not isinstance(value, str) or not value.startswith(match.json_value_prefix):
+                    continue
+        if match.yaml_has_key is not None or match.yaml_value_prefix is not None:
+            if ext not in {".yaml", ".yml"} or yaml_top_level is None:
+                continue
+            if match.yaml_has_key is not None and match.yaml_has_key not in yaml_top_level:
+                continue
+            if match.yaml_value_prefix is not None:
+                if match.yaml_has_key is None:
+                    continue
+                value = yaml_top_level.get(match.yaml_has_key)
+                if not isinstance(value, str) or not value.startswith(match.yaml_value_prefix):
+                    continue
+        if (
+            match.ext is None
+            and match.exts is None
+            and match.basename is None
+            and match.folder_marker is None
+            and match.adapter is None
+            and match.frontmatter_has_key is None
+            and match.frontmatter_schema_prefix is None
+            and match.json_has_key is None
+            and match.json_value_prefix is None
+            and match.yaml_has_key is None
+            and match.yaml_value_prefix is None
+        ):
+            continue
+        return compiled.rule.id
+    return None
 
 
 def build_classifier(rules: list[CompiledKindRule]) -> KindClassifier:

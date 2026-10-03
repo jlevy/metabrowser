@@ -16,8 +16,9 @@ import json
 import logging
 import os
 from collections.abc import Mapping
+from contextlib import suppress
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import typer
 
@@ -37,12 +38,18 @@ from metabrowser.inventory_engine.contract import (
 from metabrowser.normalize import NormalizeContext, normalize_payload
 from metabrowser.view_routes import (
     COMMIT_ROUTE_PREFIX,
+    PULL_ROUTE_PREFIX,
     VIEW_ROUTE_PREFIX,
     decode_safe_commit_route,
+    decode_safe_pull_route,
     decode_safe_view_path,
     format_commit_href,
     format_inventory_view_href,
+    format_pull_href,
 )
+
+if TYPE_CHECKING:
+    from metabrowser.git.tree_source import GitPath
 
 LOG = logging.getLogger(__name__)
 
@@ -130,6 +137,57 @@ def _describe_comparison(payload: dict[str, Any], inner: str) -> str:
     return f"comparison envelope; {detail}"
 
 
+def _require_served_pull(payload: dict[str, Any], number: int, display_path: str) -> None:
+    """Refuse a pull-request page for a number this server does not serve.
+
+    The page says the same: it shows only the served pull request's record.
+    """
+
+    served = payload.get("number")
+    if served is None:
+        raise CLIError(f"{display_path}: this source serves no pull request")
+    if served != number:
+        raise CLIError(f"{display_path}: this source serves pull request {served}")
+
+
+def _describe_pull(payload: dict[str, Any], tab: str) -> str:
+    """Summarize the pull envelope the page renders: its state and what the record holds."""
+
+    parts = [f"state={payload.get('state')}"]
+    if payload.get("reason") is not None:
+        parts.append(f"reason={payload['reason']}")
+    record = payload.get("record")
+    if isinstance(record, dict):
+        pull = record.get("pull")
+        if isinstance(pull, dict):
+            parts.append(f"pull_state={_pull_display_state(pull)}")
+        parts.append(f"fetched_at={record.get('fetched_at')}")
+        parts.append(f"reader={record.get('reader')}")
+        for name in ("issue_comments", "reviews", "review_comments", "check_runs"):
+            items = record.get(name)
+            parts.append(f"{name}={len(items) if isinstance(items, list) else 0}")
+        status = record.get("status")
+        statuses = status.get("statuses") if isinstance(status, dict) else None
+        parts.append(f"statuses={len(statuses) if isinstance(statuses, list) else 0}")
+        unavailable = record.get("unavailable")
+        if isinstance(unavailable, dict) and unavailable:
+            parts.append("unavailable=" + ",".join(sorted(str(key) for key in unavailable)))
+    parts.append(f"tab={tab or 'conversation'}")
+    if tab == "files":
+        parts.append(f"comparison_route={payload.get('comparison_route')}")
+    return "pull envelope; " + " ".join(parts)
+
+
+def _pull_display_state(pull: dict[str, Any]) -> str:
+    """The state badge GitHub shows: merged and draft before open and closed."""
+
+    if pull.get("merged"):
+        return "merged"
+    if pull.get("state") == "open" and pull.get("draft"):
+        return "draft"
+    return str(pull.get("state"))
+
+
 def _display_selection(path: str) -> str:
     """Return a terminal-safe spelling for one native or route selection."""
 
@@ -152,120 +210,81 @@ def _encoded_route(path: str, display_path: str) -> bytes:
         raise CLIError(f"{display_path} is not a route this grammar accepts") from exc
 
 
-def run_show(
-    root: Path,
-    *,
-    path: str,
-    fmt: str = "text",
-    plugins_dir: list[Path] | None = None,
-    log_level: str = "",
-    index_timeout_s: float = INDEX_READY_TIMEOUT_S,
-    untrusted: bool = False,
-    no_active_content: bool = False,
-    allow_edits: bool = False,
-) -> None:
-    """Report route, kind, views, and model summary for one selection."""
-
-    load_dotenv_chain()
-    from metabrowser.capabilities import apply_capabilities
-
-    apply_capabilities(
-        untrusted=untrusted,
-        no_active_content=no_active_content,
-        allow_edits=allow_edits,
-    )
-    apply_log_level(log_level)
-    display_path = _display_selection(path)
-    resolved = root.expanduser().resolve()
-    if not resolved.is_dir():
-        raise CLIError(f"{resolved} is not a directory")
-
+def _prepare_plugins(plugins_dir: list[Path] | None) -> None:
     extra_plugin_dirs = resolve_extra_plugin_dirs(plugins_dir)
     os.environ["METABROWSER_PLUGINS_DIRS"] = os.pathsep.join(
         str(plugin_dir) for plugin_dir in extra_plugin_dirs
     )
 
-    from metabrowser import server
 
-    server._set_root_dir(resolved)
+def display_git_path(selection: str) -> GitPath:
+    """Read one pinned selection strictly as slash-separated display names.
 
-    commit = None
-    native_selection: str | None = None
-    if path.startswith(COMMIT_ROUTE_PREFIX):
-        commit = decode_safe_commit_route(_encoded_route(path, display_path))
-        if commit is None:
-            raise CLIError(f"{display_path} is not a route this grammar accepts")
+    ``GitPath.from_display`` reads an all-``g1-`` spelling as the wire form.
+    That is right for a route identity and wrong for a name a human typed,
+    because a pinned tree may hold a file literally called ``g1-notes.md``.
+    """
 
-    if commit is not None:
-        revision, inner = commit
-        params = {"revision": revision}
-        if inner:
-            params["file"] = inner
-        route = "/api/plugin/diff/comparison"
-    else:
-        native_selection = path
-        if path.startswith(VIEW_ROUTE_PREFIX):
-            decoded = decode_safe_view_path(_encoded_route(path, display_path))
-            if decoded is None:
-                raise CLIError(f"{display_path} is not a route this grammar accepts")
-            native_selection = decoded
-        # Command-line paths and decoded browser routes are native filesystem
-        # spellings. `/api/file` speaks the canonical identity published by the
-        # inventory, where a literal `%` is escaped as `%25` so percent-looking
-        # siblings cannot alias each other.
-        route, params = "/api/file", {"path": canonical_inventory_path(native_selection)}
+    from metabrowser.git.tree_source import GitPath, GitPathError
 
-    # A directory's envelope carries inventory aggregates; a file's does not.
-    needs_index = native_selection is not None and (resolved / native_selection).is_dir()
-    response = asyncio.run(
-        _fetch(
-            server.app,
-            route,
-            params,
-            index_timeout_s=index_timeout_s,
-            needs_index=needs_index,
-        )
-    )
+    parts = selection.split("/")
+    if not (parts and all(part.startswith("g1-") for part in parts)):
+        return GitPath.from_display(selection)
+    path = GitPath.root()
+    for part in parts:
+        if "\\" in part or "\0" in part:
+            raise GitPathError("GitPath display segments cannot contain NUL or '\\\\'")
+        path = path.child(part.encode("utf-8", "surrogateescape"))
+    return path
 
-    if response.incomplete:
-        raise CLIError(f"{display_path} failed mid-response; the model below would be truncated")
-    if response.status_code != 200:
-        raise CLIError(
-            f"{display_path} is not a selection the browser can open (HTTP {response.status_code})"
-        )
 
+def git_wire_candidates(selection: str, *, from_route: bool) -> list[str]:
+    """Wire identities to try for one pinned selection, best reading first.
+
+    A typed selection is a path inside the pinned tree, so a leading `/` or `./`, a
+    `.` segment, and a trailing `/` name the same entry they would under a served
+    folder, and are dropped before either reading.
+
+    A ``/view/`` address is already a wire identity, so it has exactly one
+    reading and a tracked file whose name happens to look like a wire token
+    cannot capture it. Anything else is a display name a human typed, so that
+    reading comes first: ``g1-notes.md`` names the tracked file of that name,
+    and ``g1-data/x.md`` would otherwise decode to an unrelated path. The wire
+    reading stays as a fallback, because ``--show`` also accepts the identity a
+    route carries and a container inner path exists only in that spelling.
+    """
+
+    from metabrowser.git.content_routes import split_git_container_wire
+    from metabrowser.git.tree_source import GitPathError
+
+    candidates: list[str] = []
+
+    def _add(wire: str) -> None:
+        if wire not in candidates:
+            candidates.append(wire)
+
+    if not from_route:
+        selection = "/".join(part for part in selection.split("/") if part not in ("", "."))
+        with suppress(GitPathError):
+            _add(display_git_path(selection).to_wire())
     try:
-        payload = response.json()
-    except ValueError as exc:
-        raise CLIError(f"{display_path} returned a non-JSON envelope") from exc
-    if not isinstance(payload, dict):
-        raise CLIError(f"{display_path} returned an unexpected envelope")
-
-    ctx = NormalizeContext(root=resolved)
-    payload = normalize_payload(payload, ctx)
-
-    if commit is not None:
-        revision, inner = commit
-        shown_route = format_commit_href(revision, inner)
-        kind = "comparison"
-        # The same registry /api/file reads, so the views reported are the real
-        # registered ones rather than a second list that could drift from them.
-        views: Any = server._views_for_kind("diff")
-        model = _describe_comparison(payload, inner)
+        git_path, inner = split_git_container_wire(selection)
+    except GitPathError:
+        pass
     else:
-        identity = payload.get("path", params["path"])
-        if not isinstance(identity, str):
-            raise CLIError(f"{display_path} returned an unexpected path identity")
-        try:
-            shown_route = (
-                format_inventory_view_href(identity) if identity not in ("", ".") else "/view/"
-            )
-        except (UnicodeEncodeError, ValueError) as exc:
-            raise CLIError(f"{display_path} returned a non-canonical path identity") from exc
-        kind = str(payload.get("kind", "unknown"))
-        views = payload.get("views")
-        model = _describe_model(payload)
+        _add(f"{git_path.to_wire()}/{inner}" if inner else git_path.to_wire())
+    return candidates
 
+
+def _emit_show(
+    *,
+    display_path: str,
+    shown_route: str,
+    kind: str,
+    views: Any,
+    model: str,
+    fmt: str,
+) -> None:
     if fmt == "json":
         typer.echo(
             json.dumps(
@@ -281,9 +300,251 @@ def run_show(
             )
         )
         return
-
     typer.echo(f"show: {display_path}")
     typer.echo(f"route: {shown_route}")
     typer.echo(f"kind: {kind}")
     typer.echo(f"views: {_describe_views(views)}")
     typer.echo(f"model: {model}")
+
+
+async def ashow_active(
+    *,
+    path: str,
+    fmt: str = "text",
+    plugins_dir: list[Path] | None = None,
+    log_level: str = "",
+    index_timeout_s: float = INDEX_READY_TIMEOUT_S,
+    normalize_root: Path,
+    filesystem_root: Path | None,
+    untrusted: bool = False,
+    no_active_content: bool = False,
+    allow_edits: bool = False,
+) -> None:
+    """Report one selection against the already-attached subject.
+
+    This is a pin's entry point, which gets here before any server import, so the
+    dotenv chain and the plugin directories are published here.
+    """
+
+    load_dotenv_chain()
+    from metabrowser.capabilities import apply_capabilities
+
+    apply_capabilities(
+        untrusted=untrusted,
+        no_active_content=no_active_content,
+        allow_edits=allow_edits,
+    )
+    apply_log_level(log_level)
+    _prepare_plugins(plugins_dir)
+    await _ashow_prepared(
+        path=path,
+        fmt=fmt,
+        index_timeout_s=index_timeout_s,
+        normalize_root=normalize_root,
+        filesystem_root=filesystem_root,
+    )
+
+
+async def _ashow_prepared(
+    *,
+    path: str,
+    fmt: str,
+    index_timeout_s: float,
+    normalize_root: Path,
+    filesystem_root: Path | None,
+) -> None:
+    """Report one selection once the environment and the plugin registry are set."""
+
+    display_path = _display_selection(path)
+
+    from metabrowser import server
+
+    commit = None
+    pull: tuple[int, str] | None = None
+    native_selection: str | None = None
+    git_wire: str | None = None
+    git_candidates: list[str] = []
+    if path.startswith(COMMIT_ROUTE_PREFIX):
+        commit = decode_safe_commit_route(_encoded_route(path, display_path))
+        if commit is None:
+            raise CLIError(f"{display_path} is not a route this grammar accepts")
+    elif path.startswith(PULL_ROUTE_PREFIX):
+        pull = decode_safe_pull_route(_encoded_route(path, display_path))
+        if pull is None:
+            raise CLIError(f"{display_path} is not a route this grammar accepts")
+
+    if commit is not None:
+        revision, inner = commit
+        params = {"revision": revision}
+        if inner:
+            params["file"] = inner
+        route = "/api/plugin/diff/comparison"
+        needs_index = False
+    elif pull is not None:
+        # The page renders the served pull request's cached record, which the GitHub
+        # plugin's pull route answers; Files changed is the comparison it names.
+        route, params = "/api/plugin/github/pull", {}
+        needs_index = False
+    elif filesystem_root is None:
+        from metabrowser.git.content_routes import decode_git_view_path
+
+        selection = path
+        from_route = path.startswith(VIEW_ROUTE_PREFIX)
+        if from_route:
+            decoded = decode_git_view_path(_encoded_route(path, display_path))
+            if decoded is None:
+                raise CLIError(f"{display_path} is not a route this grammar accepts")
+            selection = decoded
+        git_candidates = git_wire_candidates(selection, from_route=from_route)
+        if not git_candidates:
+            raise CLIError(f"{display_path} is not a GitPath this pin accepts")
+        git_wire = git_candidates[0]
+        route, params = "/api/file", {"path": git_wire}
+        needs_index = True
+    else:
+        native_selection = path
+        if path.startswith(VIEW_ROUTE_PREFIX):
+            decoded = decode_safe_view_path(_encoded_route(path, display_path))
+            if decoded is None:
+                raise CLIError(f"{display_path} is not a route this grammar accepts")
+            native_selection = decoded
+        # Command-line paths and decoded browser routes are native filesystem
+        # spellings. `/api/file` speaks the canonical identity published by the
+        # inventory, where a literal `%` is escaped as `%25` so percent-looking
+        # siblings cannot alias each other.
+        route, params = "/api/file", {"path": canonical_inventory_path(native_selection)}
+        needs_index = (filesystem_root / native_selection).is_dir()
+
+    response = await _fetch(
+        server.app,
+        route,
+        params,
+        index_timeout_s=index_timeout_s,
+        needs_index=needs_index,
+    )
+    if git_wire is not None:
+        # The display reading is what a human typed, so it answers first. A
+        # selection that also reads as a wire identity falls back to that
+        # reading only when the pin holds no such display name.
+        for fallback in git_candidates[1:]:
+            if response.status_code == 200 and not response.incomplete:
+                break
+            git_wire = fallback
+            params = {"path": git_wire}
+            response = await _fetch(
+                server.app,
+                route,
+                params,
+                index_timeout_s=index_timeout_s,
+                needs_index=needs_index,
+            )
+
+    if response.incomplete:
+        raise CLIError(f"{display_path} failed mid-response; the model below would be truncated")
+    if response.status_code != 200:
+        raise CLIError(
+            f"{display_path} is not a selection the browser can open (HTTP {response.status_code})"
+        )
+
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise CLIError(f"{display_path} returned a non-JSON envelope") from exc
+    if not isinstance(payload, dict):
+        raise CLIError(f"{display_path} returned an unexpected envelope")
+
+    ctx = NormalizeContext(root=normalize_root)
+    payload = normalize_payload(payload, ctx)
+
+    if commit is not None:
+        revision, inner = commit
+        shown_route = format_commit_href(revision, inner)
+        kind = "comparison"
+        # The same registry /api/file reads, so the views reported are the real
+        # registered ones rather than a second list that could drift from them.
+        views: Any = server._views_for_kind("diff")
+        model = _describe_comparison(payload, inner)
+    elif pull is not None:
+        number, tab = pull
+        _require_served_pull(payload, number, display_path)
+        shown_route = format_pull_href(number, tab)
+        kind = "pull-request"
+        views = server._views_for_kind(kind)
+        model = _describe_pull(payload, tab)
+    elif git_wire is not None:
+        identity = payload.get("path", git_wire)
+        if not isinstance(identity, str):
+            raise CLIError(f"{display_path} returned an unexpected path identity")
+        shown_route = f"{VIEW_ROUTE_PREFIX}{identity}" if identity else "/view/"
+        kind = str(payload.get("kind", "unknown"))
+        views = payload.get("views")
+        model = _describe_model(payload)
+    else:
+        identity = payload.get("path", params["path"])
+        if not isinstance(identity, str):
+            raise CLIError(f"{display_path} returned an unexpected path identity")
+        try:
+            shown_route = (
+                format_inventory_view_href(identity) if identity not in ("", ".") else "/view/"
+            )
+        except (UnicodeEncodeError, ValueError) as exc:
+            raise CLIError(f"{display_path} returned a non-canonical path identity") from exc
+        kind = str(payload.get("kind", "unknown"))
+        views = payload.get("views")
+        model = _describe_model(payload)
+
+    _emit_show(
+        display_path=display_path,
+        shown_route=shown_route,
+        kind=kind,
+        views=views,
+        model=model,
+        fmt=fmt,
+    )
+
+
+def run_show(
+    root: Path,
+    *,
+    path: str,
+    fmt: str = "text",
+    plugins_dir: list[Path] | None = None,
+    log_level: str = "",
+    index_timeout_s: float = INDEX_READY_TIMEOUT_S,
+    untrusted: bool = False,
+    no_active_content: bool = False,
+    allow_edits: bool = False,
+) -> None:
+    """Report route, kind, views, and model summary for one filesystem selection."""
+
+    resolved = root.expanduser().resolve()
+    if not resolved.is_dir():
+        raise CLIError(f"{resolved} is not a directory")
+    # Plugin discovery runs once when `metabrowser.server` is imported, so the
+    # dotenv chain and the plugin directories have to be published first or
+    # `--plugins-dir` reaches an already-frozen registry and `--show` reports a
+    # different kind than the route `--api` issues. They are published once: the
+    # chain is read here and by the plugin-directory resolution, as in 0.11.0, and a
+    # malformed `.env` is reported that many times and no more.
+    load_dotenv_chain()
+    apply_log_level(log_level)
+    _prepare_plugins(plugins_dir)
+
+    from metabrowser import server
+    from metabrowser.capabilities import apply_capabilities
+
+    server._set_root_dir(resolved)
+    apply_capabilities(
+        untrusted=untrusted,
+        no_active_content=no_active_content,
+        allow_edits=allow_edits,
+    )
+    asyncio.run(
+        _ashow_prepared(
+            path=path,
+            fmt=fmt,
+            index_timeout_s=index_timeout_s,
+            normalize_root=resolved,
+            filesystem_root=resolved,
+        )
+    )

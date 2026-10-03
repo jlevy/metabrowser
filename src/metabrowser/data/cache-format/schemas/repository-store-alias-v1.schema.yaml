@@ -1,0 +1,32 @@
+$defs:
+  CanonicalTimestamp:
+    pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{3})?Z$
+    type: string
+  Generation:
+    minimum: 1
+    type: integer
+  Sha256Identity:
+    pattern: ^sha256:[0-9a-f]{64}$
+    type: string
+$schema: https://json-schema.org/draft/2020-12/schema
+additionalProperties: false
+description: '``store-alias.yml``: the generation-checked attachment from a source to a store.'
+properties:
+  generation:
+    $ref: '#/$defs/Generation'
+  source_id:
+    $ref: '#/$defs/Sha256Identity'
+  store_id:
+    $ref: '#/$defs/Sha256Identity'
+  updated_at:
+    $ref: '#/$defs/CanonicalTimestamp'
+required:
+- generation
+- source_id
+- store_id
+- updated_at
+title: RepositoryStoreAlias
+type: object
+x-softschema:
+  contract: com.github.jlevy.metabrowser.cache:RepositoryStoreAlias/v1
+  schema_sha256: e4208bb5f4b37bac9f7e7840a78ece45f2d2e6d258cf514925a98a6fe52840ab

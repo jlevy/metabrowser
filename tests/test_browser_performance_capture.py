@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 from pathlib import Path
 
-import pytest
+from tests.golden_harness import run_session
+from tests.required_tools import require_node
 
 ROOT = Path(__file__).resolve().parents[1]
 CAPTURE = ROOT / "explorations" / "performance-loop" / "capture-browser.js"
@@ -17,9 +17,7 @@ PROBE_CONTRACT = ROOT / "tests" / "dom" / "performance-probe-contract-behavior.j
 
 
 def test_capture_browser_argument_contract() -> None:
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
+    node = require_node()
     script = f"""
 const capture = require({json.dumps(str(CAPTURE))});
 const parsed = capture.parseArgs([
@@ -50,9 +48,7 @@ process.stdout.write(JSON.stringify(parsed));
 
 
 def test_capture_browser_accepts_the_git_revision_scenario() -> None:
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
+    node = require_node()
     script = f"""
 const capture = require({json.dumps(str(CAPTURE))});
 const parsed = capture.parseArgs([
@@ -77,9 +73,7 @@ process.stdout.write(JSON.stringify(parsed));
 
 
 def test_capture_browser_accepts_the_file_view_scenario() -> None:
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
+    node = require_node()
     script = f"""
 const capture = require({json.dumps(str(CAPTURE))});
 const parsed = capture.parseArgs([
@@ -104,9 +98,7 @@ process.stdout.write(JSON.stringify(parsed));
 
 
 def test_capture_browser_accepts_the_git_history_depth_scenario() -> None:
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
+    node = require_node()
     script = f"""
 const capture = require({json.dumps(str(CAPTURE))});
 const parsed = capture.parseArgs([
@@ -134,9 +126,7 @@ process.stdout.write(JSON.stringify(parsed));
 
 
 def test_capture_browser_requires_rows_for_the_git_history_depth_scenario() -> None:
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
+    node = require_node()
     script = f"""
 const capture = require({json.dumps(str(CAPTURE))});
 try {{
@@ -164,9 +154,7 @@ try {{
 
 
 def test_capture_browser_accepts_the_git_history_rebase_scenario() -> None:
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
+    node = require_node()
     script = f"""
 const capture = require({json.dumps(str(CAPTURE))});
 const parsed = capture.parseArgs([
@@ -191,9 +179,7 @@ process.stdout.write(JSON.stringify(parsed));
 
 
 def test_capture_browser_rejects_an_unknown_scenario() -> None:
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
+    node = require_node()
     script = f"""
 const capture = require({json.dumps(str(CAPTURE))});
 try {{
@@ -253,9 +239,7 @@ def test_git_revision_scenario_uses_trusted_clicks_and_paint_boundaries() -> Non
 
 
 def test_git_files_roundtrip_rejects_frozen_folder_disclosure() -> None:
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
+    node = require_node()
     script = f"""
 const capture = require({json.dumps(str(CAPTURE))});
 const healthy = {{
@@ -356,9 +340,7 @@ def test_navigation_scenarios_prepare_click_coordinates_before_timing() -> None:
 
 
 def test_git_revision_scenario_rejects_stale_or_unmeasured_transitions() -> None:
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
+    node = require_node()
     script = f"""
 const capture = require({json.dumps(str(CAPTURE))});
 const healthy = {{
@@ -444,9 +426,7 @@ def test_file_view_scenario_uses_trusted_clicks_and_painted_readiness() -> None:
 
 
 def test_file_view_scenario_rejects_blank_stale_or_unmeasured_transitions() -> None:
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
+    node = require_node()
     script = f"""
 const capture = require({json.dumps(str(CAPTURE))});
 const healthy = {{
@@ -513,6 +493,24 @@ for (const [field, value] of [
         "phase_labels",
     ):
         assert f"{field}:" in result.stdout
+
+
+def test_probe_measures_a_framed_region_beside_its_frame() -> None:
+    """A stand-in is laid out by the container that sizes the region, not inside its frame.
+
+    The preview pane is a column's only child since it was wrapped in ``.preview-frame``.
+    A stand-in placed in that column took half of it, so ``frame_missing_px`` read 450 px
+    of a 900 px pane as missing though the shell ships the pane at full height. A region
+    with siblings is measured as before.
+    """
+
+    shapes = run_session("probe-stand-in-behavior.js")
+
+    full = {"settled": 900, "shipped": 900, "restored": True}
+    assert shapes["pane_in_the_row"] == full
+    assert shapes["pane_alone_in_a_frame"] == full
+    assert shapes["pane_alone_in_two_frames"] == full
+    assert shapes["region_with_siblings"] == {"settled": 300, "shipped": 225, "restored": True}
 
 
 def test_probe_exports_the_profile_time_origin() -> None:
@@ -590,9 +588,7 @@ def test_capture_browser_pulses_non_product_input_through_loading() -> None:
 
 
 def test_capture_browser_rejects_input_outside_the_controlled_pulse() -> None:
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
+    node = require_node()
     script = f"""
 const capture = require({json.dumps(str(CAPTURE))});
 capture.assertControlledInputCount(12, 12);
@@ -616,9 +612,7 @@ try {{
 
 
 def test_git_revision_scenario_rejects_deferred_request_storms() -> None:
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
+    node = require_node()
     script = f"""
 const capture = require({json.dumps(str(CAPTURE))});
 const healthy = {{
@@ -721,9 +715,7 @@ def test_probe_hard_gates_every_synchronous_catalog_delivery_path() -> None:
 
 
 def test_probe_requires_each_initial_catalog_delivery_label() -> None:
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
+    node = require_node()
 
     result = subprocess.run(
         [node, str(PROBE_CONTRACT)],

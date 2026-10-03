@@ -210,6 +210,14 @@ async function loadModule() {
       "utf8",
     )
     .replace('"./toc-intersection-fallback.js"', JSON.stringify(tocFallbackUrl))
+    .replace(
+      '"./place-rendered.js"',
+      JSON.stringify(
+        require("node:url").pathToFileURL(
+          path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/place-rendered.js"),
+        ).href,
+      ),
+    )
     .replace('"./markdown-worker-client.js"', JSON.stringify(workerUrl))
     .replace('"./wiki-parser.js"', JSON.stringify(wikiParserUrl));
   const transclusionUrl = `data:text/javascript;base64,${Buffer.from(transclusionSource).toString("base64")}`;
@@ -255,6 +263,8 @@ async function loadModule() {
   const remoteImage = new FakeElement("img", { src: "https://example.com/map.svg" });
   const unsafeImage = new FakeElement("img", { src: "data:image/png;base64,AA" });
   const heading = new FakeElement("h2", { id: "Install" });
+  // An inert render's heading anchor, which a GitHub address's `#usage` reaches.
+  const anchored = new FakeElement("h2", { id: "user-content-usage" });
   const container = new FakeContainer([
     sameDocument,
     internal,
@@ -268,6 +278,7 @@ async function loadModule() {
     remoteImage,
     unsafeImage,
     heading,
+    anchored,
   ]);
   const eventTarget = new FakeEventTarget();
   const frames = new Map();
@@ -352,6 +363,14 @@ async function loadModule() {
   }
   frames.clear();
   check("initial fragment after enhancement", heading.scrolled);
+  current = { path: "docs/readme.md", fragment: "usage" };
+  eventTarget.dispatch("metabrowser:navigation-fragment", { target: current });
+  for (const callback of [...frames.values()]) {
+    callback(0);
+  }
+  frames.clear();
+  check("a GitHub fragment reaches its user-content- anchor", anchored.scrolled);
+  current = { path: "docs/readme.md", fragment: "Install" };
   check(
     "configured published route href",
     published.getAttribute("href") === "/view/docs/published.md",
@@ -771,6 +790,31 @@ async function loadModule() {
   );
   check("dispose cancels pending scroll", frames.size === 0);
 
+  // On a pinned GitHub mirror the served tree is addressed by GitPath wire, so a
+  // localized github.com link is too, and a tree link keeps its trailing slash.
+  const githubPinBlob = new FakeElement("a", {
+    href: `https://github.com/example/docs/blob/main/docs/guide.md#L3-L4`,
+  });
+  const githubPinTree = new FakeElement("a", {
+    href: "https://github.com/example/docs/tree/main/docs",
+  });
+  const githubPinContainer = new FakeContainer([githubPinBlob, githubPinTree]);
+  const githubPinHandle = module.enhanceRenderedLinks(
+    githubPinContainer,
+    "g1-UkVBRE1FLm1k",
+    { ...mb, sourceKind: () => "git_revision" },
+    { cancel: () => {}, eventTarget: new FakeEventTarget(), schedule: () => 0 },
+  );
+  check(
+    "pinned GitHub blob link localized to a GitPath wire",
+    githubPinBlob.getAttribute("href") === "/view/g1-ZG9jcw/g1-Z3VpZGUubWQ#L3-L4",
+  );
+  check(
+    "pinned GitHub tree link keeps its trailing slash",
+    githubPinTree.getAttribute("href") === "/view/g1-ZG9jcw/",
+  );
+  githubPinHandle.dispose();
+
   // A large rendered document: most elements are neither links nor ids, and
   // the container exposes a real-DOM TreeWalker. Every in-document navigation
   // must still scroll, however many came before it.
@@ -813,6 +857,51 @@ async function loadModule() {
     String(largeScrolls),
   );
   largeHandle.dispose();
+
+  // A pinned Git revision addresses files by GitPath wire, so a relative link
+  // in a rendered document resolves into that spelling rather than into a
+  // filesystem identity. The enhancer learns which subject it is rendering
+  // from the SDK, and this is the only place that answer is observable end to
+  // end: drop it and every link below silently resolves to a path the pin has
+  // no object for.
+  const pinnedLink = new FakeElement("a", { href: "guide.md#Install" });
+  const pinnedParentLink = new FakeElement("a", { href: "../top.md" });
+  const pinnedImage = new FakeElement("img", { src: "images/map 1.svg" });
+  const pinnedExternal = new FakeElement("a", { href: "https://example.com/docs" });
+  const pinnedContainer = new FakeContainer([
+    pinnedLink,
+    pinnedParentLink,
+    pinnedImage,
+    pinnedExternal,
+  ]);
+  const pinnedMb = { ...mb, sourceKind: () => "git_revision" };
+  const pinnedHandle = module.enhanceRenderedLinks(
+    pinnedContainer,
+    "g1-ZG9jcw/g1-cmVhZG1lLm1k",
+    pinnedMb,
+    { cancel: () => {}, eventTarget: new FakeEventTarget(), schedule: () => 0 },
+  );
+  check(
+    "pinned sibling link resolves to a GitPath wire",
+    pinnedLink.getAttribute("href") === "/view/g1-ZG9jcw/g1-Z3VpZGUubWQ#Install",
+    pinnedLink.getAttribute("href"),
+  );
+  check(
+    "pinned parent link resolves to a GitPath wire",
+    pinnedParentLink.getAttribute("href") === "/view/g1-dG9wLm1k",
+    pinnedParentLink.getAttribute("href"),
+  );
+  check(
+    "pinned image source resolves to a GitPath wire",
+    pinnedImage.getAttribute("src") === "/raw?path=g1-ZG9jcw%2Fg1-aW1hZ2Vz%2Fg1-bWFwIDEuc3Zn",
+    pinnedImage.getAttribute("src"),
+  );
+  check(
+    "pinned external href is untouched",
+    pinnedExternal.getAttribute("href") === "https://example.com/docs",
+    pinnedExternal.getAttribute("href"),
+  );
+  pinnedHandle.dispose();
 
   if (failures.length) {
     console.error(`markdown link enhancer FAILURES:\n- ${failures.join("\n- ")}`);

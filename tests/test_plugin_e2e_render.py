@@ -20,26 +20,22 @@ shows up in the loader's plugin list when passed as an extra dir.
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from tests.required_tools import require_node
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 LOADER_JS = Path(__file__).resolve().parent / "dom" / "load-plugins.js"
-
-
-def _has_node() -> bool:
-    return shutil.which("node") is not None
 
 
 @pytest.fixture
 def shim_output() -> dict[str, Any]:
     """Run the JS shim against the repository's built-in plugins."""
-    if not _has_node():
-        pytest.skip("node not available; skipping JS-side plugin shim")
+    require_node()
     result = subprocess.run(
         ["node", "--experimental-vm-modules", str(LOADER_JS), str(REPO_ROOT)],
         capture_output=True,
@@ -61,6 +57,7 @@ def test_shim_loads_every_builtin_plugin(shim_output: dict[str, Any]) -> None:
         "diff",
         "binary",
         "folder",
+        "github",
         "html",
         "image",
         "markdown",
@@ -112,12 +109,11 @@ def test_namespace_rule_is_enforced(tmp_path: Path) -> None:
     that reads mb.builtins.nonexistent at top level should produce a
     namespace_violations entry.
     """
-    if not _has_node():
-        pytest.skip("node not available")
+    require_node()
     bad = tmp_path / "bad_plugin"
     bad.mkdir()
     (bad / "manifest.toml").write_text(
-        '[plugin]\nname = "bad_plugin"\nsdk_version = "0.6"\n'
+        '[plugin]\nname = "bad_plugin"\nsdk_version = "0.7"\n'
         '[[kind]]\nid = "bad"\n'
         'match = { ext = ".bad" }\n[[view]]\nkind = "bad"\nid = "v"\nlabel = "V"\n'
     )
@@ -155,11 +151,8 @@ def test_extra_plugins_dir_is_loaded() -> None:
     """A plugin directory passed as an extra arg goes through the same
     discovery + index.js load path. Uses the existing sample_plugin
     fixture which has its own registerView call."""
-    if not _has_node():
-        pytest.skip("node not available")
+    require_node()
     fixture_dir = Path(__file__).resolve().parent / "fixtures"
-    if not (fixture_dir / "sample_plugin" / "index.js").is_file():
-        pytest.skip("sample_plugin fixture missing")
     result = subprocess.run(
         [
             "node",
@@ -181,8 +174,7 @@ def test_extra_plugins_dir_is_loaded() -> None:
 
 
 def test_generic_jsonl_loads_its_renderer_before_mounting_and_honors_disposal() -> None:
-    if not _has_node():
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(REPO_ROOT / "tests/dom/unknown-jsonl-lazy-behavior.js"), str(REPO_ROOT)],
         capture_output=True,

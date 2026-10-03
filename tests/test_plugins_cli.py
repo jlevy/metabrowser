@@ -2,16 +2,23 @@
 
 Drives ``metab --plugins / --plugin NAME / --doctor`` via Typer's
 CliRunner. Confirms the discovered set, the JSON output shape, and the
-doctor's exit-code contract on broken / valid plugins.
+doctor's exit-code contract on broken plugins and a damaged cache contract.
+``tests/golden/cli-plugins.tryscript.md`` records the doctor's whole answer, text and
+JSON, on a clean installation.
 """
 
 from __future__ import annotations
 
 import json
+import shutil
+from collections.abc import Iterator
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
+from metabrowser.cache import contracts as cache_contracts
+from metabrowser.cache.records import CACHE_LAYOUT_CONTRACT_ID
 from metabrowser.cli.main import _app
 
 _runner = CliRunner()
@@ -43,7 +50,7 @@ def test_plugins_list_json_emits_structured_output() -> None:
 def test_plugins_list_reports_partial_discovery_as_failure(tmp_path: Path) -> None:
     broken = tmp_path / "broken"
     broken.mkdir()
-    (broken / "manifest.toml").write_text('[plugin]\nname = "broken"\nsdk_version = "0.6"\n')
+    (broken / "manifest.toml").write_text('[plugin]\nname = "broken"\nsdk_version = "0.7"\n')
 
     table_result = _runner.invoke(
         _app,
@@ -101,19 +108,54 @@ def test_plugins_show_unknown_plugin_json_emits_structured_error() -> None:
     assert "no-such-plugin" in payload["error"]
 
 
-def test_plugins_doctor_exits_zero_on_clean_install() -> None:
+@pytest.fixture
+def damaged_cache_schemas(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
+    """Serve the packaged cache schemas from a copy in which one no longer fits its model.
+
+    The registry and its declarations are cached for the process, so they are dropped on
+    the way in, to read the copy, and on the way out, so no other test sees the damage.
+    """
+
+    damaged = cache_contracts.CACHE_CONTRACT_BY_ID[CACHE_LAYOUT_CONTRACT_ID]
+    schemas = tmp_path / "schemas"
+    shutil.copytree(cache_contracts.SCHEMA_ROOT, schemas)
+    path = schemas / damaged.schema_name
+    path.write_text(
+        path.read_text(encoding="utf-8").replace("created_by", "created_with"), encoding="utf-8"
+    )
+    monkeypatch.setattr(cache_contracts, "SCHEMA_ROOT", schemas)
+
+    def forget() -> None:
+        cache_contracts.cache_contract_registry.cache_clear()
+        cache_contracts._artifact_contracts.cache_clear()  # pyright: ignore[reportPrivateUsage]
+
+    forget()
+    try:
+        yield damaged.schema_name
+    finally:
+        monkeypatch.undo()
+        forget()
+
+
+def test_plugins_doctor_reports_a_damaged_cache_contract(damaged_cache_schemas: str) -> None:
     result = _runner.invoke(_app, ["--doctor"])
-    assert result.exit_code == 0
-    assert "OK" in result.stdout
+
+    assert result.exit_code == 1
+    assert "OK" not in result.stdout
+    assert "cache record contracts:" in result.stderr
+    assert CACHE_LAYOUT_CONTRACT_ID in result.stderr
+    assert f"cache record schema '{damaged_cache_schemas}'" in result.stderr
 
 
-def test_plugins_doctor_json_emits_structured_result() -> None:
+def test_plugins_doctor_json_reports_a_damaged_cache_contract(damaged_cache_schemas: str) -> None:
     result = _runner.invoke(_app, ["--doctor", "--json"])
-    assert result.exit_code == 0
+
+    assert result.exit_code == 1
     payload = json.loads(result.stdout)
-    assert payload["ok"] is True
-    assert payload["plugin_count"] > 0
-    assert payload["problems"] == []
+    assert set(payload) == {"ok", "plugin_count", "problems"}
+    assert payload["ok"] is False
+    assert any(problem.startswith("cache record contracts:") for problem in payload["problems"])
+    assert any(damaged_cache_schemas in problem for problem in payload["problems"])
 
 
 def test_plugins_doctor_rejects_local_python_data_hook(tmp_path: Path) -> None:
@@ -124,7 +166,7 @@ def test_plugins_doctor_rejects_local_python_data_hook(tmp_path: Path) -> None:
         """
 [plugin]
 name = "broken"
-sdk_version = "0.6"
+sdk_version = "0.7"
 
 [[kind]]
 id = "x"
@@ -161,7 +203,7 @@ def test_plugins_diagnostics_do_not_advertise_disabled_local_hooks(tmp_path: Pat
         """
 [plugin]
 name = "local-demo"
-sdk_version = "0.6"
+sdk_version = "0.7"
 
 [[kind]]
 id = "x"

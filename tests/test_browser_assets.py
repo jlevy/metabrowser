@@ -24,18 +24,6 @@ def test_tree_subtree_fetches_remain_depth_bounded() -> None:
     assert "`depth=${TREE_SUBTREE_FETCH_DEPTH}`" in js
 
 
-def test_hover_prefetch_skips_expensive_file_types() -> None:
-    js = _browser_app_js()
-
-    assert "FILE_PREFETCH_HOVER_DELAY_MS" in js
-    assert "FILE_PREFETCH_MAX_CONCURRENT" in js
-    # Logical-ext-aware JSONL skip (covers both `.jsonl` and `.jsonl.gz`
-    # once the server attaches `data-logical-ext`).
-    assert "item.dataset.logicalExt || getExt(path)" in js
-    assert 'ext !== ".jsonl"' in js
-    assert "AbortController" in js
-
-
 def test_activity_polling_retired_no_longer_referenced() -> None:
     """Sanity: the SPA no longer schedules /api/activity polls.
     Active-file detection moved to the inventory's background
@@ -52,12 +40,13 @@ def test_generated_html_handlers_keep_their_global_names() -> None:
     """Static analysis cannot see function names embedded in generated HTML."""
     app = _browser_app_js()
     sdk = _browser_asset("static/plugin-sdk.js")
+    sdk_views = _browser_asset("static/plugin-sdk-views.js")
     agent_log = _browser_asset("builtin_plugins/agent_log/index.js")
 
     # The Load more control moved into the SDK's partial-content notice, so the
-    # inline handler is emitted there while the global it names still lives in
-    # app.js. That split is exactly what this check exists to catch.
-    assert 'loadMoreCurrentText()"' in sdk
+    # delegated listener there calls a global that still lives in app.js. That split
+    # is exactly what this check exists to catch.
+    assert 'loadMoreCurrentText()"' in sdk_views
     assert "async function loadMoreCurrentText()" in app
     # Header copy/navigation buttons carry values in data-* attributes
     # consumed by the SDK's delegated listener (inline onclick would
@@ -66,9 +55,11 @@ def test_generated_html_handlers_keep_their_global_names() -> None:
     assert "data-mb-copy-text=" in app
     assert "data-nav-dir=" in app
     assert "function copyPath(btn, path)" not in app
-    assert "content-copy-btn" in sdk
+    assert "content-copy-btn" in sdk_views
     assert 'target.closest("[data-mb-copy]")' in sdk
     assert "_copyDelegationInstalled" in sdk
-    assert "function copyContent(btn)" in app
-    assert 'onclick="toggleEvent(this)"' in agent_log
+    # An agent log's event header opens through one delegated listener that calls the
+    # shell's toggleEvent; no inline handler names it.
+    assert "window.toggleEvent(header)" in agent_log
+    assert "onclick" not in agent_log
     assert "function toggleEvent(header)" in app

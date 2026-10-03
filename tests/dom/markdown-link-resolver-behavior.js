@@ -35,7 +35,11 @@ function equal(name, actual, expected) {
 
   equal("fixture schema", fixture.schema, "metabrowser-markdown-link-resolution-v1");
   for (const testCase of fixture.cases) {
-    const intent = { sourcePath: testCase.sourcePath || fixture.sourcePath, ...testCase.intent };
+    const intent = {
+      sourcePath: testCase.sourcePath || fixture.sourcePath,
+      sourceKind: testCase.sourceKind,
+      ...testCase.intent,
+    };
     const resolved = module.resolveStandardTarget(intent);
     equal(testCase.id, resolved, testCase.expected);
     if (testCase.canonicalUrl && resolved.status === "internal") {

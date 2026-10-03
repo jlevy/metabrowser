@@ -2,6 +2,971 @@
 
 All notable changes to Metabrowser are documented here.
 
+## 0.12.0 (unreleased)
+
+Plugin SDK:
+
+- **Breaking:** `PLUGIN_SDK_VERSION` is now `0.7`. The shared copy and Load more
+  listeners act only on a control carrying the page’s owner mark, so a plugin that wrote
+  the documented `data-mb-copy`, `data-mb-copy-text`, and `data-mb-copy-label` markup by
+  hand now gets a button that silently does nothing (see Content trust below for why).
+  A Load more button fails the same silent way in two cases: one a plugin wrote by hand
+  as `button.metabrowser-load-more`, which carries no mark, and one whose
+  `partialNoticeHtml` `action` string names the plugin’s own function.
+  That string no longer becomes an inline handler, and the listener runs only an action
+  the shell registered by name, which is its own text loader.
+  Nothing is logged in any of these cases.
+  To migrate, set `sdk_version = "0.7"` and stamp each copy control the plugin builds
+  itself: `mb.ownDelegate(element)` on an element, or `mb.delegateOwnerAttribute()`
+  spliced into markup.
+  For a Load more that continues the plugin’s own content, pass `action: null` to
+  `partialNoticeHtml` and wire the plugin’s own listener to its button.
+  Controls from `wrapWithCopy` and `partialNoticeHtml` are stamped already and need no
+  change. A manifest left at `0.6` is refused when it loads.
+
+- `renderSourceView` renders a line-number gutter beside the code and wires line
+  anchors, so every view that uses it gets both.
+  The code is still the `<code>` inside `pre.code-block`, now beside a
+  `span.source-line-numbers`; the copy button still copies only the code.
+  The markup it writes has LF where the source has CRLF or a lone CR, so that the gutter
+  counts the lines the browser shows.
+  The text in the page and the text the copy button copies are what they were: the
+  browser’s HTML parser already read both as LF when 0.11.0 assigned the markup.
+
+- `ensureKindAssets(kind)` rejects when the SDK’s own view helpers cannot be fetched.
+  Those helpers, `renderSourceView` among them, are no longer part of the shell’s
+  startup scripts; the SDK has them in place before any plugin’s code runs, so a plugin
+  calls them exactly as before.
+  When they cannot be fetched no plugin code has run, and the next call tries again.
+  While it waits for them it starts each plugin’s stylesheets and appends one
+  `<link rel="modulepreload">` per plugin module to the document head, so the module is
+  fetched early. Each module is still evaluated once, by the import that follows.
+
+- `window.metabrowser.sourceKind()` reports whether the served tree is a filesystem root
+  or a `git_revision` pin.
+  Markdown link and wiki resolution use that kind instead of inferring GitPath encoding
+  from `g1-` filenames, so a tracked file literally named `g1-notes.md` is a name rather
+  than an identity to decode.
+  Built-in views read the kind through this accessor rather than a page global.
+  `sourceKind()` is an addition, and a plugin that never asks sees the filesystem answer
+  it saw before.
+
+- `mb.sizeHtml(undefined)` now renders nothing instead of a pending skeleton.
+  `null` still means “this aggregate is still being computed” and keeps its skeleton
+  cell; `undefined` means the subject has no such number at all, which is what a Git pin
+  reports for a tree with no blob size, and a permanent skeleton would have read as a
+  tally that never arrives.
+
+- `metabrowser.plugin_api` exports the content-source boundary a hook needs to work on
+  more than a served folder: `source_capabilities`, `require_source_capability`,
+  `SourceCapabilities`, `UnsupportedSourceCapabilityError`, and `open_content`.
+  `resolve_path`, `served_root`, and `open_content` are now explicitly filesystem-only
+  and raise `UnsupportedSourceCapabilityError` on a Git pin, so a hook that assumed a
+  host path fails where it is wrong rather than resolving against the wrong tree.
+
+- A hook that only needs bytes reads them on either source kind through
+  `resolve_content`, `resolve_content_container`, `stat_content`, and
+  `read_content_window`, over an opaque `ContentRef` that carries the identity to echo
+  back, the logical extension to dispatch on, a fingerprint that changes when the bytes
+  do, and `stored_size`, the size the source stores: a file’s size on disk, which for a
+  compressed artifact is its compressed size, and a blob’s length.
+  Every read takes a required `max_bytes` and reports whether content continues past the
+  window; there is no unbounded variant, and the bound is on bytes rather than on a
+  decoded string. Failures are one catchable `ContentReadError` family carrying a stable
+  `code` and the `http_status` Metabrowser’s own routes answer with, so a hook writes
+  one error path for a missing object, an oversized blob, an unreadable compressed
+  stream, and a timeout alike.
+  The four built-in data hooks — binary bytes, structured parse, agent-log charts, and
+  diff documents — now read this way and no longer branch on the source kind.
+  These are additions to the Python helper surface; no manifest, kind, or
+  `window.metabrowser` call changes.
+  `content_source()`, added earlier in this unreleased series and never part of a
+  release, is gone: it handed a hook the raw active source, which is what the content
+  reader replaces.
+
+GitHub URLs and HTTPS:
+
+- A GitHub URL copied from the browser opens the repository it names:
+  `metab https://github.com/owner/repo` clones it into the cache and serves it, pinned
+  and untrusted like any acquired source; `--no-serve` only clones it, and `--show` and
+  `--api` inspect it in-process.
+  Serving a `/blob/` or `/tree/` URL opens the browser at that file or folder, with the
+  `#L10-L20` anchor kept in the address and those lines highlighted, and the banner
+  names the ref, the selection, and a pull request’s number; `/api/source/status`
+  reports that number as `pull_request`. `/tree/…`, `/blob/…` (with `#L10`, `#L10-L20`,
+  or `#L10C5-L20C8` and `?plain=1`), `/commit/<id>`, `/pull/<n>/commits/<id>`, and
+  `raw.githubusercontent.com` file URLs pin the commit they point at; the mirror decides
+  where a branch name containing `/` ends, preferring a branch, then a tag, then a full
+  or abbreviated commit ID. `--no-serve` prints the selection after the identity lines,
+  and `--show` and `--api` print it on stderr.
+  A `/pull/<n>` URL pins the pull request’s head; see below.
+  Ref names match exactly, including letter case, and `HEAD` names the default branch;
+  on a case-insensitive filesystem, a repository whose branch or tag names differ only
+  in case is refused as `ref_case_collision` rather than risk pinning the wrong commit.
+  Every spelling of a repository — one trailing `.git`, a trailing slash, `www.`, letter
+  case, and `git@github.com:owner/repo.git` — is one source,
+  `https://github.com/owner/repo`. Other github.com pages, `http://`, and GitHub’s own
+  top-level pages are refused with a typed reason and a message that offers the
+  repository URL; tracking parameters are dropped and never echoed.
+  A URL pasted as an address bar shows it, with a raw space or a character outside ASCII
+  such as `docs/雪.md` or `space name.md`, opens what its percent-encoded spelling opens:
+  as a browser does, the space and the character are sent percent-encoded as UTF-8. A
+  character a reader cannot see or tell from a space is refused with its code point and
+  the encoded spelling to use: whitespace other than a space, format characters such as
+  a right-to-left override, Unicode’s default-ignorable characters such as the Hangul
+  filler U+3164, the blank braille pattern U+2800, and unassigned and private-use code
+  points. A variation selector is default-ignorable too, but one attached to a visible
+  base is part of an emoji or ideographic name, so `docs/❤️.md` (U+2764 U+FE0F) opens
+  pasted raw; one with no base, such as `README<U+FE0F>.md` or a selector that begins a
+  name, is refused. So are a trailing space, which a browser strips, control characters,
+  named by code point, and a `%` that starts no percent escape, with the hint to write a
+  literal `%` as `%25`. A C1 control character in a path, such as `%C2%9B`, is shown as
+  U+FFFD like C0, so an error message cannot send a terminal an escape sequence, and so
+  is a format character such as a right-to-left override (`%E2%80%AE`) or a zero-width
+  space, and a character drawn as nothing or as a space, such as the Hangul filler
+  U+3164 (`%E3%85%A4`), a variation selector with no base, the blank braille pattern
+  U+2800, or a space other than the ASCII one, such as a no-break space (`%C2%A0`) or a
+  hair space (`%E2%80%8A`), on the `path:` line, in errors, and in a pinned tree’s file
+  names, so a name cannot pass for another.
+  The line and paragraph separators U+2028 (`%E2%80%A8`) and U+2029 are shown as U+FFFD
+  too, so a message stays on one line.
+  Unassigned and private-use code points, which are refused raw in a URL, are displayed
+  as they are: a font draws them as a glyph or a missing-glyph mark, and which code
+  points are unassigned depends on the Python that is running.
+  A ref, commit, or path the mirror does not have is reported by `--no-serve`, `--show`,
+  and `--api` as `ref_not_found`, `commit_not_found`, or `path_not_found`; those modes
+  read the mirror as it is and do not fetch.
+  A server instead serves the default branch, fetches once in the background, and
+  switches to the selection if the fetch brings it, like any pin switch; a page opened
+  meanwhile then goes to the selection’s address, line anchor included, which status
+  reports as `selection_href`. Until then the page’s freshness row says the address is
+  still being fetched, is not on the origin, or could not be fetched, with a Retry.
+  `/api/source/status` reports `selection_state` as `pending`, then `found` or
+  `not_found`; `fetch_failed` when the fetch could not run, in which case the next
+  refresh tries again; and `superseded` once a pin switch serves something else, which a
+  waiting selection then never undoes.
+  A mirror cloned by the same command has just been fetched, so there a missing
+  selection is not found at once.
+  One-shot `--api /api/source/refresh --data …` also waits for the refresh it asks for
+  and reports the selection after it.
+  In a server, `POST /api/source/pin` for a branch, tag, or commit the mirror lacks
+  likewise answers `202` with `selection_pending` and fetches once; asked again after
+  that fetch it switches, answers `404`, or answers `502` `selection_fetch_failed` when
+  the fetch could not run.
+  The pin route resolves as URL opening does: `HEAD` is the default branch, and a name
+  that is not a commit, such as a tag of a tree, answers `409` `not_a_commit` at once
+  rather than fetching.
+  A commit ID in a URL or a pin request has 7 to 64 hexadecimal digits, and a trailing
+  newline is not one. github.com links inside a rendered README of a served GitHub mirror
+  open inside the pin, as they already did for a served checkout of the repository.
+
+- A served page opened at `/commit/<id>` for a commit the mirror does not have now says
+  what is known instead of “Could not load this commit.”
+  When the mirror is older than the freshness window the page fetches in the background
+  and shows “Fetching this commit…”, then opens the commit when the fetch brings it,
+  says “Commit not found” when the fetch ran and the origin’s branches and tags do not
+  reach it, or says “Commit not fetched” with the reason when the fetch could not run.
+  On a mirror fetched inside the window the page fetches nothing by itself, because a
+  link in a served page can lead to any commit’s address, and says the commit is not in
+  the mirror as fetched; **Retry**, offered in each of these states, always fetches.
+  The page claims a fetch of branches and tags only when one ran: a refresh of a served
+  pull request’s record alone is waited for and not called one.
+  `/api/git/commit/<id>` names the miss as `commit_not_found`, still with HTTP 404, and
+  never fetches; in a served folder, which has no mirror to fetch into, the page says
+  the commit is not in the repository.
+  A request that fails for another reason, including one that fails when the commit is
+  asked for again after the fetch, still reads “Could not load this commit.”
+  `POST /api/source/refresh` takes `{"for": "commit"}` for that fetch: it fetches the
+  mirror only outside the freshness window, joins a fetch that is running, and otherwise
+  answers `fresh`; `"retry": true` always fetches, and any other key is refused as
+  `invalid_request`.
+
+- `https://` sources are acquired, anonymously for a public repository.
+  When `gh` is installed it is Git’s credential helper for `https://github.com` only,
+  after every configured helper is cleared, so `gh auth login` opens a private
+  repository and no other host is offered a GitHub token.
+  A failed https acquisition names its cause: `not_found_or_private`,
+  `network_unreachable`, `connection_interrupted`, `tls_failed`, `timed_out`,
+  `server_error`, `rate_limited`, `proxy_auth_required`, or `too_large`, the last when
+  `gh` reports a repository too large to clone within the acquisition deadline.
+  A `not_found_or_private` message says the repository was not found, or is private and
+  could not be read, and claims nothing about credentials: GitHub answers the same way
+  for a repository that does not exist, one read anonymously, and one the account `gh`
+  answered with cannot see.
+  The size check asks github.com only, whatever host `GH_HOST` names.
+  Git runs with `HOME=/dev/null` while it acquires, so curl reads no `~/.netrc`; `gh`
+  alone is given the real home, without `GH_DEBUG`, `GH_HOST`, `GH_REPO`,
+  `CLICOLOR_FORCE`, or `GH_FORCE_TTY`. A transfer slower than 1000 bytes per second for
+  30 seconds is treated as stalled, and an origin that does not answer the first request
+  within 30 seconds times out rather than waiting for curl’s five-minute connect
+  timeout. A served mirror refreshes from the same URL with the same arguments, including
+  the prune and single retry after a ref that cannot be locked, and a refresh’s outcome,
+  in the status and in the store’s `state.yml`, carries the same names, plus
+  `ref_case_collision` where a case-insensitive filesystem cannot hold two refs apart.
+  Git does not always refuse that fetch: given `SAME` beside an unchanged `same`, it
+  writes `SAME` into `same`’s file and succeeds, repointing `same`. A refresh on such a
+  filesystem checks the store holds every ref the fetch wrote under its exact name, and
+  otherwise puts every ref back and reports `ref_case_collision`, so no pin resolves to
+  the twin’s commit.
+
+- A first clone says where it goes and shows that it is running, in every mode that
+  clones. A clone of a 740 MB repository used to print two lines and then nothing for 100
+  seconds, and nothing at all when stderr was not a terminal, so it looked hung.
+  Now stderr names the cache directory once (`cloning <url> into ~/.metabrowser/cache`),
+  then reports Git’s own progress with the elapsed time
+  (`receiving objects: 45%, 334.0 MiB at 9.5 MiB/s (40 s)`), and ends with
+  `cloned <url> in 104 s (742.0 MiB)`, to which serve mode adds that the server starts
+  next. On a terminal the progress is one status line redrawn in place, with the time
+  counting through a stall; elsewhere it is a whole line at most every ten seconds, so a
+  quick clone adds two lines to a log.
+  The progress is read from `git fetch --progress` as numbers and printed in
+  Metabrowser’s words: Git’s and the origin’s own text still never reaches the terminal,
+  whatever control characters it carries.
+  `--log-level debug` is how to read that text when a clone fails, and a log line that
+  quotes it, here and in a server’s log, now writes every character that is not
+  printable as its escape (`\x1b`, `\r`), so an origin’s escape sequence is read and not
+  obeyed. Before, it was written to the terminal as it came.
+  A source that is already cloned says so in one line in serve mode and `--no-serve`
+  (`using the clone of <url> cached in ~/.metabrowser/cache, fetched 3 hours ago`), so a
+  second run reads differently from a first; `--show`, `--api`, and `--check-api` stay
+  silent on a cache hit.
+  stdout is unchanged.
+
+- A page served from a mirror is headed by the repository’s name, and says where the
+  mirror is kept. Opening `https://github.com/jlevy/squares` used to head the main view
+  with the full commit ID (`fe6399451f1c… / README.md`), and nothing on the page said
+  the files came out of `~/.metabrowser`. Now the navigation heading reads
+  `squares main fe6399451f1c` and the main heading `squares / README.md`: the name a
+  checkout of the repository would have, by one rule for every `https://` and `file://`
+  origin and for a pull request, with the ref and the short commit beside it.
+  A control after the short commit copies the full one.
+  The main heading ends with `mirror in ~/.metabrowser/cache/repository-stores/…` when
+  the pane has room for it, and the tooltip on the name, on that note, and on the
+  navigation heading says what the directory is:
+  `Mirror of <origin> at <commit>, stored in <location>: a bare Git repository, with no checked-out files.`
+  Nothing is checked out, so the location is never shown as the start of a file’s
+  address. The directory named is the store’s bare repository, where
+  `git -C <location> log --all` works.
+  `/api/source/status` reports the same as `name`, `origin`, and `location`, and `--api`
+  prints them as answered.
+  The location, and a `file://` origin, have your home directory as `~` when they are
+  under it, so nothing spells the home directory out when it can be abbreviated.
+  On a GitHub mirror the name is lowercase, as the mirror’s canonical address is.
+  This is the one place a route’s answer names a path in the cache: file content,
+  listings, errors, and every other envelope still name none, and repository content
+  still cannot read it, since a mirror’s Markdown renders inert and `/raw` is a sandbox
+  with no access to `/api`. A folder’s page is as it was.
+  One thing a folder’s server answers differs: `/api/source/status` carries the three
+  new fields, each `null`.
+
+- The pull-request page and its routes are a new built-in plugin, `github`, and a
+  built-in plugin loads whatever is served.
+  So it is listed for a plain folder too: `metab --plugins` has a `github` row, the
+  `Plugins:` line a server prints when it starts names it, and `metab --doctor` counts
+  one plugin more than 0.11.0 did.
+  On a folder it serves nothing: `/api/plugin/github/pull` answers `state: "absent"`
+  with `reason: "no_pull_request"`, `/api/plugin/github/pull-markdown?part=body` answers
+  409 `no_pull_request`, and `--show /pull/<n>` says the source serves no pull request.
+  Without a valid `part`, `pull-markdown` answers 400 `invalid_part` on any source.
+
+- Pull-request data:
+  `metab https://github.com/owner/repo/pull/<n> --api /api/plugin/github/pull` reads the
+  pull request with `gh api` (its description, labels, state, merge status, commit
+  count, who merged it, conversation, reviews, review comments, check runs, and
+  statuses), fetches its commits through GitHub’s `refs/pull/<n>/head`, a fork’s
+  included, pins the head commit, and prints the record.
+  The record is cached as one JSON file per pull request, so later `--show` and `--api`
+  answer from the cache without running `gh` or reaching the network; `--no-serve`
+  refreshes it, with conditional requests that GitHub does not count against the rate
+  limit when nothing changed.
+  The record names Files changed as two pinned commits, the merge base and the head, as
+  GitHub computes it, and `/api/plugin/diff/comparison` now honors
+  `base_policy=merge_base` for such a comparison.
+  Two commits that share no history have no merge base, and the route answers 404
+  `diff_comparison` with a message that says so.
+  Reading pull requests needs `gh` 2.81.0 or newer signed in to github.com, because
+  `gh api` refuses unauthenticated requests.
+  A pull request that cannot be read does not stop the command: with a cached record,
+  the pin stays at its head and the report adds why the refresh failed; without one, a
+  `/pull/<n>` URL pins the default branch and a `/pull/<n>/commits/<id>` URL the commit,
+  as before pull-request data existed, and the `pull_request` line says why.
+  Serving a pull-request URL serves its head and keeps the record fresh beside the
+  mirror, in the same refresh jobs: a stale record makes the source `stale`, so it is
+  refreshed when serving starts and when a stale page becomes visible, and
+  `POST /api/plugin/github/pull-refresh` starts or joins its refresh and returns at
+  once. `/api/plugin/github/pull` adds `refreshing` and `last_refresh`, and answers
+  `pending` while the first record is being read.
+  A newer head is offered as the source’s `latest`, and `/api/source/pin` accepts
+  `refs/pull/<n>/head` to take it.
+  Only the stale one of the mirror and the record is refreshed, a pin the mirror lacks
+  never runs `gh`, and how the last refresh ended is kept beside the record, so a later
+  command reports it and does not ask `gh` again within the minute.
+  A one-shot `--api /api/plugin/github/pull-refresh` waits for the refresh, prints the
+  record after it, and exits 1 when it failed.
+  A `/pull/<n>/commits/<id>` URL naming a commit newer than the cached record refreshes
+  the pull request to reach it.
+  Each cause is named: `gh_missing`, `gh_too_old`, `not_logged_in`, `rate_limited` with
+  the reset time when GitHub gives one, `not_found_or_private`, `network_error`,
+  `account_changed`, `head_mismatch`, `gh_failed` for an answer that cannot be read,
+  `fetch_failed` and `git_failed` for Git, `record_too_large`, `cache_unwritable`, and
+  `not_github`. Check runs or statuses GitHub refuses, and a comparison whose base
+  cannot be fetched, leave the rest of the record standing and are listed in its
+  `unavailable`; an item that cannot be read or is too large for one page is left out,
+  an `http://` link is left empty, and the list is marked incomplete.
+  Lists and text are bounded per pull request, and a cut is reported, never silent.
+
+- Pull-request page: serving a pull-request URL now opens its page at `/pull/<n>`, the
+  way github.com shows it: title, state (open, draft, merged, or closed), github.com’s
+  header line (“author wants to merge 2 commits into base from head”, and once merged
+  “merger merged 2 commits into base from head”, or “merged 2 commits into …” when the
+  record names no merger; when the head is in a fork both sides carry their owner, as in
+  “into cli:trunk from 00200200:fix/…”), times, labels, merge status (unknown until
+  GitHub has computed it), the description, a conversation of comments and reviews in
+  time order with review states, review comments with their file, line, and diff hunk,
+  checks and statuses with links to their details, and notes for anything the record cut
+  or could not read. The Checks summary counts each check run and commit status under one
+  of: success; failure (a run that failed, timed out, needs action, or failed to start,
+  and a status of failure or error); cancelled; skipped; stale; neutral; pending (a run
+  not yet completed, whatever its status, and a pending status); and unknown (a
+  completed run with no conclusion, or a conclusion or state GitHub does not document).
+  `/pull/<n>/files` is its Files changed, the diff view over the record’s merge-base
+  comparison. The page reads only the cached record, so it opens instantly and offline;
+  it says how old the record is and who read it, offers a refresh when it is stale,
+  shows a quiet loading state while the first record is fetched, and updates the
+  conversation and checks in place when a refresh brings a new record, while the diff
+  stays on what it showed and offers a newer head.
+  When the served code is not the head the record names, as when the pull request could
+  not be opened at startup and serving fell back to the default branch, the page offers
+  to switch to the head (`refs/pull/<n>/head`) and reloads on it.
+  Descriptions and comments render as Markdown through KPress’s sanitized mode, one text
+  at a time as it scrolls into view, never from GitHub’s own HTML, and are then reduced
+  to an allowlist of plain markup, on the server and again in the page: paragraphs,
+  headings, emphasis, code, quotes, lists, tables, and details, with no class, `id`,
+  `data-*`, style, or event attribute.
+  SVG, MathML, media, frames, forms, stylesheets, and scripts are removed with their
+  content, and no KPress script or stylesheet is loaded for a comment, so a comment
+  cannot load anything, restyle or cover the page, reach the application’s own handlers,
+  or clobber a global.
+  An image is a link to it rather than loaded, links open on GitHub in a new tab, only
+  `http` and `https` ones kept, and code blocks show as plain text without highlighting.
+  A review comment’s file opens at the served head, at its line.
+  The freshness row links to the page, and back, forward, and reload keep its tab.
+  The page for a number the server does not serve links to the served pull request’s
+  page, on the same tab.
+  `metab <pr-url> --show /pull/<n>[/files]` reports the page’s kind and a summary of its
+  record, and `/api/plugin/github/pull-markdown?part=…` answers the allowlisted HTML of
+  the description (`body`) or one comment, review, or review comment, and nothing else
+  of KPress’s render. `/api/plugin/github/pull` answers with an entity tag and a `304`
+  when nothing changed.
+
+- A terminal hangup or `SIGTERM` now cancels an acquisition the way Ctrl-C does: Git and
+  every helper it started are stopped, staging is removed, and `metab` exits with status
+  129 or 143. A hangup that was already ignored, as under `nohup`, stays ignored.
+  A cancellation that arrives while Git is still starting also stops the helpers it
+  already forked, rather than only `git` itself.
+  While a Git source is served, a hangup stops the server as Ctrl-C does, killing a
+  running refresh’s Git first, and exits 129.
+
+Source views:
+
+- A text or source file’s Source view shows line numbers, and a `/view/` address ending
+  in `#L10`, `#L10-L20`, or `#L10C5-L20C8` highlights those lines and scrolls the first
+  one into view, when the file opens and whenever the fragment changes; columns are kept
+  but highlight whole lines.
+  Clicking a line number anchors that line and shift-clicking extends the anchor to a
+  range, replacing the address rather than adding a history entry, so a copied address
+  keeps the anchor. This works the same in a served folder and on a pin.
+  A large file’s anchor past the part loaded so far says so and names Load more; once
+  Load more reaches the line, it is highlighted and scrolled to.
+  An anchor past the end of the file says how many lines the file has.
+- An address with a line anchor, or with GitHub’s `?plain=1`, opens the file in its
+  Source view, and adding a line anchor to the address of the file already shown selects
+  its Source tab; Load more keeps the tab it was used in.
+  A GitHub `blob` URL for a Markdown file with `#L10` or `?plain=1` shows its source
+  with those lines highlighted; a served `blob` URL keeps `?plain=1` in the address.
+  The Markdown Source tab has line numbers and anchors, with front matter highlighted as
+  YAML and the body as Markdown beside one column of numbers.
+- The line numbers are reachable from the keyboard: Tab focuses them, the arrow keys,
+  Page Up, Page Down, Home, and End move the anchor, and Shift extends it to a range.
+  A screen reader announces the highlighted lines as the anchor moves and when an
+  address sets it.
+- Opening a Source tab for the first time scrolls to the address’s line anchor, as
+  opening the file does.
+
+Repository cache:
+
+- `metab --doctor` also checks the packaged cache record schemas, so an installation
+  whose schemas are missing or no longer match their models is reported there instead of
+  at the first acquisition.
+  A healthy result reads as before.
+  The check costs time: `--doctor` takes about 250 ms longer than in 0.11.0, 385 ms to
+  629 ms of wall time and 350 ms to 560 ms of CPU time on an Apple M1 Pro, and does
+  1.78x the work in instructions retired.
+  That is the median of 15 back-to-back pairs of installed wheels with compiled
+  bytecode, taken on 2026-10-01 under a load average of 12 to 16.
+
+- The cache validates the records it writes with SoftSchema, so `softschema==0.8.1` is a
+  new runtime dependency and the minimum `frontmatter-format` rises from 0.3.0 to 0.4.0,
+  which SoftSchema requires.
+
+- Acquiring or refreshing a Git source requires Git 2.43.7 or, on a later release track,
+  the patched release that carries the same security fixes, up to 2.50.1;
+  `ACQUISITION_PATCHED_TRACKS` in `src/metabrowser/git/process.py` lists them.
+  An older Git is refused with a message that names the version found and the version
+  required, and a refused acquisition does not create the application home.
+  Reusing a store already in the cache and serving a folder on disk do not check the
+  floor.
+
+- New read-only routes `/api/cache/layout`, `/api/cache/sources`,
+  `/api/cache/source/<slug>`, and `/api/cache/stores` report the cache’s layout and
+  config formats, abandoned staging entries the next sweep removes, sources with their
+  alias generation and publication state, and stores with the aliases that name them.
+  Reach them with `metab <root> --api /api/cache/layout` like any other route.
+  They resolve `METABROWSER_HOME`, or `~/.metabrowser`, on each request and change
+  nothing: a missing home reports `absent` rather than being created, an entry other
+  users can reach is reported as `not_private` rather than tightened, and a home other
+  users can access, or one a newer release wrote, is refused with a typed error that
+  names the fixed cache directory to fix and no path of yours.
+  Sources and stores are paged with `limit` and `after`, 25 rows by default and 100 at
+  most; no response reports a cache path, pack file, or Git internal.
+
+- The CLI classifies `ROOT` as a string before any path is constructed.
+  A bare local path is still served; `ssh` clone URLs stay closed.
+  `file://` is the only way to ask for a local origin to be acquired — a bare
+  `/path/to/repo` is never rewritten into one — and `ext::` remote-helper syntax is
+  rejected. `metab file://… --no-serve` fetches into the cache and prints slug, store
+  identity, and revision without starting a server.
+  The application home and `CACHEDIR.TAG` are created by the first acquisition, of a
+  `file://` or an `https://` source alike.
+  A Git timeout, oversized output, missing executable, or failed command during that
+  acquire is reported as its own error message without a traceback or a local path.
+  `metab file://… --api /api/cache/…` acquires as a side effect, then inspects cache
+  state against an empty throwaway root so cache inspection cannot expose origin objects
+  through `/api/tree`. `metab file://… --show PATH` and non-cache `--api` acquire or
+  reuse the store, pin the default revision, and inspect that `GitRevisionSubject`
+  in-process, and `--check-api` runs its navigation scenario on that pin, where the live
+  filter’s `unsupported_for_subject` answer is the pass.
+  `--walk` refuses a Git source: the walker reads a filesystem, and a pin’s complete
+  listing is `/api/tree`. None of these binds a port.
+  ssh stays closed. Those pin modes report acquisition failures with the same messages as
+  `--no-serve`, and a Git failure while opening the pin is also path-free.
+  A pin’s `/api/tree` lists directories before files, as a folder listing does.
+  A pinned blob larger than the 16 MiB whole-read limit is classified from a bounded
+  window and paged in the text and byte views like a large file on disk, instead of
+  answering 413; a text window starting past that budget answers 416. `/raw` still
+  refuses such a blob.
+  A pinned symlink resolves one path component at a time, as a checkout does.
+  No store read fetches from the origin.
+  A pin always runs under the untrusted profile: `METAB_ACTIVE_CONTENT=1` and
+  `METAB_ALLOW_EDITS=1` do not lift it, and `--allow-edits` on a pin is an error.
+
+- `--diff` does not open a URL or `file://` source.
+  `metab file:///path/to/repo --diff A..B` is refused with a message that says so and
+  names the modes that do open one.
+  It compares revisions of a repository served as a folder, as before.
+
+- Opening a URL or `file://` source needs a POSIX system.
+  The clone is kept under the application home, which is verified as private to the
+  current user with ownership and no-follow checks.
+  Where a platform lacks them, as Windows does, such a source is refused: “The
+  Metabrowser application home cannot be verified as private to the current user”, and
+  nothing is stored. Serving a folder does not use the home and is unaffected, which is
+  what the package’s `OS Independent` classifier still describes.
+
+- An argument that names an existing path is that path, whatever it resembles.
+  A folder called `file:notes`, `a::b`, `me@host:dir`, `https:x`, or `-dash` (after
+  `--`) is served, a file is opened, and a symbolic link is followed, as in 0.11. Only
+  an argument that names nothing on disk is read as an scp-like address or refused as a
+  malformed URL or remote-helper syntax.
+  The one exception is an argument that starts with `scheme://`, which is always a
+  source: no path needs that spelling, so a pasted URL opens the same thing in every
+  working directory and a local folder cannot stand in for the repository it names.
+  `metab https://host/x` therefore no longer serves a folder at `https:/host/x`; write
+  that path with one slash, or as `./https://host/x`. An scp-like address has no such
+  exemption: `git@github.com:o/r` names a local folder of that name when the working
+  directory has one, as in 0.11, and the GitHub repository only when it does not;
+  `https://github.com/o/r` always opens the repository.
+  A path that exists but that the process may not read is a usage error, as in 0.11
+  (`Path 'x' is not readable.`, exit status 2), not a tree that walks or serves as
+  empty. An empty argument, `metab ""`, is refused as `invalid ROOT (empty)`, where 0.11
+  read it as the current directory.
+
+- `metab file://…` serves the acquired source in the browser, pinned to the commit its
+  default branch named at the store’s last fetch, until Ctrl-C. Every page reads from
+  the store; only the background refresh below reaches the origin.
+  The banner names the source and prints a `Revision:` line with the full commit and
+  branch. `--path` deep-links a path within the pin, spelled as `--show` accepts it, and
+  prints a directory’s address with a trailing slash.
+  The branch name on the `Revision:` line is the origin’s, so it is shown as a path is:
+  a control character in it, such as the one-character CSI U+009B, or an invisible
+  character, is U+FFFD, there as on a GitHub URL’s `pin:` line.
+  If the pin cannot be opened again when the server starts, the command prints the same
+  path-free error as `--show` and exits 1 rather than a traceback.
+  The tree, file views, Markdown and its images, JSON, images, history, commit detail,
+  and diffs all read from the store.
+  The navigation heading shows the branch and short commit; its tooltip and the file
+  header show the full commit.
+  A served pin always runs under the untrusted profile, exactly as `--show` and `--api`
+  do, and HTML offers only its source.
+  Its `/api/cache/…` routes answer `unsupported_for_subject`, so nothing about other
+  cached sources is served beside acquired content.
+  The `/raw/<path>` form answers the same way, because its only consumer is the HTML
+  preview a pin never offers; Markdown images resolve within the pin through
+  `/raw?path=`. A served `file://` pin has no `repository_context`.
+
+- `metab ROOT` exits non-zero when the server’s startup fails, instead of reporting
+  success for a server that never listened.
+
+- New `GET /api/source/status` reports what the server serves: the subject kind, the
+  session generation, and on a Git pin its full commit (`pin`), the store ref it was
+  resolved from (`ref`), and that ref’s branch or tag name (`ref_name`). Reach it with
+  `metab <root> --api /api/source/status`. On a served mirror it also reports freshness:
+  the commit the pinned ref names in the mirror now (`latest`), `last_fetch_at`, the
+  last operation and its typed outcome (`last_outcome`), `refreshing`, `stale`, and
+  whether the origin still had the pinned ref at the last fetch (`ref_on_origin`), all
+  from server memory so polling runs no Git.
+  The outcome is recorded in the store by name, so a restarted server reports it too.
+  It sends an ETag and answers an unchanged `If-None-Match` with 304.
+
+- A served `file://` mirror refreshes in the background and never makes a page wait.
+  `metab file://…` starts one refresh when the mirror’s last fetch is older than a
+  minute. New `POST /api/source/refresh` starts a refresh, or joins the one running, and
+  answers 202 at once.
+  A refresh is one `git fetch --prune --atomic` of every branch and tag: every ref moves
+  together or none does, a branch or tag deleted upstream leaves the mirror, and no
+  object is removed, so a commit that was pinned stays readable after a force-push or a
+  deleted branch. A branch replaced by a directory of branches (`side` then `side/x`), or
+  renamed only in case on a case-insensitive file system, no longer wedges every later
+  refresh: the stale ref is pruned on its own and the fetch runs again.
+  A refresh another process is running is reported as `refreshing_elsewhere` instead of
+  waited on, and a served page follows it until it ends.
+  A fetch’s Git holds the store’s fetch lock for as long as it runs, so a server killed
+  mid-fetch leaves no second writer in the store, and Ctrl-C stops the fetch before the
+  server exits. Files a killed fetch left behind are removed before the next one, and a
+  missing origin, a failed fetch, or a detached origin HEAD is a typed outcome in the
+  status while the pinned revision keeps serving.
+  Reach it with `metab file://… --api /api/source/refresh --data <file with {}>`; that
+  one command waits up to one Git deadline for the refresh it asked for, prints the
+  status after it, and exits 1 unless the fetch ran or another process’s refresh is
+  running. No other one-shot command fetches.
+
+- New `POST /api/source/pin` switches what a server serves to another branch, tag, or
+  commit of the same mirror: `{"ref": "feature"}`, `{"ref": "v1"}`, or
+  `{"oid": "<full or at least 7-digit commit ID>"}`. A name is tried as a branch, then a
+  tag, then a commit ID, and is looked up in the mirror alone; revision syntax such as
+  `:/text`, `@{…}`, and `^{/…}` is refused rather than evaluated.
+  The old revision’s readers are released, the new one is served under a new session
+  generation, and the answer carries the new status.
+  Both new routes are POST routes with a JSON body behind the existing same-origin
+  guard, so content in a served page cannot reach them with a link, an image, or a form;
+  on a folder they answer `unsupported_for_subject`.
+
+- A page on a served mirror shows when the mirror was last fetched at the foot of the
+  navigation pane, polls quietly while it is visible, and asks for one refresh when it
+  opens or becomes visible on a stale mirror.
+  When a refresh moves the pinned branch it offers the commit the branch now names,
+  usually a newer one, and accepting switches the pin and reloads the view.
+  When another tab switched the pin, or the server restarted onto another commit, even
+  before the page’s first poll, it offers a reload.
+  The page’s data requests name the commit it shows and are refused with `pin_changed`
+  rather than answered from another commit.
+  Images and raw documents the page loads directly are not checked, so a stale page can
+  still show one of those from the new pin until it reloads.
+  A failed refresh reads as a warning there, not as an error in the page.
+  The row repaints only when what it says changes, and announces its state and offer to
+  a screen reader, not its age.
+
+- A page on a served mirror has a branch and tag selector: a compact button under the
+  navigation header names the served ref, and opening it lists the mirror’s branches,
+  the default first, or its tags, newest first, with a filter box.
+  Choosing one serves it and reloads the view on the same file or folder when the new
+  revision has it, or at the root otherwise.
+  The list comes from the new `GET /api/source/refs?kind=branch|tag&q=&limit=`, which
+  reads the mirror alone, never the network: `q` is a case-insensitive name fragment,
+  `limit` is clamped to 1–1000 (default 100), and `total` and `truncated` say how many
+  matched. A tag is listed when it names a commit, directly or as an annotated tag of
+  one; a tag of a tree, a blob, or another tag is not, on any Git version, and still
+  pins by name. `POST /api/source/pin` also takes the page’s address as `"view"` and
+  answers `view_href`, where that page goes on the new revision.
+  The address is checked before the switch: one that is not percent-encoded ASCII is
+  refused with nothing changed, and a query or fragment is dropped.
+
+- On a served mirror, each file bar of a diff offers the changed file at either side of
+  the change, as GitHub’s View file does, for a commit’s diff and for a pull request’s
+  Files changed. **View file** opens the new side; **View at parent** (a commit’s diff)
+  or **View at base** (Files changed, where the base is the merge base) opens the old
+  side. A deleted file has only its old side, an added file only its new side, and a
+  renamed file opens its old path at the old side.
+  Only a regular file’s side is offered: a submodule has no file to show, and a symbolic
+  link would open its target rather than the link text the diff shows.
+  A side at the commit the page shows is a link to the file’s `/view/` address, so a new
+  tab, a copied link, and back and forward work as for any link.
+  A side at another commit is a button that switches the served pin to that commit with
+  `POST /api/source/pin` and opens the file there; its tooltip names the commit, and a
+  switch the server does not make, such as a commit the mirror lacks, is said under the
+  file bar while the page stays as it was.
+  There is no address for a file at a commit the server does not serve, so such a side
+  has no link to copy or open in a new tab.
+  A name that is not UTF-8 is addressed by its bytes.
+  A diff in a served folder, and a patch file’s diff, have no such control: a folder has
+  no file at a commit to open, only its working tree’s.
+
+- `POST /api/source/pin` with `{"oid": …}` keeps the ref when the commit is its tip.
+  A commit pinned by ID had no ref.
+  It is now served under the ref the server last served, or the served pull request’s
+  `refs/pull/<n>/head`, when it is that ref’s tip in the mirror, so going to another
+  commit and back by ID, as View file does, ends on the branch or the pull request
+  again: the selector names it and freshness follows it.
+  A commit ID that is the tip of the ref already served answers `changed: false`. Any
+  other commit pinned by ID still has no ref.
+
+- Back and forward onto a page whose commit the server no longer serves now land on the
+  commit it does serve.
+  A browser brings a page back from its back/forward cache or its HTTP cache without
+  asking the server, so after a pin switch (the selector’s, the freshness row’s, View
+  file’s) Back showed a page naming the commit served before, with “Could not load
+  files” and every data request refused as `pin_changed` until a reload.
+  On such a landing the page now asks `/api/source/status` once and reloads itself, at
+  most once, when another commit is served.
+  A landing with nothing switched is untouched: it stays in the back/forward cache and
+  keeps its scroll position.
+  A page that stayed open while another tab switched still gets the reload offer rather
+  than a reload.
+
+- The Git panel no longer rebuilds a different history under the rows on screen when the
+  refs its walk was fingerprinted by moved, as a refresh, a pin switched in another tab,
+  or a commit in a served checkout does.
+  It keeps the rows, stops paging, and says “History changed since this list loaded”
+  with a Reload history action.
+  An expired history session still rebuilds silently, because nothing changed.
+
+- A timed-out or cancelled acquisition kills Git’s whole process group, including the
+  helpers it forks, rather than only the `git` process.
+  Git built by a distribution that backports the security fixes without raising the
+  upstream version is still refused below the acquisition floor.
+
+- A classified `file://` source can be fetched into an isolated worktree-free staging
+  store using Git’s pack transport (`git fetch`, not `clone --local` hardlinks).
+  The fetch is a full clone, every object reachable from the origin’s branches and tags,
+  so a published store never needs its origin again.
+  An origin that is itself a partial clone missing objects is refused with a message
+  that says so. A later acquire of the same `file://` source publishes that staging entry
+  into `repository-stores` and a source alias as the visibility commit, or reuses a
+  store already published for that identity.
+  The default branch is read only from the origin’s own `HEAD`, and an acquire whose
+  fetched default branch does not resolve to the observed `HEAD` commit is refused
+  before publication. Acquisition runs Git without any inherited `GIT_*` variable, so an
+  ambient `GIT_ALLOW_PROTOCOL` or `GIT_DEFAULT_REF_FORMAT` cannot widen the protocol
+  policy or change the published store’s ref format.
+  It also stops repository discovery at its own staging directory, so a repository that
+  encloses the application home, such as a dotfiles checkout, does not lend its
+  `url.*.insteadOf` or other local configuration.
+  A staging entry whose liveness lock is free is swept on the next cache open.
+  Nothing deletes a published store: one that an interrupted acquisition left without
+  its alias is reused by the next acquisition of that source.
+  Read routes do not sweep.
+  A cache that an earlier v0.12 development build wrote is not migrated: every `file://`
+  mode refuses it with one message, without a traceback or a path, saying to move the
+  cache directory aside or set `METABROWSER_HOME` to a different directory.
+  A `file://` acquire that the Git version floor refuses does not create the application
+  home, including when that path already exists as an empty directory; a cache hit still
+  reuses a published store without fetching, including against an application home the
+  process cannot write.
+  That hit does not open the cache or require the Git floor.
+  A miss against that home fails instead of fetching.
+  A future layout is still refused before any write.
+  A successful acquire or cache hit may record `last_opened_at` on the source; a
+  read-only home, full disk, or contended lock drops that write and still returns the
+  published alias.
+
+Content trust:
+
+- Markdown from an untrusted source renders inert.
+  With active content off — every served mirror, where a fork’s author controls the
+  head’s Markdown, and a folder served with `--untrusted` — a document’s KPress render
+  reaches the page only as an allowlist of plain markup, on the server and again in the
+  page: paragraphs, headings, emphasis, code, quotes, lists, tables, details, links, and
+  images inside the served tree, with no class, `name`, `data-*`, style, or event
+  attribute, no `id` the document wrote, and no SVG, MathML, media, stylesheet, frame,
+  form, or script. KPress kept such markup in its sanitized mode, so a README could load
+  a stylesheet or images from anywhere, make the page load KPress’s video script and a
+  YouTube frame, cover the page with the application’s own dialog styling, reach its
+  document-wide handlers, or clobber a global.
+  Repository images and relative links keep working inside the pin; an outside image
+  becomes a link; code blocks show without highlighting; and no KPress script loads.
+  Headings get the anchors github.com gives them, `user-content-` and the GitHub slug of
+  the heading’s text, numbered on repeats, made by the allowlist and never taken from
+  the document; a `#name` link becomes `#user-content-name`, and a GitHub address’s
+  `#name` scrolls to that heading.
+  The page draws the table of contents from KPress’s entries and runs it itself.
+  `GET /api/kpress/render` answers such a render marked `inert`, with only stylesheets
+  in its assets, KPress’s table of contents taken out of the HTML, `toc` saying whether
+  KPress drew one, and `model.headings` pointing at the anchors.
+  Trusted folders render as before.
+  The pull-request page uses the same allowlist, now in core
+  (`src/metabrowser/inert_html.py`, `static/inert-html.js`). The Markdown plugin has
+  three more files for it, which `metab --plugin markdown` lists among its assets:
+  `inert-render.js`, `inert-toc.js`, and `place-rendered.js`, which places a render and
+  imports the other two on the first inert one.
+
+- With active content off the application page carries a Content-Security-Policy:
+  scripts run only from the application’s `/static/` and `/plugin-static/` paths and the
+  shell’s inline scripts by a per-response nonce, never from the browsed tree’s `/raw`
+  files; stylesheets, fonts, images, requests, and the Markdown worker load from this
+  server alone; the page frames nothing and nothing may frame it
+  (`X-Frame-Options: DENY`); and no plugins, `<base>`, or form submission.
+  `/raw` refuses a browsed file requested as a script, stylesheet, worker, or worklet,
+  and sends JavaScript and CSS as `text/plain`. See SECURITY.md.
+  The help for `--untrusted` and `--no-active-content` now says that they render
+  Markdown inert and apply this policy, not only that `/raw` loses `allow-scripts`.
+
+- **Changed for a folder on disk:** `--untrusted` and `--no-active-content`, and their
+  `METAB_UNTRUSTED=1` and `METAB_ACTIVE_CONTENT=0` forms, now apply both entries above
+  to a served folder, not only to an acquired source.
+  In 0.11 they dropped `allow-scripts` from the `/raw` sandbox and omitted the HTML
+  Preview tab, and Markdown rendered as it does in a trusted folder.
+  Such a folder’s Markdown now renders inert, so code blocks lose their highlighting, an
+  outside image becomes a link, and Obsidian wiki links and embeds show as plain text;
+  and its page carries the Content-Security-Policy.
+  A folder served with neither flag renders as before.
+
+- In an inert render, a query alone and root-relative `/api`, `/_debug`, and `/raw`
+  references lose their address, as does any link or image past the link enhancer’s
+  limit; images resolve before the page loads them; and Obsidian wiki links and embeds
+  show as plain text.
+
+- The application writes no inline event handlers: the file header’s print button, the
+  structured view’s copy button, an agent log’s event toggle, and the partial-content
+  notice’s Load more use delegated listeners.
+  A partial-content notice’s Load more runs only an action registered by name, only from
+  the button the notice built: the shell’s text loader by default.
+  `partialNoticeHtml`’s `action` string no longer becomes an inline handler; a view that
+  continues its own content passes `action: null` and wires its own listener.
+
+- The application’s document-wide handlers act only on controls the page created.
+  A trusted folder’s Markdown keeps class, `id`, and `data-*`, so a document could write
+  `data-mb-copy="text"` with its own `data-mb-copy-text` and replace the clipboard on a
+  click, or spell an address crumb (`data-nav-dir`, `data-nav-file`), the print button,
+  or a Load more button.
+  The copy, Load more, crumb, parent-folder, and print handlers now require
+  `data-mb-owner` with a value drawn when the page loads, which a document written
+  earlier cannot carry, and the tooltip ignores a rendered document’s `data-tip-text`.
+  The header’s print button no longer has an `id` (`print-view-btn`), so a label naming
+  it could not click it with its mark; SECURITY.md lists what the mark does not cover.
+
+Content source:
+
+- The server now has one active repository subject per process.
+  An attached local folder is `AttachedFilesystemSubject`. File, raw, tree, container,
+  and event routes read through its `ContentSource`, and inventory open goes through
+  `InventoryCoordinator.open_subject`. A Git pin is accepted there without opening a
+  filesystem walker; Git routes own the complete-at-once index.
+  `resolve_path` and `served_root` stay filesystem-only; a non-filesystem subject raises
+  `UnsupportedSourceCapabilityError`. Recency, ignore, watcher, activity, and mutation
+  each have a typed capability gate.
+  Filesystem browsing is unchanged.
+  A `GitRevisionSubject` can pin a full-OID tree over a worktree-free store: `GitPath`
+  is a lossless byte-segment identity, `GitTreeSource` lists NUL-framed trees and reads
+  size-gated blobs through exclusive `cat-file --batch-command` actors, and missing or
+  oversized objects fail before an unbounded body read.
+  `open_revision` pins a commit in a published store without a lock or a ref of its own:
+  nothing runs `gc`, `prune`, or `repack` on a store, so a commit in it stays readable.
+  Two processes can read different OIDs in one store, and a pin opens from a home the
+  process cannot write.
+  Batch `cat-file` actors are pooled per store, at most four in one process.
+  `/api/git/repo`, refs, summary, log, and commit detail honor a `GitRevisionSubject`
+  through `GitLocation` (a worktree path or a `RepositoryStoreTarget` plus pinned OID).
+  Discovery reports a detached HEAD at that OID and never a cache path; the default
+  history walk is the pin, not the store’s ambient HEAD. `/api/tree`, `/api/file`, and
+  `/raw` honor `GitPath` wire identities on that subject: tree listings carry mode,
+  kind, oid, symlink, gitlink, and `cat-file` blob sizes (trees and gitlinks stay
+  unsized; no mtime or ignore); recency returns `unsupported_for_subject`; `min_size`
+  filters blobs that have a size; blob reads are size-gated through the shared cat-file
+  pool. `/api/plugin/diff/comparison` honors that pin through `GitLocation`: `HEAD` is
+  the pinned object id, not the store’s ambient HEAD, and the document names Git object
+  facts rather than a cache path.
+  `GitDiffSource.content` on that pin reads the blob through the shared cat-file pool
+  and the same size gate.
+  `/api/kpress/render` reads the blob by `GitPath` and uses the object id as the render
+  cache key instead of a filesystem mtime.
+  A patch-file container inner is a `GitPath` `g1-` prefix plus a host inner path;
+  `/api/file` returns that envelope, and the diff plugin’s document and children hooks
+  read the patch blob through the shared cat-file pool.
+  `/api/plugin/binary/chunk` reads a bounded window of one Git blob by `GitPath` and
+  uses the object id as the cache key instead of a filesystem mtime.
+  Git blobs classify by extension, basename, sniffed adapter, and bounded JSON, YAML,
+  and Markdown-frontmatter mappings parsed from blob bytes (`classify_identity`).
+  `path_glob` stays filesystem-only.
+  `/api/plugin/structured/parsed` reads the blob by `GitPath` and uses the object id as
+  the cache key instead of a filesystem mtime.
+  Its `size` on a pin is the blob’s length; on a folder it is the file’s size on disk,
+  as in 0.11.0. Neither is capped at the parse limit.
+  `/api/file` for a Git `.jsonl` blob is a parsed JSONL envelope; adapter sniffing
+  claims `agent-log` when the bytes match Claude, Gemini, or Pi.
+  `/api/plugin/agent-log/charts` reads that blob by `GitPath`. `/api/rollup` on a pin
+  answers from recursive blob names and sizes, omits mtime, and treats ignore as absent
+  so unignored equals total.
+  A missing blob size is `object_unavailable` rather than a partial sum.
+  `/api/catalog` on a pin lists those blob names as Quick File rows (`p` GitPath wire,
+  `e` display suffix, `n` display basename) and is complete at once; a truncated tree is
+  an empty truncated snapshot rather than a partial list.
+  `/api/index/progress`, `/api/index/meta`, and `/api/capabilities` report that same
+  complete-at-once index without a watcher or invented mtime; events stay off.
+  `/api/tree` carries whole-tree `extensions`, `canonical_extensions`, `type_families`,
+  and `type_presets` rows (`[key, tracked, 0]`), `tally_cache_status`, and a `summary`
+  (`files`, `size`, ignored 0/0) from that index so the type filter, truncation banner,
+  and nav header counts do not wait on a filesystem walker.
+  Incomplete blob sizes omit `summary` rather than inventing 0. `types` and `min_size`
+  keep ancestor trees of matching blobs and emit subtree `filtered` totals; empty filter
+  dirs are omitted. Git listings, catalog rows, and type filters use the same bounded
+  compound-tail logical extension as filesystem inventory (`bundle.min.js` is
+  `.min.js`), so a basename that merely ends in `md` is not a `.md` match.
+  `include_ignored=0` on a pin is a no-op, because ignore is absent and unignored equals
+  total; the SPA hides Show ignored.
+  `/api/tree` `depth` nests SPA children the way filesystem listings do (default 2) and
+  emits a lazy sentinel past the cap; `depth=0` returns chrome without a listing.
+  The SPA hides Modified within: recency still has no honest mtime and remains
+  `unsupported_for_subject`. Git SPA file nodes emit `ext` as that compound-tail
+  extension; `logical_ext` is only the inner extension of a compressed name
+  (`events.jsonl.gz` is `ext=.jsonl.gz` and `logical_ext=.jsonl`). Git `/api/file` blob
+  envelopes include that same `ext` so plugin-sdk `langForPath` and `ctx.ext` do not
+  fall back to a GitPath wire; they omit compressed identity because blobs are stored
+  bytes with no gzip smudge.
+  Git `/api/file` markdown envelopes include parsed YAML `frontmatter` and
+  `frontmatter_error` the way filesystem envelopes do; KPress on a pin uses that parse
+  rather than an empty mapping.
+  Git text envelopes use the same first-window and highlight bound as filesystem
+  listings (`bytes_read`, `content_preview_limit`, `content_max_preview_limit`,
+  `highlight_disabled`) so Load more and `fetchText` can continue a truncated pin.
+  `/api/file`, `/raw`, KPress, and plugin sidekicks follow in-tree relative symlink
+  blobs to the target object; the requested GitPath stays the route identity.
+  Kind checks (JSONL, structured, patch) use the leaf path.
+  Listings still show the symlink.
+  A Git image blob is SPA `image` chrome (`ext` from the compound tail, preview view, no
+  inline content); `/raw` serves the stored bytes and the image plugin uses the display
+  name as `alt`. Newline and invalid-UTF-8 GitPath names stay lossless on the wire;
+  display chrome replaces C0 and undecodable bytes with U+FFFD. Absolute, dangling, and
+  cyclic targets 404. `/api/stream` still returns `unsupported_for_subject` rather than
+  the lifespan filesystem inventory.
+  A Git LFS pointer blob is the stored pointer bytes, with no smudge filter.
+  A blob the tree names but the store lacks is `object_unavailable` and does not contact
+  the remote. `/view/` on a Git pin accepts a `GitPath` wire, optionally plus a
+  patch-file container inner, and refuses a filesystem spelling; missing Git objects
+  remain valid shell destinations.
+  `/api/tree` on that pin keeps Git-native `entries` and also projects a SPA `tree`
+  array (`dir` / `file` / `symlink`, `GitPath` wires, depth-bounded nested `children`
+  with a lazy sentinel past the cap) with `cat-file` blob sizes on files and symlinks
+  and recursive blob `total_files` / `total_size` on directories, without mtime or
+  ignore facts. Gitlinks project as files, not directories.
+  A Git tree `/api/file` envelope is SPA `folder` chrome (`git_kind` stays `tree`) with
+  recursive blob `total_files` / `total_size` and no mtime or ignore.
+  Markdown and wiki links on that pin encode authored segments as `GitPath` wires; the
+  known-file catalog uses the tree node’s display `name` as the basename, and KPress
+  `source_path` is the wire rather than a display path.
+  A Git tree folder with a complete blob-size tally mounts Overview and treemap.
+  A direct-child README blob sets `readme_path` to its GitPath wire.
+  File Overview mounts when `dir` carries `total_size`. SPA path chrome and copy-path
+  decode GitPath wires to display names; navigation identities stay wires.
+  Omitted Git mtime still leaves age chrome empty rather than pulsing as a
+  still-finalizing inventory walk.
+  Blob listings carry `cat-file` info sizes so `min_size` can filter; trees and gitlinks
+  stay unsized. Recursive `ls-tree -r` tallies fill directory `total_files` /
+  `total_size` and the Git `/api/rollup` tree.
+  Inventory open and archive containers are not switched yet.
+
+- The content-trust profile applies to a Git pin.
+  A pin runs under the untrusted profile on `--show` and `--api` as it does when it is
+  served, and `GET /api/capabilities` on a pin carries the resolved block,
+  `active_content: false` and `mutations: false`, so Preview is withdrawn there too.
+  `--untrusted` and `--no-active-content` are accepted on a pin and change nothing;
+  `--allow-edits` is refused.
+
+- `/api/tree` on a Git pin nests at most 20,000 nodes below the listed directory.
+  Direct children are always listed; a directory whose children no longer fit is the
+  same lazy sentinel the depth cap emits.
+  Whole-tree tallies, filter totals, index status, rollup, and the catalog are derived
+  once per pin instead of on every request.
+
+- Git failures on a pinned tree answer with a typed JSON envelope instead of a bare 500:
+  `git_timeout` is 504, a tree the store lacks is `object_unavailable` 404 naming the
+  missing object, and any other Git failure is `git_failed` 500. No envelope carries Git
+  output, so none carries a local path.
+
+- Every request-path read of a published store (tree listing, history, commit detail,
+  diff) runs under one store-read policy: isolated configuration, no lazy fetch, and the
+  15-second request deadline instead of the 15-minute acquisition deadline.
+  A store target read without a named policy gets the same policy, and whole-tree blob
+  sizes are read in chunks that each get the batch deadline.
+
+Fixes:
+
+- A served folder holding a filename with a backslash, which POSIX allows, no longer
+  fails its whole index: the index progress route errored and the tree answered HTTP
+  500\. The inventory now escapes the backslash as `%5C`, as it escapes a literal `%` as
+  `%25`, so the file lists, opens, and has a `/view/` URL (`/view/a%5Cb.txt`); the tree
+  shows its real name.
+  A literal backslash in a `/view/` URL is refused, and Windows, where a backslash is a
+  separator, is unchanged.
+
+- In a trusted served folder, a Markdown link to a file whose POSIX name holds a
+  backslash now opens it.
+  Markdown writes the backslash escaped (`[notes](a\b.md)` links to `a%5Cb.md`, as on
+  GitHub), and the link resolver and the published-route adapter now spell it `%5C`, as
+  the inventory does, instead of refusing the link.
+  In a Git pin such a link is still refused, and a literal backslash in a link’s
+  address, which a browser reads as a separator, still is everywhere; under the
+  untrusted profile the inert allowlist drops an escaped backslash from any reference.
+  Wiki links refuse a backslash as before.
+
+- `/api/plugin/structured/parsed` no longer answers with a path on the host.
+  For a JSON or YAML file it could not open, such as one without read permission, 0.11.0
+  answered 200 with
+  `parse_error: "PermissionError: [Errno 13] Permission denied: '<the file's absolute path>'"`.
+  It now answers 404 `content_unavailable` and names the served path.
+
+- `/api/plugin/diff/document` and `/api/plugin/diff/children` no longer answer with a
+  path on the host either.
+  For a file they could not open, such as a patch without read permission, 0.11.0
+  answered the degraded `plugin_error` envelope with
+  `detail: "PermissionError: [Errno 13] Permission denied: '<the file's absolute path>'"`
+  and logged a traceback.
+  They now answer 404 `diff_document` or `diff_children` and name the served path.
+
+- A compressed patch is read as the patch it holds.
+  `change.patch.gz` is the `diff` kind, but 0.11.0 parsed its compressed bytes:
+  `/api/plugin/diff/document` answered that it recognized no diff, and
+  `/api/plugin/diff/children` and a virtual child `change.patch.gz/<path>` answered 404.
+  The three now read the patch the file holds.
+  A compressed file whose stream cannot be decoded answers the same 404 as a file that
+  cannot be opened; `/api/file` shows such a file as bytes and never sends it to the
+  Diff view.
+
+- A byte limit set below zero gives a typed, empty answer on every value.
+  This applies to `STRUCTURED_PARSE_MAX_BYTES`, `METABROWSER_BINARY_PREVIEW_BYTES`,
+  `METABROWSER_BINARY_PREVIEW_MAX_BYTES`, and
+  `METABROWSER_BINARY_PREVIEW_MAX_CHUNK_BYTES`. 0.11.0 answered by accident of
+  arithmetic: at -1 the binary route returned an empty chunk, at -2 it read the rest of
+  the file with no bound, and at -3 or lower it answered the degraded `plugin_error`
+  envelope; a compressed file answered `plugin_error` or a parse error that quoted the
+  reader’s own bound check.
+  Now a negative structured limit answers `truncated` for every file, a negative chunk
+  size answers an empty chunk and says whether bytes remain, and a negative offset
+  ceiling answers 404. Zero is unchanged, except that a compressed structured file at
+  `STRUCTURED_PARSE_MAX_BYTES=0` answers `truncated` instead of that parse error.
+
+- Load more on a large text file in a pin advances its notice and continues the text.
+  A pin’s later window reported its own length as `bytes_read`, where the filesystem
+  reports the cursor past the window, so after Load more the notice kept reading
+  “Showing 2.0 MB of 15.2 MB” and the next Load more read from 2.0 MB again, repeating
+  text. `/api/file` on a pin now reports the cursor, as a served folder does.
+
+- In a pane too narrow for the Contents rail, the table-of-contents toggle now stays in
+  the pane’s top-left corner as the document scrolls, so the drawer opens from any
+  depth. It used to scroll away with the document, in a trusted folder and a mirror
+  alike, because the scrolling preview pane was also the box its fixed position pinned
+  to. The pane now scrolls inside a non-scrolling frame that holds the drawer, its
+  toggle, and its backdrop, as KPress’s embedding contract asks.
+
 ## 0.11.0
 
 Content trust:

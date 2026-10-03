@@ -19,6 +19,7 @@ from types import ModuleType
 import pytest
 
 from metabrowser import build_version
+from tests.required_tools import require_git
 
 
 def _git(repository: Path, *arguments: str) -> str:
@@ -35,6 +36,7 @@ def _git(repository: Path, *arguments: str) -> str:
     otherwise sign or hook every fixture commit, or fail it.
     """
 
+    require_git()
     environment = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
     environment.update(
         {

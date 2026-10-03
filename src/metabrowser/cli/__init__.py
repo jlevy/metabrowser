@@ -4,6 +4,7 @@
 
 * `metab ROOT`: launch the local web UI.
 * `metab ROOT --walk`: inventory walk with no server.
+* `metab file://… --no-serve`: acquire a Git source into the cache with no server.
 * `metab --remote <host> --path <remote-root>`: SSH-tunnel into a remote
   `metab` server.
 * `metab --plugins`: list every discovered plugin.

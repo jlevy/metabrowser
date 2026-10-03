@@ -199,7 +199,11 @@ export function registerTreemap(mb, palette, rollupControls) {
       rows.push(`<strong>${mb.formatFileCount(cell.files || 0)} in the remainder</strong>`);
       rows.push(cellValueText(cell, state));
     } else {
-      rows.push(`<strong>${mb.escapeHtml(cell.path || cell.name)}</strong>`);
+      const pathLabel =
+        window.MetabrowserNavigationRoute?.displayPath?.(cell.path || "", mb.sourceKind()) ||
+        cell.path ||
+        cell.name;
+      rows.push(`<strong>${mb.escapeHtml(pathLabel)}</strong>`);
       rows.push(`${mb.formatFileCount(cell.files || 0)} · ${mb.formatSize(cell.bytes || 0)}`);
       if (typeof cell.mtime === "number" && cell.mtime > 0) {
         rows.push(`modified ${mb.formatTimestamp(cell.mtime)}`);
@@ -231,7 +235,7 @@ export function registerTreemap(mb, palette, rollupControls) {
     /** @type {number[]} */
     let actionableIndexes = [];
     let focusPos = 0;
-    const parent = parentNavigation(ctx.path || "");
+    const parent = parentNavigation(ctx.path || "", mb.sourceKind());
     const parentControlHtml = parent
       ? '<div class="tm-parent-nav-row">' +
         `<button type="button" class="btn parent-nav-btn tm-parent-nav" aria-label="Zoom out to ${mb.escapeHtml(parent.label)}"` +

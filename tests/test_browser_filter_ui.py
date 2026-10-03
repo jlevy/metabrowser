@@ -311,10 +311,25 @@ def test_the_checkbox_exception_is_scoped_and_explained() -> None:
     assert '<input type="checkbox"' in block
     assert "data-chip-check=" in block
 
-    # Only the gitignored visibility toggle uses it.
+    # Only the gitignored visibility toggle uses it, and a Git pin omits
+    # the control because ignore is absent.
     app = _read("app.js")
     assert app.count("fc.checkHtml(") == 1
     assert '"Show ignored"' in app
+    assert (
+        "isGitRevisionSource()" in app[app.index("fc.checkHtml(") - 80 : app.index("fc.checkHtml(")]
+    )
+
+
+def test_git_pin_hides_mtime_backed_filter_controls() -> None:
+    """A pin has no mtime, so recency would 409. Omit the control rather
+    than offering a window the tree cannot answer."""
+
+    app = _read("app.js")
+    recency_at = app.index('key: "recency"', app.index("function renderNavFilterBar()"))
+    assert "isGitRevisionSource()" in app[recency_at - 160 : recency_at]
+    recent_fn = app.index("function filesPanelUsesRecentSource()")
+    assert "isGitRevisionSource()" in app[recent_fn : recent_fn + 180]
 
 
 def test_extension_tallies_come_from_the_index_not_the_catalog() -> None:
@@ -453,7 +468,7 @@ def test_every_icon_only_control_carries_the_icon_button_primitive() -> None:
 
     server = Path(proc_browser.__file__).read_text()
     app = _read("app.js")
-    sdk = _read("plugin-sdk.js")
+    sdk = _read("plugin-sdk-views.js")
     controls = _read("filter-controls.js")
 
     assert 'class="icon-btn settings-btn"' in server
@@ -481,7 +496,7 @@ def test_plain_text_actions_use_the_shared_button_primitive() -> None:
 
     # The text view's Load more moved out of the file header and into the
     # shared partial-content notice, but it is still the `.btn` primitive.
-    sdk = _read("plugin-sdk.js")
+    sdk = _read("plugin-sdk-views.js")
     assert 'class="btn metabrowser-load-more"' in sdk
     assert "file-header-action" not in app, (
         "the header no longer restates partial progress; the notice owns it"
@@ -503,7 +518,7 @@ def test_every_core_button_declares_non_submit_behavior() -> None:
     for tag in re.findall(r"<button\b[^>]*>", html):
         assert 'type="button"' in tag
 
-    for name in ("app.js", "filter-controls.js", "plugin-sdk.js"):
+    for name in ("app.js", "filter-controls.js", "plugin-sdk.js", "plugin-sdk-views.js"):
         source = _read(name)
         for match in re.finditer(r"<button\b", source):
             nearby_markup = source[match.start() : match.start() + 320]

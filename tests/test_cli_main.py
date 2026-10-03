@@ -30,18 +30,21 @@ from typer.testing import CliRunner
 
 from metabrowser import __version__
 from metabrowser.build_version import display_version_line
+from metabrowser.cache import urls as cache_urls
 from metabrowser.cli.http_readiness import wait_for_http_ok_then
-from metabrowser.cli.main import _app, main
+from metabrowser.cli.main import _EXPLICIT_URL, _app, _is_plain_local_root, main
 from metabrowser.cli.serve import (
     _STOPPING_NOTICE,
     _QuietForceExitServer,
     _run_until_interrupted,
     _shutdown_noise_filter,
     _stop_now,
+    stop_on_interrupt,
 )
 from metabrowser.dotenv import load_dotenv_chain
 from metabrowser.errors import CLIError
 from metabrowser.server_utils import MAX_TCP_PORT
+from tests.child_io import read_line
 
 runner = CliRunner()
 
@@ -82,8 +85,10 @@ def test_cli_help_shows_modes_and_examples() -> None:
     assert "--plugins" in output
     assert "--plugin" in output
     assert "--doctor" in output
+    assert "--no-serve" in output
     assert "--version" in output
     assert "metab ." in compact_output
+    assert "file://" in compact_output
     assert "metab --remote example-host --path /srv/shared-files" in compact_output
     assert "--untrusted" in output
     assert "--no-active-content" in output
@@ -385,7 +390,7 @@ def test_console_entry_point_treats_closed_output_pipe_as_success(tmp_path: Path
     ) as process:
         assert process.stdout is not None
         assert process.stderr is not None
-        assert process.stdout.readline().startswith("{")
+        assert read_line(process).startswith("{")
         process.stdout.close()
         stderr = process.stderr.read()
         returncode = process.wait(timeout=30)
@@ -530,6 +535,46 @@ def test_one_interrupt_announces_and_stops() -> None:
         assert b"Stopping" in _STOPPING_NOTICE
     finally:
         uvicorn_logger.setLevel(original_level)
+
+
+@pytest.mark.skipif(not hasattr(signal, "SIGHUP"), reason="the platform has no SIGHUP")
+def test_a_hangup_while_serving_a_mirror_stops_like_ctrl_c_with_its_own_status() -> None:
+    """A mirror's refresh Git is outside the terminal's group, so only the server
+    hears a hangup; at its default action the server would die and leave Git
+    fetching. ``stop_on_interrupt`` routes it through ``_stop_now``, which kills
+    the live Git groups and exits 129, the status a shell reports for a hangup."""
+    previous_int = signal.getsignal(signal.SIGINT)
+    previous_hup = signal.getsignal(signal.SIGHUP)
+    try:
+        signal.signal(signal.SIGHUP, signal.SIG_DFL)
+        stop_on_interrupt()
+        assert signal.getsignal(signal.SIGINT) is _stop_now
+        assert signal.getsignal(signal.SIGHUP) is _stop_now
+        with (
+            patch("metabrowser.cli.serve.os.write"),
+            patch("metabrowser.cli.serve.kill_live_process_groups") as kill_groups,
+            patch("metabrowser.cli.serve.os._exit") as hard_exit,
+        ):
+            _stop_now(signal.SIGHUP, None)
+        kill_groups.assert_called_once_with()
+        hard_exit.assert_called_once_with(129)
+    finally:
+        signal.signal(signal.SIGINT, previous_int)
+        signal.signal(signal.SIGHUP, previous_hup)
+
+
+@pytest.mark.skipif(not hasattr(signal, "SIGHUP"), reason="the platform has no SIGHUP")
+def test_a_hangup_ignored_on_entry_stays_ignored_while_serving() -> None:
+    """``nohup metab <url>`` keeps serving after the terminal closes."""
+    previous_int = signal.getsignal(signal.SIGINT)
+    previous_hup = signal.getsignal(signal.SIGHUP)
+    try:
+        signal.signal(signal.SIGHUP, signal.SIG_IGN)
+        stop_on_interrupt()
+        assert signal.getsignal(signal.SIGHUP) == signal.SIG_IGN
+    finally:
+        signal.signal(signal.SIGINT, previous_int)
+        signal.signal(signal.SIGHUP, previous_hup)
 
 
 def test_serving_installs_a_stopping_handler_for_uvicorn_to_restore() -> None:
@@ -834,6 +879,209 @@ def test_cli_bare_path_routes_to_serve() -> None:
 
     assert isinstance(result.exception, CLIError)
     assert "not a directory" in str(result.exception)
+
+
+def test_plain_local_root_fast_path_matches_url_grammar_fixture() -> None:
+    """The CLI skips ``cache.urls`` only for inputs the grammar calls a local path."""
+    fixture = json.loads(
+        Path("tests/fixtures/repository-cache/url-grammar.json").read_text(encoding="utf-8")
+    )
+    for case in fixture["cases"]:
+        expected_local = case["expected"]["outcome"] == "local_path"
+        assert _is_plain_local_root(case["input"]) is expected_local, case["id"]
+
+
+def test_explicit_url_pattern_matches_the_grammar() -> None:
+    """The CLI's ``scheme://`` test is the grammar's, which it must not import."""
+    fixture = json.loads(
+        Path("tests/fixtures/repository-cache/url-grammar.json").read_text(encoding="utf-8")
+    )
+    inputs = [case["input"] for case in fixture["cases"]]
+    inputs += ["a+b.c-d://x", "1a://x", "dir/https://x", "https:/x", "https:x", "://x", "a::b"]
+    for value in inputs:
+        expected = cache_urls._SCHEME.match(value) is not None
+        assert (_EXPLICIT_URL.match(value) is not None) is expected, value
+
+
+def test_cli_serves_an_existing_folder_without_asking_the_grammar(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An argument naming an existing path is that path: the source grammar is never
+    asked and the application home is never created. The names themselves, and what is
+    served for each, are the grammar golden's."""
+    home = tmp_path / "home"
+    monkeypatch.setenv("METABROWSER_HOME", str(home))
+    monkeypatch.chdir(tmp_path)
+    folder = tmp_path / "me@host:dir"
+    folder.mkdir()
+    (folder / "a.txt").write_text("a")
+
+    def never_classified(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("an existing path was handed to the source grammar")
+
+    monkeypatch.setattr(cache_urls, "classify_root_argument", never_classified)
+
+    result = runner.invoke(_app, ["me@host:dir", "--walk"])
+
+    assert result.exit_code == 0, result.exception
+    assert "a.txt [file] size=1" in result.output
+    assert not home.exists()
+
+
+@pytest.mark.parametrize(
+    ("value", "path_it_would_name", "message"),
+    [
+        (
+            "https://github.com/octo/demo",
+            "https:/github.com/octo/demo",
+            "a Git source has no filesystem to walk (https://github.com/octo/demo)",
+        ),
+        ("ftp://host/dir", "ftp:/host/dir", "invalid ROOT (unsupported_transport)"),
+    ],
+)
+def test_cli_explicit_scheme_url_is_a_source_even_when_its_path_exists(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    value: str,
+    path_it_would_name: str,
+    message: str,
+) -> None:
+    """``scheme://`` is never a path: a folder cannot stand in for the URL's repository.
+
+    The path that spelling would name has one slash, and that spelling is served. One
+    case reaches a provider's reducer and one a scheme the grammar refuses.
+    """
+    home = tmp_path / "home"
+    monkeypatch.setenv("METABROWSER_HOME", str(home))
+    monkeypatch.chdir(tmp_path)
+    folder = tmp_path / path_it_would_name
+    folder.mkdir(parents=True)
+
+    as_url = runner.invoke(_app, [value, "--walk"])
+    as_path = runner.invoke(_app, [path_it_would_name, "--walk"])
+
+    assert isinstance(as_url.exception, CLIError)
+    assert message in str(as_url.exception)
+    assert as_path.exit_code == 0, as_path.exception
+    assert f"walk: {folder.name}\n" in as_path.output
+    assert not home.exists()
+
+
+def test_cli_opens_an_existing_file_whose_name_looks_like_a_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A file ROOT is opened directly, with its folder as the root."""
+    monkeypatch.setenv("METABROWSER_HOME", str(tmp_path / "home"))
+    served = tmp_path / "served"
+    served.mkdir()
+    (served / "me@host:notes.md").write_text("# Notes\n")
+    monkeypatch.chdir(served)
+
+    with (
+        patch("metabrowser.cli.serve._QuietForceExitServer") as server_cls,
+        patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
+    ):
+        result = runner.invoke(_app, ["me@host:notes.md", "--no-open"])
+
+    assert result.exit_code == 0, result.exception
+    server_cls.assert_called_once()
+    assert f"Serving {served.resolve()} at " in result.output
+    assert "/view/me%40host%3Anotes.md" in result.output
+
+
+def test_cli_follows_a_symlink_whose_name_looks_like_a_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A link to a folder is served; a dangling one gets the local path's error."""
+    monkeypatch.setenv("METABROWSER_HOME", str(tmp_path / "home"))
+    monkeypatch.chdir(tmp_path)
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "a.txt").write_text("a")
+    (tmp_path / "me@host:link").symlink_to(target, target_is_directory=True)
+    (tmp_path / "me@host:dangling").symlink_to(tmp_path / "nowhere")
+
+    linked = runner.invoke(_app, ["me@host:link", "--walk"])
+    dangling = runner.invoke(_app, ["me@host:dangling", "--walk"])
+
+    assert linked.exit_code == 0, linked.exception
+    assert "a.txt [file] size=1" in linked.output
+    assert isinstance(dangling.exception, CLIError)
+    assert "is not a directory" in str(dangling.exception)
+    assert "Git source" not in str(dangling.exception)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX modes")
+@pytest.mark.skipif(
+    os.name == "posix" and os.geteuid() == 0,
+    reason="root is never denied by modes, so a denial cannot be staged",
+)
+@pytest.mark.parametrize(
+    "mode",
+    [["--walk"], ["--api", "/api/tree?depth=1"], ["--no-open"], ["--check-api"]],
+)
+def test_cli_refuses_a_root_it_cannot_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: list[str]
+) -> None:
+    """An existing path the process may not read is a usage error, as it was while ROOT
+    was a path argument, not a tree that walks or serves as empty."""
+    monkeypatch.chdir(tmp_path)
+    locked = tmp_path / "locked"
+    locked.mkdir()
+    (locked / "a.txt").write_text("a")
+    secret = tmp_path / "secret.txt"
+    secret.write_text("s")
+    locked.chmod(0)
+    secret.chmod(0)
+    try:
+        with (
+            patch("metabrowser.cli.serve._QuietForceExitServer") as server_cls,
+            patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
+        ):
+            folder = runner.invoke(_app, ["locked", *mode])
+            file = runner.invoke(_app, ["secret.txt", *mode])
+    finally:
+        locked.chmod(0o755)
+        secret.chmod(0o644)
+
+    server_cls.assert_not_called()
+    assert folder.exit_code == 2
+    assert "Invalid value for '[ROOT]': Path 'locked' is not readable." in _plain_output(folder)
+    assert file.exit_code == 2
+    assert "Path 'secret.txt' is not readable." in _plain_output(file)
+
+
+def test_cli_file_url_is_a_git_source_and_is_not_walked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A `file://` ROOT is a Git source, so it is never walked as a directory."""
+
+    home = tmp_path / "home"
+    monkeypatch.setenv("METABROWSER_HOME", str(home))
+    result = runner.invoke(_app, ["file:///srv/git/repo.git", "--walk"])
+    assert isinstance(result.exception, CLIError)
+    message = str(result.exception)
+    assert "--walk runs the filesystem inventory walker" in message
+    assert "file:///srv/git/repo.git" in message
+    assert "not a directory" not in message
+    assert not home.exists()
+
+
+def test_cli_ssh_clone_url_is_a_git_source_and_is_not_served(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "home"
+    monkeypatch.setenv("METABROWSER_HOME", str(home))
+    result = runner.invoke(_app, ["ssh://git@example.com/owner/repo.git", "--no-open"])
+    assert isinstance(result.exception, CLIError)
+    assert "ssh Git sources are not served yet" in str(result.exception)
+    assert not home.exists()
+
+
+def test_cli_rejects_a_remote_helper_root() -> None:
+    result = runner.invoke(_app, ["ext::sh -c evil", "--no-open"])
+    assert isinstance(result.exception, CLIError)
+    assert "invalid ROOT (remote_helper_syntax)" in str(result.exception)
 
 
 def test_serve_expands_home_relative_root(tmp_path: Path, monkeypatch) -> None:

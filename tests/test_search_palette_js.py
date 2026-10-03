@@ -2,18 +2,16 @@
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 from pathlib import Path
 
-import pytest
+from tests.required_tools import require_node
 
 SEARCH_PALETTE_TEST_JS = Path(__file__).resolve().parent / "dom" / "search-palette-behavior.js"
 
 
 def test_search_palette_js_assertions_pass() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(SEARCH_PALETTE_TEST_JS)],
         capture_output=True,

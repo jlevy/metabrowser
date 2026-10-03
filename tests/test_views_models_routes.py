@@ -18,6 +18,7 @@ MAP_DOC = REPO_ROOT / "docs/project/architecture/arch-views-models-routes.md"
 BUILTIN_PLUGINS = REPO_ROOT / "src/metabrowser/builtin_plugins"
 SERVER = REPO_ROOT / "src/metabrowser/server.py"
 GIT_ROUTES = REPO_ROOT / "src/metabrowser/git/routes.py"
+CACHE_ROUTES = REPO_ROOT / "src/metabrowser/cache/routes.py"
 
 
 def _doc() -> str:
@@ -90,6 +91,8 @@ def test_browser_and_data_routes_match_the_route_table() -> None:
     server = SERVER.read_text(encoding="utf-8")
     registered = set(re.findall(r'Route\("([^"]+)"', server))
     registered |= set(re.findall(r'Route\("([^"]+)"', GIT_ROUTES.read_text(encoding="utf-8")))
+    registered |= set(re.findall(r'Route\("([^"]+)"', CACHE_ROUTES.read_text(encoding="utf-8")))
+    assert "/api/cache/source/{slug}" in registered
     for route in registered:
         if route in ("/", "/_debug/tasks"):
             continue  # A redirect and an opt-in diagnostic, not selections.

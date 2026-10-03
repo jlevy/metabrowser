@@ -3,6 +3,13 @@ type MetabrowserRenderContext = {
   path?: string;
   /** A Git revision, when a surface asks a view for a comparison rather than a file. */
   revision?: string;
+  /** Two endpoints, when a surface asks the diff view for a comparison between them. */
+  comparison?: { left: string; right: string; base_policy: "direct" | "merge_base" };
+  /** The served pull request's page: its number, the tab its route names, and how it
+   *  asks the shell to open a tab, or another pull request's page, in the URL. */
+  number?: number;
+  tab?: string;
+  open?: (route: { number: number; tab: string }) => unknown;
   raw?: unknown;
 };
 
@@ -181,7 +188,8 @@ type MetabrowserPreviewPaneLifecycle = Readonly<{
 }>;
 
 type MetabrowserNavigationRouteRuntime = Readonly<{
-  displayPath(path: string): string;
+  displayPath(path: string, sourceKind?: "filesystem" | "git_revision"): string;
+  /** The GitPath wire of a path on a pinned revision; null when it has an empty segment. */
   attachController(controller: MetabrowserNavigationController): () => void;
   commitFreshFileResponse(options: {
     cacheFile(data: Record<string, unknown>): void;
@@ -409,6 +417,82 @@ type MetabrowserResourceContextRuntime = Readonly<{
     seed(path: string, value: T): void;
     subscribe(path: string, listener: (value: T) => void): () => void;
   }>;
+}>;
+
+type MetabrowserSourceLineAnchorState = Readonly<{
+  status: "none" | "shown" | "partial" | "not-loaded" | "past-end";
+  start: number;
+  end: number;
+  message: string;
+}>;
+
+type MetabrowserPullRouteRuntime = Readonly<{
+  createPullPageHost<Handle extends { setTab?(tab: string): void; dispose?(): void }>(deps: {
+    claim(): number;
+    isCurrent(claim: number): boolean;
+    mount(
+      claim: number,
+      route: Readonly<{ number: number; tab: string }>,
+      open: (route: { number: number; tab: string }) => Promise<{ status: string }>,
+    ): Promise<Handle | null | undefined>;
+    pathname(): string;
+    pushHref(href: string): void;
+  }): Readonly<{
+    dispose(): void;
+    onHistory(
+      pathname: string,
+      heldTarget: boolean,
+    ): Readonly<
+      { action: "tab"; tab: string } | { action: "mount"; number: number; tab: string }
+    > | null;
+    open(route: { number: number; tab: string }): Promise<{ status: "opened" | "cancelled" }>;
+    show(
+      route: Readonly<{ number: number; tab: string }>,
+    ): Promise<{ status: "opened" | "cancelled" }>;
+    shown(): number | null;
+  }>;
+  parsePull(pathname: string): Readonly<{ number: number; tab: string }> | null;
+  pullHistoryAction(
+    pathname: string,
+    shown: number | null,
+    heldTarget: boolean,
+  ): Readonly<
+    { action: "tab"; tab: string } | { action: "mount"; number: number; tab: string }
+  > | null;
+  pullHref(number: number, tab?: string): string;
+}>;
+
+type MetabrowserSourceLineAnchorsRuntime = Readonly<{
+  countLines(text: string): number;
+  describe(
+    fragment: string | null | undefined,
+    loaded: Readonly<{ lines: number; truncated: boolean }>,
+  ): MetabrowserSourceLineAnchorState;
+  gutterHtml(text: string): string;
+  keyStep(
+    current: string | null | undefined,
+    focus: number,
+    key: string,
+    extend: boolean,
+    layout: Readonly<{ lines: number; page: number; origin: number }>,
+  ): Readonly<{ fragment: string; focus: number }> | null;
+  lineAt(offsetY: number, lineHeight: number, lines: number): number;
+  mount(
+    host: ParentNode,
+    options: {
+      path: string;
+      truncated: boolean;
+      navigation: Readonly<{
+        current(): MetabrowserNavigationTarget | null;
+        open(target: MetabrowserNavigationTarget, options: { replace: boolean }): Promise<void>;
+      }> | null;
+    },
+  ): void;
+  nextFragment(current: string | null | undefined, line: number, extend: boolean): string;
+  parse(fragment: string | null | undefined): Readonly<{ start: number; end: number }> | null;
+  preferredView(target: MetabrowserNavigationTarget | null | undefined): "source" | null;
+  refresh(root: ParentNode, loaded: { content_truncated?: boolean }): void;
+  spoken(state: MetabrowserSourceLineAnchorState): string;
 }>;
 
 type MetabrowserSourceAppendRuntime = Readonly<{
@@ -961,6 +1045,7 @@ type MetabrowserSdk = {
   langForPath(pathOrName: string, ext?: string): string;
   loadKpressAssets(manifest: KpressAssetManifest): Promise<void>;
   navigation: MetabrowserNavigationApi;
+  sourceKind(): "filesystem" | "git_revision";
   repository: MetabrowserRepositoryContext | null;
   perf: MetabrowserPerf;
   registerView(kind: string, view: string, spec: MetabrowserViewSpec): void;
@@ -973,6 +1058,7 @@ type MetabrowserSdk = {
   renderSourceView(
     container: HTMLElement,
     data: Record<string, unknown> & { content?: string; ext?: string },
+    options?: { parts?: ReadonlyArray<Readonly<{ text: string; language: string }>> },
   ): void;
   partialNoticeHtml(
     progress: { loaded: string; total: string },
@@ -988,6 +1074,10 @@ type MetabrowserSdk = {
   sizeClass(value: number): "" | "size-large";
   sizeHtml(value: number | null | undefined, extraClass?: string): string;
   wrapWithCopy(html: string): string;
+  /** ` data-mb-owner="…"`: the per-page mark the copy and Load more delegates require. */
+  delegateOwnerAttribute(): string;
+  /** Set that mark on a delegated control page code created; returns the element. */
+  ownDelegate<T extends Element>(element: T): T;
   viewState: Readonly<{
     isActive(container: HTMLElement): boolean;
     subscribeActive(container: HTMLElement, listener: (active: boolean) => void): () => void;
@@ -1548,6 +1638,10 @@ type MetabrowserPublicFileCatalogApi = Readonly<{
 
 type MetabrowserPluginHostRuntime = Readonly<{
   attachFileCatalog(catalog: MetabrowserKnownFileCatalogApi): () => void;
+  /** The shell names a partial-content notice's Load more action; see plugin-sdk.js. */
+  registerLoadMoreAction(name: string, action: () => unknown): void;
+  /** Whether page code marked this element as a delegated control; see plugin-sdk.js. */
+  isOwnedDelegate(element: Element | null | undefined): boolean;
   configureAssets(
     assetsByKind: Record<
       string,
@@ -2105,7 +2199,295 @@ declare global {
     readonly segmentCapacity: number;
   }>;
 
+  /** One answer of `GET /api/source/status`. */
+  type MetabrowserSourceStatus = {
+    subject: string;
+    generation: number;
+    pin: string | null;
+    ref: string | null;
+    ref_name: string | null;
+    name: string | null;
+    origin: string | null;
+    location: string | null;
+    refreshable: boolean;
+    latest: string | null;
+    ref_on_origin: boolean | null;
+    last_fetch_at: string | null;
+    last_outcome: { operation: string; outcome: string; at: string } | null;
+    refreshing: boolean;
+    stale: boolean;
+    pull_request: number | null;
+    selection_state: "pending" | "found" | "not_found" | "fetch_failed" | "superseded" | null;
+    selection_href: string | null;
+  };
+
+  /** The pin and ref a page was rendered for. */
+  type MetabrowserSourcePage = { pin: string; ref: string | null };
+
+  type MetabrowserSourceOffer =
+    | { kind: "switch"; ref: string; latest: string; text: string; button: string }
+    | { kind: "reload"; text: string; button: string }
+    | { kind: "retry"; text: string; button: string };
+
+  /** What the freshness label says and offers; see static/source-freshness.js. */
+  /** static/inert-html.js: untrusted Markdown reduced to an allowlist. */
+  type MetabrowserInertHtmlRuntime = Readonly<{
+    ALLOWED_ATTRIBUTES: Readonly<Record<string, readonly string[]>>;
+    ALLOWED_TAGS: readonly string[];
+    ANCHOR_PREFIX: string;
+    DROPPED_WITH_CONTENT: readonly string[];
+    fragmentLink(href: string): string;
+    headingSlug(text: string): string;
+    allowedAttributes(
+      tag: string,
+      read: (name: string) => string | null,
+      base: string | null,
+    ): Array<[string, string]>;
+    imageLink(
+      src: string | null,
+      alt: string | null,
+      base: string | null,
+    ): { href: string | null; text: string };
+    isInside(href: string | null): boolean;
+    keepsImage(src: string | null, base: string | null): boolean;
+    linkHref(href: string | null, base: string | null): { href: string; leaves: boolean } | null;
+    outsideLink(href: string | null, base: string | null): string | null;
+    sanitizeHtml(html: string, base: string | null): Node[];
+    sanitizeNodes(
+      nodes: ArrayLike<Node>,
+      doc: Pick<Document, "createElement" | "createTextNode">,
+      base: string | null,
+    ): Node[];
+  }>;
+
+  type MetabrowserSourceFreshnessModel = {
+    visible: boolean;
+    tone: "quiet" | "stale" | "refreshing" | "warning";
+    label: string;
+    detail: string;
+    offer: MetabrowserSourceOffer | null;
+    error: string | null;
+    /** The served pull request's page, when the served URL named one. */
+    pull: { href: string; text: string } | null;
+  };
+
+  /**
+   * What the commit view says about a commit the mirror lacks: being fetched, not
+   * found, or not fetched because the fetch did not run; `retry` offers the fetch
+   * again. `failed` is a commit route that failed, which says nothing about the commit.
+   */
+  type MetabrowserMissingCommitModel = {
+    state: "pending" | "not_found" | "fetch_failed" | "failed";
+    title: string;
+    detail: string;
+    retry: boolean;
+  };
+
+  /**
+   * How asking for a missing commit's fetch ended: the status then, why it could not be
+   * asked for or followed, whether a fetch of the mirror's branches and tags ran, and
+   * whether anything ran that could have brought the commit.
+   */
+  type MetabrowserSourceFetchEnd = {
+    status: MetabrowserSourceStatus | null;
+    error: string | null;
+    fetched: boolean;
+    waited: boolean;
+  };
+
+  /** The commit view's side of opening a commit the mirror lacks. */
+  type MetabrowserMissingCommitView = {
+    /**
+     * Ask the server for the commit again: `found` once it is painted, `missing` when
+     * the server still does not have it, `failed` when the request itself failed.
+     */
+    load(): Promise<"found" | "missing" | "failed">;
+    paint(model: MetabrowserMissingCommitModel): void;
+    isCurrent(): boolean;
+    now(): number;
+  };
+
+  type MetabrowserSourceResponse = { status: number; etag: string | null; body: unknown };
+
+  type MetabrowserSourceFreshnessDependencies = {
+    request(
+      method: "GET" | "POST",
+      route: string,
+      options: { etag?: string | null; body?: unknown },
+    ): Promise<MetabrowserSourceResponse>;
+    schedule(callback: () => void, delayMs: number): unknown;
+    cancel(handle: unknown): void;
+    now(): number;
+    isVisible(): boolean;
+    render(model: MetabrowserSourceFreshnessModel): void;
+    reload(): void;
+    navigate(href: string): void;
+  };
+
+  type MetabrowserSourceFreshnessController = Readonly<{
+    start(): Promise<void>;
+    poll(): Promise<void>;
+    requestRefresh(body?: Record<string, unknown>): Promise<string | null>;
+    fetchMissing(options?: {
+      retry?: boolean;
+      waiting?: () => void;
+    }): Promise<MetabrowserSourceFetchEnd>;
+    acceptOffer(): Promise<void>;
+    onVisibilityChange(): void;
+    dispose(): void;
+    snapshot(): {
+      status: MetabrowserSourceStatus | null;
+      etag: string | null;
+      shown: MetabrowserSourcePage | null;
+      timerPending: boolean;
+      refreshAskedWhileVisible: boolean;
+      error: string | null;
+    };
+  }>;
+
+  type MetabrowserSourceFreshnessRuntime = Readonly<{
+    FAST_POLL_MS: number;
+    SLOW_POLL_MS: number;
+    createController(
+      deps: MetabrowserSourceFreshnessDependencies,
+      options?: { shown?: MetabrowserSourcePage | null },
+    ): MetabrowserSourceFreshnessController;
+    describe(
+      status: MetabrowserSourceStatus | null,
+      page: { shown: MetabrowserSourcePage | null; nowMs: number; error?: string | null },
+    ): MetabrowserSourceFreshnessModel;
+    describeMissingCommit(
+      status: MetabrowserSourceStatus | null,
+      page: {
+        phase: "fetching" | "ended";
+        nowMs: number;
+        error?: string | null;
+        fetched?: boolean;
+      },
+    ): MetabrowserMissingCommitModel;
+    mount(element: HTMLElement): MetabrowserSourceFreshnessController;
+    openMissingCommit(
+      controller: Pick<MetabrowserSourceFreshnessController, "fetchMissing">,
+      view: MetabrowserMissingCommitView,
+      options?: { retry?: boolean },
+    ): Promise<"found" | "not_found" | "fetch_failed" | "failed" | "superseded">;
+    relativeAge(iso: string | null, nowMs: number): string;
+    selectionToOpen(
+      status: MetabrowserSourceStatus | null,
+      shown: MetabrowserSourcePage | null,
+    ): string | null;
+  }>;
+
+  type MetabrowserSourceRefKind = "branch" | "tag";
+
+  /** One row of `GET /api/source/refs`. */
+  type MetabrowserSourceRef = {
+    name: string;
+    ref: string;
+    commit: string;
+    default: boolean;
+    current: boolean;
+  };
+
+  /** One answer of `GET /api/source/refs`. */
+  type MetabrowserSourceRefListing = {
+    kind: MetabrowserSourceRefKind;
+    query: string;
+    limit: number;
+    pin: string;
+    ref: string | null;
+    total: number;
+    truncated: boolean;
+    refs: MetabrowserSourceRef[];
+  };
+
+  /** What the ref selector holds; see static/source-ref-selector.js. */
+  type MetabrowserSourceRefSelectorState = {
+    shown: MetabrowserSourcePage | null;
+    open: boolean;
+    kind: MetabrowserSourceRefKind;
+    query: string;
+    listing: MetabrowserSourceRefListing | null;
+    loading: boolean;
+    switching: boolean;
+    error: string | null;
+  };
+
+  /** What the ref selector shows for one state. */
+  type MetabrowserSourceRefSelectorModel = {
+    button: string;
+    open: boolean;
+    kind: MetabrowserSourceRefKind;
+    query: string;
+    loading: boolean;
+    switching: boolean;
+    rows: Array<{
+      name: string;
+      ref: string;
+      commit: string;
+      default: boolean;
+      current: boolean;
+    }>;
+    note: string;
+    error: string | null;
+  };
+
+  type MetabrowserSourceRefSelectorDependencies = {
+    request(
+      method: "GET" | "POST",
+      route: string,
+      body?: Record<string, string>,
+      signal?: AbortSignal,
+    ): Promise<MetabrowserSourceResponse>;
+    schedule(callback: () => void, delayMs: number): unknown;
+    cancel(handle: unknown): void;
+    render(model: MetabrowserSourceRefSelectorModel): void;
+    navigate(href: string): void;
+    /** The page's own pathname, sent so a switch can keep it. */
+    currentView(): string | null;
+  };
+
+  /** The elements the ref selector paints into. */
+  type MetabrowserSourceRefSelectorParts = {
+    root: HTMLElement;
+    toggle: HTMLButtonElement;
+    panel: HTMLElement;
+    tabs: Record<MetabrowserSourceRefKind, HTMLButtonElement>;
+    filter: HTMLInputElement;
+    list: HTMLElement;
+    note: HTMLElement;
+    error: HTMLElement;
+  };
+
+  type MetabrowserSourceRefSelector = Readonly<{
+    open(): Promise<void>;
+    close(): void;
+    toggle(): Promise<void>;
+    setKind(kind: MetabrowserSourceRefKind): Promise<void>;
+    setQuery(query: string): void;
+    choose(ref: string): Promise<void>;
+    dispose(): void;
+    snapshot(): MetabrowserSourceRefSelectorState & { filterPending: boolean };
+  }>;
+
+  type MetabrowserSourceRefSelectorRuntime = Readonly<{
+    FILTER_DELAY_MS: number;
+    createSelector(
+      deps: MetabrowserSourceRefSelectorDependencies,
+      options?: { shown?: MetabrowserSourcePage | null },
+    ): MetabrowserSourceRefSelector;
+    describe(state: MetabrowserSourceRefSelectorState): MetabrowserSourceRefSelectorModel;
+    mount(element: HTMLElement): MetabrowserSourceRefSelector;
+    moveRow(key: string, index: number, count: number): number | null;
+    shownLabel(shown: MetabrowserSourcePage | null): { kind: string; name: string };
+  }>;
+
   type MetabrowserGitHistoryWindowRuntime = {
+    classifyPageFailure(failure: {
+      status: number;
+      code: string | null;
+      initial: boolean;
+    }): "stale" | "recover" | "failed";
     createPageCache(options: {
       maxPages: number;
       onEvict?: (page: MetabrowserGitHistoryPage) => void;
@@ -2233,6 +2615,8 @@ declare global {
     removeNavPanel(panelId: string): void;
     renderPreviewHtml(html: string, claim: MetabrowserPreviewClaim): HTMLElement | null;
     renderPreviewNode(node: HTMLElement, claim: MetabrowserPreviewClaim): HTMLElement | null;
+    /** The page's freshness controller once it is mounted; null when a folder is served. */
+    sourceFreshness(): Promise<MetabrowserSourceFreshnessController | null>;
   };
   type MetabrowserPublicFileTypeTaxonomyRuntime = MetabrowserFileTypeTaxonomyRuntime;
   type MetabrowserPublicPreparedViewComposition = MetabrowserPreparedViewComposition;
@@ -2262,6 +2646,8 @@ declare global {
   interface Window {
     __structuredPreview?: StructuredPreviewGlobal;
     __structuredTree?: StructuredTreeGlobal;
+    /** Set by the shell's prefetch chain once every optional asset has settled. */
+    METABROWSER_OPTIONAL_ASSETS_SETTLED?: boolean;
     METABROWSER_ASSET_BUNDLES?: Record<
       string,
       Array<{ src: string; requires?: string; provides?: string }>
@@ -2315,6 +2701,49 @@ declare global {
     MetabrowserTreeFilterModel: MetabrowserTreeFilterModel;
     MetabrowserTreeKeyboardNavigation: MetabrowserTreeKeyboardRuntime;
     MetabrowserSourceAppend: MetabrowserSourceAppendRuntime;
+    MetabrowserSourceLineAnchors?: MetabrowserSourceLineAnchorsRuntime;
+    /** static/git-path.js, which only a pinned revision's shell loads. */
+    MetabrowserGitPath?: Readonly<{
+      display(path: string): string | null;
+      wire(path: string | Uint8Array): string | null;
+    }>;
+    /** static/pull-route.js, the `pull-route` on-demand bundle. */
+    MetabrowserPullRoute?: MetabrowserPullRouteRuntime;
+    MetabrowserSourceFreshness?: MetabrowserSourceFreshnessRuntime;
+    MetabrowserSourceRefSelector?: MetabrowserSourceRefSelectorRuntime;
+    MetabrowserInertHtml?: MetabrowserInertHtmlRuntime;
+    MetabrowserSourcePinGuard?: Readonly<{
+      PIN_CHANGED_HEADER: string;
+      PIN_HEADER: string;
+      createHistoryGuard(
+        deps: {
+          status(): Promise<{ pin?: unknown } | null>;
+          reload(): void;
+        },
+        pin: string,
+      ): Readonly<{
+        loaded(navigationType: string): Promise<void>;
+        shown(persisted: boolean): Promise<void>;
+        refused(): void;
+        snapshot(): { asking: boolean; reloaded: boolean };
+      }>;
+      servesAnother(pin: string, served: { pin?: unknown } | null): boolean;
+      guardFetch(
+        fetchImpl: typeof fetch,
+        pin: string,
+        base: () => string,
+        onPinChanged: (served: string) => void,
+      ): typeof fetch;
+      guardedRequest(url: string, base: string): boolean;
+    }>;
+    /** The pin and ref a pin's page was rendered for; absent on a folder. */
+    METABROWSER_SOURCE_PIN?: MetabrowserSourcePage;
+    /** static/mirror-heading.js, which only a served mirror's page carries. */
+    MetabrowserMirrorHeading?: Readonly<{
+      mountCommitCopy(): void;
+      note(): string;
+      tip(detail?: string): string;
+    }>;
     MetabrowserViewState: MetabrowserViewStateRuntime;
     MetabrowserViewComposition: MetabrowserViewCompositionRuntime;
     MetabrowserTreemapLayout: MetabrowserTreemapLayoutApi;
@@ -2323,6 +2752,7 @@ declare global {
       show(html: string, anchor: Element | null): void;
     };
     METABROWSER_REPOSITORY_CONTEXT?: MetabrowserRepositoryContext | null;
+    METABROWSER_SOURCE_KIND?: "filesystem" | "git_revision";
     /** Container kinds by extension; see arch-nav-containers.md. */
     METABROWSER_CONTAINER_EXTS?: Record<string, { kind: string; plugin: string; children: string }>;
     METABROWSER_SETTINGS?: {

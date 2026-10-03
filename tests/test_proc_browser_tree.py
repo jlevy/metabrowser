@@ -23,6 +23,7 @@ from metabrowser.server import (
     _tree_depth_from_query,
     build_gitignore_check,
 )
+from tests.required_tools import require_git
 
 
 def _init_git(root: Path, *, gitignore: str = "") -> None:
@@ -151,11 +152,8 @@ def test_dir_tree_sets_gitignored_and_inherits_down(tmp_path: Path) -> None:
     _touch(repo / "kept" / "file.txt")
     _set_root_dir(repo)
 
-    try:
-        check, _ = build_gitignore_check(repo)
-        tree = _dir_tree(repo, ignore_check=check)
-    finally:
-        _set_root_dir(Path())
+    check, _ = build_gitignore_check(repo)
+    tree = _dir_tree(repo, ignore_check=check)
 
     by_name = {e["name"]: e for e in tree}
     assert by_name["ignored"].get("gitignored") is True
@@ -175,11 +173,8 @@ def test_dir_tree_flags_empty_and_non_empty_dirs(tmp_path: Path) -> None:
     _touch(repo / "populated" / "a.txt")
     _set_root_dir(repo)
 
-    try:
-        check, _ = build_gitignore_check(repo)
-        tree = _dir_tree(repo, ignore_check=check)
-    finally:
-        _set_root_dir(Path())
+    check, _ = build_gitignore_check(repo)
+    tree = _dir_tree(repo, ignore_check=check)
 
     by_name = {e["name"]: e for e in tree}
     assert by_name["empty"].get("empty") is True
@@ -198,11 +193,8 @@ def test_dir_tree_lazy_sentinel_is_not_wrongly_empty(tmp_path: Path) -> None:
     _touch(repo / "has_content" / "sub" / "deep.txt")
     _set_root_dir(repo)
 
-    try:
-        check, _ = build_gitignore_check(repo)
-        tree = _dir_tree(repo, remaining_depth=1, ignore_check=check)
-    finally:
-        _set_root_dir(Path())
+    check, _ = build_gitignore_check(repo)
+    tree = _dir_tree(repo, remaining_depth=1, ignore_check=check)
 
     top = next(e for e in tree if e["name"] == "has_content")
     assert "empty" not in top
@@ -222,11 +214,8 @@ def test_dir_tree_propagates_gitignored_up_when_all_children_match(tmp_path: Pat
     _touch(repo / "mixed" / "real.py")
     _set_root_dir(repo)
 
-    try:
-        check, _ = build_gitignore_check(repo)
-        tree = _dir_tree(repo, ignore_check=check)
-    finally:
-        _set_root_dir(Path())
+    check, _ = build_gitignore_check(repo)
+    tree = _dir_tree(repo, ignore_check=check)
 
     by_name = {e["name"]: e for e in tree}
     # Only gitignored content → propagate up.
@@ -244,11 +233,8 @@ def test_dir_tree_propagates_gitignored_up_recursively(tmp_path: Path) -> None:
     _touch(repo / "wrap" / "inner" / "__pycache__" / "y.pyc")
     _set_root_dir(repo)
 
-    try:
-        check, _ = build_gitignore_check(repo)
-        tree = _dir_tree(repo, ignore_check=check)
-    finally:
-        _set_root_dir(Path())
+    check, _ = build_gitignore_check(repo)
+    tree = _dir_tree(repo, ignore_check=check)
 
     wrap = next(e for e in tree if e["name"] == "wrap")
     inner = wrap["children"][0]
@@ -267,11 +253,8 @@ def test_dir_tree_lazy_sentinel_flags_gitignored_subtree(tmp_path: Path) -> None
     _touch(repo / "real" / "a" / "b" / "kept.py")
     _set_root_dir(repo)
 
-    try:
-        check, _ = build_gitignore_check(repo)
-        tree = _dir_tree(repo, remaining_depth=2, ignore_check=check)
-    finally:
-        _set_root_dir(Path())
+    check, _ = build_gitignore_check(repo)
+    tree = _dir_tree(repo, remaining_depth=2, ignore_check=check)
 
     wrap = next(e for e in tree if e["name"] == "wrap")
     wrap_a = wrap["children"][0]
@@ -298,11 +281,8 @@ def test_dir_tree_lazy_sentinel_flags_dir_of_only_empty_dirs(tmp_path: Path) -> 
     (repo / "outer" / "mid" / "inner" / "deep").mkdir(parents=True)
     _set_root_dir(repo)
 
-    try:
-        check, _ = build_gitignore_check(repo)
-        tree = _dir_tree(repo, remaining_depth=2, ignore_check=check)
-    finally:
-        _set_root_dir(Path())
+    check, _ = build_gitignore_check(repo)
+    tree = _dir_tree(repo, remaining_depth=2, ignore_check=check)
 
     outer = next(e for e in tree if e["name"] == "outer")
     mid = outer["children"][0]
@@ -315,15 +295,14 @@ def test_dir_tree_lazy_sentinel_flags_dir_of_only_empty_dirs(tmp_path: Path) -> 
 
 def test_matches_git_check_ignore_behavior(tmp_path: Path) -> None:
     # Cross-validate that our checker agrees with ``git check-ignore`` itself
-    # on a concrete case. Skip gracefully if git isn't available.
+    # on a concrete case.
     #
     # The repo-pinning variables must be scrubbed: under the pre-push gate
     # this suite runs inside a githook, where git has exported GIT_DIR
     # pointing at the real repository — and GIT_DIR outranks cwd, so the
     # bare `git init` below would re-initialize the served repository as
     # bare instead of creating the fixture repo.
-    if subprocess.run(["git", "--version"], capture_output=True).returncode != 0:
-        return
+    require_git()
     git_env = _isolated_git_env()
     repo = tmp_path / "repo"
     repo.mkdir()

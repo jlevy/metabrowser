@@ -1,0 +1,52 @@
+$defs:
+  CanonicalTimestamp:
+    pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{3})?Z$
+    type: string
+  ConfigUpgrade:
+    additionalProperties: true
+    description: One Metabrowser release that migrated the application home.
+    properties:
+      at:
+        $ref: '#/$defs/CanonicalTimestamp'
+      version:
+        $ref: '#/$defs/MetabrowserVersion'
+    required:
+    - at
+    - version
+    title: ConfigUpgrade
+    type: object
+  LayoutFormat:
+    pattern: ^f[0-9]{2,}$
+    type: string
+  MetabrowserVersion:
+    maxLength: 128
+    minLength: 1
+    pattern: ^[0-9A-Za-z.+!_-]+$
+    type: string
+$schema: https://json-schema.org/draft/2020-12/schema
+additionalProperties: true
+description: |-
+  ``config.yml``: the user-owned application configuration.
+
+  ``format`` names the home format this configuration was last published for.
+  Migration publishes it last, so a layout ahead of its config marks an interrupted
+  migration rather than a user edit.
+properties:
+  format:
+    $ref: '#/$defs/LayoutFormat'
+  upgrades:
+    items:
+      $ref: '#/$defs/ConfigUpgrade'
+    title: Upgrades
+    type: array
+  written_by:
+    $ref: '#/$defs/MetabrowserVersion'
+required:
+- format
+- upgrades
+- written_by
+title: ApplicationConfig
+type: object
+x-softschema:
+  contract: com.github.jlevy.metabrowser.config:ApplicationConfig/v1
+  schema_sha256: 5dc24b5d072d4e5360c492e7640948804f7f59c0b903f760694ffc1f39e41757

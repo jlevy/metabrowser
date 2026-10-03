@@ -43,13 +43,15 @@ import datetime as _dt
 import json as _json
 import logging
 import os
+import re
+import secrets
 import sys
 import time
 from collections.abc import AsyncIterator, Mapping, MutableMapping
 from contextlib import asynccontextmanager
 from html import escape as html_escape
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, TextIO, cast
+from typing import TYPE_CHECKING, Any, Final, TextIO, cast
 from urllib.parse import quote
 
 from starlette.applications import Starlette
@@ -76,7 +78,8 @@ from metabrowser.active_tracker import activity_snapshot
 from metabrowser.activity import ACTIVITY_POLL_INTERVAL_MS
 from metabrowser.build_version import display_version_line
 from metabrowser.builtin_plugins.html.detect import sniff_full_page_html
-from metabrowser.capabilities import get_capabilities, raw_sandbox_csp
+from metabrowser.cache.routes import CACHE_ROUTES
+from metabrowser.capabilities import get_capabilities, raw_sandbox_csp, untrusted_shell_csp
 
 # Cache invalidator: clear_charts_cache is invoked by the root-change
 # handler so chart memos don't stick across served-root swaps.
@@ -145,8 +148,9 @@ from metabrowser.inventory_engine.tree_page_assembly import (
     TreePageQuery,
     assemble_tree_pages,
 )
-from metabrowser.inventory_rollup import RollupRank
+from metabrowser.inventory_rollup import RollupOptions, RollupRank
 from metabrowser.jsonl_view import _parse_jsonl_file
+from metabrowser.mirror_refresh import lifespan_refresh, mirror_session
 
 # Document rendering is delegated through the KPress adapter and built-in plugin route.
 # KPress is the sole Markdown-to-HTML renderer; raw source remains a separate view.
@@ -156,7 +160,6 @@ from metabrowser.paths_safe import (
     _relativize,
     _resolved_root_dir,
     _safe_path,
-    _safe_path_from_identity,
     _safe_subdir,
     _set_root_dir,
 )
@@ -192,6 +195,24 @@ from metabrowser.settings import (
     VALID_LOG_LEVELS,
     client_settings_dict,
 )
+from metabrowser.source import (
+    UnsupportedSourceCapabilityError,
+    as_git_revision_subject,
+    get_source_session,
+    lifespan_subject,
+    require_filesystem_hooks,
+    require_filter_capabilities,
+    require_source_capability,
+    resolve_session_identity,
+    session_filesystem_root,
+    unsupported_source_payload,
+)
+from metabrowser.source_routes import (
+    SOURCE_ROUTES,
+    SourcePinGuard,
+    SourceStatus,
+    source_status,
+)
 from metabrowser.sse import api_stream
 from metabrowser.tree import (
     _IGNORE_CACHE,
@@ -219,6 +240,7 @@ from metabrowser.tree_filter import (
 from metabrowser.view_routes import (
     VIEW_ROUTE_PREFIX,
     decode_safe_commit_route,
+    decode_safe_pull_route,
     decode_safe_view_path,
 )
 
@@ -520,6 +542,11 @@ STATIC_DIR: Path = Path(__file__).parent / "static"
 _DOCUMENT_WIDTH_SCRIPT = STATIC_DIR.joinpath("document-width.js").read_text(encoding="utf-8")
 if "</script" in _DOCUMENT_WIDTH_SCRIPT.lower():
     raise RuntimeError("document-width.js cannot be safely embedded in the index shell")
+# A pin's page names its commit on every data request, and must before any script
+# fetches, so the wrapper is inline on a pin and absent from a folder's page.
+_SOURCE_PIN_GUARD_SCRIPT = STATIC_DIR.joinpath("source-pin-guard.js").read_text(encoding="utf-8")
+if "</script" in _SOURCE_PIN_GUARD_SCRIPT.lower():
+    raise RuntimeError("source-pin-guard.js cannot be safely embedded in the index shell")
 
 _SLOW_SERVER_REQUEST_MS = int(
     os.environ.get(
@@ -868,6 +895,37 @@ class _HostValidationMiddleware:
         await self.app(scope, receive, send)
 
 
+# Fetch destinations that run or apply what they load. Under the untrusted profile /raw
+# refuses them, so no page -- the application's included -- takes a browsed file as code.
+_CODE_DESTINATIONS: Final = frozenset(
+    {
+        b"script",
+        b"style",
+        b"worker",
+        b"sharedworker",
+        b"serviceworker",
+        b"audioworklet",
+        b"paintworklet",
+    }
+)
+# Media types a browser runs or applies as code. Under the untrusted profile /raw sends
+# them as text/plain, which with nosniff no browser takes as a script or stylesheet, for a
+# browser that does not send Sec-Fetch-Dest.
+_SCRIPT_CAPABLE: Final = re.compile(
+    r"^\s*(?:text|application)/(?:x-)?(?:javascript|ecmascript|jscript|livescript|css)\b",
+    re.IGNORECASE,
+)
+
+
+def _request_header(scope: Mapping[str, Any], name: bytes) -> bytes:
+    """One request header's value, lowercased, or empty."""
+
+    for key, value in scope.get("headers") or ():
+        if key.lower() == name:
+            return bytes(value).strip().lower()
+    return b""
+
+
 class _RawTrustHeaderMiddleware:
     """Sandbox every ``/raw`` response, whichever layer produced it.
 
@@ -909,6 +967,7 @@ class _RawTrustHeaderMiddleware:
             return
 
         started = False
+        active_content = get_capabilities().active_content
 
         # ``MutableMapping``, not ``dict``: this wrapper is handed to
         # ``Response.__call__`` below, whose ``Send`` alias is written
@@ -918,11 +977,21 @@ class _RawTrustHeaderMiddleware:
             if message.get("type") == "http.response.start":
                 started = True
                 headers = MutableHeaders(scope=message)
-                headers["Content-Security-Policy"] = raw_sandbox_csp(
-                    active_content=get_capabilities().active_content
-                )
+                headers["Content-Security-Policy"] = raw_sandbox_csp(active_content=active_content)
                 headers["X-Content-Type-Options"] = "nosniff"
+                if not active_content and _SCRIPT_CAPABLE.match(headers.get("content-type", "")):
+                    # A browsed script or stylesheet is text to a reader, never code.
+                    headers["Content-Type"] = "text/plain; charset=utf-8"
             await send(message)
+
+        if not active_content and _request_header(scope, b"sec-fetch-dest") in _CODE_DESTINATIONS:
+            # Under the untrusted profile a browsed file is never a script, stylesheet,
+            # or worker of any page, the application's included: its own static paths
+            # are the only code it runs (capabilities.untrusted_shell_csp).
+            await PlainTextResponse("A browsed file is not loaded as code here.", status_code=403)(
+                scope, receive, send_sandboxed
+            )
+            return
 
         try:
             await self.app(scope, receive, send_sandboxed)
@@ -1065,6 +1134,86 @@ def _initial_path_html() -> str:
     return f'<span class="path"><span class="path-base">{html_escape(label)}</span></span>'
 
 
+def _pin_label_html(status: SourceStatus) -> str:
+    """The navigation heading for a pinned revision.
+
+    A served mirror's is the repository's name, where a folder's name stands and with
+    the same `.path-base` emphasis, then the ref and the short commit, muted: the page
+    is called what a checkout of the repository would be, and the commit it is pinned
+    to stays in sight beside it. The full commit is in the heading's tooltip.
+
+    A pin with no mirror has no origin to take a name from. Its ref stands as the name
+    with the short commit after it, or the short commit alone when no ref is known,
+    and the full commit is its served root.
+    """
+
+    short = html_escape((status["pin"] or "")[:12])
+    name = status["name"]
+    ref_name = status["ref_name"]
+
+    def base(text: str) -> str:
+        return f'<span class="path"><span class="path-base">{text}</span></span>'
+
+    commit = f'<span class="header-revision">{short}</span>'
+    if name is None:
+        return base(short) if ref_name is None else base(html_escape(ref_name)) + commit
+    ref = (
+        ""
+        if ref_name is None
+        else f'<span class="header-revision header-ref">{html_escape(ref_name)}</span>'
+    )
+    return base(html_escape(name)) + ref + commit
+
+
+def _mirror_tip(status: SourceStatus) -> str | None:
+    """What a served mirror's heading says of itself on hover, or ``None`` for any other subject.
+
+    A page of a mirror looks like a page of a folder, and is not one: nothing is
+    checked out, and each file is read from a Git object at the pinned commit. So the
+    sentence says what the directory it names is, and does not leave the path to be
+    read as a folder of these files.
+    """
+
+    if status["location"] is None:
+        return None
+    return (
+        f"Mirror of {status['origin']} at {status['pin']}, stored in {status['location']}: "
+        "a bare Git repository, with no checked-out files."
+    )
+
+
+def _mirror_heading_attrs(status: SourceStatus) -> str:
+    """The navigation heading's attributes that say where a served mirror is kept.
+
+    `data-mirror-location` is the status's `location` and `data-mirror-tip` the sentence
+    around it. `static/mirror-heading.js` reads both back, as the file header reads
+    `data-served-root`, which on a served mirror is the repository's name. These two
+    attributes of the page and the status envelope are the only places a response names
+    a path in the cache.
+    """
+
+    tip = _mirror_tip(status)
+    if tip is None:
+        return ""
+    location = html_escape(status["location"] or "", quote=True)
+    return f' data-mirror-location="{location}" data-mirror-tip="{html_escape(tip, quote=True)}"'
+
+
+@functools.cache
+def _mirror_heading_script() -> str:
+    """`static/mirror-heading.js`, as a served mirror's shell carries it inline.
+
+    Only a mirror's page has a note, a location, or a commit to copy, so the code for
+    them is written into that page and is no startup script of a folder's. Read where a
+    mirror is first served, so a folder's server never reads it.
+    """
+
+    script = STATIC_DIR.joinpath("mirror-heading.js").read_text(encoding="utf-8")
+    if "</script" in script.lower():
+        raise RuntimeError("mirror-heading.js cannot be safely embedded in the index shell")
+    return script
+
+
 def _served_root_str() -> str:
     """The served root, absolute. What the API reports and paths resolve against."""
     return str(_paths_safe.ROOT_DIR.resolve())
@@ -1088,15 +1237,7 @@ def _display_root_str() -> str:
         home = Path.home().resolve()
     except (OSError, RuntimeError):
         return str(resolved)
-    if resolved == home:
-        return "~"
-    try:
-        relative = resolved.relative_to(home)
-    except ValueError:
-        return str(resolved)
-    # Through Path rather than a slash join, so the separator is the
-    # platform's rather than this file's assumption about it.
-    return str(Path("~") / relative)
+    return _paths_safe.tilde_path(resolved, home)
 
 
 def _static_asset_url(rel_path: str) -> str:
@@ -1133,13 +1274,61 @@ PREFETCH_IDLE_TIMEOUT_MS = 2000
 PREFETCH_FALLBACK_DELAY_MS = 200
 
 
-async def index(request: Request) -> HTMLResponse:
-    """Serve the SPA page with linked assets and one pre-paint state machine."""
+# Startup scripts only some shells carry, by static file name. A pin's page needs the
+# GitPath wire codec before its first paint, and a page at a pull-request address needs
+# that page's routes before it can show anything; a folder's page at any other address
+# fetches neither. devtools/check_startup_scripts.py reports what each adds to the
+# startup-script budget, so they are named here once.
+PIN_STARTUP_SCRIPTS: tuple[str, ...] = ("git-path.js",)
+PULL_PAGE_STARTUP_SCRIPTS: tuple[str, ...] = ("pull-route.js",)
 
-    initial_path = _initial_path_html()
-    initial_root = html_escape(_display_root_str(), quote=True)
+
+def _startup_script_tags(names: tuple[str, ...]) -> str:
+    return "".join(f'\n  <script src="{_static_asset_url(name)}"></script>' for name in names)
+
+
+async def index(request: Request, *, pull_page: bool = False) -> HTMLResponse:
+    """Serve the SPA page with linked assets and one pre-paint state machine.
+
+    *pull_page* is set by the pull-request route: its shell carries that page's routes
+    as a startup script.
+    """
+
+    pin = as_git_revision_subject(get_source_session().subject)
+    git_pin = pin is not None
+    if pin is not None:
+        # Imported where a pin is served, like every other Git import below: the
+        # modules behind a pinned revision are start-up work a folder never uses.
+        from metabrowser.git.tree_source import ref_branch_name
+
+        pin_oid = pin.commit_oid
+        mirror = mirror_session(request.app)
+        status = source_status(mirror)
+        initial_path = _pin_label_html(status)
+        # A mirror's served root is the repository's name, as a folder's is its path:
+        # what the file header's prefix and this heading's tooltip call the root.
+        initial_root = html_escape(status["name"] or pin_oid, quote=True)
+        mirror_attrs = _mirror_heading_attrs(status)
+        # What styles a mirror's headings apart from a folder's: its root is a name,
+        # which is cut at its end, and its commit has a copy control beside it.
+        mirror_class = " mirror-source" if mirror_attrs else ""
+        # Core holds no provider URL grammar: the served mirror asks the installed
+        # providers, and only a hosted repository's has an answer (a GitHub mirror's
+        # comes from the GitHub plugin). A file:// mirror, or a pin with no mirror,
+        # has none.
+        repository_context = (
+            mirror.mirror.repository_context(revision=pin_oid, branch=ref_branch_name(pin.ref))
+            if mirror is not None
+            else None
+        )
+    else:
+        initial_path = _initial_path_html()
+        initial_root = html_escape(_display_root_str(), quote=True)
+        mirror_attrs = mirror_class = ""
+        repository_context = await asyncio.to_thread(
+            discover_repository_context, session_filesystem_root()
+        )
     version_line = html_escape(display_version_line("metab", __version__))
-    repository_context = await asyncio.to_thread(discover_repository_context, _resolved_root_dir())
     styles_url = _static_asset_url("styles.css")
     asset_loader_url = _static_asset_url("asset-loader.js")
     theme_state_url = _static_asset_url("theme-state.js")
@@ -1154,7 +1343,20 @@ async def index(request: Request) -> HTMLResponse:
     source_append_url = _static_asset_url("source-append.js")
     file_type_taxonomy_url = _static_asset_url("file-type-taxonomy.js")
     plugin_sdk_url = _static_asset_url("plugin-sdk.js")
+    plugin_sdk_views_url = _static_asset_url("plugin-sdk-views.js")
+    pull_route_url = _static_asset_url("pull-route.js")
+    # The GitPath wire codec, which only a pin's page uses and which it needs before
+    # its first paint: a startup script on a pin's shell and absent from a folder's,
+    # like the pin guard below. Measured 2026-10-01: 885 compressed bytes of
+    # navigation.js on every folder's page. See exp-037.
+    git_path_script = _startup_script_tags(PIN_STARTUP_SCRIPTS if git_pin else ())
+    # The pull-request page's routes and host, on the shell of a pull-request address
+    # only. The server knows the address when it renders, so the script is fetched
+    # with the rest of the shell and not one round trip after it. Any other page that
+    # lands on such an address, through history, takes it from the `pull-route` bundle.
+    pull_route_script = _startup_script_tags(PULL_PAGE_STARTUP_SCRIPTS if pull_page else ())
     view_composition_url = _static_asset_url("view-composition.js")
+    inert_html_url = _static_asset_url("inert-html.js")
     filter_state_url = _static_asset_url("filter-state.js")
     filter_controls_url = _static_asset_url("filter-controls.js")
     icons_url = _static_asset_url("icons.js")
@@ -1174,6 +1376,8 @@ async def index(request: Request) -> HTMLResponse:
     git_graph_url = _static_asset_url("git-graph.js")
     git_history_window_url = _static_asset_url("git-history-window.js")
     git_panel_url = _static_asset_url("git-panel.js")
+    source_freshness_url = _static_asset_url("source-freshness.js")
+    source_ref_selector_url = _static_asset_url("source-ref-selector.js")
     app_url = _static_asset_url("app.js")
     perf_url = _static_asset_url("perf.js")
     # Inject the client-visible settings dict before any app code
@@ -1185,6 +1389,20 @@ async def index(request: Request) -> HTMLResponse:
         f"<script>window.METABROWSER_CONTAINER_EXTS={_json.dumps(_container_exts())};</script>"
     )
     repository_context_json = _json.dumps(repository_context).replace("<", "\\u003c")
+    # A pin's freshness row, filled by static/source-freshness.js. A folder has none.
+    source_freshness_row = (
+        '\n      <div class="source-freshness" id="source-freshness" hidden></div>'
+        if git_pin
+        else ""
+    )
+    # A mirror's branch and tag selector, filled by static/source-ref-selector.js. Only a
+    # pin served from a mirror has other refs to switch to.
+    source_ref_selector_row = (
+        '\n      <div class="source-ref-selector" id="source-ref-selector" hidden></div>'
+        if git_pin and mirror_session(request.app) is not None
+        else ""
+    )
+    source_kind_json = _json.dumps("git_revision" if git_pin else "filesystem")
     # The tree's first rows, inlined. Without this the reader waits for a round
     # trip the server did not have to make them take: time to first row is
     # DOMContentLoaded plus the whole /api/tree request, and during a walk that
@@ -1198,7 +1416,7 @@ async def index(request: Request) -> HTMLResponse:
     # would risk painting rows the reader's filter excludes; the fetch that
     # follows owns every case but this one.
     initial_tree_block = ""
-    if _INLINE_INITIAL_TREE_ROWS:
+    if _INLINE_INITIAL_TREE_ROWS and not git_pin:
         try:
             runtime = _inventory_runtime_for(request)
             initial_read = await runtime.coordinator.read(
@@ -1231,8 +1449,20 @@ async def index(request: Request) -> HTMLResponse:
                 f"<script>window.METABROWSER_INITIAL_TREE={initial_tree_json};</script>"
             )
     repository_context_block = (
+        f"<script>window.METABROWSER_SOURCE_KIND={source_kind_json};</script>"
         f"<script>window.METABROWSER_REPOSITORY_CONTEXT={repository_context_json};</script>"
     )
+    if pin is not None:
+        # The commit and ref the page is rendered for: its data requests name the commit,
+        # and the freshness row compares both with what the server serves, so a switch
+        # or a restart onto another pin before its first poll still offers a reload.
+        page_pin = _json.dumps({"pin": pin.commit_oid, "ref": pin.ref}).replace("<", "\\u003c")
+        repository_context_block += (
+            f"<script>window.METABROWSER_SOURCE_PIN={page_pin};</script>"
+            f"<script>{_SOURCE_PIN_GUARD_SCRIPT}</script>"
+        )
+        if mirror_attrs:
+            repository_context_block += f"<script>{_mirror_heading_script()}</script>"
     # Read preferences from host-only cookies (not localStorage): cookies
     # ignore the port, so the choice is shared across every metabrowser instance
     # on this host (each folder server lands on its own port). Runs before the
@@ -1326,6 +1556,41 @@ async def index(request: Request) -> HTMLResponse:
         # first tree is usable. renderFile awaits this bundle and rechecks its
         # ownership claim before preparing or mounting a view.
         "view-composition": [{"src": view_composition_url}],
+        # What a view's renderer calls: the line-number gutter with its `#L` anchors,
+        # and the SDK helpers a renderer builds its markup with (the Source surface,
+        # the copy wrapper, the partial-content notice, the syntax service). Nothing
+        # runs either until a view renders. loadViewComposition fetches this beside
+        # the compositor and waits for both, and plugin-sdk.js fetches it before it
+        # evaluates a plugin where no compositor ran, so a renderer always finds all
+        # of it. One file, because nothing uses one half without the other and a
+        # bundle's scripts are fetched one after another.
+        # Measured 2026-09-30 and 2026-10-01 in Chrome 152: as startup scripts the
+        # gutter was 7,992 of 191,862 bytes transferred before DOMContentLoaded and
+        # one of 21 requests, on a folder shell that draws no gutter, and the helpers
+        # 5,632 of plugin-sdk.js's 22,308 compressed bytes. The gutter's compile and
+        # evaluate took 0.09 ms, so the cost is transfer, which is what
+        # `startup_script_transfer_kb` in performance-budgets.toml bounds. On an
+        # anchored deep link the Source view appeared with its gutter in every load,
+        # with no layout shift in the pane, in this tier as in the eager one. See
+        # explorations/performance-loop/experiments/exp-037.
+        "sdk-views": [{"src": plugin_sdk_views_url, "provides": "MetabrowserSourceLineAnchors"}],
+        # The pull-request page's routes and host, for a page that reaches a
+        # pull-request address without loading there. A page that loads at one has
+        # them as a startup script (PULL_PAGE_STARTUP_SCRIPTS). Measured 2026-10-01:
+        # 1,818 of navigation.js's 13,265 compressed bytes as a startup script on
+        # every folder's page. See exp-037.
+        "pull-route": [{"src": pull_route_url, "provides": "MetabrowserPullRoute"}],
+        # Only untrusted Markdown needs the allowlist: a pull-request comment, or a
+        # document under the untrusted profile, which the server marks inert.
+        "inert-html": [{"src": inert_html_url}],
+        # Only a served mirror has freshness to show, so a folder never fetches
+        # this; a pin starts it after the first tree request settles, and the
+        # label it paints is a quiet row the page does not wait for.
+        "source-freshness": [{"src": source_freshness_url}],
+        # Only a pin served from a mirror has the selector; it is fetched after the
+        # first tree request settles, like the freshness row, and no request is made
+        # for the refs until a reader opens it.
+        "source-ref-selector": [{"src": source_ref_selector_url}],
         "source-append": [{"src": source_append_url}],
         "chart": [
             {"src": _static_asset_url("vendor/chart.umd.min.js"), "provides": "Chart"},
@@ -1354,6 +1619,9 @@ async def index(request: Request) -> HTMLResponse:
     }}
     function loadNext(i) {{
       if (i >= assets.length) {{
+        // The event tells a listener that is already there. The flag tells one that
+        // arrives later, such as the syntax service, which loads with the first view.
+        window.METABROWSER_OPTIONAL_ASSETS_SETTLED = true;
         window.dispatchEvent(new Event("metabrowser:optional-assets-loaded"));
         return;
       }}
@@ -1440,7 +1708,7 @@ async def index(request: Request) -> HTMLResponse:
   <link rel="stylesheet" href="{styles_url}">
 </head>
 <body>
-  <main class="container">
+  <main class="container{mirror_class}">
     <div class="tree-pane" id="tree-pane">
       <header class="app-header">
         <!-- data-served-root is the one place the absolute root is written:
@@ -1455,7 +1723,7 @@ async def index(request: Request) -> HTMLResponse:
              to prevent. See "One Tooltip, and It Is Ours" in
              docs/design-system.md. -->
         <a href="{VIEW_ROUTE_PREFIX}" class="header-path"
-           data-served-root="{initial_root}">{initial_path}</a>
+           data-served-root="{initial_root}"{mirror_attrs}>{initial_path}</a>
         <!-- The Metabrowser menu. The gear names the product rather than
              standing as an unlabelled settings control: the wordmark that
              used to sit on its own line above the path is this menu's title,
@@ -1504,7 +1772,7 @@ async def index(request: Request) -> HTMLResponse:
             <div class="menu-version">{version_line}</div>
           </div>
         </div>
-      </header>
+      </header>{source_ref_selector_row}
       <div class="tab-bar nav-tab-bar" role="tablist">
         <button class="tab-btn active" type="button" role="tab" data-tab="files" aria-selected="true">Files</button>
       </div>
@@ -1528,16 +1796,20 @@ async def index(request: Request) -> HTMLResponse:
       <div class="index-progress" id="index-progress" role="status" aria-live="polite" hidden>
         <span class="index-progress-spinner" aria-hidden="true"></span>
         <span class="index-progress-text">Scanning…</span>
-      </div>
+      </div>{source_freshness_row}
     </div>
     <div class="resize-handle" id="tree-resize"></div>
     <!-- Every route that serves this shell selects something: /view/ names a
-         file or folder (the bare origin redirects to the served root), and
-         /commit/ names a revision. So the pane ships loading, never a prompt to
-         select a file. It is navigation.js's starting placeholder. -->
-    <div class="preview-pane" id="preview-pane" data-kpress-viewport tabindex="-1">
-      <div class="loading mb-delayed-loading"><div class="spinner"></div><span
-        class="sr-only">Loading preview…</span></div>
+         file or folder (the bare origin redirects to the served root),
+         /commit/ names a revision, and /pull/ the served pull request. So the
+         pane ships loading, never a prompt to select a file. It is
+         navigation.js's starting placeholder. The frame around it does not
+         scroll, so KPress's floating UI pins to it (see .preview-frame). -->
+    <div class="preview-frame kpress-frame">
+      <div class="preview-pane" id="preview-pane" data-kpress-viewport tabindex="-1">
+        <div class="loading mb-delayed-loading"><div class="spinner"></div><span
+          class="sr-only">Loading preview…</span></div>
+      </div>
     </div>
   </main>
   <!-- Core shell scripts are local and first-paint critical. Optional
@@ -1558,8 +1830,8 @@ async def index(request: Request) -> HTMLResponse:
   <script src="{directory_totals_store_url}"></script>
   <script src="{contribution_registry_url}"></script>
   <script src="{resource_context_url}"></script>
-  <script src="{view_state_url}"></script>
-  <script src="{navigation_url}"></script>
+  <script src="{view_state_url}"></script>{git_path_script}
+  <script src="{navigation_url}"></script>{pull_route_script}
   <script src="{file_type_taxonomy_url}"></script>
   <script src="{plugin_sdk_url}"></script>
   <script src="{perf_url}"></script>
@@ -1574,14 +1846,35 @@ async def index(request: Request) -> HTMLResponse:
   {optional_assets_block}
 </body>
 </html>"""
-    return HTMLResponse(html)
+    if get_capabilities().active_content:
+        return HTMLResponse(html)
+    # An untrusted source: the page runs only what this server wrote. Every inline script
+    # of the shell carries this response's nonce (capabilities.untrusted_shell_csp).
+    nonce = secrets.token_urlsafe(18)
+    html = html.replace("<script>", f'<script nonce="{nonce}">')
+    origin = f"{request.url.scheme}://{request.url.netloc}"
+    return HTMLResponse(
+        html,
+        headers={
+            "Content-Security-Policy": untrusted_shell_csp(nonce, origin),
+            "X-Frame-Options": "DENY",
+        },
+    )
 
 
 async def view_shell(request: Request) -> Response:
     """Serve the SPA shell only for one safely encoded canonical view path."""
 
     raw_path = request.scope.get("raw_path")
-    if not isinstance(raw_path, bytes) or decode_safe_view_path(raw_path) is None:
+    if not isinstance(raw_path, bytes):
+        return PlainTextResponse("Invalid view path.", status_code=400)
+    if as_git_revision_subject(get_source_session().subject) is not None:
+        from metabrowser.git.content_routes import decode_git_view_path
+
+        decoded = decode_git_view_path(raw_path)
+    else:
+        decoded = decode_safe_view_path(raw_path)
+    if decoded is None:
         return PlainTextResponse("Invalid view path.", status_code=400)
     return await index(request)
 
@@ -1598,6 +1891,20 @@ async def commit_shell(request: Request) -> Response:
     if not isinstance(raw_path, bytes) or decode_safe_commit_route(raw_path) is None:
         return PlainTextResponse("Invalid commit route.", status_code=400)
     return await index(request)
+
+
+async def pull_shell(request: Request) -> Response:
+    """Serve the SPA shell for ``/pull/<n>[/files]``, the served pull request's page.
+
+    A pull request is its own address space, like a commit: the page is not a path in
+    the served tree. The view that renders it is the one a plugin registers for the
+    `pull-request` kind; the pull route says whether this server serves that number.
+    """
+
+    raw_path = request.scope.get("raw_path")
+    if not isinstance(raw_path, bytes) or decode_safe_pull_route(raw_path) is None:
+        return PlainTextResponse("Invalid pull-request route.", status_code=400)
+    return await index(request, pull_page=True)
 
 
 async def root_redirect(_request: Request) -> Response:
@@ -1771,7 +2078,7 @@ async def _read_tree_from_provider(
             filtered_projection = projection
         tree_entries = projection.entries
 
-    root_dir = _resolved_root_dir()
+    root_dir = session_filesystem_root()
     tree = (
         build_inventory_tree_from_entries(
             entries=tree_entries,
@@ -1825,15 +2132,28 @@ async def _read_tree_from_provider(
 
 
 @log_async_calls()
-async def api_tree(request: Request) -> JSONResponse:
+async def api_tree(request: Request) -> Response:
     requested = request.query_params.get("path", "")
     depth_str = request.query_params.get("depth", "")
-    subpath = parse_inventory_path(requested)
-    if subpath is None or _safe_path_from_identity(subpath) is None:
-        return JSONResponse({"error": "Not found"}, status_code=404)
-
-    remaining_depth = _tree_depth_from_query(depth_str)
     tree_filter = tree_filter_from_request(request)
+    require_source_capability("navigation")
+    require_source_capability("index")
+    pin = as_git_revision_subject(get_source_session().subject)
+    git_pin = pin is not None
+    require_filter_capabilities(
+        recency=bool(tree_filter.recency_seconds),
+        # Ignore is absent on a pin: unignored equals total, so hiding
+        # ignored files is a no-op rather than unsupported_for_subject.
+        include_ignored=True if git_pin else tree_filter.include_ignored,
+    )
+    if pin is not None:
+        from metabrowser.git.content_routes import git_revision_tree
+
+        return await git_revision_tree(request, pin, tree_filter)
+    subpath = parse_inventory_path(requested)
+    remaining_depth = _tree_depth_from_query(depth_str)
+    if subpath is None or resolve_session_identity(subpath) is None:
+        return JSONResponse({"error": "Not found"}, status_code=404)
 
     return await _read_tree_from_provider(
         request,
@@ -1854,13 +2174,11 @@ async def api_rollup(request: Request) -> Response:
     cover the full subtree. Depth truncation is represented by `children: null`
     without a rest bucket; node-budget truncation can retain emitted `children`
     alongside a `rest` bucket for their omitted siblings.
+    A Git pin answers from recursive blob names and sizes and omits mtime.
     """
 
-    requested = request.query_params.get("path", "")
-    subpath = parse_inventory_path(requested)
-    if subpath is None or _safe_path_from_identity(subpath) is None:
-        return JSONResponse({"error": "Not found"}, status_code=404)
-
+    require_source_capability("navigation")
+    require_source_capability("index")
     depth = _query_bounded_int(
         request, "depth", ROLLUP_DEFAULT_DEPTH, minimum=0, maximum=ROLLUP_MAX_DEPTH
     )
@@ -1895,6 +2213,31 @@ async def api_rollup(request: Request) -> Response:
     except ValueError as error:
         return JSONResponse({"error": str(error)}, status_code=400)
 
+    pin = as_git_revision_subject(get_source_session().subject)
+    if pin is not None:
+        from metabrowser.git.content_routes import git_revision_rollup
+
+        return await git_revision_rollup(
+            request,
+            pin,
+            RollupOptions(
+                depth=depth,
+                top=top,
+                ext_top=ext_top,
+                max_nodes=ROLLUP_MAX_NODES,
+                remaining_top=remaining_top,
+                filename_top=filename_top,
+                ext_rank=ext_rank,
+                omit_mtime=True,
+            ),
+        )
+
+    require_filesystem_hooks()
+    requested = request.query_params.get("path", "")
+    subpath = parse_inventory_path(requested)
+    if subpath is None or resolve_session_identity(subpath) is None:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+
     runtime = _inventory_runtime_for(request)
     preflight = await runtime.coordinator.read(
         ReadRequest(queries=(EntryQuery(query_id="rollup-parent", path=subpath),))
@@ -1924,7 +2267,7 @@ async def api_rollup(request: Request) -> Response:
     def etag_for(version: HostVersion) -> str:
         engine = version.engine
         return build_scoped_etag(
-            f"rollup-{_resolved_root_dir()}-{engine.session}-{engine.sequence}-"
+            f"rollup-{session_filesystem_root()}-{engine.session}-{engine.sequence}-"
             f"{engine.scope_fingerprint}-{engine.semantic_fingerprint}-{request_shape}"
         )
 
@@ -1952,7 +2295,7 @@ async def api_rollup(request: Request) -> Response:
         body = bytes(
             JSONResponse(
                 {
-                    "root": str(_resolved_root_dir()),
+                    "root": str(session_filesystem_root()),
                     "path": subpath,
                     "node": payload.get("node") if payload is not None else None,
                     "ext_tallies": (payload.get("ext_tallies", []) if payload is not None else []),
@@ -2010,6 +2353,7 @@ async def api_recent(request: Request) -> JSONResponse:
     clustering (see :mod:`metabrowser.recent`).
     """
 
+    require_source_capability("recency")
     window = request.query_params.get("window", "24h")
     if window not in RECENT_WINDOW_SECONDS:
         return JSONResponse({"error": f"Unknown window: {window!r}"}, status_code=400)
@@ -2041,6 +2385,10 @@ async def api_recent(request: Request) -> JSONResponse:
         types=types,
         min_size=requested_filter.min_size,
         include_ignored=requested_filter.include_ignored,
+    )
+    require_filter_capabilities(
+        recency=True,
+        include_ignored=recent_filter.include_ignored,
     )
     as_of_ns = time.time_ns()
     selection = _inventory_filter(recent_filter, as_of_ns=as_of_ns)
@@ -2075,7 +2423,7 @@ async def api_recent(request: Request) -> JSONResponse:
     )
     return JSONResponse(
         {
-            "root": str(_resolved_root_dir()),
+            "root": str(session_filesystem_root()),
             # Newest-first leaf list. Clustering (single-dir compaction +
             # cluster-collapse) is a rendering concern owned by the SPA;
             # see :mod:`metabrowser.recent` for the layering rationale.
@@ -2176,7 +2524,7 @@ def _compression_envelope_fields(artifact: ArtifactPath, logical_size: int) -> d
 
 def _api_file_internal_error_response(subpath: str, exc: Exception) -> JSONResponse:
     """Return a renderable file-error envelope instead of bubbling a 500."""
-    target = _safe_path_from_identity(subpath)
+    target = resolve_session_identity(subpath)
     size: int | None = None
     if target is not None:
         try:
@@ -2266,6 +2614,11 @@ async def _api_folder_envelope(
 
 @log_async_calls(if_slower_than=0.1)
 async def api_file(request: Request) -> JSONResponse | Response:
+    pin = as_git_revision_subject(get_source_session().subject)
+    if pin is not None:
+        from metabrowser.git.content_routes import git_revision_file
+
+        return await git_revision_file(request, pin)
     subpath = request.query_params.get("path", "")
     try:
         return await _api_file_impl(request)
@@ -2333,7 +2686,7 @@ def _file_unavailable_response(subpath: str, target: Path | None) -> JSONRespons
 
 async def _api_file_impl(request: Request) -> JSONResponse | Response:
     subpath = request.query_params.get("path", "")
-    target = _safe_path_from_identity(subpath)
+    target = resolve_session_identity(subpath)
     if target is None or (target.exists() and not target.is_dir() and not target.is_file()):
         # Before declaring the path unavailable: a missing path whose
         # nearest file ancestor is a container kind is that container's
@@ -2679,7 +3032,7 @@ _KPRESS_EXPORT_REQUEST_MAX_BYTES = 64 * 1024
 
 
 @log_async_calls(if_slower_than=0.1)
-async def api_kpress_render(request: Request) -> JSONResponse:
+async def api_kpress_render(request: Request) -> Response:
     """Render a safe served-root-relative file through the KPress adapter."""
 
     source_override: str | None = None
@@ -2764,7 +3117,21 @@ async def api_kpress_render(request: Request) -> JSONResponse:
             status_code=400,
         )
 
-    target = _safe_path_from_identity(subpath)
+    pin = as_git_revision_subject(get_source_session().subject)
+    if pin is not None:
+        from metabrowser.git.content_routes import git_revision_kpress_render
+
+        return await git_revision_kpress_render(
+            pin,
+            subpath=subpath,
+            view=view,
+            profile=profile,
+            source_override=source_override,
+            include_toc=include_toc,
+            max_bytes=_TEXT_PREVIEW_MAX_CHUNK_BYTES,
+        )
+
+    target = resolve_session_identity(subpath)
     if target is None or not target.is_file():
         return JSONResponse({"error": "Not found"}, status_code=404)
 
@@ -2895,6 +3262,9 @@ async def api_kpress_render(request: Request) -> JSONResponse:
             },
             status_code=502,
         )
+    if not get_capabilities().active_content:
+        # A document the reader does not trust renders inert (kpress_adapter.inert_render).
+        rendered = kpress_adapter.inert_render(rendered)
     return JSONResponse(rendered, headers={"cache-control": "no-cache"})
 
 
@@ -2917,6 +3287,8 @@ async def api_kpress_export(request: Request) -> JSONResponse:
 
     if request.method != "POST":
         return JSONResponse({"error": "Method not allowed"}, status_code=405)
+
+    require_source_capability("mutation")
 
     try:
         body = await _read_bounded_json_request(request, _KPRESS_EXPORT_REQUEST_MAX_BYTES)
@@ -3003,7 +3375,7 @@ async def api_kpress_export(request: Request) -> JSONResponse:
             status_code=400,
         )
 
-    source = _safe_path_from_identity(raw_path)
+    source = resolve_session_identity(raw_path)
     if source is None or not source.is_file():
         return JSONResponse(
             {"type": "kpress_export_error", "error": "Source path not found or unsafe"},
@@ -3015,7 +3387,7 @@ async def api_kpress_export(request: Request) -> JSONResponse:
             {"type": "kpress_export_error", "error": "`destination` is required"},
             status_code=400,
         )
-    destination = _safe_path_from_identity(raw_destination)
+    destination = resolve_session_identity(raw_destination)
     if destination is None:
         return JSONResponse(
             {"type": "kpress_export_error", "error": "Destination escapes served root"},
@@ -3170,11 +3542,12 @@ async def api_activity(request: Request) -> JSONResponse:
     ``/api/events`` and reading ``entry.active`` / ``entry.labels``
     instead — that's the live-update path.
     """
+    require_source_capability("activity")
     runtime = _inventory_runtime_for(request)
     active_files = await activity_snapshot(
         runtime.coordinator,
         config=runtime.config,
-        root=_resolved_root_dir(),
+        root=session_filesystem_root(),
     )
     LOG.debug("api_activity: %d active files", len(active_files))
     return JSONResponse(
@@ -3228,24 +3601,31 @@ def _raw_target_from_request(request: Request) -> Path | None:
     """Resolve the file a raw request named.
 
     The query form is the existing public API and speaks inventory identities
-    (the image renderer). The path form is a document URL, so it uses the same
-    filesystem address as ``/view``.
+    (the image renderer), resolved through the active session so the answer
+    follows the subject rather than a remembered root. The path form is a
+    document URL, so it uses the same filesystem address as ``/view``.
     """
 
     path_params = getattr(request, "path_params", {})
     if "path" in path_params:
         return _safe_path(str(path_params["path"]))
-    return _safe_path_from_identity(request.query_params.get("path", ""))
+    return resolve_session_identity(request.query_params.get("path", ""))
 
 
 async def raw_file(request: Request) -> Response:
-    """Serve raw bytes for one in-root file.
+    """Serve raw bytes for one file on the active subject.
 
-    Every response leaving this route is sandboxed by
-    ``_RawTrustHeaderMiddleware``, which owns the trust headers for the
-    whole ``/raw`` path rather than any one branch here.
+    A pinned Git subject answers from the object store instead of the
+    filesystem. Every response leaving this route, that one included, is
+    sandboxed by ``_RawTrustHeaderMiddleware``, which owns the trust headers
+    for the whole ``/raw`` path rather than any one branch here.
     """
 
+    pin = as_git_revision_subject(get_source_session().subject)
+    if pin is not None:
+        from metabrowser.git.content_routes import git_revision_raw
+
+        return await git_revision_raw(request, pin)
     target = _raw_target_from_request(request)
     if target is None or not target.is_file():
         return PlainTextResponse("Not found", status_code=404)
@@ -3468,7 +3848,7 @@ def _resolve_container_child(subpath: str) -> JSONResponse | None:
         return None
     for cut in range(len(parts) - 1, 0, -1):
         prefix = "/".join(parts[:cut])
-        target = _safe_path_from_identity(prefix)
+        target = resolve_session_identity(prefix)
         if target is None:
             continue
         if target.is_dir():
@@ -3640,6 +4020,9 @@ async def _debug_inventory(request: Request) -> JSONResponse:
 
     if os.environ.get("METABROWSER_DEBUG", "").strip() not in ("1", "true", "yes"):
         return JSONResponse({"error": "set METABROWSER_DEBUG=1 to enable"}, status_code=404)
+    # A pin's index is its store's blob listing, not a provider the runtime opened, so
+    # there are no provider counters to report: a typed refusal, not a 500.
+    require_filesystem_hooks()
     runtime = _inventory_runtime_for(request)
     coordinated = await runtime.coordinator.read(
         ReadRequest(queries=(DiagnosticsQuery(query_id="debug-inventory"),))
@@ -3719,6 +4102,7 @@ routes = [
     Route("/", root_redirect),
     Route("/view/{path:path}", view_shell),
     Route("/commit/{rest:path}", commit_shell),
+    Route("/pull/{rest:path}", pull_shell),
     Route("/api/tree", api_tree),
     Route("/api/rollup", api_rollup),
     Route("/api/recent", api_recent),
@@ -3738,6 +4122,12 @@ routes = [
     # ``metabrowser.git.routes``: separate wire model, separate failure
     # modes, separate resource bounds.
     *GIT_ROUTES,
+    # Read-only logical cache state for CLI parity. The table imports the cache and
+    # the application home only inside a cache request; see ``metabrowser.cache.routes``.
+    *CACHE_ROUTES,
+    # What this server serves: the subject and, on a pin, its commit, ref, and
+    # freshness, plus the POST routes that refresh the mirror and switch the pin.
+    *SOURCE_ROUTES,
     *build_plugin_routes(_LOADED_PLUGINS),
 ]
 
@@ -3751,6 +4141,9 @@ middleware = [
     # inner layer never got to shape — still leaves ``/raw`` sandboxed.
     Middleware(_RawTrustHeaderMiddleware),
     Middleware(_HostValidationMiddleware),
+    # Inside the origin checks: a page showing a pin the server has since switched away
+    # from is refused with a typed pin_changed rather than answered from the new pin.
+    Middleware(SourcePinGuard),
     Middleware(_SlowRequestLogMiddleware),
     Middleware(GZipMiddleware, minimum_size=1024, compresslevel=6),
 ]
@@ -3772,7 +4165,7 @@ def _inventory_root_provider() -> object:
     inventory just stays idle in that case."""
 
     try:
-        root = _resolved_root_dir()
+        root = session_filesystem_root()
     except Exception:
         return None
     return root if str(root) and root != Path() else None
@@ -3780,7 +4173,14 @@ def _inventory_root_provider() -> object:
 
 @asynccontextmanager  # pyright: ignore[reportDeprecated]
 async def _lifespan(app: Starlette) -> AsyncIterator[None]:
-    async with build_lifespan(app=app, root_provider=_inventory_root_provider):
+    # A served pin attaches before the inventory opens, which reads the active
+    # subject, and closes after it, so nothing still reads its Git processes. The
+    # refresh jobs start once the pin is attached and are cancelled before it closes.
+    async with (
+        lifespan_subject(),
+        build_lifespan(app=app, root_provider=_inventory_root_provider),
+        lifespan_refresh(app),
+    ):
         try:
             yield
         finally:
@@ -3808,11 +4208,23 @@ async def _query_work_limit_response(
     )
 
 
+async def _unsupported_source_response(
+    _request: Request,
+    error: Exception,
+) -> JSONResponse:
+    if not isinstance(error, UnsupportedSourceCapabilityError):  # pragma: no cover
+        raise error
+    return JSONResponse(unsupported_source_payload(error), status_code=409)
+
+
 app = Starlette(
     routes=routes,
     middleware=middleware,
     lifespan=_lifespan,
-    exception_handlers={QueryWorkLimitError: _query_work_limit_response},
+    exception_handlers={
+        QueryWorkLimitError: _query_work_limit_response,
+        UnsupportedSourceCapabilityError: _unsupported_source_response,
+    },
 )
 add_inventory_routes(app)
 

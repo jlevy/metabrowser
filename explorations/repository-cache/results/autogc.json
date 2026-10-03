@@ -1,0 +1,100 @@
+{
+  "environment": {
+    "cpu": "Apple M1 Pro",
+    "git_build_options": [
+      "cpu: arm64",
+      "no commit associated with this build",
+      "sizeof-long: 8",
+      "sizeof-size_t: 8",
+      "shell-path: /bin/sh"
+    ],
+    "git_version": "git version 2.50.1",
+    "logical_cpus": 10,
+    "machine": "arm64",
+    "memory_bytes": 34359738368,
+    "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+    "python": "3.14.7"
+  },
+  "finished_at": "2026-09-17T05:58:44+00:00",
+  "parameters": {
+    "reps": 2,
+    "timeout_s": 400.0
+  },
+  "rows": [
+    {
+      "case": "https_lazy_fetch_auto_maintenance",
+      "entries_listed": 50,
+      "error_class": "commit_graph_race",
+      "lazy_fetches": 51,
+      "maintenance_spawns": 51,
+      "packs_after": 1,
+      "rep": 0,
+      "returncode": 128,
+      "variant": "git_defaults",
+      "wall_s": 28.322
+    },
+    {
+      "case": "https_lazy_fetch_auto_maintenance",
+      "entries_listed": 236,
+      "error_class": "",
+      "lazy_fetches": 230,
+      "maintenance_spawns": 0,
+      "packs_after": 231,
+      "rep": 0,
+      "returncode": 0,
+      "variant": "maintenance_disabled",
+      "wall_s": 124.69
+    },
+    {
+      "case": "https_lazy_fetch_auto_maintenance",
+      "entries_listed": 236,
+      "error_class": "",
+      "lazy_fetches": 230,
+      "maintenance_spawns": 234,
+      "packs_after": 31,
+      "rep": 0,
+      "returncode": 0,
+      "variant": "commit_graph_disabled",
+      "wall_s": 129.032
+    },
+    {
+      "case": "https_lazy_fetch_auto_maintenance",
+      "entries_listed": 236,
+      "error_class": "",
+      "lazy_fetches": 230,
+      "maintenance_spawns": 234,
+      "packs_after": 31,
+      "rep": 1,
+      "returncode": 0,
+      "variant": "commit_graph_disabled",
+      "wall_s": 127.879
+    },
+    {
+      "case": "https_lazy_fetch_auto_maintenance",
+      "entries_listed": 236,
+      "error_class": "",
+      "lazy_fetches": 230,
+      "maintenance_spawns": 0,
+      "packs_after": 231,
+      "rep": 1,
+      "returncode": 0,
+      "variant": "maintenance_disabled",
+      "wall_s": 124.168
+    },
+    {
+      "case": "https_lazy_fetch_auto_maintenance",
+      "entries_listed": 50,
+      "error_class": "commit_graph_race",
+      "lazy_fetches": 51,
+      "maintenance_spawns": 51,
+      "packs_after": 1,
+      "rep": 1,
+      "returncode": 128,
+      "variant": "git_defaults",
+      "wall_s": 27.448
+    }
+  ],
+  "schema": "metabrowser-repository-cache-measurement-v1",
+  "started_at": "2026-09-17T05:49:17+00:00",
+  "suite": "autogc"
+}

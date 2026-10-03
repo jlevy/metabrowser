@@ -133,3 +133,47 @@ def test_reports_uv_action_and_publish_errors(tmp_path: Path) -> None:
     assert "trusted publishing must run only for published releases" in message
     assert "trusted publishing requires id-token: write" in message
     assert "trusted publishing requires an environment" in message
+
+
+def _write_admitted_git(root: Path, *, reviewed: str, matrix: str) -> None:
+    pin_a, pin_b = "a" * 64, "b" * 64
+    (root / "devtools").mkdir()
+    (root / "devtools" / "build_admitted_git.sh").write_text(
+        f'case "$version" in\n  2.43.7) sha256={pin_a} ;;\n  2.50.1) sha256={pin_b} ;;\nesac\n',
+        encoding="utf-8",
+    )
+    (root / "SUPPLY-CHAIN-SECURITY.md").write_text(
+        "| Release | Role | SHA-256 |\n| --- | --- | --- |\n"
+        f"| 2.43.7 | Lowest | `{pin_a}` |\n| 2.50.1 | Newest | `{reviewed}` |\n",
+        encoding="utf-8",
+    )
+    (root / ".github" / "workflows" / "ci.yml").write_text(
+        f"jobs:\n  admitted-git:\n    strategy:\n      matrix:\n        git: [{matrix}]\n",
+        encoding="utf-8",
+    )
+    gates = {
+        "gates": [{"name": "acquisition", "minimum": [2, 43, 7], "newest_patched": [2, 50, 1]}]
+    }
+    fixtures = root / "tests" / "fixtures" / "repository-cache"
+    fixtures.mkdir(parents=True)
+    (fixtures / "git-version-gates.json").write_text(json.dumps(gates), encoding="utf-8")
+
+
+def test_admitted_git_pins_review_matrix_and_floors_agree(tmp_path: Path) -> None:
+    _write_repository(tmp_path)
+    _write_admitted_git(tmp_path, reviewed="b" * 64, matrix='"2.43.7", "2.50.1"')
+
+    verify_supply_chain(tmp_path)
+
+
+def test_admitted_git_drift_and_an_untested_floor_are_reported(tmp_path: Path) -> None:
+    _write_repository(tmp_path)
+    _write_admitted_git(tmp_path, reviewed="c" * 64, matrix='"2.50.1"')
+
+    with pytest.raises(RuntimeError) as error:
+        verify_supply_chain(tmp_path)
+
+    message = str(error.value)
+    assert "admitted Git table" in message
+    assert "must test the acquisition minimum 2.43.7" in message
+    assert "newest_patched" not in message

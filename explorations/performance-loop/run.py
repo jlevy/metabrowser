@@ -90,6 +90,18 @@ PENDING = HERE / "results" / "pending.json"
 # earlier ones -- a new metric definition, a changed sampling rule. Recorded on
 # every run so a later reader can tell "measured differently" from "changed".
 #
+# 23: `frame_missing_px` measures a region that is the only child of its parent with
+# the stand-in beside that parent, in a copy of it, not inside it. `#preview-pane`
+# became such a region when it was wrapped in `.preview-frame`: a stand-in inside that
+# column took half of it, and the metric read 450 px of a 900 px pane as missing on
+# every build with the wrapper (670 against 220 on project-10, 479 against 29 on a
+# small folder) though the shell ships the pane at full height. In Chrome 152 at
+# 1600x900 the fixed probe reads 29 on v0.11.0 and on a wrapped build alike, with
+# the pane 900 settled and 900 shipped. Nothing else is measured differently: the
+# other regions and the two shift figures have siblings and read the same under
+# both probes on both builds, and no other metric uses a stand-in. A build without
+# the wrapper reads as it did under 22.
+#
 # 22: `serve` no longer traverses the corpus between stopping the previous
 # server and launching the measured one; it takes a root-only launch marker. On a
 # corpus larger than the host's vnode cache, which traversal ran last decides which
@@ -186,7 +198,7 @@ PENDING = HERE / "results" / "pending.json"
 # layout, which is what made them report a confident 0 in a pane that cannot
 # see a shift; and `regions_non_empty` is gone, having counted screen-reader
 # text and so passed on the hole it existed to catch.
-HARNESS_VERSION = 22
+HARNESS_VERSION = 23
 INVENTORY_PROVIDERS = ("python",)
 INVENTORY_CONTRACT = "inventory-provider-v1"
 PRE_CONTRACT_INVENTORY_IDENTITY_MISSING = "pre-contract-provider-and-contract-unreported/v1"

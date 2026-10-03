@@ -1,19 +1,36 @@
-# Plan: CLI-First Delivery — Parity Foundation, Git Status, and the Repository Cache
+# Plan: CLI-First Delivery — v0.10 Parity and the v0.12 Repository/Hosted-Review Slice
 
-**Date:** 2026-08-28
+**Date:** 2026-08-28 (refreshed 2026-09-22)
 
 **Author:** Joshua Levy (with LLM assistance)
 
-**Status:** Draft
+**Superseded in part (2026-09-23):** the v0.12 sequence in rows 7 and 9 through 12 of
+the [ordering table](#ordering) follows
+[Thin Mirror for Git and GitHub Browsing](plan-2026-09-23-v012-thin-mirror.md), which
+replaces this plan wherever they disagree.
+The parity mechanism and the rule it rests on stand.
+Three parts below record the earlier design: the cache module table in Part 2, the
+GitHub rows of the golden table, and the sequence under “What lands for the v0.12.0
+PR-first slice”. The modules as built are in
+[Implementation Seams](../../architecture/arch-repository-sources-and-provider-mirrors.md#implementation-seams),
+and the goldens as built are in the
+[parity table](../../architecture/arch-views-models-routes.md#cli-and-functional-ui-parity).
+
+**Status:** v0.11.0 released after the parity foundation; the v0.12.0 implementation is
+on [stack #218](https://github.com/jlevy/metabrowser/stack/218), unmerged.
+The #209 content-trust foundation is on `main`. The
+[alpha test plan](plan-2026-09-22-v012-alpha-testing.md#landing-status) lists what
+remains before landing.
 
 ## Overview
 
-Three workstreams are queued behind each other:
-[CLI parity](../done/plan-2026-08-21-cli-parity-and-golden-coverage.md),
-[Git status](plan-2026-08-26-git-status-and-working-tree-diffs.md), and the
-[repository library](plan-2026-08-11-open-repo-from-git-url.md).
-This document sequences them, maps each to files and functions, and states how all of
-the backend work is proved end to end without a browser.
+The CLI parity mechanism and its route, kind, model, persisted-state, and functional
+aspect checks shipped in v0.10.0. The remaining workstreams are
+[Git status](plan-2026-08-26-git-status-and-working-tree-diffs.md), the
+[repository library](plan-2026-08-11-open-repo-from-git-url.md), and the
+[hosted-review and GitHub provider](plan-2026-08-27-github-provider-and-pull-requests.md).
+This document records the delivered foundation, sequences the v0.12.0 PR-first slice,
+and states how backend work is proved end to end without a browser.
 
 The thesis is that the parity plan is not a testing chore that follows the features.
 It is the delivery mechanism for them.
@@ -38,15 +55,16 @@ principle over the four layers `route → kind → model → view`, and exempts 
 That covers read models.
 It does not cover **durable state**, which is most of what the cache is.
 
-The cache writes an application home, a layout record, per-entry identity and state
-records, locks, staging directories, quarantine, and trash.
+The cache writes an application home, layout and source/store identity and state
+records, locks, and staging directories.
 None of that appears in a response envelope, so a `--api` transcript proves nothing
 about it. The principle needs a second clause:
 
 > **State clause.** Every state the system persists is reachable from `metab` as a
 > normalized model and pinned by a golden transcript.
-> Cache layout, entry identity, entry state, and reclamation outcomes are read through
-> `/api/cache/*` like any other model, not through a bespoke inspection command.
+> Cache layout, source and store identity, publication and job state, and reclamation
+> outcomes are read through `/api/cache/*` like any other model, not through a bespoke
+> inspection command.
 
 This is why the cache gets read routes in Phase 1A, before anything can be cloned.
 The routes are cheap — they project records the format foundation already writes — and
@@ -54,27 +72,33 @@ they turn the entire state machine into something a transcript can assert.
 
 ## Ordering
 
-Land in this order. Only rows 1 → 2 and 3 → 4 are serial; the table’s *Gated by* column
-is authoritative where this prose and it disagree.
-Rows 3, 5, and 6 depend on nothing and can start immediately alongside row 1, which is
-what keeps the trust chain and the format foundation off the end of the schedule.
+Row 1 and the landed portion of row 2 are the v0.10.0 baseline; `mb-n9xg` continues the
+legacy functional-parity inventory.
+For v0.12.0, the table’s *Gated by* column is authoritative where this prose and it
+disagree; independent status, format, trust, and provider-model work can proceed in
+parallel.
 
-| # | Work | Beads | Gated by |
-| --- | --- | --- | --- |
-| 1 | Parity mechanism: ASGI client, normalizer, `--api`, `--show` | `mb-8n8l`, `mb-ian3`, `mb-y5wm` | nothing |
-| 2 | Parity enforcement and codification | `mb-esht`, `mb-zodq` | 1 |
-| 3 | Git-status measurement gate | `mb-r5gn` | nothing (can overlap 1) |
-| 4 | Git-status backend, then panel | `mb-u4mf`, `mb-vibn`, `mb-y06t` | 1, 3 |
-| 5 | Cache format foundation, then acquisition | `mb-ire2`, `mb-4gnu`, `mb-dxmb`, `mb-h51g`, `mb-k54c`, `mb-dg00` | nothing (`mb-ire2` and `mb-dxmb` are ready today) |
-| 6 | HTML trust chain | `mb-cun0`, `mb-vib1` | nothing |
-| 7 | URL open and serving | `mb-ew38` | 4, 5, 6 |
+| # | Work | Beads | Gated by | State |
+| --- | --- | --- | --- | --- |
+| 0 | v0.12 start gate: v0.10.0 tag and release from intended `main` | `mb-i57d`, `mb-xxhi` | nothing | Complete 2026-09-15; v0.10.0 released and the implementation baseline verified |
+| 1 | Parity mechanism: ASGI client, normalizer, `--api`, `--show` | `mb-8n8l`, `mb-ian3`, `mb-y5wm` | nothing | Landed on `main` for v0.10.0 |
+| 2 | Parity enforcement, persisted state, functional aspects, and codification | `mb-esht`, `mb-zodq`, `mb-n9xg` | 1 | Enforcement and codification landed for v0.10.0; `mb-n9xg` remains active for legacy functional inventory |
+| 3 | Git-status measurement gate for attached filesystem subjects | `mb-r5gn` | 0 | Planned; does not gate worktree-free Git serving |
+| 4 | Git-status backend, then panel | `mb-u4mf`, `mb-vibn`, `mb-y06t` | 0, 1, 3 | Planned for attached filesystem subjects |
+| 5 | Measurement and source-binding correction, owner-only cache format, local-origin contract, worktree-free acquisition, content-source boundary, then immutable Git-tree source | `mb-ire2`, `mb-z2mc`, `mb-xa0p`, `mb-4gnu`, `mb-k54c`, `mb-dxmb`, `mb-h51g`, `mb-dg00`, `mb-3bna`, `mb-z335` | 0, 1 | Built on the stack: cache and contracts on #125–#140, acquisition on #217, and the consolidated source and pin on #216, with acceptance closed in #226 and the store simplified in #228 |
+| 6 | HTML trust chain | `mb-cun0`, `mb-vib1`, `mb-d658` | 0 | Landed through #209 on `main`; every served pin applies it as a forced untrusted profile (#229, #234) |
+| 7 | Provider URL reducer, repository open, provider-selected refs, then immutable selected branch | `mb-12cz`, `mb-ew38`, `mb-jlon`, `mb-2xq7` | 5, 6 | Superseded: thin-mirror steps 3 to 5 (#229–#231) serve, refresh, and re-pin a repository URL through the built-in GitHub reducer |
+| 8 | Hosted-review models | `mb-63ym` | 0 | Phase 0 records were on #134 and were removed from the stack on 2026-09-30; they are kept on the `reference/v012-hosted-review` branch, tagged `reference/v012-hosted-review-2026-09-30` |
+| 9 | Bounded provider runner, `gh api` adapter, broker-pinned Git credential bridge, capability registry, auth-scoped store, repository summary, then direct PR bundle | `mb-y1ax`, `mb-p4sw`, `mb-s123`, `mb-ji83`, `mb-s0gv`, `mb-i3xc`, `mb-2oxp`, `mb-cbak`, `mb-h64t` | 5, 7, 8 | Superseded: the PR data step (#232) runs `gh` and stores one record per pull request; the credential bridge, capability registry, auth-scoped store, and binding are retired, and `mb-cbak` is deferred |
+| 10 | Plugin router, address-space lifecycle, and direct PR document/diff | `mb-xzj3`, `mb-6mle`, `mb-81p5` | 6, 9 | Superseded: the PR view step (#233) renders the pull-request page inside the GitHub plugin |
+| 11 | Query-keyed bounded PR index and virtual nav | `mb-lnkl`, `mb-uh6p`, `mb-iw1v` | 9, 10 | Deferred by the user’s 2026-09-23 decision; `mb-uh6p` is retired |
+| 12 | Anchored review threads | `mb-rldc` | 10 | Deferred by the user’s 2026-09-23 decision |
 
-Row 6 is the
-[R1 finding](../../reviews/review-2026-08-27-delivery-order-for-status-cache-and-providers.md):
-serving fetched content is gated on the trust chain, which no plan prioritized.
-It depends on nothing here, so it runs alongside rather than extending the schedule.
+Row 6 records the trust foundation that landed through #209, which every served pin
+applies. Row 3 concerns working-tree status on attached filesystem subjects; it is not a
+serving dependency for the worktree-free Git source.
 
-The *lift* in row 1 is behavior-preserving, and that is checkable: every existing
+The *lift* in row 1 was behavior-preserving, and that remains checkable: every existing
 golden, `cli-check-api.tryscript.md` among them, must be byte-identical after it.
 If a transcript moves, the lift changed behavior and the change is wrong.
 
@@ -82,7 +106,7 @@ The rows as a whole are not behavior-preserving, and an earlier draft said they 
 They add two modes, so `cli-surface.tryscript.md` changes and `CHANGELOG.md` gains an
 entry. The invariant is about the refactor, not the phase.
 
-## Part 0: Parity Mechanism — Module and Function Map
+## Part 0: Delivered Parity Mechanism — Module and Function Map
 
 ### `src/metabrowser/cli/asgi_client.py` (new)
 
@@ -319,7 +343,7 @@ Everything beneath it is already proved by then.
 
 ```python
 def application_home() -> Path:      # METABROWSER_HOME, else ~/.metabrowser
-def ensure_home(home: Path) -> None: # creates, writes CACHEDIR.TAG
+def ensure_home(home: Path) -> Path: # creates the f01 skeleton, writes CACHEDIR.TAG
 ```
 
 `METABROWSER_HOME` is the hermeticity seam for every cache golden.
@@ -328,32 +352,41 @@ def ensure_home(home: Path) -> None: # creates, writes CACHEDIR.TAG
 
 | Module | Responsibility | Key functions |
 | --- | --- | --- |
-| `layout.py` | `f01` format record, fail-closed on future formats, ordered migrations | `read_layout`, `migrate`, `LAYOUT_FORMAT` |
-| `atomic.py` | same-filesystem staging, atomic YAML, home locking | `write_atomic`, `read_yaml`, `home_lock` |
-| `records.py` | SoftSchema contracts | `ApplicationConfig/v1`, `CacheLayout/v1`, `RepositoryIdentity/v1`, `RepositoryState/v1` |
-| `state.py` | the state machine | `promote`, `quarantine`, `trash`, `entry_state` |
-| `reclaim.py` | startup sweep of `staging/` and `trash/` | `reclaim(home)` |
-| `identity.py` | Phase 1B-a: conservative identity and collision-safe slug | `source_identity`, `cache_slug` |
-| `urls.py` | Phase 1B-a: the safe URL grammar | `parse_git_source` |
-| `acquire.py` | Phase 1B-a: clone into staging, publish atomically | `acquire` |
-| `routes.py` | the state clause | `/api/cache/layout`, `/entries`, `/entry/{slug}` |
+| `layout.py` | Format record, fail-closed future formats, ordered migrations, home preparation | `read_layout`, `read_config`, `migrate_layout`, `open_cache`, `LAYOUT_FORMAT` |
+| `atomic.py` | Same-filesystem owner-only record publication | `read_record`, `write_record_atomic`, `publish_entry` |
+| `locks.py` | Fixed lock hierarchy and liveness locks | `application_home_lock`, `source_alias_lock`, `repository_store_lock`, `provider_resource_lock`, `staging_entry_lock` |
+| `probe.py` | Application-home lock and publication probe | `probe_application_home` |
+| `contracts.py` | Packaged SoftSchema bindings and drift checks | `compile_contracts`, `cache_contract_registry`, `repository_cache_capabilities` |
+| `records.py` | Closed source and store contracts | `ApplicationConfig`, `CacheLayout`, `RepositorySource`, `RepositorySourceState`, `RepositoryStoreAlias`, `RepositoryStore`, `RepositoryStoreState` |
+| `reclaim.py` | Startup sweep of abandoned staging; nothing deletes a published store | `sweep_staging` |
+| `identity.py` | Conservative source identity, provider-derived store identity, aliasing, and collision-safe slugs | `normalize_git_source`, `source_identity`, `repository_store_id`, `provider_repository_store_id`, `cache_slug` |
+| `urls.py` | Root classification, provider reducer arbitration, and terminal rejection | `classify_root_argument`, `ProviderUrlReducer`, `ReducerOutcome`, `RepositorySelection` |
+| `acquire.py` | Worktree-free staged acquisition and atomic store/alias publication | `acquire_file_source`, `acquire_into_staging`, `publish_from_staging` |
+| `repository_store.py` | Open a pinned commit in a published store, with no lock and no write | `open_revision` |
+| `selection.py` | Pure ref/path resolution and typed missing-ref requests | `resolve_selection`, `resolve_ref_path_candidates` |
+| `service.py` | One CLI/chooser orchestration result | `resolve_open_target`, `close_open_target` |
+| `jobs.py` | Provider-neutral selected-ref jobs, the credential-lease registry and per-request validation, and stage outcomes | `RepositoryJob`, `RepositoryJobRegistry`, `fetch_selected_ref`, `request_ref_fetch`, `GitFetchCredentialLeaseRegistry`, `validate_git_fetch_credential_lease`, `close_all` |
+| `routes.py` | Logical source, store, and job projections for CLI parity | `api_cache_layout`, `api_cache_sources`, `api_cache_source`, `api_cache_stores`, `api_repository_jobs` |
 
-```python
-def parse_git_source(raw: str) -> GitSource | None:
-    """None means 'not a Git source' — the caller falls through to local path
-    resolution. Rejects credentials, query, fragment, option-like input, and
-    unsupported transports by raising, so a malformed URL is never silently
-    treated as a directory name."""
+The session/content seams live outside the cache package:
 
-async def acquire(source: GitSource, *, home: Path, profile: TrustProfile) -> CacheEntry:
-    """Clone into staging/ via run_git, then promote atomically. Never publishes a
-    partial tree: a failure quarantines the staging directory and leaves any
-    previously published entry untouched."""
-```
+| Module | Responsibility | Key functions |
+| --- | --- | --- |
+| `src/metabrowser/repository_context.py` | Active attached-filesystem or immutable-revision subject and its lifetime | `RepositorySubject`, `AttachedFilesystemSubject`, `GitRevisionSubject` |
+| `src/metabrowser/content_source.py` | Generation-owned capability-aware reads without invented filesystem facts | `SourceSession`, `SourceCapabilities`, `ContentSource`, `ContentHandle`, `list_directory`, `read_window`, `close` |
+| `src/metabrowser/git/process.py` | Sole trusted Git subprocess boundary and validated askpass projection isolated from ambient Git environment, configuration, and credential helpers | `GitCommandTarget`, `run_git`, `spawn_git_process` |
+| `src/metabrowser/git/tree_source.py` | Raw-byte `GitPath` tree/blob access over a full OID in the shared store | `GitPath`, `GitTreeSource`, `resolve_tree`, `list_tree`, `read_blob` |
+| `src/metabrowser/plugin_api.py` | Opaque provider credential capability and provider-to-job conversion | `GitFetchCredentialLease`, `provider_fetch_authorization_context`, `RepositoryObjectJobPort.request_selected_refs` |
+
+The exact types, invariants, and phase ownership live in the
+[repository plan](plan-2026-08-11-open-repo-from-git-url.md) and
+[repository-source architecture](../../architecture/arch-repository-sources-and-provider-mirrors.md).
+This map deliberately links to those authorities instead of duplicating signatures that
+can drift.
 
 `cache/routes.py` is the part that is easy to skip and should not be.
-Three read routes, written in Phase 1A alongside the records they project, are what make
-every subsequent cache behavior assertable from a transcript.
+The read routes, written alongside the records they project, make every subsequent
+source, store, and job behavior assertable from a transcript.
 
 ## Golden Testing Architecture
 
@@ -406,17 +439,38 @@ is the one genuinely unstable thing in the recipe.
 
 What is *not* stable, and must never be asserted: pack file names, `.git` internal
 layout, object counts after gc, and clone wall time.
-`cache/routes.py` therefore projects **logical** entry state — identity, format,
-publication state, head revision — and never a directory listing.
+`cache/routes.py` therefore projects **logical** source, store, alias, job, and revision
+state and never a cache-directory listing.
 
 ### Acquisition without a network
 
 `acquire` clones from a local origin repository created in the same sandbox.
-This is real `git clone` through the real `run_git`, with no mocking and no forked code
+This is real `git fetch` through the real `run_git`, with no mocking and no forked code
 path, which is what the golden guidelines mean by not forking logic for tests.
-It also happens to be the honest test: the failure modes that matter — partial clone,
-interrupted publish, quarantine, reuse-on-second-open — are all filesystem behavior, not
+It also happens to be the honest test: the failure modes that matter — a partial-clone
+origin, interrupted publish, reuse-on-second-open — are all filesystem behavior, not
 network behavior.
+
+A live `metab file:// --no-serve` tryscript cannot be relied on: it runs on whatever Git
+the machine has, and Ubuntu’s packaged Git 2.43.0 is below the acquisition floor (2.43.7
+/ patched tracks), with distro-patched Git still refused.
+The hosted runner image has since shipped a Git the floor admits (2.55.0 on 2026-10-01),
+but nothing pins it.
+Until CI pins Git 2.50.1 (`mb-oueh`), acquire, reuse, and orphan-store evidence is
+`tests/test_cli_cache_acquire_golden.py`: the production CLI in-process, the floor
+monkeypatched, a real pack fetch.
+`tests/test_cli_cache_recovery_golden.py` adds the interrupted, failed, and refused
+sessions the same way, rendered through the console script’s own `Error:` handling; the
+staging sweep and the read-only cache hit are steps of those sessions.
+Its interruptions are real: a child interpreter running the same CLI is killed with
+SIGKILL at the store or alias publication, and the next command recovers from what the
+crash left. Its below-floor session replaces `detect_git_version` rather than the gate,
+so the production floor check refuses.
+Layout and future-format refusal on the read routes remain `cli-api-cache.tryscript.md`,
+and the ROOT grammar is `cli-cache-url-grammar.tryscript.md`, which reaches no Git and
+so runs as a subprocess.
+Do not add `<HOME>` or `<MTIME>` to `normalize.py` until a transcript emits those
+values; cache routes never report paths, and `--no-serve` does not print the home.
 
 ### What each phase’s golden proves
 
@@ -427,14 +481,27 @@ network behavior.
 | `cli-git-status.tryscript.md` | conflicts, staged, unstaged, untracked, renames, unborn HEAD, binary, submodule | Status P1 |
 | `cli-git-status-bounds.tryscript.md` | truncation is honest and reported, not silent | Status P1 |
 | `cli-cache-layout.tryscript.md` | home creation, `f01` record, `CACHEDIR.TAG`, future-format refusal | Cache 1A |
-| `cli-cache-acquire.tryscript.md` | clone, publish, second open reuses with no network | Cache 1B-a |
-| `cli-cache-recover.tryscript.md` | interrupted publish quarantines; reclaim sweeps staging | Cache 1B-a |
-| `cli-url-open.tryscript.md` | URL grammar accepts and rejects, with reasons | Cache 1B-b |
+| `cli-cache-acquire.txt` | clone, publish, second open reuses with no network | Cache 1B-a |
+| `cli-cache-orphan-kept.txt` | the next acquisition of another source keeps a store no alias names | Cache 1B-a |
+| `cli-cache-readonly-miss.txt` | a home without owner-write reuses a published store, refuses a new source, and stays unchanged | Cache 1B-a |
+| `cli-cache-interrupt-store.txt` | a process killed before store publication leaves only staging, which the next acquisition sweeps | Cache 1B-a |
+| `cli-cache-interrupt-alias.txt` | a process killed between store and alias publication leaves an unreferenced store and no visible source; the next acquisition reuses the store and publishes the alias | Cache 1B-a |
+| `cli-cache-fetch-failures.txt` | missing, non-repository, empty, and detached-HEAD origins fail without touching another source; a folded spelling reuses the same source | Cache 1B-a |
+| `cli-cache-unsupported-git.txt` | below-floor Git refuses a miss without creating or changing the home, and still reuses a hit without Git | Cache 1B-a |
+| `cli-cache-repair-guidance.txt` | invalid `METABROWSER_HOME`, a shared home, and a future format each name their repair, which then works | Cache 1B-a |
+| `cli-cache-url-grammar.tryscript.md` | ROOT grammar accepts and normalizes, or rejects with a reason and without echoing the input; an existing path is served whatever its name resembles, and `scheme://` is always a source | Cache 1B-a |
+| `cli-url-open.tryscript.md` | URL open accepts and rejects, with reasons | Cache 1B-b |
+| `cli-github-repo-open.tryscript.md` | GitHub repository URL reduces to and reuses the shared store without provider auth | Repository 2A |
+| `cli-github-branch-open.tryscript.md` | default, non-default, slash-containing, offline, and unavailable branches use immutable revision subjects without moving a checkout | Repository 2C |
+| `cli-github-pr-open.tryscript.md` | a direct PR selection publishes one bundle and fetches only selected refs without an index | GitHub P3B |
+| `cli-github-pr-index.tryscript.md` | bounded pages, freshness, completeness, and no ref fetch while listing | GitHub P3C |
+| `cli-github-pr-offline.tryscript.md` | repository and selected PR remain inspectable from immutable snapshots without a network | GitHub P4A |
+| `cli-ui-hosted-review.tryscript.md` | exact production address parse/apply, direct view, panel window/selection/restoration, root replacement, and disposal | GitHub P4 |
 
-`cli-cache-recover` is the one worth insisting on.
-Crash recovery is the behavior most likely to be wrong and least likely to be exercised
-by hand, and a transcript that kills a publish midway and then shows the swept state is
-a far better test than any unit test of the same code.
+`cli-cache-interrupt-store` and `cli-cache-interrupt-alias` are the ones worth insisting
+on. Crash recovery is the behavior most likely to be wrong and least likely to be
+exercised by hand, and a transcript that kills a publish midway and then shows the swept
+state is a far better test than any unit test of the same code.
 
 ## Codifying the Principle
 
@@ -493,11 +560,15 @@ changed behavior and the change is wrong, whatever the diff looks like.
 These are not risks to manage; they are decisions that are not the implementer’s to
 make. Work up to them, then stop and report with the evidence gathered.
 
+SoftSchema adoption is no longer a stop.
+The owner has confirmed the `jlevy` first-party exemption from the 14-day delay;
+`mb-4gnu` still reviews and records the exact release, predecessor, lock delta,
+dependencies, artifacts, and runtime reach before adoption.
+
 | Stop | Bead | Why it is not an implementation decision |
 | --- | --- | --- |
-| Adopting SoftSchema | `mb-4gnu` | Needs either the 14-day cool-off or an *Audited First-Party Exceptions* row with a blast-radius statement, reviewed against its predecessor. That is a security judgment, and [SUPPLY-CHAIN-SECURITY.md](../../../../SUPPLY-CHAIN-SECURITY.md) requires it be argued, not assumed. |
 | Unbounded `--untracked-files=all` | `mb-r5gn` | The plan says that if a complete status cannot be bounded usefully, the phase returns to design review. Choosing a partial-status policy instead would be redesigning the feature. |
-| Any `PLUGIN_SDK_VERSION` bump | any | A hard gate by [AGENTS.md](../../../../AGENTS.md), not a compatibility layer to negotiate. |
+| Any `PLUGIN_SDK_VERSION` bump | any | A hard gate by [AGENTS.md](../../../../AGENTS.md), not a compatibility layer to negotiate. Optional additive declarations may retain SDK 0.6 only when existing manifest and JavaScript behavior is unchanged and plugin docs plus `CHANGELOG.md` are updated. |
 | A golden that changes for an unexplained reason | any | Either a regression or a misunderstanding of the spec. Both need a human before the transcript is rewritten. |
 
 Everything else is ordinary work: the budgets from `mb-r5gn` are chosen from recorded
@@ -506,9 +577,10 @@ measures cheaply enough on the corpus.
 Those are decisions with evidence attached, so they get made and recorded rather than
 escalated.
 
-### What lands, in order
+### What landed for the parity foundation
 
-The first six beads are unattended work with a clear finish line:
+The first five beads established the baseline now on `main` for the v0.10.0 release
+candidate:
 
 | Order | Bead | Done when |
 | --- | --- | --- |
@@ -517,10 +589,41 @@ The first six beads are unattended work with a clear finish line:
 | 3 | `mb-y5wm` | `--show` reports route, kind, views, model; `cli-show.tryscript.md` covers one file per built-in kind |
 | 4 | `mb-esht` | `check_parity.py` fails on a missing row, a bad command, and an unpinned row; wired into `make lint-check` |
 | 5 | `mb-zodq` | The three clauses in `AGENTS.md`, the reasoning in `docs/development.md` |
-| 6 | `mb-r5gn` | Measurements recorded; the three decisions written down or the stop above triggered |
 
-After 6, the status and cache tracks run in parallel and neither needs a browser until
-`mb-vibn`.
+### What lands for the v0.12.0 PR-first slice
+
+**Addendum (2026-09-30):** steps 2 through 6 below record the earlier sequence.
+The [thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md#delivery) names what was
+delivered in their place and what is deferred.
+
+`mb-i57d` and `mb-xxhi` closed on 2026-09-15 after v0.10.0 was released and the intended
+`main` baseline was verified.
+The remaining sequence proceeds from that released baseline:
+
+1. Run the status measurements (`mb-r5gn`) while the cache format and trust tracks begin
+   independently.
+2. Complete cache measurement, then land the source-binding correction, owner-only
+   application-home records, local-origin contract, worktree-free store, source-session
+   boundary, immutable Git-tree source, and URL-open foundation (`mb-ire2`, `mb-z2mc`,
+   `mb-xa0p`, `mb-4gnu`, `mb-k54c`, `mb-dxmb`, `mb-h51g`, `mb-dg00`, `mb-3bna`,
+   `mb-z335`, `mb-12cz`, `mb-ew38`). Then land the provider job/ref owner (`mb-jlon`)
+   before selected-branch integration (`mb-2xq7`). No phase creates or switches a
+   checkout for cached revision browsing.
+3. Land the provider-neutral hosted-review contracts (`mb-63ym`) and narrow provider
+   jobs/ref fetching (`mb-jlon`) without waiting for full cache management.
+4. Publish the bounded provider runner, `gh api` adapter, broker-pinned Git credential
+   bridge, capability registry, auth-scoped store kernel, repository summary, and one
+   directly addressed PR bundle (`mb-y1ax`, `mb-p4sw`, `mb-s123`, `mb-ji83`, `mb-s0gv`,
+   `mb-i3xc`, `mb-2oxp`, `mb-cbak`, `mb-h64t`).
+5. Add the mounted plugin router, browser address-space lifecycle, and direct PR
+   document/diff (`mb-xzj3`, `mb-6mle`, `mb-81p5`) after the content-trust serving gate
+   is satisfied. This is the first complete PR workflow and does not wait for a discovery
+   index.
+6. Add the bounded PR index and virtual Pull Requests collection (`mb-lnkl`, `mb-uh6p`,
+   `mb-iw1v`), then layer anchored review threads (`mb-rldc`).
+
+Full cache management, the chooser, GitHub issues and timelines, stacked PRs, and
+very-large-repository work remain later beads rather than hidden prerequisites.
 
 ## Open Decisions
 
@@ -536,19 +639,40 @@ allowed transports. Review showed that wrong: `git clone` given a path defaults 
 from later mutation of the source — and ignores `--filter`, defeating blobless
 acquisition with only a warning.
 Both were reproduced on Git 2.50.1. `file://` uses the git-aware transport and packs
-rather than hardlinks, which is what makes the testing rationale true; it does not
-rescue `--filter`, and the repository-library plan owns that open measurement.
+rather than hardlinks, which is what makes the testing rationale true.
+
+`file://` honors `--filter` only when the origin allows it, so sandbox origins that
+exercise blobless fetch set `uploadpack.allowFilter=true`. Measured on Git 2.50.1, an
+origin without it sent every object with only a warning while the store still recorded
+itself as a promisor.
+Object-ID wants for prefetch and convergence need no further permission under protocol
+v2, Git’s default above the acquisition floor; under protocol v0 the same blob wants
+were refused with `Server does not allow request for unadvertised object` unless the
+origin also set `uploadpack.allowAnySHA1InWant`, so goldens do not force v0
+([measurements](../../../../explorations/repository-cache/README.md#gitlinks-and-rejected-object-requests)).
 See
 [Safety at the boundary](plan-2026-08-11-open-repo-from-git-url.md#safety-at-the-boundary).
 
+Portable acquire goldens (`mb-3639`) use an origin that does *not* allow the filter, so
+`strategy` is `full` on every Git that can fetch at all.
+Blobless honor/ignore remains a unit-test assertion, because ubuntu-latest’s Git 2.43.0
+is below the acquisition floor.
+
+**Closed 2026-09-18: acquisition is a side effect of `metab <url>`, with `--no-serve`.**
+`--no-serve` acquires a `file://` source and prints logical identity without starting
+the ASGI server. `metab file://… --api /api/cache/…` acquires, then inspects cache state
+against an empty throwaway root.
+There is no `/api/cache/acquire` write route.
+Serving, walking, and other modes refuse Git sources without acquiring; https and ssh
+stay closed; acquired content is not served.
+
+**Addendum (2026-09-30):** the thin-mirror plan changed the last sentence.
+`file://` and `https://` sources are acquired and served in the browser under the forced
+untrusted profile; `ssh` stays closed, and `--walk` refuses a Git source by design.
+
 Still open:
 
-1. **Where acquisition is triggered from.** Everything in `metab` is read-only today,
-   and acquisition writes.
-   Recommendation: keep it a side effect of `metab <url>`, and add `--no-serve` so a
-   golden can acquire and inspect without starting a server.
-   No `/api/cache/acquire` write route; the state clause covers reads only.
-2. **Whether `--show` recurses into containers.** Carried forward from the parity plan,
+1. **Whether `--show` recurses into containers.** Carried forward from the parity plan,
    unresolved, and not on the critical path.
 
 ## References
@@ -556,9 +680,8 @@ Still open:
 - [CLI parity and golden coverage](../done/plan-2026-08-21-cli-parity-and-golden-coverage.md)
 - [Git status and working-tree diffs](plan-2026-08-26-git-status-and-working-tree-diffs.md)
 - [Repository library and open from a Git URL](plan-2026-08-11-open-repo-from-git-url.md)
+- [Hosted review model and GitHub provider](plan-2026-08-27-github-provider-and-pull-requests.md)
 - [Delivery order review](../../reviews/review-2026-08-27-delivery-order-for-status-cache-and-providers.md)
-  — lands with branch `design/git-status-and-cache-phasing`, which must merge before
-  this document’s links resolve
 - [Views, Models, and Routes](../../architecture/arch-views-models-routes.md)
 - `tbd guidelines golden-testing-guidelines`
 

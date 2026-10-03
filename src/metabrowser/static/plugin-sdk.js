@@ -62,6 +62,7 @@
 //     navigation.current()               — current path/query/fragment target or null
 //     fileCatalog.snapshot()              — immutable known-file inventory snapshot
 //     fileCatalog.subscribe(listener)     — invalidate when inventory coverage changes
+//     sourceKind()                        — filesystem or git_revision served source
 //     repository                          — verified GitHub identity for the served tree
 //
 //   Formatting:
@@ -86,6 +87,12 @@
 //     perf.measureAsync(label, fn)       — contribute an asynchronous named span
 //     perf.report()/responsiveness()     — inspect the active browser profile
 //     debug                              — console-only shell troubleshooting helpers
+//
+// The helpers that build a view's markup -- renderSourceView, wrapWithCopy,
+// partialNoticeHtml, renderTextTruncationWarning, renderTextLoadMoreFooter, langForPath
+// and langForExtension -- and the syntax service, highlightSyntax and
+// isLargeTextPreview, are defined in plugin-sdk-views.js, which is not a startup
+// script. It is on this object before any plugin's code runs: see loadPluginsForKind.
 //
 // Plugins register from index.js with code like:
 //   const mb = window.metabrowser;
@@ -265,20 +272,39 @@
     }
   }
 
+  /** @type {Map<string, Promise<unknown>>} */
+  const _pluginStyleLoads = new Map();
+
+  // Fetch what a plugin's code does not have to wait for: its stylesheets, and its
+  // module through `modulepreload`, which does not evaluate it.
+  function _startPluginAssets(descriptor) {
+    const started = _pluginStyleLoads.get(descriptor.name);
+    if (started) {
+      return started;
+    }
+    const styles = Promise.all(
+      descriptor.styles.map((url, index) =>
+        _loadPluginElement("link", url, {
+          "data-metabrowser-plugin-asset": `${descriptor.name}:style:${index}`,
+          rel: "stylesheet",
+        }),
+      ),
+    );
+    _pluginStyleLoads.set(descriptor.name, styles);
+    const preload = global.document.createElement("link");
+    preload.setAttribute("rel", "modulepreload");
+    preload.setAttribute("href", descriptor.module);
+    global.document.head.append(preload);
+    return styles;
+  }
+
   function _loadPlugin(descriptor) {
     const existing = _pluginLoads.get(descriptor.name);
     if (existing) {
       return existing;
     }
     const loading = (async () => {
-      await Promise.all(
-        descriptor.styles.map((url, index) =>
-          _loadPluginElement("link", url, {
-            "data-metabrowser-plugin-asset": `${descriptor.name}:style:${index}`,
-            rel: "stylesheet",
-          }),
-        ),
-      );
+      await _startPluginAssets(descriptor);
       for (let index = 0; index < descriptor.scripts.length; index += 1) {
         await _loadPluginElement("script", descriptor.scripts[index], {
           "data-metabrowser-plugin-asset": `${descriptor.name}:script:${index}`,
@@ -294,17 +320,96 @@
     return loading;
   }
 
+  // plugin-sdk-views.js is here before any plugin's code runs; it says why.
+  /** @returns {Promise<void>} */
+  function _ensureViewHelpers() {
+    return typeof global.metabrowser.renderSourceView === "function"
+      ? Promise.resolve()
+      : ensureAsset("sdk-views");
+  }
+
+  // The helpers gate each plugin's code, not its transfer. Rejects when they cannot
+  // be loaded: no plugin's code has run then, and the next call tries again.
   async function loadPluginsForKind(kind) {
     const descriptors = _pluginAssetsByKind.get(kind) || [];
+    const helpers = _ensureViewHelpers();
+    for (const descriptor of descriptors) {
+      if (!_pluginLoads.has(descriptor.name)) {
+        void _startPluginAssets(descriptor);
+      }
+    }
+    await helpers;
     for (const descriptor of descriptors) {
       await _loadPlugin(descriptor);
     }
   }
 
+  // Load more actions by name. A partial-content notice's button names one; the SDK's
+  // delegated listener runs it only for the button the notice built, and a name nobody
+  // registered does nothing. The shell registers its text loader through the private
+  // host; a view that continues its own content passes `action: null` and wires its own.
+  /** @type {Map<string, () => unknown>} */
+  const _loadMoreActions = new Map();
+
+  /** @param {string} name @param {() => unknown} action */
+  function registerLoadMoreAction(name, action) {
+    if (!/^[A-Za-z_$][\w$]*$/.test(name) || typeof action !== "function") {
+      throw new TypeError("registerLoadMoreAction: a function and its identifier name");
+    }
+    _loadMoreActions.set(name, action);
+  }
+
+  // The document-wide delegates below (copy, Load more, and the shell's print and
+  // address controls) act only on an element application or plugin code created.
+  // No static marker can say so: a trusted folder's Markdown keeps class, id, and
+  // data-* through KPress, so it could spell any attribute this code writes and turn
+  // a click into a clipboard write or an application action. This value is drawn when
+  // the page loads, after every document was written, so authored markup cannot
+  // carry it. Web Crypto is always present in a browser; a browserless test realm
+  // may lack it, and there any value serves.
+  const _delegateOwner = (() => {
+    const bytes = new Uint8Array(16);
+    if (typeof global.crypto?.getRandomValues === "function") {
+      global.crypto.getRandomValues(bytes);
+    } else {
+      bytes.forEach((_byte, index) => {
+        bytes[index] = Math.floor(Math.random() * 256);
+      });
+    }
+    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  })();
+
+  /** Markup for a delegated control: ` data-mb-owner="…"`, set only by page code. */
+  function delegateOwnerAttribute() {
+    return ` data-mb-owner="${_delegateOwner}"`;
+  }
+
+  /**
+   * Mark an element page code created as a delegated control.
+   * @template {Element} T
+   * @param {T} element
+   * @returns {T}
+   */
+  function ownDelegate(element) {
+    element.setAttribute("data-mb-owner", _delegateOwner);
+    return element;
+  }
+
+  /** @param {Element | null | undefined} element */
+  function isOwnedDelegate(element) {
+    return (
+      !!element &&
+      typeof element.getAttribute === "function" &&
+      element.getAttribute("data-mb-owner") === _delegateOwner
+    );
+  }
+
   global.MetabrowserPluginHost = Object.freeze({
     attachFileCatalog,
     configureAssets,
+    isOwnedDelegate,
     loadPluginsForKind,
+    registerLoadMoreAction,
   });
 
   function registerView(kindId, viewId, spec) {
@@ -336,6 +441,10 @@
       return [];
     }
     return Array.from(bucket.keys());
+  }
+
+  function sourceKind() {
+    return global.METABROWSER_SOURCE_KIND === "git_revision" ? "git_revision" : "filesystem";
   }
 
   function render(template, data) {
@@ -866,115 +975,6 @@
     return `${base + (detail ? `: ${detail}` : "")} (HTTP ${status})`;
   }
 
-  /**
-   * How much of a partially-loaded payload is showing, or null when it is
-   * complete. One reading of the payload, so the banner, the footer control,
-   * and the header readout cannot disagree about whether more remains.
-   *
-   * @param {Record<string, any> | null | undefined} data
-   * @returns {{loaded: string, total: string} | null}
-   */
-  function textPreviewProgress(data) {
-    if (!data) {
-      return null;
-    }
-    const totalBytes = data.size_uncompressed || data.logical_size || data.size || 0;
-    const bytesRead = data.bytes_read || data.content_bytes || 0;
-    const truncated =
-      !!data.content_truncated ||
-      (typeof data.bytes_read === "number" && totalBytes > 0 && bytesRead < totalBytes);
-    if (!truncated) {
-      return null;
-    }
-    return { loaded: formatSize(bytesRead), total: formatSize(totalBytes) };
-  }
-
-  /**
-   * The Load more control itself. Emitted at both ends of partial content —
-   * see docs/design-system.md, "Continuing partial content": a reader who has
-   * scrolled to the end of what loaded is exactly the reader who wants more,
-   * and sending them back to the top to ask for it is the whole problem.
-   *
-   * @param {"top" | "bottom"} position
-   * @returns {string}
-   */
-  function loadMoreButtonHtml(position, action) {
-    // `action: null` means the caller wires its own listener — a view that
-    // tracks its own offsets cannot be continued by the shell's text loader.
-    const onclick = action === null ? "" : ` onclick="${action || "loadMoreCurrentText()"}"`;
-    return (
-      `<button class="btn metabrowser-load-more" type="button" data-position="${position}"` +
-      `${onclick} data-tip-text="Load more of this file">Load more</button>`
-    );
-  }
-
-  /**
-   * The shared partial-content notice.
-   *
-   * Every surface that says "this is only part of the file" is this box, in
-   * core and in plugins alike — see docs/design-system.md, "Continuing partial
-   * content". A use-site class rides along for querying and positioning, but
-   * `partial-notice` is what carries the fill, border, and type, so the two
-   * ends of a file and the two views cannot drift apart.
-   *
-   * `showControl: false` states the condition without offering to continue —
-   * for content that is partial and will stay partial, such as a file larger
-   * than a view is willing to load. That is still a partial-content notice; a
-   * reader who cannot see the whole file needs telling either way.
-   *
-   * @param {{loaded: string, total: string}} progress
-   * @param {"top" | "bottom"} position
-   * @param {{useSiteClass?: string, action?: string | null, hidden?: boolean,
-   *          label?: string, showControl?: boolean}} [options]
-   * @returns {string}
-   */
-  function partialNoticeHtml(progress, position, options) {
-    const useSiteClass = options?.useSiteClass ? ` ${options.useSiteClass}` : "";
-    const hidden = options?.hidden ? " hidden" : "";
-    const label = options?.label ?? "Partial file.";
-    const control =
-      options?.showControl === false ? "" : loadMoreButtonHtml(position, options?.action);
-    return (
-      `<div class="notice partial-notice${useSiteClass}" data-severity="warning"` +
-      ` data-position="${position}" role="status"${hidden}>` +
-      // The progress figures live in their own element so a view that updates
-      // in place can rewrite them without taking the label with them.
-      `<span><strong class="partial-notice-label">${escapeHtml(label)}</strong> ` +
-      '<span class="partial-notice-readout">Showing ' +
-      escapeHtml(progress.loaded) +
-      " of " +
-      escapeHtml(progress.total) +
-      ".</span></span>" +
-      // The notice carries its own button. It used to say "Select Load more to
-      // continue" and point at a control in the pane header, which puts the
-      // explanation and the remedy in different places.
-      control +
-      "</div>"
-    );
-  }
-
-  function renderTextTruncationWarning(data) {
-    const progress = textPreviewProgress(data);
-    return progress
-      ? partialNoticeHtml(progress, "top", {
-          useSiteClass: "metabrowser-source-truncation-warning",
-        })
-      : "";
-  }
-
-  /**
-   * Trailing companion to the banner, mounted after the content.
-   *
-   * @param {Record<string, any> | null | undefined} data
-   * @returns {string}
-   */
-  function renderTextLoadMoreFooter(data) {
-    const progress = textPreviewProgress(data);
-    return progress
-      ? partialNoticeHtml(progress, "bottom", { useSiteClass: "metabrowser-source-more-footer" })
-      : "";
-  }
-
   function _headOrBody() {
     return global.document && (global.document.head || global.document.body);
   }
@@ -1472,7 +1472,10 @@
   }
 
   function sizeHtml(bytes, extraClass) {
-    if (bytes === null || bytes === undefined) {
+    if (bytes === undefined) {
+      return "";
+    }
+    if (bytes === null) {
       // The provider emits null aggregates while a directory is still
       // finalizing; render as a skeleton cell so the row paints
       // with shape; the SSE fs.change patch flow replaces it in place.
@@ -1481,293 +1484,6 @@
     }
     const cls = `size ${sizeClass(bytes)} ${extraClass || ""}`.trim();
     return `<span class="${cls}">${formatSize(bytes)}</span>`;
-  }
-
-  const HIGHLIGHT_TOKEN_CLASS_RE = /^[A-Za-z_][A-Za-z0-9_-]*$/;
-  const HIGHLIGHT_ENTITIES = Object.freeze({
-    "&amp;": "&",
-    "&lt;": "<",
-    "&gt;": ">",
-    "&quot;": '"',
-    "&#x27;": "'",
-  });
-  /** @type {TextEncoder | null} */
-  let syntaxTextEncoder = null;
-  let syntaxAssetsSettled = false;
-  if (typeof global.addEventListener === "function") {
-    global.addEventListener("metabrowser:optional-assets-loaded", () => {
-      syntaxAssetsSettled = true;
-    });
-  }
-
-  function syntaxHighlightMaxBytes() {
-    const configured = Number(
-      /** @type {{SYNTAX_HIGHLIGHT_MAX_BYTES?: unknown} | undefined} */ (
-        global.METABROWSER_SETTINGS
-      )?.SYNTAX_HIGHLIGHT_MAX_BYTES,
-    );
-    return Number.isFinite(configured) && configured >= 0 ? configured : 0;
-  }
-
-  /** @param {string} value */
-  function utf8ByteLength(value) {
-    syntaxTextEncoder ??= new global.TextEncoder();
-    return syntaxTextEncoder.encode(value).byteLength;
-  }
-
-  /**
-   * Record one safe plain-text fallback without making diagnostics part of
-   * the syntax service's correctness path. Labels are fixed-cardinality and
-   * metadata never includes source text.
-   * @param {"over_limit" | "no_grammar" | "markup_rejected" | "lexer_threw"} reason
-   * @param {string} language
-   * @param {number} inputBytes
-   */
-  function recordSyntaxFallback(reason, language, inputBytes) {
-    const recorder = global.metabrowser?.perf;
-    if (typeof recorder?.measure !== "function") {
-      return;
-    }
-    try {
-      recorder.measure(`syntaxHighlight:fallback:${reason}`, () => undefined, {
-        input_bytes: inputBytes,
-        language: String(language).slice(0, 80),
-      });
-    } catch (_diagnosticError) {
-      // Plain-text fallback must remain safe when an injected profiler fails.
-    }
-  }
-
-  /** @param {string} language */
-  function syntaxGrammarReady(language) {
-    return (
-      typeof global.hljs?.highlight === "function" &&
-      typeof global.hljs?.getLanguage === "function" &&
-      Boolean(global.hljs.getLanguage(language))
-    );
-  }
-
-  function syntaxAbortError() {
-    return new global.DOMException("Syntax highlighting was aborted.", "AbortError");
-  }
-
-  /**
-   * Wait for a requested grammar or the terminal optional-asset event.
-   * @param {string} language
-   * @param {AbortSignal | undefined} signal
-   * @returns {Promise<boolean>}
-   */
-  function waitForSyntaxAssets(language, signal) {
-    if (signal?.aborted) {
-      return Promise.reject(syntaxAbortError());
-    }
-    if (syntaxGrammarReady(language)) {
-      return Promise.resolve(true);
-    }
-    if (syntaxAssetsSettled || typeof global.addEventListener !== "function") {
-      return Promise.resolve(false);
-    }
-    return new Promise((resolve, reject) => {
-      function cleanup() {
-        global.removeEventListener("metabrowser:optional-asset-loaded", onAsset);
-        global.removeEventListener("metabrowser:optional-assets-loaded", onTerminal);
-        signal?.removeEventListener("abort", onAbort);
-      }
-      function onAsset() {
-        if (syntaxGrammarReady(language)) {
-          cleanup();
-          resolve(true);
-        }
-      }
-      function onTerminal() {
-        cleanup();
-        resolve(syntaxGrammarReady(language));
-      }
-      function onAbort() {
-        cleanup();
-        reject(syntaxAbortError());
-      }
-      global.addEventListener("metabrowser:optional-asset-loaded", onAsset);
-      global.addEventListener("metabrowser:optional-assets-loaded", onTerminal);
-      signal?.addEventListener("abort", onAbort, { once: true });
-    });
-  }
-
-  function isLargeTextPreview(data) {
-    if (!data) {
-      return false;
-    }
-    if (data.highlight_disabled) {
-      return true;
-    }
-    if (typeof data.content === "string") {
-      return utf8ByteLength(data.content) > syntaxHighlightMaxBytes();
-    }
-    const size = Number(data.size);
-    return Number.isFinite(size) && size >= 0 && size > syntaxHighlightMaxBytes();
-  }
-
-  /**
-   * Convert Highlight.js's constrained markup to token data without an HTML parser.
-   * @param {string} markup
-   * @returns {MetabrowserSyntaxTokenLines | null}
-   */
-  function scanHighlightMarkup(markup) {
-    /** @type {MetabrowserSyntaxTokenLines} */
-    const lines = [[]];
-    /** @type {string[][]} */
-    const classStack = [];
-    let offset = 0;
-
-    /** @param {string} text */
-    function appendText(text) {
-      if (text.length === 0) {
-        return;
-      }
-      const classes = classStack.flat();
-      const line = lines[lines.length - 1];
-      const previous = line[line.length - 1];
-      if (
-        previous &&
-        previous.classes.length === classes.length &&
-        previous.classes.every((name, index) => name === classes[index])
-      ) {
-        previous.text += text;
-      } else {
-        line.push({ classes, text });
-      }
-    }
-
-    while (offset < markup.length) {
-      if (markup.startsWith("</span>", offset)) {
-        if (classStack.length === 0) {
-          return null;
-        }
-        classStack.pop();
-        offset += "</span>".length;
-        continue;
-      }
-      if (markup.startsWith('<span class="', offset)) {
-        const end = markup.indexOf('">', offset);
-        if (end < 0) {
-          return null;
-        }
-        const opening = markup.slice(offset, end + 2);
-        const match = /^<span class="([^"]+)">$/.exec(opening);
-        const classes = match?.[1].split(" ") ?? [];
-        if (
-          classes.length === 0 ||
-          !classes.some((name) => name.startsWith("hljs-")) ||
-          !classes.every((name) => HIGHLIGHT_TOKEN_CLASS_RE.test(name))
-        ) {
-          return null;
-        }
-        classStack.push(classes);
-        offset = end + 2;
-        continue;
-      }
-      const character = markup[offset];
-      if (character === "<") {
-        return null;
-      }
-      if (character === "&") {
-        const end = markup.indexOf(";", offset);
-        if (end < 0) {
-          return null;
-        }
-        const entity = markup.slice(offset, end + 1);
-        const decoded = HIGHLIGHT_ENTITIES[entity];
-        if (decoded === undefined) {
-          return null;
-        }
-        appendText(decoded);
-        offset = end + 1;
-        continue;
-      }
-      if (character === "\n") {
-        lines.push([]);
-        offset += 1;
-        continue;
-      }
-      let end = offset + 1;
-      while (end < markup.length && !"<&\n".includes(markup[end])) {
-        end += 1;
-      }
-      appendText(markup.slice(offset, end));
-      offset = end;
-    }
-    return classStack.length === 0 ? lines : null;
-  }
-
-  /**
-   * Highlight source through the host grammar registry and return DOM-free token lines.
-   * @param {string} source
-   * @param {string} language
-   * @param {{signal?: AbortSignal}} [options]
-   * @returns {Promise<MetabrowserSyntaxTokenLines | null>}
-   */
-  async function highlightSyntax(source, language, options = {}) {
-    if (options.signal?.aborted) {
-      throw syntaxAbortError();
-    }
-    const inputBytes = utf8ByteLength(source);
-    if (inputBytes > syntaxHighlightMaxBytes()) {
-      recordSyntaxFallback("over_limit", language, inputBytes);
-      return null;
-    }
-    if (!(await waitForSyntaxAssets(language, options.signal))) {
-      recordSyntaxFallback("no_grammar", language, inputBytes);
-      return null;
-    }
-    if (options.signal?.aborted) {
-      throw syntaxAbortError();
-    }
-    try {
-      const result = global.hljs.highlight(source, { language, ignoreIllegals: true });
-      if (!result || typeof result.value !== "string") {
-        recordSyntaxFallback("markup_rejected", language, inputBytes);
-        return null;
-      }
-      const lines = scanHighlightMarkup(result.value);
-      const sourceLines = source.split("\n");
-      if (
-        lines === null ||
-        lines.length !== sourceLines.length ||
-        lines.some((runs, index) => runs.map((run) => run.text).join("") !== sourceLines[index])
-      ) {
-        recordSyntaxFallback("markup_rejected", language, inputBytes);
-        return null;
-      }
-      return lines;
-    } catch (_error) {
-      recordSyntaxFallback("lexer_threw", language, inputBytes);
-      return null;
-    }
-  }
-
-  // Copy-icon SVG. Defined here (not pulled from window.MetabrowserIcons)
-  // so plugins don't depend on the icons.js bundle being loaded first.
-  const ICON_COPY =
-    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"' +
-    ' stroke-linecap="round" stroke-linejoin="round">' +
-    '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>' +
-    '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>' +
-    "</svg>";
-
-  function wrapWithCopy(innerHtml) {
-    // A delegated click listener (installed once at SDK init) handles
-    // .content-copy-btn clicks — no inline handler needed. If the
-    // shell's global copyContent exists it is called for full feedback;
-    // otherwise the delegate falls back to clipboard.writeText.
-    return (
-      '<div class="content-copy-wrap">' +
-      '<button class="icon-btn icon-btn-reveal icon-btn-overlay content-copy-btn"' +
-      ' type="button" data-mb-copy="wrap" data-tip-text="Copy content" aria-label="Copy content">' +
-      ICON_COPY +
-      "</button>" +
-      innerHtml +
-      "</div>"
-    );
   }
 
   // Icon registry — proxies window.MetabrowserIcons (loaded by icons.js)
@@ -1798,59 +1514,6 @@
       return fn();
     },
   });
-
-  function langForExtension(ext) {
-    const languageByExtension = /** @type {Record<string, string>} */ (
-      global.METABROWSER_SETTINGS?.SYNTAX_LANGUAGE_BY_EXTENSION || {}
-    );
-    return languageByExtension[ext || ""] || "";
-  }
-
-  function langForPath(pathOrName, ext = "") {
-    const languageByBasename = /** @type {Record<string, string>} */ (
-      global.METABROWSER_SETTINGS?.SYNTAX_LANGUAGE_BY_BASENAME || {}
-    );
-    const pathParts = String(pathOrName || "")
-      .replaceAll("\\", "/")
-      .split("/");
-    let basename = (pathParts[pathParts.length - 1] || "").toLowerCase();
-    for (const compressionSuffix of [".gz", ".zlib"]) {
-      if (basename.endsWith(compressionSuffix)) {
-        basename = basename.slice(0, -compressionSuffix.length);
-        break;
-      }
-    }
-    let logicalExtension = ext.toLowerCase();
-    if (!logicalExtension) {
-      const dot = basename.lastIndexOf(".");
-      logicalExtension = dot > 0 ? basename.slice(dot) : "";
-    }
-    return languageByBasename[basename] || langForExtension(logicalExtension);
-  }
-
-  /**
-   * Render the shared bounded Source surface used by generic text-like views.
-   * @param {HTMLElement} container
-   * @param {Record<string, unknown> & {content?: string, ext?: string}} data
-   */
-  function renderSourceView(container, data) {
-    const truncationWarning = renderTextTruncationWarning(data);
-    const loadMoreFooter = renderTextLoadMoreFooter(data);
-    const content = typeof data.content === "string" ? data.content : "";
-    let languageClass = "plaintext no-highlight";
-    if (!isLargeTextPreview(data)) {
-      const language = langForPath(
-        typeof data.path === "string" ? data.path : "",
-        typeof data.ext === "string" ? data.ext : "",
-      );
-      languageClass = language ? `language-${language}` : "plaintext";
-    }
-    const code =
-      `<pre class="code-block"><code class="${languageClass}">` +
-      `${escapeHtml(content)}</code></pre>`;
-    container.classList.add("metabrowser-source-host");
-    container.innerHTML = truncationWarning + wrapWithCopy(code) + loadMoreFooter;
-  }
 
   // Delegated click handler for copyable content and explicit identifiers.
   // Fully SDK-owned: no reference to shell globals, so paths, revisions,
@@ -1922,9 +1585,24 @@
         if (!target || typeof target.closest !== "function") {
           return;
         }
+        // Only a control page code created (see `_delegateOwner`): the same markup
+        // written by a document is ignored.
         var btn = target.closest("[data-mb-copy]");
         if (btn) {
-          _handleCopyClick(btn);
+          if (isOwnedDelegate(btn)) {
+            _handleCopyClick(btn);
+          }
+          return;
+        }
+        // Load more: only a notice's own button, and only an action registered by
+        // name (see registerLoadMoreAction); anything else in the page is ignored.
+        var more = target.closest("button.metabrowser-load-more[data-mb-load-more]");
+        var call =
+          isOwnedDelegate(more) &&
+          /^([A-Za-z_$][\w$]*)\(\)$/.exec(more?.getAttribute("data-mb-load-more") || "");
+        var registered = call ? _loadMoreActions.get(call[1]) : undefined;
+        if (registered) {
+          registered();
         }
       });
     }
@@ -1979,12 +1657,9 @@
     fileTypeIcon: fileTypeIcon,
     fileCatalog: fileCatalog,
     navigation: global.MetabrowserNavigationRoute.navigation,
+    sourceKind: sourceKind,
     repository: repository,
     fetchKpressRender: fetchKpressRender,
-    renderTextTruncationWarning: renderTextTruncationWarning,
-    renderTextLoadMoreFooter: renderTextLoadMoreFooter,
-    renderSourceView: renderSourceView,
-    partialNoticeHtml: partialNoticeHtml,
     loadKpressAssets: loadKpressAssets,
     ensureAsset: ensureAsset,
     ensureKindAssets: ensureKindAssets,
@@ -1998,15 +1673,12 @@
     countClass: countClass,
     sizeClass: sizeClass,
     sizeHtml: sizeHtml,
-    isLargeTextPreview: isLargeTextPreview,
-    highlightSyntax: highlightSyntax,
-    wrapWithCopy: wrapWithCopy,
+    delegateOwnerAttribute: delegateOwnerAttribute,
+    ownDelegate: ownDelegate,
     icons: icons,
     perf: perf,
     prefs: prefs,
     filters: filters,
     fileTypes: fileTypes,
-    langForExtension: langForExtension,
-    langForPath: langForPath,
   };
 })(typeof window !== "undefined" ? window : globalThis);

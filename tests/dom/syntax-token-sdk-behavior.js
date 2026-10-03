@@ -101,6 +101,8 @@ function loadSdk(sandbox) {
     load(sandbox, `src/metabrowser/static/${filename}`);
   }
   load(sandbox, "src/metabrowser/static/plugin-sdk.js");
+  // The helpers a view's renderer calls, which the shell loads with the compositor.
+  load(sandbox, "src/metabrowser/static/plugin-sdk-views.js");
 }
 
 async function main() {
@@ -147,6 +149,7 @@ async function main() {
       },
     },
     innerHTML: "",
+    querySelector: () => null,
   };
   ready.metabrowser.renderSourceView(sourceContainer, {
     content: "const literal = '<script>';",
@@ -175,6 +178,43 @@ async function main() {
     "shared source renderer should highlight extensionless source names",
   );
 
+  // Code that is not highlighted is written `no-highlight`, as a child of the gridded
+  // <pre>, and nothing else is. The stylesheet selects exactly that
+  // (`pre.code-block.metabrowser-source-lines:has(> code.no-highlight)`) to give such
+  // a window the line pitch it had before the gutter; tests/test_source_line_anchors.py
+  // holds the rule.
+  const unhighlighted =
+    /<pre class="code-block metabrowser-source-lines"><span class="source-line-numbers"[^>]*>[^<]*<\/span><code class="plaintext no-highlight">/;
+  const pastTheBound = `${"x".repeat(79)}\n`.repeat((512 * 1024) / 80 + 1);
+  check(
+    new TextEncoder().encode(pastTheBound).length > 512 * 1024,
+    "the fixture should be past the highlight bound",
+  );
+  for (const [label, data] of [
+    ["a text file past the highlight bound", { content: pastTheBound, ext: ".txt" }],
+    ["a source file past the highlight bound", { content: pastTheBound, ext: ".py" }],
+    [
+      "a file the server will not highlight",
+      { content: "a\n", ext: ".py", highlight_disabled: true },
+    ],
+  ]) {
+    ready.metabrowser.renderSourceView(sourceContainer, data);
+    check(unhighlighted.test(sourceContainer.innerHTML), `${label} should be written no-highlight`);
+  }
+  for (const [label, data] of [
+    ["a text file within the bound", { content: pastTheBound.slice(0, 512 * 1024), ext: ".txt" }],
+    ["a source file", { content: "a = 1\n", ext: ".py" }],
+    ["a file with no known language", { content: "a\n", ext: ".zzz" }],
+  ]) {
+    ready.metabrowser.renderSourceView(sourceContainer, data);
+    const pre = sourceContainer.innerHTML.slice(sourceContainer.innerHTML.indexOf("<pre"));
+    check(
+      pre.startsWith('<pre class="code-block metabrowser-source-lines">') &&
+        !pre.includes("no-highlight"),
+      `${label} is highlighted, so it should not be written no-highlight`,
+    );
+  }
+
   const markdownSource = fs.readFileSync(
     path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/source.js"),
     "utf-8",
@@ -182,20 +222,15 @@ async function main() {
   const markdownModule = await import(
     `data:text/javascript;base64,${Buffer.from(markdownSource).toString("base64")}`
   );
+  // The Markdown Source tab renders through the shared source view: front matter and
+  // body are YAML and Markdown blocks under one gutter, with one whole-text payload.
   const markdownText = "---\ntitle: Example\n---\n# Heading\n";
-  const markdownHtml = markdownModule.renderMarkdownSourceHtml(
-    { content: markdownText },
-    {
-      renderTextTruncationWarning: () => "TOP",
-      renderTextLoadMoreFooter: () => "BOTTOM",
-      isLargeTextPreview: () => false,
-      escapeHtml: (value) =>
-        String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;"),
-      wrapWithCopy: (html) => `<div>${html}</div>`,
-    },
+  markdownModule.renderMarkdownSource(
+    sourceContainer,
+    { raw: { content: markdownText, ext: ".md" } },
+    ready.metabrowser,
   );
-  check(markdownHtml.startsWith("TOP<div>"), "Markdown Source should retain its top notice");
-  check(markdownHtml.endsWith("</div>BOTTOM"), "Markdown Source should retain its footer");
+  const markdownHtml = sourceContainer.innerHTML;
   check(
     markdownHtml.includes(
       `<code data-mb-copy-payload class="no-highlight" hidden>${markdownText}</code>`,
@@ -203,28 +238,105 @@ async function main() {
     "frontmatter Source should retain one exact whole-document copy payload",
   );
   check(
-    markdownHtml.includes('<code class="language-yaml">---\ntitle: Example\n---\n</code>'),
-    "the YAML segment should retain the closing-delimiter newline",
+    markdownHtml.includes(
+      '<code class="language-yaml">---\ntitle: Example\n---\n</code><code class="language-markdown"># Heading\n</code></pre>',
+    ),
+    "the YAML block should end its closing-delimiter line and the Markdown block follow it",
+  );
+  check(
+    markdownHtml.includes(">1\n2\n3\n4</span>"),
+    "one gutter should number the front matter and the body together",
   );
   const markdownCrLf = "---\r\ntitle: Example\r\n---\r\n<script>\r\n";
-  const markdownCrLfHtml = markdownModule.renderMarkdownSourceHtml(
-    { content: markdownCrLf },
-    {
-      renderTextTruncationWarning: () => "",
-      renderTextLoadMoreFooter: () => "",
-      isLargeTextPreview: () => false,
-      escapeHtml: (value) =>
-        String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;"),
-      wrapWithCopy: (html) => html,
-    },
+  markdownModule.renderMarkdownSource(
+    sourceContainer,
+    { raw: { content: markdownCrLf, ext: ".md" } },
+    ready.metabrowser,
   );
   check(
-    markdownCrLfHtml.includes("---\r\ntitle: Example\r\n---\r\n</code>"),
-    "CRLF frontmatter should retain its exact line endings",
+    sourceContainer.innerHTML.includes(
+      '<code class="language-yaml">---\ntitle: Example\n---\n</code><code class="language-markdown">&lt;script&gt;\n</code>',
+    ),
+    "CRLF frontmatter should show the lines the browser parses, and escape the body",
   );
   check(
-    markdownCrLfHtml.includes("&lt;script&gt;\r\n") && !markdownCrLfHtml.includes("<script>\r\n"),
+    !sourceContainer.innerHTML.includes("<script>"),
     "frontmatter Source should escape its whole-document payload and visible body",
+  );
+  markdownModule.renderMarkdownSource(
+    sourceContainer,
+    { raw: { content: "---\nnever: closed\n", ext: ".md" } },
+    ready.metabrowser,
+  );
+  check(
+    sourceContainer.innerHTML.includes(
+      '<code class="language-markdown">---\nnever: closed\n</code>',
+    ) && !sourceContainer.innerHTML.includes("data-mb-copy-payload"),
+    "unclosed front matter should stay one Markdown block",
+  );
+
+  // A partly loaded file is the notice, the code, then the Load more footer, in that
+  // order: a reader who reached the end of what loaded finds the control there. Front
+  // matter does not change it, though it shows as one block while more remains.
+  const partialOrder = (content) => {
+    markdownModule.renderMarkdownSource(
+      sourceContainer,
+      {
+        raw: { content, ext: ".md", content_truncated: true, bytes_read: 64, size: 4096 },
+      },
+      ready.metabrowser,
+    );
+    const html = sourceContainer.innerHTML;
+    const at = (text) => {
+      const first = html.indexOf(text);
+      check(
+        first >= 0 && html.indexOf(text, first + 1) < 0,
+        `a partly loaded Markdown Source should have exactly one ${text}`,
+      );
+      return first;
+    };
+    return {
+      html,
+      notice: at('<div class="notice partial-notice metabrowser-source-truncation-warning"'),
+      wrap: at('<div class="content-copy-wrap">'),
+      code: at('<pre class="code-block'),
+      codeEnd: at("</pre></div>"),
+      footer: at('<div class="notice partial-notice metabrowser-source-more-footer"'),
+    };
+  };
+  for (const content of ["# Heading\nbody\n", "---\ntitle: Example\n---\n# Heading\n"]) {
+    const partial = partialOrder(content);
+    check(
+      partial.notice === 0 &&
+        partial.notice < partial.wrap &&
+        partial.wrap < partial.code &&
+        partial.code < partial.codeEnd &&
+        partial.codeEnd + "</pre></div>".length === partial.footer,
+      "a partly loaded Markdown Source should be the notice, the code, then the footer",
+    );
+    const footer = partial.html.slice(partial.footer);
+    check(
+      footer.includes('data-position="bottom"') &&
+        footer.includes('class="btn metabrowser-load-more"') &&
+        footer.endsWith("Load more</button></div>") &&
+        footer.indexOf("</div>") === footer.length - "</div>".length,
+      "the Load more footer should be the last thing in a partly loaded Markdown Source",
+    );
+    check(
+      partial.html.slice(0, partial.wrap).includes('data-position="top"'),
+      "the notice ahead of the code should be the top one",
+    );
+  }
+  markdownModule.renderMarkdownSource(
+    sourceContainer,
+    { raw: { content: "# Heading\nbody\n", ext: ".md" } },
+    ready.metabrowser,
+  );
+  check(
+    sourceContainer.innerHTML.startsWith('<div class="content-copy-wrap">') &&
+      sourceContainer.innerHTML.endsWith("</pre></div>") &&
+      !sourceContainer.innerHTML.includes("partial-notice"),
+    "a whole Markdown Source should have neither notice nor footer",
   );
 
   const source = "/* first line\n+ * second line */";
@@ -408,6 +520,21 @@ async function main() {
           metadata.input_bytes === 5,
       ),
     "unknown grammars should expose a fixed fallback reason before and after settlement",
+  );
+
+  // The service loads with the first view, which can be after the optional assets
+  // settled. The event has been and gone; the shell's prefetch chain leaves a flag
+  // behind it, and a request for a grammar that never arrived must not wait forever.
+  const late = createSandbox();
+  late.METABROWSER_OPTIONAL_ASSETS_SETTLED = true;
+  loadSdk(late);
+  const lateResult = await Promise.race([
+    late.metabrowser.highlightSyntax("plain", "not-a-language"),
+    new Promise((resolve) => setTimeout(() => resolve("still waiting"), 200)),
+  ]);
+  check(
+    lateResult === null,
+    `a service loaded after settlement should answer null at once, got ${lateResult}`,
   );
 
   const aborting = createSandbox();

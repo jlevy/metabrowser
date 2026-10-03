@@ -1,0 +1,49 @@
+$defs:
+  CanonicalTimestamp:
+    pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{3})?Z$
+    type: string
+  GitVersion:
+    maxLength: 128
+    minLength: 1
+    pattern: ^[0-9]+\.[0-9]+[!-~]*$
+    type: string
+  ObjectFormat:
+    enum:
+    - sha1
+    - sha256
+    type: string
+  Sha256Identity:
+    pattern: ^sha256:[0-9a-f]{64}$
+    type: string
+  StoreAcquisition:
+    additionalProperties: false
+    description: "How a store's Git database was first populated: a fetch of every object."
+    properties:
+      git_version:
+        $ref: '#/$defs/GitVersion'
+      object_format:
+        $ref: '#/$defs/ObjectFormat'
+    required:
+    - git_version
+    - object_format
+    title: StoreAcquisition
+    type: object
+$schema: https://json-schema.org/draft/2020-12/schema
+additionalProperties: false
+description: '``store.yml``: immutable identity and acquisition metadata of a Git database.'
+properties:
+  acquisition:
+    $ref: '#/$defs/StoreAcquisition'
+  created_at:
+    $ref: '#/$defs/CanonicalTimestamp'
+  id:
+    $ref: '#/$defs/Sha256Identity'
+required:
+- acquisition
+- created_at
+- id
+title: RepositoryStore
+type: object
+x-softschema:
+  contract: com.github.jlevy.metabrowser.cache:RepositoryStore/v1
+  schema_sha256: 2568046fdd61eb4797412f1b04417d806dc4df437a5bb47bad366496aed45ee8

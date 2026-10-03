@@ -101,7 +101,7 @@ def test_container_exts_expose_the_diff_kind() -> None:
 
 
 def _hook(handler: Any, path: str) -> tuple[int, dict[str, Any]]:
-    response = handler(_request(path))
+    response = asyncio.run(handler(_request(path)))
     return response.status_code, json.loads(bytes(response.body))
 
 

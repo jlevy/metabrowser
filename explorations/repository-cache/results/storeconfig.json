@@ -1,0 +1,249 @@
+{
+  "environment": {
+    "cpu": "Apple M1 Pro",
+    "git_build_options": [
+      "cpu: arm64",
+      "no commit associated with this build",
+      "sizeof-long: 8",
+      "sizeof-size_t: 8",
+      "shell-path: /bin/sh"
+    ],
+    "git_version": "git version 2.50.1",
+    "logical_cpus": 10,
+    "machine": "arm64",
+    "memory_bytes": 34359738368,
+    "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+    "python": "3.14.7"
+  },
+  "finished_at": "2026-09-17T15:02:50+00:00",
+  "parameters": {},
+  "rows": [
+    {
+      "added_by_first_filtered_fetch": [
+        "remote.origin.promisor",
+        "remote.origin.partialclonefilter"
+      ],
+      "case": "config_keys",
+      "written_by_init_and_metabrowser": [
+        "core.repositoryformatversion",
+        "core.filemode",
+        "core.bare",
+        "core.ignorecase",
+        "core.precomposeunicode",
+        "core.hookspath",
+        "maintenance.auto",
+        "gc.auto",
+        "fetch.recursesubmodules",
+        "transfer.bundleuri",
+        "remote.origin.url"
+      ]
+    },
+    {
+      "case": "config_after_operation",
+      "digest_unchanged": true,
+      "keys_changed": [],
+      "operation": "job_fetch_into_private_refs",
+      "returncode": 0
+    },
+    {
+      "case": "config_after_operation",
+      "digest_unchanged": true,
+      "keys_changed": [],
+      "operation": "object_id_prefetch",
+      "returncode": 0
+    },
+    {
+      "case": "config_after_operation",
+      "digest_unchanged": true,
+      "keys_changed": [],
+      "operation": "update_ref_transaction",
+      "returncode": 0
+    },
+    {
+      "case": "config_after_operation",
+      "digest_unchanged": true,
+      "keys_changed": [],
+      "operation": "gc_prune_now",
+      "returncode": 0
+    },
+    {
+      "case": "config_after_operation",
+      "digest_unchanged": true,
+      "keys_changed": [],
+      "operation": "repack_all",
+      "returncode": 0
+    },
+    {
+      "case": "config_after_operation",
+      "digest_unchanged": true,
+      "keys_changed": [],
+      "operation": "store_read_log",
+      "returncode": 0
+    },
+    {
+      "case": "fork_fetch",
+      "digest_unchanged": false,
+      "gc_returncode": 0,
+      "gc_stderr": [],
+      "keys_added": [
+        "remote.file://<SCRATCH>/storeconfig/fork.git.promisor",
+        "remote.file://<SCRATCH>/storeconfig/fork.git.partialclonefilter"
+      ],
+      "non_promisor_packs": 0,
+      "returncode": 0,
+      "variant": "by_url_filtered"
+    },
+    {
+      "case": "fork_fetch",
+      "digest_unchanged": true,
+      "gc_returncode": 128,
+      "gc_stderr": [
+        "warning: Failed to write bitmap index. Packfile doesn't have full closure (object <oid> is missing)",
+        "fatal: failed to write bitmap index",
+        "fatal: failed to run repack"
+      ],
+      "keys_added": [],
+      "non_promisor_packs": 0,
+      "returncode": 0,
+      "variant": "by_url_unfiltered"
+    },
+    {
+      "case": "fork_fetch",
+      "digest_unchanged": true,
+      "gc_returncode": 0,
+      "non_promisor_packs": 0,
+      "repack_returncode": 0,
+      "returncode": 0,
+      "variant": "base_repository_pull_ref_through_origin"
+    },
+    {
+      "case": "hooks",
+      "hook_ran": false,
+      "planted_in": "cwd",
+      "returncode": 0,
+      "variant": "hooks_path_empty"
+    },
+    {
+      "case": "hooks",
+      "hook_ran": false,
+      "planted_in": "store_hooks_dir",
+      "returncode": 0,
+      "variant": "hooks_path_empty"
+    },
+    {
+      "case": "hooks",
+      "hook_ran": false,
+      "planted_in": "cwd",
+      "returncode": 0,
+      "variant": "hooks_path_dev_null"
+    },
+    {
+      "case": "hooks",
+      "hook_ran": false,
+      "planted_in": "store_hooks_dir",
+      "returncode": 0,
+      "variant": "hooks_path_dev_null"
+    },
+    {
+      "case": "hooks",
+      "hook_ran": false,
+      "planted_in": "cwd",
+      "returncode": 0,
+      "variant": "hooks_path_unset"
+    },
+    {
+      "case": "hooks",
+      "hook_ran": true,
+      "planted_in": "store_hooks_dir",
+      "returncode": 0,
+      "variant": "hooks_path_unset"
+    },
+    {
+      "case": "discarded_job_retention",
+      "command": "gc --prune=now",
+      "present_after": {
+        "blob": true,
+        "commit": true
+      },
+      "present_before": {
+        "blob": true,
+        "commit": true
+      },
+      "returncode": 0,
+      "strategy": "blobless"
+    },
+    {
+      "case": "discarded_job_retention",
+      "command": "repack -a -d",
+      "present_after": {
+        "blob": true,
+        "commit": true
+      },
+      "present_before": {
+        "blob": true,
+        "commit": true
+      },
+      "returncode": 0,
+      "strategy": "blobless"
+    },
+    {
+      "case": "discarded_job_retention",
+      "command": "prune --expire=now",
+      "present_after": {
+        "blob": true,
+        "commit": true
+      },
+      "present_before": {
+        "blob": true,
+        "commit": true
+      },
+      "returncode": 0,
+      "strategy": "blobless"
+    },
+    {
+      "case": "discarded_job_retention",
+      "command": "gc --prune=now",
+      "present_after": {
+        "blob": false,
+        "commit": false
+      },
+      "present_before": {
+        "blob": true,
+        "commit": true
+      },
+      "returncode": 0,
+      "strategy": "full"
+    },
+    {
+      "case": "discarded_job_retention",
+      "command": "repack -a -d",
+      "present_after": {
+        "blob": false,
+        "commit": false
+      },
+      "present_before": {
+        "blob": true,
+        "commit": true
+      },
+      "returncode": 0,
+      "strategy": "full"
+    },
+    {
+      "case": "discarded_job_retention",
+      "command": "prune --expire=now",
+      "present_after": {
+        "blob": false,
+        "commit": false
+      },
+      "present_before": {
+        "blob": true,
+        "commit": true
+      },
+      "returncode": 0,
+      "strategy": "full"
+    }
+  ],
+  "schema": "metabrowser-repository-cache-measurement-v1",
+  "started_at": "2026-09-17T15:02:47+00:00",
+  "suite": "storeconfig"
+}

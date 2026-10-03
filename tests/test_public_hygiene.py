@@ -10,6 +10,7 @@ from devtools.public_hygiene import (
     find_documentation_findings,
     find_hygiene_findings,
 )
+from tests.required_tools import needs_git
 
 
 def test_public_issue_tracking_language_is_allowed() -> None:
@@ -116,6 +117,7 @@ def test_generated_skills_and_rendering_fixtures_are_footer_exempt() -> None:
     assert find_documentation_findings(rendering_fixture, "") == []
 
 
+@needs_git
 def test_git_ignored_local_residue_is_excluded_but_tracked_files_kept() -> None:
     # Claude Code writes .claude/settings.local.json with absolute home paths;
     # it is git-ignored and never published, so the scan must skip it while
@@ -129,6 +131,7 @@ def test_git_ignored_local_residue_is_excluded_but_tracked_files_kept() -> None:
     assert tracked not in result
 
 
+@needs_git
 def test_git_ignored_preserves_unusual_filenames() -> None:
     ignored = ROOT / "ignored\nname.pyc"
 

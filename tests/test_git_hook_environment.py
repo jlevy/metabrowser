@@ -25,6 +25,7 @@ from pathlib import Path
 import pytest
 
 from metabrowser.git.process import _REPO_PINNING_GIT_VARS
+from tests.required_tools import require_git
 from tests.test_gitignore_hierarchical import _git_verdicts, _init_fixture_repository
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -33,6 +34,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def _git_outside_any_hook(cwd: Path, *args: str) -> str:
     """Run git in *cwd* with no inherited repository and no developer configuration."""
 
+    require_git()
     env = {key: value for key, value in os.environ.items() if key not in _REPO_PINNING_GIT_VARS}
     env.update(
         {

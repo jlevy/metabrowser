@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 from pathlib import Path
 
-import pytest
+from tests.required_tools import require_node
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SESSION_JS = Path(__file__).resolve().parent / "dom" / "image-preview-session.js"
@@ -15,8 +14,7 @@ PLUGIN_ROOT = REPO_ROOT / "src" / "metabrowser" / "builtin_plugins" / "image"
 
 
 def test_image_preview_session() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(SESSION_JS)],
         capture_output=True,
@@ -60,6 +58,11 @@ def test_image_preview_session() -> None:
             "rawUrl": "/raw?path=images%2F%3Cunsafe%20%22quoted%22%20%26%20file%3E.png",
             "status": "mounted",
             "tagName": "IMG",
+        },
+        "gitMount": {
+            "alt": "pic.png",
+            "rawUrl": "/raw?path=g1-cGljLnBuZw",
+            "status": "mounted",
         },
         "innerHtmlWrites": 0,
         "replacement": {

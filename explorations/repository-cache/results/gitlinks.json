@@ -1,0 +1,173 @@
+{
+  "environment": {
+    "cpu": "Apple M1 Pro",
+    "git_build_options": [
+      "cpu: arm64",
+      "no commit associated with this build",
+      "sizeof-long: 8",
+      "sizeof-size_t: 8",
+      "shell-path: /bin/sh"
+    ],
+    "git_version": "git version 2.50.1",
+    "logical_cpus": 10,
+    "machine": "arm64",
+    "memory_bytes": 34359738368,
+    "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+    "python": "3.14.7"
+  },
+  "finished_at": "2026-09-17T06:33:29+00:00",
+  "parameters": {},
+  "rows": [
+    {
+      "blob_oids": 11,
+      "case": "change_set",
+      "gitlink_oids": 2,
+      "gitlinks_reported_missing": 2,
+      "modes": {
+        "100644": 8,
+        "100755": 2,
+        "120000": 1,
+        "160000": 2
+      },
+      "naive_oids": 13
+    },
+    {
+      "allow_any_sha1_in_want": false,
+      "case": "want_list",
+      "error_class": "other",
+      "objects_fetched": 0,
+      "oids": 11,
+      "protocol": "0",
+      "returncode": 1,
+      "stderr": ["error: Server does not allow request for unadvertised object <oid>"],
+      "wants": "blobs_only"
+    },
+    {
+      "allow_any_sha1_in_want": false,
+      "case": "want_list",
+      "error_class": "other",
+      "objects_fetched": 0,
+      "oids": 13,
+      "protocol": "0",
+      "returncode": 1,
+      "stderr": ["error: Server does not allow request for unadvertised object <oid>"],
+      "wants": "with_gitlink"
+    },
+    {
+      "allow_any_sha1_in_want": false,
+      "case": "want_list",
+      "error_class": "",
+      "objects_fetched": 11,
+      "oids": 11,
+      "protocol": "2",
+      "returncode": 0,
+      "stderr": [],
+      "wants": "blobs_only"
+    },
+    {
+      "allow_any_sha1_in_want": false,
+      "case": "want_list",
+      "error_class": "not_our_ref",
+      "objects_fetched": 0,
+      "oids": 13,
+      "protocol": "2",
+      "returncode": 128,
+      "stderr": [
+        "fatal: git upload-pack: not our ref <oid>",
+        "fatal: remote error: upload-pack: not our ref <oid>"
+      ],
+      "wants": "with_gitlink"
+    },
+    {
+      "allow_any_sha1_in_want": true,
+      "case": "want_list",
+      "error_class": "",
+      "objects_fetched": 11,
+      "oids": 11,
+      "protocol": "0",
+      "returncode": 0,
+      "stderr": [],
+      "wants": "blobs_only"
+    },
+    {
+      "allow_any_sha1_in_want": true,
+      "case": "want_list",
+      "error_class": "not_our_ref",
+      "objects_fetched": 0,
+      "oids": 13,
+      "protocol": "0",
+      "returncode": 128,
+      "stderr": [
+        "fatal: git upload-pack: not our ref <oid>",
+        "fatal: remote error: upload-pack: not our ref <oid>"
+      ],
+      "wants": "with_gitlink"
+    },
+    {
+      "allow_any_sha1_in_want": true,
+      "case": "want_list",
+      "error_class": "",
+      "objects_fetched": 11,
+      "oids": 11,
+      "protocol": "2",
+      "returncode": 0,
+      "stderr": [],
+      "wants": "blobs_only"
+    },
+    {
+      "allow_any_sha1_in_want": true,
+      "case": "want_list",
+      "error_class": "not_our_ref",
+      "objects_fetched": 0,
+      "oids": 13,
+      "protocol": "2",
+      "returncode": 128,
+      "stderr": [
+        "fatal: git upload-pack: not our ref <oid>",
+        "fatal: remote error: upload-pack: not our ref <oid>"
+      ],
+      "wants": "with_gitlink"
+    },
+    {
+      "case": "routes_after_blob_prefetch",
+      "mentions_submodule": true,
+      "returncode": 0,
+      "route": "commit_detail",
+      "stderr": []
+    },
+    {
+      "case": "routes_after_blob_prefetch",
+      "mentions_submodule": true,
+      "returncode": 0,
+      "route": "manifest_raw",
+      "stderr": []
+    },
+    {
+      "case": "routes_after_blob_prefetch",
+      "mentions_submodule": false,
+      "returncode": 0,
+      "route": "manifest_numstat",
+      "stderr": []
+    },
+    {
+      "case": "routes_after_blob_prefetch",
+      "mentions_submodule": true,
+      "returncode": 0,
+      "route": "patches",
+      "stderr": []
+    },
+    {
+      "accepted": 11,
+      "accepted_present": 11,
+      "case": "bisected_request",
+      "rejected_are_gitlink_and_absent": true,
+      "request_sizes": [13, 7, 4, 2, 2, 1, 1, 3, 6, 3, 3, 2, 1],
+      "requests": 13,
+      "wall_s": 1.003,
+      "wants": 13
+    }
+  ],
+  "schema": "metabrowser-repository-cache-measurement-v1",
+  "started_at": "2026-09-17T06:33:25+00:00",
+  "suite": "gitlinks"
+}

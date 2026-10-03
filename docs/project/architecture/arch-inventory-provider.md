@@ -217,7 +217,8 @@ That grammar is **total**: every entry has a canonical path, because the form is
 by escaping rather than by requiring the platform name to already be representable.
 Bytes that are not valid UTF-8 become `%XX` with uppercase hexadecimal digits, and `%`
 itself becomes `%25` so two different names can never collide on one canonical form.
-Runs that are valid UTF-8 are preserved.
+On POSIX a backslash, a legal filename byte the grammar refuses, becomes `%5C`. Runs
+that are otherwise valid UTF-8 are preserved.
 
 Row projections once carried an optional issue instead, reporting how many native paths
 had been omitted with a bounded list of escaped examples, so a consumer had to treat a

@@ -9,6 +9,9 @@ macOS. Every other operation is a mode flag on the same command:
 
     metab . --walk --format json       # inventory walk, no server
     metab . --check-api                # exercise navigation APIs, no browser
+    metab file:///path/to/repo.git            # serve a Git source, pinned, untrusted
+    metab file:///path/to/repo.git --no-serve  # acquire into the cache, no server
+    metab https://github.com/owner/repo/blob/main/README.md --show README.md
     metab --remote example-host --path /srv/shared-files  # SSH-tunnel a remote host
     metab --plugins                    # what's discovered?
     metab --plugin example             # one plugin's manifest
@@ -22,16 +25,17 @@ The canonical command is ``metab``; ``metabrowser`` is an alias.
 
 from __future__ import annotations
 
+import os
+import re
 import sys
 from pathlib import Path
-from typing import TextIO, cast
+from typing import TYPE_CHECKING, TextIO, cast
 
 import typer
 
 from metabrowser import __version__
 from metabrowser.build_version import display_version_line
 from metabrowser.cli.common import PipeTrackingStream, silence_broken_pipe, validate_log_level
-from metabrowser.cli.diff_cli import run_diff
 from metabrowser.cli.plugins import doctor_plugins, list_plugins, show_plugin
 from metabrowser.cli.remote import run_remote
 from metabrowser.cli.serve import run_serve
@@ -46,6 +50,9 @@ from metabrowser.cli.walk_cli import (
 from metabrowser.errors import CLIError
 from metabrowser.server_utils import MAX_TCP_PORT
 from metabrowser.settings import DEFAULT_BROWSER_PORT
+
+if TYPE_CHECKING:
+    from metabrowser.cache.urls import GitSource
 
 _PANEL_MODES = "Modes (default: serve ROOT)"
 _PANEL_SHARED = "Shared by multiple modes (each option names its modes)"
@@ -123,6 +130,7 @@ _MODE_OPTIONS: dict[str, frozenset[str]] = {
             "allow_edits",
         }
     ),
+    "no-serve": frozenset({"log_level"}),
     "remote": frozenset({"path", "base_port", "no_open", "ssh_options", "gcp", "zone", "project"}),
     "plugins": frozenset({"plugins_dir", "as_json"}),
     "plugin": frozenset({"plugins_dir", "as_json"}),
@@ -136,6 +144,7 @@ _MODE_LABELS: dict[str, str] = {
     "api": "--api",
     "show": "--show",
     "check-api": "--check-api",
+    "no-serve": "--no-serve",
     "remote": "--remote",
     "plugins": "--plugins",
     "plugin": "--plugin",
@@ -206,6 +215,7 @@ def _resolve_mode(
     api: str | None,
     show: str | None,
     check_api: bool,
+    no_serve: bool,
     remote: str | None,
     plugins: bool,
     plugin: str | None,
@@ -220,6 +230,7 @@ def _resolve_mode(
             ("--api", api is not None),
             ("--show", show is not None),
             ("--check-api", check_api),
+            ("--no-serve", no_serve),
             ("--remote", remote is not None),
             ("--plugins", plugins),
             ("--plugin", plugin is not None),
@@ -265,7 +276,74 @@ def _check_option_applicability(ctx: typer.Context, mode: str, explicit: frozens
         ctx.fail(f"{labels} not valid with {_MODE_LABELS[mode]}")
 
 
-def _require_root(ctx: typer.Context, root: Path | None, mode: str) -> Path:
+def _is_plain_local_root(value: str) -> bool:
+    """Return True when the grammar would classify *value* as a local path.
+
+    Ordinary local browsing must not import ``metabrowser.cache.urls``: the layout
+    contract pins that import set to the route table. A Git source, a named
+    rejection, or an SCP-like address still goes through classification.
+    """
+    if value == "" or value.startswith("-"):
+        return False
+    if "://" in value or "::" in value:
+        return False
+    lowered = value.lower()
+    if lowered.startswith(("https:", "ssh:", "file:", "http:", "git:")):
+        return False
+    at = value.find("@")
+    return at <= 0 or "/" in value[:at] or ":" not in value[at + 1 :]
+
+
+# A scheme followed by ``//``, the one spelling that is always a source string. It is
+# ``_SCHEME`` in ``cache/urls.py``, repeated because ordinary local browsing must not
+# import that module; ``test_explicit_url_pattern_matches_the_grammar`` pins the pair.
+_EXPLICIT_URL = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
+
+
+def _names_existing_path(value: str) -> bool:
+    """Return True when *value* is served as the existing local path it names.
+
+    The rule for ROOT, in order:
+
+    1. An argument that starts with ``scheme://`` is a source string, whatever exists
+       on disk. No shell or file manager spells a path that way: the path it would
+       name is ``scheme:/rest``, with one slash, and that spelling or ``./scheme://rest``
+       reaches it. So a pasted URL opens the same thing in every working directory,
+       and a folder cannot stand in, under the local trust profile, for the repository
+       a URL names.
+    2. Any other argument that names an existing filesystem entry is that path, as it
+       was before ROOT was classified: a folder called ``file:notes``, ``a::b``,
+       ``me@host:dir``, or ``https:x`` is served, a file is opened, and a symbolic
+       link is followed. A dangling link counts, so it gets the local path's error
+       rather than a refusal that describes a URL.
+    3. Everything else is classified by the grammar, so an scp-like address, a
+       malformed URL, or remote-helper syntax that names nothing on disk is refused
+       or acquired exactly as the grammar says.
+    """
+    if value == "" or _EXPLICIT_URL.match(value) is not None:
+        return False
+    return os.path.lexists(value)
+
+
+def _local_root(ctx: typer.Context, value: str) -> Path:
+    """The local path *value* names, refused when it exists and cannot be read.
+
+    While ROOT was a path argument, Click made this check: an entry the process may not
+    read was a usage error, not a tree that walks or serves as empty. A path that does
+    not exist passes, and the mode it reaches says so.
+    """
+    try:
+        os.stat(value)
+    except (OSError, ValueError):
+        return Path(value)
+    if not os.access(value, os.R_OK):
+        param = next((param for param in ctx.command.params if param.name == "root"), None)
+        raise typer.BadParameter(f"Path {value!r} is not readable.", ctx=ctx, param=param)
+    return Path(value)
+
+
+def _classified_root(ctx: typer.Context, root: str | None, mode: str) -> Path | GitSource:
+    """Return a local path or a classified Git source, or fail the invocation."""
     if root is None:
         hints = {
             "serve": "e.g. `metab .`",
@@ -273,13 +351,50 @@ def _require_root(ctx: typer.Context, root: Path | None, mode: str) -> Path:
             "api": "e.g. `metab . --api /api/tree`",
             "show": "e.g. `metab . --show README.md`",
             "check-api": "e.g. `metab . --check-api`",
+            "no-serve": "e.g. `metab file://repo.git --no-serve`",
         }
         hint = hints.get(mode, "pass the required root")
         ctx.fail(f"ROOT is required for {_MODE_LABELS[mode]}; {hint}")
-    return root
+    assert root is not None
+    if _is_plain_local_root(root) or _names_existing_path(root):
+        return _local_root(ctx, root)
+    from metabrowser.cache.providers import url_reducers
+    from metabrowser.cache.urls import LocalPath, RejectedRoot, classify_root_argument
+
+    classified = classify_root_argument(root, reducers=url_reducers())
+    if isinstance(classified, LocalPath):
+        return _local_root(ctx, classified.value)
+    if isinstance(classified, RejectedRoot):
+        detail = f": {classified.detail}" if classified.detail else ""
+        raise CLIError(f"invalid ROOT ({classified.reason}){detail}")
+    return classified
 
 
-def _reject_root(ctx: typer.Context, root: Path | None, mode: str) -> None:
+def _git_source_closed_message(source: GitSource, *, mode: str) -> str:
+    if mode == "walk":
+        # The walker reads a filesystem: mtimes, ignore rules, and a record stream
+        # a watcher extends. A pinned tree has none of them, and its listing is
+        # already complete, so the pin's equivalent is the tree route itself.
+        return (
+            f"--walk runs the filesystem inventory walker, and a Git source has no "
+            f"filesystem to walk ({source.normalized}). Read a pinned tree with "
+            "--api '/api/tree?depth=N', or --walk a local directory."
+        )
+    return (
+        f"{source.transport} Git sources are not opened yet "
+        f"({source.normalized}) by {_MODE_LABELS[mode]}. Serve, --show, or --api a "
+        "file:// or https:// source, or acquire one with --no-serve; ssh stays closed."
+    )
+
+
+def _require_root(ctx: typer.Context, root: str | None, mode: str) -> Path:
+    classified = _classified_root(ctx, root, mode)
+    if isinstance(classified, Path):
+        return classified
+    raise CLIError(_git_source_closed_message(classified, mode=mode))
+
+
+def _reject_root(ctx: typer.Context, root: str | None, mode: str) -> None:
     if root is not None:
         message = f"ROOT is not used with {_MODE_LABELS[mode]}"
         if mode == "remote":
@@ -300,6 +415,8 @@ _app = typer.Typer(add_completion=False)
         "metab . --api '/api/tree?depth=2'\n\n"
         "metab . --show README.md\n\n"
         "metab . --check-api\n\n"
+        "metab file:///path/to/repo.git\n\n"
+        "metab file:///path/to/repo.git --no-serve\n\n"
         "metab --remote example-host --path /srv/shared-files\n\n"
         "metab --plugins\n\n"
         "Guide: https://github.com/jlevy/metabrowser/blob/main/docs/command-line.md"
@@ -307,10 +424,14 @@ _app = typer.Typer(add_completion=False)
 )
 def _metab(
     ctx: typer.Context,
-    root: Path | None = typer.Argument(
+    root: str | None = typer.Argument(
         None,
         help=(
             "Root directory to serve, check, or walk; a file may be served directly. "
+            "https, ssh, and file:// clone URLs and GitHub web URLs are Git sources, "
+            "not local paths. An https:// or file:// source is acquired into the cache "
+            "and opened at the commit its URL selects, or its default branch's, always "
+            "untrusted; --no-serve only acquires it; ssh stays closed. "
             "With no ROOT and no mode, prints help."
         ),
         show_default=False,
@@ -371,6 +492,12 @@ def _metab(
         False,
         "--check-api",
         help="Run the navigation API scenario without a browser or listening port.",
+        rich_help_panel=_PANEL_MODES,
+    ),
+    no_serve: bool = typer.Option(
+        False,
+        "--no-serve",
+        help="Acquire a file:// or https:// Git source into the cache without starting a server.",
         rich_help_panel=_PANEL_MODES,
     ),
     remote: str | None = typer.Option(
@@ -435,15 +562,16 @@ def _metab(
         metavar="LEVEL",
         help="Log verbosity: DEBUG, INFO, WARNING, ERROR, CRITICAL. "
         "DEBUG traces the inventory walker (rewalk targets + resolved paths). "
-        "Overrides METABROWSER_LOG_LEVEL. Applies when serving, walking, issuing --api or --show, or checking APIs.",
+        "Overrides METABROWSER_LOG_LEVEL. Applies when serving, walking, issuing "
+        "--api or --show, checking APIs, or acquiring with --no-serve.",
         rich_help_panel=_PANEL_SHARED,
         show_default=False,
     ),
     untrusted: bool = typer.Option(
         False,
         "--untrusted",
-        help="Conservative content-trust profile: disable active content on "
-        "/raw (drop allow-scripts) and keep mutations off. Individual flags "
+        help="Conservative content-trust profile: turn active content off, as "
+        "--no-active-content does, and keep mutations off. Individual flags "
         "override it. Env: METAB_UNTRUSTED=1. Applies when serving and to "
         "--api, --show, and --check-api.",
         rich_help_panel=_PANEL_SHARED,
@@ -451,7 +579,8 @@ def _metab(
     no_active_content: bool = typer.Option(
         False,
         "--no-active-content",
-        help="Disable script execution on content surfaces: /raw omits "
+        help="Turn active content off: Markdown renders as inert markup, the "
+        "page carries a strict Content-Security-Policy, and /raw omits "
         "allow-scripts from its sandbox. Env: METAB_ACTIVE_CONTENT=0. "
         "Applies when serving and to --api, --show, and --check-api.",
         rich_help_panel=_PANEL_SHARED,
@@ -628,8 +757,11 @@ def _metab(
     Data modes read the same server the browser reads, without a browser or a
     listening port: --api issues one route, --show reports the four layers
     behind one selection, --walk dumps the inventory, --diff shows a change
-    set. Diagnostics: --check-api, --plugins, --plugin, --doctor. Remote
-    serving: --remote.
+    set. A file:// or https:// Git source, or a GitHub web URL, is served, shown,
+    or checked at the commit it selects under the untrusted profile; --no-serve
+    only acquires it into the cache. Diagnostics: --check-api, --plugins,
+    --plugin, --doctor.
+    Remote serving: --remote.
     """
     mode = _resolve_mode(
         ctx,
@@ -638,6 +770,7 @@ def _metab(
         api=api,
         show=show,
         check_api=check_api,
+        no_serve=no_serve,
         remote=remote,
         plugins=plugins,
         plugin=plugin,
@@ -651,18 +784,34 @@ def _metab(
         if root is None and not explicit:
             typer.echo(ctx.get_help())
             raise typer.Exit()
-        run_serve(
-            _require_root(ctx, root, mode),
-            path=path,
-            port=port,
-            host=host,
-            no_open=no_open,
-            plugins_dir=plugins_dir,
-            log_level=log_level,
-            untrusted=untrusted,
-            no_active_content=no_active_content,
-            allow_edits=allow_edits,
-        )
+        classified = _classified_root(ctx, root, mode)
+        if isinstance(classified, Path):
+            run_serve(
+                classified,
+                path=path,
+                port=port,
+                host=host,
+                no_open=no_open,
+                plugins_dir=plugins_dir,
+                log_level=log_level,
+                untrusted=untrusted,
+                no_active_content=no_active_content,
+                allow_edits=allow_edits,
+            )
+        else:
+            from metabrowser.cli.git_pin_cli import run_serve_pin
+
+            run_serve_pin(
+                classified,
+                path=path,
+                port=port,
+                host=host,
+                no_open=no_open,
+                plugins_dir=plugins_dir,
+                log_level=log_level,
+                no_active_content=no_active_content,
+                allow_edits=allow_edits,
+            )
     elif mode == "walk":
         run_walk(
             _require_root(ctx, root, mode),
@@ -680,6 +829,11 @@ def _metab(
         )
     elif mode == "diff":
         assert diff is not None
+        # Imported in its branch, as the `api`, `no-serve` and `show` modes below are:
+        # the Git diff adapter loads the revision tree source, which no other mode on a
+        # local folder needs.
+        from metabrowser.cli.diff_cli import run_diff
+
         run_diff(
             _require_root(ctx, root, mode),
             spec=diff,
@@ -691,47 +845,111 @@ def _metab(
         assert api is not None
         from metabrowser.cli.api_cli import run_api
 
-        run_api(
-            _require_root(ctx, root, mode),
-            route=api,
-            # Only the unset default is reinterpreted; an explicit --format text
-            # is refused above rather than silently becoming json.
-            fmt="json" if fmt == "text" else fmt,
-            data=data,
-            plugins_dir=plugins_dir,
-            log_level=log_level,
-            index_timeout_s=index_timeout,
-            untrusted=untrusted,
-            no_active_content=no_active_content,
-            allow_edits=allow_edits,
-        )
+        classified = _classified_root(ctx, root, mode)
+        if isinstance(classified, Path):
+            run_api(
+                classified,
+                route=api,
+                # Only the unset default is reinterpreted; an explicit --format text
+                # is refused above rather than silently becoming json.
+                fmt="json" if fmt == "text" else fmt,
+                data=data,
+                plugins_dir=plugins_dir,
+                log_level=log_level,
+                index_timeout_s=index_timeout,
+                untrusted=untrusted,
+                no_active_content=no_active_content,
+                allow_edits=allow_edits,
+            )
+        else:
+            from metabrowser.cli.acquire_cli import is_cache_inspect_route, run_api_after_acquire
+
+            if is_cache_inspect_route(api):
+                run_api_after_acquire(
+                    classified,
+                    route=api,
+                    fmt="json" if fmt == "text" else fmt,
+                    data=data,
+                    plugins_dir=plugins_dir,
+                    log_level=log_level,
+                    index_timeout_s=index_timeout,
+                    untrusted=untrusted,
+                    no_active_content=no_active_content,
+                    allow_edits=allow_edits,
+                )
+            else:
+                from metabrowser.cli.git_pin_cli import run_pin_api
+
+                run_pin_api(
+                    classified,
+                    route=api,
+                    fmt="json" if fmt == "text" else fmt,
+                    data=data,
+                    plugins_dir=plugins_dir,
+                    log_level=log_level,
+                    index_timeout_s=index_timeout,
+                    no_active_content=no_active_content,
+                    allow_edits=allow_edits,
+                )
+    elif mode == "no-serve":
+        from metabrowser.cli.acquire_cli import run_no_serve
+
+        run_no_serve(_classified_root(ctx, root, mode), log_level=log_level)
     elif mode == "show":
         assert show is not None
         from metabrowser.cli.show_cli import run_show
 
-        run_show(
-            _require_root(ctx, root, mode),
-            path=show,
-            fmt=fmt,
-            plugins_dir=plugins_dir,
-            log_level=log_level,
-            index_timeout_s=index_timeout,
-            untrusted=untrusted,
-            no_active_content=no_active_content,
-            allow_edits=allow_edits,
-        )
-    elif mode == "check-api":
-        from metabrowser.cli.check_api import run_api_check
+        classified = _classified_root(ctx, root, mode)
+        if isinstance(classified, Path):
+            run_show(
+                classified,
+                path=show,
+                fmt=fmt,
+                plugins_dir=plugins_dir,
+                log_level=log_level,
+                index_timeout_s=index_timeout,
+                untrusted=untrusted,
+                no_active_content=no_active_content,
+                allow_edits=allow_edits,
+            )
+        else:
+            from metabrowser.cli.git_pin_cli import run_show_after_acquire
 
-        run_api_check(
-            _require_root(ctx, root, mode),
-            plugins_dir=plugins_dir,
-            log_level=log_level,
-            index_timeout_s=index_timeout,
-            untrusted=untrusted,
-            no_active_content=no_active_content,
-            allow_edits=allow_edits,
-        )
+            run_show_after_acquire(
+                classified,
+                path=show,
+                fmt=fmt,
+                plugins_dir=plugins_dir,
+                log_level=log_level,
+                index_timeout_s=index_timeout,
+                no_active_content=no_active_content,
+                allow_edits=allow_edits,
+            )
+    elif mode == "check-api":
+        classified = _classified_root(ctx, root, mode)
+        if isinstance(classified, Path):
+            from metabrowser.cli.check_api import run_api_check
+
+            run_api_check(
+                classified,
+                plugins_dir=plugins_dir,
+                log_level=log_level,
+                index_timeout_s=index_timeout,
+                untrusted=untrusted,
+                no_active_content=no_active_content,
+                allow_edits=allow_edits,
+            )
+        else:
+            from metabrowser.cli.git_pin_cli import run_pin_api_check
+
+            run_pin_api_check(
+                classified,
+                plugins_dir=plugins_dir,
+                log_level=log_level,
+                index_timeout_s=index_timeout,
+                no_active_content=no_active_content,
+                allow_edits=allow_edits,
+            )
     elif remote is not None:
         _reject_root(ctx, root, mode)
         if not path:
@@ -765,6 +983,14 @@ def _run_cli(argv: list[str], *, prog_name: str | None = None) -> None:
     stderr = PipeTrackingStream(original_stderr)
     sys.stdout = cast(TextIO, stdout)
     sys.stderr = cast(TextIO, stderr)
+
+    def silence_broken() -> bool:
+        if stdout.broken_pipe:
+            silence_broken_pipe(original_stdout)
+        if stderr.broken_pipe:
+            silence_broken_pipe(original_stderr)
+        return stdout.broken_pipe or stderr.broken_pipe
+
     try:
         try:
             _app(args=argv, prog_name=prog_name)
@@ -772,20 +998,17 @@ def _run_cli(argv: list[str], *, prog_name: str | None = None) -> None:
             typer.echo(f"Error: {exc}", err=True)
             raise SystemExit(1) from None
     except SystemExit as exc:
-        if exc.code == 1 and (stdout.broken_pipe or stderr.broken_pipe):
-            if stdout.broken_pipe:
-                silence_broken_pipe(original_stdout)
-            if stderr.broken_pipe:
-                silence_broken_pipe(original_stderr)
+        # A command that went on after a write to a closed stream, as a clone's
+        # progress does, still holds that text in the stream's buffer. Left there, it
+        # fails the interpreter's flush at exit, which turns a success into status 120.
+        if silence_broken() and exc.code == 1:
             return
         raise
     except BrokenPipeError:
-        if not (stdout.broken_pipe or stderr.broken_pipe):
+        if not silence_broken():
             raise
-        if stdout.broken_pipe:
-            silence_broken_pipe(original_stdout)
-        if stderr.broken_pipe:
-            silence_broken_pipe(original_stderr)
+    else:
+        silence_broken()
     finally:
         sys.stdout = original_stdout
         sys.stderr = original_stderr

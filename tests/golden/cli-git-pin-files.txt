@@ -1,0 +1,617 @@
+# metab file://<ORIGIN> --api /api/file
+exit: 0
+--- stdout ---
+api: /api/file
+status: 200
+{
+  "subject": "git_revision",
+  "type": "folder",
+  "kind": "folder",
+  "name": "",
+  "views": [
+    {
+      "id": "overview",
+      "label": "Overview",
+      "default": true,
+      "container_class": "content-body folder-overview-host",
+      "printable": false,
+      "print_profile": "plain",
+      "render_runtime": null
+    },
+    {
+      "id": "treemap",
+      "label": "Treemap",
+      "default": false,
+      "container_class": "content-body folder-treemap-host",
+      "printable": false,
+      "print_profile": "plain",
+      "render_runtime": null
+    }
+  ],
+  "readme_path": "g1-UkVBRE1FLm1k",
+  "readme_search_truncated": false,
+  "dir": {
+    "total_files": 16,
+    "total_size": 16777474
+  },
+  "path": "",
+  "display": "",
+  "mode": "040000",
+  "git_kind": "tree",
+  "symlink": false,
+  "gitlink": false,
+  "oid": "2aba9e6f68f6b11f98bee8a8d7b47693aca3fb43"
+}
+--- stderr ---
+# metab file://<ORIGIN> --api '/api/file?path=g1-UkVBRE1FLm1k'
+exit: 0
+--- stdout ---
+api: /api/file?path=g1-UkVBRE1FLm1k
+status: 200
+{
+  "subject": "git_revision",
+  "size": 17,
+  "path": "g1-UkVBRE1FLm1k",
+  "display": "README.md",
+  "mode": "100644",
+  "git_kind": "blob",
+  "symlink": false,
+  "gitlink": false,
+  "oid": "36516194dee2aa72ce75357bc32cd75a59f71e57",
+  "ext": ".md",
+  "type": "text",
+  "kind": "markdown",
+  "views": [
+    {
+      "id": "rendered",
+      "label": "Document",
+      "default": true,
+      "container_class": "content-body metabrowser-kpress-host md-body",
+      "printable": true,
+      "print_profile": "document",
+      "render_runtime": "kpress"
+    },
+    {
+      "id": "source",
+      "label": "Source",
+      "default": false,
+      "container_class": "content-body metabrowser-source-host",
+      "printable": true,
+      "print_profile": "source",
+      "render_runtime": "client"
+    }
+  ],
+  "content": "# Pinned fixture\n",
+  "content_offset": 0,
+  "content_bytes": 17,
+  "bytes_read": 17,
+  "content_truncated": false,
+  "content_preview_limit": 524288,
+  "content_max_preview_limit": 16777216,
+  "highlight_disabled": false
+}
+--- stderr ---
+# metab file://<ORIGIN> --api '/api/file?path=g1-YQ/g1-ZGVlcA/g1-bmVzdGVkLm1k'
+exit: 0
+--- stdout ---
+api: /api/file?path=g1-YQ/g1-ZGVlcA/g1-bmVzdGVkLm1k
+status: 200
+{
+  "subject": "git_revision",
+  "size": 27,
+  "path": "g1-YQ/g1-ZGVlcA/g1-bmVzdGVkLm1k",
+  "display": "a/deep/nested.md",
+  "mode": "100644",
+  "git_kind": "blob",
+  "symlink": false,
+  "gitlink": false,
+  "oid": "5a25ec06c95d3fd0cef42c6438817485dfc27fe2",
+  "ext": ".md",
+  "type": "text",
+  "kind": "markdown",
+  "views": [
+    {
+      "id": "rendered",
+      "label": "Document",
+      "default": true,
+      "container_class": "content-body metabrowser-kpress-host md-body",
+      "printable": true,
+      "print_profile": "document",
+      "render_runtime": "kpress"
+    },
+    {
+      "id": "source",
+      "label": "Source",
+      "default": false,
+      "container_class": "content-body metabrowser-source-host",
+      "printable": true,
+      "print_profile": "source",
+      "render_runtime": "client"
+    }
+  ],
+  "content": "# Nested\n\nTwo levels down.\n",
+  "content_offset": 0,
+  "content_bytes": 27,
+  "bytes_read": 27,
+  "content_truncated": false,
+  "content_preview_limit": 524288,
+  "content_max_preview_limit": 16777216,
+  "highlight_disabled": false
+}
+--- stderr ---
+# metab file://<ORIGIN> --api '/api/file?path=g1-YQ'
+exit: 0
+--- stdout ---
+api: /api/file?path=g1-YQ
+status: 200
+{
+  "subject": "git_revision",
+  "type": "folder",
+  "kind": "folder",
+  "name": "a",
+  "views": [
+    {
+      "id": "overview",
+      "label": "Overview",
+      "default": true,
+      "container_class": "content-body folder-overview-host",
+      "printable": false,
+      "print_profile": "plain",
+      "render_runtime": null
+    },
+    {
+      "id": "treemap",
+      "label": "Treemap",
+      "default": false,
+      "container_class": "content-body folder-treemap-host",
+      "printable": false,
+      "print_profile": "plain",
+      "render_runtime": null
+    }
+  ],
+  "readme_path": "",
+  "readme_search_truncated": false,
+  "dir": {
+    "total_files": 3,
+    "total_size": 58
+  },
+  "path": "g1-YQ",
+  "display": "a",
+  "mode": "040000",
+  "git_kind": "tree",
+  "symlink": false,
+  "gitlink": false,
+  "oid": "488995644342a4443f2cc5280e6a6d13f3a045fe"
+}
+--- stderr ---
+# metab file://<ORIGIN> --api '/api/file?path=g1-Ymlu/g1-Z2x5cGgucG5n'
+exit: 0
+--- stdout ---
+api: /api/file?path=g1-Ymlu/g1-Z2x5cGgucG5n
+status: 200
+{
+  "subject": "git_revision",
+  "size": 67,
+  "path": "g1-Ymlu/g1-Z2x5cGgucG5n",
+  "display": "bin/glyph.png",
+  "mode": "100644",
+  "git_kind": "blob",
+  "symlink": false,
+  "gitlink": false,
+  "oid": "91a99b94e23a00cc8133f22e3fe2a0b48a015808",
+  "ext": ".png",
+  "type": "image",
+  "kind": "image",
+  "views": [
+    {
+      "id": "preview",
+      "label": "Image",
+      "default": true,
+      "container_class": "content-body metabrowser-image-host",
+      "printable": false,
+      "print_profile": "plain",
+      "render_runtime": "client"
+    }
+  ]
+}
+--- stderr ---
+# metab file://<ORIGIN> --api '/api/file?path=g1-ZGF0YQ/g1-ZXZlbnRzLmpzb25s'
+exit: 0
+--- stdout ---
+api: /api/file?path=g1-ZGF0YQ/g1-ZXZlbnRzLmpzb25s
+status: 200
+{
+  "subject": "git_revision",
+  "size": 18,
+  "path": "g1-ZGF0YQ/g1-ZXZlbnRzLmpzb25s",
+  "display": "data/events.jsonl",
+  "mode": "100644",
+  "git_kind": "blob",
+  "symlink": false,
+  "gitlink": false,
+  "oid": "7c4b11046c3ea8beffbbe06800c96c72a1100c66",
+  "ext": ".jsonl",
+  "type": "jsonl",
+  "kind": "unknown-jsonl",
+  "views": [
+    {
+      "id": "log",
+      "label": "Log",
+      "default": true,
+      "container_class": "content-body",
+      "printable": false,
+      "print_profile": "plain",
+      "render_runtime": null
+    },
+    {
+      "id": "raw",
+      "label": "Raw JSON",
+      "default": false,
+      "container_class": "content-body",
+      "printable": false,
+      "print_profile": "plain",
+      "render_runtime": null
+    }
+  ],
+  "summary": {
+    "adapter": "unknown",
+    "total_events": 2,
+    "tool_calls": 0,
+    "errors": 0,
+    "cost_usd": null,
+    "duration_s": null,
+    "is_done": false,
+    "is_error": false
+  },
+  "events": [
+    {
+      "kind": "unknown",
+      "summary": "[unknown] {'e': 1}",
+      "adapter": "claude",
+      "provider": null,
+      "timestamp": null,
+      "is_error": false,
+      "is_done": false,
+      "cost_usd": null,
+      "duration_s": null,
+      "raw": {
+        "e": 1
+      },
+      "summary_parts": null
+    },
+    {
+      "kind": "unknown",
+      "summary": "[unknown] {'e': 2}",
+      "adapter": "claude",
+      "provider": null,
+      "timestamp": null,
+      "is_error": false,
+      "is_done": false,
+      "cost_usd": null,
+      "duration_s": null,
+      "raw": {
+        "e": 2
+      },
+      "summary_parts": null
+    }
+  ],
+  "raw_text": "{\n  \"e\": 1\n}\n{\n  \"e\": 2\n}",
+  "raw_truncation": null,
+  "bytes_read": 18
+}
+--- stderr ---
+# metab file://<ORIGIN> --api '/api/file?path=g1-bGlua3M/g1-dG8tcmVhZG1lLm1k'
+exit: 0
+--- stdout ---
+api: /api/file?path=g1-bGlua3M/g1-dG8tcmVhZG1lLm1k
+status: 200
+{
+  "subject": "git_revision",
+  "size": 17,
+  "path": "g1-bGlua3M/g1-dG8tcmVhZG1lLm1k",
+  "display": "links/to-readme.md",
+  "mode": "100644",
+  "git_kind": "blob",
+  "symlink": false,
+  "gitlink": false,
+  "oid": "36516194dee2aa72ce75357bc32cd75a59f71e57",
+  "ext": ".md",
+  "type": "text",
+  "kind": "markdown",
+  "views": [
+    {
+      "id": "rendered",
+      "label": "Document",
+      "default": true,
+      "container_class": "content-body metabrowser-kpress-host md-body",
+      "printable": true,
+      "print_profile": "document",
+      "render_runtime": "kpress"
+    },
+    {
+      "id": "source",
+      "label": "Source",
+      "default": false,
+      "container_class": "content-body metabrowser-source-host",
+      "printable": true,
+      "print_profile": "source",
+      "render_runtime": "client"
+    }
+  ],
+  "content": "# Pinned fixture\n",
+  "content_offset": 0,
+  "content_bytes": 17,
+  "bytes_read": 17,
+  "content_truncated": false,
+  "content_preview_limit": 524288,
+  "content_max_preview_limit": 16777216,
+  "highlight_disabled": false
+}
+--- stderr ---
+# metab file://<ORIGIN> --api '/api/file?path=g1-b2Rk/g1-bGF0aW4t6S50eHQ'
+exit: 0
+--- stdout ---
+api: /api/file?path=g1-b2Rk/g1-bGF0aW4t6S50eHQ
+status: 200
+{
+  "subject": "git_revision",
+  "size": 13,
+  "path": "g1-b2Rk/g1-bGF0aW4t6S50eHQ",
+  "display": "odd/latin-�.txt",
+  "mode": "100644",
+  "git_kind": "blob",
+  "symlink": false,
+  "gitlink": false,
+  "oid": "7d112eb477b5c49174f9b627b9565bc281d61fc5",
+  "ext": ".txt",
+  "type": "text",
+  "kind": "text",
+  "views": [
+    {
+      "id": "source",
+      "label": "Source",
+      "default": true,
+      "container_class": "content-body metabrowser-source-host",
+      "printable": true,
+      "print_profile": "source",
+      "render_runtime": "client"
+    }
+  ],
+  "content": "latin-1 name\n",
+  "content_offset": 0,
+  "content_bytes": 13,
+  "bytes_read": 13,
+  "content_truncated": false,
+  "content_preview_limit": 2097152,
+  "content_max_preview_limit": 16777216,
+  "highlight_disabled": false
+}
+--- stderr ---
+# metab file://<ORIGIN> --api '/api/file?path=g1-dG9vbHM/g1-cnVuLnNo'
+exit: 0
+--- stdout ---
+api: /api/file?path=g1-dG9vbHM/g1-cnVuLnNo
+status: 200
+{
+  "subject": "git_revision",
+  "size": 22,
+  "path": "g1-dG9vbHM/g1-cnVuLnNo",
+  "display": "tools/run.sh",
+  "mode": "100755",
+  "git_kind": "blob",
+  "symlink": false,
+  "gitlink": false,
+  "oid": "f8a83a2e95834c492d940623ebd0bc3147b1d26e",
+  "ext": ".sh",
+  "type": "text",
+  "kind": "text",
+  "views": [
+    {
+      "id": "source",
+      "label": "Source",
+      "default": true,
+      "container_class": "content-body metabrowser-source-host",
+      "printable": true,
+      "print_profile": "source",
+      "render_runtime": "client"
+    }
+  ],
+  "content": "#!/bin/sh\necho pinned\n",
+  "content_offset": 0,
+  "content_bytes": 22,
+  "bytes_read": 22,
+  "content_truncated": false,
+  "content_preview_limit": 524288,
+  "content_max_preview_limit": 16777216,
+  "highlight_disabled": false
+}
+--- stderr ---
+# metab file://<ORIGIN> --api '/api/file?path=g1-dmVuZG9y'
+exit: 0
+--- stdout ---
+api: /api/file?path=g1-dmVuZG9y
+status: 200
+{
+  "subject": "git_revision",
+  "type": "gitlink",
+  "kind": "commit",
+  "views": [],
+  "path": "g1-dmVuZG9y",
+  "display": "vendor",
+  "mode": "160000",
+  "git_kind": "commit",
+  "symlink": false,
+  "gitlink": true,
+  "oid": "1111111111111111111111111111111111111111"
+}
+--- stderr ---
+# metab file://<ORIGIN> --api '/api/file?path=g1-YQ/g1-ZGVlcA/g1-cGF5bG9hZC5qc29u'
+exit: 0
+--- stdout ---
+api: /api/file?path=g1-YQ/g1-ZGVlcA/g1-cGF5bG9hZC5qc29u
+status: 200
+{
+  "subject": "git_revision",
+  "size": 25,
+  "path": "g1-YQ/g1-ZGVlcA/g1-cGF5bG9hZC5qc29u",
+  "display": "a/deep/payload.json",
+  "mode": "100644",
+  "git_kind": "blob",
+  "symlink": false,
+  "gitlink": false,
+  "oid": "e7aca33e6d951936387247320c40b0ee8321df7a",
+  "ext": ".json",
+  "type": "text",
+  "kind": "structured",
+  "views": [
+    {
+      "id": "tree",
+      "label": "Tree",
+      "default": true,
+      "container_class": "content-body",
+      "printable": false,
+      "print_profile": "plain",
+      "render_runtime": null
+    },
+    {
+      "id": "source",
+      "label": "Source",
+      "default": false,
+      "container_class": "content-body",
+      "printable": true,
+      "print_profile": "source",
+      "render_runtime": "client"
+    }
+  ],
+  "content": "{\"k\": 1, \"list\": [1, 2]}\n",
+  "content_offset": 0,
+  "content_bytes": 25,
+  "bytes_read": 25,
+  "content_truncated": false,
+  "content_preview_limit": 524288,
+  "content_max_preview_limit": 16777216,
+  "highlight_disabled": false
+}
+--- stderr ---
+# metab file://<ORIGIN> --api '/api/plugin/structured/parsed?path=g1-YQ/g1-ZGVlcA/g1-cGF5bG9hZC5qc29u'
+exit: 0
+--- stdout ---
+api: /api/plugin/structured/parsed?path=g1-YQ/g1-ZGVlcA/g1-cGF5bG9hZC5qc29u
+status: 200
+{
+  "type": "structured",
+  "path": "g1-YQ/g1-ZGVlcA/g1-cGF5bG9hZC5qc29u",
+  "ext": ".json",
+  "mtime_hash": "e7aca33e6d951936387247320c40b0ee8321df7a",
+  "size": 25,
+  "parsed": {
+    "k": 1,
+    "list": [
+      1,
+      2
+    ]
+  },
+  "pretty_yaml": "k: 1\nlist:\n  - 1\n  - 2\n",
+  "node_count": 5,
+  "max_depth": 2,
+  "comments_supported": false,
+  "parse_error": null,
+  "truncated": false
+}
+--- stderr ---
+# metab file://<ORIGIN> --api '/api/plugin/binary/chunk?path=g1-Ymlu/g1-c2FtcGxlLmJpbg'
+exit: 0
+--- stdout ---
+api: /api/plugin/binary/chunk?path=g1-Ymlu/g1-c2FtcGxlLmJpbg
+status: 200
+{
+  "type": "binary_chunk",
+  "path": "g1-Ymlu/g1-c2FtcGxlLmJpbg",
+  "offset": 0,
+  "bytes_read": 8,
+  "next_offset": 8,
+  "logical_size": 8,
+  "max_preview_bytes": 33554432,
+  "has_more": false,
+  "preview_limited": false,
+  "mtime_hash": "e0d84f457d2b5c802ecd286e7e576365d94af3b9",
+  "content_base64": "AAECAwQFBgc="
+}
+--- stderr ---
+# metab file://<ORIGIN> --api '/api/plugin/binary/chunk?path=g1-Ymlu/g1-c2FtcGxlLmJpbg&offset=3&limit=4'
+exit: 0
+--- stdout ---
+api: /api/plugin/binary/chunk?path=g1-Ymlu/g1-c2FtcGxlLmJpbg&offset=3&limit=4
+status: 200
+{
+  "type": "binary_chunk",
+  "path": "g1-Ymlu/g1-c2FtcGxlLmJpbg",
+  "offset": 3,
+  "bytes_read": 4,
+  "next_offset": 7,
+  "logical_size": 8,
+  "max_preview_bytes": 33554432,
+  "has_more": true,
+  "preview_limited": false,
+  "mtime_hash": "e0d84f457d2b5c802ecd286e7e576365d94af3b9",
+  "content_base64": "AwQFBg=="
+}
+--- stderr ---
+# metab file://<ORIGIN> --api '/api/plugin/binary/chunk?path=g1-bGlua3M/g1-dG8tcmVhZG1lLm1k'
+exit: 0
+--- stdout ---
+api: /api/plugin/binary/chunk?path=g1-bGlua3M/g1-dG8tcmVhZG1lLm1k
+status: 200
+{
+  "type": "binary_chunk",
+  "path": "g1-bGlua3M/g1-dG8tcmVhZG1lLm1k",
+  "offset": 0,
+  "bytes_read": 17,
+  "next_offset": 17,
+  "logical_size": 17,
+  "max_preview_bytes": 33554432,
+  "has_more": false,
+  "preview_limited": false,
+  "mtime_hash": "36516194dee2aa72ce75357bc32cd75a59f71e57",
+  "content_base64": "IyBQaW5uZWQgZml4dHVyZQo="
+}
+--- stderr ---
+# metab file://<ORIGIN> --api '/api/file?path=g1-Ymlu/g1-b3ZlcnNpemUuYmlu&limit=64'
+exit: 0
+--- stdout ---
+api: /api/file?path=g1-Ymlu/g1-b3ZlcnNpemUuYmlu&limit=64
+status: 200
+{
+  "subject": "git_revision",
+  "size": 16777217,
+  "path": "g1-Ymlu/g1-b3ZlcnNpemUuYmlu",
+  "display": "bin/oversize.bin",
+  "mode": "100644",
+  "git_kind": "blob",
+  "symlink": false,
+  "gitlink": false,
+  "oid": "b3754b81ea7bf9696d09f847b67f8e06021f6091",
+  "ext": ".bin",
+  "type": "text",
+  "kind": "text",
+  "views": [
+    {
+      "id": "source",
+      "label": "Source",
+      "default": true,
+      "container_class": "content-body metabrowser-source-host",
+      "printable": true,
+      "print_profile": "source",
+      "render_runtime": "client"
+    }
+  ],
+  "content": "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+  "content_offset": 0,
+  "content_bytes": 64,
+  "bytes_read": 64,
+  "content_truncated": true,
+  "content_preview_limit": 64,
+  "content_max_preview_limit": 16777216,
+  "highlight_disabled": false
+}
+--- stderr ---

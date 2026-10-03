@@ -1,0 +1,51 @@
+$defs:
+  CanonicalTimestamp:
+    pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{3})?Z$
+    type: string
+  GitTransport:
+    enum:
+    - https
+    - ssh
+    - file
+    type: string
+  Sha256Identity:
+    pattern: ^sha256:[0-9a-f]{64}$
+    type: string
+  SourceAddress:
+    maxLength: 2048
+    minLength: 1
+    pattern: ^[!-~]+$
+    type: string
+  SourceSlug:
+    maxLength: 162
+    minLength: 1
+    pattern: ^[a-z0-9]+(?:-[a-z0-9]+)*(?:--[a-z0-9]+(?:-[a-z0-9]+)*)*$
+    type: string
+$schema: https://json-schema.org/draft/2020-12/schema
+additionalProperties: false
+description: '``source.yml``: the stable identity of one credential-free Git source.'
+properties:
+  clone_url:
+    $ref: '#/$defs/SourceAddress'
+  created_at:
+    $ref: '#/$defs/CanonicalTimestamp'
+  display_url:
+    $ref: '#/$defs/SourceAddress'
+  id:
+    $ref: '#/$defs/Sha256Identity'
+  slug:
+    $ref: '#/$defs/SourceSlug'
+  transport:
+    $ref: '#/$defs/GitTransport'
+required:
+- clone_url
+- created_at
+- display_url
+- id
+- slug
+- transport
+title: RepositorySource
+type: object
+x-softschema:
+  contract: com.github.jlevy.metabrowser.cache:RepositorySource/v1
+  schema_sha256: 5366659422e29e2cacf9ebda52f650708ddcc380f73292436339010bd96c175f

@@ -1,0 +1,170 @@
+# metab file://<ORIGIN> --show README.md
+exit: 0
+--- stdout ---
+show: README.md
+route: /view/g1-UkVBRE1FLm1k
+kind: markdown
+views: rendered (default), source
+model: text envelope; size=17 content_bytes=17 content_truncated=False
+--- stderr ---
+cloning <ORIGIN> into <HOME>/cache
+cloned <ORIGIN> in 0.0 s
+# metab file://<ORIGIN> --show a/deep/nested.md
+exit: 0
+--- stdout ---
+show: a/deep/nested.md
+route: /view/g1-YQ/g1-ZGVlcA/g1-bmVzdGVkLm1k
+kind: markdown
+views: rendered (default), source
+model: text envelope; size=27 content_bytes=27 content_truncated=False
+--- stderr ---
+# metab file://<ORIGIN> --show a/deep
+exit: 0
+--- stdout ---
+show: a/deep
+route: /view/g1-YQ/g1-ZGVlcA
+kind: folder
+views: overview (default), treemap
+model: folder envelope; readme_path=
+--- stderr ---
+# metab file://<ORIGIN> --show links/to-readme.md
+exit: 0
+--- stdout ---
+show: links/to-readme.md
+route: /view/g1-bGlua3M/g1-dG8tcmVhZG1lLm1k
+kind: markdown
+views: rendered (default), source
+model: text envelope; size=17 content_bytes=17 content_truncated=False
+--- stderr ---
+# metab file://<ORIGIN> --show bin/glyph.png
+exit: 0
+--- stdout ---
+show: bin/glyph.png
+route: /view/g1-Ymlu/g1-Z2x5cGgucG5n
+kind: image
+views: preview (default)
+model: image envelope; size=67
+--- stderr ---
+# metab file://<ORIGIN> --show bin/sample.bin
+exit: 0
+--- stdout ---
+show: bin/sample.bin
+route: /view/g1-Ymlu/g1-c2FtcGxlLmJpbg
+kind: binary
+views: bytes (default)
+model: binary envelope; size=8
+--- stderr ---
+# metab file://<ORIGIN> --show g1-b2Rk/g1-bGluZQpicmVhay50eHQ
+exit: 0
+--- stdout ---
+show: g1-b2Rk/g1-bGluZQpicmVhay50eHQ
+route: /view/g1-b2Rk/g1-bGluZQpicmVhay50eHQ
+kind: text
+views: source (default)
+model: text envelope; size=13 content_bytes=13 content_truncated=False
+--- stderr ---
+# metab file://<ORIGIN> --show nope.txt
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: nope.txt is not a selection the browser can open (HTTP 404)
+# metab file://<ORIGIN-NAMES> --show plain.md
+exit: 0
+--- stdout ---
+show: plain.md
+route: /view/g1-cGxhaW4ubWQ
+kind: markdown
+views: rendered (default), source
+model: text envelope; size=6 content_bytes=6 content_truncated=False
+--- stderr ---
+cloning <ORIGIN-NAMES> into <HOME>/cache
+cloned <ORIGIN-NAMES> in 0.0 s
+# metab file://<ORIGIN-NAMES> --show g1-notes.md
+exit: 0
+--- stdout ---
+show: g1-notes.md
+route: /view/g1-ZzEtbm90ZXMubWQ
+kind: markdown
+views: rendered (default), source
+model: text envelope; size=6 content_bytes=6 content_truncated=False
+--- stderr ---
+# metab file://<ORIGIN-NAMES> --show g1-tools/x.md
+exit: 0
+--- stdout ---
+show: g1-tools/x.md
+route: /view/g1-ZzEtdG9vbHM/g1-eC5tZA
+kind: markdown
+views: rendered (default), source
+model: text envelope; size=5 content_bytes=5 content_truncated=False
+--- stderr ---
+# metab file://<ORIGIN-NAMES> --show g1-data/x.md
+exit: 0
+--- stdout ---
+show: g1-data/x.md
+route: /view/g1-ZzEtZGF0YQ/g1-eC5tZA
+kind: markdown
+views: rendered (default), source
+model: text envelope; size=5 content_bytes=5 content_truncated=False
+--- stderr ---
+# metab file://<ORIGIN-NAMES> --show g1-data
+exit: 0
+--- stdout ---
+show: g1-data
+route: /view/g1-ZzEtZGF0YQ
+kind: folder
+views: overview (default), treemap
+model: folder envelope; readme_path=
+--- stderr ---
+# metab file://<ORIGIN-NAMES> --show /view/g1-ZzEtbm90ZXMubWQ
+exit: 0
+--- stdout ---
+show: /view/g1-ZzEtbm90ZXMubWQ
+route: /view/g1-ZzEtbm90ZXMubWQ
+kind: markdown
+views: rendered (default), source
+model: text envelope; size=6 content_bytes=6 content_truncated=False
+--- stderr ---
+# metab file://<ORIGIN-NAMES> --show g1-cGxhaW4ubWQ
+exit: 0
+--- stdout ---
+show: g1-cGxhaW4ubWQ
+route: /view/g1-cGxhaW4ubWQ
+kind: markdown
+views: rendered (default), source
+model: text envelope; size=6 content_bytes=6 content_truncated=False
+--- stderr ---
+# metab file://<ORIGIN-NAMES> --show g1-data/x.md --format json
+exit: 0
+--- stdout ---
+{
+  "show": "g1-data/x.md",
+  "route": "/view/g1-ZzEtZGF0YQ/g1-eC5tZA",
+  "kind": "markdown",
+  "views": [
+    {
+      "id": "rendered",
+      "label": "Document",
+      "default": true,
+      "container_class": "content-body metabrowser-kpress-host md-body",
+      "printable": true,
+      "print_profile": "document",
+      "render_runtime": "kpress"
+    },
+    {
+      "id": "source",
+      "label": "Source",
+      "default": false,
+      "container_class": "content-body metabrowser-source-host",
+      "printable": true,
+      "print_profile": "source",
+      "render_runtime": "client"
+    }
+  ],
+  "model": "text envelope; size=5 content_bytes=5 content_truncated=False"
+}
+--- stderr ---
+# metab file://<ORIGIN-NAMES> --show g1-absent.md
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: g1-absent.md is not a selection the browser can open (HTTP 404)

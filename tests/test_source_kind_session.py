@@ -1,0 +1,199 @@
+"""The source-kind session runs production browser code on what the server serves.
+
+The shell learns its subject kind from one inline block the server writes into
+every page, ``window.METABROWSER_SOURCE_KIND`` beside
+``window.METABROWSER_REPOSITORY_CONTEXT``. Everything downstream -- the plugin
+SDK's ``sourceKind()``, path display, tree-row names, the live event stream,
+index polling, Recent, and the filter controls -- branches on that global.
+
+``tests/dom/source-kind-session.js`` exercises those branches, and
+``tests/golden/cli-ui-source-kind.tryscript.md`` pins its transcript. So that
+the session consumes the real server's output rather than a global a test set
+by hand, its input is ``tests/fixtures/source-kind-shell.json``: for an
+attached folder and for a Git pin of the same names, the source-kind block and
+navigation heading the in-process application served at ``/view/`` and the SPA
+tree it answered at ``/api/tree?depth=2``, projected to name, path, type, and
+children, with the root it named. The first test here rebuilds both subjects and
+fails when the fixture no longer matches; ``make golden-update`` rewrites the fixture and
+then the transcript.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import os
+import re
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
+from pathlib import Path, PurePosixPath
+from typing import Any
+
+import pytest
+from httpx2 import ASGITransport, AsyncClient
+
+from metabrowser import paths_safe
+from metabrowser.paths_safe import _set_root_dir
+from metabrowser.server import app
+from metabrowser.source import AttachedFilesystemSubject, attach_subject, reset_source_session
+from tests.git_pin_harness import fast_import_store, overwrite_tree, pinned_client
+from tests.golden_harness import check_recording, run_session
+from tests.required_tools import needs_git
+
+# The same names under both subjects. A literal percent is where a folder's
+# inventory identity escapes (``%25``) and a pin's display name does not. A
+# directory named like a GitPath atom is where decoding it as a wire would
+# corrupt a folder's name. ``docs/guide.md`` is one ordinary nested file.
+FILES: dict[bytes, bytes] = {
+    b"README.md": b"# Source kinds\n",
+    b"50%-off.md": b"sale\n",
+    b"g1-data/note.txt": b"not a wire\n",
+    b"docs/guide.md": b"# Guide\n",
+}
+
+# A top-level link, which a folder does not follow and a pin stores as a blob, so the
+# two count it differently and the heading's tally must follow each server's count.
+SYMLINKS: dict[bytes, bytes] = {b"guide-link.md": b"docs/guide.md"}
+
+# A deadlock guard, not a speed budget: four entries walk in milliseconds, but a
+# loaded host can take seconds to schedule the walker.
+_INDEX_POLL_S = 0.05
+_INDEX_POLLS = 1200
+
+_SOURCE_KIND_BLOCK = re.compile(
+    r"<script>(window\.METABROWSER_(?:SOURCE_KIND|REPOSITORY_CONTEXT)=[^<]*;)</script>"
+)
+# The navigation heading as served: a folder's name, or a pin's ref and short commit.
+_HEADING = re.compile(
+    r'<a href="/view/" class="header-path"\s+data-served-root="[^"]*">(.*?)</a>', re.S
+)
+
+# The label a pin records for the ref it was resolved from. A label only: it is not read
+# back to find the commit.
+_PIN_REF = "refs/remotes/origin/topic"
+
+posix_only = pytest.mark.skipif(os.name != "posix", reason="folder identities are POSIX bytes")
+pytestmark = needs_git
+
+
+@asynccontextmanager
+async def _folder_client(root: Path) -> AsyncGenerator[AsyncClient]:
+    original = paths_safe.ROOT_DIR
+    _set_root_dir(root)
+    attach_subject(AttachedFilesystemSubject(root))
+    try:
+        async with app.router.lifespan_context(app):
+            transport = ASGITransport(app=app, raise_app_exceptions=True)
+            async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+                yield client
+    finally:
+        # A phase boundary, not teardown: the pin is observed after this, and must not
+        # find the folder still served. The folder's files are then overwritten, so
+        # a pin answered from them cannot match the pin's recording by accident.
+        reset_source_session()
+        _set_root_dir(original)
+        overwrite_tree(root)
+
+
+def _project(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Name, path, type, sizes, and loaded children: what the session reads from a node."""
+
+    projected: list[dict[str, Any]] = []
+    for node in nodes:
+        item: dict[str, Any] = {"name": node["name"], "path": node["path"], "type": node["type"]}
+        for key in ("size", "total_files", "total_size"):
+            if node.get(key) is not None:
+                item[key] = node[key]
+        if node.get("children"):
+            item["children"] = _project(node["children"])
+        projected.append(item)
+    return projected
+
+
+async def _wait_for_index(client: AsyncClient) -> None:
+    """Settle the folder's walk first, as ``metab --api`` does for index-dependent routes.
+
+    A tree requested mid-walk can omit nested children the finished listing has.
+    """
+
+    for _attempt in range(_INDEX_POLLS):
+        progress = await client.get("/api/index/progress")
+        assert progress.status_code == 200, progress.text
+        if progress.json().get("status") in ("done", "truncated"):
+            return
+        await asyncio.sleep(_INDEX_POLL_S)
+    pytest.fail("the folder inventory never finished its walk")
+
+
+async def _observe(client: AsyncClient) -> dict[str, Any]:
+    await _wait_for_index(client)
+    shell = await client.get("/view/")
+    assert shell.status_code == 200
+    block = _SOURCE_KIND_BLOCK.findall(shell.text)
+    assert len(block) == 2, block
+    heading = _HEADING.findall(shell.text)
+    assert len(heading) == 1, heading
+    tree = await client.get("/api/tree?depth=2")
+    assert tree.status_code == 200, tree.text
+    payload = tree.json()
+    tallies = await client.get("/api/tree?depth=0")
+    assert tallies.status_code == 200, tallies.text
+    summary = tallies.json()["summary"]
+    return {
+        "shell": block,
+        "heading": heading[0],
+        # A folder's root is an absolute path, and the heading reads only its last
+        # component, which is all that is recorded. A pin's tree names no root.
+        "root": PurePosixPath(payload["root"]).name if "root" in payload else None,
+        "tree": _project(payload["tree"]),
+        # The server's own whole-tree count, which the heading's tooltip must match.
+        "summary": {
+            "files": summary["files"] + summary["ignored_files"],
+            "size": summary["size"] + summary["ignored_size"],
+        },
+    }
+
+
+def _served(tmp_path: Path) -> dict[str, Any]:
+    folder = tmp_path / "folder"
+    for name, body in FILES.items():
+        target = folder / name.decode()
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(body)
+    for name, target_bytes in SYMLINKS.items():
+        (folder / name.decode()).symlink_to(target_bytes.decode())
+    (tmp_path / "git").mkdir()
+    store, commit = fast_import_store(tmp_path / "git", FILES, symlinks=SYMLINKS)
+
+    async def run() -> dict[str, Any]:
+        async with _folder_client(folder) as client:
+            filesystem = await _observe(client)
+        async with pinned_client(store, commit, ref=_PIN_REF) as (client, _subject):
+            git_revision = await _observe(client)
+        return {"filesystem": filesystem, "git_revision": git_revision}
+
+    return asyncio.run(run())
+
+
+@posix_only
+def test_fixture_is_what_the_server_serves_for_each_source_kind(tmp_path: Path) -> None:
+    served = _served(tmp_path)
+    assert served["filesystem"]["shell"][0] == 'window.METABROWSER_SOURCE_KIND="filesystem";'
+    assert served["git_revision"]["shell"][0] == 'window.METABROWSER_SOURCE_KIND="git_revision";'
+    check_recording("source-kind-shell.json", served, transcript="cli-ui-source-kind.tryscript.md")
+
+
+def test_source_kind_session_agrees_with_the_served_kind() -> None:
+    observed = run_session("source-kind-session.js")
+    assert [kind["sourceKind"] for kind in observed] == ["filesystem", "git_revision"]
+    folder, pin = observed
+    assert folder["gates"]["inventoryEvents"]["eventSourcesOpened"] == 1
+    assert pin["gates"]["inventoryEvents"]["eventSourcesOpened"] == 0
+    assert "recency" in folder["gates"]["navFilterControls"]
+    assert "recency" not in pin["gates"]["navFilterControls"]
+    assert sorted(row["location"] for row in folder["rows"]) == sorted(
+        row["location"] for row in pin["rows"]
+    )
+    # The tree load keeps a pin's served ref-and-commit heading.
+    assert pin["heading"]["afterTreeLoad"] == pin["heading"]["served"]
+    assert '<span class="path-base">topic</span>' in pin["heading"]["served"]
+    assert 'class="header-revision"' in pin["heading"]["served"]

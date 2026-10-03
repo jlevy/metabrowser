@@ -1,0 +1,166 @@
+## A home an earlier release wrote holds a store no alias names.
+# metab <ROOT> --api /api/cache/layout
+exit: 0
+--- stdout ---
+api: /api/cache/layout
+status: 200
+{
+  "home": "present",
+  "supported_format": "f01",
+  "state": "current",
+  "layout": {
+    "format": "f01",
+    "created_by": "0.11.0"
+  },
+  "config": {
+    "format": "f01",
+    "written_by": "0.11.0",
+    "upgrades": []
+  },
+  "reclamation": {
+    "staging_entries": 0
+  }
+}
+--- stderr ---
+# metab <ROOT> --api /api/cache/stores
+exit: 0
+--- stdout ---
+api: /api/cache/stores
+status: 200
+{
+  "home": "present",
+  "layout_format": "f01",
+  "stores": [
+    {
+      "id": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "publication": "published",
+      "identity": {
+        "created_at": "2026-09-17T12:00:00Z",
+        "acquisition": {
+          "git_version": "<GIT_VERSION>",
+          "object_format": "sha1"
+        }
+      },
+      "state": {
+        "default_remote_ref": null,
+        "default_revision": null,
+        "last_fetch_at": "2026-09-17T12:00:05Z",
+        "last_operation": {
+          "kind": "acquire",
+          "outcome": "succeeded",
+          "at": "2026-09-17T12:00:05Z"
+        }
+      },
+      "problems": [],
+      "referenced_by": [],
+      "reference_state": "unreferenced"
+    }
+  ],
+  "unrecognized_entries": 0,
+  "limit": 25,
+  "next_after": null
+}
+--- stderr ---
+## Acquiring another source keeps it, unreferenced, beside the new store.
+# metab <ORIGIN-A> --no-serve
+exit: 0
+--- stdout ---
+acquired: <ORIGIN-A>
+slug: <SLUG-A>
+store: <STORE-A>
+revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
+--- stderr ---
+cloning <ORIGIN-A> into <HOME>/cache
+cloned <ORIGIN-A> in 0.0 s
+# metab <ROOT> --api /api/cache/stores
+exit: 0
+--- stdout ---
+api: /api/cache/stores
+status: 200
+{
+  "home": "present",
+  "layout_format": "f01",
+  "stores": [
+    {
+      "id": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "publication": "published",
+      "identity": {
+        "created_at": "2026-09-17T12:00:00Z",
+        "acquisition": {
+          "git_version": "<GIT_VERSION>",
+          "object_format": "sha1"
+        }
+      },
+      "state": {
+        "default_remote_ref": null,
+        "default_revision": null,
+        "last_fetch_at": "2026-09-17T12:00:05Z",
+        "last_operation": {
+          "kind": "acquire",
+          "outcome": "succeeded",
+          "at": "2026-09-17T12:00:05Z"
+        }
+      },
+      "problems": [],
+      "referenced_by": [],
+      "reference_state": "unreferenced"
+    },
+    {
+      "id": "<STORE-A>",
+      "publication": "published",
+      "identity": {
+        "created_at": "2026-09-17T12:00:00Z",
+        "acquisition": {
+          "git_version": "<GIT_VERSION>",
+          "object_format": "sha1"
+        }
+      },
+      "state": {
+        "default_remote_ref": "refs/remotes/origin/topic",
+        "default_revision": "8f05aafe23bbeade03ef581868a59e3c944ac5c4",
+        "last_fetch_at": "2026-09-17T12:00:00Z",
+        "last_operation": {
+          "kind": "acquire",
+          "outcome": "succeeded",
+          "at": "2026-09-17T12:00:00Z"
+        }
+      },
+      "problems": [],
+      "referenced_by": [
+        {
+          "slug": "<SLUG-A>",
+          "generation": 1
+        }
+      ],
+      "reference_state": "referenced"
+    }
+  ],
+  "unrecognized_entries": 0,
+  "limit": 25,
+  "next_after": null
+}
+--- stderr ---
+## The home is current, so the acquisition rewrote neither its layout nor its config.
+# metab <ROOT> --api /api/cache/layout
+exit: 0
+--- stdout ---
+api: /api/cache/layout
+status: 200
+{
+  "home": "present",
+  "supported_format": "f01",
+  "state": "current",
+  "layout": {
+    "format": "f01",
+    "created_by": "0.11.0"
+  },
+  "config": {
+    "format": "f01",
+    "written_by": "0.11.0",
+    "upgrades": []
+  },
+  "reclamation": {
+    "staging_entries": 0
+  }
+}
+--- stderr ---

@@ -3,19 +3,17 @@
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 from pathlib import Path
 
-import pytest
+from tests.required_tools import require_node
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SHIM = Path(__file__).resolve().parent / "dom" / "folder-totals-model-behavior.js"
 
 
 def test_folder_totals_model_behavior() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available; skipping folder totals model behavior")
+    require_node()
     result = subprocess.run(
         ["node", str(SHIM), str(REPO_ROOT)],
         capture_output=True,

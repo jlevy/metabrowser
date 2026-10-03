@@ -1,0 +1,760 @@
+{
+  "stale": {
+    "subject": "git_revision",
+    "generation": 1,
+    "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "name": "origin",
+    "origin": "file:///sandbox/origin.git",
+    "location": "/sandbox/application-home/cache/repository-stores/store-key-1/repository.git",
+    "refreshable": true,
+    "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-17T12:00:05Z",
+    "last_outcome": {
+      "operation": "acquire",
+      "outcome": "succeeded",
+      "at": "2026-09-17T12:00:05Z"
+    },
+    "refreshing": false,
+    "stale": true,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  },
+  "refresh_started": {
+    "refresh": "started",
+    "status": {
+      "subject": "git_revision",
+      "generation": 1,
+      "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+      "ref": "refs/remotes/origin/topic",
+      "ref_name": "topic",
+      "name": "origin",
+      "origin": "file:///sandbox/origin.git",
+      "location": "/sandbox/application-home/cache/repository-stores/store-key-1/repository.git",
+      "refreshable": true,
+      "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+      "ref_on_origin": true,
+      "last_fetch_at": "2026-09-17T12:00:05Z",
+      "last_outcome": {
+        "operation": "acquire",
+        "outcome": "succeeded",
+        "at": "2026-09-17T12:00:05Z"
+      },
+      "refreshing": true,
+      "stale": true,
+      "pull_request": null,
+      "selection_state": null,
+      "selection_href": null
+    }
+  },
+  "refreshed": {
+    "subject": "git_revision",
+    "generation": 1,
+    "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "name": "origin",
+    "origin": "file:///sandbox/origin.git",
+    "location": "/sandbox/application-home/cache/repository-stores/store-key-1/repository.git",
+    "refreshable": true,
+    "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-23T12:00:00Z",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "succeeded",
+      "at": "2026-09-23T12:00:00Z"
+    },
+    "refreshing": false,
+    "stale": false,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  },
+  "history_stale": {
+    "status": 409,
+    "body": {
+      "error": "git history changed; refresh required",
+      "code": "history_stale"
+    }
+  },
+  "switched": {
+    "changed": true,
+    "status": {
+      "subject": "git_revision",
+      "generation": 2,
+      "pin": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+      "ref": "refs/remotes/origin/topic",
+      "ref_name": "topic",
+      "name": "origin",
+      "origin": "file:///sandbox/origin.git",
+      "location": "/sandbox/application-home/cache/repository-stores/store-key-1/repository.git",
+      "refreshable": true,
+      "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+      "ref_on_origin": true,
+      "last_fetch_at": "2026-09-23T12:00:00Z",
+      "last_outcome": {
+        "operation": "refresh",
+        "outcome": "succeeded",
+        "at": "2026-09-23T12:00:00Z"
+      },
+      "refreshing": false,
+      "stale": false,
+      "pull_request": null,
+      "selection_state": null,
+      "selection_href": null
+    }
+  },
+  "after_switch": {
+    "subject": "git_revision",
+    "generation": 2,
+    "pin": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "name": "origin",
+    "origin": "file:///sandbox/origin.git",
+    "location": "/sandbox/application-home/cache/repository-stores/store-key-1/repository.git",
+    "refreshable": true,
+    "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-23T12:00:00Z",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "succeeded",
+      "at": "2026-09-23T12:00:00Z"
+    },
+    "refreshing": false,
+    "stale": false,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  },
+  "pin_changed": {
+    "status": 409,
+    "headers": {
+      "x-metabrowser-pin-changed": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531"
+    },
+    "body": {
+      "error": "the server now serves another revision; reload the page",
+      "code": "pin_changed",
+      "pin": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531"
+    }
+  },
+  "pin_refused": {
+    "status": 404,
+    "body": {
+      "error": "no branch or tag with that name is in the mirror",
+      "code": "selection_not_found"
+    }
+  },
+  "failed": {
+    "subject": "git_revision",
+    "generation": 2,
+    "pin": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "name": "origin",
+    "origin": "file:///sandbox/origin.git",
+    "location": "/sandbox/application-home/cache/repository-stores/store-key-1/repository.git",
+    "refreshable": true,
+    "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-23T12:00:00Z",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "origin_unavailable",
+      "at": "2026-09-23T12:00:00Z"
+    },
+    "refreshing": false,
+    "stale": false,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  },
+  "unreachable": {
+    "subject": "git_revision",
+    "generation": 3,
+    "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "name": "origin",
+    "origin": "file:///sandbox/origin.git",
+    "location": "/sandbox/application-home/cache/repository-stores/store-key-1/repository.git",
+    "refreshable": true,
+    "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-17T12:00:05Z",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "origin_unavailable",
+      "at": "2026-09-17T12:00:05Z"
+    },
+    "refreshing": false,
+    "stale": true,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  },
+  "unreachable_started": {
+    "refresh": "started",
+    "status": {
+      "subject": "git_revision",
+      "generation": 3,
+      "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+      "ref": "refs/remotes/origin/topic",
+      "ref_name": "topic",
+      "name": "origin",
+      "origin": "file:///sandbox/origin.git",
+      "location": "/sandbox/application-home/cache/repository-stores/store-key-1/repository.git",
+      "refreshable": true,
+      "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+      "ref_on_origin": true,
+      "last_fetch_at": "2026-09-17T12:00:05Z",
+      "last_outcome": {
+        "operation": "refresh",
+        "outcome": "origin_unavailable",
+        "at": "2026-09-17T12:00:05Z"
+      },
+      "refreshing": true,
+      "stale": true,
+      "pull_request": null,
+      "selection_state": null,
+      "selection_href": null
+    }
+  },
+  "unreachable_after": {
+    "subject": "git_revision",
+    "generation": 3,
+    "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "name": "origin",
+    "origin": "file:///sandbox/origin.git",
+    "location": "/sandbox/application-home/cache/repository-stores/store-key-1/repository.git",
+    "refreshable": true,
+    "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-17T12:00:05Z",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "origin_unavailable",
+      "at": "2026-09-23T12:00:00Z"
+    },
+    "refreshing": false,
+    "stale": true,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  },
+  "commit_stale_started": {
+    "status": 202,
+    "body": {
+      "refresh": "started",
+      "status": {
+        "subject": "git_revision",
+        "generation": 3,
+        "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+        "ref": "refs/remotes/origin/topic",
+        "ref_name": "topic",
+        "name": "origin",
+        "origin": "file:///sandbox/origin.git",
+        "location": "/sandbox/application-home/cache/repository-stores/store-key-1/repository.git",
+        "refreshable": true,
+        "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+        "ref_on_origin": true,
+        "last_fetch_at": "2026-09-17T12:00:05Z",
+        "last_outcome": {
+          "operation": "refresh",
+          "outcome": "origin_unavailable",
+          "at": "2026-09-23T12:00:00Z"
+        },
+        "refreshing": true,
+        "stale": true,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      }
+    }
+  },
+  "commit_stale_unfetched": {
+    "subject": "git_revision",
+    "generation": 3,
+    "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "name": "origin",
+    "origin": "file:///sandbox/origin.git",
+    "location": "/sandbox/application-home/cache/repository-stores/store-key-1/repository.git",
+    "refreshable": true,
+    "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-17T12:00:05Z",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "origin_unavailable",
+      "at": "2026-09-23T12:00:00Z"
+    },
+    "refreshing": false,
+    "stale": true,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  },
+  "selection_pending": {
+    "subject": "git_revision",
+    "generation": 4,
+    "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "name": "origin",
+    "origin": "file:///sandbox/origin.git",
+    "location": "/sandbox/application-home/cache/repository-stores/store-key-1/repository.git",
+    "refreshable": true,
+    "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-17T12:00:05Z",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "origin_unavailable",
+      "at": "2026-09-23T12:00:00Z"
+    },
+    "refreshing": false,
+    "stale": true,
+    "pull_request": null,
+    "selection_state": "pending",
+    "selection_href": null
+  },
+  "selection_refresh_started": {
+    "refresh": "started",
+    "status": {
+      "subject": "git_revision",
+      "generation": 4,
+      "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+      "ref": "refs/remotes/origin/topic",
+      "ref_name": "topic",
+      "name": "origin",
+      "origin": "file:///sandbox/origin.git",
+      "location": "/sandbox/application-home/cache/repository-stores/store-key-1/repository.git",
+      "refreshable": true,
+      "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+      "ref_on_origin": true,
+      "last_fetch_at": "2026-09-17T12:00:05Z",
+      "last_outcome": {
+        "operation": "refresh",
+        "outcome": "origin_unavailable",
+        "at": "2026-09-23T12:00:00Z"
+      },
+      "refreshing": true,
+      "stale": true,
+      "pull_request": null,
+      "selection_state": "pending",
+      "selection_href": null
+    }
+  },
+  "selection_found": {
+    "subject": "git_revision",
+    "generation": 5,
+    "pin": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+    "ref": "refs/remotes/origin/later",
+    "ref_name": "later",
+    "name": "origin",
+    "origin": "file:///sandbox/origin.git",
+    "location": "/sandbox/application-home/cache/repository-stores/store-key-1/repository.git",
+    "refreshable": true,
+    "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-23T12:00:00Z",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "succeeded",
+      "at": "2026-09-23T12:00:00Z"
+    },
+    "refreshing": false,
+    "stale": false,
+    "pull_request": null,
+    "selection_state": "found",
+    "selection_href": "/view/g1-UkVBRE1FLm1k#L1"
+  },
+  "selection_not_found": {
+    "subject": "git_revision",
+    "generation": 6,
+    "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "name": "origin",
+    "origin": "file:///sandbox/origin.git",
+    "location": "/sandbox/application-home/cache/repository-stores/store-key-1/repository.git",
+    "refreshable": true,
+    "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-23T12:00:00Z",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "succeeded",
+      "at": "2026-09-23T12:00:00Z"
+    },
+    "refreshing": false,
+    "stale": false,
+    "pull_request": null,
+    "selection_state": "not_found",
+    "selection_href": null
+  },
+  "selection_fetch_failed": {
+    "subject": "git_revision",
+    "generation": 7,
+    "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "name": "origin",
+    "origin": "file:///sandbox/origin.git",
+    "location": "/sandbox/application-home/cache/repository-stores/store-key-1/repository.git",
+    "refreshable": true,
+    "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-23T12:00:00Z",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "origin_unavailable",
+      "at": "2026-09-23T12:00:00Z"
+    },
+    "refreshing": false,
+    "stale": false,
+    "pull_request": null,
+    "selection_state": "fetch_failed",
+    "selection_href": null
+  },
+  "selection_retry_started": {
+    "refresh": "started",
+    "status": {
+      "subject": "git_revision",
+      "generation": 7,
+      "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+      "ref": "refs/remotes/origin/topic",
+      "ref_name": "topic",
+      "name": "origin",
+      "origin": "file:///sandbox/origin.git",
+      "location": "/sandbox/application-home/cache/repository-stores/store-key-1/repository.git",
+      "refreshable": true,
+      "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+      "ref_on_origin": true,
+      "last_fetch_at": "2026-09-23T12:00:00Z",
+      "last_outcome": {
+        "operation": "refresh",
+        "outcome": "origin_unavailable",
+        "at": "2026-09-23T12:00:00Z"
+      },
+      "refreshing": true,
+      "stale": false,
+      "pull_request": null,
+      "selection_state": "pending",
+      "selection_href": null
+    }
+  },
+  "commit_page": {
+    "subject": "git_revision",
+    "generation": 8,
+    "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "name": "origin",
+    "origin": "file:///sandbox/origin.git",
+    "location": "/sandbox/application-home/cache/repository-stores/store-key-1/repository.git",
+    "refreshable": true,
+    "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-23T12:00:00Z",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "succeeded",
+      "at": "2026-09-23T12:00:00Z"
+    },
+    "refreshing": false,
+    "stale": false,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  },
+  "commit_missing": {
+    "oid": "92b31b0785485bd9eaa9619d198a779c2699295d",
+    "status": 404,
+    "body": {
+      "error": "unknown revision",
+      "code": "commit_not_found"
+    }
+  },
+  "commit_absent": {
+    "oid": "0123456789abcdef0123456789abcdef01234567",
+    "status": 404,
+    "body": {
+      "error": "unknown revision",
+      "code": "commit_not_found"
+    }
+  },
+  "commit_refused": {
+    "oid": "92b31b0785485bd9eaa9619d198a779c2699295d",
+    "status": 409,
+    "body": {
+      "error": "the server now serves another revision; reload the page",
+      "code": "pin_changed",
+      "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb"
+    }
+  },
+  "commit_fresh": {
+    "status": 200,
+    "body": {
+      "refresh": "fresh",
+      "status": {
+        "subject": "git_revision",
+        "generation": 8,
+        "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+        "ref": "refs/remotes/origin/topic",
+        "ref_name": "topic",
+        "name": "origin",
+        "origin": "file:///sandbox/origin.git",
+        "location": "/sandbox/application-home/cache/repository-stores/store-key-1/repository.git",
+        "refreshable": true,
+        "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+        "ref_on_origin": true,
+        "last_fetch_at": "2026-09-23T12:00:00Z",
+        "last_outcome": {
+          "operation": "refresh",
+          "outcome": "succeeded",
+          "at": "2026-09-23T12:00:00Z"
+        },
+        "refreshing": false,
+        "stale": false,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      }
+    }
+  },
+  "commit_beside_page": {
+    "subject": "git_revision",
+    "generation": 8,
+    "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "name": "origin",
+    "origin": "file:///sandbox/origin.git",
+    "location": "/sandbox/application-home/cache/repository-stores/store-key-1/repository.git",
+    "refreshable": true,
+    "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-23T12:00:00Z",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "succeeded",
+      "at": "2026-09-23T12:00:00Z"
+    },
+    "refreshing": false,
+    "stale": true,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  },
+  "commit_beside_refresh": {
+    "status": 202,
+    "body": {
+      "refresh": "started",
+      "status": {
+        "subject": "git_revision",
+        "generation": 8,
+        "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+        "ref": "refs/remotes/origin/topic",
+        "ref_name": "topic",
+        "name": "origin",
+        "origin": "file:///sandbox/origin.git",
+        "location": "/sandbox/application-home/cache/repository-stores/store-key-1/repository.git",
+        "refreshable": true,
+        "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+        "ref_on_origin": true,
+        "last_fetch_at": "2026-09-23T12:00:00Z",
+        "last_outcome": {
+          "operation": "refresh",
+          "outcome": "succeeded",
+          "at": "2026-09-23T12:00:00Z"
+        },
+        "refreshing": true,
+        "stale": true,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      }
+    }
+  },
+  "commit_beside_only": {
+    "status": 202,
+    "body": {
+      "refresh": "fresh",
+      "status": {
+        "subject": "git_revision",
+        "generation": 8,
+        "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+        "ref": "refs/remotes/origin/topic",
+        "ref_name": "topic",
+        "name": "origin",
+        "origin": "file:///sandbox/origin.git",
+        "location": "/sandbox/application-home/cache/repository-stores/store-key-1/repository.git",
+        "refreshable": true,
+        "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+        "ref_on_origin": true,
+        "last_fetch_at": "2026-09-23T12:00:00Z",
+        "last_outcome": {
+          "operation": "refresh",
+          "outcome": "succeeded",
+          "at": "2026-09-23T12:00:00Z"
+        },
+        "refreshing": true,
+        "stale": true,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      }
+    }
+  },
+  "commit_retry_started": {
+    "status": 202,
+    "body": {
+      "refresh": "started",
+      "status": {
+        "subject": "git_revision",
+        "generation": 8,
+        "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+        "ref": "refs/remotes/origin/topic",
+        "ref_name": "topic",
+        "name": "origin",
+        "origin": "file:///sandbox/origin.git",
+        "location": "/sandbox/application-home/cache/repository-stores/store-key-1/repository.git",
+        "refreshable": true,
+        "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+        "ref_on_origin": true,
+        "last_fetch_at": "2026-09-23T12:00:00Z",
+        "last_outcome": {
+          "operation": "refresh",
+          "outcome": "succeeded",
+          "at": "2026-09-23T12:00:00Z"
+        },
+        "refreshing": true,
+        "stale": true,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      }
+    }
+  },
+  "commit_joined": {
+    "status": 202,
+    "body": {
+      "refresh": "joined",
+      "status": {
+        "subject": "git_revision",
+        "generation": 8,
+        "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+        "ref": "refs/remotes/origin/topic",
+        "ref_name": "topic",
+        "name": "origin",
+        "origin": "file:///sandbox/origin.git",
+        "location": "/sandbox/application-home/cache/repository-stores/store-key-1/repository.git",
+        "refreshable": true,
+        "latest": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
+        "ref_on_origin": true,
+        "last_fetch_at": "2026-09-23T12:00:00Z",
+        "last_outcome": {
+          "operation": "refresh",
+          "outcome": "succeeded",
+          "at": "2026-09-23T12:00:00Z"
+        },
+        "refreshing": true,
+        "stale": true,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      }
+    }
+  },
+  "commit_fetched": {
+    "subject": "git_revision",
+    "generation": 8,
+    "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "name": "origin",
+    "origin": "file:///sandbox/origin.git",
+    "location": "/sandbox/application-home/cache/repository-stores/store-key-1/repository.git",
+    "refreshable": true,
+    "latest": "92b31b0785485bd9eaa9619d198a779c2699295d",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-23T12:00:00Z",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "succeeded",
+      "at": "2026-09-23T12:00:00Z"
+    },
+    "refreshing": false,
+    "stale": false,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  },
+  "commit_found": {
+    "oid": "92b31b0785485bd9eaa9619d198a779c2699295d",
+    "status": 200,
+    "commit": "92b31b0785485bd9eaa9619d198a779c2699295d"
+  },
+  "commit_absent_after": {
+    "oid": "0123456789abcdef0123456789abcdef01234567",
+    "status": 404,
+    "body": {
+      "error": "unknown revision",
+      "code": "commit_not_found"
+    }
+  },
+  "origin_not_shown": {
+    "subject": "git_revision",
+    "generation": 9,
+    "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "name": "origin",
+    "origin": "file:///sandbox/origin.git",
+    "location": "/sandbox/application-home/cache/repository-stores/store-key-1/repository.git",
+    "refreshable": true,
+    "latest": "92b31b0785485bd9eaa9619d198a779c2699295d",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-23T12:00:00Z",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "not_found_or_private",
+      "at": "2026-09-23T12:00:00Z"
+    },
+    "refreshing": false,
+    "stale": false,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  },
+  "folder": {
+    "subject": "attached_filesystem",
+    "generation": 1,
+    "pin": null,
+    "ref": null,
+    "ref_name": null,
+    "name": null,
+    "origin": null,
+    "location": null,
+    "refreshable": false,
+    "latest": null,
+    "ref_on_origin": null,
+    "last_fetch_at": null,
+    "last_outcome": null,
+    "refreshing": false,
+    "stale": false,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  }
+}

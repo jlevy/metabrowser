@@ -45,6 +45,7 @@ metab --doctor --plugins-dir ./examples
 
 `--doctor` validates manifests, `index.js` files, installed-plugin data-hook imports,
 operator-directory JavaScript-only boundaries, and high-priority kind conflicts.
+It also checks that the packaged repository-cache record schemas are intact.
 It exits nonzero when any problem is found.
 All three modes support `--json` for machine-readable output.
 Discovery errors preserve any plugins that loaded successfully but make the command exit
@@ -54,16 +55,22 @@ error.
 
 ## Path Identity
 
-SDK 0.6 uses the inventory’s escaped relative paths in API requests, browser navigation
-and catalog records.
+Since SDK 0.6, the SDK uses the inventory’s escaped relative paths in API requests,
+browser navigation and catalog records.
 Keep a received `path` unchanged when passing it to another API. A literal percent sign
 in a native filename is `%25` in its identity; for example, `100%.md` has identity
-`100%25.md`. Undecodable platform bytes also have lossless escapes.
+`100%25.md`. On POSIX a backslash in a filename is `%5C`, and undecodable platform bytes
+also have lossless escapes.
 The browser’s navigation API converts these identities to human-facing `/view/` URLs.
 
 Python sidekicks use `resolve_path()` or `resolve_directory()` to cross from an identity
 to the filesystem, and `relativize_path()` to convert a native path back to an identity.
-Do not join an API path directly onto the served root.
+Those helpers, and `open_content()`, stay filesystem-only: on a subject with no
+filesystem root they raise `UnsupportedSourceCapabilityError` rather than pretending a
+path exists. A hook that only needs bytes uses the [content reader](#reading-content)
+instead, which answers on every source kind.
+`source_capabilities()` and `require_source_capability()` report what the active subject
+can do at all. Do not join an API path directly onto the served root.
 The [inventory contract](project/architecture/arch-inventory-provider.md) specifies the
 encoding and scope. `/commit/` comparison paths belong to Git’s separate address space.
 
@@ -85,7 +92,7 @@ examples/
 name = "hello"
 display_name = "Hello"
 version = "0.1.0"
-sdk_version = "0.6"
+sdk_version = "0.7"
 
 [[kind]]
 id = "hello-document"
@@ -151,7 +158,10 @@ Plugin CSS and module side effects therefore do not exist on an unrelated page.
 For one plugin, the host loads its automatically detected `styles.css` and every
 `extra_styles` entry in parallel and waits for them to settle.
 It then loads `extra_scripts` sequentially in manifest order and evaluates `index.js`
-last. When several plugins declare the same kind, complete plugin descriptors load
+last. `index.js` is fetched while the stylesheets are, and evaluated in its turn.
+Every documented `window.metabrowser` function is in place before any of a plugin’s code
+runs: while `index.js` evaluates, in a view’s `render`, and in a handler.
+When several plugins declare the same kind, complete plugin descriptors load
 sequentially in stable discovery order.
 A later plugin therefore wins a duplicate `registerView` key deterministically, matching
 the manifest view registry.
@@ -258,6 +268,81 @@ Explain a refusal in the response body, not only in the status code.
 a view can turn `413` plus a `max_preview_bytes` field into a state naming the exact
 cutoff instead of hard-coding the limit in JavaScript.
 
+#### Reading Content
+
+Metabrowser serves two kinds of source: an attached folder and an immutable Git-revision
+pin over a store with no working tree.
+A hook that reads bytes uses the content reader for both, and never asks which one is
+active:
+
+```python
+from metabrowser import (
+    ContentReadError,
+    read_content_window,
+    resolve_content,
+)
+from starlette.responses import JSONResponse
+
+MAX_BYTES = 256 * 1024  # this hook's own ceiling; say why beside the constant
+
+
+async def summary_handler(request):
+    identity = request.query_params.get("path", "")
+    try:
+        ref = await resolve_content(identity)
+        if ref is None:
+            return JSONResponse({"error": "Not found"}, status_code=404)
+        if ref.logical_ext != ".log":
+            return JSONResponse({"error": "Unsupported extension"}, status_code=400)
+        window = await read_content_window(ref, max_bytes=MAX_BYTES)
+    except ContentReadError as exc:
+        return JSONResponse({"error": str(exc), "code": exc.code}, status_code=exc.http_status)
+    return JSONResponse(
+        {
+            "path": ref.identity,
+            "fingerprint": ref.fingerprint,
+            "lines": window.data.count(b"\n"),
+            "truncated": window.has_more,
+        }
+    )
+```
+
+- Pass back the `path` the client sent.
+  It is an inventory identity under a folder and a `GitPath` wire on a pin; either way
+  it is opaque to the hook, and `ref.identity` is the canonical spelling to echo in the
+  response.
+- `ref.fingerprint` changes exactly when the bytes can have, so it is the key for a
+  hook’s own cache and for an `ETag`. A hook never needs to know whether it is an mtime
+  hash or a blob object id.
+- `max_bytes` is required, and it bounds **bytes**, not a decoded string.
+  Decode `window.data` afterwards if the content is text; decoding first would put the
+  bound on the wrong quantity.
+  `window.has_more` reports that content continues past the window, which is how to tell
+  truncation from a short file — and it is the only trustworthy answer for a compressed
+  artifact, whose declared length lives in a trailer nothing verifies until the stream
+  is decoded.
+- `ref.stored_size` is the size the source stores: a file’s size on disk, which for a
+  compressed artifact is its compressed size, and a blob’s length on a pin.
+  Resolution already has it, so it costs no read.
+  It is `None` only for a blob a pin’s store does not hold, which no read returns
+  either. The structured plugin’s `parsed` route reports it as `size`.
+- `stat_content(ref)` is the separate call for a validated logical size, which differs
+  from the stored size exactly for a compressed artifact.
+  It can cost a full decode and can fail, so reach for it only when the response
+  genuinely needs a total, the way the binary plugin’s view needs one for its scrollbar.
+- `resolve_content_container(identity, suffixes=(".patch",))` resolves a
+  `<content>/<inner>` address for a container kind, scoped to the suffixes the hook
+  claims. It returns the content and the inner path, with the same bounded depth rule the
+  server’s own walk uses.
+- Every failure is a `ContentReadError`, so one `except` covers a missing object, an
+  oversized blob, an unreadable compressed stream, a timeout, and a subject that cannot
+  read content at all.
+  Each carries a stable `code` and the `http_status` Metabrowser’s own routes answer
+  with; branch on those rather than on exception classes.
+
+Reads run off the event loop on both kinds, so an `async def` handler stays responsive
+without arranging that itself.
+
 ## Browser SDK
 
 The supported API is available as `window.metabrowser`. It is also the one
@@ -339,8 +424,17 @@ Useful helpers include:
 - `render(template, data)` for auto-escaped Mustache templates;
 - `escapeHtml(value)` for carefully constructed HTML strings;
 - `wrapWithCopy(html)` for a standard copy-button frame;
-- `renderSourceView(container, data)` for the standard bounded, copyable Source surface,
-  including truncation controls and the shared language mapping;
+- `ownDelegate(element)` and `delegateOwnerAttribute()` to stamp a copy control built
+  without `wrapWithCopy` (SDK 0.7): the shared copy listener acts only on an element
+  carrying the page’s owner mark, because a trusted folder’s Markdown can write the same
+  `data-mb-copy` markup, and it ignores an unstamped one without an error;
+- `renderSourceView(container, data, options)` for the standard bounded, copyable Source
+  surface, including truncation controls, the shared language mapping, a line-number
+  gutter, and `#L10`-style line anchors that the mouse and the keyboard set;
+  `options.parts`, a list of `{text, language}` that joins to the content and whose
+  every part but the last ends with a newline, shows the text as consecutive code blocks
+  under one gutter, each in its own language, as the Markdown Source tab does for front
+  matter; a file too large to highlight, or only partly loaded, shows as one block;
 - `langForExtension(ext)` for the language ID backed by the host’s vendored grammar
   registry, or an empty string when the source should remain plain;
 - `langForPath(pathOrName, ext)` for the same decision with extensionless names such as
@@ -368,6 +462,7 @@ Useful helpers include:
 - `chart(container, type, data, options)`;
 - `ensureAsset(name)`;
 - `ensureKindAssets(kind)`;
+- `sourceKind()` for the served source (`filesystem` or `git_revision`);
 - `perf.measure` and `perf.measureAsync`.
 
 `ensureAsset(name)` loads a vendored library that the shell does not put on every page,
@@ -384,6 +479,9 @@ belongs in.
 Await it before embedding one kind’s renderer inside another plugin, then read the
 renderer from the SDK. Already-loaded plugins resolve immediately, and simultaneous
 callers share one load.
+It rejects only when the SDK’s own view helpers could not be fetched; no plugin’s code
+has run then, and calling it again tries again.
+A plugin whose own assets fail to load is logged and skipped.
 This keeps cross-kind renderers off the eager shell path without exposing the private
 plugin host.
 
@@ -574,7 +672,7 @@ Note, heading, and named-block transclusions share depth, document, source-byte,
 abort, and disposal limits across the mounted document.
 Each embed’s elapsed-time limit starts when that embed begins loading, so an embed whose
 catalog resolution arrives late still receives its full allowance.
-SDK 0.6 does not expose Markdown graph analysis.
+The SDK does not expose Markdown graph analysis.
 Parsing Markdown a second time in the browser can diverge from KPress’s rendered
 document; a future graph surface therefore requires a server data route backed by a
 KPress-owned link-intent manifest.
@@ -678,9 +776,19 @@ from metabrowser import (
 )
 ```
 
+- `resolve_content(identity)`, `resolve_content_container(identity, suffixes=...)`,
+  `stat_content(ref)`, and `read_content_window(ref, offset=..., max_bytes=...)` are the
+  source-agnostic content reader described under [Reading Content](#reading-content),
+  returning `ContentRef`, `ContentStat`, and `ContentWindow`. Every read takes an
+  explicit byte maximum; there is no unbounded variant.
+- `ContentReadError` is the one family those calls raise, with `ContentUnavailableError`
+  for content that resolved and then could not be read.
+  Each carries a `code` and an `http_status`.
 - `resolve_path(value)` resolves a served-root-relative path and rejects traversal.
   An empty string returns the served root, and any successful result may be a file or
-  directory.
+  directory. Filesystem-only, like `resolve_directory`, `served_root`, and
+  `open_content`: a subject with no filesystem root raises
+  `UnsupportedSourceCapabilityError`.
 - `resolve_directory(value)` applies the same containment rule and requires a directory.
 - `relativize_path(value)` converts an absolute path under the served root to a client
   path.

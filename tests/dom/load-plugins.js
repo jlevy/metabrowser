@@ -105,6 +105,12 @@ for (const filename of [
 // proof that initialization already happened.
 sandbox.metabrowser = { foreignHostValue: true };
 load(path.join(repoRoot, "src", "metabrowser", "static", "plugin-sdk.js"), "plugin-sdk.js");
+// The helpers a view's renderer calls. The shell has them on the SDK before any plugin
+// loads, so this shim does too.
+load(
+  path.join(repoRoot, "src", "metabrowser", "static", "plugin-sdk-views.js"),
+  "plugin-sdk-views.js",
+);
 load(
   path.join(repoRoot, "src", "metabrowser", "static", "filter-controls.js"),
   "filter-controls.js",
@@ -158,7 +164,12 @@ sandbox.metabrowser.builtins = _builtinsProxy;
 const _rawLoad = load;
 const _moduleCache = new Map();
 
-async function moduleFor(filepath) {
+// One module per file, created unlinked. Linking the entry module links its whole graph:
+// node's `link()` calls the linker for every import and links each unlinked module it
+// returns, so a module two others import (a diamond) or one on a cycle is linked once,
+// as a browser links it. Linking each module from inside the linker instead let a
+// parent finish linking against a child still being linked.
+function moduleFor(filepath) {
   const resolved = path.resolve(filepath);
   const cached = _moduleCache.get(resolved);
   if (cached) {
@@ -173,16 +184,21 @@ async function moduleFor(filepath) {
     },
   });
   _moduleCache.set(resolved, module);
-  await module.link((specifier, referencingModule) =>
-    moduleFor(path.resolve(path.dirname(referencingModule.identifier), specifier)),
-  );
   return module;
+}
+
+/** @param {string} specifier @param {vm.Module} referencingModule */
+function linkImport(specifier, referencingModule) {
+  return moduleFor(path.resolve(path.dirname(referencingModule.identifier), specifier));
 }
 
 async function loadPlugin(filepath, label, pluginName) {
   _currentLoadingPlugin = pluginName;
   try {
-    const module = await moduleFor(filepath);
+    const module = moduleFor(filepath);
+    if (module.status === "unlinked") {
+      await module.link(linkImport);
+    }
     await module.evaluate();
   } catch (err) {
     errors.push({ file: label, error: String(err?.message ? err.message : err) });

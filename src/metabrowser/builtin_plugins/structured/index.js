@@ -76,13 +76,16 @@
         return renderSourceFallback(container, ctx);
       }
       // Wrap so the host's copy-as-YAML button frames the tree.
-      // copyContent reads from a hidden <code> child; we stash the
+      // The copy delegate reads a hidden <code> child; we stash the
       // canonical YAML there.
       const wrapper = window.document.createElement("div");
       wrapper.className = "content-copy-wrap";
       const copyBtn = window.document.createElement("button");
       copyBtn.className = "content-copy-btn";
-      copyBtn.setAttribute("onclick", "copyContent(this)");
+      copyBtn.type = "button";
+      // The SDK's delegated copy listener runs it; it reads the hidden <code> below.
+      copyBtn.setAttribute("data-mb-copy", "wrap");
+      mb.ownDelegate(copyBtn);
       copyBtn.setAttribute("title", "Copy as YAML");
       copyBtn.innerHTML = mb.icons.copy || "Copy";
       wrapper.appendChild(copyBtn);

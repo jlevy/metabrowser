@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 from pathlib import Path
 
-import pytest
 from jsonschema import Draft202012Validator
+
+from tests.required_tools import require_node
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TEST_JS = Path(__file__).resolve().parent / "dom" / "markdown-mount-behavior.js"
@@ -34,15 +34,15 @@ FIXTURE_ROOT = Path(__file__).resolve().parent / "fixtures"
 
 # Breaks a hung session; it is not a speed budget. These sessions need a
 # fraction of a second of CPU, but on a loaded host they wait for it: the link
-# enhancer took 11-23 s of wall time at load average ~170 against a 30 s bound,
-# and failed the suite there. A deadlock never finishes, so a generous bound
-# loses nothing.
-_SESSION_DEADLOCK_TIMEOUT_S = 300
+# enhancer took 11-23 s of wall time at load average ~170, and the slowest
+# session here 11 s at ~80, so 30 s was too tight. It stays below the suite's
+# 60 s per-test timeout (pyproject.toml), which would otherwise fire first and
+# end the whole run instead of failing one test with the session's output.
+_SESSION_DEADLOCK_TIMEOUT_S = 50
 
 
 def test_markdown_mount_lifecycle() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(TEST_JS), str(REPO_ROOT)],
         capture_output=True,
@@ -57,8 +57,7 @@ def test_markdown_mount_lifecycle() -> None:
 
 
 def test_standard_markdown_link_resolver() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(RESOLVER_JS), str(REPO_ROOT)],
         capture_output=True,
@@ -73,8 +72,7 @@ def test_standard_markdown_link_resolver() -> None:
 
 
 def test_rendered_markdown_link_enhancer() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(ENHANCER_JS), str(REPO_ROOT)],
         capture_output=True,
@@ -89,8 +87,7 @@ def test_rendered_markdown_link_enhancer() -> None:
 
 
 def test_wiki_resolver_memo_work_stays_constant_per_target() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(MEMO_WORK_JS)],
         capture_output=True,
@@ -105,8 +102,7 @@ def test_wiki_resolver_memo_work_stays_constant_per_target() -> None:
 
 
 def test_source_aware_obsidian_wiki_parser() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(WIKI_PARSER_JS), str(REPO_ROOT)],
         capture_output=True,
@@ -121,8 +117,7 @@ def test_source_aware_obsidian_wiki_parser() -> None:
 
 
 def test_deterministic_obsidian_wiki_resolver() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(WIKI_RESOLVER_JS), str(REPO_ROOT)],
         capture_output=True,
@@ -137,8 +132,7 @@ def test_deterministic_obsidian_wiki_resolver() -> None:
 
 
 def test_obsidian_wiki_dom_enhancer() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(WIKI_ENHANCER_JS), str(REPO_ROOT)],
         capture_output=True,
@@ -153,8 +147,7 @@ def test_obsidian_wiki_dom_enhancer() -> None:
 
 
 def test_root_scoped_markdown_reconciliation_coordinator() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(RECONCILIATION_COORDINATOR_JS), str(REPO_ROOT)],
         capture_output=True,
@@ -170,8 +163,7 @@ def test_root_scoped_markdown_reconciliation_coordinator() -> None:
 
 
 def test_configured_markdown_project_adapters() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(PROJECT_ADAPTER_JS), str(REPO_ROOT)],
         capture_output=True,
@@ -186,8 +178,7 @@ def test_configured_markdown_project_adapters() -> None:
 
 
 def test_verified_github_url_localization() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(GITHUB_LOCALIZER_JS), str(REPO_ROOT)],
         capture_output=True,
@@ -202,8 +193,7 @@ def test_verified_github_url_localization() -> None:
 
 
 def test_bounded_markdown_transclusion() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(TRANSCLUSION_JS), str(REPO_ROOT)],
         capture_output=True,
@@ -218,8 +208,7 @@ def test_bounded_markdown_transclusion() -> None:
 
 
 def test_generic_lazy_markdown_worker() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(MARKDOWN_WORKER_JS), str(REPO_ROOT)],
         capture_output=True,
@@ -234,8 +223,7 @@ def test_generic_lazy_markdown_worker() -> None:
 
 
 def test_bounded_markdown_dom_traversal() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
+    require_node()
     result = subprocess.run(
         ["node", str(DOM_TRAVERSAL_JS), str(REPO_ROOT)],
         capture_output=True,

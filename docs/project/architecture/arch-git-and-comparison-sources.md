@@ -2,7 +2,48 @@
 
 **Status:** Implemented for the subprocess boundary, repository discovery, the
 `/api/git/` collection API, and the immutable-revision diff source.
-The provider layer is designed only; its section says so and links the plan.
+Pull-request data is the GitHub plugin’s own validated records; see
+[Pull-request records](arch-repository-sources-and-provider-mirrors.md#pull-request-records).
+The retired provider-neutral design is in
+[Hosted Review Model and Provider Boundary](arch-hosted-review-model.md).
+Worktree-free repository stores and immutable revision subjects are implemented for tree
+reads, Git collection routes, `GitPath` file/raw/tree routes (including a SPA `tree`
+projection on `/api/tree` and SPA `folder` chrome on tree `/api/file` envelopes),
+revision comparison through `GitDiffSource` (including size-gated `content` via the
+shared cat-file pool), KPress blob renders, patch-file containers, binary byte chunks,
+extension plugin kinds, structured parsed, agent-log JSONL, and image preview.
+Markdown and wiki links on a pin resolve to `GitPath` wires.
+A Git tree folder with a README mounts Overview.
+SPA path chrome decodes GitPath wires to display names; C0 and invalid UTF-8 become
+U+FFFD. Blob listings carry `cat-file` info sizes so `min_size` can filter; trees and
+gitlinks stay unsized as blobs.
+Recursive `ls-tree -r` tallies fill directory `total_files` / `total_size`. A complete
+tally mounts treemap; `/api/rollup` answers from that index and omits mtime.
+`/api/catalog` lists those blob names as Quick File rows.
+`/api/index/progress`, `/api/index/meta`, and `/api/capabilities` report that
+complete-at-once index.
+`/api/tree` carries whole-tree `extensions`, `canonical_extensions`, `type_families`,
+and `type_presets` rows, `tally_cache_status`, and a `summary` from the same index.
+`types` and `min_size` keep ancestor trees of matching blobs and emit subtree `filtered`
+totals. Git type matching uses the same bounded compound-tail logical extension as
+filesystem inventory.
+SPA file nodes and blob `/api/file` envelopes emit that tail as `ext`; `logical_ext` is
+only the inner extension of a compressed name on tree nodes.
+Blob file envelopes omit compressed identity because blobs are stored bytes with no gzip
+smudge. Git markdown `/api/file` envelopes include parsed YAML `frontmatter` and
+`frontmatter_error`; KPress on a pin uses that parse rather than an empty mapping.
+Git text envelopes use the same first-window and highlight bound as filesystem listings.
+A Git image blob is SPA `image` chrome; `/raw` serves the stored bytes.
+`/api/file`, `/raw`, KPress, and plugin sidekicks follow in-tree relative symlink blobs;
+listings still show the symlink.
+Kind checks use the leaf path.
+`include_ignored=0` is a no-op because ignore is absent.
+`depth` nests SPA children the way filesystem listings do (default 2) and emits a lazy
+sentinel past the cap.
+LFS pointers stay stored bytes; a blob the store lacks is `object_unavailable`. Serving
+acquired Git remains later.
+See
+[Repository Sources and Provider Mirrors](arch-repository-sources-and-provider-mirrors.md).
 
 How Metabrowser talks to Git, and how anything that produces a comparison plugs into the
 one renderer. [File Diff Format v1](file-diff-format/file-diff-format.md) defines what a
@@ -12,13 +53,15 @@ covers provenance and anchoring within the diff pipeline.
 This document covers the Git side: the process boundary, what crosses it, and the rule a
 new source has to satisfy.
 
-## The three layers
+## The four layers
 
-The stack has three tiers, and the dependency arrow only ever points down:
+The stack has four tiers, and the dependency arrow only ever points down:
 
 ```text
 ┌─────────────────────────────────────────────┐
-│ Providers (GitHub)          designed only   │  ← references Git object ids
+│ Provider adapters (GitHub)  designed only   │  ← normalize hosted APIs
+├─────────────────────────────────────────────┤
+│ Hosted Review Format        models only     │  ← references Git object IDs
 ├─────────────────────────────────────────────┤
 │ Git                         implemented     │  ← produces File Diff Format
 ├─────────────────────────────────────────────┤
@@ -34,13 +77,19 @@ Each tier obeys one rule, and the rules are what keep the tiers separable:
 - **Git is a source, not a substrate.** It produces File Diff Format documents through
   the `DiffSource` port and otherwise exposes its own read-only collection API. It does
   not reach into the renderer.
-- **Providers layer on Git, never beside it.** Git stays authoritative for content,
-  history, and diffs. A provider record describes hosted state and *refers to* immutable
-  Git object ids; it never becomes a second copy of the object database.
+- **Hosted Review Format models collaboration, not patches.** A change request carries
+  lifecycle, participants, reviews, threads, checks, merge state, freshness, and
+  references to immutable Git object IDs.
+  It does not copy Git objects or add fields to File Diff Format.
+- **Provider adapters normalize into the common format.** GitHub is the first adapter;
+  future providers such as GitLab satisfy the same port.
+  Provider response shapes and renderer branches never cross that boundary.
 
-The practical payoff: a pull-request view resolves provider refs to object ids and
-reuses the entire existing pipeline.
-It is a new acquisition path, not a new renderer.
+The practical payoff: a pull-request document adds the information Git and patches do
+not have, while its comparison resolves provider refs to object IDs and reuses the
+entire existing diff and revision-content pipeline.
+Hosted review is a new format and plugin view, but not a second diff renderer or Git
+history authority.
 
 ## Why identity is the whole problem
 
@@ -194,6 +243,124 @@ Linked worktrees work because discovery uses Git’s own resolution rather than 
 literal `.git` directory; anything reading per-worktree control files must resolve them
 through `git rev-parse --git-path` for the same reason.
 
+This exact-root gate remains correct for an attached filesystem subject.
+An immutable revision subject is not a working tree.
+That source carries a trusted repository-store identity and full object ID, enumerates a
+Git tree directly, and never claims to be a filesystem working tree.
+`GitLocation` is the command address: a resolved worktree path or a
+`RepositoryStoreTarget` plus pinned full object ID, never both.
+Discovery, history, refs, and commit detail accept that location; a pin reports a
+detached HEAD at the object ID, keeps `GitRepoInfo.root` empty, and walks that OID by
+default rather than the store’s ambient HEAD.
+
+### Git command targets and revision sources
+
+`run_git` and `spawn_git_process` identify a repository through `cwd` or a closed
+trusted `GitCommandTarget` constructed by core.
+`GitLocation` is the caller-facing XOR of those two.
+`AttachedWorktreeTarget` names an exact worktree plus Git directory, and
+`RepositoryStoreTarget` names one Metabrowser-owned worktree-free Git directory.
+The process boundary converts that handle into fixed arguments while continuing to scrub
+ambient repository environment variables.
+Caller-supplied paths do not become `GIT_DIR`, `GIT_WORK_TREE`, or environment
+overrides. Store reads disable mailmap, and implicit lazy fetch as defense in depth: a
+store is a full clone with no promisor remote.
+The spawn seam refuses any policy that would leave lazy fetch on for a store target.
+For a repository-store target, history and detail start from the subject’s pinned full
+object ID rather than ambient `HEAD`; refs remain optional observations.
+Commit detail and the diff comparison run Git directly, because a full store holds every
+blob they read.
+
+The immutable content source resolves a full object ID to one tree, enumerates paths
+with NUL-framed `ls-tree` output, and reads bounded blobs through owned batch `cat-file`
+processes. One actor serializes each batch process, issues `info` before `contents`,
+enforces the declared size bound, drains the complete frame, and restarts the process
+after cancellation or framing failure.
+Tree entries have Git mode, kind, and object ID; blob size comes from `cat-file` info at
+listing and read time, not from `ls-tree -l`. They do not invent filesystem mtimes,
+ignore state, ownership, or watcher events.
+Their `GitPath` identity is raw byte segments with a lossless route codec and separate
+display text (`display_segment`: controls, format characters, default-ignorable
+characters, the blank braille pattern, every space and line separator other than the
+ASCII space, and invalid UTF-8 become U+FFFD, except a variation selector attached to a
+visible base, which is part of an emoji or ideographic name such as `❤️.md`;
+`invisible_chars.py` holds the tables, the rule, its known gap, a selector after a
+non-ASCII base that has no variation to select, and why unassigned and private-use code
+points are displayed as they are); it never becomes a host filesystem path.
+A patch-file container inner is that `GitPath` `g1-` prefix plus a host inner path, not
+another tree segment.
+`/api/plugin/binary/chunk` slices one blob by that identity and keys the window on the
+object id. In-tree relative symlink blobs are followed; kind checks use the leaf path.
+Git blobs classify by extension, basename, sniffed adapter, and bounded JSON, YAML, and
+Markdown-frontmatter mappings parsed from blob bytes.
+`path_glob` stays filesystem-only.
+`/api/plugin/structured/parsed` reads one blob by that identity and keys the parse on
+the object id. `/api/file` for a `.jsonl` blob is a parsed JSONL envelope;
+`/api/plugin/agent-log/charts` reads that blob by the same identity.
+Inventory-backed JSONL `/api/stream` does not answer from the lifespan folder: it
+returns `unsupported_for_subject`. `/api/catalog` on a pin lists recursive blob names
+and is complete at once.
+`/api/index/progress`, `/api/index/meta`, and `/api/capabilities` report that same
+complete-at-once index without a watcher or invented mtime.
+`/api/rollup` on a pin answers from recursive blob names and sizes and omits mtime.
+Listings do not follow symlinks.
+File, raw, KPress, and plugin sidekicks follow in-tree relative symlink blobs.
+Gitlinks are distinct non-folder entries, and LFS pointers remain ordinary blobs (stored
+pointer bytes, no smudge).
+A blob the tree names but the store lacks, which only a damaged store can produce, is
+`object_unavailable` and does not contact the remote.
+`/view/` on that subject accepts a `GitPath` wire, optionally plus a patch-file
+container inner, and refuses a filesystem spelling.
+`/api/tree` keeps Git-native `entries` and also projects a SPA `tree` array
+(`dir`/`file`/`symlink`, `GitPath` wires, `cat-file` blob sizes, recursive dir
+`total_files`/`total_size`, no mtime/ignore); gitlinks are files and stay unsized.
+`depth` nests SPA children the way filesystem listings do (default 2) and emits a lazy
+sentinel past the cap; `depth=0` returns chrome without a listing.
+Whole-tree `extensions`, `canonical_extensions`, `type_families`, and `type_presets`
+rows, `tally_cache_status`, and `summary` come from the recursive blob index; ignored
+counts are 0 because ignore is absent.
+`include_ignored=0` is a no-op rather than `unsupported_for_subject`. The SPA hides
+Modified within because recency still has no honest mtime.
+Incomplete blob sizes omit `summary` rather than inventing 0. `types` and `min_size`
+keep ancestor trees of matching blobs and emit subtree `filtered` totals; empty filter
+dirs are omitted. A Git tree `/api/file` envelope is SPA `folder` chrome (`git_kind`
+stays `tree`) with recursive blob tallies and no mtime.
+A direct-child README blob sets `readme_path` to its GitPath wire and mounts Overview.
+A complete blob-size tally also mounts treemap; `/api/rollup` omits mtime.
+`/api/catalog` lists those blob names as Quick File rows.
+`/api/index/progress`, `/api/index/meta`, and `/api/capabilities` report that
+complete-at-once index.
+`/api/tree` carries whole-tree `extensions`, `canonical_extensions`, `type_families`,
+and `type_presets` rows, `tally_cache_status`, and a `summary` from the same index.
+`types` and `min_size` keep ancestor trees of matching blobs and emit subtree `filtered`
+totals. Git type matching uses the same bounded compound-tail logical extension as
+filesystem inventory.
+SPA file nodes and blob `/api/file` envelopes emit that tail as `ext`; `logical_ext` is
+only the inner extension of a compressed name on tree nodes.
+Blob file envelopes omit compressed identity because blobs are stored bytes with no gzip
+smudge. Git markdown `/api/file` envelopes include parsed YAML `frontmatter` and
+`frontmatter_error`; KPress on a pin uses that parse rather than an empty mapping.
+Git text envelopes use the same first-window and highlight bound as filesystem listings.
+A Git image blob is SPA `image` chrome; `/raw` serves the stored bytes.
+`/api/file`, `/raw`, KPress, and plugin sidekicks follow in-tree relative symlink blobs;
+listings still show the symlink.
+Kind checks use the leaf path.
+`include_ignored=0` is a no-op because ignore is absent.
+`depth` nests SPA children the way filesystem listings do (default 2) and emits a lazy
+sentinel past the cap.
+Markdown and wiki destinations encode authored segments as `GitPath` wires; the
+known-file catalog indexes the tree node’s display name, not the `g1-` token.
+SPA path chrome and copy-path decode those wires to display names (C0 and invalid UTF-8
+become U+FFFD); navigation identities stay wires.
+Omitted mtime leaves tally chrome empty rather than pending.
+KPress `source_path` on a pin is that wire.
+
+Views pin the full object ID before reading.
+Ref refresh may make another object current for a later selection, but cannot change an
+active revision subject.
+Concurrent subjects over one repository store can therefore serve different branches
+without a checkout, index, or detached worktree.
+
 ## The collection API
 
 The read-only routes, registered as `GIT_ROUTES` in `metabrowser/git/routes.py`:
@@ -232,16 +399,39 @@ Four rules hold across all of them:
 - **Git failures become 5xx with a generic body.** Git’s error text contains absolute
   local paths, so it is logged and dropped.
 
+A commit the repository does not have is not a failure.
+`/api/git/commit/{revision}` answers it with HTTP 404 and the code `commit_not_found`,
+which the browser tells apart from a request that failed, and it never fetches: the
+route is a GET, and a GET starts no network work.
+In a served folder the commit view says the commit is not in the repository.
+In a served mirror the commit may only not have been fetched yet, so the view asks the
+page’s freshness controller for the fetch such a commit waits for,
+`POST /api/source/refresh` with `{"for": "commit"}`. A link in served content can send a
+reader to any commit’s address, and no content may start network work with a plain link,
+so that request has a floor on both sides: the page sends it only when something is
+older than the freshness window or already refreshing, and the server starts a fetch of
+the mirror for it only outside the window.
+Inside the window the view says the commit is not in the mirror as fetched and offers
+Retry, which is the reader’s own click and always fetches.
+While a fetch runs the view says so; afterwards it opens the commit, says the origin’s
+branches and tags do not reach it, or says the fetch could not run.
+It claims a fetch of branches and tags only when the server started or joined one, and a
+request that fails when the commit is asked for again is a load failure, not an answer
+about the commit. Those are the states a URL selection passes through, described in the
+[views/models/routes map](arch-views-models-routes.md) under `/api/source/status`; the
+functional row `git.unfetched-commit` there pins the sequence.
+
 ## How the layers are modeled
 
-The three tiers currently use three different modeling idioms.
+The layers currently use different modeling idioms.
 That is worth stating plainly, because the differences are not all deliberate.
 
 | Layer | Module | Idiom | What enforces it |
 | --- | --- | --- | --- |
 | File Diff Format | `diff/format.py` | Pydantic `BaseModel`, `extra="forbid"`, `frozen=True`, a `StrEnum` per closed vocabulary | The model itself, plus a JSON Schema and a conformance corpus |
 | Git wire | `git/wire.py` | `TypedDict` with `NotRequired`, plus hand-written validators and `_*_REQUIRED` gate sets | Validators, exercised by the test suite |
-| Cache and provider records | designed only | Pydantic plus deterministic compiled SoftSchema contracts | Compile-drift, corpus validation, and installed-wheel checks |
+| Cache records | `cache/records.py`, `cache/contracts.py` | Pydantic plus deterministic compiled SoftSchema contracts | Compile-drift, corpus validation, and installed-wheel checks |
+| Cache wire | `cache/wire.py` | `TypedDict` with `NotRequired`, built only from validated cache records | The type checker on every producer, plus route tests and the `--api` golden |
 
 **The format layer is the model to copy.** Every closed vocabulary is a `StrEnum`
 (`ChangeKind`, `SnapshotKind`, `Availability`, `EntryType`, `FileMode`, `LineOp`,
@@ -290,6 +480,8 @@ sites — so the port, not a table, is the contract.
 
 Two sources exist today: `adapters/patch_file.py` and `adapters/git.py`, the latter
 accepting revision intents only.
+On a `RepositoryStoreTarget` pin, `GitDiffSource.content` reads the blob through the
+shared cat-file pool; a filesystem location still uses `cat-file blob`.
 
 ### Adding a source
 
@@ -317,13 +509,12 @@ source-neutral, and the renderer starts having to know what produced its input.
 
 ## The provider boundary
 
-**Status: designed only.** No provider code exists.
-The design lives in the
-[repository library plan](../specs/active/plan-2026-08-11-open-repo-from-git-url.md) and
-the
-[design review](../reviews/review-2026-08-26-repository-library-and-github-model.md);
-this section records only the boundary those documents must not cross, because that
-boundary is an architectural commitment rather than a plan detail.
+**Status:** implemented by one provider, the built-in GitHub plugin
+(`builtin_plugins/github/`). Its design is in the
+[thin-mirror plan](../specs/active/plan-2026-09-23-v012-thin-mirror.md) and
+[Pull-request records](arch-repository-sources-and-provider-mirrors.md#pull-request-records);
+this section records only the boundary a provider must not cross, because that boundary
+is an architectural commitment rather than a plan detail.
 
 A provider may:
 
@@ -339,9 +530,10 @@ A provider may not:
 - require core to import a provider schema or branch on a provider object kind; or
 - make generic acquisition, identity, refresh, or purge depend on it.
 
-When provider code lands, it gets its own architecture document rather than a section
-here — one subject per document, and a provider content model is a different subject
-with a different lifetime from the Git boundary.
+A provider owns its content model, its records’ lifetime, its plugin routes, and its
+views. This document owns the lower rule they rely on: repository selection and PR
+acquisition may request explicit refs, but core resolves them to immutable object IDs
+and provider code never runs Git.
 
 ## Invariants
 
@@ -354,7 +546,9 @@ The short list a change should be checked against:
    read as options or revision expressions.
 3. Paths are bytes for identity and comparison; UTF-8 only for display, with `path_b64`
    when they differ.
-4. A Git-capable root is the repository’s exact working-tree root.
+4. A Git-capable filesystem subject is the repository’s exact working-tree root; an
+   immutable revision subject is a trusted repository-store handle plus full object ID,
+   never a materialized path.
 5. Absent repository states are HTTP 200 negative envelopes; only genuine failures are
    5xx, and Git’s stderr never reaches a body.
 6. Anything without an object id carries a `generation`, never an `id`, and is never
@@ -376,6 +570,8 @@ The short list a change should be checked against:
   addressed
 - [Repository library and open from a Git URL](../specs/active/plan-2026-08-11-open-repo-from-git-url.md)
   — the designed cache and provider work
+- [Repository Sources and Provider Mirrors](arch-repository-sources-and-provider-mirrors.md)
+  — the designed worktree-free store, immutable subjects, and attachment boundary
 - [Git status and working-tree diffs](../specs/active/plan-2026-08-26-git-status-and-working-tree-diffs.md)
   — the designed working-tree comparison source
 

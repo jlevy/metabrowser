@@ -42,11 +42,8 @@ def test_safe_path_rejects_sibling_prefix_traversal(tmp_path: Path) -> None:
     """
     served, _secret = _setup_sibling_roots(tmp_path)
     _set_root_dir(served)
-    try:
-        # The traversal: an attacker tries to hop to the sibling directory.
-        result = _safe_path("../data-secret/leak.txt")
-    finally:
-        _set_root_dir(Path())
+    # The traversal: an attacker tries to hop to the sibling directory.
+    result = _safe_path("../data-secret/leak.txt")
 
     assert result is None, f"sibling-prefix path traversal must be rejected; got {result!r}"
 
@@ -55,10 +52,7 @@ def test_safe_path_rejects_nonexistent_sibling_traversal(tmp_path: Path) -> None
     """Non-strict resolve must still reject traversal to a missing outside path."""
     served, _secret = _setup_sibling_roots(tmp_path)
     _set_root_dir(served)
-    try:
-        result = _safe_path("../data-secret/missing.txt")
-    finally:
-        _set_root_dir(Path())
+    result = _safe_path("../data-secret/missing.txt")
 
     assert result is None
 
@@ -68,19 +62,13 @@ def test_safe_subdir_rejects_sibling_prefix(tmp_path: Path) -> None:
     ``api_resources``; it must inherit the same rejection."""
     served, _secret = _setup_sibling_roots(tmp_path)
     _set_root_dir(served)
-    try:
-        assert _safe_subdir("../data-secret") is None
-    finally:
-        _set_root_dir(Path())
+    assert _safe_subdir("../data-secret") is None
 
 
 def test_safe_path_accepts_paths_inside_root(tmp_path: Path) -> None:
     served, _secret = _setup_sibling_roots(tmp_path)
     _set_root_dir(served)
-    try:
-        target = _safe_path("ok.txt")
-    finally:
-        _set_root_dir(Path())
+    target = _safe_path("ok.txt")
 
     assert target is not None
     assert target.read_text() == "served"
@@ -91,10 +79,7 @@ def test_safe_path_handles_traversal_back_into_root(tmp_path: Path) -> None:
     served, _ = _setup_sibling_roots(tmp_path)
     (served / "sub").mkdir()
     _set_root_dir(served)
-    try:
-        target = _safe_path("sub/../ok.txt")
-    finally:
-        _set_root_dir(Path())
+    target = _safe_path("sub/../ok.txt")
 
     assert target is not None
     assert target.name == "ok.txt"
@@ -109,12 +94,9 @@ def test_safe_path_rejects_an_embedded_nul(tmp_path: Path) -> None:
     """
     served, _secret = _setup_sibling_roots(tmp_path)
     _set_root_dir(served)
-    try:
-        assert _safe_path("a\x00b") is None
-        assert _safe_path("ok.txt\x00.png") is None
-        assert _safe_subdir("sub\x00dir") is None
-    finally:
-        _set_root_dir(Path())
+    assert _safe_path("a\x00b") is None
+    assert _safe_path("ok.txt\x00.png") is None
+    assert _safe_subdir("sub\x00dir") is None
 
 
 def test_is_within_rejects_unrelated_path(tmp_path: Path) -> None:

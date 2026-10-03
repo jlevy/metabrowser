@@ -1,10 +1,10 @@
 # Feature: Functional UI and CLI Parity
 
-**Date:** 2026-09-10 (last updated 2026-09-10)
+**Date:** 2026-09-10 (last updated 2026-09-14)
 
 **Author:** Joshua Levy (with LLM assistance)
 
-**Status:** In Review
+**Status:** Phases 1–3 delivered for v0.10.0; Phase 4 active
 
 ## Overview
 

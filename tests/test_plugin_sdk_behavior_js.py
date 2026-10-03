@@ -20,13 +20,11 @@ contracts that source-string tests can't validate:
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 from pathlib import Path
 
-import pytest
-
 from metabrowser.settings import client_settings_dict
+from tests.required_tools import require_node
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SHIM = Path(__file__).resolve().parent / "dom" / "kpress-plugin-sdk-behavior.js"
@@ -34,8 +32,7 @@ SYNTAX_SHIM = Path(__file__).resolve().parent / "dom" / "syntax-token-sdk-behavi
 
 
 def test_plugin_sdk_behavior_contracts() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available; skipping plugin-sdk.js behavioral shim")
+    require_node()
 
     result = subprocess.run(
         ["node", "--experimental-vm-modules", str(SHIM), str(REPO_ROOT)],
@@ -60,11 +57,14 @@ def test_plugin_sdk_behavior_contracts() -> None:
     assert payload["completeText"]["ok"] is True, payload["completeText"]
     assert payload["pathText"]["ok"] is True, payload["pathText"]
     assert payload["sameKindOrder"]["ok"] is True, payload["sameKindOrder"]
+    assert payload["selectedKindAssets"]["ok"] is True, payload["selectedKindAssets"]
+    assert payload["cachedPluginStylesheet"]["ok"] is True, payload["cachedPluginStylesheet"]
+    # Load more runs only the shell's registered loader, and only from a notice's button.
+    assert payload["loadMore"] == {"ok": True, "calls": ["shell"]}, payload["loadMore"]
 
 
 def test_plugin_sdk_syntax_token_contracts() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available; skipping plugin-sdk.js syntax shim")
+    require_node()
 
     settings = client_settings_dict()
     result = subprocess.run(

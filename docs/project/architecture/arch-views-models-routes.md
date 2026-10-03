@@ -12,18 +12,23 @@ kind, a view, a data format, or a route.
 A selection travels the same four layers no matter what it is:
 
 ```text
-route  ──►  kind  ──►  model  ──►  view
-what kind   what the   the        how it
-of thing    thing is   validated  is drawn
-is selected            data
+address  ──►  resource kind  ──►  contract/model  ──►  view
+what is      what the thing      the validated       how it
+selected     can do              data                 is drawn
 ```
 
-- **Route** names the address space and the thing within it.
-  Owned by the shell; see
+- **Address** names the address space and the resource within it.
+  Core routes are owned by the shell; a plugin adds data routes as `[[data_hook]]`
+  entries under `/api/plugin/<plugin>/`. See
   [Browser URL Grammar](../../architecture.md#browser-url-grammar).
-- **Kind** is the classification a plugin claims, declared in its `manifest.toml`
-  `[[kind]]` block. One kind, many views.
-- **Model** is the validated data a view receives.
+- **Resource kind** is the semantic classification a plugin claims.
+  Filesystem `[[kind]]` blocks use `FileContext` (including content predicates).
+  Git blobs use extension, basename, sniffed adapter, and bounded JSON/YAML/frontmatter
+  mappings parsed from blob bytes.
+  `path_glob` stays filesystem-only.
+  A route-backed kind has no file matcher: the shell selects it for its route, as it
+  does `pull-request` for `/pull/<n>`. One kind, many views.
+- **Contract/model** is the validated data a view receives.
   Simple kinds take the `/api/file` envelope; richer kinds have their own documented
   format with a schema and a conformance corpus.
 - **View** is a registered renderer (`[[view]]` plus `mb.registerView`), shown as a tab.
@@ -34,10 +39,19 @@ model, and a model never learns which route reached it.
 That is what lets one diff renderer serve a patch file, a commit, and later a pull
 request without knowing the difference.
 
+The repository cache validates its own records against installed artifact contracts; see
+[Cache record contracts](arch-repository-sources-and-provider-mirrors.md#cache-record-contracts).
+Resource publication profiles and resource kinds belong to the retired design in
+[External Resources, Artifact Contracts, and Views](arch-external-resources-and-views.md)
+and are not built.
+
 Filesystem-backed models reach these layers through the
 [Inventory Provider Contract](arch-inventory-provider.md).
 That boundary keeps routes, wire serializers, and views independent of the Python or fdu
 engine selected for the served-root session.
+The source boundary for attached filesystems and immutable Git revisions is in
+[Repository Sources and Provider Mirrors](arch-repository-sources-and-provider-mirrors.md).
+It keeps a session’s selected root independent of the shared Git object store.
 
 ## Kinds and their views
 
@@ -55,6 +69,7 @@ Built-in kinds, as registered by the manifests in `src/metabrowser/builtin_plugi
 | `unknown-jsonl` | Other `.jsonl` | Log, Raw JSON | File envelope |
 | `image` | Browser image extensions | Image | File envelope; raw asset |
 | `binary` | Non-text files | Bytes | Bounded byte-chunk hook |
+| `pull-request` | No file; the shell selects it for `/pull/<n>[/files]` | Pull request | `github/pull` envelope; `github/pull-markdown` per text; `diff/comparison` for Files changed |
 
 Two kinds are also **containers** — folder-like entries whose children are addressable
 (see [nav containers](arch-nav-containers.md)): `folder` (children are files and
@@ -87,13 +102,18 @@ The registry-to-vendored-grammar and registry-to-text-routing checks live in
 
 ## Documented data formats
 
-Formats with a schema, a conformance corpus, and implementations bound by it.
-These are tool-neutral: nothing in a document references Metabrowser.
+Complete formats have a schema, a conformance corpus, and implementations bound by it.
+These formats are tool-neutral: nothing in a document references Metabrowser.
 
 | Format | Describes | Authority | Implementations |
 | --- | --- | --- | --- |
 | [File Diff Format v1](file-diff-format/file-diff-format.md) | A change set between two snapshots | `data/file-diff-format/file-diff.schema.json` | `metabrowser.diff.format` (Pydantic), `builtin_plugins/diff/diff-model.js` |
 | [File Rollup Format](file-rollup-format/file-rollup-format.md) | File classification and directory totals | `data/file-rollup-format/` | Python inventory, browser rollup projection |
+
+The repository cache’s record contracts are an internal format, not one of these: their
+installed inventory is maintained by `devtools/check_artifact_contracts.py` in
+[Cache record contracts](arch-repository-sources-and-provider-mirrors.md#cache-record-contracts),
+and this map registers no route, kind, or view for them.
 
 Everything else travels as an envelope on `/api/*`, versioned with the shell and the
 built-in plugins as one artifact — an internal contract, not a standard.
@@ -106,10 +126,11 @@ the sources that produce them.
 
 | Route | Selects | Status |
 | --- | --- | --- |
-| `/view/<path>` | Content in the served tree; `/view/` is the root | Implemented |
-| `/view/<container>/<inner>` | One entry inside a container file | Implemented |
+| `/view/<path>` | Content in the active source session; `/view/` is the root | Implemented. A filesystem session uses a served-root-relative path. A `GitRevisionSubject` uses a `GitPath` wire identity and refuses a filesystem spelling |
+| `/view/<container>/<inner>` | One entry inside a container file | Implemented. On a Git pin the container address is a `GitPath` prefix and the inner is a host path |
 | `/commit/<rev>` | A commit’s change set against its first parent | Implemented |
 | `/commit/<rev>/<inner>` | One file’s diff inside that change set | Route parses; the panel restores the commit, not yet the file |
+| `/pull/<n>[/files]` | The served pull request’s page: its conversation, or its Files changed | Implemented. The shell mounts the view a plugin registers for the `pull-request` kind (the GitHub plugin’s); a number other than the served pull request’s shows why it has nothing |
 | `/compare/<base>..<head>[/<inner>]` | An explicit comparison (`...` for merge base) | Specified, not built |
 
 The shape after the route is always `<container address>/<inner path>`, which is the
@@ -121,20 +142,123 @@ reservation and its invariants, is in
 
 | Route | Serves |
 | --- | --- |
-| `/api/file` | The file or folder envelope: kind, views, content window |
-| `/api/tree` | Navigation subtrees. Resolves `types`, `recency`, `min_size`, and `include_ignored` over the inventory, returning only subtrees that contain a match and folder aggregates rolled up from those matches |
-| `/api/rollup` | Bounded directory rollups for Overview and the treemap |
-| `/api/recent` | Flat newest-first matching leaves. Resolves `window`, `types`, `min_size`, and `include_ignored` before ranking and the response cap; the browser clusters the complete returned leaf model |
-| `/api/activity`, `/api/stream` | Live inventory and activity events |
+| `/api/file` | The file or folder envelope: kind, views, capability envelope, and bounded content window. A `GitRevisionSubject` uses `GitPath` wire identities and Git object facts; it does not invent mtime or ignore state. A Git tree envelope is SPA `folder` chrome (`git_kind` stays `tree`) with recursive blob `total_files` / `total_size` and no mtime. A complete blob-size tally mounts Overview and treemap; a direct-child README blob sets `readme_path` to its GitPath wire. SPA path chrome and copy-path decode GitPath wires to display names (C0 and invalid UTF-8 become U+FFFD); navigation identities stay wires. Omitted mtime leaves tally chrome empty rather than pending. File Overview mounts when `dir` carries inventory `mtime` or Git `total_size`. Blob kinds use extension, basename, sniffed adapter, and bounded JSON/YAML/frontmatter mappings. Git blob envelopes include `ext` from the same bounded compound-tail helper as filesystem inventory so plugin-sdk `langForPath` and `ctx.ext` do not fall back to a GitPath wire; they omit compressed `logical_ext` because blobs are stored bytes with no gzip smudge. Git markdown envelopes include parsed YAML `frontmatter` and `frontmatter_error`; KPress on a pin uses that parse rather than an empty mapping. Git text envelopes use the same first-window and highlight bound as filesystem listings (`bytes_read`, `content_preview_limit`, `content_max_preview_limit`, `highlight_disabled`), and a later window’s `bytes_read` is the cursor past it, as on the filesystem, which Load more reads as its next offset. `/api/file`, `/raw`, KPress, and plugin sidekicks follow in-tree relative symlink blobs; the requested GitPath stays the route identity, and kind checks use the leaf path. A Git image blob is SPA `image` chrome; `/raw` serves the stored bytes. A Git `.jsonl` blob is a parsed JSONL envelope. A patch-file container inner is a `GitPath` `g1-` prefix plus a host inner path. An LFS pointer is stored pointer bytes; a missing blob is `object_unavailable`. Markdown and wiki links on that pin resolve to `GitPath` wires |
+| `/api/tree` | Navigation subtrees. `types` and `min_size` work for every source that supplies them. Git blob listings carry `cat-file` info sizes so `min_size` can filter; trees and gitlinks stay unsized as blobs. `recency` requires that declared source capability and otherwise returns `unsupported_for_subject`. The SPA hides Modified within on a Git pin because there is no honest mtime. `include_ignored=0` on a Git pin is a no-op because ignore is absent (unignored equals total), not `unsupported_for_subject`. On a Git pin the payload keeps Git-native `entries` and also projects a SPA `tree` array (`dir`/`file`/`symlink`, `GitPath` wires, blob sizes, recursive dir `total_files`/`total_size`, no mtime/ignore); gitlinks are files, not directories. `depth` nests children the way filesystem listings do (default 2) and emits a lazy sentinel past the cap; `depth=0` returns chrome without a listing. File nodes include `ext` from the same bounded compound-tail helper as filesystem inventory; `logical_ext` is only the inner extension of a compressed name. Whole-tree `extensions`, `canonical_extensions`, `type_families`, and `type_presets` rows, `tally_cache_status`, and `summary` (`files`, `size`, ignored 0/0) come from the recursive blob index; ignored counts are 0 because ignore is absent. Incomplete blob sizes omit `summary` rather than inventing 0. `types` and `min_size` keep ancestor trees of matching blobs and emit subtree `filtered` totals; empty filter dirs are omitted. Git `logical_ext` and type matching use the same bounded compound-tail helper as filesystem inventory. Omitted mtime leaves tally chrome empty rather than pending |
+| `/api/rollup` | Bounded directory rollups over the facts the active source truthfully supplies; a requested unavailable dimension returns `unsupported_for_subject`. A `GitRevisionSubject` answers from recursive blob names and sizes, omits mtime, and treats ignore as absent so unignored equals total. A missing blob size is `object_unavailable` rather than a partial sum |
+| `/api/catalog` | One-shot Quick File universe. A `GitRevisionSubject` lists recursive blob names (`p` GitPath wire, `e` logical compound-tail extension, `n` display basename) and is already complete; a truncated index is an empty truncated snapshot |
+| `/api/index/progress`, `/api/index/meta`, `/api/capabilities` | Index status. A `GitRevisionSubject` answers from recursive blob names, omits mtime and watcher facts, and reports `events.stream` off. The JSONL stream still refuses a Git pin |
+| `/api/recent` | Flat newest-first matching leaves for sources with recency; unavailable for immutable Git trees rather than populated with fake mtimes |
+| `/api/activity`, `/api/stream` | Live inventory and JSONL tail for sources with a filesystem root; unavailable for immutable Git trees rather than the lifespan folder |
 | `/api/git/repo`, `/api/git/refs`, `/api/git/summary`, `/api/git/log`, `/api/git/commit/<rev>` | Read-only Git history for the Git panel; log pages use bounded, replayable server sessions, opaque page cursors, and versioned graph-boundary checkpoints. The boundary and its rules are in [Git and comparison sources](arch-git-and-comparison-sources.md) |
-| `/api/kpress/render`, `/api/kpress/export` | Document rendering and export |
-| `/api/plugin/<plugin>/<route>` | Plugin data hooks (`[[data_hook]]`) |
-| `/raw`, `/raw/<path>` | Bounded raw bytes for embedded media, and the document the sandboxed html Preview frames. Both shapes share one resolver and send the same sandbox headers; the path form exists so relative references inside a browsed document resolve |
+| `/api/cache/layout`, `/api/cache/sources`, `/api/cache/source/<slug>`, `/api/cache/stores` | Read-only logical state of the repository cache: layout and config formats, abandoned staging entries, source identity with alias generation and publication, and store records with the aliases that name them. They resolve `METABROWSER_HOME` per request without creating it, read without locks and without repairing a shared entry, page in key order, and never report a cache path, pack file, or Git internal. Wire shapes are in `cache/wire.py`. A server serving a Git pin answers them with `unsupported_for_subject` (409), so nothing about other cached sources is served beside acquired content |
+| `/api/source/status` | What this server serves: the subject kind and session generation, and on a `GitRevisionSubject` the full commit it is pinned to (`pin`), the store ref that commit was resolved from (`ref`), and the name the origin knows that ref by (`ref_name`); all three are null on a folder. On a served mirror it names what the page is headed by: the repository’s `name` as a checkout would have it, the `origin` it mirrors, and the `location` of the mirror, the store’s bare repository; a `file://` origin and the location have the home directory as `~` when they are under it, and all three are null for a folder and for a pin with no mirror. `location` is the one field of any route’s answer that names a path in the cache, and [What a mirror’s page is called](arch-repository-sources-and-provider-mirrors.md#what-a-mirrors-page-is-called-and-where-it-says-it-is-kept) holds its bounds; `--api` prints it as answered, the one field a pin’s output does not rewrite to `<ROOT>`. On a served mirror it also reports freshness from server memory, so polling it runs no Git and reads no store: `refreshable`, the commit the pinned ref names in the mirror now (`latest`), whether the origin still had that ref at the last fetch (`ref_on_origin`: false when it deleted it, null for a pin by commit ID or a ref not yet observed), `last_fetch_at`, `last_outcome` (operation, typed outcome by name, time, from this process or the store’s record, whichever is newer), `refreshing`, and `stale` (older than the one-minute freshness window), both of which cover a served pull request’s record as well as the mirror, plus `pull_request`, the number a served pull-request URL named, `selection_state`, which follows a URL selection the mirror lacked when serving began (`pending` until a fetch for it ends, then `found` and served, `not_found`, or `fetch_failed` when that fetch did not run; `superseded` after a pin switch), and `selection_href`, where a found selection opens. `cli-github-url-waits.txt` pins the pending, found, not-found, and fetch-failed sequence through `metab <url> --api /api/source/refresh --data …`, the one-shot request that fetches; `tests/test_github_serve.py` covers a server, a superseding switch, and the retry after a failed fetch. It sends an ETag and answers `If-None-Match` with 304. The navigation heading on a pin renders from the same envelope. Its checked evidence includes a pin: `cli-api-source.tryscript.md` opens a cached mirror, which needs no acquisition floor, so it runs on any Git; acquiring and serving one are pinned in-process by `cli-git-pin-index.txt` and `tests/test_serve_pin.py` |
+| `/api/source/refresh` | `POST` with a JSON body: start a background refresh of the served mirror, or join the one running, and answer 202 at once with `refresh` (`started` or `joined`) and the status. The refresh is one `fetch --prune --atomic` under the store’s fetch side lock; its typed outcome appears in the status, never as a request error. A body of `{"for": "commit"}` asks for the fetch a commit the mirror lacks waits for: the mirror’s branches and tags, as a pin by commit ID asks for, and the refresh of the data served beside it. A page sends it by itself when it opens a commit’s address, which a link in served content can cause, so it fetches the mirror only when the last fetch is older than the freshness window and joins a fetch that is running; inside the window `refresh` is `fresh`, no mirror fetch starts, and the answer is 200 unless the data beside the mirror is refreshing. `"retry": true` is a reader’s own click and always fetches. Any other key is `invalid_request` (400). `tests/test_mirror_companion.py` and `tests/test_source_refresh.py` cover both sides of the window; `cli-api-source.tryscript.md` pins the request on a stale mirror and `cli-git-refresh.txt` on a fresh one, with the retry. A folder, or a pin with no mirror, answers `unsupported_for_subject` (409). A one-shot `--api` waits for the refresh it started, prints the status after it, and exits 1 unless the fetch ran or another process’s refresh is running; nothing else in a one-shot command fetches. A page on a pin sends the commit it shows in `x-metabrowser-pin` on every other `/api/` request, and a request for a commit the server does not serve, after a switch or a restart onto another pin, answers `pin_changed` (409); loads that are not `fetch` calls, such as `/raw` images, are not checked |
+| `/api/source/refs` | `GET` with `kind` (`branch` or `tag`), `q`, and `limit`: the served mirror’s branches or tags, for the ref selector, read from the mirror alone with one `for-each-ref`. Branches list the default first, then by name; tags newest first. Each row has `name`, the store `ref` a pin request names it with, the `commit` it names (an annotated tag peeled), `default`, and `current`, which marks the ref the server serves now. `q` is a case-insensitive name fragment of at most 256 characters; `limit` is clamped to 1–1000 (default 100), and `total` and `truncated` say how many matched. A tag is listed when it names a commit, directly or as an annotated tag whose own target (`%(object)`, one level on every Git version) is a commit; a tag of a tree, a blob, or another tag is not listed and still pins by name. An unknown `kind` or an overlong `q` answers `invalid_request` (400); a folder, or a pin with no mirror, `unsupported_for_subject` (409) |
+| `/api/source/pin` | `POST` with `{"ref": …}` or `{"oid": …}`: resolve a branch, then a tag, then a commit ID in the mirror alone, never through revision syntax, and serve it: the old tree source is closed and the new one attached under a new generation. Answers `changed` and the new status, and, when the body also names the page’s `/view/` address as `view`, `view_href`: that entry’s canonical address when the new pin has it, an inner address kept when the new pin has its container file, else `/view/`; `view` is checked before the switch, so one that is not percent-encoded ASCII is `invalid_selection` with nothing changed, and a query or fragment is dropped; `invalid_selection` (400), `selection_not_found` (404), `ambiguous_selection` (409), or `unsupported_for_subject` (409) otherwise. `HEAD` is the default branch, and a name the mirror holds that is not a commit answers `not_a_commit` (409) at once, as URL opening does. A commit pinned by `oid` has no ref, unless it is the tip, in the mirror now, of the ref this server last served or of the served pull request’s `refs/pull/<n>/head`: it is then served under that ref, so a reader who went to another commit and came back by ID, as View file on a diff does, is on the branch or the pull request again. In a server, a selection the mirror lacks answers `selection_pending` (202) with `refresh` and the status, and starts one background fetch; asked again after it ends, it switches, answers 404, or answers `selection_fetch_failed` (502) when that fetch did not run. `--api` never fetches for it, so the transcripts pin the 404; the 202 path is asserted by `tests/test_source_refresh.py` |
+| `/api/kpress/render`, `/api/kpress/export` | Document rendering and export. On a `GitRevisionSubject`, render reads a `GitPath` blob, uses the object id as the cache key, and passes the GitPath wire as `source_path`; export stays mutation-gated and unavailable. With active content off (every served mirror, and a folder served with `--untrusted`), render answers the HTML reduced to the inert allowlist of `src/metabrowser/inert_html.py`, with GitHub’s `user-content-` heading anchors, marks it `inert`, and keeps only stylesheets in its assets; KPress’s table of contents leaves the HTML, `toc` says whether KPress drew one, and the model’s `headings` point at the anchors |
+| `/api/plugin/<plugin>/<route>` | Plugin data hooks (`[[data_hook]]`). On a `GitRevisionSubject`, diff document/children, binary chunk, structured parsed, and agent-log charts honor `GitPath` and follow in-tree relative symlink blobs using the leaf kind |
+| `/raw`, `/raw/<path>` | Bounded raw bytes through the active source’s content reader, and the document the sandboxed html Preview frames; oversized content is refused before an unbounded object read. Both shapes share one resolver and send the same sandbox headers; the path form exists so relative references inside a browsed document resolve. A Git subject reads blobs by `GitPath` and follows in-tree relative symlink blobs. Image blobs use an image media type from the leaf display name. LFS pointers are stored pointer bytes; a missing blob is 404. On a Git subject only the query form answers: the path form’s one consumer, the HTML preview frame, is never offered under the forced untrusted profile, so it answers `unsupported_for_subject` (409) rather than a 404 that would misreport a present file, and Markdown images resolve to `GitPath` wires through the query form |
 | `/kpress-static/<path>`, `/static/<path>`, `/plugin-static/<plugin>/<path>` | Shell, renderer, and plugin assets |
 | `/_debug/tasks`, `/_debug/inventory` | Opt-in local task and inventory-provider diagnostics when `METABROWSER_DEBUG=1` |
 
 Plugin hooks currently registered: `diff/document`, `diff/children`, `diff/comparison`,
-`folder/*`, `binary/chunk`, `agent-log/charts`, `structured/parsed`.
+`folder/*`, `binary/chunk`, `agent-log/charts`, `structured/parsed`, `github/pull`,
+`github/pull-refresh`, `github/pull-markdown`. On a `GitRevisionSubject`,
+`diff/comparison` honors the pin through `GitLocation` and `GitDiffSource.content` reads
+blobs through the shared cat-file pool; patch `document`/`children`, `binary/chunk`,
+`structured/parsed`, and `agent-log/charts` honor `GitPath` and follow in-tree relative
+symlink blobs.
+`diff/comparison?left=&right=` takes `base_policy=direct` (the default) or
+`merge_base`, and reports it in the document.
+
+On a page that shows a pinned revision, the diff view’s file bars offer **View file** at
+each side of a change that exists, for a commit’s diff and a pull request’s Files
+changed alike, and it adds no route.
+The comparison document already says everything it needs: `resolved.left` and
+`resolved.right` are the two commits (the parent and the commit, or the merge base and
+the head), and each change’s `old` and `new` are the path at each and its `entry_type`,
+so a deleted file has only its old side, an added file only its new side, and a renamed
+file’s old side is its old path.
+Only a regular file’s side is offered: a submodule’s side is a commit of another
+repository, and a symbolic link’s would open its target, not the link text the diff
+shows. A file at a commit is its `/view/` address while the server’s pin is that commit.
+A side at the commit the page shows is therefore a link to that address, which the
+browser follows, and a side at any other commit is a button that sends
+`POST /api/source/pin` with the commit ID and the address and goes to the answer’s
+`view_href`, as the ref selector does.
+There is no address for a file at a commit the server does not serve, so those sides
+have no link to copy.
+A switch the server does not make (`selection_pending`, `selection_not_found`,
+`selection_fetch_failed`, or any other refusal) is said under the file bar and the page
+stays.
+A patch file’s snapshots are not commits and a served folder’s page has no pin, so
+neither carries the control: a folder has no route that reads a file at a commit, and
+its working-tree file is not that file.
+
+Back and forward bring a pin’s page back without asking the server for it, from the
+back/forward cache or the HTTP cache, so after a pin switch the page can name a commit
+the server no longer serves.
+The page stays cacheable, and `static/source-pin-guard.js` handles the landing instead:
+on a restore from the back/forward cache, or a load whose navigation type is
+`back_forward`, it asks `/api/source/status` once and reloads if another commit is
+served, at most once, and a data request refused as `pin_changed` meanwhile reloads at
+once. A reload is not a history landing, so it cannot loop, and a page that stayed open
+while another tab switched is left to the freshness row’s offer.
+A landing on an unchanged pin costs one status request and keeps its scroll position;
+`explorations/history-landing/README.md` records the measurement in Chrome.
+
+`github/pull` answers the served pull request’s cached record from the cache alone:
+`absent` (with `no_pull_request`, `not_cached`, `schema_mismatch`, or `unreadable`),
+`pending` (no record yet, and a refresh is running), `current`, or `stale`, plus the
+pin, `refreshing`, how this server’s last refresh of it ended (`last_refresh`), and
+`comparison_route`, the `diff/comparison` of the record’s merge-base endpoints.
+The pin is the served commit and can differ from the record’s head: a commit URL inside
+the pull request pins that commit, and a refresh can find a newer head than the pin.
+A record is fetched only by a refresh.
+`POST github/pull-refresh` starts or joins that refresh in the refresh coordinator and
+answers `202` at once, naming `github/pull` as its `status_route`, which a one-shot
+`--api` prints after the refresh ends, exiting 1 when it failed; it is a POST with a
+JSON object body for the same reason `/api/source/refresh` is, and plugin data routes
+are one path segment, hence the name.
+`github/pull` also sends an entity tag over everything but the record, which changes
+only with `fetched_at`, and answers a matching `If-None-Match` with `304`, so the
+pull-request page polls it as cheaply as the status route.
+`github/pull-markdown?part=<part>` renders one text of the cached record through KPress
+in its sanitized mode and answers only the resulting HTML, with the record’s
+`fetched_at` and the part: `body`, or `issue_comment/<id>`, `review/<id>`, or
+`review_comment/<id>`. It never fetches; a part the record lacks is `unknown_part`.
+KPress keeps what a document of its own may use, so the hook reduces that HTML to an
+allowlist (`src/metabrowser/inert_html.py`, with links made absolute against the pull
+request’s page): plain text markup (paragraphs, headings, emphasis, code, quotes, lists,
+tables, details, `div`, `span`) with no attributes but a link’s `href` (http or https,
+absolute against the pull request’s github.com page, in a new tab), `ol[start]`, a table
+cell’s `colspan`, `rowspan`, and `align`, and `details[open]`. Scripts, styles, SVG,
+MathML, media, frames, forms, and stylesheets go with their content; an image becomes a
+link to it; any other tag is unwrapped to its text.
+KPress’s asset list is not sent, so no script KPress adds for a text’s content loads.
+The page applies the same allowlist again, rebuilding the nodes it inserts.
+See
+[Pull-request records](arch-repository-sources-and-provider-mirrors.md#pull-request-records).
+
+### Planned plugin registration surfaces
+
+Browser and route declarations are additive installed-plugin capabilities only if
+existing SDK 0.7 manifests and JavaScript calls keep their signatures and behavior.
+They still require plugin-author documentation and a changelog entry.
+An existing browser-contract change instead bumps `PLUGIN_SDK_VERSION` and every
+built-in manifest in one commit, with no compatibility layer.
+The thin-mirror plan retired the router, address-space, provider-adapter, resource-kind,
+and nav-panel declarations for the alpha; their rows remain as design background.
+
+| Declaration or SDK call | Owns | Arbitration and lifecycle | Bead |
+| --- | --- | --- | --- |
+| `SourceSession` / `SourceCapabilities`; `resolve_content`, `resolve_content_container`, `stat_content`, `read_content_window` | One active subject generation and opaque bounded content access | Every read takes an explicit byte maximum and there is no unbounded variant; failures share one catchable family with a `code` and the `http_status` the pinned routes answer with. Session replacement joins the old generation; legacy `Path` helpers and hooks run only with `filesystem_path`; absent semantics return typed unsupported states. `InventoryCoordinator.open_subject` accepts a `GitRevisionSubject` without a filesystem walk. `metab file://… --show`, non-cache `--api`, and `--check-api` open that pin in-process, and an `https://` or GitHub URL opens the commit it selects; serve mode opens it through the application lifespan, in the serving event loop, and closes it at shutdown. `POST /api/source/pin` replaces it within one mirror: the new subject is attached under a new generation, then the old one is closed, and a request still reading the old pin finishes on the store’s shared readers | `mb-3bna`, `mb-tsdc`, `mb-z335` |
+| `RouterSpec` | Mounted HTTP prefix and trusted router factory | Reserved/duplicate prefixes fail; application lifespan awaits shutdown | `mb-xzj3` |
+| `AddressSpaceSpec` / `registerAddressSpace` | Browser prefix, parse, format, apply, preview claim, startup, popstate, root replacement, disposal | Exactly one owner per address; browser and `metab --show` share the registration | `mb-6mle` |
+| `ProviderUrlReducerSpec` | Declared schemes/hosts and `NotApplicable`/`Reduced`/terminal `Rejected` reducer | Overlapping claims fail discovery; claimed rejection never falls through. Superseded for the alpha by the thin-mirror plan: the built-in GitHub reducer reaches `classify_root_argument(reducers=)` through `cache/providers.py`, with no public declaration | `mb-12cz` |
+| `ProviderAdapterSpec` | Provider/instance capability and trusted adapter factory | Duplicate claims fail; lifespan injects neutral ports and awaits cancellation/close | `mb-ji83` |
+| `ResourceKindSpec` | Route-backed semantic kind, item/container capabilities, primary contract, and views | Duplicate kind or view claims fail; route, browser, and CLI resolve the same selection | `mb-83w0` before `mb-81p5` |
+| `registerNavPanel` | Repository-scoped bounded virtual collection | Generation-checked loading, restoration, root replacement, and disposal | `mb-uh6p` |
 
 ## CLI and functional UI parity
 
@@ -165,25 +289,37 @@ or kind arrives with transcript evidence or the build fails.
 | `/api/capabilities` | covered | `--api` | `cli-api-shell.tryscript.md` |
 | `/api/index/progress` | covered | `--api` | `cli-api-shell.tryscript.md` |
 | `/api/index/meta` | covered | `--api` | `cli-api-shell.tryscript.md` |
+| `/api/cache/layout` | covered | `--api` | `cli-api-cache.tryscript.md` |
+| `/api/cache/sources` | covered | `--api` | `cli-api-cache.tryscript.md` |
+| `/api/cache/source` | covered | `--api` | `cli-api-cache.tryscript.md` |
+| `/api/cache/stores` | covered | `--api` | `cli-api-cache.tryscript.md` |
+| `/api/source/status` | covered | `--api` | `cli-api-shell.tryscript.md`, `cli-api-source.tryscript.md` |
+| `/api/source/refresh` | covered | `--api --data` | `cli-api-source.tryscript.md`, `cli-api-shell.tryscript.md` |
+| `/api/source/pin` | covered | `--api --data` | `cli-api-source.tryscript.md`, `cli-api-shell.tryscript.md`, `cli-api-diff-view-file.tryscript.md` |
+| `/api/source/refs` | covered | `--api` | `cli-api-source.tryscript.md`, `cli-api-shell.tryscript.md` |
 | `/api/git/repo` | covered | `--api` | `cli-api-git.tryscript.md` |
 | `/api/git/refs` | covered | `--api` | `cli-api-git.tryscript.md` |
 | `/api/git/summary` | covered | `--api` | `cli-api-git.tryscript.md` |
 | `/api/git/log` | covered | `--api` | `cli-api-git.tryscript.md` |
 | `/api/git/commit` | covered | `--api` | `cli-api-git.tryscript.md` |
-| `/api/kpress/render` | covered | `--api`, `--api --data` | `cli-api-shell.tryscript.md` |
+| `/api/kpress/render` | covered | `--api`, `--api --data` | `cli-api-shell.tryscript.md`, `cli-api-untrusted-markdown.tryscript.md` |
 | `/api/kpress/export` | covered | `--api --data` | `cli-api-shell.tryscript.md` |
 | `/api/plugin/agent-log/charts` | covered | `--api` | `cli-api-plugins.tryscript.md` |
 | `/api/plugin/binary/chunk` | covered | `--api` | `cli-api-plugins.tryscript.md` |
 | `/api/plugin/diff/document` | covered | `--api` | `cli-api-plugins.tryscript.md` |
 | `/api/plugin/diff/children` | covered | `--api` | `cli-api-plugins.tryscript.md` |
-| `/api/plugin/diff/comparison` | covered | `--api` | `cli-api-plugins.tryscript.md`, `cli-api-git.tryscript.md` |
+| `/api/plugin/diff/comparison` | covered | `--api` | `cli-api-plugins.tryscript.md`, `cli-api-git.tryscript.md`, `cli-github-pull.tryscript.md`, `cli-api-diff-view-file.tryscript.md` |
+| `/api/plugin/github/pull` | covered | `--api` | `cli-github-pull.tryscript.md` |
+| `/api/plugin/github/pull-refresh` | covered | `--api` | `cli-github-pull.tryscript.md` |
+| `/api/plugin/github/pull-markdown` | covered | `--api` | `cli-github-pull.tryscript.md` |
 | `/api/plugin/structured/parsed` | covered | `--api` | `cli-api-plugins.tryscript.md` |
 | `/view` | covered | `--show PATH`, `--show /view/...` | `cli-show.tryscript.md` |
 | `/commit` | covered | `--show /commit/<rev>[/<inner>]` | `cli-api-git.tryscript.md` |
+| `/pull` | covered | `--show /pull/<n>[/files]` | `cli-github-pull.tryscript.md` |
 | `/api/events` | exempt | — | streaming; the response never terminates, so there is no envelope to pin |
-| `/raw` | exempt | — | asset serving; the query form and `/raw/{path}` share one resolver and send the file’s bytes plus sandbox headers, covered by `tests/test_raw_passthrough.py`, `tests/test_content_trust.py`, and `tests/test_raw_path_route.py` |
+| `/raw` | exempt | — | asset serving; the query form and `/raw/{path}` share one resolver and send the file’s bytes plus sandbox headers, covered by `tests/test_raw_passthrough.py`, `tests/test_content_trust.py`, `tests/test_raw_path_route.py`, and, on a served Git pin, `tests/test_serve_pin.py` |
 | `/_debug/tasks` | exempt | — | opt-in diagnostic, not a surface the browser reads |
-| `/_debug/inventory` | exempt | — | opt-in diagnostic; its work counters carry wall and CPU times, which no transcript can pin. Its payload shape is asserted by `tests/test_inventory_debug_route.py`, because the performance harness and `devtools/bench_serving.py` both parse it |
+| `/_debug/inventory` | exempt | — | opt-in diagnostic; its work counters carry wall and CPU times, which no transcript can pin. Its payload shape is asserted by `tests/test_inventory_debug_route.py`, because the performance harness and `devtools/bench_serving.py` both parse it. On a Git pin, which runs no inventory provider, it answers `unsupported_for_subject`, asserted by `tests/test_serve_pin.py` |
 | `/api/stream` | exempt | — | streaming; the response never terminates, so there is no envelope to pin |
 
 `/api/kpress/export` is the one surface whose golden writes a file, and the rule it
@@ -193,6 +329,50 @@ That is safe here because the export report’s paths normalize to `<ROOT>` and 
 content hash is identical across runs and across sandbox paths, so the write is
 deterministic evidence rather than a source of churn.
 The test runs last in its file so no earlier test observes the written file.
+
+The `/api/cache/` rows are the persisted-state clause of the parity rule: cache state is
+read through routes like any other model, not through an inspection command.
+Their transcript builds each application home in the sandbox with the production cache
+writers, and each command names its home with a leading `METABROWSER_HOME=$PWD/<home>`
+assignment, because tryscript frontmatter cannot name the sandbox path.
+`check_parity.py` skips leading environment assignments and nothing else, so the command
+must still be `metab`. Sessions that write the cache through `--no-serve` — acquisition,
+reuse, interruption recovery, fetch failure, and refusal — also read state through these
+routes, but they run in-process as `.txt` goldens from
+`tests/test_cli_cache_acquire_golden.py` and `tests/test_cli_cache_recovery_golden.py`,
+with the acquisition floor substituted, because a transcript must pass on a Git the
+floor refuses. `check_parity.py` reads only tryscript console blocks, so those sessions
+are not counted as the rows’ evidence.
+
+What these routes answer on a Git pin is pinned the same way, one transcript per
+scenario, by `tests/test_cli_git_pin_golden.py`: `cli-git-pin-index.txt` holds
+`/api/index/progress`, `/api/index/meta`, `/api/capabilities`, `/api/source/status`, and
+`--check-api`; `cli-git-pin-tree.txt` holds `/api/tree`; `cli-git-pin-rollup.txt` holds
+`/api/rollup` and `/api/catalog`; `cli-git-pin-files.txt` holds `/api/file`,
+`/api/plugin/structured/parsed`, and `/api/plugin/binary/chunk`;
+`cli-git-pin-refusals.txt` holds each refusal `--api` can reach, `/api/recent` among
+them; and `cli-git-pin-show.txt` holds `/view` through `--show`. Its docstring says why
+they stay in-process.
+They are evidence a reader can check, and the gate does not count them.
+
+A command is successful evidence for a route when it exits 0. One other shape counts,
+and only that shape: a one-shot `POST` that starts work prints the route’s answer,
+waits, prints the status `after:` the work, and exits 1 when that work failed.
+The route’s `status:` line must be `202`, an `after: /api/…` line must be directly
+followed by a 2xx `status:`, and the last line must be
+`Error: the refresh ended with <outcome>`. A truncated body, a follow-up that failed,
+and a refresh that did not finish each break one of those, and none of them is evidence.
+`/api/plugin/github/pull-refresh` is covered this way in `cli-github-pull.tryscript.md`,
+which pins the `202`, the `gh_failed` status after it, and the exit status 1. A refresh
+that completes needs `gh` and a fetch from the origin, and a subprocess transcript has
+neither. The completing command is pinned in-process instead:
+`cli-github-pull-refresh.txt` records
+`metab …/pull/7 --api /api/plugin/github/pull-refresh --data refresh.json` exiting 0,
+with the `202`, the `current` record after it, and the `gh` calls it made, and
+`cli-ui-github-pull-page.tryscript.md` replays the route’s recorded answers through a
+refresh that completes.
+`check_parity.py` does not read `.txt` transcripts, so that command is evidence a reader
+can check and the gate does not yet count.
 
 The exempt rows are the honest boundary.
 A server-sent-event response has no terminating envelope, so `--api` bounds the request
@@ -269,9 +449,28 @@ SSE transport whose emitted snapshot is already owned by its data routes.
 | `navigation.preview-pane-states` | interaction | `static/navigation.js#createPreviewPaneLifecycle`, `static/navigation.js#requestFailure`, `static/navigation.js#responseBodyFailure`, `static/navigation.js#settleFileSelectionFailure`, `static/navigation.js#openFailureOutcome`, `static/navigation.js#createController` | `/api/file`, `transport-exempt:/api/events` | `node tests/dom/preview-pane-state-session.js` | `cli-ui-file-lifecycle.tryscript.md` |
 | `navigation.inventory-snapshot-replacement` | interaction | `static/navigation.js#replaceFileSnapshot` | `transport-exempt:/api/events` | `node tests/dom/file-navigation-lazy-asset-session.js` | `cli-ui-file-lifecycle.tryscript.md` |
 | `navigation.catalog-continuity` | interaction | `static/catalog-feed.js#create` | `/api/catalog`, `transport-exempt:/api/events` | `node tests/dom/catalog-feed-behavior.js` | `cli-ui-navigation.tryscript.md` |
-| `navigation.route-identity` | interaction | `static/navigation.js#href`, `static/navigation.js#parse`, `static/navigation.js#commitHref`, `static/navigation.js#parseCommit` | `/api/file`, `/api/plugin/diff/comparison` | `node tests/dom/navigation-route-behavior.js` | `cli-ui-navigation.tryscript.md` |
+| `navigation.route-identity` | interaction | `static/navigation.js#href`, `static/navigation.js#parse`, `static/navigation.js#commitHref`, `static/navigation.js#parseCommit`, `static/pull-route.js#pullHref`, `static/pull-route.js#parsePull`, `static/navigation.js#displayPath` | `/api/file`, `/api/plugin/diff/comparison` | `node tests/dom/navigation-route-behavior.js` | `cli-ui-navigation.tryscript.md` |
+| `navigation.served-source-kind` | interaction | `static/plugin-sdk.js#sourceKind`, `static/navigation.js#displayPath` | `/view`, `/api/tree` | `node tests/dom/source-kind-session.js` | `cli-ui-source-kind.tryscript.md` |
+| `source.pinned-revision` | data | `/api/source/status` | `owned-route` | `metab shellroot --api /api/source/status` | `cli-api-shell.tryscript.md` |
+| `source.mirror-heading` | interaction | `static/mirror-heading.js#note`, `static/mirror-heading.js#tip`, `static/mirror-heading.js#mountCommitCopy` | `/view`, `/api/source/status` | `node tests/dom/mirror-heading-session.js` | `cli-ui-mirror-heading.tryscript.md` |
+| `source.mirror-freshness` | interaction | `static/source-freshness.js#createController`, `static/source-freshness.js#describe` | `/api/source/status`, `/api/source/refresh` | `node tests/dom/source-freshness-session.js` | `cli-ui-source-freshness.tryscript.md` |
+| `source.selection-arrival` | interaction | `static/source-freshness.js#selectionToOpen`, `static/source-freshness.js#describe`, `static/source-freshness.js#createController` | `/api/source/status`, `/api/source/refresh` | `node tests/dom/source-freshness-session.js` | `cli-ui-source-freshness.tryscript.md` |
+| `source.newer-revision-offer` | interaction | `static/source-freshness.js#describe`, `static/source-freshness.js#acceptOffer` | `/api/source/status`, `/api/source/pin` | `node tests/dom/source-freshness-session.js` | `cli-ui-source-freshness.tryscript.md` |
+| `source.history-landing` | interaction | `static/source-pin-guard.js#createHistoryGuard`, `static/source-pin-guard.js#servesAnother` | `/api/source/status`, `/api/tree` | `node tests/dom/source-freshness-session.js` | `cli-ui-source-freshness.tryscript.md` |
+| `source.stale-pin-guard` | interaction | `static/source-pin-guard.js#guardFetch`, `static/source-pin-guard.js#guardedRequest` | `/api/file`, `/api/tree`, `/api/source/status` | `node tests/dom/source-freshness-session.js` | `cli-ui-source-freshness.tryscript.md` |
+| `source.ref-selector` | interaction | `static/source-ref-selector.js#createSelector`, `static/source-ref-selector.js#describe`, `static/source-ref-selector.js#moveRow` | `/api/source/refs`, `/api/source/pin` | `node tests/dom/source-ref-selector-session.js` | `cli-ui-source-ref-selector.tryscript.md` |
+| `git.history-stale-cursor` | interaction | `static/git-history-window.js#classifyPageFailure` | `/api/git/log` | `node tests/dom/source-freshness-session.js` | `cli-ui-source-freshness.tryscript.md` |
+| `git.unfetched-commit` | interaction | `static/source-freshness.js#openMissingCommit`, `static/source-freshness.js#describeMissingCommit`, `static/source-freshness.js#fetchMissing` | `/api/git/commit`, `/api/source/status`, `/api/source/refresh` | `node tests/dom/source-freshness-session.js` | `cli-ui-source-freshness.tryscript.md` |
+| `github.pull-page` | interaction | `builtin_plugins/github/pull-page.js#describePull`, `builtin_plugins/github/pull-page.js#createPullController` | `/api/plugin/github/pull`, `/api/plugin/github/pull-refresh`, `/api/plugin/github/pull-markdown`, `/api/source/pin` | `node tests/dom/github-pull-page-session.js` | `cli-ui-github-pull-page.tryscript.md` |
+| `github.pull-page-inert-markup` | interaction | `static/inert-html.js#sanitizeNodes`, `static/inert-html.js#allowedAttributes`, `static/inert-html.js#imageLink`, `builtin_plugins/github/pull-page.js#safeLink`, `builtin_plugins/github/pull-page.js#gitPathWire` | `/api/plugin/github/pull-markdown` | `node tests/dom/github-pull-page-session.js` | `cli-ui-github-pull-page.tryscript.md` |
+| `github.pull-page-paint-decisions` | interaction | `builtin_plugins/github/pull-page.js#conversationAction`, `builtin_plugins/github/pull-page.js#conversationKey`, `builtin_plugins/github/pull-page.js#filesAction` | `/api/plugin/github/pull` | `node tests/dom/github-pull-page-session.js` | `cli-ui-github-pull-page.tryscript.md` |
+| `diff.view-file-sides` | data | `/api/plugin/diff/comparison` | `owned-route` | `metab changesroot --api '/api/plugin/diff/comparison?revision=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&file=src/new_name.py'` | `cli-api-diff-view-file.tryscript.md` |
+| `diff.view-file` | interaction | `builtin_plugins/diff/diff-view-file.js#viewFileSides`, `builtin_plugins/diff/diff-view-file.js#sidePathForAddress`, `builtin_plugins/diff/diff-view-file.js#describeViewFile`, `builtin_plugins/diff/diff-view-file.js#createViewFileOpener`, `builtin_plugins/diff/diff-view-file.js#switchRefusal`, `builtin_plugins/diff/diff-view.js#renderViewFileControl`, `builtin_plugins/diff/index.js#viewFileHost`, `static/git-path.js#gitPathWire` | `/api/plugin/diff/comparison`, `/api/plugin/diff/document`, `/api/source/pin` | `node tests/dom/diff-view-file-session.js` | `cli-ui-diff-view-file.tryscript.md` |
+| `navigation.pull-page-history` | interaction | `static/pull-route.js#pullHistoryAction`, `static/pull-route.js#createPullPageHost` | `local-only` | `node tests/dom/navigation-route-behavior.js` | `cli-ui-navigation.tryscript.md` |
 | `assets.on-demand-load-recovery` | interaction | `static/asset-loader.js#ensureAsset`, `static/asset-loader.js#ensureScript` | `local-only` | `node tests/dom/asset-loader-behavior.js` | `cli-ui-navigation.tryscript.md` |
+| `plugins.view-helpers-before-plugin-code` | interaction | `static/plugin-sdk.js#loadPluginsForKind`, `static/plugin-sdk.js#_ensureViewHelpers`, `static/plugin-sdk.js#_startPluginAssets`, `static/plugin-sdk-views.js#renderSourceView`, `static/asset-loader.js#ensureAsset` | `local-only` | `node tests/dom/plugin-view-helpers-session.js` | `cli-ui-plugin-view-helpers.tryscript.md` |
 | `source.incremental-cache-transaction` | interaction | `static/source-append.js#requestOwnsPreview`, `static/source-append.js#commitChunkCache` | `/api/file` | `node tests/dom/source-append-navigation-session.js` | `cli-ui-file-lifecycle.tryscript.md` |
+| `source.line-anchors` | interaction | `static/plugin-sdk-views.js#describe`, `static/plugin-sdk-views.js#nextFragment`, `static/plugin-sdk-views.js#keyStep`, `static/plugin-sdk-views.js#preferredView`, `static/plugin-sdk-views.js#mount`, `static/plugin-sdk-views.js#refresh`, `static/plugin-sdk-views.js#renderSourceView`, `builtin_plugins/markdown/source.js#renderMarkdownSource` | `/api/file` | `node tests/dom/source-line-anchors-session.js` | `cli-ui-source-line-anchors.tryscript.md` |
 | `agent-log.chart-request-ownership` | interaction | `builtin_plugins/agent_log/index.js#renderCharts` | `/api/file`, `/api/plugin/agent-log/charts` | `node tests/dom/agent-log-plugin-behavior.js` | `cli-ui-agent-log-charts.tryscript.md` |
 | `charts.theme-and-replacement-lifecycle` | interaction | `static/charts.js#renderPayload`, `static/charts.js#repaintForTheme`, `static/view-composition.js#createLifecycle` | `/api/plugin/agent-log/charts` | `node tests/dom/chart-theme-behavior.js` | `cli-ui-agent-log-charts.tryscript.md` |
 | `markdown.primary-fragment-links` | interaction | `builtin_plugins/markdown/rendered.js#mountRenderedMarkdown`, `builtin_plugins/markdown/link-enhancer.js#enhanceRenderedLinks` | `/api/kpress/render` | `node tests/dom/markdown-toc-scrollspy-session.js` | `cli-ui-markdown-scrollspy.tryscript.md` |
@@ -284,18 +483,30 @@ SSE transport whose emitted snapshot is already owned by its data routes.
 | `markdown.standard-link-semantics` | interaction | `builtin_plugins/markdown/links.js#createTrustedStandardLinkResolutionContext`, `builtin_plugins/markdown/link-enhancer.js#enhanceRenderedLinks` | `/api/kpress/render` | `node tests/dom/markdown-functional-session.js` | `cli-ui-markdown-functional.tryscript.md` |
 | `markdown.worker-preprocessing` | interaction | `builtin_plugins/markdown/markdown-worker-client.js#acquireMarkdownWorkerClient`, `builtin_plugins/markdown/markdown-worker-client.js#createMarkdownWorkerClient`, `builtin_plugins/markdown/wiki-parser.js#preprocessObsidianWiki`, `builtin_plugins/markdown/rendered.js#mountRenderedMarkdown` | `/api/file`, `/api/kpress/render` | `node tests/dom/markdown-functional-session.js` | `cli-ui-markdown-functional.tryscript.md` |
 | `markdown.transclusion-lifecycle` | interaction | `builtin_plugins/markdown/transclusion.js#createTransclusionBudget`, `builtin_plugins/markdown/transclusion.js#mountWikiTransclusion` | `/api/catalog`, `/api/file`, `/api/kpress/render` | `node tests/dom/markdown-functional-session.js` | `cli-ui-markdown-functional.tryscript.md` |
+| `markdown.untrusted-inert-render` | interaction | `static/inert-html.js#sanitizeNodes`, `static/inert-html.js#allowedAttributes`, `static/inert-html.js#keepsImage`, `builtin_plugins/markdown/inert-render.js#isInertRender` | `/api/kpress/render` | `node tests/dom/inert-html-session.js` | `cli-ui-inert-markdown.tryscript.md` |
+| `markdown.untrusted-inert-toc` | interaction | `builtin_plugins/markdown/inert-toc.js#inertTocEntries`, `builtin_plugins/markdown/inert-toc.js#buildInertToc`, `builtin_plugins/markdown/inert-toc.js#wireInertToc`, `builtin_plugins/markdown/inert-render.js#placeRendered`, `builtin_plugins/markdown/inert-render.js#inertArticle` | `/api/kpress/render` | `node tests/dom/markdown-inert-toc-session.js` | `cli-ui-inert-toc.tryscript.md` |
 | `markdown.aggregate-root-budget` | interaction | `builtin_plugins/markdown/reconciliation-coordinator.js#createMarkdownEnhancementBudget`, `builtin_plugins/markdown/dom-traversal.js#matchingDescendants`, `builtin_plugins/markdown/link-enhancer.js#enhanceRenderedLinks` | `/api/catalog`, `/api/kpress/render` | `node tests/dom/markdown-functional-session.js` | `cli-ui-markdown-functional.tryscript.md` |
 | `image.raw-preview` | interaction | `static/view-composition.js#createLifecycle`, `builtin_plugins/image/index.js#renderImage` | `/api/file` | `node tests/dom/image-preview-session.js` | `cli-ui-image-preview.tryscript.md` |
 | `html.sandboxed-preview` | interaction | `static/view-composition.js#createLifecycle`, `builtin_plugins/html/index.js#renderPreview` | `/api/file` | `node tests/dom/html-preview-session.js` | `cli-ui-html-preview.tryscript.md` |
 | `html.full-page-escape` | interaction | `builtin_plugins/html/index.js#createFullPageBar` | `/api/file` | `node tests/dom/html-preview-session.js` | `cli-ui-html-preview.tryscript.md` |
 | `document.reading-width` | interaction | `static/document-width.js#apply` | `local-only` | `node tests/dom/document-width-session.js` | `cli-ui-document-width.tryscript.md` |
 | `navigation.filter-layout` | paint-exempt | `static/styles.css` | `local-only` | — | CSS geometry and disclosure motion require rendered layout; focused selectors and accessibility state are pinned in `tests/test_browser_filter_ui.py` and `tests/test_tree_keyboard_integration.py` |
+| `document.floating-ui-frame` | paint-exempt | `static/styles.css` | `local-only` | — | Where the `position: fixed` TOC drawer, its toggle, and its backdrop land while the preview pane scrolls is browser layout, and the repository has no browser harness to measure it. `tests/test_preview_frame_contract.py` pins by stylesheet text what places them: the shell wraps the scrolling `#preview-pane` in a non-scrolling `.preview-frame.kpress-frame` that declares a transform, and no rule in the shell’s, a built-in plugin’s, or KPress’s stylesheet gives the pane or an element between it and the TOC a property that makes a containing block for fixed descendants. Computed styles and rules a script adds are not checked. That the toggle stays in view at any scroll depth, in a trusted folder and a served mirror, is step 5 of section 5.9 of the v0.12 QA runbook |
+| `diff.view-file-browser` | paint-exempt | `builtin_plugins/diff/styles.css` | `local-only` | — | What the browser does with a View file link is the browser’s: following it, opening it in a new tab, and copying its address. Where the controls sit in the bar, and that their text shares the path’s baseline, is layout. Every decision they act on is a session owner above (`diff.view-file`): which sides a bar offers, each link’s address, and that no handler takes a link’s click. `tests/test_diff_view_file_session.py` asks Git whether each address the session offers is a file at its commit, and `tests/test_design_vocabulary.py` pins the size that puts the text on the baseline; the browser walkthrough is section 5.11 of the v0.12 QA runbook |
+| `source.mirror-heading-layout` | paint-exempt | `static/styles.css` | `local-only` | — | Which part of a heading gives up its width as a pane narrows, that the note is whole or absent and takes nothing from the address, where it and the commit’s copy control sit, that a long name is cut at its end in both headings, and how a tooltip wraps a path and a commit ID are layout, which needs a rendered page. So is where any tooltip lands: only a mirror’s line of one wraps, and a folder’s tooltips are placed as before. What the headings and tooltips say, and what the copy control copies, is a session owner above (`source.mirror-heading`), and the name, origin, and location are `/api/source/status`. `tests/test_browser_client_filestore.py` pins by stylesheet text what orders it: the note’s shrink weight against the root’s, its margin against the breadcrumb’s gap, the basis its text must fit, the direction a mirror’s name is cut in, and that the one tooltip every page uses declares nothing about wrapping. The widths measured in Chrome, for a mirror’s heading and for a folder’s tooltips against the branch below, are recorded beside the note’s rule and the tooltip’s in `static/styles.css` |
+| `source.line-pitch` | paint-exempt | `static/styles.css` | `local-only` | — | How tall a line of a Source view is drawn is layout: the line height the browser gives the code’s box, which is the parent’s for an inline box in a block and the box’s own for a block. Code that is not highlighted, which is a file or a loaded window past the highlight bound, is drawn 21px to a line at the default sizes, as it was before the gutter made it a grid item, and highlighted code 18px; the gutter’s numbers take the line height of the code beside them. `tests/test_source_line_anchors.py` pins by stylesheet text the one property both columns take their line height from and the rule that sets it to the `<pre>`’s for unhighlighted code, and `tests/dom/syntax-token-sdk-behavior.js` pins that the production renderer writes the class that rule selects on unhighlighted code and on no other. Computed styles are not checked. The heights measured in Chrome against 0.11.0, and the rounding that differs under zoom, are recorded beside the rule in `static/styles.css` |
+| `source.history-landing-browser` | paint-exempt | `static/source-pin-guard.js` | `local-only` | — | Whether Back restores a page from the back/forward cache or loads it again, when `pageshow` fires and with what `persisted`, the navigation type a document reports, and what a reload fetches are the browser’s. The decision made on them is a session owner above (`source.history-landing`), which also loads the module as the server writes it into a page. `tests/test_source_freshness_session.py` pins the statuses that decision reads against a real server, and `explorations/history-landing/README.md` records the Chrome run: a restore with `persisted` true that keeps its scroll position when nothing switched, and one reload after a switch |
+| `github.pull-page-paint` | paint-exempt | `builtin_plugins/github/pull-page.js#mountPullPage` | `local-only` | — | Building the page’s DOM, observing which texts scroll into view, loading the diff plugin and mounting its view, and the shell’s `app.js` callbacks the page host calls (load the plugin, render into the pane, `history.pushState`) need a rendered page. Every decision they act on is a session owner above: what a route, a tab link, the link to the served pull request, or a history landing does to the pane, and which superseded page is disposed (`navigation.pull-page-history`), whether the conversation repaints or asks again and what Files changed keeps (`github.pull-page-paint-decisions`), and what of a text’s HTML is inserted (`github.pull-page-inert-markup`). The route grammar, the shell and plugin wiring for the `pull-request` kind, and that only an inert template is parsed are pinned in `tests/test_pull_page_route.py`; the browser walkthrough is in the v0.12 QA runbook |
 
 ## Adding something
 
-- **A kind**: add a `[[kind]]` block with a match predicate and at least one `[[view]]`,
-  then add a representative `--show` case to the golden transcript.
-  Nothing else in core changes.
+- **A filesystem-backed kind**: add a `[[kind]]` block with a match predicate and at
+  least one `[[view]]`, then add a representative `--show` case to the golden
+  transcript.
+- **A route-backed kind**: declare a `[[view]]` for a kind no `[[kind]]` matches and
+  have the shell select it for its route, as the GitHub plugin’s `pull-request` kind
+  does for `/pull/<n>`; add the route, its `--api` golden, and its functional rows in
+  the same change. Do not invent a file matcher.
 - **A view on an existing kind**: add a `[[view]]` block and `mb.registerView`; give it
   a disposal path, then register each new observable behavior in the functional table.
 - **A container**: add `container = { children = "<data_hook route>" }` to the kind and

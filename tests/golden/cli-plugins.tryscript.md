@@ -19,11 +19,12 @@ stable; the absolute checkout prefix of each plugin’s `static_root` is elided 
 ```console
 $ metab --plugins
 NAME           SOURCE   KINDS       VIEWS  HOOKS
--------------  -------  ----------  -----  ----------------------------
+-------------  -------  ----------  -----  -------------------------------
 agent-log      builtin  agent-log   3      charts
 binary         builtin  -           1      chunk
 diff           builtin  diff        1      document,children,comparison
 folder         builtin  -           2      -
+github         builtin  -           1      pull,pull-refresh,pull-markdown
 html           builtin  html        2      -
 image          builtin  -           1      -
 markdown       builtin  markdown    2      -
@@ -108,6 +109,24 @@ $ metab --plugins --json
       ],
       "view_count": 2,
       "data_hooks": [],
+      "disabled_data_hooks": []
+    },
+    {
+      "name": "github",
+      "display_name": "GitHub",
+      "version": "0.0.1",
+      "source": "builtin",
+      "static_root": "[BUILTIN]/github",
+      "kinds": [],
+      "views": [
+        "pull-request"
+      ],
+      "view_count": 1,
+      "data_hooks": [
+        "pull",
+        "pull-refresh",
+        "pull-markdown"
+      ],
       "disabled_data_hooks": []
     },
     {
@@ -219,7 +238,7 @@ $ metab --plugin markdown
 name:         markdown
 display_name: Markdown
 version:      0.0.1
-sdk_version:  0.6
+sdk_version:  0.7
 source:       builtin
 static_root:  [BUILTIN]/markdown
 
@@ -237,6 +256,8 @@ assets in static_root:
   - dom-traversal.js
   - github-localizer.js
   - index.js
+  - inert-render.js
+  - inert-toc.js
   - link-enhancer.js
   - links.js
   - manifest.toml
@@ -245,6 +266,7 @@ assets in static_root:
   - markdown-worker.js
   - markdown.css
   - package.json
+  - place-rendered.js
   - project-adapters.js
   - reconciliation-coordinator.js
   - rendered.js
@@ -266,7 +288,7 @@ $ metab --plugin markdown --json
     "name": "markdown",
     "display_name": "Markdown",
     "version": "0.0.1",
-    "sdk_version": "0.6",
+    "sdk_version": "0.7",
     "source": "builtin",
     "static_root": "[BUILTIN]/markdown",
     "kinds": [
@@ -306,6 +328,8 @@ $ metab --plugin markdown --json
       "dom-traversal.js",
       "github-localizer.js",
       "index.js",
+      "inert-render.js",
+      "inert-toc.js",
       "link-enhancer.js",
       "links.js",
       "manifest.toml",
@@ -314,6 +338,7 @@ $ metab --plugin markdown --json
       "markdown-worker.js",
       "markdown.css",
       "package.json",
+      "place-rendered.js",
       "project-adapters.js",
       "reconciliation-coordinator.js",
       "rendered.js",
@@ -332,21 +357,38 @@ $ metab --plugin markdown --json
 
 ## Test: --doctor checks every plugin
 
+tryscript matches stdout and stderr as one text, so each stream of a clean run is
+recorded on its own: the answer is on stdout, and stderr is empty.
+
 ```console
-$ metab --doctor
-metab --doctor: 10 plugin(s) OK
+$ metab --doctor 2>/dev/null
+metab --doctor: 11 plugin(s) OK
+? 0
+```
+
+## Test: --doctor writes nothing to stderr when nothing is wrong
+
+```console
+$ metab --doctor >/dev/null
 ? 0
 ```
 
 ## Test: --doctor --json
 
 ```console
-$ metab --doctor --json
+$ metab --doctor --json 2>/dev/null
 {
   "ok": true,
-  "plugin_count": 10,
+  "plugin_count": 11,
   "problems": []
 }
+? 0
+```
+
+## Test: --doctor --json writes nothing to stderr when nothing is wrong
+
+```console
+$ metab --doctor --json >/dev/null
 ? 0
 ```
 
