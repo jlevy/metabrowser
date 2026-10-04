@@ -5,7 +5,7 @@ title: Separate cache and configuration storage using uv/fdu conventions
 kind: epic
 status: in_progress
 priority: 2
-version: 8
+version: 9
 delegate: codex@spud10.local
 labels: []
 dependencies: []
@@ -17,7 +17,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-10-03T05:42:51.965Z
-updated_at: 2026-10-03T06:04:45.068Z
+updated_at: 2026-10-04T22:02:53.036Z
 started_at: 2026-10-03T05:49:23.081Z
 ---
 Approved v0.12 clean break: use ~/.cache/metabrowser and ~/.config/metabrowser on Linux/macOS, honoring app-specific and XDG overrides. Remove METABROWSER_HOME and the combined home layout; no backward compatibility aliases, migration, or fallback. Update architecture, runtime paths, safety checks, CLI/UI contracts, test fixtures, goldens, runbook, and release notes. Existing user files remain untouched. Parent release-stability epic tracks overall acceptance.
@@ -25,3 +25,5 @@ Approved v0.12 clean break: use ~/.cache/metabrowser and ~/.config/metabrowser o
 ## Notes
 
 User explicitly approved a clean break for this minor release with zero compatibility constraints. Earlier migration/alias suggestions are superseded. Child beads cover design, runtime storage, and validation. Cache and config each accept exact CLI/environment overrides ahead of XDG bases and defaults; config lifecycle is independent of cache. Existing old files are left untouched.
+
+Published for review as draft PR https://github.com/jlevy/metabrowser/pull/268, commit cbb92dc9. Final local pre-push gate passed: 4005 tests, 8 skipped, 278 transcript checks; installed candidate 0.11.1.dev669+cbb92dc9 verified by both executables and 11-plugin doctor. GitHub CI pending; dependency audit mb-19fc and manual release acceptance remain open.
