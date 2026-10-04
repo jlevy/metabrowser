@@ -56,7 +56,9 @@ def _metab() -> str:
 
 def _env(home: Path, path: str | None = None) -> dict[str, str]:
     env = {key: value for key, value in os.environ.items() if key not in _REPO_PINNING_GIT_VARS}
-    env.update({"METABROWSER_HOME": str(home), "METABROWSER_LOG_LEVEL": "ERROR", "TERM": "dumb"})
+    env.update(
+        {"METABROWSER_CACHE_DIR": str(home), "METABROWSER_LOG_LEVEL": "ERROR", "TERM": "dumb"}
+    )
     if path is not None:
         env["PATH"] = path
     return env

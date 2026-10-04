@@ -137,7 +137,7 @@ may land before it.
   Network work begins only for a missing entry, an explicit refresh, or an explicit
   object fetch; Git reads never fetch implicitly (see
   [the offline guarantee](#blobless-acquisition-and-the-offline-guarantee)).
-- Establish `~/.metabrowser/` as a versioned application home beginning at layout format
+- Establish `~/.cache/metabrowser/` as a versioned cache root beginning at layout format
   `f01`.
 - Give each machine-owned YAML family a strict, independently versioned contract, with
   deterministic compiled schemas and golden fixtures.
@@ -263,7 +263,7 @@ The application home has four distinct ownership classes:
 
 | Surface | Owner | Mutability | Recovery rule |
 | --- | --- | --- | --- |
-| `config.yml` | User and application migration code | Durable and editable | Migrate losslessly; never discard unknown user settings |
+| `config.yml` | User; application initializes once | Durable and editable | Preserve existing bytes across cache changes |
 | Cache layout, source identity, and repository-store identity | Core cache service | Rare writes | Validate, migrate if released data requires it, otherwise quarantine |
 | Shared repository store | Core Git cache service | Objects and Metabrowser-owned refs may grow; revision subjects are immutable | Reacquire missing objects or rebuild outside a live lease |
 | Source aliases and attachments | Core repository and provider services | Rare writes | Re-resolve from credential-free source or provider identity; never persist a local path in provider state |
@@ -307,7 +307,7 @@ Nothing above the home is ever modified.
 other mode bits and, on macOS, no ACL allow entry for another principal.
 Deny entries, such as the `group:everyone deny delete` on an ordinary macOS home, are
 accepted. An existing home that fails is refused, never repaired, so an explicit
-permissive `METABROWSER_HOME` receives an actionable refusal rather than a private
+permissive `METABROWSER_CACHE_DIR` receives an actionable refusal rather than a private
 write. A missing home is created by path under its verified parent, then set to `0700`
 and stripped of inherited ACL entries while it is still empty.
 
@@ -382,8 +382,8 @@ Locks are BSD `flock` on lock files, never POSIX record locks: on the measured A
 a `flock` holder that was SIGKILLed released within 2.8 ms, while a `lockf` lock
 vanished when its own process closed an unrelated descriptor for the same file
 ([measurements](../../../../explorations/repository-cache/README.md#platform-primitives)).
-Every lock file lives under `cache/locks/`, never inside a directory that publication,
-purge, quarantine, or reclamation renames, and a holder compares the locked descriptor’s
+Every lock file lives under `locks/`, never inside a directory that publication, purge,
+quarantine, or reclamation renames, and a holder compares the locked descriptor’s
 `fstat` with the path’s `lstat` after acquiring and retries on a mismatch, because a
 sweep may have removed and recreated the file.
 Every lease and every lock attempt uses its own `open()` of the lock file; descriptors
@@ -400,10 +400,10 @@ Two kinds of side lock sit outside the order:
 - **Liveness locks** for one staging entry, trash entry, or fetch job are held by their
   one owner, including across network work, and every other process only tries them
   without blocking. The sweep removes an entry only after acquiring its lock.
-- **The store lease** is `cache/locks/stores/<store-key>.maintenance.lock`. A live
-  subject, an acquisition from before its store is published until its alias is
-  published, and a fetch job from before its network work until publication hold it
-  shared; it may block only while its holder holds no ordered lock.
+- **The store lease** is `locks/stores/<store-key>.maintenance.lock`. A live subject, an
+  acquisition from before its store is published until its alias is published, and a
+  fetch job from before its network work until publication hold it shared; it may block
+  only while its holder holds no ordered lock.
   `gc` and `repack` run under its exclusive form alone, never under the store lock, and
   reclamation, purge, and quarantine take the exclusive form before their ordered locks.
   The exclusive form never blocks, so a lease defers maintenance and refuses purge
@@ -450,96 +450,42 @@ The checker gives each process its own locks, which is sound only because of the
 per-`open()` rule above.
 The implementation’s concurrent refresh/read/purge/reclaim tests replay those machines.
 
-## Application Home and Cache Layout `f01`
+## Cache and Configuration Layout
 
-The first released logical layout is:
+The approved v0.12 layout separates cache and configuration, following uv and fdu on
+both macOS and Linux.
+Resolution, lifecycle, and safety rules are specified in
+[Cache and Configuration Directories](../../architecture/arch-repository-sources-and-provider-mirrors.md#cache-and-configuration-directories).
 
 ```text
-~/.metabrowser/
-├── config.yml
-└── cache/
-    ├── CACHEDIR.TAG
-    ├── layout.yml
-    ├── locks/
-    │   ├── home.lock
-    │   ├── sources/<slug>.lock
-    │   ├── stores/<store-key>.lock
-    │   ├── stores/<store-key>.maintenance.lock
-    │   ├── staging/<entry>.lock
-    │   ├── trash/<entry>.lock
-    │   └── jobs/<job-id>.lock
-    ├── staging/
-    │   └── <entry>/
-    ├── trash/
-    │   └── <entry>/
-    ├── quarantine/
-    │   └── <entry>/
-    ├── sources/
-    │   └── <uniquified-slug>/
-    │       ├── source.yml
-    │       ├── state.yml
-    │       └── store-alias.yml
-    ├── repository-stores/
-    │   └── <store-key>/
-    │       ├── store.yml
-    │       ├── state.yml
-    │       └── repository.git/
-    ├── provider-bindings/
-    │   └── <source-key>.yml
-    └── provider-repositories/
-        └── <provider>/<instance-key>/<repository-key>/
+~/.config/metabrowser/
+└── config.yml
+~/.cache/metabrowser/
+├── CACHEDIR.TAG
+├── layout.yml
+├── locks/
+├── staging/
+├── sources/<slug>/
+│   ├── source.yml
+│   ├── state.yml
+│   └── store-alias.yml
+└── repository-stores/<store-key>/
+    ├── store.yml
+    ├── state.yml
+    └── repository.git/
 ```
 
-Phase 0 fixed the generic spellings: directories are flat, with no sharding, because a
-scan of 10,000 flat source entries that also reads each `source.yml` took 262 ms and
-1,000 took 21 ms on the measured home; `<store-key>` is all 64 hexadecimal digits of the
-store identity; and `<uniquified-slug>` follows
-`tests/fixtures/repository-cache/source-identity.json`. Lock files exist before the
-directories they guard are published, so a read-only cache hit opens them without
-creating state. The ownership is fixed as well: source aliases, shared Git stores, and
-stable provider repositories are siblings.
-Provider observations never live under a source entry, and the Git store contains no
-checkout. A source holds exactly one provider binding, so each source key names one
-binding file. Later schemas may change a physical spelling before release; they may not
-collapse those owners.
+`--cache-dir` and `METABROWSER_CACHE_DIR` name the exact cache root; `--config-dir` and
+`METABROWSER_CONFIG_DIR` name the exact configuration root.
+The corresponding XDG base variables apply when no application override is set.
+There is no compatibility alias, fallback, or migration for `METABROWSER_HOME` or
+`~/.metabrowser`. Existing files are left untouched.
+A repository-local `.metabrowser/` remains ordinary untrusted browsed content.
 
-`METABROWSER_HOME` overrides the application home for tests and advanced operation.
-It is the only application-home override; Metabrowser has no cache-root setting today,
-and Phase 1A does not add a second one.
-Paths in config expand a leading `~` against the operator’s home and resolve relative
-paths against the application home.
-Config parsing never performs shell expansion or evaluates environment syntax stored in
-YAML.
-
-### Why one `~/.metabrowser/` rather than XDG directories
-
-`f01` names directory semantics, so this choice is expensive to revisit and belongs in
-the record rather than in whoever implements it first.
-
-The XDG-conformant split would be `$XDG_CONFIG_HOME/metabrowser` for `config.yml` and
-`$XDG_CACHE_HOME/metabrowser` for the repository cache, with
-`~/Library/Application Support` and `~/Library/Caches` as the macOS equivalents.
-That split has one genuine advantage: a cache under a platform cache directory is
-already excluded by backup and cleanup tools that understand the convention.
-
-One application home wins anyway, for reasons specific to this cache:
-
-- The cache is not disposable in the way a platform cache directory implies.
-  An entry may be the only local copy of a source that is now offline or deleted, which
-  is why purge and migration are explicit operations here and why quarantine retains
-  damaged entries rather than discarding them.
-  Filing it where the platform advertises “safe to delete at any time” would misdescribe
-  it.
-- Config and cache must agree about identity and format.
-  `f01` versions the two together and migration publishes `config.yml` last; splitting
-  them across two roots with independent lifetimes creates exactly the divided authority
-  this layout avoids.
-- One root is one thing to point `METABROWSER_HOME` at, and one thing for a user to
-  inspect, back up, or remove.
-
-`CACHEDIR.TAG` is what recovers the backup-exclusion benefit without the split, which is
-why Phase 1A writes it when the cache root is created rather than leaving it to a later
-phase.
+Caches are disposable by contract.
+Clearing one can lose offline access to a remote that has since disappeared; users who
+need a durable copy must retain a separate clone.
+Cache clearing and cache-layout changes preserve configuration.
 
 ### Layout format versus record contracts
 
@@ -556,7 +502,8 @@ The `f01` marker and SoftSchema contract versions solve different problems:
 
 One module owns `CURRENT_FORMAT`, ordered format history, migration functions, and the
 standard future-format error.
-Migration holds the application-home lock and publishes `config.yml` last.
+Cache migration holds the cache lock and changes only cache records.
+Configuration is initialized independently and is not rewritten by cache migration.
 An older client that sees a future layout fails before writing.
 
 `config.yml` is user-owned and begins with:
@@ -580,13 +527,14 @@ settings, at every level.
 Known fields still validate.
 Credentials are forbidden: a key naming a token, password, secret, credential, or API or
 private key is refused anywhere in the file.
-The config models no cache root, because `METABROWSER_HOME` is the only override, and no
-refresh policy, because v0.12 refresh is explicit; a `cache` mapping a user writes is
-kept as an unknown setting and not honored.
-Metabrowser writes `config.yml` only when it creates or migrates the home, keeping every
-setting but not comments, and refuses a config it cannot read rather than replacing it.
+The config models no cache root; cache selection belongs to CLI flags and environment,
+and no refresh policy, because v0.12 refresh is explicit; a `cache` mapping a user
+writes is kept as an unknown setting and not honored.
+Metabrowser creates `config.yml` only when absent.
+Existing settings and comments remain unchanged; unreadable configuration is refused
+rather than replaced.
 
-`cache/layout.yml` is machine-owned and `enforced`:
+`layout.yml` is machine-owned and `enforced`:
 
 ```yaml
 softschema:
@@ -1474,13 +1422,13 @@ state.
 
 | File | Key types and functions | Responsibility |
 | --- | --- | --- |
-| `src/metabrowser/home.py` (Phase 1A) | `application_home`, `ensure_home`, `F01_DIRECTORIES`, `write_private_file_atomic`, `rename_without_replacing`, `validate_private_home`, `ensure_private_directory`, `open_private_file`, `PrivateStorageError`, `ApplicationHomeError` | Resolve `METABROWSER_HOME` without touching the file system, create the owner-only `f01` skeleton and `CACHEDIR.TAG`, publish files by exclusive temporary file and rename, rename without replacing, and reject symlinked, foreign, or permissive ancestors |
+| `src/metabrowser/home.py` (Phase 1A) | `application_cache`, `ensure_home`, `F01_DIRECTORIES`, `write_private_file_atomic`, `rename_without_replacing`, `validate_private_home`, `ensure_private_directory`, `open_private_file`, `PrivateStorageError`, `StorageDirectoryError` | Resolve `METABROWSER_CACHE_DIR` without touching the file system, create the owner-only `f01` skeleton and `CACHEDIR.TAG`, publish files by exclusive temporary file and rename, rename without replacing, and reject symlinked, foreign, or permissive ancestors |
 | `src/metabrowser/cache/records.py` (Phase 1A) | `ApplicationConfig`, `CacheLayout`, `RepositorySource`, `RepositorySourceState`, `RepositoryStoreAlias`, `RepositoryStore`, `RepositoryStoreState` | Strict Pydantic models; config alone keeps unknown settings |
 | `src/metabrowser/cache/contracts.py` (Phase 1A) | `CACHE_CONTRACTS`, `compile_contracts`, `check_packaged_schemas`, `cache_contract_registry`, `repository_cache_capabilities`, `parse_application_config` | SoftSchema bindings to packaged schemas; the enforced contracts install through the `repository-cache` capability provider, and cache reads validate against a registry built without discovery |
-| `src/metabrowser/cache/layout.py` (Phase 1A) | `LAYOUT_FORMAT`, `FORMAT_HISTORY`, `MIGRATIONS`, `read_layout`, `read_config`, `migrate_layout`, `open_cache`, `FutureLayoutFormatError`, `LayoutError` | Fail closed on future formats before writing, run ordered migrations under the home lock, publish `config.yml` last, and prepare a home for cache use |
+| `src/metabrowser/cache/layout.py` (Phase 1A) | `LAYOUT_FORMAT`, `FORMAT_HISTORY`, `MIGRATIONS`, `read_layout`, `read_config`, `migrate_layout`, `open_cache`, `FutureLayoutFormatError`, `LayoutError` | Fail closed on future formats before writing, run ordered migrations under the home lock, preserve independent configuration, and prepare the cache root for use |
 | `src/metabrowser/cache/atomic.py` (Phase 1A) | `read_record`, `write_record_atomic`, `publish_entry`, `RecordError` | Bounded record reads, record writes by atomic rename, and publication that verifies the target absent under its owning lock |
-| `src/metabrowser/cache/locks.py` (Phase 1A) | `application_home_lock`, `source_alias_lock`, `repository_store_lock`, `provider_resource_lock`, `store_lease`, `store_maintenance_lock`, `staging_entry_lock`, `trash_entry_lock`, `job_entry_lock`, `LockOrder`, `require_no_hierarchy_locks` | The fixed home → alias → ordered stores → resource order per thread, side locks, one descriptor per acquisition, identity recheck, and replacement of a shared lock file only under its old lock |
-| `src/metabrowser/cache/probe.py` (Phase 1A) | `probe_application_home`, `ProbeReport` | Verify cross-process exclusion, lease semantics, survival of an unrelated close, and no-replace publication once per process per home |
+| `src/metabrowser/locks.py` (Phase 1A) | `application_cache_lock`, `source_alias_lock`, `repository_store_lock`, `provider_resource_lock`, `store_lease`, `store_maintenance_lock`, `staging_entry_lock`, `trash_entry_lock`, `job_entry_lock`, `LockOrder`, `require_no_hierarchy_locks` | The fixed home → alias → ordered stores → resource order per thread, side locks, one descriptor per acquisition, identity recheck, and replacement of a shared lock file only under its old lock |
+| `src/metabrowser/cache/probe.py` (Phase 1A) | `probe_application_cache`, `ProbeReport` | Verify cross-process exclusion, lease semantics, survival of an unrelated close, and no-replace publication once per process per home |
 | `src/metabrowser/cache/paths.py` (Phase 1A) | `LAYOUT_RECORD`, `CONFIG_RECORD`, `source_record`, `store_record`, `quarantine_entry` | Logical `f01` locations for cache modules and the read routes |
 | `src/metabrowser/cache/identity.py` | Phase 1A: `source_identity`, `repository_store_id`, `provider_repository_store_id`, `store_key`, `cache_slug`, `slug_matches_identity`; Phase 1B-a: `normalize_git_source` | Credential-free source identity from a normalized address, stable internal store identity, deterministic provider-identity store derivation, and collision-extending slugs; Phase 1B-a adds the normalization that produces the address |
 | `src/metabrowser/cache/urls.py` | `classify_root_argument`, `ProviderUrlReducer`, `ReducerOutcome`, `RepositorySelection` | Distinguish local paths, Git sources, and registered provider web URLs before constructing a `Path`; arbitrate declared reducer claims and terminal rejection; keep provider-specific syntax behind reducers |
@@ -1640,8 +1588,8 @@ silent trim. The argument against deferring is real and should be weighed each t
 cache is released data from its first write, and retrofitting migration under entries
 that already exist costs more than building it first.
 
-- [x] Add the application-home resolver, `config.yml`, `cache/layout.yml`, format
-  history, future-format failure, and sequential migration harness.
+- [x] Add the application-home resolver, `config.yml`, `layout.yml`, format history,
+  future-format failure, and sequential migration harness.
   Nothing in this phase was deferred: `FORMAT_HISTORY` and `MIGRATIONS` exist with `f01`
   as their only format, and the harness is tested with injected histories.
 - [x] Adopt the exact released SoftSchema package after dependency and lock review;
@@ -1711,14 +1659,14 @@ detail.
   `ensure_home`, probes, migrates, and sweeps.
   Nothing calls it yet, and ordinary local browsing never resolves, validates, creates,
   or imports the application home, which `tests/test_cache_layout.py` proves with a
-  missing, permissive, and symlinked `METABROWSER_HOME`.
-- **Resolution.** An empty, relative, or `..`-containing `METABROWSER_HOME` is refused
-  rather than ignored, so a harness that meant to isolate the home cannot fall back to
-  the real one.
+  missing, permissive, and symlinked `METABROWSER_CACHE_DIR`.
+- **Resolution.** An empty, relative, or `..`-containing `METABROWSER_CACHE_DIR` is
+  refused rather than ignored, so a harness that meant to isolate the home cannot fall
+  back to the real one.
 - **Probe cost and caching.** One `python -I -S` child plus a staging entry; about 37 ms
   on a loaded macOS machine.
   The result is kept for the life of the process, keyed by the device and inode of
-  `cache/locks`; a refused home is probed again next time.
+  `locks`; a refused home is probed again next time.
 - **Registration.** The enforced contracts install through a `repository-cache`
   capability provider, so the generic inventory gate, the architecture table check, and
   the isolated-wheel smoke test cover them; cache reads validate against a registry the
@@ -1733,8 +1681,8 @@ detail.
   private from creation, and every acquisition opens its own descriptor.
   A lock file found shared is replaced by atomic rename only while holding its old lock
   taken without blocking, and refused if that lock is busy.
-  The provider/resource lock lives at `cache/locks/providers/<key>.lock` until the
-  provider storage plan names its spelling.
+  The provider/resource lock lives at `locks/providers/<key>.lock` until the provider
+  storage plan names its spelling.
 - **Layout adoption.** A cache with sources, stores, quarantine, or provider data but no
   `layout.yml` is refused rather than adopted or quarantined; leftover staging and trash
   do not block creating the first layout.
@@ -2158,7 +2106,7 @@ inferring a clean working tree; immutable repository subjects remain available.
 ## Testing Strategy
 
 The ordinary suite uses `file://` fixture repositories and an isolated
-`METABROWSER_HOME`; it never requires the network or a real credential store.
+`METABROWSER_CACHE_DIR`; it never requires the network or a real credential store.
 There is no test-only transport override: `file://` is a production transport, so the
 suite exercises the same acquisition path a user gets.
 

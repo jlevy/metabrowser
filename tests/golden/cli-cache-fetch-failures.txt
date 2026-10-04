@@ -7,42 +7,42 @@ slug: <SLUG-A>
 store: <STORE-A>
 revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
 --- stderr ---
-cloning <ORIGIN-A> into <HOME>/cache
+cloning <ORIGIN-A> into <HOME>
 cloned <ORIGIN-A> in 0.0 s
 ## Source MISSING, a path that does not exist, fails without publishing anything.
 # metab <ORIGIN-MISSING> --no-serve
 exit: 1
 --- stdout ---
 --- stderr ---
-cloning <ORIGIN-MISSING> into <HOME>/cache
+cloning <ORIGIN-MISSING> into <HOME>
 Error: the source could not be read as a Git repository; nothing was published
 ## Source PLAIN, a directory that is not a repository, fails without publishing anything.
 # metab <ORIGIN-PLAIN> --no-serve
 exit: 1
 --- stdout ---
 --- stderr ---
-cloning <ORIGIN-PLAIN> into <HOME>/cache
+cloning <ORIGIN-PLAIN> into <HOME>
 Error: the source could not be read as a Git repository; nothing was published
 ## Source EMPTY, a repository with no commits, fails without publishing anything.
 # metab <ORIGIN-EMPTY> --no-serve
 exit: 1
 --- stdout ---
 --- stderr ---
-cloning <ORIGIN-EMPTY> into <HOME>/cache
+cloning <ORIGIN-EMPTY> into <HOME>
 Error: the source did not advertise HEAD
 ## Source DETACHED, a repository whose HEAD is not a branch, fails without publishing anything.
 # metab <ORIGIN-DETACHED> --no-serve
 exit: 1
 --- stdout ---
 --- stderr ---
-cloning <ORIGIN-DETACHED> into <HOME>/cache
+cloning <ORIGIN-DETACHED> into <HOME>
 Error: the source HEAD is not a branch
 ## The route mode refuses the same way and never issues the route.
 # metab <ORIGIN-MISSING> --api /api/cache/sources
 exit: 1
 --- stdout ---
 --- stderr ---
-cloning <ORIGIN-MISSING> into <HOME>/cache
+cloning <ORIGIN-MISSING> into <HOME>
 Error: the source could not be read as a Git repository; nothing was published
 ## Only A is published, its alias generation is unchanged, and staging is empty.
 # metab <ROOT> --api /api/cache/layout
@@ -156,7 +156,7 @@ slug: <SLUG-A>
 store: <STORE-A>
 revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
 --- stderr ---
-using the clone of <ORIGIN-A> cached in <HOME>/cache, fetched less than a minute ago
+using the clone of <ORIGIN-A> cached in <HOME>, fetched less than a minute ago
 # metab FILE://LocalHost<PATH-A>/ --no-serve
 exit: 0
 --- stdout ---
@@ -165,4 +165,4 @@ slug: <SLUG-A>
 store: <STORE-A>
 revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
 --- stderr ---
-using the clone of <ORIGIN-A> cached in <HOME>/cache, fetched less than a minute ago
+using the clone of <ORIGIN-A> cached in <HOME>, fetched less than a minute ago

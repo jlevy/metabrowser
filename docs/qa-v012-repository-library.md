@@ -25,9 +25,8 @@ The HTML-trust invariant lives in
 [full-page HTML rendering and an explicit trust model](project/specs/active/plan-2026-08-06-html-rendering-and-trust-model.md)
 and [SECURITY.md](../SECURITY.md).
 
-Keep additional work on the existing stack until the stack is stabilized and approved
-for landing. Archive containers (`mb-380k`) are not part of the stack or of this
-procedure.
+Validate post-landing stability fixes on top of current `main`. Archive containers
+(`mb-380k`) are not part of the stack or of this procedure.
 
 ## Walk Through This Yourself
 
@@ -42,17 +41,16 @@ Chromium pane, hidden for most rows, with no private repository.
 
 ### Part 1: Set Up and Pick the Tip (About 5 Minutes)
 
-1. Find the top pull request and its commit: [Pins](#pins).
+1. Select the main or stability-fix commit: [Pins](#pins).
 2. Check it out, install, isolate the application home, and read the help: 0.1 to 0.3.
 3. Check the installation: 0.4.
 
-**Pass:** `HEAD` is the top pull request’s head, and `gh pr checks "$ALPHA_PR"` lists
-every check as passing.
-`METABROWSER_HOME` names a path that does not exist.
+**Pass:** `HEAD` is the selected `QA_HEAD`, and the required checks for that commit have
+all passed. `METABROWSER_CACHE_DIR` names a path that does not exist.
 `metab --doctor` reports every plugin OK.
 
 **Fail:** A checkout of any other commit; a check that fails or is still running;
-`~/.metabrowser` in use.
+`~/.cache/metabrowser` in use.
 
 ### Part 2: The Standard Features on a Plain Folder (About 15 Minutes)
 
@@ -78,9 +76,9 @@ repository and a pull request of your own.
 
 1. **A repository URL.** The two `metab` commands of 4.8, and its served check.
    **Pass:** the first clone says on stderr where it goes
-   (`cloning … into <scratch home>/cache`), shows its progress, and ends with a
-   `cloned …` line; `acquired:` names the canonical `https://github.com/<owner>/<repo>`;
-   and the second command answers from the cache with no clone.
+   (`cloning … into <scratch cache>`), shows its progress, and ends with a `cloned …`
+   line; `acquired:` names the canonical `https://github.com/<owner>/<repo>`; and the
+   second command answers from the cache with no clone.
    The served page is headed by the repository’s name, not a commit ID, and says where
    the mirror is kept, as steps 1 and 2 of 5.3 describe.
 2. **A file URL with lines.** Serve
@@ -145,104 +143,49 @@ Keep its name and contents out of anything you record.
 Verify the live SHAs before a run.
 They move.
 
-The v0.12 work is one linear chain of open pull requests above `main`, linked on GitHub
-as stack [#218](https://github.com/jlevy/metabrowser/stack/218). This lists the stack
-from the bottom:
+The stack through [#260](https://github.com/jlevy/metabrowser/pull/260) has landed.
+For post-landing QA, fetch and pin `origin/main` before installing anything:
 
 ```shell
-gh api repos/jlevy/metabrowser/stacks/218 \
-  --jq '.pull_requests[] | "#\(.number) \(.head.ref)"'
+git fetch origin main
+QA_HEAD="$(git rev-parse origin/main)"
+export QA_HEAD
+gh run list --repo jlevy/metabrowser --branch main --commit "$QA_HEAD" \
+  --json workflowName,status,conclusion,url
 ```
 
-A layer that is not yet linked to the stack chains onto its top by base branch, so the
-stack’s last pull request may not be the tip.
-Two branches sit beside the chain and are left out of the commands below:
-`reference/v012-hosted-review`, a do-not-merge branch, and
-`codex/v012-page-connections`, the fix for `mb-tdmd`, which is held until after the
-landing.
-This lists the chain from each open pull request’s base and head, linked or not,
-and its last line is the pull request to test:
+**Pass:** Every required CI job for that commit has completed successfully.
+A pending check or failed dependency audit is an outstanding gate, even when the product
+tests pass. Record the commit and the run URLs with the QA results.
+
+To test a proposed stability fix instead, set `QA_HEAD` to its reviewed commit and
+record the pull request and its check results.
+Its head must include current `main`. Do not silently move the checkout during a QA run.
+
+The [review ledger](project/reviews/review-2026-10-01-v012-stack-review-ledger.md)
+records the original stack and its review limits.
+Its GitHub stack is [#218](https://github.com/jlevy/metabrowser/stack/218). The
+reference branch `reference/v012-hosted-review` is not a release candidate.
+The separate page-connection fix [#262](https://github.com/jlevy/metabrowser/pull/262)
+requires its own review and validation before landing.
+
+After the checkout of 0.1, confirm the HTML trust work and current `main` are included:
 
 ```shell
-gh pr list --repo jlevy/metabrowser --state open --limit 200 \
-  --json number,baseRefName,headRefName,isDraft \
-  --jq 'map(select(.headRefName | test("^reference/|^codex/v012-page-connections$") | not)) as $prs
-        | $prs[] | select(.number == 125)
-        | recurse(.headRefName as $head | $prs[] | select(.baseRefName == $head))
-        | "#\(.number) \(.headRefName)\(if .isDraft then " (draft)" else "" end)"'
+git merge-base --is-ancestor fd65812ba911e7fa0f6b5967d9240556c8c01c54 HEAD
+git merge-base --is-ancestor origin/main HEAD
 ```
 
-Each line’s base is the head of the line above it.
-Two pull requests on one base mean the chain has forked, and the listing then shows both
-branches one after the other, so its last line is no longer the tip.
-This prints a line for each fork and nothing while the chain is linear:
-
-```shell
-gh pr list --repo jlevy/metabrowser --state open --limit 200 \
-  --json number,baseRefName,headRefName \
-  --jq 'map(select(.baseRefName != "main"
-                    and (.headRefName | test("^reference/|^codex/v012-page-connections$") | not)))
-        | group_by(.baseRefName)[] | select(length > 1)
-        | "forked at \(.[0].baseRefName): \(map("#\(.number)") | join(", "))"'
-```
-
-If it prints anything, stop and ask which line to test.
-Do not check out the superseded crumb slices (#208, #210, #211–#215).
-
-| Lane | PR | Branch | Tip | What it adds |
-| --- | --- | --- | --- | --- |
-| Repository Library and GitHub browsing | The last line of the chain | Its head branch | the command below | Full-clone mirrors from `file://` and `https://` origins, served pins, refresh and pin switching, GitHub URLs, and pull-request pages |
-| HTML trust | [#209](https://github.com/jlevy/metabrowser/pull/209), merged to `main` | Included in the integration tip | verify ancestry below | `/raw` sandbox, `/api` same-origin proof, `--untrusted`, HTML preview kind, plus subsequent mainline hardening |
-
-Every tip in this runbook is read from the live branch rather than written down, because
-a SHA copied into prose is a baseline nothing maintains and it is stale by the next
-push:
-
-```shell
-ALPHA_PR="$(gh pr list --repo jlevy/metabrowser --state open --limit 200 \
-  --json number,baseRefName,headRefName \
-  --jq 'map(select(.headRefName | test("^reference/|^codex/v012-page-connections$") | not)) as $prs
-        | [$prs[] | select(.number == 125)
-           | recurse(.headRefName as $head | $prs[] | select(.baseRefName == $head))]
-        | last | .number')"
-echo "ALPHA_PR=$ALPHA_PR"
-gh pr view "$ALPHA_PR" --repo jlevy/metabrowser --json headRefOid,headRefName,url
-gh pr checks "$ALPHA_PR" --repo jlevy/metabrowser
-gh pr view 209 --repo jlevy/metabrowser --json state,mergeCommit,url
-```
-
-After the checkout of 0.1, confirm that it holds the merged HTML trust work and current
-`main`:
-
-```shell
-git merge-base --is-ancestor fd65812ba911e7fa0f6b5967d9240556c8c01c54 HEAD; echo "exit:$?"
-git fetch -q origin main
-git merge-base --is-ancestor origin/main HEAD; echo "exit:$?"
-```
-
-**Pass:** The chain begins with the stack’s pull requests in the stack’s order, the fork
-check printed nothing, `ALPHA_PR` is the number on the chain’s last line, every check
-passes, and both ancestry commands print `exit:0`.
-
-Run both the Repository Library and HTML regression steps on the same selected
-integration tip. HTML trust has landed and is inherited through `main`; no separate
-checkout of the merged HTML branch is needed.
-Serving a `file://` pin applies that trust profile, and Phase 5 proves it against a
-populated cache over HTTP and in a browser.
-
-The thin-mirror plan’s
-[Delivery](project/specs/active/plan-2026-09-23-v012-thin-mirror.md#delivery) section
-names the scope and bead of each pull request in the chain, and the
-[review ledger](project/reviews/review-2026-10-01-v012-stack-review-ledger.md) says how
-each was reviewed. Landing is tracked by `mb-n2ro`.
+Both commands must exit zero.
+Run all checks on this same selected commit.
 
 ## Constraints That Are Part of the Product
 
-- **Isolate `METABROWSER_HOME`.** Every acquire or refuse step in this runbook uses a
-  scratch home. A refuse that creates `~/.metabrowser` is a failure.
+- **Isolate `METABROWSER_CACHE_DIR`.** Every acquire or refuse step in this runbook uses
+  a scratch home. A refuse that creates `~/.cache/metabrowser` is a failure.
   Discard any home an earlier v0.12 development build wrote: its records are not
   migrated, and every `file://` mode refuses it with one message that says to move the
-  cache directory aside or set `METABROWSER_HOME` to a different directory.
+  cache directory aside or set `METABROWSER_CACHE_DIR` to a different directory.
 - **Git acquisition floor.** Acquisition requires Git **2.43.7** or a patched release on
   a newer track (see `ACQUISITION_PATCHED_TRACKS` in `src/metabrowser/git/process.py`
   and `tests/fixtures/repository-cache/git-version-gates.json`). Ubuntu’s
@@ -282,9 +225,8 @@ each was reviewed. Landing is tracked by `mb-n2ro`.
 ### 0.1 Checkout and install
 
 ```shell
-# The top pull request of the chain, from Pins.
-: "${ALPHA_PR:?Set ALPHA_PR as Pins shows}"
-QA_HEAD="$(gh pr view "$ALPHA_PR" --repo jlevy/metabrowser --json headRefOid --jq .headRefOid)"
+# The selected main or stability-fix commit, from Pins.
+: "${QA_HEAD:?Set QA_HEAD as Pins shows}"
 QA_CHECKOUT_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/mb-qa-checkout.XXXXXX")"
 git fetch origin "$QA_HEAD"
 git worktree add --detach "$QA_CHECKOUT_ROOT/checkout" "$QA_HEAD"
@@ -300,7 +242,7 @@ Do not activate `.venv` or invoke raw `python` / `pip`.
 **Fail:** A different tip with no note; a second environment manager; a contaminated
 `uv.lock`.
 
-### 0.2 Isolate the application home
+### 0.2 Isolate cache and configuration
 
 ```shell
 git version
@@ -308,21 +250,22 @@ REPO="$(pwd)"
 FILE_URL="file://${REPO}"
 QA_HOME="${TMPDIR:-/tmp}/mb-qa-home.$$"
 # Do not mkdir. A refuse must leave this path absent.
-export METABROWSER_HOME="${QA_HOME}"
+export METABROWSER_CACHE_DIR="${QA_HOME}"
+export METABROWSER_CONFIG_DIR="${QA_HOME}-config"
 export REPO FILE_URL
-printf 'git=%s\nrepo=%s\nfile_url=%s\nhome=%s\n' "$(git version)" "${REPO}" "${FILE_URL}" "${METABROWSER_HOME}"
-test ! -e "${METABROWSER_HOME}"
+printf 'git=%s\nrepo=%s\nfile_url=%s\nhome=%s\n' "$(git version)" "${REPO}" "${FILE_URL}" "${METABROWSER_CACHE_DIR}"
+test ! -e "${METABROWSER_CACHE_DIR}"
 ```
 
 `FILE_URL` must be `file://` plus an absolute POSIX path (three slashes after the scheme
 when the path is `/…`).
 
-**Pass:** `METABROWSER_HOME` is a path that does not exist yet.
+**Pass:** `METABROWSER_CACHE_DIR` is a path that does not exist yet.
 `git version` is recorded.
 The floor is **not** changed when the installed Git is `2.43.0`.
 
-**Fail:** Using `~/.metabrowser`. Creating the home with `mkdir` or `mktemp -d` before
-the refuse steps (that hid a write-on-refuse hole).
+**Fail:** Using `~/.cache/metabrowser`. Creating the home with `mkdir` or `mktemp -d`
+before the refuse steps (that hid a write-on-refuse hole).
 Rewriting a below-floor Git to “make acquire work.”
 
 ### 0.3 Confirm the live CLI surface
@@ -621,7 +564,7 @@ These steps must run even when Git is below the floor.
 After each refuse, the scratch home must still be absent.
 
 ```shell
-test ! -e "${METABROWSER_HOME}"
+test ! -e "${METABROWSER_CACHE_DIR}"
 ```
 
 ### 2.1 ssh is not acquired
@@ -635,7 +578,7 @@ uv --config-file uv.toml run --frozen metab \
 
 **Pass:** Non-zero exit.
 stderr contains `ssh Git sources are not acquired yet`. No `acquired:`. No `Serving`.
-`test ! -e "${METABROWSER_HOME}"` still holds.
+`test ! -e "${METABROWSER_CACHE_DIR}"` still holds.
 
 **Fail:** Acquire proceeds; home is created; a 500; a wrong transport in the message
 (for example “not served” on `--no-serve`).
@@ -651,7 +594,7 @@ uv --config-file uv.toml run --frozen metab \
 
 **Pass:** Non-zero exit.
 `--show` says `ssh Git sources are not opened yet`. `--api /api/tree` says
-`ssh Git sources are not served yet`. `${METABROWSER_HOME}` is still absent.
+`ssh Git sources are not served yet`. `${METABROWSER_CACHE_DIR}` is still absent.
 
 **Fail:** Home created; pin attached; message claims the source was acquired.
 
@@ -666,7 +609,7 @@ for url in \
   'https://github.com/octo/demo/pull/0'; do
   uv --config-file uv.toml run --frozen metab "$url" --no-serve; echo "exit:$?"
 done
-test ! -e "${METABROWSER_HOME}"
+test ! -e "${METABROWSER_CACHE_DIR}"
 ```
 
 **Pass:** Each exits 1 with `invalid ROOT (<reason>): <message>`:
@@ -692,7 +635,7 @@ ssh serve: `ssh Git sources are not served yet` and “ssh stays closed.”
 Walk: `--walk runs the filesystem inventory walker` and names
 `--api '/api/tree?depth=N'`. `--allow-edits`:
 `--allow-edits is not available on an acquired Git source`. Nothing listens.
-`${METABROWSER_HOME}` is still absent.
+`${METABROWSER_CACHE_DIR}` is still absent.
 
 **Fail:** A server banner, a bound port, a walk dump, or a created home.
 
@@ -700,7 +643,7 @@ Walk: `--walk runs the filesystem inventory walker` and names
 
 ```shell
 uv --config-file uv.toml run --frozen metab "${FILE_URL}" --no-serve; echo "exit:$?"
-test ! -e "${METABROWSER_HOME}"
+test ! -e "${METABROWSER_CACHE_DIR}"
 ```
 
 On Git **2.43.7+** (or a patched newer track) this command is Phase 4, not a refuse.
@@ -709,12 +652,12 @@ On Git **2.43.0** (ubuntu default):
 **Pass:** Non-zero exit.
 stderr contains `unsupported Git version` and names the detected line plus the required
 floor (`2.43.7` / patched tracks).
-No `acquired:`. The `METABROWSER_HOME` path is still absent.
+No `acquired:`. The `METABROWSER_CACHE_DIR` path is still absent.
 This is a **known environment limit**, not a product bug, and not a reason to lower the
 floor.
 
-Repeat once with an empty directory already at `METABROWSER_HOME` (the `mktemp -d`
-case). The refuse must leave that directory empty: no `cache/`, no `config.yml`.
+Repeat once with an empty directory already at `METABROWSER_CACHE_DIR` (the `mktemp -d`
+case). The refusal must leave the cache empty and the configuration directory absent.
 
 The pin modes acquire through the same mapper, so repeat the refusal through them:
 
@@ -723,7 +666,7 @@ uv --config-file uv.toml run --frozen metab "${FILE_URL}" --show README.md; echo
 uv --config-file uv.toml run --frozen metab "${FILE_URL}" --api '/api/tree?depth=1'; echo "exit:$?"
 uv --config-file uv.toml run --frozen metab "${FILE_URL}" --check-api; echo "exit:$?"
 uv --config-file uv.toml run --frozen metab "${FILE_URL}" --no-open; echo "exit:$?"
-test ! -e "${METABROWSER_HOME}"
+test ! -e "${METABROWSER_CACHE_DIR}"
 ```
 
 **Pass:** The same one-line `unsupported Git version` error as `--no-serve`, with no
@@ -806,7 +749,7 @@ printf 'local\n' > "${QA_NAMES}/https:/github.com/octo/demo/issues/5/local.txt"
   metab 'https://github.com/octo/demo/issues/5' --walk; echo "exit:$?"
   metab 'https:/github.com/octo/demo/issues/5' --walk; echo "exit:$?"
 )
-test ! -e "${METABROWSER_HOME}"
+test ! -e "${METABROWSER_CACHE_DIR}"
 ```
 
 **Pass:** The first two exit 0: `file:notes` shows `README.md` as `kind: markdown` at
@@ -990,12 +933,12 @@ uv --config-file uv.toml run --frozen metab "${FILE_URL}" --no-serve
 **Pass:** Exit 0. On stdout, lines `acquired:`, `slug:`, `store: sha256:`, and
 `revision:`, with no `Serving` and no cache path, pack path, or `repository.git`. The
 second invocation prints the **same** identity (reuse).
-On stderr, the first invocation prints `cloning ${FILE_URL} into <scratch home>/cache`
-and then `cloned ${FILE_URL} in <seconds> s`, with the size received in parentheses for
-a repository of a hundred objects or more; on a terminal a single status line is redrawn
+On stderr, the first invocation prints `cloning ${FILE_URL} into <scratch cache>` and
+then `cloned ${FILE_URL} in <seconds> s`, with the size received in parentheses for a
+repository of a hundred objects or more; on a terminal a single status line is redrawn
 between the two, and in a pipe a whole status line appears only if the clone runs past
 ten seconds. The second prints one line,
-`using the clone of ${FILE_URL} cached in <scratch home>/cache, fetched less than a minute ago`,
+`using the clone of ${FILE_URL} cached in <scratch cache>, fetched less than a minute ago`,
 and no `cloning` line.
 Those lines are the only place a command’s output may name the scratch home, in this
 step and in every later one that clones or reuses the store; none names the store’s own
@@ -1017,7 +960,7 @@ uv --config-file uv.toml run --frozen metab . --api /api/cache/sources
 
 **Pass:** Each is HTTP 200. Layout `home` is `present` and `state` is `current`. Sources
 list the acquired slug as `published`. The local-root `--api` sees the same slug: cache
-routes resolve `METABROWSER_HOME`, not the served directory.
+routes resolve `METABROWSER_CACHE_DIR`, not the served directory.
 No cache filesystem path in the envelope.
 
 **Fail:** `/api/tree` data from the origin appearing on a cache-inspect route; a 500;
@@ -1037,7 +980,7 @@ uv --config-file uv.toml run --frozen metab "${FILE_URL}" --show src/metabrowser
 **Pass:** Exit 0. `show:` matches the argument.
 `route:` is `/view/` plus `g1-` tokens (unpadded base64url per segment).
 Kind/views match the blob: markdown docs, source for `main.py`. `model:` is a text
-envelope. No `Serving`. No `METABROWSER_HOME` path in stdout.
+envelope. No `Serving`. No `METABROWSER_CACHE_DIR` path in stdout.
 
 **Fail:** HTTP 500; filesystem `/view/README.md` without a `g1-` wire; “not a GitPath”;
 missing subject; serve leak.
@@ -1154,12 +1097,12 @@ The first command prints `acquired: https://github.com/octocat/hello-world`, the
 `selection: blob`, a `pin:` on `branch master`, `path: README`, and `lines: L1`. The
 second answers from the cache with the same revision and no clone.
 The first clone reports on stderr in every mode, in a pipe as on a terminal: the
-destination line, `cloning … into <scratch home>/cache`; then its progress, as one
-status line redrawn in place on a terminal and as a whole line at most every ten seconds
+destination line, `cloning … into <scratch cache>`; then its progress, as one status
+line redrawn in place on a terminal and as a whole line at most every ten seconds
 otherwise; then `cloned <url> in <time> (<size>)`. A cache hit prints one line,
-`using the clone of <url> cached in <scratch home>/cache, fetched <age>`, under
-`--no-serve` and when serving, and no clone line at all under `--show`, `--api`, and
-`--check-api`, so the second command says nothing of a clone.
+`using the clone of <url> cached in <scratch cache>, fetched <age>`, under `--no-serve`
+and when serving, and no clone line at all under `--show`, `--api`, and `--check-api`,
+so the second command says nothing of a clone.
 A signed-in `gh` is used only for github.com, and a public repository needs none.
 The smoke test calls the real `gh` only for the read-only size check; its clones run
 with a fake `gh` that answers nothing.
@@ -1192,8 +1135,8 @@ the terminal while it reports `receiving objects`, which the status line reaches
 seconds of `fetching every object`.
 
 **Pass:** No `git` or `git-remote-https` process for that URL remains
-(`ps -A -o pid,args | grep remote-https`), and the scratch home’s `cache/staging` is
-empty after the next `metab` command.
+(`ps -A -o pid,args | grep remote-https`), and the scratch home’s `staging` is empty
+after the next `metab` command.
 `kill <pid>` (SIGTERM) behaves the same and exits 143; under `nohup`, closing the
 terminal does not stop the clone.
 `tests/test_acquire_stall_and_hangup.py` asserts all three without a terminal.
@@ -1275,13 +1218,13 @@ uv --config-file uv.toml run --frozen metab "${FILE_URL}" --no-open --port 8471
 `Revision: <full commit> (<branch>)` with the `revision:` from 4.1 and this checkout’s
 current branch, then `Plugins: …`. stdout names no cache path.
 stderr names the cache directory and stops there:
-`using the clone of ${FILE_URL} cached in <scratch home>/cache, fetched …`, or on a
-first run the `cloning … into <scratch home>/cache` line and
-`cloned … in <time>; starting the server`. The process keeps serving.
+`using the clone of ${FILE_URL} cached in <scratch cache>, fetched …`, or on a first run
+the `cloning … into <scratch cache>` line and `cloned … in <time>; starting the server`.
+The process keeps serving.
 If the port was taken, use the one the banner names below.
 
-**Fail:** A refusal; a different revision; a `METABROWSER_HOME` path on stdout; a store,
-staging, or `repository.git` path on stderr.
+**Fail:** A refusal; a different revision; a `METABROWSER_CACHE_DIR` path on stdout; a
+store, staging, or `repository.git` path on stderr.
 
 Starting instead with `--path docs/` or `--path ./README.md` prints a URL ending in the
 directory’s `/view/g1-…/` or the file’s `/view/g1-…`; `--path nope.txt` exits 1 with
@@ -1306,8 +1249,8 @@ curl -s "$BASE/api/capabilities"; echo
   commit, `"ref": "refs/remotes/origin/<branch>"`, and `"ref_name": "<branch>"`. It
   names the mirror: `"name": "<name>"`, where `<name>` is the last segment of
   `${FILE_URL}` without a `.git` suffix; `"origin"` equal to `${FILE_URL}`; and
-  `"location": "<scratch home>/cache/repository-stores/<64 hex digits>/repository.git"`.
-  An origin or a scratch home under your home directory is shown with `~` (`file://~/…`,
+  `"location": "<scratch home>/repository-stores/<64 hex digits>/repository.git"`. An
+  origin or a scratch home under your home directory is shown with `~` (`file://~/…`,
   `~/…`).
 - `/raw?path=…` answers 200 with
   `content-security-policy: sandbox allow-popups allow-forms allow-downloads` (no
@@ -1347,9 +1290,9 @@ Open `http://127.0.0.1:8471/view/` in a browser, with its developer tools open.
    `<name>` or any part of the path narrows, and the file name is the last thing to
    shorten. In a terminal, `git -C <location> log --all --oneline | head -3` lists
    commits, and `curl -s "$BASE/api/source/status"` reports the same `name`, `origin`,
-   and `location`. One known defect (`mb-hj9h`): a name of about 24 characters or more
-   can lose its last letters to an ellipsis while the note still shows.
-   A checkout made by 0.1 is named `checkout` and does not show it.
+   and `location`. Repeat with a repository name of at least 24 characters: its width
+   must match the heading with the note removed, even at narrow widths.
+   A checkout made by 0.1 is named `checkout`, so also test a longer-named origin.
 3. The tree lists this repository’s top-level entries with sizes; folders expand.
    The filter bar has no recency filter and no “Show ignored” control, and neither has
    the root folder’s Overview.

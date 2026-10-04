@@ -53,39 +53,14 @@ $ metab --help
 │ --version          Show the installed version and exit.                      │
 │ --help             Show this message and exit.                               │
 ╰──────────────────────────────────────────────────────────────────────────────╯
-╭─ Modes (default: serve ROOT) ────────────────────────────────────────────────╮
-│ --walk                    Walk ROOT with the inventory walker and dump the   │
-│                           result (no server).                                │
-│ --diff             SPEC   Show a change set: BASE..TARGET, one revision      │
-│                           (against its first parent), or a .patch/.diff file │
-│                           under ROOT.                                        │
-│ --api              ROUTE  Issue one /api/ route through the real request     │
-│                           stack and print the normalized envelope (no        │
-│                           browser, no listening port).                       │
-│ --show             PATH   Report the four layers for one selection: route,   │
-│                           kind, views, and a model summary.                  │
-│ --check-api               Run the navigation API scenario without a browser  │
-│                           or listening port.                                 │
-│ --no-serve                Acquire a file:// or https:// Git source into the  │
-│                           cache without starting a server.                   │
-│ --remote           HOST   SSH into HOST, start metab there, and tunnel it to │
-│                           localhost. Pass the remote directory with --path.  │
-│ --plugins                 List every discovered plugin.                      │
-│ --plugin           NAME   Print the full resolved manifest for one plugin.   │
-│ --doctor                  Validate every discovered plugin; exit non-zero on │
-│                           any problem.                                       │
-╰──────────────────────────────────────────────────────────────────────────────╯
-╭─ Diff (--diff SPEC) ─────────────────────────────────────────────────────────╮
-│ --diff-patch        PATH  Print one changed file's hunks from the comparison │
-│                           (--diff only).                                     │
-│ --diff-check              Run the apply oracle: rebuild the target tree and  │
-│                           compare hashes (--diff only).                      │
-╰──────────────────────────────────────────────────────────────────────────────╯
-╭─ API (--api ROUTE) ──────────────────────────────────────────────────────────╮
-│ --data        FILE  Send FILE as the request body, making the request a POST │
-│                     (--api only).                                            │
-╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Shared by multiple modes (each option names its modes) ─────────────────────╮
+│ --cache-dir                PATH              Exact cache directory;          │
+│                                              overrides METABROWSER_CACHE_DIR │
+│                                              and XDG_CACHE_HOME.             │
+│ --config-dir               PATH              Exact configuration directory;  │
+│                                              overrides                       │
+│                                              METABROWSER_CONFIG_DIR and      │
+│                                              XDG_CONFIG_HOME.                │
 │ --path                     TEXT              Serve: relative path from ROOT  │
 │                                              to select on launch. Walk:      │
 │                                              subtree for a JSON/YAML         │
@@ -151,6 +126,38 @@ $ metab --help
 │                                              inventory to finish. Applies to │
 │                                              --api, --show, and --check-api. │
 │                                              [default: 60.0]                 │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Modes (default: serve ROOT) ────────────────────────────────────────────────╮
+│ --walk                    Walk ROOT with the inventory walker and dump the   │
+│                           result (no server).                                │
+│ --diff             SPEC   Show a change set: BASE..TARGET, one revision      │
+│                           (against its first parent), or a .patch/.diff file │
+│                           under ROOT.                                        │
+│ --api              ROUTE  Issue one /api/ route through the real request     │
+│                           stack and print the normalized envelope (no        │
+│                           browser, no listening port).                       │
+│ --show             PATH   Report the four layers for one selection: route,   │
+│                           kind, views, and a model summary.                  │
+│ --check-api               Run the navigation API scenario without a browser  │
+│                           or listening port.                                 │
+│ --no-serve                Acquire a file:// or https:// Git source into the  │
+│                           cache without starting a server.                   │
+│ --remote           HOST   SSH into HOST, start metab there, and tunnel it to │
+│                           localhost. Pass the remote directory with --path.  │
+│ --plugins                 List every discovered plugin.                      │
+│ --plugin           NAME   Print the full resolved manifest for one plugin.   │
+│ --doctor                  Validate every discovered plugin; exit non-zero on │
+│                           any problem.                                       │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Diff (--diff SPEC) ─────────────────────────────────────────────────────────╮
+│ --diff-patch        PATH  Print one changed file's hunks from the comparison │
+│                           (--diff only).                                     │
+│ --diff-check              Run the apply oracle: rebuild the target tree and  │
+│                           compare hashes (--diff only).                      │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ API (--api ROUTE) ──────────────────────────────────────────────────────────╮
+│ --data        FILE  Send FILE as the request body, making the request a POST │
+│                     (--api only).                                            │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Serve ──────────────────────────────────────────────────────────────────────╮
 │ --port        INTEGER RANGE [1<=x<=65535]  Server port. [default: 8411]      │

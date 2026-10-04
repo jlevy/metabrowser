@@ -25,12 +25,11 @@ type HomePresence = Literal["absent", "present"]
 type LayoutState = Literal[
     # No directory at the resolved application home.
     "absent",
-    # A home without cache/layout.yml and without cache entries a layout would describe.
+    # A home without layout.yml and without cache entries a layout would describe.
     "uninitialized",
     # The layout and config are this release's format.
     "current",
     # The layout is current and config.yml is missing or lags it: an unfinished migration.
-    "config_pending",
     # The layout is an older format this release migrates before reading entries.
     "migration_pending",
 ]
@@ -93,7 +92,7 @@ class CacheError(TypedDict):
     # home_not_private: the logical location and the violation, never an absolute path.
     location: NotRequired[str]
     violation: NotRequired[str]
-    # home_not_private: the fixed f01 location that failed, such as `cache/sources`, so
+    # home_not_private: the fixed f01 location that failed, such as `sources`, so
     # the user knows what to fix. Absent for anything else, and never a slug, a store
     # key, or a staging entry name.
     path: NotRequired[str]

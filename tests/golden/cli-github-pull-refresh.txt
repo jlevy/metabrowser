@@ -185,7 +185,7 @@ status: 200
   }
 }
 --- stderr ---
-cloning https://github.com/octo/demo into <HOME>/cache
+cloning https://github.com/octo/demo into <HOME>
 cloned https://github.com/octo/demo in 0.0 s
 selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
@@ -211,7 +211,7 @@ selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- stderr ---
-using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
+using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
 gh auth status
 gh api repos/octo/demo/pulls/7 (If-None-Match)
@@ -333,7 +333,7 @@ selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader; the refresh failed: gh could not reach api.github.com (network_error))
 --- stderr ---
-using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
+using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
 gh auth status
 gh api repos/octo/demo/pulls/7 (If-None-Match)
@@ -348,7 +348,7 @@ selection: pull_request
 pin: 8ae27617c9c475851b67ee69433d008836d112ba (pull request 8 head)
 pull_request: 8 (merged; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- stderr ---
-using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
+using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
 gh auth status
 gh api repos/octo/demo/pulls/8
@@ -369,7 +369,7 @@ selection: pull_request
 pin: 0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd (pull request 9 head)
 pull_request: 9 (closed; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- stderr ---
-using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
+using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
 gh auth status
 gh api repos/octo/demo/pulls/9
@@ -390,7 +390,7 @@ selection: pull_request
 pin: 7a7d6596e515735d244dc1d942463c95851e139c (pull request 10 head)
 pull_request: 10 (draft; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- stderr ---
-using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
+using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
 gh auth status
 gh api repos/octo/demo/pulls/10
@@ -530,7 +530,7 @@ selection: pull_request
 pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
 pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: GitHub has no such pull request, or it is private and the gh account cannot read it (not_found_or_private); the pin is the default branch)
 --- stderr ---
-using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
+using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
 gh auth status
 gh api repos/octo/demo/pulls/11
@@ -545,7 +545,7 @@ selection: pull_request
 pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
 pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: gh is not signed in to github.com; run gh auth login (not_logged_in); the pin is the default branch)
 --- stderr ---
-using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
+using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
 gh auth status
 # metab https://github.com/octo/demo/pull/11 --no-serve
@@ -559,7 +559,7 @@ selection: pull_request
 pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
 pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: this gh is too old to report its account; install gh 2.81.0 or newer (gh_too_old); the pin is the default branch)
 --- stderr ---
-using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
+using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
 gh auth status
 # metab https://github.com/octo/demo/pull/11 --no-serve
@@ -573,7 +573,7 @@ selection: pull_request
 pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
 pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: GitHub's API rate limit is exhausted until 2026-09-23T16:46:00Z (rate_limited); the pin is the default branch)
 --- stderr ---
-using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
+using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
 gh auth status
 gh api repos/octo/demo/pulls/11
@@ -588,7 +588,7 @@ selection: pull_request
 pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
 pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: GitHub's API rate limit is exhausted until 2026-09-17T12:02:00Z (rate_limited); the pin is the default branch)
 --- stderr ---
-using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
+using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
 gh auth status
 gh api repos/octo/demo/pulls/11
@@ -603,7 +603,7 @@ selection: pull_request
 pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
 pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: GitHub's API rate limit is exhausted; try again in a few minutes (rate_limited); the pin is the default branch)
 --- stderr ---
-using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
+using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
 gh auth status
 gh api repos/octo/demo/pulls/11
@@ -618,7 +618,7 @@ selection: pull_request
 pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
 pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: gh could not reach api.github.com (network_error); the pin is the default branch)
 --- stderr ---
-using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
+using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
 gh auth status
 gh api repos/octo/demo/pulls/11
@@ -664,7 +664,7 @@ selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader; the refresh failed: the origin has no such pull request, or the repository is private and could not be read (not_found_or_private))
 --- stderr ---
-using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
+using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
 gh auth status
 gh api repos/octo/demo/pulls/7 (If-None-Match)
@@ -685,7 +685,7 @@ selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader; the refresh failed: the active gh account changed during the read, so what was read is discarded; open it again (account_changed))
 --- stderr ---
-using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
+using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
 gh auth status
 gh api repos/octo/demo/pulls/7 (If-None-Match)
@@ -706,7 +706,7 @@ selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader; the refresh failed: its head kept moving while it was read; open it again (head_mismatch))
 --- stderr ---
-using the clone of https://github.com/octo/demo cached in <HOME>/cache, fetched less than a minute ago
+using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
 gh auth status
 gh api repos/octo/demo/pulls/7 (If-None-Match)

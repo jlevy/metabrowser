@@ -182,7 +182,7 @@ def test_config_keeps_unknown_settings_at_every_level() -> None:
         "format": "f01",
         "written_by": "0.11.0",
         "upgrades": [{"version": "0.11.0", "at": "2026-09-17T00:00:00Z", "note": "kept"}],
-        "cache": {"root": "~/.metabrowser/cache", "refresh": "manual"},
+        "cache": {"root": "~/.cache/metabrowser", "refresh": "manual"},
         "future_setting": [1, 2, 3],
     }
 

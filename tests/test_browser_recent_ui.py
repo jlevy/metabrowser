@@ -398,8 +398,7 @@ def test_change_during_recent_request_invalidates_the_snapshot() -> None:
     change_start = js.index("function fileStoreApplyChangeInner(ops)")
     change_block = js[change_start : change_start + 500]
     assert "recentContinuity.dirtyActiveRequest()" in change_block
-    snapshot_start = js.index("function fileStoreApplySnapshotInner(scope, entries)")
-    snapshot_block = js[snapshot_start : snapshot_start + 500]
+    snapshot_block = _function_source(js, "fileStoreApplySnapshotInner")
     assert "recentContinuity.dirtyActiveRequest()" in snapshot_block
 
     fetch_block = _function_source(js, "fetchRecent")

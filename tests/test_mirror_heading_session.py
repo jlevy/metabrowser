@@ -139,10 +139,10 @@ def _served(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         served["folder"] = _page(client, "filesystem")
     keys: list[str] = []
     for subject, name, home in (
-        ("mirror", "squares.git", user / ".metabrowser"),
+        ("mirror", "squares.git", user / ".cache" / "metabrowser"),
         ("hostile", _HOSTILE, user / _HOSTILE_HOME),
     ):
-        monkeypatch.setenv("METABROWSER_HOME", str(home))
+        monkeypatch.setenv("METABROWSER_CACHE_DIR", str(home))
         published = _acquire(origins / name, home)
         keys.append(published.store_key)
         serve_published(published)
@@ -173,14 +173,14 @@ def test_fixture_is_what_the_server_serves_for_a_folder_and_for_a_mirror(
         None,
     )
     for page, home, key in (
-        (mirror, ".metabrowser", STORE_KEY_STAND_INS[0]),
+        (mirror, ".cache/metabrowser", STORE_KEY_STAND_INS[0]),
         (hostile, _HOSTILE_HOME, STORE_KEY_STAND_INS[1]),
     ):
         status = page["status"]
         # The page and the status say the same thing: one is rendered from the other.
         assert page["dataset"]["servedRoot"] == status["name"]
         assert page["dataset"]["mirrorLocation"] == status["location"]
-        assert status["location"] == f"~/{home}/cache/repository-stores/{key}/repository.git"
+        assert status["location"] == f"~/{home}/repository-stores/{key}/repository.git"
         assert page["dataset"]["mirrorTip"] == (
             f"Mirror of {status['origin']} at {status['pin']}, stored in {status['location']}: "
             "a bare Git repository, with no checked-out files."
@@ -240,7 +240,7 @@ def test_the_session_names_a_mirror_and_says_where_it_is_kept() -> None:
     folder, mirror, hostile = run_session("mirror-heading-session.js")
 
     assert folder["mainHeading"]["file"]["text"] == "~/wrk/squares / docs / guide.md"
-    location = f"~/.metabrowser/cache/repository-stores/{STORE_KEY_STAND_INS[0]}/repository.git"
+    location = f"~/.cache/metabrowser/repository-stores/{STORE_KEY_STAND_INS[0]}/repository.git"
     pin = mirror["status"]["pin"]
     sentence = (
         f"Mirror of file://~/git/squares.git at {pin}, stored in {location}: "

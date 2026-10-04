@@ -125,7 +125,7 @@ _ENVIRONMENT_ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=.*", re.DOTALL)
 def _metab_parts(command: str) -> list[str]:
     """The words of a ``metab`` command, after any leading environment assignments.
 
-    A transcript sets per-command state such as ``METABROWSER_HOME=$PWD/home`` this way,
+    A transcript sets per-command state such as ``METABROWSER_CACHE_DIR=$PWD/home`` this way,
     because tryscript's frontmatter cannot name the sandbox path. Only assignments are
     skipped, so another program behind them is still not ``metab``.
     """

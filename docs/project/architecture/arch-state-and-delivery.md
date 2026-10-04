@@ -408,8 +408,11 @@ stream. The provider publishes bounded `ChangeBatch` invalidations to the coordi
 the application event bus performs one coherent reread and projects the result to each
 connected browser. With no browser connected, it advances the cursor without building
 wire records; a new connection always begins with a coherent snapshot.
-The event bus assembles bounded directory pages at one engine version and sparse-overlay
-boundary, then attaches the connection while delivery is serialized.
+A page the browser keeps for Back closes its connection, and opens a new one when it is
+restored, so a tab holds one connection however many pages its history keeps
+(`createPageConnections` in `static/navigation.js`). The event bus assembles bounded
+directory pages at one engine version and sparse-overlay boundary, then attaches the
+connection while delivery is serialized.
 A per-connection host-version floor suppresses a change already represented by the
 snapshot. Live changes newer than that floor are queued after attachment, so neither a
 stale delta nor an attach gap can occur.

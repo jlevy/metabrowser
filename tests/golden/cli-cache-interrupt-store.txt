@@ -3,7 +3,7 @@
 exit: SIGKILL
 --- stdout ---
 --- stderr ---
-cloning <ORIGIN-A> into <HOME>/cache
+cloning <ORIGIN-A> into <HOME>
 ## Nothing is published: one abandoned staging entry, no store, no source.
 # metab <ROOT> --api /api/cache/layout
 exit: 0
@@ -65,7 +65,7 @@ slug: <SLUG-A>
 store: <STORE-A>
 revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
 --- stderr ---
-cloning <ORIGIN-A> into <HOME>/cache
+cloning <ORIGIN-A> into <HOME>
 cloned <ORIGIN-A> in 0.0 s
 # metab <ROOT> --api /api/cache/layout
 exit: 0

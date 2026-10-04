@@ -627,6 +627,8 @@ function createShell(pathname, network, options = {}) {
     _scheduleInventoryReconnect() {},
     catalogFeedCanStart: false,
     inventoryEventSource: null,
+    pageConnections: { suspended: () => false },
+    lastInventorySnapshot: null,
     quickFileCatalogFeed: {
       start: () => {
         counters.catalogFeedStarts += 1;

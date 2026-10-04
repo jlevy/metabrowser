@@ -224,11 +224,11 @@ where a folder shows its name, and nothing said its files came out of the cache.
 - **Location.** The page says where the mirror is kept, with the home directory as `~`
   when the application home is under it and absolute otherwise, as a served folder’s
   path is. The directory named is the store’s bare repository,
-  `cache/repository-stores/<store-key>/repository.git`, and not the source’s directory
-  under `cache/sources/<slug>`. That directory carries the repository’s name, but it
-  holds a few small records and no Git object: its size is kilobytes and `git -C` fails
-  there. The bare repository is what every page is read from, what the clone’s size is,
-  and where `git -C <location> log --all` works.
+  `repository-stores/<store-key>/repository.git`, and not the source’s directory under
+  `sources/<slug>`. That directory carries the repository’s name, but it holds a few
+  small records and no Git object: its size is kilobytes and `git -C` fails there.
+  The bare repository is what every page is read from, what the clone’s size is, and
+  where `git -C <location> log --all` works.
   The name it lacks stands beside it.
 - **No folder is implied.** Nothing is checked out: each file is read from a Git object
   at the pinned commit.
@@ -298,6 +298,53 @@ another host. Neither holds:
 One known limit: the GitHub reducer lowercases the owner and repository so that every
 spelling of a URL shares one mirror, so a GitHub repository is named in lowercase
 (`hello-world` for `octocat/Hello-World`).
+
+## Cache and Configuration Directories
+
+**Status: implemented for v0.12; release validation tracked by the storage epic.**
+
+Metabrowser follows uv and fdu: macOS and Linux use the same XDG defaults.
+Cache and configuration have independent roots and lifecycles.
+
+| Purpose | Resolution order | Default |
+| --- | --- | --- |
+| Disposable repository cache | `--cache-dir`, `METABROWSER_CACHE_DIR`, `$XDG_CACHE_HOME/metabrowser`, default | `~/.cache/metabrowser` |
+| User configuration | `--config-dir`, `METABROWSER_CONFIG_DIR`, `$XDG_CONFIG_HOME/metabrowser`, default | `~/.config/metabrowser` |
+
+Application overrides name the exact directory; XDG variables name a base directory.
+Environment overrides must be nonempty absolute paths without `..` components.
+Relative CLI paths are anchored to the working directory.
+Resolution does not create directories.
+Plain local browsing does not initialize storage.
+
+The cache root directly contains `CACHEDIR.TAG`, `layout.yml`, `locks/`, `staging/`,
+`sources/`, and `repository-stores/`; there is no additional `cache/` directory.
+Every cache record is reconstructible from its source.
+Clearing a cache loses offline availability and fetched metadata, but must not erase
+configuration. Configuration lives in `config.yml` under the configuration root.
+It is initialized once by atomic create-only publication.
+Existing configuration, including comments and unknown settings, is not rewritten by
+cache creation or cache-layout migration.
+Cache and config format versions are independent.
+
+The roots must not overlap, including through symlinked ancestors, so cache deletion
+cannot remove configuration.
+Both roots retain owner-only permissions and the verified-ancestor, no-follow,
+bounded-read, and atomic-publication checks.
+Selecting a new location does not relax those checks.
+A cache location must support the lock and rename operations verified by the runtime
+probe.
+
+This is an intentional v0.12 break: `METABROWSER_HOME` and `~/.metabrowser` are no
+longer consulted. There is no alias, automatic migration, or fallback.
+Existing files are left untouched.
+A future durable data feature must choose a data directory explicitly rather than place
+irreplaceable state in the cache.
+
+The implementation is in `home.py`, `cache/paths.py`, and `cache/layout.py`.
+`tests/test_cache_layout.py` checks resolution, isolation, initialization, and format
+boundaries; the cache-route and CLI golden suites check observable behavior.
+See [uv storage](https://docs.astral.sh/uv/reference/storage/) for the convention.
 
 ## Shared Repository Store
 
@@ -470,7 +517,7 @@ no mirrored ref reaches it.
 The fetched head must be the head the API reported; one full re-read covers a push
 between the two, and a second mismatch is `head_mismatch`.
 
-The record lives at `cache/sources/<slug>/pulls/<n>.json`
+The record lives at `sources/<slug>/pulls/<n>.json`
 (`cache/paths.py: source_pull_record`), written by the home’s private atomic file write
 and read with a size bound.
 The source directory is enumerated by nothing, so the layout, probe, sweep, and
@@ -681,7 +728,7 @@ The fixed lock order is:
 Network work and long-running Git processes hold none of these locks, and a local
 checkout is never a lock target.
 A refresh instead holds its store’s fetch side lock,
-`cache/locks/stores/<store-key>.fetch.lock`, across the fetch.
+`locks/stores/<store-key>.fetch.lock`, across the fetch.
 It is only tried without blocking: a refresh that finds it busy reports that another
 refresh is running and does not wait.
 The Git processes that write the store inherit the lock’s descriptor, so it stays held
@@ -715,16 +762,16 @@ Every lock attempt uses its own `open()` of the lock file, and descriptors are n
 shared or duplicated between holders, even in one process: `flock` belongs to the open
 file description, and a request through a `dup()` of a held descriptor is granted
 instead of contending.
-No cache lock blocks the event loop, and `_acquire` in `cache/locks.py` refuses a
-blocking lock on a thread that runs one.
+No cache lock blocks the event loop, and `_acquire` in `locks.py` refuses a blocking
+lock on a thread that runs one.
 Opening the cache and publication each run as one synchronous section in a worker thread
 and release their locks before returning.
 The lock order, the side locks, the lock sequences, and the startup sweep’s state
 machine are `tests/fixtures/repository-cache/state-machines.json`, and production
 replays each of them.
 `tests/test_repository_cache_contract_fixtures.py` runs the sequences through
-`cache/locks.py`, and `tests/test_cache_reclaim.py` checks every transition the real
-sweep reports, with the locks it holds, against the machine.
+`locks.py`, and `tests/test_cache_reclaim.py` checks every transition the real sweep
+reports, with the locks it holds, against the machine.
 
 ### Acquisition and refresh state machines
 
@@ -745,7 +792,7 @@ publication holds the alias lock and the store lock together.
 
 | From | Event | To | Locks held | Network | Effect |
 | --- | --- | --- | --- | --- | --- |
-| `absent` | `claim_staging` | `staging_claimed` | `staging_entry` | no | Take `cache/locks/staging/<entry>.lock`, then create `cache/staging/<entry>/` on the cache filesystem. |
+| `absent` | `claim_staging` | `staging_claimed` | `staging_entry` | no | Take `locks/staging/<entry>.lock`, then create `staging/<entry>/` on the cache filesystem. |
 | `staging_claimed` | `lookup_remote_head` | `head_observed` | `staging_entry` | yes | `git ls-remote --symref origin HEAD` records the remote default branch and its object ID. |
 | `staging_claimed` | `remote_unavailable` | `abandoned` | `staging_entry` | no | Typed failure; staging deleted. |
 | `head_observed` | `fetch_started` | `fetching` | `staging_entry` | yes | `init --bare --template=`, Metabrowser-written config with automatic maintenance and gc off, then one fetch of every object with explicit refspecs; no low-speed bound until acquisition stalls are measured, so user cancellation is the guard. |
@@ -790,7 +837,7 @@ under it only to rewrite `state.yml`.
 
 | From | Event | To | Locks held | Network | Effect |
 | --- | --- | --- | --- | --- | --- |
-| `published` | `take_fetch_lock` | `fetch_locked` | `store_fetch` | no | Try `cache/locks/stores/<store-key>.fetch.lock` without blocking. |
+| `published` | `take_fetch_lock` | `fetch_locked` | `store_fetch` | no | Try `locks/stores/<store-key>.fetch.lock` without blocking. |
 | `published` | `fetch_lock_busy` | `refreshing_elsewhere` | none | no | Another holder is refreshing the store; report it and fetch nothing. |
 | `fetch_locked` | `remove_stale_locks` | `locks_cleaned` | `store_fetch` | no | Remove `packed-refs.lock`, `refs/**.lock`, temporary loose objects, and temporary packs a killed Git left in the store. Every writer of the store holds this lock, through the descriptor it inherited, so none of them is live. |
 | `locks_cleaned` | `lookup_remote_head` | `head_observed` | `store_fetch` | yes | `git ls-remote --symref -- origin HEAD` records which branch the origin’s HEAD names. |
@@ -864,7 +911,7 @@ in [Views, Models, and Routes](arch-views-models-routes.md).
 | Revision tree | `git/tree_source.py`: `GitPath`, `GitTreeSource`, `GitRevisionSubject`, `list_tree`, `read_blob`; shared per-store `cat-file --batch-command --buffer` pool (`MAX_BATCH_READERS_PER_STORE`); `git/content_routes.py`: file, raw, tree, catalog, `split_git_container_wire`, and extension plugin kinds | Enumerate NUL-framed byte-safe full-OID trees and read size-gated blobs from a `RepositoryStoreTarget` with no materialization. `GitPath` wires are the identity on every route that accepts one, and blob kinds come from extension, basename, sniffed adapter, and bounded JSON/YAML/frontmatter mappings. The per-route projections are in [Git and Comparison Sources](arch-git-and-comparison-sources.md) |
 | Repository store | `cache/repository_store.py`: `open_revision`; `cache/records.py`: source aliases and store state; `cache/acquire.py`: `acquire_source`; `cache/reclaim.py`: staging sweep | `open_revision` checks that a commit is in the published store and returns its `GitRevisionSubject`, writing nothing and holding no lock. Acquisition fetches every object of a `file://` or `https://` source and publishes the store and its alias under the alias and store locks. Nothing deletes a published store |
 | Serving a pin | `source.py`: `serve_subject_opener`, `lifespan_subject`, `attach_owned_subject`, `close_owned_subject`; `server.py`: `_lifespan`, `_pin_label_html`; `cli/git_pin_cli.py`: `run_serve_pin`; `source_routes.py`: `source_status` | Serve mode acquires, resolves what the URL selects, proves that pin opens, and hands the server an opener, because a pin’s batch readers belong to the event loop that started them. The application lifespan opens the pin in the serving loop before the inventory reads the subject, attaches it, and closes whichever pin is served at shutdown; each start opens a fresh pin. `/api/source/status` and the navigation heading report the pin and the ref it was resolved from, a pull-request URL’s number, and for a served mirror the repository’s name, its origin, and where the mirror is kept ([What a mirror’s page is called](#what-a-mirrors-page-is-called-and-where-it-says-it-is-kept)). On a served pin the cache routes and the `/raw/<path>` form answer `unsupported_for_subject`, and the untrusted profile is forced |
-| Refresh and pin switching | `cache/origin.py`: `ls_remote_head_args`, `mirror_fetch_args`, `mirror_prune_args`, `classify_remote_failure`; `cache/update.py`: `update_store`, `remove_interrupted_fetch_leftovers`; `cache/locks.py`: `store_fetch_lock`; `cache/resolve.py`: `resolve_pin`, `resolve_selection`, `ref_tip`, `list_mirror_refs`; `cache/served_mirror.py`: `StoreMirror`, `repository_name`, `display_directory`; `mirror_refresh.py`: `RefreshCoordinator`, `MirrorSession`, `serve_mirror`, `lifespan_refresh`; `source.py`: `replace_owned_subject`; `source_routes.py`: `api_source_refresh`, `api_source_pin`, `api_source_refs`, `view_on_pin`, `SourcePinGuard`; `static/source-freshness.js`, `static/source-pin-guard.js`, `static/source-ref-selector.js` | One fetch per refresh under the store’s fetch side lock, from the source’s URL, with typed outcomes, which the Git processes inherit so it stays held while any of them runs. The coordinator keeps background jobs on the application state keyed by store key, joins concurrent requests, runs at most two at once, and cancels them at shutdown; a Ctrl-C kills their process groups before it exits. Status freshness is answered from memory. One resolver serves URL opening and the pin route: exact ref names from one `for-each-ref` (branch, then tag, then commit ID). The ref selector lists the mirror’s branches or tags from one more `for-each-ref`, filtered and bounded in the route, and a switch that names the page’s `/view/` address answers where that page goes on the new pin. A pin replaces the served subject under a new generation, attaching the new subject before closing the old, so no request meets a moment with nothing served. In a server, a selection the mirror lacks starts one background fetch and answers `selection_pending`, then the switch or not found; a URL selection the mirror lacked at startup is served when that fetch brings it, under a new generation like any switch. The lifespan’s opener is left alone, so a restart serves the pin the banner announced. Serve mode refreshes a stale mirror once at startup and follows a refresh another process is running until it ends; one-shot modes never fetch unless asked. Any failure of the atomic fetch is followed by a prune of stale refs on their own and one more try, which clears a ref clash (`side` becoming `side/x`, a case-only rename) however Git words it; a clash that remains on a case-insensitive store, or a fetch that folded one ref into its case twin, puts every ref back and is `ref_case_collision`. A page on a pin names the commit it shows on its `fetch` data requests (`static/source-pin-guard.js`), and `SourcePinGuard` refuses another commit with `pin_changed`; the commit rather than the session generation is the token because a generation restarts at 1 in every server process. Back and forward bring such a page back from the browser’s caches without asking, so on a history landing the same script asks the status route once and reloads the page, at most once, when another commit is served; the page stays cacheable, so a landing with nothing switched keeps the back/forward cache and its scroll position. A commit pinned by ID is served under the ref last served, or the served pull request’s head ref, when it is that ref’s tip, so a switch away and back by ID stays on the ref |
+| Refresh and pin switching | `cache/origin.py`: `ls_remote_head_args`, `mirror_fetch_args`, `mirror_prune_args`, `classify_remote_failure`; `cache/update.py`: `update_store`, `remove_interrupted_fetch_leftovers`; `locks.py`: `store_fetch_lock`; `cache/resolve.py`: `resolve_pin`, `resolve_selection`, `ref_tip`, `list_mirror_refs`; `cache/served_mirror.py`: `StoreMirror`, `repository_name`, `display_directory`; `mirror_refresh.py`: `RefreshCoordinator`, `MirrorSession`, `serve_mirror`, `lifespan_refresh`; `source.py`: `replace_owned_subject`; `source_routes.py`: `api_source_refresh`, `api_source_pin`, `api_source_refs`, `view_on_pin`, `SourcePinGuard`; `static/source-freshness.js`, `static/source-pin-guard.js`, `static/source-ref-selector.js` | One fetch per refresh under the store’s fetch side lock, from the source’s URL, with typed outcomes, which the Git processes inherit so it stays held while any of them runs. The coordinator keeps background jobs on the application state keyed by store key, joins concurrent requests, runs at most two at once, and cancels them at shutdown; a Ctrl-C kills their process groups before it exits. Status freshness is answered from memory. One resolver serves URL opening and the pin route: exact ref names from one `for-each-ref` (branch, then tag, then commit ID). The ref selector lists the mirror’s branches or tags from one more `for-each-ref`, filtered and bounded in the route, and a switch that names the page’s `/view/` address answers where that page goes on the new pin. A pin replaces the served subject under a new generation, attaching the new subject before closing the old, so no request meets a moment with nothing served. In a server, a selection the mirror lacks starts one background fetch and answers `selection_pending`, then the switch or not found; a URL selection the mirror lacked at startup is served when that fetch brings it, under a new generation like any switch. The lifespan’s opener is left alone, so a restart serves the pin the banner announced. Serve mode refreshes a stale mirror once at startup and follows a refresh another process is running until it ends; one-shot modes never fetch unless asked. Any failure of the atomic fetch is followed by a prune of stale refs on their own and one more try, which clears a ref clash (`side` becoming `side/x`, a case-only rename) however Git words it; a clash that remains on a case-insensitive store, or a fetch that folded one ref into its case twin, puts every ref back and is `ref_case_collision`. A page on a pin names the commit it shows on its `fetch` data requests (`static/source-pin-guard.js`), and `SourcePinGuard` refuses another commit with `pin_changed`; the commit rather than the session generation is the token because a generation restarts at 1 in every server process. Back and forward bring such a page back from the browser’s caches without asking, so on a history landing the same script asks the status route once and reloads the page, at most once, when another commit is served; the page stays cacheable, so a landing with nothing switched keeps the back/forward cache and its scroll position. A commit pinned by ID is served under the ref last served, or the served pull request’s head ref, when it is that ref’s tip, so a switch away and back by ID stays on the ref |
 | Remote discovery | `repository_context.py`: `discover_repository_context` | Read a checkout’s `origin` remote and `HEAD` without running Git, so a provider candidate can be recognized before any network work |
 | Providers and GitHub URLs | `cache/providers.py`: `RepositoryProvider`, `url_reducers`, `provider_git_config`, `check_first_clone`, `repository_context_for`, `open_pull_request`; `builtin_plugins/github/`: `GithubUrlReducer`, `GithubProvider`, `run_gh`; `cache/urls.py`: `RepositorySelection`, `ReducerRejection` | Core names no provider. The GitHub reducer turns web, raw, and SSH URLs into the canonical source plus a selection, or a typed refusal; the provider supplies the `gh` credential helper, the first-clone size check, a mirror’s `repository_context`, and the head a pull-request URL pins |
 | Pull-request records | `builtin_plugins/github/gh.py`: `gh_api`, `gh_account`; `builtin_plugins/github/pulls.py`: `refresh_pull_request`, `open_pull_request`; `builtin_plugins/github/pull_record.py`: `PullRecord`, `read_pull_record`, `write_pull_record`; `builtin_plugins/github/sidekick.py`: `pull_handler`, `pull_refresh_handler`; `builtin_plugins/github/pull_route.py`: `served_pull_envelope`; `builtin_plugins/github/served_pull.py`: `ServedPull`; `mirror_refresh.py`: `CompanionRefresh`; `cache/pull_refs.py`: `fetch_pull_head`, `comparison_endpoints` | Read a pull request with bounded, conditional `gh api` pages, fetch `refs/pull/<n>/head` under the store’s fetch side lock, compute the merge-base endpoints, and keep one record per pull request; serve it from the cache alone, and refresh it in the refresh coordinator beside the mirror. See [Pull-request records](#pull-request-records) |

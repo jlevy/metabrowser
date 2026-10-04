@@ -94,7 +94,7 @@ def _acquire(origin: Path, home: Path) -> PublishedSource:
 
 def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     home = tmp_path / "home"
-    monkeypatch.setenv("METABROWSER_HOME", str(home))
+    monkeypatch.setenv("METABROWSER_CACHE_DIR", str(home))
     _allow_installed_git(monkeypatch)
     origin = build_origin(tmp_path)
     ids = commits(origin)

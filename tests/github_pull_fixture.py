@@ -613,7 +613,7 @@ def build_home(directory: Path) -> None:
         return local if source.normalized == CANONICAL else source.normalized
 
     os.environ.update(environment)
-    os.environ["METABROWSER_HOME"] = str(directory / "home")
+    os.environ["METABROWSER_CACHE_DIR"] = str(directory / "home")
     os.environ["METABROWSER_LOG_LEVEL"] = "ERROR"
     with (
         _patched(acquire, "remote_url_for", remote_url_for),
@@ -661,7 +661,7 @@ def serve_stand_in(directory: Path, number: int, port: int) -> None:
 
     answers = json.loads((directory / "fake-gh-scenario.json").read_text(encoding="utf-8"))
     os.environ.update(install_fake_gh(directory, answers))
-    os.environ["METABROWSER_HOME"] = str(directory / "home")
+    os.environ["METABROWSER_CACHE_DIR"] = str(directory / "home")
     local = (directory / "github-pull-origin.git").as_uri()
     version, _raw = detect_git_version()
 

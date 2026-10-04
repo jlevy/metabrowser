@@ -781,7 +781,7 @@ def test_a_route_command_may_set_its_environment_before_metab(
     _write_golden(
         golden_dir,
         "environment.tryscript.md",
-        "```console\n$ METABROWSER_HOME=$PWD/home metab root --api /api/tree\n{}\n```\n",
+        "```console\n$ METABROWSER_CACHE_DIR=$PWD/home metab root --api /api/tree\n{}\n```\n",
     )
     monkeypatch.setattr(check_parity, "GOLDEN_DIR", golden_dir)
     monkeypatch.setattr(
@@ -796,8 +796,8 @@ def test_a_route_command_may_set_its_environment_before_metab(
 @pytest.mark.parametrize(
     "command",
     [
-        "METABROWSER_HOME=$PWD/home printf /api/tree",
-        "METABROWSER_HOME=$PWD/home",
+        "METABROWSER_CACHE_DIR=$PWD/home printf /api/tree",
+        "METABROWSER_CACHE_DIR=$PWD/home",
         "--api=/api/tree metab root --api /api/rollup",
     ],
 )

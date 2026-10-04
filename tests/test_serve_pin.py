@@ -165,7 +165,7 @@ def _body(tmp_path: Path, body: object) -> str:
 
 def _home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     home = tmp_path / "home"
-    monkeypatch.setenv("METABROWSER_HOME", str(home))
+    monkeypatch.setenv("METABROWSER_CACHE_DIR", str(home))
     _allow_installed_git(monkeypatch)
     return home
 
@@ -318,7 +318,7 @@ def test_a_pin_that_fails_to_reopen_in_the_server_exits_without_a_traceback(
         calls.append(kwargs["commit_oid"])
         if len(calls) == 1:
             return await open_revision(**kwargs)
-        raise GitUnavailableError(f"repository store is not a directory: {home}/cache/x")
+        raise GitUnavailableError(f"repository store is not a directory: {home}/x")
 
     monkeypatch.setattr("metabrowser.cli.git_pin_cli.open_revision", second_open_fails)
     code, stdout, stderr = _run_serve([origin.url, "--no-open"])
@@ -519,17 +519,17 @@ def test_the_status_and_the_page_say_where_the_mirror_is_kept(
     # by default, and the origin, as a repository of their own would be. So an answer
     # that spelled the home directory out anywhere would be caught below.
     user = tmp_path.resolve() / "user"
-    home = user / ".metabrowser"
+    home = user / ".cache" / "metabrowser"
     origin = _origin(user / "git")
     assert origin.url == f"file://{user}/git/origin.git"
     monkeypatch.setenv("HOME", str(user))
-    monkeypatch.setenv("METABROWSER_HOME", str(home))
+    monkeypatch.setenv("METABROWSER_CACHE_DIR", str(home))
     _allow_installed_git(monkeypatch)
     result = _serve(origin.url)
     assert result.exit_code == 0, result.output
 
-    (store,) = (home / "cache" / "repository-stores").iterdir()
-    location = f"~/.metabrowser/cache/repository-stores/{store.name}/repository.git"
+    (store,) = (home / "repository-stores").iterdir()
+    location = f"~/.cache/metabrowser/repository-stores/{store.name}/repository.git"
     shown_origin = "file://~/git/origin.git"
     # It is what it is said to be: a bare repository, with the pinned commit in it.
     assert (store / "repository.git" / "HEAD").is_file()
@@ -589,7 +589,7 @@ def test_the_api_mode_prints_where_the_mirror_is_kept(
     home = _home(tmp_path, monkeypatch)
     origin = _origin(tmp_path)
     store_key = origin_identity(origin.url).store_id.removeprefix("sha256:")
-    location = str(home / "cache" / "repository-stores" / store_key / "repository.git")
+    location = str(home / "repository-stores" / store_key / "repository.git")
 
     status = ok([origin.url, "--api", "/api/source/status"])
     assert status.payload()["location"] == location
@@ -1037,7 +1037,7 @@ def test_a_served_pin_reads_nothing_outside_its_own_store(
     # not under the user's home directory here, so the location is absolute and the
     # sweep below would find the home in any answer that named it.
     store_key = origin_identity(origin.url).store_id.removeprefix("sha256:")
-    location = str(home / "cache" / "repository-stores" / store_key / "repository.git")
+    location = str(home / "repository-stores" / store_key / "repository.git")
     assert Path(location, "HEAD").is_file()
     mirror = _ServedMirror(
         origin=origin.url,

@@ -32,37 +32,37 @@ terminal. The last test shows that no command created the application home.
 ## Test: pages that are not repository views are refused by shape
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/issues/5 --no-serve
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/issues/5 --no-serve
 Error: invalid ROOT (unsupported_github_url): GitHub issues pages are not opened; open the repository at https://github.com/octo/demo
 ? 1
 ```
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/some-token-like-text --no-serve
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/some-token-like-text --no-serve
 Error: invalid ROOT (unsupported_github_url): this GitHub page is not opened; open the repository at https://github.com/octo/demo
 ? 1
 ```
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/blob/topic --show README.md
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/blob/topic --show README.md
 Error: invalid ROOT (unsupported_github_url): a blob URL names a ref and a file; open https://github.com/octo/demo
 ? 1
 ```
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab https://github.com/octo --no-serve
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo --no-serve
 Error: invalid ROOT (unsupported_github_url): github.com/octo is an account page, not a repository
 ? 1
 ```
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab https://github.com/ --no-serve
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/ --no-serve
 Error: invalid ROOT (unsupported_github_url): github.com itself is not a repository; open https://github.com/<owner>/<repository>
 ? 1
 ```
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab https://github.com/settings/profile --no-serve
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/settings/profile --no-serve
 Error: invalid ROOT (reserved_owner): github.com/settings is a GitHub page, not a repository
 ? 1
 ```
@@ -70,19 +70,19 @@ Error: invalid ROOT (reserved_owner): github.com/settings is a GitHub page, not 
 ## Test: http, other ports, and SSH users
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab http://github.com/octo/demo --no-serve
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab http://github.com/octo/demo --no-serve
 Error: invalid ROOT (insecure_http): GitHub is opened over https; use https://github.com/octo/demo
 ? 1
 ```
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab https://github.com:8443/octo/demo --no-serve
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com:8443/octo/demo --no-serve
 Error: invalid ROOT (unsupported_port): GitHub answers on its standard port; use https://github.com/octo/demo
 ? 1
 ```
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab deploy@github.com:octo/demo.git --no-serve
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab deploy@github.com:octo/demo.git --no-serve
 Error: invalid ROOT (invalid_user): GitHub's SSH address uses the user git
 ? 1
 ```
@@ -90,25 +90,25 @@ Error: invalid ROOT (invalid_user): GitHub's SSH address uses the user git
 ## Test: owners, repositories, pull requests, and commits that are not valid
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab https://github.com/o_o/demo --no-serve
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/o_o/demo --no-serve
 Error: invalid ROOT (invalid_owner): the owner is not a GitHub account name
 ? 1
 ```
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab 'https://github.com/octo/de$mo' --no-serve
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab 'https://github.com/octo/de$mo' --no-serve
 Error: invalid ROOT (invalid_repository): the repository name is not a GitHub repository name
 ? 1
 ```
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/0 --no-serve
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/0 --no-serve
 Error: invalid ROOT (invalid_pull_request): a pull request URL names a positive number; open the repository at https://github.com/octo/demo
 ? 1
 ```
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/commit/not-hex --no-serve
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/commit/not-hex --no-serve
 Error: invalid ROOT (invalid_commit_id): a commit URL names a commit ID of 7 to 64 hexadecimal digits; open the repository at https://github.com/octo/demo
 ? 1
 ```
@@ -116,19 +116,19 @@ Error: invalid ROOT (invalid_commit_id): a commit URL names a commit ID of 7 to 
 ## Test: the generic checks still apply to a claimed URL
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab https://ghp_example@github.com/octo/demo --no-serve
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://ghp_example@github.com/octo/demo --no-serve
 Error: invalid ROOT (credentials_in_url): the URL carries credentials
 ? 1
 ```
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/tree/topic/%2e%2e/x --no-serve
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/tree/topic/%2e%2e/x --no-serve
 Error: invalid ROOT (dot_segment): the URL path has a '.' or '..' segment
 ? 1
 ```
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/tree/topic%2Fx --no-serve
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/tree/topic%2Fx --no-serve
 Error: invalid ROOT (encoded_delimiter): the URL path encodes a path separator
 ? 1
 ```
@@ -147,13 +147,13 @@ invisible characters such as the Hangul filler, which makes `README<U+3164>.md` 
 and private-use code points, and control characters.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab "https://github.com/octo/demo/blob/topic/a$(printf '\302\240')b.md" --no-serve
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab "https://github.com/octo/demo/blob/topic/a$(printf '\302\240')b.md" --no-serve
 Error: invalid ROOT (control_or_whitespace): the URL contains U+00A0, a whitespace character; if it belongs in the address, write it as %C2%A0
 ? 1
 ```
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab "https://github.com/octo/demo/blob/topic/README$(printf '\343\205\244').md" --no-serve
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab "https://github.com/octo/demo/blob/topic/README$(printf '\343\205\244').md" --no-serve
 Error: invalid ROOT (non_ascii): the URL contains U+3164, an invisible character; if it belongs in the address, write it as %E3%85%A4
 ? 1
 ```
@@ -163,7 +163,7 @@ This is the one command here whose refusal depends on the argument reaching the 
 byte for byte: a command line that trimmed it would open the file.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab 'https://github.com/octo/demo/blob/topic/a.md ' --no-serve
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab 'https://github.com/octo/demo/blob/topic/a.md ' --no-serve
 Error: invalid ROOT (control_or_whitespace): the URL ends with a space; remove it
 ? 1
 ```
@@ -172,7 +172,7 @@ A `%` that starts no percent escape is refused: a browser sends it as it is and 
 its meaning to the server, so a literal `%` is written `%25`.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab 'https://github.com/octo/demo/blob/topic/100%.md' --no-serve
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab 'https://github.com/octo/demo/blob/topic/100%.md' --no-serve
 Error: invalid ROOT (invalid_percent_encoding): the URL has a % not followed by two hexadecimal digits; write a literal % as %25
 ? 1
 ```

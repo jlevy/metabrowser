@@ -436,6 +436,18 @@ def _metab(
         ),
         show_default=False,
     ),
+    cache_dir: Path | None = typer.Option(
+        None,
+        "--cache-dir",
+        help="Exact cache directory; overrides METABROWSER_CACHE_DIR and XDG_CACHE_HOME.",
+        rich_help_panel=_PANEL_SHARED,
+    ),
+    config_dir: Path | None = typer.Option(
+        None,
+        "--config-dir",
+        help="Exact configuration directory; overrides METABROWSER_CONFIG_DIR and XDG_CONFIG_HOME.",
+        rich_help_panel=_PANEL_SHARED,
+    ),
     # ── Mode selectors ─────────────────────────────────────────────
     walk: bool = typer.Option(
         False,
@@ -763,6 +775,21 @@ def _metab(
     --plugin, --doctor.
     Remote serving: --remote.
     """
+    for variable, directory in (
+        ("METABROWSER_CACHE_DIR", cache_dir),
+        ("METABROWSER_CONFIG_DIR", config_dir),
+    ):
+        if directory is not None:
+            previous = os.environ.get(variable)
+
+            def restore(name: str = variable, value: str | None = previous) -> None:
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
+
+            ctx.call_on_close(restore)
+            os.environ[variable] = str(directory.absolute())
     mode = _resolve_mode(
         ctx,
         walk=walk,

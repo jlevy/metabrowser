@@ -4,6 +4,24 @@ All notable changes to Metabrowser are documented here.
 
 ## 0.12.0 (unreleased)
 
+- **Breaking:** Cache and configuration now use separate XDG locations on macOS and
+  Linux: `~/.cache/metabrowser` and `~/.config/metabrowser/config.yml`. Use
+  `--cache-dir` / `METABROWSER_CACHE_DIR` and `--config-dir` / `METABROWSER_CONFIG_DIR`
+  for exact overrides.
+  `METABROWSER_HOME` and the old home layout are no longer read; existing files are left
+  untouched. Cache initialization preserves configuration.
+
+Page lifecycle:
+
+- A folder page kept for Back releases its inventory and live-log event streams,
+  preventing repeated page loads from exhausting the browser’s connection limit.
+  Restoring it reopens those streams once, preserves filter controls and their focus,
+  and reconciles changed content without inserting unfiltered folder rows.
+- Unchanged reconnect snapshots avoid parsing and repainting the tree, and catalog
+  reconnects use explicit ETag validation.
+  A live log deleted or truncated while the page was away stops showing as live on
+  return.
+
 Plugin SDK:
 
 - **Breaking:** `PLUGIN_SDK_VERSION` is now `0.7`. The shared copy and Load more
@@ -212,7 +230,7 @@ GitHub URLs and HTTPS:
 - A first clone says where it goes and shows that it is running, in every mode that
   clones. A clone of a 740 MB repository used to print two lines and then nothing for 100
   seconds, and nothing at all when stderr was not a terminal, so it looked hung.
-  Now stderr names the cache directory once (`cloning <url> into ~/.metabrowser/cache`),
+  Now stderr names the cache directory once (`cloning <url> into ~/.cache/metabrowser`),
   then reports Git’s own progress with the elapsed time
   (`receiving objects: 45%, 334.0 MiB at 9.5 MiB/s (40 s)`), and ends with
   `cloned <url> in 104 s (742.0 MiB)`, to which serve mode adds that the server starts
@@ -227,7 +245,7 @@ GitHub URLs and HTTPS:
   printable as its escape (`\x1b`, `\r`), so an origin’s escape sequence is read and not
   obeyed. Before, it was written to the terminal as it came.
   A source that is already cloned says so in one line in serve mode and `--no-serve`
-  (`using the clone of <url> cached in ~/.metabrowser/cache, fetched 3 hours ago`), so a
+  (`using the clone of <url> cached in ~/.cache/metabrowser, fetched 3 hours ago`), so a
   second run reads differently from a first; `--show`, `--api`, and `--check-api` stay
   silent on a cache hit.
   stdout is unchanged.
@@ -235,12 +253,12 @@ GitHub URLs and HTTPS:
 - A page served from a mirror is headed by the repository’s name, and says where the
   mirror is kept. Opening `https://github.com/jlevy/squares` used to head the main view
   with the full commit ID (`fe6399451f1c… / README.md`), and nothing on the page said
-  the files came out of `~/.metabrowser`. Now the navigation heading reads
+  the files came out of `~/.cache/metabrowser`. Now the navigation heading reads
   `squares main fe6399451f1c` and the main heading `squares / README.md`: the name a
   checkout of the repository would have, by one rule for every `https://` and `file://`
   origin and for a pull request, with the ref and the short commit beside it.
   A control after the short commit copies the full one.
-  The main heading ends with `mirror in ~/.metabrowser/cache/repository-stores/…` when
+  The main heading ends with `mirror in ~/.cache/metabrowser/repository-stores/…` when
   the pane has room for it, and the tooltip on the name, on that note, and on the
   navigation heading says what the directory is:
   `Mirror of <origin> at <commit>, stored in <location>: a bare Git repository, with no checked-out files.`
@@ -422,11 +440,11 @@ Repository cache:
   config formats, abandoned staging entries the next sweep removes, sources with their
   alias generation and publication state, and stores with the aliases that name them.
   Reach them with `metab <root> --api /api/cache/layout` like any other route.
-  They resolve `METABROWSER_HOME`, or `~/.metabrowser`, on each request and change
-  nothing: a missing home reports `absent` rather than being created, an entry other
-  users can reach is reported as `not_private` rather than tightened, and a home other
-  users can access, or one a newer release wrote, is refused with a typed error that
-  names the fixed cache directory to fix and no path of yours.
+  They resolve `METABROWSER_CACHE_DIR`, or `~/.cache/metabrowser`, on each request and
+  change nothing: a missing home reports `absent` rather than being created, an entry
+  other users can reach is reported as `not_private` rather than tightened, and a home
+  other users can access, or one a newer release wrote, is refused with a typed error
+  that names the fixed cache directory to fix and no path of yours.
   Sources and stores are paged with `limit` and `after`, 25 rows by default and 100 at
   most; no response reports a cache path, pack file, or Git internal.
 
@@ -667,7 +685,7 @@ Repository cache:
   Read routes do not sweep.
   A cache that an earlier v0.12 development build wrote is not migrated: every `file://`
   mode refuses it with one message, without a traceback or a path, saying to move the
-  cache directory aside or set `METABROWSER_HOME` to a different directory.
+  cache directory aside or set `METABROWSER_CACHE_DIR` to a different directory.
   A `file://` acquire that the Git version floor refuses does not create the application
   home, including when that path already exists as an empty directory; a cache hit still
   reuses a published store without fetching, including against an application home the

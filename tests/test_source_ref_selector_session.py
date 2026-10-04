@@ -65,7 +65,7 @@ def _view(display: str) -> str:
 
 
 def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
-    monkeypatch.setenv("METABROWSER_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("METABROWSER_CACHE_DIR", str(tmp_path / "home"))
     _allow_installed_git(monkeypatch)
     origin = build_origin(tmp_path)
     published = asyncio.run(acquire_source(_file_source(origin), home=tmp_path / "home"))

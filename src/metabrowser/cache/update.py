@@ -19,7 +19,7 @@ Locks follow the refresh machine in
 ``docs/project/architecture/arch-repository-sources-and-provider-mirrors.md``:
 
 - the network work holds no hierarchy lock;
-- the store's fetch side lock, ``cache/locks/stores/<store-key>.fetch.lock``, is tried
+- the store's fetch side lock, ``locks/stores/<store-key>.fetch.lock``, is tried
   without blocking and held across the fetch. The Git processes that write the store
   inherit its descriptor, so the lock stays held for as long as any of them runs, even
   if this process dies first. Busy therefore means a live refresh, here or elsewhere,

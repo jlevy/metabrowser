@@ -96,67 +96,67 @@ def _run_killed_at_rename(home: Path, body: str) -> subprocess.CompletedProcess[
 
 
 def test_an_atomic_write_replaces_the_whole_file_with_a_private_one(home: Path) -> None:
-    write_private_file_atomic(home, "cache/example.yml", b"first\n")
-    first_inode = os.lstat(home / "cache/example.yml").st_ino
-    write_private_file_atomic(home, "cache/example.yml", b"second\n")
+    write_private_file_atomic(home, "example.yml", b"first\n")
+    first_inode = os.lstat(home / "example.yml").st_ino
+    write_private_file_atomic(home, "example.yml", b"second\n")
 
-    assert (home / "cache/example.yml").read_bytes() == b"second\n"
-    assert os.lstat(home / "cache/example.yml").st_ino != first_inode
-    assert _mode(home / "cache/example.yml") == 0o600
-    assert _temporaries(home / "cache") == []
+    assert (home / "example.yml").read_bytes() == b"second\n"
+    assert os.lstat(home / "example.yml").st_ino != first_inode
+    assert _mode(home / "example.yml") == 0o600
+    assert _temporaries(home) == []
 
 
 def test_a_no_replace_write_refuses_an_existing_file_and_leaves_no_temporary(home: Path) -> None:
-    write_private_file_atomic(home, "cache/example.yml", b"first\n", replace=False)
+    write_private_file_atomic(home, "example.yml", b"first\n", replace=False)
 
     with pytest.raises(FileExistsError):
-        write_private_file_atomic(home, "cache/example.yml", b"second\n", replace=False)
+        write_private_file_atomic(home, "example.yml", b"second\n", replace=False)
 
-    assert (home / "cache/example.yml").read_bytes() == b"first\n"
-    assert _temporaries(home / "cache") == []
+    assert (home / "example.yml").read_bytes() == b"first\n"
+    assert _temporaries(home) == []
 
 
 def test_an_atomic_write_needs_an_existing_private_parent(home: Path) -> None:
     with pytest.raises(FileNotFoundError):
-        write_private_file_atomic(home, "cache/missing/example.yml", b"x")
-    assert not (home / "cache/missing").exists()
+        write_private_file_atomic(home, "missing/example.yml", b"x")
+    assert not (home / "missing").exists()
 
 
 def test_a_write_killed_before_its_rename_leaves_the_previous_record(home: Path) -> None:
-    write_private_file_atomic(home, "cache/example.yml", b"old\n")
+    write_private_file_atomic(home, "example.yml", b"old\n")
 
     result = _run_killed_at_rename(
         home,
         """
-        home_module.write_private_file_atomic(home, "cache/example.yml", b"new\\n")
+        home_module.write_private_file_atomic(home, "example.yml", b"new\\n")
         print("rename did not run")
         """,
     )
 
     assert result.returncode == -9, result.stderr
-    assert (home / "cache/example.yml").read_bytes() == b"old\n"
-    (leftover,) = _temporaries(home / "cache")
+    assert (home / "example.yml").read_bytes() == b"old\n"
+    (leftover,) = _temporaries(home)
     assert leftover.startswith(".example.yml.")
-    assert (home / "cache" / leftover).read_bytes() == b"new\n"
+    assert (home / leftover).read_bytes() == b"new\n"
 
-    write_private_file_atomic(home, "cache/example.yml", b"newer\n")
+    write_private_file_atomic(home, "example.yml", b"newer\n")
 
-    assert (home / "cache/example.yml").read_bytes() == b"newer\n"
-    assert _temporaries(home / "cache") == []
+    assert (home / "example.yml").read_bytes() == b"newer\n"
+    assert _temporaries(home) == []
 
 
 def test_a_live_writers_temporary_is_never_removed(home: Path) -> None:
-    live = home / "cache/.example.yml.0123456789abcdef.tmp"
+    live = home / ".example.yml.0123456789abcdef.tmp"
     fd = home_module.open_private_file(
-        home, "cache/.example.yml.0123456789abcdef.tmp", os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        home, ".example.yml.0123456789abcdef.tmp", os.O_WRONLY | os.O_CREAT | os.O_EXCL
     )
     try:
         fcntl.flock(fd, fcntl.LOCK_EX)
-        write_private_file_atomic(home, "cache/example.yml", b"content\n")
+        write_private_file_atomic(home, "example.yml", b"content\n")
         assert live.exists()
     finally:
         os.close(fd)
-    write_private_file_atomic(home, "cache/example.yml", b"content\n")
+    write_private_file_atomic(home, "example.yml", b"content\n")
     assert not live.exists()
 
 
@@ -208,52 +208,52 @@ def test_a_file_system_that_ignores_the_no_replace_flag_falls_back_to_the_check(
 
 
 def test_publication_moves_a_staged_entry_under_its_owning_lock(home: Path) -> None:
-    ensure_private_directory(home, "cache/staging/acquire-1/store")
-    (home / "cache/staging/acquire-1/store/marker").write_text("complete")
+    ensure_private_directory(home, "staging/acquire-1/store")
+    (home / "staging/acquire-1/store/marker").write_text("complete")
 
     with staging_entry_lock(home, "acquire-1"), repository_store_lock(home, STORE_KEY) as owner:
         publish_entry(
             home,
-            "cache/staging/acquire-1/store",
-            f"cache/repository-stores/{STORE_KEY}",
+            "staging/acquire-1/store",
+            f"repository-stores/{STORE_KEY}",
             owner=owner,
         )
 
-    assert (home / f"cache/repository-stores/{STORE_KEY}/marker").read_text() == "complete"
-    assert not (home / "cache/staging/acquire-1/store").exists()
+    assert (home / f"repository-stores/{STORE_KEY}/marker").read_text() == "complete"
+    assert not (home / "staging/acquire-1/store").exists()
 
 
 def test_publication_refuses_an_existing_target_even_an_empty_one(home: Path) -> None:
-    ensure_private_directory(home, "cache/staging/acquire-1/store")
-    ensure_private_directory(home, f"cache/repository-stores/{STORE_KEY}")
+    ensure_private_directory(home, "staging/acquire-1/store")
+    ensure_private_directory(home, f"repository-stores/{STORE_KEY}")
 
     with repository_store_lock(home, STORE_KEY) as owner, pytest.raises(FileExistsError):
         publish_entry(
             home,
-            "cache/staging/acquire-1/store",
-            f"cache/repository-stores/{STORE_KEY}",
+            "staging/acquire-1/store",
+            f"repository-stores/{STORE_KEY}",
             owner=owner,
         )
 
-    assert (home / "cache/staging/acquire-1/store").is_dir()
+    assert (home / "staging/acquire-1/store").is_dir()
 
 
 def test_publication_requires_its_owning_lock_to_be_held(home: Path) -> None:
-    ensure_private_directory(home, "cache/staging/acquire-1/store")
+    ensure_private_directory(home, "staging/acquire-1/store")
     owner = repository_store_lock(home, STORE_KEY)
     owner.release()
 
     with pytest.raises(LockOrderError, match="owning lock"):
         publish_entry(
             home,
-            "cache/staging/acquire-1/store",
-            f"cache/repository-stores/{STORE_KEY}",
+            "staging/acquire-1/store",
+            f"repository-stores/{STORE_KEY}",
             owner=owner,
         )
 
 
 def test_a_publication_killed_at_its_rename_leaves_only_reclaimable_staging(home: Path) -> None:
-    ensure_private_directory(home, "cache/staging/acquire-1/store")
+    ensure_private_directory(home, "staging/acquire-1/store")
 
     result = _run_killed_at_rename(
         home,
@@ -263,15 +263,15 @@ def test_a_publication_killed_at_its_rename_leaves_only_reclaimable_staging(home
         staging = locks.staging_entry_lock(home, "acquire-1")
         owner = locks.repository_store_lock(home, {STORE_KEY!r})
         atomic.publish_entry(
-            home, "cache/staging/acquire-1/store", "cache/repository-stores/{STORE_KEY}", owner=owner
+            home, "staging/acquire-1/store", "repository-stores/{STORE_KEY}", owner=owner
         )
         print("rename did not run")
         """,
     )
 
     assert result.returncode == -9, result.stderr
-    assert not (home / f"cache/repository-stores/{STORE_KEY}").exists()
-    assert (home / "cache/staging/acquire-1/store").is_dir()
+    assert not (home / f"repository-stores/{STORE_KEY}").exists()
+    assert (home / "staging/acquire-1/store").is_dir()
     # The operating system released the killed owner's locks.
     staging_entry_lock(home, "acquire-1").release()
     repository_store_lock(home, STORE_KEY, blocking=False).release()
@@ -283,49 +283,46 @@ def test_a_publication_killed_at_its_rename_leaves_only_reclaimable_staging(home
 def test_records_round_trip_without_a_schema_path(home: Path) -> None:
     layout = CacheLayout(format="f01", created_by="0.11.0")
 
-    write_record_atomic(home, "cache/layout.yml", layout, CACHE_LAYOUT_CONTRACT_ID)
+    write_record_atomic(home, "layout.yml", layout, CACHE_LAYOUT_CONTRACT_ID)
 
-    assert read_record(home, "cache/layout.yml", CACHE_LAYOUT_CONTRACT_ID) == layout
-    text = (home / "cache/layout.yml").read_text()
+    assert read_record(home, "layout.yml", CACHE_LAYOUT_CONTRACT_ID) == layout
+    text = (home / "layout.yml").read_text()
     assert text.startswith("layout:\n") or text.startswith("softschema:\n")
     assert "\n  schema:" not in text
-    assert (
-        serialize_record(layout, CACHE_LAYOUT_CONTRACT_ID)
-        == (home / "cache/layout.yml").read_bytes()
-    )
+    assert serialize_record(layout, CACHE_LAYOUT_CONTRACT_ID) == (home / "layout.yml").read_bytes()
 
 
 def test_a_record_read_in_the_wrong_slot_is_refused_without_naming_its_path(home: Path) -> None:
     write_record_atomic(
         home,
-        "cache/layout.yml",
+        "layout.yml",
         CacheLayout(format="f01", created_by="0.11.0"),
         CACHE_LAYOUT_CONTRACT_ID,
     )
 
     with pytest.raises(RecordError) as refused:
-        read_record(home, "cache/layout.yml", REPOSITORY_STORE_STATE_CONTRACT_ID)
+        read_record(home, "layout.yml", REPOSITORY_STORE_STATE_CONTRACT_ID)
 
     assert str(home) not in str(refused.value)
-    assert refused.value.path == home / "cache/layout.yml"
+    assert refused.value.path == home / "layout.yml"
 
     # A source's state and a store's share the envelope `state`, so this pair is refused
     # by its contract alone.
     write_record_atomic(
         home,
-        "cache/state.yml",
+        "state.yml",
         RepositorySourceState(last_opened_at="2026-09-17T12:00:00Z"),
         REPOSITORY_SOURCE_STATE_CONTRACT_ID,
     )
     with pytest.raises(RecordError, match="does not match its expected contract"):
-        read_record(home, "cache/state.yml", REPOSITORY_STORE_STATE_CONTRACT_ID)
+        read_record(home, "state.yml", REPOSITORY_STORE_STATE_CONTRACT_ID)
 
 
 def test_an_oversized_record_is_refused_before_it_is_parsed(home: Path) -> None:
-    write_private_file_atomic(home, "cache/layout.yml", b"#" * (MAX_RECORD_BYTES + 1))
+    write_private_file_atomic(home, "layout.yml", b"#" * (MAX_RECORD_BYTES + 1))
 
     with pytest.raises(RecordError, match="larger"):
-        read_bytes_bounded(home, "cache/layout.yml")
+        read_bytes_bounded(home, "layout.yml")
 
 
 @pytest.mark.parametrize(
@@ -340,10 +337,10 @@ def test_an_oversized_record_is_refused_before_it_is_parsed(home: Path) -> None:
     ids=["malformed", "custom-tag", "extra-top-level-key"],
 )
 def test_malformed_records_are_refused(home: Path, payload: bytes) -> None:
-    write_private_file_atomic(home, "cache/layout.yml", payload)
+    write_private_file_atomic(home, "layout.yml", payload)
 
     with pytest.raises(RecordError):
-        read_record(home, "cache/layout.yml", CACHE_LAYOUT_CONTRACT_ID)
+        read_record(home, "layout.yml", CACHE_LAYOUT_CONTRACT_ID)
 
 
 def _fsync_targets(monkeypatch: pytest.MonkeyPatch) -> list[tuple[int, int]]:
@@ -373,25 +370,25 @@ def test_an_atomic_write_syncs_the_new_file_and_its_directory(
 
     synced = _fsync_targets(monkeypatch)
 
-    write_private_file_atomic(home, "cache/example.yml", b"content\n")
+    write_private_file_atomic(home, "example.yml", b"content\n")
 
-    assert _identity(home / "cache/example.yml") in synced
-    assert _identity(home / "cache") in synced
+    assert _identity(home / "example.yml") in synced
+    assert _identity(home) in synced
 
 
 def test_publication_syncs_both_directories_it_changed(
     home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    ensure_private_directory(home, "cache/staging/acquire-1/store")
+    ensure_private_directory(home, "staging/acquire-1/store")
     synced = _fsync_targets(monkeypatch)
 
     with repository_store_lock(home, STORE_KEY) as owner:
         publish_entry(
             home,
-            "cache/staging/acquire-1/store",
-            f"cache/repository-stores/{STORE_KEY}",
+            "staging/acquire-1/store",
+            f"repository-stores/{STORE_KEY}",
             owner=owner,
         )
 
-    assert _identity(home / "cache/repository-stores") in synced
-    assert _identity(home / "cache/staging/acquire-1") in synced
+    assert _identity(home / "repository-stores") in synced
+    assert _identity(home / "staging/acquire-1") in synced

@@ -213,10 +213,10 @@ server; the next one serves the default branch again.
 ## Acquiring a Git source: `--no-serve`
 
 `--no-serve` fetches every object of an `https://` or `file://` source into the
-repository cache under `METABROWSER_HOME` (default `~/.metabrowser`) and prints the
-source slug, store identity, and revision, without binding a port or opening a browser.
-The store is a complete, read-only clone, so later reads never need the origin.
-ssh stays closed.
+repository cache under `METABROWSER_CACHE_DIR` (default `~/.cache/metabrowser`) and
+prints the source slug, store identity, and revision, without binding a port or opening
+a browser. The store is a complete, read-only clone, so later reads never need the
+origin. ssh stays closed.
 
 ```shell
 metab file:///path/to/origin.git --no-serve
@@ -231,12 +231,12 @@ A first clone of a large repository runs for minutes, so every mode that clones 
 stderr where the clone goes, how far it has got, and when it is done:
 
 ```text
-cloning https://github.com/owner/repo into ~/.metabrowser/cache
+cloning https://github.com/owner/repo into ~/.cache/metabrowser
 cloning https://github.com/owner/repo: receiving objects: 45%, 334.0 MiB at 9.5 MiB/s (40 s)
 cloned https://github.com/owner/repo in 104 s (742.0 MiB); starting the server
 ```
 
-- The first line names the cache directory of `METABROWSER_HOME`, with your home
+- The first line names the cache directory of `METABROWSER_CACHE_DIR`, with your home
   directory as `~`. It is the directory that holds every clone, and the one to measure
   or move aside.
 - On a terminal the middle line is one status line, redrawn in place: the phase, then
@@ -257,7 +257,7 @@ dropped rather than waited for, and a stderr that has been closed does not chang
 exit status.
 
 When the source is already cloned, serve mode and `--no-serve` say so in one line,
-`using the clone of <url> cached in ~/.metabrowser/cache, fetched 3 hours ago`, and
+`using the clone of <url> cached in ~/.cache/metabrowser, fetched 3 hours ago`, and
 start no clone. `--show`, `--api`, and `--check-api` print nothing for a cache hit: a
 script runs them many times against one clone, and `/api/source/status` reports the last
 fetch as data.
@@ -274,7 +274,7 @@ heading reads `squares / README.md`.
 
 The page also says where the mirror is kept.
 When the pane has room, the main heading ends with a note,
-`mirror in ~/.metabrowser/cache/repository-stores/…`; the tooltip on the name, on the
+`mirror in ~/.cache/metabrowser/repository-stores/…`; the tooltip on the name, on the
 note, and on the navigation heading gives the origin, the full commit, and the whole
 path. That directory is a bare Git repository: nothing is checked out, and each page is
 read from a Git object at the pinned commit, so no folder holds these files.
@@ -293,7 +293,7 @@ metab https://github.com/owner/repo --api /api/source/status
   A `file://` address under your home directory is shown with `~`:
   `file://~/git/squares.git`.
 - `location` is the mirror’s bare repository, with your home directory as `~` when
-  `METABROWSER_HOME` is under it, and absolute when it is not.
+  `METABROWSER_CACHE_DIR` is under it, and absolute when it is not.
 
 `location` is the only place a route’s answer names a path in the cache.
 File content, listings, errors, and every other envelope name none.
@@ -414,7 +414,7 @@ Spellings that normalize to the same address, such as `FILE://localhost/path/` a
 `file:///path`, are one source.
 
 Inspect cache state from any local root after an acquire: the cache routes resolve
-`METABROWSER_HOME` independently of the served directory.
+`METABROWSER_CACHE_DIR` independently of the served directory.
 
 ```shell
 metab ./notes --api /api/cache/sources
@@ -465,10 +465,10 @@ Refusals that concern the application home say how to repair it:
 
 | Message begins | Repair |
 | --- | --- |
-| `METABROWSER_HOME is set but empty`, `METABROWSER_HOME must be an absolute path` | Unset it, or set it to an absolute path |
-| `The Metabrowser application home is accessible to other users` | Run `chmod 700` on it, or use another `METABROWSER_HOME` |
-| `An entry in the Metabrowser application home cannot be verified` | Restore the current user’s write permission, or use another `METABROWSER_HOME` |
-| `This Metabrowser application home uses format` | Upgrade Metabrowser, or use another `METABROWSER_HOME` |
+| `METABROWSER_CACHE_DIR is set but empty`, `METABROWSER_CACHE_DIR must be an absolute path` | Unset it, or set it to an absolute path |
+| `The Metabrowser application home is accessible to other users` | Run `chmod 700` on it, or use another `METABROWSER_CACHE_DIR` |
+| `An entry in the Metabrowser application home cannot be verified` | Restore the current user’s write permission, or use another `METABROWSER_CACHE_DIR` |
+| `This Metabrowser application home uses format` | Upgrade Metabrowser, or use another `METABROWSER_CACHE_DIR` |
 
 A home other users can read refuses cache hits as well as new acquisitions.
 A home the current user cannot write still reuses cached sources and refuses only new
@@ -491,7 +491,7 @@ metab ./notes --api '/api/file?path=README.md'
 metab ./notes --api '/api/tree?depth=2&types=.md'
 metab ./notes --api '/api/git/log?limit=5'
 
-# Repository cache state in METABROWSER_HOME (default ~/.metabrowser), which is
+# Repository cache state in METABROWSER_CACHE_DIR (default ~/.cache/metabrowser), which is
 # reported as absent rather than created when it does not exist.
 metab ./notes --api /api/cache/layout
 metab ./notes --api '/api/cache/sources?limit=20'
@@ -633,6 +633,22 @@ what is covered is in
 
 For agents and scripts, that means the answer to “what does Metabrowser think this file
 is” is one command with structured output, and does not require a browser.
+
+## Storage locations
+
+On macOS and Linux, cached repositories live in `~/.cache/metabrowser` and user
+configuration in `~/.config/metabrowser/config.yml`. Use `--cache-dir DIR` or
+`METABROWSER_CACHE_DIR` for an exact cache location, and `--config-dir DIR` or
+`METABROWSER_CONFIG_DIR` for an exact configuration location.
+Flags take precedence over environment variables.
+Otherwise `XDG_CACHE_HOME` and `XDG_CONFIG_HOME` select the corresponding base
+directories, with `/metabrowser` appended.
+
+Environment overrides must be nonempty absolute paths without `..` components.
+CLI paths may be relative to the current directory.
+Ordinary folder browsing does not create these directories.
+Cache creation preserves existing configuration.
+Version 0.12 does not read `METABROWSER_HOME` or migrate `~/.metabrowser`.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

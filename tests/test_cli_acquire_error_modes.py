@@ -106,7 +106,7 @@ def test_git_failures_during_acquisition_are_the_same_cli_error_in_every_mode(
         _assert_path_free(result.stdout, tmp_path, home)
         # The clone had said where it was going, which is the user's own cache
         # directory; nothing after that line names the staging entry or the store.
-        assert result.stderr == f"cloning {url} into {home}/cache\n"
+        assert result.stderr == f"cloning {url} into {home}\n"
         assert list((home / STAGING).iterdir()) == []
         assert list((home / SOURCES).iterdir()) == []
         messages[kind] = message
@@ -149,7 +149,7 @@ def test_below_floor_git_is_refused_in_every_mode_without_writing_the_home(
     home = tmp_path / "home"
     if home_exists:
         home.mkdir()
-    monkeypatch.setenv("METABROWSER_HOME", str(home))
+    monkeypatch.setenv("METABROWSER_CACHE_DIR", str(home))
 
     def refuse() -> tuple[int, int, int]:
         raise UnsupportedGitVersionError("git version 2.39.5", "2.43.7")
@@ -226,7 +226,7 @@ def test_log_level_debug_prints_a_pin_open_failure(
 def _plant_an_earlier_build_record(home: Path) -> None:
     """Rewrite the store records the way an earlier v0.12 development build wrote them."""
 
-    (store,) = (home / "cache" / "repository-stores").iterdir()
+    (store,) = (home / "repository-stores").iterdir()
     record = store / "store.yml"
     text = record.read_text(encoding="utf-8")
     record.write_text(
@@ -256,7 +256,7 @@ def test_a_home_an_earlier_build_wrote_is_one_repair_message_in_every_mode(
     assert isinstance(result.exception.__cause__, RecordError)
     message = str(result.exception)
     assert "earlier v0.12 development build" in message
-    assert "METABROWSER_HOME" in message
+    assert "METABROWSER_CACHE_DIR" in message
     _assert_path_free(message, tmp_path, home)
     _assert_path_free(result.output, tmp_path, home)
     assert sorted(str(path.relative_to(home)) for path in home.rglob("*")) == before

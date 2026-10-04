@@ -37,7 +37,7 @@ Each command is its own process, so a pin switch lasts for that command only.
 refresh moves the ref.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab file://$PWD/origin.git --api /api/source/status
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab file://$PWD/origin.git --api /api/source/status
 api: /api/source/status
 status: 200
 {
@@ -48,7 +48,7 @@ status: 200
   "ref_name": "topic",
   "name": "origin",
   "origin": "file://[CWD]/origin.git",
-  "location": "[APP_HOME]/cache/repository-stores/[STORE_KEY]/repository.git",
+  "location": "[APP_HOME]/repository-stores/[STORE_KEY]/repository.git",
   "refreshable": true,
   "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
   "ref_on_origin": true,
@@ -80,7 +80,7 @@ reader’s is, with `~`. The origin is outside it and stays as given.
 The store’s key is derived from the origin’s address, which is the sandbox’s.
 
 ```console
-$ HOME=$PWD/home METABROWSER_HOME=$PWD/home metab file://$PWD/origin.git --api /api/source/status
+$ HOME=$PWD/home METABROWSER_CACHE_DIR=$PWD/home metab file://$PWD/origin.git --api /api/source/status
 api: /api/source/status
 status: 200
 {
@@ -91,7 +91,7 @@ status: 200
   "ref_name": "topic",
   "name": "origin",
   "origin": "file://[CWD]/origin.git",
-  "location": "~/cache/repository-stores/[STORE_KEY]/repository.git",
+  "location": "~/repository-stores/[STORE_KEY]/repository.git",
   "refreshable": true,
   "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
   "ref_on_origin": true,
@@ -116,7 +116,7 @@ The branch resolves in the mirror, the served subject is replaced, and the gener
 moves.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab file://$PWD/origin.git --api /api/source/pin --data pin-feature.json
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab file://$PWD/origin.git --api /api/source/pin --data pin-feature.json
 api: /api/source/pin
 status: 200
 {
@@ -129,7 +129,7 @@ status: 200
     "ref_name": "feature",
     "name": "origin",
     "origin": "file://[CWD]/origin.git",
-    "location": "[APP_HOME]/cache/repository-stores/[STORE_KEY]/repository.git",
+    "location": "[APP_HOME]/repository-stores/[STORE_KEY]/repository.git",
     "refreshable": true,
     "latest": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
     "ref_on_origin": true,
@@ -152,7 +152,7 @@ status: 200
 ## Test: pinning an annotated tag serves the commit it names
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab file://$PWD/origin.git --api /api/source/pin --data pin-tag.json
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab file://$PWD/origin.git --api /api/source/pin --data pin-tag.json
 api: /api/source/pin
 status: 200
 {
@@ -165,7 +165,7 @@ status: 200
     "ref_name": "v1",
     "name": "origin",
     "origin": "file://[CWD]/origin.git",
-    "location": "[APP_HOME]/cache/repository-stores/[STORE_KEY]/repository.git",
+    "location": "[APP_HOME]/repository-stores/[STORE_KEY]/repository.git",
     "refreshable": true,
     "latest": "fcb9d63c3c8533d1b929861f451a066e6d4f2d9e",
     "ref_on_origin": true,
@@ -191,7 +191,7 @@ A commit pinned by ID that is not the tip of the ref served has no ref, so there
 `latest` to compare with.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab file://$PWD/origin.git --api /api/source/pin --data pin-oid.json
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab file://$PWD/origin.git --api /api/source/pin --data pin-oid.json
 api: /api/source/pin
 status: 200
 {
@@ -204,7 +204,7 @@ status: 200
     "ref_name": null,
     "name": "origin",
     "origin": "file://[CWD]/origin.git",
-    "location": "[APP_HOME]/cache/repository-stores/[STORE_KEY]/repository.git",
+    "location": "[APP_HOME]/repository-stores/[STORE_KEY]/repository.git",
     "refreshable": true,
     "latest": null,
     "ref_on_origin": null,
@@ -232,7 +232,7 @@ came back by ID is on the branch again, with a `latest` to compare with.
 Here the ID is the served branch’s own tip, so nothing changes.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab file://$PWD/origin.git --api /api/source/pin --data pin-tip-oid.json
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab file://$PWD/origin.git --api /api/source/pin --data pin-tip-oid.json
 api: /api/source/pin
 status: 200
 {
@@ -245,7 +245,7 @@ status: 200
     "ref_name": "topic",
     "name": "origin",
     "origin": "file://[CWD]/origin.git",
-    "location": "[APP_HOME]/cache/repository-stores/[STORE_KEY]/repository.git",
+    "location": "[APP_HOME]/repository-stores/[STORE_KEY]/repository.git",
     "refreshable": true,
     "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
     "ref_on_origin": true,
@@ -268,7 +268,7 @@ status: 200
 ## Test: pinning what is already served changes nothing
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab file://$PWD/origin.git --api /api/source/pin --data pin-same.json
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab file://$PWD/origin.git --api /api/source/pin --data pin-same.json
 api: /api/source/pin
 status: 200
 {
@@ -281,7 +281,7 @@ status: 200
     "ref_name": "topic",
     "name": "origin",
     "origin": "file://[CWD]/origin.git",
-    "location": "[APP_HOME]/cache/repository-stores/[STORE_KEY]/repository.git",
+    "location": "[APP_HOME]/repository-stores/[STORE_KEY]/repository.git",
     "refreshable": true,
     "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
     "ref_on_origin": true,
@@ -304,7 +304,7 @@ status: 200
 ## Test: a name the mirror does not have is not found
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab file://$PWD/origin.git --api /api/source/pin --data pin-missing.json
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab file://$PWD/origin.git --api /api/source/pin --data pin-missing.json
 api: /api/source/pin
 status: 404
 {
@@ -323,7 +323,7 @@ starts no fetch, and a served page asks for one itself through
 `POST /api/source/refresh`.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab file://$PWD/origin.git --api /api/git/commit/0123456789abcdef0123456789abcdef01234567
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab file://$PWD/origin.git --api /api/git/commit/0123456789abcdef0123456789abcdef01234567
 api: /api/git/commit/0123456789abcdef0123456789abcdef01234567
 status: 404
 {
@@ -340,7 +340,7 @@ Error: /api/git/commit/0123456789abcdef0123456789abcdef01234567 returned HTTP 40
 and not a commit ID, so it never reaches Git.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab file://$PWD/origin.git --api /api/source/pin --data pin-syntax.json
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab file://$PWD/origin.git --api /api/source/pin --data pin-syntax.json
 api: /api/source/pin
 status: 400
 {
@@ -358,7 +358,7 @@ Branches list by name after the default branch; `current` marks the ref the serv
 serves.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab file://$PWD/origin.git --api /api/source/refs
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab file://$PWD/origin.git --api /api/source/refs
 api: /api/source/refs
 status: 200
 {
@@ -392,7 +392,7 @@ status: 200
 ## Test: tags list newest first, peeled to the commit they name
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab file://$PWD/origin.git --api "/api/source/refs?kind=tag"
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab file://$PWD/origin.git --api "/api/source/refs?kind=tag"
 api: /api/source/refs?kind=tag
 status: 200
 {
@@ -421,7 +421,7 @@ status: 200
 Both branches contain a `t`; the page holds one of them, so `truncated` is true.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab file://$PWD/origin.git --api "/api/source/refs?q=T&limit=1"
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab file://$PWD/origin.git --api "/api/source/refs?q=T&limit=1"
 api: /api/source/refs?q=T&limit=1
 status: 200
 {
@@ -448,7 +448,7 @@ status: 200
 ## Test: an unknown kind is refused
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab file://$PWD/origin.git --api "/api/source/refs?kind=commit"
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab file://$PWD/origin.git --api "/api/source/refs?kind=commit"
 api: /api/source/refs?kind=commit
 status: 400
 {
@@ -466,7 +466,7 @@ is where the page goes.
 `README.md` is on `feature`, so the page stays on it.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab file://$PWD/origin.git --api /api/source/pin --data pin-feature-view.json
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab file://$PWD/origin.git --api /api/source/pin --data pin-feature-view.json
 api: /api/source/pin
 status: 200
 {
@@ -479,7 +479,7 @@ status: 200
     "ref_name": "feature",
     "name": "origin",
     "origin": "file://[CWD]/origin.git",
-    "location": "[APP_HOME]/cache/repository-stores/[STORE_KEY]/repository.git",
+    "location": "[APP_HOME]/repository-stores/[STORE_KEY]/repository.git",
     "refreshable": true,
     "latest": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
     "ref_on_origin": true,
@@ -505,7 +505,7 @@ status: 200
 `NOTES.md` arrived in `second`, which `feature` does not contain.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab file://$PWD/origin.git --api /api/source/pin --data pin-feature-away.json
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab file://$PWD/origin.git --api /api/source/pin --data pin-feature-away.json
 api: /api/source/pin
 status: 200
 {
@@ -518,7 +518,7 @@ status: 200
     "ref_name": "feature",
     "name": "origin",
     "origin": "file://[CWD]/origin.git",
-    "location": "[APP_HOME]/cache/repository-stores/[STORE_KEY]/repository.git",
+    "location": "[APP_HOME]/repository-stores/[STORE_KEY]/repository.git",
     "refreshable": true,
     "latest": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
     "ref_on_origin": true,
@@ -552,7 +552,7 @@ in-process in `cli-git-refresh.txt`, because a transcript has to pass on a Git b
 floor a fetch requires.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab file://$PWD/origin.git --api /api/source/refresh --data refresh.json
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab file://$PWD/origin.git --api /api/source/refresh --data refresh.json
 api: /api/source/refresh
 status: 202
 {
@@ -565,7 +565,7 @@ status: 202
     "ref_name": "topic",
     "name": "origin",
     "origin": "file://[CWD]/origin.git",
-    "location": "[APP_HOME]/cache/repository-stores/[STORE_KEY]/repository.git",
+    "location": "[APP_HOME]/repository-stores/[STORE_KEY]/repository.git",
     "refreshable": true,
     "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
     "ref_on_origin": true,
@@ -592,7 +592,7 @@ status: 200
   "ref_name": "topic",
   "name": "origin",
   "origin": "file://[CWD]/origin.git",
-  "location": "[APP_HOME]/cache/repository-stores/[STORE_KEY]/repository.git",
+  "location": "[APP_HOME]/repository-stores/[STORE_KEY]/repository.git",
   "refreshable": true,
   "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
   "ref_on_origin": true,
@@ -621,7 +621,7 @@ when its last fetch is older than the freshness window, as this one’s is: the 
 The fetch lock is still held, so the fetch that started reports `refreshing_elsewhere`.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab file://$PWD/origin.git --api /api/source/refresh --data commit-fetch.json
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab file://$PWD/origin.git --api /api/source/refresh --data commit-fetch.json
 api: /api/source/refresh
 status: 202
 {
@@ -634,7 +634,7 @@ status: 202
     "ref_name": "topic",
     "name": "origin",
     "origin": "file://[CWD]/origin.git",
-    "location": "[APP_HOME]/cache/repository-stores/[STORE_KEY]/repository.git",
+    "location": "[APP_HOME]/repository-stores/[STORE_KEY]/repository.git",
     "refreshable": true,
     "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
     "ref_on_origin": true,
@@ -661,7 +661,7 @@ status: 200
   "ref_name": "topic",
   "name": "origin",
   "origin": "file://[CWD]/origin.git",
-  "location": "[APP_HOME]/cache/repository-stores/[STORE_KEY]/repository.git",
+  "location": "[APP_HOME]/repository-stores/[STORE_KEY]/repository.git",
   "refreshable": true,
   "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
   "ref_on_origin": true,
@@ -683,7 +683,7 @@ status: 200
 ## Test: a refresh request that names anything else is refused
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab file://$PWD/origin.git --api /api/source/refresh --data refresh-branch.json
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab file://$PWD/origin.git --api /api/source/refresh --data refresh-branch.json
 api: /api/source/refresh
 status: 400
 {

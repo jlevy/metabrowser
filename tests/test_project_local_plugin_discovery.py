@@ -1,13 +1,13 @@
 """Served-root and user-home plugins are never discovered implicitly.
 
 Implicit discovery from ``<served-root>/.metabrowser/plugins/`` or
-``~/.metabrowser/plugins/`` would let viewed data opt itself into running JavaScript in
+``~/.cache/metabrowser/plugins/`` would let viewed data opt itself into running JavaScript in
 the Metabrowser page. The only operator-supplied source is therefore the
 ``--plugins-dir`` CLI flag merged with ``METABROWSER_PLUGINS_DIRS`` (loaded
 from ``.env`` / ``.env.local``).
 
 These tests guard that trust boundary: a plugin under ``<served-root>/.metabrowser/plugins/``
-or ``~/.metabrowser/plugins/`` is NOT loaded by default. The same plugin IS
+or ``~/.cache/metabrowser/plugins/`` is NOT loaded by default. The same plugin IS
 loaded when its parent directory is explicitly named via ``extra_dirs``.
 """
 
@@ -165,7 +165,7 @@ def test_pytest_collection_ignores_operator_plugin_env(tmp_path: Path) -> None:
 
 
 def test_user_home_plugins_dir_is_not_auto_discovered(tmp_path: Path, monkeypatch) -> None:
-    """A plugin in ~/.metabrowser/plugins/ must not load by default either.
+    """A plugin in ~/.cache/metabrowser/plugins/ must not load by default either.
 
     Uses HOME monkey-patch so the test doesn't depend on / mutate the real
     user's home directory.

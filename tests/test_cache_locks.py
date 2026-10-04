@@ -30,7 +30,7 @@ from metabrowser.cache.locks import (
     LockKind,
     LockOrder,
     LockOrderError,
-    application_home_lock,
+    application_cache_lock,
     held_locks,
     repository_store_lock,
     require_no_hierarchy_locks,
@@ -124,7 +124,7 @@ class _Holder:
 
 def test_hierarchy_locks_are_taken_in_rank_then_key_order(home: Path) -> None:
     with (
-        application_home_lock(home),
+        application_cache_lock(home),
         source_alias_lock(home, SLUG_A),
         source_alias_lock(home, SLUG_B),
         repository_store_lock(home, STORE_A),
@@ -146,8 +146,8 @@ def test_hierarchy_locks_are_taken_in_rank_then_key_order(home: Path) -> None:
             lambda home: repository_store_lock(home, STORE_A),
             lambda home: source_alias_lock(home, SLUG_A),
         ),
-        (lambda home: source_alias_lock(home, SLUG_A), lambda home: application_home_lock(home)),
-        (lambda home: application_home_lock(home), lambda home: application_home_lock(home)),
+        (lambda home: source_alias_lock(home, SLUG_A), lambda home: application_cache_lock(home)),
+        (lambda home: application_cache_lock(home), lambda home: application_cache_lock(home)),
         (
             lambda home: repository_store_lock(home, STORE_B),
             lambda home: repository_store_lock(home, STORE_A),
@@ -203,7 +203,7 @@ def test_the_order_is_per_thread(home: Path) -> None:
 
     def other_thread() -> None:
         try:
-            with application_home_lock(home, blocking=False):
+            with application_cache_lock(home, blocking=False):
                 ready.set()
                 done.wait(CHILD_TIMEOUT)
             outcome.append(None)
@@ -379,14 +379,14 @@ def test_a_shared_lock_file_held_by_another_process_is_refused_untouched(home: P
 
 def test_lock_files_live_only_under_cache_locks(home: Path) -> None:
     with (
-        application_home_lock(home) as home_lock,
+        application_cache_lock(home) as home_lock,
         source_alias_lock(home, SLUG_A) as alias,
         repository_store_lock(home, STORE_A) as store,
     ):
         paths = [home_lock.relative_path, alias.relative_path, store.relative_path]
     with staging_entry_lock(home, "acquire-1") as staging:
         paths.append(staging.relative_path)
-    assert all(path.startswith("cache/locks/") for path in paths)
+    assert all(path.startswith("locks/") for path in paths)
     assert all(_mode(home / path) == 0o600 for path in paths)
 
 
@@ -409,20 +409,20 @@ def test_lock_order_releases_the_named_lock() -> None:
 def test_a_local_home_passes_the_probe_once_per_process(
     home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    report = probe.probe_application_home(home, force=True)
+    report = probe.probe_application_cache(home, force=True)
 
     # APFS was measured to honor renamex_np(RENAME_EXCL); a Linux file system may answer
     # renameat2(RENAME_NOREPLACE) with EINVAL, and publication then relies on its check.
     if sys.platform == "darwin":
         assert report.no_replace_rename is True
-    assert list((home / "cache/staging").iterdir()) == []
-    assert list((home / "cache/locks/staging").iterdir()) == []
+    assert list((home / "staging").iterdir()) == []
+    assert list((home / "locks/staging").iterdir()) == []
 
     def must_not_rerun(_home: Path) -> probe.ProbeReport:
         raise AssertionError("the probe ran twice for one home")
 
     monkeypatch.setattr(probe, "_probe", must_not_rerun)
-    assert probe.probe_application_home(home) == report
+    assert probe.probe_application_cache(home) == report
 
 
 def _record_lock_shim() -> types.SimpleNamespace:
@@ -452,7 +452,7 @@ def test_a_home_whose_locks_vanish_when_a_descriptor_closes_is_refused(
     monkeypatch.setattr(probe, "_CHILD_SCRIPT", _RECORD_LOCK_CHILD)
 
     with pytest.raises(PrivateStorageError, match="unrelated descriptor") as refused:
-        probe.probe_application_home(home, force=True)
+        probe.probe_application_cache(home, force=True)
 
     assert refused.value.violation is PrivateStorageViolation.UNVERIFIABLE
 
@@ -490,7 +490,7 @@ def test_record_locks_that_survive_every_close_are_still_refused_in_process(
     monkeypatch.setattr(probe._Child, "ask", recording_ask)  # pyright: ignore[reportPrivateUsage]
 
     with pytest.raises(PrivateStorageError, match="separate descriptor"):
-        probe.probe_application_home(home, force=True)
+        probe.probe_application_cache(home, force=True)
 
     assert asked == ["try=busy"]
 
@@ -503,7 +503,7 @@ def test_a_home_whose_locks_do_not_exclude_another_process_is_refused(
     monkeypatch.setattr(probe, "fcntl", shim)
 
     with pytest.raises(PrivateStorageError, match="second process took a lock"):
-        probe.probe_application_home(home, force=True)
+        probe.probe_application_cache(home, force=True)
 
 
 def test_a_home_whose_rename_replaces_an_existing_entry_is_refused(
@@ -518,7 +518,7 @@ def test_a_home_whose_rename_replaces_an_existing_entry_is_refused(
     monkeypatch.setattr(probe, "rename_without_replacing", replacing_rename)
 
     with pytest.raises(PrivateStorageError, match="replaced an existing entry"):
-        probe.probe_application_home(home, force=True)
+        probe.probe_application_cache(home, force=True)
 
 
 def test_a_refused_home_is_probed_again_next_time(
@@ -527,5 +527,5 @@ def test_a_refused_home_is_probed_again_next_time(
     with monkeypatch.context() as patch:
         patch.setattr(probe, "rename_without_replacing", lambda _s, _t: True)
         with pytest.raises(PrivateStorageError):
-            probe.probe_application_home(home, force=True)
-    assert probe.probe_application_home(home).no_replace_rename in {True, False}
+            probe.probe_application_cache(home, force=True)
+    assert probe.probe_application_cache(home).no_replace_rename in {True, False}

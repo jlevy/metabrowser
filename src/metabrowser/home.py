@@ -1,16 +1,10 @@
-"""Owner-only storage for the Metabrowser application home.
+"""Owner-only storage for Metabrowser cache and configuration directories.
 
-Repository stores, source bindings, and provider mirrors may hold private content, so
-everything Metabrowser keeps under the application home must be reachable only by the
-user running it. This module is the enforcement point cache and provider code call
-before they create or open anything there. It also resolves where the home is
-(``METABROWSER_HOME``, else ``~/.metabrowser``), creates the owner-only ``f01`` directory
-skeleton with its ``CACHEDIR.TAG``, and publishes files atomically; what the records in
-that skeleton mean belongs to :mod:`metabrowser.cache`. Whichever directory resolution
-chooses is Metabrowser-owned by definition, so every entry below it that the current
-user owns is Metabrowser's to repair. Nothing here runs unless a caller asks for the
-application home: browsing an ordinary local path never resolves, validates, or creates
-it.
+Repository stores and provider records may contain private content. This module resolves
+independent cache and configuration roots using application overrides and XDG defaults,
+verifies owner-only access before reading or writing, creates the cache skeleton, and
+publishes files atomically. The helpers also protect the separate configuration root.
+Browsing an ordinary local path never initializes either root.
 
 Each rule answers a specific threat:
 
@@ -110,10 +104,10 @@ log = logging.getLogger(__name__)
 PRIVATE_DIRECTORY_MODE: Final = 0o700
 PRIVATE_FILE_MODE: Final = 0o600
 
-METABROWSER_HOME_ENV: Final = "METABROWSER_HOME"
-DEFAULT_HOME_NAME: Final = ".metabrowser"
-CACHE_DIRECTORY: Final = "cache"
-CACHEDIR_TAG_PATH: Final = "cache/CACHEDIR.TAG"
+METABROWSER_CACHE_DIR_ENV: Final = "METABROWSER_CACHE_DIR"
+DEFAULT_CACHE_NAME: Final = ".cache/metabrowser"
+CACHE_DIRECTORY: Final = "."
+CACHEDIR_TAG_PATH: Final = "CACHEDIR.TAG"
 # https://bford.info/cachedir/: backup and cleanup tools skip a directory holding a file
 # with this name that begins with this signature.
 CACHEDIR_TAG_SIGNATURE: Final = b"Signature: 8a477f597d28d172789f06886806bc55"
@@ -123,17 +117,17 @@ CACHEDIR_TAG_CONTENT: Final = (
     b"# For information about cache directory tags, see https://bford.info/cachedir/\n"
 )
 # The owner-only directories of the f01 layout, parents first. Lock files live under
-# cache/locks/ so no publication or sweep ever renames one.
+# locks/ so no publication or sweep ever renames one.
 F01_DIRECTORIES: Final = (
-    "cache",
-    "cache/locks",
-    "cache/locks/sources",
-    "cache/locks/stores",
-    "cache/locks/staging",
-    "cache/locks/providers",
-    "cache/staging",
-    "cache/sources",
-    "cache/repository-stores",
+    "",
+    "locks",
+    "locks/sources",
+    "locks/stores",
+    "locks/staging",
+    "locks/providers",
+    "staging",
+    "sources",
+    "repository-stores",
 )
 
 # Any permission granted to group or other.
@@ -278,16 +272,16 @@ _UNSUPPORTED_PLATFORM: Final = (
     "yet. Remote repository and provider content cannot be stored on this platform"
 )
 _MODES_NOT_KEPT: Final = (
-    "its file system did not keep owner-only permissions. Set METABROWSER_HOME to a "
+    "its file system did not keep owner-only permissions. Set METABROWSER_CACHE_DIR to a "
     "directory on a file system with Unix permissions"
 )
 _CHECK_DENIED: Final = (
     "permission was denied while checking it. Make sure it belongs to the current user, "
-    "or set METABROWSER_HOME to a private directory you own"
+    "or set METABROWSER_CACHE_DIR to a private directory you own"
 )
 _CREATE_DENIED: Final = (
     "permission was denied while creating it. Make sure the current user can write to the "
-    "directory that holds it, or set METABROWSER_HOME to a private directory you own"
+    "directory that holds it, or set METABROWSER_CACHE_DIR to a private directory you own"
 )
 _CANNOT_RESTORE: Final = (
     "the umask left the new directory without owner access, and this platform cannot "
@@ -304,12 +298,12 @@ _CHANGED_DURING_CHECK: Final = (
     "application home, then retry"
 )
 _TOO_MANY_LINKS: Final = (
-    "too many symbolic links lead through it. Set METABROWSER_HOME to the real location "
+    "too many symbolic links lead through it. Set METABROWSER_CACHE_DIR to the real location "
     "of the application home"
 )
 _ACL_UNVERIFIABLE: Final = (
     "its access control list could not be read or interpreted. Remove the list with "
-    "chmod -N, or set METABROWSER_HOME to a directory on a local APFS volume"
+    "chmod -N, or set METABROWSER_CACHE_DIR to a directory on a local APFS volume"
 )
 
 _SUBJECTS: Final = {
@@ -319,7 +313,7 @@ _SUBJECTS: Final = {
     PrivateStorageLocation.HOME: "The Metabrowser application home",
     PrivateStorageLocation.ENTRY: "An entry in the Metabrowser application home",
 }
-_MOVE_HOME: Final = "or set METABROWSER_HOME to a private directory you own"
+_MOVE_HOME: Final = "or set METABROWSER_CACHE_DIR to a private directory you own"
 
 
 def _describe(
@@ -343,11 +337,11 @@ def _describe(
         case PrivateStorageViolation.SYMLINK if above:
             return (
                 f"{subject} is a symbolic link owned by another user, which could redirect "
-                "private content. Set METABROWSER_HOME to a path that does not pass through it."
+                "private content. Set METABROWSER_CACHE_DIR to a path that does not pass through it."
             )
         case PrivateStorageViolation.SYMLINK if location is PrivateStorageLocation.HOME:
             return (
-                f"{subject} is a symbolic link. Set METABROWSER_HOME to the directory it "
+                f"{subject} is a symbolic link. Set METABROWSER_CACHE_DIR to the directory it "
                 "points to instead."
             )
         case PrivateStorageViolation.SYMLINK:
@@ -358,7 +352,7 @@ def _describe(
         case PrivateStorageViolation.FOREIGN_OWNER if above:
             return (
                 f"{subject} is owned by another user, who could replace the home. Set "
-                "METABROWSER_HOME to a path whose directories belong to you or to root."
+                "METABROWSER_CACHE_DIR to a path whose directories belong to you or to root."
             )
         case PrivateStorageViolation.FOREIGN_OWNER:
             return (
@@ -368,7 +362,7 @@ def _describe(
         case PrivateStorageViolation.PERMISSIVE if above:
             return (
                 f"{subject} gives other users write access{access}, so they could replace "
-                "the home. Remove that access, or set METABROWSER_HOME to a path outside it."
+                "the home. Remove that access, or set METABROWSER_CACHE_DIR to a path outside it."
             )
         case PrivateStorageViolation.PERMISSIVE if location is PrivateStorageLocation.HOME:
             remedy = "Remove those entries with chmod -N" if through_acl else "Run chmod 700 on it"
@@ -400,7 +394,7 @@ def _describe(
             )
         case PrivateStorageViolation.NOT_DIRECTORY if above:
             return (
-                f"{subject} is not a directory. Set METABROWSER_HOME to a path whose "
+                f"{subject} is not a directory. Set METABROWSER_CACHE_DIR to a path whose "
                 "components are directories."
             )
         case PrivateStorageViolation.NOT_DIRECTORY:
@@ -443,8 +437,8 @@ class PrivateStorageError(Exception):
         self.purpose: EntryPurpose = purpose
 
 
-class ApplicationHomeError(ValueError):
-    """``METABROWSER_HOME`` does not name a usable application home."""
+class StorageDirectoryError(ValueError):
+    """A cache or configuration setting does not name a usable storage directory."""
 
 
 def _without_file_names[**P, R](function: Callable[P, R]) -> Callable[P, R]:
@@ -486,7 +480,7 @@ def validate_private_home(home: Path) -> None:
 def ensure_private_directory(home: Path, relative_path: str = "") -> Path:
     """Create or verify the owner-only directory *relative_path* below *home*.
 
-    *relative_path* is a POSIX-relative path such as ``"cache/staging"``; the empty
+    *relative_path* is a POSIX-relative path such as ``"staging"``; the empty
     string names the home. A missing home is created ``0700`` inside an existing parent,
     but an existing home is never repaired. Missing directories below it are created
     exactly ``0700`` without ACL entries. An existing one the current user owns keeps its
@@ -560,30 +554,43 @@ def open_private_file(
         os.close(fd)
 
 
-def application_home(environ: Mapping[str, str] | None = None) -> Path:
-    """Return the application home without touching the file system.
-
-    ``METABROWSER_HOME`` names it when set; otherwise it is ``~/.metabrowser``. An empty,
-    relative, or ``..``-containing ``METABROWSER_HOME`` raises
-    :class:`ApplicationHomeError` rather than falling back, so a harness that meant to
-    isolate the home can never write to the real one.
-    """
-
+def _storage_directory(
+    override: str, xdg: str, fallback: str, environ: Mapping[str, str] | None
+) -> Path:
+    """Resolve an exact override or XDG base without creating anything."""
     variables = os.environ if environ is None else environ
-    value = variables.get(METABROWSER_HOME_ENV)
+    name = override if override in variables else xdg
+    value = variables.get(name)
     if value is None:
-        return Path.home() / DEFAULT_HOME_NAME
-    if not value:
-        raise ApplicationHomeError(
-            "METABROWSER_HOME is set but empty. Unset it to use ~/.metabrowser, or set it "
-            "to the absolute path of a private directory."
+        return Path.home() / fallback / "metabrowser"
+    path = Path(value)
+    if not value or not path.is_absolute() or ".." in path.parts:
+        raise StorageDirectoryError(
+            f"{name} must be a nonempty absolute path without '..' components."
         )
-    home = Path(value)
-    if not home.is_absolute() or ".." in home.parts:
-        raise ApplicationHomeError(
-            "METABROWSER_HOME must be an absolute path without '..' components."
+    return path if name == override else path / "metabrowser"
+
+
+def application_cache(environ: Mapping[str, str] | None = None) -> Path:
+    """Resolve METABROWSER_CACHE_DIR, XDG_CACHE_HOME/metabrowser, or ~/.cache/metabrowser."""
+    return _storage_directory("METABROWSER_CACHE_DIR", "XDG_CACHE_HOME", ".cache", environ)
+
+
+def configuration_directory(environ: Mapping[str, str] | None = None) -> Path:
+    """Resolve METABROWSER_CONFIG_DIR, XDG_CONFIG_HOME/metabrowser, or ~/.config/metabrowser."""
+    return _storage_directory("METABROWSER_CONFIG_DIR", "XDG_CONFIG_HOME", ".config", environ)
+
+
+@_without_file_names
+def validate_storage_separation(cache: Path) -> None:
+    """Refuse overlapping roots so discarding cache cannot discard configuration."""
+    config = configuration_directory().resolve()
+    resolved_cache = cache.resolve()
+    if resolved_cache.is_relative_to(config) or config.is_relative_to(resolved_cache):
+        raise StorageDirectoryError(
+            "Cache and configuration directories must be separate, non-overlapping paths. "
+            "Set METABROWSER_CACHE_DIR and METABROWSER_CONFIG_DIR to distinct directories."
         )
-    return home
 
 
 @_without_file_names
@@ -591,7 +598,7 @@ def ensure_home(home: Path) -> Path:
     """Create or verify the home and its owner-only ``f01`` skeleton; return the cache root.
 
     Every directory in :data:`F01_DIRECTORIES` is created ``0700`` or verified, and
-    ``cache/CACHEDIR.TAG`` is written atomically unless a file beginning with the cache
+    ``CACHEDIR.TAG`` is written atomically unless a file beginning with the cache
     directory signature is already there. Records inside the skeleton are the cache
     layout's business, not this function's.
     """

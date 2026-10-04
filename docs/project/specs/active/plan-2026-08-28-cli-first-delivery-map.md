@@ -342,11 +342,11 @@ Everything beneath it is already proved by then.
 ### `src/metabrowser/home.py` (new) — Phase 1A (`mb-4gnu`)
 
 ```python
-def application_home() -> Path:      # METABROWSER_HOME, else ~/.metabrowser
+def application_cache() -> Path:      # METABROWSER_CACHE_DIR, else ~/.cache/metabrowser
 def ensure_home(home: Path) -> Path: # creates the f01 skeleton, writes CACHEDIR.TAG
 ```
 
-`METABROWSER_HOME` is the hermeticity seam for every cache golden.
+`METABROWSER_CACHE_DIR` is the hermeticity seam for every cache golden.
 
 ### `src/metabrowser/cache/` (new package)
 
@@ -354,8 +354,8 @@ def ensure_home(home: Path) -> Path: # creates the f01 skeleton, writes CACHEDIR
 | --- | --- | --- |
 | `layout.py` | Format record, fail-closed future formats, ordered migrations, home preparation | `read_layout`, `read_config`, `migrate_layout`, `open_cache`, `LAYOUT_FORMAT` |
 | `atomic.py` | Same-filesystem owner-only record publication | `read_record`, `write_record_atomic`, `publish_entry` |
-| `locks.py` | Fixed lock hierarchy and liveness locks | `application_home_lock`, `source_alias_lock`, `repository_store_lock`, `provider_resource_lock`, `staging_entry_lock` |
-| `probe.py` | Application-home lock and publication probe | `probe_application_home` |
+| `locks.py` | Fixed lock hierarchy and liveness locks | `application_cache_lock`, `source_alias_lock`, `repository_store_lock`, `provider_resource_lock`, `staging_entry_lock` |
+| `probe.py` | Application-home lock and publication probe | `probe_application_cache` |
 | `contracts.py` | Packaged SoftSchema bindings and drift checks | `compile_contracts`, `cache_contract_registry`, `repository_cache_capabilities` |
 | `records.py` | Closed source and store contracts | `ApplicationConfig`, `CacheLayout`, `RepositorySource`, `RepositorySourceState`, `RepositoryStoreAlias`, `RepositoryStore`, `RepositoryStoreState` |
 | `reclaim.py` | Startup sweep of abandoned staging; nothing deletes a published store | `sweep_staging` |
@@ -404,7 +404,7 @@ one reviewable document.
 Every cache golden sets, in frontmatter `env`:
 
 ```yaml
-METABROWSER_HOME: "./home"     # cache state lands in the sandbox
+METABROWSER_CACHE_DIR: "./home"     # cache state lands in the sandbox
 METABROWSER_PLUGINS_DIRS: ""   # no ambient plugins
 TZ: "UTC"
 GIT_CONFIG_GLOBAL: "/dev/null" # no developer gitconfig leaks in
@@ -488,7 +488,7 @@ values; cache routes never report paths, and `--no-serve` does not print the hom
 | `cli-cache-interrupt-alias.txt` | a process killed between store and alias publication leaves an unreferenced store and no visible source; the next acquisition reuses the store and publishes the alias | Cache 1B-a |
 | `cli-cache-fetch-failures.txt` | missing, non-repository, empty, and detached-HEAD origins fail without touching another source; a folded spelling reuses the same source | Cache 1B-a |
 | `cli-cache-unsupported-git.txt` | below-floor Git refuses a miss without creating or changing the home, and still reuses a hit without Git | Cache 1B-a |
-| `cli-cache-repair-guidance.txt` | invalid `METABROWSER_HOME`, a shared home, and a future format each name their repair, which then works | Cache 1B-a |
+| `cli-cache-repair-guidance.txt` | invalid `METABROWSER_CACHE_DIR`, a shared home, and a future format each name their repair, which then works | Cache 1B-a |
 | `cli-cache-url-grammar.tryscript.md` | ROOT grammar accepts and normalizes, or rejects with a reason and without echoing the input; an existing path is served whatever its name resembles, and `scheme://` is always a source | Cache 1B-a |
 | `cli-url-open.tryscript.md` | URL open accepts and rejects, with reasons | Cache 1B-b |
 | `cli-github-repo-open.tryscript.md` | GitHub repository URL reduces to and reuses the shared store without provider auth | Repository 2A |

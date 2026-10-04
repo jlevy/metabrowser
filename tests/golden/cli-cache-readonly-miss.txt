@@ -7,7 +7,7 @@ slug: <SLUG-A>
 store: <STORE-A>
 revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
 --- stderr ---
-cloning <ORIGIN-A> into <HOME>/cache
+cloning <ORIGIN-A> into <HOME>
 cloned <ORIGIN-A> in 0.0 s
 ## A is reused. A new source B is refused, and nothing in the home changes.
 # metab <ORIGIN-A> --no-serve
@@ -18,12 +18,12 @@ slug: <SLUG-A>
 store: <STORE-A>
 revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
 --- stderr ---
-using the clone of <ORIGIN-A> cached in <HOME>/cache, fetched less than a minute ago
+using the clone of <ORIGIN-A> cached in <HOME>, fetched less than a minute ago
 # metab <ORIGIN-B> --no-serve
 exit: 1
 --- stdout ---
 --- stderr ---
-Error: An entry in the Metabrowser application home cannot be verified as private to the current user: permission was denied while creating it. Make sure the current user can write to the directory that holds it, or set METABROWSER_HOME to a private directory you own.
+Error: An entry in the Metabrowser application home cannot be verified as private to the current user: permission was denied while creating it. Make sure the current user can write to the directory that holds it, or set METABROWSER_CACHE_DIR to a private directory you own.
 ## With owner write restored, B is acquired.
 # metab <ORIGIN-B> --no-serve
 exit: 0
@@ -33,5 +33,5 @@ slug: <SLUG-B>
 store: <STORE-B>
 revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
 --- stderr ---
-cloning <ORIGIN-B> into <HOME>/cache
+cloning <ORIGIN-B> into <HOME>
 cloned <ORIGIN-B> in 0.0 s

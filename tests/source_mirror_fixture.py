@@ -190,7 +190,7 @@ def hold_fetch_lock(directory: Path) -> None:
     """Hold the store's fetch lock from a detached process, as another refresh would."""
 
     home = directory / "home"
-    (key,) = [entry.name for entry in (home / "cache" / "repository-stores").iterdir()]
+    (key,) = [entry.name for entry in (home / "repository-stores").iterdir()]
     # Created and released through the production path, so the file is the lock file.
     with store_fetch_lock(home, key) as lock:
         lock_path = lock.path

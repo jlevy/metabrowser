@@ -119,7 +119,7 @@ def stale(tmp_path: Path) -> Iterator[_Stale]:
 
 def _serve(stale: _Stale) -> subprocess.Popen[bytes]:
     env = {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
-    env["METABROWSER_HOME"] = str(stale.published.home)
+    env["METABROWSER_CACHE_DIR"] = str(stale.published.home)
     env["METABROWSER_LOG_LEVEL"] = "WARNING"
     return subprocess.Popen(
         [str(_METAB), f"file://{stale.origin}", "--no-open", "--port", str(_free_port())],

@@ -48,7 +48,7 @@ def list_private_directory(
 ) -> tuple[str, ...]:
     """Return the sorted entry names of an owner-only directory below *home*.
 
-    *relative_path* is a POSIX-relative path such as ``"cache/sources"``. Raises
+    *relative_path* is a POSIX-relative path such as ``"sources"``. Raises
     :class:`FileNotFoundError` when the home or the directory is missing,
     :class:`~metabrowser.home.PrivateStorageError` when any part of the path is not
     private, and :class:`ListingLimitError` rather than reading past *max_entries*.

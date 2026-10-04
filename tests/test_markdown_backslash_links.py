@@ -53,7 +53,7 @@ def _api(root: Path, home: Path, route: str, *flags: str) -> tuple[int, Any]:
             "--api",
             route,
         ],
-        env={**os.environ, "METABROWSER_HOME": str(home)},
+        env={**os.environ, "METABROWSER_CACHE_DIR": str(home)},
         capture_output=True,
         text=True,
         timeout=50,

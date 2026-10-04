@@ -264,9 +264,9 @@ def test_a_default_branch_that_does_not_resolve_to_the_observed_head_is_refused(
     monkeypatch.setattr(acquire_module, "_run", move_branch_after_observation)
     with pytest.raises(ValidationFailedError, match="default branch"):
         asyncio.run(acquire_source(_file_source(origin), home=home))
-    assert list((home / "cache" / "staging").iterdir()) == []
-    assert list((home / "cache" / "sources").iterdir()) == []
-    assert list((home / "cache" / "repository-stores").iterdir()) == []
+    assert list((home / "staging").iterdir()) == []
+    assert list((home / "sources").iterdir()) == []
+    assert list((home / "repository-stores").iterdir()) == []
 
 
 @posix_only
@@ -332,7 +332,7 @@ def test_a_detached_head_origin_is_refused_before_anything_is_fetched(
     with pytest.raises(ValidationFailedError, match="not a branch"):
         asyncio.run(acquire_source(_file_source(work), home=home))
     assert len(commands) == 1 and "ls-remote" in commands[0]
-    assert list((home / "cache" / "staging").iterdir()) == []
+    assert list((home / "staging").iterdir()) == []
 
 
 def _has_object(git_dir: Path, oid: str) -> bool:
@@ -406,8 +406,8 @@ def test_file_origin_without_filter_support_fetches_a_complete_staging_store(
             lock.kind is LockKind.STAGING_ENTRY and lock.key == staged.entry
             for lock in held_locks()
         )
-        assert list((home / "cache" / "sources").iterdir()) == []
-        assert list((home / "cache" / "repository-stores").iterdir()) == []
+        assert list((home / "sources").iterdir()) == []
+        assert list((home / "repository-stores").iterdir()) == []
         assert _inodes(staged.git_dir).isdisjoint(_inodes(origin))
         leaked = [
             path
@@ -428,9 +428,9 @@ def test_a_live_staging_entry_survives_the_startup_sweep_then_abandon_deletes_it
     entry = staged.entry
     with staged:
         report = sweep_staging(home)
-        assert f"cache/staging/{entry}" in report.live
+        assert f"staging/{entry}" in report.live
         assert staged.git_dir.is_dir()
-    staging = home / "cache" / "staging"
+    staging = home / "staging"
     assert list(staging.iterdir()) == []
 
 
@@ -443,7 +443,7 @@ def test_a_missing_file_origin_abandons_without_leaving_staging(
     home = tmp_path / "home"
     with pytest.raises(RemoteUnavailableError):
         asyncio.run(acquire_into_staging(_file_source(missing), home=home))
-    staging = home / "cache" / "staging"
+    staging = home / "staging"
     if staging.is_dir():
         assert list(staging.iterdir()) == []
 
@@ -472,9 +472,9 @@ def test_a_partial_clone_source_is_refused_with_a_typed_error(
     home = tmp_path / "home"
     with pytest.raises(PartialCloneSourceError, match="partial clone missing objects"):
         asyncio.run(acquire_source(_file_source(partial), home=home))
-    assert list((home / "cache" / "staging").iterdir()) == []
-    assert list((home / "cache" / "sources").iterdir()) == []
-    assert list((home / "cache" / "repository-stores").iterdir()) == []
+    assert list((home / "staging").iterdir()) == []
+    assert list((home / "sources").iterdir()) == []
+    assert list((home / "repository-stores").iterdir()) == []
 
 
 @posix_only
@@ -488,7 +488,7 @@ def test_a_crashed_staging_holder_is_swept(tmp_path: Path, monkeypatch: pytest.M
     lock.release()
     staged._lock = None
     report = sweep_staging(home)
-    assert f"cache/staging/{staged.entry}" in report.removed
+    assert f"staging/{staged.entry}" in report.removed
     assert not staged.git_dir.exists()
 
 
@@ -517,10 +517,7 @@ def test_git_below_the_acquisition_floor_is_refused(
     monkeypatch.setattr("metabrowser.cache.acquire.require_acquisition_git", refuse)
     with pytest.raises(UnsupportedGitVersionError):
         asyncio.run(acquire_into_staging(_file_source(origin), home=home))
-    assert (
-        not (home / "cache" / "staging").exists()
-        or list((home / "cache" / "staging").iterdir()) == []
-    )
+    assert not (home / "staging").exists() or list((home / "staging").iterdir()) == []
 
 
 @posix_only
@@ -558,7 +555,7 @@ def test_a_future_home_is_refused_before_opening_the_cache_for_write(
     home = tmp_path / "home"
     source = _file_source(origin)
     asyncio.run(acquire_source(source, home=home))
-    layout = home / "cache" / "layout.yml"
+    layout = home / "layout.yml"
     layout.write_text(layout.read_text(encoding="utf-8").replace("format: f01", "format: f02", 1))
 
     def refuse_write(home_path: Path | None = None, *, version: str | None = None) -> object:

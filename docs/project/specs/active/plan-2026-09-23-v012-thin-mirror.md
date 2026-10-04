@@ -206,10 +206,10 @@ It claims only `github.com` and `raw.githubusercontent.com`.
 
 ### Pull-request records
 
-- One JSON file per pull request under its source,
-  `cache/sources/<slug>/pulls/<n>.json`, written with the existing private atomic file
-  write, with a schema integer (a mismatch refetches; there is no migration) and a
-  bounded read. Cache layout checks learn the path.
+- One JSON file per pull request under its source, `sources/<slug>/pulls/<n>.json`,
+  written with the existing private atomic file write, with a schema integer (a mismatch
+  refetches; there is no migration) and a bounded read.
+  Cache layout checks learn the path.
 
 - Contents: the pull request, issue comments, reviews, review comments, check runs, and
   statuses, each read with `gh api`, with the fetch time and the reader (`anonymous` or
@@ -407,8 +407,8 @@ where the repository was stored:
 > out. and it should be visible where that folder actually resides, it should not be
 > hidden, it should be in our .metabrowser cache directory.
 > this could be via tooltips at least, and perhaps a better indicator using
-> ~/.metabrowser etc on the main heading on the page view, as we do with other regular
-> folders
+> ~/.cache/metabrowser etc on the main heading on the page view, as we do with other
+> regular folders
 
 - A served mirror shows the repository’s name wherever it showed a commit ID as its
   root: the navigation heading, the main heading’s address, and the heading’s tooltip.

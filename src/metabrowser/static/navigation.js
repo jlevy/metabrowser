@@ -504,6 +504,79 @@
   }
 
   /**
+   * What a page's long-lived connections do when it leaves and comes back.
+   *
+   * A browser keeps the open requests of a page it holds for Back, and opens six
+   * connections to a host: five cached pages' event streams left the next page
+   * waiting for one, up to a minute (explorations/page-connections/README.md). So a
+   * persisted hide parks every connection, and the matching show resumes exactly
+   * those, once. A real hide tears down and a restore rebuilds, as before.
+   *
+   * `park` closes a connection and its timers; it returns what reopens it, or null.
+   *
+   * @param {{
+   *   connections: ReadonlyArray<() => (() => void) | null>,
+   *   rebuild: () => void,
+   *   teardown: () => void,
+   * }} deps
+   */
+  function createPageConnections(deps) {
+    /** @type {Array<() => void>} */
+    let parked = [];
+    let suspended = false;
+    let tornDown = false;
+    return Object.freeze({
+      /** @param {boolean} persisted */
+      hidden(persisted) {
+        if (!persisted) {
+          parked = [];
+          tornDown = true;
+          deps.teardown();
+          return;
+        }
+        if (suspended) {
+          return;
+        }
+        suspended = true;
+        for (const park of deps.connections) {
+          const resume = park();
+          if (resume) {
+            parked.push(resume);
+          }
+        }
+      },
+      /** @param {boolean} persisted */
+      shown(persisted) {
+        if (!persisted) {
+          return;
+        }
+        suspended = false;
+        if (tornDown) {
+          deps.rebuild();
+          tornDown = false;
+        }
+        const resumes = parked;
+        parked = [];
+        for (const resume of resumes) {
+          try {
+            resume();
+          } catch (error) {
+            console.warn("Could not resume a page connection", error);
+          }
+        }
+      },
+      /** @param {() => void} resume */
+      defer(resume) {
+        if (!parked.includes(resume)) {
+          parked.push(resume);
+        }
+      },
+      suspended: () => suspended,
+      parked: () => parked.length,
+    });
+  }
+
+  /**
    * Attach both fulfillment and rejection handlers immediately when an
    * independent navigation dependency begins. The caller may await an HTTP
    * result first without creating an unhandled-rejection window.
@@ -1066,6 +1139,7 @@
     commitHref,
     createController,
     createFileRevalidationTracker,
+    createPageConnections,
     createPreviewPaneLifecycle,
     displayPath,
     href,

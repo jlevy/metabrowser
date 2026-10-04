@@ -30,7 +30,7 @@ from metabrowser.cli.clone_report import (
 from metabrowser.git.progress import GitProgress
 
 URL = "https://github.com/owner/repo"
-WHERE = "~/.metabrowser/cache"
+WHERE = "~/.cache/metabrowser"
 MIB = 1024 * 1024
 
 
@@ -540,10 +540,10 @@ def test_the_destination_is_the_cache_directory_with_the_home_as_a_tilde(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(Path, "home", classmethod(lambda _cls: tmp_path / "user"))
-    assert cache_directory_display(tmp_path / "user" / ".metabrowser") == str(
-        Path("~") / ".metabrowser" / "cache"
+    assert cache_directory_display(tmp_path / "user" / ".cache" / "metabrowser") == str(
+        Path("~") / ".cache" / "metabrowser"
     )
-    # A home elsewhere, as METABROWSER_HOME names one, is shown as it is.
-    assert cache_directory_display(tmp_path / "elsewhere") == str(tmp_path / "elsewhere" / "cache")
+    # A home elsewhere, as METABROWSER_CACHE_DIR names one, is shown as it is.
+    assert cache_directory_display(tmp_path / "elsewhere") == str(tmp_path / "elsewhere")
     # A control character in the path does not reach the terminal.
-    assert cache_directory_display(tmp_path / "a\x1b[2Jb") == str(tmp_path / "a�[2Jb" / "cache")
+    assert cache_directory_display(tmp_path / "a\x1b[2Jb") == str(tmp_path / "a�[2Jb")

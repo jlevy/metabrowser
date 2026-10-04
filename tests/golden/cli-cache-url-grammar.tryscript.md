@@ -55,7 +55,7 @@ The scheme and host fold to lowercase, and the default port and a trailing slash
 dropped. The path keeps its case.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab HTTPS://Example.COM:443/Owner/Repo.git/ --walk
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab HTTPS://Example.COM:443/Owner/Repo.git/ --walk
 Error: --walk runs the filesystem inventory walker, and a Git source has no filesystem to walk (https://example.com/Owner/Repo.git). Read a pinned tree with --api '/api/tree?depth=N', or --walk a local directory.
 ? 1
 ```
@@ -67,13 +67,13 @@ An scp-like address keeps its path as written, and is refused in the route mode 
 the acquisition mode.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab ssh://git@Example.com:22/owner/repo.git --no-serve
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab ssh://git@Example.com:22/owner/repo.git --no-serve
 Error: ssh Git sources are not acquired yet (ssh://git@example.com/owner/repo.git)
 ? 1
 ```
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab git@example.com:owner/repo.git --api /api/cache/layout
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab git@example.com:owner/repo.git --api /api/cache/layout
 Error: ssh Git sources are not acquired yet (git@example.com:owner/repo.git)
 ? 1
 ```
@@ -83,7 +83,7 @@ Error: ssh Git sources are not acquired yet (git@example.com:owner/repo.git)
 `localhost` folds to the empty authority, and a trailing slash is dropped.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab FILE://LocalHost/srv/git/repo.git/ --walk
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab FILE://LocalHost/srv/git/repo.git/ --walk
 Error: --walk runs the filesystem inventory walker, and a Git source has no filesystem to walk (file:///srv/git/repo.git). Read a pinned tree with --api '/api/tree?depth=N', or --walk a local directory.
 ? 1
 ```
@@ -93,7 +93,7 @@ Error: --walk runs the filesystem inventory walker, and a Git source has no file
 A path stays a local path, and `--no-serve` has nothing to acquire.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab /srv/git/repo.git --no-serve
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab /srv/git/repo.git --no-serve
 Error: ROOT is a local path; --no-serve acquires a file:// or https:// Git source
 ? 1
 ```
@@ -103,7 +103,7 @@ A path the grammar has to decide is the path that was given.
 about that path and not about the working directory.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab a/b::c --walk
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab a/b::c --walk
 Error: [CWD]/a/b::c is not a directory
 ? 1
 ```
@@ -117,7 +117,7 @@ folder, as it was before ROOT was classified.
 The `before` command creates them in the sandbox.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab file:notes --api '/api/tree?depth=1'
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab file:notes --api '/api/tree?depth=1'
 api: /api/tree?depth=1
 status: 200
 {
@@ -149,7 +149,7 @@ status: 200
 `/api/source/status` names the subject: the filesystem, not a pin.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab me@host:dir --api /api/source/status
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab me@host:dir --api /api/source/status
 api: /api/source/status
 status: 200
 {
@@ -176,7 +176,7 @@ status: 200
 ```
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab a::b --walk
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab a::b --walk
 walk: a::b
 status: done
 counts: files=1 dirs=1 symlinks=0
@@ -189,7 +189,7 @@ entries:
 ```
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab https:x --walk
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https:x --walk
 walk: https:x
 status: done
 counts: files=1 dirs=1 symlinks=0
@@ -204,7 +204,7 @@ entries:
 A name that starts with a dash is reached past `--`, and is a path like the others.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab --walk -- -dash
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab --walk -- -dash
 walk: -dash
 status: done
 counts: files=1 dirs=1 symlinks=0
@@ -224,7 +224,7 @@ With no such folder the same shape is the GitHub repository, which `--walk` refu
 before acquiring.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab git@github.com:octo/demo --walk
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab git@github.com:octo/demo --walk
 walk: demo
 status: done
 counts: files=1 dirs=1 symlinks=0
@@ -237,7 +237,7 @@ entries:
 ```
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab git@github.com:octo/absent --walk
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab git@github.com:octo/absent --walk
 Error: --walk runs the filesystem inventory walker, and a Git source has no filesystem to walk (https://github.com/octo/absent). Read a pinned tree with --api '/api/tree?depth=N', or --walk a local directory.
 ? 1
 ```
@@ -246,7 +246,7 @@ Remote-helper syntax that names a folder is that folder; with none it is refused
 a later test.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab ext::folder --walk
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab ext::folder --walk
 walk: ext::folder
 status: done
 counts: files=1 dirs=1 symlinks=0
@@ -261,7 +261,7 @@ entries:
 `--no-serve` has nothing to acquire from a local path.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab me@host:dir --no-serve
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab me@host:dir --no-serve
 Error: ROOT is a local path; --no-serve acquires a file:// or https:// Git source
 ? 1
 ```
@@ -269,13 +269,13 @@ Error: ROOT is a local path; --no-serve acquires a file:// or https:// Git sourc
 The same shapes name nothing here, so the grammar decides, as in the tests below.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab file:absent --walk
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab file:absent --walk
 Error: invalid ROOT (malformed_url)
 ? 1
 ```
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab me@host:absent --no-serve
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab me@host:absent --no-serve
 Error: ssh Git sources are not acquired yet (me@host:absent)
 ? 1
 ```
@@ -289,13 +289,13 @@ directory, and a folder cannot stand in for the repository a URL names.
 The one-slash spelling reaches the folder.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab https://example.com/served/repo.git --walk
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://example.com/served/repo.git --walk
 Error: --walk runs the filesystem inventory walker, and a Git source has no filesystem to walk (https://example.com/served/repo.git). Read a pinned tree with --api '/api/tree?depth=N', or --walk a local directory.
 ? 1
 ```
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab https:/example.com/served/repo.git --walk
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https:/example.com/served/repo.git --walk
 walk: repo.git
 status: done
 counts: files=1 dirs=1 symlinks=0
@@ -317,7 +317,7 @@ A leading `-` reaches the grammar only past `--`, and is refused where Git or SS
 read it as an option.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab --no-serve -- '--upload-pack=true'
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab --no-serve -- '--upload-pack=true'
 Error: invalid ROOT (option_like)
 ? 1
 ```
@@ -325,7 +325,7 @@ Error: invalid ROOT (option_like)
 Remote-helper syntax, which can run a command, names no folder here.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab 'ext::sh -c true' --no-serve
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab 'ext::sh -c true' --no-serve
 Error: invalid ROOT (remote_helper_syntax)
 ? 1
 ```
@@ -333,13 +333,13 @@ Error: invalid ROOT (remote_helper_syntax)
 An empty argument is refused, not read as the current directory.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab '' --no-serve
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab '' --no-serve
 Error: invalid ROOT (empty)
 ? 1
 ```
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab http://example.com/owner/repo.git --no-serve
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab http://example.com/owner/repo.git --no-serve
 Error: invalid ROOT (unsupported_transport)
 ? 1
 ```
@@ -348,13 +348,13 @@ A token in the query or in the userinfo does not reach the terminal, in the acqu
 mode or in the route mode.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab 'https://example.com/owner/repo.git?access_token=secret' --no-serve
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab 'https://example.com/owner/repo.git?access_token=secret' --no-serve
 Error: invalid ROOT (query_not_allowed)
 ? 1
 ```
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab https://token123@example.com/owner/repo.git --api /api/cache/sources
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://token123@example.com/owner/repo.git --api /api/cache/sources
 Error: invalid ROOT (credentials_in_url)
 ? 1
 ```

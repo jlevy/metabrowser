@@ -47,7 +47,7 @@ The pin is the head commit, which only `refs/pull/7/head` reaches.
 head, to the head.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/7 --api /api/plugin/github/pull
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api /api/plugin/github/pull
 selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
@@ -243,7 +243,7 @@ how its base was chosen.
 `README.md`, which changed on `topic` after the fork point, is not in it.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/diff/comparison?left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base'
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/diff/comparison?left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base'
 selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
@@ -382,7 +382,7 @@ status: 200
 ## Test: a merged pull request compares from its base.sha
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/8 --api '/api/plugin/diff/comparison?left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=8ae27617c9c475851b67ee69433d008836d112ba&base_policy=merge_base'
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/8 --api '/api/plugin/diff/comparison?left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=8ae27617c9c475851b67ee69433d008836d112ba&base_policy=merge_base'
 selection: pull_request
 pin: 8ae27617c9c475851b67ee69433d008836d112ba (pull request 8 head)
 pull_request: 8 (merged; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
@@ -493,7 +493,7 @@ status: 200
 refresh fetched by ID.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/9 --api /api/plugin/github/pull
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/9 --api /api/plugin/github/pull
 selection: pull_request
 pin: 0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd (pull request 9 head)
 pull_request: 9 (closed; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
@@ -616,7 +616,7 @@ status: 200
 ## Test: a draft pull request opens at its head
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/10/files --show docs/draft.md
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/10/files --show docs/draft.md
 selection: pull_request
 pin: 7a7d6596e515735d244dc1d942463c95851e139c (pull request 10 head)
 pull_request: 10 (draft; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
@@ -635,7 +635,7 @@ The page is still pull request 7’s, read from the record the first test shows 
 and its Files changed still ends at the record’s head, not at the pin.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/7/commits/f7c5a99 --show /pull/7/files
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7/commits/f7c5a99 --show /pull/7/files
 selection: commit
 pin: f7c5a9918657080d6aeb455902615b6e17df760a (commit)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
@@ -650,7 +650,7 @@ model: pull envelope; state=stale pull_state=open fetched_at=2026-09-17T12:00:00
 ## Test: a repository URL selects no pull request
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo --api /api/plugin/github/pull
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo --api /api/plugin/github/pull
 api: /api/plugin/github/pull
 status: 200
 {
@@ -676,7 +676,7 @@ is not JSON. Each asks the failing `gh` once, falls back to the default branch, 
 route says why it has nothing to show.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/14 --api /api/plugin/github/pull
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/14 --api /api/plugin/github/pull
 selection: pull_request
 pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
 pull_request: 14 (not opened: pull request 14 of https://github.com/octo/demo: gh exited 1 without an HTTP response (gh_failed); the pin is the default branch)
@@ -704,7 +704,7 @@ status: 200
 ```
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/12 --api /api/plugin/github/pull
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/12 --api /api/plugin/github/pull
 selection: pull_request
 pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
 pull_request: 12 (not opened: pull request 12 of https://github.com/octo/demo: gh exited 1 without an HTTP response (gh_failed); the pin is the default branch)
@@ -732,7 +732,7 @@ status: 200
 ```
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/13 --api /api/plugin/github/pull
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/13 --api /api/plugin/github/pull
 selection: pull_request
 pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
 pull_request: 13 (not opened: pull request 13 of https://github.com/octo/demo: gh exited 1 without an HTTP response (gh_failed); the pin is the default branch)
@@ -768,7 +768,7 @@ Its fetch time is the fixture’s wall clock, the one value below that is a patt
 A one-shot command reports this and fetches nothing.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/7 --api /api/source/status
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api /api/source/status
 selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
@@ -782,7 +782,7 @@ status: 200
   "ref_name": "refs/pull/7/head",
   "name": "demo",
   "origin": "https://github.com/octo/demo",
-  "location": "[APP_HOME]/cache/repository-stores/65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4/repository.git",
+  "location": "[APP_HOME]/repository-stores/65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4/repository.git",
   "refreshable": true,
   "latest": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
   "ref_on_origin": true,
@@ -814,7 +814,7 @@ A refresh that completes, of a pull request whose record is cached, is in
 `tests/golden/cli-github-pull-refresh.txt`.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/14 --api /api/plugin/github/pull-refresh --data refresh.json
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/14 --api /api/plugin/github/pull-refresh --data refresh.json
 selection: pull_request
 pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
 pull_request: 14 (not opened: pull request 14 of https://github.com/octo/demo: gh exited 1 without an HTTP response (gh_failed); the pin is the default branch)
@@ -870,7 +870,7 @@ A URL that selects no pull request has nothing to refresh, and a GET cannot star
 refresh.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo --api /api/plugin/github/pull-refresh --data refresh.json
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo --api /api/plugin/github/pull-refresh --data refresh.json
 api: /api/plugin/github/pull-refresh
 status: 409
 {
@@ -882,7 +882,7 @@ Error: /api/plugin/github/pull-refresh returned HTTP 409
 ```
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/7 --api /api/plugin/github/pull-refresh
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api /api/plugin/github/pull-refresh
 selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
@@ -901,7 +901,7 @@ Files changed, the comparison the record names.
 page renders.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/7 --show /pull/7
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --show /pull/7
 selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
@@ -914,7 +914,7 @@ model: pull envelope; state=stale pull_state=open fetched_at=2026-09-17T12:00:00
 ```
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/9 --show /pull/9/files
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/9 --show /pull/9/files
 selection: pull_request
 pin: 0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd (pull request 9 head)
 pull_request: 9 (closed; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
@@ -930,7 +930,7 @@ A page for another number, or on a source that serves no pull request, is refuse
 the page itself says.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/7 --show /pull/8
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --show /pull/8
 selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
@@ -939,7 +939,7 @@ Error: /pull/8: this source serves pull request 7
 ```
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo --show /pull/7
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo --show /pull/7
 Error: /pull/7: this source serves no pull request
 ? 1
 ```
@@ -951,7 +951,7 @@ description (`body`), or one comment, review, or review comment by ID. The answe
 record’s fetch time, the part, and its rendered HTML.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/pull-markdown?part=body'
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/pull-markdown?part=body'
 selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
@@ -969,7 +969,7 @@ status: 200
 A part the record does not hold, or one that is not a part’s name, is refused.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/pull-markdown?part=review/1'
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/pull-markdown?part=review/1'
 selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
@@ -984,7 +984,7 @@ Error: /api/plugin/github/pull-markdown?part=review/1 returned HTTP 404
 ```
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/pull-markdown?part=../body'
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/pull-markdown?part=../body'
 selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
@@ -1001,7 +1001,7 @@ Error: /api/plugin/github/pull-markdown?part=../body returned HTTP 400
 With no record cached there is nothing to render, and the answer says so.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab https://github.com/octo/demo/pull/14 --api '/api/plugin/github/pull-markdown?part=body'
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/14 --api '/api/plugin/github/pull-markdown?part=body'
 selection: pull_request
 pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
 pull_request: 14 (not opened: pull request 14 of https://github.com/octo/demo: gh exited 1 without an HTTP response (gh_failed); the pin is the default branch)

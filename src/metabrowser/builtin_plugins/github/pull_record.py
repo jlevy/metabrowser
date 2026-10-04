@@ -3,7 +3,7 @@
 A record holds what ``gh api`` said about one pull request, as the reader it names saw
 it at ``fetched_at``: the pull request, its issue comments, reviews, review comments,
 check runs, and combined status, plus the comparison endpoints Git computed from it.
-It lives at ``cache/sources/<slug>/pulls/<n>.json``, written by the home's private
+It lives at ``sources/<slug>/pulls/<n>.json``, written by the home's private
 atomic file write and read with a size bound. Pydantic validates it on write and parses
 it on read; a record whose ``schema_version`` is not :data:`PULL_RECORD_SCHEMA` is
 refetched, never migrated.

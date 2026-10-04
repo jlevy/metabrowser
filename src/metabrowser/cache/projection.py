@@ -96,7 +96,7 @@ from metabrowser.cache.wire import (
     StoreRow,
     StoreState,
 )
-from metabrowser.home import ApplicationHomeError, PrivateStorageError, SharedEntryPolicy
+from metabrowser.home import PrivateStorageError, SharedEntryPolicy, StorageDirectoryError
 
 log = logging.getLogger(__name__)
 
@@ -265,8 +265,8 @@ def _resolve_home() -> Path | None:
     """Resolve and verify the home for this request; ``None`` when it does not exist."""
 
     try:
-        home = home_module.application_home()
-    except ApplicationHomeError as error:
+        home = home_module.application_cache()
+    except StorageDirectoryError as error:
         raise _Refusal(409, {"error": str(error), "code": "invalid_home_setting"}) from error
     try:
         home_module.validate_private_home(home)
@@ -301,8 +301,7 @@ def _read_layout(home: Path) -> CacheLayout | None:
             409,
             {
                 "error": (
-                    f"cache/layout.yml names format {layout.format}, which no Metabrowser "
-                    "release wrote."
+                    f"layout.yml names format {layout.format}, which no Metabrowser release wrote."
                 ),
                 "code": "layout_unreadable",
             },
@@ -310,7 +309,11 @@ def _read_layout(home: Path) -> CacheLayout | None:
     return layout
 
 
-def _read_config(home: Path) -> ApplicationConfig | None:
+def _read_config() -> ApplicationConfig | None:
+    try:
+        home = home_module.configuration_directory()
+    except StorageDirectoryError as error:
+        raise _Refusal(409, {"error": str(error), "code": "invalid_home_setting"}) from error
     try:
         return read_config(home, shared=_READ_ONLY)
     except FutureLayoutFormatError as error:
@@ -325,7 +328,7 @@ def _not_private(error: PrivateStorageError, home: Path) -> _Refusal:
     """Refuse a read of the home, naming the fixed layout location that failed.
 
     A fixed ``f01`` location is not a secret — ``layout_unreadable`` already names
-    ``cache/layout.yml`` — and without it a refusal leaves the user to guess which
+    ``layout.yml`` — and without it a refusal leaves the user to guess which
     directory to fix. Anything else, a slug, a store key, or a path outside the home, is
     left out.
     """
@@ -371,8 +374,8 @@ def _refuse_entries_without_layout(home: Path) -> None:
             409,
             {
                 "error": (
-                    "The cache has entries but no cache/layout.yml, so their format is "
-                    "unknown. Move the cache directory aside, or set METABROWSER_HOME to a "
+                    "The cache has entries but no layout.yml, so their format is "
+                    "unknown. Move the cache directory aside, or set METABROWSER_CACHE_DIR to a "
                     "different directory."
                 ),
                 "code": "layout_missing",
@@ -404,25 +407,23 @@ def _entries_layout(home: Path) -> CacheLayout | None:
 def _layout() -> CacheLayoutResponse:
     supported = FORMAT_HISTORY[-1]
     home = _resolve_home()
+    config = _read_config()
     if home is None:
         return {
             "home": "absent",
             "supported_format": supported,
             "state": "absent",
             "layout": None,
-            "config": None,
+            "config": None if config is None else _config(config),
             "reclamation": None,
         }
     layout = _read_layout(home)
-    config = _read_config(home)
     state: LayoutState
     if layout is None:
         _refuse_entries_without_layout(home)
         state = "uninitialized"
     elif layout.format != supported:
         state = "migration_pending"
-    elif config is None or config.format != layout.format:
-        state = "config_pending"
     else:
         state = "current"
     return {
