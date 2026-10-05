@@ -1115,7 +1115,7 @@ def test_refusals_name_a_remedy_but_never_the_path(
     }
     for error in errors:
         message = str(error)
-        assert "Metabrowser application home" in message
+        assert "Metabrowser storage directory" in message
         assert str(tmp_path) not in message
         assert PRIVATE_SLUG not in message
         assert "ghp_" not in message
