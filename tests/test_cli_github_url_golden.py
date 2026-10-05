@@ -379,7 +379,7 @@ def test_golden_a_repository_the_origin_does_not_show(
 
     for _args, result in (*with_gh, without_gh, elsewhere):
         assert result.exit_code == 1 and result.stdout == ""
-    sources = home / "cache" / "sources"
+    sources = home / "sources"
     assert not sources.is_dir() or list(sources.iterdir()) == []
 
     rendered = (

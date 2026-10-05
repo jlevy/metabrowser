@@ -3,7 +3,7 @@
 exit: SIGKILL
 --- stdout ---
 --- stderr ---
-cloning <ORIGIN-A> into <HOME>/cache
+cloning <ORIGIN-A> into <HOME>
 ## The store is published but unreferenced, and the source is not visible: the alias is the visibility commit.
 # metab <ROOT> --api /api/cache/layout
 exit: 0
@@ -90,7 +90,7 @@ slug: <SLUG-A>
 store: <STORE-A>
 revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
 --- stderr ---
-cloning <ORIGIN-A> into <HOME>/cache
+cloning <ORIGIN-A> into <HOME>
 cloned <ORIGIN-A> in 0.0 s
 # metab <ROOT> --api /api/cache/layout
 exit: 0

@@ -403,7 +403,7 @@ def test_refs_that_differ_only_in_case_are_refused_where_the_store_cannot_hold_t
         "(refs/remotes/origin/Feature, refs/remotes/origin/feature), which this "
         "filesystem cannot keep apart (ref_case_collision); nothing was published"
     )
-    assert list((forced / "cache" / "staging").iterdir()) == []
+    assert list((forced / "staging").iterdir()) == []
 
     home = tmp_path / "home"
     if _filesystem_ignores_case(tmp_path):

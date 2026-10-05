@@ -467,14 +467,14 @@ class _Refused:
 _V, _L = PrivateStorageViolation, PrivateStorageLocation
 _W = os.O_WRONLY
 _REFUSED: tuple[_Refused, ...] = (
-    # An explicit permissive METABROWSER_HOME gets an actionable refusal, not a private write.
+    # An explicit permissive METABROWSER_CACHE_DIR gets an actionable refusal, not a private write.
     *(
-        _Refused(call, _V.PERMISSIVE, _L.HOME, ("chmod 700", "METABROWSER_HOME"), mode)
+        _Refused(call, _V.PERMISSIVE, _L.HOME, ("chmod 700", "METABROWSER_CACHE_DIR"), mode)
         for mode in _SHARED_HOME_MODES
         for call in _every_entry_point(f"homes/mode-{mode:04o}")
     ),
     *(
-        _Refused(call, _V.SYMLINK, _L.HOME, ("METABROWSER_HOME",))
+        _Refused(call, _V.SYMLINK, _L.HOME, ("METABROWSER_CACHE_DIR",))
         for call in _every_entry_point("homes/linked")
     ),
     _Refused(_ensure("homes/foreign", "cache"), _V.FOREIGN_OWNER, _L.HOME, ("sudo",)),
@@ -1115,7 +1115,7 @@ def test_refusals_name_a_remedy_but_never_the_path(
     }
     for error in errors:
         message = str(error)
-        assert "Metabrowser application home" in message
+        assert "Metabrowser storage directory" in message
         assert str(tmp_path) not in message
         assert PRIVATE_SLUG not in message
         assert "ghp_" not in message

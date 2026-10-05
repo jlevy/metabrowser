@@ -5,7 +5,7 @@ then how far it has got, then that it is done and what comes next:
 
 .. code-block:: text
 
-    cloning https://github.com/owner/repo into ~/.metabrowser/cache
+    cloning https://github.com/owner/repo into ~/.cache/metabrowser
     cloning https://github.com/owner/repo: receiving objects: 45%, 334.0 MiB at 9.5 MiB/s (40 s)
     cloned https://github.com/owner/repo in 104 s (742.0 MiB); starting the server
 

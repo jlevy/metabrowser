@@ -48,7 +48,7 @@ runner = CliRunner()
 
 @pytest.fixture
 def origin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    monkeypatch.setenv("METABROWSER_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("METABROWSER_CACHE_DIR", str(tmp_path / "home"))
     monkeypatch.delenv("METABROWSER_LOG_LEVEL", raising=False)
     _allow_installed_git(monkeypatch)
     built = github_origin(tmp_path)

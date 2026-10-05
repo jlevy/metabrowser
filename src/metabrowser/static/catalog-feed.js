@@ -78,7 +78,7 @@
   function create(options) {
     const catalog = options.catalog;
     const endpoint = options.endpoint || "/api/catalog";
-    const fetchImpl = options.fetchImpl || ((input) => fetch(input));
+    const fetchImpl = options.fetchImpl || ((input, init) => fetch(input, init));
     const scheduleRetry =
       options.scheduleRetry || ((callback, delayMs) => window.setTimeout(callback, delayMs));
     const cancelRetry = options.cancelRetry || ((handle) => window.clearTimeout(handle));
@@ -90,6 +90,8 @@
     let pendingChanges = [];
     let fetchSerial = 0;
     let fetchedOnce = false;
+    /** @type {string | null} */
+    let appliedEtag = null;
     let fetching = false;
     let retryAttempts = 0;
     /** @type {number | null} */
@@ -233,7 +235,12 @@
       fetchSerial += 1;
       const serial = fetchSerial;
       try {
-        const response = await fetchImpl(endpoint);
+        // Own the validator so a browser cache cannot turn a 304 into a
+        // cached 200 body that we parse and apply again on every Back landing.
+        const response = await fetchImpl(endpoint, {
+          cache: "no-store",
+          headers: appliedEtag ? { "If-None-Match": appliedEtag } : {},
+        });
         if (disposed || serial !== fetchSerial) {
           return;
         }
@@ -296,6 +303,7 @@
           ) {
             return;
           }
+          appliedEtag = response.headers?.get?.("etag") || null;
           lastBulkWasAuthoritative = authoritative;
           lastBulkCoverage = coverage;
           if (authoritative) {

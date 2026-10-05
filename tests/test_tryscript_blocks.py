@@ -38,11 +38,18 @@ CASES: dict[str, str] = {
     "frontmatter": (
         "---\nsandbox: true\nbefore: >-\n  metab setup\n---\n# T\n\n```console\n$ metab a\n```\n"
     ),
+    "nested-example": "````markdown\n```console\n$ not-executed\n```\n````\n",
+    "invalid-status": "```console\n$ metab root\n? nope\n```\n",
+    "duplicate-status": "```console\n$ metab root\n? 0\n? 1\n```\n",
     "crlf": "```console\r\n$ metab root\r\nout\r\n```\r\n",
 }
 
 
-def _ours(text: str) -> list[dict[str, object]]:
+def _ours(text: str) -> list[dict[str, object]] | dict[str, bool]:
+    try:
+        blocks = tryscript_blocks.blocks(text)
+    except tryscript_blocks.ParseError:
+        return {"error": True}
     return [
         {
             "command": block.command,
@@ -50,7 +57,7 @@ def _ours(text: str) -> list[dict[str, object]]:
             "skip": block.annotation == "skip",
             "only": block.annotation == "only",
         }
-        for block in tryscript_blocks.blocks(text)
+        for block in blocks
     ]
 
 
@@ -75,9 +82,7 @@ def test_the_parser_agrees_with_the_installed_tryscript(tmp_path: Path) -> None:
         ("bash-fence", ["metab root"]),
         ("other-fence", []),
         ("indented-fence", []),
-        ("two-dollar-lines", ["metab a metab b"]),
         ("continuation", ["metab root  --walk --json"]),
-        ("unclosed", []),
     ],
 )
 def test_what_counts_as_a_block(case: str, commands: list[str]) -> None:
@@ -89,10 +94,15 @@ def test_what_counts_as_a_block(case: str, commands: list[str]) -> None:
 def test_a_block_knows_its_line_and_its_dollar_lines() -> None:
     (block,) = tryscript_blocks.blocks(CASES["frontmatter"])
     assert (block.line, block.dollar_lines, block.status) == (8, 1, 0)
-    (joined,) = tryscript_blocks.blocks(CASES["two-dollar-lines"])
-    assert joined.dollar_lines == 2
+    assert block.dollar_lines == 1
 
 
 def test_run_lines_are_the_lines_inside_a_fence_tryscript_opens() -> None:
     text = "intro\n```console\n$ metab a\nout\n```\n\n  ```console\n  $ metab b\n  ```\n"
     assert tryscript_blocks.run_lines(text) == {2, 3, 4, 5}
+
+
+@pytest.mark.parametrize("case", ["unclosed", "no-command", "two-dollar-lines"])
+def test_malformed_transcripts_are_refused(case: str) -> None:
+    with pytest.raises(tryscript_blocks.ParseError):
+        tryscript_blocks.blocks(CASES[case])

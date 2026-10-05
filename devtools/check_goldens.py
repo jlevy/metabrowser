@@ -324,7 +324,10 @@ def transcript_findings(relative: str, text: str) -> list[str]:
     """What in one transcript reads as evidence and is not."""
 
     findings: list[str] = []
-    blocks = tryscript_blocks.blocks(text)
+    try:
+        blocks = tryscript_blocks.blocks(text)
+    except tryscript_blocks.ParseError as error:
+        return [f"{relative}: {error}"]
     if not blocks:
         findings.append(f"{relative}: no block with a command, so tryscript runs nothing in it")
     for block in blocks:
@@ -333,11 +336,6 @@ def transcript_findings(relative: str, text: str) -> list[str]:
             findings.append(
                 f"{where}: a `{block.annotation}` annotation, which makes tryscript report "
                 "tests it did not run as passed"
-            )
-        if block.dollar_lines > 1:
-            findings.append(
-                f"{where}: {block.dollar_lines} `$` lines in one block, which tryscript joins "
-                "into one command line; give each command its own block"
             )
         for reason in shell_status.hidden_statuses(block.command):
             findings.append(

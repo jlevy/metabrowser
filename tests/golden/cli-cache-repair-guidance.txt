@@ -1,14 +1,14 @@
-## METABROWSER_HOME must name an absolute path; nothing is created otherwise.
-# METABROWSER_HOME= metab <ORIGIN-A> --no-serve
+## METABROWSER_CACHE_DIR must name an absolute path; nothing is created otherwise.
+# METABROWSER_CACHE_DIR= metab <ORIGIN-A> --no-serve
 exit: 1
 --- stdout ---
 --- stderr ---
-Error: METABROWSER_HOME is set but empty. Unset it to use ~/.metabrowser, or set it to the absolute path of a private directory.
-# METABROWSER_HOME=relative/home metab <ORIGIN-A> --no-serve
+Error: METABROWSER_CACHE_DIR must be a nonempty absolute path without '..' components.
+# METABROWSER_CACHE_DIR=relative/home metab <ORIGIN-A> --no-serve
 exit: 1
 --- stdout ---
 --- stderr ---
-Error: METABROWSER_HOME must be an absolute path without '..' components.
+Error: METABROWSER_CACHE_DIR must be a nonempty absolute path without '..' components.
 ## A is acquired into a private home.
 # metab <ORIGIN-A> --no-serve
 exit: 0
@@ -18,19 +18,19 @@ slug: <SLUG-A>
 store: <STORE-A>
 revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
 --- stderr ---
-cloning <ORIGIN-A> into <HOME>/cache
+cloning <ORIGIN-A> into <HOME>
 cloned <ORIGIN-A> in 0.0 s
 ## A home other users can read refuses both a cache hit and a new acquisition, says how to fix it, and is not changed.
 # metab <ORIGIN-A> --no-serve
 exit: 1
 --- stdout ---
 --- stderr ---
-Error: The Metabrowser application home is accessible to other users (mode 0755). Run chmod 700 on it, or set METABROWSER_HOME to a private directory you own.
+Error: The Metabrowser storage directory is accessible to other users (mode 0755). Run chmod 700 on it, or set the applicable override (METABROWSER_CACHE_DIR or METABROWSER_CONFIG_DIR) to a private directory you own.
 # metab <ORIGIN-B> --no-serve
 exit: 1
 --- stdout ---
 --- stderr ---
-Error: The Metabrowser application home is accessible to other users (mode 0755). Run chmod 700 on it, or set METABROWSER_HOME to a private directory you own.
+Error: The Metabrowser storage directory is accessible to other users (mode 0755). Run chmod 700 on it, or set the applicable override (METABROWSER_CACHE_DIR or METABROWSER_CONFIG_DIR) to a private directory you own.
 ## After chmod 700, A is reused and B is acquired.
 # metab <ORIGIN-A> --no-serve
 exit: 0
@@ -40,7 +40,7 @@ slug: <SLUG-A>
 store: <STORE-A>
 revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
 --- stderr ---
-using the clone of <ORIGIN-A> cached in <HOME>/cache, fetched less than a minute ago
+using the clone of <ORIGIN-A> cached in <HOME>, fetched less than a minute ago
 # metab <ORIGIN-B> --no-serve
 exit: 0
 --- stdout ---
@@ -49,15 +49,15 @@ slug: <SLUG-B>
 store: <STORE-B>
 revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
 --- stderr ---
-cloning <ORIGIN-B> into <HOME>/cache
+cloning <ORIGIN-B> into <HOME>
 cloned <ORIGIN-B> in 0.0 s
 ## A home written by a newer release is refused before anything is written.
 # metab <ORIGIN-A> --no-serve
 exit: 1
 --- stdout ---
 --- stderr ---
-Error: This Metabrowser application home uses format f02, and this release reads formats up to f01. Upgrade Metabrowser, or set METABROWSER_HOME to a different directory.
-## Another METABROWSER_HOME, as the message suggests, acquires independently.
+Error: This Metabrowser cache directory uses format f02, and this release reads formats up to f01. Upgrade Metabrowser, or set METABROWSER_CACHE_DIR to a different directory.
+## Another METABROWSER_CACHE_DIR, as the message suggests, acquires independently.
 # metab <ORIGIN-A> --no-serve
 exit: 0
 --- stdout ---
@@ -66,5 +66,5 @@ slug: <SLUG-A>
 store: <STORE-A>
 revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
 --- stderr ---
-cloning <ORIGIN-A> into <OTHER-HOME>/cache
+cloning <ORIGIN-A> into <OTHER-HOME>
 cloned <ORIGIN-A> in 0.0 s

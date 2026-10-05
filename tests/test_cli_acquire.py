@@ -46,7 +46,7 @@ runner = CliRunner()
 
 def _isolate_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     home = tmp_path / "home"
-    monkeypatch.setenv("METABROWSER_HOME", str(home))
+    monkeypatch.setenv("METABROWSER_CACHE_DIR", str(home))
     _allow_installed_git(monkeypatch)
     return home
 
@@ -280,7 +280,7 @@ def test_serve_stays_closed_to_ssh_without_creating_the_home(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     home = tmp_path / "home"
-    monkeypatch.setenv("METABROWSER_HOME", str(home))
+    monkeypatch.setenv("METABROWSER_CACHE_DIR", str(home))
     result = runner.invoke(_app, ["ssh://git@example.com/o/r.git", "--no-open"])
     assert isinstance(result.exception, CLIError)
     assert "ssh Git sources are not served yet" in str(result.exception)
@@ -361,7 +361,7 @@ def test_no_serve_refuses_below_floor_git_without_creating_the_home(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     home = tmp_path / "home"
-    monkeypatch.setenv("METABROWSER_HOME", str(home))
+    monkeypatch.setenv("METABROWSER_CACHE_DIR", str(home))
 
     def refuse() -> tuple[int, int, int]:
         raise UnsupportedGitVersionError("git version 2.39.5", "2.43.7")
@@ -380,7 +380,7 @@ def test_no_serve_refuses_below_floor_git_without_writing_an_empty_home(
 ) -> None:
     home = tmp_path / "home"
     home.mkdir()
-    monkeypatch.setenv("METABROWSER_HOME", str(home))
+    monkeypatch.setenv("METABROWSER_CACHE_DIR", str(home))
 
     def refuse() -> tuple[int, int, int]:
         raise UnsupportedGitVersionError("git version 2.39.5", "2.43.7")
@@ -417,7 +417,7 @@ def test_a_git_that_reports_a_below_floor_version_is_refused(tmp_path: Path) -> 
         [sys.executable, "-c", metab, url, "--no-serve"],
         env={
             **os.environ,
-            "METABROWSER_HOME": str(home),
+            "METABROWSER_CACHE_DIR": str(home),
             "PATH": f"{old_git.parent}{os.pathsep}{os.environ['PATH']}",
         },
         capture_output=True,
@@ -540,3 +540,35 @@ def test_pin_html_offers_only_source_under_the_forced_profile(
     assert "kind: html" in result.output
     assert "views: source (default)" in result.output
     assert "preview" not in result.output
+
+
+def test_cli_storage_overrides_are_exact_and_scoped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.home import application_cache, configuration_directory
+
+    observed: list[tuple[Path, Path]] = []
+
+    def inspect(*args: object, **kwargs: object) -> None:
+        observed.append((application_cache(), configuration_directory()))
+
+    monkeypatch.setenv("METABROWSER_CACHE_DIR", str(tmp_path / "environment-cache"))
+    monkeypatch.setenv("METABROWSER_CONFIG_DIR", str(tmp_path / "environment-config"))
+    monkeypatch.setattr("metabrowser.cli.acquire_cli.run_no_serve", inspect)
+    result = runner.invoke(
+        _app,
+        [
+            "file:///unused.git",
+            "--no-serve",
+            "--cache-dir",
+            str(tmp_path / "flag-cache"),
+            "--config-dir",
+            str(tmp_path / "flag-config"),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert observed == [(tmp_path / "flag-cache", tmp_path / "flag-config")]
+    assert application_cache() == tmp_path / "environment-cache"
+    assert configuration_directory() == tmp_path / "environment-config"
+    assert not (tmp_path / "flag-cache").exists()
+    assert not (tmp_path / "flag-config").exists()

@@ -25,13 +25,14 @@ writers: `ensure_home` and `migrate_layout`, and staged publication under the ow
 locks. Addresses, versions, and timestamps are fixed, so identities, slugs, and records
 are asserted literally.
 
-Each command names its home with `METABROWSER_HOME`, because the routes resolve the home
-per request. `root` is an empty directory to serve; the cache routes do not read it.
+Each command names its home with `METABROWSER_CACHE_DIR`, because the routes resolve the
+home per request.
+`root` is an empty directory to serve; the cache routes do not read it.
 
 ## Test: a missing home is an answer, not an error
 
 ```console
-$ METABROWSER_HOME=$PWD/missing metab root --api /api/cache/layout
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/missing metab root --api /api/cache/layout
 api: /api/cache/layout
 status: 200
 {
@@ -39,14 +40,18 @@ status: 200
   "supported_format": "f01",
   "state": "absent",
   "layout": null,
-  "config": null,
+  "config": {
+    "format": "f01",
+    "written_by": "0.11.0",
+    "upgrades": []
+  },
   "reclamation": null
 }
 ? 0
 ```
 
 ```console
-$ METABROWSER_HOME=$PWD/missing metab root --api /api/cache/sources
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/missing metab root --api /api/cache/sources
 api: /api/cache/sources
 status: 200
 {
@@ -63,7 +68,7 @@ status: 200
 ## Test: an empty cache has a current layout and nothing in it
 
 ```console
-$ METABROWSER_HOME=$PWD/empty metab root --api /api/cache/layout
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/empty metab root --api /api/cache/layout
 api: /api/cache/layout
 status: 200
 {
@@ -87,7 +92,7 @@ status: 200
 ```
 
 ```console
-$ METABROWSER_HOME=$PWD/empty metab root --api /api/cache/stores
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/empty metab root --api /api/cache/stores
 api: /api/cache/stores
 status: 200
 {
@@ -109,7 +114,7 @@ published its store and source but not its alias.
 An interrupted acquisition left one staging entry for the next sweep.
 
 ```console
-$ METABROWSER_HOME=$PWD/populated metab root --api /api/cache/layout
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/populated metab root --api /api/cache/layout
 api: /api/cache/layout
 status: 200
 {
@@ -135,7 +140,7 @@ status: 200
 ## Test: sources with their identity, alias generation, and publication
 
 ```console
-$ METABROWSER_HOME=$PWD/populated metab root --api /api/cache/sources
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/populated metab root --api /api/cache/sources
 api: /api/cache/sources
 status: 200
 {
@@ -208,7 +213,7 @@ The flask store is referenced by both sources.
 click’s store is unreferenced, which is what makes it reclaimable.
 
 ```console
-$ METABROWSER_HOME=$PWD/populated metab root --api /api/cache/stores
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/populated metab root --api /api/cache/stores
 api: /api/cache/stores
 status: 200
 {
@@ -283,7 +288,7 @@ status: 200
 ## Test: one source with its recency and its store’s head
 
 ```console
-$ METABROWSER_HOME=$PWD/populated metab root --api /api/cache/source/github-com--pallets--flask--e7b7fe0ffe8a
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/populated metab root --api /api/cache/source/github-com--pallets--flask--e7b7fe0ffe8a
 api: /api/cache/source/github-com--pallets--flask--e7b7fe0ffe8a
 status: 200
 {
@@ -338,7 +343,7 @@ status: 200
 ## Test: pages follow slug order
 
 ```console
-$ METABROWSER_HOME=$PWD/populated metab root --api '/api/cache/sources?limit=2'
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/populated metab root --api '/api/cache/sources?limit=2'
 api: /api/cache/sources?limit=2
 status: 200
 {
@@ -388,11 +393,11 @@ status: 200
 ## Test: a newer home is refused before any entry is read
 
 ```console
-$ METABROWSER_HOME=$PWD/future metab root --api /api/cache/sources
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/future metab root --api /api/cache/sources
 api: /api/cache/sources
 status: 409
 {
-  "error": "This Metabrowser application home uses format f02, and this release reads formats up to f01. Upgrade Metabrowser, or set METABROWSER_HOME to a different directory.",
+  "error": "This Metabrowser cache directory uses format f02, and this release reads formats up to f01. Upgrade Metabrowser, or set METABROWSER_CACHE_DIR to a different directory.",
   "code": "future_format",
   "found": "f02",
   "supported": "f01"
@@ -404,11 +409,11 @@ Error: /api/cache/sources returned HTTP 409
 ## Test: a home other users can read is refused without naming it
 
 ```console
-$ METABROWSER_HOME=$PWD/shared metab root --api /api/cache/layout
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/shared metab root --api /api/cache/layout
 api: /api/cache/layout
 status: 409
 {
-  "error": "The Metabrowser application home is accessible to other users (mode 0755). Run chmod 700 on it, or set METABROWSER_HOME to a private directory you own.",
+  "error": "The Metabrowser storage directory is accessible to other users (mode 0755). Run chmod 700 on it, or set the applicable override (METABROWSER_CACHE_DIR or METABROWSER_CONFIG_DIR) to a private directory you own.",
   "code": "home_not_private",
   "location": "home",
   "violation": "permissive"
@@ -437,7 +442,7 @@ is not `damaged`. No message names a path, a slug, or a value from the record.
 named.
 
 ```console
-$ METABROWSER_HOME=$PWD/damaged metab root --api /api/cache/sources
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/damaged metab root --api /api/cache/sources
 api: /api/cache/sources
 status: 200
 {
@@ -512,17 +517,17 @@ status: 200
         {
           "record": "source.yml",
           "code": "not_private",
-          "message": "An entry in the Metabrowser application home is accessible to other users (mode 0750), and Metabrowser does not change your entries to answer a request. Run chmod 700 on it, or set METABROWSER_HOME to a private directory you own."
+          "message": "An entry in the Metabrowser storage directory is accessible to other users (mode 0750), and Metabrowser does not change your entries to answer a request. Run chmod 700 on it, or set the applicable override (METABROWSER_CACHE_DIR or METABROWSER_CONFIG_DIR) to a private directory you own."
         },
         {
           "record": "store-alias.yml",
           "code": "not_private",
-          "message": "An entry in the Metabrowser application home is accessible to other users (mode 0750), and Metabrowser does not change your entries to answer a request. Run chmod 700 on it, or set METABROWSER_HOME to a private directory you own."
+          "message": "An entry in the Metabrowser storage directory is accessible to other users (mode 0750), and Metabrowser does not change your entries to answer a request. Run chmod 700 on it, or set the applicable override (METABROWSER_CACHE_DIR or METABROWSER_CONFIG_DIR) to a private directory you own."
         },
         {
           "record": "state.yml",
           "code": "not_private",
-          "message": "An entry in the Metabrowser application home is accessible to other users (mode 0750), and Metabrowser does not change your entries to answer a request. Run chmod 700 on it, or set METABROWSER_HOME to a private directory you own."
+          "message": "An entry in the Metabrowser storage directory is accessible to other users (mode 0750), and Metabrowser does not change your entries to answer a request. Run chmod 700 on it, or set the applicable override (METABROWSER_CACHE_DIR or METABROWSER_CONFIG_DIR) to a private directory you own."
         }
       ]
     },
@@ -560,7 +565,7 @@ status: 200
         {
           "record": "source.yml",
           "code": "not_private",
-          "message": "An entry in the Metabrowser application home is accessible to other users (mode 0640), and Metabrowser does not change your entries to answer a request. Run chmod 600 on it, or set METABROWSER_HOME to a private directory you own."
+          "message": "An entry in the Metabrowser storage directory is accessible to other users (mode 0640), and Metabrowser does not change your entries to answer a request. Run chmod 600 on it, or set the applicable override (METABROWSER_CACHE_DIR or METABROWSER_CONFIG_DIR) to a private directory you own."
         }
       ]
     },
@@ -598,7 +603,7 @@ unreadable alias or an unrecognized entry might, so its references are `unknown`
 the store it names.
 
 ```console
-$ METABROWSER_HOME=$PWD/damaged metab root --api /api/cache/stores
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/damaged metab root --api /api/cache/stores
 api: /api/cache/stores
 status: 200
 {
@@ -673,7 +678,7 @@ The list and the detail build one row, so an entry cannot look healthy on one of
 A source that is not published carries no store.
 
 ```console
-$ METABROWSER_HOME=$PWD/damaged metab root --api /api/cache/source/github-com--pallets--flask--e7b7fe0ffe8a
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/damaged metab root --api /api/cache/source/github-com--pallets--flask--e7b7fe0ffe8a
 api: /api/cache/source/github-com--pallets--flask--e7b7fe0ffe8a
 status: 200
 {
@@ -713,30 +718,30 @@ status: 200
 A fixed layout name is not a secret, and without it the remedy is a guess.
 
 ```console
-$ METABROWSER_HOME=$PWD/shared-directories metab root --api /api/cache/sources
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/shared-directories metab root --api /api/cache/sources
 api: /api/cache/sources
 status: 409
 {
-  "error": "An entry in the Metabrowser application home is accessible to other users (mode 0755), and Metabrowser does not change your entries to answer a request. Run chmod 700 on it, or set METABROWSER_HOME to a private directory you own.",
+  "error": "An entry in the Metabrowser storage directory is accessible to other users (mode 0755), and Metabrowser does not change your entries to answer a request. Run chmod 700 on it, or set the applicable override (METABROWSER_CACHE_DIR or METABROWSER_CONFIG_DIR) to a private directory you own.",
   "code": "home_not_private",
   "location": "entry",
   "violation": "permissive",
-  "path": "cache/sources"
+  "path": "sources"
 }
 Error: /api/cache/sources returned HTTP 409
 ? 1
 ```
 
 ```console
-$ METABROWSER_HOME=$PWD/shared-directories metab root --api /api/cache/layout
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/shared-directories metab root --api /api/cache/layout
 api: /api/cache/layout
 status: 409
 {
-  "error": "An entry in the Metabrowser application home is accessible to other users (mode 0755), and Metabrowser does not change your entries to answer a request. Run chmod 700 on it, or set METABROWSER_HOME to a private directory you own.",
+  "error": "An entry in the Metabrowser storage directory is accessible to other users (mode 0755), and Metabrowser does not change your entries to answer a request. Run chmod 700 on it, or set the applicable override (METABROWSER_CACHE_DIR or METABROWSER_CONFIG_DIR) to a private directory you own.",
   "code": "home_not_private",
   "location": "entry",
   "violation": "permissive",
-  "path": "cache/staging"
+  "path": "staging"
 }
 Error: /api/cache/layout returned HTTP 409
 ? 1

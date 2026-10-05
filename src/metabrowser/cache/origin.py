@@ -115,7 +115,7 @@ type RemoteFailureState = Literal[
 ]
 
 # Git runs with LC_ALL=C, so these are its and curl's untranslated messages. The samples
-# in tests/test_cache_remote.py were captured 2026-09-23 from Git 2.50.1 (Homebrew, curl
+# in tests/test_cache_origin.py were captured 2026-09-23 from Git 2.50.1 (Homebrew, curl
 # with OpenSSL) against github.com, an unresolvable host, a closed port, badssl.com's
 # certificate failures, a stalled server, CONNECT proxies that reset, truncate, or
 # demand authentication, and HTTP servers answering 429, 500, and 503. Two reported

@@ -221,7 +221,7 @@ the item shape.
 **Model and file.** A Pydantic model validates on write and parses on read, as
 `PullRecord` does. The proposed module is `builtin_plugins/github/pull_list.py`.
 
-- One file per state: `cache/sources/<slug>/pulls/list-<state>.json`, with
+- One file per state: `sources/<slug>/pulls/list-<state>.json`, with
   `list-<state>.refresh.json` beside it for how the last refresh ended (the existing
   `PullRefreshStamp`). `cache/paths.py` names both.
   A list name cannot collide with a record’s `<n>.json`.
@@ -539,8 +539,7 @@ module.
   [Open Decisions](#open-decisions-for-the-user) item 1 covers the alternatives.
 
 **Shared records in the cache.** Lists and records are keyed by that identity and live
-under `cache/sources/<slug>/pulls/`, shared by a checkout and a mirror of the same
-repository.
+under `sources/<slug>/pulls/`, shared by a checkout and a mirror of the same repository.
 
 - A read creates nothing: with no source directory the routes answer `absent`.
 - The first write claims the slug and publishes a source directory holding `source.yml`

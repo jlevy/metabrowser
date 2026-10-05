@@ -146,7 +146,7 @@ def _record_publication_locks(
     real_write = acquire_module.write_record_atomic
 
     def publish(home: Path, staged: str, target: str, **kwargs: Any) -> bool:
-        seen.append((f"rename {target.split('/')[1]}", _hierarchy_held()))
+        seen.append((f"rename {target.split('/')[0]}", _hierarchy_held()))
         return real_publish(home, staged, target, **kwargs)
 
     def write(home: Path, relative: str, record: Any, contract: str, **kwargs: Any) -> None:

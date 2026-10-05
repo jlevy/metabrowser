@@ -323,7 +323,7 @@ match = { ext = ".x" }
 
 def test_discovery_finds_extra_dir_plugin(make_plugin_dir, tmp_path: Path) -> None:
     """A directory passed via extra_dirs (CLI / env var) is scanned for plugins.
-    Auto-discovery from <served-root>/.metabrowser/plugins/ or ~/.metabrowser/
+    Auto-discovery from <served-root>/.metabrowser/plugins/ or ~/.cache/metabrowser/
     is intentionally not a source — the cut requires explicit operator opt-in.
     """
     extra = tmp_path / "plugins"

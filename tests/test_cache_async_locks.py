@@ -25,7 +25,7 @@ from metabrowser.cache.acquire import acquire_source
 from metabrowser.cache.locks import (
     CacheLock,
     LockOrderError,
-    application_home_lock,
+    application_cache_lock,
     held_locks,
     repository_store_lock,
     source_alias_lock,
@@ -113,7 +113,7 @@ async def _ticks_while_pending(task: asyncio.Task[object]) -> int:
 
 
 BLOCKING_LOCKS: list[Callable[[Path], CacheLock]] = [
-    application_home_lock,
+    application_cache_lock,
     lambda home: source_alias_lock(home, SLUG_A),
     lambda home: repository_store_lock(home, STORE_A),
 ]
@@ -205,7 +205,7 @@ def test_acquisition_waits_for_the_home_lock_without_blocking_the_loop(
     other = tmp_path / "other"
     other.mkdir()
     other_source = _file_source(_origin(other))
-    holder = _BoundedHolder(home, "locks.application_home_lock(home)")
+    holder = _BoundedHolder(home, "locks.application_cache_lock(home)")
     try:
 
         async def scenario() -> str:
@@ -221,8 +221,8 @@ def test_acquisition_waits_for_the_home_lock_without_blocking_the_loop(
     finally:
         holder.close()
     assert held_locks() == ()
-    assert (home / "cache" / "repository-stores" / store_key).is_dir()
-    assert list((home / "cache" / "staging").iterdir()) == []
+    assert (home / "repository-stores" / store_key).is_dir()
+    assert list((home / "staging").iterdir()) == []
 
 
 def test_a_cancelled_acquisition_behind_a_busy_home_stops_promptly(
@@ -244,7 +244,7 @@ def test_a_cancelled_acquisition_behind_a_busy_home_stops_promptly(
     # Half the usual hold: the bound this test has always had on how long the
     # cancelled command may keep running, now kept by the child and not by a clock here.
     holder = _BoundedHolder(
-        home, "locks.application_home_lock(home)", hold_at_most=HOLD_AT_MOST / 2
+        home, "locks.application_cache_lock(home)", hold_at_most=HOLD_AT_MOST / 2
     )
     try:
 
@@ -266,4 +266,4 @@ def test_a_cancelled_acquisition_behind_a_busy_home_stops_promptly(
         assert not [r for r in caplog.records if r.name == "asyncio"], caplog.text
     finally:
         holder.close()
-    assert list((home / "cache" / "staging").iterdir()) == []
+    assert list((home / "staging").iterdir()) == []

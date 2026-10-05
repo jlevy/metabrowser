@@ -119,13 +119,13 @@ def test_the_location_is_the_stores_bare_repository_with_the_home_directory_as_a
     user = tmp_path / "user"
     monkeypatch.setenv("HOME", str(user))
 
-    display = _mirror(user / ".metabrowser").display
+    display = _mirror(user / ".cache" / "metabrowser").display
 
     assert display.name == "squares"
     assert display.origin == "https://github.com/jlevy/squares"
     # The directory Git reads the pages from, not the source's records beside it.
-    assert display.location == f"~/.metabrowser/cache/repository-stores/{_STORE_KEY}/repository.git"
-    assert (user / ".metabrowser" / "cache" / "sources") not in Path(display.location).parents
+    assert display.location == f"~/.cache/metabrowser/repository-stores/{_STORE_KEY}/repository.git"
+    assert (user / ".cache" / "metabrowser" / "sources") not in Path(display.location).parents
 
 
 def test_a_location_outside_the_home_directory_is_absolute(
@@ -136,9 +136,7 @@ def test_a_location_outside_the_home_directory_is_absolute(
 
     location = _mirror(elsewhere).display.location
 
-    assert location == str(
-        elsewhere / "cache" / "repository-stores" / _STORE_KEY / "repository.git"
-    )
+    assert location == str(elsewhere / "repository-stores" / _STORE_KEY / "repository.git")
     assert "~" not in location
     # A sibling whose name only starts like the home directory's is not under it.
     assert display_directory(tmp_path / "user-other" / "x") == str(tmp_path / "user-other" / "x")

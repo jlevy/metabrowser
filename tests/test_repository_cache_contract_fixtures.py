@@ -261,7 +261,7 @@ def _store_key(key: str) -> str:
 
 def _real_lock(home: Path, kind: LockKind, key: str | None) -> locks.CacheLock:
     if kind is LockKind.HOME:
-        return locks.application_home_lock(home)
+        return locks.application_cache_lock(home)
     if kind is LockKind.SOURCE_ALIAS:
         assert key is not None
         return locks.source_alias_lock(home, key)
@@ -323,7 +323,7 @@ def test_lock_files_are_where_the_fixture_places_them(tmp_path: Path) -> None:
     slug = "github-com--pallets--flask--e7b7fe0ffe8a"
     store = "4c2d8559cb0179baca3afa2f633e1cfd7271b82e4fb7f0c451dfa9354aa70aff"
     acquisitions = {
-        "home": (lambda: locks.application_home_lock(home), {}),
+        "home": (lambda: locks.application_cache_lock(home), {}),
         "source_alias": (lambda: locks.source_alias_lock(home, slug), {"<slug>": slug}),
         "repository_store": (
             lambda: locks.repository_store_lock(home, store),

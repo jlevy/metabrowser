@@ -23,8 +23,8 @@
     "heading": "<span class=\"path\"><span class=\"path-base\">squares</span></span><span class=\"header-revision header-ref\">topic</span><span class=\"header-revision\">42382ea2303b</span>",
     "dataset": {
       "servedRoot": "squares",
-      "mirrorLocation": "~/.metabrowser/cache/repository-stores/store-key-1/repository.git",
-      "mirrorTip": "Mirror of file://~/git/squares.git at 42382ea2303b733e1e21b4bd6ddb974ca4e775eb, stored in ~/.metabrowser/cache/repository-stores/store-key-1/repository.git: a bare Git repository, with no checked-out files."
+      "mirrorLocation": "~/.cache/metabrowser/repository-stores/store-key-1/repository.git",
+      "mirrorTip": "Mirror of file://~/git/squares.git at 42382ea2303b733e1e21b4bd6ddb974ca4e775eb, stored in ~/.cache/metabrowser/repository-stores/store-key-1/repository.git: a bare Git repository, with no checked-out files."
     },
     "pagePin": {
       "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
@@ -35,7 +35,7 @@
     "status": {
       "name": "squares",
       "origin": "file://~/git/squares.git",
-      "location": "~/.metabrowser/cache/repository-stores/store-key-1/repository.git",
+      "location": "~/.cache/metabrowser/repository-stores/store-key-1/repository.git",
       "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
       "ref_name": "topic"
     }
@@ -46,8 +46,8 @@
     "heading": "<span class=\"path\"><span class=\"path-base\">a&lt;b&gt;&amp;�x</span></span><span class=\"header-revision header-ref\">topic</span><span class=\"header-revision\">42382ea2303b</span>",
     "dataset": {
       "servedRoot": "a<b>&�x",
-      "mirrorLocation": "~/odd\"<&>home/cache/repository-stores/store-key-2/repository.git",
-      "mirrorTip": "Mirror of file://~/git/a%3Cb%3E&%E2%80%AEx.git at 42382ea2303b733e1e21b4bd6ddb974ca4e775eb, stored in ~/odd\"<&>home/cache/repository-stores/store-key-2/repository.git: a bare Git repository, with no checked-out files."
+      "mirrorLocation": "~/odd\"<&>home/repository-stores/store-key-2/repository.git",
+      "mirrorTip": "Mirror of file://~/git/a%3Cb%3E&%E2%80%AEx.git at 42382ea2303b733e1e21b4bd6ddb974ca4e775eb, stored in ~/odd\"<&>home/repository-stores/store-key-2/repository.git: a bare Git repository, with no checked-out files."
     },
     "pagePin": {
       "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
@@ -58,7 +58,7 @@
     "status": {
       "name": "a<b>&�x",
       "origin": "file://~/git/a%3Cb%3E&%E2%80%AEx.git",
-      "location": "~/odd\"<&>home/cache/repository-stores/store-key-2/repository.git",
+      "location": "~/odd\"<&>home/repository-stores/store-key-2/repository.git",
       "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
       "ref_name": "topic"
     }

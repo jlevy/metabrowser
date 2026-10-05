@@ -86,7 +86,7 @@ def _run(home: Path, *args: str) -> Invocation:
     env = {key: value for key, value in os.environ.items() if key not in _REPO_PINNING_GIT_VARS}
     env.update(
         {
-            "METABROWSER_HOME": str(home),
+            "METABROWSER_CACHE_DIR": str(home),
             "METABROWSER_LOG_LEVEL": "ERROR",
             "METABROWSER_PLUGINS_DIRS": "",
             "TERM": "dumb",

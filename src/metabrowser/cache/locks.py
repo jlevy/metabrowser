@@ -1,6 +1,6 @@
 """The fixed lock hierarchy and side locks of the ``f01`` cache.
 
-Locks are BSD ``flock`` on lock files under ``cache/locks/``, never POSIX record locks,
+Locks are BSD ``flock`` on lock files under ``locks/``, never POSIX record locks,
 which vanish when a process closes any descriptor for the file. The hierarchy, frozen in
 ``tests/fixtures/repository-cache/state-machines.json``, is:
 
@@ -75,8 +75,8 @@ try:
 except ImportError:  # Windows: open_private_file refuses first as unverifiable.
     fcntl = None
 
-LOCKS_DIRECTORY: Final = "cache/locks"
-HOME_LOCK_PATH: Final = "cache/locks/home.lock"
+LOCKS_DIRECTORY: Final = "locks"
+HOME_LOCK_PATH: Final = "locks/home.lock"
 
 _ENTRY_NAME_RE: Final = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 _IDENTITY_ATTEMPTS: Final = 8
@@ -95,12 +95,12 @@ _LOCK_CHANGED: Final = (
 )
 _LOCKS_UNSUPPORTED: Final = (
     "its file system does not support the file locks the cache relies on. Set "
-    "METABROWSER_HOME to a directory on a local file system"
+    "METABROWSER_CACHE_DIR to a directory on a local file system"
 )
 _SHARED_LOCK_HELD: Final = (
     "a lock file that was shared with other users is locked by another process, so it "
     "cannot be replaced safely. Stop other Metabrowser processes and remove the lock "
-    "file, or set METABROWSER_HOME to a private directory you own"
+    "file, or set METABROWSER_CACHE_DIR to a private directory you own"
 )
 
 
@@ -519,7 +519,7 @@ def _require(valid: bool, what: str) -> None:
         raise ValueError(f"invalid {what}")
 
 
-def application_home_lock(home: Path, *, blocking: bool = True) -> CacheLock:
+def application_cache_lock(home: Path, *, blocking: bool = True) -> CacheLock:
     """Acquire the application-home lock."""
 
     return _acquire(home, LockKind.HOME, None, HOME_LOCK_PATH, blocking=blocking)
@@ -619,7 +619,7 @@ __all__ = [
     "LockKind",
     "LockOrder",
     "LockOrderError",
-    "application_home_lock",
+    "application_cache_lock",
     "held_locks",
     "is_entry_name",
     "lock_order",

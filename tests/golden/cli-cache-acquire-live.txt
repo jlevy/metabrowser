@@ -6,7 +6,7 @@ slug: <SLUG>
 store: <STORE_ID>
 revision: cf318083ef13511a14c0532985bdb24bd59d2787
 --- stderr ---
-cloning <ORIGIN> into <HOME>/cache
+cloning <ORIGIN> into <HOME>
 cloned <ORIGIN> in <ELAPSED>
 # metab file://<ORIGIN> --no-serve
 exit: 0
@@ -16,7 +16,7 @@ slug: <SLUG>
 store: <STORE_ID>
 revision: cf318083ef13511a14c0532985bdb24bd59d2787
 --- stderr ---
-using the clone of <ORIGIN> cached in <HOME>/cache, fetched <AGE>
+using the clone of <ORIGIN> cached in <HOME>, fetched <AGE>
 # metab file://<ORIGIN> --show notes/old.txt
 exit: 0
 --- stdout ---
@@ -115,7 +115,7 @@ slug: <SLUG>
 store: <STORE_ID>
 revision: cf318083ef13511a14c0532985bdb24bd59d2787
 --- stderr ---
-using the clone of <ORIGIN> cached in <HOME>/cache, fetched <AGE>
+using the clone of <ORIGIN> cached in <HOME>, fetched <AGE>
 # metab file://<ORIGIN> --api /api/git/commit/cf318083ef13511a14c0532985bdb24bd59d2787
 exit: 0
 --- stdout ---

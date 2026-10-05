@@ -375,7 +375,7 @@ def _environment(home: Path) -> dict[str, str]:
     # into a cached one as it ran, the control first.
     return {
         **_without_bytecode_writes(),
-        "METABROWSER_HOME": str(home),
+        "METABROWSER_CACHE_DIR": str(home),
         "PYTHONHASHSEED": "0",
     }
 

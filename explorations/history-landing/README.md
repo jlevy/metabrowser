@@ -21,7 +21,7 @@ Chrome over the DevTools protocol, headless and with a throwaway profile:
 ```shell
 QA_VF="$(mktemp -d "${TMPDIR:-/tmp}/mb-history.XXXXXX")"
 PYTHONPATH="$PWD" uv --config-file uv.toml run --frozen python -m tests.diff_view_file_fixture "${QA_VF}"
-METABROWSER_HOME="${QA_VF}/home" uv --config-file uv.toml run --frozen metab "file://${QA_VF}/origin.git" --no-open --port 8745
+METABROWSER_CACHE_DIR="${QA_VF}/home" uv --config-file uv.toml run --frozen metab "file://${QA_VF}/origin.git" --no-open --port 8745
 # In a second terminal:
 node explorations/history-landing/measure.mjs http://127.0.0.1:8745 6ac4c8b5eb94eecbdb621d629b31066f050c75f1 --rounds 10
 node explorations/history-landing/measure.mjs http://127.0.0.1:8745 6ac4c8b5eb94eecbdb621d629b31066f050c75f1 --rounds 10 --no-bfcache

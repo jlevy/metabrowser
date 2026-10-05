@@ -8,7 +8,7 @@ refuses a home the same way; and pages, bounds, and the verified listing behave 
 their edges.
 
 Every home is temporary and built by the production writers in
-``tests/cache_home_fixture.py``. The routes resolve ``METABROWSER_HOME`` per request, so
+``tests/cache_home_fixture.py``. The routes resolve ``METABROWSER_CACHE_DIR`` per request, so
 each test points it at its own home after the application is imported.
 """
 
@@ -28,9 +28,10 @@ from metabrowser.cache import projection
 from metabrowser.cache.listing import ListingLimitError, list_private_directory
 from metabrowser.cache.paths import SOURCES, STAGING, source_directory, source_record
 from metabrowser.home import (
-    METABROWSER_HOME_ENV,
+    METABROWSER_CACHE_DIR_ENV,
     PrivateStorageError,
     SharedEntryPolicy,
+    configuration_directory,
     ensure_home,
     ensure_private_directory,
     write_private_file_atomic,
@@ -66,7 +67,7 @@ def client() -> Iterator[TestClient]:
 @pytest.fixture
 def use_home(monkeypatch: pytest.MonkeyPatch) -> Any:
     def point_at(home: Path) -> Path:
-        monkeypatch.setenv(METABROWSER_HOME_ENV, str(home))
+        monkeypatch.setenv(METABROWSER_CACHE_DIR_ENV, str(home))
         return home
 
     return point_at
@@ -132,12 +133,12 @@ def test_a_home_without_a_cache_is_uninitialized_and_nothing_is_created(
 def test_an_unusable_home_setting_is_a_typed_refusal(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv(METABROWSER_HOME_ENV, "relative/home")
+    monkeypatch.setenv(METABROWSER_CACHE_DIR_ENV, "relative/home")
 
     for route in (*LIST_ROUTES, f"/api/cache/source/{FLASK_HTTPS.slug}"):
         body = _json(client, route, 409)
         assert body["code"] == "invalid_home_setting"
-        assert "METABROWSER_HOME" in body["error"]
+        assert "METABROWSER_CACHE_DIR" in body["error"]
 
 
 def test_a_shared_home_is_refused_without_its_path_and_left_unrepaired(
@@ -178,16 +179,16 @@ def test_a_symlinked_sources_directory_is_refused_rather_than_listed(
 # ── Layout ─────────────────────────────────────────────────────────
 
 
-def test_a_config_behind_its_layout_is_an_unfinished_migration(
+def test_missing_configuration_does_not_make_cache_migration_pending(
     client: TestClient, use_home: Any, tmp_path: Path
 ) -> None:
     home = use_home(tmp_path / "home")
     build_empty_home(home)
-    (home / "config.yml").unlink()
+    configuration_directory().joinpath("config.yml").unlink()
 
     layout = _json(client, "/api/cache/layout")
 
-    assert layout["state"] == "config_pending"
+    assert layout["state"] == "current"
     assert layout["config"] is None
 
 
@@ -222,7 +223,7 @@ def test_an_unreadable_layout_is_a_typed_refusal(
 ) -> None:
     home = use_home(tmp_path / "home")
     ensure_home(home)
-    write_private_file_atomic(home, "cache/layout.yml", b"layout: [unclosed\n")
+    write_private_file_atomic(home, "layout.yml", b"layout: [unclosed\n")
 
     for route in LIST_ROUTES:
         body = _json(client, route, 409)

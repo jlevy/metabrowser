@@ -1,6 +1,6 @@
 """The application-home resolver, the ``f01`` skeleton, and its separation from browsing.
 
-Every home here is temporary. The browsing tests point ``METABROWSER_HOME`` at a missing,
+Every home here is temporary. The browsing tests point ``METABROWSER_CACHE_DIR`` at a missing,
 a permissive, and a symlinked directory, run ordinary local browsing both in process and
 as a real ``metab`` subprocess, and prove the application home was never resolved,
 validated, or created.
@@ -37,19 +37,20 @@ from metabrowser.cache.layout import (
     read_config,
     read_layout,
 )
-from metabrowser.cache.locks import application_home_lock
+from metabrowser.cache.locks import application_cache_lock
 from metabrowser.cache.records import CacheLayout
 from metabrowser.cli.main import _app
 from metabrowser.home import (
     CACHEDIR_TAG_CONTENT,
     CACHEDIR_TAG_SIGNATURE,
-    DEFAULT_HOME_NAME,
+    DEFAULT_CACHE_NAME,
     F01_DIRECTORIES,
-    METABROWSER_HOME_ENV,
-    ApplicationHomeError,
+    METABROWSER_CACHE_DIR_ENV,
     PrivateStorageError,
     PrivateStorageViolation,
-    application_home,
+    StorageDirectoryError,
+    application_cache,
+    configuration_directory,
     ensure_home,
     write_private_file_atomic,
 )
@@ -107,29 +108,29 @@ def test_the_default_home_is_dot_metabrowser_in_the_user_home(
 ) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
 
-    assert application_home({}) == tmp_path / DEFAULT_HOME_NAME
-    assert not (tmp_path / DEFAULT_HOME_NAME).exists()
+    assert application_cache({}) == tmp_path / DEFAULT_CACHE_NAME
+    assert not (tmp_path / DEFAULT_CACHE_NAME).exists()
 
 
 def test_metabrowser_home_overrides_the_default_without_touching_it(tmp_path: Path) -> None:
     chosen = tmp_path / "missing" / "home"
 
-    assert application_home({METABROWSER_HOME_ENV: str(chosen)}) == chosen
+    assert application_cache({METABROWSER_CACHE_DIR_ENV: str(chosen)}) == chosen
     assert not (tmp_path / "missing").exists()
 
 
 def test_the_process_environment_is_the_default_source(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv(METABROWSER_HOME_ENV, str(tmp_path / "home"))
+    monkeypatch.setenv(METABROWSER_CACHE_DIR_ENV, str(tmp_path / "home"))
 
-    assert application_home() == tmp_path / "home"
+    assert application_cache() == tmp_path / "home"
 
 
 @pytest.mark.parametrize("value", ["", "relative/home", "~/home", "/tmp/../home"])
 def test_an_unusable_metabrowser_home_is_refused_rather_than_ignored(value: str) -> None:
-    with pytest.raises(ApplicationHomeError, match="METABROWSER_HOME"):
-        application_home({METABROWSER_HOME_ENV: value})
+    with pytest.raises(StorageDirectoryError, match="METABROWSER_CACHE_DIR"):
+        application_cache({METABROWSER_CACHE_DIR_ENV: value})
 
 
 # ── Skeleton ───────────────────────────────────────────────────────
@@ -141,25 +142,25 @@ def test_ensure_home_creates_the_private_f01_skeleton_and_cachedir_tag(tmp_path:
 
     cache_root = ensure_home(home)
 
-    assert cache_root == home / "cache"
+    assert cache_root == home
     assert _mode(home) == 0o700
     for directory in F01_DIRECTORIES:
         assert (home / directory).is_dir(), directory
         assert _mode(home / directory) == 0o700, directory
-    tag = home / "cache/CACHEDIR.TAG"
+    tag = home / "CACHEDIR.TAG"
     assert tag.read_bytes() == CACHEDIR_TAG_CONTENT
     assert tag.read_bytes().startswith(CACHEDIR_TAG_SIGNATURE)
     assert _mode(tag) == 0o600
-    assert not (home / "config.yml").exists()
-    assert not (home / "cache/layout.yml").exists()
+    assert not (_config_root() / "config.yml").exists()
+    assert not (home / "layout.yml").exists()
 
 
 @posix_only
 def test_ensure_home_is_idempotent_and_keeps_a_valid_tag(tmp_path: Path) -> None:
     home = tmp_path / "home"
     ensure_home(home)
-    tag = home / "cache/CACHEDIR.TAG"
-    write_private_file_atomic(home, "cache/CACHEDIR.TAG", CACHEDIR_TAG_SIGNATURE + b"\n# mine\n")
+    tag = home / "CACHEDIR.TAG"
+    write_private_file_atomic(home, "CACHEDIR.TAG", CACHEDIR_TAG_SIGNATURE + b"\n# mine\n")
     before = _snapshot(home)
 
     ensure_home(home)
@@ -173,11 +174,11 @@ def test_ensure_home_is_idempotent_and_keeps_a_valid_tag(tmp_path: Path) -> None
 def test_ensure_home_replaces_a_tag_without_the_signature(tmp_path: Path, content: bytes) -> None:
     home = tmp_path / "home"
     ensure_home(home)
-    write_private_file_atomic(home, "cache/CACHEDIR.TAG", content)
+    write_private_file_atomic(home, "CACHEDIR.TAG", content)
 
     ensure_home(home)
 
-    assert (home / "cache/CACHEDIR.TAG").read_bytes() == CACHEDIR_TAG_CONTENT
+    assert (home / "CACHEDIR.TAG").read_bytes() == CACHEDIR_TAG_CONTENT
 
 
 @posix_only
@@ -221,7 +222,7 @@ def _home_variants(tmp_path: Path) -> dict[str, Path]:
 
 
 _FORBIDDEN_CALLS = (
-    "application_home",
+    "application_cache",
     "ensure_home",
     "validate_private_home",
     "ensure_private_directory",
@@ -231,12 +232,12 @@ _FORBIDDEN_CALLS = (
 
 
 @pytest.mark.parametrize("variant", ["missing", "permissive", "symlinked"])
-def test_local_browsing_in_process_never_calls_the_application_home(
+def test_local_browsing_in_process_never_calls_the_application_cache(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, variant: str
 ) -> None:
     root = _browsing_root(tmp_path)
     chosen = _home_variants(tmp_path)[variant]
-    monkeypatch.setenv(METABROWSER_HOME_ENV, str(chosen))
+    monkeypatch.setenv(METABROWSER_CACHE_DIR_ENV, str(chosen))
     before = _snapshot(tmp_path)
     calls: list[str] = []
 
@@ -289,7 +290,7 @@ def test_metab_browsing_a_local_directory_never_creates_or_imports_the_home(
         main()
         """
     )
-    environment = {**os.environ, METABROWSER_HOME_ENV: str(chosen)}
+    environment = {**os.environ, METABROWSER_CACHE_DIR_ENV: str(chosen)}
 
     result = subprocess.run(
         [sys.executable, "-c", script, str(root), "--api", "/api/tree?depth=1"],
@@ -336,18 +337,24 @@ def cache_home(tmp_path: Path) -> Path:
 
     home = tmp_path / "home"
     ensure_home(home)
-    application_home_lock(home).release()
+    application_cache_lock(home).release()
     return home
 
 
 def _write_layout(home: Path, fmt: str, *, version: str = "v1", extra: str = "") -> None:
     text = _LAYOUT_HEADER.format(version=version)
     text += f"layout:\n  format: {fmt}\n  created_by: 0.11.0\n{extra}"
-    write_private_file_atomic(home, "cache/layout.yml", text.encode())
+    write_private_file_atomic(home, "layout.yml", text.encode())
+
+
+def _config_root() -> Path:
+    directory = configuration_directory()
+    home_module.ensure_private_directory(directory)
+    return directory
 
 
 def _write_config(home: Path, body: str) -> None:
-    write_private_file_atomic(home, "config.yml", (_CONFIG_HEADER + body).encode())
+    write_private_file_atomic(_config_root(), "config.yml", (_CONFIG_HEADER + body).encode())
 
 
 def _record_writes(monkeypatch: pytest.MonkeyPatch) -> list[str]:
@@ -377,14 +384,14 @@ def test_the_current_format_ends_the_history_and_every_older_format_migrates() -
 
 
 @posix_only
-def test_a_new_home_publishes_its_layout_and_then_its_config(
+def test_a_new_cache_initializes_separate_configuration_and_layout(
     cache_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     writes = _record_writes(monkeypatch)
 
     outcome = migrate_layout(cache_home, version="0.11.0")
 
-    assert writes == ["cache/layout.yml", "config.yml"]
+    assert writes == ["config.yml", "layout.yml"]
     assert outcome.layout == CacheLayout(format="f01", created_by="0.11.0")
     assert outcome.config.model_dump(mode="json") == {
         "format": "f01",
@@ -392,9 +399,9 @@ def test_a_new_home_publishes_its_layout_and_then_its_config(
         "upgrades": [],
     }
     assert read_layout(cache_home) == outcome.layout
-    assert read_config(cache_home) == outcome.config
-    assert (cache_home / "config.yml").read_text().startswith("softschema:\n")
-    assert _mode(cache_home / "config.yml") == 0o600
+    assert read_config(configuration_directory()) == outcome.config
+    assert (configuration_directory() / "config.yml").read_text().startswith("softschema:\n")
+    assert _mode(configuration_directory() / "config.yml") == 0o600
 
 
 @posix_only
@@ -432,7 +439,7 @@ def test_an_older_client_refuses_a_future_home_before_writing(
     before = _snapshot(cache_home)
     contents = {
         path: (cache_home / path).read_bytes()
-        for path in ("cache/layout.yml", "config.yml")
+        for path in ("layout.yml", "config.yml")
         if (cache_home / path).exists()
     }
 
@@ -461,8 +468,8 @@ def test_a_shared_future_home_is_refused_before_its_modes_are_tightened(
     """The future-format answer must precede every change, repairs included."""
 
     _write_layout(cache_home, "f02")
-    (cache_home / "cache").chmod(0o755)
-    (cache_home / "cache/layout.yml").chmod(0o644)
+    (cache_home / "locks").chmod(0o755)
+    (cache_home / "layout.yml").chmod(0o644)
     before = _snapshot(cache_home)
 
     with pytest.raises(FutureLayoutFormatError, match="Upgrade Metabrowser"):
@@ -481,13 +488,13 @@ def test_a_shared_but_readable_home_is_still_repaired_and_then_prepared(
     entry, so every one of them must still be repaired by the reads that follow it.
     """
 
-    (cache_home / "cache").chmod(0o755)
+    (cache_home / "locks").chmod(0o755)
 
     open_cache(cache_home, version="0.11.0")
 
-    assert stat.S_IMODE((cache_home / "cache").stat().st_mode) == 0o700
+    assert stat.S_IMODE((cache_home / "locks").stat().st_mode) == 0o700
 
-    shared = {"cache": 0o755, "cache/layout.yml": 0o644, "config.yml": 0o644}
+    shared = {"locks": 0o755, "layout.yml": 0o644}
     for entry, mode in shared.items():
         (cache_home / entry).chmod(mode)
 
@@ -495,9 +502,8 @@ def test_a_shared_but_readable_home_is_still_repaired_and_then_prepared(
 
     assert opened.layout.format == "f01"
     assert {entry: _mode(cache_home / entry) for entry in shared} == {
-        "cache": 0o700,
-        "cache/layout.yml": 0o600,
-        "config.yml": 0o600,
+        "locks": 0o700,
+        "layout.yml": 0o600,
     }
 
 
@@ -509,7 +515,7 @@ def test_a_future_home_that_was_never_prepared_stays_uncreated(
     home = tmp_path / "home"
     home.mkdir(mode=0o700)
     write_private_file_atomic(
-        home,
+        _config_root(),
         "config.yml",
         (
             _CONFIG_HEADER + "config:\n  format: f09\n  written_by: 0.99.0\n  upgrades: []\n"
@@ -521,7 +527,7 @@ def test_a_future_home_that_was_never_prepared_stays_uncreated(
         prepare(home, version="0.11.0")
 
     assert _snapshot(home) == before
-    assert not (home / "cache").exists()
+    assert not (home / "locks").exists()
 
 
 @posix_only
@@ -551,7 +557,9 @@ def test_a_config_past_its_bound_is_refused_rather_than_parsed(cache_home: Path)
 
     settings = "".join(f"  k{index:06d}: v\n" for index in range(3000))
     _write_config(cache_home, f"config:\n  format: f01\n  written_by: 0.11.0\n{settings}")
-    assert (cache_home / "config.yml").stat().st_size > layout_module._MAX_CONFIG_BYTES
+    assert (
+        configuration_directory() / "config.yml"
+    ).stat().st_size > layout_module._MAX_CONFIG_BYTES
     before = _snapshot(cache_home)
 
     with pytest.raises(LayoutError, match="larger than any valid record"):
@@ -561,7 +569,7 @@ def test_a_config_past_its_bound_is_refused_rather_than_parsed(cache_home: Path)
 
 
 @posix_only
-def test_migrations_run_in_order_and_publish_config_last(
+def test_cache_migrations_preserve_independent_configuration(
     cache_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     migrate_layout(cache_home, version="0.11.0")
@@ -585,17 +593,16 @@ def test_migrations_run_in_order_and_publish_config_last(
         version="0.13.0",
         history=("f01", "f02", "f03"),
         migrations={"f01": migration("to-f02"), "f02": migration("to-f03")},
-        now=lambda: "2026-12-01T00:00:00Z",
     )
 
     assert seen == [("to-f02", "f01"), ("to-f03", "f02")]
-    assert writes == ["cache/layout.yml", "cache/layout.yml", "config.yml"]
+    assert writes == ["layout.yml", "layout.yml"]
     assert outcome.migrated_through == ("f02", "f03")
     assert outcome.layout.format == "f03"
     config = outcome.config.model_dump(mode="json")
-    assert config["format"] == "f03"
-    assert config["written_by"] == "0.13.0"
-    assert config["upgrades"] == [{"version": "0.13.0", "at": "2026-12-01T00:00:00Z"}]
+    assert config["format"] == "f01"
+    assert config["written_by"] == "0.11.0"
+    assert config["upgrades"] == []
     assert config["theme"] == {"accent": "teal"}
     assert list(config) == ["format", "written_by", "upgrades", "theme", "editor"]
 
@@ -623,7 +630,7 @@ def test_an_interrupted_migration_resumes_from_its_last_published_step(cache_hom
     assert read_layout(cache_home, history=history) == CacheLayout(
         format="f02", created_by="0.11.0"
     )
-    config = read_config(cache_home, history=history)
+    config = read_config(configuration_directory(), history=history)
     assert config is not None and config.format == "f01"
 
     def to_f03(_home: Path) -> None:
@@ -635,16 +642,16 @@ def test_an_interrupted_migration_resumes_from_its_last_published_step(cache_hom
 
     assert calls == ["to-f02", "to-f03", "resumed-to-f03"]
     assert outcome.layout.format == "f03"
-    assert outcome.config.format == "f03"
-    assert len(outcome.config.upgrades) == 1
+    assert outcome.config.format == "f01"
+    assert outcome.config.upgrades == []
 
 
 @posix_only
-def test_a_layout_ahead_of_its_config_republishes_only_the_config(
+def test_missing_configuration_is_initialized_without_rewriting_cache(
     cache_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     migrate_layout(cache_home, version="0.11.0")
-    (cache_home / "config.yml").unlink()
+    (configuration_directory() / "config.yml").unlink()
     writes = _record_writes(monkeypatch)
 
     outcome = migrate_layout(cache_home, version="0.11.0")
@@ -666,15 +673,15 @@ def test_a_missing_migration_is_a_programming_error(cache_home: Path) -> None:
     "setup",
     [
         lambda home: _write_layout(home, "f00"),
-        lambda home: write_private_file_atomic(home, "cache/layout.yml", b"layout: [\n"),
+        lambda home: write_private_file_atomic(home, "layout.yml", b"layout: [\n"),
         lambda home: _write_layout(home, "f01", extra="  schema: /tmp/any.schema.yaml\n"),
-        lambda home: home_module.ensure_private_directory(home, "cache/sources/unknown"),
+        lambda home: home_module.ensure_private_directory(home, "sources/unknown"),
         lambda home: _write_config(
             home,
             "config:\n  format: f01\n  written_by: x\n  upgrades: []\n  github_token: secret\n",
         ),
         lambda home: write_private_file_atomic(
-            home,
+            _config_root(),
             "config.yml",
             (
                 _CONFIG_HEADER.replace(
@@ -683,7 +690,7 @@ def test_a_missing_migration_is_a_programming_error(cache_home: Path) -> None:
             ).encode()
             + b"config:\n  format: f01\n  written_by: x\n  upgrades: []\n",
         ),
-        lambda home: write_private_file_atomic(home, "config.yml", b"format: f01\n"),
+        lambda home: write_private_file_atomic(_config_root(), "config.yml", b"format: f01\n"),
     ],
     ids=[
         "unreleased-older-format",
@@ -712,16 +719,16 @@ def test_an_unreadable_home_is_refused_and_left_unchanged(
 def test_open_cache_prepares_probes_migrates_and_sweeps(tmp_path: Path) -> None:
     home = tmp_path / "home"
     ensure_home(home)
-    home_module.ensure_private_directory(home, "cache/staging/crashed-clone/objects")
+    home_module.ensure_private_directory(home, "staging/crashed-clone/objects")
 
     opened = open_cache(home, version="0.11.0")
 
     assert opened.home == home
     assert opened.layout.format == "f01"
     assert opened.config.format == "f01"
-    assert opened.sweep.removed == ("cache/staging/crashed-clone",)
-    assert not (home / "cache/staging/crashed-clone").exists()
-    assert (home / "cache/CACHEDIR.TAG").exists()
+    assert opened.sweep.removed == ("staging/crashed-clone",)
+    assert not (home / "staging/crashed-clone").exists()
+    assert (home / "CACHEDIR.TAG").exists()
 
 
 @posix_only
@@ -737,20 +744,20 @@ def test_open_cache_keeps_an_unreferenced_store_and_an_aliased_one(tmp_path: Pat
 
     open_cache(home, version="0.11.0")
 
-    assert (home / f"cache/repository-stores/{ORPHAN_STORE_KEY}").is_dir()
-    assert (home / f"cache/repository-stores/{FLASK_STORE_KEY}").is_dir()
+    assert (home / f"repository-stores/{ORPHAN_STORE_KEY}").is_dir()
+    assert (home / f"repository-stores/{FLASK_STORE_KEY}").is_dir()
 
 
 @posix_only
 def test_open_cache_resolves_metabrowser_home_when_no_home_is_given(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv(METABROWSER_HOME_ENV, str(tmp_path / "chosen"))
+    monkeypatch.setenv(METABROWSER_CACHE_DIR_ENV, str(tmp_path / "chosen"))
 
     opened = open_cache(version="0.11.0")
 
     assert opened.home == tmp_path / "chosen"
-    assert (tmp_path / "chosen/cache/layout.yml").is_file()
+    assert (tmp_path / "chosen/layout.yml").is_file()
 
 
 @posix_only
@@ -763,14 +770,14 @@ def test_unrecognized_durable_cache_is_refused_without_any_mutation(
     tmp_path: Path, prepare: Callable[..., object], directory: str
 ) -> None:
     home = tmp_path / "home"
-    durable = home / "cache" / directory
+    durable = home / directory
     durable.mkdir(parents=True)
     home.chmod(0o700)
     data = durable / "unknown-record"
     data.write_bytes(b"unrecognized durable data")
     before = _snapshot(home)
 
-    with pytest.raises(LayoutError, match="no cache/layout.yml"):
+    with pytest.raises(LayoutError, match="no layout.yml"):
         prepare(home)
 
     assert _snapshot(home) == before
@@ -778,20 +785,20 @@ def test_unrecognized_durable_cache_is_refused_without_any_mutation(
 
 
 def _durable_directory_is_a_file(home: Path) -> None:
-    (home / "cache/sources").rmdir()
-    write_private_file_atomic(home, "cache/sources", b"not a directory")
+    (home / "sources").rmdir()
+    write_private_file_atomic(home, "sources", b"not a directory")
 
 
 def _durable_directory_is_a_link(home: Path) -> None:
     outside = home.parent / "elsewhere"
     outside.mkdir(mode=0o700)
     (outside / "an-entry").write_bytes(b"data from outside the home")
-    (home / "cache/sources").rmdir()
-    os.symlink(outside, home / "cache/sources")
+    (home / "sources").rmdir()
+    os.symlink(outside, home / "sources")
 
 
 def _durable_directory_denies_its_owner(home: Path) -> None:
-    (home / "cache/sources").chmod(0o000)
+    (home / "sources").chmod(0o000)
 
 
 @posix_only
@@ -811,7 +818,7 @@ def test_a_durable_directory_that_is_not_one_is_refused_without_naming_a_path(
     """Looking for entries must not follow a link out of the home or leak where it looked."""
 
     home = tmp_path / "home"
-    home_module.ensure_private_directory(home, "cache/sources")
+    home_module.ensure_private_directory(home, "sources")
     damage(home)
     before = _snapshot(home)
     try:
@@ -826,7 +833,7 @@ def test_a_durable_directory_that_is_not_one_is_refused_without_naming_a_path(
         # own mode never blocks deleting it, and Linux refuses to change it:
         # fchmodat rejects AT_SYMLINK_NOFOLLOW, which reaches Python as a
         # NotImplementedError. So repair only an entry that is not a link.
-        entry = home / "cache/sources"
+        entry = home / "sources"
         if not entry.is_symlink():
             entry.chmod(0o700)
 
@@ -834,27 +841,27 @@ def test_a_durable_directory_that_is_not_one_is_refused_without_naming_a_path(
 def _symlinked_config_beside_durable_entries(home: Path) -> None:
     """A dotfiles-style ``config.yml`` link, beside entries no layout describes."""
 
-    home_module.ensure_private_directory(home, "cache/sources/some-entry")
+    home_module.ensure_private_directory(home, "sources/some-entry")
     target = home.parent / "dotfiles-config.yml"
     target.write_text("softschema: {}\n")
-    (home / "config.yml").unlink(missing_ok=True)
-    os.symlink(target, home / "config.yml")
+    (_config_root() / "config.yml").unlink(missing_ok=True)
+    os.symlink(target, _config_root() / "config.yml")
 
 
 def _hard_linked_future_layout(home: Path) -> None:
-    """A future ``cache/layout.yml`` whose bytes are reachable from outside the home."""
+    """A future ``layout.yml`` whose bytes are reachable from outside the home."""
 
     home_module.ensure_private_directory(home, "cache")
     _write_layout(home, "f02")
-    os.link(home / "cache/layout.yml", home.parent / "backup-of-layout.yml")
+    os.link(home / "layout.yml", home.parent / "backup-of-layout.yml")
 
 
 def _unreadable_future_layout(home: Path) -> None:
-    """A future ``cache/layout.yml`` whose own permissions deny its owner a read."""
+    """A future ``layout.yml`` whose own permissions deny its owner a read."""
 
     home_module.ensure_private_directory(home, "cache")
     _write_layout(home, "f02")
-    (home / "cache/layout.yml").chmod(0o200)
+    (home / "layout.yml").chmod(0o200)
 
 
 @posix_only
@@ -894,3 +901,99 @@ def test_a_record_that_cannot_be_verified_is_refused_without_any_mutation(
 
     assert str(home) not in str(refused.value)
     assert _snapshot(home) == before
+
+
+@pytest.mark.parametrize(
+    "resolver, override, xdg, default",
+    [
+        (application_cache, "METABROWSER_CACHE_DIR", "XDG_CACHE_HOME", ".cache"),
+        (configuration_directory, "METABROWSER_CONFIG_DIR", "XDG_CONFIG_HOME", ".config"),
+    ],
+)
+def test_storage_directory_precedence_and_no_legacy_fallback(
+    resolver: Callable[..., Path],
+    override: str,
+    xdg: str,
+    default: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    assert (
+        resolver({"METABROWSER_HOME": str(tmp_path / "legacy")})
+        == tmp_path / default / "metabrowser"
+    )
+    assert resolver({xdg: str(tmp_path / "base")}) == tmp_path / "base/metabrowser"
+    assert (
+        resolver({override: str(tmp_path / "exact"), xdg: str(tmp_path / "base")})
+        == tmp_path / "exact"
+    )
+    for name in (override, xdg):
+        for value in ("", "relative", "/tmp/../bad"):
+            with pytest.raises(StorageDirectoryError, match=name):
+                resolver({name: value})
+    assert not (tmp_path / default).exists()
+
+
+def test_rebuilding_cache_preserves_config_bytes(tmp_path: Path) -> None:
+    import shutil
+
+    cache = tmp_path / "new-base/cache"
+    open_cache(cache, version="0.12.0")
+    config = configuration_directory() / "config.yml"
+    content = config.read_bytes() + b"# Keep my comments.\n"
+    config.write_bytes(content)
+    shutil.rmtree(cache)
+    open_cache(cache, version="0.13.0")
+    assert config.read_bytes() == content
+    assert not (cache / "config.yml").exists()
+    assert (cache / "layout.yml").is_file()
+    assert not (cache / "cache").exists()
+
+
+@pytest.mark.parametrize("relative", ["", "nested"])
+def test_config_cannot_be_inside_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, relative: str
+) -> None:
+    cache = tmp_path / "cache-root"
+    monkeypatch.setenv("METABROWSER_CONFIG_DIR", str(cache / relative))
+    with pytest.raises(StorageDirectoryError, match="non-overlapping"):
+        open_cache(cache)
+    assert not cache.exists()
+
+
+@posix_only
+def test_configuration_refusals_name_configuration_without_exposing_paths(tmp_path: Path) -> None:
+    directory = tmp_path / "private-config"
+    directory.mkdir(mode=0o755)
+    directory.chmod(0o755)
+    before = _snapshot(directory)
+    with pytest.raises(PrivateStorageError) as refused:
+        read_config(directory, shared="refuse")
+    message = str(refused.value)
+    assert "METABROWSER_CONFIG_DIR" in message
+    assert "application home" not in message
+    assert str(directory) not in message
+    assert _snapshot(directory) == before
+
+
+@posix_only
+def test_future_configuration_names_its_own_override(tmp_path: Path) -> None:
+    directory = tmp_path / "private-config"
+    directory.mkdir(mode=0o700)
+    write_private_file_atomic(
+        directory,
+        "config.yml",
+        (
+            _CONFIG_HEADER + "config:\n  format: f02\n  written_by: 0.13.0\n  upgrades: []\n"
+        ).encode(),
+    )
+    before = _snapshot(directory)
+    with pytest.raises(FutureLayoutFormatError) as refused:
+        read_config(directory)
+    message = str(refused.value)
+    assert "configuration" in message
+    assert "METABROWSER_CONFIG_DIR" in message
+    assert "METABROWSER_CACHE_DIR" not in message
+    assert str(directory) not in message
+    assert _snapshot(directory) == before

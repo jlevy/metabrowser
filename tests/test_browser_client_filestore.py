@@ -807,8 +807,8 @@ def test_a_mirrors_note_takes_nothing_from_the_address_and_is_whole_or_absent() 
     measured in Chrome and recorded beside the note's rule. This pins what orders it.
 
     The note is written with the address and drawn after a file's copy control. It
-    gives way before the root's name does, by the ratio the root's own rule measured as
-    the least that takes no sliver from the next part. Gone, it occupies nothing: it has
+    grows from a zero basis into only the space left by the address, so the root
+    loses no subpixel width while the note is visible. Gone, it occupies nothing: it has
     no padding, its spacers are content, and its negative margin is the breadcrumb's
     gap. And it is never a stub: the text has a basis the row must fit, or it wraps out
     of the one line the note shows. What it does show ends in an ellipsis, because the
@@ -827,7 +827,7 @@ def test_a_mirrors_note_takes_nothing_from_the_address_and_is_whole_or_absent() 
         return float(match.group(1))
 
     note = block(".file-header-mirror")
-    assert shrink(".file-header-mirror") >= 5000 * shrink(".file-header-root")
+    assert "flex: 1 1 0;" in note
     assert "order: 1;" in note
     gap = re.search(r"gap: (\d+px);", block(".folder-breadcrumb"))
     assert gap is not None

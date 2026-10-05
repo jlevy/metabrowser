@@ -404,10 +404,10 @@ def elide_clone_timing(stderr: str) -> str:
 # field of a route's answer that names a path in the cache: the location of a served
 # mirror in its status, which is the store's bare repository and nothing else.
 _HOME_LINES: Final = (
-    r"cloning \S+ into {home}/cache",
-    r"using the clone of \S+ cached in {home}/cache"
+    r"cloning \S+ into {home}",
+    r"using the clone of \S+ cached in {home}"
     r"(?:, fetched (?:less than a minute ago|\d+ (?:minute|hour|day)s? ago|<AGE>))?",
-    r'\s*"location": "{home}/cache/repository-stores/(?:<STORE_KEY[^>"]*>|[0-9a-f]{{64}})'
+    r'\s*"location": "{home}/repository-stores/(?:<STORE_KEY[^>"]*>|[0-9a-f]{{64}})'
     r'/repository\.git",',
 )
 
@@ -422,14 +422,14 @@ def first_clone_stderr(url: str, home: Path, *, then: str = "") -> str:
 
     done = re.escape(f"cloned {url} in ") + r"\d+(?:\.\d)? s(?: \([\d.]+ (?:bytes?|[KMG]iB)\))?"
     following = re.escape(f"; {then}") if then else ""
-    return re.escape(f"cloning {url} into {home}/cache\n") + done + following + r"\n"
+    return re.escape(f"cloning {url} into {home}\n") + done + following + r"\n"
 
 
 def cache_hit_stderr(url: str, home: Path) -> str:
     """A pattern for the one line a cache hit writes to stderr, with whatever age."""
 
     age = r"(?:less than a minute|\d+ (?:minute|hour|day)s?) ago"
-    return re.escape(f"using the clone of {url} cached in {home}/cache, fetched ") + age + r"\n"
+    return re.escape(f"using the clone of {url} cached in {home}, fetched ") + age + r"\n"
 
 
 def label_home(text: str, home: Path, label: str = HOME_LABEL) -> str:
@@ -576,7 +576,7 @@ def isolate_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> CliSandbox:
     """
 
     home = tmp_path / "home"
-    monkeypatch.setenv("METABROWSER_HOME", str(home))
+    monkeypatch.setenv("METABROWSER_CACHE_DIR", str(home))
     monkeypatch.setenv("METABROWSER_LOG_LEVEL", "ERROR")
     monkeypatch.setenv("METABROWSER_PLUGINS_DIRS", "")
     monkeypatch.setenv("TERM", "dumb")

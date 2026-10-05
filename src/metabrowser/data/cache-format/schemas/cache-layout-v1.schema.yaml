@@ -9,7 +9,7 @@ $defs:
     type: string
 $schema: https://json-schema.org/draft/2020-12/schema
 additionalProperties: false
-description: '``cache/layout.yml``: the directory-semantics format of the cache.'
+description: '``layout.yml``: the directory-semantics format of the cache.'
 properties:
   created_by:
     $ref: '#/$defs/MetabrowserVersion'
@@ -22,4 +22,4 @@ title: CacheLayout
 type: object
 x-softschema:
   contract: com.github.jlevy.metabrowser.cache:CacheLayout/v1
-  schema_sha256: 9953eb18ba799f3242e319d884c80d9876debdd4537ec2abd026ac26651a9e12
+  schema_sha256: d8531b37c9b676858aa69299129faba6c856467f802da0ea1aad152ea545eeb8

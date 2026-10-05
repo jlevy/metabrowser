@@ -401,7 +401,7 @@ def test_output_that_quotes_a_command_is_not_reported(tmp_path: Path) -> None:
 
 
 def test_two_commands_in_one_block_are_reported(tmp_path: Path) -> None:
-    """tryscript joins every ``$`` line of a block into one command line."""
+    """Tryscript refuses multiple command prompts in one executable block."""
 
     body = "```console\n$ metab root > out.txt\n$ grep x out.txt\n? 0\n```\n"
     findings = _transcript_findings(tmp_path, body)

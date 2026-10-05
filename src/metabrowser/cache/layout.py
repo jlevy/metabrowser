@@ -1,16 +1,15 @@
 """The ``f01`` home format: its record, history, migrations, and future-format refusal.
 
-``cache/layout.yml`` names the directory semantics of the whole application home. This
+``layout.yml`` names the directory semantics of the whole application home. This
 module owns the current format, the ordered history of formats a release has written,
 the migration from each historical format to the next, and the error an older client
 raises when it meets a newer home. Migration holds the application-home lock, refuses a
 future format before writing anything, publishes the layout after each step so an
-interrupted chain resumes where it stopped, and publishes ``config.yml`` last, so a
-layout ahead of its config always means an unfinished migration.
+interrupted chain resumes where it stopped.
 
-``config.yml`` belongs to the user. It is rewritten only when a home is created or
-migrated, keeping every setting Metabrowser does not know; comments are not preserved.
-A config Metabrowser cannot read is refused and left as it is, never replaced.
+``config.yml`` belongs to the user and lives in the independent configuration directory.
+It is created once if absent and is never rewritten when the cache changes. Existing
+settings and comments are preserved. Unreadable configuration is refused, never replaced.
 """
 
 from __future__ import annotations
@@ -18,10 +17,9 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from io import StringIO
 from pathlib import Path
-from typing import Any, Final, cast
+from typing import Any, Final, Literal, cast
 
 from frontmatter_format import new_yaml
 from softschema.validate import parse_yaml_text
@@ -35,14 +33,14 @@ from metabrowser.cache.atomic import (
 )
 from metabrowser.cache.contracts import parse_application_config
 from metabrowser.cache.listing import ListingLimitError, list_private_directory
-from metabrowser.cache.locks import application_home_lock
+from metabrowser.cache.locks import application_cache_lock
 from metabrowser.cache.paths import (
     CONFIG_RECORD,
     LAYOUT_RECORD,
     REPOSITORY_STORES,
     SOURCES,
 )
-from metabrowser.cache.probe import ProbeReport, probe_application_home
+from metabrowser.cache.probe import ProbeReport, probe_application_cache
 from metabrowser.cache.reclaim import SweepReport, sweep_staging
 from metabrowser.cache.records import (
     CACHE_LAYOUT_CONTRACT_ID,
@@ -53,12 +51,17 @@ from metabrowser.cache.records import (
 )
 from metabrowser.home import (
     SharedEntryPolicy,
-    application_home,
+    application_cache,
+    configuration_directory,
     ensure_home,
+    ensure_private_directory,
+    validate_storage_separation,
     write_private_file_atomic,
 )
 
 LAYOUT_FORMAT: Final = "f01"
+CONFIG_FORMAT: Final = "f01"
+CONFIG_FORMAT_HISTORY: Final[tuple[str, ...]] = (CONFIG_FORMAT,)
 # Every format a released Metabrowser has written, oldest first, ending with the current
 # one. Adding a format appends it here and adds the migration from its predecessor.
 FORMAT_HISTORY: Final[tuple[str, ...]] = ("f01",)
@@ -93,12 +96,17 @@ _CONFIG_METADATA: Final = {
 
 
 class FutureLayoutFormatError(Exception):
-    """The application home was written in a format newer than this release reads."""
+    """Cache or configuration uses a format newer than this release reads."""
 
-    def __init__(self, found: str, supported: str) -> None:
+    def __init__(
+        self, found: str, supported: str, *, storage: Literal["cache", "configuration"] = "cache"
+    ) -> None:
+        override = (
+            "METABROWSER_CONFIG_DIR" if storage == "configuration" else "METABROWSER_CACHE_DIR"
+        )
         super().__init__(
-            f"This Metabrowser application home uses format {found}, and this release reads "
-            f"formats up to {supported}. Upgrade Metabrowser, or set METABROWSER_HOME to a "
+            f"This Metabrowser {storage} directory uses format {found}, and this release reads "
+            f"formats up to {supported}. Upgrade Metabrowser, or set {override} to a "
             "different directory."
         )
         self.found: str = found
@@ -145,11 +153,9 @@ def format_number(value: str) -> int:
     return int(value[1:])
 
 
-def _utc_now() -> str:
-    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def _refuse_future(found: object, history: Sequence[str]) -> None:
+def _refuse_future(
+    found: object, history: Sequence[str], *, storage: Literal["cache", "configuration"] = "cache"
+) -> None:
     if not isinstance(found, str):
         return
     try:
@@ -157,7 +163,7 @@ def _refuse_future(found: object, history: Sequence[str]) -> None:
     except ValueError:
         return
     if number > format_number(history[-1]):
-        raise FutureLayoutFormatError(found, history[-1])
+        raise FutureLayoutFormatError(found, history[-1], storage=storage)
 
 
 def _parse_yaml(payload: bytes, path: Path, what: str) -> dict[str, Any]:
@@ -176,7 +182,7 @@ def read_layout(
     history: Sequence[str] = FORMAT_HISTORY,
     shared: SharedEntryPolicy = "repair",
 ) -> CacheLayout | None:
-    """Read ``cache/layout.yml``; ``None`` when the home has none yet.
+    """Read ``layout.yml``; ``None`` when the home has none yet.
 
     A format newer than *history* raises :class:`FutureLayoutFormatError` before the
     record is held to this release's contract, so a newer layout is never reported as
@@ -191,7 +197,7 @@ def read_layout(
         return None
     except RecordError as error:
         raise LayoutError(str(error), path) from error
-    document = _parse_yaml(payload, path, "cache/layout.yml")
+    document = _parse_yaml(payload, path, "layout.yml")
     envelope = document.get("layout")
     if isinstance(envelope, dict):
         _refuse_future(cast(dict[str, object], envelope).get("format"), history)
@@ -206,7 +212,7 @@ def read_layout(
 def read_config(
     home: Path,
     *,
-    history: Sequence[str] = FORMAT_HISTORY,
+    history: Sequence[str] = CONFIG_FORMAT_HISTORY,
     shared: SharedEntryPolicy = "repair",
 ) -> ApplicationConfig | None:
     """Read ``config.yml``; ``None`` when there is none.
@@ -239,7 +245,7 @@ def read_config(
     values = document["config"]
     if not isinstance(values, dict):
         raise LayoutError("config.yml config must be a mapping", path)
-    _refuse_future(cast(dict[str, object], values).get("format"), history)
+    _refuse_future(cast(dict[str, object], values).get("format"), history, storage="configuration")
     try:
         return parse_application_config(values)
     except ValueError as error:
@@ -262,8 +268,40 @@ def serialize_config(config: ApplicationConfig) -> bytes:
     return text.encode()
 
 
-def _write_config(home: Path, config: ApplicationConfig) -> None:
-    write_private_file_atomic(home, CONFIG_RECORD, serialize_config(config))
+def ensure_configuration(*, version: str) -> ApplicationConfig:
+    """Create missing configuration once, independently of the cache layout.
+
+    Atomic create-only publication preserves user edits and handles concurrent cache
+    initializations without a shared lock or rewriting an existing configuration.
+    """
+    directory = configuration_directory()
+    config = read_config(directory)
+    if config is not None:
+        return config
+    ensure_storage_root(directory)
+    config = ApplicationConfig(format=CONFIG_FORMAT, written_by=version, upgrades=[])
+    try:
+        write_private_file_atomic(directory, CONFIG_RECORD, serialize_config(config), replace=False)
+    except FileExistsError as error:
+        existing = read_config(directory)
+        if existing is None:
+            raise LayoutError(
+                "configuration disappeared during initialization", directory / CONFIG_RECORD
+            ) from error
+        return existing
+    return config
+
+
+def ensure_storage_root(directory: Path) -> None:
+    """Create missing parents, then verify the private application directory."""
+    missing: list[Path] = []
+    parent = directory.parent
+    while not parent.exists():
+        missing.append(parent)
+        parent = parent.parent
+    for ancestor in reversed(missing):
+        ensure_private_directory(ancestor)
+    ensure_private_directory(directory)
 
 
 def _has_durable_entries(home: Path) -> bool:
@@ -291,8 +329,8 @@ def _has_durable_entries(home: Path) -> bool:
 def _refuse_unrecognized_entries(home: Path) -> None:
     if _has_durable_entries(home):
         raise LayoutError(
-            "the cache has entries but no cache/layout.yml, so their format is "
-            "unknown. Move the cache directory aside, or set METABROWSER_HOME to a "
+            "the cache has entries but no layout.yml, so their format is "
+            "unknown. Move the cache directory aside, or set METABROWSER_CACHE_DIR to a "
             "different directory",
             home / LAYOUT_RECORD,
         )
@@ -308,23 +346,11 @@ def _preflight_layout(home: Path, *, history: Sequence[str]) -> None:
     with it is the whole point of reading before anything is created or repaired.
     """
 
+    validate_storage_separation(home)
     layout = read_layout(home, history=history, shared="keep")
-    read_config(home, history=history, shared="keep")
+    read_config(configuration_directory(), shared="keep")
     if layout is None:
         _refuse_unrecognized_entries(home)
-
-
-def _config_for(
-    config: ApplicationConfig | None, fmt: str, *, version: str, upgraded_at: str | None
-) -> ApplicationConfig:
-    if config is None:
-        return ApplicationConfig(format=fmt, written_by=version, upgrades=[])
-    values = config.model_dump(mode="json")
-    values["format"] = fmt
-    if upgraded_at is not None:
-        values["written_by"] = version
-        values["upgrades"] = [*values["upgrades"], {"version": version, "at": upgraded_at}]
-    return parse_application_config(values)
 
 
 def migrate_layout(
@@ -333,14 +359,12 @@ def migrate_layout(
     version: str | None = None,
     history: Sequence[str] = FORMAT_HISTORY,
     migrations: Mapping[str, Migration] = MIGRATIONS,
-    now: Callable[[], str] = _utc_now,
 ) -> LayoutOutcome:
     """Bring the home to the current format under the application-home lock.
 
-    A new home receives ``layout.yml`` and then ``config.yml``. An older home runs each
-    migration in *history* order, publishing the layout after each step, and then
-    ``config.yml`` with an upgrade entry. A current home whose config lags its layout
-    only publishes the config. A future layout or config raises
+    Configuration is initialized independently in the configuration directory and is
+    never rewritten by cache migration. A new cache receives ``layout.yml``; an older
+    cache runs each migration in *history* order. A future layout or config raises
     :class:`FutureLayoutFormatError` before anything is written; a home with cache
     entries but no layout raises :class:`LayoutError` rather than adopting them.
     """
@@ -348,22 +372,20 @@ def migrate_layout(
     version = metabrowser.__version__ if version is None else version
     current = history[-1]
     _preflight_layout(home, history=history)
-    with application_home_lock(home):
+    config = ensure_configuration(version=version)
+    with application_cache_lock(home):
         layout = read_layout(home, history=history)
-        config = read_config(home, history=history)
         if layout is None:
             _refuse_unrecognized_entries(home)
             layout = CacheLayout(format=current, created_by=version)
             write_record_atomic(
                 home, LAYOUT_RECORD, layout, CACHE_LAYOUT_CONTRACT_ID, replace=False
             )
-            config = _config_for(config, current, version=version, upgraded_at=None)
-            _write_config(home, config)
             return LayoutOutcome(layout, config, None, ())
         previous = layout.format
         if previous not in history:
             raise LayoutError(
-                f"cache/layout.yml names format {previous}, which no Metabrowser release wrote",
+                f"layout.yml names format {previous}, which no Metabrowser release wrote",
                 home / LAYOUT_RECORD,
             )
         migrated: list[str] = []
@@ -376,13 +398,6 @@ def migrate_layout(
             layout = CacheLayout(format=target, created_by=layout.created_by)
             write_record_atomic(home, LAYOUT_RECORD, layout, CACHE_LAYOUT_CONTRACT_ID)
             migrated.append(target)
-        if config is not None and config.format == current and not migrated:
-            return LayoutOutcome(layout, config, previous, ())
-        upgraded = bool(migrated) or (config is not None and config.format != current)
-        config = _config_for(
-            config, current, version=version, upgraded_at=now() if upgraded else None
-        )
-        _write_config(home, config)
         return LayoutOutcome(layout, config, previous, tuple(migrated))
 
 
@@ -395,10 +410,11 @@ def open_cache(home: Path | None = None, *, version: str | None = None) -> Cache
     Ordinary local browsing never calls this. Read routes do not.
     """
 
-    home = application_home() if home is None else home
+    home = application_cache() if home is None else home
     _preflight_layout(home, history=FORMAT_HISTORY)
+    ensure_storage_root(home)
     ensure_home(home)
-    probe = probe_application_home(home)
+    probe = probe_application_cache(home)
     outcome = migrate_layout(home, version=version)
     sweep = sweep_staging(home)
     return CacheHome(home, outcome.layout, outcome.config, probe, sweep)

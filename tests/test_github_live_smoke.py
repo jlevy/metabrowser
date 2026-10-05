@@ -81,7 +81,9 @@ def _no_credentials_path(tmp_path: Path) -> str:
 
 def _run(home: Path, *args: str, path: str | None = None) -> _Result:
     env = {key: value for key, value in os.environ.items() if key not in _REPO_PINNING_GIT_VARS}
-    env.update({"METABROWSER_HOME": str(home), "METABROWSER_LOG_LEVEL": "ERROR", "TERM": "dumb"})
+    env.update(
+        {"METABROWSER_CACHE_DIR": str(home), "METABROWSER_LOG_LEVEL": "ERROR", "TERM": "dumb"}
+    )
     if path is not None:
         env["PATH"] = path
     completed = subprocess.run(
@@ -213,7 +215,7 @@ def test_live_serve_refresh_and_status(tmp_path: Path, monkeypatch: pytest.Monke
     from metabrowser import server
     from metabrowser.cli.main import _app
 
-    monkeypatch.setenv("METABROWSER_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("METABROWSER_CACHE_DIR", str(tmp_path / "home"))
     monkeypatch.setenv("PATH", _no_credentials_path(tmp_path))
     monkeypatch.setattr("metabrowser.cli.git_pin_cli.stop_on_interrupt", lambda: None)
     with (

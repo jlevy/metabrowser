@@ -318,3 +318,11 @@ class SyntheticIndexWriter:
     def __setitem__(self, path: str, entry: object) -> None:
         assert getattr(entry, "path", None) == path, "entry.path must match its key"
         self._index._replace_index_entry(entry)  # type: ignore[attr-defined]
+
+
+@pytest.fixture(autouse=True)
+def _isolated_configuration(tmp_path: Path) -> Generator[None, None, None]:  # pyright: ignore[reportUnusedFunction]
+    """Isolate configuration without changing other fixtures' monkeypatch lifetime."""
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setenv("METABROWSER_CONFIG_DIR", str(tmp_path / "metabrowser-config"))
+        yield

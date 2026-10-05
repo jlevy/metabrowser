@@ -149,8 +149,8 @@ def test_golden_interrupted_before_store_publication(
 
     session.note("A child is killed at the rename that would publish the store.")
     _killed_at_publication(session, "metab <ORIGIN-A> --no-serve", [url, "--no-serve"], survive=0)
-    assert len(list((home / "cache" / "staging").iterdir())) == 1
-    assert list((home / "cache" / "repository-stores").iterdir()) == []
+    assert len(list((home / "staging").iterdir())) == 1
+    assert list((home / "repository-stores").iterdir()) == []
 
     session.note("Nothing is published: one abandoned staging entry, no store, no source.")
     assert '"staging_entries": 1' in session.inspect("/api/cache/layout")
@@ -162,7 +162,7 @@ def test_golden_interrupted_before_store_publication(
     assert '"staging_entries": 0' in session.inspect("/api/cache/layout")
     assert '"reference_state": "referenced"' in session.inspect("/api/cache/stores")
     assert '"publication": "published"' in session.inspect("/api/cache/sources")
-    assert list((home / "cache" / "staging").iterdir()) == []
+    assert list((home / "staging").iterdir()) == []
 
     check_golden("cli-cache-interrupt-store.txt", session.render())
 
@@ -176,8 +176,8 @@ def test_golden_interrupted_between_store_and_alias_publication(
 
     session.note("A child publishes the store and is killed at the source alias rename.")
     _killed_at_publication(session, "metab <ORIGIN-A> --no-serve", [url, "--no-serve"], survive=1)
-    assert len(list((home / "cache" / "repository-stores").iterdir())) == 1
-    assert list((home / "cache" / "sources").iterdir()) == []
+    assert len(list((home / "repository-stores").iterdir())) == 1
+    assert list((home / "sources").iterdir()) == []
 
     session.note(
         "The store is published but unreferenced, and the source is not visible: "
@@ -187,7 +187,7 @@ def test_golden_interrupted_between_store_and_alias_publication(
     assert '"reference_state": "unreferenced"' in session.inspect("/api/cache/stores")
     assert '"sources": []' in session.inspect("/api/cache/sources")
 
-    (orphan,) = list((home / "cache" / "repository-stores").iterdir())
+    (orphan,) = list((home / "repository-stores").iterdir())
     orphan_inode = orphan.stat().st_ino
     session.note(
         "The next acquisition fetches again, finds the same store already published, "
@@ -236,7 +236,7 @@ def test_golden_fetch_failures_leave_other_sources_untouched(
 
     session.note("Source A is acquired.")
     first = session.no_serve("A", url)
-    snapshot = _snapshot(home / "cache" / "repository-stores")
+    snapshot = _snapshot(home / "repository-stores")
 
     for letter, (why, path) in failures.items():
         session.note(f"Source {letter}, {why}, fails without publishing anything.")
@@ -256,7 +256,7 @@ def test_golden_fetch_failures_leave_other_sources_untouched(
     assert sources.count('"slug":') == 1
     assert '"generation": 1' in sources
     session.inspect("/api/cache/stores")
-    assert _snapshot(home / "cache" / "repository-stores") == snapshot
+    assert _snapshot(home / "repository-stores") == snapshot
 
     session.note("A is still a cache hit, and another spelling of A normalizes to A.")
     hit = session.no_serve("A", url)
@@ -267,7 +267,7 @@ def test_golden_fetch_failures_leave_other_sources_untouched(
         [f"FILE://LocalHost{path_a}/", "--no-serve"],
     )
     assert (folded.stdout, folded.stderr) == (hit.stdout, hit.stderr)
-    assert _snapshot(home / "cache" / "repository-stores") == snapshot
+    assert _snapshot(home / "repository-stores") == snapshot
 
     check_golden("cli-cache-fetch-failures.txt", session.render())
 
@@ -353,15 +353,15 @@ def test_golden_refusals_name_their_repair(tmp_path: Path, monkeypatch: pytest.M
     session.origin("A", url_a)
     session.origin("B", url_b)
 
-    session.note("METABROWSER_HOME must name an absolute path; nothing is created otherwise.")
+    session.note("METABROWSER_CACHE_DIR must name an absolute path; nothing is created otherwise.")
     for value in ("", "relative/home"):
-        monkeypatch.setenv("METABROWSER_HOME", value)
+        monkeypatch.setenv("METABROWSER_CACHE_DIR", value)
         session.run(
-            f"METABROWSER_HOME={value} metab <ORIGIN-A> --no-serve",
+            f"METABROWSER_CACHE_DIR={value} metab <ORIGIN-A> --no-serve",
             [url_a, "--no-serve"],
             exit_code=1,
         )
-    monkeypatch.setenv("METABROWSER_HOME", str(home))
+    monkeypatch.setenv("METABROWSER_CACHE_DIR", str(home))
     assert not home.exists()
     assert not (Path.cwd() / "relative").exists()
 
@@ -383,7 +383,7 @@ def test_golden_refusals_name_their_repair(tmp_path: Path, monkeypatch: pytest.M
     session.no_serve("B", url_b)
 
     session.note("A home written by a newer release is refused before anything is written.")
-    layout = home / "cache" / "layout.yml"
+    layout = home / "layout.yml"
     layout.write_text(
         layout.read_text(encoding="utf-8").replace("format: f01", "format: f02", 1),
         encoding="utf-8",
@@ -393,10 +393,10 @@ def test_golden_refusals_name_their_repair(tmp_path: Path, monkeypatch: pytest.M
     assert "Upgrade Metabrowser" in refused.stderr
     assert _snapshot(home) == before
 
-    session.note("Another METABROWSER_HOME, as the message suggests, acquires independently.")
+    session.note("Another METABROWSER_CACHE_DIR, as the message suggests, acquires independently.")
     other = tmp_path / "other-home"
     session.homes[other] = "<OTHER-HOME>"
-    monkeypatch.setenv("METABROWSER_HOME", str(other))
+    monkeypatch.setenv("METABROWSER_CACHE_DIR", str(other))
     session.no_serve("A", url_a)
     assert _snapshot(home) == before
 

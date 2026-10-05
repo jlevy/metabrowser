@@ -134,7 +134,7 @@ class _Stand:
 @pytest.fixture
 def stand(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin) -> _Stand:
     home = tmp_path / "home"
-    monkeypatch.setenv("METABROWSER_HOME", str(home))
+    monkeypatch.setenv("METABROWSER_CACHE_DIR", str(home))
     _allow_installed_git(monkeypatch)
     origin = pull_origin
     local = origin.url

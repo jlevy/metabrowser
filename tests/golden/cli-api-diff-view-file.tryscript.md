@@ -141,7 +141,7 @@ $ cat pin-parent.json
 The answer’s `view_href` is that address, because the parent has the file.
 
 ```console
-$ METABROWSER_HOME=$PWD/home metab file://$PWD/origin.git --api /api/source/pin --data pin-parent.json
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab file://$PWD/origin.git --api /api/source/pin --data pin-parent.json
 api: /api/source/pin
 status: 200
 {
@@ -154,7 +154,7 @@ status: 200
     "ref_name": null,
     "name": "origin",
     "origin": "file://[CWD]/origin.git",
-    "location": "[APP_HOME]/cache/repository-stores/[STORE_KEY]/repository.git",
+    "location": "[APP_HOME]/repository-stores/[STORE_KEY]/repository.git",
     "refreshable": true,
     "latest": null,
     "ref_on_origin": null,

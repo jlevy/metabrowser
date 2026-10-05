@@ -177,17 +177,17 @@ class ApplicationConfig(_UserRecord):
         return data
 
 
-# ── cache/layout.yml ───────────────────────────────────────────────
+# ── layout.yml ───────────────────────────────────────────────
 
 
 class CacheLayout(_MachineRecord):
-    """``cache/layout.yml``: the directory-semantics format of the cache."""
+    """``layout.yml``: the directory-semantics format of the cache."""
 
     format: LayoutFormat
     created_by: MetabrowserVersion
 
 
-# ── cache/sources/<slug>/ ──────────────────────────────────────────
+# ── sources/<slug>/ ──────────────────────────────────────────
 
 
 class RepositorySource(_MachineRecord):
@@ -224,7 +224,7 @@ class RepositoryStoreAlias(_MachineRecord):
     updated_at: CanonicalTimestamp
 
 
-# ── cache/repository-stores/<store-key>/ ───────────────────────────
+# ── repository-stores/<store-key>/ ───────────────────────────
 
 
 class StoreAcquisition(_MachineRecord):

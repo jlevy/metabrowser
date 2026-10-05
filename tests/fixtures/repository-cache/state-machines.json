@@ -12,32 +12,32 @@
       {
         "name": "home",
         "rank": 1,
-        "path": "cache/locks/home.lock",
+        "path": "locks/home.lock",
         "protects": "layout migration and brief global enumeration for catalog scans and sweeps"
       },
       {
         "name": "source_alias",
         "rank": 2,
-        "path": "cache/locks/sources/<slug>.lock",
+        "path": "locks/sources/<slug>.lock",
         "protects": "slug claim and alias creation; several aliases lock in ascending slug order"
       },
       {
         "name": "repository_store",
         "rank": 3,
-        "path": "cache/locks/stores/<store-key>.lock",
+        "path": "locks/stores/<store-key>.lock",
         "protects": "store directory publication and store records; several stores lock in ascending key order. It is held only for those short steps, never across network work or a long-running Git process such as fetch"
       }
     ],
     "side_locks": [
       {
         "name": "staging_entry",
-        "path": "cache/locks/staging/<entry>.lock",
-        "acquisition": "taken before cache/staging/<entry>/ is created and held by its one owner for the entry's whole life, including network work; every other process only tries it without blocking",
+        "path": "locks/staging/<entry>.lock",
+        "acquisition": "taken before staging/<entry>/ is created and held by its one owner for the entry's whole life, including network work; every other process only tries it without blocking",
         "why_outside_the_hierarchy": "It is a liveness marker nobody waits on, so holding it across network work cannot block another operation."
       },
       {
         "name": "store_fetch",
-        "path": "cache/locks/stores/<store-key>.fetch.lock",
+        "path": "locks/stores/<store-key>.fetch.lock",
         "acquisition": "tried without blocking by a refresh of a published store and held through its network work, stale-lock cleanup, and the record rewrite; the Git processes that write the store inherit its descriptor, so it stays held while any of them runs, even after the process that took it has died; a refresh that finds it busy reports that another process is refreshing the store and does not wait",
         "why_outside_the_hierarchy": "It is held across network work, which no hierarchy lock may be, and nobody waits on it. The store lock is still taken under it, briefly, to rewrite state.yml."
       }
@@ -51,7 +51,7 @@
       "A store is published and the alias that names it is written by one holder of the source-alias lock and the store's lock, held from the store's publication through the alias commit, so every alias that names a store is written under that store's lock.",
       "Nothing removes objects from a published store: automatic maintenance and gc stay off in its configuration and no operation runs gc, prune, or repack. A reader pinned to a full object ID therefore holds no lock and writes no ref.",
       "Nothing deletes a published store. A store no alias names stays in place until an acquisition of its source reuses it; only the startup sweep of abandoned staging entries deletes anything.",
-      "Lock files live under cache/locks/ and are never inside a directory that publication or the sweep renames or deletes.",
+      "Lock files live under locks/ and are never inside a directory that publication or the sweep renames or deletes.",
       "After acquiring any lock, the holder compares the locked descriptor's fstat with the path's lstat (device and inode) and releases and retries on a mismatch, because a sweep may have removed and recreated the lock file.",
       "Liveness is decided by trying the entry's lock, not by age: a crashed holder releases within milliseconds, while no age can distinguish a slow clone from a dead one.",
       "A refresh fetches into a published store only while it holds that store's fetch lock, and the Git processes that write the store inherit that lock, so it is held for exactly as long as a writer lives. Stale packed-refs.lock and refs/**.lock files and temporary objects and packs a killed Git left behind are therefore removed under it before the next fetch. Its fetch updates every ref atomically or none, a stale ref that clashes with that transaction is pruned in a separate deleting step first, and only the record rewrite that follows takes the store lock."

@@ -16,7 +16,7 @@ rename flag. So before the cache uses a home, this probe checks on that home tha
 
 A home that fails any check is refused as unverifiable. The probe costs one short-lived
 interpreter started with ``-I -S`` plus a few file operations, and its result is kept
-for the life of the process, keyed by the device and inode of ``cache/locks``; a home
+for the life of the process, keyed by the device and inode of ``locks``; a home
 that moves to another file system is a different directory and is probed again.
 """
 
@@ -67,7 +67,7 @@ for line in sys.stdin:
     sys.stdout.flush()
 """
 
-_REMEDY: Final = "Set METABROWSER_HOME to a directory on a local file system"
+_REMEDY: Final = "Set METABROWSER_CACHE_DIR to a directory on a local file system"
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,14 +85,14 @@ _RESULTS: dict[tuple[int, int], ProbeReport] = {}
 _RESULTS_MUTEX = threading.Lock()
 
 
-def probe_application_home(home: Path, *, force: bool = False) -> ProbeReport:
+def probe_application_cache(home: Path, *, force: bool = False) -> ProbeReport:
     """Verify *home*'s locks and publication once per process, or refuse the home.
 
     The ``f01`` skeleton must exist. Raises :class:`PrivateStorageError` with violation
     ``unverifiable`` when a check fails.
     """
 
-    locks = ensure_private_directory(home, "cache/locks")
+    locks = ensure_private_directory(home, "locks")
     status = os.stat(locks)
     key = (status.st_dev, status.st_ino)
     with _RESULTS_MUTEX:
@@ -113,10 +113,10 @@ def probe_application_home(home: Path, *, force: bool = False) -> ProbeReport:
 
 def _probe(home: Path) -> ProbeReport:
     entry = f"probe-{secrets.token_hex(8)}"
-    staging = f"cache/staging/{entry}"
+    staging = f"staging/{entry}"
     with staging_entry_lock(home, entry) as owner:
         try:
-            _probe_locks(home, f"cache/locks/staging/{entry}-flock.lock")
+            _probe_locks(home, f"locks/staging/{entry}-flock.lock")
             return _probe_publication(home, staging, owner)
         finally:
             shutil.rmtree(home / staging, ignore_errors=True)
@@ -260,4 +260,4 @@ class _Child:
             process.stdout.close()
 
 
-__all__ = ["ProbeReport", "probe_application_home"]
+__all__ = ["ProbeReport", "probe_application_cache"]

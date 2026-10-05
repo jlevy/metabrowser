@@ -910,7 +910,7 @@ def test_cli_serves_an_existing_folder_without_asking_the_grammar(
     asked and the application home is never created. The names themselves, and what is
     served for each, are the grammar golden's."""
     home = tmp_path / "home"
-    monkeypatch.setenv("METABROWSER_HOME", str(home))
+    monkeypatch.setenv("METABROWSER_CACHE_DIR", str(home))
     monkeypatch.chdir(tmp_path)
     folder = tmp_path / "me@host:dir"
     folder.mkdir()
@@ -952,7 +952,7 @@ def test_cli_explicit_scheme_url_is_a_source_even_when_its_path_exists(
     case reaches a provider's reducer and one a scheme the grammar refuses.
     """
     home = tmp_path / "home"
-    monkeypatch.setenv("METABROWSER_HOME", str(home))
+    monkeypatch.setenv("METABROWSER_CACHE_DIR", str(home))
     monkeypatch.chdir(tmp_path)
     folder = tmp_path / path_it_would_name
     folder.mkdir(parents=True)
@@ -971,7 +971,7 @@ def test_cli_opens_an_existing_file_whose_name_looks_like_a_source(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A file ROOT is opened directly, with its folder as the root."""
-    monkeypatch.setenv("METABROWSER_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("METABROWSER_CACHE_DIR", str(tmp_path / "home"))
     served = tmp_path / "served"
     served.mkdir()
     (served / "me@host:notes.md").write_text("# Notes\n")
@@ -993,7 +993,7 @@ def test_cli_follows_a_symlink_whose_name_looks_like_a_source(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A link to a folder is served; a dangling one gets the local path's error."""
-    monkeypatch.setenv("METABROWSER_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("METABROWSER_CACHE_DIR", str(tmp_path / "home"))
     monkeypatch.chdir(tmp_path)
     target = tmp_path / "target"
     target.mkdir()
@@ -1057,7 +1057,7 @@ def test_cli_file_url_is_a_git_source_and_is_not_walked(
     """A `file://` ROOT is a Git source, so it is never walked as a directory."""
 
     home = tmp_path / "home"
-    monkeypatch.setenv("METABROWSER_HOME", str(home))
+    monkeypatch.setenv("METABROWSER_CACHE_DIR", str(home))
     result = runner.invoke(_app, ["file:///srv/git/repo.git", "--walk"])
     assert isinstance(result.exception, CLIError)
     message = str(result.exception)
@@ -1071,7 +1071,7 @@ def test_cli_ssh_clone_url_is_a_git_source_and_is_not_served(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     home = tmp_path / "home"
-    monkeypatch.setenv("METABROWSER_HOME", str(home))
+    monkeypatch.setenv("METABROWSER_CACHE_DIR", str(home))
     result = runner.invoke(_app, ["ssh://git@example.com/owner/repo.git", "--no-open"])
     assert isinstance(result.exception, CLIError)
     assert "ssh Git sources are not served yet" in str(result.exception)

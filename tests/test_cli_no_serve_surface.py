@@ -62,14 +62,14 @@ def test_https_no_serve_names_an_unreachable_origin_by_its_state(
 
     _allow_installed_git(monkeypatch)
     home = tmp_path / "home"
-    monkeypatch.setenv("METABROWSER_HOME", str(home))
+    monkeypatch.setenv("METABROWSER_CACHE_DIR", str(home))
     result = runner.invoke(_app, ["https://127.0.0.1:1/owner/repo.git", "--no-serve"])
     assert isinstance(result.exception, CLIError)
     assert str(result.exception) == (
         "https://127.0.0.1:1/owner/repo.git could not be reached; check the network "
         "connection (network_unreachable); nothing was published"
     )
-    staging = home / "cache" / "staging"
+    staging = home / "staging"
     assert not staging.is_dir() or list(staging.iterdir()) == []
 
 

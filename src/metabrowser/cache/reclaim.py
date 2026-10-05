@@ -28,7 +28,7 @@ from typing import Final
 
 from metabrowser.cache.locks import (
     LockBusyError,
-    application_home_lock,
+    application_cache_lock,
     held_locks,
     is_entry_name,
     staging_entry_lock,
@@ -179,7 +179,7 @@ def sweep_staging(home: Path, *, observer: MachineObserver | None = None) -> Swe
     """Delete staging entries whose owner is gone, and their free lock files."""
 
     machine = "startup_sweep"
-    with application_home_lock(home):
+    with application_cache_lock(home):
         names = sorted(entry.name for entry in os.scandir(home / STAGING))
         lock_names = sorted(entry.name for entry in os.scandir(home / STAGING_LOCKS))
         _emit(observer, machine, "begin")

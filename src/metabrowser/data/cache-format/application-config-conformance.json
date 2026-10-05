@@ -37,7 +37,7 @@
       "name": "config-keeps-a-cache-root-it-does-not-honor",
       "record": "config",
       "changes": [
-        { "path": ["cache"], "value": { "root": "~/.metabrowser/cache", "refresh": "manual" } }
+        { "path": ["cache"], "value": { "root": "~/.cache/metabrowser", "refresh": "manual" } }
       ],
       "expect": "valid"
     },

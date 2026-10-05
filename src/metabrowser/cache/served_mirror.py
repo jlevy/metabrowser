@@ -7,7 +7,7 @@ the server reaches the store, its record, and its origin only through these meth
 The server learns one cache path from it, as text to show and never to open:
 :attr:`StoreMirror.display` says where the mirror is kept, beside the repository's name
 and its origin. A page that showed a commit ID where a folder shows its name, and said
-nowhere that its files came out of ``~/.metabrowser``, hid both (decided 2026-10-01,
+nowhere that its files came out of ``~/.cache/metabrowser``, hid both (decided 2026-10-01,
 ``mb-fndz``).
 """
 
@@ -176,7 +176,7 @@ class StoreMirror:
         """The repository's name, its origin, and where this mirror is kept.
 
         The location is the store's bare repository, not the source's directory under
-        ``cache/sources``. That directory carries the repository's name, but it holds
+        ``sources``. That directory carries the repository's name, but it holds
         three small records and no Git object: ``du`` there measures a few kilobytes,
         and ``git -C`` there fails. The bare repository is what every page is read
         from, what a clone's size is, and where ``git -C <location> log --all`` works.

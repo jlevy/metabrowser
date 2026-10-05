@@ -329,4 +329,6 @@ def build_all(directory: Path) -> None:
 if __name__ == "__main__":
     if len(sys.argv) != 2:
         raise SystemExit("usage: cache_home_fixture.py <directory>")
-    build_all(Path(sys.argv[1]).resolve())
+    destination = Path(sys.argv[1]).resolve()
+    os.environ["METABROWSER_CONFIG_DIR"] = str(destination / "config")
+    build_all(destination)

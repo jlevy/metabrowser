@@ -102,13 +102,17 @@ def _console_commands(golden: str) -> list[GoldenCommand]:
     does not run, such as one whose fence is indented, is not evidence here either.
     """
 
+    try:
+        blocks = tryscript_blocks.blocks(golden)
+    except tryscript_blocks.ParseError:
+        return []  # A malformed transcript runs no commands and supplies no evidence.
     return [
         GoldenCommand(
             command=block.command,
             output=tuple(line.strip() for line in block.output),
             status=block.status,
         )
-        for block in tryscript_blocks.blocks(golden)
+        for block in blocks
     ]
 
 
@@ -125,7 +129,7 @@ _ENVIRONMENT_ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=.*", re.DOTALL)
 def _metab_parts(command: str) -> list[str]:
     """The words of a ``metab`` command, after any leading environment assignments.
 
-    A transcript sets per-command state such as ``METABROWSER_HOME=$PWD/home`` this way,
+    A transcript sets per-command state such as ``METABROWSER_CACHE_DIR=$PWD/home`` this way,
     because tryscript's frontmatter cannot name the sandbox path. Only assignments are
     skipped, so another program behind them is still not ``metab``.
     """

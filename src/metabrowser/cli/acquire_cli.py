@@ -41,13 +41,13 @@ from metabrowser.git.process import (
     GitUnavailableError,
     UnsupportedGitVersionError,
 )
-from metabrowser.home import ApplicationHomeError, PrivateStorageError, application_home
+from metabrowser.home import PrivateStorageError, StorageDirectoryError, application_cache
 
 LOG = logging.getLogger(__name__)
 
 _ACQUIRE_CLI_ERRORS = (
     AcquisitionError,
-    ApplicationHomeError,
+    StorageDirectoryError,
     FutureLayoutFormatError,
     LayoutError,
     LockBusyError,
@@ -58,7 +58,7 @@ _ACQUIRE_CLI_ERRORS = (
 _UNREADABLE_RECORD: Final = (
     "the repository cache holds a record this build cannot read, such as one an earlier "
     "v0.12 development build wrote; nothing was published. Move the cache directory aside, "
-    "or set METABROWSER_HOME to a different directory"
+    "or set METABROWSER_CACHE_DIR to a different directory"
 )
 
 
@@ -101,7 +101,7 @@ def _is_cache_inspect_route(route: str) -> bool:
 async def acquire_for_cli(
     source: GitSource, *, announce_hit: bool = False, then: str = ""
 ) -> PublishedSource:
-    """Publish *source* into ``METABROWSER_HOME``, mapping failures to ``CLIError``.
+    """Publish *source* into ``METABROWSER_CACHE_DIR``, mapping failures to ``CLIError``.
 
     Every CLI entry point that acquires goes through here — ``--no-serve``, cache
     ``--api``, serve mode, and the Git-pin ``--show`` / ``--api`` modes — so none of
@@ -116,8 +116,8 @@ async def acquire_for_cli(
     stderr says only what the URL selected.
     """
     try:
-        home = application_home()
-    except ApplicationHomeError as exc:
+        home = application_cache()
+    except StorageDirectoryError as exc:
         raise CLIError(str(exc)) from exc
     report = CloneReport(source.normalized, cache_directory_display(home), then=then)
     try:
@@ -143,7 +143,7 @@ async def acquire_for_cli(
 
 
 def acquire_published_source(source: GitSource, *, announce_hit: bool = False) -> PublishedSource:
-    """Publish *source* into ``METABROWSER_HOME`` and return the alias."""
+    """Publish *source* into ``METABROWSER_CACHE_DIR`` and return the alias."""
 
     return run_cancelling_on_hangup(acquire_for_cli(source, announce_hit=announce_hit))
 

@@ -3475,12 +3475,11 @@ html[data-prose-font="sans"] {
    `order` puts it there: it is written with the address, ahead of a file's copy
    control, and drawn after it.
 
-   It takes nothing from the address. Its shrink weight is 5000 times the
-   root's, the ratio .file-header-root measured as the least that takes no
-   sliver from the next part, so it is gone before the root's name narrows. And
-   when it is gone it occupies nothing: its two spacers are content, which
-   shrinks to zero with it, and its negative margin gives back the gap the
-   breadcrumb puts before every part.
+   Its zero flex basis gives the address its natural width first; the note
+   grows into only the remaining space. A proportional shrink weight can take
+   fractions of a pixel from a long repository name and trigger its ellipsis
+   even while the note is visible. With no space left the note occupies nothing:
+   its spacers shrink away, and the negative margin returns the breadcrumb gap.
 
    It is whole or it is absent, never a stub. The note is one line of a
    wrapping row, clipped to that line: a spacer, then the text at a basis of
@@ -3490,22 +3489,13 @@ html[data-prose-font="sans"] {
    than starting with one, because the start is what says where the mirror is
    and the end is a store's hexadecimal key.
 
-   Measured 2026-10-01 in Chrome 152, on a mirror's page at
-   squares / docs / deep / nested / a-rather-long-file-name-for-the-heading.md,
-   by the main heading's width. At every width below, the root's name, each
-   crumb, and the copy control measure what they do with the note removed.
-
-     heading   note    its text
-     1500px    715px   whole, 703px
-     1140px    566px   554px, ending in an ellipsis
-      800px    226px   214px
-      760px    186px   174px
-      660px     86px   absent
-      580px      6px   absent
-      560px      0     absent; the root's name is the next to narrow */
+   Measured on 12 heading widths from 250px to 1350px in the in-app browser,
+   with the long name metabrowser-v012-landing-docs: the root measures exactly
+   what it does with the note removed at every width. The old shrink weights
+   took up to 0.039px from that name while the note was present. */
 .file-header-mirror {
   order: 1;
-  flex: 0 100000000 auto;
+  flex: 1 1 0;
   min-width: 0;
   margin: 0 -2px 0 auto;
   display: flex;

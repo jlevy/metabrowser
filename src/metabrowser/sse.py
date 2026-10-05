@@ -143,7 +143,9 @@ async def _tail_jsonl(
         yield _sse_frame("closed", {"reason": "missing"})
         return
     inode = initial_st.st_ino
-    read_cursor = min(read_cursor, initial_st.st_size)
+    if read_cursor > initial_st.st_size:
+        yield _sse_frame("closed", {"reason": "rotated"})
+        return
     if read_cursor > 0:
         read_cursor = await asyncio.to_thread(_complete_line_cursor, filepath, read_cursor)
     acknowledged_cursor = read_cursor

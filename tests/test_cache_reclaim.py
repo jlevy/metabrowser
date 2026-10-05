@@ -129,9 +129,9 @@ class _Child:
 
 def test_the_sweep_skips_a_live_staging_entry_and_removes_a_dead_one(home: Path) -> None:
     scenario = _scenario("sweep-skips-live-staging")
-    ensure_private_directory(home, "cache/staging/a-live/objects")
-    ensure_private_directory(home, "cache/staging/b-dead/objects/pack")
-    dead_file = home / "cache/staging/b-dead/objects/pack/tmp_pack_1"
+    ensure_private_directory(home, "staging/a-live/objects")
+    ensure_private_directory(home, "staging/b-dead/objects/pack")
+    dead_file = home / "staging/b-dead/objects/pack/tmp_pack_1"
     dead_file.write_bytes(b"partial")
     dead_file.chmod(0o400)
     owner = _Child(home, 'lock = locks.staging_entry_lock(home, "a-live")')
@@ -143,15 +143,15 @@ def test_the_sweep_skips_a_live_staging_entry_and_removes_a_dead_one(home: Path)
 
     assert replay.events == scenario["events"]
     assert replay.state == scenario["expected_final"]
-    assert report.removed == ("cache/staging/b-dead",)
-    assert report.live == ("cache/staging/a-live",)
-    assert (home / "cache/staging/a-live").is_dir()
-    assert not (home / "cache/staging/b-dead").exists()
-    assert not (home / "cache/locks/staging/b-dead.lock").exists()
+    assert report.removed == ("staging/b-dead",)
+    assert report.live == ("staging/a-live",)
+    assert (home / "staging/a-live").is_dir()
+    assert not (home / "staging/b-dead").exists()
+    assert not (home / "locks/staging/b-dead.lock").exists()
 
 
 def test_the_sweep_removes_free_orphan_lock_files_and_reports_unknown_names(home: Path) -> None:
-    ensure_private_directory(home, "cache/staging/Not An Entry")
+    ensure_private_directory(home, "staging/Not An Entry")
     staging_entry_lock(home, "orphan").release()
     owner = _Child(home, 'lock = locks.staging_entry_lock(home, "claimed-before-mkdir")')
     try:
@@ -159,17 +159,17 @@ def test_the_sweep_removes_free_orphan_lock_files_and_reports_unknown_names(home
     finally:
         owner.finish()
 
-    assert report.unrecognized == ("cache/staging/Not An Entry",)
-    assert report.removed_lock_files == ("cache/locks/staging/orphan.lock",)
-    assert (home / "cache/staging/Not An Entry").is_dir()
-    assert (home / "cache/locks/staging/claimed-before-mkdir.lock").exists()
+    assert report.unrecognized == ("staging/Not An Entry",)
+    assert report.removed_lock_files == ("locks/staging/orphan.lock",)
+    assert (home / "staging/Not An Entry").is_dir()
+    assert (home / "locks/staging/claimed-before-mkdir.lock").exists()
 
 
 def test_an_entry_with_an_unusable_lock_file_is_kept_and_the_sweep_continues(home: Path) -> None:
-    ensure_private_directory(home, "cache/staging/a-shared/objects")
-    ensure_private_directory(home, "cache/staging/b-dead/objects")
+    ensure_private_directory(home, "staging/a-shared/objects")
+    ensure_private_directory(home, "staging/b-dead/objects")
     staging_entry_lock(home, "a-shared").release()
-    shared = home / "cache/locks/staging/a-shared.lock"
+    shared = home / "locks/staging/a-shared.lock"
     shared.chmod(0o644)
     # Stands in for another principal holding the lock file it opened while shared.
     foreign = os.open(shared, os.O_RDONLY)
@@ -179,9 +179,9 @@ def test_an_entry_with_an_unusable_lock_file_is_kept_and_the_sweep_continues(hom
     finally:
         os.close(foreign)
 
-    assert report.failed == ("cache/staging/a-shared",)
-    assert report.removed == ("cache/staging/b-dead",)
-    assert (home / "cache/staging/a-shared/objects").is_dir()
+    assert report.failed == ("staging/a-shared",)
+    assert report.removed == ("staging/b-dead",)
+    assert (home / "staging/a-shared/objects").is_dir()
 
 
 @pytest.fixture
@@ -201,15 +201,15 @@ def test_the_sweep_deletes_an_entry_holding_a_directory_its_owner_cannot_search(
 ) -> None:
     """A crashed clone can leave one; failing here would fail every later open_cache."""
 
-    ensure_private_directory(home, "cache/staging/dead-1/repository.git/objects/ab")
-    (home / "cache/staging/dead-1/repository.git/objects/ab/loose").write_bytes(b"x")
-    (home / "cache/staging/dead-1/repository.git/objects/ab").chmod(0o000)
+    ensure_private_directory(home, "staging/dead-1/repository.git/objects/ab")
+    (home / "staging/dead-1/repository.git/objects/ab/loose").write_bytes(b"x")
+    (home / "staging/dead-1/repository.git/objects/ab").chmod(0o000)
 
     report = sweep_staging(home)
 
-    assert report.removed == ("cache/staging/dead-1",)
+    assert report.removed == ("staging/dead-1",)
     assert report.failed == ()
-    assert not (home / "cache/staging/dead-1").exists()
+    assert not (home / "staging/dead-1").exists()
 
 
 @pytest.mark.usefixtures("searchable_again")
@@ -218,39 +218,39 @@ def test_an_entry_that_stays_behind_is_reported_and_left_for_the_next_sweep(
 ) -> None:
     """``_remove_tree`` promises ``False`` on failure, so nothing may escape it."""
 
-    ensure_private_directory(home, "cache/staging/dead-1/objects/ab")
-    (home / "cache/staging/dead-1/objects/ab/loose").write_bytes(b"x")
-    (home / "cache/staging/dead-1/objects/ab").chmod(0o000)
+    ensure_private_directory(home, "staging/dead-1/objects/ab")
+    (home / "staging/dead-1/objects/ab/loose").write_bytes(b"x")
+    (home / "staging/dead-1/objects/ab").chmod(0o000)
     monkeypatch.setattr(reclaim_module, "_grant_owner_access", lambda _directory: False)
 
     report = sweep_staging(home)
 
     assert report.removed == ()
-    assert report.failed == ("cache/staging/dead-1",)
-    assert (home / "cache/staging/dead-1/objects/ab").is_dir()
+    assert report.failed == ("staging/dead-1",)
+    assert (home / "staging/dead-1/objects/ab").is_dir()
 
 
 @pytest.mark.usefixtures("searchable_again")
 def test_opening_the_cache_survives_an_entry_it_cannot_search(tmp_path: Path) -> None:
     home = tmp_path / "home"
     ensure_home(home)
-    ensure_private_directory(home, "cache/staging/acquire-0123456789abcdef/objects/ab")
-    (home / "cache/staging/acquire-0123456789abcdef/objects/ab").chmod(0o000)
+    ensure_private_directory(home, "staging/acquire-0123456789abcdef/objects/ab")
+    (home / "staging/acquire-0123456789abcdef/objects/ab").chmod(0o000)
 
     opened = open_cache(home, version="0.11.0")
 
-    assert opened.sweep.removed == ("cache/staging/acquire-0123456789abcdef",)
-    assert list((home / "cache/staging").iterdir()) == []
+    assert opened.sweep.removed == ("staging/acquire-0123456789abcdef",)
+    assert list((home / "staging").iterdir()) == []
 
 
 def test_an_entry_that_cannot_be_inspected_is_reported_rather_than_raised(
     home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    ensure_private_directory(home, "cache/staging/dead-1")
+    ensure_private_directory(home, "staging/dead-1")
     real_lstat = os.lstat
 
     def refusing_lstat(path: Any, **kwargs: Any) -> os.stat_result:
-        if str(path).endswith("cache/staging/dead-1"):
+        if str(path).endswith("staging/dead-1"):
             raise OSError(errno.EIO, "input/output error")
         return real_lstat(path, **kwargs)
 
@@ -258,5 +258,5 @@ def test_an_entry_that_cannot_be_inspected_is_reported_rather_than_raised(
 
     report = sweep_staging(home)
 
-    assert report.failed == ("cache/staging/dead-1",)
+    assert report.failed == ("staging/dead-1",)
     assert report.removed == ()

@@ -192,8 +192,8 @@ git -C "$QA_ROOT/origin" add .
 git -C "$QA_ROOT/origin" commit --quiet -m 'Add alpha fixture'
 QA_OID="$(git -C "$QA_ROOT/origin" rev-parse HEAD)"
 QA_URL="file://$QA_ROOT/origin"
-export METABROWSER_HOME="$QA_ROOT/home"
-test ! -e "$METABROWSER_HOME"
+export METABROWSER_CACHE_DIR="$QA_ROOT/home"
+test ! -e "$METABROWSER_CACHE_DIR"
 
 uv --config-file uv.toml run --frozen metab "$QA_URL" --no-serve
 uv --config-file uv.toml run --frozen metab "$QA_URL" --no-serve

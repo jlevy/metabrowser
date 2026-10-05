@@ -3372,7 +3372,11 @@ function reconcilePendingTallyDiagnostics() {
   pendingTallyWatchdog?.reconcile();
 }
 
-window.addEventListener("pagehide", () => pendingTallyWatchdog.dispose(), { once: true });
+window.addEventListener("pagehide", (event) => {
+  if (!event.persisted) {
+    pendingTallyWatchdog.dispose();
+  }
+});
 
 function indexProgressIsActive(meta) {
   return !!meta && meta.status === "scanning";
@@ -6294,6 +6298,20 @@ function closeLiveStream() {
   }
 }
 
+// Park the live tail (createPageConnections): reopened from the cursor it reached.
+function parkLiveStream() {
+  if (!currentLiveStream) {
+    return null;
+  }
+  var path = currentPath;
+  closeLiveStream();
+  return () => {
+    if (currentPath === path) {
+      maybeOpenLiveStream(path, fileCache.get(path));
+    }
+  };
+}
+
 function maybeOpenLiveStream(path, data) {
   // Subscribe only if (a) the payload is a JSONL log, and (b) the
   // file's writer is still alive per the activity poll. Anything else
@@ -6315,6 +6333,14 @@ function maybeOpenLiveStream(path, data) {
 function openLiveStream(path, startCursor) {
   closeLiveStream();
   if (typeof EventSource === "undefined") {
+    return;
+  }
+  if (pageConnections?.suspended()) {
+    pageConnections.defer(() => {
+      if (currentPath === path) {
+        maybeOpenLiveStream(path, fileCache.get(path));
+      }
+    });
     return;
   }
   var url = `/api/stream?path=${encodeURIComponent(path)}&cursor=${startCursor || 0}`;
@@ -6343,9 +6369,12 @@ function openLiveStream(path, startCursor) {
   });
 
   es.onerror = () => {
-    // EventSource auto-reconnects on transient errors. We only need
-    // to clean up if the stream shows persistent failure (readyState
-    // CLOSED), so transient errors remain under browser control.
+    // A deleted file returns HTTP 404 on restore, which permanently closes
+    // EventSource. Transient failures remain under browser reconnect control.
+    if (currentLiveStream === es && es.readyState === 2) {
+      closeLiveStream();
+      flagRunEndedBadge();
+    }
   };
 }
 
@@ -6413,6 +6442,7 @@ function flagRunEndedBadge() {
 var fileStore = new Map(); // path -> FsEntry
 var fileStoreSubscribers = [];
 var inventoryEventSource = null;
+var lastInventorySnapshot = null;
 var catalogFeedCanStart = false;
 function isGitRevisionSource() {
   return window.METABROWSER_SOURCE_KIND === "git_revision";
@@ -6437,6 +6467,9 @@ function fileStoreApplySnapshot(scope, entries) {
 }
 
 function fileStoreApplySnapshotInner(scope, entries) {
+  // SSE snapshots are unfiltered. Preserve the server-filtered folder rows
+  // and aggregates until their authoritative filtered tree response arrives.
+  var filtered = filterState && filterHasConstraints(filterState.get());
   // A baseline or reconnect snapshot is another observation made after an
   // in-flight Recent request began. Even an empty snapshot can represent
   // removals, so it invalidates that response like a nonempty fs.change batch.
@@ -6460,11 +6493,16 @@ function fileStoreApplySnapshotInner(scope, entries) {
       _removeRenderedRowsImmediately(path);
     },
     upsert: (entry) => {
-      applyCellPatch(entry, false);
+      if (!filtered) {
+        applyCellPatch(entry, false);
+      }
       _mirrorActiveFromFsEntry(entry);
     },
   });
   window.metabrowserDirectoryTotalsStore?.applySnapshot(entries);
+  if (filtered && !filesPanelUsesRecentSource()) {
+    void loadTree({ reconcileMountedRoot: true });
+  }
   notifyFileStoreSubscribers({ kind: "snapshot", scope: scope });
 }
 
@@ -7465,7 +7503,31 @@ function _scheduleInventoryReconnect() {
   }, delay);
 }
 
+// Park the stream or its pending reconnect (createPageConnections); a pin has
+// neither. A new stream begins with a snapshot and a catalog refetch, as a reconnect
+// does, which covers what the cached page missed.
+function parkInventoryEventStream() {
+  if (!inventoryEventSource && _esReconnectTimer === null) {
+    return null;
+  }
+  _cancelEsStableReset();
+  clearTimeout(_esReconnectTimer);
+  _esReconnectTimer = null;
+  inventoryEventSource?.close();
+  inventoryEventSource = null;
+  catalogFeedCanStart = false;
+  _esConsecutiveErrors = 0;
+  return _createInventoryEventSource;
+}
+
 function _createInventoryEventSource() {
+  if (pageConnections?.suspended()) {
+    pageConnections.defer(_createInventoryEventSource);
+    return;
+  }
+  if (inventoryEventSource) {
+    return;
+  }
   catalogFeedCanStart = false;
   try {
     inventoryEventSource = new EventSource("/api/events?scope=root-depth-2");
@@ -7476,10 +7538,21 @@ function _createInventoryEventSource() {
   }
   inventoryEventSource.addEventListener("fs.snapshot", (e) => {
     try {
-      var data = JSON.parse(e.data);
-      fileStoreApplySnapshot(data.scope, data.entries || []);
-      if (data.complete === true) {
-        inventoryChangeHighlightingActive = true;
+      // Equality of this scoped snapshot avoids parsing and repainting it.
+      // It cannot prove deep files unchanged: retain the normal revalidation
+      // and Recent repair boundary even when the shallow tree is identical.
+      if (lastInventorySnapshot !== e.data) {
+        var data = JSON.parse(e.data);
+        fileStoreApplySnapshot(data.scope, data.entries || []);
+        lastInventorySnapshot = e.data;
+        if (data.complete === true) {
+          inventoryChangeHighlightingActive = true;
+        }
+      } else {
+        recentContinuity.dirtyActiveRequest();
+        for (const path of fileCache.keys()) {
+          fileNeedsRevalidate.add(path);
+        }
       }
       _scheduleRecentRecompute();
       // Every depth-limited sentinel establishes a transport boundary. The
@@ -7498,6 +7571,7 @@ function _createInventoryEventSource() {
     }
   });
   inventoryEventSource.addEventListener("fs.change", (e) => {
+    lastInventorySnapshot = null;
     try {
       var data = JSON.parse(e.data);
       fileStoreApplyChange(data.ops || []);
@@ -7555,6 +7629,7 @@ function _createInventoryEventSource() {
     }
   });
   inventoryEventSource.addEventListener("fs.resync_required", (_e) => {
+    lastInventorySnapshot = null;
     // A resync marks a gap in the ordered delta stream. Clear derived state,
     // then replace this connection so the server sends an authoritative
     // snapshot before live updates resume.
@@ -8050,23 +8125,20 @@ function disposeKeyboardInfrastructure() {
 // `pagehide` also fires when the document enters the back/forward cache, and a
 // bfcache restore never re-runs DOMContentLoaded. Tearing the registry down
 // there would return the user to a page whose shortcuts, Help, Quick File, and
-// tree keys are all silently dead, so a persisted hide is left alone and the
-// matching `pageshow` rebuilds whatever an earlier real teardown removed. The
-// listener stays registered: a persisted hide can be followed by a genuine one.
-window.addEventListener("pagehide", (event) => {
-  if (/** @type {PageTransitionEvent} */ (event).persisted) {
-    return;
-  }
-  disposeKeyboardInfrastructure();
+// tree keys are all silently dead, so a persisted hide parks only the page's
+// connections, and the matching `pageshow` rebuilds whatever an earlier real
+// teardown removed and reopens them. The listeners stay registered: a persisted
+// hide can be followed by a genuine one.
+var pageConnections = window.MetabrowserNavigationRoute.createPageConnections({
+  connections: [parkInventoryEventStream, parkLiveStream],
+  rebuild: () => {
+    initKeyboardInfrastructure();
+    initQuickFileFinder();
+  },
+  teardown: disposeKeyboardInfrastructure,
 });
-
-window.addEventListener("pageshow", (event) => {
-  if (!(/** @type {PageTransitionEvent} */ (event).persisted)) {
-    return;
-  }
-  initKeyboardInfrastructure();
-  initQuickFileFinder();
-});
+window.addEventListener("pagehide", (event) => pageConnections.hidden(event.persisted));
+window.addEventListener("pageshow", (event) => pageConnections.shown(event.persisted));
 
 // Compose the application-lifetime quick-file modules at the shell boundary.
 function initQuickFileFinder() {

@@ -47,7 +47,7 @@ def test_a_hidden_status_is_named(line: str, reason: str) -> None:
         "metab root > out.txt",
         "metab root 2>&1",
         "metab root > out.txt 2>&1",
-        "METABROWSER_HOME=$PWD/home metab root --api /api/tree",
+        "METABROWSER_CACHE_DIR=$PWD/home metab root --api /api/tree",
         "cd repo && metab root",
         "git init -q repo; metab repo",
         "sh -c 'metab root'",

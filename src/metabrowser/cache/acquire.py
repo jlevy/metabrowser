@@ -100,7 +100,13 @@ from metabrowser.git.process import (
     run_git,
 )
 from metabrowser.git.progress import GitProgress
-from metabrowser.home import PrivateStorageError, SharedEntryPolicy, ensure_private_directory
+from metabrowser.home import (
+    PrivateStorageError,
+    SharedEntryPolicy,
+    configuration_directory,
+    ensure_private_directory,
+    validate_storage_separation,
+)
 
 log = logging.getLogger(__name__)
 
@@ -859,13 +865,14 @@ def _find_or_open_cache(
     below-floor Git is refused before any provider check reaches the network.
     """
 
+    validate_storage_separation(home)
     if not home.exists():
         if not open_on_miss:
             require_acquisition_git()
         return None, home
     try:
         layout = read_layout(home, shared="keep")
-        read_config(home, shared="keep")
+        read_config(configuration_directory(), shared="keep")
     except PrivateStorageError:
         layout = None
     if layout is not None:

@@ -160,7 +160,7 @@ def test_golden_file_url_acquire_and_reuse(tmp_path: Path, monkeypatch: pytest.M
         "it published; the second prints the same and says it reused the clone."
     )
     first = session.no_serve("A", url)
-    cache = f"{home}/cache"
+    cache = f"{home}"
     assert first.stderr == f"cloning {url} into {cache}\ncloned {url} in 0.0 s\n"
     again = session.no_serve("A", url)
     assert again.stdout == first.stdout
@@ -197,31 +197,30 @@ def test_the_home_label_is_refused_anywhere_but_the_whole_lines_that_may_name_it
     home = tmp_path / "home"
     url = "file:///srv/origin.git"
     allowed = (
-        f"cloning {url} into {home}/cache\n"
-        f"using the clone of {url} cached in {home}/cache, fetched 2 hours ago\n"
-        f"using the clone of {url} cached in {home}/cache, fetched <AGE>\n"
-        f"using the clone of {url} cached in {home}/cache\n"
+        f"cloning {url} into {home}\n"
+        f"using the clone of {url} cached in {home}, fetched 2 hours ago\n"
+        f"using the clone of {url} cached in {home}, fetched <AGE>\n"
+        f"using the clone of {url} cached in {home}\n"
         # A served mirror's status says where it is kept: the store's bare repository,
         # by its key or by the key's label.
-        f'  "location": "{home}/cache/repository-stores/{"0f" * 32}/repository.git",\n'
-        f'    "location": "{home}/cache/repository-stores/<STORE_KEY-A>/repository.git",\n'
+        f'  "location": "{home}/repository-stores/{"0f" * 32}/repository.git",\n'
+        f'    "location": "{home}/repository-stores/<STORE_KEY-A>/repository.git",\n'
     )
     assert label_home(allowed, home) == allowed.replace(str(home), HOME_LABEL)
     for leaked in (
-        f"cloning {url} into {home}/cache/repository-stores/abc/repository.git\n",
-        f"cloning {url} into {home}/cache/staging/acq-0123456789ab\n",
-        f"cloning {url} into {home}\n",
-        f"using the clone of {url} cached in {home}/cache/repository-stores/abc, fetched 1 day ago\n",
-        f"cloning {url} into {home}/cache and more\n",
-        f"note: store at {home}/cache\n",
-        f'  "where": "{home}/cache"\n',
-        f"Error: could not read {home}/cache\n",
+        f"cloning {url} into {home}/repository-stores/abc/repository.git\n",
+        f"cloning {url} into {home}/staging/acq-0123456789ab\n",
+        f"using the clone of {url} cached in {home}/repository-stores/abc, fetched 1 day ago\n",
+        f"cloning {url} into {home} and more\n",
+        f"note: store at {home}\n",
+        f'  "where": "{home}"\n',
+        f"Error: could not read {home}\n",
         # Only the location, and only the store's repository.
-        f'  "store": "{home}/cache/repository-stores/{"0f" * 32}/repository.git",\n',
-        f'  "location": "{home}/cache/repository-stores/{"0f" * 32}",\n',
-        f'  "location": "{home}/cache/sources/local--origin--0123456789ab",\n',
-        f'  "location": "{home}/cache/repository-stores/{"0f" * 32}/repository.git/objects",\n',
-        f'  "error": "not found in {home}/cache/repository-stores/{"0f" * 32}/repository.git",\n',
+        f'  "store": "{home}/repository-stores/{"0f" * 32}/repository.git",\n',
+        f'  "location": "{home}/repository-stores/{"0f" * 32}",\n',
+        f'  "location": "{home}/sources/local--origin--0123456789ab",\n',
+        f'  "location": "{home}/repository-stores/{"0f" * 32}/repository.git/objects",\n',
+        f'  "error": "not found in {home}/repository-stores/{"0f" * 32}/repository.git",\n',
     ):
         with pytest.raises(AssertionError, match="outside the lines that may name it"):
             label_home(leaked, home)

@@ -80,7 +80,7 @@ keeps both sides. There were no code conflicts.
   scratch directory (`<scratch>`), with dependency versions from
   `uv export --frozen --no-dev` and `UV_EXCLUDE_NEWER="14 days"`. Every command runs the
   installed `metab` entry point without patches.
-- `METABROWSER_HOME` and `XDG_CACHE_HOME` point into `<scratch>`. T1 used one home.
+- `METABROWSER_CACHE_DIR` and `XDG_CACHE_HOME` point into `<scratch>`. T1 used one home.
   T2 started from a second, cold home, and M10 used a third.
 - Offline rows block the network for the test process only:
   `sandbox-exec -f offline.sb`, with a profile that denies outbound IP connections

@@ -194,7 +194,7 @@ def _clone_slowly(
 
     _allow_installed_git(monkeypatch)
     home = tmp_path / "home"
-    monkeypatch.setenv("METABROWSER_HOME", str(home))
+    monkeypatch.setenv("METABROWSER_CACHE_DIR", str(home))
     _fetch_after(monkeypatch, _SLOW)
     clock = _Clock()
     monkeypatch.setattr(clone_report, "_monotonic", clock)
@@ -210,7 +210,7 @@ def _clone_slowly(
     monkeypatch.setattr(CloneReport, "progress", a_second_a_record)
     source = _source(tmp_path)
     _acquire_for_cli(source, stream, monkeypatch)
-    return source.normalized, f"{home}/cache", records
+    return source.normalized, f"{home}", records
 
 
 def test_a_slow_fetch_writes_a_line_every_interval_to_a_log(
@@ -252,7 +252,7 @@ def cli_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
     _allow_installed_git(monkeypatch)
     home = tmp_path / "home"
-    monkeypatch.setenv("METABROWSER_HOME", str(home))
+    monkeypatch.setenv("METABROWSER_CACHE_DIR", str(home))
     monkeypatch.setattr(clone_report, "_monotonic", float)
     return home
 
@@ -279,7 +279,7 @@ def test_hostile_progress_from_the_git_child_is_not_passed_through(
     for mark in _HOSTILE_MARKS:
         assert mark not in written, mark
     lines = [line for line in written.replace("\r", "\n").split("\n") if line.strip()]
-    assert lines[0] == f"cloning {source.normalized} into {cli_home}/cache"
+    assert lines[0] == f"cloning {source.normalized} into {cli_home}"
     assert lines[-1] == f"cloned {source.normalized} in 0.0 s"
     # What is between them, on a terminal, is this module's own words and Git's numbers.
     for line in lines[1:-1]:
@@ -305,7 +305,7 @@ def test_hostile_text_from_a_failed_fetch_is_in_no_message(
     written = stream.getvalue()
     for mark in _HOSTILE_MARKS:
         assert mark not in written, mark
-    destination = f"cloning {source.normalized} into {cli_home}/cache\n"
+    destination = f"cloning {source.normalized} into {cli_home}\n"
     if stream_type is io.StringIO:
         assert written == destination
     else:
@@ -314,7 +314,7 @@ def test_hostile_text_from_a_failed_fetch_is_in_no_message(
         assert written.startswith(destination + "\r")
         *_, last = written.removeprefix(destination).split("\r")
         assert last.endswith("\n") and last.strip() == "fetching every object (0.0 s)"
-    staging = cli_home / "cache" / "staging"
+    staging = cli_home / "staging"
     assert list(staging.iterdir()) == []
 
 
@@ -453,7 +453,7 @@ def test_a_clone_reports_itself_once_and_a_hit_only_where_asked(
     tmp_path: Path, cli_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     source = _source(tmp_path)
-    url, where = source.normalized, f"{cli_home}/cache"
+    url, where = source.normalized, f"{cli_home}"
     first = io.StringIO()
     _acquire_for_cli(source, first, monkeypatch, announce_hit=True, then="starting the server")
     assert first.getvalue() == (

@@ -175,7 +175,7 @@ def _stored_once(recorded: dict[str, Any]) -> dict[str, Any]:
 
 def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> dict[str, Any]:
     home = tmp_path / "home"
-    monkeypatch.setenv("METABROWSER_HOME", str(home))
+    monkeypatch.setenv("METABROWSER_CACHE_DIR", str(home))
     _allow_installed_git(monkeypatch)
     monkeypatch.setattr(
         "metabrowser.cache.acquire.remote_url_for",

@@ -135,7 +135,7 @@ def test_a_stalled_https_origin_fails_at_the_probe_deadline(
         f"{url} stopped answering in time (timed_out); no answer within 1 s; nothing was published"
     )
     assert _wait_for(lambda: not _processes_mentioning(f"127.0.0.1:{stalled_port}"), 5)
-    staging = home / "cache" / "staging"
+    staging = home / "staging"
     assert not staging.is_dir() or list(staging.iterdir()) == []
 
 
@@ -296,7 +296,7 @@ def test_a_stderr_whose_reader_has_gone_does_not_change_the_exit_status(
 
     require_admitted_git()
     env = _child_env()
-    env.update({"METABROWSER_HOME": str(tmp_path / "home"), "METABROWSER_LOG_LEVEL": "ERROR"})
+    env.update({"METABROWSER_CACHE_DIR": str(tmp_path / "home"), "METABROWSER_LOG_LEVEL": "ERROR"})
     url = f"file://{github_origin(tmp_path).resolve()}"
     for mode in (["--api", "/api/git/repo"], ["--no-serve"]):
         finished = subprocess.run(
@@ -311,7 +311,7 @@ def test_a_stderr_whose_reader_has_gone_does_not_change_the_exit_status(
         assert finished.returncode == 0, (mode, finished.stdout)
         assert finished.stdout != b""
     # The second command found what the first cloned.
-    assert len(list((tmp_path / "home" / "cache" / "repository-stores").iterdir())) == 1
+    assert len(list((tmp_path / "home" / "repository-stores").iterdir())) == 1
 
 
 def _metab() -> str:
@@ -329,7 +329,7 @@ def test_hangup_during_a_real_https_acquire_leaves_no_git_behind(
     require_admitted_git()
     marker = f"127.0.0.1:{stalled_port}"
     env = _child_env()
-    env.update({"METABROWSER_HOME": str(tmp_path / "home"), "METABROWSER_LOG_LEVEL": "ERROR"})
+    env.update({"METABROWSER_CACHE_DIR": str(tmp_path / "home"), "METABROWSER_LOG_LEVEL": "ERROR"})
     child = subprocess.Popen(
         [_metab(), f"https://{marker}/stalled.git", "--no-serve"],
         env=env,
@@ -347,7 +347,7 @@ def test_hangup_during_a_real_https_acquire_leaves_no_git_behind(
         assert _wait_for(lambda: not _processes_mentioning(marker), 5), _processes_mentioning(
             marker
         )
-        staging = tmp_path / "home" / "cache" / "staging"
+        staging = tmp_path / "home" / "staging"
         assert not staging.is_dir() or list(staging.iterdir()) == []
     finally:
         if child.poll() is None:

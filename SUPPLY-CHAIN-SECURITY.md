@@ -54,7 +54,27 @@ introduces.
 | `kpress==0.3.5` | `0.3.4` | Wide-band column inset applies without a TOC, so an embedded README matches the standalone document |
 | `flowmark-rs==0.3.2` | `0.3.1` | Formatting output unchanged |
 | `softschema==0.8.1` | `0.8.0` | Runtime contract validation; adds SoftSchema and upgrades `frontmatter-format` from 0.3.0 to 0.4.0 |
+| `tryscript==0.3.0` | `0.1.7` | Removes the vulnerable fast-glob/micromatch/braces chain; adds tinyglobby discovery and the tsx loader |
 | `get-tbd` | n/a | Issue tracker, first-party; not a build or runtime input |
+
+Tryscript 0.3.0 is a first-party exception to the release-age delay.
+Its published registry tarball was selected explicitly during lock generation, then the
+manifest was normalized to the exact `0.3.0` version.
+The 14-day npm setting remained enabled for transitive resolution and remains enabled
+for installs. The published artifact SHA-512 matches the committed lockfile:
+`kvAtOGZZyTV8IqaSXVdbLB1OarRTlRqLqUefjVQ/xdqU9YgX1afivF4DZImrv4Uay4ehxoAysIqfMU1jtpOfYg==`.
+
+The
+[upstream release comparison](https://github.com/jlevy/tryscript/compare/v0.2.1...v0.3.0)
+includes the discovery replacement and its unreadable-directory and negation fixes.
+Compared with our prior 0.1.7 pin, the new dependency branches are tinyglobby 0.2.17
+with fdir 6.5.0 and picomatch 4.0.7, and tsx 4.23.1 with esbuild 0.28.2 and optional
+fsevents 2.3.3. All these third-party releases predate the 14-day cutoff; the newest was
+picomatch 4.0.7 on 2026-08-24. The esbuild platform packages have the same 0.28.2
+version and are optional platform selections.
+No browser asset or Python runtime dependency changes.
+Install scripts remain disabled; the full golden suite exercises the installed runner,
+and the dependency audit has no exception for the advisory.
 
 `get-tbd` carries no version review because it is not pinned to one, and the reason is
 narrower than “we publish it.”

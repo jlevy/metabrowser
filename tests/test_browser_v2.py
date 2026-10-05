@@ -837,3 +837,16 @@ def test_browser_open_handles_os_errors() -> None:
     remote_source = (cli_dir / "remote.py").read_text()
     assert "except (webbrowser.Error, OSError)" in serve_source
     assert "except (webbrowser.Error, OSError)" in remote_source
+
+
+def test_tail_restored_after_truncation_reports_rotation(tmp_path: Path) -> None:
+    log = tmp_path / "truncated.jsonl"
+    log.write_text('{"event":"short"}\n')
+
+    async def collect() -> list[bytes]:
+        return [frame async for frame in _tail_jsonl(log, 1000)]
+
+    frames = asyncio.run(collect())
+    assert len(frames) == 1
+    assert b"event: closed" in frames[0]
+    assert b'"rotated"' in frames[0]
