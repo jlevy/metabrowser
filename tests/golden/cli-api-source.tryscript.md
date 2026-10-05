@@ -80,7 +80,7 @@ reader’s is, with `~`. The origin is outside it and stays as given.
 The store’s key is derived from the origin’s address, which is the sandbox’s.
 
 ```console
-$ HOME=$PWD/home METABROWSER_CACHE_DIR=$PWD/home metab file://$PWD/origin.git --api /api/source/status
+$ HOME=$PWD/home METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab file://$PWD/origin.git --api /api/source/status
 api: /api/source/status
 status: 200
 {

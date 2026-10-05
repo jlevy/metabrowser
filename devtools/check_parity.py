@@ -102,13 +102,17 @@ def _console_commands(golden: str) -> list[GoldenCommand]:
     does not run, such as one whose fence is indented, is not evidence here either.
     """
 
+    try:
+        blocks = tryscript_blocks.blocks(golden)
+    except tryscript_blocks.ParseError:
+        return []  # A malformed transcript runs no commands and supplies no evidence.
     return [
         GoldenCommand(
             command=block.command,
             output=tuple(line.strip() for line in block.output),
             status=block.status,
         )
-        for block in tryscript_blocks.blocks(golden)
+        for block in blocks
     ]
 
 
