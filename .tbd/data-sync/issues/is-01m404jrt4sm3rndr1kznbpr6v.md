@@ -5,7 +5,7 @@ title: Separate cache and configuration storage using uv/fdu conventions
 kind: epic
 status: in_progress
 priority: 2
-version: 9
+version: 11
 delegate: codex@spud10.local
 labels: []
 dependencies: []
@@ -14,10 +14,12 @@ child_order_hints:
   - is-01m404yq5wyjd4tha1p66x5y9a
   - is-01m404yqhz92wqk3x2dfea9251
   - is-01m404yqx2zybbd9789dsb98q8
+  - is-01m4569nqwa1mqxdpgaxvbhd3d
+  - is-01m456f4va45tae7y1mj72aa3p
 hold: null
 hold_until: null
 created_at: 2026-10-03T05:42:51.965Z
-updated_at: 2026-10-04T22:02:53.036Z
+updated_at: 2026-10-05T04:52:02.529Z
 started_at: 2026-10-03T05:49:23.081Z
 ---
 Approved v0.12 clean break: use ~/.cache/metabrowser and ~/.config/metabrowser on Linux/macOS, honoring app-specific and XDG overrides. Remove METABROWSER_HOME and the combined home layout; no backward compatibility aliases, migration, or fallback. Update architecture, runtime paths, safety checks, CLI/UI contracts, test fixtures, goldens, runbook, and release notes. Existing user files remain untouched. Parent release-stability epic tracks overall acceptance.
