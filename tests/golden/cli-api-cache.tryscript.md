@@ -397,7 +397,7 @@ $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/future metab roo
 api: /api/cache/sources
 status: 409
 {
-  "error": "This Metabrowser application home uses format f02, and this release reads formats up to f01. Upgrade Metabrowser, or set METABROWSER_CACHE_DIR to a different directory.",
+  "error": "This Metabrowser cache directory uses format f02, and this release reads formats up to f01. Upgrade Metabrowser, or set METABROWSER_CACHE_DIR to a different directory.",
   "code": "future_format",
   "found": "f02",
   "supported": "f01"
@@ -413,7 +413,7 @@ $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/shared metab roo
 api: /api/cache/layout
 status: 409
 {
-  "error": "The Metabrowser application home is accessible to other users (mode 0755). Run chmod 700 on it, or set METABROWSER_CACHE_DIR to a private directory you own.",
+  "error": "The Metabrowser storage directory is accessible to other users (mode 0755). Run chmod 700 on it, or set the applicable override (METABROWSER_CACHE_DIR or METABROWSER_CONFIG_DIR) to a private directory you own.",
   "code": "home_not_private",
   "location": "home",
   "violation": "permissive"
@@ -517,17 +517,17 @@ status: 200
         {
           "record": "source.yml",
           "code": "not_private",
-          "message": "An entry in the Metabrowser application home is accessible to other users (mode 0750), and Metabrowser does not change your entries to answer a request. Run chmod 700 on it, or set METABROWSER_CACHE_DIR to a private directory you own."
+          "message": "An entry in the Metabrowser storage directory is accessible to other users (mode 0750), and Metabrowser does not change your entries to answer a request. Run chmod 700 on it, or set the applicable override (METABROWSER_CACHE_DIR or METABROWSER_CONFIG_DIR) to a private directory you own."
         },
         {
           "record": "store-alias.yml",
           "code": "not_private",
-          "message": "An entry in the Metabrowser application home is accessible to other users (mode 0750), and Metabrowser does not change your entries to answer a request. Run chmod 700 on it, or set METABROWSER_CACHE_DIR to a private directory you own."
+          "message": "An entry in the Metabrowser storage directory is accessible to other users (mode 0750), and Metabrowser does not change your entries to answer a request. Run chmod 700 on it, or set the applicable override (METABROWSER_CACHE_DIR or METABROWSER_CONFIG_DIR) to a private directory you own."
         },
         {
           "record": "state.yml",
           "code": "not_private",
-          "message": "An entry in the Metabrowser application home is accessible to other users (mode 0750), and Metabrowser does not change your entries to answer a request. Run chmod 700 on it, or set METABROWSER_CACHE_DIR to a private directory you own."
+          "message": "An entry in the Metabrowser storage directory is accessible to other users (mode 0750), and Metabrowser does not change your entries to answer a request. Run chmod 700 on it, or set the applicable override (METABROWSER_CACHE_DIR or METABROWSER_CONFIG_DIR) to a private directory you own."
         }
       ]
     },
@@ -565,7 +565,7 @@ status: 200
         {
           "record": "source.yml",
           "code": "not_private",
-          "message": "An entry in the Metabrowser application home is accessible to other users (mode 0640), and Metabrowser does not change your entries to answer a request. Run chmod 600 on it, or set METABROWSER_CACHE_DIR to a private directory you own."
+          "message": "An entry in the Metabrowser storage directory is accessible to other users (mode 0640), and Metabrowser does not change your entries to answer a request. Run chmod 600 on it, or set the applicable override (METABROWSER_CACHE_DIR or METABROWSER_CONFIG_DIR) to a private directory you own."
         }
       ]
     },
@@ -722,7 +722,7 @@ $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/shared-directori
 api: /api/cache/sources
 status: 409
 {
-  "error": "An entry in the Metabrowser application home is accessible to other users (mode 0755), and Metabrowser does not change your entries to answer a request. Run chmod 700 on it, or set METABROWSER_CACHE_DIR to a private directory you own.",
+  "error": "An entry in the Metabrowser storage directory is accessible to other users (mode 0755), and Metabrowser does not change your entries to answer a request. Run chmod 700 on it, or set the applicable override (METABROWSER_CACHE_DIR or METABROWSER_CONFIG_DIR) to a private directory you own.",
   "code": "home_not_private",
   "location": "entry",
   "violation": "permissive",
@@ -737,7 +737,7 @@ $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/shared-directori
 api: /api/cache/layout
 status: 409
 {
-  "error": "An entry in the Metabrowser application home is accessible to other users (mode 0755), and Metabrowser does not change your entries to answer a request. Run chmod 700 on it, or set METABROWSER_CACHE_DIR to a private directory you own.",
+  "error": "An entry in the Metabrowser storage directory is accessible to other users (mode 0755), and Metabrowser does not change your entries to answer a request. Run chmod 700 on it, or set the applicable override (METABROWSER_CACHE_DIR or METABROWSER_CONFIG_DIR) to a private directory you own.",
   "code": "home_not_private",
   "location": "entry",
   "violation": "permissive",

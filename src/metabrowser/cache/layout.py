@@ -19,7 +19,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from io import StringIO
 from pathlib import Path
-from typing import Any, Final, cast
+from typing import Any, Final, Literal, cast
 
 from frontmatter_format import new_yaml
 from softschema.validate import parse_yaml_text
@@ -96,12 +96,17 @@ _CONFIG_METADATA: Final = {
 
 
 class FutureLayoutFormatError(Exception):
-    """The application home was written in a format newer than this release reads."""
+    """Cache or configuration uses a format newer than this release reads."""
 
-    def __init__(self, found: str, supported: str) -> None:
+    def __init__(
+        self, found: str, supported: str, *, storage: Literal["cache", "configuration"] = "cache"
+    ) -> None:
+        override = (
+            "METABROWSER_CONFIG_DIR" if storage == "configuration" else "METABROWSER_CACHE_DIR"
+        )
         super().__init__(
-            f"This Metabrowser application home uses format {found}, and this release reads "
-            f"formats up to {supported}. Upgrade Metabrowser, or set METABROWSER_CACHE_DIR to a "
+            f"This Metabrowser {storage} directory uses format {found}, and this release reads "
+            f"formats up to {supported}. Upgrade Metabrowser, or set {override} to a "
             "different directory."
         )
         self.found: str = found
@@ -148,7 +153,9 @@ def format_number(value: str) -> int:
     return int(value[1:])
 
 
-def _refuse_future(found: object, history: Sequence[str]) -> None:
+def _refuse_future(
+    found: object, history: Sequence[str], *, storage: Literal["cache", "configuration"] = "cache"
+) -> None:
     if not isinstance(found, str):
         return
     try:
@@ -156,7 +163,7 @@ def _refuse_future(found: object, history: Sequence[str]) -> None:
     except ValueError:
         return
     if number > format_number(history[-1]):
-        raise FutureLayoutFormatError(found, history[-1])
+        raise FutureLayoutFormatError(found, history[-1], storage=storage)
 
 
 def _parse_yaml(payload: bytes, path: Path, what: str) -> dict[str, Any]:
@@ -238,7 +245,7 @@ def read_config(
     values = document["config"]
     if not isinstance(values, dict):
         raise LayoutError("config.yml config must be a mapping", path)
-    _refuse_future(cast(dict[str, object], values).get("format"), history)
+    _refuse_future(cast(dict[str, object], values).get("format"), history, storage="configuration")
     try:
         return parse_application_config(values)
     except ValueError as error:

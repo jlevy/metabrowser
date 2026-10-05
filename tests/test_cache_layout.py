@@ -960,3 +960,40 @@ def test_config_cannot_be_inside_cache(
     with pytest.raises(StorageDirectoryError, match="non-overlapping"):
         open_cache(cache)
     assert not cache.exists()
+
+
+@posix_only
+def test_configuration_refusals_name_configuration_without_exposing_paths(tmp_path: Path) -> None:
+    directory = tmp_path / "private-config"
+    directory.mkdir(mode=0o755)
+    directory.chmod(0o755)
+    before = _snapshot(directory)
+    with pytest.raises(PrivateStorageError) as refused:
+        read_config(directory, shared="refuse")
+    message = str(refused.value)
+    assert "METABROWSER_CONFIG_DIR" in message
+    assert "application home" not in message
+    assert str(directory) not in message
+    assert _snapshot(directory) == before
+
+
+@posix_only
+def test_future_configuration_names_its_own_override(tmp_path: Path) -> None:
+    directory = tmp_path / "private-config"
+    directory.mkdir(mode=0o700)
+    write_private_file_atomic(
+        directory,
+        "config.yml",
+        (
+            _CONFIG_HEADER + "config:\n  format: f02\n  written_by: 0.13.0\n  upgrades: []\n"
+        ).encode(),
+    )
+    before = _snapshot(directory)
+    with pytest.raises(FutureLayoutFormatError) as refused:
+        read_config(directory)
+    message = str(refused.value)
+    assert "configuration" in message
+    assert "METABROWSER_CONFIG_DIR" in message
+    assert "METABROWSER_CACHE_DIR" not in message
+    assert str(directory) not in message
+    assert _snapshot(directory) == before

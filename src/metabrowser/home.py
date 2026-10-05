@@ -272,16 +272,19 @@ _UNSUPPORTED_PLATFORM: Final = (
     "yet. Remote repository and provider content cannot be stored on this platform"
 )
 _MODES_NOT_KEPT: Final = (
-    "its file system did not keep owner-only permissions. Set METABROWSER_CACHE_DIR to a "
+    "its file system did not keep owner-only permissions. Set the applicable override "
+    "(METABROWSER_CACHE_DIR or METABROWSER_CONFIG_DIR) to a "
     "directory on a file system with Unix permissions"
 )
 _CHECK_DENIED: Final = (
     "permission was denied while checking it. Make sure it belongs to the current user, "
-    "or set METABROWSER_CACHE_DIR to a private directory you own"
+    "or set the applicable override (METABROWSER_CACHE_DIR or METABROWSER_CONFIG_DIR) "
+    "to a private directory you own"
 )
 _CREATE_DENIED: Final = (
     "permission was denied while creating it. Make sure the current user can write to the "
-    "directory that holds it, or set METABROWSER_CACHE_DIR to a private directory you own"
+    "directory that holds it, or set the applicable override (METABROWSER_CACHE_DIR or "
+    "METABROWSER_CONFIG_DIR) to a private directory you own"
 )
 _CANNOT_RESTORE: Final = (
     "the umask left the new directory without owner access, and this platform cannot "
@@ -295,25 +298,30 @@ _OWNER_DENIED: Final = (
 )
 _CHANGED_DURING_CHECK: Final = (
     "it was replaced while it was being checked. Make sure nothing else is modifying the "
-    "application home, then retry"
+    "storage directory, then retry"
 )
 _TOO_MANY_LINKS: Final = (
-    "too many symbolic links lead through it. Set METABROWSER_CACHE_DIR to the real location "
-    "of the application home"
+    "too many symbolic links lead through it. Set the applicable override "
+    "(METABROWSER_CACHE_DIR or METABROWSER_CONFIG_DIR) to the real location "
+    "of the storage directory"
 )
 _ACL_UNVERIFIABLE: Final = (
     "its access control list could not be read or interpreted. Remove the list with "
-    "chmod -N, or set METABROWSER_CACHE_DIR to a directory on a local APFS volume"
+    "chmod -N, or set the applicable override (METABROWSER_CACHE_DIR or "
+    "METABROWSER_CONFIG_DIR) to a directory on a local APFS volume"
 )
 
 _SUBJECTS: Final = {
     PrivateStorageLocation.HOME_ANCESTOR: (
-        "A path component above the Metabrowser application home"
+        "A path component above the Metabrowser storage directory"
     ),
-    PrivateStorageLocation.HOME: "The Metabrowser application home",
-    PrivateStorageLocation.ENTRY: "An entry in the Metabrowser application home",
+    PrivateStorageLocation.HOME: "The Metabrowser storage directory",
+    PrivateStorageLocation.ENTRY: "An entry in the Metabrowser storage directory",
 }
-_MOVE_HOME: Final = "or set METABROWSER_CACHE_DIR to a private directory you own"
+_MOVE_HOME: Final = (
+    "or set the applicable override (METABROWSER_CACHE_DIR or METABROWSER_CONFIG_DIR) "
+    "to a private directory you own"
+)
 
 
 def _describe(
@@ -337,11 +345,13 @@ def _describe(
         case PrivateStorageViolation.SYMLINK if above:
             return (
                 f"{subject} is a symbolic link owned by another user, which could redirect "
-                "private content. Set METABROWSER_CACHE_DIR to a path that does not pass through it."
+                "private content. Set the applicable override (METABROWSER_CACHE_DIR or "
+                "METABROWSER_CONFIG_DIR) to a path that does not pass through it."
             )
         case PrivateStorageViolation.SYMLINK if location is PrivateStorageLocation.HOME:
             return (
-                f"{subject} is a symbolic link. Set METABROWSER_CACHE_DIR to the directory it "
+                f"{subject} is a symbolic link. Set the applicable override "
+                f"(METABROWSER_CACHE_DIR or METABROWSER_CONFIG_DIR) to the directory it "
                 "points to instead."
             )
         case PrivateStorageViolation.SYMLINK:
@@ -351,8 +361,11 @@ def _describe(
             )
         case PrivateStorageViolation.FOREIGN_OWNER if above:
             return (
-                f"{subject} is owned by another user, who could replace the home. Set "
-                "METABROWSER_CACHE_DIR to a path whose directories belong to you or to root."
+                f"{subject} is owned by another user, who could replace the storage "
+                f"directory. Set "
+                "the applicable override (METABROWSER_CACHE_DIR or "
+                "METABROWSER_CONFIG_DIR) to a path whose directories belong to you or "
+                "to root."
             )
         case PrivateStorageViolation.FOREIGN_OWNER:
             return (
@@ -362,7 +375,9 @@ def _describe(
         case PrivateStorageViolation.PERMISSIVE if above:
             return (
                 f"{subject} gives other users write access{access}, so they could replace "
-                "the home. Remove that access, or set METABROWSER_CACHE_DIR to a path outside it."
+                "the storage directory. Remove that access, or set the applicable "
+                "override (METABROWSER_CACHE_DIR or METABROWSER_CONFIG_DIR) to a path "
+                "outside it."
             )
         case PrivateStorageViolation.PERMISSIVE if location is PrivateStorageLocation.HOME:
             remedy = "Remove those entries with chmod -N" if through_acl else "Run chmod 700 on it"
@@ -389,12 +404,13 @@ def _describe(
         case PrivateStorageViolation.HARD_LINK:
             return (
                 f"{subject} has more than one hard link, so its content can be reached from "
-                "outside the application home. Remove it, or replace it atomically with a "
+                "outside the storage directory. Remove it, or replace it atomically with a "
                 "new private file."
             )
         case PrivateStorageViolation.NOT_DIRECTORY if above:
             return (
-                f"{subject} is not a directory. Set METABROWSER_CACHE_DIR to a path whose "
+                f"{subject} is not a directory. Set the applicable override "
+                f"(METABROWSER_CACHE_DIR or METABROWSER_CONFIG_DIR) to a path whose "
                 "components are directories."
             )
         case PrivateStorageViolation.NOT_DIRECTORY:

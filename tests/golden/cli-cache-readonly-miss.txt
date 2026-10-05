@@ -23,7 +23,7 @@ using the clone of <ORIGIN-A> cached in <HOME>, fetched less than a minute ago
 exit: 1
 --- stdout ---
 --- stderr ---
-Error: An entry in the Metabrowser application home cannot be verified as private to the current user: permission was denied while creating it. Make sure the current user can write to the directory that holds it, or set METABROWSER_CACHE_DIR to a private directory you own.
+Error: An entry in the Metabrowser storage directory cannot be verified as private to the current user: permission was denied while creating it. Make sure the current user can write to the directory that holds it, or set the applicable override (METABROWSER_CACHE_DIR or METABROWSER_CONFIG_DIR) to a private directory you own.
 ## With owner write restored, B is acquired.
 # metab <ORIGIN-B> --no-serve
 exit: 0
