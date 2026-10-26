@@ -37,9 +37,12 @@ on refresh, and with browser back and forward.
 The implemented baseline covers standard Markdown links, images, headings, canonical
 routes, history, and clear broken-link states together with an automatic Obsidian
 Markdown-plugin adapter for wiki links, headings, named blocks, attachments, and media
-embeds. The extension phase adds configured static-site adapters, verified
-same-repository GitHub URL localization, bounded note transclusion, backlinks, and graph
-analysis without weakening the navigation contract.
+embeds. Configured static-site adapters, verified same-repository GitHub URL
+localization, and bounded note transclusion shipped with it; see the
+[delivered plan](../specs/done/plan-2026-08-13-markdown-link-navigation.md).
+What this record still informs is unbuilt: source-line location targets, metadata-alias
+lookup, multi-root navigation, backlinks, and graph analysis, tracked on the
+[extensions plan](../specs/active/plan-2026-08-13-markdown-navigation-extensions.md).
 
 ## Questions Answered
 

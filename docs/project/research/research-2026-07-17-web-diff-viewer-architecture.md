@@ -1,10 +1,19 @@
 # Research: Web Diff Viewer Architecture and Intermediate Representations
 
-**Date:** 2026-07-17 (last updated 2026-08-25)
+**Date:** 2026-07-17 (last updated 2026-08-27)
 
 **Author:** Joshua Levy with OpenAI Codex research assistance
 
-**Status:** Complete
+**Status:** Complete; the comparison model and layered IR are adopted, the delivery
+sequence is superseded
+
+The layered architecture, comparison semantics, and completeness rules below became
+[File Diff Format v1](../architecture/file-diff-format/file-diff-format.md) and the
+production Git source and diff renderer.
+[General diff rendering](../specs/active/plan-2026-08-17-general-diff-rendering.md) is
+the implementation contract and the place where remaining work is tracked.
+Read the sections below as the rationale that plan adopted, except where a section notes
+that production settled the question differently.
 
 ## Overview
 
@@ -43,6 +52,14 @@ Its current API and release maturity still warrant a pinned, benchmarked spike.
 GitHub’s 2026 diff work provides the best complementary lesson: simplify each row,
 progressively load file bodies, and virtualize only very large reviews so native find,
 copy, print, and accessibility remain intact for ordinary changes.
+
+Two of those recommendations did not survive implementation.
+Diff shipped in core rather than as an installed plugin, because a comparison is not a
+Git concept and a renderer inside a Git plugin would have to be extracted before a patch
+file or a hosted API could use it.
+And no renderer library was adopted: an owned DOM renderer met the measured bounds, so
+the dependency gate stayed shut.
+The layered architecture above is what carried through.
 
 ## Scope
 
@@ -822,45 +839,51 @@ printing.
 
 | Tool | Best qualities | Limitations for Metabrowser | Fit |
 | --- | --- | --- | --- |
-| `@pierre/diffs` | Vanilla and React APIs; parsed patches or full files; Shiki; split/unified; annotations; worker pool; file and row virtualization; scroll anchoring | Fast-moving APIs; newer `CodeView` surfaces and the inspected version are beta; nontrivial dependency and CSS integration | Best prototype candidate. |
-| `@git-diff-view/core` and framework packages | Current worker-compatible core; HAST highlighting; split/unified projections; React and Vue packages | Younger ecosystem, rapid releases, less evidence at extreme multi-file scale, no native Metabrowser framework match | Track and benchmark as an emerging challenger. |
+| `@pierre/diffs` | Vanilla and React APIs; parsed patches or full files; Shiki; split/unified; annotations; worker pool; file and row virtualization; scroll anchoring | Fast-moving APIs; newer `CodeView` surfaces and the inspected version are beta; nontrivial dependency and CSS integration | Reopen only if worker tokenization or virtualization can replace enough production code to justify the graph. |
+| `@git-diff-view/core` and framework packages | Current worker-compatible core; HAST highlighting; split/unified projections; React and Vue packages | Younger ecosystem, rapid releases, less evidence at extreme multi-file scale, no native Metabrowser framework match | Re-evaluate as a model or tokenizer if the production enrichment path needs one. |
 | `react-diff-view` | Mature flexible hunk, widget, selection, source-expansion, token, and worker APIs | Requires React; multi-file orchestration and virtualization remain application work | Strong if a React island is accepted. |
 | Diff2Html | Robust Git/unified parser including combined, copy, rename, binary, and limits; static split/unified HTML | Highlighting and HTML generation are less suited to rich incremental review and extreme virtualization | Good static/import fallback and parser reference. |
 | CodeMirror Merge | Incremental text model; split and unified views; collapse unchanged; accept/reject; editing | Editor-centric and full-content oriented; multi-file review shell is application work | Best future editing or hunk-action foundation. |
 | Monaco Diff Editor | Polished IDE semantics; advanced algorithm, moved changes, hidden regions, accessibility, limits, responsive inline fallback | Very large editor runtime and styling footprint; one-file editor model duplicates much of Metabrowser’s UI | Use only if full IDE behavior becomes the goal. |
-| Custom DOM renderer | Exact schema, design-system, and performance control | Parser, layout, accessibility, selection, comments, workers, and scroll anchoring are a large permanent burden | Build only the shell and adaptations, not the entire line renderer initially. |
+| Custom DOM renderer | Exact schema, design-system, and performance control | Layout, accessibility, selection, comments, workers, and scroll anchoring remain owned maintenance | Production path; preserve its measured bounds and reopen the dependency gate only for a named missing capability. |
 
-`@pierre/diffs` deserves the first spike because its vanilla `CodeView` is unusually
-well aligned with Metabrowser.
-Its source distinguishes partial patch files from full file contents, groups hunk
-content, records modes and object IDs, computes split and unified row ranges, and
-terminates worker pools explicitly.
-Its newer DiffsHub example also streams complete per-file patch segments rather than
-waiting for the entire patch.
+A July prototype compared the default nonvirtualized `@pierre/diffs` path,
+`@git-diff-view/core` with a custom DOM layer, server-rendered HTML, and a small owned
+table renderer.
+[Historical Diff View Spike Results](archive/research-2026-07-18-diff-view-spike-results.md)
+preserves the measurements and their limits.
+The prototype established that fully mounting a pathological diff was the dominant cost
+and that client-side diff computation was unsuitable for that input.
+It did not exercise Pierre’s virtualized components or worker pool, so it does not close
+the current renderer dependency gate.
 
-The library should not become the server contract.
-Add a small adapter from Metabrowser’s `FilePatch` to the library’s `FileDiffMetadata`,
-pin the audited version, bundle assets locally, and retain a plain renderer for
-unsupported or degraded cases.
-The spike should test the released stable version and the newer `CodeView` version
-separately under the repository’s dependency cool-off and lockfile rules.
+If the dependency gate reopens, the library must not become the server contract.
+A small adapter should translate Metabrowser’s `FilePatch` to the library model, and a
+plain renderer should remain for unsupported or degraded cases.
+Test the exact cooled-off release under the repository’s lockfile and supply-chain
+rules; do not carry the July package versions forward as implementation inputs.
 
-Adopting the library is also a packaging decision, not only an API decision.
-Inspection of the published stable package shows an ESM-only distribution of several
-megabytes across hundreds of files with bare-specifier imports of Shiki and HAST
+Adopting a renderer library is also a packaging decision, not only an API decision.
+The July inspection of the published stable package found an ESM-only distribution of
+several megabytes across hundreds of files with bare-specifier imports of Shiki and HAST
 utilities, React confined to the separate `react` and `ssr` entry points (the vanilla
 entry does not import React), and dedicated worker entry points.
-Metabrowser today has no JavaScript bundling pipeline, ships zero runtime npm
-dependencies by policy, and loads third parties from a pinned CDN or as single vendored
-files. Consuming this library therefore means introducing the repository’s first runtime
-npm dependency graph and a development-time bundling step that emits pinned, vendored
-plugin assets served from the plugin-static route, all under the cool-off and exact-pin
-rules. Shiki’s pure-JavaScript regex engine avoids vendoring the Oniguruma WebAssembly
-binary and should be the spike’s default.
-The spike must score these integration axes — bundled size, worker operation from
-plugin-static under the target Content Security Policy, and dependency count and update
-cadence — alongside render performance, with `@git-diff-view/core` as the named fallback
-if integration costs disqualify the first choice.
+Metabrowser has no first-party JavaScript bundling pipeline and ships no browser runtime
+dependency graph.
+Third-party browser files are exact-pinned npm development dependencies
+copied into the wheel with a hash manifest and license texts.
+Consuming this library would introduce the repository’s first bundled browser dependency
+graph and a development-time build that emits pinned, vendored plugin assets served from
+the plugin-static route.
+Shiki’s pure-JavaScript regex engine avoids vendoring the Oniguruma WebAssembly binary
+and should be the evaluation default.
+Any new spike must start from the production renderer and its current browser profile.
+It must score bundled size, worker operation from plugin-static under the target Content
+Security Policy, dependency count and update cadence, accessibility, design-token fit,
+and maintenance cost alongside render performance.
+The
+[browser contributor toolchain research](research-2026-07-18-browser-contributor-toolchain.md)
+owns the wider build-system decision.
 
 `react-diff-viewer` and similar two-string components are attractive demos but poor
 multi-file foundations.
@@ -1072,6 +1095,16 @@ Use:
 
 ## Delivery Plan
 
+**Superseded.** This sequence assumed diff would ship as an installed plugin built on a
+third-party renderer.
+It shipped instead as core: a comparison model in `src/metabrowser/diff/`, Git routes in
+`src/metabrowser/git/`, and an owned renderer in the built-in diff plugin, phased by
+[general diff rendering](../specs/active/plan-2026-08-17-general-diff-rendering.md).
+Phases 0 through 2 are delivered in that different shape, Phase 3 review state and Phase
+5 mutations remain unscheduled, and Phase 4 native and Jujutsu work is still gated on
+measurement. The phases are kept because they record what the research expected to be
+hard, which is the part worth comparing against what actually was.
+
 ### Phase 0: Contracts, Platform Capabilities, and Benchmark Harness
 
 - Specify `ComparisonIntent`, `ResolvedComparison`, `ChangeSetManifest`, `ContentRef`,
@@ -1131,29 +1164,30 @@ Use:
 
 ## Open Decisions
 
-The implementation project should decide, with benchmark evidence:
+Production settled four of these.
+Semantic hunks are produced by the Python adapter and parsed into File Diff Format
+before transport, not parsed in a browser worker.
+That schema is JSON with an explicit encoding and availability model, which answers the
+serialization question.
+No `@pierre/diffs` integration exists, so its `CodeView` threshold question is moot; the
+owned renderer bounds mounted rows instead, and the dependency gate is described in the
+[frontend tooling review](#frontend-tooling-review) above.
+Diff is core rather than a plugin, so it needs no manifest-declared repository-scoped
+tool entry.
 
-- Whether the first `@pierre/diffs` integration uses `CodeView` for all reviews or
-  switches from fully mounted `FileDiff` instances only above a threshold.
-- Whether semantic hunks are produced directly by the Python adapter or first parsed in
-  a worker from bounded per-file patches.
-  Direct server production is the cleaner target; worker parsing may reduce initial
-  backend work.
+The rest still need benchmark evidence:
+
 - How strong local consistency must be: optimistic generation and refresh, or bounded
   content-addressed worktree snapshots.
 - Which rename and copy detection limits produce the best accuracy/latency balance.
+  The Git source runs `-M` and `-C` at their defaults; no limit has been measured.
 - Whether addition/deletion totals are deferred when exact counts would delay the
-  manifest.
-- Which schema serialization best preserves arbitrary path and content bytes while
-  remaining pleasant for plugins.
+  manifest. This is still open for the planned uncommitted comparisons.
 - What stable Jujutsu machine interface is available at implementation time.
-- Whether the repository-scoped surface ships as a manifest-declared tool entry first or
-  waits for directory-scoped container kinds, and how the two later unify.
-- Whether and when the core file tree gains a decoration API so the plugin can badge
+- Whether and when the core file tree gains a decoration API so a source can badge
   changed, staged, and untracked files in place.
-  Tree rows are core-owned, editor users expect change indicators there, and the answer
-  moves the core/plugin boundary, so it should be decided before the plugin’s first
-  release rather than after.
+  Tree rows are core-owned and editor users expect change indicators there, so the
+  answer moves the core boundary.
 
 ## Methodology and Evidence Limits
 
@@ -1200,6 +1234,8 @@ Metabrowser’s benchmarks.
 
 ### Frontend Libraries
 
+- [Historical Diff View Spike Results](archive/research-2026-07-18-diff-view-spike-results.md)
+- [Browser Contributor Toolchain and Distribution](research-2026-07-18-browser-contributor-toolchain.md)
 - [`@pierre/diffs` documentation](https://diffs.com/docs)
 - [Pierre: On Rendering Diffs](https://pierre.computer/writing/on-rendering-diffs)
 - [`@pierre/diffs` package](https://www.npmjs.com/package/%40pierre/diffs)
