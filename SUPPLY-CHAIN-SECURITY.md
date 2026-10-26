@@ -85,9 +85,15 @@ unchanged, so the 14-day setting still governs transitive resolution and every i
 The published artifact SHA-512 matches the committed lockfile:
 `terhA9EdYrHD9a2ZBMksJv/8lsDBye78KM+1SJnVdM7Fo+0Byk2yjpkbaLnDLLV87/GQqeDa/EDX7I8LitNdXw==`.
 
-The lock delta is exactly two packages: tryscript 0.3.0 to 0.3.1 and zod 3.25.76 to
-4.6.6. Nothing else moves, no package is added or removed, and no browser asset or
-Python runtime dependency changes.
+Two package versions change, and no package is added or removed: tryscript 0.3.0 to
+0.3.1, and its pinned transitive zod 3.25.76 to 4.6.6. The lockfile carries one other
+kind of hunk, which is metadata and not a version: a `libc` field appears on four
+optional Biome Linux platform packages, `@biomejs/cli-linux-arm64`,
+`@biomejs/cli-linux-arm64-musl`, `@biomejs/cli-linux-x64`, and
+`@biomejs/cli-linux-x64-musl`, declaring glibc or musl.
+All four stay at 2.5.2 with their resolved URLs and integrity hashes unchanged; the
+current npm simply records the platform selection it already made, and none of them
+installs on macOS. No browser asset or Python runtime dependency changes.
 zod 4.6.6 was published 2026-10-11, fifteen days before this selection, so the
 transitive upgrade satisfies the ordinary cool-off on its own and needs no exception.
 The [upstream release](https://github.com/jlevy/tryscript/releases/tag/v0.3.1) is a
