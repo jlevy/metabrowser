@@ -1,1 +1,49 @@
-forks: []
+forks:
+  - name: agent-handoff
+    kind: shortcut
+    path: docs/tbd/shortcuts/agent-handoff.md
+    source: internal:shortcuts/standard/agent-handoff.md
+    base_hash: sha256:efea4af9dc7c195cde822e3c7c4ecc43542a82633afb1fe9be3ab6166ff4e312
+    tbd_version: 0.9.0
+  - name: create-or-update-pr-simple
+    kind: shortcut
+    path: docs/tbd/shortcuts/create-or-update-pr-simple.md
+    source: internal:shortcuts/standard/create-or-update-pr-simple.md
+    base_hash: sha256:713858070c8b89e3eb670db397059db054bc86be1a1b8dd3571de6fd9ee7dd95
+    tbd_version: 0.9.0
+  - name: create-or-update-pr-with-validation-plan
+    kind: shortcut
+    path: docs/tbd/shortcuts/create-or-update-pr-with-validation-plan.md
+    source: internal:shortcuts/standard/create-or-update-pr-with-validation-plan.md
+    base_hash: sha256:7ea1fdb7ef1ee7e820952dd2b390d29bdd5d106c9936ec2a3639e8d065043f6c
+    tbd_version: 0.9.0
+  - name: implement-beads
+    kind: shortcut
+    path: docs/tbd/shortcuts/implement-beads.md
+    source: internal:shortcuts/standard/implement-beads.md
+    base_hash: sha256:3924f6397bfccb6157c800ae0e045ba49b06a5fe5a02f224a788ad8331443050
+    tbd_version: 0.9.0
+  - name: new-plan-spec
+    kind: shortcut
+    path: docs/tbd/shortcuts/new-plan-spec.md
+    source: internal:shortcuts/standard/new-plan-spec.md
+    base_hash: sha256:366293a4a3fe7640ffb42a8722feaf8abce7e730bbba26eb306f6bea3cea8f46
+    tbd_version: 0.9.0
+  - name: plan-implementation-with-beads
+    kind: shortcut
+    path: docs/tbd/shortcuts/plan-implementation-with-beads.md
+    source: internal:shortcuts/standard/plan-implementation-with-beads.md
+    base_hash: sha256:25d324b9587c14ff6db9e543fc71d820a3361d67e8c44f9cffdc902a55e76364
+    tbd_version: 0.9.0
+  - name: review-github-pr
+    kind: shortcut
+    path: docs/tbd/shortcuts/review-github-pr.md
+    source: internal:shortcuts/standard/review-github-pr.md
+    base_hash: sha256:5d7a00f20bc2069355def66352ffd4193dd400c9c6b43c0f32d4f165da579a9f
+    tbd_version: 0.9.0
+  - name: stacked-prs
+    kind: shortcut
+    path: docs/tbd/shortcuts/stacked-prs.md
+    source: internal:shortcuts/standard/stacked-prs.md
+    base_hash: sha256:a20b689e243c843b8d2dd1a04f442bcdde7ae69a2bfc9c263f55ee04351296ee
+    tbd_version: 0.9.0
