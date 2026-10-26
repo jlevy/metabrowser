@@ -22,7 +22,13 @@ Two other statements the original closing paragraph makes have since been overta
 are left as written rather than edited: the two regressions it declines to accept were
 fixed in [#267](https://github.com/jlevy/metabrowser/pull/267), which landed, and the
 browser differential it says nothing of has since reported, with no product regression
-(`mb-2g6f`). Nothing else in this record was changed.
+(`mb-2g6f`). Also on 2026-10-26, one row was removed from the table of deliberate
+changes with no `CHANGELOG.md` entry, because the claim was false: the change it named
+is documented under Fixes.
+Extending that table’s search hint, so a reader could re-run the search the sentence
+claims, is what exposed it.
+The paragraph after the table says which row and why.
+Nothing else in this record was changed.
 
 **Scope:** What a user or a plugin author sees differently on something v0.11.0 already
 did: a regular folder served or inspected, the CLI, the Plugin SDK, and the package’s
@@ -107,14 +113,25 @@ on 2026-10-04, after the rest of this record was written.
 | `/api/plugin/diff/comparison` validates `base_policy`: a value other than `direct` or `merge_base`, or one given with a single revision, answers 400. v0.11.0 ignored the parameter. The entry says the route honors `merge_base`; it does not say that other requests are now refused | GitHub URLs and HTTPS, under “Pull-request data”: “`/api/plugin/diff/comparison` now honors `base_policy=merge_base`” | #232 | Run |
 | `/api/git/commit/<id>` for an unknown commit: the 404 gains `"code": "commit_not_found"`. Status and message are unchanged | GitHub URLs and HTTPS: “A served page opened at `/commit/<id>`” | #249 | Audit |
 
-Three deliberate changes have no `CHANGELOG.md` entry, which a search of the file for
-`end-of-options`, `diff/document` and `rotated` confirms:
+Two deliberate changes have no `CHANGELOG.md` entry, which a search of the file for
+`end-of-options` and `rotated` confirms, each returning nothing:
 
 | What changes | PR | Checked |
 | --- | --- | --- |
 | The comparison adapter runs `git rev-parse --verify --end-of-options <rev>^{commit}`, so a revision that begins with `-` is an argument and not an option. No response differed because of it | #216 | Data |
-| `/api/plugin/diff/document` for a file it cannot open answers a typed 404, `diff_document`. v0.11.0 answered the degraded `plugin_error` envelope and logged a `PermissionError` traceback | #216 | Run |
 | `GET /api/stream` asked to resume past the end of the file now ends the stream instead of continuing it. v0.11.0 clamped the cursor to the file’s size (`read_cursor = min(read_cursor, st_size)`) and kept streaming, so the client saw `: heartbeat`; it now sends `event: closed` with `data: {"reason": "rotated"}` and stops (`src/metabrowser/sse.py`). The new answer is the correct one — a cursor past the end means the file was rotated or truncated under the reader, and clamping resumes at the wrong offset — and it is the server side of the entry “A live log deleted or truncated while the page was away stops showing as live on return.” That entry states what the page does, not what the route answers, and a plugin or script reading `/api/stream` directly sees the difference | #268 | Data, 2026-10-26 |
+
+A third row stood here until 2026-10-26 and was wrong.
+It said `/api/plugin/diff/document` answering a typed 404 for a file it cannot open had
+no `CHANGELOG.md` entry.
+It has one, under Fixes, whose last sentence is “They now answer 404 `diff_document` or
+`diff_children` and name the served path” and which opens by saying that
+`/api/plugin/diff/document` and `/api/plugin/diff/children` no longer answer with a path
+on the host either. It describes that change exactly.
+The row is removed rather than corrected in place, because the change is documented and
+so belongs in no list of undocumented ones.
+The likely history is that the entry was written after this record was, in the changelog
+work on [#264](https://github.com/jlevy/metabrowser/pull/264).
 
 One more is cosmetic: `--show` loads the dotenv chain at two more points, so a malformed
 `.env` prints python-dotenv’s warning more often (Data).
@@ -189,7 +206,7 @@ Approving this list accepts, for the 0.12.0 release:
   `METABROWSER_HOME` no longer being read (added 2026-10-26);
 - the stronger meaning of `--untrusted` and `--no-active-content` on a folder;
 - the CLI differences above, including the slower `--doctor`;
-- the three deliberate changes that have no `CHANGELOG.md` entry, or a request to add
+- the two deliberate changes that have no `CHANGELOG.md` entry, or a request to add
   entries for them;
 - the page differences and the new routes and plugin row on every folder.
 
