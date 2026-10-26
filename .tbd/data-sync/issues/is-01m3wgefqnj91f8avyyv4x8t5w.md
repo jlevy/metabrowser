@@ -5,7 +5,7 @@ title: "Landing gate: regular-folder behavior is unchanged from v0.11.0 except d
 kind: task
 status: in_progress
 priority: 1
-version: 11
+version: 12
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 delegate: claude-code@spud10.local
 labels:
@@ -22,12 +22,31 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-10-01T19:53:16.765Z
-updated_at: 2026-10-26T20:01:04.688Z
+updated_at: 2026-10-26T20:43:21.730Z
 started_at: 2026-10-01T19:53:20.458Z
 ---
 The user's requirement (2026-10-01): 'carefully review to make sure the entire PR stack can land safely without destabilizing any existing features for regular pages (bugfixes excepted) ... thoroughly tested/reviewed. then the new features are purely additive.' Earlier evidence (byte-identical CLI output on 14 routes, a landing-risk review, a browser smoke) was taken at #244 and is stale: later PRs changed code every page uses (#246 capability SDK removal and --doctor; #248 pin guard and pageshow handling; #249 ROOT rule and the Git panel's commit loading; #254 plugin SDK split into an on-demand views file, plugin loading order, lazy imports; #261 run_git reading stderr; the page-connection and mirror-name fixes). Gate: on the final stack tip, three independent differentials against v0.11.0 on regular trusted folders, each re-runnable with one command: (1) evidence audit: every test, golden and fixture that exists on main and was modified or deleted in the stack, classified hunk by hunk; main's own black-box goldens run against the tip's build; (2) data and modes: every route main registers, every CLI mode and flag, response headers, plugin loading and environment handling, over several corpora, byte-compared; (3) browser: a scripted matrix of views and interactions in stock Chrome on both builds, comparing normalized DOM, console, requests and screenshots. Every difference is classified: identical; intended change with its CHANGELOG entry; bugfix; or unexplained. Accept rule: zero unexplained differences, and a written list of every intended non-additive change to an existing feature for the user to sign off (known so far: Plugin SDK 0.6 -> 0.7 is breaking; --untrusted and --no-active-content now render Markdown inert and apply a strict CSP; --doctor output; metab '' is refused; a scheme:// argument is always a source; source views gained a line gutter). Cross-browser paint (Safari, Firefox) remains a manual check for the user.
 
 ## Notes
+
+2026-10-26 CHECK 3, BROWSER: done, exit 0. Run dir metabrowser-landing-gate-evidence/browser/runs/20261026-122223, stock Chrome, --jobs 4 to match the reviewed run. 1,320 steps: 968 intended, 308 explained-no-changelog, 12 identical, 2 unexplained, 30 unclassified. The 1,116 steps that "differ from the reviewed run" are almost entirely unexplained -> intended reclassifications, i.e. the rules now explain what the f62c16b1 run could not; that is an improvement, not a finding.
+
+All 32 flagged steps were classified by hand. NONE is a product regression, and two clusters are the candidate behaving BETTER than v0.11.0:
+
+ - nav-keyboard steps 18-21 (type-ahead, shift-up-first, shift-down-last, tab-out-of-tree), which also account for the 7 heading/breadcrumb/title differences out of 1,120: the CONTROL build hung. Its captures carry `press ArrowUp: Input.dispatchKeyEvent: no reply in 60000 ms`, `screenshot: Page.captureScreenshot: no reply in 60000 ms`, `dom: CAPTURE FAILED: Runtime.evaluate: no reply in 60000 ms`, settled=false, settleReason=no-context, identity=null. The candidate captured identity, meta and full DOM normally. 8 diff artifacts show that control-side timeout. The cause is almost certainly the same connection exhaustion step 9 measures, since these steps come late in one tab. The dependent "residual dom/ax/text/identity/meta/frames" and screenshot rows follow from the control capturing nothing.
+
+ - shell-history steps 11-13 (back and forward across a full load): the difference is that the CANDIDATE adds `GET /api/events?scope=root-depth-2 200` and receives `fs.snapshot scope=root-depth-2 complete=true paths=58`. That is the documented behavior - "Restoring it reopens those streams once" - and v0.11.0 issued no new request precisely because it never released the old stream, which is the bug.
+
+ - The 2 unexplained are both F2-hover-prefetch-compound-jsonl (narrow and wide scenario totals), and it is a STALE MASKING RULE, not a defect. The rule in browser/rules.mjs:303 says in its own citation "a fix is in progress", and its apply() filters out `GET /api/file?path=data%2Frun.codex.jsonl`, a line written to mask the then-broken extra hover fetch. That fix shipped in #264, so the rule now strips a line that is not emitted and the totals no longer match it. Verified independently four ways: the captures show the SAME counts on both builds (112 hover files mentioning the name, 4 request lines each); app.js:2729 reads `item.dataset.logicalExt || item.dataset.ext || getExt(path)`, the data-ext term being #264's fix; the data differential found hover prefetch identical; and tests/test_hover_prefetch_js.py passes on the tip. The rule should be retired or reclassified when the browser harness is next touched.
+
+STEP 9 IS A DECISIVE MEASURED RESULT, and it closes mb-tdmd's real-browser question for Chrome. Ten full page loads in one tab, seconds to ready, three pairs:
+  pair 1 main: 0.5 0.1 0.1 0.2 0.1 53.5 0.1 0.2 0.2 0.1   (10 requests waited over 1 s for a connection on load 6)
+  pair 1 tip:  0.5 0.1 0.1 0.1 0.1  0.1 0.1 0.1 0.1 0.1   (0 waited)
+  pair 2 main: 0.5 0.2 0.2 0.2 0.2 53.3 0.1 0.2 0.2 0.2   (10 waited)   pair 2 tip: all 0.1-0.3 (0 waited)
+  pair 3 main: 0.3 0.1 0.1 0.1 0.1 53.6 0.1 0.1 0.1 0.1   (10 waited)   pair 3 tip: all 0.1-0.3 (0 waited)
+This is stock Chrome driven over CDP with real page loads, not simulated lifecycle events, so it is the acceptance mb-tdmd's 2026-10-03 note said was still owed. Safari and Firefox remain unmeasured.
+
+VERDICT ON THE ACCEPT RULE: all three checks are done on the release head, and there are ZERO unexplained product differences. Every flagged row across the three is one of: a v0.11.0 source-text assertion whose implementation string moved, a harness path or normalization artifact, a control-build hang, a stale masking rule, a content hash whose input a documented fix changed, a nondeterministic debug counter, or an intended and documented change. One documentation gap was found and is the only action this gate leaves: the /api/stream cursor-past-EOF wire change needs a row in the behavior record or a CHANGELOG entry.
 
 2026-10-26 RE-RUN ON THE RELEASE HEAD (87712198, whose tree is byte-identical to main c2d493e9 after #269 merged; `git diff 87712198 origin/main` is empty). Builds: control metab 0.11.0, candidate 0.11.1.dev676+87712198, both installed wheels with bytecode compiled. Harness artifacts were all rebuilt from source: data corpora 473 MB, browser pristine corpus (51 files, 943-commit checkout at 6c278f3f), harness env.
 
