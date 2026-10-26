@@ -3,9 +3,9 @@ type: is
 id: is-01m2k713pxra1ns2fk3pcwrpb6
 title: "v0.12 thin-mirror stack: coordinate landing"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 69
+version: 71
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 refs:
   - kind: other
@@ -44,11 +44,15 @@ labels:
   - release:v0.12.0
 dependencies: []
 parent_id: is-01kzs5m38dz1egphfwf30c8h7n
-hold: blocked
+hold: null
 hold_until: null
 created_at: 2026-09-15T18:59:49.596Z
-updated_at: 2026-10-02T20:47:23.013Z
+updated_at: 2026-10-26T15:27:09.511Z
 started_at: 2026-09-16T21:24:51.532Z
+closed_at: 2026-10-26T15:27:09.510Z
+close_reason: "The v0.12 thin-mirror stack landed on main at 0b016e4b (PR #268, merged 2026-10-04); CI 9 of 9 green on that commit. gh stack 218 is merged and nothing in the chain remains open. Outside the chain: #247 stays a do-not-merge reference, #262 is superseded (its page-connection fix landed inside #268), and #51/#87/#219 are unrelated. Landing coordination is therefore done. What is NOT done, and is tracked under mb-425f: main is unreleased (PyPI is 0.11.0, no v0.12.0 tag), and #268 landed a breaking storage change ABOVE all landing-gate and rehearsal evidence, so mb-2g6f and mb-cf6y must re-run against main's tip before tagging."
+resolution: null
+duplicate_of: null
 ---
 Coordinate landing of the v0.12 stack: one linear chain of open PRs, main <- #125 ... #244 (#241 is the draft acceptance record), plus the PRs above #244 that finish stabilization. Keep exact base/head relationships, per-layer review dispositions, green per-layer CI and top integration evidence against current main, and keep beads and specs aligned. Gates: mb-hall and mb-gnr9. SSH, the PR list and panel, inline review anchors, checkout attachment and rebind are deferred by the user's 2026-09-23 decision and do not gate landing. Hold every layer until the user explicitly approves; then land the tip as one fast-forward of main (merging lower layers one at a time would put retired-design states on main).
 

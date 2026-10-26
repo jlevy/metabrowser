@@ -5,7 +5,7 @@ title: Repository library and hosted-review roadmap
 kind: epic
 status: in_progress
 priority: 1
-version: 87
+version: 88
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: claude-code@spud10.local
 labels: []
@@ -76,10 +76,11 @@ child_order_hints:
   - is-01m2h7jjgpzyfbf10238j32z6q
   - is-01m0b71xwkrf39qnq9ccgxmfp4
   - is-01m3wfpjbz1ktepk7e8a5c9yte
+  - is-01m5wd9jf0zw7bwh0f8qk5eqw5
 hold: null
 hold_until: null
 created_at: 2026-08-11T19:43:35.692Z
-updated_at: 2026-10-01T19:40:13.053Z
+updated_at: 2026-10-26T15:29:33.663Z
 started_at: 2026-09-16T21:10:44.764Z
 extensions:
   linear:

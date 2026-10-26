@@ -3,9 +3,9 @@ type: is
 id: is-01m404yqx2zybbd9789dsb98q8
 title: Update storage contracts, fixtures, goldens, and release QA
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 5
+version: 6
 delegate: codex@spud10.local
 labels: []
 dependencies: []
@@ -13,8 +13,12 @@ parent_id: is-01m404jrt4sm3rndr1kznbpr6v
 hold: null
 hold_until: null
 created_at: 2026-10-03T05:49:24.257Z
-updated_at: 2026-10-04T22:11:18.502Z
+updated_at: 2026-10-26T15:27:23.557Z
 started_at: 2026-10-03T06:04:43.930Z
+closed_at: 2026-10-26T15:27:23.556Z
+close_reason: "Landed on main in #268 (cbb92dc9 feat(storage)!, c269a95d, 9f92d2a4). Storage contracts, fixtures, goldens and the release QA references were updated with the cache/config split; main's CHANGELOG carries the breaking entry (separate XDG locations ~/.cache/metabrowser and ~/.config/metabrowser/config.yml, --cache-dir/--config-dir overrides, METABROWSER_HOME no longer read). Verified 2026-10-26: both flags work and a plain folder creates neither directory."
+resolution: null
+duplicate_of: null
 ---
 
 ## Notes

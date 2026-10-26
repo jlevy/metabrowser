@@ -5,7 +5,7 @@ title: "Release rehearsal for v0.12 before landing: the standard release checkli
 kind: task
 status: in_progress
 priority: 1
-version: 5
+version: 6
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 delegate: claude-code@spud10.local
 labels:
@@ -17,12 +17,14 @@ parent_id: is-01m36k3w9vgwy97c9hcj2sqrs5
 hold: null
 hold_until: null
 created_at: 2026-10-01T20:29:17.780Z
-updated_at: 2026-10-02T20:47:25.782Z
+updated_at: 2026-10-26T15:27:57.903Z
 started_at: 2026-10-01T20:29:25.524Z
 ---
 The user, 2026-10-01: 'We have a standard release process to check for stability and no regressions on features or performance. Let's go ahead and run that early before we land this entire stack. Since there are so many changes, there's quite a bit of risk.' Run docs/publishing.md's Release Checklist steps 1-5 as a rehearsal on the stack's candidate, without tagging, releasing or merging: (2) the complete 'make verify'; (3) the previous-release performance loop (explorations/performance-loop/README.md, 'Comparing a candidate with the previous release') against v0.11.0, recorded as a committed experiment with the performance report regenerated; every candidate run must pass the hard responsiveness and correctness gates, and a repeatable wrong-way metric blocks until fixed or explicitly accepted by the user; read the backend comparison's equivalence (differing rows is a regression until shown otherwise; differing tallies must be confined to what the changelog describes); (4) CI green on the exact candidate commit; (5) review the changes since v0.11.0 and propose the version. Steps 6-10 (tag, publish, post-release checks) are not run. Re-run on the final tip before the landing decision. Related gates: mb-2g6f (regular-folder differentials), mb-67s1 (wall-clock pairs on a quiet machine).
 
 ## Notes
+
+2026-10-26 (still owed, now against main's tip): exp-039 was NEVER recorded. explorations/performance-loop/experiments/ ends at exp-038, 'v012-rehearsal-under-load-does-not-clear-the-candidate'. So release checklist step 3 remains unsatisfied. The target moved: main is now 0b016e4b, above the 14fcdb85 that exp-038's candidate measured, and #268 changed the storage layout in between, so the step-3 pairs must be taken on main's tip (or the release-prep head), not on the old stack tip. Steps 1, 2, 4 and 5 need re-confirming there too; CI is green on 0b016e4b, and make verify was re-run on the release-prep branch on 2026-10-26. Blocking condition unchanged: a quiet machine. The host was at load 11.5 on 2026-10-26, which is the same condition that invalidated exp-038, so this cannot be run alongside agent work.
 
 2026-10-02: still owed: release checklist step 3 on a quiet machine with no agents running, on the final head (5 headed pairs passing the hard gates, 5 compare_builds pairs read for first_row), recorded as exp-039. Steps 1, 2, 4, 5 passed in exp-038 (#265). make verify passed on 8879c4de.
 

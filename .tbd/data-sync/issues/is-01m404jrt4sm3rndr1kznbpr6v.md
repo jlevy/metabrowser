@@ -3,9 +3,9 @@ type: is
 id: is-01m404jrt4sm3rndr1kznbpr6v
 title: Separate cache and configuration storage using uv/fdu conventions
 kind: epic
-status: in_progress
+status: closed
 priority: 2
-version: 11
+version: 12
 delegate: codex@spud10.local
 labels: []
 dependencies: []
@@ -19,8 +19,12 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-10-03T05:42:51.965Z
-updated_at: 2026-10-05T04:52:02.529Z
+updated_at: 2026-10-26T15:27:23.911Z
 started_at: 2026-10-03T05:49:23.081Z
+closed_at: 2026-10-26T15:27:23.910Z
+close_reason: "Landed on main in #268. Cache and configuration now use separate XDG roots on macOS and Linux with exact --cache-dir / --config-dir overrides; METABROWSER_HOME and the old single-home layout are no longer read and existing files are left untouched. Verified 2026-10-26 on main: browsing a plain folder with isolated --cache-dir and --config-dir creates neither directory. The breaking entry is at the top of the 0.12.0 CHANGELOG section and is on the sign-off list in review-2026-10-01-v012-changes-to-existing-behavior.md."
+resolution: null
+duplicate_of: null
 ---
 Approved v0.12 clean break: use ~/.cache/metabrowser and ~/.config/metabrowser on Linux/macOS, honoring app-specific and XDG overrides. Remove METABROWSER_HOME and the combined home layout; no backward compatibility aliases, migration, or fallback. Update architecture, runtime paths, safety checks, CLI/UI contracts, test fixtures, goldens, runbook, and release notes. Existing user files remain untouched. Parent release-stability epic tracks overall acceptance.
 
