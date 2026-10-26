@@ -55,6 +55,7 @@ introduces.
 | `flowmark-rs==0.3.2` | `0.3.1` | Formatting output unchanged |
 | `softschema==0.8.1` | `0.8.0` | Runtime contract validation; adds SoftSchema and upgrades `frontmatter-format` from 0.3.0 to 0.4.0 |
 | `tryscript==0.3.0` | `0.1.7` | Removes the vulnerable fast-glob/micromatch/braces chain; adds tinyglobby discovery and the tsx loader |
+| `tryscript==0.3.1` | `0.3.0` | Security patch only; upgrades zod from 3.25.76 to 4.6.6 for GHSA-mrhx-c7xc-m3w5 |
 | `get-tbd` | n/a | Issue tracker, first-party; not a build or runtime input |
 
 Tryscript 0.3.0 is a first-party exception to the release-age delay.
@@ -75,6 +76,43 @@ version and are optional platform selections.
 No browser asset or Python runtime dependency changes.
 Install scripts remain disabled; the full golden suite exercises the installed runner,
 and the dependency audit has no exception for the advisory.
+
+Tryscript 0.3.1 is the same first-party exception, taken on 2026-10-26 because 0.3.0
+reaches the vulnerable zod 3.25.76 and `npm audit` fails on GHSA-mrhx-c7xc-m3w5 (high,
+memory exhaustion validating oversized constrained collections).
+It was selected with `--min-release-age=0`, which npm applies to the whole command and
+not to one package, so zod was resolved without the age gate too; the exact zod release
+it pins was checked against the cool-off by hand instead, below.
+`.npmrc` is unchanged, so the 14-day setting still governs every later resolution and
+install. The published artifact SHA-512 matches the committed lockfile:
+`terhA9EdYrHD9a2ZBMksJv/8lsDBye78KM+1SJnVdM7Fo+0Byk2yjpkbaLnDLLV87/GQqeDa/EDX7I8LitNdXw==`.
+
+Two package versions change, and no package is added or removed: tryscript 0.3.0 to
+0.3.1, and its pinned transitive zod 3.25.76 to 4.6.6. That is the whole lockfile delta,
+four hunks, and it is reproducible from the base with one command:
+`npm install --package-lock-only --save-exact tryscript@0.3.1 --min-release-age=0`. No
+browser asset or Python runtime dependency changes.
+
+An earlier revision of this entry also carried a `libc` field on four optional Biome
+Linux platform packages, and described it as metadata recording a selection npm had
+already made. Both halves of that were wrong, and the review of
+[#269](https://github.com/jlevy/metabrowser/pull/269) caught it: the hunks came from an
+upgrade-and-revert cycle that evaluated and then dropped the non-security upgrades, not
+from this change, and a recorded `libc` is not inert.
+`npm ci` checks it through Arborist’s platform test, so the variant whose libc does not
+match is no longer installed: a Linux job that added 32 packages added 31. The hunks are
+therefore removed rather than explained, which is also what keeps the delta reproducible
+by the command above.
+The lesson is the one this section already assumes: a lockfile hunk that no reviewed
+change produced does not belong in the commit, whatever it appears to do.
+zod 4.6.6 was published 2026-10-11, fifteen days before this selection, so the
+transitive upgrade satisfies the ordinary cool-off on its own and needs no exception.
+The [upstream release](https://github.com/jlevy/tryscript/releases/tag/v0.3.1) is a
+security patch: the zod floor, explicit string keys in configuration records, nested
+entry paths in union validation warnings, and development-only Vitest, Vite, and
+source-map-js advisories that this repository does not install.
+Golden parsing is unaffected — the full 278-check golden suite passes unchanged at
+0.3.1, which is the behavior the 0.3.0 selection had to realign.
 
 `get-tbd` carries no version review because it is not pinned to one, and the reason is
 narrower than “we publish it.”
