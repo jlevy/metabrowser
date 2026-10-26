@@ -7,6 +7,23 @@ It is the list of intended changes to behavior that existed in v0.11.0. The land
 (`mb-2g6f`) requires that list in writing, because the stack is not purely additive.
 The landing decision is `mb-n2ro`; this record is evidence for it.
 
+**Addendum, 2026-10-26.** Two rows were added after the original date, because the list
+was incomplete for a reader asked to sign it.
+[#268](https://github.com/jlevy/metabrowser/pull/268) landed on 2026-10-04, three days
+after this record was written, and changed where the cache and configuration live, which
+is a change to behavior v0.11.0 had and so belongs here; it is the new section below on
+cache and configuration roots.
+The landing gate’s re-run on the release head then found one more, the `/api/stream`
+cursor-past-end-of-file change, which is the third row in the table of deliberate
+changes with no `CHANGELOG.md` entry.
+Both are marked `Run, 2026-10-26` or `Data, 2026-10-26` and were checked against `main`
+at `c2d493e9`, not against the tree the rest of this record was taken from.
+Two other statements the original closing paragraph makes have since been overtaken, and
+are left as written rather than edited: the two regressions it declines to accept were
+fixed in [#267](https://github.com/jlevy/metabrowser/pull/267), which landed, and the
+browser differential it says nothing of has since reported, with no product regression
+(`mb-2g6f`). Nothing else in this record was changed.
+
 **Scope:** What a user or a plugin author sees differently on something v0.11.0 already
 did: a regular folder served or inspected, the CLI, the Plugin SDK, and the package’s
 requirements. New features are listed only where they show on a regular folder.
@@ -30,11 +47,17 @@ The **Checked** column of each table says one of these:
   flag, response headers, third-party plugins, and environment handling.
   It reports no unexplained difference.
 - **Changelog:** stated by `CHANGELOG.md` and not run here.
+- **Run, 2026-10-26** and **Data, 2026-10-26:** the same two methods, carried out on the
+  later date for the two addendum rows only, against `main` at `c2d493e9` rather than
+  #265’s tree. The data differential behind them is the gate’s re-run on the release
+  head: 20,310 comparisons at `--jobs 4`, which reports no unexplained product
+  difference.
 
 The audit and the differential ran at #259’s head, `f62c16b1`, below #261, #263, #264,
 and #265, and their reports are session files, so their substance is copied here.
 Neither judged paint.
-The gate’s third check, a browser differential, had not reported when this was written.
+The gate’s third check, a browser differential, had not reported when this was written;
+it has since run on the release head, and the addendum above says what it found.
 
 ## Breaking for Plugin Authors: Plugin SDK 0.7
 
@@ -50,6 +73,17 @@ The gate’s third check, a browser differential, had not reported when this was
 | `metabrowser.plugin_api` exports more names for reading content on either kind of source; none is removed (16 names on v0.11.0, 30 now). `resolve_path`, `served_root`, and `open_content` raise on a Git pin and behave as before on a folder | Plugin SDK: “`metabrowser.plugin_api` exports the content-source boundary” and the entry after it | #216, #264 | Run for the names; Changelog for the pin |
 | `metab --plugin <name>` prints `sdk_version: 0.7`, and for `markdown` lists three more assets: `inert-render.js`, `inert-toc.js`, and `place-rendered.js` | Content trust: “Markdown from an untrusted source renders inert” | #234, #254 | Run |
 | The private `app.js` global `copyContent` is gone. It had no caller and was never part of the SDK | None; the audit traced it to a commit that says so | #238 | Run |
+
+## Breaking for Stored State: Cache and Configuration Roots
+
+Added 2026-10-26. This landed in [#268](https://github.com/jlevy/metabrowser/pull/268)
+on 2026-10-04, after the rest of this record was written.
+
+| What changes | `CHANGELOG.md` entry | PR | Checked |
+| --- | --- | --- | --- |
+| **`METABROWSER_HOME` is no longer read, and neither is the old single-home layout.** Cache and configuration are separate XDG locations: `~/.cache/metabrowser` and `~/.config/metabrowser/config.yml`. Anyone who set `METABROWSER_HOME` to move Metabrowser’s state is silently served from the default locations instead, so the state they pointed at is not found. Existing files are left untouched, so nothing is destroyed and the old directory can be deleted by hand once its contents are no longer wanted | “**Breaking:** Cache and configuration now use separate XDG locations”, the first entry of 0.12.0 | #268 | Run, 2026-10-26 |
+| `--cache-dir` / `METABROWSER_CACHE_DIR` and `--config-dir` / `METABROWSER_CONFIG_DIR` name an exact directory each, and override the XDG variables. They are the migration for a `METABROWSER_HOME` user, and the two new flags in `metab --help`, which gained three in all and lost none, 41 to 44 | The same entry | #268 | Run, 2026-10-26 |
+| Serving or inspecting a plain folder still creates neither directory: a missing cache home is reported `absent` rather than created. Checked with an isolated `--cache-dir` and `--config-dir` on a folder, with neither `git` nor `gh` on `PATH`; both were left uncreated | Repository cache: “New read-only routes”, which says a missing home is reported `absent` rather than created | #140, #268 | Run, 2026-10-26 |
 
 ## Changed Meaning of Existing Flags
 
@@ -73,13 +107,14 @@ The gate’s third check, a browser differential, had not reported when this was
 | `/api/plugin/diff/comparison` validates `base_policy`: a value other than `direct` or `merge_base`, or one given with a single revision, answers 400. v0.11.0 ignored the parameter. The entry says the route honors `merge_base`; it does not say that other requests are now refused | GitHub URLs and HTTPS, under “Pull-request data”: “`/api/plugin/diff/comparison` now honors `base_policy=merge_base`” | #232 | Run |
 | `/api/git/commit/<id>` for an unknown commit: the 404 gains `"code": "commit_not_found"`. Status and message are unchanged | GitHub URLs and HTTPS: “A served page opened at `/commit/<id>`” | #249 | Audit |
 
-Two deliberate changes have no `CHANGELOG.md` entry, which a search of the file for
-`end-of-options` and `diff/document` confirms:
+Three deliberate changes have no `CHANGELOG.md` entry, which a search of the file for
+`end-of-options`, `diff/document` and `rotated` confirms:
 
 | What changes | PR | Checked |
 | --- | --- | --- |
 | The comparison adapter runs `git rev-parse --verify --end-of-options <rev>^{commit}`, so a revision that begins with `-` is an argument and not an option. No response differed because of it | #216 | Data |
 | `/api/plugin/diff/document` for a file it cannot open answers a typed 404, `diff_document`. v0.11.0 answered the degraded `plugin_error` envelope and logged a `PermissionError` traceback | #216 | Run |
+| `GET /api/stream` asked to resume past the end of the file now ends the stream instead of continuing it. v0.11.0 clamped the cursor to the file’s size (`read_cursor = min(read_cursor, st_size)`) and kept streaming, so the client saw `: heartbeat`; it now sends `event: closed` with `data: {"reason": "rotated"}` and stops (`src/metabrowser/sse.py`). The new answer is the correct one — a cursor past the end means the file was rotated or truncated under the reader, and clamping resumes at the wrong offset — and it is the server side of the entry “A live log deleted or truncated while the page was away stops showing as live on return.” That entry states what the page does, not what the route answers, and a plugin or script reading `/api/stream` directly sees the difference | #268 | Data, 2026-10-26 |
 
 One more is cosmetic: `--show` loads the dotenv chain at two more points, so a malformed
 `.env` prints python-dotenv’s warning more often (Data).
@@ -150,9 +185,11 @@ page behaves on Back.
 Approving this list accepts, for the 0.12.0 release:
 
 - the Plugin SDK break, with its migration in `CHANGELOG.md`;
+- the cache and configuration roots moving to separate XDG locations, and
+  `METABROWSER_HOME` no longer being read (added 2026-10-26);
 - the stronger meaning of `--untrusted` and `--no-active-content` on a folder;
 - the CLI differences above, including the slower `--doctor`;
-- the two deliberate changes that have no `CHANGELOG.md` entry, or a request to add
+- the three deliberate changes that have no `CHANGELOG.md` entry, or a request to add
   entries for them;
 - the page differences and the new routes and plugin row on every folder.
 
