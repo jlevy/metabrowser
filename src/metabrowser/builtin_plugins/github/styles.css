@@ -139,11 +139,50 @@
   font-style: italic;
 }
 .github-pull-hunk {
+  /* Every line as wide as the widest, so a tint reaches the end of a scrolled line. */
+  display: grid;
+  grid-template-columns: minmax(max-content, 1fr);
   margin: 0;
-  padding: 8px 12px;
+  padding: 8px 0;
   border-bottom: 1px solid var(--border);
   overflow-x: auto;
   font-size: var(--ui-small-font-size);
+}
+.github-pull-hunk-line {
+  min-height: 1lh;
+  padding: 0 12px;
+}
+/* The diff view's row tints (--diff-add-row-bg and --diff-del-row-bg), written out because
+   the diff plugin's stylesheet loads only with Files changed. */
+.github-pull-hunk-line[data-kind="add"] {
+  background: color-mix(in srgb, var(--status-success) 9%, transparent);
+}
+.github-pull-hunk-line[data-kind="del"] {
+  background: color-mix(in srgb, var(--status-error) 9%, transparent);
+}
+.github-pull-hunk-line[data-kind="hunk"],
+.github-pull-hunk-line[data-kind="note"] {
+  color: var(--muted);
+}
+.github-pull-hunk-earlier {
+  border-bottom: 1px solid var(--border);
+}
+.github-pull-hunk-earlier > summary {
+  display: flex;
+  padding: 4px 12px;
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+  cursor: pointer;
+}
+.github-pull-hunk-earlier > summary::-webkit-details-marker {
+  display: none;
+}
+.github-pull-hunk-earlier[open] > summary::after {
+  transform: rotate(90deg);
+}
+.github-pull-hunk-earlier > .github-pull-hunk {
+  padding-top: 0;
+  border-bottom: 0;
 }
 .github-pull-section h2 {
   margin: 8px 0;

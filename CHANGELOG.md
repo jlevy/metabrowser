@@ -369,7 +369,10 @@ GitHub URLs and HTTPS:
   `http` and `https` ones kept, and code blocks show as plain text without highlighting.
   A text’s paragraphs, headings, lists, quotes, code, tables, and details have their own
   spacing and list indent inside the card, with none above the first block or below the
-  last. A review comment’s file opens at the served head, at its line.
+  last. A review comment’s file opens at the served head, at its line, and it shows the
+  end of its diff hunk, where it anchors: the last eight lines, back to the start of a
+  multi-line comment’s range, with the earlier lines behind a disclosure and added and
+  deleted lines tinted as in the diff.
   The freshness row links to the page, and back, forward, and reload keep its tab.
   The page for a number the server does not serve links to the served pull request’s
   page, on the same tab.

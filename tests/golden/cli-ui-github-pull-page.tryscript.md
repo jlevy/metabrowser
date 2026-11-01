@@ -36,6 +36,10 @@ repository, so both sides are bare branch names.
 The last lines show a page for a number the server does not serve, which links a
 rendered text keeps (made absolute against the pull request’s github.com page, http and
 https only), and the `/view/` address a review comment’s file opens at.
+`hunks` is what a review comment shows of its diff hunk, which ends at the commented
+line: the last eight lines, or back to the start of a multi-line comment’s range, with
+the rest behind a disclosure, and each line classed so an addition or deletion is
+tinted. The stand-in’s hunks are short, so the session writes the long ones.
 
 ```console
 $ node tests/dom/github-pull-page-session.js
@@ -697,7 +701,155 @@ $ node tests/dom/github-pull-page-session.js
     "open on the record's comparison: keep",
     "open on an older head: offer",
     "no comparison in the record: unavailable"
-  ]
+  ],
+  "hunks": {
+    "a short hunk is whole": {
+      "earlier": null,
+      "shown": [
+        "hunk: @@ -1 +1,2 @@",
+        "context:  one",
+        "add: +two"
+      ]
+    },
+    "the header and a tail's worth is whole: a disclosure hides no single line": {
+      "earlier": null,
+      "shown": [
+        "hunk: @@ -1,30 +1,30 @@ def main():",
+        "context:  line 23",
+        "context:  line 24",
+        "context:  line 25",
+        "context:  line 26",
+        "context:  line 27",
+        "context:  line 28",
+        "context:  line 29",
+        "context:  line 30"
+      ]
+    },
+    "one line more is past the tail": {
+      "earlier": "2 lines: @@ -1,30 +1,30 @@ def main(): ...  line 22",
+      "shown": [
+        "context:  line 23",
+        "context:  line 24",
+        "context:  line 25",
+        "context:  line 26",
+        "context:  line 27",
+        "context:  line 28",
+        "context:  line 29",
+        "context:  line 30"
+      ]
+    },
+    "a long hunk shows its tail": {
+      "earlier": "25 lines: @@ -1,30 +1,30 @@ def main(): ...  line 23",
+      "shown": [
+        "context:  line 24",
+        "del: -old 25",
+        "add: +new 25",
+        "context:  line 26",
+        "context:  line 27",
+        "context:  line 28",
+        "context:  line 29",
+        "context:  line 30"
+      ]
+    },
+    "a range longer than the tail is all shown, from its first line, not counting a deletion": {
+      "earlier": "14 lines: @@ -1,30 +1,30 @@ def main(): ...  line 13",
+      "shown": [
+        "context:  line 14",
+        "del: -old 15",
+        "add: +new 15",
+        "context:  line 16",
+        "context:  line 17",
+        "context:  line 18",
+        "context:  line 19",
+        "context:  line 20",
+        "context:  line 21",
+        "context:  line 22",
+        "context:  line 23",
+        "context:  line 24",
+        "del: -old 25",
+        "add: +new 25",
+        "context:  line 26",
+        "context:  line 27",
+        "context:  line 28",
+        "context:  line 29",
+        "context:  line 30"
+      ]
+    },
+    "a range on the left counts deletions and not additions": {
+      "earlier": "15 lines: @@ -1,30 +1,30 @@ def main(): ...  line 14",
+      "shown": [
+        "del: -old 15",
+        "add: +new 15",
+        "context:  line 16",
+        "context:  line 17",
+        "context:  line 18",
+        "context:  line 19",
+        "context:  line 20",
+        "context:  line 21",
+        "context:  line 22",
+        "context:  line 23",
+        "context:  line 24",
+        "del: -old 25",
+        "add: +new 25",
+        "context:  line 26",
+        "context:  line 27",
+        "context:  line 28",
+        "context:  line 29",
+        "context:  line 30"
+      ]
+    },
+    "an outdated comment's range is its original one": {
+      "earlier": "14 lines: @@ -1,30 +1,30 @@ def main(): ...  line 13",
+      "shown": [
+        "context:  line 14",
+        "del: -old 15",
+        "add: +new 15",
+        "context:  line 16",
+        "context:  line 17",
+        "context:  line 18",
+        "context:  line 19",
+        "context:  line 20",
+        "context:  line 21",
+        "context:  line 22",
+        "context:  line 23",
+        "context:  line 24",
+        "del: -old 25",
+        "add: +new 25",
+        "context:  line 26",
+        "context:  line 27",
+        "context:  line 28",
+        "context:  line 29",
+        "context:  line 30"
+      ]
+    },
+    "a range above what the record kept shows all it kept": {
+      "earlier": null,
+      "shown": [
+        "context:  line 19",
+        "context:  line 20",
+        "context:  line 21",
+        "context:  line 22",
+        "context:  line 23",
+        "context:  line 24",
+        "context:  line 25",
+        "context:  line 26",
+        "context:  line 27",
+        "context:  line 28",
+        "context:  line 29",
+        "context:  line 30"
+      ]
+    },
+    "a hunk's text is only ever text": {
+      "earlier": null,
+      "shown": [
+        "hunk: @@ -1,30 +1,30 @@ def main():",
+        "add: +<img src=x onerror=alert(1)>",
+        "del: -</pre><script>alert(1)</script>",
+        "context:  @@ not a header",
+        "note: \\ No newline at end of file"
+      ]
+    }
+  }
 }
 ? 0
 ```

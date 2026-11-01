@@ -101,6 +101,30 @@ def _style_rules() -> dict[str, str]:
     return rules
 
 
+def test_a_hunks_tints_are_the_diff_views() -> None:
+    """The diff plugin's stylesheet loads only with Files changed, so its tints are restated
+    for the conversation's hunks; a change to one that misses the other fails here."""
+
+    rules = _style_rules()
+    diff_css = (PAGE_JS.parent.parent / "diff" / "styles.css").read_text(encoding="utf-8")
+    for kind, token in (("add", "--diff-add-row-bg"), ("del", "--diff-del-row-bg")):
+        tint = re.search(rf"{token}:\s*([^;]+);", diff_css)
+        assert tint is not None, token
+        assert (
+            f"background: {tint.group(1)};" in rules[f'.github-pull-hunk-line[data-kind="{kind}"]']
+        )
+
+
+def test_a_hunk_is_painted_as_text_in_a_native_disclosure() -> None:
+    """The lines' classes and split are the session's; what paint does with them is here."""
+
+    source = PAGE_JS.read_text(encoding="utf-8")
+    assert '"data-kind": line.kind }, [line.text])' in source
+    # Stateless: the browser opens it, and nothing of the page listens or remembers.
+    assert 'h("details", { class: "github-pull-hunk-earlier" }' in source
+    assert "toggle" not in source
+
+
 def _vertical_margins(declarations: str) -> tuple[str, str]:
     """The top and bottom of a rule's ``margin`` shorthand."""
 
