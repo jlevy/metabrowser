@@ -1826,6 +1826,30 @@
   }
 
   /**
+   * Say what an address with a short commit ID or a ref name needs, instead of that the
+   * commit could not be loaded.
+   *
+   * @param {string} revision
+   * @param {MetabrowserPreviewClaim} previewClaim
+   */
+  function showRevisionNotFull(revision, previewClaim) {
+    shell()?.renderPreviewNode(
+      missingCommitNode(
+        {
+          state: "not_full",
+          title: "Full commit ID needed",
+          detail:
+            `A commit’s address uses its full 40- or 64-character ID, not “${revision}”. ` +
+            "Open the commit from the Git tab to get it.",
+          retry: false,
+        },
+        null,
+      ),
+      previewClaim,
+    );
+  }
+
+  /**
    * @param {string} revision
    * @param {{fromRoute?: boolean, rowElement?: HTMLElement}} [options]
    *   `fromRoute` when the URL is already this commit (restore on load), so
@@ -1961,20 +1985,7 @@
             // one; a mirror's fetch from the origin continues after it.
             await showMissingCommit(revision, previewClaim);
           } else if (refusedRevision === revision) {
-            bridge.renderPreviewNode(
-              missingCommitNode(
-                {
-                  state: "not_full",
-                  title: "Full commit ID needed",
-                  detail:
-                    `A commit’s address uses its full 40- or 64-character ID, not “${revision}”. ` +
-                    "Open the commit from the Git tab to get it.",
-                  retry: false,
-                },
-                null,
-              ),
-              previewClaim,
-            );
+            showRevisionNotFull(revision, previewClaim);
           } else {
             bridge.renderPreviewHtml(
               '<div class="preview-empty">Could not load this commit.</div>',
