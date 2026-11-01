@@ -28,9 +28,9 @@ editable. tbd serves these copies instead of its built-in versions.
 - [**plan-implementation-with-beads**](./shortcuts/plan-implementation-with-beads.md):
   Create implementation beads from a feature planning spec
 - [**review-github-pr**](./shortcuts/review-github-pr.md): Review a GitHub pull request
-  and publish the review to a chosen channel (formal review, PR comment, GitHub issue,
-  or in-repo review doc).
-  To fix the findings, see address-pr-review.
-- [**stacked-prs**](./shortcuts/stacked-prs.md): When to split work into a stack of
-  dependent PRs, how stacks line up with beads, and how the PR shortcuts change when a
-  branch is part of a stack
+  at a pinned head and publish the review with its header and marker, as a formal GitHub
+  review by default or on the channel the user chose.
+  Covers senior, dedicated (securi
+- [**stacked-prs**](./shortcuts/stacked-prs.md): When to use formal GitHub PR stacks,
+  how they align with beads, and how to link and verify them with gh stack; chained
+  branch bases alone do not count
