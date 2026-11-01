@@ -9,7 +9,7 @@ import { buildFileTypeSummaryModel, normalizeRollupEnvelope } from "./file-type-
  * @param {MetabrowserPublicSdk} mb
  * @param {SummaryPalette} palette
  * @param {{acquire(path: string): {publish(value: unknown): void, release(): void}}} projectionPool
- * @param {{mount: (container: HTMLElement, parts?: {metric?: boolean, ignored?: boolean}) => () => void, get: () => {metric: "size" | "files", includeIgnored: boolean}, subscribe: (listener: (state: {metric: "size" | "files", includeIgnored: boolean}) => void) => () => void}} rollupControls
+ * @param {{mount: (container: HTMLElement) => () => void, get: () => {metric: "size" | "files", includeIgnored: boolean}, subscribe: (listener: (state: {metric: "size" | "files", includeIgnored: boolean}) => void) => () => void}} rollupControls
  * @param {{signal?: AbortSignal}} options
  */
 export function mountFileTypeSummary(

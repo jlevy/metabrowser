@@ -21,7 +21,7 @@
 import { mountFileTotalsPanel } from "./file-totals-panel.js";
 import { mountFileTypeSummary } from "./file-type-summary.js";
 
-/** @typedef {{mount: (container: HTMLElement, parts?: {metric?: boolean, ignored?: boolean}) => () => void, get: () => {metric: "size" | "files", includeIgnored: boolean}, subscribe: (listener: (state: {metric: "size" | "files", includeIgnored: boolean}) => void) => () => void}} FolderRollupControls */
+/** @typedef {{mount: (container: HTMLElement) => () => void, get: () => {metric: "size" | "files", includeIgnored: boolean}, subscribe: (listener: (state: {metric: "size" | "files", includeIgnored: boolean}) => void) => () => void}} FolderRollupControls */
 
 /**
  * @param {HTMLElement} container
@@ -45,8 +45,8 @@ export function mountFileOverviewPanel(
   const totalsContainer = document.createElement("div");
   const breakdownContainer = document.createElement("div");
   container.append(controls, totalsContainer, breakdownContainer);
-  // No parts argument: this row is both halves of the rollup controls, which
-  // is the whole point of the section.
+  // This row is both halves of the rollup controls, which is the whole point
+  // of the section.
   const unmountControls = rollupControls.mount(controls);
 
   // Totals first, then the breakdown that refines them — the same order a

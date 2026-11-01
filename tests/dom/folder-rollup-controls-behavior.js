@@ -39,7 +39,7 @@ async function main() {
     innerHTML: "",
     classList: { add() {} },
   };
-  const unmount = state.mount(container, { metric: true, ignored: false });
+  const unmount = state.mount(container);
   const metricGroup = renderedGroups.at(-1);
   if (
     metricGroup.value !== "files" ||
@@ -48,25 +48,14 @@ async function main() {
   ) {
     throw new Error(`unexpected metric chooser: ${JSON.stringify(metricGroup)}`);
   }
-  if (container.innerHTML !== "<span>metric</span>" || renderedChecks.length !== 0) {
-    throw new Error(`metric-only mount leaked scope controls: ${container.innerHTML}`);
-  }
-  unmount();
-
-  const scopeContainer = {
-    innerHTML: "",
-    classList: { add() {} },
-  };
-  const unmountScope = state.mount(scopeContainer, { metric: false, ignored: true });
   if (
-    scopeContainer.innerHTML !== "<span>ignored</span>" ||
-    renderedGroups.length !== 1 ||
+    container.innerHTML !== "<span>metric</span><span>ignored</span>" ||
     renderedChecks.at(-1).label !== "Show ignored" ||
     renderedChecks.at(-1).checked !== true
   ) {
-    throw new Error(`scope-only mount leaked metric controls: ${scopeContainer.innerHTML}`);
+    throw new Error(`mount did not render both controls: ${container.innerHTML}`);
   }
-  unmountScope();
+  unmount();
 
   // A pinned revision has no ignore state, so it is never offered the switch.
   const pinned = module.createFolderRollupControls({ ...mb, sourceKind: () => "git_revision" });
