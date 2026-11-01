@@ -21,9 +21,10 @@ or invented mtime. ``/api/tree`` also carries whole-tree ``extensions``,
 that index. ``types`` and ``min_size`` keep ancestor trees of matching blobs
 and emit subtree ``filtered`` totals. Type matching uses the same bounded
 compound-tail logical extension as filesystem inventory. ``include_ignored=0`` is a
-no-op because ignore is absent. SPA file nodes and blob ``/api/file``
-envelopes emit that tail as ``ext``; ``logical_ext`` is only the inner
-extension of a compressed name on tree nodes. Blob file envelopes omit
+no-op because ignore is absent. SPA file nodes emit that tail as ``ext``;
+``logical_ext`` is only the inner extension of a compressed name on tree nodes.
+Blob ``/api/file`` envelopes emit the name's last extension as ``ext``, as a
+folder's do, and choose the kind from it (:func:`blob_logical_ext`). They omit
 compressed identity because blobs are stored bytes with no gzip smudge.
 Markdown blob envelopes include parsed YAML ``frontmatter`` and
 ``frontmatter_error``. Text blobs use the same first-window and highlight

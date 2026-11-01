@@ -692,6 +692,8 @@ line, and a file holding records from both states is refused.
 
 `cached` is what an installation runs from its second start, and the state a claim about
 a release is made in.
+A round that reports these figures names the state as `method.bytecode` in its artifact,
+and `report.md` marks the round’s row with it.
 The standard library’s bytecode is not read.
 Each record names the interpreter its build ran on, as `python` and `python_base`, and
 builds whose interpreters report different versions are refused; both environments come

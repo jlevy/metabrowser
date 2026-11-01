@@ -72,6 +72,7 @@ def _store(tmp_path: Path) -> tuple[Path, str]:
             b"notes": _LINES,
             b"doc.md": _FRONTMATTER,
             b"session.jsonl": _JSONL,
+            b"run.codex.jsonl": _JSONL,
             b"pic.png": _PNG_HEADER,
             b"data.bin": _BINARY,
         },
@@ -267,6 +268,8 @@ def test_a_blob_past_the_ceiling_is_classified_like_a_large_file(tmp_path: Path)
             jsonl = await file(b"session.jsonl")
             assert jsonl["type"] == "jsonl"
             assert jsonl["size"] == len(_JSONL)
+            # A compound name takes the JSONL branch here too, as it does on a folder.
+            assert (await file(b"run.codex.jsonl"))["type"] == "jsonl"
 
             past = await client.get(
                 "/api/file", params={"path": _wire(b"lines.txt"), "offset": str(_CEILING)}

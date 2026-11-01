@@ -51,6 +51,13 @@ properties:
       control: {type: string}
       candidate: {type: string}
       record: {type: string, description: Path to the recorded runs.}
+      bytecode:
+        type: string
+        enum: [cached, uncached]
+        description: >-
+          For a start-up round, the bytecode state its builds were measured in, as
+          startup_pairs.py names it. Most of an uncached start is compiling, so the
+          ledger marks a round's figures with this.
   results:
     type: array
     minItems: 1
