@@ -11,8 +11,8 @@
 // `fetch` here answers what each step says instead of asking a server: the rollups below
 // have the shape `/api/rollup` answers, which cli-api.tryscript.md pins.
 //
-// Each step prints what is on screen: the totals, the distribution's text, and whether
-// it offers Retry. Exits 1 on a failed invariant.
+// Each step prints what is on screen: the totals, the distribution's text, starting with
+// its caption, and whether it offers Retry. Exits 1 on a failed invariant.
 
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
@@ -397,13 +397,41 @@ const rollupError = (status) =>
     view.panel.dispose();
   }
 
-  // The ordinary folder, and a refresh that fails once it has shown.
+  // The ordinary folder. The distribution's caption says which tally row its shares
+  // are of and how much that is, and follows Show ignored and the measure; the tally
+  // rows themselves do not move.
   {
     const view = page(COMPLETE_DIR, COMPLETE_ROLLUP);
     await view.settle();
     const complete = view.read();
     assert(complete.distribution.includes("Python"), "the ordinary folder has no distribution");
-    transcript["an ordinary folder"] = complete;
+    assert(
+      complete.distribution.startsWith("Share of Total (3 files)"),
+      `Show ignored on, by files: ${complete.distribution}`,
+    );
+    view.controls.set({ includeIgnored: false });
+    const filesOnly = view.read();
+    assert(
+      filesOnly.distribution.startsWith("Share of Files (2 files)"),
+      `Show ignored off, by files: ${filesOnly.distribution}`,
+    );
+    view.controls.set({ metric: "size" });
+    const bytes = view.read();
+    assert(
+      bytes.distribution.startsWith("Share of Files (2,000 B)"),
+      `Show ignored off, by bytes: ${bytes.distribution}`,
+    );
+    view.controls.set({ includeIgnored: true });
+    const allBytes = view.read();
+    assert(
+      allBytes.distribution.startsWith("Share of Total (3,000 B)"),
+      `Show ignored on, by bytes: ${allBytes.distribution}`,
+    );
+    assert(
+      filesOnly.totals === complete.totals,
+      "Show ignored moved the tally rows, which are fixed populations",
+    );
+    transcript["an ordinary folder"] = { complete, filesOnly, bytes, allBytes };
     view.panel.dispose();
   }
 

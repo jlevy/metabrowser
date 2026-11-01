@@ -1019,10 +1019,17 @@ Fixes:
   With a file opened in-page over a commit, Back changed the address and left the file
   showing, because the Git panel restored a commit only when the page loaded.
 
-- A `/commit/` address with a short commit ID or a ref name now says it needs the full
-  ID, in place of “Could not load this commit.”
+- A `/commit/` address with a short commit ID, or a ref name with no slash in it, now
+  says it needs the full ID, in place of “Could not load this commit.”
   `/api/git/commit/<rev>` still refuses such a revision with 400, and its answer now
   carries the `revision_not_full` code.
+
+- File Overview’s type distribution says which population it counts, in a caption such
+  as “Share of Files (536 files)” or “Share of Total (8,533 files)”. The percentages
+  match the Total row while Show ignored is on and the Files row while it is off, which
+  a reader could otherwise tell only by comparing the numbers of two tables.
+  The caption follows Show ignored and the measure, and is the table’s accessible
+  caption.
 
 ## 0.11.0
 

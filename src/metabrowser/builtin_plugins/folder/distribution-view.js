@@ -77,6 +77,7 @@ export function mountDistributionView(container, model, palette, metricClasses, 
     lastGroupOrder: [],
     table: /** @type {HTMLTableElement | null} */ (null),
     metricHeader: /** @type {HTMLTableCellElement | null} */ (null),
+    caption: /** @type {HTMLTableCaptionElement | null} */ (null),
     metric: /** @type {"files" | "size"} */ ("files"),
     status: /** @type {HTMLElement | null} */ (null),
     mode: "",
@@ -126,6 +127,9 @@ export function updateDistributionView(handle, model) {
   handle.metric = model.metric === "size" ? "size" : "files";
   if (handle.metricHeader) {
     handle.metricHeader.textContent = handle.metric === "size" ? "Bytes" : "Files";
+  }
+  if (handle.caption) {
+    handle.caption.textContent = model.caption ?? "";
   }
   updateRows(handle, model.rows, model.groups || [], handle.metric);
   if (!handle.status) {
@@ -182,6 +186,7 @@ function resetBody(handle, mode) {
   handle.groups.clear();
   handle.table = null;
   handle.metricHeader = null;
+  handle.caption = null;
   handle.status = null;
 }
 
@@ -212,7 +217,10 @@ function ensureDistributionBody(handle) {
     }
   }
   thead.append(headerRow);
-  table.append(columns, thead);
+  const caption = document.createElement("caption");
+  caption.className = "file-type-summary-caption";
+  table.append(caption, columns, thead);
+  handle.caption = caption;
   handle.body.append(table);
   handle.table = table;
   handle.status = element(handle.body, "file-type-summary-status");
@@ -447,7 +455,7 @@ function updateRows(handle, rows, groupOrder, metric = "files") {
 /** @typedef {{classFor: (key: string) => string, styleFor: (key: string) => string, paint: (element: HTMLElement, key: string) => void}} Palette */
 /** @typedef {{countClass: (value: number) => string, sizeClass: (value: number) => string}} MetricClasses */
 /** @typedef {(path: string) => {svg: string, className: string}} FileTypeIconResolver */
-/** @typedef {{state: "pending" | "failed" | "unavailable" | "populated" | "empty" | "ignored-only" | "zero-bytes" | "truncated", metric?: "files" | "size", rows: ReadonlyArray<SummaryRow>, groups?: ReadonlyArray<SummaryGroup>, files?: number, bytes?: number, filesText?: string, allFilesText?: string, bytesText?: string, showIgnored?: boolean, ignoredFiles?: number, ignoredBytes?: number, ignoredFilesText?: string, ignoredBytesText?: string, ignoredFilePercent?: string, ignoredBytePercent?: string, ignoredFileShare?: number, ignoredByteShare?: number, scanning?: boolean, indexFailed?: boolean, indexedFiles?: number, maxFiles?: number}} SummaryModel */
+/** @typedef {{state: "pending" | "failed" | "unavailable" | "populated" | "empty" | "ignored-only" | "zero-bytes" | "truncated", metric?: "files" | "size", rows: ReadonlyArray<SummaryRow>, groups?: ReadonlyArray<SummaryGroup>, caption?: string, files?: number, bytes?: number, filesText?: string, allFilesText?: string, bytesText?: string, showIgnored?: boolean, ignoredFiles?: number, ignoredBytes?: number, ignoredFilesText?: string, ignoredBytesText?: string, ignoredFilePercent?: string, ignoredBytePercent?: string, ignoredFileShare?: number, ignoredByteShare?: number, scanning?: boolean, indexFailed?: boolean, indexedFiles?: number, maxFiles?: number}} SummaryModel */
 /** @typedef {{body: HTMLTableSectionElement}} SummaryGroupHandle */
 /** @typedef {{tr: HTMLTableRowElement, icon: HTMLElement, label: HTMLElement, disclosure: HTMLButtonElement, disclosureLabel: HTMLElement, metricCell: HTMLTableCellElement, metricValue: HTMLElement, metricFill: HTMLElement, metricPercent: HTMLElement}} SummaryRowHandle */
-/** @typedef {{body: HTMLElement, container: HTMLElement, root: HTMLElement, palette: Palette, metricClasses: MetricClasses, fileTypeIcon: FileTypeIconResolver, idPrefix: string, rows: Map<string, SummaryRowHandle>, groups: Map<string, SummaryGroupHandle>, expandedFamilies: Set<string>, lastRows: ReadonlyArray<SummaryRow>, lastGroupOrder: ReadonlyArray<SummaryGroup>, table: HTMLTableElement | null, metricHeader: HTMLTableCellElement | null, metric: "files" | "size", status: HTMLElement | null, mode: string}} DistributionHandle */
+/** @typedef {{body: HTMLElement, container: HTMLElement, root: HTMLElement, palette: Palette, metricClasses: MetricClasses, fileTypeIcon: FileTypeIconResolver, idPrefix: string, rows: Map<string, SummaryRowHandle>, groups: Map<string, SummaryGroupHandle>, expandedFamilies: Set<string>, lastRows: ReadonlyArray<SummaryRow>, lastGroupOrder: ReadonlyArray<SummaryGroup>, table: HTMLTableElement | null, metricHeader: HTMLTableCellElement | null, caption: HTMLTableCaptionElement | null, metric: "files" | "size", status: HTMLElement | null, mode: string}} DistributionHandle */

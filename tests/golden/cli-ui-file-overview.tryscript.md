@@ -13,6 +13,8 @@ index, a running scan, and complete.
 Each step prints what is on screen.
 Only a running scan may show a skeleton: every other answer finishes both bodies, and a
 control changed after a failure keeps the failure’s message.
+On an ordinary folder the distribution’s caption names the tally row its shares are of
+and how much that is, and follows Show ignored and the measure.
 
 ```console
 $ node tests/dom/file-overview-session.js
@@ -37,7 +39,7 @@ $ node tests/dom/file-overview-session.js
     },
     "retried": {
       "totals": "Files 2 files Ignored 1 files Total 3 files",
-      "distribution": "Code Python 3 files 100%",
+      "distribution": "Share of Total (3 files) Code Python 3 files 100%",
       "retry": false
     }
   },
@@ -74,9 +76,26 @@ $ node tests/dom/file-overview-session.js
     "retry": false
   },
   "an ordinary folder": {
-    "totals": "Files 2 files Ignored 1 files Total 3 files",
-    "distribution": "Code Python 3 files 100%",
-    "retry": false
+    "complete": {
+      "totals": "Files 2 files Ignored 1 files Total 3 files",
+      "distribution": "Share of Total (3 files) Code Python 3 files 100%",
+      "retry": false
+    },
+    "filesOnly": {
+      "totals": "Files 2 files Ignored 1 files Total 3 files",
+      "distribution": "Share of Files (2 files) Code Python 2 files 100%",
+      "retry": false
+    },
+    "bytes": {
+      "totals": "Files 2,000 B Ignored 1,000 B Total 3,000 B",
+      "distribution": "Share of Files (2,000 B) Code Python 2,000 B 100%",
+      "retry": false
+    },
+    "allBytes": {
+      "totals": "Files 2,000 B Ignored 1,000 B Total 3,000 B",
+      "distribution": "Share of Total (3,000 B) Code Python 3,000 B 100%",
+      "retry": false
+    }
   }
 }
 ? 0
