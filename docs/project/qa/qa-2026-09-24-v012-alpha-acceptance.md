@@ -901,7 +901,7 @@ On the same commit, one browser measurement backs the runbook’s new check 12 o
 with the back/forward cache on, over eleven full page loads in one tab of that step’s
 folder. No page waited for a connection: the longest wait was 69 ms and the slowest page
 was ready in 562 ms, at a load average of 7 to 8. Back, the type filter, and Safari and
-Firefox were not measured.
+Firefox were not measured; `mb-etqi` tracks the last two.
 
 Otherwise these results are the automated tiers only.
 The manual rows, and the checks only a person can make, were not run on this commit.

@@ -116,7 +116,7 @@ or shows a different revision.
    width, what gives way as a mirror’s headings narrow (steps 1 and 2 of 5.3), the HTML
    Preview frame, the print preview, and Back in check 12 of 3.4 and in steps 4 and 6 of
    5.11, which each browser’s back/forward cache treats differently.
-   Check 12 has been measured only in Chrome.
+   Check 12 has been measured only in Chrome; `mb-etqi` tracks the other two.
    **Pass:** the same results in all three.
    **Fail:** a check that passes in one browser only.
 2. **A private repository your account can read.**
@@ -898,9 +898,10 @@ line. Open that address with the browser’s developer tools open.
     filtered, and where the browser restored the page from its back/forward cache, the
     network panel shows one new `/api/events` request.
     On 0.11.0 the sixth page waited for a connection, for up to about a minute, because
-    each page kept for Back held its event stream open (`mb-tdmd`). The fix is #268’s;
-    the landing gate measured it in stock Chrome (`mb-2g6f`), and Safari and Firefox are
-    unmeasured, which is Part 4 of the walk-through.
+    each page kept for Back held its event stream open (`mb-tdmd`, closed).
+    The fix is #268’s, and the landing gate measured it in stock Chrome (`mb-2g6f`).
+    Back in Safari and Firefox is unmeasured; `mb-etqi` tracks it, in Part 4 of the
+    walk-through.
 
 **Pass:** Every check as described, in both themes.
 The console shows no error except the browser’s own request for `/favicon.ico`, which

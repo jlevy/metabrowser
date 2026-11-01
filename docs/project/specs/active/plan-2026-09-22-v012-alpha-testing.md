@@ -413,6 +413,12 @@ and closed unmerged on 2026-10-26 (`mb-299e`).
 
 - `mb-n2ro`: the landing.
 - `mb-299e`: the decision that #262 is superseded rather than merged.
+- `mb-tdmd`: the wait for a connection after about five full page loads in one tab of a
+  served folder. The fix landed in #268, and the landing gate’s browser differential
+  measured it in stock Chrome, where the candidate had no wait and v0.11.0 did;
+  `mb-2g6f`’s notes hold the figures.
+  Back in Safari and Firefox is unmeasured and is checked under `mb-etqi`, with the
+  checks below.
 - `mb-67s1`: start-up against v0.11.0, measured with compiled bytecode in both builds.
   Instructions retired are within 1.04x for `--show`, `--api`, `--version`, and a
   server’s first answer.
@@ -424,13 +430,8 @@ and closed unmerged on 2026-10-26 (`mb-299e`).
 - `mb-y28u`: the fixes in #264.
 - `mb-gnr9`: the acceptance runs, T0 through T2, in the QA record.
 
-**Still open from before the landing.** `mb-tdmd`: the wait for a connection after about
-five full page loads in one tab of a served folder.
-The fix landed in #268. The landing gate’s browser differential measured it in stock
-Chrome, where the candidate had no wait and v0.11.0 did; `mb-2g6f`’s notes hold the
-figures. Safari and Firefox are unmeasured, and are among the checks below.
-The Pulls tab is [planned](plan-2026-10-01-github-pulls-tab.md) only, and starts after
-0.12.0 is tagged.
+**Not in this release.** The Pulls tab is [planned](plan-2026-10-01-github-pulls-tab.md)
+only, and starts after 0.12.0 is tagged.
 
 **Review.** The
 [review ledger](../../reviews/review-2026-10-01-v012-stack-review-ledger.md) has a row
@@ -448,7 +449,7 @@ Its #267 row says where that pull request’s independent review stands (`mb-55t
   well as in the `admitted-git` jobs; also in #251’s description.
 - Whether to add a line-coverage tool; the cost is set out in
   [#255](https://github.com/jlevy/metabrowser/pull/255)’s description.
-- The checks only a person can make, which are Part 4 of the runbook’s
+- The checks only a person can make (`mb-etqi`), which are Part 4 of the runbook’s
   [walk-through](../../../qa-v012-repository-library.md#walk-through-this-yourself):
   Safari and Firefox as well as Chrome, including repeated page loads in one tab; a
   private repository the user’s account can read and one it cannot, which is row M10 and
