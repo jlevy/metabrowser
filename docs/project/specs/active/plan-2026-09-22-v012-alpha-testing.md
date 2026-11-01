@@ -1,6 +1,7 @@
 # Plan: v0.12 Alpha Testing and Stack Acceptance
 
-**Status:** Active until the stack lands.
+**Status:** Active until 0.12.0 is released.
+The stack this plan tested has merged to `main`, and 0.12.0 is not yet tagged.
 T0 through T2 were run on 2026-09-24 in the scope of the
 [thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md), and
 [QA: v0.12 alpha acceptance](../../qa/qa-2026-09-24-v012-alpha-acceptance.md) records
@@ -13,13 +14,12 @@ URL, inspect the intended immutable content, and reopen previously acquired cont
 offline. A directly addressed PR must work without first populating a discovery index.
 Tests must prove the installed application path as well as the individual contracts.
 
-Implementation is one linear chain of open pull requests above `main`, linked on GitHub
-as [stack 218](https://github.com/jlevy/metabrowser/stack/218). The QA runbook’s
-[Pins](../../../qa-v012-repository-library.md#pins) section lists the chain, including a
-layer not yet linked to the stack, and finds its top.
-Keep the stack together until it is stabilized; an intermediate testing milestone does
-not authorize merging a lower layer.
-The landing coordinator is `mb-n2ro`.
+Implementation was one linear chain of pull requests above `main`, linked on GitHub as
+[stack 218](https://github.com/jlevy/metabrowser/stack/218). It has merged, so the
+candidate for everything below is `main`, and the QA runbook’s
+[Pins](../../../qa-v012-repository-library.md#pins) section selects a commit of it.
+The release coordinator is `mb-4bd2`; `mb-n2ro`, which coordinated the landing, is
+closed.
 
 The [thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md) owns the v0.12 feature
 design and the capabilities it defers.
@@ -33,10 +33,10 @@ prerequisite for these product milestones.
 
 ## Feature Coverage
 
-The states below describe implementation, not merge approval.
-**Built on stack** means the code is in the integration build; **retired** means the
-thin-mirror plan replaced the design; **deferred** means the user moved the capability
-out of v0.12 on 2026-09-23.
+The states below describe implementation, not release approval.
+**Built on stack** means the code was built on the stack and is now on `main`,
+unreleased; **retired** means the thin-mirror plan replaced the design; **deferred**
+means the user moved the capability out of v0.12 on 2026-09-23.
 
 | Feature / owning phase | State | What works and what remains | First useful test |
 | --- | --- | --- | --- |
@@ -77,23 +77,16 @@ submodule checkouts.
 
 ## Mechanical Mergeability and Product Readiness
 
-Check the live stack for adjacent parents, inclusion of current `main`, clean merge
-results, passing checks and ready-for-review PR state.
-Resolve any actual branch rule or review requirement reported by GitHub.
-Record that evidence on the integration PR.
-
-Ready-for-review status and a clean merge do not complete the acceptance work in this
-plan. Keep outstanding product findings in their beads and preserve the agreed
-whole-stack landing decision independently of those GitHub flags.
+Green CI on `main` does not complete the acceptance work in this plan, and neither did
+the merge. Keep outstanding product findings in their beads, and keep the release
+decision independent of those GitHub flags.
 
 ## Delivery
 
 Foundation stabilization is [#226](https://github.com/jlevy/metabrowser/pull/226), whose
 reviewed green head is recorded in `mb-j439`. The work above it follows the thin-mirror
 plan, whose [Delivery](plan-2026-09-23-v012-thin-mirror.md#delivery) section maps each
-step and follow-up to its pull request.
-Every pull request extends the tip of the chain and is reviewed and green before the
-next one starts from its head.
+step and follow-up to its pull request, all of them merged.
 
 The milestones and manual matrix below apply wherever the thin-mirror plan keeps the
 capability; rows for a deferred capability say so.
@@ -102,21 +95,21 @@ capability; rows for a deferred capability say so.
 
 | Milestone | Entry condition | User-visible acceptance | Current availability |
 | --- | --- | --- | --- |
-| T0: local Git foundation | Current integration tip, supported Git, isolated application home | Acquire a `file://` origin, reopen its default full OID, inspect files/tree through `--show` and `--api`, and preserve local browsing | Passed: foundation acceptance in #226 and M01 in the acceptance run. Rerun it with the quick start below and the [foundation QA runbook](../../../qa-v012-repository-library.md) |
+| T0: local Git foundation | Selected commit, supported Git, isolated cache directory | Acquire a `file://` origin, reopen its default full OID, inspect files/tree through `--show` and `--api`, and preserve local browsing | Passed: foundation acceptance in #226 and M01 in the acceptance run. Rerun it with the quick start below and the [foundation QA runbook](../../../qa-v012-repository-library.md) |
 | T1: repository URL alpha | URL open and serving, ref and path selection, and trust integration (thin-mirror steps 3 to 5) | Open repository/tree/blob/commit/raw URLs; view content, history, and diffs; preserve slash-containing refs and path/line intent; reopen cached content offline | Passed in the acceptance run and its reruns; M03’s base and head files pass in the rerun on View file |
 | T2: direct PR alpha | T1 plus `gh` pull-request records and the pull-request page (steps 6 and 7) | Paste a PR URL; read its description, review/check state, changed files, and pinned comparison; reload and reopen offline | Passed in the acceptance run and its reruns, M08’s base and head files included, except M10’s private and revoked cases, which are blocked for lack of a private fixture |
 | T3: discovery, navigation, and anchors | Deferred with the capabilities it tests | Bounded paginated PR navigation with honest counts/partiality, direct selection outside that index, and explicit outdated/unmappable anchors | Not part of v0.12 |
 
-T2, in the thin-mirror scope, is the v0.12 landing milestone.
-T3 and SSH acquisition are deferred, and neither gates landing.
+T2, in the thin-mirror scope, was the v0.12 landing milestone and is the release’s. T3
+and SSH acquisition are deferred, and neither gates the release.
 A T0 build must be described as a foundation test build, not as GitHub URL or PR
 support.
 
 ## Suggested Testing Walkthrough
 
-1. **Select the integration build.** Follow the exact-head checkout procedure below,
-   install the locked dependencies, and record the build and tool versions.
-   Use an isolated application home for acquisition tests.
+1. **Select the build.** Follow the exact-commit checkout procedure below, install the
+   locked dependencies, and record the build and tool versions.
+   Use an isolated cache directory for acquisition tests.
 2. **Check the existing browser first.** Run
    `uv --config-file uv.toml run --frozen metab ./tests/manual-fixtures --no-open`, open
    the printed URL, and perform M01. Stop that server with Ctrl-C when finished.
@@ -135,7 +128,7 @@ support.
 6. **Test one PR completely.** Run M07–M11 from a cold home, then warm/restart/offline.
    Inspect both sides of changed files, test private access when a private fixture
    exists, and interrupt a refresh.
-   This completes T2, the landing milestone.
+   This completes T2, the release milestone.
 
 M10b, M12, and M13 test deferred capabilities and are not run for v0.12.
 
@@ -145,16 +138,14 @@ Repeat the relevant regressions when a later layer changes a shared path.
 
 ## Choose and Record the Integration Build
 
-Use the current top PR from the live stack, including any testing or stabilization
-layers added after the Git-pin layer.
+Pin `origin/main`, or for a proposed fix its reviewed head, as
+[Pins](../../../qa-v012-repository-library.md#pins) in the QA runbook shows.
 Do not reset an existing development branch or test a stale local tracking ref.
 
 ```shell
-# Set ALPHA_PR to the top pull request of the chain, as Pins in the QA runbook shows.
-: "${ALPHA_PR:?Set ALPHA_PR to the current integration PR number}"
-ALPHA_HEAD="$(gh pr view "$ALPHA_PR" --repo jlevy/metabrowser --json headRefOid --jq .headRefOid)"
+git fetch origin main
+ALPHA_HEAD="$(git rev-parse origin/main)"
 ALPHA_WORKSPACE="$(mktemp -d "${TMPDIR:-/tmp}/metab-alpha.XXXXXX")"
-git fetch origin "$ALPHA_HEAD"
 git worktree add --detach "$ALPHA_WORKSPACE/checkout" "$ALPHA_HEAD"
 cd "$ALPHA_WORKSPACE/checkout"
 git rev-parse HEAD
@@ -162,7 +153,8 @@ make install
 uv --config-file uv.toml run --frozen metab --version
 git --version
 node --version
-gh pr checks "$ALPHA_PR" --repo jlevy/metabrowser
+gh run list --repo jlevy/metabrowser --branch main --commit "$ALPHA_HEAD" \
+  --json workflowName,status,conclusion,url
 ```
 
 Record the exact head, base, current `main`, OS, Git, Python, Node, browser, installed
@@ -235,7 +227,7 @@ evidence.
 
 ## Automated Evidence
 
-Run `make verify` on the integration head.
+Run `make verify` on the selected commit.
 It owns formatting, types, parity, Python and browserless tests, CLI goldens, dependency
 audits, package inspection, and installed-wheel smoke tests.
 A focused pass speeds diagnosis but does not replace that gate.
@@ -331,9 +323,9 @@ fixtures cover failure cases that are costly to force against GitHub.
 
 ## Recording Results and Landing
 
-For each run, attach the following to the integration PR or QA bead:
+For each run, attach the following to the pull request under test or the QA bead:
 
-- Exact integration head/base/main, installed wheel/version, platform/tool versions,
+- Exact commit and current `main`, installed wheel/version, platform/tool versions,
   fixture revision/PR and observation time.
 - Scenario ID, command or browser action, expected and actual result, and **pass / fail
   / blocked / not run**. Record skips with their reason.
@@ -350,76 +342,83 @@ repeat the cold/warm/offline path and the relevant browser rows.
 `make build` supplies the baseline installed-wheel checks; the feature-specific
 installed scenarios above must extend that evidence.
 
-Before landing the whole stack, refresh the per-layer review ledger after all functional
-changes, resolve or explicitly disposition every finding, reconcile beads/specs, confirm
-ready-for-review state, and run green per-layer CI plus the top integration check
-against current `main`. Preserve the formal stack and add future PRs above its current
-tip. Land and tag only after the agreed milestone has passed and the user authorizes
-landing/release; this testing plan performs neither.
+Before tagging 0.12.0, resolve or explicitly disposition every finding, reconcile
+beads/specs, and confirm green CI on the exact commit to be tagged.
+The [release checklist](../../../publishing.md#release-checklist) is the procedure.
+Tag only after the agreed milestone has passed and the user authorizes the release; this
+testing plan performs neither.
 
 ### Landing status
 
-Recorded 2026-10-01, late.
-These commands give the current state, and they win where this section disagrees:
+Recorded 2026-11-01, on `main` at `c934a0b4`. These commands give the current state, and
+they win where this section disagrees:
 
+- `tbd show mb-4bd2` gives the order of the remaining work and the beads that block the
+  release; `mb-n2ro`, which coordinated the landing, is closed;
 - `tbd list --label release:v0.12.0` lists the open v0.12 beads;
-- `tbd show mb-n2ro` names the beads that block landing;
-- `gh api repos/jlevy/metabrowser/stacks/218 --jq '[.pull_requests[].number]'` lists the
-  stack, and the chain command under [Pins](../../../qa-v012-repository-library.md#pins)
-  in the QA runbook also lists a layer not yet linked to it;
-- `gh pr checks <pull request>` shows a layer’s CI.
+- `gh release list --repo jlevy/metabrowser` and `git tag --list 'v0.12*'` say what is
+  tagged and released;
+- `git log --first-parent origin/main` lists what has landed;
+- `gh run list --repo jlevy/metabrowser --branch main --commit <commit>` shows a
+  commit’s CI.
 
-**The stack.** The chain from #125 to
-[#265](https://github.com/jlevy/metabrowser/pull/265) is one native GitHub stack,
-[#218](https://github.com/jlevy/metabrowser/stack/218), with base `main`. Until
-2026-10-01 the chain was split across three native stacks, with twelve pull requests in
-none; the two upper groupings were dissolved and their pull requests appended to #218.
-No branch, base, or head changed.
-Two layers are still to be appended to its top with `gh stack link 218 <pr>`, when they
-are ready: [#267](https://github.com/jlevy/metabrowser/pull/267), which fixes the
-regressions named below, and then [#260](https://github.com/jlevy/metabrowser/pull/260),
-which carries this section.
-Two pull requests stay outside it:
+**Where it stands.** `main` holds all of v0.12, and 0.12.0 is not tagged: the latest
+release is v0.11.0. The chain from #125 to
+[#260](https://github.com/jlevy/metabrowser/pull/260), GitHub stack
+[#218](https://github.com/jlevy/metabrowser/stack/218), merged on 2026-10-02
+(`aa970853`). [#268](https://github.com/jlevy/metabrowser/pull/268) landed above it on
+2026-10-04 (`0b016e4b`), with the breaking split of the cache and configuration roots
+and the page-connection fix.
+[#269](https://github.com/jlevy/metabrowser/pull/269) took Tryscript 0.3.1 on
+2026-10-26, so the locked npm audit passes.
+Two pull requests stayed out of `main`:
 [#247](https://github.com/jlevy/metabrowser/pull/247), the do-not-merge reference
-branch, and [#262](https://github.com/jlevy/metabrowser/pull/262), below.
+branch, and [#262](https://github.com/jlevy/metabrowser/pull/262), superseded by #268
+and closed unmerged on 2026-10-26 (`mb-299e`).
 
 **Gates, and their state.**
 
 - **The landing gate** (`mb-2g6f`, in progress): regular-folder behavior is unchanged
   from v0.11.0 except for documented changes.
-  It has three checks.
-  - The evidence audit is done.
-    It found two unexplained regular-folder differences, the review of their fix found a
-    third, and all three are restored in
-    [#264](https://github.com/jlevy/metabrowser/pull/264) (`mb-y28u`, closed).
-  - The data differential is done: it reports no unexplained difference, and two
-    regressions, `STRUCTURED_CACHE_SIZE=0` breaking structured views and
-    `/api/plugin/diff/document` answering 404 for a file not named `.patch` or `.diff`.
-    Both are fixed in [#267](https://github.com/jlevy/metabrowser/pull/267) (`mb-55tr`),
-    which also restores two browser differences: a stray attribute on every tree folder
-    row, and the 21px line pitch of source that is not highlighted.
-  - The browser differential is done on an earlier head (`f62c16b1`): 1,320 steps, no
-    error or failed action on either build, and the accept rule not yet met.
-    The hover prefetch it reports is fixed in #264, two more are fixed in #267, and one
-    (a below-the-fold image fetched earlier, with no cause established) is open.
-    All three checks are owed a run on the final head.
-
-  Its accept rule also asks for the written list of intended changes to existing
+  Its three checks, the evidence audit and the data and browser differentials, were run
+  again on 2026-10-26 on `main` at `c2d493e9`, above #268. Every flagged row was
+  classified by hand, and none is an unexplained product difference; the bead’s notes
+  hold the counts. No product file has changed since:
+  `git diff --stat c2d493e9 c934a0b4 -- src pyproject.toml uv.lock package-lock.json`
+  prints nothing. A product change above `c934a0b4` needs the checks run again.
+  The gate’s accept rule also asks for the written list of intended changes to existing
   behavior, which is
   [Changes to existing behavior](../../reviews/review-2026-10-01-v012-changes-to-existing-behavior.md),
   for the user to sign off.
 
-- **The release rehearsal** (`mb-cf6y`, in progress; exp-038, #265): steps 1, 2, 4, and
-  5 of the release checklist pass.
-  Step 3, the previous-release performance loop, is unresolved: equivalence passes, and
-  every responsiveness and correctness gate passes; the wall-clock gates failed for both
-  builds, v0.11.0 as often as the candidate, on a loaded machine.
-  A run on a quiet machine, on the final tip, is owed.
+- **The release rehearsal** (`mb-cf6y`, in progress; exp-038, #265): step 3 of the
+  release checklist, the previous-release performance loop, is still owed.
+  exp-038 did not clear the candidate, because the wall-clock gates failed for both
+  builds on a loaded machine, and #268 landed above what it measured.
+  The run needs a quiet machine and the commit to be tagged, as does a new pass of steps
+  1, 2, 4, and 5.
 
-- **These documents** (`mb-65pn`, in progress): #260.
+- **The two test tiers CI does not run:** on 2026-11-01, on `c934a0b4`,
+  `make test-live-github` passed 7 of 7 and `make test-macos` passed 19 of 19. The
+  [QA record](../../qa/qa-2026-09-24-v012-alpha-acceptance.md#addendum-2026-11-01) holds
+  the tool versions.
+
+- **Manual QA:** owed.
+  The full runbook on an installed wheel from the release commit, and the checks below
+  that only a person can make.
+
+- **These documents** (`mb-bdwl`, in progress).
 
 **Closed.**
 
+- `mb-n2ro`: the landing.
+- `mb-299e`: the decision that #262 is superseded rather than merged.
+- `mb-tdmd`: the wait for a connection after about five full page loads in one tab of a
+  served folder. The fix landed in #268, and the landing gate’s browser differential
+  measured it in stock Chrome, where the candidate had no wait and v0.11.0 did;
+  `mb-2g6f`’s notes hold the figures.
+  Back in Safari and Firefox is unmeasured and is checked under `mb-etqi`, with the
+  checks below.
 - `mb-67s1`: start-up against v0.11.0, measured with compiled bytecode in both builds.
   Instructions retired are within 1.04x for `--show`, `--api`, `--version`, and a
   server’s first answer.
@@ -431,18 +430,14 @@ branch, and [#262](https://github.com/jlevy/metabrowser/pull/262), below.
 - `mb-y28u`: the fixes in #264.
 - `mb-gnr9`: the acceptance runs, T0 through T2, in the QA record.
 
-**Held until after the landing.** `mb-tdmd`: after about five full page loads in one tab
-of a served folder, the next page waits for a connection.
-v0.11.0 does the same, and a mirrored repository is not affected.
-Its fix, #262, is out of the stack, because its review found that it would change how a
-regular page behaves on Back.
-The Pulls tab is [planned](plan-2026-10-01-github-pulls-tab.md) only, and starts after
-the landing.
+**Not in this release.** The Pulls tab is [planned](plan-2026-10-01-github-pulls-tab.md)
+only, and starts after 0.12.0 is tagged.
 
 **Review.** The
 [review ledger](../../reviews/review-2026-10-01-v012-stack-review-ledger.md) has a row
-for every pull request in the stack and states its limits: no person has reviewed the
-stack, and no pull request has a GitHub review decision.
+for every pull request in the stack and for #268, and states its limits: no person has
+reviewed the stack, and no pull request has a GitHub review decision.
+Its #267 row holds that pull request’s independent review, which reported on 2026-11-01.
 
 **The user’s decisions and checks.**
 
@@ -454,20 +449,18 @@ stack, and no pull request has a GitHub review decision.
   well as in the `admitted-git` jobs; also in #251’s description.
 - Whether to add a line-coverage tool; the cost is set out in
   [#255](https://github.com/jlevy/metabrowser/pull/255)’s description.
-- The checks only a person can make, which are Part 4 of the runbook’s
+- The checks only a person can make (`mb-etqi`), which are Part 4 of the runbook’s
   [walk-through](../../../qa-v012-repository-library.md#walk-through-this-yourself):
-  Safari and Firefox as well as Chrome; a private repository the user’s account can read
-  and one it cannot, which is row M10 and stays blocked until an operator-owned private
-  fixture exists; and a third-party plugin against Plugin SDK 0.7, where one exists.
-- The merge method, a merge commit or a squash, which is still open.
-- Approval to land (`mb-n2ro`).
+  Safari and Firefox as well as Chrome, including repeated page loads in one tab; a
+  private repository the user’s account can read and one it cannot, which is row M10 and
+  stays blocked until an operator-owned private fixture exists; and a third-party plugin
+  against Plugin SDK 0.7, where one exists.
+- Approval to tag and release 0.12.0 (`mb-4bd2`).
 
-**Landing method.** Landing is `gh stack merge` on stack #218, bottom to top and
-all-or-nothing, only on the user’s explicit approval.
-No pull request is retargeted to `main`: that would flatten the stack.
-`gh stack merge` checks that each pull request is open and not a draft, and
-[#241](https://github.com/jlevy/metabrowser/pull/241), the acceptance record, is still a
-draft, as #260 is.
+**Release method.** Steps 6 to 10 of the
+[release checklist](../../../publishing.md#release-checklist), from `main`, only on the
+user’s explicit approval.
+Nothing is left to merge for it.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

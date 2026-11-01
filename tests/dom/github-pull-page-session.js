@@ -320,6 +320,88 @@ function createPage(runtime, options) {
   };
 }
 
+/** Context lines of a long hunk, numbered from *from* to *to*. */
+function context(from, to) {
+  return Array.from({ length: to - from + 1 }, (_, index) => ` line ${from + index}`);
+}
+
+/** A review comment's hunk and where it points, for each thing the page decides of it. */
+function hunkCases() {
+  const header = "@@ -1,30 +1,30 @@ def main():";
+  const single = { line: 30, original_line: 30, start_line: null, original_start_line: null };
+  const hunk = (...lines) => lines.flat(2).join("\n");
+  // Lines 1 to 30 of the new side, where 15 and 25 replaced older lines.
+  const changed = [
+    context(1, 14),
+    "-old 15",
+    "+new 15",
+    context(16, 24),
+    "-old 25",
+    "+new 25",
+    context(26, 30),
+  ];
+  return [
+    ["a short hunk is whole", { ...single, diff_hunk: "@@ -1 +1,2 @@\n one\n+two" }],
+    [
+      "the header and a tail's worth is whole: a disclosure hides no single line",
+      { ...single, diff_hunk: hunk(header, context(23, 30)) },
+    ],
+    ["one line more is past the tail", { ...single, diff_hunk: hunk(header, context(22, 30)) }],
+    ["a long hunk shows its tail", { ...single, diff_hunk: hunk(header, changed) }],
+    [
+      "a range longer than the tail is all shown, from its first line, not counting a deletion",
+      {
+        ...single,
+        start_line: 14,
+        original_start_line: 14,
+        diff_hunk: hunk(header, changed),
+      },
+    ],
+    [
+      "a range on the left counts deletions and not additions",
+      {
+        ...single,
+        side: "LEFT",
+        start_line: 15,
+        original_start_line: 15,
+        diff_hunk: hunk(header, changed),
+      },
+    ],
+    [
+      "an outdated comment's range is its original one",
+      {
+        line: null,
+        start_line: null,
+        original_line: 30,
+        original_start_line: 14,
+        diff_hunk: hunk(header, changed),
+      },
+    ],
+    [
+      "a range above what the record kept shows all it kept",
+      {
+        ...single,
+        start_line: 1,
+        original_start_line: 1,
+        diff_hunk: hunk(context(19, 30)),
+      },
+    ],
+    [
+      "a hunk's text is only ever text",
+      {
+        ...single,
+        diff_hunk: hunk(
+          header,
+          "+<img src=x onerror=alert(1)>",
+          "-</pre><script>alert(1)</script>",
+          " @@ not a header",
+          "\\ No newline at end of file",
+        ),
+      },
+    ],
+  ];
+}
+
 async function main() {
   const runtime = await import(pathToFileURL(pagePath).href);
   const record = recorded.current.body.record;
@@ -440,6 +522,22 @@ async function main() {
     ),
   );
 
+  // A tab the page does not have, which the route's grammar never sends: taken, it would
+  // select neither tab above the conversation it shows. Asked for at the start or later,
+  // the page stays on a tab it has.
+  const unknownTab = createPage(runtime, { number: 7, tab: "commits" });
+  unknownTab.server.pull = recorded.absent;
+  steps.push(
+    await unknownTab.step("a page opened on a tab it does not have shows the conversation", () =>
+      unknownTab.controller.start(),
+    ),
+  );
+  steps.push(
+    await unknownTab.step("a tab it does not have is not taken later", async () =>
+      unknownTab.controller.setTab("commits"),
+    ),
+  );
+
   // What the header says, and how the checks are counted, for an open, a merged, and a
   // closed pull request, each as the served server answered it.
   const states = Object.fromEntries(
@@ -491,6 +589,36 @@ async function main() {
     ["no comparison in the record", recordComparison, null],
   ].map(([when, mounted, next]) => `${when}: ${runtime.filesAction(mounted, next)}`);
 
+  // What a review comment shows of its hunk: the recorded pull request with one comment,
+  // whose fields are the case's, through describePull. The stand-in's hunks are short, as
+  // a recording is small, so the long ones are written here. Whatever the case, the two
+  // parts hold the hunk's every line in order, and the tail ends with the hunk's end.
+  const reviewComment = record.review_comments[0];
+  const hunks = Object.fromEntries(
+    hunkCases().map(([name, fields]) => {
+      const answer = structuredClone(recorded.current.body);
+      answer.record.review_comments = [{ ...reviewComment, ...fields }];
+      const [{ hunk }] = runtime.describePull(answer, {
+        number: 7,
+        tab: "",
+        nowMs: page.clock.now,
+      }).reviewComments;
+      const parts = [...hunk.earlier, ...hunk.shown].map((line) => line.text);
+      assert(parts.join("\n") === fields.diff_hunk, `${name}: a line of the hunk was lost`);
+      assert(hunk.shown.at(-1).text === parts.at(-1), `${name}: the tail lost the commented line`);
+      return [
+        name,
+        {
+          earlier:
+            hunk.earlier.length === 0
+              ? null
+              : `${hunk.earlier.length} lines: ${hunk.earlier[0].text} ... ${hunk.earlier.at(-1).text}`,
+          shown: hunk.shown.map((line) => `${line.kind}: ${line.text}`),
+        },
+      ];
+    }),
+  );
+
   console.log(
     JSON.stringify(
       {
@@ -501,6 +629,7 @@ async function main() {
         wire: runtime.gitPathWire("src/app.txt"),
         pageDefense: inert,
         filesChanged: files,
+        hunks,
       },
       null,
       2,

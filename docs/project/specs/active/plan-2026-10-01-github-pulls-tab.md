@@ -2,9 +2,9 @@
 
 **Status:** Planned, not started.
 Nothing this plan designs exists yet: no route, model, tab, or test.
-Work starts after the v0.12 stack lands (`mb-n2ro`), as a new stack of pull requests,
-each merged to `main` before the next one starts.
-[Delivery](#delivery) lists the steps, and
+The v0.12 stack has landed, and the work waits for 0.12.0 to be tagged (`mb-4bd2`). It
+then starts as a new stack of pull requests, each merged to `main` before the next one
+starts. [Delivery](#delivery) lists the steps, and
 [Open Decisions for the User](#open-decisions-for-the-user) lists what is settled first.
 
 This plan builds on the [thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md), which
@@ -58,8 +58,8 @@ step is reviewed against them:
 Every statement here was checked against the v0.12 stack tip on 2026-10-01. Code is
 cited by module and function, since line numbers go stale.
 Paths are under `src/metabrowser/` unless they begin with `tests/`, `devtools/`, or
-`explorations/`. Step 1 starts by checking these again, because the stack can still
-change before it lands.
+`explorations/`. Step 1 starts by checking these again, because `main` has moved since:
+the stack landed, with [#268](https://github.com/jlevy/metabrowser/pull/268) above it.
 
 ### What Exists
 

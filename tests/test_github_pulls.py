@@ -883,6 +883,32 @@ def test_a_fetch_that_cannot_write_one_ref_writes_none(stand: _Stand) -> None:
     assert asyncio.run(ref_commit(stand.published, mirrored)) == stand.origin["topic"]
 
 
+def test_a_pull_requests_fetch_brings_no_tags(stand: _Stand) -> None:
+    """A tag pointing into what is fetched would otherwise follow it into the store, where
+    a tag is a name the mirror resolves; only the mirror's own update changes those."""
+
+    _move_origin_ref(stand, "refs/tags/follows-the-head", stand.origin["fork_head"])
+    stand.refresh(7)
+    head = asyncio.run(ref_commit(stand.published, "refs/pull/7/head"))
+    assert head == stand.origin["fork_head"]
+    assert asyncio.run(ref_commit(stand.published, "refs/tags/follows-the-head")) is None
+
+
+@pytest.mark.parametrize("number", [8, 9])
+def test_only_an_open_pull_requests_refresh_fetches_its_base_branch(
+    stand: _Stand, number: int
+) -> None:
+    """A merged or closed one compares from ``base.sha``, so it has no reason to move the
+    mirror's branch, which a reader's pin may name. An open one compares from that branch."""
+
+    mirrored = "refs/remotes/origin/topic"
+    _move_origin_ref(stand, "refs/heads/topic", stand.origin["draft_head"])
+    assert stand.refresh(number).pull.state == "closed"
+    assert asyncio.run(ref_commit(stand.published, mirrored)) == stand.origin["topic"]
+    assert stand.refresh(7).pull.state == "open"
+    assert asyncio.run(ref_commit(stand.published, mirrored)) == stand.origin["draft_head"]
+
+
 def test_a_git_failure_is_reported_without_gits_own_text(
     stand: _Stand, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1384,6 +1410,26 @@ def test_a_one_shot_refresh_is_judged_by_its_own_outcome(
     after = ApiResponse(200, json.dumps({"refreshing": False, **status}).encode())
     judged = api_cli._refresh_outcome(after)  # pyright: ignore[reportPrivateUsage]
     assert judged == (False, outcome)
+
+
+def test_a_one_shot_refresh_still_running_after_its_wait_is_an_error(tmp_path: Path) -> None:
+    """The command's wait ran out, and leaving stops the refresh, so it did not finish;
+    however the last one ended, that is not this one's success."""
+
+    from metabrowser.cli import api_cli
+    from metabrowser.cli.asgi_client import ApiResponse
+    from metabrowser.errors import CLIError
+
+    running = {"refreshing": True, "last_refresh": {"outcome": "succeeded"}}
+    with pytest.raises(CLIError, match="did not finish"):
+        api_cli._emit_api_response(  # pyright: ignore[reportPrivateUsage]
+            "/api/plugin/github/pull-refresh",
+            ApiResponse(202, b"{}"),
+            "skipped",
+            fmt="json",
+            normalize_root=tmp_path,
+            after=("/api/plugin/github/pull", ApiResponse(200, json.dumps(running).encode())),
+        )
 
 
 def test_a_served_pull_requests_newer_commit_is_fetched_for_a_pin(

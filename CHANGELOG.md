@@ -21,6 +21,13 @@ Page lifecycle:
   reconnects use explicit ETag validation.
   A live log deleted or truncated while the page was away stops showing as live on
   return.
+- `GET /api/stream` asked to resume past the end of the file now ends the stream: it
+  sends `event: closed` with `data: {"reason": "rotated"}` and stops.
+  0.11.0 clamped the cursor to the file’s size and kept streaming, so a client saw
+  `: heartbeat` and resumed at the wrong offset, although a cursor past the end means
+  the file was rotated or truncated under the reader.
+  This is the route’s side of the live-log entry above, which a plugin or script reading
+  `/api/stream` directly sees.
 
 Plugin SDK:
 
@@ -300,6 +307,8 @@ GitHub URLs and HTTPS:
   The record names Files changed as two pinned commits, the merge base and the head, as
   GitHub computes it, and `/api/plugin/diff/comparison` now honors
   `base_policy=merge_base` for such a comparison.
+  The route also validates the parameter, which 0.11.0 ignored: a value other than
+  `direct` or `merge_base`, or one given with `revision`, answers 400 `diff_comparison`.
   Two commits that share no history have no merge base, and the route answers 404
   `diff_comparison` with a message that says so.
   Reading pull requests needs `gh` 2.81.0 or newer signed in to github.com, because
@@ -357,17 +366,24 @@ GitHub URLs and HTTPS:
   not be opened at startup and serving fell back to the default branch, the page offers
   to switch to the head (`refs/pull/<n>/head`) and reloads on it.
   Descriptions and comments render as Markdown through KPress’s sanitized mode, one text
-  at a time as it scrolls into view, never from GitHub’s own HTML, and are then reduced
-  to an allowlist of plain markup, on the server and again in the page: paragraphs,
-  headings, emphasis, code, quotes, lists, tables, and details, with no class, `id`,
-  `data-*`, style, or event attribute.
-  SVG, MathML, media, frames, forms, stylesheets, and scripts are removed with their
-  content, and no KPress script or stylesheet is loaded for a comment, so a comment
-  cannot load anything, restyle or cover the page, reach the application’s own handlers,
-  or clobber a global.
+  at a time a screen before it scrolls into view, so a fast scroll does not show raw
+  Markdown, never from GitHub’s own HTML, and are then reduced to an allowlist of plain
+  markup, on the server and again in the page: paragraphs, headings, emphasis, code,
+  quotes, lists, tables, and details, with no class, `id`, `data-*`, style, or event
+  attribute. SVG, MathML, media, frames, forms, stylesheets, and scripts are removed with
+  their content, and no KPress script or stylesheet is loaded for a comment, so a
+  comment cannot load anything, restyle or cover the page, reach the application’s own
+  handlers, or clobber a global.
   An image is a link to it rather than loaded, links open on GitHub in a new tab, only
-  `http` and `https` ones kept, and code blocks show as plain text without highlighting.
-  A review comment’s file opens at the served head, at its line.
+  `http` and `https` ones kept, with the scheme in lower case in the Markdown route’s
+  answer too, and code blocks show as plain text without highlighting.
+  A text’s paragraphs, headings, lists, quotes, code, tables, and details have their own
+  spacing and list indent inside the card, with none above the first block or below the
+  last; a table wider than its text scrolls there, and a long word or URL breaks to fit.
+  A review comment’s file opens at the served head, at its line, and it shows the end of
+  its diff hunk, where it anchors: the last eight lines, back to the start of a
+  multi-line comment’s range, with the earlier lines behind a disclosure and added and
+  deleted lines tinted as in the diff.
   The freshness row links to the page, and back, forward, and reload keep its tab.
   The page for a number the server does not serve links to the served pull request’s
   page, on the same tab.
@@ -728,6 +744,14 @@ Content trust:
   `inert-render.js`, `inert-toc.js`, and `place-rendered.js`, which places a render and
   imports the other two on the first inert one.
 
+- One more module is requested on every Markdown view, with nothing visible changing on
+  a folder: `/plugin-static/markdown/place-rendered.js`, for the reason above.
+
+- The comparison adapter resolves a revision with
+  `git rev-parse --verify --end-of-options <rev>^{commit}`, so a revision that begins
+  with `-` is an argument and not an option.
+  A revision that names a commit resolves as before.
+
 - With active content off the application page carries a Content-Security-Policy:
   scripts run only from the application’s `/static/` and `/plugin-static/` paths and the
   shell’s inline scripts by a per-response nonce, never from the browsed tree’s `/raw`
@@ -957,8 +981,11 @@ Fixes:
   `/api/plugin/diff/children` and a virtual child `change.patch.gz/<path>` answered 404.
   The three now read the patch the file holds.
   A compressed file whose stream cannot be decoded answers the same 404 as a file that
-  cannot be opened; `/api/file` shows such a file as bytes and never sends it to the
-  Diff view.
+  cannot be opened. `/api/file` shows such a file as bytes when the damage is in the
+  first 512 KiB it reads.
+  Damage past that is not seen there: an 8.5 MB patch whose gzip is cut at 80% still
+  says `kind: diff`, and the Diff view shows “This file is not available.”, where 0.11.0
+  showed an empty change set, as it did for every `.patch.gz`.
 
 - A byte limit set below zero gives a typed, empty answer on every value.
   This applies to `STRUCTURED_PARSE_MAX_BYTES`, `METABROWSER_BINARY_PREVIEW_BYTES`,
@@ -970,8 +997,15 @@ Fixes:
   reader’s own bound check.
   Now a negative structured limit answers `truncated` for every file, a negative chunk
   size answers an empty chunk and says whether bytes remain, and a negative offset
-  ceiling answers 404. Zero is unchanged, except that a compressed structured file at
-  `STRUCTURED_PARSE_MAX_BYTES=0` answers `truncated` instead of that parse error.
+  ceiling answers 404. Zero is unchanged for the binary settings and for a structured
+  file that is not compressed, apart from a file that cannot be opened.
+  At `STRUCTURED_PARSE_MAX_BYTES=0` a compressed structured file no longer answers that
+  parse error, and answers as it does at any limit too small for it: `truncated` when it
+  holds data, a decompression parse error when its stream cannot be decoded, and what an
+  empty file answers when it holds nothing.
+  A file that cannot be opened answers 404 `content_unavailable` at zero too, where
+  0.11.0 answered `truncated` for an uncompressed one larger than the limit, without
+  opening it.
 
 - Load more on a large text file in a pin advances its notice and continues the text.
   A pin’s later window reported its own length as `bytes_read`, where the filesystem
