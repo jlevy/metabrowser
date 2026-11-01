@@ -862,6 +862,7 @@ type MetabrowserFolderEnvelope = {
   dir: {
     gitignored: boolean;
     mtime: number | null;
+    not_indexed?: "hidden" | "symlink";
     state: "pending" | "complete";
     total_files: number | null;
     total_size: number | null;

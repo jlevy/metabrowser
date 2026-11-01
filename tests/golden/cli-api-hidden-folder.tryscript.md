@@ -8,37 +8,123 @@ env:
   METABROWSER_PLUGINS_DIRS: ""
   METABROWSER_LOG_LEVEL: "WARNING"
 before: >-
-  mkdir -p hiddenroot/.hidden/sub hiddenroot/.logs hiddenroot/shown &&
+  mkdir -p hiddenroot/.hidden/sub hiddenroot/.logs hiddenroot/shown/nested &&
+  printf '# Hidden\n' > hiddenroot/.hidden/README.md &&
   printf 'plain\n' > hiddenroot/.hidden/notes.txt &&
   printf 'plain\n' > hiddenroot/.logs/run.txt &&
   printf 'plain\n' > hiddenroot/shown/notes.txt &&
-  touch -t 202311142213.20 hiddenroot/.hidden/notes.txt hiddenroot/.logs/run.txt
-  hiddenroot/shown/notes.txt hiddenroot/.hidden/sub hiddenroot/.hidden hiddenroot/.logs
-  hiddenroot/shown hiddenroot
+  ln -s shown hiddenroot/link &&
+  touch -t 202311142213.20 hiddenroot/.hidden/README.md hiddenroot/.hidden/notes.txt
+  hiddenroot/.logs/run.txt hiddenroot/shown/notes.txt hiddenroot/shown/nested
+  hiddenroot/.hidden/sub hiddenroot/.hidden hiddenroot/.logs hiddenroot/shown hiddenroot &&
+  touch -h -t 202311142213.20 hiddenroot/link
 ---
-# Golden tests: a hidden folder has no view, and says why
+# Golden tests: a folder the inventory leaves out says so
 
-The inventory’s scope leaves hidden path components out, so a hidden folder has no tree
-and no rollup. `/api/file` used to answer one with a folder envelope whose aggregates
-stayed pending forever, and the page showed “Could not load file types.”
-beside a skeleton that never finished.
-It now answers with the reason, which the page shows in place of a folder view.
-A file inside the folder still opens at its own address, and a dot-folder the inventory
-does list is an ordinary folder.
+The inventory’s scope leaves out hidden path components and does not follow symbolic
+links, so a folder reached either way has no tree and no rollup, and its aggregates stay
+null.
+`/api/file` still answers it with the folder envelope, so its page and README show.
+`dir.not_indexed` names which it is, and the page says why it has no totals instead of
+waiting for them.
+A file inside the folder opens at its own address, and a dot-folder the
+inventory does list is an ordinary folder with no such key.
 
-## Test: the three routes agree on a hidden folder, and the file route says why
+## Test: a hidden folder keeps its envelope and its README
 
 ```console
-$ metab hiddenroot --api '/api/file?path=.hidden/' 2>&1
+$ metab hiddenroot --api '/api/file?path=.hidden/'
 api: /api/file?path=.hidden/
-status: 404
+status: 200
 {
-  "summary": "Could not open this folder.",
-  "error": "Metabrowser does not index hidden folders, so this one has no view. A file inside it still opens at its own address."
+  "type": "folder",
+  "kind": "folder",
+  "path": ".hidden",
+  "name": ".hidden",
+  "views": [
+    {
+      "id": "overview",
+      "label": "Overview",
+      "default": true,
+      "container_class": "content-body folder-overview-host",
+      "printable": false,
+      "print_profile": "plain",
+      "render_runtime": null
+    },
+    {
+      "id": "treemap",
+      "label": "Treemap",
+      "default": false,
+      "container_class": "content-body folder-treemap-host",
+      "printable": false,
+      "print_profile": "plain",
+      "render_runtime": null
+    }
+  ],
+  "dir": {
+    "total_files": null,
+    "total_size": null,
+    "unignored_files": null,
+    "unignored_size": null,
+    "mtime": null,
+    "gitignored": false,
+    "state": "pending",
+    "not_indexed": "hidden"
+  },
+  "readme_path": ".hidden/README.md",
+  "readme_search_truncated": false
 }
-Error: /api/file?path=.hidden/ returned HTTP 404
-? 1
+? 0
 ```
+
+## Test: so does a folder under a hidden one
+
+```console
+$ metab hiddenroot --api '/api/file?path=.hidden/sub'
+api: /api/file?path=.hidden/sub
+status: 200
+{
+  "type": "folder",
+  "kind": "folder",
+  "path": ".hidden/sub",
+  "name": "sub",
+  "views": [
+    {
+      "id": "overview",
+      "label": "Overview",
+      "default": true,
+      "container_class": "content-body folder-overview-host",
+      "printable": false,
+      "print_profile": "plain",
+      "render_runtime": null
+    },
+    {
+      "id": "treemap",
+      "label": "Treemap",
+      "default": false,
+      "container_class": "content-body folder-treemap-host",
+      "printable": false,
+      "print_profile": "plain",
+      "render_runtime": null
+    }
+  ],
+  "dir": {
+    "total_files": null,
+    "total_size": null,
+    "unignored_files": null,
+    "unignored_size": null,
+    "mtime": null,
+    "gitignored": false,
+    "state": "pending",
+    "not_indexed": "hidden"
+  },
+  "readme_path": "",
+  "readme_search_truncated": false
+}
+? 0
+```
+
+## Test: the tree and the rollup have nothing to say about it
 
 ```console
 $ metab hiddenroot --api '/api/tree?path=.hidden' 2>&1
@@ -62,17 +148,106 @@ Error: /api/rollup?path=.hidden returned HTTP 404
 ? 1
 ```
 
-## Test: so does a folder under a hidden one
+## Test: a symbolic link to a folder, and a folder through one
 
 ```console
-$ metab hiddenroot --api '/api/file?path=.hidden/sub' 2>&1
-api: /api/file?path=.hidden/sub
+$ metab hiddenroot --api '/api/file?path=link/'
+api: /api/file?path=link/
+status: 200
+{
+  "type": "folder",
+  "kind": "folder",
+  "path": "link",
+  "name": "shown",
+  "views": [
+    {
+      "id": "overview",
+      "label": "Overview",
+      "default": true,
+      "container_class": "content-body folder-overview-host",
+      "printable": false,
+      "print_profile": "plain",
+      "render_runtime": null
+    },
+    {
+      "id": "treemap",
+      "label": "Treemap",
+      "default": false,
+      "container_class": "content-body folder-treemap-host",
+      "printable": false,
+      "print_profile": "plain",
+      "render_runtime": null
+    }
+  ],
+  "dir": {
+    "total_files": null,
+    "total_size": null,
+    "unignored_files": null,
+    "unignored_size": null,
+    "mtime": null,
+    "gitignored": false,
+    "state": "pending",
+    "not_indexed": "symlink"
+  },
+  "readme_path": "",
+  "readme_search_truncated": false
+}
+? 0
+```
+
+```console
+$ metab hiddenroot --api '/api/file?path=link/nested'
+api: /api/file?path=link/nested
+status: 200
+{
+  "type": "folder",
+  "kind": "folder",
+  "path": "link/nested",
+  "name": "nested",
+  "views": [
+    {
+      "id": "overview",
+      "label": "Overview",
+      "default": true,
+      "container_class": "content-body folder-overview-host",
+      "printable": false,
+      "print_profile": "plain",
+      "render_runtime": null
+    },
+    {
+      "id": "treemap",
+      "label": "Treemap",
+      "default": false,
+      "container_class": "content-body folder-treemap-host",
+      "printable": false,
+      "print_profile": "plain",
+      "render_runtime": null
+    }
+  ],
+  "dir": {
+    "total_files": null,
+    "total_size": null,
+    "unignored_files": null,
+    "unignored_size": null,
+    "mtime": null,
+    "gitignored": false,
+    "state": "pending",
+    "not_indexed": "symlink"
+  },
+  "readme_path": "",
+  "readme_search_truncated": false
+}
+? 0
+```
+
+```console
+$ metab hiddenroot --api '/api/rollup?path=link' 2>&1
+api: /api/rollup?path=link
 status: 404
 {
-  "summary": "Could not open this folder.",
-  "error": "Metabrowser does not index hidden folders, so this one has no view. A file inside it still opens at its own address."
+  "error": "Not found"
 }
-Error: /api/file?path=.hidden/sub returned HTTP 404
+Error: /api/rollup?path=link returned HTTP 404
 ? 1
 ```
 

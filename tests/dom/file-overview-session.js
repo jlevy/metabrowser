@@ -3,19 +3,23 @@
 // File Overview is a totals table above a type distribution, and the distribution's
 // rollup drives both. Totals that were still pending when a rollup failed, or answered
 // with none, used to stay a loading skeleton forever (mb-8wwl), and changing a control
-// after a failure brought the distribution's skeleton back over the error.
+// after a failure brought the distribution's skeleton back over the error. A folder the
+// inventory leaves out, which its envelope names, says why it has no totals instead.
 //
 // The panel, its bodies, the rollup controls, the projection, the distribution model and
 // view, and the inventory watch are the production modules, loaded whole. The document
 // is a stand-in for the few calls they make, and `mb.watchRollup` is the SDK's, whose
 // `fetch` here answers what each step says instead of asking a server: the rollups below
-// have the shape `/api/rollup` answers, which cli-api.tryscript.md pins.
+// have the shape `/api/rollup` answers, which cli-api.tryscript.md pins. The folder header's
+// tally is lifted verbatim from app.js, which cannot load without a document.
 //
 // Each step prints what is on screen: the totals, the distribution's text, starting with
 // its caption, and whether it offers Retry. Exits 1 on a failed invariant.
 
+const fs = require("node:fs");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
+const vm = require("node:vm");
 
 const repoRoot = path.resolve(__dirname, "../..");
 const sourceRoot = path.join(repoRoot, "src/metabrowser");
@@ -267,6 +271,10 @@ const rollupError = (status) =>
       settle,
       read() {
         const shownTotals = totals();
+        // A folder the inventory leaves out mounts neither body.
+        if (!shownTotals && !summary()) {
+          return { totals: "nothing", distribution: container.textContent, retry: false };
+        }
         return {
           totals: shownTotals.html.includes("folder-totals-loading")
             ? "skeleton"
@@ -387,6 +395,20 @@ const rollupError = (status) =>
     view.panel.dispose();
   }
 
+  // A folder the inventory leaves out: nothing can answer, so nothing is asked, nothing
+  // waits, and File Overview says why. Its rollup would be refused.
+  for (const reason of ["hidden", "symlink"]) {
+    const view = page({ ...PENDING_DIR, not_indexed: reason }, rollupError(404));
+    await view.settle();
+    const shown = view.read();
+    noSkeleton(shown, `a ${reason} folder`);
+    assert(view.requests() === 0, `a ${reason} folder asked for a rollup`);
+    assert(shown.distribution.includes("no file totals"), `a ${reason} folder: ${shown}`);
+    assert(!shown.distribution.includes("Could not load"), `a ${reason} folder reads as a failure`);
+    transcript[`a ${reason} folder says why it has no totals`] = shown;
+    view.panel.dispose();
+  }
+
   // Totals the folder's envelope already carries stay beside a failure.
   {
     const view = page(COMPLETE_DIR, rollupError(404));
@@ -433,6 +455,49 @@ const rollupError = (status) =>
     );
     transcript["an ordinary folder"] = { complete, filesOnly, bytes, allBytes };
     view.panel.dispose();
+  }
+
+  // The shell's folder header reads the same envelope: pending aggregates are a skeleton
+  // until they arrive, and a folder the inventory leaves out has no tally to wait for.
+  {
+    const appSource = fs.readFileSync(path.join(sourceRoot, "static/app.js"), "utf8");
+    const lift = (name) => {
+      const match = appSource.match(
+        new RegExp(`\\nfunction ${name}\\([^)]*\\) \\{[\\s\\S]*?\\n\\}`),
+      );
+      assert(match, `${name} not found in app.js`);
+      return match[0];
+    };
+    const summaryHtml = vm.runInNewContext(
+      `function sizeClass() { return ""; }
+       function countClass() { return ""; }
+       function formatSize(value) { return value + " B"; }
+       function formatCount(value) { return value + " files"; }
+       ${["isPendingNumber", "sizeHtml", "countHtml", "formatAge", "folderHeaderSummaryHtml"]
+         .map(lift)
+         .join("\n")}
+       folderHeaderSummaryHtml;`,
+      { window: { MetabrowserFormatters: { age: () => ({ className: "age", label: "3h" }) } } },
+    );
+    const header = (dir) => {
+      const html = summaryHtml(dir);
+      return {
+        skeleton: html.includes("tally-pending"),
+        text: html
+          .replace(/<[^>]*>/g, " ")
+          .replace(/\s+/g, " ")
+          .trim(),
+      };
+    };
+    const shown = {
+      "still scanning": header({ ...PENDING_DIR, mtime: null }),
+      complete: header({ ...COMPLETE_DIR, mtime: 1700000000 }),
+      hidden: header({ ...PENDING_DIR, mtime: null, not_indexed: "hidden" }),
+      symlink: header({ ...PENDING_DIR, mtime: null, not_indexed: "symlink" }),
+    };
+    assert(shown["still scanning"].skeleton, "a scanning folder's header stopped loading");
+    assert(!shown.hidden.skeleton && !shown.symlink.skeleton, "a tally waits for nothing");
+    transcript["the folder header's tally"] = shown;
   }
 
   console.warn = originalWarn;

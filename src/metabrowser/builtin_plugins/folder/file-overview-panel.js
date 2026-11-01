@@ -23,6 +23,23 @@ import { mountFileTypeSummary } from "./file-type-summary.js";
 
 /** @typedef {{mount: (container: HTMLElement, parts?: {metric?: boolean, ignored?: boolean}) => () => void, get: () => {metric: "size" | "files", includeIgnored: boolean}, subscribe: (listener: (state: {metric: "size" | "files", includeIgnored: boolean}) => void) => () => void}} FolderRollupControls */
 
+/** Why a folder the inventory leaves out has no totals, by the envelope's `dir.not_indexed`. */
+const NOT_INDEXED_STATEMENTS = Object.freeze({
+  hidden: "Metabrowser does not index hidden folders, so this one has no file totals.",
+  symlink:
+    "Metabrowser does not follow symbolic links when it indexes, so this folder has no file totals here.",
+});
+
+/**
+ * @param {unknown} raw The folder envelope.
+ * @returns {string | null}
+ */
+function notIndexedStatement(raw) {
+  const dir = /** @type {{dir?: {not_indexed?: "hidden" | "symlink"}} | null | undefined} */ (raw)
+    ?.dir;
+  return dir?.not_indexed ? NOT_INDEXED_STATEMENTS[dir.not_indexed] : null;
+}
+
 /**
  * @param {HTMLElement} container
  * @param {{path?: string, raw?: unknown}} context
@@ -41,6 +58,15 @@ export function mountFileOverviewPanel(
   rollupControls,
   options,
 ) {
+  // Nothing can answer for such a folder, so nothing is asked and nothing waits.
+  const statement = notIndexedStatement(context.raw);
+  if (statement) {
+    const note = document.createElement("div");
+    note.className = "file-type-summary-empty";
+    note.textContent = statement;
+    container.append(note);
+    return Object.freeze({ dispose() {} });
+  }
   const controls = document.createElement("div");
   const totalsContainer = document.createElement("div");
   const breakdownContainer = document.createElement("div");

@@ -5559,6 +5559,10 @@ function folderHeaderSummaryHtml(dirInfo) {
   // skeleton the tree rows use, so the header paints with shape
   // instead of blanks until the live refresher patches it.
   // Omitted aggregates are not pending: a Git tree envelope has no dir.
+  // Nor are a folder's the inventory leaves out: they will never arrive.
+  if (dirInfo.not_indexed) {
+    return "";
+  }
   return (
     sizeHtml(dirInfo.total_size, "file-header-size") +
     countHtml(dirInfo.total_files, "folder-header-count") +

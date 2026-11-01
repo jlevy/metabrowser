@@ -2549,6 +2549,21 @@ def _api_file_internal_error_response(subpath: str, exc: Exception) -> JSONRespo
     )
 
 
+def _folder_not_indexed(subpath: str, target: Path) -> str | None:
+    """Why the inventory's scope leaves out this served folder, or None if it does not.
+
+    *target* is already resolved, so a symlink anywhere on the path shows as a target
+    other than the path's own spelling under the root.
+    """
+
+    if not is_visible_segment(subpath):
+        return "hidden"
+    native = native_inventory_path(subpath)
+    if subpath and native is not None and target != _paths_safe.ROOT_DIR.resolve() / native:
+        return "symlink"
+    return None
+
+
 async def _api_folder_envelope(
     request: Request,
     subpath: str,
@@ -2564,27 +2579,16 @@ async def _api_folder_envelope(
     Served no-store: the envelope is tiny and its aggregates change
     while a scan is running.
 
-    A hidden folder has no such envelope. The inventory's scope leaves hidden
-    path components out, so `/api/tree` and `/api/rollup` answer 404 for one and
-    its aggregates would be pending forever. The answer says so; a file inside
-    one still opens at its own address.
+    The inventory's scope leaves out hidden path components and does not follow
+    symlinks, so a folder reached either way has no tree, no rollup, and aggregates
+    that will never arrive. It still gets this envelope, so its page and README show;
+    `dir.not_indexed` names which it is, so the page can say why rather than wait.
     """
 
     key = parse_inventory_path(subpath)
     if key is None:
         return JSONResponse({"error": "Not found"}, status_code=404)
     subpath = key
-    if not is_visible_segment(subpath):
-        return JSONResponse(
-            {
-                "summary": "Could not open this folder.",
-                "error": (
-                    "Metabrowser does not index hidden folders, so this one has no view. "
-                    "A file inside it still opens at its own address."
-                ),
-            },
-            status_code=404,
-        )
     runtime = _inventory_runtime_for(request)
     coordinated = await runtime.coordinator.read(
         ReadRequest(queries=(EntryQuery(query_id="folder", path=subpath),))
@@ -2626,6 +2630,9 @@ async def _api_folder_envelope(
         "readme_path": readme_path,
         "readme_search_truncated": discovery.readme_search_truncated,
     }
+    not_indexed = _folder_not_indexed(subpath, target)
+    if not_indexed is not None:
+        payload["dir"]["not_indexed"] = not_indexed
     return JSONResponse(payload, headers={"cache-control": "no-store"})
 
 
