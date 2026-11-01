@@ -437,7 +437,7 @@ only, and starts after 0.12.0 is tagged.
 [review ledger](../../reviews/review-2026-10-01-v012-stack-review-ledger.md) has a row
 for every pull request in the stack and for #268, and states its limits: no person has
 reviewed the stack, and no pull request has a GitHub review decision.
-Its #267 row says where that pull request’s independent review stands (`mb-55tr`).
+Its #267 row holds that pull request’s independent review, which reported on 2026-11-01.
 
 **The user’s decisions and checks.**
 

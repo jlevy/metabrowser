@@ -976,8 +976,11 @@ Fixes:
   `/api/plugin/diff/children` and a virtual child `change.patch.gz/<path>` answered 404.
   The three now read the patch the file holds.
   A compressed file whose stream cannot be decoded answers the same 404 as a file that
-  cannot be opened; `/api/file` shows such a file as bytes and never sends it to the
-  Diff view.
+  cannot be opened. `/api/file` shows such a file as bytes when the damage is in the
+  first 512 KiB it reads.
+  Damage past that is not seen there: an 8.5 MB patch whose gzip is cut at 80% still
+  says `kind: diff`, and the Diff view shows “This file is not available.”, where 0.11.0
+  showed an empty change set, as it did for every `.patch.gz`.
 
 - A byte limit set below zero gives a typed, empty answer on every value.
   This applies to `STRUCTURED_PARSE_MAX_BYTES`, `METABROWSER_BINARY_PREVIEW_BYTES`,
@@ -989,8 +992,15 @@ Fixes:
   reader’s own bound check.
   Now a negative structured limit answers `truncated` for every file, a negative chunk
   size answers an empty chunk and says whether bytes remain, and a negative offset
-  ceiling answers 404. Zero is unchanged, except that a compressed structured file at
-  `STRUCTURED_PARSE_MAX_BYTES=0` answers `truncated` instead of that parse error.
+  ceiling answers 404. Zero is unchanged for the binary settings and for a structured
+  file that is not compressed, apart from a file that cannot be opened.
+  At `STRUCTURED_PARSE_MAX_BYTES=0` a compressed structured file no longer answers that
+  parse error, and answers as it does at any limit too small for it: `truncated` when it
+  holds data, a decompression parse error when its stream cannot be decoded, and what an
+  empty file answers when it holds nothing.
+  A file that cannot be opened answers 404 `content_unavailable` at zero too, where
+  0.11.0 answered `truncated` for an uncompressed one larger than the limit, without
+  opening it.
 
 - Load more on a large text file in a pin advances its notice and continues the text.
   A pin’s later window reported its own length as `bytes_read`, where the filesystem

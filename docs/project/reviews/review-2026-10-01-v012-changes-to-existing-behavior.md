@@ -52,7 +52,14 @@ the refusal to that entry, as the code in `builtin_plugins/diff/sidekick.py` has
 running both cases answered 400 `diff_comparison`. One more statement has been overtaken
 and is left as written: A Known Defect says the fix is #262, held out of the stack.
 #268 carries the fix and #262 was closed unmerged, and `mb-tdmd` is closed, with Back in
-Safari and Firefox checked under `mb-etqi`.
+Safari and Firefox checked under `mb-etqi`. One row needs reading more widely than it
+states. The row on `/api/plugin/structured/parsed` for a file it cannot open names
+0.11.0’s answer as a 200 with a `PermissionError`, which was run at the default limit.
+For an uncompressed file larger than `STRUCTURED_PARSE_MAX_BYTES`, as any such file with
+content is at a limit of zero, 0.11.0 did not open it and answered `truncated`; it now
+answers the same 404 `content_unavailable`. Run on 2026-11-01 at limits of 0 and 1
+against v0.11.0’s source.
+Signing that row accepts this case too, and `CHANGELOG.md` now states it.
 
 **Scope:** What a user or a plugin author sees differently on something v0.11.0 already
 did: a regular folder served or inspected, the CLI, the Plugin SDK, and the package’s
