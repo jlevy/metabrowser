@@ -14,7 +14,13 @@ before: >-
   mkdir -p trustroot &&
   printf '# Sample\n\nHello.\n' > trustroot/README.md &&
   printf '<!doctype html>\n<title>Page</title>\n<p>Hello</p>\n' > trustroot/page.html &&
-  touch -t 202311142213.20 trustroot/README.md trustroot/page.html trustroot
+  touch -t 202311142213.20 trustroot/README.md trustroot/page.html trustroot &&
+  mkdir -p evilrepo &&
+  printf '# Sample\n' > evilrepo/README.md &&
+  printf 'METAB_ALLOW_EDITS=1\nMETAB_UNTRUSTED=1\nMETABROWSER_PLUGINS_DIRS=%s/evil-plugins\n'
+  "$PWD" > evilrepo/.env &&
+  printf 'METABROWSER_DEBUG=1\nBROWSER=%s/evil\nPATH=%s/evil\nGIT_TRACE=%s/trace.txt\n'
+  "$PWD" "$PWD" "$PWD" >> evilrepo/.env
 ---
 # Golden tests: the `--untrusted` content-trust profile
 
@@ -139,6 +145,79 @@ status: 200
     "mutations": true
   }
 }
+? 0
+```
+
+## Test: a browsed repository’s `.env` contributes only the allowlist
+
+The dotenv chain walks up from the working directory, so `cd cloned-repo && metab .`
+reaches that repository’s own `.env`, and the loader cannot tell it from a file the
+operator wrote. So a dotenv file may set only the names in `ALLOWED_KEYS` in
+`metabrowser/dotenv.py`, and this `.env` sets nothing else.
+
+The warning names that allowlist in full, so adding a name to it changes this
+transcript.
+Each capability variable below is cleared first, because a dotenv value never
+replaces one the environment already holds, and the front matter holds them empty.
+Had the file reached the environment, `METAB_ALLOW_EDITS` would read `mutations: true`
+and `METAB_UNTRUSTED` would read `active_content: false`.
+
+```console
+$ cd evilrepo && env -u METAB_ALLOW_EDITS -u METAB_UNTRUSTED metab . --api /api/capabilities
+[..]/evilrepo/.env: ignored METABROWSER_DEBUG, METABROWSER_PLUGINS_DIRS, METAB_ALLOW_EDITS, METAB_UNTRUSTED — a dotenv file may only set METABROWSER_LOG_LEVEL, METABROWSER_REQUEST_LOG. Export the others in the environment instead; see SECURITY.md.
+api: /api/capabilities
+status: 200
+{
+  "backends": [
+    {
+      "prefix": ".",
+      "mode": "[..]",
+      "reason": "[..]",
+      "state": "[..]"
+    }
+  ],
+  "index": {
+    "complete": true,
+    "indexed_files": 1,
+    "max_files": 500000,
+    "truncated": false,
+    "provider": "python",
+    "contract": "inventory-provider-v1"
+  },
+  "events": {
+    "stream": "live",
+    "reason": "[..]"
+  },
+  "capabilities": {
+    "active_content": true,
+    "mutations": false
+  }
+}
+? 0
+```
+
+The same file sets `GIT_TRACE`, which makes Git write a trace to the path it names.
+Asking whether the folder is a repository runs Git, so the trace would exist by now if
+the name had reached it, and a `PATH` that had reached it would have left no Git to run.
+`PATH` and `BROWSER` are refused silently, because only this package’s own names are
+worth a warning: every repository has variables of its own.
+
+```console
+$ cd evilrepo && metab . --api /api/git/repo
+[..]/evilrepo/.env: ignored METABROWSER_DEBUG, METABROWSER_PLUGINS_DIRS, METAB_ALLOW_EDITS, METAB_UNTRUSTED — a dotenv file may only set METABROWSER_LOG_LEVEL, METABROWSER_REQUEST_LOG. Export the others in the environment instead; see SECURITY.md.
+api: /api/git/repo
+status: 200
+{
+  "is_repo": false,
+  "root": null,
+  "head": null,
+  "reason": "not_a_repo"
+}
+? 0
+```
+
+```console
+$ test ! -e trace.txt
 ? 0
 ```
 
