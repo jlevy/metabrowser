@@ -522,6 +522,22 @@ async function main() {
     ),
   );
 
+  // A tab the page does not have, which the route's grammar never sends: taken, it would
+  // select neither tab above the conversation it shows. Asked for at the start or later,
+  // the page stays on a tab it has.
+  const unknownTab = createPage(runtime, { number: 7, tab: "commits" });
+  unknownTab.server.pull = recorded.absent;
+  steps.push(
+    await unknownTab.step("a page opened on a tab it does not have shows the conversation", () =>
+      unknownTab.controller.start(),
+    ),
+  );
+  steps.push(
+    await unknownTab.step("a tab it does not have is not taken later", async () =>
+      unknownTab.controller.setTab("commits"),
+    ),
+  );
+
   // What the header says, and how the checks are counted, for an open, a merged, and a
   // closed pull request, each as the served server answered it.
   const states = Object.fromEntries(

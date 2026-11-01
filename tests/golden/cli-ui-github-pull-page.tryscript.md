@@ -40,6 +40,8 @@ https only), and the `/view/` address a review comment’s file opens at.
 line: the last eight lines, or back to the start of a multi-line comment’s range, with
 the rest behind a disclosure, and each line classed so an addition or deletion is
 tinted. The stand-in’s hunks are short, so the session writes the long ones.
+A page asked for a tab it does not have, which the route’s grammar never sends, stays on
+one it has.
 
 ```console
 $ node tests/dom/github-pull-page-session.js
@@ -634,6 +636,39 @@ $ node tests/dom/github-pull-page-session.js
         "headOffer": "This page's code is c691256511d0, not the pull request's head 85fcb2fa9e77. [Switch to the head] -> refs/pull/7/head",
         "comparison": "f92fd713acd5...85fcb2fa9e77 (head moved)"
       },
+      "markdown": []
+    },
+    {
+      "step": "a page opened on a tab it does not have shows the conversation",
+      "requests": [
+        "GET /api/plugin/github/pull"
+      ],
+      "timer": "slow",
+      "paints": 2,
+      "paint": {
+        "status": "absent",
+        "tab": "conversation",
+        "message": "No data for this pull request is cached yet.",
+        "canRefresh": true,
+        "freshness": null,
+        "failure": null,
+        "header": null,
+        "labels": [],
+        "merge": null,
+        "timeline": [],
+        "reviewComments": [],
+        "checks": null,
+        "notes": [],
+        "headOffer": null,
+        "comparison": null
+      },
+      "markdown": []
+    },
+    {
+      "step": "a tab it does not have is not taken later",
+      "requests": [],
+      "timer": "slow",
+      "paints": 0,
       "markdown": []
     }
   ],
