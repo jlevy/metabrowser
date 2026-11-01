@@ -109,6 +109,28 @@ function viewFileHost() {
   };
 }
 
+/**
+ * What makes this page's View file opener, or null on a page with no pin.
+ *
+ * diff-view-file.js loads here, for a pinned page's first diff, and not with the plugin's
+ * module tree: a served folder has no controls and never calls it. Measured 2026-11-01
+ * in Chrome 152 on a served folder's first diff view: as a static import it was a seventh
+ * module, 4,042 bytes transferred and 10,842 decoded, that the plugin could not evaluate
+ * without. Without it the view requests the six modules v0.11.0 did. A pin pays one
+ * local request before its first diff mounts, and its controls still arrive with that
+ * mount. A failed import rejects the render, and the caller says the diff did not load.
+ *
+ * @returns {Promise<((options: {released: () => void}) => ReturnType<typeof import("./diff-view-file.js").createViewFileOpener>) | null>}
+ */
+async function viewFileOpener() {
+  const host = viewFileHost();
+  if (host === null) {
+    return null;
+  }
+  const { createViewFileOpener } = await import("./diff-view-file.js");
+  return (options) => createViewFileOpener(host, options);
+}
+
 /** @param {HTMLElement} container @param {string} message */
 function renderFailure(container, message) {
   const notice = document.createElement("div");
@@ -176,7 +198,7 @@ mb.registerView("diff", "diff", {
     // their aggregate summary.
     return mountDiffView(container, result.document, mb, {
       showSummary: !ctx.revision,
-      viewFile: viewFileHost(),
+      viewFile: await viewFileOpener(),
     });
   },
 });

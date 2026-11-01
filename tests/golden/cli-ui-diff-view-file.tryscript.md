@@ -42,14 +42,41 @@ and accessible name.
 `latin1-�.txt` is a name that is not UTF-8: its address carries the name’s bytes.
 `opens` is the path an address names, by the production decoder, `busy` lists the
 controls marked `aria-busy`, and a refusal is shown with the role it is announced by.
+`modules` lists the plugin modules a step loaded, which a browser requests once each
+from `/plugin-static/diff/`: a served folder’s diff comes first, and the first diff on a
+pin is what loads `diff-view-file.js`.
 
 ```console
 $ node tests/dom/diff-view-file-session.js
 {
   "steps": [
     {
+      "step": "a served folder's page has no controls",
+      "requests": [],
+      "modules": [
+        "diff-intraline.js",
+        "diff-model.js",
+        "diff-render-model.js",
+        "diff-syntax.js",
+        "diff-view.js",
+        "index.js"
+      ],
+      "bars": {
+        "M README.md": [],
+        "A added.txt": [],
+        "D gone.txt": [],
+        "M latin1-�.txt": [],
+        "M link": [],
+        "R100 src/old_name.py → src/new_name.py": [],
+        "M vendor/lib": []
+      }
+    },
+    {
       "step": "a commit's diff on the page that shows that commit",
       "requests": [],
+      "modules": [
+        "diff-view-file.js"
+      ],
       "bars": {
         "M README.md": [
           "[View at parent] button[type=button] · Switch to a5232ab93056 and open README.md",
@@ -298,19 +325,6 @@ $ node tests/dom/diff-view-file-session.js
         "POST /api/source/pin [content-type: application/json] {\"oid\":\"a5232ab93056074aa3dd87c7b3c28ca84081a6a0\",\"view\":\"/view/g1-UkVBRE1FLm1k\"}"
       ],
       "waiting": 1
-    },
-    {
-      "step": "a served folder's page has no controls",
-      "requests": [],
-      "bars": {
-        "M README.md": [],
-        "A added.txt": [],
-        "D gone.txt": [],
-        "M latin1-�.txt": [],
-        "M link": [],
-        "R100 src/old_name.py → src/new_name.py": [],
-        "M vendor/lib": []
-      }
     }
   ]
 }

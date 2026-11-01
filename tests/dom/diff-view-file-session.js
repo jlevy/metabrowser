@@ -17,13 +17,29 @@
 // preferences) are stand-ins, and the page is a small element tree that records what the
 // production code builds. The stand-in for the pin route refuses what the server
 // refuses: a request whose content type is not JSON. Each step prints the requests the
-// page made, the controls of each file bar, where the browser or the page went, and
-// what a refusal said.
+// page made, the plugin modules that step loaded, the controls of each file bar, where
+// the browser or the page went, and what a refusal said. A browser requests each module
+// of /plugin-static/diff/ once, as Node loads it here once, so `modules` is what the step
+// asked the server for. The served folder's step comes first, before a pin has loaded
+// anything, because a module stays loaded for the rest of the session.
 
 const fs = require("node:fs");
+const { registerHooks } = require("node:module");
 const path = require("node:path");
 const vm = require("node:vm");
 const { pathToFileURL } = require("node:url");
+
+// The plugin's modules loaded since the last step, static and dynamic alike.
+const loadedModules = [];
+registerHooks({
+  load(url, context, nextLoad) {
+    const name = /\/builtin_plugins\/diff\/([^/]+\.js)$/.exec(url)?.[1];
+    if (name) {
+      loadedModules.push(name);
+    }
+    return nextLoad(url, context);
+  },
+});
 
 const repoRoot = path.resolve(__dirname, "../..");
 const sourceRoot = path.join(repoRoot, "src/metabrowser");
@@ -426,9 +442,11 @@ async function main() {
   }
 
   function step(name, extra = {}) {
+    const modules = loadedModules.splice(0).sort();
     steps.push({
       step: name,
       requests: requests.splice(0),
+      ...(modules.length > 0 ? { modules } : {}),
       ...extra,
       ...(navigated.length > 0 ? { navigated: navigated.splice(0) } : {}),
       ...(Object.keys(notices(container)).length > 0 ? { notices: notices(container) } : {}),
@@ -438,6 +456,11 @@ async function main() {
   const commitDiff = { revision: ids.second, raw: Promise.resolve(recorded.commit.body) };
   const readme = "M README.md";
   const renamed = "R100 src/old_name.py → src/new_name.py";
+
+  // A served folder's page carries no pin, so its diffs carry no controls, and it never
+  // asks for the module that decides them.
+  await open(recorded.folder_page, commitDiff);
+  step("a served folder's page has no controls", { bars: bars(container) });
 
   // The Git panel asks for the commit's comparison itself and hands it to the view.
   await open(recorded.page, commitDiff);
@@ -568,10 +591,6 @@ async function main() {
   step("asking again clears what the last refusal said", { waiting: waiting.length });
   await failRequest();
   requests.splice(0);
-
-  // A served folder's page carries no pin, so its diffs carry no controls.
-  await open(recorded.folder_page, commitDiff);
-  step("a served folder's page has no controls", { bars: bars(container) });
 
   mounted?.dispose();
   finished = true;

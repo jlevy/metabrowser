@@ -15,7 +15,6 @@
 import { fileChangeLabel, validateDocument } from "./diff-model.js";
 import { buildFileRenderModel, refineFileChangedRuns } from "./diff-render-model.js";
 import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
-import { createViewFileOpener } from "./diff-view-file.js";
 
 /**
  * @typedef {object} DiffViewApi
@@ -58,7 +57,7 @@ import { createViewFileOpener } from "./diff-view-file.js";
  * @property {Map<HTMLElement, {body: HTMLElement, change: Record<string, unknown>, revision: string}>} pendingHydrations
  * @property {{body: HTMLElement, change: Record<string, unknown>, revision: string}[]} queuedHydrations
  * @property {Set<number>} timers
- * @property {ReturnType<typeof createViewFileOpener> | null} viewFile
+ * @property {ReturnType<typeof import("./diff-view-file.js").createViewFileOpener> | null} viewFile
  * @property {HTMLElement | null} viewFileBusy The control whose switch is on its way.
  * @property {Set<{timer: number, resolve: (active: boolean) => void}>} yielders
  */
@@ -1376,9 +1375,10 @@ function renderFileSection(change, patch, context, view) {
  * @param {HTMLElement} container
  * @param {Record<string, unknown>} document_
  * @param {DiffViewApi} [api]
- * @param {{showSummary?: boolean, viewFile?: import("./diff-view-file.js").ViewFileHost | null}} [options]
- *   *viewFile* is how the page opens a file at a commit; without it the bars carry no
- *   View file control.
+ * @param {{showSummary?: boolean, viewFile?: ((options: {released: () => void}) => ReturnType<typeof import("./diff-view-file.js").createViewFileOpener>) | null}} [options]
+ *   *viewFile* makes the opener for a page that can open a file at a commit; without it
+ *   the bars carry no View file control. The plugin imports diff-view-file.js for such a
+ *   page alone, so this module names it only in types.
  * @returns {{cancelPending: () => void, dispose: () => void}}
  */
 export function mountDiffView(container, document_, api, options = {}) {
@@ -1406,7 +1406,7 @@ export function mountDiffView(container, document_, api, options = {}) {
     yielders: new Set(),
   };
   if (options.viewFile) {
-    view.viewFile = createViewFileOpener(options.viewFile, {
+    view.viewFile = options.viewFile({
       released() {
         view.viewFileBusy?.setAttribute("aria-busy", "false");
         view.viewFileBusy = null;

@@ -235,6 +235,8 @@ These are the ones with a measurement on record, and where it is:
 | GitPath wire codec | Eager, on a pinned revision’s shell only | `PIN_STARTUP_SCRIPTS` in `server.py` | [exp-037](../explorations/performance-loop/experiments/exp-037-startup-imports-and-loading-tiers-for-v012.md) |
 | Chart.js and its plugins | On demand, at the first chart | `chart` in `on_demand_script_bundles` | the comment beside it |
 | Inert Markdown render and its table of contents | On demand, at the first inert render | `builtin_plugins/markdown/place-rendered.js` | [exp-037](../explorations/performance-loop/experiments/exp-037-startup-imports-and-loading-tiers-for-v012.md) |
+| The step that places a Markdown render | On demand, in the Markdown plugin’s module tree at the first Markdown render, a folder’s README included | `builtin_plugins/markdown/place-rendered.js` | the comment at its head |
+| A diff’s View file controls | On demand, at a pinned page’s first diff; a served folder never requests them | `viewFileOpener` in `builtin_plugins/diff/index.js` | the comment beside it |
 
 What would move next, if the budget tightens or a startup script has to grow, measured
 2026-10-01 as the compressed bytes each saves where it stands (gzip level 6, as the

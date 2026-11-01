@@ -223,6 +223,31 @@ def test_recording_is_what_the_servers_answer(
     )
 
 
+def test_only_a_pinned_page_asks_for_the_view_file_module() -> None:
+    """A served folder's diff requests what it did on v0.11.0; a pin's first diff adds one.
+
+    ``docs/development.md`` records the tier: a static import of ``diff-view-file.js``
+    made every folder's first diff wait for a module it never calls.
+    """
+
+    steps = run_session(SESSION)["steps"]
+    folder, pinned = steps[0], steps[1]
+    assert folder["step"] == "a served folder's page has no controls"
+    assert folder["modules"] == [
+        "diff-intraline.js",
+        "diff-model.js",
+        "diff-render-model.js",
+        "diff-syntax.js",
+        "diff-view.js",
+        "index.js",
+    ]
+    assert not any(controls for controls in folder["bars"].values())
+    assert pinned["modules"] == ["diff-view-file.js"]
+    assert any(controls for controls in pinned["bars"].values())
+    # Nothing later in the session loads anything more.
+    assert not any("modules" in step for step in steps[2:])
+
+
 _LINK = re.compile(r"link (/view/\S+) · Open .* at ([0-9a-f]{12}), ")
 _SWITCH = re.compile(r"POST /api/source/pin \[content-type: application/json\] (\{.*\})$")
 
