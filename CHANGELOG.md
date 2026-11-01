@@ -375,8 +375,9 @@ GitHub URLs and HTTPS:
   its diff hunk, where it anchors: the last eight lines, back to the start of a
   multi-line comment’s range, with the earlier lines behind a disclosure and added and
   deleted lines tinted as in the diff.
-  The freshness row links to the page, and back, forward, and reload keep its tab.
-  The page for a number the server does not serve links to the served pull request’s
+  It reads as outdated only when its line is gone from the head and it keeps the one it
+  was on. The freshness row links to the page, and back, forward, and reload keep its
+  tab. The page for a number the server does not serve links to the served pull request’s
   page, on the same tab.
   `metab <pr-url> --show /pull/<n>[/files]` reports the page’s kind and a summary of its
   record, and `/api/plugin/github/pull-markdown?part=…` answers the allowlisted HTML of

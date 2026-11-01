@@ -102,6 +102,14 @@ def _style_rules() -> dict[str, str]:
     return rules
 
 
+def test_a_comment_with_no_line_links_to_its_file_with_no_fragment() -> None:
+    """Whether a comment has a line is the session's; what paint does without one is here."""
+
+    source = PAGE_JS.read_text(encoding="utf-8")
+    assert "...(line === null ? {} : { fragment: `L${line}` })" in source
+    assert "line === null ? path : `${path}:${line}`" in source
+
+
 def test_a_hunks_tints_are_the_diff_views() -> None:
     """The diff plugin's stylesheet loads only with Files changed, so its tints are restated
     for the conversation's hunks; a change to one that misses the other fails here."""

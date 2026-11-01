@@ -90,7 +90,7 @@ function summarize(model) {
     ),
     reviewComments: model.reviewComments.map(
       (comment) =>
-        `${comment.path}:${comment.line ?? "outdated"} ${comment.author}${comment.reply ? " (reply)" : ""}${comment.hunk ? " +hunk" : ""}`,
+        `${comment.path}:${comment.line ?? (comment.outdated ? "outdated" : "no line")} ${comment.author}${comment.reply ? " (reply)" : ""}${comment.hunk ? " +hunk" : ""}`,
     ),
     checks:
       model.checks === null
@@ -589,20 +589,37 @@ async function main() {
     ["no comparison in the record", recordComparison, null],
   ].map(([when, mounted, next]) => `${when}: ${runtime.filesAction(mounted, next)}`);
 
+  /** What the page makes of the recorded pull request with one comment of these fields. */
+  const commentWith = (fields) => {
+    const answer = structuredClone(recorded.current.body);
+    answer.record.review_comments = [{ ...record.review_comments[0], ...fields }];
+    return runtime.describePull(answer, { number: 7, tab: "", nowMs: page.clock.now })
+      .reviewComments[0];
+  };
+
+  // Whether a comment is outdated, and what it has to show with no line. The last case is
+  // the file-level comments GitHub answered in 2026-11 (subject_type "file"): each has line
+  // 1 and no hunk, and the record does not keep subject_type. No comment read then had
+  // neither line, so the third case is what the page does if GitHub ever answers one.
+  const commentAnchors = Object.fromEntries(
+    [
+      ["a comment on a line", { line: 2, original_line: 2 }],
+      ["an outdated comment keeps the line it was on", { line: null, original_line: 47 }],
+      ["a comment that names no line is not outdated", { line: null, original_line: null }],
+      ["a file-level comment as GitHub answers", { line: 1, original_line: 1, diff_hunk: "" }],
+    ].map(([name, fields]) => {
+      const { line, outdated, hunk } = commentWith(fields);
+      return [name, { line, outdated, hunkLines: hunk === null ? null : hunk.shown.length }];
+    }),
+  );
+
   // What a review comment shows of its hunk: the recorded pull request with one comment,
   // whose fields are the case's, through describePull. The stand-in's hunks are short, as
   // a recording is small, so the long ones are written here. Whatever the case, the two
   // parts hold the hunk's every line in order, and the tail ends with the hunk's end.
-  const reviewComment = record.review_comments[0];
   const hunks = Object.fromEntries(
     hunkCases().map(([name, fields]) => {
-      const answer = structuredClone(recorded.current.body);
-      answer.record.review_comments = [{ ...reviewComment, ...fields }];
-      const [{ hunk }] = runtime.describePull(answer, {
-        number: 7,
-        tab: "",
-        nowMs: page.clock.now,
-      }).reviewComments;
+      const { hunk } = commentWith(fields);
       const parts = [...hunk.earlier, ...hunk.shown].map((line) => line.text);
       assert(parts.join("\n") === fields.diff_hunk, `${name}: a line of the hunk was lost`);
       assert(hunk.shown.at(-1).text === parts.at(-1), `${name}: the tail lost the commented line`);
@@ -629,6 +646,7 @@ async function main() {
         wire: runtime.gitPathWire("src/app.txt"),
         pageDefense: inert,
         filesChanged: files,
+        commentAnchors,
         hunks,
       },
       null,
