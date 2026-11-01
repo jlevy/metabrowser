@@ -1973,14 +1973,16 @@ def _inventory_runtime_for(request: Request) -> InventoryRuntime:
 
 
 def _index_status_from_state(phase: LifecyclePhase, *, complete: bool, budget: bool) -> str:
+    # The budget first: the walk it stops is STOPPED, which would otherwise read as "idle".
+    # `events_route._status_from_phase` and `walk.py` answer in this order too.
+    if budget:
+        return "truncated"
     if phase is LifecyclePhase.DISCOVERING:
         return "scanning"
     if phase is LifecyclePhase.FAILED:
         return "failed"
     if phase is LifecyclePhase.STOPPED:
         return "idle"
-    if budget:
-        return "truncated"
     return "done" if complete else "scanning"
 
 

@@ -920,6 +920,44 @@ sandbox.MetabrowserNavigationRoute.attachController({
       check(`treemap: ${name} stops the totals loading`, pane.totals.stoppedLoading === true);
       shown.dispose();
     }
+    // A capped index: the folders it reached draw under the notice, and one it stopped
+    // before finishing has nothing more coming.
+    for (const [name, node, drawn] of [
+      ["a reached folder", envelope.node, true],
+      ["a folder past the cap", { path: "gone", state: "pending", total_files: 0 }, false],
+    ]) {
+      rollupOverride = {
+        ok: true,
+        json: async () => ({
+          ...JSON.parse(JSON.stringify(envelope)),
+          index_status: "truncated",
+          truncated: true,
+          node,
+        }),
+      };
+      const pane = makeElement();
+      pane.viewport = makeElement();
+      pane.status = makeElement();
+      pane.totals = makeElement();
+      pane.rollupControls = makeElement();
+      sandbox.MetabrowserViewState.setActive(pane, true);
+      const shown = mb
+        .getRegisteredView("folder", "treemap")
+        .render(pane, { path: "", kind: "folder", raw: {} });
+      await new Promise((resolve) => setImmediate(resolve));
+      check(
+        `treemap: ${name} on a capped index carries the notice`,
+        pane.status.textContent.startsWith("Index capped at 500,000 files"),
+        pane.status.textContent,
+      );
+      check(
+        `treemap: ${name} on a capped index leaves no skeleton`,
+        !pane.viewport.innerHTML.includes("tm-loading") &&
+          pane.viewport.innerHTML.includes("Treemap unavailable.") === !drawn,
+        pane.viewport.innerHTML,
+      );
+      shown.dispose();
+    }
     // A scan still running has more to say, so its skeleton stays.
     rollupOverride = {
       ok: true,

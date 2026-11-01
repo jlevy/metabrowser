@@ -60,6 +60,11 @@ $ node tests/dom/file-overview-session.js
     "distribution": "Indexing failed; no file summary is available.",
     "retry": false
   },
+  "a capped index says its summary is partial": {
+    "totals": "Files 2 files Ignored 1 files Total 3 files",
+    "distribution": "Share of Total (3 files) Code Python 3 files 100% Summary is partial: 3 files indexed at the 3-file cap.",
+    "retry": false
+  },
   "a running scan keeps its skeletons until a refresh fails": {
     "scanning": {
       "totals": "skeleton",

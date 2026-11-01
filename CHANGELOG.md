@@ -1030,6 +1030,15 @@ Fixes:
   The caption follows Show ignored and the measure, and is the table’s accessible
   caption.
 
+- A tree that reaches the 500,000-file cap now says so.
+  The file list shows “File list incomplete.”, File Overview says its summary is
+  partial, and Treemap draws the indexed files under “Index capped at 500,000 files”;
+  before, it stayed on its loading skeleton and nothing mentioned the cap.
+  `/api/rollup` answered `index_status: "idle"` and `truncated: false` for such an
+  index, and `/api/tree` and `/api/recent` answered `tally_cache_status: "idle"`, as
+  0.11.0 did. They now answer `truncated`, as `/api/index/progress` and `--walk` already
+  did.
+
 ## 0.11.0
 
 Content trust:

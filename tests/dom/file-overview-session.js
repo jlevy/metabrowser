@@ -375,6 +375,23 @@ const rollupError = (status) =>
     view.panel.dispose();
   }
 
+  // A capped index with this folder in it: the counts show, and the distribution says
+  // they are partial.
+  {
+    const view = page(PENDING_DIR, {
+      ...COMPLETE_ROLLUP,
+      index_status: "truncated",
+      truncated: true,
+      max_files: 3,
+    });
+    await view.settle();
+    const shown = view.read();
+    noSkeleton(shown, "a capped index");
+    assert(shown.distribution.includes("Summary is partial"), `capped: ${shown.distribution}`);
+    transcript["a capped index says its summary is partial"] = shown;
+    view.panel.dispose();
+  }
+
   // A scan still running has more to say, so the skeletons are honest. If the next request
   // fails there is no totals to fall back on, and it says so.
   {

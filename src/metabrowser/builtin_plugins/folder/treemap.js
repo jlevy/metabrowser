@@ -355,10 +355,14 @@ export function registerTreemap(mb, palette, rollupControls) {
         (envelope.index_status === "done" || envelope.index_status === "truncated") &&
         node?.state !== "pending";
       if (!terminal || !node || rect.width < 10 || rect.height < 10) {
-        // The index has finished without this folder, or the rollup failed
-        // before any answered: nothing is coming, so no skeleton either.
+        // The index has finished without this folder, stopped at its cap before
+        // finishing it, or the rollup failed before any answered: nothing is
+        // coming, so no skeleton either.
         viewport.innerHTML =
-          envelope?.index_status === "failed" || (terminal && !node) || (!envelope && rollupFailed)
+          envelope?.index_status === "failed" ||
+          (terminal && !node) ||
+          (envelope?.index_status === "truncated" && node?.state === "pending") ||
+          (!envelope && rollupFailed)
             ? '<div class="preview-empty">Treemap unavailable.</div>'
             : '<div class="tm-loading mb-delayed-loading" aria-hidden="true"></div><span class="sr-only">Loading treemap…</span>';
         return;
@@ -523,7 +527,11 @@ export function registerTreemap(mb, palette, rollupControls) {
           env.node?.state !== "pending";
         if (completeSnapshot && env.node) {
           totalsView.update(normalizeFolderTotals(env.node));
-        } else if (completeSnapshot || env.index_status === "failed") {
+        } else if (
+          completeSnapshot ||
+          env.index_status === "failed" ||
+          env.index_status === "truncated"
+        ) {
           totalsView.stopLoading();
         }
         const breakdown = env.file_type_breakdown;
