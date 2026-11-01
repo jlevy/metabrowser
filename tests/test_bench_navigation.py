@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import gzip
 import json
+import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -19,7 +20,7 @@ from devtools.bench_navigation import (
     runtime_identity,
     validate_equivalence,
 )
-from devtools.bench_serving import build_corpus, resolve_metab_build
+from devtools.bench_serving import MetabBuild, build_corpus, resolve_metab_build
 
 
 def test_runtime_mismatch_rejects_free_threading_and_patch_version() -> None:
@@ -36,6 +37,28 @@ def test_actual_build_runtime_includes_loaded_dependency_versions() -> None:
     assert isinstance(identity["gil_enabled"], bool)
     assert isinstance(identity["free_threaded"], bool)
     assert "starlette" in identity["dependencies"]
+
+
+def test_runtime_identity_reads_a_launcher_whose_interpreter_path_will_not_fit_a_shebang(
+    tmp_path: Path,
+) -> None:
+    """Past 127 characters uv writes ``#!/bin/sh``, which cannot run the Python probe."""
+
+    script = tmp_path / "metab"
+    script.write_text(
+        f"#!/bin/sh\n'''exec' '{sys.executable}' \"$0\" \"$@\"\n' '''\nimport sys\n",
+        encoding="utf-8",
+    )
+    identity = runtime_identity(MetabBuild(script, "metab 0"))
+    assert identity["python"] == sys.version
+    assert "starlette" in identity["dependencies"]
+
+
+def test_runtime_identity_refuses_a_script_that_names_no_python(tmp_path: Path) -> None:
+    script = tmp_path / "metab"
+    script.write_text('#!/bin/sh\nexec something-else "$@"\n', encoding="utf-8")
+    with pytest.raises(ValueError, match="uv-installed"):
+        runtime_identity(MetabBuild(script, "metab 0"))
 
 
 def test_response_validation_rejects_changed_content_and_selection() -> None:
