@@ -432,8 +432,9 @@ Repository cache:
   `ACQUISITION_PATCHED_TRACKS` in `src/metabrowser/git/process.py` lists them.
   An older Git is refused with a message that names the version found and the version
   required, and a refused acquisition does not create the application home.
-  Reusing a store already in the cache and serving a folder on disk do not check the
-  floor.
+  With no `git` on `PATH`, the same refusal says that git was not found and which
+  release to install. Reusing a store already in the cache and serving a folder on disk
+  do not check the floor.
 
 - New read-only routes `/api/cache/layout`, `/api/cache/sources`,
   `/api/cache/source/<slug>`, and `/api/cache/stores` report the cache’s layout and
