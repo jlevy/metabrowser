@@ -7,6 +7,17 @@ It lists what review each pull request of the v0.12 stack had, as the pull reque
 beads recorded it on 2026-10-01. For today’s state, run the commands under
 [How This Ledger Was Built](#how-this-ledger-was-built).
 
+**Addendum, 2026-11-01.** The stack merged to `main` on 2026-10-02 (`aa970853`), and the
+landing decision this record names is closed; the release is now `mb-4bd2`.
+[#268](https://github.com/jlevy/metabrowser/pull/268) landed above the stack on
+2026-10-04 and changed code, so it has a row of its own, after #262, outside the 44 the
+Summary counts. [#262](https://github.com/jlevy/metabrowser/pull/262) was not merged:
+#268 carries its fix in reworked form, and #262 was closed as superseded on 2026-10-26.
+Its row says so. The chain command the last section cites is gone from the runbook’s
+Pins, which pins `origin/main` now; the `gh api` command beside it still lists the
+stack. Those two rows are the only ones changed, and everything else here is as it was
+recorded on 2026-10-01.
+
 **Scope:** One row per pull request, in stack order, from `main` to
 [#265](https://github.com/jlevy/metabrowser/pull/265) at `481b64b7`, the top of GitHub
 stack [#218](https://github.com/jlevy/metabrowser/stack/218). The landing checklist in
@@ -149,7 +160,8 @@ Commits are abbreviated.
 | [#265](https://github.com/jlevy/metabrowser/pull/265) | The release checklist’s steps 1 to 5 rehearsed against v0.11.0: exp-038, ledger rows, and the regenerated performance report. No product code | None. It is a record of measurement | Its own findings, the `--doctor` cost, the `frame_missing_px` probe, and the changelog gaps, are answered in #264 or left to the user (`mb-cf6y`) | 9 of 9 at `481b64b7` ([run](https://github.com/jlevy/metabrowser/actions/runs/36947693543)) |
 | [#267](https://github.com/jlevy/metabrowser/pull/267) | Landing-gate fixes, second round: six regular-folder differences from v0.11.0 that the data and browser differentials found (structured cache size zero, the diff document hook on any file name, `--show` dotenv reads, a stray attribute on tree folder rows, the 21px line pitch of unhighlighted source, byte limits below zero) | Coordinator. An independent review was started twice and cut off by a usage limit both times before it reported; it had re-run the first mutations. It is owed (`mb-55tr`) | The coordinator read the source changes and found no P0 or P1. The author’s mutation table covers each fix. The data differential and the evidence audit were re-run at this head | 9 of 9 at `14fcdb85` |
 | [#247](https://github.com/jlevy/metabrowser/pull/247) | Outside the chain: the removed hosted-review code, kept as an unmaintained reference branch. A draft that is never merged | None of its own. It restores what #246 removes, so #246’s review is the review of the boundary | None recorded | 9 of 9 at `b10a2fa8` ([run](https://github.com/jlevy/metabrowser/actions/runs/36805938982)) |
-| [#262](https://github.com/jlevy/metabrowser/pull/262) | Outside the chain: a page kept in the back/forward cache releases its event stream (`mb-tdmd`). A draft, held until after the landing | Independent | One P1 (Back onto a page with a type filter un-filters the tree), two P2 groups, and P3s, none fixed yet (`mb-tdmd`’s notes). The review is why it is held out: without it, regular pages behave as in v0.11.0, which has the same stall | 9 of 9 at `a7f7c8bc` ([run](https://github.com/jlevy/metabrowser/actions/runs/36916957466)) |
+| [#262](https://github.com/jlevy/metabrowser/pull/262) | Outside the chain: a page kept in the back/forward cache releases its event stream (`mb-tdmd`). A draft, held until after the landing | Independent | One P1 (Back onto a page with a type filter un-filters the tree), two P2 groups, and P3s, none fixed yet (`mb-tdmd`’s notes). The review is why it is held out: without it, regular pages behave as in v0.11.0, which has the same stall. Added 2026-11-01: superseded by #268 and closed unmerged on 2026-10-26 (`mb-299e`); #268’s version also answers that P1 | 9 of 9 at `a7f7c8bc` ([run](https://github.com/jlevy/metabrowser/actions/runs/36916957466)) |
+| [#268](https://github.com/jlevy/metabrowser/pull/268) | Added 2026-11-01. Above the stack; merged on 2026-10-04 at `0b016e4b`. Separate cache and configuration roots, with `METABROWSER_HOME` removed (`mb-j2b7`); the CI glob fix, which takes Tryscript 0.3.0 to remove the vulnerable fast-glob, micromatch, and braces chain and aligns the golden parser with it (`mb-19fc`, `mb-zmb6`); the page-connection work of #262, integrated and hardened (`mb-tdmd`); the mirror heading’s sizing (`mb-hj9h`) | None independent. An implementation agent’s own review at `f67606b7`, which says it is not an independent approval, is on GitHub as a review object of state `COMMENTED`; the review decision is empty. One more commit of fixes followed (`c269a95d`), then its test (`9f92d2a4`) | R1 (high, the vulnerable chain), R2 and R3 (medium: a transcript that depended on the caller’s environment, and the golden parser), and R4 (low, wording of a configuration refusal). R1 to R3 fixed in `f67606b7`, R4 in `c269a95d`. The description leaves real-browser back/forward cache behavior to release QA; the landing gate’s browser differential later measured it in Chrome (`mb-2g6f`), and Safari and Firefox are unmeasured | 9 of 9 at `9f92d2a4` ([run](https://github.com/jlevy/metabrowser/actions/runs/37272909283)) |
 
 ## How This Ledger Was Built
 

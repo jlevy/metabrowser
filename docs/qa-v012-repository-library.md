@@ -1,14 +1,15 @@
 # QA: v0.12 Repository Library and HTML Trust
 
-**Status:** Active procedure for the unreleased v0.12 Repository Library stack.
-HTML trust is included through released `main`. Git acquired from a `file://` or
-`https://` origin, including a GitHub URL, is inspectable through data modes and served
-in the browser as an immutable pin under the forced untrusted profile.
+**Status:** Active procedure for the v0.12 Repository Library, which has landed on
+`main` and is not yet released; it first ships in 0.12.0 (`mb-4bd2`). HTML trust is
+included, as it was in v0.11.0. Git acquired from a `file://` or `https://` origin,
+including a GitHub URL, is inspectable through data modes and served in the browser as
+an immutable pin under the forced untrusted profile.
 The served mirror refreshes from its origin in the background, and the pin can switch to
 another branch, tag, or commit of the same mirror; ssh stays closed.
 
 The [v0.12 alpha test plan](project/specs/active/plan-2026-09-22-v012-alpha-testing.md)
-defines the milestones, the manual browser matrix, and the landing checklist.
+defines the milestones, the manual browser matrix, and what remains before the release.
 This runbook holds the step-by-step checks those milestones run.
 
 This runbook tests the Git mirror, GitHub browsing, and inherited HTML behavior:
