@@ -60,6 +60,21 @@ content is at a limit of zero, 0.11.0 did not open it and answered `truncated`; 
 answers the same 404 `content_unavailable`. Run on 2026-11-01 at limits of 0 and 1
 against v0.11.0’s source.
 Signing that row accepts this case too, and `CHANGELOG.md` now states it.
+This list also has no row for a compressed patch, so that change is stated here for
+signing.
+`/api/plugin/diff/document` on a `.patch.gz` now reads the patch the file holds,
+where v0.11.0 parsed the compressed bytes and answered 200 with 0 files for every
+`.patch.gz`, a valid one included.
+A compressed file whose stream cannot be decoded now answers 404 `diff_document`, “This
+file is not available.”, where v0.11.0 answered that same 200 with 0 files.
+With the damage in the first 512 KiB that `/api/file` reads, both builds show the file
+as bytes.
+With the damage past that, as in an 8.5 MB patch whose gzip is cut at 80%, both
+say `kind: diff`, so the Diff view now shows that message where v0.11.0 showed an empty
+change set. Run on 2026-11-01 against v0.11.0’s source, except the view’s message, which
+is read from the plugin’s code.
+`CHANGELOG.md` states it under Fixes: “A compressed patch is read as the patch it
+holds.”
 
 **Scope:** What a user or a plugin author sees differently on something v0.11.0 already
 did: a regular folder served or inspected, the CLI, the Plugin SDK, and the package’s
