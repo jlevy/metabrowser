@@ -307,6 +307,8 @@ GitHub URLs and HTTPS:
   The record names Files changed as two pinned commits, the merge base and the head, as
   GitHub computes it, and `/api/plugin/diff/comparison` now honors
   `base_policy=merge_base` for such a comparison.
+  The route also validates the parameter, which 0.11.0 ignored: a value other than
+  `direct` or `merge_base`, or one given with `revision`, answers 400 `diff_comparison`.
   Two commits that share no history have no merge base, and the route answers 404
   `diff_comparison` with a message that says so.
   Reading pull requests needs `gh` 2.81.0 or newer signed in to github.com, because

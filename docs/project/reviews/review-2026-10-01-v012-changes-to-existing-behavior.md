@@ -30,6 +30,30 @@ claims, is what exposed it.
 The paragraph after the table says which row and why.
 Nothing else in this record was changed.
 
+**Addendum, 2026-11-01.** Written for the reader asked to sign this record; nothing
+above or below it was changed.
+[#272](https://github.com/jlevy/metabrowser/pull/272) adds `CHANGELOG.md` entries for
+both rows of the table of deliberate changes with no entry: `/api/stream` under Page
+lifecycle, and `--end-of-options` under Content trust.
+So once #272 is on `main`, that table and the sentence above it describe the tree this
+record was checked on: a search of the file for `end-of-options` and `rotated` now finds
+those entries, not nothing.
+The sign-off’s “a request to add entries” is answered by them, and signing accepts the
+two changes as those entries state them.
+The `--end-of-options` entry leaves out the row’s “No response differed”, but the claim
+was checked again and stands.
+Of the 157 rows the re-run’s data differential reports as deliberate with no entry, 149
+are this change, and all of their 702 elements are the Git command line the harness
+records (`fx.calls`), not a route’s answer or a command’s output.
+This record’s statement that the `/api/plugin/diff/comparison` entry does not say other
+requests are refused was also checked, on `c934a0b4`, and was true: the file’s only
+mention of `base_policy` was the sentence that the route honors `merge_base`. #272 adds
+the refusal to that entry, as the code in `builtin_plugins/diff/sidekick.py` has it, and
+running both cases answered 400 `diff_comparison`. One more statement has been overtaken
+and is left as written: A Known Defect says the fix is #262, held out of the stack.
+#268 carries the fix and #262 was closed unmerged, and `mb-tdmd` is closed, with Back in
+Safari and Firefox checked under `mb-etqi`.
+
 **Scope:** What a user or a plugin author sees differently on something v0.11.0 already
 did: a regular folder served or inspected, the CLI, the Plugin SDK, and the package’s
 requirements. New features are listed only where they show on a regular folder.
