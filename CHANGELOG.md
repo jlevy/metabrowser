@@ -736,11 +736,8 @@ Content trust:
   `inert-render.js`, `inert-toc.js`, and `place-rendered.js`, which places a render and
   imports the other two on the first inert one.
 
-- Two more modules are requested on every view of their kind, with nothing visible
-  changing on a folder: `/plugin-static/markdown/place-rendered.js` on every Markdown
-  view, for the reason above, and `/plugin-static/diff/diff-view-file.js` on every diff
-  view, which decides the View file controls and offers none on a folder, which has no
-  pin.
+- One more module is requested on every Markdown view, with nothing visible changing on
+  a folder: `/plugin-static/markdown/place-rendered.js`, for the reason above.
 
 - The comparison adapter resolves a revision with
   `git rev-parse --verify --end-of-options <rev>^{commit}`, so a revision that begins
