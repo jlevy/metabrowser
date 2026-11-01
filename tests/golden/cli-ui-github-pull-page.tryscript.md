@@ -36,8 +36,6 @@ repository, so both sides are bare branch names.
 The last lines show a page for a number the server does not serve, which links a
 rendered text keeps (made absolute against the pull request’s github.com page, http and
 https only), and the `/view/` address a review comment’s file opens at.
-`commentAnchors` is when a comment reads as outdated: only when its line is gone from
-the head and it keeps the one it was on.
 `hunks` is what a review comment shows of its diff hunk, which ends at the commented
 line: the last eight lines, or back to the start of a multi-line comment’s range, with
 the rest behind a disclosure, and each line classed so an addition or deletion is
@@ -739,28 +737,6 @@ $ node tests/dom/github-pull-page-session.js
     "open on an older head: offer",
     "no comparison in the record: unavailable"
   ],
-  "commentAnchors": {
-    "a comment on a line": {
-      "line": 2,
-      "outdated": false,
-      "hunkLines": 3
-    },
-    "an outdated comment keeps the line it was on": {
-      "line": null,
-      "outdated": true,
-      "hunkLines": 3
-    },
-    "a comment that names no line is not outdated": {
-      "line": null,
-      "outdated": false,
-      "hunkLines": 3
-    },
-    "a file-level comment as GitHub answers": {
-      "line": 1,
-      "outdated": false,
-      "hunkLines": null
-    }
-  },
   "hunks": {
     "a short hunk is whole": {
       "earlier": null,

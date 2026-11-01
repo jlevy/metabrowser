@@ -456,9 +456,7 @@ function reviewComments(record) {
       part: `review_comment/${comment.id}`,
       path: text(comment.path),
       line: typeof comment.line === "number" ? comment.line : null,
-      // A line comment whose line is gone from the head keeps the one it was written on.
-      // A comment with neither was never on a line, so it has not gone out of date.
-      outdated: typeof comment.line !== "number" && typeof comment.original_line === "number",
+      outdated: typeof comment.line !== "number",
       reply: typeof comment.in_reply_to === "number",
       author: who(comment.author),
       at: text(comment.created_at),
