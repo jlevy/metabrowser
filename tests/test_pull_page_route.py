@@ -217,6 +217,27 @@ def test_a_wide_table_scrolls_inside_its_text() -> None:
     assert "width: 100%" not in rules[".github-pull-markdown table"].replace("max-width", "")
 
 
+def test_a_long_word_breaks_without_stopping_a_wide_table_from_scrolling() -> None:
+    """The card clips a word as it clips a table, so a word or URL too long for its text
+    must break, and only by the rule that leaves a table's cells their min-content.
+
+    Measured 2026-11-01 on jlevy/metabrowser#267, in a 647 px text: a 400-character word
+    had 1,853 px clipped and a long URL 1,807 px, with no way to reach either.
+    ``overflow-wrap: anywhere`` counts its breaks toward min-content, so a table of
+    unbroken cells crushes to fit instead of scrolling. This stylesheet in headless Chrome,
+    with an 8-column table of such cells in a 647 px text: ``anywhere`` made 81 px columns
+    and no scroll; ``break-word`` keeps 466 px columns, a ``scrollWidth`` of 3,727 px, and
+    the last column reachable, and clips neither the word nor the URL.
+    """
+
+    rules = _style_rules()
+    assert "overflow-wrap: break-word" in rules[".github-pull-markdown"]
+    for selector, declarations in rules.items():
+        if selector.startswith(".github-pull-markdown"):
+            assert "anywhere" not in declarations, selector
+            assert "word-break" not in declarations, selector
+
+
 def test_a_table_at_either_end_of_a_text_is_what_the_deepest_trim_reaches() -> None:
     """KPress wraps a table in a ``<div>`` of its own, beneath the two every text has."""
 

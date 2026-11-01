@@ -199,6 +199,13 @@
 .github-pull-merge[data-state="conflicting"] {
   color: var(--status-error);
 }
+/* A long word or URL breaks rather than running past the card, which clips it out of reach.
+   `break-word`, not `anywhere`: `anywhere` counts its breaks toward min-content, so a table
+   of unbroken cells would crush to fit its text instead of scrolling (the `table` rule
+   below); `break-word` leaves min-content as it is. */
+.github-pull-markdown {
+  overflow-wrap: break-word;
+}
 /* A text's Markdown is plain allowlisted markup (inert_html.py) with no KPress styling of
    its own, under the shell's reset, which takes every margin and padding away. So its
    spacing is set here: KPress's own paragraph margin and list indent, in em so a text

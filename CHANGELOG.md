@@ -370,7 +370,7 @@ GitHub URLs and HTTPS:
   answer too, and code blocks show as plain text without highlighting.
   A text’s paragraphs, headings, lists, quotes, code, tables, and details have their own
   spacing and list indent inside the card, with none above the first block or below the
-  last, and a table wider than its text scrolls there.
+  last; a table wider than its text scrolls there, and a long word or URL breaks to fit.
   A review comment’s file opens at the served head, at its line, and it shows the end of
   its diff hunk, where it anchors: the last eight lines, back to the start of a
   multi-line comment’s range, with the earlier lines behind a disclosure and added and
