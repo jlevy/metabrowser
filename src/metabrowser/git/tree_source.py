@@ -907,7 +907,9 @@ def _parse_info_header(oid: str, header: bytes) -> _ObjectInfo:
     return _ObjectInfo(oid=oid, kind=kind, size=size)
 
 
-def _iter_ls_tree_records(payload: bytes) -> tuple[tuple[str, GitEntryKind, str, bytes], ...]:
+def iter_ls_tree_records(payload: bytes) -> tuple[tuple[str, GitEntryKind, str, bytes], ...]:
+    """``(mode, kind, oid, name)`` of each record of one ``ls-tree -z`` frame."""
+
     records: list[tuple[str, GitEntryKind, str, bytes]] = []
     offset = 0
     length = len(payload)
@@ -939,7 +941,7 @@ def _index_blob_records(payload: bytes) -> list[tuple[bytes, str]] | None:
     """Blob names and OIDs of one ``ls-tree -r`` frame. ``None`` past the index bound."""
 
     blobs: list[tuple[bytes, str]] = []
-    for _mode, kind, oid, name in _iter_ls_tree_records(payload):
+    for _mode, kind, oid, name in iter_ls_tree_records(payload):
         if kind != "blob":
             continue
         blobs.append((name, oid))

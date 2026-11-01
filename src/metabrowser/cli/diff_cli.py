@@ -168,13 +168,12 @@ def _print_patch(document: ChangeSetDocument, wanted_path: str) -> None:
 
 
 async def _materialize(root: Path, revision: str) -> TreeSnapshot:
+    # Here rather than at the top: only --diff-check needs the store reader's module.
+    from metabrowser.git.tree_source import iter_ls_tree_records
+
     listing = await run_git(["ls-tree", "-r", "-z", "--full-tree", revision], cwd=root)
     entries: dict[str, TreeEntry] = {}
-    for record in listing.split(b"\0"):
-        if not record:
-            continue
-        meta, path_raw = record.split(b"\t", 1)
-        mode_raw, obj_type, oid = meta.decode("ascii").split(" ")
+    for mode_raw, obj_type, oid, path_raw in iter_ls_tree_records(listing):
         path = path_raw.decode("utf-8", "surrogateescape")
         if obj_type == "commit":
             entries[path] = TreeEntry(EntryType.submodule, mode_raw, oid.encode("ascii"))
