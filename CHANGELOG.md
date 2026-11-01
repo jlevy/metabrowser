@@ -1008,6 +1008,13 @@ Fixes:
   counted says so and offers Retry where the request can be retried.
   A scan that is still running keeps its skeletons.
 
+- A JSONL log’s event rows answer the keyboard.
+  Each row’s header is now a button with a tab stop and an expanded state, and Enter or
+  Space opens and closes it as a click does.
+  A keyboard could not reach a row in 0.11.0 either, and moving the rows off inline
+  handlers in this release had also removed the clickable node the accessibility tree
+  showed. A click on a row does what it did.
+
 ## 0.11.0
 
 Content trust:
