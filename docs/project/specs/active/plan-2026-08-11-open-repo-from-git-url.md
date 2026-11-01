@@ -12,11 +12,11 @@ Its Simplify step then changed part of that foundation; the
 [Phase 1B addendum](#phase-1b-generic-git-cache-and-repository-url-open) lists what it
 replaced.
 
-**Status:** Phases 0 through 1B are built on the unmerged v0.12 stack,
-[#218](https://github.com/jlevy/metabrowser/stack/218), above the released v0.11.0
-`main`, and their acceptance closed with foundation stabilization in
-[#226](https://github.com/jlevy/metabrowser/pull/226). The thin-mirror Simplify step
-then changed part of that foundation, and
+**Status:** Phases 0 through 1B were built on the v0.12 stack,
+[#218](https://github.com/jlevy/metabrowser/stack/218), which has landed on `main` and
+first ships in 0.12.0, not yet tagged; their acceptance closed with foundation
+stabilization in [#226](https://github.com/jlevy/metabrowser/pull/226). The thin-mirror
+Simplify step then changed part of that foundation, and
 [#246](https://github.com/jlevy/metabrowser/pull/246) removed the cache’s reservations
 for a provider store.
 Phases 2A through 2C are superseded: the thin-mirror plan’s
@@ -24,8 +24,8 @@ Phases 2A through 2C are superseded: the thin-mirror plan’s
 that open, serve, refresh, and re-pin a repository URL in their place, so the unchecked
 items in those phases will not be done as written.
 SSH acquisition is deferred (`mb-bi2c`). The later phases remain open work: the catalog
-(`mb-0ybg`), the chooser (`mb-vmzy`), and very large repositories (`mb-dqvj`). Landing
-is `mb-n2ro` and requires the user’s explicit approval; the
+(`mb-0ybg`), the chooser (`mb-vmzy`), and very large repositories (`mb-dqvj`). The
+release is `mb-4bd2` and requires the user’s explicit approval; the
 [alpha test plan](plan-2026-09-22-v012-alpha-testing.md#landing-status) lists what
 remains before it.
 
@@ -1732,7 +1732,7 @@ The foundation has acquisition, content-source and immutable-revision slices; #2
 consolidates the latter two.
 Their remaining acceptance closed in #226. The pull requests above it are named in the
 alpha test plan’s [Delivery](plan-2026-09-22-v012-alpha-testing.md#delivery) section,
-and the stabilized stack lands together.
+and the stabilized stack landed together.
 
 **Addendum (2026-09-23, thin-mirror Simplify step):** the checklists below record what
 was built; the Simplify step replaced part of it.

@@ -123,8 +123,9 @@ and `type_presets` rows, `tally_cache_status`, and a `summary` from that index.
 `types` and `min_size` keep ancestor trees of matching blobs and emit subtree `filtered`
 totals. Git type matching uses the same bounded compound-tail logical extension as
 filesystem inventory.
-SPA file nodes and blob `/api/file` envelopes emit that tail as `ext`; blob file
-envelopes omit compressed identity because blobs are stored bytes with no gzip smudge.
+SPA file nodes emit that tail as `ext`. Blob `/api/file` envelopes emit the name’s last
+extension as `ext`, as a folder’s do, and choose the file’s kind from it; they omit
+compressed identity because blobs are stored bytes with no gzip smudge.
 Git markdown envelopes include parsed YAML `frontmatter` and `frontmatter_error`; KPress
 on a pin uses that parse.
 Git text envelopes use the same first-window and highlight bound as filesystem listings.

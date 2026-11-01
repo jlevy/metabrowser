@@ -432,6 +432,39 @@ def test_a_git_that_reports_a_below_floor_version_is_refused(tmp_path: Path) -> 
 
 
 @posix_only
+@pytest.mark.parametrize("mode", [["--no-serve"], ["--show", "README"]])
+def test_no_git_on_path_is_reported_as_missing_and_not_as_a_version(
+    mode: list[str], tmp_path: Path
+) -> None:
+    """Nothing substituted: a ``PATH`` with no ``git`` on it, in a process of its own.
+
+    The URL is never contacted. The refusal comes before anything reaches for the
+    network, and with no ``git`` and no ``gh`` nothing here could.
+    """
+
+    empty = tmp_path / "bin"
+    empty.mkdir()
+    home = tmp_path / "home"
+    metab = "from metabrowser.cli.entrypoint import main; main()"
+    result = subprocess.run(
+        [sys.executable, "-c", metab, "https://github.com/octo/demo", *mode],
+        env={**os.environ, "METABROWSER_CACHE_DIR": str(home), "PATH": str(empty)},
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=50,
+        check=False,
+    )
+    assert result.returncode == 1, result.stderr
+    assert result.stderr == (
+        "Error: git was not found on PATH; acquisition requires Git 2.43.7 or a patched "
+        "release at least 2.50.1 on a newer track\n"
+    )
+    assert result.stdout == ""
+    assert not home.exists()
+
+
+@posix_only
 @skip_as_root
 def test_no_serve_reuses_a_cache_hit_when_the_home_has_no_owner_write(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch

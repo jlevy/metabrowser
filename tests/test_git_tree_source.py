@@ -287,7 +287,7 @@ def test_git_revision_subject_reads_trees_and_blobs_without_a_checkout(tmp_path:
             missing = GitPath.from_segments(b"nope.txt")
             assert await source.resolve_path(missing) is None
             try:
-                await source.read_blob_oid(_ZERO_OID)
+                await source.read_blob_window(_ZERO_OID, offset=0, max_bytes=1)
                 raise AssertionError("missing oid must fail closed")
             except GitObjectUnavailableError as exc:
                 assert exc.code == "object_unavailable"
@@ -406,7 +406,7 @@ def test_abbreviated_oid_never_enters_the_batch_protocol(tmp_path: Path) -> None
         )
         try:
             try:
-                await subject.tree_source.read_blob_oid(commit[:12])
+                await subject.tree_source.read_blob_window(commit[:12], offset=0, max_bytes=1)
                 raise AssertionError("abbreviations must not reach cat-file")
             except GitPathError:
                 pass
@@ -647,7 +647,7 @@ def test_a_closed_reader_pool_never_respawns_an_actor(tmp_path: Path) -> None:
         tree_module._BatchObjectReader.info = info_then_close  # type: ignore[method-assign]
         try:
             with pytest.raises(GitBatchProtocolError):
-                await source.read_blob_oid(readme.oid)
+                await source.read_blob(readme.path)
         finally:
             tree_module._BatchObjectReader.info = original_info  # type: ignore[method-assign]
         assert store_batch_reader_count(target) == 0

@@ -28,9 +28,22 @@ export const FAST_POLL_MS = 1000;
 export const SLOW_POLL_MS = 30000;
 // Markdown renders asked for at once. A render is one bounded body through KPress:
 // 4 to 7 ms warm for a short comment (KPress 0.3.5, measured 2026-09-24 in-process on a
-// loaded development machine), and a text scrolls into view before it is asked for, so
-// two keep a long conversation filling in without queueing ahead of the page's polls.
+// loaded development machine), and a text nears the view before it is asked for, so two
+// keep a long conversation filling in without queueing ahead of the page's polls.
 export const MARKDOWN_CONCURRENCY = 2;
+// How far from the view a text's Markdown is asked for: one pane's height above and below
+// it, as an IntersectionObserver margin. A text asked for only once it is on screen shows
+// its raw Markdown until the answer comes, which a fast scroll can catch. A render request
+// took about 10 to 15 ms in a browser (2026-11-01), so one screen ahead is plenty, and it
+// stays lazy: what is further off is not asked for until the reader comes nearer.
+export const MARKDOWN_AHEAD = "100% 0px";
+// How much of a review comment's diff hunk it shows; the rest is behind a disclosure.
+// GitHub's `diff_hunk` runs from the hunk's `@@` line to the commented line, which is
+// last, however long the hunk: on pallets/click#3030 (read 2026-11-01), 37 hunks of up to
+// 253 lines took 35,104 px of a 62,117 px page. The tail is what is shown because that
+// is where the comment anchors, and github.com shows the same end of it. Eight lines is
+// a display choice, enough to read what a comment is about, and not a bound on any cost.
+export const HUNK_TAIL_LINES = 8;
 
 const PULL_ROUTE = "/api/plugin/github/pull";
 const REFRESH_ROUTE = "/api/plugin/github/pull-refresh";
@@ -106,6 +119,11 @@ const TRUNCATED = Object.freeze({
  */
 
 /**
+ * @typedef {{kind: "hunk" | "add" | "del" | "context" | "note", text: string}} HunkLine
+ * @typedef {{earlier: HunkLine[], shown: HunkLine[]}} HunkView
+ */
+
+/**
  * @typedef {{
  *   id: number,
  *   part: string,
@@ -117,7 +135,7 @@ const TRUNCATED = Object.freeze({
  *   at: string,
  *   text: string,
  *   truncated: boolean,
- *   hunk: string,
+ *   hunk: HunkView | null,
  *   hunkTruncated: boolean,
  * }} ReviewCommentItem
  */
@@ -328,6 +346,81 @@ function timeline(record) {
 }
 
 /**
+ * What one line of a diff hunk is, by its first character. `\ No newline at end of file`
+ * is a note about the line before it.
+ *
+ * @param {string} line
+ * @returns {HunkLine["kind"]}
+ */
+function hunkLineKind(line) {
+  if (line.startsWith("@@")) {
+    return "hunk";
+  }
+  if (line.startsWith("+")) {
+    return "add";
+  }
+  if (line.startsWith("-")) {
+    return "del";
+  }
+  return line.startsWith("\\") ? "note" : "context";
+}
+
+/**
+ * How many lines of its side a review comment covers: one, or a multi-line comment's
+ * range. `original_*` number the commit the hunk is from, and `line` and `start_line` the
+ * head, or are gone when the comment is outdated. A later commit can change the distance
+ * between them, so the larger is taken: a line too many costs nothing, and a range cut
+ * short is what this exists to prevent.
+ *
+ * @param {Record<string, any>} comment
+ */
+function commentedSpan(comment) {
+  /** @param {unknown} start @param {unknown} end */
+  const span = (start, end) =>
+    typeof start === "number" && typeof end === "number" && end >= start ? end - start + 1 : 1;
+  return Math.max(
+    span(comment.start_line, comment.line),
+    span(comment.original_start_line, comment.original_line),
+  );
+}
+
+/**
+ * What a review comment shows of its hunk: `shown` is the tail, from the start of the
+ * commented range if that is further back than `HUNK_TAIL_LINES`, and `earlier` is the
+ * rest, in order, for the disclosure. Counted back from the end, where the commented
+ * line is, along the comment's side of the diff, because a hunk cut to fit the record has
+ * lost its `@@` line and the numbers it starts from. A range reaching above what the
+ * record kept shows all of it. A comment is on one side here: the record does not keep
+ * `start_side`, so a range starting on the other side is counted on this one, and any of
+ * it that falls outside the tail is in the disclosure.
+ *
+ * @param {string} hunk
+ * @param {Record<string, any>} comment
+ * @returns {HunkView}
+ */
+export function hunkView(hunk, comment) {
+  /** @type {HunkLine[]} */
+  const lines = hunk
+    .replace(/\n$/, "")
+    .split("\n")
+    .map((line) => ({ kind: hunkLineKind(line), text: line }));
+  const side = comment.side === "LEFT" ? "del" : "add";
+  let remaining = commentedSpan(comment);
+  let rangeStart = lines.length;
+  for (let index = lines.length - 1; index >= 0 && remaining > 0; index -= 1) {
+    if (lines[index].kind === "context" || lines[index].kind === side) {
+      remaining -= 1;
+      rangeStart = index;
+    }
+  }
+  const first = Math.min(rangeStart, lines.length - HUNK_TAIL_LINES);
+  // A disclosure is a row of its own, so it never hides less than a row's worth: one
+  // line, in practice the `@@` line of a hunk just past the tail.
+  const cut = first <= 1 ? 0 : first;
+  return { earlier: lines.slice(0, cut), shown: lines.slice(cut) };
+}
+
+/**
  * Review comments by file, each thread's first comment before its replies.
  *
  * @param {Record<string, any>} record
@@ -369,7 +462,7 @@ function reviewComments(record) {
       at: text(comment.created_at),
       text: text(comment.body),
       truncated: comment.body_truncated === true,
-      hunk: text(comment.diff_hunk),
+      hunk: text(comment.diff_hunk) === "" ? null : hunkView(text(comment.diff_hunk), comment),
       hunkTruncated: comment.diff_hunk_truncated === true,
     }));
 }
@@ -816,8 +909,8 @@ export function createPullController(deps, options) {
   }
 
   /**
-   * Ask for one part's Markdown once per record. The glue asks when the part is on
-   * screen, so a long conversation renders what a reader reaches.
+   * Ask for one part's Markdown once per record. The glue asks when the part is within
+   * `MARKDOWN_AHEAD` of the view, so a long conversation renders what a reader reaches.
    *
    * @param {string} part
    */
@@ -1066,17 +1159,23 @@ export function mountPullPage(container, ctx, mb) {
   let diffHandle = null;
   /** @type {HTMLElement | null} */
   let diffHost = null;
+  // Rooted in the pane that scrolls, which the shell marks. With no root the root is the
+  // window, and a margin on it does nothing here: a text past the pane's edge is clipped
+  // by the pane on its way to the window, before the window's margin is applied.
   const observer =
     typeof IntersectionObserver === "function"
-      ? new IntersectionObserver((entries) => {
-          for (const entry of entries) {
-            const part = entry.isIntersecting ? entry.target.getAttribute("data-part") : null;
-            if (part !== null) {
-              observer?.unobserve(entry.target);
-              controller.requestMarkdown(part);
+      ? new IntersectionObserver(
+          (entries) => {
+            for (const entry of entries) {
+              const part = entry.isIntersecting ? entry.target.getAttribute("data-part") : null;
+              if (part !== null) {
+                observer?.unobserve(entry.target);
+                controller.requestMarkdown(part);
+              }
             }
-          }
-        })
+          },
+          { root: container.closest("[data-kpress-viewport]"), rootMargin: MARKDOWN_AHEAD },
+        )
       : null;
 
   /** @param {string} iso */
@@ -1287,6 +1386,20 @@ export function mountPullPage(container, ctx, mb) {
     live.textContent = [model.message, model.failure].filter(Boolean).join(" ");
   }
 
+  /**
+   * Lines of a diff hunk, each its own text node, as all of a pull request's text is.
+   *
+   * @param {HunkLine[]} lines
+   */
+  const hunkLines = (lines) =>
+    h(
+      "pre",
+      { class: "github-pull-hunk" },
+      lines.map((line) =>
+        h("span", { class: "github-pull-hunk-line", "data-kind": line.kind }, [line.text]),
+      ),
+    );
+
   /** @param {PullModel} model */
   function paintConversation(model) {
     const pull = /** @type {NonNullable<PullModel["pull"]>} */ (model.pull);
@@ -1333,8 +1446,20 @@ export function mountPullPage(container, ctx, mb) {
           { class: `github-pull-card${comment.reply ? " github-pull-reply" : ""}` },
           [head],
         );
-        if (!comment.reply && comment.hunk !== "") {
-          card.append(h("pre", { class: "github-pull-hunk" }, [comment.hunk]));
+        if (!comment.reply && comment.hunk !== null) {
+          const { earlier, shown: tail } = comment.hunk;
+          if (earlier.length > 0) {
+            // Native, so opening it asks nothing of the page and a repaint just closes it.
+            card.append(
+              h("details", { class: "github-pull-hunk-earlier" }, [
+                h("summary", { class: "section-disclosure-trigger" }, [
+                  `${earlier.length} earlier lines`,
+                ]),
+                hunkLines(earlier),
+              ]),
+            );
+          }
+          card.append(hunkLines(tail));
           if (comment.hunkTruncated) {
             card.append(h("p", { class: "github-pull-note" }, ["The start of this hunk was cut."]));
           }

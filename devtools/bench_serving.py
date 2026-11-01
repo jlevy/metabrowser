@@ -71,7 +71,7 @@ import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Final, cast
 
 REPO = Path(__file__).resolve().parent.parent
 PROBE_PATH = Path(__file__).resolve().parent / "bench-browser-probe.js"
@@ -276,13 +276,44 @@ def _wheel_release_manifest(
     return project, version, entry_point, expected
 
 
-def _validate_console_launcher(source: bytes, interpreter: Path, entry_point: str) -> None:
-    """Accept only the semantics of uv's generated POSIX console launcher."""
+# What uv writes in place of a shebang when the interpreter's path cannot be one: longer
+# than the 127 characters a kernel reads, or holding a space. `sh` runs the second line,
+# which hands this file to the interpreter, and the interpreter reads the three lines as a
+# string. The path is quoted for `sh`, so a single quote in it is `'\''`.
+_WRAPPED_LAUNCHER: Final = re.compile(
+    r"""#!/bin/sh\n'''exec' '((?:[^']|'\\'')+)' "\$0" "\$@"\n' '''\n"""
+)
+
+
+def split_console_launcher(source: bytes) -> tuple[Path, str] | None:
+    """The interpreter a uv console script runs under, and the Python it gives it.
+
+    A probe of what a build imports has to run in that interpreter, and the first line
+    names it only when the path fits in a shebang. ``None`` for anything else, which
+    includes any other `sh` script: its first line is an interpreter, and not one that
+    can run the probe.
+    """
 
     try:
         text = source.decode("utf-8")
-    except UnicodeDecodeError as error:
-        raise SystemExit("external benchmark console script is not UTF-8") from error
+    except UnicodeDecodeError:
+        return None
+    wrapped = _WRAPPED_LAUNCHER.match(text)
+    if wrapped is not None:
+        interpreter, body = Path(wrapped.group(1).replace("'\\''", "'")), text[wrapped.end() :]
+    else:
+        first, _, body = text.partition("\n")
+        if not first.startswith("#!") or first == "#!/bin/sh":
+            return None
+        interpreter = Path(first.removeprefix("#!"))
+    if not interpreter.is_absolute() or not interpreter.is_file():
+        return None
+    return interpreter, body
+
+
+def _validate_console_launcher(body: str, entry_point: str) -> None:
+    """Accept only the semantics of uv's generated POSIX console launcher."""
+
     module, function = entry_point.split(":", 1)
     template = f"""\
 import sys
@@ -294,7 +325,6 @@ if __name__ == "__main__":
         sys.argv[0] = sys.argv[0][:-4]
     sys.exit({function}())
 """
-    body = "\n".join(text.splitlines()[1:])
     try:
         actual = ast.dump(ast.parse(body), include_attributes=False)
         expected = ast.dump(ast.parse(template), include_attributes=False)
@@ -302,7 +332,7 @@ if __name__ == "__main__":
         raise SystemExit(
             "external benchmark console script is not a valid Python launcher"
         ) from error
-    if actual != expected or text.splitlines()[0] != f"#!{interpreter}":
+    if actual != expected:
         raise SystemExit(
             "external benchmark console script does not invoke the wheel's entry point"
         )
@@ -316,17 +346,13 @@ def attest_installed_wheel(build: MetabBuild, wheel: Path) -> WheelAttestation:
     project, version, entry_point, expected = _wheel_release_manifest(wheel)
     try:
         launcher = build.executable.read_bytes()
-        first_line = launcher.splitlines()[0]
-        interpreter = Path(first_line.removeprefix(b"#!").decode())
-    except (IndexError, OSError, UnicodeDecodeError) as error:
+    except OSError as error:
         raise SystemExit("external benchmark requires a uv-installed console script") from error
-    if (
-        not first_line.startswith(b"#!")
-        or not interpreter.is_absolute()
-        or not interpreter.is_file()
-    ):
+    parts = split_console_launcher(launcher)
+    if parts is None:
         raise SystemExit("external benchmark requires a uv-installed console script")
-    _validate_console_launcher(launcher, interpreter, entry_point)
+    interpreter, body = parts
+    _validate_console_launcher(body, entry_point)
     try:
         result = subprocess.run(
             [str(interpreter), "-c", _INSTALLED_WHEEL_PROBE],

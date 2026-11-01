@@ -186,8 +186,10 @@ def test_neither_side_keeps_a_link_that_is_not_http(base: str | None, written: A
     document = "".join(
         f'<a href="{written(href)}">{name}</a>' for name, href in {**refused, **kept}.items()
     )
+    # A kept link's scheme comes out in lower case on both sides, as a URL parser writes it.
     expected = "".join(f"<a>{name}</a>" for name in refused) + "".join(
-        f'<a href="{href}" target="_blank" rel="noopener noreferrer">{name}</a>'
+        f'<a href="{href[: href.index(":")].lower()}{href[href.index(":") :]}"'
+        f' target="_blank" rel="noopener noreferrer">{name}</a>'
         for name, href in kept.items()
     )
     assert harden(document, base) == expected
