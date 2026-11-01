@@ -627,7 +627,9 @@ Repository cache:
   has no link to copy or open in a new tab.
   A name that is not UTF-8 is addressed by its bytes.
   A diff in a served folder, and a patch file’s diff, have no such control: a folder has
-  no file at a commit to open, only its working tree’s.
+  no file at a commit to open, only its working tree’s. The first diff on a pinned page
+  requests `/plugin-static/diff/diff-view-file.js`, which decides the View file
+  controls; a folder’s diff does not.
 
 - `POST /api/source/pin` with `{"oid": …}` keeps the ref when the commit is its tip.
   A commit pinned by ID had no ref.
