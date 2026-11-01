@@ -25,13 +25,20 @@ from cachetools import LRUCache
 from httpx2 import ASGITransport, AsyncClient
 
 import metabrowser.builtin_plugins.binary.sidekick as binary_sidekick
+import metabrowser.builtin_plugins.diff.sidekick as diff_sidekick
 import metabrowser.builtin_plugins.structured as structured_sidekick
 import metabrowser.builtin_plugins.structured.parser as structured_parser
 from metabrowser import paths_safe
+from metabrowser.diff.adapters.patch_file import MAX_PATCH_BYTES
 from metabrowser.git.tree_source import GitPath
 from metabrowser.paths_safe import _set_root_dir
 from metabrowser.server import app
-from metabrowser.source import AttachedFilesystemSubject, attach_subject, reset_source_session
+from metabrowser.source import (
+    AttachedFilesystemSubject,
+    attach_subject,
+    read_content_window,
+    reset_source_session,
+)
 from tests.git_pin_harness import fast_import_store, overwrite_tree, pinned_client
 
 LOG = (
@@ -266,6 +273,31 @@ def _diff_responses(tmp_path: Path, route: str, native: str, inner: str = "") ->
 
     (tmp_path / "git").mkdir(parents=True, exist_ok=True)
     return asyncio.run(_run())
+
+
+def test_a_patch_past_the_cap_is_never_read_past_it_on_both(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The bound is on the read, so a multi-GB file never lands in memory.
+
+    This has to watch the read. ``_parse_bytes`` also slices to the cap, so a hook that
+    read a whole file would answer exactly what it answers now.
+    """
+
+    bound = MAX_PATCH_BYTES + 1
+    monkeypatch.setitem(FILES, b"past-the-cap.patch", b"x" * (bound + 1024))
+    asked: list[int] = []
+
+    async def spy(ref: Any, *, offset: int = 0, max_bytes: int) -> Any:
+        asked.append(max_bytes)
+        return await read_content_window(ref, offset=offset, max_bytes=max_bytes)
+
+    monkeypatch.setattr(diff_sidekick, "read_content_window", spy)
+
+    folder, pinned = _diff_responses(tmp_path, "/api/plugin/diff/document", "past-the-cap.patch")
+
+    assert (folder.status_code, pinned.status_code) == (200, 200)
+    assert asked == [bound, bound]
 
 
 @pytest.mark.parametrize(

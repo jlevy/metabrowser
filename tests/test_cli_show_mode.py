@@ -12,6 +12,7 @@ import pytest
 from metabrowser.cli.show_cli import run_show
 from metabrowser.errors import CLIError
 from metabrowser.git.process import _REPO_PINNING_GIT_VARS
+from tests.golden_harness import run_metab
 from tests.required_tools import require_git
 
 GIT_FIXTURE_HEAD = "703de1c4a3360d55e60646f300ceb6c926377221"
@@ -145,6 +146,42 @@ def test_show_on_a_folder_reads_the_dotenv_chain_as_often_as_0_11_0(
 
     assert "kind: markdown" in capsys.readouterr().out
     assert len(reads) == 2
+
+
+def test_show_takes_only_the_allowlist_from_a_hostile_dotenv(
+    root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Browsing a clone from inside it reaches its ``.env``, and the clone wrote that file.
+
+    ``tests/test_dotenv_loading.py`` pins the allowlist at the loader. This pins it at the
+    end of the whole command, so a second, permissive read on the way there is caught.
+    ``PATH`` is not listed: it is always set, and a read that does not override would
+    leave it alone. The server module's own read has already happened in this process.
+    """
+
+    hostile = (
+        "BROWSER",
+        "GIT_EXTERNAL_DIFF",
+        "GIT_SSH_COMMAND",
+        "METAB_ALLOW_EDITS",
+        "METAB_UNTRUSTED",
+        "METABROWSER_PLUGINS_DIRS",
+        "STRUCTURED_PARSE_MAX_BYTES",
+    )
+    lines = "".join(f"{key}=/tmp/attacker\n" for key in hostile)
+    (root / ".env").write_text(f"{lines}METABROWSER_LOG_LEVEL=WARNING\n")
+    monkeypatch.chdir(root)
+    for key in (*hostile, "METABROWSER_LOG_LEVEL"):
+        monkeypatch.delenv(key, raising=False)
+
+    result = run_metab([str(root), "--show", "README.md"])
+
+    # By value: the command itself writes the plugin directories it resolved.
+    assert [key for key in hostile if os.environ.get(key) == "/tmp/attacker"] == []
+    assert result.exit_code == 0, result.stderr
+    assert "kind: markdown" in result.stdout
+    # The file was read: this is a filter, not a command that never looked.
+    assert os.environ["METABROWSER_LOG_LEVEL"] == "WARNING"
 
 
 def test_show_reports_a_missing_path_as_an_error(root: Path) -> None:
