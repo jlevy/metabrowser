@@ -3,9 +3,9 @@ type: is
 id: is-01m3x25rp0mtmhjbykjd8aphhr
 title: A mirror's long repository name is cut with an ellipsis while the 'mirror in' note beside it still shows
 kind: bug
-status: in_progress
+status: closed
 priority: 3
-version: 5
+version: 6
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 delegate: codex@spud10.local
 labels:
@@ -15,8 +15,12 @@ parent_id: is-01m402dbhn3zsc1h896f3xnrsq
 hold: null
 hold_until: null
 created_at: 2026-10-02T01:03:05.405Z
-updated_at: 2026-10-03T06:14:39.119Z
+updated_at: 2026-11-01T16:24:03.970Z
 started_at: 2026-10-03T05:05:52.101Z
+closed_at: 2026-11-01T16:24:03.968Z
+close_reason: "Fixed in cbb92dc9 (#268). Measured in Chromium on 2026-11-01 with a 39-character mirror name on the installed main build: at 13 pane widths from 500 to 1700 px where the note shows, the name's box equals its note-removed width exactly, 252.5938 px, with no clipping. It narrows only once the note has reached zero width."
+resolution: null
+duplicate_of: null
 ---
 Found 2026-10-01 while running the new step 2 of 5.3 in docs/qa-v012-repository-library.md (PR #263's file-header note) on the stack's tip 25540fa2, in stock Chrome 152.0.7977.83, headless, over the DevTools protocol.
 
