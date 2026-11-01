@@ -15,6 +15,7 @@ to come through unchanged. Nothing here touches the repository the suite runs fr
 
 from __future__ import annotations
 
+import ast
 import os
 import re
 import subprocess
@@ -77,7 +78,10 @@ def decoy(tmp_path: Path) -> Decoy:
     return Decoy(
         primary=primary,
         # What `git push` exports to a pre-push hook run from that linked worktree.
-        hook_environment={"GIT_DIR": str(primary / ".git" / "worktrees" / "decoy-worktree")},
+        hook_environment={
+            "GIT_DIR": str(primary / ".git" / "worktrees" / "decoy-worktree"),
+            "GIT_WORK_TREE": str(tmp_path / "decoy-worktree"),
+        },
         shared_config=(primary / ".git" / "config").read_bytes(),
     )
 
@@ -148,11 +152,29 @@ def test_gitignore_fixture_git_calls_scrub_a_hook_exported_git_dir(
     assert verdicts == {("app.log", False): True, ("app.py", False): False}
 
 
+_GIT_GLOBAL_OPTION = r"(?:\s+-[Cc]\s+\S+|\s+--(?:git-dir|work-tree|namespace)[=\s]\S+|\s+--[\w-]+)"
 _GIT_WRITE = re.compile(
-    r"\bgit(?:\s+-C\s+\S+)*\s+"
+    rf"\bgit{_GIT_GLOBAL_OPTION}*\s+"
     r"(?:init|add|commit|tag|mv|checkout|switch|branch|merge|rebase|reset|worktree|config|update-ref)\b"
 )
 _UNSET = re.compile(r"\bunset((?:\s+GIT_[A-Z_]+)+)")
+
+
+@pytest.mark.parametrize(
+    ("command", "writes"),
+    [
+        ("git init -q repo", True),
+        ("git -C repo commit -qm one", True),
+        ("git -c init.defaultBranch=main init -q", True),
+        ("git -C repo -c user.name=x commit -qm one", True),
+        ("git --git-dir=repo/.git update-ref HEAD abc", True),
+        ("git --git-dir repo/.git --no-pager tag v1", True),
+        ("git -C repo log --oneline", False),
+        ("cat repo/.git/config", False),
+    ],
+)
+def test_the_golden_check_sees_a_write_behind_any_global_option(command: str, writes: bool) -> None:
+    assert bool(_GIT_WRITE.search(command)) is writes
 
 
 def _unset_names(script: str) -> set[str]:
@@ -188,6 +210,152 @@ def test_every_golden_that_writes_git_state_unsets_the_pinning_variables() -> No
                 f"{golden.name}: {command.splitlines()[0]!r} leaves {sorted(missing)}"
             )
     assert writers, "no golden writes git state any more, so this check has no subject"
+
+
+def _runs_git_init(node: ast.AST) -> bool:
+    """Whether *node* spawns ``git init``, as an argument vector or through a git helper."""
+
+    if not isinstance(node, ast.Call):
+        return False
+    func = node.func
+    name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
+    for argument in node.args[:2]:
+        if isinstance(argument, ast.List | ast.Tuple):
+            words = [e.value for e in argument.elts if isinstance(e, ast.Constant)]
+            if words[:1] == ["git"] and "init" in words:
+                return True
+            if words[:1] == ["init"] and "git" in name:
+                return True
+        elif "git" in name and isinstance(argument, ast.Constant) and argument.value == "init":
+            return True
+    return False
+
+
+def _sets_a_pinning_variable(call: ast.Call) -> bool:
+    return any(
+        keyword.arg == "env"
+        and isinstance(keyword.value, ast.Dict)
+        and any(
+            isinstance(key, ast.Constant) and key.value in _REPO_PINNING_GIT_VARS
+            for key in keyword.value.keys
+        )
+        for keyword in call.keywords
+    )
+
+
+def _reads_the_whole_environment(statement: ast.stmt) -> bool:
+    """Whether *statement* copies ``os.environ``, as against naming one variable in it."""
+
+    named = {
+        id(parent.value)
+        for parent in ast.walk(statement)
+        if isinstance(parent, ast.Subscript)
+        or (isinstance(parent, ast.Attribute) and parent.attr in {"get", "pop", "setdefault"})
+    }
+    return any(
+        isinstance(node, ast.Attribute)
+        and node.attr == "environ"
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "os"
+        and id(node) not in named
+        for node in ast.walk(statement)
+    )
+
+
+def _unscrubbed_git_init(source: str) -> list[str]:
+    """What in a test module's *source* escapes the session scrub for a ``git init``."""
+
+    found: list[str] = []
+    tree = ast.parse(source)
+    for statement in tree.body:
+        if isinstance(statement, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            continue
+        if any(_runs_git_init(node) for node in ast.walk(statement)):
+            found.append(f"line {statement.lineno}: runs git init at import")
+        if _reads_the_whole_environment(statement):
+            found.append(f"line {statement.lineno}: copies os.environ at import")
+    found.extend(
+        f"line {node.lineno}: gives git init a pinning variable"
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and _runs_git_init(node) and _sets_a_pinning_variable(node)
+    )
+    return found
+
+
+@pytest.mark.parametrize(
+    ("source", "found"),
+    [
+        ('subprocess.run(["git", "init"])', ["line 1: runs git init at import"]),
+        ('_git(ROOT, "init", "-q")', ["line 1: runs git init at import"]),
+        ('run_git(["init", "-q"], cwd=ROOT)', ["line 1: runs git init at import"]),
+        ("ENV = dict(os.environ)", ["line 1: copies os.environ at import"]),
+        ("ENV = {**os.environ}", ["line 1: copies os.environ at import"]),
+        ("ENV = os.environ.copy()", ["line 1: copies os.environ at import"]),
+        (
+            'def f():\n    subprocess.run(["git", "init"], env={"GIT_DIR": "x"})',
+            ["line 2: gives git init a pinning variable"],
+        ),
+        ('def f():\n    subprocess.run(["git", "init"], env=dict(os.environ))', []),
+        ('def f():\n    _git(root, "init", "-q")', []),
+        ('os.environ["A"] = "1"\nos.environ.pop("B", None)\nC = os.environ.get("C")', []),
+        ('subprocess.run(["git", "status"])', []),
+        ('print("git init")', []),
+    ],
+)
+def test_the_fixture_check_finds_what_escapes_the_scrub(source: str, found: list[str]) -> None:
+    assert _unscrubbed_git_init(source) == found
+
+
+def test_every_python_fixture_that_runs_git_init_reads_the_environment_after_the_scrub() -> None:
+    """``tests/conftest.py`` protects a fixture only if the fixture runs after it.
+
+    The session scrub empties the pinning variables from ``os.environ``, so a fixture
+    that inherits it, or builds its own environment from it, cannot reach the hook's
+    repository. Three shapes escape that, and conftest's own imports run before its
+    scrub: spawning ``git init`` at import, copying ``os.environ`` at import, and naming
+    a pinning variable to the spawn itself.
+    """
+
+    tests = ROOT / "tests"
+    offenders: dict[str, list[str]] = {}
+    spawns = 0
+    for path in sorted(tests.rglob("*.py")):
+        if path.parent.name in {"manual-fixtures", "fixtures"}:
+            continue
+        source = path.read_text(encoding="utf-8")
+        spawns += sum(_runs_git_init(node) for node in ast.walk(ast.parse(source)))
+        found = _unscrubbed_git_init(source)
+        if found:
+            offenders[str(path.relative_to(ROOT))] = found
+    assert offenders == {}
+    assert spawns, "no fixture runs git init any more, so this check has no subject"
+
+
+def test_no_script_a_golden_can_run_starts_git() -> None:
+    """A golden runs ``node`` and shell scripts in a shell nothing in Python scrubbed.
+
+    Those scripts drive production modules and have no reason to build a repository, so
+    this holds them to none rather than to clearing the list by hand.
+    """
+
+    scripts = [
+        path
+        for path in (ROOT / "tests").rglob("*")
+        if path.is_file()
+        and path.suffix in {".js", ".mjs", ".cjs", ".sh", ""}
+        and "manual-fixtures" not in path.parts
+        and "fixtures" not in path.parts
+    ]
+    assert scripts, "no script is left under tests/, so this check has no subject"
+
+    def starts_git(text: str) -> bool:
+        return bool(_GIT_WRITE.search(text)) or ("child_process" in text and "git" in text)
+
+    assert [
+        str(path.relative_to(ROOT))
+        for path in scripts
+        if starts_git(path.read_text(encoding="utf-8", errors="replace"))
+    ] == []
 
 
 def test_the_pre_push_gate_unsets_the_pinning_variables() -> None:

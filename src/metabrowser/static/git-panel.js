@@ -129,6 +129,13 @@
   // them, which is not a failed request. Bounded like the detail cache.
   /** @type {Set<string>} */
   const missingRevisions = new Set();
+  // The last revision the server refused to look up because it is not a full commit ID.
+  /** @type {string | null} */
+  let refusedRevision = null;
+  // The selection that last claimed the pane, so that a history step within what it
+  // shows changes nothing.
+  /** @type {{revision: string, claim: number} | null} */
+  let lastSelection = null;
   /**
    * @typedef {object} RevisionPreparation
    * @property {string} revision
@@ -772,11 +779,14 @@
         try {
           const response = await apiFetch(`/api/git/commit/${revision}`, undefined, { signal });
           if (!response.ok) {
-            if (response.status === 404 && (await errorCode(response)) === "commit_not_found") {
+            const code = await errorCode(response);
+            if (response.status === 404 && code === "commit_not_found") {
               if (missingRevisions.size >= DETAIL_CACHE_SIZE) {
                 missingRevisions.clear();
               }
               missingRevisions.add(revision);
+            } else if (response.status === 400 && code === "revision_not_full") {
+              refusedRevision = revision;
             }
             return null;
           }
@@ -1816,6 +1826,30 @@
   }
 
   /**
+   * Say what an address with a short commit ID or a ref name needs, instead of that the
+   * commit could not be loaded.
+   *
+   * @param {string} revision
+   * @param {MetabrowserPreviewClaim} previewClaim
+   */
+  function showRevisionNotFull(revision, previewClaim) {
+    shell()?.renderPreviewNode(
+      missingCommitNode(
+        {
+          state: "not_full",
+          title: "Full commit ID needed",
+          detail:
+            `A commit’s address uses its full 40- or 64-character ID, not “${revision}”. ` +
+            "Open the commit from the Git tab to get it.",
+          retry: false,
+        },
+        null,
+      ),
+      previewClaim,
+    );
+  }
+
+  /**
    * @param {string} revision
    * @param {{fromRoute?: boolean, rowElement?: HTMLElement}} [options]
    *   `fromRoute` when the URL is already this commit (restore on load), so
@@ -1843,6 +1877,7 @@
                 clearPendingState();
                 const claim = bridge.claimPreview("git");
                 selectionClaim = claim;
+                lastSelection = { revision, claim };
                 const retained = bridge.beginPreviewNavigation(claim);
                 pendingPreviewClaim = claim;
                 return { previewClaim: claim, retainedPreview: retained };
@@ -1949,6 +1984,8 @@
             // Waits for the first state only, so the pane stays busy until it shows
             // one; a mirror's fetch from the origin continues after it.
             await showMissingCommit(revision, previewClaim);
+          } else if (refusedRevision === revision) {
+            showRevisionNotFull(revision, previewClaim);
           } else {
             bridge.renderPreviewHtml(
               '<div class="preview-empty">Could not load this commit.</div>',
@@ -2364,7 +2401,43 @@
     missingRevisions.clear();
     refColors = new Map();
     started = false;
+    window.removeEventListener("popstate", restoreCommitLanding);
     shell()?.removeNavPanel("git");
+  }
+
+  /**
+   * Back or Forward landed on a commit's entry. The navigation controller holds no target
+   * for a /commit/ address and leaves the pane to this panel, so without this the file an
+   * in-page open put over the commit would stay on screen under the commit's address. It
+   * restores the commit as opening that address does. A step between entries of the commit
+   * already shown, such as a fragment, changes nothing.
+   *
+   * @returns {Promise<void>}
+   */
+  async function restoreCommitLanding() {
+    const routes = window.MetabrowserNavigationRoute;
+    const bridge = shell();
+    const wanted = routes?.parseCommit?.(window.location?.pathname ?? "")?.revision;
+    if (!wanted || !bridge) {
+      return;
+    }
+    if (lastSelection?.revision === wanted && bridge.isPreviewClaimCurrent(lastSelection.claim)) {
+      return;
+    }
+    try {
+      bridge.activateNavPanel("git");
+      await ensureHistory();
+      // The reader may have stepped on while the panel caught up.
+      if (routes.parseCommit(window.location.pathname)?.revision === wanted) {
+        await selectCommit(wanted, { fromRoute: true });
+      }
+    } catch (error) {
+      console.error(
+        "metabrowser git panel: restoring a commit from history failed",
+        { revision: wanted },
+        error,
+      );
+    }
   }
 
   /**
@@ -2402,6 +2475,7 @@
 
     scrollOwner = document.getElementById("tree-content");
     scrollOwner?.addEventListener("scroll", onTreeScroll, { passive: true });
+    window.addEventListener("popstate", restoreCommitLanding);
 
     if (routeSelection) {
       // The URL named a commit: show the Git panel and that commit,

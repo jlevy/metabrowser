@@ -1,14 +1,15 @@
 # QA: v0.12 Repository Library and HTML Trust
 
-**Status:** Active procedure for the unreleased v0.12 Repository Library stack.
-HTML trust is included through released `main`. Git acquired from a `file://` or
-`https://` origin, including a GitHub URL, is inspectable through data modes and served
-in the browser as an immutable pin under the forced untrusted profile.
+**Status:** Active procedure for the v0.12 Repository Library, which has landed on
+`main` and is not yet released; it first ships in 0.12.0 (`mb-4bd2`). HTML trust is
+included, as it was in v0.11.0. Git acquired from a `file://` or `https://` origin,
+including a GitHub URL, is inspectable through data modes and served in the browser as
+an immutable pin under the forced untrusted profile.
 The served mirror refreshes from its origin in the background, and the pin can switch to
 another branch, tag, or commit of the same mirror; ssh stays closed.
 
 The [v0.12 alpha test plan](project/specs/active/plan-2026-09-22-v012-alpha-testing.md)
-defines the milestones, the manual browser matrix, and the landing checklist.
+defines the milestones, the manual browser matrix, and what remains before the release.
 This runbook holds the step-by-step checks those milestones run.
 
 This runbook tests the Git mirror, GitHub browsing, and inherited HTML behavior:
@@ -26,7 +27,7 @@ The HTML-trust invariant lives in
 and [SECURITY.md](../SECURITY.md).
 
 Validate post-landing stability fixes on top of current `main`. Archive containers
-(`mb-380k`) are not part of the stack or of this procedure.
+(`mb-380k`) are not part of this release or of this procedure.
 
 ## Walk Through This Yourself
 
@@ -42,7 +43,8 @@ Chromium pane, hidden for most rows, with no private repository.
 ### Part 1: Set Up and Pick the Tip (About 5 Minutes)
 
 1. Select the main or stability-fix commit: [Pins](#pins).
-2. Check it out, install, isolate the application home, and read the help: 0.1 to 0.3.
+2. Check it out, install, isolate the cache and configuration, and read the help: 0.1 to
+   0.3.
 3. Check the installation: 0.4.
 
 **Pass:** `HEAD` is the selected `QA_HEAD`, and the required checks for that commit have
@@ -112,8 +114,9 @@ or shows a different revision.
 1. **Safari and Firefox, as well as Chrome.** Repeat 3.4 and 5.3 in each.
    Look at what a hidden pane cannot show: focus rings while tabbing, the layout at each
    width, what gives way as a mirror’s headings narrow (steps 1 and 2 of 5.3), the HTML
-   Preview frame, the print preview, and Back in steps 4 and 6 of 5.11, which each
-   browser’s back/forward cache treats differently.
+   Preview frame, the print preview, and Back in check 12 of 3.4 and in steps 4 and 6 of
+   5.11, which each browser’s back/forward cache treats differently.
+   Check 12 has been measured only in Chrome; `mb-etqi` tracks the other two.
    **Pass:** the same results in all three.
    **Fail:** a check that passes in one browser only.
 2. **A private repository your account can read.**
@@ -143,41 +146,58 @@ Keep its name and contents out of anything you record.
 Verify the live SHAs before a run.
 They move.
 
-The stack through [#260](https://github.com/jlevy/metabrowser/pull/260) has landed.
-For post-landing QA, fetch and pin `origin/main` before installing anything:
+The v0.12 stack has landed, and [#268](https://github.com/jlevy/metabrowser/pull/268)
+above it. For post-landing QA, fetch and pin `origin/main` before installing anything,
+then read the commit’s CI, naming the run’s `databaseId` in the second command:
 
 ```shell
 git fetch origin main
 QA_HEAD="$(git rev-parse origin/main)"
 export QA_HEAD
 gh run list --repo jlevy/metabrowser --branch main --commit "$QA_HEAD" \
-  --json workflowName,status,conclusion,url
+  --json databaseId,workflowName,status,conclusion,url
+gh run view <databaseId> --repo jlevy/metabrowser \
+  --json jobs --jq '.jobs[] | [.name, .conclusion] | @tsv'
 ```
 
-**Pass:** Every required CI job for that commit has completed successfully.
-A pending check or failed dependency audit is an outstanding gate, even when the product
-tests pass. Record the commit and the run URLs with the QA results.
+**Pass:** The commit has a CI run, and every job in it has completed successfully.
+A commit with no run yet, a pending check, or a failed dependency audit is an
+outstanding gate, even when the product tests pass.
+Record the commit and the run URLs with the QA results.
 
-To test a proposed stability fix instead, set `QA_HEAD` to its reviewed commit and
-record the pull request and its check results.
-Its head must include current `main`. Do not silently move the checkout during a QA run.
+To test a branch candidate instead, such as a proposed stability fix, pin the reviewed
+head of its pull request explicitly, and record the pull request and its check results:
+
+```shell
+: "${QA_PR:?Set QA_PR to the pull request under test}"
+QA_HEAD="$(gh pr view "$QA_PR" --repo jlevy/metabrowser --json headRefOid --jq .headRefOid)"
+export QA_HEAD
+gh pr checks "$QA_PR" --repo jlevy/metabrowser
+```
+
+Do not silently move the checkout during a QA run.
 
 The [review ledger](project/reviews/review-2026-10-01-v012-stack-review-ledger.md)
 records the original stack and its review limits.
 Its GitHub stack is [#218](https://github.com/jlevy/metabrowser/stack/218). The
 reference branch `reference/v012-hosted-review` is not a release candidate.
 The separate page-connection fix [#262](https://github.com/jlevy/metabrowser/pull/262)
-requires its own review and validation before landing.
+was superseded by #268 and closed unmerged, so there is nothing of it to test apart from
+`main`.
 
-After the checkout of 0.1, confirm the HTML trust work and current `main` are included:
+After the checkout of 0.1, confirm the merge ancestry of the selected commit: it holds
+the HTML trust work, the landing through #268, and current `main`.
 
 ```shell
-git merge-base --is-ancestor fd65812ba911e7fa0f6b5967d9240556c8c01c54 HEAD
-git merge-base --is-ancestor origin/main HEAD
+git fetch origin main
+git merge-base --is-ancestor fd65812ba911e7fa0f6b5967d9240556c8c01c54 HEAD; echo "exit:$?"
+git merge-base --is-ancestor 0b016e4b024445668b2c21a385d797701e311c23 HEAD; echo "exit:$?"
+git merge-base --is-ancestor origin/main HEAD; echo "exit:$?"
 ```
 
-Both commands must exit zero.
-Run all checks on this same selected commit.
+Each must print `exit:0`. If only the last prints `exit:1`, `main` has moved since you
+pinned it, or a branch candidate has not merged it: pin again or update the candidate
+before going on. Run all checks on this same selected commit.
 
 ## Constraints That Are Part of the Product
 
@@ -190,7 +210,7 @@ Run all checks on this same selected commit.
   a newer track (see `ACQUISITION_PATCHED_TRACKS` in `src/metabrowser/git/process.py`
   and `tests/fixtures/repository-cache/git-version-gates.json`). Ubuntu’s
   `git version 2.43.0` is below the floor: it must refuse acquire and **must not create
-  the application home**. Do not weaken the floor to make a local run pass.
+  the cache directory**. Do not weaken the floor to make a local run pass.
 - **ssh stays closed.** It is not acquired and not opened.
 - **`file://` and `https://` are the origins acquired**, including GitHub web URLs,
   which the GitHub reducer rewrites to `https://github.com/<owner>/<repo>`. A bare
@@ -274,9 +294,9 @@ Rewriting a below-floor Git to “make acquire work.”
 uv --config-file uv.toml run --frozen metab --help
 ```
 
-**Pass:** Help lists `--no-serve`, `--show`, `--api`, `--walk`, and `--check-api`.
-`--no-serve` is described as acquiring a `file://` or `https://` Git source, or a GitHub
-web URL, without starting a server.
+**Pass:** Help lists `--no-serve`, `--show`, `--api`, `--walk`, `--check-api`,
+`--cache-dir`, and `--config-dir`. `--no-serve` is described as acquiring a `file://` or
+`https://` Git source, or a GitHub web URL, without starting a server.
 
 **Fail:** Missing `--no-serve`, or help that claims ssh acquire or serve.
 
@@ -871,26 +891,29 @@ line. Open that address with the browser’s developer tools open.
     choose the dark theme, then the light one.
     Repeat checks 1, 2, 4, and 10 in each.
 
-One known defect can interrupt this step (`mb-tdmd`). After about five addresses typed
-or pasted into one tab, the next page can sit on its loading state for several seconds,
-and up to about a minute, while its requests wait for a connection; it may then log
-`metabrowser plugin asset failed to load: … (timed out)`. Pages the browser keeps for
-Back each hold one connection open.
-Clicking files in the tree does not load a new page and is not affected; if a page
-stalls, open the address in a new tab and close the old one.
-This is unchanged from 0.11.0, which stalls the same way, and a mirrored repository is
-not affected, because its pages open no event stream.
-The fix is held until after the landing (`mb-tdmd`).
+12. **Repeated page loads.** Type or paste ten of these files’ addresses, one after
+    another, into one tab: each page is ready about at once, and the network panel shows
+    no request waiting for a connection.
+    Set a type filter on the tree, type another address, and go Back: the tree is still
+    filtered, and where the browser restored the page from its back/forward cache, the
+    network panel shows one new `/api/events` request.
+    On 0.11.0 the sixth page waited for a connection, for up to about a minute, because
+    each page kept for Back held its event stream open (`mb-tdmd`, closed).
+    The fix is #268’s, and the landing gate measured it in stock Chrome (`mb-2g6f`).
+    Back in Safari and Firefox is unmeasured; `mb-etqi` tracks it, in Part 4 of the
+    walk-through.
 
 **Pass:** Every check as described, in both themes.
 The console shows no error except the browser’s own request for `/favicon.ico`, which
-this server answers 404, and the timeout above if a page stalled; no request leaves
-`127.0.0.1`. Stop the server with Ctrl-C: it prints `Stopping Metabrowser.`
+this server answers 404; no request leaves `127.0.0.1`. Stop the server with Ctrl-C: it
+prints `Stopping Metabrowser.`
 
-**Fail:** A view that stays on its loading state in a fresh tab; a button that does
-nothing when clicked; a line number beside the wrong line; text repeated or missing
-after Load more; a preview that does not run the page’s script in a trusted folder;
-anything unreadable in one theme.
+**Fail:** A view that stays on its loading state; a page whose requests wait for a
+connection after repeated page loads, or a logged
+`metabrowser plugin asset failed to load: … (timed out)`; a button that does nothing
+when clicked; a line number beside the wrong line; text repeated or missing after Load
+more; a preview that does not run the page’s script in a trusted folder; anything
+unreadable in one theme.
 
 **Changed since 0.11.0.** On a folder served without flags, per `CHANGELOG.md`:
 
@@ -902,6 +925,9 @@ anything unreadable in one theme.
   created. A reader sees no difference (checks 5, 8, and 9); a plugin that wrote such
   markup by hand does (0.5).
 - A filename holding a backslash lists and opens (3.1).
+- A page kept for Back releases its event streams and reopens them once when it is
+  restored, so repeated page loads in one tab no longer wait for a connection (check
+  12).
 - On a history long enough to page, a commit made while the Git panel is open leaves its
   rows in place with `History changed since this list loaded.` and **Reload history**.
   This folder’s history fits one page, so check 10 does not show it.
@@ -1804,15 +1830,15 @@ With the network, repeat steps 7 to 9 on the real pull request of 5.7, or on
 `cli/cli#14128`, whose `internal/config/stub.go → internal/config/test.go` opens the old
 path at the base and the new one at the head.
 
-## Phase 6: HTML Trust on the Integration Tip
+## Phase 6: HTML Trust on the Selected Commit
 
-The selected integration tip must include the merged HTML trust implementation:
+The selected commit must include the merged HTML trust implementation:
 
 ```shell
 git merge-base --is-ancestor fd65812ba911e7fa0f6b5967d9240556c8c01c54 HEAD
 ```
 
-Keep running from that tip so these checks exercise the actual combined build.
+Keep running from that commit so these checks exercise the actual combined build.
 
 ### 6.1 Automated HTML tests
 
@@ -1867,7 +1893,7 @@ Skip if the environment has no way to issue HTTP. Do not point the server at a c
 store.
 
 ```shell
-# On the selected integration tip. Stop the process when done.
+# On the selected commit. Stop the process when done.
 uv --config-file uv.toml run --frozen metab "${HTML_ROOT}" --no-open
 # Then GET /raw/page.html and require the opaque-origin sandbox headers
 # pinned by tests/test_content_trust.py. Do not use a browser that the
@@ -1903,7 +1929,7 @@ was acquired or served, or a served pin ran a script).
 | Paint in Safari and Firefox | Only a person can look; Part 4 of the walk-through |
 | A live rate limit | Costly to force against GitHub; `tests/golden/cli-github-pull-refresh.txt` pins `rate_limited` |
 | Overlay / `watch_backends` host differences | Investigate separately; record any unresolved failure |
-| Landing / merging the v0.12 stack | `mb-n2ro`; this runbook does not merge |
+| Tagging and releasing 0.12.0 | `mb-4bd2`; this runbook does neither |
 
 ## Hunt List (File a Bead Only for a Real Defect)
 
@@ -1917,8 +1943,8 @@ While executing, treat these as bugs if they happen:
   lacks the sandbox or carries `allow-scripts`, or whose pages request another host
 - A refresh that moves the page without **Switch**, blocks a request, or leaves a ref
   half-updated; a commit a reader pinned that becomes unreadable after a refresh
-- Application home created on a refuse (ssh, a refused GitHub URL, walk,
-  `--allow-edits`, below-floor Git)
+- Cache directory created on a refuse (ssh, a refused GitHub URL, walk, `--allow-edits`,
+  below-floor Git)
 - A GitHub token offered to a host other than github.com, or a token or query string
   echoed in an error
 - An orphaned Git process after Ctrl-C, a terminal hangup, or `SIGTERM`

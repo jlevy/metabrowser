@@ -649,15 +649,24 @@ export function buildFileTypeSummaryModel(
     runtime.groups.map((group) => Object.freeze({ id: group.id, label: group.label })),
   );
 
+  const filesText = formatters.formatFileCount(population.files);
+  const bytesText = formatters.formatSize(population.bytes);
   const base = {
     metric: selectedMetric,
     rows,
     groups: groupDescriptors,
+    // The rows' percentages match exactly one of the tally rows above them, and which
+    // one follows Show ignored. The numbers are all consistent, so without this a reader
+    // has to compare two tables to tell two populations from a defect. The count is in
+    // the measure the rows show, so it is the number their shares add up to.
+    caption: `Share of ${showIgnored ? "Total" : "Files"} (${
+      selectedMetric === "size" ? bytesText : filesText
+    })`,
     files: population.files,
     bytes: population.bytes,
-    filesText: formatters.formatFileCount(population.files),
+    filesText,
     allFilesText: formatters.formatFileCount(population.allFiles),
-    bytesText: formatters.formatSize(population.bytes),
+    bytesText,
     ignoredFiles: population.ignoredFiles,
     ignoredBytes: population.ignoredBytes,
     ignoredFilesText: formatters.formatFileCount(population.ignoredFiles),

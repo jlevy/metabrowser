@@ -120,6 +120,43 @@ def test_report_reader_rejects_duplicate_experiment_ids(tmp_path: Path) -> None:
         module._experiment_records()
 
 
+def test_report_marks_the_bytecode_state_of_a_round_that_records_one(tmp_path: Path) -> None:
+    """A start's figures read as a build's cost unless the row says what state they are of."""
+
+    module = _runner()
+    module.EXPERIMENTS = tmp_path
+    module.REPORT = tmp_path / "report.md"
+    module._load_runs = lambda: []
+    module.REPO = tmp_path
+
+    def artifact(number: int, method: str, before: float, after: float) -> str:
+        return (
+            f"---\nexperiment:\n  id: exp-00{number}\n  title: Round {number}\n"
+            f"  method:\n    runs_per_condition: 1\n{method}  results:\n"
+            f"    - metric: cli_show_instr_millions\n      control_median: {before}\n"
+            f"      candidate_median: {after}\n  verdict:\n    decision: accepted\n"
+            "    primary_metric: cli_show_instr_millions\n---\n"
+        )
+
+    for number, method, before, after in (
+        (1, "    bytecode: uncached\n", 7400.8, 7689.4),
+        (2, "    bytecode: cached\n", 2445.0, 2400.0),
+        (3, "", 900.0, 800.0),
+    ):
+        (tmp_path / f"exp-00{number}-round.md").write_text(
+            artifact(number, method, before, after), encoding="utf-8"
+        )
+
+    assert module.cmd_report(argparse.Namespace()) == 0
+    report = (tmp_path / "report.md").read_text(encoding="utf-8")
+    assert (
+        "| 7,401 | **7,689** (accepted on other grounds; see the round; "
+        "measured without compiled bytecode) | exp-001 |"
+    ) in report
+    assert "| 2,445 | **2,400** (measured with compiled bytecode) | exp-002 |" in report
+    assert "| 900 | **800** | exp-003 |" in report
+
+
 def _compare(module: Any, runs: list[dict[str, Any]]) -> int:
     module._load_runs = lambda: runs
     return int(

@@ -146,7 +146,7 @@
       '"' +
       (visible ? "" : ' style="display: none;"') +
       ">" +
-      '<div class="log-event-header">' +
+      '<div class="log-event-header" role="button" tabindex="0" aria-expanded="false">' +
       mb.icons.chevron +
       kindHtml +
       '<span class="log-event-summary" data-tip-text="' +
@@ -380,12 +380,30 @@
             : null;
         if (header && container.contains(header)) {
           window.toggleEvent(header);
+          header.setAttribute(
+            "aria-expanded",
+            String(header.parentElement.classList.contains("expanded")),
+          );
+          return true;
+        }
+        return false;
+      };
+      // A header is a div so that its text stays selectable, so the keys a button
+      // answers to are this listener's. preventDefault keeps Space from scrolling.
+      const toggleFromKey = (event) => {
+        const plain = !(event.altKey || event.ctrlKey || event.metaKey || event.shiftKey);
+        if ((event.key === "Enter" || event.key === " ") && plain && !event.repeat) {
+          if (toggle(event)) {
+            event.preventDefault();
+          }
         }
       };
       container.addEventListener("click", toggle);
+      container.addEventListener("keydown", toggleFromKey);
       state.unbind = () => {
         unbindFilters?.();
         container.removeEventListener("click", toggle);
+        container.removeEventListener("keydown", toggleFromKey);
       };
     });
   }

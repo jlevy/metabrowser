@@ -21,6 +21,13 @@ Page lifecycle:
   reconnects use explicit ETag validation.
   A live log deleted or truncated while the page was away stops showing as live on
   return.
+- `GET /api/stream` asked to resume past the end of the file now ends the stream: it
+  sends `event: closed` with `data: {"reason": "rotated"}` and stops.
+  0.11.0 clamped the cursor to the file’s size and kept streaming, so a client saw
+  `: heartbeat` and resumed at the wrong offset, although a cursor past the end means
+  the file was rotated or truncated under the reader.
+  This is the route’s side of the live-log entry above, which a plugin or script reading
+  `/api/stream` directly sees.
 
 Plugin SDK:
 
@@ -300,6 +307,8 @@ GitHub URLs and HTTPS:
   The record names Files changed as two pinned commits, the merge base and the head, as
   GitHub computes it, and `/api/plugin/diff/comparison` now honors
   `base_policy=merge_base` for such a comparison.
+  The route also validates the parameter, which 0.11.0 ignored: a value other than
+  `direct` or `merge_base`, or one given with `revision`, answers 400 `diff_comparison`.
   Two commits that share no history have no merge base, and the route answers 404
   `diff_comparison` with a message that says so.
   Reading pull requests needs `gh` 2.81.0 or newer signed in to github.com, because
@@ -357,17 +366,24 @@ GitHub URLs and HTTPS:
   not be opened at startup and serving fell back to the default branch, the page offers
   to switch to the head (`refs/pull/<n>/head`) and reloads on it.
   Descriptions and comments render as Markdown through KPress’s sanitized mode, one text
-  at a time as it scrolls into view, never from GitHub’s own HTML, and are then reduced
-  to an allowlist of plain markup, on the server and again in the page: paragraphs,
-  headings, emphasis, code, quotes, lists, tables, and details, with no class, `id`,
-  `data-*`, style, or event attribute.
-  SVG, MathML, media, frames, forms, stylesheets, and scripts are removed with their
-  content, and no KPress script or stylesheet is loaded for a comment, so a comment
-  cannot load anything, restyle or cover the page, reach the application’s own handlers,
-  or clobber a global.
+  at a time a screen before it scrolls into view, so a fast scroll does not show raw
+  Markdown, never from GitHub’s own HTML, and are then reduced to an allowlist of plain
+  markup, on the server and again in the page: paragraphs, headings, emphasis, code,
+  quotes, lists, tables, and details, with no class, `id`, `data-*`, style, or event
+  attribute. SVG, MathML, media, frames, forms, stylesheets, and scripts are removed with
+  their content, and no KPress script or stylesheet is loaded for a comment, so a
+  comment cannot load anything, restyle or cover the page, reach the application’s own
+  handlers, or clobber a global.
   An image is a link to it rather than loaded, links open on GitHub in a new tab, only
-  `http` and `https` ones kept, and code blocks show as plain text without highlighting.
-  A review comment’s file opens at the served head, at its line.
+  `http` and `https` ones kept, with the scheme in lower case in the Markdown route’s
+  answer too, and code blocks show as plain text without highlighting.
+  A text’s paragraphs, headings, lists, quotes, code, tables, and details have their own
+  spacing and list indent inside the card, with none above the first block or below the
+  last; a table wider than its text scrolls there, and a long word or URL breaks to fit.
+  A review comment’s file opens at the served head, at its line, and it shows the end of
+  its diff hunk, where it anchors: the last eight lines, back to the start of a
+  multi-line comment’s range, with the earlier lines behind a disclosure and added and
+  deleted lines tinted as in the diff.
   The freshness row links to the page, and back, forward, and reload keep its tab.
   The page for a number the server does not serve links to the served pull request’s
   page, on the same tab.
@@ -432,8 +448,9 @@ Repository cache:
   `ACQUISITION_PATCHED_TRACKS` in `src/metabrowser/git/process.py` lists them.
   An older Git is refused with a message that names the version found and the version
   required, and a refused acquisition does not create the application home.
-  Reusing a store already in the cache and serving a folder on disk do not check the
-  floor.
+  With no `git` on `PATH`, the same refusal says that git was not found and which
+  release to install. Reusing a store already in the cache and serving a folder on disk
+  do not check the floor.
 
 - New read-only routes `/api/cache/layout`, `/api/cache/sources`,
   `/api/cache/source/<slug>`, and `/api/cache/stores` report the cache’s layout and
@@ -727,6 +744,14 @@ Content trust:
   `inert-render.js`, `inert-toc.js`, and `place-rendered.js`, which places a render and
   imports the other two on the first inert one.
 
+- One more module is requested on every Markdown view, with nothing visible changing on
+  a folder: `/plugin-static/markdown/place-rendered.js`, for the reason above.
+
+- The comparison adapter resolves a revision with
+  `git rev-parse --verify --end-of-options <rev>^{commit}`, so a revision that begins
+  with `-` is an argument and not an option.
+  A revision that names a commit resolves as before.
+
 - With active content off the application page carries a Content-Security-Policy:
   scripts run only from the application’s `/static/` and `/plugin-static/` paths and the
   shell’s inline scripts by a per-response nonce, never from the browsed tree’s `/raw`
@@ -956,8 +981,11 @@ Fixes:
   `/api/plugin/diff/children` and a virtual child `change.patch.gz/<path>` answered 404.
   The three now read the patch the file holds.
   A compressed file whose stream cannot be decoded answers the same 404 as a file that
-  cannot be opened; `/api/file` shows such a file as bytes and never sends it to the
-  Diff view.
+  cannot be opened. `/api/file` shows such a file as bytes when the damage is in the
+  first 512 KiB it reads.
+  Damage past that is not seen there: an 8.5 MB patch whose gzip is cut at 80% still
+  says `kind: diff`, and the Diff view shows “This file is not available.”, where 0.11.0
+  showed an empty change set, as it did for every `.patch.gz`.
 
 - A byte limit set below zero gives a typed, empty answer on every value.
   This applies to `STRUCTURED_PARSE_MAX_BYTES`, `METABROWSER_BINARY_PREVIEW_BYTES`,
@@ -969,8 +997,15 @@ Fixes:
   reader’s own bound check.
   Now a negative structured limit answers `truncated` for every file, a negative chunk
   size answers an empty chunk and says whether bytes remain, and a negative offset
-  ceiling answers 404. Zero is unchanged, except that a compressed structured file at
-  `STRUCTURED_PARSE_MAX_BYTES=0` answers `truncated` instead of that parse error.
+  ceiling answers 404. Zero is unchanged for the binary settings and for a structured
+  file that is not compressed, apart from a file that cannot be opened.
+  At `STRUCTURED_PARSE_MAX_BYTES=0` a compressed structured file no longer answers that
+  parse error, and answers as it does at any limit too small for it: `truncated` when it
+  holds data, a decompression parse error when its stream cannot be decoded, and what an
+  empty file answers when it holds nothing.
+  A file that cannot be opened answers 404 `content_unavailable` at zero too, where
+  0.11.0 answered `truncated` for an uncompressed one larger than the limit, without
+  opening it.
 
 - Load more on a large text file in a pin advances its notice and continues the text.
   A pin’s later window reported its own length as `bytes_read`, where the filesystem
@@ -984,6 +1019,60 @@ Fixes:
   alike, because the scrolling preview pane was also the box its fixed position pinned
   to. The pane now scrolls inside a non-scrolling frame that holds the drawer, its
   toggle, and its backdrop, as KPress’s embedding contract asks.
+
+- A tree row replaced during the tooltip’s 300 ms delay, as when its folder re-renders,
+  no longer puts a tooltip at the window’s top-left corner until the next hover.
+  The tooltip does not appear when its anchor has left the document, and one still up
+  for another row is put away.
+
+- A folder the inventory leaves out says why it has no totals.
+  `/view/.github/` and a symbolic link to a folder keep their page and README, but File
+  Overview said “Could not load file types.”
+  and the header’s tally stayed pending forever.
+  File Overview now says, for example, “Metabrowser does not index hidden folders, so
+  this one has no file totals.”, and the header shows no tally.
+  `/api/file` still answers 200 with the folder envelope, which gains `dir.not_indexed`
+  (`hidden` or `symlink`) on such a folder and is unchanged on every other.
+
+- File Overview and Treemap no longer keep a loading skeleton when the rollup cannot
+  supply one. A failed or refused request, or an index that finished without the folder,
+  now stops the totals’ skeleton and the Treemap’s, which says “Treemap unavailable.”;
+  changing Files or Bytes or Show ignored after a failure keeps the failure’s message
+  instead of bringing the skeleton back; and a refresh that fails while nothing has been
+  counted says so and offers Retry where the request can be retried.
+  A scan that is still running keeps its skeletons.
+
+- A JSONL log’s event rows answer the keyboard.
+  Each row’s header is now a button with a tab stop and an expanded state, and Enter or
+  Space opens and closes it as a click does.
+  A keyboard could not reach a row in 0.11.0 either, and moving the rows off inline
+  handlers in this release had also removed the clickable node the accessibility tree
+  showed. A click on a row does what it did.
+
+- Back or Forward onto a `/commit/` entry shows the commit.
+  With a file opened in-page over a commit, Back changed the address and left the file
+  showing, because the Git panel restored a commit only when the page loaded.
+
+- A `/commit/` address with a short commit ID, or a ref name with no slash in it, now
+  says it needs the full ID, in place of “Could not load this commit.”
+  `/api/git/commit/<rev>` still refuses such a revision with 400, and its answer now
+  carries the `revision_not_full` code.
+
+- File Overview’s type distribution says which population it counts, in a caption such
+  as “Share of Files (536 files)” or “Share of Total (8,533 files)”. The percentages
+  match the Total row while Show ignored is on and the Files row while it is off, which
+  a reader could otherwise tell only by comparing the numbers of two tables.
+  The caption follows Show ignored and the measure, and is the table’s accessible
+  caption.
+
+- A tree that reaches the 500,000-file cap now says so.
+  The file list shows “File list incomplete.”, File Overview says its summary is
+  partial, and Treemap draws the indexed files under “Index capped at 500,000 files”;
+  before, it stayed on its loading skeleton and nothing mentioned the cap.
+  `/api/rollup` answered `index_status: "idle"` and `truncated: false` for such an
+  index, and `/api/tree` and `/api/recent` answered `tally_cache_status: "idle"`, as
+  0.11.0 did. They now answer `truncated`, as `/api/index/progress` and `--walk` already
+  did.
 
 ## 0.11.0
 

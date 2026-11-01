@@ -2419,6 +2419,13 @@ function showTooltip(html, anchor) {
   clearTimeout(tooltipTimer);
   // Small delay before appearing so tooltips don't flash when moving across items
   tooltipTimer = setTimeout(() => {
+    // Replaced during the delay, as a tree row is when its folder re-renders. A
+    // detached element's rect is all zeros, which would put the tooltip at the
+    // top-left corner, and it will never fire the mouseleave that takes it away.
+    if (element && !element.isConnected) {
+      hideTooltip();
+      return;
+    }
     tooltipEl.innerHTML = html;
     tooltipEl.style.display = "block";
     positionTooltip(element);
@@ -5552,6 +5559,10 @@ function folderHeaderSummaryHtml(dirInfo) {
   // skeleton the tree rows use, so the header paints with shape
   // instead of blanks until the live refresher patches it.
   // Omitted aggregates are not pending: a Git tree envelope has no dir.
+  // Nor are a folder's the inventory leaves out: they will never arrive.
+  if (dirInfo.not_indexed) {
+    return "";
+  }
   return (
     sizeHtml(dirInfo.total_size, "file-header-size") +
     countHtml(dirInfo.total_files, "folder-header-count") +
