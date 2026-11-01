@@ -16,7 +16,8 @@ from pathlib import Path
 import pytest
 from starlette.testclient import TestClient
 
-from metabrowser.inert_html import ALLOWED_TAGS
+from metabrowser import kpress_adapter
+from metabrowser.inert_html import ALLOWED_TAGS, harden
 from metabrowser.server import app
 from metabrowser.view_routes import decode_safe_pull_route, format_pull_href
 from tests.golden_harness import read_recording
@@ -177,6 +178,55 @@ def test_a_lists_markers_have_room_inside_the_card() -> None:
     # A nested list is part of its item, so it does not take a block's margin.
     assert _vertical_margins(rules[".github-pull-markdown li > ul"]) == ("0.25em", "0")
     assert _vertical_margins(rules[".github-pull-markdown li > ol"]) == ("0.25em", "0")
+
+
+def test_a_wide_table_scrolls_inside_its_text() -> None:
+    """The card clips what overflows it, so a table wider than its text must scroll itself.
+
+    Measured 2026-11-01 with an 8-column table in a text on pallets/click#3866: 3,349 px in
+    a 673 px card, with 2,689 px out of reach and nothing between them that scrolled.
+    """
+
+    rules = _style_rules()
+    assert "overflow: hidden" in rules[".github-pull-card"]
+    for declaration in ("display: block", "max-width: 100%", "overflow-x: auto"):
+        assert declaration in rules[".github-pull-markdown table"], declaration
+    # A block keeps the table's own layout inside it, and its collapsed borders by
+    # inheritance; a width of its own would stretch a table that fits.
+    assert "border-collapse: collapse" in rules[".github-pull-markdown table"]
+    assert "width: 100%" not in rules[".github-pull-markdown table"].replace("max-width", "")
+
+
+def test_a_table_at_either_end_of_a_text_is_what_the_deepest_trim_reaches() -> None:
+    """KPress wraps a table in a ``<div>`` of its own, beneath the two every text has."""
+
+    source = "| a | b |\n| --- | --- |\n| 1 | 2 |\n"
+    html = harden(
+        str(
+            kpress_adapter.render_kpress_view(
+                source_text=source,
+                source_path="comment.md",
+                kind="markdown",
+                view="document",
+                ext=".md",
+                mtime_hash="pull-page-table",
+                size=len(source.encode()),
+                include_toc="off",
+            )["html"]
+        ),
+        "https://github.com/octo/demo/pull/7",
+    )
+    assert re.match(r"\s*<div><div><div><table>", html), html
+    assert re.search(r"</table></div></div></div>\s*$", html), html
+    rules = _style_rules()
+    first = ".github-pull-markdown > " + "div:first-child > " * 3 + ":first-child"
+    last = ".github-pull-markdown > " + "div:last-child > " * 3 + ":last-child"
+    assert "margin-top: 0" in rules[first] and "margin-bottom: 0" in rules[last]
+    # No trim names a cell's ancestors, so a cell keeps its padding and borders. What a
+    # cell holds, as raw HTML can give it, is trimmed by the rule for its container.
+    cell = ".github-pull-markdown :is(blockquote, details, dd, th, td) > "
+    assert "margin-top: 0" in rules[f"{cell}:first-child"]
+    assert "margin-bottom: 0" in rules[f"{cell}:last-child"]
 
 
 def test_a_texts_first_and_last_block_are_trimmed_through_its_wrappers() -> None:

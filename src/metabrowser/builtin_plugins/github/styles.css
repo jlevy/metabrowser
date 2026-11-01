@@ -301,7 +301,13 @@
   border-left: 3px solid var(--border);
   color: var(--muted);
 }
+/* A table wider than its text scrolls there: the card clips what overflows it, so it would
+   otherwise be out of reach. A table that fits lays out the same, in the anonymous table
+   box a block gets around its rows, which inherits the collapsed borders. */
 .github-pull-markdown table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
   border-collapse: collapse;
 }
 .github-pull-markdown th,
