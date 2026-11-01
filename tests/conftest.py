@@ -228,6 +228,32 @@ def _reset_browser_response_caches() -> Generator[None, None, None]:  # pyright:
         pass
 
 
+@pytest.fixture(autouse=True)
+def _reset_process_caches() -> Generator[None, None, None]:  # pyright: ignore[reportUnusedFunction]
+    """Drop the process-wide state that could change a later test's verdict.
+
+    Application-cache probe results are keyed by device and inode, and a freed inode can
+    come back as another test's home. The ignore cache outlives its test by its TTL, keyed
+    by a root path a test can reuse. The catalog revision counts distinct catalogs for the
+    process, so a test would read a value set by whichever tests ran before it, and the
+    catalog caches are left filled.
+
+    Left alone because a stale value cannot reach another test: ``tree_source._POOLS`` and
+    ``dotenv._reported``, keyed by a path under the ``tmp_path`` of the test that made
+    them, and ``server._EXTRA_ALLOWED_HOSTS``, where tests only add a host the default
+    list already holds.
+    """
+    yield
+    from metabrowser import events_route, tree
+    from metabrowser.cache import probe
+
+    probe._RESULTS.clear()  # pyright: ignore[reportPrivateUsage]
+    tree._IGNORE_CACHE.clear()  # pyright: ignore[reportPrivateUsage]
+    events_route._CATALOG_BODY_CACHE.clear()  # pyright: ignore[reportPrivateUsage]
+    events_route._CATALOG_ETAG_BY_CHECKPOINT.clear()  # pyright: ignore[reportPrivateUsage]
+    events_route._CATALOG_REVISION.update(identity=None, value=0)  # pyright: ignore[reportPrivateUsage]
+
+
 class DocumentReference(NamedTuple):
     """One URL a browser would fetch or follow from a served document."""
 
