@@ -3,9 +3,9 @@ type: is
 id: is-01m0k5xdka0fyb19aw97wg5v7s
 title: "Add a page-load phase to bench_serving.py: FCP, DCL, time to first tree row"
 kind: task
-status: open
+status: closed
 priority: 0
-version: 5
+version: 6
 spec_path: docs/project/specs/active/plan-2026-08-21-load-time-performance.md
 labels: []
 dependencies:
@@ -17,7 +17,11 @@ dependencies:
     target: is-01m0k5xec4q8565zxfs4mr4dsy
 parent_id: is-01m0k5wh7jgr0dgs5y78kwwke1
 created_at: 2026-08-21T22:08:56.425Z
-updated_at: 2026-08-21T22:48:26.930Z
+updated_at: 2026-11-01T16:21:27.000Z
+closed_at: 2026-11-01T16:21:26.999Z
+close_reason: "Superseded by explorations/performance-loop: run.py capture and capture-browser.js measure first_row_ms and paint with a real browser, gated by performance-budgets.toml."
+resolution: canceled
+duplicate_of: null
 ---
 Extend devtools/bench_serving.py with a page-load phase. It already builds the corpus, starts metab, parses the banner for the port it settled on, waits on the walker's completion log line, and writes a labelled result JSON that --baseline diffs. What it has never measured is paint.
 

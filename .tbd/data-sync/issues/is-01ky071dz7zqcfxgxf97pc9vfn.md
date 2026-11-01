@@ -3,15 +3,19 @@ type: is
 id: is-01ky071dz7zqcfxgxf97pc9vfn
 title: "P3: retire the Recent tab behind the Recent preset"
 kind: task
-status: open
+status: closed
 priority: 2
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-07-20-unified-filtering.md
 labels: []
 dependencies: []
 parent_id: is-01ky070wk6z56ghjc9wyhf0sye
 created_at: 2026-07-20T16:51:38.599Z
-updated_at: 2026-08-16T08:06:38.766Z
+updated_at: 2026-11-01T16:21:22.272Z
+closed_at: 2026-11-01T16:21:22.272Z
+close_reason: e139acca folded Recent into Files; no tab-recent remains in src on main.
+resolution: null
+duplicate_of: null
 extensions:
   linear:
     id: b81d0c3c-95f1-4942-bd2c-554169f43a57

@@ -3,9 +3,9 @@ type: is
 id: is-01kzz4b2aah8jbhe3tndbcb26s
 title: Remove semantic file-type rollout compatibility aliases
 kind: chore
-status: open
+status: closed
 priority: 3
-version: 3
+version: 4
 spec_path: docs/project/specs/done/plan-2026-08-13-shared-file-type-taxonomy-and-breakdowns.md
 labels:
   - cleanup
@@ -13,7 +13,11 @@ labels:
 dependencies: []
 deferred_until: 2026-09-14T00:00:00Z
 created_at: 2026-08-14T03:16:37.834Z
-updated_at: 2026-08-16T08:05:43.471Z
+updated_at: 2026-11-01T16:21:22.976Z
+closed_at: 2026-11-01T16:21:22.974Z
+close_reason: e66e21ab and 85695af1 removed the aliases; FILE_TYPE_TAXONOMY no longer appears in src on main.
+resolution: null
+duplicate_of: null
 extensions:
   linear:
     id: 8d0e5620-86bd-4caf-b82f-06ef9d2c66ca

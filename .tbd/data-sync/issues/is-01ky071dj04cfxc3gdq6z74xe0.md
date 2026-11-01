@@ -3,9 +3,9 @@ type: is
 id: is-01ky071dj04cfxc3gdq6z74xe0
 title: "P2: complete filter hide mode across nav and folder views"
 kind: task
-status: open
+status: closed
 priority: 2
-version: 10
+version: 11
 spec_path: docs/project/specs/active/plan-2026-07-20-unified-filtering.md
 labels: []
 dependencies:
@@ -13,7 +13,11 @@ dependencies:
     target: is-01ky071dz7zqcfxgxf97pc9vfn
 parent_id: is-01ky070wk6z56ghjc9wyhf0sye
 created_at: 2026-07-20T16:51:38.175Z
-updated_at: 2026-08-16T08:06:37.590Z
+updated_at: 2026-11-01T16:21:21.929Z
+closed_at: 2026-11-01T16:21:21.927Z
+close_reason: filter-state.js on main states there is no dim/hide switch, and /api/filter/tree was never built; TreeFilter on /api/tree replaced this.
+resolution: canceled
+duplicate_of: null
 extensions:
   linear:
     id: a686753d-cd6a-468c-b561-ea7336b89acd

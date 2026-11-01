@@ -3,15 +3,19 @@ type: is
 id: is-01m0k536rmz4gptv9bzhftagk1
 title: One rollup control row, or a written reason for two
 kind: chore
-status: open
+status: in_progress
 priority: 3
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-07-20-folder-views-and-treemap-overview.md
+delegate: claude-code@spud10.local
 labels: []
 dependencies: []
 parent_id: is-01kxz2z9v1bbfcfmqstffkhvxp
+hold: null
+hold_until: null
 created_at: 2026-08-21T21:54:37.460Z
-updated_at: 2026-08-21T21:54:37.460Z
+updated_at: 2026-11-01T16:21:29.463Z
+started_at: 2026-11-01T16:21:29.462Z
 ---
 The folder Overview and the Treemap both drive the same rollup state, and both build their own control row for it.
 

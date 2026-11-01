@@ -3,13 +3,17 @@ type: is
 id: is-01m2h7fcrwc7bw8b5d2b2zeq1t
 title: capture --record exits non-zero for a control run that misses a hard gate
 kind: task
-status: open
+status: in_progress
 priority: 3
-version: 1
+version: 2
+delegate: claude-code@spud10.local
 labels: []
 dependencies: []
+hold: null
+hold_until: null
 created_at: 2026-09-15T00:29:08.757Z
-updated_at: 2026-09-15T00:29:08.757Z
+updated_at: 2026-11-01T16:21:29.819Z
+started_at: 2026-11-01T16:21:29.818Z
 ---
 The release-comparison recipe in explorations/performance-loop/README.md tells you to alternate the previous release and the candidate through run.py capture --record. On a repository-shaped corpus the previous release misses the first_row_ms hard gate by construction -- that gate exists to reject exactly the .gitignore pre-walk v0.1.0-v0.9.1 shipped -- and v0.9.1 also reports inventory_delivery_attribution_missing because it predates that attribution.
 

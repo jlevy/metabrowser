@@ -3,16 +3,20 @@ type: is
 id: is-01kzp849by8pnyqaz92fy4mpkh
 title: Rebase folder-treemap branch onto the core chip family
 kind: task
-status: open
+status: closed
 priority: 2
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-08-09-nav-filter-controls.md
 labels:
   - ui
 dependencies: []
 parent_id: is-01kzp82ktssqmf4fhm8sxmvb6p
 created_at: 2026-08-10T16:29:40.093Z
-updated_at: 2026-08-16T08:05:43.400Z
+updated_at: 2026-11-01T16:21:20.197Z
+closed_at: 2026-11-01T16:21:20.196Z
+close_reason: "PR #23 closed; the treemap landed in bcd1e301, and no .tm-seg or filter_state.js remains in src on main."
+resolution: null
+duplicate_of: null
 extensions:
   linear:
     id: f2431b34-4d34-4b94-91c6-007fb143ebfb

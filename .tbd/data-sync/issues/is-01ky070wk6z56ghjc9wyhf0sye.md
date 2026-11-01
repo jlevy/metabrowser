@@ -3,9 +3,9 @@ type: is
 id: is-01ky070wk6z56ghjc9wyhf0sye
 title: Unified filtering across navigation and folder views
 kind: epic
-status: open
+status: closed
 priority: 1
-version: 9
+version: 10
 spec_path: docs/project/specs/active/plan-2026-07-20-unified-filtering.md
 labels: []
 dependencies: []
@@ -14,7 +14,11 @@ child_order_hints:
   - is-01ky071dj04cfxc3gdq6z74xe0
   - is-01ky071dz7zqcfxgxf97pc9vfn
 created_at: 2026-07-20T16:51:20.795Z
-updated_at: 2026-08-16T08:06:36.619Z
+updated_at: 2026-11-01T16:21:22.625Z
+closed_at: 2026-11-01T16:21:22.624Z
+close_reason: All 3 children are closed with mb-0tu2 and mb-wta0.
+resolution: null
+duplicate_of: null
 extensions:
   linear:
     id: 2966f32d-9498-4efd-95bb-ee77e5c5d062

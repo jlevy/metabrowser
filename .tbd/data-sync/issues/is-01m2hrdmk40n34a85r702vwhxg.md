@@ -3,15 +3,19 @@ type: is
 id: is-01m2hrdmk40n34a85r702vwhxg
 title: Keep the flat-stress budget file from drifting off the release gate
 kind: task
-status: open
+status: in_progress
 priority: 2
-version: 2
+version: 3
+delegate: claude-code@spud10.local
 labels:
   - performance
 dependencies: []
 parent_id: is-01m2hs64m7nfagfxyf7b0hxrhr
+hold: null
+hold_until: null
 created_at: 2026-09-15T05:25:17.028Z
-updated_at: 2026-09-15T05:38:48.209Z
+updated_at: 2026-11-01T16:21:29.111Z
+started_at: 2026-11-01T16:21:29.110Z
 ---
 `explorations/performance-loop/performance-budgets-flat-stress.toml` is the release
 gate's file with one declared divergence (`first_row_ms` 350 -> 450). The loader takes no

@@ -3,9 +3,9 @@ type: is
 id: is-01m0ndp6h7a3hx27zbswtknk89
 title: Release QA cleanups found while reviewing 0.6.0
 kind: epic
-status: open
+status: closed
 priority: 1
-version: 22
+version: 23
 labels: []
 dependencies: []
 child_order_hints:
@@ -31,6 +31,10 @@ child_order_hints:
   - is-01m0p60xcbfcqchtzyrk70beg8
   - is-01m0pmgjhkfhhg2whf99q8693d
 created_at: 2026-08-22T19:03:17.286Z
-updated_at: 2026-08-23T06:21:47.429Z
+updated_at: 2026-11-01T16:21:19.143Z
+closed_at: 2026-11-01T16:21:19.142Z
+close_reason: All 20 children are closed (audit 2026-11-01, checked).
+resolution: null
+duplicate_of: null
 ---
 Umbrella for items found during the pre-0.6.0 QA pass. Sub-beads are filed as each item is raised, so nothing from the review is lost.

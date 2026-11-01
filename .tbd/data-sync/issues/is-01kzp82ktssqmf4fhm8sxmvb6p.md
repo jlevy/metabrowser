@@ -3,9 +3,9 @@ type: is
 id: is-01kzp82ktssqmf4fhm8sxmvb6p
 title: Nav filter controls and fine-grained filtering
 kind: epic
-status: open
+status: closed
 priority: 1
-version: 16
+version: 17
 spec_path: docs/project/specs/active/plan-2026-08-09-nav-filter-controls.md
 labels:
   - ui
@@ -27,7 +27,11 @@ child_order_hints:
   - is-01kzpz3txn7m46njwk82njfwvg
   - is-01kzs0aee403yreq6wba41he4t
 created_at: 2026-08-10T16:28:45.272Z
-updated_at: 2026-08-16T08:05:43.394Z
+updated_at: 2026-11-01T16:21:20.888Z
+closed_at: 2026-11-01T16:21:20.887Z
+close_reason: Its last open children, mb-4k4d and mb-katw, are closed; all 14 are done.
+resolution: null
+duplicate_of: null
 extensions:
   linear:
     id: acf60561-e724-4f66-85e2-3a8e6de21eec

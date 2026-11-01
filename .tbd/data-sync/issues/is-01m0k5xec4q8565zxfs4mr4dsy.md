@@ -3,9 +3,9 @@ type: is
 id: is-01m0k5xec4q8565zxfs4mr4dsy
 title: Render nav rows from partial index state instead of gating on scan completion
 kind: task
-status: open
+status: closed
 priority: 0
-version: 8
+version: 9
 spec_path: docs/project/specs/active/plan-2026-08-21-load-time-performance.md
 labels: []
 dependencies:
@@ -23,7 +23,11 @@ dependencies:
     target: is-01m0k5xgycxymyreh03tax0t1q
 parent_id: is-01m0k5wh7jgr0dgs5y78kwwke1
 created_at: 2026-08-21T22:08:57.220Z
-updated_at: 2026-08-21T22:48:50.477Z
+updated_at: 2026-11-01T16:21:27.707Z
+closed_at: 2026-11-01T16:21:27.706Z
+close_reason: H6 was not reproduced as stated (load-time plan), and H20 (exp-004) inlines the first rows at DOMContentLoaded, so the premise no longer holds.
+resolution: canceled
+duplicate_of: null
 ---
 The largest single win in this plan: 4.2 s at 100k files, 22 s at 1M.
 

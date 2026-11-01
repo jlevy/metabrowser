@@ -3,13 +3,17 @@ type: is
 id: is-01m1d3qs1c0jthm4v5d93gg0g4
 title: metab --walk --stream bypasses the selected inventory provider
 kind: bug
-status: open
+status: closed
 priority: 2
-version: 1
+version: 2
 labels: []
 dependencies: []
 created_at: 2026-08-31T23:51:09.611Z
-updated_at: 2026-08-31T23:51:09.611Z
+updated_at: 2026-11-01T16:21:24.852Z
+closed_at: 2026-11-01T16:21:24.851Z
+close_reason: Duplicate of mb-iyu7, which covers both walk modes.
+resolution: duplicate
+duplicate_of: is-01m1mva0attgkp1h6b4h0d8ymd
 ---
 walk.py has two paths that disagree about where records come from:
 

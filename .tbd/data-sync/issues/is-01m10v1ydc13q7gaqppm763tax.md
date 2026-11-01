@@ -3,15 +3,19 @@ type: is
 id: is-01m10v1ydc13q7gaqppm763tax
 title: "Spike: validate the exact-wheel fdu provider against the MetaBrowser contract"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 6
+version: 7
 labels: []
 dependencies: []
 child_order_hints:
   - is-01m1108krqtakrjwazn3eycbp1
 created_at: 2026-08-27T05:28:32.426Z
-updated_at: 2026-08-27T07:55:12.877Z
+updated_at: 2026-11-01T16:21:23.790Z
+closed_at: 2026-11-01T16:21:23.788Z
+close_reason: The disposable adapter was removed under mb-uaiv; providers/ holds only python_inventory.py on main. mb-hej8 carries the feature.
+resolution: canceled
+duplicate_of: null
 ---
 On branch codex/fdu-opened-root-e2e-spike at PR #74 head 3183888, install an fdu wheel built from exact PR #48 revision 0583a1a, implement the minimum disposable adapter to the unchanged InventoryHandle contract, instrument materialization/sort/aggregate/binding costs, and run one full application lifecycle. Preserve the Python provider and standalone fdu CLI. Retain the reproducible harness and evidence; delete or replace naive adapter code after the contract decision.
 

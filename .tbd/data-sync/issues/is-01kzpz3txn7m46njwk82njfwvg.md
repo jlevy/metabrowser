@@ -3,9 +3,9 @@ type: is
 id: is-01kzpz3txn7m46njwk82njfwvg
 title: Optionally mirror extension and size filters upstream
 kind: task
-status: open
+status: closed
 priority: 3
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-08-09-nav-filter-controls.md
 labels:
   - ui
@@ -13,7 +13,11 @@ labels:
 dependencies: []
 parent_id: is-01kzp82ktssqmf4fhm8sxmvb6p
 created_at: 2026-08-10T23:11:22.545Z
-updated_at: 2026-08-16T08:05:43.406Z
+updated_at: 2026-11-01T16:21:20.547Z
+closed_at: 2026-11-01T16:21:20.546Z
+close_reason: /api/tree takes types and min_size (server.py on main, near line 1944).
+resolution: null
+duplicate_of: null
 extensions:
   linear:
     id: 0318dd18-eb0f-4c87-b3f4-1d820412aa64

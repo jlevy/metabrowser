@@ -3,9 +3,9 @@ type: is
 id: is-01kzcvm6cpe5b8sb9b9n3gb16g
 title: HTML rendering and an explicit content-trust model
 kind: epic
-status: open
+status: closed
 priority: 1
-version: 9
+version: 10
 spec_path: docs/project/specs/active/plan-2026-08-06-html-rendering-and-trust-model.md
 labels:
   - security
@@ -18,7 +18,11 @@ child_order_hints:
   - is-01kzcvmr0d1eyegyds8zpbffbz
   - is-01m2zx3hf12cnhqt02pzcj2ymq
 created_at: 2026-08-07T00:57:59.957Z
-updated_at: 2026-09-20T17:16:31.071Z
+updated_at: 2026-11-01T16:21:19.849Z
+closed_at: 2026-11-01T16:21:19.848Z
+close_reason: "PR #209 merged 2026-09-20 and all 5 children are closed (audit 2026-11-01, checked)."
+resolution: null
+duplicate_of: null
 extensions:
   linear:
     id: efc46703-5aa2-49d6-8195-546330186e9c

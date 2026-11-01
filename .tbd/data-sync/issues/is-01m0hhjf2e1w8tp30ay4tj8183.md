@@ -3,9 +3,9 @@ type: is
 id: is-01m0hhjf2e1w8tp30ay4tj8183
 title: "Nav panel filtering: correct rollups, no empty folders, stable expansion, full-width rows"
 kind: epic
-status: open
+status: closed
 priority: 1
-version: 16
+version: 17
 labels: []
 dependencies: []
 child_order_hints:
@@ -23,7 +23,11 @@ child_order_hints:
   - is-01m26d2kxsnpj6wjp8zeq09s9t
   - is-01m26qpgdzgr9mptjprzzgqbfk
 created_at: 2026-08-21T06:54:11.533Z
-updated_at: 2026-09-10T22:41:00.337Z
+updated_at: 2026-11-01T16:21:19.494Z
+closed_at: 2026-11-01T16:21:19.493Z
+close_reason: All 13 children are closed; tree_filter.py and cli-walk-filter are on main (audit 2026-11-01, checked).
+resolution: null
+duplicate_of: null
 extensions:
   linear:
     id: e89638bb-383b-4fef-882b-93118c6efc17

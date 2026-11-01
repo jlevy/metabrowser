@@ -3,9 +3,9 @@ type: is
 id: is-01kzs5m38dz1egphfwf30c8h7n
 title: Repository library and hosted-review roadmap
 kind: epic
-status: in_progress
+status: open
 priority: 1
-version: 88
+version: 89
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: claude-code@spud10.local
 labels: []
@@ -80,7 +80,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-08-11T19:43:35.692Z
-updated_at: 2026-10-26T15:29:33.663Z
+updated_at: 2026-11-01T16:21:28.759Z
 started_at: 2026-09-16T21:10:44.764Z
 extensions:
   linear:

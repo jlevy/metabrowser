@@ -3,15 +3,19 @@ type: is
 id: is-01kzsbr5a47fs63xkz2rzcgcr9
 title: "PR #24: human visual validation pass of the Git graph"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-08-06-git-graph-view.md
 labels: []
 dependencies: []
 parent_id: is-01kzctqt5s7te6w75jm5pvg6g7
 created_at: 2026-08-11T21:30:40.323Z
-updated_at: 2026-08-16T08:05:43.447Z
+updated_at: 2026-11-01T16:21:21.236Z
+closed_at: 2026-11-01T16:21:21.235Z
+close_reason: "PR #24 closed as consolidated into #58 and the Git panel has shipped since, so the PR-title goal no longer exists. No human sign-off of graph lanes was ever recorded; if one is wanted it belongs in the release walkthrough."
+resolution: canceled
+duplicate_of: null
 extensions:
   linear:
     id: 76eb6a23-1ca4-4b82-b473-18f5a660afd6
