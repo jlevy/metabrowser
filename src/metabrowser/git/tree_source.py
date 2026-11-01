@@ -1145,12 +1145,6 @@ class GitTreeSource:
 
         return self._max_blob_bytes
 
-    async def read_blob_oid(self, oid: str) -> bytes:
-        async with self._pool.checkout() as reader:
-            return await reader.read_blob(
-                require_full_oid(oid), max_blob_bytes=self._max_blob_bytes
-            )
-
     async def read_blob_window(self, oid: str, *, offset: int, max_bytes: int) -> tuple[bytes, int]:
         """A bounded window of one blob and the blob's size, at any blob size.
 
