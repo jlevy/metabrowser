@@ -985,6 +985,11 @@ Fixes:
   to. The pane now scrolls inside a non-scrolling frame that holds the drawer, its
   toggle, and its backdrop, as KPress’s embedding contract asks.
 
+- A tree row replaced during the tooltip’s 300 ms delay, as when its folder re-renders,
+  no longer puts a tooltip at the window’s top-left corner until the next hover.
+  The tooltip does not appear when its anchor has left the document, and one still up
+  for another row is put away.
+
 ## 0.11.0
 
 Content trust:

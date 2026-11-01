@@ -2419,6 +2419,13 @@ function showTooltip(html, anchor) {
   clearTimeout(tooltipTimer);
   // Small delay before appearing so tooltips don't flash when moving across items
   tooltipTimer = setTimeout(() => {
+    // Replaced during the delay, as a tree row is when its folder re-renders. A
+    // detached element's rect is all zeros, which would put the tooltip at the
+    // top-left corner, and it will never fire the mouseleave that takes it away.
+    if (element && !element.isConnected) {
+      hideTooltip();
+      return;
+    }
     tooltipEl.innerHTML = html;
     tooltipEl.style.display = "block";
     positionTooltip(element);
