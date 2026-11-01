@@ -310,7 +310,7 @@ or kind arrives with transcript evidence or the build fails.
 | `/api/plugin/diff/children` | covered | `--api` | `cli-api-plugins.tryscript.md` |
 | `/api/plugin/diff/comparison` | covered | `--api` | `cli-api-plugins.tryscript.md`, `cli-api-git.tryscript.md`, `cli-github-pull.tryscript.md`, `cli-api-diff-view-file.tryscript.md` |
 | `/api/plugin/github/pull` | covered | `--api` | `cli-github-pull.tryscript.md` |
-| `/api/plugin/github/pull-refresh` | covered | `--api` | `cli-github-pull.tryscript.md` |
+| `/api/plugin/github/pull-refresh` | covered | `--api` | `cli-github-pull.tryscript.md`, `cli-github-pull-refresh.txt` |
 | `/api/plugin/github/pull-markdown` | covered | `--api` | `cli-github-pull.tryscript.md` |
 | `/api/plugin/structured/parsed` | covered | `--api` | `cli-api-plugins.tryscript.md` |
 | `/view` | covered | `--show PATH`, `--show /view/...` | `cli-show.tryscript.md` |
@@ -342,8 +342,8 @@ reuse, interruption recovery, fetch failure, and refusal — also read state thr
 routes, but they run in-process as `.txt` goldens from
 `tests/test_cli_cache_acquire_golden.py` and `tests/test_cli_cache_recovery_golden.py`,
 with the acquisition floor substituted, because a transcript must pass on a Git the
-floor refuses. `check_parity.py` reads only tryscript console blocks, so those sessions
-are not counted as the rows’ evidence.
+floor refuses. The rows do not name those goldens, so `check_parity.py` does not count
+those sessions as the rows’ evidence.
 
 What these routes answer on a Git pin is pinned the same way, one transcript per
 scenario, by `tests/test_cli_git_pin_golden.py`: `cli-git-pin-index.txt` holds
@@ -354,26 +354,22 @@ scenario, by `tests/test_cli_git_pin_golden.py`: `cli-git-pin-index.txt` holds
 `cli-git-pin-refusals.txt` holds each refusal `--api` can reach, `/api/recent` among
 them; and `cli-git-pin-show.txt` holds `/view` through `--show`. Its docstring says why
 they stay in-process.
-They are evidence a reader can check, and the gate does not count them.
+They are evidence a reader can check, and the rows do not name them, so the gate does
+not count them.
 
-A command is successful evidence for a route when it exits 0. One other shape counts,
-and only that shape: a one-shot `POST` that starts work prints the route’s answer,
-waits, prints the status `after:` the work, and exits 1 when that work failed.
-The route’s `status:` line must be `202`, an `after: /api/…` line must be directly
-followed by a 2xx `status:`, and the last line must be
-`Error: the refresh ended with <outcome>`. A truncated body, a follow-up that failed,
-and a refresh that did not finish each break one of those, and none of them is evidence.
-`/api/plugin/github/pull-refresh` is covered this way in `cli-github-pull.tryscript.md`,
-which pins the `202`, the `gh_failed` status after it, and the exit status 1. A refresh
-that completes needs `gh` and a fetch from the origin, and a subprocess transcript has
-neither. The completing command is pinned in-process instead:
+A command is successful evidence for a route when it exits 0. A row may name an
+in-process `.txt` golden as well as a tryscript transcript, and `check_parity.py`
+applies the same exact-route and exit-status rules to its `# command` and `exit:` lines.
+`check_goldens.py` fails a `.txt` golden that no test compares.
+`/api/plugin/github/pull-refresh` needs this: a refresh that completes needs `gh` and a
+fetch from the origin, and a subprocess transcript has neither.
 `cli-github-pull-refresh.txt` records
 `metab …/pull/7 --api /api/plugin/github/pull-refresh --data refresh.json` exiting 0,
-with the `202`, the `current` record after it, and the `gh` calls it made, and
+with the `202`, the `current` record after it, and the `gh` calls it made.
+`cli-github-pull.tryscript.md` pins the same route with no `gh`: the `202`, the
+`gh_failed` status after it, and the exit status 1.
 `cli-ui-github-pull-page.tryscript.md` replays the route’s recorded answers through a
 refresh that completes.
-`check_parity.py` does not read `.txt` transcripts, so that command is evidence a reader
-can check and the gate does not yet count.
 
 The exempt rows are the honest boundary.
 A server-sent-event response has no terminating envelope, so `--api` bounds the request
