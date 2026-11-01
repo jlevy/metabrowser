@@ -69,7 +69,7 @@ def test_a_mirrored_readme_renders_inert(tmp_path: Path, untrusted: None) -> Non
     assert rendered["inert"] is True
     html = rendered["html"]
     assert allowlist_violations(html, images=True) == []
-    assert '<img src="docs/diagram.png" alt="diagram">' in html
+    assert '<img loading="lazy" src="docs/diagram.png" alt="diagram">' in html
     for gone in ("url(", "javascript:", "dQw4w9WgXcQ", "modal-overlay", "evil.css"):
         assert gone not in html, gone
     # KPress adds script entry points for what a document contains; none are sent.

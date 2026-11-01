@@ -12,7 +12,8 @@ only what is listed here and drops the rest.
 
 - Tags: :data:`ALLOWED_TAGS`. :data:`DROPPED_WITH_CONTENT` are removed with everything in
   them; any other tag is unwrapped, keeping its text.
-- Attributes: none, except ``a[href]``, ``img[src, alt]`` where images are kept,
+- Attributes: none, except ``a[href]``, ``img[src, alt]`` where images are kept, with
+  ``loading="lazy"`` written here on every one and never read from the document,
   ``ol[start]`` as digits, ``td``/``th`` ``colspan`` and ``rowspan`` as small numbers and
   ``align`` as left, center, or right, and ``details[open]``. A kept link opens in a new
   tab with no opener or referrer when it leaves the page.
@@ -120,11 +121,12 @@ DROPPED_WITH_CONTENT: Final = frozenset(
     }
 )
 # The attributes each tag may keep; every value is checked by allowed_attributes, except
-# a heading's id, which is always the hardener's own anchor and never the document's. An
-# image is not an allowed tag: it is kept, with these, only inside the served tree.
+# a heading's id, which is always the hardener's own anchor and never the document's, and
+# an image's loading, which is always lazy. An image is not an allowed tag: it is kept,
+# with these, only inside the served tree.
 ALLOWED_ATTRIBUTES: Final = {
     "a": ("href", "target", "rel"),
-    "img": ("src", "alt"),
+    "img": ("loading", "src", "alt"),
     "ol": ("start",),
     "td": ("colspan", "rowspan", "align"),
     "th": ("colspan", "rowspan", "align"),
@@ -348,7 +350,10 @@ def allowed_attributes(
             if leaves:
                 kept += [("target", "_blank"), ("rel", "noopener noreferrer")]
     elif tag == "img":
-        kept.append(("src", _clean(attrs.get("src") or "")))
+        # A constant, so the document has no say in when its images load: a trusted
+        # render's images wait until they near the reader, and these wait the same way.
+        # Ahead of src, for a browser that reads the two in order.
+        kept += [("loading", "lazy"), ("src", _clean(attrs.get("src") or ""))]
         alt = attrs.get("alt")
         if alt:
             kept.append(("alt", alt))

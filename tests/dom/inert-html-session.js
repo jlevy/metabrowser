@@ -89,6 +89,11 @@ function serialize(nodes) {
       }
       const id = node.attributes.find(([name]) => name === "id")?.[1];
       assert(id === undefined || id.startsWith(inert.ANCHOR_PREFIX), `the page kept id=${id}`);
+      const loading = node.attributes.find(([name]) => name === "loading")?.[1];
+      assert(
+        node.tag !== "img" || loading === "lazy",
+        `the page kept an image, loading=${loading}`,
+      );
       const attributes = node.attributes
         .map(([name, value]) =>
           name === "open" ? " open" : ` ${name}="${escapeText(value).replaceAll('"', "&quot;")}"`,

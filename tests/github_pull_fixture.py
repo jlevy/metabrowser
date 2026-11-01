@@ -429,8 +429,8 @@ def allowlist_violations(html: str, *, images: bool = False) -> list[str]:
 
     The allowlist is :mod:`metabrowser.inert_html`'s. *images* admits an image, which a
     document inside the served tree keeps and a pull-request comment never does. Every
-    link must leave for http(s) or stay inside the served tree, and a heading's ``id``
-    must be one of the hardener's anchors.
+    link must leave for http(s) or stay inside the served tree, a heading's ``id`` must
+    be one of the hardener's anchors, and an image's ``loading`` must be ``lazy``.
     """
 
     from html.parser import HTMLParser
@@ -449,6 +449,8 @@ def allowlist_violations(html: str, *, images: bool = False) -> list[str]:
                     found.append(f"{tag}[{name}]")
                 elif name == "id" and not (value or "").startswith(ANCHOR_PREFIX):
                     found.append(f"{tag}[id={value}]")
+                elif name == "loading" and value != "lazy":
+                    found.append(f"{tag}[loading={value}]")
                 elif name in {"href", "src"} and not (
                     (value or "").startswith(("https://", "http://")) or is_inside(value)
                 ):

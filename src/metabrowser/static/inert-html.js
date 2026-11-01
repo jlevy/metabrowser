@@ -87,11 +87,12 @@
     "video",
   ]);
   // The attributes each tag may keep; every value is checked by allowedAttributes,
-  // except a heading's id, which is always sanitizeNodes' own anchor.
+  // except a heading's id, which is always sanitizeNodes' own anchor, and an image's
+  // loading, which is always lazy.
   const HEADINGS = Object.freeze(["h1", "h2", "h3", "h4", "h5", "h6"]);
   const ALLOWED_ATTRIBUTES = Object.freeze({
     a: Object.freeze(["href", "target", "rel"]),
-    img: Object.freeze(["src", "alt"]),
+    img: Object.freeze(["loading", "src", "alt"]),
     ol: Object.freeze(["start"]),
     td: Object.freeze(["colspan", "rowspan", "align"]),
     th: Object.freeze(["colspan", "rowspan", "align"]),
@@ -312,7 +313,10 @@
         }
       }
     } else if (tag === "img") {
-      kept.push(["src", clean(read("src") ?? "")]);
+      // A constant, so the document has no say in when its images load: a trusted
+      // render's images wait until they near the reader, and these wait the same way.
+      // Ahead of src, for a browser that reads the two in order.
+      kept.push(["loading", "lazy"], ["src", clean(read("src") ?? "")]);
       const alt = read("alt");
       if (alt) {
         kept.push(["alt", alt]);
